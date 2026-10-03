@@ -1,0 +1,888 @@
+//! Mutations: what a change *is*, computed here and applied by `store`.
+//!
+//! Nothing in this module writes anything. Each operation reads a [`Snapshot`] and returns
+//! an [`Edit`] — a list of before-and-after record pairs — which `store` turns into Automerge
+//! operations. That split exists for three reasons, in ascending order of how much they
+//! matter:
+//!
+//! 1. Core keeps its promise of no I/O, so every rule below is testable against a plain
+//!    struct with no CRDT and no database in the room.
+//! 2. A caller can inspect or announce a change *before* committing it, which is what the
+//!    confirmation flows of §6.1 and §16 need.
+//! 3. **Undo falls out for free.** §9 is explicit that Automerge does not provide undo —
+//!    it provides history, and rewinding would discard concurrent remote changes along with
+//!    your own. Undo means computing and applying an *inverse*, and an edit that already
+//!    carries both sides of every record is its own inverse when you swap them.
+//!
+//! # Why operations are not just field assignments
+//!
+//! Completing a task is the worked example. It writes a
+//! [`TaskCompletion`](crate::model::TaskCompletion), cascades to subtasks if §3.10's setting
+//! says so, and advances the due date if the task recurs (§5) — three records' worth of
+//! consequence from one keystroke, with rules about each that no caller should have to
+//! remember. Leaving that to eleven UI targets is exactly the business-logic leak principle
+//! 2 forbids.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use jiff::Zoned;
+
+use crate::id::{AssignmentId, FilterId, LabelId, ProjectId, TaskId};
+use crate::model::{
+    BlockAssignment, BlockException, BlockRef, BlockSeries, Label, Project, Reminder,
+    ReminderAck, SavedFilter, Settings, Task, TaskCompletion,
+};
+use crate::order::OrderKey;
+use crate::recur::{self, Advanced};
+use crate::snapshot::Snapshot;
+use crate::time;
+
+/// A refusal to compute an edit.
+///
+/// Deliberately narrow. Almost everything that could be wrong about a record is something
+/// CRDT merge can produce anyway (§3.1), and refusing to load or refusing to edit would be
+/// worse than tolerating it. What is here is the small set where proceeding would corrupt
+/// something a repair could not sensibly fix.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum EditError {
+    /// The record is not in this snapshot. It may exist in a document that is not loaded.
+    #[error("no such {kind} in the loaded documents")]
+    NotFound {
+        /// What was being looked for.
+        kind: &'static str,
+    },
+
+    /// Reparenting would put something inside itself.
+    ///
+    /// Merge can still produce a cycle from two concurrent moves, and [`crate::repair`]
+    /// exists for that. But a *local* move that closes a cycle is a mistake this device can
+    /// see, and letting it through would mean the repair silently undoing what the user just
+    /// asked for.
+    #[error("that would put an item inside itself")]
+    WouldCycle,
+
+    /// The task is already finished, so completing it again would record a second
+    /// completion for one occurrence.
+    #[error("that task is already complete")]
+    AlreadyComplete,
+
+    /// The task has never been completed, so there is nothing to reverse.
+    #[error("that task is not complete")]
+    NotComplete,
+
+    /// A stored recurrence rule could not be used.
+    #[error(transparent)]
+    Recurrence(#[from] recur::RecurError),
+}
+
+/// One record's transition. `None` on either side means it did not exist.
+///
+/// Every variant carries both sides, which is what makes [`Edit::inverse`] a swap rather
+/// than a second implementation of every operation.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Change {
+    /// A task.
+    Task(Box<Transition<Task>>),
+    /// A completion record.
+    Completion(Box<Transition<TaskCompletion>>),
+    /// A project.
+    Project(Box<Transition<Project>>),
+    /// A label.
+    Label(Box<Transition<Label>>),
+    /// A saved filter.
+    Filter(Box<Transition<SavedFilter>>),
+    /// A block series, in the year it starts.
+    Series(Box<Transition<BlockSeries>>),
+    /// An exception, keyed by the occurrence it modifies.
+    Exception(Box<Transition<BlockException>>),
+    /// An assignment. Carries its year, because
+    /// [`BlockRef::OneOff`](crate::model::BlockRef::OneOff) does not name a date and the
+    /// store cannot shard it without reading the series (§3.7).
+    Assignment {
+        /// Which `blocks-<year>` document it belongs in.
+        year: i16,
+        /// The transition.
+        transition: Box<Transition<BlockAssignment>>,
+    },
+    /// A reminder.
+    Reminder(Box<Transition<Reminder>>),
+    /// A reminder acknowledgement.
+    Ack(Box<Transition<ReminderAck>>),
+    /// The settings singleton, which always exists.
+    Settings {
+        /// What it was.
+        before: Box<Settings>,
+        /// What it becomes.
+        after: Box<Settings>,
+    },
+}
+
+/// A record before and after.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Transition<T> {
+    /// What was there, if anything.
+    pub before: Option<T>,
+    /// What is there afterwards. `None` removes the record outright — *purge*, not trash
+    /// (§3.2).
+    pub after: Option<T>,
+}
+
+impl<T> Transition<T> {
+    fn created(after: T) -> Self {
+        Self { before: None, after: Some(after) }
+    }
+
+    fn updated(before: T, after: T) -> Self {
+        Self { before: Some(before), after: Some(after) }
+    }
+
+    fn removed(before: T) -> Self {
+        Self { before: Some(before), after: None }
+    }
+
+    fn flip(self) -> Self {
+        Self { before: self.after, after: self.before }
+    }
+}
+
+impl Change {
+    /// The same record change, backwards.
+    #[must_use]
+    pub fn inverse(self) -> Self {
+        match self {
+            Self::Task(t) => Self::Task(Box::new(t.flip())),
+            Self::Completion(t) => Self::Completion(Box::new(t.flip())),
+            Self::Project(t) => Self::Project(Box::new(t.flip())),
+            Self::Label(t) => Self::Label(Box::new(t.flip())),
+            Self::Filter(t) => Self::Filter(Box::new(t.flip())),
+            Self::Series(t) => Self::Series(Box::new(t.flip())),
+            Self::Exception(t) => Self::Exception(Box::new(t.flip())),
+            Self::Assignment { year, transition } => {
+                Self::Assignment { year, transition: Box::new(transition.flip()) }
+            }
+            Self::Reminder(t) => Self::Reminder(Box::new(t.flip())),
+            Self::Ack(t) => Self::Ack(Box::new(t.flip())),
+            Self::Settings { before, after } => Self::Settings { before: after, after: before },
+        }
+    }
+}
+
+/// One user action, as a set of record changes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Edit {
+    /// What the user did, phrased for announcement: *"Completed Review PR"*.
+    ///
+    /// §9 requires undo to be announceable — *"Undid: completed Review PR"* — because
+    /// without a visual channel a mis-keystroke can go unnoticed for minutes, by which point
+    /// the context for recovering it is gone.
+    pub description: String,
+    /// The records that change, in the order they should be applied.
+    pub changes: Vec<Change>,
+}
+
+impl Edit {
+    /// An edit that does nothing.
+    #[must_use]
+    pub fn nothing() -> Self {
+        Self { description: String::new(), changes: Vec::new() }
+    }
+
+    /// Whether anything would actually change.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.changes.is_empty()
+    }
+
+    /// The edit that puts everything back.
+    ///
+    /// Changes are reversed in order as well as individually, so an edit that creates a
+    /// record and then references it undoes in the order that keeps each step consistent.
+    ///
+    /// The description is **not** rephrased: it still names the action, and a caller says
+    /// *"Undid: {description}"*. Rewriting it here would mean guessing at grammar the
+    /// caller can produce correctly.
+    #[must_use]
+    pub fn inverse(self) -> Self {
+        Self {
+            description: self.description,
+            changes: self.changes.into_iter().rev().map(Change::inverse).collect(),
+        }
+    }
+}
+
+/// Builds an edit, one record at a time.
+struct Builder {
+    description: String,
+    changes: Vec<Change>,
+}
+
+impl Builder {
+    fn new(description: impl Into<String>) -> Self {
+        Self { description: description.into(), changes: Vec::new() }
+    }
+
+    fn task(&mut self, transition: Transition<Task>) -> &mut Self {
+        self.changes.push(Change::Task(Box::new(transition)));
+        self
+    }
+
+    fn completion(&mut self, transition: Transition<TaskCompletion>) -> &mut Self {
+        self.changes.push(Change::Completion(Box::new(transition)));
+        self
+    }
+
+    fn finish(&mut self) -> Edit {
+        Edit { description: std::mem::take(&mut self.description), changes: std::mem::take(&mut self.changes) }
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// Tasks
+// ---------------------------------------------------------------------------------------
+
+/// Adds a task.
+#[must_use]
+pub fn create_task(task: Task) -> Edit {
+    let mut builder = Builder::new(format!("Added {}", task.title));
+    builder.task(Transition::created(task));
+    builder.finish()
+}
+
+/// Replaces a task with an edited copy.
+///
+/// `before` must be the version the user actually edited — the same rule `store` states for
+/// writes, and for the same reason: only the fields that differ produce operations, so a
+/// field someone else changed on another device survives.
+#[must_use]
+pub fn update_task(before: Task, after: Task) -> Edit {
+    if before == after {
+        return Edit::nothing();
+    }
+    let mut builder = Builder::new(format!("Edited {}", after.title));
+    builder.task(Transition::updated(before, after));
+    builder.finish()
+}
+
+/// Marks a task complete, cascading and advancing as the model requires.
+///
+/// Three things happen, and the order matters only in that they are one edit:
+///
+/// - A [`TaskCompletion`](crate::model::TaskCompletion) is recorded. For a recurring task it
+///   names the occurrence, since a recurring task is one task whose date advances rather
+///   than a generated series (§3.3).
+/// - **Subtasks cascade**, if [`Settings::cascade_complete_subtasks`] is on. Their
+///   completions record what caused them, so uncompleting the parent later reverses only
+///   these and not a subtask you independently finished last week.
+/// - **A recurring task advances** rather than ending (§5). If the rule has run out, it
+///   simply stays complete.
+///
+/// # Errors
+///
+/// If the task is not loaded, is already complete, or carries a rule that cannot be expanded.
+pub fn complete_task(snapshot: &Snapshot, id: TaskId, now: &Zoned) -> Result<Edit, EditError> {
+    let task = snapshot.tasks.get(&id).ok_or(EditError::NotFound { kind: "task" })?;
+    if snapshot.is_completed(task) {
+        return Err(EditError::AlreadyComplete);
+    }
+
+    let recurring = task.due.as_ref().is_some_and(|d| d.recurrence.is_some());
+    let occurrence = recurring.then(|| task.due.as_ref().map(|d| d.date)).flatten();
+
+    let mut builder = Builder::new(format!("Completed {}", task.title));
+    builder.completion(Transition::created(TaskCompletion::new(id, occurrence)));
+
+    if snapshot.settings.cascade_complete_subtasks {
+        for subtask in descendants(snapshot, id) {
+            if snapshot.is_completed(subtask) || subtask.is_deleted() {
+                continue;
+            }
+            // The completion names the subtask's *own* occurrence, not the parent's, since
+            // that is what `is_completed` checks a recurring task against.
+            //
+            // Cascaded completions never *advance* a recurring subtask, though. The cascade
+            // means "the parent is finished, so these are finished too" — moving one to next
+            // week instead would resurrect the very thing that was just closed out.
+            let occurrence = subtask
+                .due
+                .as_ref()
+                .filter(|due| due.recurrence.is_some())
+                .map(|due| due.date);
+            builder.completion(Transition::created(TaskCompletion::cascaded(
+                subtask.id,
+                occurrence,
+                id,
+            )));
+        }
+    }
+
+    if let Some(due) = &task.due
+        && due.recurrence.is_some()
+    {
+        let completed = snapshot.completion_count(id).saturating_add(1);
+        if let Advanced::Next(next) = recur::advance(due, now.date(), completed)? {
+            let mut advanced = task.clone();
+            advanced.due = Some(next);
+            builder.task(Transition::updated(task.clone(), advanced));
+        }
+    }
+    Ok(builder.finish())
+}
+
+/// Reverses the most recent completion of a task.
+///
+/// For a recurring task this also rolls the due date back to the occurrence that was
+/// completed, which is recoverable exactly because the completion record names it (§3.3).
+///
+/// Only completions **this task's own cascade caused** are reversed alongside it. §3.3 is
+/// explicit: a subtask you finished independently last week must not be uncompleted because
+/// you changed your mind about the parent.
+///
+/// # Errors
+///
+/// If the task is not loaded or has never been completed.
+pub fn uncomplete_task(snapshot: &Snapshot, id: TaskId) -> Result<Edit, EditError> {
+    let task = snapshot.tasks.get(&id).ok_or(EditError::NotFound { kind: "task" })?;
+    let latest = snapshot
+        .completions
+        .values()
+        .filter(|c| c.task_id == id && c.cascaded_from.is_none())
+        .max_by_key(|c| (c.completed_at, c.id))
+        .ok_or(EditError::NotComplete)?;
+
+    let mut builder = Builder::new(format!("Uncompleted {}", task.title));
+    builder.completion(Transition::removed(latest.clone()));
+
+    for completion in snapshot.completions.values() {
+        if completion.cascaded_from == Some(id) {
+            builder.completion(Transition::removed(completion.clone()));
+        }
+    }
+
+    if let Some(occurrence) = latest.occurrence_date
+        && let Some(due) = &task.due
+        && due.date != occurrence
+    {
+        let mut rolled = task.clone();
+        if let Some(due) = rolled.due.as_mut() {
+            due.date = occurrence;
+        }
+        builder.task(Transition::updated(task.clone(), rolled));
+    }
+    Ok(builder.finish())
+}
+
+/// Moves a task to the trash, along with everything under it.
+///
+/// Trash is `deleted_at` on the record, not removal: it syncs, it is undoable, and Automerge
+/// needs no tombstone to converge (§3.2). Subtasks follow, because a subtask left behind
+/// when its parent is trashed is unreachable in every view that shows a tree.
+///
+/// # Errors
+///
+/// If the task is not loaded.
+pub fn trash_task(snapshot: &Snapshot, id: TaskId) -> Result<Edit, EditError> {
+    let task = snapshot.tasks.get(&id).ok_or(EditError::NotFound { kind: "task" })?;
+    let stamp = time::now();
+    let mut builder = Builder::new(format!("Deleted {}", task.title));
+
+    for target in std::iter::once(task).chain(descendants(snapshot, id)) {
+        if target.is_deleted() {
+            continue;
+        }
+        let mut trashed = target.clone();
+        trashed.deleted_at = Some(stamp);
+        builder.task(Transition::updated(target.clone(), trashed));
+    }
+    Ok(builder.finish())
+}
+
+/// Takes a task back out of the trash, along with everything under it.
+///
+/// # Errors
+///
+/// If the task is not loaded.
+pub fn restore_task(snapshot: &Snapshot, id: TaskId) -> Result<Edit, EditError> {
+    let task = snapshot.tasks.get(&id).ok_or(EditError::NotFound { kind: "task" })?;
+    let mut builder = Builder::new(format!("Restored {}", task.title));
+
+    for target in std::iter::once(task).chain(descendants(snapshot, id)) {
+        if !target.is_deleted() {
+            continue;
+        }
+        let mut restored = target.clone();
+        restored.deleted_at = None;
+        builder.task(Transition::updated(target.clone(), restored));
+    }
+    Ok(builder.finish())
+}
+
+/// Removes a task and its history permanently. This is emptying the trash.
+///
+/// # Errors
+///
+/// If the task is not loaded.
+pub fn purge_task(snapshot: &Snapshot, id: TaskId) -> Result<Edit, EditError> {
+    let task = snapshot.tasks.get(&id).ok_or(EditError::NotFound { kind: "task" })?;
+    let mut builder = Builder::new(format!("Permanently deleted {}", task.title));
+
+    for target in std::iter::once(task).chain(descendants(snapshot, id)) {
+        for completion in snapshot.completions.values() {
+            if completion.task_id == target.id {
+                builder.completion(Transition::removed(completion.clone()));
+            }
+        }
+        builder.task(Transition::removed(target.clone()));
+    }
+    Ok(builder.finish())
+}
+
+/// Where a task is being moved to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoveTo {
+    /// A different project. Subtasks follow, since a subtask in another project from its
+    /// parent has no view that can show both.
+    Project(ProjectId),
+    /// Under a different parent, or to the top level.
+    Parent(Option<TaskId>),
+    /// A different position among its current siblings.
+    Between {
+        /// The task it should follow, if any.
+        after: Option<TaskId>,
+        /// The task it should precede, if any.
+        before: Option<TaskId>,
+    },
+}
+
+/// Moves a task.
+///
+/// # Errors
+///
+/// If the task is not loaded, or the move would put it inside itself.
+pub fn move_task(snapshot: &Snapshot, id: TaskId, to: MoveTo) -> Result<Edit, EditError> {
+    let task = snapshot.tasks.get(&id).ok_or(EditError::NotFound { kind: "task" })?;
+    let mut builder = Builder::new(format!("Moved {}", task.title));
+
+    match to {
+        MoveTo::Project(project) => {
+            if task.project_id != project {
+                for target in std::iter::once(task).chain(descendants(snapshot, id)) {
+                    let mut moved = target.clone();
+                    moved.project_id = project;
+                    builder.task(Transition::updated(target.clone(), moved));
+                }
+            }
+        }
+        MoveTo::Parent(parent) => {
+            if let Some(parent) = parent
+                && (parent == id || descendants(snapshot, id).iter().any(|t| t.id == parent))
+            {
+                return Err(EditError::WouldCycle);
+            }
+            if task.parent_id != parent {
+                let mut moved = task.clone();
+                moved.parent_id = parent;
+                builder.task(Transition::updated(task.clone(), moved));
+            }
+        }
+        MoveTo::Between { after, before } => {
+            let lower = after.and_then(|id| snapshot.tasks.get(&id)).map(|t| t.order.clone());
+            let upper = before.and_then(|id| snapshot.tasks.get(&id)).map(|t| t.order.clone());
+            if let Ok(order) = OrderKey::between(lower.as_ref(), upper.as_ref())
+                && order != task.order
+            {
+                let mut moved = task.clone();
+                moved.order = order;
+                builder.task(Transition::updated(task.clone(), moved));
+            }
+        }
+    }
+    Ok(builder.finish())
+}
+
+/// Every task beneath `root`, at any depth.
+///
+/// Walks with a visited set, so an unrepaired parent cycle (§3.13) yields a finite list
+/// rather than hanging the caller.
+fn descendants(snapshot: &Snapshot, root: TaskId) -> Vec<&Task> {
+    let mut children: BTreeMap<TaskId, Vec<&Task>> = BTreeMap::new();
+    for task in snapshot.tasks.values() {
+        if let Some(parent) = task.parent_id {
+            children.entry(parent).or_default().push(task);
+        }
+    }
+    let mut out = Vec::new();
+    let mut seen = BTreeSet::from([root]);
+    let mut queue = vec![root];
+    while let Some(id) = queue.pop() {
+        for child in children.get(&id).into_iter().flatten() {
+            if seen.insert(child.id) {
+                out.push(*child);
+                queue.push(child.id);
+            }
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------------------
+// Projects and labels
+// ---------------------------------------------------------------------------------------
+
+/// Adds a project.
+#[must_use]
+pub fn create_project(project: Project) -> Edit {
+    let description = format!("Added project {}", project.name);
+    Edit {
+        description,
+        changes: vec![Change::Project(Box::new(Transition::created(project)))],
+    }
+}
+
+/// Replaces a project with an edited copy.
+#[must_use]
+pub fn update_project(before: Project, after: Project) -> Edit {
+    if before == after {
+        return Edit::nothing();
+    }
+    Edit {
+        description: format!("Edited project {}", after.name),
+        changes: vec![Change::Project(Box::new(Transition::updated(before, after)))],
+    }
+}
+
+/// What happens to a project's tasks when it goes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectDeletion {
+    /// Trash them with it. What Todoist does, and what someone deleting a finished project
+    /// usually means.
+    TrashTasks,
+    /// Keep them, moved to the Inbox. What someone reorganising usually means.
+    ///
+    /// Worth offering rather than picking: the two intentions are indistinguishable from the
+    /// keystroke, and guessing wrong silently loses a project's worth of work.
+    MoveTasksToInbox,
+}
+
+/// Moves a project to the trash, along with its sub-projects.
+///
+/// # Errors
+///
+/// If the project is not loaded, or [`ProjectDeletion::MoveTasksToInbox`] was asked for and
+/// there is no Inbox in the loaded documents.
+pub fn trash_project(
+    snapshot: &Snapshot,
+    id: ProjectId,
+    tasks: ProjectDeletion,
+) -> Result<Edit, EditError> {
+    let project = snapshot.projects.get(&id).ok_or(EditError::NotFound { kind: "project" })?;
+    let stamp = time::now();
+    let mut builder = Builder::new(format!("Deleted project {}", project.name));
+
+    let mut affected = BTreeSet::from([id]);
+    for candidate in snapshot.projects.values() {
+        if snapshot.is_within(candidate.id, id) {
+            affected.insert(candidate.id);
+        }
+    }
+
+    let inbox = match tasks {
+        ProjectDeletion::MoveTasksToInbox => {
+            Some(snapshot.inbox().ok_or(EditError::NotFound { kind: "inbox" })?.id)
+        }
+        ProjectDeletion::TrashTasks => None,
+    };
+
+    for task in snapshot.tasks.values() {
+        if !affected.contains(&task.project_id) {
+            continue;
+        }
+        let mut changed = task.clone();
+        match inbox {
+            Some(inbox) => changed.project_id = inbox,
+            None if task.is_deleted() => continue,
+            None => changed.deleted_at = Some(stamp),
+        }
+        builder.task(Transition::updated(task.clone(), changed));
+    }
+
+    for project_id in affected {
+        if let Some(project) = snapshot.projects.get(&project_id)
+            && project.deleted_at.is_none()
+        {
+            let mut trashed = project.clone();
+            trashed.deleted_at = Some(stamp);
+            builder.changes.push(Change::Project(Box::new(Transition::updated(
+                project.clone(),
+                trashed,
+            ))));
+        }
+    }
+    Ok(builder.finish())
+}
+
+/// Adds a label.
+#[must_use]
+pub fn create_label(label: Label) -> Edit {
+    let description = format!("Added label {}", label.name);
+    Edit { description, changes: vec![Change::Label(Box::new(Transition::created(label)))] }
+}
+
+/// Replaces a label with an edited copy.
+///
+/// Renaming updates **one record**, and every task wearing it follows. With plain strings
+/// this would be a rewrite of every task carrying it, which in a CRDT is a large
+/// multi-object change where a concurrent edit can leave the rename half-applied (§3.4).
+#[must_use]
+pub fn update_label(before: Label, after: Label) -> Edit {
+    if before == after {
+        return Edit::nothing();
+    }
+    Edit {
+        description: format!("Renamed label {} to {}", before.name, after.name),
+        changes: vec![Change::Label(Box::new(Transition::updated(before, after)))],
+    }
+}
+
+/// Saves a filter query under a name.
+///
+/// The query is stored as **text, never as a resolved date range** (§6.2). A filter
+/// containing `today` has to mean today at evaluation time; resolving it at save time
+/// produces one that silently rots overnight.
+#[must_use]
+pub fn create_filter(filter: SavedFilter) -> Edit {
+    let description = format!("Saved filter {}", filter.name);
+    Edit { description, changes: vec![Change::Filter(Box::new(Transition::created(filter)))] }
+}
+
+/// Moves a saved filter to the trash.
+///
+/// # Errors
+///
+/// If the filter is not loaded.
+pub fn trash_filter(snapshot: &Snapshot, id: FilterId) -> Result<Edit, EditError> {
+    let filter = snapshot
+        .saved_filters
+        .get(&id)
+        .ok_or(EditError::NotFound { kind: "filter" })?;
+    let mut trashed = filter.clone();
+    trashed.deleted_at = Some(time::now());
+    Ok(Edit {
+        description: format!("Deleted filter {}", filter.name),
+        changes: vec![Change::Filter(Box::new(Transition::updated(filter.clone(), trashed)))],
+    })
+}
+
+/// Moves a label to the trash.
+///
+/// **Touches no tasks.** Identifiers left pointing at it project as absent, which §3.1's
+/// tolerate-dangling-references rule already requires — so undo is free and a large
+/// multi-task write is avoided entirely. The consequence is worth remembering: a later
+/// label with the same *name* is a different record, and old tasks do not acquire it.
+///
+/// # Errors
+///
+/// If the label is not loaded.
+pub fn trash_label(snapshot: &Snapshot, id: LabelId) -> Result<Edit, EditError> {
+    let label = snapshot.labels.get(&id).ok_or(EditError::NotFound { kind: "label" })?;
+    let mut trashed = label.clone();
+    trashed.deleted_at = Some(time::now());
+    Ok(Edit {
+        description: format!("Deleted label {}", label.name),
+        changes: vec![Change::Label(Box::new(Transition::updated(label.clone(), trashed)))],
+    })
+}
+
+/// Folds one label into another.
+///
+/// A first-class operation precisely because implicit creation (§3.4) makes near-duplicates
+/// inevitable: type `@lapto` once and you have one. Merging rewrites the affected tasks'
+/// sets and soft-deletes the loser — cheap with records, and impossible with plain strings,
+/// where the two tags were never distinguishable from intent in the first place.
+///
+/// # Errors
+///
+/// If either label is not loaded.
+pub fn merge_labels(snapshot: &Snapshot, from: LabelId, into: LabelId) -> Result<Edit, EditError> {
+    let loser = snapshot.labels.get(&from).ok_or(EditError::NotFound { kind: "label" })?;
+    let winner = snapshot.labels.get(&into).ok_or(EditError::NotFound { kind: "label" })?;
+    if from == into {
+        return Ok(Edit::nothing());
+    }
+
+    let mut builder =
+        Builder::new(format!("Merged label {} into {}", loser.name, winner.name));
+    for task in snapshot.tasks.values() {
+        if !task.labels.contains(&from) {
+            continue;
+        }
+        let mut changed = task.clone();
+        changed.labels.remove(&from);
+        changed.labels.insert(into);
+        builder.task(Transition::updated(task.clone(), changed));
+    }
+
+    let mut trashed = loser.clone();
+    trashed.deleted_at = Some(time::now());
+    builder
+        .changes
+        .push(Change::Label(Box::new(Transition::updated(loser.clone(), trashed))));
+    Ok(builder.finish())
+}
+
+// ---------------------------------------------------------------------------------------
+// Assignments and timers — the join between the two halves (§3.7)
+// ---------------------------------------------------------------------------------------
+
+/// Places a task into a block.
+///
+/// `year` says which `blocks-<year>` document it belongs in. It cannot be derived for a
+/// one-off block, whose reference names only the series so that moving the block carries its
+/// assignments with it (§3.7).
+///
+/// There is deliberately **no uniqueness check** on task and date. Planning three sittings
+/// for a long essay up front is a first-class use case, not an accident to prevent.
+///
+/// # Errors
+///
+/// If the task is not loaded.
+pub fn assign_task(
+    snapshot: &Snapshot,
+    task_id: TaskId,
+    block: BlockRef,
+    year: i16,
+) -> Result<Edit, EditError> {
+    let task = snapshot.tasks.get(&task_id).ok_or(EditError::NotFound { kind: "task" })?;
+    let last = snapshot
+        .assignments
+        .values()
+        .filter(|a| a.block_ref == block)
+        .map(|a| a.order.clone())
+        .max();
+    let order = last.map_or_else(OrderKey::middle, |last| OrderKey::after(&last));
+
+    Ok(Edit {
+        description: format!("Scheduled {}", task.title),
+        changes: vec![Change::Assignment {
+            year,
+            transition: Box::new(Transition::created(BlockAssignment::new(
+                block, task_id, order,
+            ))),
+        }],
+    })
+}
+
+/// Takes a task back out of a block.
+///
+/// # Errors
+///
+/// If the assignment is not loaded.
+pub fn unassign(
+    snapshot: &Snapshot,
+    assignment_id: AssignmentId,
+    year: i16,
+) -> Result<Edit, EditError> {
+    let assignment = snapshot
+        .assignments
+        .get(&assignment_id)
+        .ok_or(EditError::NotFound { kind: "assignment" })?;
+    let title = snapshot
+        .tasks
+        .get(&assignment.task_id)
+        .map_or("task", |t| t.title.as_str())
+        .to_owned();
+    Ok(Edit {
+        description: format!("Unscheduled {title}"),
+        changes: vec![Change::Assignment {
+            year,
+            transition: Box::new(Transition::removed(assignment.clone())),
+        }],
+    })
+}
+
+/// Starts the timer on an assignment.
+///
+/// Writes a fact — when it started — rather than a counter, so nothing ticks in storage and
+/// two devices starting the same timer is a harmless last-write-wins on one timestamp
+/// (§3.7).
+///
+/// # Errors
+///
+/// If the assignment is not loaded.
+pub fn start_timer(
+    snapshot: &Snapshot,
+    assignment_id: AssignmentId,
+    year: i16,
+    now: &Zoned,
+) -> Result<Edit, EditError> {
+    let assignment = snapshot
+        .assignments
+        .get(&assignment_id)
+        .ok_or(EditError::NotFound { kind: "assignment" })?;
+    if assignment.is_running() {
+        return Ok(Edit::nothing());
+    }
+    let mut started = assignment.clone();
+    started.start(time::truncate(now.timestamp()));
+    Ok(Edit {
+        description: "Started timer".to_owned(),
+        changes: vec![Change::Assignment {
+            year,
+            transition: Box::new(Transition::updated(assignment.clone(), started)),
+        }],
+    })
+}
+
+/// Stops the timer, folding the running interval into the accumulated total.
+///
+/// `cap_mins` should be the containing block's duration. A timer left running past the end
+/// of its block — started on a phone that then died — would otherwise record the wall-clock
+/// time since, so the total is capped and the caller is told (§3.7). **Confirm with the user
+/// rather than recording the capped figure silently**; a truncated number presented as fact
+/// is its own kind of wrong.
+///
+/// # Errors
+///
+/// If the assignment is not loaded.
+pub fn stop_timer(
+    snapshot: &Snapshot,
+    assignment_id: AssignmentId,
+    year: i16,
+    cap_mins: Option<u32>,
+    now: &Zoned,
+) -> Result<(Edit, crate::model::Elapsed), EditError> {
+    let assignment = snapshot
+        .assignments
+        .get(&assignment_id)
+        .ok_or(EditError::NotFound { kind: "assignment" })?;
+    let mut stopped = assignment.clone();
+    let elapsed = stopped.pause(time::truncate(now.timestamp()), cap_mins);
+    if stopped.status == crate::model::AssignmentStatus::InProgress {
+        stopped.status = crate::model::AssignmentStatus::Worked;
+    }
+    Ok((
+        Edit {
+            description: format!("Logged {} minutes", elapsed.mins),
+            changes: vec![Change::Assignment {
+                year,
+                transition: Box::new(Transition::updated(assignment.clone(), stopped)),
+            }],
+        },
+        elapsed,
+    ))
+}
+
+// ---------------------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------------------
+
+/// Changes settings.
+#[must_use]
+pub fn update_settings(before: Settings, after: Settings) -> Edit {
+    if before == after {
+        return Edit::nothing();
+    }
+    Edit {
+        description: "Changed settings".to_owned(),
+        changes: vec![Change::Settings { before: Box::new(before), after: Box::new(after) }],
+    }
+}

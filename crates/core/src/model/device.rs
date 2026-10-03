@@ -1,0 +1,24 @@
+//! The paired device roster (§3.11).
+
+use jiff::Timestamp;
+
+use crate::id::NodeId;
+
+/// One of your devices.
+///
+/// This lives in its own Automerge document (§3.1) because it is small, changes rarely, and
+/// every device needs it. The device's *private* key never appears here or anywhere else
+/// that syncs (§3.12).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Device {
+    /// The device's ed25519 public key, which is also its Iroh address.
+    pub node_id: NodeId,
+    /// What the user calls it.
+    pub name: String,
+    /// What it runs, for display.
+    pub platform: String,
+    /// When it joined.
+    pub paired_at: Timestamp,
+    /// When it was last heard from. Best-effort, like everything else that crosses devices.
+    pub last_seen: Timestamp,
+}

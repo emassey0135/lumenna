@@ -1,0 +1,21 @@
+[package]
+name = "lumenna-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Lumenna domain model, queries, and scheduling. No I/O."
+
+[dependencies]
+chrono.workspace = true
+jiff.workspace = true
+rrule.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

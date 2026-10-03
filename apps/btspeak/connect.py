@@ -1,0 +1,101 @@
+"""Finding a server to talk to.
+
+§8's fallback rule differs by client class, and this is the RPC class: connect to the sync
+daemon's socket if one answers, otherwise spawn `lum rpc` over stdio. The two carry an
+identical command surface, so everything above this file is unaware of which it got.
+
+On this device the daemon is *required* for sync — there is no tray and no session GUI to
+keep it running (§16.11) — so the socket is the expected path and spawning is the exception.
+That is the reverse of the desktop case, and it is why the fallback exists at all: a stopped
+unit should leave the app working-but-not-syncing rather than broken.
+
+No daemon exists yet, so today it always spawns. The socket half is here because the moment
+it does exist, nothing above this file should have to change.
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+import socket
+import subprocess
+from pathlib import Path
+
+from client import Client, LumennaError
+
+
+#: Where the daemon will listen. One socket per profile, beside the store itself, so a second
+#: profile is a second daemon rather than a collision.
+SOCKET_NAME = "lumenna.sock"
+
+
+def profile_directory() -> Path:
+    """Where the store lives, by the same rule the CLI uses.
+
+    `LUMENNA_PROFILE` first — which is what makes a second profile possible without a flag on
+    every invocation — then the platform data directory.
+    """
+    explicit = os.environ.get("LUMENNA_PROFILE")
+    if explicit:
+        return Path(explicit)
+    return Path.home() / ".local" / "share" / "lumenna"
+
+
+def connect(profile: Path | None = None) -> Client:
+    """Opens a conversation, however one can be had."""
+    profile = profile or profile_directory()
+    return _over_socket(profile) or _over_stdio(profile)
+
+
+def _over_socket(profile: Path) -> Client | None:
+    """The daemon, if it is running."""
+    path = profile / SOCKET_NAME
+    if not path.exists():
+        return None
+    try:
+        connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        connection.connect(str(path))
+    except OSError:
+        # A socket file left behind by a daemon that died is not a reason to fail; spawning
+        # our own server is exactly the right thing to do next.
+        return None
+    reader = connection.makefile("r", encoding="utf-8")
+    writer = connection.makefile("w", encoding="utf-8")
+    return Client(reader, writer, on_close=connection.close)
+
+
+def _over_stdio(profile: Path) -> Client:
+    """Our own `lum rpc`, which lives as long as this app does."""
+    binary = shutil.which("lum")
+    if binary is None:
+        raise LumennaError(
+            "cannot find `lum` on PATH. Install the Lumenna binary, or set PATH to include it"
+        )
+    environment = dict(os.environ, LUMENNA_PROFILE=str(profile))
+    # The server's stderr goes to a file beside the store, for two reasons. It would
+    # otherwise land on the terminal and scribble over whatever dialog is drawn — the app
+    # owns that screen — and swallowing it would leave a server that refuses to start with
+    # no way to say why.
+    profile.mkdir(parents=True, exist_ok=True)
+    log = open(profile / "rpc.log", "a", encoding="utf-8")  # noqa: SIM115
+    server = subprocess.Popen(
+        [binary, "rpc"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=log,
+        text=True,
+        encoding="utf-8",
+        # Line buffering. Without it our writes sit in Python's buffer and the server waits
+        # for a request that was never actually sent.
+        bufsize=1,
+        env=environment,
+    )
+
+    def stop() -> None:
+        try:
+            server.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            server.kill()
+        log.close()
+
+    return Client(server.stdout, server.stdin, on_close=stop)

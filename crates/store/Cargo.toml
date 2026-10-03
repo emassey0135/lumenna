@@ -1,0 +1,23 @@
+[package]
+name = "lumenna-store"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Automerge documents and their SQLite change store."
+
+[dependencies]
+automerge.workspace = true
+jiff.workspace = true
+lumenna-core.workspace = true
+rusqlite.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

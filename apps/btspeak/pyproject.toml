@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lumenna-btspeak"
+version = "0.1.0"
+description = "Lumenna on BTSpeak and BTBraille: tasks, and the blocks they are worked in."
+authors = [{ name = "Elijah Massey" }]
+# Nothing. The JSON-RPC client is one stdlib file, and `dialogs` comes from the device.
+dependencies = []
+classifiers = ["Topic :: Other"]
+
+[tool.setuptools]
+packages = ["lumenna_btspeak"]
+include-package-data = true
+
+[tool.setuptools.package-dir]
+lumenna_btspeak = "."
+
+[tool.setuptools.package-data]
+"*" = ["*", "**/*"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["**/__pycache__/*", "__pycache__/*", "*.egg-info/*", "**/*.egg-info/*"]
+
+[tool.btcode]
+category = "Other"
+original_name = "lumenna"

@@ -1,0 +1,31 @@
+[package]
+name = "lumenna-cli"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Lumenna's command-line interface. The first target, and a permanent one."
+
+[[bin]]
+name = "lum"
+path = "src/main.rs"
+
+[dependencies]
+anstream.workspace = true
+anstyle.workspace = true
+clap.workspace = true
+clap_complete.workspace = true
+directories.workspace = true
+jiff.workspace = true
+lumenna-core.workspace = true
+lumenna-parse.workspace = true
+lumenna-store.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,7 @@
+target/
+
+# Python — the BTSpeak app
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
