@@ -6,10 +6,12 @@
 //! rather than shell out to `lum --json` per command. No Iroh: syncing is the daemon's job,
 //! and this is not the daemon.
 //!
-//! **The surface is [`crate::api`], unchanged.** A method builds the same [`Command`] the
-//! command line builds and hands it to the same `dispatch`, so RPC cannot drift from the CLI
-//! — there is one implementation of every operation and two ways in. §8's *one protocol, two
-//! transports* then costs the daemon nothing beyond a socket: it will serve exactly this.
+//! **The surface is `lumenna_surface`, serialised.** A method builds the same [`Command`] the
+//! command line builds and hands it to the same `dispatch`, which calls the same typed
+//! operations the phone apps link — so RPC cannot drift from the CLI or from them. There is
+//! one implementation of every operation, and this is a way in for clients that cannot link
+//! it. §8's *one protocol, two transports* then costs the daemon nothing beyond a socket: it
+//! serves exactly this.
 //!
 //! # Two things the terminal has that a client does not
 //!
@@ -34,18 +36,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use jiff::Zoned;
-use lumenna_parse::complete::{Syntax, complete};
-use lumenna_parse::quickadd::{Known, parse_quick_add};
+use lumenna_surface::Syntax;
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::api::{self, Outcome, Response};
+use crate::api::{self, Response};
 use crate::error::{CliError, Result};
 use crate::profile::Profile;
 use crate::{
     BlockCommand, Command, ConfigCommand, DependCommand, FilterCommand, LabelCommand,
-    ProjectCommand, TaskCommand, dispatch, state,
+    ProjectCommand, TaskCommand, dispatch,
 };
 
 /// How often to look for changes another process wrote.
@@ -146,10 +146,10 @@ struct Writer {
 /// # Errors
 ///
 /// If stdin cannot be read.
-pub fn serve(mut profile: Profile) -> Result<()> {
+pub fn serve(profile: Profile) -> Result<()> {
     // A resident server is exactly the "something that stays running" §9 means, so it takes
     // a backup when one is due at start, and checks again on the hour while it runs.
-    crate::durability::back_up_if_due(&mut profile);
+    crate::durability::back_up_if_due(&profile);
     serve_streams(profile, BufReader::new(std::io::stdin()), Box::new(std::io::stdout()), None)
 }
 
@@ -204,14 +204,14 @@ fn watch(server: &Server) {
         since_backup_check += POLL;
         if since_backup_check >= BACKUP_CHECK {
             since_backup_check = Duration::ZERO;
-            if let Ok(mut profile) = server.profile.lock() {
-                crate::durability::back_up_if_due(&mut profile);
+            if let Ok(profile) = server.profile.lock() {
+                crate::durability::back_up_if_due(&profile);
             }
         }
         let changed = server
             .profile
             .lock()
-            .map_or(Ok(false), |mut profile| profile.store.refresh());
+            .map_or(Ok(false), |profile| profile.refresh());
         match changed {
             Ok(true) => server.send(&json!({
                 "jsonrpc": "2.0",
@@ -232,6 +232,12 @@ fn watch(server: &Server) {
 }
 
 impl Server {
+    fn profile(&self) -> std::result::Result<std::sync::MutexGuard<'_, Profile>, RpcError> {
+        self.profile
+            .lock()
+            .map_err(|_| RpcError { code: COMMAND_FAILED, message: "store is wedged".into() })
+    }
+
     /// Writes one message, framed the way the last request was.
     fn send<T: Serialize>(&self, message: &T) {
         let Ok(text) = serde_json::to_string(message) else { return };
@@ -326,6 +332,12 @@ impl From<CliError> for RpcError {
     }
 }
 
+impl From<lumenna_surface::LumennaError> for RpcError {
+    fn from(error: lumenna_surface::LumennaError) -> Self {
+        Self { code: COMMAND_FAILED, message: error.message().to_owned() }
+    }
+}
+
 fn invalid(message: impl Into<String>) -> RpcError {
     RpcError { code: INVALID_PARAMS, message: message.into() }
 }
@@ -342,15 +354,14 @@ fn answer(
         return Ok(hook()?);
     }
     match method {
-        "initialize" => Ok(Response::new(
-            "Lumenna",
-            Outcome::Server(api::ServerInfo {
-                name: "lumenna",
-                version: env!("CARGO_PKG_VERSION"),
-                contract: api::VERSION,
-                methods: METHODS.to_vec(),
-            }),
-        )),
+        "initialize" => Ok(Response::new(api::ServerInfo {
+            announcement: "Lumenna".to_owned(),
+            notices: Vec::new(),
+            name: "lumenna",
+            version: env!("CARGO_PKG_VERSION"),
+            contract: api::VERSION,
+            methods: METHODS.to_vec(),
+        })),
         "shutdown" => {
             server.running.store(false, Ordering::Relaxed);
             Ok(Response::unchanged("Stopping"))
@@ -359,15 +370,9 @@ fn answer(
         "preview" => preview(server, params),
         _ => {
             let command = command_for(method, params)?;
-            let now = Zoned::now();
-            let mut profile = server
-                .profile
-                .lock()
-                .map_err(|_| RpcError { code: COMMAND_FAILED, message: "store is wedged".into() })?;
-            // Another process may have written since the last poll, and answering from a
-            // stale document would be a wrong answer rather than a slow one.
-            profile.store.refresh().map_err(CliError::Store)?;
-            Ok(dispatch(&mut profile, &command, &now)?)
+            // Every operation reads what another process wrote since the last poll first,
+            // so a reply is never staler than the notification that preceded it.
+            Ok(dispatch(&*server.profile()?, &command)?)
         }
     }
 }
@@ -540,7 +545,7 @@ fn command_for(method: &str, params: &Value) -> std::result::Result<Command, Rpc
         "export" => Command::Export {
             format: match maybe_text(params, "format") {
                 None => crate::durability::ExportFormat::Json,
-                Some(word) => crate::durability::ExportFormat::from_word(&word).ok_or_else(|| {
+                Some(word) => lumenna_surface::ExportFormat::from_word(&word).map(Into::into).ok_or_else(|| {
                     invalid(format!("'{word}' is not a format; use json, markdown, org or ics"))
                 })?,
             },
@@ -571,8 +576,7 @@ fn command_for(method: &str, params: &Value) -> std::result::Result<Command, Rpc
 fn completions(server: &Server, params: &Value) -> std::result::Result<Response, RpcError> {
     let text = text_of(params, "text")?;
     let cursor = maybe_number(params, "cursor")?
-        .map_or(text.len(), |cursor| cursor as usize)
-        .min(text.len());
+        .unwrap_or_else(|| u32::try_from(text.len()).unwrap_or(u32::MAX));
     let syntax = match maybe_text(params, "syntax").as_deref() {
         None | Some("quick-add") => Syntax::QuickAdd,
         Some("filter") => Syntax::Filter,
@@ -580,33 +584,12 @@ fn completions(server: &Server, params: &Value) -> std::result::Result<Response,
             return Err(invalid(format!("'{other}' is not a syntax; use quick-add or filter")));
         }
     };
-
-    let profile = server
-        .profile
-        .lock()
-        .map_err(|_| RpcError { code: COMMAND_FAILED, message: "store is wedged".into() })?;
-    let snapshot = state(&profile);
-    let found = complete(&text, cursor, syntax, &Known::from_snapshot(&snapshot));
     // §6.3 wants the count announced before the list, and the announcement is core's
     // sentence, so it travels as one — the candidates travel as components.
-    Ok(Response::new(
-        found.announcement.clone(),
-        Outcome::Completions(api::Completions::of(&found)),
-    ))
+    Ok(Response::new(server.profile()?.complete_text(&text, cursor, syntax)?))
 }
 
 fn preview(server: &Server, params: &Value) -> std::result::Result<Response, RpcError> {
     let text = text_of(params, "text")?;
-    let now = Zoned::now();
-    let profile = server
-        .profile
-        .lock()
-        .map_err(|_| RpcError { code: COMMAND_FAILED, message: "store is wedged".into() })?;
-    let snapshot = state(&profile);
-    let parsed = parse_quick_add(&text, &Known::from_snapshot(&snapshot));
-    let resolved = parsed.resolve(&snapshot, &now);
-    Ok(Response::new(
-        resolved.announcement(),
-        Outcome::Preview(api::Preview::of(&resolved, &snapshot)),
-    ))
+    Ok(Response::new(server.profile()?.preview_task(&text)?))
 }

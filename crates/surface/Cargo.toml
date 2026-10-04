@@ -1,0 +1,27 @@
+[package]
+name = "lumenna-surface"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Lumenna's command surface (§12): every operation once, typed, for every client."
+
+[features]
+# Swift and Kotlin bindings through UniFFI (§2). Off for the CLI, which links this directly.
+uniffi = ["dep:uniffi"]
+
+[dependencies]
+jiff.workspace = true
+lumenna-core.workspace = true
+lumenna-parse.workspace = true
+lumenna-store.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+uniffi = { version = "0.32", optional = true }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -20,7 +20,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::api::{Affected, Response};
+use crate::api::Response;
 use crate::error::{CliError, Result};
 use crate::profile::{Profile, default_directory};
 
@@ -361,7 +361,6 @@ pub(crate) fn install(profile: &Profile, local_only: bool) -> Result<Response> {
     }
     let mut response = Response::touched(
         format!("The sync daemon now runs as {where_}"),
-        Affected::default(),
     );
     for note in notes {
         response = response.note(note);
@@ -414,7 +413,6 @@ pub(crate) fn uninstall(profile: &Profile) -> Result<Response> {
     };
     Ok(Response::touched(
         format!("Removed the sync daemon service, {removed}; nothing syncs in the background now"),
-        Affected::default(),
     ))
 }
 
@@ -447,7 +445,6 @@ pub(crate) fn start_or_stop(profile: &Profile, start: bool) -> Result<Response> 
     }
     Ok(Response::touched(
         if start { "Started the sync daemon" } else { "Stopped the sync daemon until the next login, or `lum daemon start`" },
-        Affected::default(),
     ))
 }
 

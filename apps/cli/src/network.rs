@@ -29,7 +29,9 @@ use lumenna_sync::invite::{Invitation, identity};
 use lumenna_sync::node::{Network, Node, PeerResult};
 use lumenna_sync::{SharedStore, SyncError};
 
-use crate::api::{self, Outcome, Response};
+use lumenna_surface::words::count_line;
+
+use crate::api::{self, Response};
 use crate::error::{CliError, Result};
 use crate::profile::Profile;
 
@@ -163,19 +165,18 @@ pub(crate) fn pair(profile: &Profile, code: Option<&str>, local_only: bool) -> R
     })?;
 
     let changed = paired.summary.changed.len();
-    Ok(Response::new(
-        format!(
+    Ok(Response::new(api::PairedWith {
+        announcement: format!(
             "Paired with {}. Synced {}, {} brought in changes.",
             paired.peer.name,
-            crate::render::count_line(paired.summary.documents, "document"),
+            count_line(paired.summary.documents, "document"),
             changed
         ),
-        Outcome::Paired(api::PairedWith {
-            name: paired.peer.name,
-            platform: paired.peer.platform,
-            node_id: paired.peer.node_id,
-        }),
-    ))
+        notices: Vec::new(),
+        name: paired.peer.name,
+        platform: paired.peer.platform,
+        node_id: paired.peer.node_id,
+    }))
 }
 
 // ---------------------------------------------------------------------------------------
@@ -206,9 +207,9 @@ fn report(results: Vec<PeerResult>) -> Response {
     let announcement = if peers.is_empty() {
         "This device is not paired with any other yet; `lum pair` pairs one".to_owned()
     } else {
-        format!("Synced with {reached} of {}", crate::render::count_line(peers.len(), "device"))
+        format!("Synced with {reached} of {}", count_line(peers.len(), "device"))
     };
-    Response::new(announcement, Outcome::Synced(api::SyncReport { peers }))
+    Response::new(api::SyncReport { announcement, notices: Vec::new(), peers })
 }
 
 /// `lum sync`: one round with every paired device.
@@ -252,7 +253,7 @@ fn ask_daemon_to_sync(profile: &Profile) -> Result<Response> {
                 .to_owned();
             let peers = serde_json::from_value(result.get("peers").cloned().unwrap_or_default())
                 .unwrap_or_default();
-            return Ok(Response::new(announcement, Outcome::Synced(api::SyncReport { peers })));
+            return Ok(Response::new(api::SyncReport { announcement, notices: Vec::new(), peers }));
         }
     }
     Ok(Response::unchanged(
@@ -304,8 +305,7 @@ pub(crate) fn daemon(profile: &Profile, local_only: bool) -> Result<()> {
                     }
                     if last_backup_check.elapsed() >= Duration::from_secs(3600) {
                         last_backup_check = Instant::now();
-                        let mut profile = Profile::open(Some(profile.directory()))?;
-                        crate::durability::back_up_if_due(&mut profile);
+                        crate::durability::back_up_if_due(profile);
                     }
                 }
                 () = arrivals.notified() => dirty = true,
@@ -406,8 +406,8 @@ fn device_views(profile: &Profile) -> Result<(NodeId, Vec<api::DeviceView>)> {
     let store = shared(profile)?;
     let key = lumenna_sync::node::device_key(&store)?;
     let me = NodeId::from_bytes(*key.public().as_bytes());
-    let snapshot = profile.store.snapshot().0;
-    let peers = profile.store.peers()?;
+    let snapshot = profile.store().snapshot().0;
+    let peers = profile.store().peers()?;
     let mut views: Vec<api::DeviceView> = snapshot
         .devices
         .values()
@@ -442,30 +442,34 @@ pub(crate) fn status(profile: &Profile) -> Result<Response> {
     let others = devices.iter().filter(|d| !d.this_device).count();
     let announcement = match (running, others) {
         (_, 0) => "Not paired with any other device yet; `lum pair` pairs one".to_owned(),
-        (true, n) => format!("Sync is running, with {}", crate::render::count_line(n, "other device")),
+        (true, n) => format!("Sync is running, with {}", count_line(n, "other device")),
         (false, n) => format!(
             "Sync is not running; {} will catch up at the next `lum sync` or when the daemon starts",
-            crate::render::count_line(n, "other device")
+            count_line(n, "other device")
         ),
     };
-    Ok(Response::new(
+    Ok(Response::new(api::SyncStatus {
         announcement,
-        Outcome::SyncStatus(api::SyncStatus { running, this_device: me.to_string(), devices }),
-    ))
+        notices: Vec::new(),
+        running,
+        this_device: me.to_string(),
+        devices,
+    }))
 }
 
 /// `lum device list`.
 pub(crate) fn list_devices(profile: &Profile) -> Result<Response> {
     let (_, devices) = device_views(profile)?;
     let count = devices.len();
-    Ok(Response::new(
-        crate::render::count_line(count, "paired device"),
-        Outcome::Devices(api::DeviceList { devices }),
-    ))
+    Ok(Response::new(api::DeviceList {
+        announcement: count_line(count, "paired device"),
+        notices: Vec::new(),
+        devices,
+    }))
 }
 
 fn find_device(profile: &Profile, input: &str) -> Result<Device> {
-    let snapshot = profile.store.snapshot().0;
+    let snapshot = profile.store().snapshot().0;
     let lowered = input.to_lowercase();
     let matches: Vec<&Device> = snapshot
         .devices
@@ -482,18 +486,18 @@ fn find_device(profile: &Profile, input: &str) -> Result<Device> {
 }
 
 /// `lum device rename`.
-pub(crate) fn rename_device(profile: &mut Profile, input: &str, name: &str) -> Result<Response> {
+pub(crate) fn rename_device(profile: &Profile, input: &str, name: &str) -> Result<Response> {
     let device = find_device(profile, input)?;
-    let change = edit::rename_device(&profile.store.snapshot().0, device.node_id, name)?;
+    let change = edit::rename_device(&profile.store().snapshot().0, device.node_id, name)?;
     if change.is_empty() {
         return Ok(Response::unchanged("it already has that name"));
     }
-    profile.store.apply_recorded(&change)?;
+    profile.store().apply_recorded(&change)?;
     Ok(Response::changed(&change))
 }
 
 /// `lum device unpair`.
-pub(crate) fn unpair_device(profile: &mut Profile, input: &str) -> Result<Response> {
+pub(crate) fn unpair_device(profile: &Profile, input: &str) -> Result<Response> {
     let device = find_device(profile, input)?;
     let store = shared(profile)?;
     let me = NodeId::from_bytes(*lumenna_sync::node::device_key(&store)?.public().as_bytes());
@@ -502,8 +506,8 @@ pub(crate) fn unpair_device(profile: &mut Profile, input: &str) -> Result<Respon
             "this device cannot unpair itself; unpair it from one of your other devices".to_owned(),
         ));
     }
-    let change = edit::unpair_device(&profile.store.snapshot().0, device.node_id)?;
-    profile.store.apply_recorded(&change)?;
+    let change = edit::unpair_device(&profile.store().snapshot().0, device.node_id)?;
+    profile.store().apply_recorded(&change)?;
     // §7: say plainly what unpairing does not do.
     Ok(Response::changed(&change).note(format!(
         "{} keeps everything it already has. Unpairing is for a device you replaced; if it was \

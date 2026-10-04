@@ -1,0 +1,32 @@
+[package]
+name = "lumenna-ffi"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Lumenna's core for Swift and Kotlin, through UniFFI (§2)."
+
+[lib]
+name = "lumenna_ffi"
+# A static library for the Apple targets, a dynamic one for the host so that
+# `uniffi-bindgen` can read the interface out of it, and an ordinary one for tests.
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen"]
+
+[features]
+bindgen = ["uniffi/cli"]
+
+[dependencies]
+lumenna-surface = { path = "../surface", features = ["uniffi"] }
+uniffi = "0.32"
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
