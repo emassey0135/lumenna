@@ -80,10 +80,18 @@ def setting_page(session: Session, title: str, keys: list[str]) -> str:
     return ""
 
 
+#: Settings that are a time of day, which core reads as typed: `9am`, `14:30`.
+TIMES = {"day-start", "day-end", "all-day-reminder-hour"}
+
+
 def change_setting(session: Session, key: str, value: str) -> str:
     name, options = SETTINGS.get(key, (key, None))
     if options:
         chosen = choose(options, name, default=value)
+    elif key in TIMES:
+        # The device has a date dialog but no time one, and core reads times as typed, so
+        # this is a line of text that says what it takes.
+        chosen = dialogs.request_input(f"{name}, a time such as 9am or 14:30", default_text=value)
     else:
         chosen = dialogs.request_input(name, default_text=value)
     if chosen is None or chosen == value:

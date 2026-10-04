@@ -1069,3 +1069,14 @@ fn a_sittings_planned_length_is_set_shown_changed_and_cleared() {
     lum.ok(&["start", "1"]);
     assert!(lum.ok(&["plan"]).contains("in progress, 1 hour 30 minutes planned"));
 }
+
+#[test]
+fn time_settings_read_without_seconds_and_take_what_they_show() {
+    let lum = Lum::new();
+    assert_eq!(lum.ok(&["config", "get", "day-start"]).trim(), "08:00");
+    lum.ok(&["config", "set", "day-start", "09:00:00"]);
+    assert_eq!(lum.ok(&["config", "get", "day-start"]).trim(), "09:00");
+    lum.ok(&["config", "set", "day-start", "7:30am"]);
+    assert_eq!(lum.ok(&["config", "get", "day-start"]).trim(), "07:30");
+    assert!(lum.fails(&["config", "set", "day-start", "7:30am please"]).contains("please"));
+}

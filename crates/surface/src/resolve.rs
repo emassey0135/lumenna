@@ -134,10 +134,17 @@ fn whole(text: &str, tokens: &[lumenna_parse::Word], used: usize, what: &str) ->
     }
 }
 
+/// A time of day: `9am`, `14:30` — or `14:30:00`, the form these were once shown in, so a
+/// value read back unchanged still reads.
 pub(crate) fn time(text: &str) -> Result<civil::Time> {
-    lumenna_parse::date::parse_time(&words(text), 0)
-        .map(|(time, _)| time)
-        .ok_or_else(|| LumennaError::new(format!("could not read a time from '{text}'")))
+    if let Ok(time) = text.trim().parse::<civil::Time>() {
+        return Ok(time);
+    }
+    let tokens = words(text);
+    let (time, used) = lumenna_parse::date::parse_time(&tokens, 0)
+        .ok_or_else(|| LumennaError::new(format!("could not read a time from '{text}'")))?;
+    whole(text, &tokens, used, "a time")?;
+    Ok(time)
 }
 
 pub(crate) fn query(snapshot: &Snapshot, text: &str) -> Result<Expr> {

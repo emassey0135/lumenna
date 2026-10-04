@@ -27,13 +27,13 @@ everything is said twice. Two mechanisms cover that, and this app uses both:
   source* even when the menu action goes through an interpreter — so a `run python3
   .../__main__.py` entry finds it there. Keep it within the first ten lines, and keep prose
   that mentions the marker out of them: the reader would take that for a second flags line.
-- **`host.set_self_voice(True)` in `main()`**, saved and restored in a `finally`. The header
-  only fires when something launches the program *through the menu*; run from a shell or from
-  BT Code's project runner, nothing has read it. `read-bible` does the same, and setting it
-  twice costs nothing.
+- **`host.push_app_context("lumenna", self_voice=True)` in `main()`**, popped in a `finally`.
+  The header only fires when something launches the program *through the menu*; run from a
+  shell or from BT Code's project runner, nothing has read it. The push is also what makes
+  Lumenna the app in front: the device takes its braille table from that app, and without
+  it the menus inherited BT Code's — computer braille, from its open `.py` file.
 
-Restoring it matters more than setting it: the flag lives in `/run/BTSpeak/` and is
-device-wide, so leaving it on would stop brltty reading the screen for whatever runs next. A
+Restoring it matters more than setting it: the context and the flag are device-wide, so leaving it on would stop brltty reading the screen for whatever runs next. A
 `finally` covers every exit except `SIGKILL`, which nothing can.
 
 The one thing this changes elsewhere: with self-voice on, printing to the terminal is

@@ -309,6 +309,13 @@ class Menus(unittest.TestCase):
         )
         self.assertEqual(self.call("config.get", key="verbosity")["settings"][0]["value"], "terse")
 
+    def test_a_time_setting_shows_and_takes_hours_and_minutes(self):
+        self.run_script(
+            [("menu", "Day starts, 08:00"), ("input", "9:30am"), ("back",)],
+            lambda: preferences.setting_page(self.session, "Planning", preferences.PLANNING),
+        )
+        self.assertEqual(self.call("config.get", key="day-start")["settings"][0]["value"], "09:30")
+
     def test_an_export_goes_to_the_chosen_folder_and_imports_back(self):
         self.call("task.add", text="exported")
         folder = self.profile / "out"
