@@ -27,12 +27,39 @@ short version for orientation.
 crates/core/    domain model, queries, mutations, row projection. No I/O, no Automerge.
 crates/parse/   quick-add and filter parsers, and the completion they share.
 crates/store/   Automerge documents + the SQLite file they live in.
+crates/surface/ the command surface (§12): the `Lumenna` object, one method per operation.
+crates/ffi/     the library the Swift and Kotlin apps link; re-exports surface over UniFFI.
 crates/sync/    Iroh endpoints, the document sync session, and pairing (§7).
 apps/cli/       `lum` — the first target, and a permanent one.
+apps/btspeak/   the BTSpeak app, in Python, over `lum rpc`.
+apple/          `build-core.sh` builds the core for iOS and generates the Swift bindings.
 ```
 
-The rest of §2's layout — `ffi`, the GUI apps — does not exist yet. §18's remaining
-order: sync, first GUI, the rest.
+The GUI apps in §2's layout do not exist yet; the iOS app is next.
+
+### The command surface
+
+`crates/surface` is every operation, once, typed. `Lumenna` holds the open store; its
+methods take text identifiers and plain records and return records (`types.rs`). It is
+the only place operations are implemented. The CLI calls it, `lum rpc` serialises what it
+returns, and UniFFI exports it unchanged to Swift and Kotlin (the `uniffi` feature, built
+by `crates/ffi`) — no JSON crosses the FFI.
+
+- **Every returned record carries `announcement` and `notices`** (the `Announced` trait).
+  The announcement is the one composed sentence, and only because core wrote it — an
+  `Edit`'s description or a quick-add readback. Rows stay components (`role`, `state`,
+  `title`, `value`) because speech and braille assemble them differently (§13).
+- **Wording stays client-neutral.** Nothing in the surface names a `lum` command or flag;
+  the CLI adds those (`lum task restore` after a trash, `--force`, `lum stop … --minutes`).
+- **Identifiers are text**: a whole UUID or a prefix that names one record. A bare number is
+  refused as a row number. Row numbers are the CLI's: `Profile::row` turns them into
+  identifiers before calling in.
+- **Every method refreshes first** (`Lumenna::with`), so an answer is never staler than the
+  last change on disk.
+- **Reshaping a record breaks `--json`, `lum rpc`, and the Swift and Kotlin types at
+  once.** That is the point: they cannot drift apart.
+- `uniffi.toml` names the Swift module `LumennaCore`. Methods named after Swift keywords
+  (`import`, `open`) come out backticked, and work.
 
 ### The CLI
 
@@ -52,17 +79,13 @@ real profile.
 - **`load_all_years` is deliberate.** Lazy year loading keeps the watch viable, but anything
   looking a block or assignment up *by identifier* cannot know which year to open. Those
   commands open everything rather than silently failing to find a record that is on disk.
-- **`api.rs` is the typed command surface (§12), not a JSON formatter.** Every command
-  returns a `Response`; `render` writes it as prose or as JSON, and neither computes anything
-  the other does not have. `lum rpc` and the daemon socket will serialise the same structs
-  over JSON-RPC, and `lum mcp` maps onto them — §12's *"this is not new work"* only holds if
-  the surface exists once. A command reachable only by reading prose off stdout is not on it.
+- **`api.rs` is an envelope, not the surface.** Every command returns a `Response`: the
+  contract version and an `Outcome` tagged `result`, wrapping a surface record. `render`
+  writes it as prose or as JSON, and neither computes anything the other does not have.
+  The sync payloads live here too, because syncing is the CLI's for now. A command
+  reachable only by reading prose off stdout is not on the surface.
 - **`--json` is versioned** and shaped for scripts, not derived from the model — §15 calls it
-  a compatibility contract. Reshaping anything in `api.rs` is a breaking change.
-- **Announcements are composed in core, components everywhere else.** `Response.announcement`
-  is the one composed sentence, and only because core wrote it — an `Edit`'s description or a
-  quick-add readback. Rows stay components (`role`, `state`, `title`, `value`) because speech
-  and braille assemble them differently (§13).
+  a compatibility contract. Reshaping `api.rs` or a surface record is a breaking change.
 - **The last listing is recorded from the response**, in `run`, not by each command that
   produces one. Only `Rows` and `Plan` write it: a mutation must not renumber what the user
   is working against, or `lum task done 1` twice would mean two different tasks.
@@ -105,8 +128,9 @@ and the BTSpeak app (§16.11). One server per client, no Iroh; syncing is the da
 and §8's *one protocol, two transports* means the daemon will serve exactly this over a
 socket.
 
-- **A method builds the same `Command` and calls the same `dispatch`.** There is one
-  implementation of every operation and two ways in, so RPC cannot drift from the CLI.
+- **A method builds the same `Command` and calls the same `dispatch`**, which calls the
+  surface. There is one implementation of every operation, so RPC cannot drift from the CLI
+  or from the apps that link it.
 - **Changes another process wrote are pushed** as a `lumenna/changed` notification, from a
   thread polling `Store::refresh` once a second — §8 sanctions the timer, and `refresh`
   settles in one pragma read whether there is anything to do. Every request also refreshes
@@ -121,9 +145,10 @@ socket.
   way its request was.
 - **Spans are UTF-8 byte offsets**, as Rust strings are. A client in a language that indexes
   by code point converts both ways (`menus.char_offset` in the BTSpeak app).
-- **`complete` and `preview` are RPC-only** — completion is a keystroke-rate question and a
-  process per keystroke is not an answer. They are why the BTSpeak app speaks a protocol
-  rather than shelling out.
+- **`complete` and `preview` have no command line** — completion is a keystroke-rate
+  question and a process per keystroke is not an answer. They are surface methods
+  (`complete_text`, `preview_task`), so linked apps call them directly, and they are why the
+  BTSpeak app speaks a protocol rather than shelling out.
 
 **Not built yet:** the encrypted store and its account key (§8), wake-up push, Windows
 named pipes, reminders, hooks, auto-scheduling.

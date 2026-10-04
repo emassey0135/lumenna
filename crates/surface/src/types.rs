@@ -1,0 +1,1033 @@
+//! What operations return (§12), shaped for clients rather than derived from the model.
+//!
+//! **Every result carries its own `announcement`** — one sentence saying what happened, for a
+//! client with nothing better to say — and its `notices`, things worth saying that are not the
+//! answer. The sentence is composed here only because core composed it first: an edit's
+//! description, a quick-add readback (§13). Everything else stays in components.
+//!
+//! **Rows carry components, never a sentence** (§13). Speech spells roles and states out;
+//! braille abbreviates the role and renders the title verbatim; a client assembles its own
+//! line from `role`, `state`, `title` and `value`.
+//!
+//! These are a compatibility contract twice over: the JSON `lum --json` and `lum rpc` write
+//! (§15), and the Swift and Kotlin types UniFFI generates. Renaming a field breaks both.
+
+use lumenna_core::State;
+use lumenna_core::edit::{Change as CoreChange, Edit};
+use lumenna_core::filter::NameKind;
+use lumenna_core::model::{Priority, Task};
+use lumenna_core::row::{Role, Row, RowId};
+use lumenna_core::snapshot::Snapshot;
+use serde::{Deserialize, Serialize};
+
+use crate::words::{count_line, time_text};
+
+/// What every result carries: one sentence, and anything else worth saying.
+pub trait Announced: Sized {
+    /// What happened, in a sentence.
+    fn announcement(&self) -> &str;
+
+    /// Things worth saying that are not the answer.
+    fn notices(&self) -> &[String];
+
+    /// The same, to add to.
+    fn notices_mut(&mut self) -> &mut Vec<String>;
+
+    /// Adds something worth saying that is not the answer.
+    #[must_use]
+    fn note(mut self, notice: impl Into<String>) -> Self {
+        self.notices_mut().push(notice.into());
+        self
+    }
+}
+
+/// Implements [`Announced`] for records with `announcement` and `notices` fields.
+#[macro_export]
+macro_rules! announced {
+    ($($type:ty),* $(,)?) => {
+        $(
+            impl $crate::Announced for $type {
+                fn announcement(&self) -> &str {
+                    &self.announcement
+                }
+                fn notices(&self) -> &[String] {
+                    &self.notices
+                }
+                fn notices_mut(&mut self) -> &mut Vec<String> {
+                    &mut self.notices
+                }
+            }
+        )*
+    };
+}
+
+announced!(
+    Change, Rows, TaskShown, Plan, Filters, SettingList, Timer, Completions, Preview,
+    BackupDone, RestoreDone, Exported, ImportDone,
+);
+
+fn none<T>(list: &[T]) -> bool {
+    list.is_empty()
+}
+
+fn to_u32(n: usize) -> u32 {
+    u32::try_from(n).unwrap_or(u32::MAX)
+}
+
+// ---------------------------------------------------------------------------------------
+// Mutations
+// ---------------------------------------------------------------------------------------
+
+/// What a mutation did.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct Change {
+    /// What happened, in a sentence.
+    pub announcement: String,
+    /// Anything else worth saying.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// Whether anything actually changed. Asking for a state something is already in is not
+    /// an error, but a client that cannot tell the two apart announces a change that did not
+    /// happen.
+    pub changed: bool,
+    /// The records it touched, so a client can act on what it just made without listing
+    /// everything again to find it.
+    #[serde(default, skip_serializing_if = "Affected::is_empty")]
+    pub affected: Affected,
+    /// The task itself, when the operation created one — §12's `add_task(text) -> Task`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<TaskDetail>,
+}
+
+impl Change {
+    /// A mutation that changed something, announced as core described it.
+    #[must_use]
+    pub fn of(edit: &Edit) -> Self {
+        Self::announced(edit.description.clone(), edit)
+    }
+
+    /// A mutation announced in other words, where core's description is not the whole story.
+    #[must_use]
+    pub fn announced(announcement: impl Into<String>, edit: &Edit) -> Self {
+        Self {
+            announcement: announcement.into(),
+            notices: Vec::new(),
+            changed: !edit.is_empty(),
+            affected: Affected::of(edit),
+            task: None,
+        }
+    }
+
+    /// A mutation that turned out to have nothing to do.
+    #[must_use]
+    pub fn unchanged(announcement: impl Into<String>) -> Self {
+        Self {
+            announcement: announcement.into(),
+            notices: Vec::new(),
+            changed: false,
+            affected: Affected::default(),
+            task: None,
+        }
+    }
+
+    /// A change made outside the document — a device setting, which never syncs.
+    #[must_use]
+    pub fn local(announcement: impl Into<String>) -> Self {
+        Self { changed: true, ..Self::unchanged(announcement) }
+    }
+}
+
+/// Identifiers a change touched, by kind.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct Affected {
+    /// Tasks.
+    #[serde(default, skip_serializing_if = "none")]
+    pub tasks: Vec<String>,
+    /// Projects.
+    #[serde(default, skip_serializing_if = "none")]
+    pub projects: Vec<String>,
+    /// Labels.
+    #[serde(default, skip_serializing_if = "none")]
+    pub labels: Vec<String>,
+    /// Saved filters.
+    #[serde(default, skip_serializing_if = "none")]
+    pub filters: Vec<String>,
+    /// Block series.
+    #[serde(default, skip_serializing_if = "none")]
+    pub blocks: Vec<String>,
+    /// Assignments.
+    #[serde(default, skip_serializing_if = "none")]
+    pub assignments: Vec<String>,
+    /// Devices paired, renamed or unpaired.
+    #[serde(default, skip_serializing_if = "none")]
+    pub devices: Vec<String>,
+    /// Whether the settings singleton moved.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub settings: bool,
+}
+
+impl Affected {
+    /// Reads the identifiers straight off the edit, so every operation reports what it
+    /// touched without each one remembering to.
+    ///
+    /// A completion and an exception are not addressable records, but they *name* one — so
+    /// they report the task or series they are about. Reminders and their acknowledgements
+    /// are absent entirely: nothing addresses them yet.
+    #[must_use]
+    pub fn of(edit: &Edit) -> Self {
+        let mut affected = Self::default();
+        for change in &edit.changes {
+            match change {
+                CoreChange::Task(t) => {
+                    push(&mut affected.tasks, t.before.as_ref().map(|x| x.id), t.after.as_ref().map(|x| x.id));
+                }
+                CoreChange::Project(t) => {
+                    push(&mut affected.projects, t.before.as_ref().map(|x| x.id), t.after.as_ref().map(|x| x.id));
+                }
+                CoreChange::Label(t) => {
+                    push(&mut affected.labels, t.before.as_ref().map(|x| x.id), t.after.as_ref().map(|x| x.id));
+                }
+                CoreChange::Filter(t) => {
+                    push(&mut affected.filters, t.before.as_ref().map(|x| x.id), t.after.as_ref().map(|x| x.id));
+                }
+                CoreChange::Series(t) => {
+                    push(&mut affected.blocks, t.before.as_ref().map(|x| x.id), t.after.as_ref().map(|x| x.id));
+                }
+                CoreChange::Assignment { transition: t, .. } => {
+                    push(&mut affected.assignments, t.before.as_ref().map(|x| x.id), t.after.as_ref().map(|x| x.id));
+                }
+                CoreChange::Completion(t) => {
+                    let named = t.after.as_ref().or(t.before.as_ref());
+                    push(&mut affected.tasks, None, named.map(|c| c.task_id));
+                }
+                CoreChange::Exception(t) => {
+                    let named = t.after.as_ref().or(t.before.as_ref());
+                    push(&mut affected.blocks, None, named.map(|e| e.series_id));
+                }
+                CoreChange::Device(t) => {
+                    let named = t.after.as_ref().or(t.before.as_ref());
+                    push(&mut affected.devices, None, named.map(|d| d.node_id));
+                }
+                CoreChange::Settings { .. } => affected.settings = true,
+                CoreChange::Reminder(_) | CoreChange::Ack(_) => {}
+            }
+        }
+        affected
+    }
+
+    /// Whether it names nothing at all.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.tasks.is_empty()
+            && self.projects.is_empty()
+            && self.labels.is_empty()
+            && self.filters.is_empty()
+            && self.blocks.is_empty()
+            && self.assignments.is_empty()
+            && self.devices.is_empty()
+            && !self.settings
+    }
+}
+
+fn push<T: ToString>(into: &mut Vec<String>, before: Option<T>, after: Option<T>) {
+    if let Some(id) = after.or(before) {
+        let text = id.to_string();
+        if !into.contains(&text) {
+            into.push(text);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// Listings
+// ---------------------------------------------------------------------------------------
+
+/// A listing of rows, all of one kind.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct Rows {
+    /// The count line — *"17 tasks"*.
+    pub announcement: String,
+    /// Anything else worth saying, such as a name the query did not recognise.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// The singular noun for the count.
+    pub noun: String,
+    /// How many rows there are, so a reader knows before the rows arrive.
+    pub count: u32,
+    /// How the query was understood, when there was one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<Query>,
+    /// The rows.
+    pub rows: Vec<RowView>,
+}
+
+impl Rows {
+    /// Projects core's rows, numbering them from one and announcing the count.
+    #[must_use]
+    pub fn new(rows: &[Row], noun: &str) -> Self {
+        Self {
+            announcement: count_line(rows.len(), noun),
+            notices: Vec::new(),
+            noun: noun.to_owned(),
+            count: to_u32(rows.len()),
+            query: None,
+            rows: rows
+                .iter()
+                .enumerate()
+                .map(|(position, row)| RowView {
+                    row: to_u32(position + 1),
+                    id: row_id(&row.id),
+                    role: role_name(row.role).to_owned(),
+                    depth: row.depth,
+                    index: row.index,
+                    count: row.count,
+                    checked: row.checked,
+                    expanded: row.expanded,
+                    title: row.title.clone(),
+                    state: row.state.iter().map(|state| state.keyword().to_owned()).collect(),
+                    value: row.value.clone(),
+                    hint: row.hint.clone(),
+                })
+                .collect(),
+        }
+    }
+}
+
+/// A filter query, read back (§6.2).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct Query {
+    /// The query as it was written.
+    pub text: String,
+    /// The query as it was understood. A mis-parsed filter shows wrong results silently, and
+    /// wrong results are invisible — so every client should have this to hand.
+    pub description: String,
+    /// Names in the query that match nothing.
+    #[serde(default, skip_serializing_if = "none")]
+    pub unresolved: Vec<Unresolved>,
+}
+
+/// A name in a query that matches nothing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct Unresolved {
+    /// `project` or `label`.
+    pub kind: String,
+    /// The name as written.
+    pub name: String,
+    /// The nearest real name, if one is near enough to suggest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggestion: Option<String>,
+}
+
+/// One row, as its components (§13).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct RowView {
+    /// Its position in this listing, counting from one — what `lum task done 3` takes.
+    pub row: u32,
+    /// The full identifier.
+    pub id: String,
+    /// What kind of thing it is: `task`, `project`, `label`, `block`.
+    pub role: String,
+    /// Depth in the tree, zero at the top.
+    pub depth: u32,
+    /// Position within its sibling set, counting from one.
+    pub index: u32,
+    /// How many siblings, including itself.
+    pub count: u32,
+    /// Whether it is checked off, where that means anything.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checked: Option<bool>,
+    /// Whether there is something under it, and whether the projection left it expanded.
+    /// Absent for a leaf; a client tracks its own collapse state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expanded: Option<bool>,
+    /// The content, verbatim. Never abbreviated, in any medium.
+    pub title: String,
+    /// Computed states, as their filter keywords — a client can feed one straight back into
+    /// a filter.
+    pub state: Vec<String>,
+    /// A secondary value, such as a due date.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    /// What can be done here, for a client with somewhere to put a hint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
+}
+
+impl RowView {
+    /// The states worth putting on a printed line. `ready` is true of almost every task, so
+    /// printing it everywhere buries the states that mean something.
+    pub fn trailing_states(&self) -> impl Iterator<Item = &str> + '_ {
+        self.state.iter().map(String::as_str).filter(|k| *k != State::Ready.keyword())
+    }
+}
+
+/// The identifier a row refers to, as text.
+#[must_use]
+pub fn row_id(id: &RowId) -> String {
+    match id {
+        RowId::Task(id) => id.to_string(),
+        RowId::Project(id) => id.to_string(),
+        RowId::Label(id) => id.to_string(),
+        RowId::Occurrence(id, date) => format!("{id}@{date}"),
+    }
+}
+
+/// The kind name a row is addressed under.
+#[must_use]
+pub const fn role_name(role: Role) -> &'static str {
+    match role {
+        Role::Task => "task",
+        Role::Project => "project",
+        Role::Label => "label",
+        Role::Block => "block",
+        Role::Group => "group",
+    }
+}
+
+/// The noun a name kind is called by.
+#[must_use]
+pub const fn name_kind(kind: NameKind) -> &'static str {
+    match kind {
+        NameKind::Project => "project",
+        NameKind::Label => "label",
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// One task
+// ---------------------------------------------------------------------------------------
+
+/// One task, as [`show_task`](crate::Lumenna::show_task) returns it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct TaskShown {
+    /// Its title, which is all there is to announce.
+    pub announcement: String,
+    /// Anything else worth saying.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// The task.
+    #[serde(flatten)]
+    pub task: TaskDetail,
+}
+
+/// Everything about one task.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct TaskDetail {
+    /// The full identifier.
+    pub id: String,
+    /// The content, verbatim.
+    pub title: String,
+    /// Free text.
+    pub notes: String,
+    /// The project it sits in, by name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+    /// The task it sits under, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
+    /// 1 to 4, where 1 is highest.
+    pub priority: u8,
+    /// Label names, without the leading `@`.
+    pub labels: Vec<String>,
+    /// What it waits for.
+    pub depends: Vec<Dependency>,
+    /// The due date, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub due: Option<String>,
+    /// The time of day it is due, if it has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub due_time: Option<String>,
+    /// The repetition, as an RFC 5545 rule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recurrence: Option<String>,
+    /// How long it should take.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimate_mins: Option<u32>,
+    /// Computed states, the full set — a detail view is where the near-universal ones are
+    /// worth having.
+    pub state: Vec<String>,
+    /// When it was created.
+    pub created_at: String,
+}
+
+/// A task another task waits for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct Dependency {
+    /// The full identifier.
+    pub id: String,
+    /// Its title, or a note that this device has not seen it yet (§3.1).
+    pub title: String,
+}
+
+impl TaskDetail {
+    /// Reads one task out of a snapshot, resolving the names it points at.
+    #[must_use]
+    pub fn of(task: &Task, snapshot: &Snapshot, now: &jiff::Zoned) -> Self {
+        Self {
+            id: task.id.to_string(),
+            title: task.title.clone(),
+            notes: task.notes.clone(),
+            project: snapshot.projects.get(&task.project_id).map(|p| p.name.clone()),
+            parent: task.parent_id.map(|id| id.to_string()),
+            priority: task.priority.as_u8(),
+            labels: snapshot.labels_of(task).iter().map(|l| l.name.clone()).collect(),
+            depends: task
+                .depends
+                .iter()
+                .map(|id| Dependency {
+                    id: id.to_string(),
+                    title: snapshot
+                        .tasks
+                        .get(id)
+                        .map_or_else(|| "(not loaded)".to_owned(), |t| t.title.clone()),
+                })
+                .collect(),
+            due: task.due.as_ref().map(|due| due.date.to_string()),
+            due_time: task.due.as_ref().and_then(|due| due.time).map(time_text),
+            recurrence: task
+                .due
+                .as_ref()
+                .and_then(|due| due.recurrence.as_ref())
+                .map(|r| r.rrule.clone()),
+            estimate_mins: task.estimate_mins,
+            state: snapshot.states_of(task, now).iter().map(|s| s.keyword().to_owned()).collect(),
+            created_at: task.created_at.to_string(),
+        }
+    }
+
+    /// Whether the priority is worth mentioning. P4 is the default and says nothing.
+    #[must_use]
+    pub fn has_priority(&self) -> bool {
+        self.priority != Priority::P4.as_u8()
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// The day
+// ---------------------------------------------------------------------------------------
+
+/// A day's blocks and what is assigned to them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct Plan {
+    /// The day and how many blocks it holds.
+    pub announcement: String,
+    /// Anything else worth saying.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// The day, as an ISO date.
+    pub date: String,
+    /// How many blocks it holds.
+    pub count: u32,
+    /// The blocks, in time order.
+    pub blocks: Vec<PlanBlock>,
+}
+
+/// One block on a day.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct PlanBlock {
+    /// Its position among blocks, counting from one.
+    pub row: u32,
+    /// `<series>@<date>`, which addresses this occurrence.
+    pub id: String,
+    /// The series it belongs to.
+    pub series: String,
+    /// Its name.
+    pub title: String,
+    /// When it starts, `HH:MM`.
+    pub start: String,
+    /// When it ends, `HH:MM`.
+    pub end: String,
+    /// How long it runs.
+    pub duration_mins: u32,
+    /// What is assigned to it, in order.
+    pub assignments: Vec<PlanAssignment>,
+}
+
+/// One task assigned to a block for one sitting (§3.7).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct PlanAssignment {
+    /// Its position among assignments across the whole day, counting from one — so
+    /// `lum start 1` works straight after `lum plan`.
+    pub row: u32,
+    /// The assignment's identifier.
+    pub id: String,
+    /// The task it puts in the block.
+    pub task: String,
+    /// The task's title, or a note that this device has not seen it yet (§3.1).
+    pub title: String,
+    /// `planned`, `in progress`, `worked`, and so on.
+    pub status: String,
+    /// How long this sitting is meant to take.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planned_mins: Option<u32>,
+    /// Minutes logged so far.
+    pub minutes: u32,
+    /// Whether the figure was capped at the block's length because a timer looks orphaned.
+    /// Never presented as fact (§3.7).
+    pub capped: bool,
+}
+
+/// A timer stopped, or minutes logged by hand.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct Timer {
+    /// What happened, in a sentence.
+    pub announcement: String,
+    /// Anything else worth saying — above all that a figure was capped.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// Whether anything was written: stopping a timer that was not running writes nothing.
+    pub changed: bool,
+    /// The assignment.
+    pub assignment: String,
+    /// Minutes logged on the sitting.
+    pub minutes: u32,
+    /// Whether the figure was capped at the block's length (§3.7).
+    pub capped: bool,
+}
+
+// ---------------------------------------------------------------------------------------
+// Filters and settings
+// ---------------------------------------------------------------------------------------
+
+/// The saved filters.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct Filters {
+    /// How many there are, in a sentence.
+    pub announcement: String,
+    /// Anything else worth saying.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// How many there are.
+    pub count: u32,
+    /// Them, in order.
+    pub filters: Vec<FilterView>,
+}
+
+/// One saved filter. Stored as text, never as a resolved date range (§6.2).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct FilterView {
+    /// Its position, counting from one.
+    pub row: u32,
+    /// The full identifier.
+    pub id: String,
+    /// Its name.
+    pub name: String,
+    /// The query, as written.
+    pub query: String,
+}
+
+/// Settings, in a fixed order.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct SettingList {
+    /// How many, or the one value asked for.
+    pub announcement: String,
+    /// Anything else worth saying.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// The settings.
+    pub settings: Vec<Setting>,
+}
+
+/// One setting.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct Setting {
+    /// Its name, as `lum config get` takes it.
+    pub key: String,
+    /// Its value, as text.
+    pub value: String,
+}
+
+// ---------------------------------------------------------------------------------------
+// Typing: completion and preview
+// ---------------------------------------------------------------------------------------
+
+/// What could be inserted where the cursor is (§6.3).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct Completions {
+    /// How many candidates there are, said before the list (§6.3).
+    pub announcement: String,
+    /// Anything else worth saying.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// UTF-8 byte offset of the text a candidate replaces.
+    pub start: u32,
+    /// One past its last byte.
+    pub end: u32,
+    /// What could go there.
+    pub candidates: Vec<Candidate>,
+}
+
+/// One thing that could be inserted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct Candidate {
+    /// The text to put in, sigil included where one applies.
+    pub text: String,
+    /// What sort of thing it is.
+    pub kind: String,
+    /// What to announce: *"project Work"*.
+    pub label: String,
+}
+
+impl Completions {
+    /// Projects the parser's completions.
+    #[must_use]
+    pub fn of(completions: &lumenna_parse::complete::Completions) -> Self {
+        Self {
+            announcement: completions.announcement.clone(),
+            notices: Vec::new(),
+            start: to_u32(completions.replace_span.0),
+            end: to_u32(completions.replace_span.1),
+            candidates: completions
+                .candidates
+                .iter()
+                .map(|candidate| Candidate {
+                    text: candidate.text.clone(),
+                    kind: candidate.kind.noun().to_owned(),
+                    label: candidate.label.clone(),
+                })
+                .collect(),
+        }
+    }
+}
+
+/// Which grammar is being typed, for completion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+#[serde(rename_all = "kebab-case")]
+pub enum Syntax {
+    /// A quick-add line.
+    QuickAdd,
+    /// A filter query.
+    Filter,
+}
+
+/// What a quick-add line would produce, without producing it (§6.1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct Preview {
+    /// The readback: what would be saved, with the resolved date — the sentence that stands in
+    /// for a sighted user's inline highlighting.
+    pub announcement: String,
+    /// Anything else worth saying.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// The title, cut from the original input so spacing and punctuation survive.
+    pub title: String,
+    /// The resolved due date.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub due: Option<String>,
+    /// The time of day it would be due.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub due_time: Option<String>,
+    /// The date phrase as typed, to read back beside the resolved value (§6.1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub due_phrase: Option<String>,
+    /// The repetition in English.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repetition: Option<String>,
+    /// The project it would go in, by name. Absent means the Inbox.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+    /// Labels that already exist.
+    pub labels: Vec<String>,
+    /// Labels that would be created on confirmation (§3.4).
+    pub new_labels: Vec<String>,
+    /// 1 to 4, where 1 is highest.
+    pub priority: u8,
+    /// How long it would take.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimate_mins: Option<u32>,
+    /// Whether confirming would fail.
+    pub has_errors: bool,
+    /// Everything worth saying before confirming.
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+/// Something worth saying about a span of the input.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct Diagnostic {
+    /// `error` or `notice`. An error stops the add; a notice does not.
+    pub severity: String,
+    /// UTF-8 byte offset of the first character it refers to.
+    pub start: u32,
+    /// One past the last.
+    pub end: u32,
+    /// The message, complete with position and token — there is no squiggle to point at, and
+    /// this text is the only channel (§6.3).
+    pub message: String,
+}
+
+impl Preview {
+    /// Projects a quick-add preview, resolving the names it points at.
+    #[must_use]
+    pub fn of(preview: &lumenna_parse::quickadd::Preview, snapshot: &Snapshot) -> Self {
+        Self {
+            announcement: preview.announcement(),
+            notices: Vec::new(),
+            title: preview.title.clone(),
+            due: preview.due.as_ref().map(|due| due.date.to_string()),
+            due_time: preview.due.as_ref().and_then(|due| due.time).map(time_text),
+            due_phrase: preview.due_phrase.clone(),
+            repetition: preview.repetition.clone(),
+            project: preview
+                .project
+                .and_then(|id| snapshot.projects.get(&id))
+                .map(|project| project.name.clone()),
+            labels: preview
+                .labels
+                .iter()
+                .filter_map(|id| snapshot.labels.get(id))
+                .map(|label| label.name.clone())
+                .collect(),
+            new_labels: preview.new_labels.clone(),
+            priority: preview.priority.as_u8(),
+            estimate_mins: preview.estimate_mins,
+            has_errors: preview.has_errors(),
+            diagnostics: preview
+                .diagnostics
+                .iter()
+                .map(|diagnostic| Diagnostic {
+                    severity: match diagnostic.severity {
+                        lumenna_parse::quickadd::Severity::Error => "error",
+                        lumenna_parse::quickadd::Severity::Notice => "notice",
+                    }
+                    .to_owned(),
+                    start: to_u32(diagnostic.start),
+                    end: to_u32(diagnostic.end),
+                    message: diagnostic.message.clone(),
+                })
+                .collect(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// Durability (§9)
+// ---------------------------------------------------------------------------------------
+
+/// Where a backup went.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct BackupDone {
+    /// Where it went, in a sentence.
+    pub announcement: String,
+    /// Anything else worth saying — that the directory looks cloud-synced, say.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// The file written.
+    pub path: String,
+    /// How many backups that directory now keeps, this one included.
+    pub kept: u32,
+}
+
+/// What a restore did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct RestoreDone {
+    /// What came in, in a sentence.
+    pub announcement: String,
+    /// Anything else worth saying.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// Documents the backup held that this version could read.
+    pub documents: u32,
+    /// How many of them brought in anything new.
+    pub changed: u32,
+    /// Documents of a kind this version does not know, left out.
+    #[serde(default, skip_serializing_if = "none")]
+    pub unknown: Vec<String>,
+}
+
+/// The formats an export can take.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+#[serde(rename_all = "lowercase")]
+pub enum ExportFormat {
+    /// Everything current, structured — the one that imports back.
+    #[default]
+    Json,
+    /// Tasks as a checklist, for reading.
+    Markdown,
+    /// Tasks as an org outline, for Emacs.
+    Org,
+    /// Blocks as an iCalendar file, for any calendar.
+    Ics,
+}
+
+impl ExportFormat {
+    /// Its name.
+    #[must_use]
+    pub const fn word(self) -> &'static str {
+        match self {
+            Self::Json => "json",
+            Self::Markdown => "markdown",
+            Self::Org => "org",
+            Self::Ics => "ics",
+        }
+    }
+
+    /// A format by any name people use for it.
+    #[must_use]
+    pub fn from_word(word: &str) -> Option<Self> {
+        match word.to_lowercase().as_str() {
+            "json" => Some(Self::Json),
+            "markdown" | "md" => Some(Self::Markdown),
+            "org" => Some(Self::Org),
+            "ics" | "ical" | "icalendar" => Some(Self::Ics),
+            _ => None,
+        }
+    }
+}
+
+/// An export.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct Exported {
+    /// What was exported, in a sentence.
+    pub announcement: String,
+    /// Anything else worth saying.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// json, markdown, org or ics.
+    pub format: String,
+    /// The file written, when one was asked for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// The export itself, when no file was asked for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+}
+
+/// What an import of an export did, in records.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct ImportDone {
+    /// What came in, in a sentence.
+    pub announcement: String,
+    /// Anything else worth saying.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// Records the store did not have.
+    pub created: u32,
+    /// Records it had, now matching the file.
+    pub updated: u32,
+    /// Records already as the file has them.
+    pub unchanged: u32,
+    /// Assignments left out because their block was nowhere to be found.
+    pub skipped: u32,
+}
+
+/// What reading a file in did: it was an export, or it was a backup.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+pub enum Imported {
+    /// A JSON export, imported record by record.
+    Export {
+        /// What it did.
+        done: ImportDone,
+    },
+    /// A backup, merged in.
+    Backup {
+        /// What it did.
+        done: RestoreDone,
+    },
+}
+
+// ---------------------------------------------------------------------------------------
+// Arguments
+// ---------------------------------------------------------------------------------------
+
+/// The fields of a task to change; `None` leaves one alone.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct TaskEdit {
+    /// A new title.
+    #[serde(default)]
+    pub title: Option<String>,
+    /// A date phrase, or `none` to clear it.
+    #[serde(default)]
+    pub due: Option<String>,
+    /// 1 to 4, where 1 is highest.
+    #[serde(default)]
+    pub priority: Option<u8>,
+    /// How long it should take — `45m`, `1h30m`, a bare number of minutes — or `none`.
+    #[serde(default)]
+    pub estimate: Option<String>,
+    /// Replacement notes.
+    #[serde(default)]
+    pub notes: Option<String>,
+    /// A project to move it to, by name. Subtasks follow (§3.2).
+    #[serde(default)]
+    pub project: Option<String>,
+}
+
+/// Where to move a task.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+pub enum MoveTarget {
+    /// Under another task, joining its project.
+    Parent {
+        /// The task to go under.
+        id: String,
+    },
+    /// Into a project by name, subtasks and all.
+    Project {
+        /// The project.
+        name: String,
+    },
+    /// Out from under its parent, to the top of its project.
+    Top,
+}
+
+/// A project's weight: its own, or inherited (§3.4).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+pub enum Weight {
+    /// Take the parent's again.
+    Inherit,
+    /// This multiplier, roughly 0.5 to 2.0.
+    Value {
+        /// The multiplier.
+        value: f32,
+    },
+}
+
+/// A new block.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct NewBlock {
+    /// What to call it.
+    pub title: String,
+    /// When it starts, such as `9am`.
+    pub at: String,
+    /// How many minutes it lasts.
+    pub minutes: u32,
+    /// Which day it starts, as a date phrase. Today if absent.
+    #[serde(default)]
+    pub date: Option<String>,
+    /// `work`, `break` or `event`.
+    pub kind: String,
+    /// A repetition, such as `every weekday`.
+    #[serde(default)]
+    pub repeat: Option<String>,
+}

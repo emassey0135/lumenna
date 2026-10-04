@@ -61,8 +61,10 @@ until they're done.
   |      |        |       |      |       |      |       |      |      |      |
   +------+--------+-------+------+-------+------+-------+------+------+------+
                               |
-              FFI boundary (UniFFI for Swift/Kotlin; JSON-RPC over
-              stdio for Emacs/BTSpeak; direct linkage for CLI/GTK/Win32)
+        COMMAND SURFACE (Rust, typed): one definition of every
+        operation (§12). UniFFI exports it to Swift/Kotlin; CLI,
+        GTK and Win32 link it; JSON-RPC serialises it for
+        Emacs/BTSpeak
                               |
     +-------------------------+--------------------------+
     |                      CORE (Rust)                    |
@@ -78,7 +80,8 @@ until they're done.
 
 ### Language and binding strategy per platform
 
-- **Linux / GTK4** — pure Rust via `gtk4-rs`. No FFI; the UI links the core directly.
+- **Linux / GTK4** — pure Rust via `gtk4-rs`. No FFI; the UI links the command surface
+  directly.
 - **Windows / Win32** — pure Rust via `windows-rs`. No FFI. Standard common controls only
   (`SysTreeView32`, `SysListView32`, native `HMENU`), because custom-drawn controls mean
   writing UI Automation providers by hand.
@@ -101,8 +104,9 @@ crates/
   core/        domain types, filter evaluation, scheduling, a11y projection. No I/O.
   store/       Automerge change store in SQLite + optional read model
   sync/        Iroh transport, pairing, Automerge sync loop
-  parse/       chumsky parsers: quick add, filter queries, shared date grammar
-  ffi/         UniFFI scaffolding and generated-binding entry points
+  parse/       parsers: quick add, filter queries, shared date grammar
+  surface/     the command surface (§12): every operation, typed, once
+  ffi/         the library the Swift and Kotlin apps link; re-exports surface's UniFFI
 apps/
   cli/         one binary, subcommands: add/list/..., `daemon`, `rpc`, `mcp`, `pair`
   linux/       GTK4
@@ -2243,6 +2247,20 @@ typed **command surface**, and every binding is a thin adapter over it.
 
 This is not new work. The CLI and `lum rpc` already need exactly this surface; automation
 names it and reuses it.
+
+**The surface is typed Rust, defined once, in `crates/surface`.** An object holding the open
+store, with one method per operation, taking and returning plain records. UniFFI exports it
+as-is, so Swift and Kotlin get native classes and structs and the compiler checks both sides
+of the boundary; the CLI and the GTK and Win32 apps call it directly. JSON-RPC is an adapter
+that serialises the same records for the clients that cannot link Rust (Emacs, BTSpeak),
+not the definition. An earlier draft carried JSON-RPC requests over the FFI so that there
+would be only one surface; that bought nothing a typed surface does not, at the cost of
+encoding on every call and errors that only show up as a failed decode at run time. A web
+client would take the same records through wasm with generated TypeScript types.
+
+Every record a method returns carries an `announcement` — the one composed sentence, where
+core composed one (§13) — and `notices`, things worth saying that are not the answer. Rows
+stay components.
 
 ```
 add_task(text) -> Task            // quick-add grammar, §6.1

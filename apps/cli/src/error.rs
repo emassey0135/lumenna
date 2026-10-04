@@ -48,5 +48,11 @@ from!(Parse, lumenna_parse::ParseError);
 from!(Recurrence, lumenna_core::recur::RecurError);
 from!(Io, std::io::Error);
 
+impl From<lumenna_surface::LumennaError> for CliError {
+    fn from(error: lumenna_surface::LumennaError) -> Self {
+        Self::Message(error.message().to_owned())
+    }
+}
+
 /// Shorthand for this crate's results.
 pub type Result<T> = std::result::Result<T, CliError>;

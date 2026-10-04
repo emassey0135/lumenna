@@ -2,13 +2,16 @@
 //!
 //! Two renderings of one value: `--json` serialises the response as it stands, and text mode
 //! writes the prose a terminal wants. Neither computes anything the other does not have —
-//! everything either of them says comes off the typed surface in [`api`](crate::api), which
+//! everything either of them says comes off the typed surface, which
 //! is what keeps `--json` a contract rather than a second implementation (§15).
 
 use anstream::{eprintln, print, println};
 use serde::Serialize;
 
-use crate::api::{Outcome, Response, Rows};
+use lumenna_surface::words::count_line;
+use lumenna_surface::{Plan, Rows, TaskDetail};
+
+use crate::api::{Outcome, Response};
 
 /// How output is written.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,7 +51,7 @@ fn text(response: &Response) {
     }
     // Notices go to stderr so a pipeline keeps its payload, and first so that they read as
     // context for what follows rather than an afterthought.
-    for notice in &response.notices {
+    for notice in response.notices() {
         eprintln!("lum: {notice}");
     }
     match &response.outcome {
@@ -62,12 +65,12 @@ fn text(response: &Response) {
         | Outcome::Server(_)
         | Outcome::Backup(_)
         | Outcome::Restore(_)
-        | Outcome::Import(_) => println!("{}", response.announcement),
+        | Outcome::Import(_) => println!("{}", response.announcement()),
         // An export to standard output is the payload itself, exactly, so it can be piped
         // or redirected into a file that is nothing but the export.
-        Outcome::Paired(_) => println!("{}", response.announcement),
+        Outcome::Paired(_) => println!("{}", response.announcement()),
         Outcome::Synced(report) => {
-            println!("{}", response.announcement);
+            println!("{}", response.announcement());
             for peer in &report.peers {
                 match &peer.error {
                     None if peer.changed.is_empty() => {
@@ -79,26 +82,26 @@ fn text(response: &Response) {
             }
         }
         Outcome::SyncStatus(status) => {
-            println!("{}", response.announcement);
+            println!("{}", response.announcement());
             for device in &status.devices {
                 println!("{}", device_line(device));
             }
         }
         Outcome::Devices(list) => {
-            println!("{}", response.announcement);
+            println!("{}", response.announcement());
             for device in &list.devices {
                 println!("{}", device_line(device));
             }
         }
         Outcome::Export(exported) => match &exported.content {
             Some(content) => print!("{content}"),
-            None => println!("{}", response.announcement),
+            None => println!("{}", response.announcement()),
         },
-        Outcome::Rows(rows) => list(rows, &response.announcement),
-        Outcome::Task(task) => detail(task),
+        Outcome::Rows(rows) => list(rows, response.announcement()),
+        Outcome::Task(shown) => detail(&shown.task),
         Outcome::Plan(plan) => day(plan),
         Outcome::Filters(filters) => {
-            println!("{}", response.announcement);
+            println!("{}", response.announcement());
             for filter in &filters.filters {
                 println!("{}  {}  {}", filter.row, filter.name, filter.query);
             }
@@ -143,7 +146,7 @@ fn list(rows: &Rows, announcement: &str) {
     }
 }
 
-fn detail(task: &crate::api::TaskDetail) {
+fn detail(task: &TaskDetail) {
     let mut fields: Vec<(&str, String)> = vec![("title", task.title.clone())];
     fields.push(("id", task.id.clone()));
     if let Some(project) = &task.project {
@@ -185,8 +188,8 @@ fn detail(task: &crate::api::TaskDetail) {
     }
 }
 
-fn day(plan: &crate::api::Plan) {
-    println!("{}, {}", plan.date, count_line(plan.count, "block"));
+fn day(plan: &Plan) {
+    println!("{}", plan.announcement);
     for block in &plan.blocks {
         println!("{}  {} to {}  {}", block.row, block.start, block.end, block.title);
         for assignment in &block.assignments {
@@ -202,7 +205,6 @@ fn day(plan: &crate::api::Plan) {
     }
 }
 
-/// A time of day without its seconds, which are noise in every view this app has.
 /// One device as a sentence: what it is, and how syncing with it last went. Words rather
 /// than a symbol, because §9 is explicit that a glyph communicates nothing.
 fn device_line(device: &crate::api::DeviceView) -> String {
@@ -233,20 +235,5 @@ fn relative(then: jiff::Timestamp) -> String {
         60..3600 => format!("{} ago", count_line((seconds / 60) as usize, "minute")),
         3600..86_400 => format!("{} ago", count_line((seconds / 3600) as usize, "hour")),
         _ => format!("{} ago", count_line((seconds / 86_400) as usize, "day")),
-    }
-}
-
-#[must_use]
-pub fn time_text(time: jiff::civil::Time) -> String {
-    format!("{:02}:{:02}", time.hour(), time.minute())
-}
-
-/// *"17 tasks"*, *"1 task"*, *"no tasks"*.
-#[must_use]
-pub fn count_line(count: usize, noun: &str) -> String {
-    match count {
-        0 => format!("no {noun}s"),
-        1 => format!("1 {noun}"),
-        n => format!("{n} {noun}s"),
     }
 }
