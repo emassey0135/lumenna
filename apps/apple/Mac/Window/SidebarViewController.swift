@@ -14,6 +14,7 @@ final class SidebarNode {
         case place(Place)
         /// "Projects", "Labels", "Saved Filters": a group heading, not somewhere to go.
         case group(String)
+
     }
 
     let kind: Kind
@@ -195,10 +196,6 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         !((item as? SidebarNode)?.children.isEmpty ?? true)
     }
 
-    func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
-        (item as? SidebarNode)?.isGroup ?? false
-    }
-
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
         !((item as? SidebarNode)?.isGroup ?? true)
     }
@@ -209,8 +206,11 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         let title = NSTextField(labelWithString: node.title)
         title.lineBreakMode = .byTruncatingTail
         if node.isGroup {
-            title.font = .preferredFont(forTextStyle: .subheadline)
-            title.textColor = .quietLabel
+            // Ordinary rows, not source-list group rows, which macOS draws dimmed whatever
+            // colour is asked for — under contrast on the sidebar's material. The full text
+            // colour, and weight to set the heading apart.
+            title.font = .systemFont(ofSize: NSFont.preferredFont(forTextStyle: .subheadline).pointSize, weight: .semibold)
+            title.textColor = .labelColor
         }
         title.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(title)

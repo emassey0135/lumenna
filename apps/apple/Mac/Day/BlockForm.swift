@@ -135,7 +135,9 @@ final class BlockFormModel: ObservableObject {
     /// Shows the form as a sheet on `window`.
     func present(on window: NSWindow, saved: @escaping (Change) -> Void) {
         self.saved = saved
-        let sheet = NSWindow(contentViewController: NSHostingController(rootView: BlockForm(model: self)))
+        let host = NSHostingController(rootView: BlockForm(model: self))
+        host.view.setAccessibilityLabel(heading)
+        let sheet = NSWindow(contentViewController: host)
         sheet.title = heading
         close = { [weak window, weak sheet] in
             if let sheet { window?.endSheet(sheet) }
@@ -150,11 +152,11 @@ struct BlockForm: View {
     var body: some View {
         Form {
             Section(model.heading) {
-                TextField("Name", text: $model.name, prompt: Text("Deep work"))
+                namedField("Name", text: $model.name, example: "Deep work")
                 if model.asksDay {
-                    DatePicker("Day", selection: $model.day, displayedComponents: .date)
+                    Named("Day") { DatePicker("Day", selection: $model.day, displayedComponents: .date) }
                 }
-                DatePicker("Starts", selection: $model.start, displayedComponents: .hourAndMinute)
+                Named("Starts") { DatePicker("Starts", selection: $model.start, displayedComponents: .hourAndMinute) }
                 LabeledContent("Lasts, in minutes") {
                     HStack {
                         TextField("Lasts, in minutes", value: $model.minutes, format: .number)
@@ -165,14 +167,16 @@ struct BlockForm: View {
                         Text(Clock.length(UInt32(max(model.minutes, 0)))).foregroundStyle(Color.quietLabel)
                     }
                 }
-                Picker("Kind", selection: $model.kind) {
-                    Text("Work, takes tasks").tag("work")
-                    Text("Break").tag("break")
-                    Text("Event").tag("event")
+                Named("Kind") {
+                    Picker("Kind", selection: $model.kind) {
+                        Text("Work, takes tasks").tag("work")
+                        Text("Break").tag("break")
+                        Text("Event").tag("event")
+                    }
+                    .pickerStyle(.radioGroup)
                 }
-                .pickerStyle(.radioGroup)
                 if model.asksRepetition {
-                    TextField("Repeats", text: $model.repetition, prompt: Text("every weekday"))
+                    namedField("Repeats", text: $model.repetition, example: "every weekday")
                     Text(model.repetitionHelp).font(.footnote).foregroundStyle(Color.quietLabel)
                 }
             }
@@ -186,7 +190,8 @@ struct BlockForm: View {
         }
         .formStyle(.grouped)
         .tint(.lumennaTint)
-        .frame(width: 440)
+        // A grouped form scrolls, so in a sheet it would otherwise ask for no height at all.
+        .frame(width: 460, height: 470)
         .alert(
             "Could not do that",
             isPresented: Binding(get: { model.failure != nil }, set: { if !$0 { model.failure = nil } }),

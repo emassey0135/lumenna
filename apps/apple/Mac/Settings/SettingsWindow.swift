@@ -12,6 +12,7 @@ final class SettingsWindowController: NSWindowController {
         func tab(_ controller: NSViewController, _ label: String, _ symbol: String) -> NSTabViewItem {
             let item = NSTabViewItem(viewController: controller)
             item.label = label
+            controller.view.setAccessibilityLabel(label)
             item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
             return item
         }
@@ -24,6 +25,7 @@ final class SettingsWindowController: NSWindowController {
         ]
         let window = NSWindow(contentViewController: tabs)
         window.title = "Settings"
+        window.identifier = NSUserInterfaceItemIdentifier("settings")
         window.styleMask = [.titled, .closable]
         super.init(window: window)
         model.window = window
@@ -82,6 +84,27 @@ final class SettingsModel: ObservableObject {
                 self.set(key, String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0))
             }
         )
+    }
+
+    // MARK: - Shortcuts from anywhere (§16.2)
+
+    @Published var shortcuts: [HotKeys.Kind: String] = Dictionary(
+        uniqueKeysWithValues: HotKeys.Kind.allCases.map { ($0, HotKeys.description($0)) }
+    )
+
+    private func refreshShortcuts() {
+        shortcuts = Dictionary(uniqueKeysWithValues: HotKeys.Kind.allCases.map { ($0, HotKeys.description($0)) })
+    }
+
+    func recordShortcut(_ kind: HotKeys.Kind) {
+        guard let window else { return }
+        HotKeys.record(kind, on: window) { [weak self] in self?.refreshShortcuts() }
+    }
+
+    func toggleShortcut(_ kind: HotKeys.Kind) {
+        HotKeys.set(kind, to: HotKeys.shortcut(kind) == nil ? kind.standard : nil)
+        refreshShortcuts()
+        Announcer.say("\(kind.name) is \(HotKeys.description(kind))")
     }
 
     // MARK: - Opening at login (§16.2)
@@ -199,9 +222,25 @@ struct GeneralSettings: View {
                 Text("Lumenna stays running in the menu bar when its window is closed, so your devices stay in sync. Quit it from the menu bar or the Lumenna menu.")
                     .font(.footnote).foregroundStyle(Color.quietLabel)
             }
-            Section("Shortcuts from anywhere") {
-                LabeledContent("Show Lumenna", value: HotKeys.summonDescription)
-                LabeledContent("Quick add a task", value: HotKeys.quickAddDescription)
+            Section {
+                ForEach(HotKeys.Kind.allCases, id: \.self) { kind in
+                    LabeledContent(kind.name) {
+                        HStack {
+                            Text(model.shortcuts[kind] ?? "")
+                            Button("Change…") { model.recordShortcut(kind) }
+                                .accessibilityLabel("Change shortcut for \(kind.name)")
+                            Button(model.shortcuts[kind] == "Off" ? "Turn On" : "Turn Off") {
+                                model.toggleShortcut(kind)
+                            }
+                            .accessibilityLabel("\(model.shortcuts[kind] == "Off" ? "Turn on" : "Turn off") shortcut for \(kind.name)")
+                        }
+                    }
+                }
+            } header: {
+                Text("Shortcuts from anywhere")
+            } footer: {
+                Text("These work in any app, so they take their keys from whatever app is in front. Control-Command, because Control-Option is VoiceOver's.")
+                    .font(.footnote).foregroundStyle(Color.quietLabel)
             }
         }
         .modifier(Failures(model: model))
@@ -219,15 +258,19 @@ struct PlanningSettings: View {
                     get: { model.values["cascade-complete-subtasks"] == "true" },
                     set: { model.set("cascade-complete-subtasks", $0 ? "true" : "false") }
                 ))
-                DatePicker("Day starts", selection: model.time("day-start"), displayedComponents: .hourAndMinute)
-                DatePicker("Day ends", selection: model.time("day-end"), displayedComponents: .hourAndMinute)
-                DatePicker("All-day reminders at", selection: model.time("all-day-reminder-hour"), displayedComponents: .hourAndMinute)
-                Picker("Announcements", selection: model.binding("verbosity")) {
-                    Text("Full sentences").tag("full")
-                    Text("Terse").tag("terse")
+                Named("Day starts") { DatePicker("Day starts", selection: model.time("day-start"), displayedComponents: .hourAndMinute) }
+                Named("Day ends") { DatePicker("Day ends", selection: model.time("day-end"), displayedComponents: .hourAndMinute) }
+                Named("All-day reminders at") { DatePicker("All-day reminders at", selection: model.time("all-day-reminder-hour"), displayedComponents: .hourAndMinute) }
+                Named("Announcements") {
+                    Picker("Announcements", selection: model.binding("verbosity")) {
+                        Text("Full sentences").tag("full")
+                        Text("Terse").tag("terse")
+                    }
                 }
-                Picker("Week starts on", selection: model.binding("week-start")) {
-                    ForEach(Self.weekdays, id: \.self) { Text($0.capitalized).tag($0) }
+                Named("Week starts on") {
+                    Picker("Week starts on", selection: model.binding("week-start")) {
+                        ForEach(Self.weekdays, id: \.self) { Text($0.capitalized).tag($0) }
+                    }
                 }
             } footer: {
                 Text("These sync to all your devices.").font(.footnote).foregroundStyle(Color.quietLabel)
@@ -243,11 +286,13 @@ struct BackupSettings: View {
     var body: some View {
         Form {
             Section {
-                Picker("Automatic backups", selection: model.binding("backup-every")) {
-                    Text("Every 12 hours").tag("12h")
-                    Text("Every day").tag("1d")
-                    Text("Every week").tag("7d")
-                    Text("Off").tag("off")
+                Named("Automatic backups") {
+                    Picker("Automatic backups", selection: model.binding("backup-every")) {
+                        Text("Every 12 hours").tag("12h")
+                        Text("Every day").tag("1d")
+                        Text("Every week").tag("7d")
+                        Text("Off").tag("off")
+                    }
                 }
                 Stepper(value: Binding(
                     get: { Int(model.values["backup-keep"] ?? "10") ?? 10 },
