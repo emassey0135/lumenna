@@ -180,10 +180,13 @@ struct BlockForm: View {
                 }
             }
             Section {
-                ChoiceRows(
-                    choices: [("Work, takes tasks", "work"), ("Break", "break"), ("Event", "event")],
-                    selection: $model.kind
-                )
+                Picker("Kind", selection: $model.kind) {
+                    Text("Work, takes tasks").tag("work")
+                    Text("Break").tag("break")
+                    Text("Event").tag("event")
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
             } header: {
                 FormParts.caption("Kind")
             }
@@ -199,6 +202,8 @@ struct BlockForm: View {
                 }
             }
         }
+        // SwiftUI's own accent, which the window's UIKit tint does not reach.
+        .tint(Color(uiColor: .lumennaTint))
         .alert(
             "Could not do that",
             isPresented: Binding(get: { model.failure != nil }, set: { if !$0 { model.failure = nil } }),

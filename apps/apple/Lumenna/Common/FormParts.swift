@@ -1,17 +1,14 @@
 import SwiftUI
 
-/// The pieces every form here is built from, each chosen because the stock version failed the
-/// accessibility audit.
+/// The pieces forms here are built from, each because the stock version failed the
+/// accessibility audit. Stock pickers pass once the form has SwiftUI's own `.tint`.
 enum FormParts {
     /// A section header or footer in grey that still reads: the system's own is under the
     /// contrast text needs.
     static func caption(_ text: String) -> some View {
         Text(text)
             .font(.footnote)
-            .foregroundStyle(Color.primary.opacity(0.78))
-            // The UI tests know captions by this: the audit reports some as only partly
-            // scaling, which screenshots at the largest size show is not so.
-            .accessibilityIdentifier("caption")
+            .foregroundStyle(Color(uiColor: .quietLabel))
     }
 }
 
@@ -36,32 +33,6 @@ func example(_ text: String) -> Text {
     Text(text).foregroundStyle(Color(uiColor: .quietLabel))
 }
 
-/// One choice among a few, as rows with the chosen one checked — the picker in every form
-/// here. The stock inline picker's checkmark failed contrast; this one is drawn in the text
-/// colour, and the row says it is selected in words as well as with the mark (§13).
-struct ChoiceRows<Value: Hashable>: View {
-    let choices: [(String, Value)]
-    @Binding var selection: Value
-
-    var body: some View {
-        ForEach(choices, id: \.1) { name, value in
-            Button {
-                selection = value
-            } label: {
-                HStack {
-                    Text(name).foregroundStyle(Color.primary)
-                    Spacer()
-                    if value == selection {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(Color.primary)
-                            .accessibilityHidden(true)
-                    }
-                }
-            }
-            .accessibilityAddTraits(value == selection ? .isSelected : [])
-        }
-    }
-}
 
 /// A control with its name beside it as ordinary text, the two tied together for VoiceOver.
 ///

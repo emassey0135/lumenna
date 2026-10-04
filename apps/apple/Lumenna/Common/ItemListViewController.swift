@@ -88,7 +88,12 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
             content.directionalLayoutMargins.leading += CGFloat(item.depth) * 20
             cell.contentConfiguration = content
             cell.accessories = [.disclosureIndicator(displayed: .always)]
+            // Said explicitly. Left to itself the cell's label is its text and its detail
+            // together, so a value of the detail said it twice: "Projects, 1 project 1 project".
+            cell.isAccessibilityElement = true
+            cell.accessibilityLabel = item.title
             cell.accessibilityValue = item.spoken ?? item.detail
+            cell.accessibilityTraits = .button
         }
         let headerRegistration = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
             elementKind: UICollectionView.elementKindSectionHeader
