@@ -276,3 +276,31 @@ private struct Hint: ViewModifier {
         #endif
     }
 }
+
+/// A work block a task could be put in: what identifies it to the core, its day, and how it
+/// reads in a list.
+struct BlockChoice {
+    let id: String
+    let date: String
+    let title: String
+    let detail: String
+}
+
+extension Core {
+    /// The work blocks of today and the next six days, in order (§3.7) — what both apps offer
+    /// when a task is put in a block from the task itself. The planner reaches any other day.
+    func workBlocksThisWeek() -> [BlockChoice] {
+        (0..<7).flatMap { offset -> [BlockChoice] in
+            let day = Calendar.current.date(byAdding: .day, value: offset, to: .now) ?? .now
+            guard let plan = try? lumenna.plan(date: Clock.isoDay(day)) else { return [] }
+            return plan.blocks.filter { $0.kind == "work" }.map { block in
+                BlockChoice(
+                    id: block.id,
+                    date: plan.date,
+                    title: "\(Clock.spokenDay(plan.date)), \(Clock.time(block.start)), \(block.title)",
+                    detail: "\(Clock.time(block.start)) to \(Clock.time(block.end))"
+                )
+            }
+        }
+    }
+}

@@ -50,6 +50,9 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
     /// What the add button does; `nil` hides it.
     var addTitle: String? { nil }
     func add() {}
+    /// Whether Undo and Redo are offered: on every screen that changes the store, so undoing
+    /// a rename never means going to another tab first. Not in a picker sheet.
+    var offersUndo: Bool { true }
 
     // MARK: - Doing it
 
@@ -108,6 +111,13 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
         }
         dataSource.supplementaryViewProvider = { collectionView, _, path in
             collectionView.dequeueConfiguredReusableSupplementary(using: headerRegistration, for: path)
+        }
+        if offersUndo {
+            navigationItem.leftItemsSupplementBackButton = true
+            navigationItem.leftBarButtonItems = [
+                .undo { [weak self] in self?.undoChange() },
+                .redo { [weak self] in self?.redoChange() },
+            ]
         }
         if let addTitle {
             let button = UIBarButtonItem(
@@ -179,11 +189,38 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
         open(item)
     }
 
+    /// Undoes this device's last change to the store, wherever it was made (§9).
+    @objc func undoChange() {
+        storeChange { try $0.undo() }
+    }
+
+    @objc func redoChange() {
+        storeChange { try $0.redo() }
+    }
+
+    private func storeChange(_ operation: (Lumenna) throws -> Change) {
+        do {
+            let change = try operation(core.lumenna)
+            // Every screen showing the store reads it again, this one included.
+            NotificationCenter.default.post(name: Core.changed, object: nil)
+            Announcer.say(change.announcement, notices: change.notices)
+        } catch {
+            showFailure(error.sentence)
+        }
+    }
+
     override var canBecomeFirstResponder: Bool { true }
 
     override var keyCommands: [UIKeyCommand]? {
-        guard let addTitle else { return nil }
-        return [UIKeyCommand(title: addTitle, action: #selector(addFromKeyboard), input: "n", modifierFlags: .command)]
+        var commands: [UIKeyCommand] = []
+        if let addTitle {
+            commands.append(UIKeyCommand(title: addTitle, action: #selector(addFromKeyboard), input: "n", modifierFlags: .command))
+        }
+        if offersUndo {
+            commands.append(UIKeyCommand(title: "Undo", action: #selector(undoChange), input: "z", modifierFlags: .command))
+            commands.append(UIKeyCommand(title: "Redo", action: #selector(redoChange), input: "z", modifierFlags: [.command, .shift]))
+        }
+        return commands
     }
 
     @objc private func addFromKeyboard() {

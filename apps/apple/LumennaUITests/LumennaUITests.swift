@@ -479,4 +479,42 @@ final class LumennaUITests: XCTestCase {
         XCTAssertTrue(planned.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.cells.matching(NSPredicate(format: "label == 'draft'")).firstMatch.exists)
     }
+
+    func testUndoIsOfferedOnBrowseScreensToo() {
+        tab("Browse")
+        cell(containing: "Projects").tap()
+        app.buttons["Add project"].tap()
+        answer("Work", with: "Add")
+        let work = app.cells.matching(NSPredicate(format: "label == 'Work'")).firstMatch
+        XCTAssertTrue(work.waitForExistence(timeout: 5))
+        app.navigationBars.buttons["Undo"].tap()
+        XCTAssertTrue(work.waitForNonExistence(timeout: 5), "undone without leaving Browse")
+        app.navigationBars.buttons["Redo"].tap()
+        XCTAssertTrue(work.waitForExistence(timeout: 5))
+    }
+
+    func testATaskIsPutInABlockFromItsOwnPage() {
+        add("draft")
+        addBlock("Focus")
+        tab("Tasks")
+        row("draft").tap()
+        // Far down the form, and SwiftUI makes rows only once they are on screen.
+        let put = app.buttons["Put in a Block…"]
+        for _ in 0..<6 where !put.exists { app.swipeUp() }
+        put.tap()
+        let block = app.cells.containing(NSPredicate(format: "label CONTAINS 'Focus'")).firstMatch
+        XCTAssertTrue(block.waitForExistence(timeout: 5), "the week's work blocks, listed")
+        block.tap()
+        let skip = app.alerts["How long is this sitting meant to take?"].buttons["Skip"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 5))
+        skip.tap()
+        XCTAssertTrue(app.alerts.firstMatch.waitForNonExistence(timeout: 5))
+        let state = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'ready'")).firstMatch
+        XCTAssertTrue(state.waitForExistence(timeout: 5))
+        XCTAssertFalse(state.label.contains("unassigned"), state.label)
+        // The task's page hides the tab bar; back to the list first.
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        tab("Today")
+        XCTAssertTrue(app.cells.matching(NSPredicate(format: "label == 'draft'")).firstMatch.waitForExistence(timeout: 5))
+    }
 }

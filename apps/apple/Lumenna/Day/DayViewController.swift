@@ -102,8 +102,8 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         // In the navigation bar, as on the task list: a bottom toolbar would sit under the
         // floating tab bar.
         navigationItem.leftBarButtonItems = [
-            UIBarButtonItem(title: "Undo", primaryAction: UIAction { [weak self] _ in self?.undo() }),
-            UIBarButtonItem(title: "Redo", primaryAction: UIAction { [weak self] _ in self?.redo() }),
+            .undo { [weak self] in self?.undo() },
+            .redo { [weak self] in self?.redo() },
         ]
         NotificationCenter.default.addObserver(self, selector: #selector(storeChanged), name: Core.changed, object: nil)
     }

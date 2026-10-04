@@ -11,6 +11,8 @@ final class TaskPicker: ItemListViewController {
         super.init(core: core, title: title)
     }
 
+    override var offersUndo: Bool { false }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         navigationItem.leftBarButtonItem = UIBarButtonItem(
@@ -45,6 +47,41 @@ final class TaskPicker: ItemListViewController {
         chosen: @escaping (Item) -> Void
     ) {
         let picker = TaskPicker(core: core, title: title, excluding: excluding, chosen: chosen)
+        presenter.present(UINavigationController(rootViewController: picker), animated: true)
+    }
+}
+
+/// Choosing one of a list already made — a work block for a task — in a sheet.
+final class ListPicker: ItemListViewController {
+    private let choices: [Item]
+    private let chosen: (Item) -> Void
+
+    init(core: Core, title: String, choices: [Item], chosen: @escaping (Item) -> Void) {
+        self.choices = choices
+        self.chosen = chosen
+        super.init(core: core, title: title)
+    }
+
+    override var offersUndo: Bool { false }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        navigationItem.leftBarButtonItem = UIBarButtonItem(
+            systemItem: .cancel, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) }
+        )
+    }
+
+    override func load() throws -> (items: [Item], count: String) {
+        (choices, choices.count == 1 ? "1 choice" : "\(choices.count) choices")
+    }
+
+    override func open(_ item: Item) {
+        let chosen = self.chosen
+        dismiss(animated: true) { chosen(item) }
+    }
+
+    static func present(from presenter: UIViewController, core: Core, title: String, choices: [Item], chosen: @escaping (Item) -> Void) {
+        let picker = ListPicker(core: core, title: title, choices: choices, chosen: chosen)
         presenter.present(UINavigationController(rootViewController: picker), animated: true)
     }
 }
