@@ -18,6 +18,7 @@ from BTSpeak import dialogs, host
 from client import LumennaError
 from connect import connect
 from menus import run
+from session import HELP
 
 
 def main() -> int:
@@ -35,7 +36,7 @@ def main() -> int:
     help, and self-voice, which left on would stop brltty reading the screen for whatever
     runs next.
     """
-    host.push_app_context("lumenna", self_voice=True)
+    host.push_app_context("lumenna", help_dir=HELP, self_voice=True)
     client = None
     try:
         try:

@@ -73,8 +73,7 @@ class Menus(unittest.TestCase):
                 ("menu", "Add a task"),
                 ("input", "buy milk tomorrow"),
                 ("menu", "Tasks"),
-                ("menu", "buy milk"),
-                ("choose", "Complete"),
+                ("key", "buy milk", "c"),
                 ("back",),
                 ("menu", "Undo"),
                 ("back",),
@@ -90,8 +89,7 @@ class Menus(unittest.TestCase):
         self.call("task.add", text="water plants every monday")
         self.run_script(
             [
-                ("menu", "water plants"),
-                ("choose", "Edit"),
+                ("context", "water plants", "Edit"),
                 ("form", {"due": "2026-12-10", "priority": "1", "project": "Home", "labels": "garden"}),
                 ("back",),
             ],
@@ -107,11 +105,9 @@ class Menus(unittest.TestCase):
         self.call("task.add", text="buy paint")
         self.run_script(
             [
-                ("menu", "paint"),
-                ("choose", "Wait for another task"),
+                ("context", "paint", "Wait for another task"),
                 ("choose", "buy paint"),
-                ("menu", "buy paint"),
-                ("choose", "subtask"),
+                ("key", "buy paint", "s"),
                 ("choose", "paint"),
                 ("back",),
             ],
@@ -135,10 +131,9 @@ class Menus(unittest.TestCase):
         self.run_script(
             [
                 ("menu", "keep me"),
-                ("choose", "Restore"),
-                ("menu", "lose me"),
-                ("choose", "Erase"),
+                ("menu", "lose me", "delete"),
                 ("confirm", True),
+                ("back",),
             ],
             lambda: tasks.trash(self.session),
         )
@@ -151,16 +146,13 @@ class Menus(unittest.TestCase):
         self.call("task.add", text="write the chapter")
         script = self.run_script(
             [
-                ("menu", "Add a block"),
+                ("app", "Add a block"),
                 ("form", {"title": "Deep work", "at": "9am", "minutes": "90"}),
-                ("menu", "Deep work"),
-                ("choose", "Assign a task"),
+                ("key", "Deep work", "i"),
                 ("choose", "write the chapter"),
                 ("input", ""),
-                ("menu", "write the chapter"),
-                ("choose", "Start the timer"),
-                ("menu", "write the chapter"),
-                ("choose", "Log minutes"),
+                ("key", "write the chapter", "s"),
+                ("context", "write the chapter", "Log minutes"),
                 ("input", "25"),
                 ("back",),
             ],
@@ -176,8 +168,7 @@ class Menus(unittest.TestCase):
         self.call("block.add", title="Focus", at="9am", minutes=120, date="today")
         script = self.run_script(
             [
-                ("menu", "draft"),
-                ("choose", "Put it in a block"),
+                ("key", "draft", "b"),
                 ("choose", "Today"),
                 ("choose", "Focus"),
                 ("input", "45"),
@@ -188,8 +179,7 @@ class Menus(unittest.TestCase):
         self.assertEqual(self.call("plan")["blocks"][0]["assignments"][0]["planned_mins"], 45)
         script = self.run_script(
             [
-                ("menu", "planned for 45 minutes"),
-                ("choose", "Planned length"),
+                ("key", "planned for 45 minutes", "l"),
                 ("input", ""),
                 ("back",),
             ],
@@ -203,13 +193,10 @@ class Menus(unittest.TestCase):
         self.run_script(
             [
                 ("menu", "Run"),
-                ("choose", "Edit"),
                 ("choose", "only"),
                 ("form", {"minutes": "45"}),
-                ("menu", "Run"),
-                ("choose", "Cancel this day"),
+                ("key", "Run", "x"),
                 ("menu", "cancelled for this day"),
-                ("choose", "Put this day back"),
                 ("back",),
             ],
             lambda: day.day_plan(self.session),
@@ -221,7 +208,7 @@ class Menus(unittest.TestCase):
     def test_the_planner_turns_to_another_day(self):
         self.call("block.add", title="Dentist", at="2pm", minutes=60, kind="event", date="tomorrow")
         script = self.run_script(
-            [("menu", "Next day"), ("menu", "Dentist"), ("choose", None), ("back",)],
+            [("key", "Now", "n"), ("back",)],
             lambda: day.day_plan(self.session),
         )
         self.assertTrue(any("1 block" in title for title in script.titles[1:]), script.titles)
@@ -231,10 +218,8 @@ class Menus(unittest.TestCase):
         self.run_script(
             [
                 ("menu", "Standup"),
-                ("choose", "Edit every occurrence"),
                 ("form", {"repeat": "every monday"}),
-                ("menu", "every monday"),
-                ("choose", "Delete"),
+                ("menu", "every monday", "delete"),
                 ("confirm", True),
                 ("back",),
             ],
@@ -247,15 +232,12 @@ class Menus(unittest.TestCase):
     def test_a_project_is_made_renamed_archived_and_unarchived(self):
         self.run_script(
             [
-                ("menu", "Add a project"),
+                ("app", "Add a project"),
                 ("input", "Wrok"),
-                ("menu", "Wrok"),
-                ("choose", "Rename"),
+                ("key", "Wrok", "r"),
                 ("input", "Work"),
-                ("menu", "Work"),
-                ("choose", "Archive"),
-                ("menu", "archived"),
-                ("choose", "Unarchive"),
+                ("context", "Work", "Archive"),
+                ("context", "archived", "Unarchive"),
                 ("back",),
             ],
             lambda: organise.projects(self.session),
@@ -268,11 +250,9 @@ class Menus(unittest.TestCase):
         self.call("label.add", name="cals")
         self.run_script(
             [
-                ("menu", "calls"),
-                ("choose", "Colour"),
+                ("key", "calls", "c"),
                 ("input", "teal"),
-                ("menu", "cals"),
-                ("choose", "Merge"),
+                ("key", "cals", "m"),
                 ("choose", "calls"),
                 ("back",),
             ],
@@ -285,20 +265,54 @@ class Menus(unittest.TestCase):
         self.call("task.add", text="urgent thing p1")
         self.run_script(
             [
-                ("menu", "Add a filter"),
+                ("app", "Add a filter"),
                 ("input", "Urgent"),
                 ("input", "p1"),
-                ("menu", "Urgent"),
-                ("choose", "Change the query"),
+                ("key", "Urgent", "q"),
                 ("input", "p1 | p2"),
-                ("menu", "Urgent"),
-                ("choose", "Delete"),
+                ("menu", "Urgent", "delete"),
                 ("confirm", True),
                 ("back",),
             ],
             lambda: organise.saved_filters(self.session),
         )
         self.assertEqual(self.call("filter.list")["filters"], [])
+
+    # -- the device's conventions -------------------------------------------------------
+
+    def test_every_list_has_undo_on_u_and_redo_on_y_in_its_main_menu(self):
+        self.call("task.add", text="something")
+        screens = [
+            lambda: tasks.task_list(self.session), lambda: tasks.trash(self.session),
+            lambda: day.day_plan(self.session), lambda: day.blocks(self.session),
+            lambda: organise.projects(self.session), lambda: organise.labels(self.session),
+            lambda: organise.saved_filters(self.session),
+        ]
+        for open_screen in screens:
+            script = self.run_script([("back",)], open_screen)
+            menu = script.menus[-1]
+            labels = [command.get_label(None) for command in menu["app"]]
+            self.assertIn("Undo, u", labels, script.titles[-1])
+            self.assertIn("Redo, y", labels, script.titles[-1])
+            self.assertTrue({"u", "y"} <= set(menu["keys"]), script.titles[-1])
+
+    def test_a_tasks_context_menu_says_each_entrys_key(self):
+        self.call("task.add", text="labelled")
+        script = self.run_script([("back",)], lambda: tasks.task_list(self.session))
+        menu = btspeak_stub._Menu([])
+        menu.menu = [type("Row", (), {"row": {"id": "x", "title": "labelled", "depth": 0}})()]
+        labels = [command.get_label(menu) for command in script.menus[-1]["context"] if command.applies(menu)]
+        self.assertIn("Complete, c", labels)
+        self.assertIn("Edit, e", labels)
+        self.assertNotIn("Move it to the top level, t", labels, "only for a subtask")
+
+    def test_an_empty_list_says_so_and_still_adds_from_its_main_menu(self):
+        script = self.run_script(
+            [("app", "Add a label"), ("input", "calls"), ("back",)],
+            lambda: organise.labels(self.session),
+        )
+        self.assertIn("No labels yet", script.menus[0]["empty"])
+        self.assertEqual([r["title"] for r in self.call("label.list")["rows"]], ["calls"])
 
     # -- settings and data --------------------------------------------------------------
 

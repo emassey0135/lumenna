@@ -13,7 +13,7 @@ from BTSpeak import dialogs
 
 from client import LumennaError
 from rows import Tree, describe
-from session import Flag, Session, ask, choose, confirm, live_menu
+from session import Command, Flag, Session, ask, choose, confirm, live_menu, row_item, screen
 import tasks
 
 
@@ -46,7 +46,13 @@ def spoken_day(iso: str) -> str:
 
 
 def day_plan(session: Session) -> str:
-    """A day as it is lived, opening on now."""
+    """A day as it is lived, opening on now.
+
+    Enter does a row's main thing — edits a block, shows a sitting's task, adds a block in free
+    time, puts a cancelled day back. The rest is on the row's context menu (M-Chord with
+    Dot 7); moving between days and adding a block are on the main menu (M-Chord), and on
+    their keys.
+    """
     shown = {"date": "", "plan": {}, "heading": ""}
     moved = Flag()
 
@@ -74,26 +80,33 @@ def day_plan(session: Session) -> str:
             return error.message
         shown["plan"] = plan
         shown["heading"] = f"{spoken_day(plan['date'])}, {plan.get('summary') or plan.get('announcement', '')}"
-        rows = plan_rows(plan)
-        tree = Tree(rows)
-        leading = [
-            dialogs.DynamicMenuItem(title="Previous day", action=lambda: step(-1)),
-            dialogs.DynamicMenuItem(title="Next day", action=lambda: step(1)),
-            dialogs.DynamicMenuItem(title="Go to a day", action=go_to),
-            dialogs.DynamicMenuItem(
-                title="Add a block", action=lambda: add_block(session, date=plan["date"])
-            ),
-        ]
-        return leading + tree.items(lambda row: plan_actions(session, plan, row))
+        return Tree(plan_rows(plan)).items()
+
+    def date() -> str:
+        return shown["plan"].get("date", "")
 
     # §13: opening the day lands on now, not at midnight — so the first build decides where.
-    plan = session.call("plan")
-    rows = plan_rows(plan)
+    rows = plan_rows(session.call("plan"))
     now = next(
         (i for i, row in enumerate(rows) if row["role"] == "now" or row.get("when") == "now"),
         0,
     )
-    live_menu(session, build, lambda: shown["heading"], default=4 + now, moved=moved)
+    with screen("lumenna-day"):
+        live_menu(
+            session, build, lambda: shown["heading"], default=now, moved=moved,
+            main=lambda row: plan_main(session, date(), row),
+            context=day_commands(session, date),
+            app=[
+                Command("Add a block", lambda _: add_block(session, date=date() or "today"), key="a"),
+                Command("Previous day", lambda _: step(-1), key="p"),
+                Command("Next day", lambda _: step(1), key="n"),
+                Command("Go to a day", lambda _: go_to(), key="g"),
+                Command("Today", lambda _: turn(""), key="t"),
+                *tasks.undo_commands(session),
+            ],
+            empty="Nothing planned.",
+            app_title="Day menu",
+        )
     return ""
 
 
@@ -183,7 +196,7 @@ def ask_length(prompt: str, current: int | None = None) -> tuple[bool, int | Non
     return True, int(text)
 
 
-def assign(session: Session, task: str, block: dict, date: str) -> str:
+def assign_to(session: Session, task: str, block: dict, date: str) -> str:
     """Puts a task in a block, asking how long the sitting is meant to take (§3.7)."""
     answered, minutes = ask_length("How long is this sitting meant to take")
     if not answered:
@@ -194,80 +207,107 @@ def assign(session: Session, task: str, block: dict, date: str) -> str:
     return session.write("assign", **params)
 
 
-def plan_actions(session: Session, plan: dict, row: dict) -> str:
-    """What can be done from one row of the day."""
+def plan_main(session: Session, date: str, row: dict) -> str:
+    """What Enter does on a row of the day."""
     role = row["role"]
-    date = plan["date"]
     if role == "block":
-        return block_actions(session, row["block"], date)
+        return edit_block(session, row["block"], date)
     if role == "assignment":
-        return sitting_actions(session, row["sitting"])
+        return tasks.show(session, {"id": row["sitting"]["task"]})
     if role == "free":
         free = row["free"]
         return add_block(session, date=date, at=free["start"], minutes=min(free["minutes"], 720))
     if role == "cancelled":
-        cancelled = row["cancelled"]
-        choice = choose({"restore": "Put this day back"}, describe(row))
-        if choice == "restore":
-            return session.write("block.restore", id=cancelled["series"], date=date)
-        return ""
+        return session.write("block.restore", id=row["cancelled"]["series"], date=date)
     return describe(row)
 
 
-def block_actions(session: Session, block: dict, date: str) -> str:
-    actions = {}
-    if block["kind"] == "work":
-        actions["assign"] = "Assign a task"
-    actions["edit"] = "Edit"
-    if block.get("repeats"):
-        actions["cancel"] = "Cancel this day"
-    if block.get("changed_for_this_day"):
-        actions["restore"] = "Put this day back as the series has it"
-    actions["rm"] = "Delete the block"
-    choice = choose(actions, f"{block['title']}, {block['start']} to {block['end']}")
-    if choice == "assign":
-        task = tasks.pick_task(session, f"Assign to {block['title']}")
-        return assign(session, task, block, date) if task else ""
-    if choice == "edit":
-        return edit_block(session, block, date)
-    if choice == "cancel":
-        return session.write("block.cancel", id=block["series"], date=date)
-    if choice == "restore":
-        return session.write("block.restore", id=block["series"], date=date)
-    if choice == "rm":
-        return delete_block(session, block["series"], block["title"], block.get("repeats", False))
-    return ""
+def day_commands(session: Session, date) -> list[Command]:
+    """What the context menu offers on each kind of row of the day. A letter means one thing
+    on each kind of row, so the same letter can serve a block and a sitting."""
+    def role(*roles):
+        return lambda row: row.get("role") in roles
 
+    def block(row):
+        return row["block"]
 
-def sitting_actions(session: Session, sitting: dict) -> str:
-    running = sitting["status"] == "in progress"
-    actions = {
-        "timer": "Stop the timer" if running else "Start the timer",
-        "length": "Planned length",
-        "log": "Log minutes by hand",
-        "task": "The task itself",
-        "unassign": "Take it out of the block",
-    }
-    choice = choose(actions, sitting["title"])
-    if choice == "timer":
-        return session.write("stop" if running else "start", assignment=sitting["id"])
-    if choice == "length":
-        answered, minutes = ask_length(f"Planned length of {sitting['title']}", sitting.get("planned_mins"))
-        if not answered:
-            return ""
-        return session.write("length", assignment=sitting["id"], minutes=minutes)
-    if choice == "log":
-        text = ask(f"Minutes on {sitting['title']}, the whole of this sitting", "")
+    def sitting(row):
+        return row["sitting"]
+
+    def assign(row):
+        task = tasks.pick_task(session, f"Assign to {block(row)['title']}")
+        return assign_to(session, task, block(row), date()) if task else ""
+
+    def toggle_timer(row):
+        running = sitting(row)["status"] == "in progress"
+        return session.write("stop" if running else "start", assignment=sitting(row)["id"])
+
+    def log_minutes(row):
+        text = ask(f"Minutes on {sitting(row)['title']}, the whole of this sitting", "")
         if text is None:
             return ""
         if not text.isdigit():
             return "That is not a number of minutes"
-        return session.write("stop", assignment=sitting["id"], minutes=int(text))
-    if choice == "task":
-        return tasks.task_actions(session, {"id": sitting["task"], "title": sitting["title"]})
-    if choice == "unassign":
-        return session.write("unassign", assignment=sitting["id"])
-    return ""
+        return session.write("stop", assignment=sitting(row)["id"], minutes=int(text))
+
+    def plan_length(row):
+        answered, minutes = ask_length(f"Planned length of {sitting(row)['title']}", sitting(row).get("planned_mins"))
+        return session.write("length", assignment=sitting(row)["id"], minutes=minutes) if answered else ""
+
+    return [
+        # A block
+        Command("Edit", lambda row: edit_block(session, block(row), date()), key="e", applies=role("block")),
+        Command("Assign a task", assign, key="i", applies=lambda row: role("block")(row) and block(row)["kind"] == "work"),
+        Command(
+            "Cancel this day",
+            lambda row: session.write("block.cancel", id=block(row)["series"], date=date()),
+            key="x",
+            applies=lambda row: role("block")(row) and block(row).get("repeats"),
+        ),
+        Command(
+            "Put this day back as the series has it",
+            lambda row: session.write("block.restore", id=block(row)["series"], date=date()),
+            key="o",
+            applies=lambda row: role("block")(row) and block(row).get("changed_for_this_day"),
+        ),
+        Command(
+            "Delete the block",
+            lambda row: delete_block(session, block(row)["series"], block(row)["title"], block(row).get("repeats", False)),
+            applies=role("block"),
+            deletes=True,
+        ),
+        # A sitting
+        Command(
+            lambda row: "Stop the timer" if sitting(row)["status"] == "in progress" else "Start the timer",
+            toggle_timer, key="s", applies=role("assignment"),
+        ),
+        Command("Planned length", plan_length, key="l", applies=role("assignment")),
+        Command("Log minutes by hand", log_minutes, key="m", applies=role("assignment")),
+        Command(
+            "The task itself",
+            lambda row: tasks.show(session, {"id": sitting(row)["task"]}),
+            applies=role("assignment"),
+        ),
+        Command(
+            "Take it out of the block",
+            lambda row: session.write("unassign", assignment=sitting(row)["id"]),
+            applies=role("assignment"),
+            deletes=True,
+        ),
+        # Free time, and a cancelled day
+        Command(
+            "Add a block here",
+            lambda row: add_block(session, date=date(), at=row["free"]["start"], minutes=min(row["free"]["minutes"], 720)),
+            key="a",
+            applies=role("free"),
+        ),
+        Command(
+            "Put this day back",
+            lambda row: session.write("block.restore", id=row["cancelled"]["series"], date=date()),
+            key="o",
+            applies=role("cancelled"),
+        ),
+    ]
 
 
 # ---------------------------------------------------------------------------------------
@@ -276,33 +316,26 @@ def sitting_actions(session: Session, sitting: dict) -> str:
 
 
 def blocks(session: Session) -> str:
-    """Every block series, and a way to make one."""
+    """Every block series: Enter edits one, the delete keys delete it, a adds one."""
     state = {"heading": "Blocks"}
 
     def build():
         listing = session.call("block.list")
         state["heading"] = f"Blocks, {listing.get('announcement', '')}"
-        items = [dialogs.DynamicMenuItem(title="Add a block", action=lambda: add_block(session))]
-        for row in listing.get("rows", []):
-            items.append(
-                dialogs.DynamicMenuItem(
-                    title=describe(row),
-                    action=(lambda row=row: series_actions(session, row)),
-                    delete=(lambda row=row: series_delete(session, row)),
-                )
-            )
-        return items
+        return [row_item(row, describe(row)) for row in listing.get("rows", [])]
 
-    live_menu(session, build, lambda: state["heading"])
-    return ""
-
-
-def series_actions(session: Session, row: dict) -> str:
-    choice = choose({"edit": "Edit every occurrence", "rm": "Delete"}, describe(row))
-    if choice == "edit":
-        return edit_series(session, row["id"])
-    if choice == "rm":
-        return series_delete(session, row)
+    with screen("lumenna-day"):
+        live_menu(
+            session, build, lambda: state["heading"],
+            main=lambda row: edit_series(session, row["id"]),
+            context=[
+                Command("Edit every occurrence", lambda row: edit_series(session, row["id"]), key="e"),
+                Command("Delete", lambda row: series_delete(session, row), deletes=True),
+            ],
+            app=[Command("Add a block", lambda _: add_block(session), key="a"), *tasks.undo_commands(session)],
+            empty="No blocks yet. Press a to add one.",
+            app_title="Blocks menu",
+        )
     return ""
 
 

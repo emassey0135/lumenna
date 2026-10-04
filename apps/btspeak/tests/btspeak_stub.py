@@ -24,6 +24,26 @@ class Choice(NamedTuple):
     label: str
 
 
+class MenuCommand:
+    """One entry of a context menu or an application main menu, as the device has it."""
+
+    def __init__(self, name, label, action, key="", dependency=None, hidden=False, shortcut="",
+                 on_delete_key=False):
+        self.name = name
+        self.label = label
+        self.action = action
+        self.key = key
+        self.dependency = dependency
+        self.on_delete_key = on_delete_key
+
+    def get_label(self, dialog) -> str:
+        label = self.label(dialog) if callable(self.label) else self.label
+        return f"{label}, {self.key}" if self.key else label
+
+    def applies(self, dialog) -> bool:
+        return self.dependency is None or self.dependency(dialog)
+
+
 class DynamicMenuItem:
     """Records what a `DynamicMenuItem` was built with, with the device's defaults."""
 
@@ -67,6 +87,7 @@ class Script:
         self.steps = list(steps)
         self.said: list[str] = []
         self.titles: list[str] = []
+        self.menus: list[dict] = []
         self.shown: list = []
 
     def take(self, kind: str, asked: str):
@@ -96,20 +117,35 @@ def _call(fn, menu=None, item=None):
 
 
 class _Menu:
-    def __init__(self):
+    """What a menu's commands are handed as `menu`: the rows and where the cursor is."""
+
+    def __init__(self, menu):
         self.closed = False
+        self.menu = menu
+        self.selection = 0
 
     def close(self):
         self.closed = True
 
 
-def dynamic_menu(menu, title=None, exit_condition=None, refresh_interval=0, default=0, **_ignored):
-    """A menu: each `("menu", text)` step runs the visible row whose title contains `text`;
-    `("menu", text, "delete")` presses delete on it; `("back",)` leaves; `("wait",)` stays until
-    the menu's exit condition fires, as the real one would on its refresh."""
+def dynamic_menu(menu, title=None, exit_condition=None, refresh_interval=0, default=0,
+                 context_menu=(), app_menu=(), app_menu_title="", global_keys=None,
+                 empty_message=None, **_ignored):
+    """A menu, played from the script:
+
+    - `("menu", text)` presses Enter on the visible row whose title contains `text`;
+      `("menu", text, "delete")` presses the delete keys on it;
+    - `("context", text, label)` opens that row's context menu (M-Chord with Dot 7) and
+      chooses the entry whose label contains `label` — failing if it is not offered there;
+    - `("app", label)` opens the main menu (M-Chord) and chooses from it;
+    - `("key", text, letter)` presses a letter on that row;
+    - `("back",)` leaves; `("wait",)` stays until the exit condition fires, as the real menu
+      would on its refresh.
+    """
     script.titles.append(title() if callable(title) else (title or ""))
     selection = default
-    handle = _Menu()
+    handle = _Menu(menu)
+    script.menus.append({"context": context_menu, "app": app_menu, "keys": dict(global_keys or {}), "empty": empty_message})
     while True:
         if exit_condition and exit_condition():
             return Choice(selection, "")
@@ -127,17 +163,44 @@ def dynamic_menu(menu, title=None, exit_condition=None, refresh_interval=0, defa
                     raise ScriptError(f"the menu {title!r} never moved on")
                 time.sleep(0.05)
             return Choice(selection, "")
-        text, *verb = script.take("menu", title)
         visible = [i for i, it in enumerate(menu) if it.dependency is None or it.dependency()]
-        found = [i for i in visible if text in menu[i].get_title()]
-        if not found:
-            rows = [menu[i].get_title() for i in visible]
-            raise ScriptError(f"no row says {text!r} in {title!r}: {rows}")
-        selection = found[0]
-        item = menu[selection]
-        fn = getattr(item, verb[0] if verb else "action")
-        if fn is None:
-            raise ScriptError(f"{text!r} has no {verb or 'action'}")
+
+        def row(text):
+            found = [i for i in visible if text in menu[i].get_title()]
+            if not found:
+                rows = [menu[i].get_title() for i in visible]
+                raise ScriptError(f"no row says {text!r} in {title!r}: {rows}")
+            handle.selection = found[0]
+            return menu[found[0]]
+
+        def command(commands, label, where):
+            offered = [c for c in commands if c.applies(handle)]
+            for c in offered:
+                if label in c.get_label(handle):
+                    return c
+            raise ScriptError(f"no {label!r} in the {where} of {title!r}: {[c.get_label(handle) for c in offered]}")
+
+        if kind == "context":
+            _, text, label = script.steps.pop(0)
+            item = row(text)
+            fn, = (command(context_menu, label, "context menu").action,)
+        elif kind == "app":
+            _, label = script.steps.pop(0)
+            item = menu[handle.selection] if menu else None
+            fn = command(app_menu, label, "main menu").action
+        elif kind == "key":
+            _, text, letter = script.steps.pop(0)
+            item = row(text)
+            if letter not in (global_keys or {}):
+                raise ScriptError(f"{letter!r} does nothing in {title!r}: {sorted(global_keys or {})}")
+            fn = global_keys[letter]
+        else:
+            text, *verb = script.take("menu", title)
+            item = row(text)
+            fn = getattr(item, verb[0] if verb else "action")
+            if fn is None:
+                raise ScriptError(f"{text!r} has no {verb or 'action'}")
+        selection = handle.selection
         said = _call(fn, handle, item)
         if isinstance(said, str) and said:
             script.said.append(said)
@@ -218,16 +281,22 @@ def install() -> None:
         return
     except ImportError:
         pass
+    host = types.ModuleType("BTSpeak.host")
+    host.push_app_context = lambda *a, **k: None
+    host.pop_app_context = lambda *a, **k: None
+    host.say = lambda *a, **k: None
     dialogs = types.ModuleType("BTSpeak.dialogs")
     for name, value in list(globals().items()):
-        if name in {"Choice", "DynamicMenuItem", "InputField", "dynamic_menu", "request_choice",
+        if name in {"Choice", "DynamicMenuItem", "MenuCommand", "InputField", "dynamic_menu", "request_choice",
                     "request_input", "request_form", "request_confirmation", "show_message",
                     "view_lines", "request_file", "request_directory", "activity"}:
             setattr(dialogs, name, value)
     package = types.ModuleType("BTSpeak")
     package.dialogs = dialogs
+    package.host = host
     sys.modules["BTSpeak"] = package
     sys.modules["BTSpeak.dialogs"] = dialogs
+    sys.modules["BTSpeak.host"] = host
 
 
 def play(steps) -> Script:

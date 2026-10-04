@@ -6,7 +6,10 @@ each use it without importing one another.
 
 from __future__ import annotations
 
-from BTSpeak import dialogs
+import contextlib
+from pathlib import Path
+
+from BTSpeak import dialogs, host
 
 from client import LumennaError
 
@@ -75,13 +78,51 @@ class Session:
         return changed
 
 
-def live_menu(session: Session, build, title, default: int = 0, moved=None) -> None:
+class Command:
+    """Something that can be done: to the row under the cursor, offered on M-Chord with Dot 7,
+    or to the whole screen, offered on M-Chord — the device's two menus.
+
+    `key` is a lowercase letter that does the same from the list, as the device's own apps
+    have them; the menus say it after the label. A capital letter, Dot 7 with the letter, still
+    moves to the next row starting with it. `applies` says which rows a context command is for;
+    `deletes` makes it what the delete keys do — Control-D and the D chord.
+    """
+
+    def __init__(self, label, run, key: str = "", applies=None, deletes: bool = False) -> None:
+        self.label = label
+        self.run = run
+        self.key = key
+        self.applies = applies or (lambda row: True)
+        self.deletes = deletes
+
+    def label_for(self, row) -> str:
+        return self.label(row) if callable(self.label) else self.label
+
+
+def row_item(row, title=None, action=None, **fields) -> dialogs.DynamicMenuItem:
+    """A menu row carrying the data it stands for, which the commands are given."""
+    item = dialogs.DynamicMenuItem(title=title if title is not None else row["title"], action=action, **fields)
+    item.row = row
+    return item
+
+
+def row_of(item):
+    """The data a menu row stands for, or None for a row that stands for nothing — the line
+    an empty list shows in place of rows."""
+    return getattr(item, "row", None)
+
+
+def live_menu(
+    session: Session, build, title, default: int = 0, moved=None, *,
+    main=None, context=(), app=(), empty: str = "Nothing here", app_title: str = "",
+) -> None:
     """A menu rebuilt whenever the store moves, reopened where the cursor was.
 
-    `build()` returns the items, or a string to say instead when there is nothing to show.
-    `title` is a string or a function of nothing, read on each rebuild. `moved`, when given,
-    is another reason to rebuild — the day changing under the planner — and is cleared here.
-    Losing your place in a list when it refreshes is the sort of thing that makes a UI
+    `build()` returns the rows (`row_item`s), or a string to say instead of opening at all.
+    `main(row)` is what Enter does on a row; `context` and `app` are `Command`s for the two
+    menus. `title` is a string or a function of nothing, read on each rebuild. `moved`, when
+    given, is another reason to rebuild — the day changing under the planner — and is cleared
+    here. Losing your place in a list when it refreshes is the sort of thing that makes a UI
     unusable without sight, so the selection is kept by position.
     """
     selection = default
@@ -91,6 +132,7 @@ def live_menu(session: Session, build, title, default: int = 0, moved=None) -> N
             if items:
                 dialogs.show_message(items)
             return
+        wire(items, main, context, app)
         heading = title() if callable(title) else title
         choice = dialogs.dynamic_menu(
             items,
@@ -98,12 +140,104 @@ def live_menu(session: Session, build, title, default: int = 0, moved=None) -> N
             exit_condition=lambda: session.restless() or bool(moved and moved()),
             refresh_interval=REFRESH,
             default=min(selection, max(len(items) - 1, 0)),
+            context_menu=context_commands(context),
+            app_menu=app_commands(app),
+            app_menu_title=app_title or f"{heading.split(',')[0]} menu",
+            global_keys=keys(context, app),
+            empty_message=empty,
         )
         nudged = bool(moved and moved(clear=True))
         if not session.settle() and not nudged:
             # The menu closed because the user left it, not because anything moved.
             return
         selection = choice.key if choice else 0
+
+
+def wire(items, main, context, app) -> None:
+    """Gives each row its Enter and its delete, from `main` and the deleting command."""
+    deleting = [command for command in context if command.deletes]
+    for item in items:
+        row = row_of(item)
+        if row is None:
+            continue
+        if main is not None and item.action is None:
+            item.action = lambda row=row: main(row)
+        for command in deleting:
+            if command.applies(row):
+                item.delete = lambda row=row, command=command: command.run(row)
+                break
+
+
+def context_commands(context):
+    """The `Command`s as the device's context menu takes them: each for the rows it applies to."""
+    return [
+        dialogs.MenuCommand(
+            name=f"context-{index}",
+            label=lambda dialog, command=command: command.label_for(selected_row(dialog)),
+            action=lambda item, command=command: command.run(row_of(item)),
+            key=key_label(command.key),
+            dependency=lambda dialog, command=command: (
+                selected_row(dialog) is not None and command.applies(selected_row(dialog))
+            ),
+            on_delete_key=command.deletes,
+        )
+        for index, command in enumerate(context)
+    ]
+
+
+def app_commands(app):
+    return [
+        dialogs.MenuCommand(
+            name=f"app-{index}",
+            label=command.label_for(None),
+            action=lambda command=command: command.run(None),
+            key=key_label(command.key),
+        )
+        for index, command in enumerate(app)
+    ]
+
+
+def key_label(key: str) -> str:
+    """The key as the menus announce it."""
+    return {"/": "slash", ",": "comma", ".": "period"}.get(key, key)
+
+
+def selected_row(dialog):
+    if 0 <= dialog.selection < len(dialog.menu):
+        return row_of(dialog.menu[dialog.selection])
+    return None
+
+
+def keys(context, app):
+    """The letters, each running the first command it names that applies here: one for the
+    row under the cursor first, then one for the screen."""
+    letters = {command.key for command in [*context, *app] if command.key}
+
+    def run(key, item):
+        row = row_of(item)
+        for command in context:
+            if command.key == key and row is not None and command.applies(row):
+                return command.run(row)
+        for command in app:
+            if command.key == key:
+                return command.run(None)
+        return ""
+
+    return {key: (lambda item, key=key: run(key, item)) for key in letters}
+
+
+@contextlib.contextmanager
+def screen(topic: str):
+    """H-Chord's help, about the screen in front: the app's own topic for it, from `help/`."""
+    host.push_app_context("lumenna", topic, help_dir=HELP)
+    try:
+        yield
+    finally:
+        host.pop_app_context()
+
+
+#: The app's own help topics, which H-Chord finds ahead of the device's.
+HELP = str(Path(__file__).resolve().parent / "help")
 
 
 def choose(options: dict, prompt: str, default=None):

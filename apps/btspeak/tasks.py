@@ -12,7 +12,7 @@ from BTSpeak import dialogs
 
 from client import LumennaError
 from rows import Tree, describe
-from session import Session, ask, choose, confirm, live_menu, spoken
+from session import Command, Session, ask, choose, confirm, live_menu, screen, spoken
 
 
 # ---------------------------------------------------------------------------------------
@@ -20,11 +20,20 @@ from session import Session, ask, choose, confirm, live_menu, spoken
 # ---------------------------------------------------------------------------------------
 
 
-def task_list(session: Session, query: str = "", title: str = "Tasks", prefix: str = "") -> str:
-    """A filtered list of tasks, as a foldable tree, with a way to add one at the top.
+def undo_commands(session: Session) -> list[Command]:
+    """Undo and redo, on every screen's main menu, with the same keys everywhere."""
+    return [
+        Command("Undo", lambda _: session.write("undo"), key="u"),
+        Command("Redo", lambda _: session.write("redo"), key="y"),
+    ]
 
-    `prefix` starts the quick-add line — `#Work ` in a project's list, so a task added there
-    lands there, as on the phone.
+
+def task_list(session: Session, query: str = "", title: str = "Tasks", prefix: str = "") -> str:
+    """A filtered list of tasks, as a foldable tree.
+
+    Enter shows a task; its context menu (M-Chord with Dot 7) has everything else, and the main
+    menu (M-Chord) adds a task. `prefix` starts the quick-add line — `#Work ` in a project's
+    list, so a task added there lands there, as on the phone.
     """
     state = {"heading": title}
 
@@ -45,45 +54,111 @@ def task_list(session: Session, query: str = "", title: str = "Tasks", prefix: s
             hint = f", did you mean {suggestion}?" if suggestion else ""
             said.append(f"no {unresolved['kind']} called {unresolved['name']}{hint}")
         state["heading"] = ", ".join(part for part in said if part)
+        return Tree(result.get("rows", [])).items()
 
-        add = dialogs.DynamicMenuItem(
-            title="Add a task", action=lambda: add_task(session, prefix)
+    with screen("lumenna-tasks"):
+        live_menu(
+            session, build, lambda: state["heading"],
+            main=lambda row: show(session, row),
+            context=task_commands(session),
+            app=[
+                Command("Add a task", lambda _: add_task(session, prefix), key="a"),
+                Command("Search or filter", lambda _: query_tasks(session), key="/"),
+                *undo_commands(session),
+            ],
+            empty="No tasks here. Press a to add one.",
+            app_title=f"{title} menu",
         )
-        tree = Tree(result.get("rows", []))
-        return [add] + tree.items(
-            lambda row: task_actions(session, row),
-            on_delete=lambda row: session.write("task.rm", id=row["id"]),
-        )
-
-    live_menu(session, build, lambda: state["heading"])
     return ""
 
 
+def query_tasks(session: Session) -> str:
+    """A filter typed now rather than saved; `search: words` looks through titles and notes."""
+    query = assisted_input(session, "Filter, or search: and words", "filter", history_key="lumenna-filter")
+    if not query:
+        return ""
+    return task_list(session, query, "Query")
+
+
+def task_commands(session: Session) -> list[Command]:
+    """What can be done to a task, on its context menu and by its keys."""
+    def detail(row):
+        return session.call("task.show", id=row["id"])
+
+    def done(row):
+        return row.get("checked") is True
+
+    def stop_waiting(row):
+        depends = detail(row).get("depends", [])
+        if not depends:
+            return "It waits for nothing"
+        other = choose({d["id"]: d["title"] for d in depends}, "Stop waiting for")
+        return session.write("task.depend.rm", id=row["id"], on=other) if other else ""
+
+    def wait_for(row):
+        task = detail(row)
+        waiting = {row["id"]} | {d["id"] for d in task.get("depends", [])}
+        other = pick_task(session, "Wait for", excluding=waiting)
+        return session.write("task.depend.add", id=row["id"], on=other) if other else ""
+
+    def subtask(row):
+        parent = pick_task(session, "Make it a subtask of", excluding={row["id"]})
+        return session.write("task.move", id=row["id"], parent=parent) if parent else ""
+
+    return [
+        Command(
+            lambda row: "Mark not done" if done(row) else "Complete",
+            lambda row: session.write("task.undone" if done(row) else "task.done", id=row["id"]),
+            key="c",
+        ),
+        Command("Edit", lambda row: edit_task(session, detail(row)), key="e"),
+        Command("Details", lambda row: show(session, row)),
+        Command("Put it in a block", lambda row: assign_task(session, row["id"]), key="b"),
+        Command("Move to a project", lambda row: move_to_project(session, row["id"]), key="m"),
+        Command("Make it a subtask of another task", subtask, key="s"),
+        Command(
+            "Move it to the top level",
+            lambda row: session.write("task.move", id=row["id"], top=True),
+            key="t",
+            applies=lambda row: row.get("depth", 0) > 0,
+        ),
+        Command("Wait for another task", wait_for, key="w"),
+        Command("Stop waiting for another task", stop_waiting, key="n"),
+        Command("Delete", lambda row: session.write("task.rm", id=row["id"]), deletes=True),
+    ]
+
+
+def show(session: Session, row: dict) -> str:
+    """A task's details, as lines to pan through."""
+    try:
+        return task_details(session.call("task.show", id=row["id"]))
+    except LumennaError as error:
+        return error.message
+
+
 def trash(session: Session) -> str:
-    """Deleted tasks: put one back, or erase it for good (§3.2, §9)."""
+    """Deleted tasks: Enter puts one back; erasing it for good is its context menu's, or the
+    delete keys' (§3.2, §9)."""
     state = {"heading": "Trash"}
 
     def build():
         result = session.call("task.list", query="deleted")
-        rows = result.get("rows", [])
         state["heading"] = f"Trash, {result.get('announcement', '')}"
-        if not rows:
-            return "The trash is empty"
-        return Tree(rows).items(
-            lambda row: trash_actions(session, row),
-            on_delete=lambda row: erase(session, row),
+        return Tree(result.get("rows", [])).items()
+
+    restore = lambda row: session.write("task.restore", id=row["id"])  # noqa: E731
+    with screen("lumenna-tasks"):
+        live_menu(
+            session, build, lambda: state["heading"],
+            main=restore,
+            context=[
+                Command("Restore", restore, key="r"),
+                Command("Erase for good", lambda row: erase(session, row), deletes=True),
+            ],
+            app=undo_commands(session),
+            empty="The trash is empty.",
+            app_title="Trash menu",
         )
-
-    live_menu(session, build, lambda: state["heading"])
-    return ""
-
-
-def trash_actions(session: Session, row: dict) -> str:
-    choice = choose({"restore": "Restore", "erase": "Erase for good"}, describe(row))
-    if choice == "restore":
-        return session.write("task.restore", id=row["id"])
-    if choice == "erase":
-        return erase(session, row)
     return ""
 
 
@@ -97,61 +172,6 @@ def erase(session: Session, row: dict) -> str:
 # ---------------------------------------------------------------------------------------
 # One task
 # ---------------------------------------------------------------------------------------
-
-
-def task_actions(session: Session, row: dict) -> str:
-    """What can be done to one task, read fresh so the offer matches what it is now."""
-    identifier = row["id"]
-    try:
-        task = session.call("task.show", id=identifier)
-    except LumennaError as error:
-        return error.message
-    done = "completed" in task.get("state", [])
-    actions = {
-        "done": "Mark not done" if done else "Complete",
-        "edit": "Edit",
-        "show": "Details",
-        "assign": "Put it in a block",
-        "project": "Move to a project",
-        "under": "Make it a subtask of another task",
-    }
-    if task.get("parent"):
-        actions["top"] = "Move it to the top level"
-    actions["wait"] = "Wait for another task"
-    for other in task.get("depends", []):
-        actions[f"unwait:{other['id']}"] = f"Stop waiting for {other['title']}"
-    actions["rm"] = "Delete"
-
-    choice = choose(actions, describe(row))
-    if choice is None:
-        return ""
-    try:
-        if choice == "done":
-            return session.write("task.undone" if done else "task.done", id=identifier)
-        if choice == "edit":
-            return edit_task(session, task)
-        if choice == "show":
-            return task_details(task)
-        if choice == "assign":
-            return assign_task(session, identifier)
-        if choice == "project":
-            return move_to_project(session, identifier)
-        if choice == "under":
-            parent = pick_task(session, "Make it a subtask of", excluding={identifier})
-            return session.write("task.move", id=identifier, parent=parent) if parent else ""
-        if choice == "top":
-            return session.write("task.move", id=identifier, top=True)
-        if choice == "wait":
-            waiting = {identifier} | {d["id"] for d in task.get("depends", [])}
-            other = pick_task(session, "Wait for", excluding=waiting)
-            return session.write("task.depend.add", id=identifier, on=other) if other else ""
-        if choice.startswith("unwait:"):
-            return session.write("task.depend.rm", id=identifier, on=choice.split(":", 1)[1])
-        if choice == "rm":
-            return session.write("task.rm", id=identifier)
-    except LumennaError as error:
-        return error.message
-    return ""
 
 
 def task_details(task: dict) -> str:
@@ -316,7 +336,7 @@ def assign_task(session: Session, identifier: str) -> str:
     import day  # here, since day imports this module
 
     block = next(b for b in blocks if b["id"] == chosen)
-    return day.assign(session, identifier, block, plan["date"])
+    return day.assign_to(session, identifier, block, plan["date"])
 
 
 # ---------------------------------------------------------------------------------------

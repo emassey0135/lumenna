@@ -15,7 +15,8 @@ from pathlib import Path
 from BTSpeak import dialogs
 
 from client import LumennaError
-from session import REFRESH, Session, ask, choose, confirm, live_menu, spoken
+from session import REFRESH, Command, Session, ask, choose, confirm, live_menu, row_item, screen, spoken
+from tasks import undo_commands
 
 
 WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
@@ -45,12 +46,13 @@ BACKUPS = ["backup-every", "backup-keep", "backup-dir"]
 def settings(session: Session) -> str:
     """A short list of pages, as on the phone."""
     items = [
-        dialogs.DynamicMenuItem(title="Planning", action=lambda: setting_page(session, "Planning", PLANNING)),
-        dialogs.DynamicMenuItem(title="Devices and sync", action=lambda: devices(session)),
-        dialogs.DynamicMenuItem(title="Backups, on this device only", action=lambda: backups(session)),
-        dialogs.DynamicMenuItem(title="Export and import", action=lambda: export_import(session)),
+        dialogs.DynamicMenuItem(title="Planning", shortcut="p", action=lambda: setting_page(session, "Planning", PLANNING)),
+        dialogs.DynamicMenuItem(title="Devices and sync", shortcut="d", action=lambda: devices(session)),
+        dialogs.DynamicMenuItem(title="Backups, on this device only", shortcut="b", action=lambda: backups(session)),
+        dialogs.DynamicMenuItem(title="Export and import", shortcut="e", action=lambda: export_import(session)),
     ]
-    dialogs.dynamic_menu(items, title="Settings")
+    with screen("lumenna-settings"):
+        dialogs.dynamic_menu(items, title="Settings")
     return ""
 
 
@@ -67,8 +69,9 @@ def setting_items(session: Session, keys: list[str]) -> list:
         name, options = SETTINGS.get(key, (key, None))
         shown = options.get(values[key], values[key]) if options else values[key]
         items.append(
-            dialogs.DynamicMenuItem(
-                title=f"{name}, {shown}",
+            row_item(
+                {"key": key, "value": values[key], "title": name},
+                f"{name}, {shown}",
                 action=(lambda key=key: change_setting(session, key, values[key])),
             )
         )
@@ -76,7 +79,12 @@ def setting_items(session: Session, keys: list[str]) -> list:
 
 
 def setting_page(session: Session, title: str, keys: list[str]) -> str:
-    live_menu(session, lambda: setting_items(session, keys), title)
+    """Settings, one per row: Enter changes one."""
+    with screen("lumenna-settings"):
+        live_menu(
+            session, lambda: setting_items(session, keys), title,
+            app=undo_commands(session), app_title=f"{title} menu",
+        )
     return ""
 
 
@@ -150,20 +158,28 @@ def devices(session: Session) -> str:
             state["heading"] += (
                 ". To keep in sync in the background, run lum daemon install once from a shell"
             )
-        items = [
-            dialogs.DynamicMenuItem(title="Sync now", action=lambda: sync_now(session)),
-            dialogs.DynamicMenuItem(title="Pair a device", action=lambda: pair(session)),
-        ]
-        for device in status.get("devices", []):
-            items.append(
-                dialogs.DynamicMenuItem(
-                    title=device_line(device),
-                    action=(lambda device=device: device_actions(session, device)),
-                )
-            )
-        return items
+        return [row_item(device, device_line(device), navigation_title=device["name"]) for device in status.get("devices", [])]
 
-    live_menu(session, build, lambda: state["heading"])
+    with screen("lumenna-settings"):
+        live_menu(
+            session, build, lambda: state["heading"],
+            main=lambda device: rename_device(session, device),
+            context=[
+                Command("Rename", lambda device: rename_device(session, device), key="r"),
+                Command(
+                    "Stop syncing with it",
+                    lambda device: unpair_device(session, device),
+                    applies=lambda device: not device.get("this_device"),
+                    deletes=True,
+                ),
+            ],
+            app=[
+                Command("Sync now", lambda _: sync_now(session), key="s"),
+                Command("Pair a device", lambda _: pair(session), key="p"),
+            ],
+            empty="Not paired with any other device yet. Press p to pair one.",
+            app_title="Devices menu",
+        )
     return ""
 
 
@@ -189,24 +205,20 @@ def sync_now(session: Session) -> str:
     return ". ".join(lines)
 
 
-def device_actions(session: Session, device: dict) -> str:
-    actions = {"rename": "Rename"}
-    if not device.get("this_device"):
-        actions["unpair"] = "Stop syncing with it"
-    choice = choose(actions, device["name"])
-    if choice == "rename":
-        name = ask(f"New name for {device['name']}", device["name"])
-        if not name or name == device["name"]:
-            return ""
-        return session.write("device.rename", device=device["node_id"], name=name)
-    if choice == "unpair":
-        if not confirm(
-            f"Stop syncing with {device['name']}? It keeps what it already has: this is for a "
-            "device you replaced, not one that was stolen."
-        ):
-            return ""
-        return session.write("device.unpair", device=device["node_id"])
-    return ""
+def rename_device(session: Session, device: dict) -> str:
+    name = ask(f"New name for {device['name']}", device["name"])
+    if not name or name == device["name"]:
+        return ""
+    return session.write("device.rename", device=device["node_id"], name=name)
+
+
+def unpair_device(session: Session, device: dict) -> str:
+    if not confirm(
+        f"Stop syncing with {device['name']}? It keeps what it already has: this is for a "
+        "device you replaced, not one that was stolen."
+    ):
+        return ""
+    return session.write("device.unpair", device=device["node_id"])
 
 
 def pair(session: Session) -> str:
@@ -309,18 +321,18 @@ def pair(session: Session) -> str:
 def backups(session: Session) -> str:
     """This device's backups: how often, how many, where — and one now, or one merged in."""
 
-    def build():
-        return [
-            dialogs.DynamicMenuItem(title="Back up now", action=lambda: session.write("backup")),
-            dialogs.DynamicMenuItem(title="Restore from a backup", action=lambda: restore(session)),
-        ] + setting_items(session, BACKUPS)
-
-    live_menu(
-        session,
-        build,
-        "Backups. A backup holds your whole history, including every task you deleted, so the "
-        "store can be rebuilt from it. It stays on this device",
-    )
+    with screen("lumenna-settings"):
+        live_menu(
+            session,
+            lambda: setting_items(session, BACKUPS),
+            "Backups. A backup holds your whole history, including every task you deleted, so the "
+            "store can be rebuilt from it. It stays on this device",
+            app=[
+                Command("Back up now", lambda _: session.write("backup"), key="b"),
+                Command("Restore from a backup", lambda _: restore(session), key="r"),
+            ],
+            app_title="Backups menu",
+        )
     return ""
 
 

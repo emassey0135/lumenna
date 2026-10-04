@@ -9,12 +9,18 @@ The menus themselves live beside this file: `tasks.py`, `day.py` for the planner
 `organise.py` for projects, labels and filters, and `preferences.py` for settings, devices
 and data. They are laid out as the phone's are, so the two can be described in one breath.
 
-Three device conventions this follows rather than invents:
+The device's conventions, followed rather than invented:
 
+- **Enter does a row's main thing**: shows a project's tasks, a task's details, edits a block.
+- **M-Chord with Dot 7 is the row's context menu**, with everything else that can be done to
+  it; **M-Chord is the screen's main menu**: adding, moving between days, undo and redo.
+  Both are `Command`s (`session.py`), and each command's lowercase letter does the same from
+  the list — the same letter for the same thing on every screen. A capital, Dot 7 with the
+  letter, still moves by first letter.
+- **The delete keys delete.** Control-D and the D chord act on the row under the cursor.
+- **H-Chord is help about the screen in front**: the app's own topics, in `help/`.
 - **Left and right fold a branch.** They are already bound to left-arrow/Dot7 and
   right-arrow/Dot8, so a tree needs no key handling of its own (§16.11).
-- **The delete keys delete.** Control-D and the D chord act on the row under the cursor, as
-  they do in the device's own lists; Enter offers everything else.
 - **Nothing is announced twice.** A menu action's return value is spoken by the menu itself,
   so an action that has something to say returns it rather than opening a dialog.
 """
@@ -86,8 +92,8 @@ def main_menu(session: Session) -> None:
             item(title="Blocks", shortcut="b", action=lambda: day.blocks(session)),
             item(title="Trash", shortcut="x", action=lambda: tasks.trash(session)),
             item(title="Undo", shortcut="u", action=lambda: session.write("undo")),
-            item(title="Redo", shortcut="r", action=lambda: session.write("redo")),
-            item(title="Sync now", shortcut="y", action=lambda: preferences.sync_now(session)),
+            item(title="Redo", shortcut="y", action=lambda: session.write("redo")),
+            item(title="Sync now", shortcut="n", action=lambda: preferences.sync_now(session)),
             item(title="Settings", shortcut="s", action=lambda: preferences.settings(session)),
         ],
         title="Lumenna",
