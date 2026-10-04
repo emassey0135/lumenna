@@ -788,3 +788,66 @@ fn undo_keeps_what_has_changed_since_and_says_so() {
     assert!(listed.contains("review PR 42"), "{listed}");
     assert!(!listed.contains("priority 1") && !lum.ok(&["task", "list", "p1"]).contains("review"));
 }
+
+// ---------------------------------------------------------------------------------------
+// Sync (§7, §8)
+// ---------------------------------------------------------------------------------------
+
+#[test]
+fn an_unpaired_device_says_so_everywhere() {
+    let lum = Lum::new();
+    assert!(lum.ok(&["device", "list"]).contains("no paired devices"));
+    assert!(lum.ok(&["sync", "status"]).contains("Not paired with any other device yet"));
+    assert!(lum.ok(&["sync", "--local-only"]).contains("not paired with any other yet"));
+    assert!(lum.fails(&["device", "unpair", "phone"]).contains("no paired device called"));
+    assert!(lum.fails(&["pair", "not-a-code"]).contains("is not a pairing code"));
+}
+
+#[cfg(unix)]
+#[test]
+fn the_daemon_serves_the_command_surface_and_takes_sync_requests_on_its_socket() {
+    use std::io::{BufRead, BufReader, Write};
+
+    let lum = Lum::new();
+    let mut daemon = Command::new(env!("CARGO_BIN_EXE_lum"))
+        .args(["sync-daemon", "--local-only"])
+        .env("LUMENNA_PROFILE", lum.path())
+        .env("LUMENNA_BACKUP_DIR", lum.path().join("backups"))
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let socket = lum.path().join("lumenna.sock");
+    for _ in 0..100 {
+        if socket.exists() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    assert!(socket.exists(), "the daemon made its socket");
+
+    // A second daemon on the same profile is refused: one endpoint per device.
+    assert!(lum.fails(&["sync-daemon", "--local-only"]).contains("already running"));
+    // Running, but with nobody to sync with — which is the thing worth saying.
+    assert!(lum.ok(&["sync", "status"]).contains("Not paired with any other device yet"));
+
+    // The same JSON-RPC surface as `lum rpc`, over the socket.
+    let stream = std::os::unix::net::UnixStream::connect(&socket).unwrap();
+    let mut writer = stream.try_clone().unwrap();
+    let mut reader = BufReader::new(stream);
+    writer
+        .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"task.add\",\"params\":{\"text\":\"over the socket\"}}\n")
+        .unwrap();
+    let mut line = String::new();
+    reader.read_line(&mut line).unwrap();
+    assert!(line.contains("\"result\":\"change\""), "{line}");
+    assert!(lum.ok(&["task", "list"]).contains("over the socket"));
+
+    // `lum sync` finds the lock taken and asks the daemon instead of opening a second endpoint.
+    let out = lum.ok(&["sync"]);
+    assert!(out.contains("not paired with any other yet"), "{out}");
+
+    let pid = daemon.id().to_string();
+    Command::new("kill").args(["-TERM", &pid]).status().unwrap();
+    daemon.wait().unwrap();
+    assert!(!socket.exists(), "a daemon stopped by its service manager cleans up its socket");
+}

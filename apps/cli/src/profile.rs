@@ -66,6 +66,19 @@ impl Profile {
         self.rows_addressable = false;
     }
 
+    /// The store's file.
+    #[must_use]
+    pub fn store_path(&self) -> PathBuf {
+        self.directory.join("lumenna.sqlite")
+    }
+
+    /// The socket `lum sync-daemon` serves the command surface on (§8), which the BTSpeak app
+    /// tries before spawning a server of its own.
+    #[must_use]
+    pub fn socket_path(&self) -> PathBuf {
+        self.directory.join("lumenna.sock")
+    }
+
     /// The profile directory.
     #[must_use]
     pub fn directory(&self) -> &Path {

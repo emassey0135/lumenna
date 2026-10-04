@@ -23,7 +23,8 @@ pub mod store;
 pub mod undo;
 mod value;
 
-pub use db::Db;
+pub use automerge::sync::State as SyncState;
+pub use db::{Db, PeerStatus};
 pub use doc::{Doc, DocId, Documents, HydrationReport, Skipped};
 pub use store::{Imports, Restored, Store};
 pub use error::{Result, StoreError};

@@ -27,10 +27,11 @@ short version for orientation.
 crates/core/    domain model, queries, mutations, row projection. No I/O, no Automerge.
 crates/parse/   quick-add and filter parsers, and the completion they share.
 crates/store/   Automerge documents + the SQLite file they live in.
+crates/sync/    Iroh endpoints, the document sync session, and pairing (§7).
 apps/cli/       `lum` — the first target, and a permanent one.
 ```
 
-The rest of §2's layout — `sync`, `ffi`, the GUI apps — does not exist yet. §18's remaining
+The rest of §2's layout — `ffi`, the GUI apps — does not exist yet. §18's remaining
 order: sync, first GUI, the rest.
 
 ### The CLI
@@ -66,6 +67,32 @@ real profile.
   produces one. Only `Rows` and `Plan` write it: a mutation must not renumber what the user
   is working against, or `lum task done 1` twice would mean two different tasks.
 
+### Sync (§7, §8)
+
+`crates/sync`: `session` reconciles every document with Automerge's sync protocol over any
+byte stream; `pairing` is the word comparison; `node` is the device's Iroh endpoint; `invite`
+is the short-lived endpoint a pairing runs on.
+
+- **Membership in `devices` is the trust boundary.** `Node` refuses, in both directions, any
+  key not listed there. The only way in is a pairing whose words were confirmed on both sides
+  (`edit::enroll_devices`, through the undo history).
+- **Pairing never uses the device key.** It runs on a key minted per pairing, so it needs no
+  daemon and no IPC; the device keys are exchanged only after the words are confirmed.
+- **The words** come from the connection's TLS exporter secret plus a commit-then-reveal
+  nonce exchange, three PGP words. Without the commitment, 24 bits could be ground offline.
+- **One endpoint per device**, decided by an advisory lock on `<profile>/sync.lock`. The
+  daemon holds it; `lum sync` takes it for a round or asks the daemon over the socket.
+  The device key lives in the store's `local_state` table and never syncs.
+- **The sync session is lockstep per document**: both sides send one frame (a message, or an
+  empty frame for nothing) then read one; both empty ends the document. Both sides see the
+  same two frames, so both stop together. Sync state is per session, not saved.
+- **A session joining by code does not advertise on mDNS.** Otherwise the waiting session
+  dials it back and two connections each wait for the other to speak.
+- The daemon serves the RPC surface on `<profile>/lumenna.sock` (Unix); a `sync` request
+  there is passed to the daemon's own endpoint through a hook, not dispatched.
+- Device records are inline (`Record::INLINE`): both sides of a pairing write them.
+- Tests use `Network::LocalOnly` with explicit addresses: offline, no outside server.
+
 ### `lum rpc`
 
 The same surface over JSON-RPC on stdio, for clients that cannot link Rust — Emacs (§16.10)
@@ -93,8 +120,8 @@ socket.
   process per keystroke is not an answer. They are why the BTSpeak app speaks a protocol
   rather than shelling out.
 
-**Not built yet:** sync, pairing, reminders, hooks, auto-scheduling — all of which depend
-on crates that do not exist.
+**Not built yet:** the encrypted store and its account key (§8), `lum daemon install`,
+wake-up push, Windows named pipes, reminders, hooks, auto-scheduling.
 
 ### The BTSpeak app
 

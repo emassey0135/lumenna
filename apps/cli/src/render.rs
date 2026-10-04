@@ -65,6 +65,31 @@ fn text(response: &Response) {
         | Outcome::Import(_) => println!("{}", response.announcement),
         // An export to standard output is the payload itself, exactly, so it can be piped
         // or redirected into a file that is nothing but the export.
+        Outcome::Paired(_) => println!("{}", response.announcement),
+        Outcome::Synced(report) => {
+            println!("{}", response.announcement);
+            for peer in &report.peers {
+                match &peer.error {
+                    None if peer.changed.is_empty() => {
+                        println!("{}: synced, nothing new from it", peer.name);
+                    }
+                    None => println!("{}: brought in {}", peer.name, peer.changed.join(", ")),
+                    Some(error) => println!("{}: not synced, {error}", peer.name),
+                }
+            }
+        }
+        Outcome::SyncStatus(status) => {
+            println!("{}", response.announcement);
+            for device in &status.devices {
+                println!("{}", device_line(device));
+            }
+        }
+        Outcome::Devices(list) => {
+            println!("{}", response.announcement);
+            for device in &list.devices {
+                println!("{}", device_line(device));
+            }
+        }
         Outcome::Export(exported) => match &exported.content {
             Some(content) => print!("{content}"),
             None => println!("{}", response.announcement),
@@ -178,6 +203,39 @@ fn day(plan: &crate::api::Plan) {
 }
 
 /// A time of day without its seconds, which are noise in every view this app has.
+/// One device as a sentence: what it is, and how syncing with it last went. Words rather
+/// than a symbol, because §9 is explicit that a glyph communicates nothing.
+fn device_line(device: &crate::api::DeviceView) -> String {
+    let mut line = format!("{}, {}", device.name, device.platform);
+    if device.this_device {
+        line.push_str(", this device");
+        return line;
+    }
+    let ago = |t: &str| t.parse::<jiff::Timestamp>().map_or_else(|_| t.to_owned(), relative);
+    match (&device.last_success, &device.last_error, &device.last_attempt) {
+        (_, Some(error), Some(attempt)) => {
+            line.push_str(&format!(", last attempt {} failed: {error}", ago(attempt)));
+            if let Some(success) = &device.last_success {
+                line.push_str(&format!("; last synced {}", ago(success)));
+            }
+        }
+        (Some(success), _, _) => line.push_str(&format!(", last synced {}", ago(success))),
+        _ => line.push_str(", not synced yet"),
+    }
+    line
+}
+
+/// "just now", "5 minutes ago", "3 hours ago", "2 days ago".
+fn relative(then: jiff::Timestamp) -> String {
+    let seconds = jiff::Timestamp::now().duration_since(then).as_secs().max(0);
+    match seconds {
+        0..60 => "just now".to_owned(),
+        60..3600 => format!("{} ago", count_line((seconds / 60) as usize, "minute")),
+        3600..86_400 => format!("{} ago", count_line((seconds / 3600) as usize, "hour")),
+        _ => format!("{} ago", count_line((seconds / 86_400) as usize, "day")),
+    }
+}
+
 #[must_use]
 pub fn time_text(time: jiff::civil::Time) -> String {
     format!("{:02}:{:02}", time.hour(), time.minute())

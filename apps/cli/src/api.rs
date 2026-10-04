@@ -161,6 +161,14 @@ pub enum Outcome {
     Export(Exported),
     /// An export was read in.
     Import(ImportDone),
+    /// A pairing finished (§7).
+    Paired(PairedWith),
+    /// A sync round with every paired device.
+    Synced(SyncReport),
+    /// How sync is going (§9).
+    SyncStatus(SyncStatus),
+    /// The paired devices.
+    Devices(DeviceList),
 }
 
 // ---------------------------------------------------------------------------------------
@@ -206,6 +214,9 @@ pub struct Affected {
     /// Assignments.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub assignments: Vec<String>,
+    /// Devices paired, renamed or unpaired.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub devices: Vec<String>,
     /// Whether the settings singleton moved.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub settings: bool,
@@ -250,6 +261,10 @@ impl Affected {
                     push(&mut affected.blocks, None, named.map(|e| e.series_id));
                 }
                 CoreChange::Settings { .. } => affected.settings = true,
+                CoreChange::Device(transition) => {
+                    let named = transition.after.as_ref().or(transition.before.as_ref());
+                    push(&mut affected.devices, None, named.map(|d| d.node_id));
+                }
                 CoreChange::Reminder(_) | CoreChange::Ack(_) => {}
             }
         }
@@ -265,6 +280,7 @@ impl Affected {
             && self.filters.is_empty()
             && self.blocks.is_empty()
             && self.assignments.is_empty()
+            && self.devices.is_empty()
             && !self.settings
     }
 }
@@ -853,4 +869,85 @@ pub struct ImportDone {
     pub unchanged: usize,
     /// Assignments left out because their block was nowhere to be found.
     pub skipped: usize,
+}
+
+// ---------------------------------------------------------------------------------------
+// Sync (§7, §9)
+// ---------------------------------------------------------------------------------------
+
+/// The device a pairing joined.
+#[derive(Debug, Serialize)]
+pub struct PairedWith {
+    /// What it is called.
+    pub name: String,
+    /// What it runs.
+    pub platform: String,
+    /// Its device key.
+    pub node_id: String,
+}
+
+/// How one device went in a sync round.
+#[derive(Debug, Default, Serialize, serde::Deserialize)]
+pub struct PeerSync {
+    /// What it is called.
+    pub name: String,
+    /// Its device key.
+    pub node_id: String,
+    /// Whether the sync completed.
+    pub synced: bool,
+    /// The documents that changed on this side.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub changed: Vec<String>,
+    /// Why it did not complete.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// A sync round.
+#[derive(Debug, Serialize)]
+pub struct SyncReport {
+    /// Each paired device, and how it went.
+    pub peers: Vec<PeerSync>,
+}
+
+/// One paired device, with how syncing with it last went.
+#[derive(Debug, Serialize)]
+pub struct DeviceView {
+    /// What it is called.
+    pub name: String,
+    /// What it runs.
+    pub platform: String,
+    /// Its device key.
+    pub node_id: String,
+    /// Whether it is the device answering.
+    pub this_device: bool,
+    /// When it was paired.
+    pub paired_at: String,
+    /// When this device last tried to sync with it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_attempt: Option<String>,
+    /// When that last worked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_success: Option<String>,
+    /// What went wrong, if the last attempt failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+}
+
+/// §9's `sync_status()`.
+#[derive(Debug, Serialize)]
+pub struct SyncStatus {
+    /// Whether a process on this device is holding the endpoint — the daemon, usually.
+    pub running: bool,
+    /// This device's key.
+    pub this_device: String,
+    /// Every paired device, this one first.
+    pub devices: Vec<DeviceView>,
+}
+
+/// The paired devices.
+#[derive(Debug, Serialize)]
+pub struct DeviceList {
+    /// This one first, then by name.
+    pub devices: Vec<DeviceView>,
 }

@@ -1671,21 +1671,38 @@ when. State that, because this product's audience is exactly the audience that c
 
 ### Pairing without a GUI
 
-The daemon owns the endpoint, so pairing routes through it when it is running:
+**Pairing runs on an endpoint of its own, not the device's** — so it never has to route
+through the daemon at all. Each `lum pair` opens a short-lived endpoint under a key minted for
+that one pairing. The words authenticate that connection; only once they are confirmed on both
+sides does each device say which device key it is, and those keys go into `devices`. Two
+things follow:
+
+- **The daemon needs no prompt.** It holds the device endpoint and keeps syncing, headless,
+  while the person pairs from a terminal beside it. Nothing has to carry words and a yes/no
+  between a headless process and a terminal.
+- **Trust is unchanged.** A device key enters `devices` only by being stated over a channel a
+  person confirmed — never by being seen on the network.
 
 ```
-lum pair                 # discover on this network, or await an incoming request
-lum pair <node-id>       # dial a specific peer
-lum pair --id            # print this device's NodeId, to be entered elsewhere
-lum store add <url>      # enrol against an encrypted store, §7 flow 2
-lum daemon status        # sync_status() (§9) over IPC
+lum pair                 # on both devices, on one network: they find each other by mDNS
+lum pair <code>          # off-network: dial the code the other device's `lum pair` printed
+lum sync                 # one round now; asks the daemon to, if one is running
+lum sync status          # sync_status() (§9), as sentences
+lum sync-daemon          # hold the endpoint, keep syncing, serve the socket
+lum device list|rename|unpair
+lum store add <url>      # enrol against an encrypted store, §7 flow 2 (not built yet)
 ```
 
-Each prints the comparison words and asks yes or no — the same confirmation every other
-platform shows, which is why a headless peer needs no special mechanism (§7).
+Each pairing prints the comparison words and asks yes or no — the same confirmation every
+other platform shows, which is why a headless peer needs no special mechanism (§7).
 
-Each command talks to the daemon if the socket answers and acts locally otherwise. Because
-identity is per-store, both paths pair the *same* device.
+The code a person types off-network is the pairing session's key, not the device's: good for
+one pairing, then gone. That is still *one identifier, never two*, and the words still close
+the other direction.
+
+`--local-only` on any of these binds with no relay and no lookup service: the local network
+and nothing outside the building. Useful where the n0 infrastructure is unwelcome, and what
+the tests use.
 
 ### The read model is optional for v1
 

@@ -221,6 +221,33 @@ impl Doc {
         Ok(true)
     }
 
+    /// The next Automerge sync message for a peer, if there is anything to say (§7).
+    ///
+    /// `state` is what this side knows of the peer's view of this document; one is kept per
+    /// peer and per document for the length of a sync session.
+    pub fn sync_message(&mut self, state: &mut automerge::sync::State) -> Option<Vec<u8>> {
+        use automerge::sync::SyncDoc;
+        self.doc.sync().generate_sync_message(state).map(automerge::sync::Message::encode)
+    }
+
+    /// Takes in a peer's sync message.
+    ///
+    /// # Errors
+    ///
+    /// If the bytes are not a sync message, or carry changes Automerge refuses.
+    pub fn receive_sync_message(
+        &mut self,
+        state: &mut automerge::sync::State,
+        bytes: &[u8],
+    ) -> Result<()> {
+        use automerge::sync::SyncDoc;
+        let message = automerge::sync::Message::decode(bytes).map_err(|e| {
+            StoreError::Unreadable(format!("a peer sent a sync message that does not read: {e}"))
+        })?;
+        self.doc.sync().receive_sync_message(state, message)?;
+        Ok(())
+    }
+
     /// Whether the document holds a change.
     pub fn has_change(&mut self, hash: &ChangeHash) -> bool {
         self.doc.get_change_by_hash(hash).is_some()
@@ -504,6 +531,15 @@ impl Documents {
     /// The `devices` document.
     pub fn devices(&mut self) -> &mut Doc {
         &mut self.devices
+    }
+
+    /// Any document by name, creating a year's from its genesis if it is not here yet.
+    pub fn get_mut(&mut self, id: DocId) -> &mut Doc {
+        match id {
+            DocId::Core => &mut self.core,
+            DocId::Devices => &mut self.devices,
+            DocId::Blocks(year) => self.blocks(year),
+        }
     }
 
     /// One year of blocks, opening an empty one if that year is not loaded.
@@ -935,6 +971,11 @@ impl Documents {
                     (None, None) => Ok(()),
                 }
             }
+            Change::Device(t) => match (&t.before, &t.after) {
+                (before, Some(after)) => self.put_device(after, before.as_ref()),
+                (Some(before), None) => self.purge_device(&before.node_id),
+                (None, None) => Ok(()),
+            },
             Change::Settings { before, after } => self.put_settings(after, Some(before)),
         }
     }

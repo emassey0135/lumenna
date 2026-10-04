@@ -132,6 +132,8 @@ fn rebase_change(
             k,
         )
         .map(|t| Change::Ack(Box::new(t))),
+        Change::Device(t) => step(t, d, |r| now.devices.get(&r.node_id), "device", k)
+            .map(|t| Change::Device(Box::new(t))),
         Change::Assignment { year, transition } => {
             step(transition, d, |r| now.assignments.get(&r.id), "sitting", k)
                 .map(|t| Change::Assignment { year: *year, transition: Box::new(t) })

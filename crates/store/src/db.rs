@@ -91,6 +91,22 @@ impl Db {
                  data   BLOB NOT NULL
              );
 
+             -- Things about this device that must never leave it (§3.12): its secret key,
+             -- above all. Sync and backups carry Automerge documents, never this table.
+             CREATE TABLE IF NOT EXISTS local_state (
+                 key   TEXT PRIMARY KEY,
+                 value BLOB NOT NULL
+             );
+
+             -- How syncing with each peer last went, for `lum sync status` (§9). Local:
+             -- another device's view of the network is not this one's.
+             CREATE TABLE IF NOT EXISTS peers (
+                 node_id      TEXT PRIMARY KEY,
+                 last_attempt INTEGER,
+                 last_success INTEGER,
+                 last_error   TEXT
+             );
+
              -- This device's undo history (§9). Local-only (§3.12): sync and backups carry
              -- Automerge documents, never this table. `undone` marks the redo side.
              CREATE TABLE IF NOT EXISTS undo (
@@ -467,5 +483,93 @@ impl Db {
             Ok(usize::try_from(n).unwrap_or(0))
         };
         Ok((count(false)?, count(true)?))
+    }
+}
+
+/// How syncing with one peer last went.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PeerStatus {
+    /// The peer, as hex.
+    pub node_id: String,
+    /// When this device last tried, in milliseconds since the epoch.
+    pub last_attempt: Option<i64>,
+    /// When it last succeeded.
+    pub last_success: Option<i64>,
+    /// What went wrong the last time it failed, if the last attempt failed.
+    pub last_error: Option<String>,
+}
+
+impl Db {
+    /// A value from this device's local state, if set.
+    ///
+    /// # Errors
+    ///
+    /// If the read fails.
+    pub fn local_value(&self, key: &str) -> Result<Option<Vec<u8>>> {
+        Ok(self
+            .conn
+            .query_row("SELECT value FROM local_state WHERE key = ?1", params![key], |r| r.get(0))
+            .optional()?)
+    }
+
+    /// Sets a local value unless one is already there, and returns whichever is.
+    ///
+    /// The race this closes is two processes on a fresh profile each minting a device key:
+    /// whichever writes first wins, and the other reads the winner's back, so both are the
+    /// same device (§8: identity is per store, not per process).
+    ///
+    /// # Errors
+    ///
+    /// If the write fails.
+    pub fn local_value_or_insert(&mut self, key: &str, value: &[u8]) -> Result<Vec<u8>> {
+        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute(
+            "INSERT OR IGNORE INTO local_state (key, value) VALUES (?1, ?2)",
+            params![key, value],
+        )?;
+        let stored: Vec<u8> =
+            tx.query_row("SELECT value FROM local_state WHERE key = ?1", params![key], |r| {
+                r.get(0)
+            })?;
+        tx.commit()?;
+        Ok(stored)
+    }
+
+    /// Records one attempt to sync with a peer.
+    ///
+    /// # Errors
+    ///
+    /// If the write fails.
+    pub fn record_peer(&mut self, node_id: &str, at_ms: i64, error: Option<&str>) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO peers (node_id, last_attempt, last_success, last_error)
+                 VALUES (?1, ?2, CASE WHEN ?3 IS NULL THEN ?2 END, ?3)
+             ON CONFLICT (node_id) DO UPDATE SET
+                 last_attempt = excluded.last_attempt,
+                 last_success = coalesce(excluded.last_success, peers.last_success),
+                 last_error = excluded.last_error",
+            params![node_id, at_ms, error],
+        )?;
+        Ok(())
+    }
+
+    /// Every peer this device has tried to sync with.
+    ///
+    /// # Errors
+    ///
+    /// If the read fails.
+    pub fn peers(&self) -> Result<Vec<PeerStatus>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT node_id, last_attempt, last_success, last_error FROM peers ORDER BY node_id",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(PeerStatus {
+                node_id: row.get(0)?,
+                last_attempt: row.get(1)?,
+                last_success: row.get(2)?,
+                last_error: row.get(3)?,
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 }
