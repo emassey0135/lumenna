@@ -163,31 +163,29 @@ class Tree:
             line = f"level {depth + 1}, {line}"
         return line
 
-    def items(self, on_select, on_delete=None) -> list[dialogs.DynamicMenuItem]:
-        """Menu items for every row, foldable where a row has children.
+    def items(self, on_select=None) -> list[dialogs.DynamicMenuItem]:
+        """Menu items for every row, foldable where a row has children, each carrying its row.
 
         `left` and `right` are already bound to left-arrow/Dot7 and right-arrow/Dot8 on this
         device, so folding needs no key handling of its own (§16.11). `+` and `-` are offered
-        as well, because that is what a tree view is expected to answer to. `on_delete`, when
-        given, is what the device's delete keys do to a row — control-D and the D chord.
+        as well, because that is what a tree view is expected to answer to. First-letter
+        navigation goes by the title alone, so a level marker in front of it does not hide it.
         """
         items = []
         for index, row in enumerate(self.rows):
-            items.append(
-                dialogs.DynamicMenuItem(
-                    title=(lambda index=index: self.title_for(index)),
-                    action=(lambda index=index: on_select(self.rows[index])),
-                    left=(lambda index=index: self.collapse(index)),
-                    right=(lambda index=index: self.expand(index)),
-                    dependency=(lambda index=index: self.visible(index)),
-                    hotkeys={
-                        "+": (lambda index=index: self.expand(index)),
-                        "-": (lambda index=index: self.collapse(index)),
-                    },
-                    hint=row.get("hint"),
-                    delete=(
-                        (lambda index=index: on_delete(self.rows[index])) if on_delete else None
-                    ),
-                )
+            item = dialogs.DynamicMenuItem(
+                title=(lambda index=index: self.title_for(index)),
+                action=(lambda index=index: on_select(self.rows[index])) if on_select else None,
+                left=(lambda index=index: self.collapse(index)),
+                right=(lambda index=index: self.expand(index)),
+                dependency=(lambda index=index: self.visible(index)),
+                hotkeys={
+                    "+": (lambda index=index: self.expand(index)),
+                    "-": (lambda index=index: self.collapse(index)),
+                },
+                hint=row.get("hint"),
+                navigation_title=row.get("title", ""),
             )
+            item.row = row
+            items.append(item)
         return items

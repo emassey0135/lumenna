@@ -10,7 +10,7 @@ from __future__ import annotations
 from BTSpeak import dialogs
 
 from rows import Tree, describe
-from session import Session, ask, choose, confirm, live_menu
+from session import Command, Session, ask, choose, confirm, live_menu, row_item, screen
 import tasks
 
 
@@ -24,7 +24,8 @@ def sigil(mark: str, name: str) -> str:
 
 
 def projects(session: Session) -> str:
-    """The project tree, foldable, with weights and what is archived."""
+    """The project tree, foldable, with weights and what is archived. Enter shows a project's
+    tasks; the rest is on its context menu."""
     state = {"heading": "Projects", "names": []}
 
     def build():
@@ -32,58 +33,24 @@ def projects(session: Session) -> str:
         rows = listing.get("rows", [])
         state["heading"] = f"Projects, {listing.get('announcement', '')}"
         state["names"] = [row["title"] for row in rows]
-        add = dialogs.DynamicMenuItem(title="Add a project", action=lambda: add_project(session))
-        return [add] + Tree(rows).items(
-            lambda row: project_actions(session, row, state["names"]),
-            on_delete=lambda row: delete_project(session, row["title"]),
-        )
+        return Tree(rows).items()
 
-    live_menu(session, build, lambda: state["heading"])
-    return ""
-
-
-def add_project(session: Session, parent: str | None = None) -> str:
-    name = ask(f"New project under {parent}" if parent else "New project")
-    if name is None:
-        return ""
-    return session.write("project.add", name=name, **({"parent": parent} if parent else {}))
-
-
-def project_actions(session: Session, row: dict, names: list[str]) -> str:
-    name = row["title"]
-    archived = "archived" in row.get("state", [])
-    actions = {
-        "open": "Show its tasks",
-        "add": "Add a task to it",
-        "sub": "Add a project under it",
-        "rename": "Rename",
-        "under": "Move it under another project",
-        "up": "Move up",
-        "down": "Move down",
-        "weight": "Weight",
-        "archive": "Unarchive" if archived else "Archive",
-        "rm": "Delete",
-    }
-    choice = choose(actions, describe(row))
-    if choice == "open":
-        return tasks.task_list(session, sigil("#", name), name, prefix=sigil("#", name) + " ")
-    if choice == "add":
-        return tasks.add_task(session, prefix=sigil("#", name) + " ")
-    if choice == "sub":
-        return add_project(session, parent=name)
-    if choice == "rename":
+    def rename(row):
+        name = row["title"]
         to = ask(f"Rename {name} to", name)
         return session.write("project.rename", name=name, to=to) if to and to != name else ""
-    if choice == "under":
+
+    def move_under(row):
+        name = row["title"]
         options = {"": "The top level"}
-        options.update({other: other for other in names if other != name})
+        options.update({other: other for other in state["names"] if other != name})
         parent = choose(options, f"Move {name} under")
         if parent is None:
             return ""
         return session.write("project.move", name=name, **({"parent": parent} if parent else {}))
-    if choice in ("up", "down"):
-        return session.write("project.order", name=name, direction=choice)
-    if choice == "weight":
+
+    def weigh(row):
+        name = row["title"]
         text = ask(
             f"Weight of {name}: how much this whole area matters now, roughly 0.5 to 2, "
             "or inherit to take the parent's again",
@@ -97,11 +64,41 @@ def project_actions(session: Session, row: dict, names: list[str]) -> str:
             return session.write("project.weight", name=name, value=float(text))
         except ValueError:
             return "A weight is a number, such as 1.5, or inherit"
-    if choice == "archive":
-        return session.write("project.archive", name=name)
-    if choice == "rm":
-        return delete_project(session, name)
+
+    def tasks_of(row):
+        name = row["title"]
+        return tasks.task_list(session, sigil("#", name), name, prefix=sigil("#", name) + " ")
+
+    with screen("lumenna-organise"):
+        live_menu(
+            session, build, lambda: state["heading"],
+            main=tasks_of,
+            context=[
+                Command("Show its tasks", tasks_of),
+                Command("Add a task to it", lambda row: tasks.add_task(session, prefix=sigil("#", row["title"]) + " "), key="t"),
+                Command("Add a project inside it", lambda row: add_project(session, parent=row["title"]), key="n"),
+                Command("Rename", rename, key="r"),
+                Command("Move it under another project", move_under, key="m"),
+                Command("Move up", lambda row: session.write("project.order", name=row["title"], direction="up"), key=","),
+                Command("Move down", lambda row: session.write("project.order", name=row["title"], direction="down"), key="."),
+                Command("Weight", weigh, key="w"),
+                Command(
+                    lambda row: "Unarchive" if "archived" in row.get("state", []) else "Archive",
+                    lambda row: session.write("project.archive", name=row["title"]),
+                ),
+                Command("Delete", lambda row: delete_project(session, row["title"]), deletes=True),
+            ],
+            app=[Command("Add a project", lambda _: add_project(session), key="a"), *tasks.undo_commands(session)],
+            app_title="Projects menu",
+        )
     return ""
+
+
+def add_project(session: Session, parent: str | None = None) -> str:
+    name = ask(f"New project under {parent}" if parent else "New project")
+    if name is None:
+        return ""
+    return session.write("project.add", name=name, **({"parent": parent} if parent else {}))
 
 
 def delete_project(session: Session, name: str) -> str:
@@ -120,7 +117,8 @@ def delete_project(session: Session, name: str) -> str:
 
 
 def labels(session: Session) -> str:
-    """Labels: a first-class axis, with their own list (§16.1)."""
+    """Labels: a first-class axis, with their own list (§16.1). Enter shows the tasks wearing
+    one; the rest is on its context menu."""
     state = {"heading": "Labels", "names": []}
 
     def build():
@@ -128,61 +126,52 @@ def labels(session: Session) -> str:
         rows = listing.get("rows", [])
         state["heading"] = f"Labels, {listing.get('announcement', '')}"
         state["names"] = [row["title"] for row in rows]
-        items = [dialogs.DynamicMenuItem(title="Add a label", action=lambda: add_label(session))]
-        for row in rows:
-            items.append(
-                dialogs.DynamicMenuItem(
-                    title=describe(row),
-                    action=(lambda row=row: label_actions(session, row, state["names"])),
-                    delete=(lambda row=row: delete_label(session, row["title"])),
-                )
-            )
-        return items
+        return [row_item(row, describe(row), navigation_title=row["title"]) for row in rows]
 
-    live_menu(session, build, lambda: state["heading"])
+    def rename(row):
+        name = row["title"]
+        to = ask(f"Rename {name} to", name)
+        return session.write("label.rename", name=name, to=to) if to and to != name else ""
+
+    def merge(row):
+        # For when a typo made a near-duplicate: this one's tasks move to the other.
+        name = row["title"]
+        into = choose({other: other for other in state["names"] if other != name}, f"Merge {name} into")
+        return session.write("label.merge", **{"from": name, "into": into}) if into else ""
+
+    def colour(row):
+        name = row["title"]
+        chosen = ask(f"Colour for {name}: a colour name such as red or teal, or none. The name always shows too")
+        return session.write("label.colour", name=name, colour=chosen) if chosen else ""
+
+    def tasks_of(row):
+        name = row["title"]
+        return tasks.task_list(session, sigil("@", name), name, prefix=sigil("@", name) + " ")
+
+    with screen("lumenna-organise"):
+        live_menu(
+            session, build, lambda: state["heading"],
+            main=tasks_of,
+            context=[
+                Command("Show the tasks wearing it", tasks_of),
+                Command("Add a task wearing it", lambda row: tasks.add_task(session, prefix=sigil("@", row["title"]) + " "), key="t"),
+                Command("Rename", rename, key="r"),
+                Command("Merge it into another label", merge, key="m"),
+                Command("Colour", colour, key="c"),
+                Command("Move up", lambda row: session.write("label.order", name=row["title"], direction="up"), key=","),
+                Command("Move down", lambda row: session.write("label.order", name=row["title"], direction="down"), key="."),
+                Command("Delete", lambda row: delete_label(session, row["title"]), deletes=True),
+            ],
+            app=[Command("Add a label", lambda _: add_label(session), key="a"), *tasks.undo_commands(session)],
+            empty="No labels yet. Press a to add one.",
+            app_title="Labels menu",
+        )
     return ""
 
 
 def add_label(session: Session) -> str:
     name = ask("New label")
     return session.write("label.add", name=name.lstrip("@")) if name else ""
-
-
-def label_actions(session: Session, row: dict, names: list[str]) -> str:
-    name = row["title"]
-    actions = {
-        "open": "Show the tasks wearing it",
-        "add": "Add a task wearing it",
-        "rename": "Rename",
-        "merge": "Merge it into another label",
-        "colour": "Colour",
-        "up": "Move up",
-        "down": "Move down",
-        "rm": "Delete",
-    }
-    choice = choose(actions, describe(row))
-    if choice == "open":
-        return tasks.task_list(session, sigil("@", name), name, prefix=sigil("@", name) + " ")
-    if choice == "add":
-        return tasks.add_task(session, prefix=sigil("@", name) + " ")
-    if choice == "rename":
-        to = ask(f"Rename {name} to", name)
-        return session.write("label.rename", name=name, to=to) if to and to != name else ""
-    if choice == "merge":
-        # For when a typo made a near-duplicate: this one's tasks move to the other.
-        into = choose({other: other for other in names if other != name}, f"Merge {name} into")
-        return session.write("label.merge", **{"from": name, "into": into}) if into else ""
-    if choice == "colour":
-        colour = ask(
-            f"Colour for {name}: a colour name such as red or teal, or none. The name always "
-            "shows too",
-        )
-        return session.write("label.colour", name=name, colour=colour) if colour else ""
-    if choice in ("up", "down"):
-        return session.write("label.order", name=name, direction=choice)
-    if choice == "rm":
-        return delete_label(session, name)
-    return ""
 
 
 def delete_label(session: Session, name: str) -> str:
@@ -197,7 +186,7 @@ def delete_label(session: Session, name: str) -> str:
 
 
 def saved_filters(session: Session) -> str:
-    """Saved filters, and the lists they open.
+    """Saved filters, and the lists they open: Enter opens one.
 
     A filter is stored as text and evaluated when it is used, so one saved as "today" still
     means today next month (§6.2).
@@ -207,30 +196,42 @@ def saved_filters(session: Session) -> str:
     def build():
         listing = session.call("filter.list")
         state["heading"] = f"Filters, {listing.get('announcement', '')}"
-        items = [
-            dialogs.DynamicMenuItem(title="A one-off query", action=lambda: ad_hoc_query(session)),
-            dialogs.DynamicMenuItem(title="Add a filter", action=lambda: add_filter(session)),
+        return [
+            row_item({"title": saved["name"], **saved}, f"{saved['name']}, {saved['query']}", navigation_title=saved["name"])
+            for saved in listing.get("filters", [])
         ]
-        for saved in listing.get("filters", []):
-            items.append(
-                dialogs.DynamicMenuItem(
-                    title=f"{saved['name']}, {saved['query']}",
-                    action=(lambda saved=saved: filter_actions(session, saved)),
-                    delete=(lambda saved=saved: delete_filter(session, saved["name"])),
-                )
-            )
-        return items
 
-    live_menu(session, build, lambda: state["heading"])
+    def rename(row):
+        name = row["name"]
+        to = ask(f"Rename {name} to", name)
+        return session.write("filter.edit", name=name, rename=to) if to and to != name else ""
+
+    def requery(row):
+        query = dialogs.request_input(f"Query for {row['name']}", default_text=row["query"])
+        if not query or query == row["query"]:
+            return ""
+        return session.write("filter.edit", name=row["name"], query=query)
+
+    with screen("lumenna-organise"):
+        live_menu(
+            session, build, lambda: state["heading"],
+            main=lambda row: tasks.task_list(session, row["query"], row["name"]),
+            context=[
+                Command("Rename", rename, key="r"),
+                Command("Change the query", requery, key="q"),
+                Command("Move up", lambda row: session.write("filter.order", name=row["name"], direction="up"), key=","),
+                Command("Move down", lambda row: session.write("filter.order", name=row["name"], direction="down"), key="."),
+                Command("Delete", lambda row: delete_filter(session, row["name"]), deletes=True),
+            ],
+            app=[
+                Command("Add a filter", lambda _: add_filter(session), key="a"),
+                Command("Search or filter now", lambda _: tasks.query_tasks(session), key="/"),
+                *tasks.undo_commands(session),
+            ],
+            empty="No saved filters yet. Press a to add one, or slash to filter now.",
+            app_title="Filters menu",
+        )
     return ""
-
-
-def ad_hoc_query(session: Session) -> str:
-    """A filter typed now rather than saved; `search: words` looks through titles and notes."""
-    query = tasks.assisted_input(session, "Filter", "filter", history_key="lumenna-filter")
-    if not query:
-        return ""
-    return tasks.task_list(session, query, "Query")
 
 
 def add_filter(session: Session) -> str:
@@ -241,34 +242,6 @@ def add_filter(session: Session) -> str:
     if not query:
         return ""
     return session.write("filter.add", name=name, query=query)
-
-
-def filter_actions(session: Session, saved: dict) -> str:
-    name = saved["name"]
-    actions = {
-        "open": "Show its tasks",
-        "rename": "Rename",
-        "query": "Change the query",
-        "up": "Move up",
-        "down": "Move down",
-        "rm": "Delete",
-    }
-    choice = choose(actions, f"{name}, {saved['query']}")
-    if choice == "open":
-        return tasks.task_list(session, saved["query"], name)
-    if choice == "rename":
-        to = ask(f"Rename {name} to", name)
-        return session.write("filter.edit", name=name, rename=to) if to and to != name else ""
-    if choice == "query":
-        query = dialogs.request_input(f"Query for {name}", default_text=saved["query"])
-        if not query or query == saved["query"]:
-            return ""
-        return session.write("filter.edit", name=name, query=query)
-    if choice in ("up", "down"):
-        return session.write("filter.order", name=name, direction=choice)
-    if choice == "rm":
-        return delete_filter(session, name)
-    return ""
 
 
 def delete_filter(session: Session, name: str) -> str:
