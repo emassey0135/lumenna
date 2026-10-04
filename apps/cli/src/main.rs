@@ -28,6 +28,7 @@ mod network;
 mod profile;
 mod render;
 mod rpc;
+mod service;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -174,6 +175,10 @@ pub(crate) enum Command {
     /// Your paired devices.
     #[command(subcommand)]
     Device(DeviceCommand),
+
+    /// Run the sync daemon as a service, so this device stays in sync on its own.
+    #[command(subcommand)]
+    Daemon(DaemonCommand),
 
     /// Undo the last change made on this device.
     ///
@@ -501,6 +506,28 @@ pub(crate) enum BlockCommand {
 }
 
 #[derive(Debug, Subcommand)]
+pub(crate) enum DaemonCommand {
+    /// Install `lum sync-daemon` as a service that starts at login and keeps running.
+    ///
+    /// A user service on Linux, which keeps running after you log out; a system service on a
+    /// BTSpeak, which asks for your password through sudo; a LaunchAgent on macOS; a task at
+    /// logon on Windows. It syncs this profile, whatever its environment says.
+    Install {
+        /// Use the local network only: no relay, no lookup service.
+        #[arg(long)]
+        local_only: bool,
+    },
+    /// Stop the service and remove it.
+    Uninstall,
+    /// Start the installed service.
+    Start,
+    /// Stop the installed service until the next login, or `lum daemon start`.
+    Stop,
+    /// Whether the service is installed, and whether it is running.
+    Status,
+}
+
+#[derive(Debug, Subcommand)]
 pub(crate) enum SyncCommand {
     /// How syncing is going, device by device.
     Status,
@@ -615,6 +642,13 @@ pub(crate) fn dispatch(
         Command::Pair { code, local_only } => network::pair(profile, code.as_deref(), *local_only),
         Command::Sync { what: None, local_only } => network::sync_once(profile, *local_only),
         Command::Sync { what: Some(SyncCommand::Status), .. } => network::status(profile),
+        Command::Daemon(DaemonCommand::Install { local_only }) => {
+            service::install(profile, *local_only)
+        }
+        Command::Daemon(DaemonCommand::Uninstall) => service::uninstall(profile),
+        Command::Daemon(DaemonCommand::Start) => service::start_or_stop(profile, true),
+        Command::Daemon(DaemonCommand::Stop) => service::start_or_stop(profile, false),
+        Command::Daemon(DaemonCommand::Status) => service::status(profile),
         Command::Device(DeviceCommand::List) => network::list_devices(profile),
         Command::Device(DeviceCommand::Rename { device, name }) => {
             network::rename_device(profile, device, name)

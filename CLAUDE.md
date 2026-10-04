@@ -92,6 +92,11 @@ is the short-lived endpoint a pairing runs on.
   there is passed to the daemon's own endpoint through a hook, not dispatched.
 - Device records are inline (`Record::INLINE`): both sides of a pairing write them.
 - Tests use `Network::LocalOnly` with explicit addresses: offline, no outside server.
+- `lum daemon install` (`service.rs`) writes a systemd user unit plus linger on Linux, a
+  system unit through `sudo` on BTSpeak, a LaunchAgent on macOS, a logon task on Windows.
+  The service always gets `--profile`, and a non-default profile gets a tagged name so
+  each profile can have one. Only the macOS path has been run for real; the others' text
+  is unit-tested, their commands are not.
 
 ### `lum rpc`
 
@@ -120,8 +125,8 @@ socket.
   process per keystroke is not an answer. They are why the BTSpeak app speaks a protocol
   rather than shelling out.
 
-**Not built yet:** the encrypted store and its account key (§8), `lum daemon install`,
-wake-up push, Windows named pipes, reminders, hooks, auto-scheduling.
+**Not built yet:** the encrypted store and its account key (§8), wake-up push, Windows
+named pipes, reminders, hooks, auto-scheduling.
 
 ### The BTSpeak app
 

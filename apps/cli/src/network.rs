@@ -81,6 +81,12 @@ fn take_lock(profile: &Profile) -> Result<Option<File>> {
     }
 }
 
+/// Whether a process on this device holds the sync endpoint — the daemon, usually. Taking
+/// the lock to find out and letting go at once changes nothing.
+pub(crate) fn endpoint_held(profile: &Profile) -> Result<bool> {
+    Ok(take_lock(profile)?.is_none())
+}
+
 /// What this device is called, and what it runs.
 fn this_device(store: &SharedStore) -> Result<(String, String)> {
     let key = lumenna_sync::node::device_key(store)?;
