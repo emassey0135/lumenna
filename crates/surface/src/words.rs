@@ -15,3 +15,14 @@ pub fn count_line(count: usize, noun: &str) -> String {
 pub fn time_text(time: jiff::civil::Time) -> String {
     format!("{:02}:{:02}", time.hour(), time.minute())
 }
+
+/// "45 minutes", "1 hour", "2 hours 30 minutes".
+#[must_use]
+pub fn duration(minutes: u32) -> String {
+    let (hours, rest) = (minutes / 60, minutes % 60);
+    match (hours, rest) {
+        (0, m) => count_line(m as usize, "minute"),
+        (h, 0) => count_line(h as usize, "hour"),
+        (h, m) => format!("{} {}", count_line(h as usize, "hour"), count_line(m as usize, "minute")),
+    }
+}

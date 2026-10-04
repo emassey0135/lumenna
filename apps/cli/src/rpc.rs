@@ -84,18 +84,27 @@ const METHODS: &[&str] = &[
     "project.rename",
     "project.archive",
     "project.rm",
+    "project.move",
+    "project.order",
     "project.weight",
     "label.add",
     "label.list",
     "label.rename",
     "label.merge",
     "label.rm",
+    "label.order",
+    "label.colour",
     "filter.add",
     "filter.list",
+    "filter.edit",
+    "filter.order",
     "filter.rm",
     "plan",
     "block.add",
     "block.list",
+    "block.edit",
+    "block.cancel",
+    "block.restore",
     "block.rm",
     "assign",
     "unassign",
@@ -397,6 +406,15 @@ fn flag(params: &Value, key: &str) -> bool {
     params.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
 
+/// `"up"` or `"down"`.
+fn way(params: &Value) -> std::result::Result<crate::Way, RpcError> {
+    match maybe_text(params, "direction").as_deref() {
+        Some("up") => Ok(crate::Way::Up),
+        Some("down") => Ok(crate::Way::Down),
+        _ => Err(invalid("'direction' is required: \"up\" or \"down\"")),
+    }
+}
+
 fn maybe_number(params: &Value, key: &str) -> std::result::Result<Option<u32>, RpcError> {
     match params.get(key) {
         None | Some(Value::Null) => Ok(None),
@@ -429,6 +447,19 @@ fn command_for(method: &str, params: &Value) -> std::result::Result<Command, Rpc
             estimate: maybe_text(params, "estimate"),
             notes: maybe_text(params, "notes"),
             project: maybe_text(params, "project"),
+            // An array of names; the command line's form is one comma-separated string.
+            labels: match params.get("labels") {
+                None | Some(Value::Null) => None,
+                Some(Value::Array(names)) => Some(
+                    names
+                        .iter()
+                        .map(|n| n.as_str().map(ToOwned::to_owned))
+                        .collect::<Option<Vec<_>>>()
+                        .ok_or_else(|| invalid("'labels' has to be an array of names"))?
+                        .join(","),
+                ),
+                Some(_) => return Err(invalid("'labels' has to be an array of names")),
+            },
         }),
         "task.done" => Command::Task(TaskCommand::Done { id: text_of(params, "id")? }),
         "task.undone" => Command::Task(TaskCommand::Undone { id: text_of(params, "id")? }),
@@ -475,6 +506,15 @@ fn command_for(method: &str, params: &Value) -> std::result::Result<Command, Rpc
             name: text_of(params, "name")?,
             keep_tasks: flag(params, "keep_tasks"),
         }),
+        "project.move" => Command::Project(ProjectCommand::Move {
+            name: text_of(params, "name")?,
+            parent: maybe_text(params, "parent"),
+            top: maybe_text(params, "parent").is_none(),
+        }),
+        "project.order" => Command::Project(ProjectCommand::Order {
+            name: text_of(params, "name")?,
+            direction: way(params)?,
+        }),
         "project.weight" => Command::Project(ProjectCommand::Weight {
             name: text_of(params, "name")?,
             // A number, or the string "inherit" to go back to the parent's weight.
@@ -495,12 +535,29 @@ fn command_for(method: &str, params: &Value) -> std::result::Result<Command, Rpc
             into: text_of(params, "into")?,
         }),
         "label.rm" => Command::Label(LabelCommand::Rm { name: text_of(params, "name")? }),
+        "label.order" => Command::Label(LabelCommand::Order {
+            name: text_of(params, "name")?,
+            direction: way(params)?,
+        }),
+        "label.colour" => Command::Label(LabelCommand::Colour {
+            name: text_of(params, "name")?,
+            colour: maybe_text(params, "colour").unwrap_or_else(|| "none".to_owned()),
+        }),
         "filter.add" => Command::Filter(FilterCommand::Add {
             name: text_of(params, "name")?,
             query: words("query")?,
         }),
         "filter.list" => Command::Filter(FilterCommand::List),
         "filter.rm" => Command::Filter(FilterCommand::Rm { name: text_of(params, "name")? }),
+        "filter.edit" => Command::Filter(FilterCommand::Edit {
+            name: text_of(params, "name")?,
+            rename: maybe_text(params, "rename"),
+            query: maybe_text(params, "query"),
+        }),
+        "filter.order" => Command::Filter(FilterCommand::Order {
+            name: text_of(params, "name")?,
+            direction: way(params)?,
+        }),
         "plan" => Command::Plan { date: maybe_words("date") },
         "block.add" => Command::Block(BlockCommand::Add {
             title: text_of(params, "title")?,
@@ -513,6 +570,24 @@ fn command_for(method: &str, params: &Value) -> std::result::Result<Command, Rpc
         }),
         "block.list" => Command::Block(BlockCommand::List),
         "block.rm" => Command::Block(BlockCommand::Rm { id: text_of(params, "id")? }),
+        "block.edit" => Command::Block(BlockCommand::Edit {
+            id: text_of(params, "id")?,
+            title: maybe_text(params, "title"),
+            at: maybe_text(params, "at"),
+            minutes: maybe_number(params, "minutes")?,
+            kind: maybe_text(params, "kind"),
+            repeat: maybe_text(params, "repeat"),
+            date: maybe_text(params, "date"),
+            all: flag(params, "all"),
+        }),
+        "block.cancel" => Command::Block(BlockCommand::Cancel {
+            id: text_of(params, "id")?,
+            date: text_of(params, "date")?,
+        }),
+        "block.restore" => Command::Block(BlockCommand::Restore {
+            id: text_of(params, "id")?,
+            date: text_of(params, "date")?,
+        }),
         "assign" => Command::Assign {
             task: text_of(params, "task")?,
             block: text_of(params, "block")?,

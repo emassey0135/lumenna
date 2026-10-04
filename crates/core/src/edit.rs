@@ -29,8 +29,8 @@ use jiff::Zoned;
 
 use crate::id::{AssignmentId, FilterId, LabelId, ProjectId, TaskId};
 use crate::model::{
-    BlockAssignment, BlockException, BlockRef, BlockSeries, Device, Label, Project, Reminder,
-    ReminderAck, SavedFilter, Settings, Task, TaskCompletion,
+    BlockAssignment, BlockException, BlockRef, BlockSeries, Device, ExceptionAction, Label,
+    Project, Reminder, ReminderAck, SavedFilter, Settings, Task, TaskCompletion,
 };
 use crate::order::OrderKey;
 use crate::recur::{self, Advanced};
@@ -86,6 +86,11 @@ pub enum EditError {
         /// The day that was asked for.
         date: jiff::civil::Date,
     },
+
+    /// A single occurrence was singled out of a block that happens only once. Its one
+    /// occurrence is the block itself, which changes through the series.
+    #[error("that block happens once, so change the block itself")]
+    NotRepeating,
 
     /// The block is a break or an event, which take no tasks (§3.6).
     #[error("that block does not take tasks")]
@@ -881,6 +886,97 @@ pub fn trash_series(snapshot: &Snapshot, id: crate::id::SeriesId) -> Result<Edit
         description: format!("Deleted block {}", series.title),
         changes: vec![Change::Series(Box::new(Transition::updated(series.clone(), trashed)))],
     })
+}
+
+/// Changes a block for every occurrence: the "whole series" answer to §4.3's question about
+/// a repeating block. A one-off block has only the one occurrence, so this is how it changes
+/// at all.
+///
+/// Exceptions already written for single occurrences keep their overrides; only the fields
+/// they leave alone follow the series (§3.6).
+#[must_use]
+pub fn update_series(before: BlockSeries, after: BlockSeries) -> Edit {
+    if before == after {
+        return Edit::nothing();
+    }
+    Edit {
+        description: format!("Changed block {}", after.title),
+        changes: vec![Change::Series(Box::new(Transition::updated(before, after)))],
+    }
+}
+
+/// Changes one occurrence of a repeating block — the "this one only" answer — by writing
+/// the sparse exception §3.6 describes, rather than touching the series.
+///
+/// # Errors
+///
+/// If the series is not loaded, is a one-off (whose only occurrence is the block itself,
+/// changed by [`update_series`]), or does not occur on `date`.
+pub fn except_occurrence(
+    snapshot: &Snapshot,
+    series_id: crate::id::SeriesId,
+    date: jiff::civil::Date,
+    action: ExceptionAction,
+) -> Result<Edit, EditError> {
+    let series = snapshot.series.get(&series_id).ok_or(EditError::NotFound { kind: "block" })?;
+    if !series.is_recurring() {
+        return Err(EditError::NotRepeating);
+    }
+    let before = snapshot.exceptions.get(&(series_id, date)).cloned();
+    // An occurrence already changed or cancelled is still one the rule placed there; a date
+    // the rule never reaches is not an occurrence at all (§5).
+    let placed =
+        before.is_some() || snapshot.day(date)?.iter().any(|o| o.series_id == series_id);
+    if !placed {
+        return Err(EditError::NoOccurrence { date });
+    }
+    let after = BlockException { series_id, original_date: date, action };
+    if before.as_ref() == Some(&after) {
+        return Ok(Edit::nothing());
+    }
+    let description = match &after.action {
+        ExceptionAction::Cancelled => format!("Cancelled {} on {date}", series.title),
+        ExceptionAction::Modified { .. } => format!("Changed {} on {date} only", series.title),
+    };
+    let transition = match before {
+        Some(before) => Transition::updated(before, after),
+        None => Transition::created(after),
+    };
+    Ok(Edit { description, changes: vec![Change::Exception(Box::new(transition))] })
+}
+
+/// Puts one occurrence of a repeating block back as the series has it, removing its
+/// exception.
+///
+/// # Errors
+///
+/// If the series is not loaded.
+pub fn restore_occurrence(
+    snapshot: &Snapshot,
+    series_id: crate::id::SeriesId,
+    date: jiff::civil::Date,
+) -> Result<Edit, EditError> {
+    let series = snapshot.series.get(&series_id).ok_or(EditError::NotFound { kind: "block" })?;
+    let Some(before) = snapshot.exceptions.get(&(series_id, date)).cloned() else {
+        return Ok(Edit::nothing());
+    };
+    Ok(Edit {
+        description: format!("Put {} on {date} back as the series has it", series.title),
+        changes: vec![Change::Exception(Box::new(Transition::removed(before)))],
+    })
+}
+
+/// Changes a saved filter's name or query. The query is stored as text, never resolved
+/// (§6.2), so a filter saying `today` keeps meaning today.
+#[must_use]
+pub fn update_filter(before: SavedFilter, after: SavedFilter) -> Edit {
+    if before == after {
+        return Edit::nothing();
+    }
+    Edit {
+        description: format!("Changed filter {}", after.name),
+        changes: vec![Change::Filter(Box::new(Transition::updated(before, after)))],
+    }
 }
 
 /// Places a task into a block.
