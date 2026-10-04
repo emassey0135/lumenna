@@ -29,7 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         showMainWindow(nil)
         installStatusItem()
         quickAdd = QuickAddPanel(core: core)
-        HotKeys.register(
+        HotKeys.start(
             summon: { [weak self] in self?.showMainWindow(nil) },
             quickAdd: { [weak self] in self?.quickAdd?.show() }
         )

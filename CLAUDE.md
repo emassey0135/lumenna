@@ -317,13 +317,31 @@ settings pages), per §16.5. `Shared/` holds what both Apple apps compile: `Core
   hides it, `NSStatusItem` and the Dock bring it back, and it syncs for as long as it runs.
   No daemon or service is needed or used.
 - **Global shortcuts through Carbon's `RegisterEventHotKey`**, which needs no accessibility
-  permission: Control-Option-L shows the window, Control-Option-Space opens quick add.
+  permission: Control-Command-Y shows the window, Control-Command-K opens quick add, both
+  changeable in Settings (this Mac's own defaults). Never Control-Option: it is VoiceOver's
+  modifier. The recorder warns of clashes with VoiceOver, VOCR (Control-Command L, I, S, P;
+  Shift-Control-Command more) and macOS (Control-Command Q, F, D, Space).
 - **Three panes** (`NSSplitViewController`): a source-list sidebar of places, the list
   (`NSOutlineView` for tasks and the day), the task's details. F6 and Shift-F6 move between
   them. Actions are in the row's context menu (VO-Shift-M), the menu bar, and keys on the
   outline itself (Space completes, Delete trashes, Return opens), from one `TaskActions`.
 - **⌘Z undoes typing while a field is being edited**, and otherwise the store (`undoChange:`).
 - **The core has a record called `Timer`**, so Foundation's is named in full.
+- **SwiftUI form controls go inside `Named` (`Mac/Forms/Named.swift`)**, a `LabeledContent`:
+  a bare `TextField("Title", …)` in a macOS form showed its name as separate text and left
+  the field unnamed. Adding an accessibility label as well made it "Title, Title".
+- **A table cell recolours itself on selection** (`TwoLineCell.backgroundStyle`): the app's
+  quiet grey on the selection highlight fails contrast.
+- **The window's minimum size is set** after its content: the split view otherwise shrinks
+  it to almost nothing, and a frame saved that small is replaced.
+- **UI tests enter text by pasting** (`enter(_:into:)`), restoring the clipboard after. The
+  machine they run on has VoiceOver on, and XCUITest's synthesized keystrokes reached it —
+  it opened its Item Chooser and swallowed the rest. Windows are found by identifier
+  (`main`, `settings`): the first window can be Siri's, and tabs retitle Settings.
+- **The Mac audit judges only the window in front** (or the open sheet): the system dims
+  the rest, and dimmed text fails contrast without being what anyone reads. Also excused:
+  the Touch Bar (above the screen's top), SwiftUI pop-ups' "Action is missing", and a
+  "Parent/Child mismatch" with no element at all.
 - UI tests need macOS to have authorized UI automation for Xcode once.
 
 ### The core/store boundary

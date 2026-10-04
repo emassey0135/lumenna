@@ -141,23 +141,27 @@ struct TaskDetailView: View {
     private func form(_ task: TaskDetail) -> some View {
         Form {
             Section {
-                TextField("Title", text: $model.title, axis: .vertical)
-                TextField("Due", text: $model.due, prompt: Text("tomorrow"))
+                namedField("Title", text: $model.title, axis: .vertical)
+                namedField("Due", text: $model.due, example: "tomorrow")
                     .help("A date, such as tomorrow or next Friday. Empty for none. A new date keeps how it repeats.")
-                TextField("Repeats", text: $model.repetition, prompt: Text("every monday"))
+                namedField("Repeats", text: $model.repetition, example: "every monday")
                     .help("Such as every Monday, or every! 2 weeks to count from when it is done. Empty for no repetition.")
-                TextField("Estimate", text: $model.estimate, prompt: Text("45m"))
+                namedField("Estimate", text: $model.estimate, example: "45m")
                     .help("Such as 45m or 1h30m. Empty for none.")
-                Picker("Project", selection: $model.project) {
-                    ForEach(model.projects, id: \.self) { Text($0).tag($0) }
+                Named("Project") {
+                    Picker("Project", selection: $model.project) {
+                        ForEach(model.projects, id: \.self) { Text($0).tag($0) }
+                    }
                 }
-                TextField("Labels", text: $model.labels, prompt: Text("calls, errands"))
+                namedField("Labels", text: $model.labels, example: "calls, errands")
                     .help("Names separated by commas. A new name becomes a label.")
-                Picker("Priority", selection: $model.priority) {
-                    Text("1, highest").tag(UInt8(1))
-                    Text("2").tag(UInt8(2))
-                    Text("3").tag(UInt8(3))
-                    Text("4, none").tag(UInt8(4))
+                Named("Priority") {
+                    Picker("Priority", selection: $model.priority) {
+                        Text("1, highest").tag(UInt8(1))
+                        Text("2").tag(UInt8(2))
+                        Text("3").tag(UInt8(3))
+                        Text("4, none").tag(UInt8(4))
+                    }
                 }
             }
             Section("Notes") {

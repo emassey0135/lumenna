@@ -201,10 +201,29 @@ final class TwoLineCell: NSTableCellView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    private var warning = false
+
     func show(title text: String, detail more: String?, warning: Bool = false) {
         title.stringValue = text
         detail.stringValue = more ?? ""
         detail.isHidden = (more ?? "").isEmpty
-        detail.textColor = warning ? .warningLabel : .quietLabel
+        self.warning = warning
+        colour()
+    }
+
+    /// On a selected row the highlight is the background, so both lines take the colour the
+    /// system gives selected text: a quiet grey or red there falls under contrast.
+    override var backgroundStyle: NSView.BackgroundStyle {
+        didSet { colour() }
+    }
+
+    private func colour() {
+        if backgroundStyle == .emphasized {
+            title.textColor = .alternateSelectedControlTextColor
+            detail.textColor = .alternateSelectedControlTextColor
+        } else {
+            title.textColor = .labelColor
+            detail.textColor = warning ? .warningLabel : .quietLabel
+        }
     }
 }

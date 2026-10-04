@@ -10,8 +10,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     let core: Core
     private let split = NSSplitViewController()
     private(set) var sidebar: SidebarViewController!
-    private let content = ContainerViewController(placeholder: "")
-    private let detail = ContainerViewController(placeholder: "No task selected")
+    private let content = ContainerViewController(placeholder: "", name: "List")
+    private let detail = ContainerViewController(placeholder: "No task selected", name: "Task details")
 
     init(core: Core) {
         self.core = core
@@ -22,6 +22,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             defer: false
         )
         window.title = "Lumenna"
+        window.identifier = NSUserInterfaceItemIdentifier("main")
         window.setFrameAutosaveName("Main")
         window.tabbingMode = .disallowed
         super.init(window: window)
@@ -38,7 +39,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         split.splitViewItems = [sidebarItem, contentItem, detailItem]
         split.splitView.autosaveName = "MainSplit"
         window.contentViewController = split
-        if window.frame.origin == .zero { window.center() }
+        // Setting the content shrinks the window to what the panes need at least, which with
+        // lists that scroll is almost nothing; and a saved frame from such a window is no use.
+        window.minSize = NSSize(width: 820, height: 460)
+        if window.frame.height < window.minSize.height || window.frame.width < window.minSize.width {
+            window.setContentSize(NSSize(width: 1100, height: 700))
+            window.center()
+        }
         sidebar.select(.today)
     }
 
@@ -123,10 +130,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 /// A pane whose content is swapped as the person moves around.
 final class ContainerViewController: NSViewController {
     private let placeholder: String
+    private let name: String
     private(set) var current: NSViewController?
 
-    init(placeholder: String) {
+    /// `name` is what VoiceOver calls the pane, as it does Mail's.
+    init(placeholder: String, name: String) {
         self.placeholder = placeholder
+        self.name = name
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -135,6 +145,8 @@ final class ContainerViewController: NSViewController {
 
     override func loadView() {
         view = NSView()
+        view.setAccessibilityRole(.group)
+        view.setAccessibilityLabel(name)
         show(nil)
     }
 
@@ -143,10 +155,15 @@ final class ContainerViewController: NSViewController {
         current?.removeFromParent()
         current = controller
         view.subviews.forEach { $0.removeFromSuperview() }
+        // The pane is named once: by what fills it, or by itself while it holds nothing.
+        view.setAccessibilityElement(controller == nil)
         let shown: NSView
         if let controller {
             addChild(controller)
             shown = controller.view
+            if shown.accessibilityLabel()?.isEmpty ?? true {
+                shown.setAccessibilityLabel(name)
+            }
         } else {
             let label = NSTextField(labelWithString: placeholder)
             label.textColor = .quietLabel
