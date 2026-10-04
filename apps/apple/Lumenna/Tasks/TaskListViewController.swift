@@ -75,7 +75,8 @@ final class TaskListViewController: UIViewController {
         configuration.leadingSwipeActionsConfigurationProvider = { [weak self] path in
             guard let self, let row = self.row(at: path) else { return nil }
             let action = UIContextualAction(
-                style: .normal, title: row.checked == true ? "Not Done" : "Done"
+                // The title is also the action's name to VoiceOver, so it says what it does.
+                style: .normal, title: row.checked == true ? "Mark Not Done" : "Mark Done"
             ) { [weak self] _, _, finished in
                 self?.toggleDone(row)
                 finished(true)
@@ -153,19 +154,10 @@ final class TaskListViewController: UIViewController {
         cell.accessibilityValue = RowSpeech.value(row, previousDepth: previous)
         cell.accessibilityHint = "Shows details"
         cell.accessibilityTraits = .button
-        // The swipe actions, as actions VoiceOver and Switch Control can reach (§13). Set
-        // explicitly so they are exactly these, in this order.
-        cell.accessibilityCustomActions = [
-            UIAccessibilityCustomAction(name: row.checked == true ? "Mark not done" : "Mark done") {
-                [weak self] _ in
-                self?.toggleDone(row)
-                return true
-            },
-            UIAccessibilityCustomAction(name: "Delete") { [weak self] _ in
-                self?.trash(row)
-                return true
-            },
-        ]
+        // No custom actions here: UIKit already offers the swipe actions to VoiceOver, Switch
+        // Control and Full Keyboard Access, and actions set on the cell are added to those
+        // rather than replacing them, so each would be listed twice (§13: one equivalent
+        // for every swipe, not two).
     }
 
     /// What a row looks like: the title, then the due date and notable states beneath it.
