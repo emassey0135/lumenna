@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use iroh::endpoint::{Connection, RecvStream, SendStream};
 use iroh::{Endpoint, EndpointAddr, EndpointId, SecretKey};
-use iroh_mdns_address_lookup::MdnsAddressLookup;
+use crate::discovery::LocalLookup;
 use lumenna_core::id::NodeId;
 
 use crate::error::{Result, SyncError};
@@ -42,7 +42,7 @@ pub(crate) async fn bind(
     network: Network,
     service: &str,
     advertise: bool,
-) -> Result<(Endpoint, Option<MdnsAddressLookup>)> {
+) -> Result<(Endpoint, LocalLookup)> {
     let builder = match network {
         Network::Internet => Endpoint::builder(iroh::endpoint::presets::N0),
         Network::LocalOnly => Endpoint::builder(iroh::endpoint::presets::Minimal)
@@ -54,17 +54,14 @@ pub(crate) async fn bind(
         .bind()
         .await
         .map_err(|e| SyncError::Network(format!("could not open the network endpoint: {e}")))?;
-    // mDNS is the path the plan says must always work (§7), but a network that forbids
-    // multicast is not a reason to refuse everything else.
-    let mdns = MdnsAddressLookup::builder()
-        .service_name(service)
-        .advertise(advertise)
-        .build(endpoint.id())
-        .ok();
-    if let (Some(mdns), Ok(lookup)) = (&mdns, endpoint.address_lookup()) {
-        lookup.add(mdns.clone());
+    // The local network is the path the plan says must always work (§7). Standard DNS-SD,
+    // so every platform's mDNS hears it; a network that forbids multicast leaves it hearing
+    // nothing rather than refusing everything else.
+    let local = LocalLookup::start(endpoint.id(), service, advertise);
+    if let Ok(lookup) = endpoint.address_lookup() {
+        lookup.add(local.clone());
     }
-    Ok((endpoint, mdns))
+    Ok((endpoint, local))
 }
 
 /// The device key's public half, as the model writes it.
@@ -104,7 +101,7 @@ pub struct PeerResult {
 pub struct Node {
     endpoint: Endpoint,
     store: SharedStore,
-    _mdns: Option<MdnsAddressLookup>,
+    _local: LocalLookup,
     arrived: std::sync::Arc<tokio::sync::Notify>,
 }
 
@@ -122,8 +119,8 @@ impl Node {
     /// If the key cannot be read or the endpoint cannot bind.
     pub async fn bind(store: SharedStore, network: Network) -> Result<Self> {
         let secret = device_key(&store)?;
-        let (endpoint, mdns) = bind(secret, ALPN_SYNC, network, DEVICE_SERVICE, true).await?;
-        Ok(Self { endpoint, store, _mdns: mdns, arrived: std::sync::Arc::default() })
+        let (endpoint, local) = bind(secret, ALPN_SYNC, network, DEVICE_SERVICE, true).await?;
+        Ok(Self { endpoint, store, _local: local, arrived: std::sync::Arc::default() })
     }
 
     /// This device's identifier.

@@ -57,7 +57,12 @@ targets:
       properties:
         CFBundleDisplayName: Lumenna
         # Iroh connects straight to paired devices on the same network when it can.
-        NSLocalNetworkUsageDescription: Lumenna syncs directly with your other devices when they are on the same network as this one.
+        NSLocalNetworkUsageDescription: Lumenna finds your other devices on this network and syncs with them directly.
+        # The DNS-SD services Lumenna announces and browses (crates/sync/src/discovery). iOS
+        # blocks any service type not listed here.
+        NSBonjourServices:
+          - _lumenna._udp
+          - _lumenna-pair._udp
         UILaunchScreen: {}
         UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations:

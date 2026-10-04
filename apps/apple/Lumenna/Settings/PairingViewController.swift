@@ -2,10 +2,9 @@ import UIKit
 
 /// Pairing this phone with another of the person's devices (§7).
 ///
-/// One device shows a code and the other enters it. Then both show the same three words, and
-/// only if the person says they match on both does anything get paired. Finding each other on
-/// the local network without a code needs multicast, which iOS allows only with an
-/// entitlement Apple grants; a code works anywhere.
+/// On one network the two find each other: both wait, and Bonjour does the rest. Anywhere
+/// else, one shows a code and the other enters it. Either way both show the same three words,
+/// and only if the person says they match on both does anything get paired.
 final class PairingViewController: UIViewController {
     private let core: Core
     private let status = UILabel()
@@ -31,7 +30,7 @@ final class PairingViewController: UIViewController {
         status.font = .preferredFont(forTextStyle: .body)
         status.adjustsFontForContentSizeCategory = true
         status.numberOfLines = 0
-        status.text = "On the other device, run lum pair, or choose Pair a Device. One of you shows a code, and the other enters it."
+        status.text = "On the same network, start pairing on both devices and they find each other: run lum pair, or choose Wait for the Other Device. On different networks, one shows a code and the other enters it."
 
         code.isEditable = false
         code.isScrollEnabled = false
@@ -47,7 +46,7 @@ final class PairingViewController: UIViewController {
         entry.autocorrectionType = .no
         entry.spellCheckingType = .no
 
-        let show = button("Show a Code") { [weak self] in self?.start(code: nil) }
+        let show = button("Wait for the Other Device") { [weak self] in self?.start(code: nil) }
         let enter = button("Pair With This Code") { [weak self] in self?.pairWithEnteredCode() }
         entry.submitted = { [weak self] in self?.pairWithEnteredCode() }
 
@@ -133,7 +132,7 @@ final class PairingViewController: UIViewController {
 
     /// Shows this device's code, to read out, copy or send to the other device.
     fileprivate func show(code text: String) {
-        status.text = "Waiting for the other device. On it, run lum pair followed by this code, or enter it under Pair a Device. Waiting up to ten minutes."
+        status.text = "Waiting for the other device. On this network it finds this one by itself. On another network, enter this code there, or run lum pair followed by it. Waiting up to ten minutes."
         code.text = text
         code.isHidden = false
         UIPasteboard.general.string = text

@@ -291,7 +291,7 @@ final class LumennaUITests: XCTestCase {
         try audit(.all, "devices")
 
         app.buttons["Pair a device"].tap()
-        XCTAssertTrue(app.buttons["Show a Code"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Wait for the Other Device"].waitForExistence(timeout: 5))
         try audit(.all, "pairing")
     }
 
@@ -360,5 +360,26 @@ final class LumennaUITests: XCTestCase {
 
         tab("Tasks")
         XCTAssertTrue(row("written on the mac").waitForExistence(timeout: 30), "the first sync brought nothing")
+    }
+
+    /// Pairs with a `lum pair` waiting on this network, with no code: Bonjour finds it.
+    /// Skipped unless `PAIR_LOCAL` is set (`TEST_RUNNER_PAIR_LOCAL` to xcodebuild).
+    func testPairingOnTheLocalNetworkNeedsNoCode() throws {
+        guard ProcessInfo.processInfo.environment["PAIR_LOCAL"] != nil else {
+            throw XCTSkip("no device is waiting on this network")
+        }
+        tab("Settings")
+        cell(containing: "Devices and Sync").tap()
+        app.buttons["Pair a device"].tap()
+        app.buttons["Wait for the Other Device"].tap()
+
+        let yes = app.alerts.buttons["Yes, They Match"]
+        XCTAssertTrue(yes.waitForExistence(timeout: 60), "the two never found each other")
+        yes.tap()
+
+        let other = app.cells.containing(NSPredicate(format: "value CONTAINS 'not synced yet' OR value CONTAINS 'last synced'"))
+        XCTAssertTrue(other.firstMatch.waitForExistence(timeout: 60), "pairing never finished")
+        tab("Tasks")
+        XCTAssertTrue(row("written on the mac").waitForExistence(timeout: 30))
     }
 }

@@ -20,8 +20,13 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_lumenna._udp</string>
+		<string>_lumenna-pair._udp</string>
+	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Lumenna syncs directly with your other devices when they are on the same network as this one.</string>
+	<string>Lumenna finds your other devices on this network and syncs with them directly.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
