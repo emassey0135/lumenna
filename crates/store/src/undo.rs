@@ -16,7 +16,7 @@
 //! # Undone against what is there now
 //!
 //! An entry may be undone long after it was recorded — after other edits here, or edits
-//! merged in from another device. Swapping before and after blindly would overwrite those.
+//! merged in from another device. Swapping before and after unconditionally would overwrite those.
 //! So an undo is **rebased**: for each record, only the fields the edit changed are put back,
 //! and only where they still hold what the edit set. A field that has changed since is kept
 //! and reported, never silently overwritten. Redo is the same thing in the other direction.

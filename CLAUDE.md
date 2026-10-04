@@ -208,7 +208,7 @@ it. Core writes nothing, so every rule is testable against plain structs.
   works across commands and undoes what the BTSpeak app did too. It is local-only (§3.12):
   sync and backups carry Automerge documents, never that table. The change an undo produces
   syncs like any other.
-- **Undo is rebased, never a blind swap.** An entry may be undone after other edits, here or
+- **Undo is rebased, never a plain swap.** An entry may be undone after other edits, here or
   merged from elsewhere, so only fields still holding what the edit set go back; the rest
   are kept and reported. That is also why the stack never jams on a conflict.
 - **Everything a person does goes through `Store::apply_recorded`**; what the app does for

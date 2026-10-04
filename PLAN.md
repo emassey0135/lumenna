@@ -1024,7 +1024,7 @@ question in this area comes from treating them as one thing.
 | | What it answers | Where it comes from |
 | --- | --- | --- |
 | **Device keypair** | *Which devices are mine.* | An Iroh `NodeId` generated on the device. **Never typed, never leaves it.** Membership in `devices` is the trust boundary. |
-| **`account_key`** | *Can this actor read store contents.* | Random 32 bytes, generated once; a password, phrase, or key file only **unwraps** it (§8). Needed **only to reach a blind store**; devices syncing peer-to-peer never use it. |
+| **`account_key`** | *Can this actor read store contents.* | Random 32 bytes, generated once; a password, phrase, or key file only **unwraps** it (§8). Needed **only to reach an encrypted store**; devices syncing peer-to-peer never use it. |
 
 #### Three enrollment flows, identical on every platform
 
@@ -1106,7 +1106,7 @@ phone line. If it is down, unreachable, or no longer hosted, pairing falls back 
 degradation, never a failure, and treat the same-network path as the one that must always
 work.
 
-**2. Account and password — needs nothing but a reachable blind store.** Self-hosting means
+**2. Account and password — needs nothing but a reachable encrypted store.** Self-hosting means
 typing a URL as well, which is unremarkable. This is the flow for "I have no other device
 awake", and it is **not a web mechanism** — a fresh laptop at 2am with the phone dead is the
 same situation as a browser on a work machine.
@@ -1140,7 +1140,7 @@ manager, it halves the transcription burden, and BIP39's checksum catches errors
 either way (§8). Nobody should ever type this during ordinary enrollment; if they are, one of
 the flows above has failed.
 
-#### The blind store is not a paired device
+#### The encrypted store is not a paired device
 
 Worth stating plainly, because "how do I pair with my store?" is a natural question with no
 answer. It has no `NodeId` in `devices`, holds no replica, and runs no Automerge (§8). You do
@@ -1201,11 +1201,11 @@ that causes other devices to sync. The server learns only that *something* chang
 
 - Entirely optional and disableable.
 
-Note the asymmetry between the two uses of push, because it decides what the blind store can
+Note the asymmetry between the two uses of push, because it decides what the encrypted store can
 and cannot do. A **sync wake-up** is triggered by a device that just made a change — it is
 awake by definition and needs to decrypt nothing to say "something moved". A **reminder** is
 triggered by the clock, and knowing one is due requires reading the data. That is why the
-blind store can never be a reminder sender however convenient it would be (§16.12).
+encrypted store can never be a reminder sender however convenient it would be (§16.12).
 
 ### Honest framing
 
@@ -1460,15 +1460,22 @@ can use to decrypt itself without a human is available to whoever holds the imag
 VPS deployment, and document plainly that the provider can read the data. Do not paper over
 it with an encryption claim that does not hold.
 
-### The blind store
+### The encrypted store
+
+**Named for what it holds.** Not "blind store", the earlier working name: for an
+audience of blind users, blindness as a metaphor for ignorance is the wrong word to build
+into the product. Not "untrusted store" either, which describes the threat model rather than
+the thing, and invites the reasonable question of why anyone would use one; that it needs no
+trust belongs in the sentence explaining it. In the CLI it is simply `lum store`.
 
 **Not "relay"** — Iroh already uses that word for its hole-punching fallback servers, and this
 is a different thing. More importantly it must genuinely **store**: a device that only forwards
 live traffic helps solely when two devices are already online, which is the problem it exists
 to remove.
 
-A **blind store** persists encrypted change chunks addressed by hash and serves them on
-request — never running Automerge, never holding a key. Clients exchange hash lists to find
+An **encrypted store** persists change chunks — encrypted before they leave your devices —
+addressed by hash, and serves them on request, never running Automerge and never holding a
+key. Clients exchange hash lists to find
 what they are missing, losing Automerge's efficient delta negotiation in favour of naive set
 difference, which is acceptable at this data size.
 
@@ -1491,7 +1498,7 @@ merely workable for one person's three devices.
 
 ### Encryption and key management
 
-Required by the blind store, and the hardest security work in the project.
+Required by the encrypted store, and the hardest security work in the project.
 
 #### One account key, several wrappers
 
@@ -1670,7 +1677,7 @@ The daemon owns the endpoint, so pairing routes through it when it is running:
 lum pair                 # discover on this network, or await an incoming request
 lum pair <node-id>       # dial a specific peer
 lum pair --id            # print this device's NodeId, to be entered elsewhere
-lum store add <url>      # enrol against a blind store, §7 flow 2
+lum store add <url>      # enrol against an encrypted store, §7 flow 2
 lum daemon status        # sync_status() (§9) over IPC
 ```
 
@@ -2196,7 +2203,7 @@ These are real limits that shape the scheduling code, not incidental details:
 - **Web** has no local scheduling at all — no working equivalent of a calendar trigger exists,
   so a wake-up must be pushed from outside and the service worker evaluates what is due when it
   arrives. Requires installation as a PWA, and either a decrypting peer or a scheduled
-  content-free wake-up from the blind store. The one target where reminders are conditional
+  content-free wake-up from the encrypted store. The one target where reminders are conditional
   (§16.12).
 
 ### 11.3 Notification content is the whole message
@@ -2458,7 +2465,7 @@ Not because of the Alexa+ transition, though that is real and independently suff
 durable reason is architectural: **a cloud assistant cannot read data the cloud cannot
 decrypt.** Siri and Gemini integrations work here because App Intents and App Functions run
 *on the device*, alongside the key. An Alexa skill runs in Amazon's cloud and would need
-either the decryption key handed to a hosted service — defeating the blind store entirely —
+either the decryption key handed to a hosted service — defeating the encrypted store entirely —
 or a tunnel from Amazon to the user's own peer, which is a great deal of setup for a small
 feature.
 
@@ -2703,7 +2710,7 @@ lum import <file>
 lum calendar add|list|rm <url>           # ICS/CalDAV subscription, §3.6
 lum task erase <id>                      # permanent, rebuilds the doc — §9
 lum pair [<node-id> | --id]              # §7; words are compared either way
-lum store add|list|rm <url>              # blind store, §8
+lum store add|list|rm <url>              # encrypted store, §8
 lum device list|rename|unpair            # §3.11
 lum sync / lum sync status
 lum daemon install|uninstall|start|stop
@@ -2828,7 +2835,7 @@ native clients.
 
 So the trust argument justifies no restriction at all. Neither does effort: **the web client is
 a full target**, carrying the same view list as every other. It is genuinely expensive — an
-eleventh target in a sixth language, and the only one that cannot exist until the blind store
+eleventh target in a sixth language, and the only one that cannot exist until the encrypted store
 does (§8) — but per the rule above, expense decides when it is built, not how much of it is.
 Someone using a locked-down work machine is not a lesser user, and a browser is the one place
 where "install our app instead" is not available as an answer.
@@ -2857,7 +2864,7 @@ is the most any of this can honestly claim.
 Still limited on **capability** rather than trust, because a browser tab is not resident:
 
 - **Reminders are conditional**, not excluded. Installed as a PWA the client gets Web Push.
-  A decrypting peer — a Pi, a running desktop — can send them; the blind store cannot, since
+  A decrypting peer — a Pi, a running desktop — can send them; the encrypted store cannot, since
   it cannot know a reminder exists. But the store *can* emit a **content-free scheduled
   wake-up**, letting the service worker decrypt locally and decide what to show, which needs
   no peer and leaks only timing. Off by default. See §16.12.
@@ -3057,7 +3064,7 @@ Risks, in order:
 **Direct Iroh is the goal, and `WatchConnectivity` is the optimization** — not the other way
 round. The watch is a peer in the `devices` set like any other (§7), so when the phone is dead
 or left at home it must reconcile over Wi-Fi or cellular with the desktop, the Pi, or the
-blind store. `WatchConnectivity` is the cheap path when the phone happens to be nearby, chosen
+encrypted store. `WatchConnectivity` is the cheap path when the phone happens to be nearby, chosen
 for battery rather than because it is the only route.
 
 *This raises the stakes on risks 2 and 4 above.* If Iroh's crypto stack will not build for
@@ -3261,7 +3268,7 @@ every connection goes over a **WebSocket to a relay**. The relay cannot decrypt 
 this is the same relay path §7 already describes as the fallback when hole punching fails,
 made permanent. What is lost is directness, not privacy.
 
-**Which means the blind store is no longer a prerequisite** — it is the same convenience it is
+**Which means the encrypted store is no longer a prerequisite** — it is the same convenience it is
 for every other device. Relays forward; they do not store. So a web client alone reaches your
 other devices **only while one of them is online**, exactly the structural weakness §8's
 always-on peer exists to remove. Open the tab while your desktop is on and it syncs; open it
@@ -3317,7 +3324,7 @@ than only how it looks. Worth doing for the storage guarantee alone, before any 
   app the browser holds change chunks that may not be anywhere else yet. Eviction is data
   loss. Installed apps are generally granted persistence; uninstalled tabs are not.
 - **Offline operation** via the service worker cache, which the premise demands: the app must
-  work when the blind store is unreachable, exactly as every native client does.
+  work when the encrypted store is unreachable, exactly as every native client does.
 - **Web Push** — see below.
 - **Badging** for what is due today, the same role as the watch complication.
 - **One-shot Background Sync** to flush pending changes when connectivity returns (Chromium).
@@ -3331,10 +3338,10 @@ Notification Triggers proposal (`showTrigger` / `TimestampTrigger`) never reache
 remains Chromium-only and experimental, and on desktop fires only while Chrome is running.
 Do not build on it; revisit if it ever ships broadly.
 
-**Web Push does work, but not from the blind store.** "The web client needs a peer" and "the
-web client needs the blind store" look like one requirement and are two.
+**Web Push does work, but not from the encrypted store.** "The web client needs a peer" and "the
+web client needs the encrypted store" look like one requirement and are two.
 
-**The blind store cannot send a reminder, by construction.** It holds encrypted chunks
+**The encrypted store cannot send a reminder, by construction.** It holds encrypted chunks
 addressed by hash and never holds a key (§8), so it cannot know a reminder exists, let alone
 when it is due. Anything that fires a reminder must be able to **decrypt**, which the store
 specifically is not. Building the store so it could would destroy the only property it has.
@@ -3627,6 +3634,10 @@ than the Android build, that changes its priority rather than its size.
 
 Recorded so they don't get relitigated:
 
+- **The persistent store for encrypted chunks is the *encrypted store*** (§8), not the
+  *blind store* it was first called and not the *untrusted store*. Blindness as a figure for
+  not knowing is the wrong word in a product built for blind users, and "untrusted" names the
+  threat model instead of the thing.
 - **Named Lumenna, binary `lum`** (header). Rejected: *Asar* — best meaning of the candidates,
   but `asar` is already Electron's archive-format CLI, and it sits close to Asana in the same
   product category. *Carmë* — a near-homophone of "karma", and a mishearing that lands on a
@@ -3700,7 +3711,7 @@ Recorded so they don't get relitigated:
 - **Backup, export, and import live in every client**, not only the daemon, since the daemon
   is optional on most platforms (§9).
 - **AppleScript is skipped**; Windows automation is a PowerShell module over the CLI (§12).
-- **Open source**, and free on every platform. Beyond ethos: it makes the blind store's
+- **Open source**, and free on every platform. Beyond ethos: it makes the encrypted store's
   privacy claim verifiable, and it is insurance against the abandonment risk that ends most
   widely-used unpaid accessibility software.
 - **Automerge history is permanent and exposed as a feature** (§10.4), not pruned. Pruning is
@@ -3733,7 +3744,7 @@ Recorded so they don't get relitigated:
   would hand the device to whoever dialled first. Use a **phonetically distinct word list**,
   the magic-wormhole and PGP approach, so words survive a synthesiser and a braille display.
 - **Three enrollment flows, one input each, all ending in word comparison** (§7): mDNS on the
-  same network, a typed `NodeId` off it, or **username and password** when only a blind store
+  same network, a typed `NodeId` off it, or **username and password** when only an encrypted store
   is reachable. Never two of the three. The password flow is not a web mechanism — a fresh
   laptop with a dead phone is the same situation as a browser on a work machine — and it still
   confirms, because decrypting the account already yields every `NodeId`. That confirmation
@@ -3749,7 +3760,7 @@ Recorded so they don't get relitigated:
   membership in that document is the only trust boundary. But a removed device keeps what it
   holds and can write itself back, so a **stolen** device means rotating `account_key`, not
   removing a row.
-- **The blind store is authenticated, not paired** (§7). No `NodeId`, no replica, no Automerge,
+- **The encrypted store is authenticated, not paired** (§7). No `NodeId`, no replica, no Automerge,
   so a headless self-hosted store needs no pairing UI at all. The always-on peer is the
   opposite: a real paired device, enrolled exactly like any other.
 - **The password is not the encryption key** (§8). A random `account_key` encrypts everything
@@ -3772,7 +3783,7 @@ Recorded so they don't get relitigated:
   file-based encryption tied to passcode or biometric on mobile, FileVault, BitLocker or LUKS
   on desktop — and app-level encryption adds little against a running machine that file
   permissions do not already cover. That §8's key management exists anyway does not change it:
-  the untrusted-host problem is the blind store's job, and on iOS the strict
+  the untrusted-host problem is the encrypted store's job, and on iOS the strict
   `NSFileProtectionComplete` mode that would actually help **breaks background sync**, which
   is worth more. The real exposure is backups and exports (§9), which is a file-location and
   history-disclosure problem rather than a cryptographic one.
@@ -3901,7 +3912,7 @@ Recorded so they don't get relitigated:
    platforms only. Reasonable later; not before the Play Store submission.
 
 3. **Attachments.** Files or images on tasks need content-addressed blob storage and transfer,
-   which the blind store now specifies almost exactly: a persistent hash-addressed encrypted
+   which the encrypted store now specifies almost exactly: a persistent hash-addressed encrypted
    blob store (§8). **The cost objection has largely dissolved**, so this is no longer a
    technical question but a scope one — do tasks want files on them at all, and is that this
    app or a link to one? Decide it when someone wants it.
@@ -3915,7 +3926,7 @@ Recorded so they don't get relitigated:
    a stored `Template` record only if duplication proves insufficient in practice.
 
 5. **Paid hosting as the revenue model.** The app is **open source and free**; optional paid
-   hosting would provide an always-up blind store (§8) plus the silent-push trigger (§7), for
+   hosting would provide an always-up encrypted store (§8) plus the silent-push trigger (§7), for
    people who cannot or will not self-host. This is an *addition*, never a feature removed from
    the free app — the Bitwarden shape.
 
