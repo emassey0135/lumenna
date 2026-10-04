@@ -81,6 +81,7 @@ impl Profile {
     /// The socket `lum sync-daemon` serves the command surface on (§8), which the BTSpeak app
     /// tries before spawning a server of its own.
     #[must_use]
+    #[cfg(unix)]
     pub fn socket_path(&self) -> PathBuf {
         self.path().join("lumenna.sock")
     }

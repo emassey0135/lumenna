@@ -128,6 +128,8 @@ pub(crate) fn sync_once(profile: &Profile, local_only: bool) -> Result<Response>
 }
 
 /// Another process holds the endpoint — normally the daemon. Asks it to sync now.
+// The daemon's socket is Unix-only until Windows named pipes exist (§8).
+#[cfg_attr(not(unix), allow(unused_variables))]
 fn ask_daemon_to_sync(profile: &Profile) -> Result<Response> {
     #[cfg(unix)]
     {
