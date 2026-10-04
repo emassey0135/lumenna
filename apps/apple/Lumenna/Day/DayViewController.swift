@@ -11,6 +11,8 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         case sitting(PlanAssignment, in: PlanBlock)
         case free(start: String, end: String, minutes: UInt32)
         case now(String)
+        /// A repeating block cancelled for this day alone, so the day can be put back.
+        case cancelled(CancelledBlock)
     }
 
     private let core: Core
@@ -50,6 +52,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             dayButton("Previous Day") { [weak self] in self?.step(-1) },
             dayButton("Now") { [weak self] in self?.goToNow() },
             dayButton("Next Day") { [weak self] in self?.step(1) },
+            dayButton("Go to Day") { [weak self] in self?.chooseDay() },
         ])
         days.distribution = .equalSpacing
         dayButtons = days
@@ -96,6 +99,12 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         let add = UIBarButtonItem(systemItem: .add, primaryAction: UIAction { [weak self] _ in self?.addBlock() })
         add.accessibilityLabel = "Add block"
         navigationItem.rightBarButtonItem = add
+        // In the navigation bar, as on the task list: a bottom toolbar would sit under the
+        // floating tab bar.
+        navigationItem.leftBarButtonItems = [
+            UIBarButtonItem(title: "Undo", primaryAction: UIAction { [weak self] _ in self?.undo() }),
+            UIBarButtonItem(title: "Redo", primaryAction: UIAction { [weak self] _ in self?.redo() }),
+        ]
         NotificationCenter.default.addObserver(self, selector: #selector(storeChanged), name: Core.changed, object: nil)
     }
 
@@ -163,7 +172,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
                 case let .now(time):
                     return [.now(time)]
                 }
-            }
+            } + plan.cancelled.map { .cancelled($0) }
         } catch {
             summary.text = error.sentence
         }
@@ -224,6 +233,14 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             content.image = UIImage(systemName: "arrowtriangle.right.fill")
             content.imageProperties.tintColor = .warningLabel
             cell.accessories = []
+        case let .cancelled(block):
+            label = "\(Clock.time(block.start)), \(block.title)"
+            value = ["cancelled for this day"]
+            content.text = label
+            content.secondaryText = value[0]
+            content.textProperties.color = .quietLabel
+            content.image = UIImage(systemName: "xmark.circle")
+            cell.accessories = [.disclosureIndicator(displayed: .always)]
         }
         // Depth is said where it changes, never left to indentation (§16.11).
         let previous = index > 0 && index - 1 < rows.count ? depth(rows[index - 1]) : 0
@@ -281,6 +298,11 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             ]
         case let .free(start, _, minutes):
             return [("Add Block Here", false, { [weak self] in self?.addBlock(at: start, minutes: minutes) })]
+        case let .cancelled(block):
+            return [("Restore This Day", false, { [weak self] in
+                guard let self, let date = self.plan?.date else { return }
+                self.change(focusing: row) { try self.core.lumenna.restoreOccurrence(id: block.series, date: date) }
+            })]
         case .now:
             return []
         }
@@ -372,24 +394,14 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
 
     private func presentForm(series block: PlanBlock) {
         do {
-            let shown = try core.lumenna.showBlock(id: block.series)
-            present(BlockFormModel(
-                core: core,
-                purpose: .series(block.series),
-                name: shown.title,
-                start: shown.start,
-                minutes: Int(shown.minutes),
-                kind: shown.kind,
-                currentRule: shown.rrule,
-                saved: saved(focusing: .block(block))
-            ))
+            presentBlockForm(try .series(core: core, id: block.series, saved: saved(focusing: .block(block))))
         } catch {
             showFailure(error.sentence)
         }
     }
 
     private func presentForm(occurrence block: PlanBlock, day: String) {
-        present(BlockFormModel(
+        presentBlockForm(BlockFormModel(
             core: core,
             purpose: .occurrence(block.series, day: day),
             name: block.title,
@@ -398,13 +410,6 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             kind: block.kind,
             saved: saved(focusing: .block(block))
         ))
-    }
-
-    private func present(_ model: BlockFormModel) {
-        let form = BlockFormViewController(model: model)
-        let navigation = UINavigationController(rootViewController: form)
-        model.close = { [weak navigation] in navigation?.dismiss(animated: true) }
-        present(navigation, animated: true)
     }
 
     /// After a form saves: reload, keep focus on the row edited, and say what changed.
@@ -432,7 +437,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         ) { [weak self] change in
             self?.reload { Announcer.say(change.announcement, notices: change.notices) }
         }
-        present(model)
+        presentBlockForm(model)
     }
 
     private func delete(_ block: PlanBlock) {
@@ -484,8 +489,33 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         case let .sitting(sitting, _):
             navigationController?.pushViewController(TaskDetailViewController(core: core, id: sitting.task), animated: true)
         case let .free(start, _, minutes): addBlock(at: start, minutes: minutes)
+        case let .cancelled(block):
+            collectionView.deselectItem(at: path, animated: true)
+            choose("\(block.title) is cancelled for this day", actions: actions(for: row).map { ($0.0, $0.2) })
         case .now: collectionView.deselectItem(at: path, animated: true)
         }
+    }
+
+    // MARK: - Undo, and going to a day
+
+    @objc private func undo() {
+        change(focusing: nil) { try core.lumenna.undo() }
+    }
+
+    @objc private func redo() {
+        change(focusing: nil) { try core.lumenna.redo() }
+    }
+
+    private func chooseDay() {
+        let current = plan.flatMap { try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse($0.date) } ?? .now
+        let picker = DayPickerViewController(showing: current) { [weak self] day in
+            guard let self else { return }
+            self.day = Calendar.current.isDateInToday(day) ? nil : Clock.isoDay(day)
+            self.reload {
+                UIAccessibility.post(notification: .screenChanged, argument: self.summary)
+            }
+        }
+        present(UINavigationController(rootViewController: picker), animated: true)
     }
 
     // MARK: - Keyboard
@@ -498,6 +528,8 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             UIKeyCommand(title: "Next Day", action: #selector(nextDay), input: UIKeyCommand.inputRightArrow, modifierFlags: .command),
             UIKeyCommand(title: "Go to Now", action: #selector(now), input: "j", modifierFlags: .command),
             UIKeyCommand(title: "New Block", action: #selector(newBlock), input: "n", modifierFlags: .command),
+            UIKeyCommand(title: "Undo", action: #selector(undo), input: "z", modifierFlags: .command),
+            UIKeyCommand(title: "Redo", action: #selector(redo), input: "z", modifierFlags: [.command, .shift]),
         ]
     }
 

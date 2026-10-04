@@ -234,7 +234,7 @@ fn day(plan: &Plan) {
                 detail.push(format!("{} minutes logged", assignment.minutes));
             }
             if assignment.capped {
-                detail.push("timer looks orphaned".to_owned());
+                detail.push("capped, the timer looks forgotten".to_owned());
             }
             println!("     {}  {}  {}", assignment.row, assignment.title, detail.join(", "));
         }

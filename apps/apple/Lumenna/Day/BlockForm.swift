@@ -33,8 +33,9 @@ final class BlockFormModel: ObservableObject {
 
     let purpose: Purpose
     let title: String
-    /// How the block repeats now, as an RFC 5545 rule, when editing one that does.
-    let currentRule: String?
+    /// Whether the block repeats by a rule the date grammar cannot say, which the repetition
+    /// field then leaves alone unless something is typed into it.
+    let unspeakableRule: Bool
     private let initial: (name: String, start: Date, minutes: Int, kind: String, repeat: String)
     private let saved: (Change) -> Void
     private let core: Core
@@ -59,11 +60,11 @@ final class BlockFormModel: ObservableObject {
         kind: String = "work",
         repetition: String = "",
         day: Date = .now,
-        currentRule: String? = nil,
+        unspeakableRule: Bool = false,
         saved: @escaping (Change) -> Void
     ) {
         self.core = core
-        self.currentRule = currentRule
+        self.unspeakableRule = unspeakableRule
         self.purpose = purpose
         self.saved = saved
         let startDate = Self.date(start)
@@ -83,14 +84,26 @@ final class BlockFormModel: ObservableObject {
 
     /// What the repetition field means, which differs between adding and changing.
     var repetitionHelp: String {
-        switch (purpose, currentRule) {
-        case (.add, _):
+        if case .add = purpose {
             return "Such as \u{201C}every weekday\u{201D}. Empty for a block that happens once."
-        case let (_, rule?):
-            return "It repeats now as \(rule). Empty keeps that; \u{201C}none\u{201D} makes it happen once."
-        default:
+        }
+        if unspeakableRule {
+            return "It repeats by a rule this cannot show in words. Empty keeps it; \u{201C}none\u{201D} makes it happen once."
+        }
+        if initial.repeat.isEmpty {
             return "It happens once now. Such as \u{201C}every weekday\u{201D} to make it repeat."
         }
+        return "Empty makes it happen once."
+    }
+
+    /// The repetition to send: nothing if it is as it was, `none` if it was cleared.
+    private var repetitionChange: String? {
+        let typed = repetition.trimmingCharacters(in: .whitespaces)
+        guard asksRepetition, typed != initial.repeat else { return nil }
+        if typed.isEmpty {
+            return unspeakableRule ? nil : "none"
+        }
+        return typed
     }
 
     var asksRepetition: Bool {
@@ -141,8 +154,7 @@ final class BlockFormModel: ObservableObject {
                     at: at != Self.clock(initial.start) ? at : nil,
                     minutes: minutes != initial.minutes ? UInt32(minutes) : nil,
                     kind: kind != initial.kind ? kind : nil,
-                    // Empty keeps how it repeats; "none" makes it happen once.
-                    repeat: asksRepetition && !repetition.isEmpty ? repetition : nil
+                    repeat: repetitionChange
                 )
                 let scope: BlockScope
                 if case let .occurrence(_, day) = purpose {
@@ -213,5 +225,75 @@ struct BlockForm: View {
         } message: { failure in
             Text(failure)
         }
+    }
+}
+
+extension BlockFormModel {
+    /// The form for every occurrence of a series, filled from the store.
+    static func series(core: Core, id: String, saved: @escaping (Change) -> Void) throws -> BlockFormModel {
+        let shown = try core.lumenna.showBlock(id: id)
+        return BlockFormModel(
+            core: core,
+            purpose: .series(shown.id),
+            name: shown.title,
+            start: shown.start,
+            minutes: Int(shown.minutes),
+            kind: shown.kind,
+            repetition: shown.repetition ?? "",
+            unspeakableRule: shown.repeats && shown.repetition == nil,
+            saved: saved
+        )
+    }
+}
+
+extension UIViewController {
+    /// Shows a block form in a sheet of its own, closing it when it saves or is cancelled.
+    func presentBlockForm(_ model: BlockFormModel) {
+        let form = BlockFormViewController(model: model)
+        let navigation = UINavigationController(rootViewController: form)
+        model.close = { [weak navigation] in navigation?.dismiss(animated: true) }
+        present(navigation, animated: true)
+    }
+}
+
+/// Choosing a day to go to: the system's own calendar, in a sheet.
+final class DayPickerViewController: UIViewController {
+    private let picker = UIDatePicker()
+    private let chosen: (Date) -> Void
+
+    init(showing day: Date, chosen: @escaping (Date) -> Void) {
+        self.chosen = chosen
+        super.init(nibName: nil, bundle: nil)
+        title = "Go to Day"
+        picker.date = day
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .systemBackground
+        picker.datePickerMode = .date
+        picker.preferredDatePickerStyle = .inline
+        picker.tintColor = .lumennaTint
+        picker.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(picker)
+        NSLayoutConstraint.activate([
+            picker.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            picker.leadingAnchor.constraint(equalTo: view.layoutMarginsGuide.leadingAnchor),
+            picker.trailingAnchor.constraint(equalTo: view.layoutMarginsGuide.trailingAnchor),
+        ])
+        navigationItem.leftBarButtonItem = UIBarButtonItem(
+            systemItem: .cancel, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) }
+        )
+        let go = UIBarButtonItem(title: "Go", primaryAction: UIAction { [weak self] _ in
+            guard let self else { return }
+            let day = self.picker.date
+            let chosen = self.chosen
+            self.dismiss(animated: true) { chosen(day) }
+        })
+        go.style = .done
+        navigationItem.rightBarButtonItem = go
     }
 }
