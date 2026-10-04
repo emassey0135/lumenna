@@ -32,13 +32,15 @@ mod organise;
 mod planning;
 mod resolve;
 mod settings;
+#[cfg(feature = "sync")]
+mod sync;
 mod tasks;
 mod text;
 pub mod types;
 pub mod words;
 
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use lumenna_core::edit;
 use lumenna_core::snapshot::Snapshot;
@@ -47,6 +49,8 @@ use lumenna_store::Store;
 pub use durability::{DEVICE_KEYS, cloud_warning};
 pub use error::{LumennaError, Result};
 pub use settings::{parse_every, parse_keep};
+#[cfg(feature = "sync")]
+pub use sync::{PairingPrompt, SyncListener, SyncService};
 pub use types::*;
 
 #[cfg(feature = "uniffi")]
@@ -61,8 +65,12 @@ pub const CONTRACT: u32 = 1;
 /// Safe to share between threads: each operation takes the store for as long as it runs.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub struct Lumenna {
-    store: Mutex<Store>,
+    // Shared, so that a sync endpoint can work on the same connection the operations do:
+    // what it brings in is visible at once, and what they write it can see to send on.
+    store: Arc<Mutex<Store>>,
     directory: PathBuf,
+    #[cfg(feature = "sync")]
+    sync: sync::SyncState,
 }
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
@@ -76,8 +84,8 @@ impl Lumenna {
     ///
     /// If the directory cannot be created or the store cannot be opened.
     #[cfg_attr(feature = "uniffi", uniffi::constructor)]
-    pub fn open(directory: &str) -> Result<std::sync::Arc<Self>> {
-        Self::open_at(Path::new(directory)).map(std::sync::Arc::new)
+    pub fn open(directory: &str) -> Result<Arc<Self>> {
+        Self::open_at(Path::new(directory)).map(Arc::new)
     }
 
     /// Takes in what another process or a sync wrote since last asked, and says whether
@@ -116,7 +124,12 @@ impl Lumenna {
         if !adopt.is_empty() {
             store.apply(&adopt)?;
         }
-        Ok(Self { store: Mutex::new(store), directory: directory.to_path_buf() })
+        Ok(Self {
+            store: Arc::new(Mutex::new(store)),
+            directory: directory.to_path_buf(),
+            #[cfg(feature = "sync")]
+            sync: sync::SyncState::default(),
+        })
     }
 
     /// The store itself, for the parts of a client that are not operations on it — the sync
@@ -128,6 +141,12 @@ impl Lumenna {
         // A panic mid-operation leaves nothing half-written that the next one cannot read:
         // the store commits whole changes or none.
         self.store.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The store as the sync crate takes it, on the same connection.
+    #[cfg(feature = "sync")]
+    fn shared(&self) -> lumenna_sync::SharedStore {
+        Arc::clone(&self.store)
     }
 
     /// The profile directory.

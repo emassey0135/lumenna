@@ -15,6 +15,13 @@ pub enum LumennaError {
         /// What went wrong.
         message: String,
     },
+    /// Another process holds this device's sync endpoint, so this one cannot open it. A client
+    /// that can reach that process — the CLI, over the daemon's socket — asks it instead.
+    #[error("{message}")]
+    SyncElsewhere {
+        /// Said as it is.
+        message: String,
+    },
 }
 
 impl LumennaError {
@@ -27,7 +34,7 @@ impl LumennaError {
     #[must_use]
     pub fn message(&self) -> &str {
         match self {
-            Self::Failed { message } => message,
+            Self::Failed { message } | Self::SyncElsewhere { message } => message,
         }
     }
 }
