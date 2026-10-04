@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 
 /// Whether Increase Contrast is on, which the app's colours follow as the system's do.
 private var increasedContrast: Bool {
@@ -36,10 +35,4 @@ extension NSColor {
         case (false, false): NSColor(red: 0.69, green: 0.0, blue: 0.11, alpha: 1)
         }
     }
-}
-
-extension Color {
-    static let quietLabel = Color(nsColor: .quietLabel)
-    static let lumennaTint = Color(nsColor: .lumennaTint)
-    static let warningLabel = Color(nsColor: .warningLabel)
 }

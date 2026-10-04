@@ -308,7 +308,13 @@ through the generated `LumennaCore.swift`. `cd apps/apple && xcodegen` makes the
 
 `apps/apple/Mac/` — AppKit, with SwiftUI only for leaf forms (task detail, block form,
 settings pages), per §16.5. `Shared/` holds what both Apple apps compile: `Core`, `Clock`,
-`RowSpeech`, and the wording helpers. Scheme `LumennaMac`.
+`RowSpeech`, the wording helpers, and **`Shared/Forms/`: the task, block and settings forms,
+models and views both**. Each app supplies only presentation — a hosting controller, its
+pickers (`TaskFormHost`), its file panels (`SettingsModel` extensions). Where the platforms
+need different answers it is an `#if os` in `FormParts.swift` (`Named`, `Labelled`,
+`ChoiceSection`) or at the one row that differs, so a fix to a form lands on both.
+Section titles are `FormParts.heading`, a header to VoiceOver's heading commands. Scheme
+`LumennaMac`.
 
 - **Not sandboxed, and shares `lum`'s profile** (`~/Library/Application Support/lumenna`):
   the app and the command line on one Mac are one device with one store. `Core` polls
@@ -317,9 +323,9 @@ settings pages), per §16.5. `Shared/` holds what both Apple apps compile: `Core
   hides it, `NSStatusItem` and the Dock bring it back, and it syncs for as long as it runs.
   No daemon or service is needed or used.
 - **Global shortcuts through Carbon's `RegisterEventHotKey`**, which needs no accessibility
-  permission: Control-Command-Y shows the window, Control-Command-K opens quick add, both
+  permission: Control-Command-L shows the window, Control-Command-K opens quick add, both
   changeable in Settings (this Mac's own defaults). Never Control-Option: it is VoiceOver's
-  modifier. The recorder warns of clashes with VoiceOver, VOCR (Control-Command L, I, S, P;
+  modifier. The recorder warns of clashes with VoiceOver, VOCR (Control-Command S, P, and L, I while it navigates a scan;
   Shift-Control-Command more) and macOS (Control-Command Q, F, D, Space).
 - **Three panes** (`NSSplitViewController`): a source-list sidebar of places, the list
   (`NSOutlineView` for tasks and the day), the task's details. F6 and Shift-F6 move between
@@ -327,9 +333,11 @@ settings pages), per §16.5. `Shared/` holds what both Apple apps compile: `Core
   outline itself (Space completes, Delete trashes, Return opens), from one `TaskActions`.
 - **⌘Z undoes typing while a field is being edited**, and otherwise the store (`undoChange:`).
 - **The core has a record called `Timer`**, so Foundation's is named in full.
-- **SwiftUI form controls go inside `Named` (`Mac/Forms/Named.swift`)**, a `LabeledContent`:
-  a bare `TextField("Title", …)` in a macOS form showed its name as separate text and left
-  the field unnamed. Adding an accessibility label as well made it "Title, Title".
+- **SwiftUI form controls go inside `Named`**: on macOS a `LabeledContent`, since a bare
+  `TextField("Title", …)` in a form showed its name as separate text and left the field
+  unnamed, and labelling it as well made it "Title, Title". On iOS the opposite (see the
+  iOS app's `NamedRow` note). A growing text field draws its name in grey on macOS, under
+  contrast, so Notes is a `TextEditor` there.
 - **A table cell recolours itself on selection** (`TwoLineCell.backgroundStyle`): the app's
   quiet grey on the selection highlight fails contrast.
 - **The window's minimum size is set** after its content: the split view otherwise shrinks
