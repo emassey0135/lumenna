@@ -17,6 +17,7 @@ settings:
     SWIFT_VERSION: "5.0"
     # Signing for a device needs the team; the simulator needs none.
     CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: 3QAJ2S64Z7
 
 targets:
   Lumenna:
