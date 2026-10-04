@@ -187,6 +187,8 @@ struct SettingsView: View {
             case .export: export
             }
         }
+        // SwiftUI's own accent, which the window's UIKit tint does not reach.
+        .tint(Color(uiColor: .lumennaTint))
         .alert(
             "Could not do that",
             isPresented: Binding(get: { model.failure != nil }, set: { if !$0 { model.failure = nil } }),
@@ -214,12 +216,23 @@ struct SettingsView: View {
                 FormParts.caption("Planning")
             }
             Section {
-                ChoiceRows(choices: [("Full sentences", "full"), ("Terse", "terse")], selection: model.binding("verbosity"))
+                Picker("Announcements", selection: model.binding("verbosity")) {
+                    Text("Full sentences").tag("full")
+                    Text("Terse").tag("terse")
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
             } header: {
                 FormParts.caption("Announcements")
             }
             Section {
-                ChoiceRows(choices: Self.weekdays.map { ($0.capitalized, $0) }, selection: model.binding("week-start"))
+                Picker("Week starts on", selection: model.binding("week-start")) {
+                    ForEach(Self.weekdays, id: \.self) { day in
+                        Text(day.capitalized).tag(day)
+                    }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
             } header: {
                 FormParts.caption("Week starts on")
             }
@@ -227,10 +240,14 @@ struct SettingsView: View {
 
     @ViewBuilder private var backups: some View {
             Section {
-                ChoiceRows(
-                    choices: [("Every 12 hours", "12h"), ("Every day", "1d"), ("Every week", "7d"), ("Off", "off")],
-                    selection: model.binding("backup-every")
-                )
+                Picker("Automatic backups", selection: model.binding("backup-every")) {
+                    Text("Every 12 hours").tag("12h")
+                    Text("Every day").tag("1d")
+                    Text("Every week").tag("7d")
+                    Text("Off").tag("off")
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
             } header: {
                 FormParts.caption("Automatic backups on this device")
             }

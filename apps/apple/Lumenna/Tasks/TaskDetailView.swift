@@ -197,10 +197,14 @@ struct TaskDetailView: View {
                     .accessibilityHint("Names separated by commas. A new name becomes a label.")
             }
             Section {
-                ChoiceRows(
-                    choices: [("Priority 1, highest", UInt8(1)), ("Priority 2", 2), ("Priority 3", 3), ("Priority 4, none", 4)],
-                    selection: $model.priority
-                )
+                Picker("Priority", selection: $model.priority) {
+                    Text("Priority 1, highest").tag(UInt8(1))
+                    Text("Priority 2").tag(UInt8(2))
+                    Text("Priority 3").tag(UInt8(3))
+                    Text("Priority 4, none").tag(UInt8(4))
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
             } header: {
                 FormParts.caption("Priority")
             }
@@ -240,6 +244,8 @@ struct TaskDetailView: View {
                 }
             }
         }
+        // SwiftUI's own accent, which the window's UIKit tint does not reach.
+        .tint(Color(uiColor: .lumennaTint))
         .alert(
             "Could not do that",
             isPresented: Binding(

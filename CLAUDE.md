@@ -204,6 +204,8 @@ through the generated `LumennaCore.swift`. `cd apps/apple && xcodegen` makes the
   phase fails the build if either binary references `liblumenna_ffi`. A launch is not
   proof it ran: check the process is still alive, or the crash logs
   (`xcrun devicectl device info files --domain-type systemCrashLogs`).
+- **Every list cell sets its own accessibility label and value.** Left alone, a list cell's
+  label is its text *and* secondary text, so a value of the detail says it twice.
 - **The cell owns what VoiceOver says**, assembled from row components in `RowSpeech`.
   Depth is said only where it changes.
 - **Rows are `UIListContentConfiguration`, not SwiftUI.** §16.6 suggests SwiftUI in a
@@ -245,16 +247,20 @@ through the generated `LumennaCore.swift`. `cd apps/apple && xcodegen` makes the
 - **Form parts** (`Common/FormParts.swift`) each exist because the stock part failed the
   audit: `NamedRow` (a `LabeledContent` control is *not* named by its label, and hiding the
   visible name is "potentially inaccessible text" — `accessibilityLabeledPair` ties them),
-  `ChoiceRows` (the inline picker's checkmark failed contrast), `example(_:)` placeholders
+  `example(_:)` placeholders
   (the system placeholder grey fails, and a placeholder repeating the field's name says
   nothing), `Note` rows instead of section footers, `DateRow`. Give a SwiftUI control an
   empty title when it has an accessibility label, or VoiceOver hears the name twice.
-- **The tint is `UIColor.lumennaTint`**, set on the window: system blue is about 4:1 on
-  white. Red text uses `.warningLabel`, never `systemRed`.
+- **The tint is `UIColor.lumennaTint`**: system blue is about 4:1 on white. Set on the window
+  for UIKit **and with `.tint` on every SwiftUI form**, since SwiftUI's accent does not take
+  the window's tint — that, not the control, is why stock picker checkmarks failed contrast.
+  Red text uses `.warningLabel`, never `systemRed`. The app's colours have Increase Contrast
+  variants (`accessibilityContrast == .high`), as the system's do.
 - **The audits collect every issue and fail once** (`audit()` in the UI tests); left alone,
   the audit stops at the first. Two exemptions, both narrow: the keyboard's own
-  `TUIPredictionViewCell`, and Dynamic Type findings on elements identified `caption`, which
-  `testSettingsPagesAtTheLargestTextSize` shows scaling fully. To see what an unnamed finding
+  `TUIPredictionViewCell`, and "partially unsupported" Dynamic Type on SwiftUI nodes, which
+  the audit reports even for a stock button; `testSettingsPagesAtTheLargestTextSize` keeps
+  whole-page screenshots at the largest size showing them scale fully. To see what an unnamed finding
   is, run with `AUDIT_ATTACH=1` (findings left unhandled, so Xcode attaches a screenshot)
   and `xcrun xcresulttool export attachments`.
 - **Iroh needs `SystemConfiguration` and `Network`** linked, and the Rust C code must see
