@@ -537,6 +537,109 @@ impl Store {
         Ok(report)
     }
 
+    /// This device's secret key, minted the first time anything asks (§7, §8).
+    ///
+    /// It lives in the store, so every process using the store *is* the same device. It is
+    /// local state (§3.12) and never syncs, never appears in a backup, and is never typed.
+    /// `fresh` supplies a new key if there is none yet; store does not generate keys itself
+    /// because which kind of key is the transport's business.
+    ///
+    /// # Errors
+    ///
+    /// If the local state cannot be read or written, or holds something that is not a key.
+    pub fn device_secret(&mut self, fresh: impl FnOnce() -> [u8; 32]) -> Result<[u8; 32]> {
+        const KEY: &str = "device_secret_key";
+        let stored = match self.db.local_value(KEY)? {
+            Some(value) => value,
+            None => self.db.local_value_or_insert(KEY, &fresh())?,
+        };
+        stored.try_into().map_err(|_| {
+            StoreError::Unreadable("this device's stored key is damaged".to_owned())
+        })
+    }
+
+    /// Every document this store holds or has loaded, for a sync session to offer a peer.
+    ///
+    /// # Errors
+    ///
+    /// If the stored documents cannot be listed.
+    pub fn sync_documents(&self) -> Result<Vec<DocId>> {
+        let mut ids: Vec<DocId> = self
+            .db
+            .stored_documents()?
+            .iter()
+            .filter_map(|name| DocId::parse(name))
+            .chain([DocId::Core, DocId::Devices])
+            .chain(self.docs.loaded_years().into_iter().map(DocId::Blocks))
+            .collect();
+        ids.sort();
+        ids.dedup();
+        Ok(ids)
+    }
+
+    /// The next sync message for one document, loading it first if it is a year not yet
+    /// opened.
+    ///
+    /// # Errors
+    ///
+    /// If the document cannot be read.
+    pub fn sync_message(
+        &mut self,
+        id: DocId,
+        state: &mut automerge::sync::State,
+    ) -> Result<Option<Vec<u8>>> {
+        self.open_for_sync(id)?;
+        Ok(self.docs.get_mut(id).sync_message(state))
+    }
+
+    /// Takes in a peer's sync message for one document and persists what it brought, so
+    /// every other process on the device sees it through the ordinary change path (§8).
+    ///
+    /// Returns whether the document changed.
+    ///
+    /// # Errors
+    ///
+    /// If the message does not read, or the document cannot be read or written.
+    pub fn receive_sync_message(
+        &mut self,
+        id: DocId,
+        state: &mut automerge::sync::State,
+        bytes: &[u8],
+    ) -> Result<bool> {
+        self.open_for_sync(id)?;
+        self.write(|docs| {
+            let doc = docs.get_mut(id);
+            let before = doc.heads();
+            doc.receive_sync_message(state, bytes)?;
+            Ok(doc.heads() != before)
+        })
+    }
+
+    fn open_for_sync(&mut self, id: DocId) -> Result<()> {
+        if let DocId::Blocks(year) = id {
+            self.load_year(year)?;
+        }
+        Ok(())
+    }
+
+    /// Records how an attempt to sync with a peer went.
+    ///
+    /// # Errors
+    ///
+    /// If the local state cannot be written.
+    pub fn record_peer(&mut self, node_id: &str, error: Option<&str>) -> Result<()> {
+        self.db.record_peer(node_id, jiff::Timestamp::now().as_millisecond(), error)
+    }
+
+    /// How syncing with each peer last went.
+    ///
+    /// # Errors
+    ///
+    /// If the local state cannot be read.
+    pub fn peers(&self) -> Result<Vec<crate::db::PeerStatus>> {
+        self.db.peers()
+    }
+
     /// Applies an [`Edit`] the user made, and saves it to this device's undo history.
     ///
     /// Everything a person does goes through here; what the app does on their behalf — folding

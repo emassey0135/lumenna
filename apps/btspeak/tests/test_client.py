@@ -129,3 +129,44 @@ env=dict(os.environ, LUMENNA_PROFILE=str(self.profile)),
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(LUM is None, "`lum` has not been built")
+class TalkingToTheDaemon(unittest.TestCase):
+    """§8: the socket is the expected path on this device, and spawning is the fallback."""
+
+    def setUp(self):
+        self.profile = Path(tempfile.mkdtemp())
+        os.environ["LUMENNA_BACKUP_DIR"] = str(self.profile / "backups")
+        self.daemon = subprocess.Popen(
+            [LUM, "sync-daemon", "--local-only"],
+            env=dict(os.environ, LUMENNA_PROFILE=str(self.profile)),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        socket = self.profile / "lumenna.sock"
+        for _ in range(100):
+            if socket.exists():
+                break
+            time.sleep(0.1)
+        self.assertTrue(socket.exists(), "the daemon made its socket")
+
+    def tearDown(self):
+        self.daemon.terminate()
+        self.daemon.wait(timeout=10)
+        shutil.rmtree(self.profile, ignore_errors=True)
+
+    def test_the_app_reaches_the_store_through_the_daemon(self):
+        client = connect(self.profile)
+        try:
+            # A spawned server is stopped by a function of connect's own; the socket is just
+            # closed.
+            self.assertEqual(client._on_close.__name__, "close", "it used the socket")
+            result = client.call("task.add", text="said to the daemon")
+            self.assertEqual(result["task"]["title"], "said to the daemon")
+            listed = client.call("task.list")
+            self.assertEqual(listed["count"], 1)
+        finally:
+            client.close()
+        # It was the socket, not a spawned `lum rpc`: closing the client left the daemon up.
+        self.assertIsNone(self.daemon.poll())

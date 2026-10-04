@@ -105,6 +105,11 @@ const METHODS: &[&str] = &[
     "config.set",
     "undo",
     "redo",
+    "sync",
+    "sync.status",
+    "device.list",
+    "device.rename",
+    "device.unpair",
     "backup",
     "restore",
     "export",
@@ -127,6 +132,7 @@ struct Server {
     profile: Mutex<Profile>,
     writer: Mutex<Writer>,
     running: AtomicBool,
+    sync_hook: Option<SyncHook>,
 }
 
 /// Stdout, and the framing to write with.
@@ -141,33 +147,50 @@ struct Writer {
 ///
 /// If stdin cannot be read.
 pub fn serve(mut profile: Profile) -> Result<()> {
-    profile.detach_rows();
     // A resident server is exactly the "something that stays running" §9 means, so it takes
     // a backup when one is due at start, and checks again on the hour while it runs.
     crate::durability::back_up_if_due(&mut profile);
+    serve_streams(profile, BufReader::new(std::io::stdin()), Box::new(std::io::stdout()), None)
+}
+
+/// What answers `sync` when this server runs inside `lum sync-daemon`: the daemon already
+/// holds the endpoint, so a sync there is a request to it rather than a second endpoint.
+pub type SyncHook = Arc<dyn Fn() -> Result<Response> + Send + Sync>;
+
+/// Serves the surface over any pair of streams — stdio for `lum rpc`, a socket connection
+/// for the daemon (§8: one protocol, two transports).
+pub fn serve_streams(
+    mut profile: Profile,
+    mut reader: impl BufRead,
+    out: Box<dyn Write + Send>,
+    sync_hook: Option<SyncHook>,
+) -> Result<()> {
+    profile.detach_rows();
     let server = Arc::new(Server {
         profile: Mutex::new(profile),
-        writer: Mutex::new(Writer {
-            out: Box::new(std::io::stdout()),
-            framing: Framing::Lines,
-        }),
+        writer: Mutex::new(Writer { out, framing: Framing::Lines }),
         running: AtomicBool::new(true),
+        sync_hook,
     });
 
     let watcher = Arc::clone(&server);
     std::thread::spawn(move || watch(&watcher));
 
-    let mut reader = BufReader::new(std::io::stdin());
-    while server.running.load(Ordering::Relaxed) {
-        let Some((framing, text)) = read_message(&mut reader)? else { break };
-        if let Ok(mut writer) = server.writer.lock() {
-            writer.framing = framing;
+    let result = (|| {
+        while server.running.load(Ordering::Relaxed) {
+            let Some((framing, text)) = read_message(&mut reader)? else { break };
+            if let Ok(mut writer) = server.writer.lock() {
+                writer.framing = framing;
+            }
+            if let Some(reply) = handle(&server, &text) {
+                server.send(&reply);
+            }
         }
-        if let Some(reply) = handle(&server, &text) {
-            server.send(&reply);
-        }
-    }
-    Ok(())
+        Ok(())
+    })();
+    // The client has gone; the watcher stops with it.
+    server.running.store(false, Ordering::Relaxed);
+    result
 }
 
 /// Looks for changes another process wrote, and says so.
@@ -312,6 +335,12 @@ fn answer(
     method: &str,
     params: &Value,
 ) -> std::result::Result<Response, RpcError> {
+    // Inside the daemon, a sync is a request to the endpoint it already holds.
+    if method == "sync"
+        && let Some(hook) = &server.sync_hook
+    {
+        return Ok(hook()?);
+    }
     match method {
         "initialize" => Ok(Response::new(
             "Lumenna",
@@ -491,6 +520,18 @@ fn command_for(method: &str, params: &Value) -> std::result::Result<Command, Rpc
             assignment: text_of(params, "assignment")?,
             minutes: maybe_number(params, "minutes")?,
         },
+        "sync" => Command::Sync { what: None, local_only: flag(params, "local_only") },
+        "sync.status" => {
+            Command::Sync { what: Some(crate::SyncCommand::Status), local_only: false }
+        }
+        "device.list" => Command::Device(crate::DeviceCommand::List),
+        "device.rename" => Command::Device(crate::DeviceCommand::Rename {
+            device: text_of(params, "device")?,
+            name: text_of(params, "name")?,
+        }),
+        "device.unpair" => Command::Device(crate::DeviceCommand::Unpair {
+            device: text_of(params, "device")?,
+        }),
         "undo" => Command::Undo,
         "redo" => Command::Redo,
         "backup" => Command::Backup { to: maybe_text(params, "to").map(Into::into) },

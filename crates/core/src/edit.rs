@@ -29,7 +29,7 @@ use jiff::Zoned;
 
 use crate::id::{AssignmentId, FilterId, LabelId, ProjectId, TaskId};
 use crate::model::{
-    BlockAssignment, BlockException, BlockRef, BlockSeries, Label, Project, Reminder,
+    BlockAssignment, BlockException, BlockRef, BlockSeries, Device, Label, Project, Reminder,
     ReminderAck, SavedFilter, Settings, Task, TaskCompletion,
 };
 use crate::order::OrderKey;
@@ -134,6 +134,8 @@ pub enum Change {
     Reminder(Box<Transition<Reminder>>),
     /// A reminder acknowledgement.
     Ack(Box<Transition<ReminderAck>>),
+    /// A paired device (§3.11).
+    Device(Box<Transition<Device>>),
     /// The settings singleton, which always exists.
     Settings {
         /// What it was.
@@ -189,6 +191,7 @@ impl Change {
             }
             Self::Reminder(t) => Self::Reminder(Box::new(t.flip())),
             Self::Ack(t) => Self::Ack(Box::new(t.flip())),
+            Self::Device(t) => Self::Device(Box::new(t.flip())),
             Self::Settings { before, after } => Self::Settings { before: after, after: before },
         }
     }
@@ -1101,6 +1104,74 @@ pub fn log_minutes(
             year,
             transition: Box::new(Transition::updated(assignment.clone(), logged)),
         }],
+    })
+}
+
+// ---------------------------------------------------------------------------------------
+// Devices (§3.11)
+// ---------------------------------------------------------------------------------------
+
+/// Adds devices to the roster, or brings their records up to date — what pairing writes.
+///
+/// Membership in `devices` is the trust boundary (§7): a device listed there is one every
+/// other device will sync with. So this is only ever called once the words have been compared
+/// and confirmed on both sides; nothing learned any other way belongs here.
+#[must_use]
+pub fn enroll_devices(snapshot: &Snapshot, devices: &[Device]) -> Edit {
+    let mut changes = Vec::new();
+    for device in devices {
+        let before = snapshot.devices.get(&device.node_id);
+        // Keep the original pairing time; it is history, not something a re-pair rewrites.
+        let after = match before {
+            Some(existing) => Device { paired_at: existing.paired_at, ..device.clone() },
+            None => device.clone(),
+        };
+        if before != Some(&after) {
+            changes.push(Change::Device(Box::new(Transition {
+                before: before.cloned(),
+                after: Some(after),
+            })));
+        }
+    }
+    let names: Vec<&str> = devices.iter().map(|d| d.name.as_str()).collect();
+    Edit { description: format!("Paired {}", names.join(" and ")), changes }
+}
+
+/// Renames a device.
+///
+/// # Errors
+///
+/// If it is not in the roster.
+pub fn rename_device(
+    snapshot: &Snapshot,
+    id: crate::id::NodeId,
+    name: &str,
+) -> Result<Edit, EditError> {
+    let before = snapshot.devices.get(&id).ok_or(EditError::NotFound { kind: "device" })?;
+    if before.name == name {
+        return Ok(Edit::nothing());
+    }
+    let after = Device { name: name.to_owned(), ..before.clone() };
+    Ok(Edit {
+        description: format!("Renamed {} to {name}", before.name),
+        changes: vec![Change::Device(Box::new(Transition::updated(before.clone(), after)))],
+    })
+}
+
+/// Takes a device out of the roster, so the others stop syncing with it.
+///
+/// **Not revocation** (§7): the device keeps everything it already holds, and nothing in a
+/// CRDT stops a malicious one writing itself back. Unpair a device that was replaced; one that
+/// was stolen needs the account key rotated, which is a different and much larger thing.
+///
+/// # Errors
+///
+/// If it is not in the roster.
+pub fn unpair_device(snapshot: &Snapshot, id: crate::id::NodeId) -> Result<Edit, EditError> {
+    let before = snapshot.devices.get(&id).ok_or(EditError::NotFound { kind: "device" })?;
+    Ok(Edit {
+        description: format!("Unpaired {}", before.name),
+        changes: vec![Change::Device(Box::new(Transition::removed(before.clone())))],
     })
 }
 

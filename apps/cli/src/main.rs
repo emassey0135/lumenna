@@ -24,6 +24,7 @@
 mod api;
 mod durability;
 mod error;
+mod network;
 mod profile;
 mod render;
 mod rpc;
@@ -137,6 +138,42 @@ pub(crate) enum Command {
     /// Read or change settings.
     #[command(subcommand)]
     Config(ConfigCommand),
+
+    /// Pair this device with another of yours.
+    ///
+    /// Run it on both devices. On one network they find each other; otherwise run it on one
+    /// and give the other the code it prints. Both show the same three words — check they
+    /// match, and say yes on both.
+    Pair {
+        /// The other device's pairing code, when it is not on this network.
+        code: Option<String>,
+        /// Use the local network only: no relay, no lookup service.
+        #[arg(long)]
+        local_only: bool,
+    },
+
+    /// Sync with your other devices now, or say how syncing is going.
+    Sync {
+        #[command(subcommand)]
+        what: Option<SyncCommand>,
+        /// Use the local network only: no relay, no lookup service.
+        #[arg(long)]
+        local_only: bool,
+    },
+
+    /// Stay running and keep this device in sync.
+    ///
+    /// Also serves the command surface on a socket in the profile, which the BTSpeak app
+    /// uses when it is there. Stop it with Control-C.
+    SyncDaemon {
+        /// Use the local network only: no relay, no lookup service.
+        #[arg(long)]
+        local_only: bool,
+    },
+
+    /// Your paired devices.
+    #[command(subcommand)]
+    Device(DeviceCommand),
 
     /// Undo the last change made on this device.
     ///
@@ -464,6 +501,33 @@ pub(crate) enum BlockCommand {
 }
 
 #[derive(Debug, Subcommand)]
+pub(crate) enum SyncCommand {
+    /// How syncing is going, device by device.
+    Status,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum DeviceCommand {
+    /// List your paired devices.
+    List,
+    /// Rename a device.
+    Rename {
+        /// The device, by name or the start of its identifier.
+        device: String,
+        /// Its new name.
+        name: String,
+    },
+    /// Stop syncing with a device.
+    ///
+    /// It keeps what it already has: this is for a device you replaced, not one that was
+    /// stolen.
+    Unpair {
+        /// The device, by name or the start of its identifier.
+        device: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
 pub(crate) enum ConfigCommand {
     /// Print a setting, or all of them.
     Get {
@@ -501,6 +565,10 @@ fn run(cli: &Cli, format: Format) -> Result<()> {
     ensure_inbox(&mut profile)?;
     if matches!(cli.command, Command::Rpc) {
         return rpc::serve(profile);
+    }
+    if let Command::SyncDaemon { local_only } = cli.command {
+        durability::back_up_if_due(&mut profile);
+        return network::daemon(&profile, local_only);
     }
 
     if !matches!(cli.command, Command::Backup { .. }) {
@@ -543,6 +611,17 @@ pub(crate) fn dispatch(
         Command::Start { assignment } => start(profile, assignment, now),
         Command::Stop { assignment, minutes } => stop(profile, assignment, *minutes, now),
         Command::Config(command) => config(profile, command),
+        Command::SyncDaemon { .. } => unreachable!("handled above"),
+        Command::Pair { code, local_only } => network::pair(profile, code.as_deref(), *local_only),
+        Command::Sync { what: None, local_only } => network::sync_once(profile, *local_only),
+        Command::Sync { what: Some(SyncCommand::Status), .. } => network::status(profile),
+        Command::Device(DeviceCommand::List) => network::list_devices(profile),
+        Command::Device(DeviceCommand::Rename { device, name }) => {
+            network::rename_device(profile, device, name)
+        }
+        Command::Device(DeviceCommand::Unpair { device }) => {
+            network::unpair_device(profile, device)
+        }
         Command::Undo => step(profile, false),
         Command::Redo => step(profile, true),
         Command::Backup { to } => durability::backup(profile, to.as_deref()),
@@ -616,7 +695,11 @@ fn listing_of(outcome: &Outcome) -> Option<Vec<(&'static str, String)>> {
         | Outcome::Backup(_)
         | Outcome::Restore(_)
         | Outcome::Export(_)
-        | Outcome::Import(_) => None,
+        | Outcome::Import(_)
+        | Outcome::Paired(_)
+        | Outcome::Synced(_)
+        | Outcome::SyncStatus(_)
+        | Outcome::Devices(_) => None,
     }
 }
 

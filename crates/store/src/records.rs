@@ -865,6 +865,8 @@ impl Record for ReminderAck {
 impl Record for Device {
     const DOMAIN: Domain = Domain::Devices;
     const COLLECTION: &'static str = "devices";
+    // Keyed by the device's public key, which both sides of a pairing write.
+    const INLINE: bool = true;
     type Key = NodeId;
 
     fn key(&self) -> NodeId {
