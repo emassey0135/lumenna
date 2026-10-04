@@ -40,3 +40,15 @@ class FindingTheProfile(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FindingLum(unittest.TestCase):
+    def test_lum_is_found_in_the_checkout_when_it_is_not_on_path(self):
+        from connect import find_lum
+
+        root = Path(__file__).resolve().parents[3]
+        built = [root / "target" / b / "lum" for b in ("release", "debug")]
+        if not any(path.exists() for path in built):
+            self.skipTest("`lum` has not been built")
+        with mock.patch("shutil.which", return_value=None):
+            self.assertIn(Path(find_lum()), built)

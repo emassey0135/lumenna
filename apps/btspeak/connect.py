@@ -72,12 +72,28 @@ def _over_socket(profile: Path) -> Client | None:
     return Client(reader, writer, on_close=connection.close)
 
 
+def find_lum() -> str | None:
+    """The `lum` to run: the one on PATH, or else the one built in the checkout this app is
+    running from — release first — so that a menu item starting the app from a git clone
+    needs no PATH of its own."""
+    found = shutil.which("lum")
+    if found:
+        return found
+    checkout = Path(__file__).resolve().parents[2]
+    for build in ("release", "debug"):
+        candidate = checkout / "target" / build / "lum"
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
+
 def _over_stdio(profile: Path) -> Client:
     """Our own `lum rpc`, which lives as long as this app does."""
-    binary = shutil.which("lum")
+    binary = find_lum()
     if binary is None:
         raise LumennaError(
-            "cannot find `lum` on PATH. Install the Lumenna binary, or set PATH to include it"
+            "cannot find `lum`: not on PATH, and not built in this checkout. Build it with "
+            "cargo build, or install it on PATH"
         )
     environment = dict(os.environ, LUMENNA_PROFILE=str(profile))
     # The server's stderr goes to a file beside the store, for two reasons. It would

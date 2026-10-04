@@ -11,8 +11,16 @@ library and of `lum rpc`, and almost nothing else.
 python3 __main__.py
 ```
 
-`lum` has to be on `PATH`. The device is aarch64 Linux, so the ordinary Linux build runs here
-unmodified — no cross-compilation, no separate target.
+`lum` is found on `PATH`, or else in the checkout the app runs from (`target/release`, then
+`target/debug`), so a git clone with `cargo build` done needs nothing else. The device is
+aarch64 Linux, so the ordinary Linux build runs here unmodified — no cross-compilation, no
+separate target.
+
+From the User menu: an item whose action is `run python3 <checkout>/apps/btspeak/__main__.py`,
+added with the device's own `BTSpeak.user_menu.add_item` (BT Code's "add to User menu" does
+the same). Running `python3` on the file itself, not a shell script, is what lets the launcher
+read the `blazie-flags` header — and a launch from a terminal shows the terminal's braille,
+not the app's, so the menu is the way to use it.
 
 `LUMENNA_PROFILE` picks a store, exactly as it does for the CLI, which is how you keep test
 data out of the real profile.
