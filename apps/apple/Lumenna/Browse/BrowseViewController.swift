@@ -1,11 +1,5 @@
 import UIKit
 
-/// How a name is written after a sigil in the filter and quick-add languages: quoted when it
-/// has a space in it (§6.2).
-func sigil(_ mark: Character, _ name: String) -> String {
-    name.contains(" ") ? "\(mark)\"\(name)\"" : "\(mark)\(name)"
-}
-
 /// Everything that is not the day or the task list: projects, labels, saved filters, every
 /// block series, and the trash (§16.1).
 final class BrowseViewController: ItemListViewController {

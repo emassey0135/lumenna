@@ -32,7 +32,8 @@ crates/ffi/     the library the Swift and Kotlin apps link; re-exports surface o
 crates/sync/    Iroh endpoints, the document sync session, and pairing (§7).
 apps/cli/       `lum` — the first target, and a permanent one.
 apps/btspeak/   the BTSpeak app, in Python, over `lum rpc`.
-apps/apple/     the iOS app (UIKit + SwiftUI over the generated bindings), and build-core.sh.
+apps/apple/     the iOS and macOS apps over the generated bindings, Shared/ between them,
+                and build-core.sh.
 ```
 
 The other GUI apps in §2's layout do not exist yet.
@@ -302,6 +303,28 @@ through the generated `LumennaCore.swift`. `cd apps/apple && xcodegen` makes the
     -destination 'platform=iOS Simulator,name=iPhone 18 Pro' \
     -collect-test-diagnostics never test
   ```
+
+### The macOS app
+
+`apps/apple/Mac/` — AppKit, with SwiftUI only for leaf forms (task detail, block form,
+settings pages), per §16.5. `Shared/` holds what both Apple apps compile: `Core`, `Clock`,
+`RowSpeech`, and the wording helpers. Scheme `LumennaMac`.
+
+- **Not sandboxed, and shares `lum`'s profile** (`~/Library/Application Support/lumenna`):
+  the app and the command line on one Mac are one device with one store. `Core` polls
+  `refresh` once a second there, since `lum` is another process writing to it.
+- **Resident in the menu bar, and the device's sync process** (§16.2): closing the window
+  hides it, `NSStatusItem` and the Dock bring it back, and it syncs for as long as it runs.
+  No daemon or service is needed or used.
+- **Global shortcuts through Carbon's `RegisterEventHotKey`**, which needs no accessibility
+  permission: Control-Option-L shows the window, Control-Option-Space opens quick add.
+- **Three panes** (`NSSplitViewController`): a source-list sidebar of places, the list
+  (`NSOutlineView` for tasks and the day), the task's details. F6 and Shift-F6 move between
+  them. Actions are in the row's context menu (VO-Shift-M), the menu bar, and keys on the
+  outline itself (Space completes, Delete trashes, Return opens), from one `TaskActions`.
+- **⌘Z undoes typing while a field is being edited**, and otherwise the store (`undoChange:`).
+- **The core has a record called `Timer`**, so Foundation's is named in full.
+- UI tests need macOS to have authorized UI automation for Xcode once.
 
 ### The core/store boundary
 
