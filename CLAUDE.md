@@ -207,7 +207,10 @@ is readable here and the app can be run under a pty without a second machine.
   on line 2 of `__main__.py` still matters for the menu launcher, which reads it before
   starting the program. With self-voice on, printing to the terminal is silence, so startup
   errors are dialogs and the spawned server's stderr goes to `rpc.log`.
-- **No `.menu` file.** BT Code adds the user-menu entry; §16.11 has been updated to match.
+- **No `.menu` file of its own.** It is a line in `~/BTSpeak/user.menu`,
+  `Lumenna: run python3 <checkout>/apps/btspeak/__main__.py`, added with the device's
+  `user_menu.add_item`, as BT Code does. `connect.find_lum` finds `lum` in that checkout's
+  `target/` when it is not on `PATH`, which a menu launch's is not.
 
 ### The iOS app
 
