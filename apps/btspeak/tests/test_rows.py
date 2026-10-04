@@ -15,7 +15,7 @@ import btspeak_stub  # noqa: E402
 
 btspeak_stub.install()
 
-from menus import char_offset  # noqa: E402
+from tasks import char_offset  # noqa: E402
 from rows import Tree, describe  # noqa: E402
 
 

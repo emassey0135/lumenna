@@ -204,6 +204,12 @@ is readable here and the app can be run under a pty without a second machine.
   Code, where nothing read the header. Restoring it in a `finally` is the part that matters:
   the flag is device-wide in `/run/BTSpeak/`. With it on, printing to the terminal is
   silence, so startup errors are dialogs and the spawned server's stderr goes to `rpc.log`.
+- **Laid out as the phone is**, one module per tab: `tasks`, `day`, `organise`, `preferences`,
+  sharing `session`. Enter on a row offers everything that can be done to it, the device's
+  delete keys delete, left and right fold. A feature on the phone and not here is a gap.
+- **`tests/test_menus.py` plays scripts** against a real `lum rpc`: `btspeak_stub` stands in
+  for `dialogs` and answers each dialog from the next step, failing if the app asks for
+  something else. Pairing is driven that way against a second server.
 - **No `.menu` file.** BT Code adds the user-menu entry; §16.11 has been updated to match.
 
 ### The iOS app

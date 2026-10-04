@@ -9,8 +9,8 @@ keep it running (§16.11) — so the socket is the expected path and spawning is
 That is the reverse of the desktop case, and it is why the fallback exists at all: a stopped
 unit should leave the app working-but-not-syncing rather than broken.
 
-No daemon exists yet, so today it always spawns. The socket half is here because the moment
-it does exist, nothing above this file should have to change.
+`lum daemon install` sets the daemon up as a system service here; `lum sync-daemon` serves
+this same surface on the socket, so nothing above this file knows which it got.
 """
 
 from __future__ import annotations
@@ -104,6 +104,7 @@ def _over_stdio(profile: Path) -> Client:
             server.wait(timeout=5)
         except subprocess.TimeoutExpired:
             server.kill()
+        server.stdout.close()
         log.close()
 
     return Client(server.stdout, server.stdin, on_close=stop)

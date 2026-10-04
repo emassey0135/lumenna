@@ -18,6 +18,11 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import btspeak_stub  # noqa: E402
+
+btspeak_stub.install()
 
 from client import Disconnected, LumennaError  # noqa: E402
 from connect import connect  # noqa: E402
