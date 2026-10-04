@@ -1,11 +1,11 @@
-import UIKit
+import Foundation
 
-/// The open store, for the whole app.
+/// The open store, for the whole app — shared by the iOS and macOS apps.
 ///
 /// Every operation is a method on `lumenna`, generated from the Rust surface: this class adds
-/// only what is about running on iOS — where the profile lives, the time zone, and when to back
-/// up. Operations are milliseconds against a local SQLite file, so they run on the main thread
-/// and a view never shows a state the store has moved past.
+/// only what is about running on an Apple platform — where the profile lives, the time zone,
+/// syncing while the app runs, and backups. Operations are milliseconds against a local SQLite
+/// file, so they run on the main thread and a view never shows a state the store has moved past.
 final class Core {
     /// Posted after anything changes the store, so every view showing it reloads.
     static let changed = Notification.Name("LumennaCoreChanged")
@@ -13,6 +13,8 @@ final class Core {
     let lumenna: Lumenna
     private var sync: SyncService?
     private let syncQueue = DispatchQueue(label: "lumenna.sync")
+    // Foundation's, named in full: the core has a record called `Timer` too.
+    private var watcher: Foundation.Timer?
 
     init() throws {
         Core.useSystemTimeZone()
@@ -20,13 +22,23 @@ final class Core {
         lumenna = try Lumenna.open(directory: directory.path)
     }
 
-    /// Where the store lives: Application Support, which is the app's own and never synced
-    /// by iCloud Drive (§9). A UI test names a fresh one, so every run starts empty.
+    /// Where the store lives. A UI test names a fresh one, so every run starts empty.
+    ///
+    /// - **iOS**: Application Support, the app's own and never synced by iCloud Drive (§9).
+    /// - **macOS**: `~/Library/Application Support/lumenna` — where `lum` keeps it too, so the
+    ///   app and the command line on one Mac are one device with one store, not two that would
+    ///   have to pair with each other. `LUMENNA_PROFILE` names another, as it does for `lum`.
     static func profileDirectory() throws -> URL {
         let manager = FileManager.default
-        if let test = ProcessInfo.processInfo.environment["LUMENNA_TEST_PROFILE"] {
+        let environment = ProcessInfo.processInfo.environment
+        if let test = environment["LUMENNA_TEST_PROFILE"] {
             return manager.temporaryDirectory.appendingPathComponent(test, isDirectory: true)
         }
+        #if os(macOS)
+        if let explicit = environment["LUMENNA_PROFILE"], !explicit.isEmpty {
+            return URL(fileURLWithPath: explicit, isDirectory: true)
+        }
+        #endif
         let support = try manager.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
@@ -51,28 +63,29 @@ final class Core {
         Core.useSystemTimeZone()
     }
 
-    /// Starts keeping this device in sync, for as long as the app is in front (§8). iOS
-    /// suspends an app in the background, so the endpoint closes then and opens again on the
-    /// way back; other devices catch up with this one at the next round either side.
+    /// Starts keeping this device in sync (§8). On iOS, for as long as the app is in front;
+    /// on macOS, for as long as it runs, which is what makes the resident app the device's
+    /// sync process (§16.2) with no daemon or service to set up.
     func startSyncing() {
         let lumenna = self.lumenna
         syncQueue.async { [weak self] in
             guard let self, self.sync == nil else { return }
-            // Opening the endpoint can take a moment, and with no paired device there is
-            // still something to answer: a device pairing with this one runs its own.
             self.sync = try? lumenna.startSync(reach: .internet, listener: Arrivals())
         }
     }
 
-    /// Stops syncing, letting go of the endpoint.
-    func stopSyncing() {
-        syncQueue.async { [weak self] in
+    /// Stops syncing, letting go of the endpoint — before returning, when `waiting`, as the
+    /// app must when it quits.
+    func stopSyncing(waiting: Bool = false) {
+        let stop = { [weak self] in
             self?.sync?.stop()
             self?.sync = nil
         }
+        if waiting { syncQueue.sync(execute: stop) } else { syncQueue.async(execute: stop) }
     }
 
-    /// Syncs with every paired device now, off the main thread.
+    /// Syncs with every paired device now, off the main thread: on this app's own endpoint
+    /// while it syncs, or on one opened for the round.
     func syncNow(then finished: @escaping (Result<SyncReport, Error>) -> Void) {
         let lumenna = self.lumenna
         syncQueue.async { [weak self] in
@@ -81,19 +94,25 @@ final class Core {
         }
     }
 
-    /// Takes a backup if one is due (§9), off the main thread, and says so if it fails.
-    func backUpIfDue(presentingFrom presenter: UIViewController?) {
+    /// Notices what another process — `lum`, the daemon — wrote to the store, once a second,
+    /// as `lum rpc` does (§8 sanctions the timer). Only a Mac has those other processes.
+    func watchForOtherProcesses() {
+        guard watcher == nil else { return }
+        watcher = Foundation.Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            if (try? self?.lumenna.refresh()) == true {
+                NotificationCenter.default.post(name: Core.changed, object: nil)
+            }
+        }
+    }
+
+    /// Takes a backup if one is due (§9), off the main thread; `failed` hears why not.
+    func backUpIfDue(failed: @escaping (String) -> Void) {
         let lumenna = self.lumenna
         DispatchQueue.global(qos: .utility).async {
             do {
                 _ = try lumenna.backUpIfDue()
             } catch {
-                DispatchQueue.main.async {
-                    presenter?.showFailure(
-                        "The automatic backup failed. \(error.sentence)",
-                        title: "Backup"
-                    )
-                }
+                DispatchQueue.main.async { failed("The automatic backup failed. \(error.sentence)") }
             }
         }
     }
@@ -119,14 +138,5 @@ extension Error {
             return message.prefix(1).uppercased() + message.dropFirst()
         }
         return localizedDescription
-    }
-}
-
-extension UIViewController {
-    /// Says that something could not be done, with the core's own sentence.
-    func showFailure(_ message: String, title: String = "Could not do that") {
-        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        (presentedViewController ?? self).present(alert, animated: true)
     }
 }

@@ -111,14 +111,3 @@ extension UIViewController {
         present(alert, animated: true)
     }
 }
-
-/// A sitting's status with its planned length beside it: "planned for 45 minutes" before it
-/// starts, "45 minutes planned" after, so the two never read as "planned, planned" — as the
-/// command line and the BTSpeak app say it.
-func sittingStatus(_ sitting: PlanAssignment) -> [String] {
-    guard let planned = sitting.plannedMins else { return [sitting.status] }
-    if sitting.status == "planned" {
-        return ["planned for \(Clock.length(planned))"]
-    }
-    return [sitting.status, "\(Clock.length(planned)) planned"]
-}

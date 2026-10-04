@@ -1,7 +1,7 @@
 #!/bin/bash
 # Builds Lumenna's Rust core for an Apple platform and regenerates its Swift bindings.
 #
-#   apps/apple/build-core.sh [iphonesimulator|iphoneos] [Debug|Release]
+#   apps/apple/build-core.sh [iphonesimulator|iphoneos|macosx] [Debug|Release]
 #
 # Xcode runs this before every build, passing nothing: it reads PLATFORM_NAME and
 # CONFIGURATION from Xcode's environment. Cargo does nothing when nothing changed, so an
@@ -19,6 +19,9 @@ CONFIGURATION="${2:-${CONFIGURATION:-Debug}}"
 case "$PLATFORM" in
   iphonesimulator) TARGET=aarch64-apple-ios-sim ;;
   iphoneos) TARGET=aarch64-apple-ios ;;
+  # Named rather than left to the host build, so the Mac app's library is built against
+  # its deployment target and kept apart from the one uniffi-bindgen reads.
+  macosx) TARGET=aarch64-apple-darwin ;;
   *) echo "error: no Rust target for platform $PLATFORM" >&2; exit 1 ;;
 esac
 case "$CONFIGURATION" in
@@ -30,7 +33,7 @@ DEVELOPER="${DEVELOPER_DIR:-$(xcode-select -p)}"
 cargo() {
   env -i HOME="$HOME" USER="${USER:-}" \
     PATH="$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin" \
-    DEVELOPER_DIR="$DEVELOPER" IPHONEOS_DEPLOYMENT_TARGET=17.0 \
+    DEVELOPER_DIR="$DEVELOPER" IPHONEOS_DEPLOYMENT_TARGET=17.0 MACOSX_DEPLOYMENT_TARGET=14.0 \
     cargo "$@"
 }
 
