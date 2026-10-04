@@ -166,6 +166,10 @@ socket.
   way its request was.
 - **Spans are UTF-8 byte offsets**, as Rust strings are. A client in a language that indexes
   by code point converts both ways (`menus.char_offset` in the BTSpeak app).
+- **`pair` replies when the pairing ends**, from a thread of its own, and talks in between
+  through `lumenna/pairing` notifications: `{code, name}` while it waits to be found, then
+  `{words}`. The client answers with `pair.confirm {match}` or gives up with `pair.cancel`;
+  the server keeps answering everything else meanwhile. One pairing at a time.
 - **`complete` and `preview` have no command line** — completion is a keystroke-rate
   question and a process per keystroke is not an answer. They are surface methods
   (`complete_text`, `preview_task`), so linked apps call them directly, and they are why the
