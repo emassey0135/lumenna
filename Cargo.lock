@@ -757,6 +757,8 @@ dependencies = [
  "lumenna-core",
  "proptest",
  "rusqlite",
+ "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
  "uuid",

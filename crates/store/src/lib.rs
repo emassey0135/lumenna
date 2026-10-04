@@ -13,14 +13,16 @@
 //! - **Merge produces states nobody wrote.** Cycles, dangling references, records from a
 //!   version this build has never seen. Loading has to survive all of it.
 
+pub mod backup;
 pub mod db;
 pub mod doc;
 pub mod error;
+pub mod export;
 mod records;
 pub mod store;
 mod value;
 
 pub use db::Db;
 pub use doc::{Doc, DocId, Documents, HydrationReport, Skipped};
-pub use store::Store;
+pub use store::{Imports, Restored, Store};
 pub use error::{Result, StoreError};

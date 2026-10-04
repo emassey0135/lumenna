@@ -55,6 +55,10 @@ use crate::{
 /// whether there is anything at all to do.
 const POLL: Duration = Duration::from_secs(1);
 
+/// How often a resident server asks whether a backup is due. Hourly is plenty against a
+/// daily default, and the question is a directory listing.
+const BACKUP_CHECK: Duration = Duration::from_secs(60 * 60);
+
 /// The notification a client listens for. Everything else is a reply.
 const CHANGED: &str = "lumenna/changed";
 
@@ -99,6 +103,10 @@ const METHODS: &[&str] = &[
     "stop",
     "config.get",
     "config.set",
+    "backup",
+    "restore",
+    "export",
+    "import",
     "complete",
     "preview",
 ];
@@ -132,6 +140,9 @@ struct Writer {
 /// If stdin cannot be read.
 pub fn serve(mut profile: Profile) -> Result<()> {
     profile.detach_rows();
+    // A resident server is exactly the "something that stays running" §9 means, so it takes
+    // a backup when one is due at start, and checks again on the hour while it runs.
+    crate::durability::back_up_if_due(&mut profile);
     let server = Arc::new(Server {
         profile: Mutex::new(profile),
         writer: Mutex::new(Writer {
@@ -162,8 +173,16 @@ pub fn serve(mut profile: Profile) -> Result<()> {
 /// A cursor that lags re-reads a change already held, which is a no-op; a cursor that skips
 /// loses an edit — so `refresh` is the only thing that moves it, here as everywhere.
 fn watch(server: &Server) {
+    let mut since_backup_check = Duration::ZERO;
     while server.running.load(Ordering::Relaxed) {
         std::thread::sleep(POLL);
+        since_backup_check += POLL;
+        if since_backup_check >= BACKUP_CHECK {
+            since_backup_check = Duration::ZERO;
+            if let Ok(mut profile) = server.profile.lock() {
+                crate::durability::back_up_if_due(&mut profile);
+            }
+        }
         let changed = server
             .profile
             .lock()
@@ -470,6 +489,20 @@ fn command_for(method: &str, params: &Value) -> std::result::Result<Command, Rpc
             assignment: text_of(params, "assignment")?,
             minutes: maybe_number(params, "minutes")?,
         },
+        "backup" => Command::Backup { to: maybe_text(params, "to").map(Into::into) },
+        "restore" => Command::Restore { file: text_of(params, "file")?.into() },
+        // Without `output` the export comes back in the reply, as `content`.
+        "export" => Command::Export {
+            format: match maybe_text(params, "format") {
+                None => crate::durability::ExportFormat::Json,
+                Some(word) => crate::durability::ExportFormat::from_word(&word).ok_or_else(|| {
+                    invalid(format!("'{word}' is not a format; use json, markdown, org or ics"))
+                })?,
+            },
+            output: maybe_text(params, "output").map(Into::into),
+            force: flag(params, "force"),
+        },
+        "import" => Command::Import { file: text_of(params, "file")?.into() },
         "config.get" => Command::Config(ConfigCommand::Get { key: maybe_text(params, "key") }),
         "config.set" => Command::Config(ConfigCommand::Set {
             key: text_of(params, "key")?,

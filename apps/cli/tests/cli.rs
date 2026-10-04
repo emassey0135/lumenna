@@ -27,6 +27,8 @@ impl Lum {
         let output = Command::new(env!("CARGO_BIN_EXE_lum"))
             .args(args)
             .env("LUMENNA_PROFILE", self.profile.path())
+            // Automatic backups land here rather than beside the temporary profile.
+            .env("LUMENNA_BACKUP_DIR", self.profile.path().join("backups"))
             .env("NO_COLOR", "1")
             .output()
             .expect("the binary should run");
@@ -609,4 +611,120 @@ fn first_task_id(lum: &Lum) -> String {
         .and_then(|line| line.split('"').nth(3))
         .expect("an id")
         .to_owned()
+}
+
+// ---------------------------------------------------------------------------------------
+// Backup, export and import (§9)
+// ---------------------------------------------------------------------------------------
+
+fn backups_in(lum: &Lum) -> Vec<std::path::PathBuf> {
+    let dir = lum.path().join("backups");
+    let mut found: Vec<_> = std::fs::read_dir(&dir)
+        .map(|entries| entries.filter_map(|e| e.ok().map(|e| e.path())).collect())
+        .unwrap_or_default();
+    found.retain(|p| p.extension().is_some_and(|e| e == "lumbak"));
+    found.sort();
+    found
+}
+
+#[test]
+fn a_backup_is_taken_automatically_once_a_day_and_on_request() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "first"]);
+    assert_eq!(backups_in(&lum).len(), 1, "the first command of the day takes one");
+    lum.ok(&["task", "add", "second"]);
+    assert_eq!(backups_in(&lum).len(), 1, "and only one");
+
+    let out = lum.ok(&["backup"]);
+    assert!(out.contains("Backed up to"), "{out}");
+    assert_eq!(backups_in(&lum).len(), 2);
+
+    lum.ok(&["config", "set", "backup-every", "off"]);
+    assert!(lum.ok(&["config", "get", "backup-every"]).contains("off"));
+}
+
+#[test]
+fn a_backup_rebuilds_the_store_somewhere_else_trash_and_all() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "keep me p1 tomorrow"]);
+    lum.ok(&["task", "add", "throw me away"]);
+    lum.ok(&["task", "list"]);
+    lum.ok(&["task", "rm", "2"]);
+    // Somewhere outside the profile: a backup inside the directory it protects is refused.
+    let elsewhere = tempfile::tempdir().unwrap();
+    lum.ok(&["backup", "--to", elsewhere.path().to_str().unwrap()]);
+    let backup = std::fs::read_dir(elsewhere.path()).unwrap().next().unwrap().unwrap().path();
+
+    let other = Lum::new();
+    let out = other.ok(&["restore", backup.to_str().unwrap()]);
+    assert!(out.contains("Restored"), "{out}");
+    assert!(other.ok(&["task", "list"]).contains("keep me"));
+    assert!(other.ok(&["task", "list", "deleted"]).contains("throw me away"), "full history");
+
+    let again = other.ok(&["restore", backup.to_str().unwrap()]);
+    assert!(again.contains("nothing this store does not already have"), "{again}");
+}
+
+#[test]
+fn an_export_comes_back_through_import_without_the_trash() {
+    let lum = Lum::new();
+    lum.ok(&["project", "add", "Work"]);
+    lum.ok(&["task", "add", "review PR tomorrow 3pm p1 #Work @laptop"]);
+    lum.ok(&["task", "add", "private"]);
+    lum.ok(&["task", "list"]);
+    lum.ok(&["task", "rm", "2"]);
+
+    let file = lum.path().join("export.json");
+    lum.ok(&["export", "--output", file.to_str().unwrap()]);
+    let json = std::fs::read_to_string(&file).unwrap();
+    assert!(json.contains("\"format\": \"lumenna-export\""));
+    assert!(!json.contains("private"), "an export holds nothing from the trash");
+    assert!(lum.fails(&["export", "--output", file.to_str().unwrap()]).contains("--force"));
+
+    let other = Lum::new();
+    let out = other.ok(&["import", file.to_str().unwrap()]);
+    assert!(out.contains("new"), "{out}");
+    let listed = other.ok(&["task", "list", "#Work & @laptop & p1"]);
+    assert!(listed.contains("review PR"), "{listed}");
+    let projects = other.ok(&["project", "list"]);
+    assert_eq!(projects.matches("Inbox").count(), 1, "one Inbox, not two: {projects}");
+
+    let again = other.ok(&["import", file.to_str().unwrap()]);
+    assert!(again.contains("0 new, 0 updated"), "{again}");
+}
+
+#[test]
+fn export_to_standard_output_is_exactly_the_export() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "write the chapter"]);
+    lum.ok(&["block", "add", "Deep work", "--at", "9am", "--minutes", "90", "--repeat", "daily"]);
+
+    let md = lum.ok(&["export", "--format", "md"]);
+    assert!(md.starts_with("# Lumenna\n"), "{md}");
+    assert!(md.contains("- [ ] write the chapter"));
+
+    let ics = lum.ok(&["export", "--format", "ics"]);
+    assert!(ics.starts_with("BEGIN:VCALENDAR\r\n"), "{ics}");
+    assert!(ics.contains("RRULE:FREQ=DAILY"));
+
+    assert!(lum.ok(&["export", "--format", "org"]).contains("* Inbox"));
+    let complaint = lum.fails(&["import", lum.path().join("nope.md").to_str().unwrap()]);
+    assert!(complaint.contains("cannot read"), "{complaint}");
+}
+
+#[test]
+fn choosing_where_backups_go_says_what_they_hold() {
+    let lum = Lum::new();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let synced = elsewhere.path().join("Dropbox").join("lumenna");
+    let result = lum.run(&["config", "set", "backup-dir", synced.to_str().unwrap()]);
+    assert!(result.ok, "{}", result.stderr);
+    assert!(result.stderr.contains("whole history"), "{}", result.stderr);
+    assert!(result.stderr.contains("Dropbox"), "{}", result.stderr);
+
+    let inside = lum.path().join("in-here");
+    assert!(lum.fails(&["config", "set", "backup-dir", inside.to_str().unwrap()]).contains("inside the profile"));
+
+    lum.ok(&["config", "set", "backup-dir", "default"]);
+    assert!(lum.ok(&["config", "get", "backup-dir"]).contains("backups"));
 }

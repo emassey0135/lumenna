@@ -153,6 +153,14 @@ pub enum Outcome {
     Preview(Preview),
     /// What this server is, for a client checking it can talk to it.
     Server(ServerInfo),
+    /// A backup was written.
+    Backup(BackupDone),
+    /// A backup was merged in.
+    Restore(RestoreDone),
+    /// The current state was exported.
+    Export(Exported),
+    /// An export was read in.
+    Import(ImportDone),
 }
 
 // ---------------------------------------------------------------------------------------
@@ -794,4 +802,55 @@ pub struct ServerInfo {
     pub contract: u32,
     /// Every method this server answers, so a client can find out rather than assume.
     pub methods: Vec<&'static str>,
+}
+
+// ---------------------------------------------------------------------------------------
+// Durability (§9)
+// ---------------------------------------------------------------------------------------
+
+/// Where a backup went.
+#[derive(Debug, Serialize)]
+pub struct BackupDone {
+    /// The file written.
+    pub path: String,
+    /// How many backups that directory now keeps, this one included.
+    pub kept: usize,
+}
+
+/// What a restore did.
+#[derive(Debug, Serialize)]
+pub struct RestoreDone {
+    /// Documents the backup held that this version could read.
+    pub documents: usize,
+    /// How many of them brought in anything new.
+    pub changed: usize,
+    /// Documents of a kind this version does not know, left out.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unknown: Vec<String>,
+}
+
+/// An export.
+#[derive(Debug, Serialize)]
+pub struct Exported {
+    /// json, markdown, org or ics.
+    pub format: &'static str,
+    /// The file written, when one was asked for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// The export itself, when no file was asked for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+}
+
+/// What an import did, in records.
+#[derive(Debug, Serialize)]
+pub struct ImportDone {
+    /// Records the store did not have.
+    pub created: usize,
+    /// Records it had, now matching the file.
+    pub updated: usize,
+    /// Records already as the file has them.
+    pub unchanged: usize,
+    /// Assignments left out because their block was nowhere to be found.
+    pub skipped: usize,
 }
