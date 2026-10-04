@@ -93,11 +93,8 @@ socket.
   process per keystroke is not an answer. They are why the BTSpeak app speaks a protocol
   rather than shelling out.
 
-**Not built yet, and worth knowing:** `lum undo`. §9 says the stack is per-session and
-§3.12 says it never syncs, but a one-shot CLI process has no session, so cross-invocation
-undo needs either serialisable edits or a history-derived inverse. §15 lists the command;
-§9 and §15 disagree about whether it can exist. Also absent: sync, pairing, reminders,
-hooks, auto-scheduling — all of which depend on crates that do not exist.
+**Not built yet:** sync, pairing, reminders, hooks, auto-scheduling — all of which depend
+on crates that do not exist.
 
 ### The BTSpeak app
 
@@ -205,10 +202,20 @@ how someone sends a "task list" holding everything they ever deleted.
 `core::edit` computes an `Edit` — a list of before/after record pairs — and `store` applies
 it. Core writes nothing, so every rule is testable against plain structs.
 
-- **Undo is the same edit with `before` and `after` swapped**, because §9 says Automerge
-  gives history, not undo, and rewinding would discard concurrent remote changes. `core::undo`
-  holds the per-session stack; it is local-only (§3.12) and never synced, though the change an
-  undo produces syncs like any other.
+- **Undo applies an edit's other side**, because §9 says Automerge gives history, not
+  undo, and rewinding would discard concurrent remote changes. The history is **saved per
+  device**, in an `undo` table in the profile's SQLite file (`store::undo`), so `lum undo`
+  works across commands and undoes what the BTSpeak app did too. It is local-only (§3.12):
+  sync and backups carry Automerge documents, never that table. The change an undo produces
+  syncs like any other.
+- **Undo is rebased, never a blind swap.** An entry may be undone after other edits, here or
+  merged from elsewhere, so only fields still holding what the edit set go back; the rest
+  are kept and reported. That is also why the stack never jams on a conflict.
+- **Everything a person does goes through `Store::apply_recorded`**; what the app does for
+  them (folding a legacy Inbox, import, restore) uses `Store::apply` and is not recorded. A
+  new command that writes must use an `Edit`, or it cannot be undone.
+- Saved entries are the model serialised with serde (core's `serde` feature, which `store`
+  enables). An entry a later version cannot read is dropped with a notice, not guessed at.
 - **Operations own the multi-record rules.** Completing a task writes a completion, cascades
   to subtasks per §3.10's setting, and advances a recurring due date per §5. Leaving that to
   eleven UI targets is the business-logic leak principle 2 forbids.

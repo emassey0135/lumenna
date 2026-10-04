@@ -626,7 +626,7 @@ Device {
 - Iroh peer sync state and Automerge document heads
 - The SQLite read model itself
 - Current view, selection, scroll position
-- The undo/redo stack (§9) — per-session, never synced
+- The undo/redo stack (§9) — per device, saved locally, never synced
 - **Tree expansion / collapse state** — deliberately per-device. Syncing it means the watch
   collapsing a project on the desktop.
 
@@ -1758,7 +1758,13 @@ applying an **inverse change**.
 So: every core mutation returns its inverse, and a bounded undo stack holds them. Redo
 likewise.
 
-- The stack is **local-only and per-session** (§3.12). Undo is not a synced concept.
+- The stack is **local-only and per device** (§3.12). Undo is not a synced concept. It is
+  saved in the profile's SQLite file rather than held in memory, because a one-shot CLI
+  process has no session to hold it in; every process on the device shares it, so `lum undo`
+  in a terminal reverses what the BTSpeak app just did.
+- **Rebased on the current state.** An entry may be undone after other edits, local or
+  merged from another device, so only the fields the edit changed — and still hold what it
+  set — go back. A field changed since is kept and announced, never silently overwritten.
 - Multi-level.
 - **Announceable**: *"Undid: completed Review PR."* Never a silent state change.
 

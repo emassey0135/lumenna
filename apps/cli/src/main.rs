@@ -138,6 +138,16 @@ pub(crate) enum Command {
     #[command(subcommand)]
     Config(ConfigCommand),
 
+    /// Undo the last change made on this device.
+    ///
+    /// The history is this device's alone and survives between commands, so `lum undo`
+    /// reverses what the last command did — or what the BTSpeak app did. Anything changed
+    /// since by something else is kept, and you are told what.
+    Undo,
+
+    /// Redo the change most recently undone.
+    Redo,
+
     /// Back up the whole store now, history included.
     ///
     /// A backup holds every task ever created — including the ones you deleted — so that a
@@ -533,6 +543,8 @@ pub(crate) fn dispatch(
         Command::Start { assignment } => start(profile, assignment, now),
         Command::Stop { assignment, minutes } => stop(profile, assignment, *minutes, now),
         Command::Config(command) => config(profile, command),
+        Command::Undo => step(profile, false),
+        Command::Redo => step(profile, true),
         Command::Backup { to } => durability::backup(profile, to.as_deref()),
         Command::Restore { file } => durability::restore(profile, file),
         Command::Export { format, output, force } => {
@@ -755,7 +767,7 @@ fn add(profile: &mut Profile, text: &str, quiet: bool, now: &Zoned) -> Result<Re
     changes.extend(edit::create_task(task).changes);
 
     let change = edit::Edit { description: format!("Added {}", preview.title), changes };
-    profile.store.apply(&change)?;
+    profile.store.apply_recorded(&change)?;
 
     // The announcement stands in for the inline highlighting a sighted user gets as they
     // type (§6.1) — and always names the resolved date, since "Friday" is the ambiguous part
@@ -914,7 +926,7 @@ fn edit_task(
     if change.is_empty() {
         return Ok(Response::unchanged("nothing changed"));
     }
-    profile.store.apply(&change)?;
+    profile.store.apply_recorded(&change)?;
     Ok(Response::changed(&change))
 }
 
@@ -934,7 +946,7 @@ fn done(profile: &mut Profile, input: &str, now: &Zoned) -> Result<Response> {
     let snapshot = state(profile);
     let id = resolve_task(profile, &snapshot, input)?;
     let change = edit::complete_task(&snapshot, id, now)?;
-    profile.store.apply(&change)?;
+    profile.store.apply_recorded(&change)?;
     Ok(Response::changed(&change))
 }
 
@@ -942,7 +954,7 @@ fn undone(profile: &mut Profile, input: &str) -> Result<Response> {
     let snapshot = state(profile);
     let id = resolve_task(profile, &snapshot, input)?;
     let change = edit::uncomplete_task(&snapshot, id)?;
-    profile.store.apply(&change)?;
+    profile.store.apply_recorded(&change)?;
     Ok(Response::changed(&change))
 }
 
@@ -950,7 +962,7 @@ fn trash(profile: &mut Profile, input: &str) -> Result<Response> {
     let snapshot = state(profile);
     let id = resolve_task(profile, &snapshot, input)?;
     let change = edit::trash_task(&snapshot, id)?;
-    profile.store.apply(&change)?;
+    profile.store.apply_recorded(&change)?;
     Ok(Response::changed_as(
         format!("{} (recover it with `lum task restore`)", change.description),
         &change,
@@ -961,7 +973,7 @@ fn restore(profile: &mut Profile, input: &str) -> Result<Response> {
     let snapshot = state(profile);
     let id = resolve_task(profile, &snapshot, input)?;
     let change = edit::restore_task(&snapshot, id)?;
-    profile.store.apply(&change)?;
+    profile.store.apply_recorded(&change)?;
     Ok(Response::changed(&change))
 }
 
@@ -979,7 +991,7 @@ fn erase(profile: &mut Profile, input: &str, yes: bool) -> Result<Response> {
         }
     }
     let change = edit::purge_task(&snapshot, id)?;
-    profile.store.apply(&change)?;
+    profile.store.apply_recorded(&change)?;
     Ok(Response::changed(&change))
 }
 
@@ -1007,7 +1019,7 @@ fn move_task(
     if change.is_empty() {
         return Ok(Response::unchanged("it is already there"));
     }
-    profile.store.apply(&change)?;
+    profile.store.apply_recorded(&change)?;
     Ok(Response::changed(&change))
 }
 
@@ -1033,7 +1045,7 @@ fn depend(profile: &mut Profile, command: &DependCommand) -> Result<Response> {
     if change.is_empty() {
         return Ok(Response::unchanged("nothing changed"));
     }
-    profile.store.apply(&change)?;
+    profile.store.apply_recorded(&change)?;
     Ok(Response::changed(&change))
 }
 
@@ -1056,7 +1068,7 @@ fn project(profile: &mut Profile, command: &ProjectCommand) -> Result<Response> 
                 project.parent_id = Some(find_project(&snapshot, parent)?.id);
             }
             let change = edit::create_project(project);
-            profile.store.apply(&change)?;
+            profile.store.apply_recorded(&change)?;
             Ok(Response::changed(&change))
         }
         ProjectCommand::List => {
@@ -1107,7 +1119,7 @@ fn project(profile: &mut Profile, command: &ProjectCommand) -> Result<Response> 
             let mut after = before.clone();
             after.name = to.clone();
             let change = edit::update_project(before, after);
-            profile.store.apply(&change)?;
+            profile.store.apply_recorded(&change)?;
             Ok(Response::changed_as(format!("Renamed {name} to {to}"), &change))
         }
         ProjectCommand::Archive { name } => {
@@ -1116,7 +1128,7 @@ fn project(profile: &mut Profile, command: &ProjectCommand) -> Result<Response> 
             after.archived = !before.archived;
             let archived = after.archived;
             let change = edit::update_project(before, after);
-            profile.store.apply(&change)?;
+            profile.store.apply_recorded(&change)?;
             Ok(Response::changed_as(
                 if archived { format!("Archived {name}") } else { format!("Unarchived {name}") },
                 &change,
@@ -1133,7 +1145,7 @@ fn project(profile: &mut Profile, command: &ProjectCommand) -> Result<Response> 
                 ProjectDeletion::TrashTasks
             };
             let change = edit::trash_project(&snapshot, target.id, disposition)?;
-            profile.store.apply(&change)?;
+            profile.store.apply_recorded(&change)?;
             Ok(Response::changed(&change))
         }
         ProjectCommand::Weight { name, value } => {
@@ -1146,7 +1158,7 @@ fn project(profile: &mut Profile, command: &ProjectCommand) -> Result<Response> 
                 if change.is_empty() {
                     return Ok(Response::unchanged("it already inherits its weight"));
                 }
-                profile.store.apply(&change)?;
+                profile.store.apply_recorded(&change)?;
                 let inherited = state(profile).effective_weight(project_id);
                 return Ok(Response::changed_as(
                     format!("{name} now inherits its weight, which is {inherited}"),
@@ -1158,7 +1170,7 @@ fn project(profile: &mut Profile, command: &ProjectCommand) -> Result<Response> 
             )?;
             after.weight = Some(value);
             let change = edit::update_project(before, after);
-            profile.store.apply(&change)?;
+            profile.store.apply_recorded(&change)?;
 
             let response = Response::changed_as(format!("{name} now weighs {value}"), &change);
             let (low, high) = Project::WEIGHT_RANGE;
@@ -1200,7 +1212,7 @@ fn label(profile: &mut Profile, command: &LabelCommand) -> Result<Response> {
                 name,
                 order_after(snapshot.labels.values().map(|l| l.order.clone())),
             ));
-            profile.store.apply(&change)?;
+            profile.store.apply_recorded(&change)?;
             Ok(Response::changed(&change))
         }
         LabelCommand::List => {
@@ -1249,20 +1261,20 @@ fn label(profile: &mut Profile, command: &LabelCommand) -> Result<Response> {
             let mut after = before.clone();
             after.name = to.trim_start_matches('@').to_owned();
             let change = edit::update_label(before, after);
-            profile.store.apply(&change)?;
+            profile.store.apply_recorded(&change)?;
             Ok(Response::changed(&change))
         }
         LabelCommand::Merge { from, into } => {
             let loser = find_label(&snapshot, from)?.id;
             let winner = find_label(&snapshot, into)?.id;
             let change = edit::merge_labels(&snapshot, loser, winner)?;
-            profile.store.apply(&change)?;
+            profile.store.apply_recorded(&change)?;
             Ok(Response::changed(&change))
         }
         LabelCommand::Rm { name } => {
             let target = find_label(&snapshot, name)?.id;
             let change = edit::trash_label(&snapshot, target)?;
-            profile.store.apply(&change)?;
+            profile.store.apply_recorded(&change)?;
             // Worth stating, because it surprises people: the tasks are untouched.
             Ok(Response::changed_as(
                 format!("{}; tasks that wore it are unchanged", change.description),
@@ -1289,7 +1301,7 @@ fn filter(profile: &mut Profile, command: &FilterCommand) -> Result<Response> {
                 color: None,
                 deleted_at: None,
             });
-            profile.store.apply(&change)?;
+            profile.store.apply_recorded(&change)?;
             Ok(Response::changed_as(format!("Saved {name}: {}", expr.describe()), &change))
         }
         FilterCommand::List => {
@@ -1321,7 +1333,7 @@ fn filter(profile: &mut Profile, command: &FilterCommand) -> Result<Response> {
                 .find(|f| f.deleted_at.is_none() && f.name.eq_ignore_ascii_case(name))
                 .ok_or_else(|| CliError::Message(format!("no filter called '{name}'")))?;
             let change = edit::trash_filter(&snapshot, target.id)?;
-            profile.store.apply(&change)?;
+            profile.store.apply_recorded(&change)?;
             Ok(Response::changed(&change))
         }
     }
@@ -1437,14 +1449,16 @@ fn block(profile: &mut Profile, command: &BlockCommand, now: &Zoned) -> Result<R
             }
 
             profile.store.load_year(series.start_date.year())?;
-            profile.store.write(|docs| docs.put_series(&series, None))?;
+            let (start, first) = (series.start_time, series.start_date);
+            let id = series.id;
+            profile.store.apply_recorded(&edit::create_series(series))?;
             Ok(Response::touched(
                 format!(
                     "Added block {title} at {} on {}",
-                    render::time_text(series.start_time),
-                    series.start_date
+                    render::time_text(start),
+                    first
                 ),
-                api::Affected { blocks: vec![series.id.to_string()], ..api::Affected::default() },
+                api::Affected { blocks: vec![id.to_string()], ..api::Affected::default() },
             ))
         }
         BlockCommand::List => {
@@ -1492,18 +1506,12 @@ fn block(profile: &mut Profile, command: &BlockCommand, now: &Zoned) -> Result<R
             profile.store.load_all_years()?;
             let snapshot = state(profile);
             let series_id = resolve_series(profile, &snapshot, id)?;
-            let before = snapshot.series[&series_id].clone();
-            let mut after = before.clone();
-            after.deleted_at = Some(lumenna_core::time::now());
-            let title = before.title.clone();
-            profile.store.write(|docs| docs.put_series(&after, Some(&before)))?;
-            Ok(Response::touched(
-                format!("Deleted block {title}"),
-                api::Affected {
-                    blocks: vec![series_id.to_string()],
-                    ..api::Affected::default()
-                },
-            ))
+            let change = edit::trash_series(&snapshot, series_id)?;
+            if change.is_empty() {
+                return Ok(Response::unchanged("that block is already in the trash"));
+            }
+            profile.store.apply_recorded(&change)?;
+            Ok(Response::changed(&change))
         }
     }
 }
@@ -1559,7 +1567,7 @@ fn assign(
         assignment.planned_mins = Some(minutes);
     }
     let announcement = format!("{} into {} on {day}", change.description, series.title);
-    profile.store.apply(&change)?;
+    profile.store.apply_recorded(&change)?;
     Ok(Response::changed_as(announcement, &change))
 }
 
@@ -1604,7 +1612,7 @@ fn unassign(profile: &mut Profile, input: &str) -> Result<Response> {
     let snapshot = state(profile);
     let id = resolve_assignment(profile, &snapshot, input)?;
     let change = edit::unassign(&snapshot, id, assignment_year(&snapshot, id)?)?;
-    profile.store.apply(&change)?;
+    profile.store.apply_recorded(&change)?;
     Ok(Response::changed(&change))
 }
 
@@ -1616,7 +1624,7 @@ fn start(profile: &mut Profile, input: &str, now: &Zoned) -> Result<Response> {
     if change.is_empty() {
         return Ok(Response::unchanged("that timer is already running"));
     }
-    profile.store.apply(&change)?;
+    profile.store.apply_recorded(&change)?;
     Ok(Response::changed_as("Started timer", &change))
 }
 
@@ -1636,7 +1644,7 @@ fn stop(
         if change.is_empty() {
             return Ok(Response::unchanged(format!("{minutes} minutes were already logged")));
         }
-        profile.store.apply(&change)?;
+        profile.store.apply_recorded(&change)?;
         return Ok(Response::changed(&change));
     }
 
@@ -1658,7 +1666,7 @@ fn stop(
             render::count_line(elapsed.mins as usize, "minute")
         )));
     }
-    profile.store.apply(&change)?;
+    profile.store.apply_recorded(&change)?;
 
     let response = Response::new(
         format!("Logged {} minutes", elapsed.mins),
@@ -1678,6 +1686,40 @@ fn stop(
         ))
     } else {
         response
+    })
+}
+
+// ---------------------------------------------------------------------------------------
+// Undo (§9)
+// ---------------------------------------------------------------------------------------
+
+/// `lum undo` and `lum redo`.
+///
+/// Always announced, never a silent state change (§9): without a visual channel a
+/// mis-keystroke can go unnoticed for minutes, and so can an undo that did less than asked.
+fn step(profile: &mut Profile, redo: bool) -> Result<Response> {
+    use lumenna_store::undo::Step;
+    let taken = if redo { profile.store.redo()? } else { profile.store.undo()? };
+    Ok(match taken {
+        Step::Nothing => {
+            Response::unchanged(if redo { "nothing to redo" } else { "nothing to undo" })
+        }
+        Step::Unreadable => Response::unchanged(
+            "the last change was saved by a different version of Lumenna and cannot be \
+             reversed by this one; it has been set aside, and the one before it is next",
+        ),
+        Step::Done(reverted) => {
+            let verb = if redo { "Redid" } else { "Undid" };
+            let mut response =
+                Response::changed_as(format!("{verb}: {}", reverted.description), &reverted.applied);
+            if reverted.applied.is_empty() && reverted.kept.is_empty() {
+                response = response.note("it was already that way");
+            }
+            for kept in reverted.kept {
+                response = response.note(kept);
+            }
+            response
+        }
     })
 }
 
@@ -1762,7 +1804,7 @@ fn config(profile: &mut Profile, command: &ConfigCommand) -> Result<Response> {
             if change.is_empty() {
                 return Ok(Response::unchanged("nothing changed"));
             }
-            profile.store.apply(&change)?;
+            profile.store.apply_recorded(&change)?;
             Ok(Response::changed_as(format!("{key} is now {value}"), &change))
         }
     }

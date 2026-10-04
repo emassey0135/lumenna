@@ -7,6 +7,7 @@ use crate::order::OrderKey;
 
 /// An area of work. Tasks belong to exactly one.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Project {
     /// Identity.
     pub id: ProjectId,
@@ -120,6 +121,7 @@ impl Project {
 /// Undo is free and a large multi-task write is avoided. The consequence is worth stating:
 /// a later label with the same *name* is a different record, and old tasks do not acquire it.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Label {
     /// Identity.
     pub id: LabelId,
@@ -149,6 +151,7 @@ impl Label {
 
 /// A named query (§3.4).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SavedFilter {
     /// Identity.
     pub id: FilterId,

@@ -105,6 +105,7 @@ pub enum EditError {
 /// Every variant carries both sides, which is what makes [`Edit::inverse`] a swap rather
 /// than a second implementation of every operation.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Change {
     /// A task.
     Task(Box<Transition<Task>>),
@@ -144,6 +145,7 @@ pub enum Change {
 
 /// A record before and after.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Transition<T> {
     /// What was there, if anything.
     pub before: Option<T>,
@@ -194,6 +196,7 @@ impl Change {
 
 /// One user action, as a set of record changes.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Edit {
     /// What the user did, phrased for announcement: *"Completed Review PR"*.
     ///
@@ -846,6 +849,36 @@ pub fn merge_labels(snapshot: &Snapshot, from: LabelId, into: LabelId) -> Result
 // ---------------------------------------------------------------------------------------
 // Assignments and timers — the join between the two halves (§3.7)
 // ---------------------------------------------------------------------------------------
+
+/// Adds a block series, one-off or recurring.
+#[must_use]
+pub fn create_series(series: BlockSeries) -> Edit {
+    Edit {
+        description: format!("Added block {}", series.title),
+        changes: vec![Change::Series(Box::new(Transition::created(series)))],
+    }
+}
+
+/// Moves a block series to the trash.
+///
+/// Its assignments are left alone, as a label's tasks are: identifiers pointing at a trashed
+/// series project as absent (§3.1), and restoring it brings them back with it.
+///
+/// # Errors
+///
+/// If the series is not loaded.
+pub fn trash_series(snapshot: &Snapshot, id: crate::id::SeriesId) -> Result<Edit, EditError> {
+    let series = snapshot.series.get(&id).ok_or(EditError::NotFound { kind: "block" })?;
+    if series.deleted_at.is_some() {
+        return Ok(Edit::nothing());
+    }
+    let mut trashed = series.clone();
+    trashed.deleted_at = Some(time::now());
+    Ok(Edit {
+        description: format!("Deleted block {}", series.title),
+        changes: vec![Change::Series(Box::new(Transition::updated(series.clone(), trashed)))],
+    })
+}
 
 /// Places a task into a block.
 ///

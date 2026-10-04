@@ -103,6 +103,8 @@ const METHODS: &[&str] = &[
     "stop",
     "config.get",
     "config.set",
+    "undo",
+    "redo",
     "backup",
     "restore",
     "export",
@@ -489,6 +491,8 @@ fn command_for(method: &str, params: &Value) -> std::result::Result<Command, Rpc
             assignment: text_of(params, "assignment")?,
             minutes: maybe_number(params, "minutes")?,
         },
+        "undo" => Command::Undo,
+        "redo" => Command::Redo,
         "backup" => Command::Backup { to: maybe_text(params, "to").map(Into::into) },
         "restore" => Command::Restore { file: text_of(params, "file")?.into() },
         // Without `output` the export comes back in the reply, as `content`.

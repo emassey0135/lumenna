@@ -89,6 +89,16 @@ impl Db {
                  doc_id TEXT PRIMARY KEY,
                  heads  BLOB NOT NULL,
                  data   BLOB NOT NULL
+             );
+
+             -- This device's undo history (§9). Local-only (§3.12): sync and backups carry
+             -- Automerge documents, never this table. `undone` marks the redo side.
+             CREATE TABLE IF NOT EXISTS undo (
+                 seq         INTEGER PRIMARY KEY AUTOINCREMENT,
+                 undone      INTEGER NOT NULL DEFAULT 0,
+                 format      INTEGER NOT NULL,
+                 recorded_at INTEGER NOT NULL,
+                 edit        TEXT NOT NULL
              );",
         )?;
         migrate_to_autoincrement(&mut conn)?;
@@ -368,4 +378,94 @@ fn migrate_to_autoincrement(conn: &mut Connection) -> Result<()> {
     }
     tx.commit()?;
     Ok(())
+}
+
+impl Db {
+    /// Saves an edit to the undo history, clearing anything that was waiting to be redone.
+    ///
+    /// Doing something new discards the redo side: redoing into a branch a later edit has
+    /// diverged from would apply an edit computed for a state that no longer exists. The
+    /// oldest entries beyond `depth` fall off.
+    ///
+    /// # Errors
+    ///
+    /// If the write fails.
+    pub fn record_undo(&mut self, format: i64, edit: &str, at_ms: i64, depth: usize) -> Result<()> {
+        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute("DELETE FROM undo WHERE undone = 1", [])?;
+        tx.execute(
+            "INSERT INTO undo (format, recorded_at, edit) VALUES (?1, ?2, ?3)",
+            params![format, at_ms, edit],
+        )?;
+        tx.execute(
+            "DELETE FROM undo WHERE seq NOT IN (SELECT seq FROM undo ORDER BY seq DESC LIMIT ?1)",
+            params![i64::try_from(depth).unwrap_or(i64::MAX)],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Takes the next entry to undo (`redo` false) or redo (`redo` true), marking it moved to
+    /// the other side in the same transaction — so two processes asking at once never both
+    /// get the same one.
+    ///
+    /// Undo takes the newest entry not yet undone; redo the oldest of those undone, which is
+    /// the one most recently undone, since undoing always works backwards from the end.
+    ///
+    /// # Errors
+    ///
+    /// If the read or write fails.
+    pub fn claim_undo(&mut self, redo: bool) -> Result<Option<(i64, i64, String)>> {
+        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let query = if redo {
+            "SELECT seq, format, edit FROM undo WHERE undone = 1 ORDER BY seq ASC LIMIT 1"
+        } else {
+            "SELECT seq, format, edit FROM undo WHERE undone = 0 ORDER BY seq DESC LIMIT 1"
+        };
+        let entry: Option<(i64, i64, String)> = tx
+            .query_row(query, [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .optional()?;
+        if let Some((seq, _, _)) = &entry {
+            tx.execute("UPDATE undo SET undone = ?1 WHERE seq = ?2", params![!redo, seq])?;
+        }
+        tx.commit()?;
+        Ok(entry)
+    }
+
+    /// Puts a claimed entry back where it was, when applying it failed.
+    ///
+    /// # Errors
+    ///
+    /// If the write fails.
+    pub fn unclaim_undo(&mut self, seq: i64, redo: bool) -> Result<()> {
+        self.conn.execute("UPDATE undo SET undone = ?1 WHERE seq = ?2", params![redo, seq])?;
+        Ok(())
+    }
+
+    /// Removes an entry outright — one this version cannot read.
+    ///
+    /// # Errors
+    ///
+    /// If the write fails.
+    pub fn drop_undo(&mut self, seq: i64) -> Result<()> {
+        self.conn.execute("DELETE FROM undo WHERE seq = ?1", params![seq])?;
+        Ok(())
+    }
+
+    /// How many entries can be undone, and how many redone.
+    ///
+    /// # Errors
+    ///
+    /// If the read fails.
+    pub fn undo_depths(&self) -> Result<(usize, usize)> {
+        let count = |undone: bool| -> Result<usize> {
+            let n: i64 = self.conn.query_row(
+                "SELECT count(*) FROM undo WHERE undone = ?1",
+                params![undone],
+                |row| row.get(0),
+            )?;
+            Ok(usize::try_from(n).unwrap_or(0))
+        };
+        Ok((count(false)?, count(true)?))
+    }
 }

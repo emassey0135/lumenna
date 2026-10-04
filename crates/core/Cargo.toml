@@ -7,8 +7,14 @@ license.workspace = true
 repository.workspace = true
 description = "Lumenna domain model, queries, and scheduling. No I/O."
 
+[features]
+# Serialization for the model and for edits. `store` turns it on to keep the undo history
+# (§9); a client that never persists an edit can leave it off.
+serde = ["dep:serde", "jiff/serde", "uuid/serde"]
+
 [dependencies]
 chrono.workspace = true
+serde = { workspace = true, optional = true }
 jiff.workspace = true
 rrule.workspace = true
 uuid.workspace = true

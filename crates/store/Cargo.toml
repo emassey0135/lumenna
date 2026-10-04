@@ -10,7 +10,7 @@ description = "Automerge documents and their SQLite change store."
 [dependencies]
 automerge.workspace = true
 jiff.workspace = true
-lumenna-core.workspace = true
+lumenna-core = { workspace = true, features = ["serde"] }
 rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true

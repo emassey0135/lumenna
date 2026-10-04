@@ -10,6 +10,7 @@ use super::{ReminderAnchor, Trigger};
 /// document. Device-specific choices — muting all reminders on one laptop, which tree nodes
 /// are expanded — are local-only state (§3.12) and are deliberately not here.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Settings {
     /// Whether completing a parent completes its subtasks.
     ///
@@ -32,6 +33,7 @@ pub struct Settings {
     /// day to make the arithmetic work (§10.1).
     pub day_window: (civil::Time, civil::Time),
     /// Which day a week starts on.
+    #[cfg_attr(feature = "serde", serde(with = "weekday"))]
     pub week_start: civil::Weekday,
 }
 
@@ -51,6 +53,7 @@ impl Default for Settings {
 
 /// How much detail announcements carry (§13).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Verbosity {
     /// *"Review PR, overdue."*
     Terse,
@@ -58,4 +61,21 @@ pub enum Verbosity {
     /// tasks assigned."*
     #[default]
     Full,
+}
+
+/// `jiff` serializes dates and times but not weekdays, so a weekday is written as its number,
+/// Monday being one.
+#[cfg(feature = "serde")]
+mod weekday {
+    use jiff::civil::Weekday;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub(super) fn serialize<S: Serializer>(day: &Weekday, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_i8(day.to_monday_one_offset())
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Weekday, D::Error> {
+        let number = i8::deserialize(d)?;
+        Weekday::from_monday_one_offset(number).map_err(serde::de::Error::custom)
+    }
 }

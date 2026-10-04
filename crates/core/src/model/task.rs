@@ -11,6 +11,7 @@ use crate::order::OrderKey;
 
 /// A thing to do.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Task {
     /// Identity.
     pub id: TaskId,
@@ -87,6 +88,7 @@ impl Task {
 /// Todoist's REST API inverts this — their p1 is API priority 4 — so convert at the
 /// boundary when importing (§3.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Priority {
     /// Highest.
     P1,
@@ -128,6 +130,7 @@ impl Priority {
 
 /// When a task is due (§3.5).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Due {
     /// The day.
     pub date: civil::Date,
@@ -157,6 +160,7 @@ impl Due {
 
 /// A repeat rule (§3.5).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Recurrence {
     /// An RFC 5545 `RRULE`.
     pub rrule: String,
@@ -175,6 +179,7 @@ pub struct Recurrence {
 /// advances**, not a generated series. It accumulates completions over time; a one-off task
 /// has exactly one.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TaskCompletion {
     /// Identity.
     pub id: CompletionId,

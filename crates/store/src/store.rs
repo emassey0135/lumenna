@@ -24,7 +24,7 @@ use lumenna_core::snapshot::Snapshot;
 
 use crate::db::Db;
 use crate::doc::{Doc, DocId, Documents, HydrationReport};
-use crate::error::Result;
+use crate::error::{Result, StoreError};
 
 /// One profile's store.
 pub struct Store {
@@ -535,6 +535,80 @@ impl Store {
             Ok(())
         })?;
         Ok(report)
+    }
+
+    /// Applies an [`Edit`] the user made, and saves it to this device's undo history.
+    ///
+    /// Everything a person does goes through here; what the app does on their behalf — folding
+    /// a legacy Inbox, importing, restoring — goes through [`Store::apply`] and is not theirs
+    /// to undo one record at a time.
+    ///
+    /// # Errors
+    ///
+    /// If the edit cannot be applied, or the history cannot be written.
+    pub fn apply_recorded(&mut self, edit: &lumenna_core::edit::Edit) -> Result<()> {
+        self.apply(edit)?;
+        if !edit.is_empty() {
+            let text = serde_json::to_string(edit)
+                .map_err(|e| StoreError::Io(format!("could not save the undo history: {e}")))?;
+            let at = jiff::Timestamp::now().as_millisecond();
+            self.db.record_undo(crate::undo::FORMAT, &text, at, crate::undo::DEPTH)?;
+        }
+        Ok(())
+    }
+
+    /// Undoes the newest edit on this device's history. See [`crate::undo`].
+    ///
+    /// # Errors
+    ///
+    /// If the documents cannot be read or written.
+    pub fn undo(&mut self) -> Result<crate::undo::Step> {
+        self.take_step(crate::undo::Direction::Undo)
+    }
+
+    /// Redoes the edit most recently undone.
+    ///
+    /// # Errors
+    ///
+    /// If the documents cannot be read or written.
+    pub fn redo(&mut self) -> Result<crate::undo::Step> {
+        self.take_step(crate::undo::Direction::Redo)
+    }
+
+    /// How many edits can be undone, and how many redone.
+    ///
+    /// # Errors
+    ///
+    /// If the history cannot be read.
+    pub fn undo_depths(&self) -> Result<(usize, usize)> {
+        self.db.undo_depths()
+    }
+
+    fn take_step(&mut self, direction: crate::undo::Direction) -> Result<crate::undo::Step> {
+        use crate::undo::{Direction, Step};
+        let redo = direction == Direction::Redo;
+        // Rebased against everything, so a record in a year not yet opened is still found.
+        self.refresh()?;
+        self.load_all_years()?;
+
+        let Some((seq, format, text)) = self.db.claim_undo(redo)? else {
+            return Ok(Step::Nothing);
+        };
+        let edit = (format == crate::undo::FORMAT)
+            .then(|| serde_json::from_str::<lumenna_core::edit::Edit>(&text).ok())
+            .flatten();
+        let Some(edit) = edit else {
+            self.db.drop_undo(seq)?;
+            return Ok(Step::Unreadable);
+        };
+
+        let (snapshot, _) = self.docs.snapshot();
+        let reverted = crate::undo::rebase(&edit, direction, &snapshot);
+        if let Err(error) = self.apply(&reverted.applied) {
+            self.db.unclaim_undo(seq, redo)?;
+            return Err(error);
+        }
+        Ok(Step::Done(reverted))
     }
 
     /// Applies an [`Edit`] and persists it.

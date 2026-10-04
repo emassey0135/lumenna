@@ -73,6 +73,7 @@ pub enum ModelError {
 /// with no zone floats: 3pm wherever you are, 9am after you fly to another continent. Set
 /// it only when the thing is anchored to a real place.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TzName(String);
 
 impl TzName {
@@ -118,6 +119,7 @@ impl FromStr for TzName {
 /// field is nearly free today and unpleasant to retrofit into a CRDT afterwards, which is
 /// why it is on both.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ExternalRef {
     /// Which system it came from.
     pub provider: ExternalProvider,
@@ -132,6 +134,7 @@ pub struct ExternalRef {
 
 /// The source system behind an [`ExternalRef`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExternalProvider {
     /// Apple's calendar database, on macOS and iOS.
     EventKit,

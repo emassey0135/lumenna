@@ -728,3 +728,63 @@ fn choosing_where_backups_go_says_what_they_hold() {
     lum.ok(&["config", "set", "backup-dir", "default"]);
     assert!(lum.ok(&["config", "get", "backup-dir"]).contains("backups"));
 }
+
+// ---------------------------------------------------------------------------------------
+// Undo (§9)
+// ---------------------------------------------------------------------------------------
+
+#[test]
+fn undo_works_across_commands_and_says_what_it_undid() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "review PR"]);
+    lum.ok(&["task", "list"]);
+    lum.ok(&["task", "done", "1"]);
+    assert!(lum.ok(&["task", "list"]).contains("no tasks"), "done tasks leave the list");
+
+    let out = lum.ok(&["undo"]);
+    assert!(out.contains("Undid: Completed review PR"), "{out}");
+    assert!(lum.ok(&["task", "list"]).contains("review PR"));
+
+    assert!(lum.ok(&["redo"]).contains("Redid: Completed review PR"));
+    assert!(lum.ok(&["task", "list"]).contains("no tasks"));
+
+    lum.ok(&["undo"]);
+    lum.ok(&["undo"]);
+    assert!(lum.ok(&["task", "list"]).contains("no tasks"), "the add is undone too");
+    assert!(lum.ok(&["undo"]).contains("nothing to undo"));
+}
+
+#[test]
+fn blocks_are_undoable_like_everything_else() {
+    let lum = Lum::new();
+    lum.ok(&["block", "add", "Deep work", "--at", "9am", "--minutes", "90"]);
+    lum.ok(&["block", "list"]);
+    lum.ok(&["block", "rm", "1"]);
+    assert!(lum.ok(&["block", "list"]).contains("no blocks"));
+    assert!(lum.ok(&["undo"]).contains("Undid: Deleted block Deep work"));
+    assert!(lum.ok(&["block", "list"]).contains("Deep work"));
+}
+
+#[test]
+fn undo_keeps_what_has_changed_since_and_says_so() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "review PR"]);
+    lum.ok(&["task", "list"]);
+    lum.ok(&["task", "edit", "1", "--priority", "1", "--title", "review the PR"]);
+
+    // A later title change from outside this device's history — an import stands in for one
+    // merged from another device.
+    let export = lum.path().join("now.json");
+    lum.ok(&["export", "--output", export.to_str().unwrap()]);
+    let changed = std::fs::read_to_string(&export).unwrap().replace("review the PR", "review PR 42");
+    std::fs::write(&export, changed).unwrap();
+    lum.ok(&["import", export.to_str().unwrap()]);
+
+    let result = lum.run(&["undo"]);
+    assert!(result.ok, "{}", result.stderr);
+    assert!(result.stdout.contains("Undid: Edited review the PR"), "{}", result.stdout);
+    assert!(result.stderr.contains("title, changed since"), "{}", result.stderr);
+    let listed = lum.ok(&["task", "list"]);
+    assert!(listed.contains("review PR 42"), "{listed}");
+    assert!(!listed.contains("priority 1") && !lum.ok(&["task", "list", "p1"]).contains("review"));
+}

@@ -13,6 +13,7 @@ use crate::order::OrderKey;
 /// **One type for both**, distinguished by [`rrule`](Self::rrule). This avoids two
 /// near-identical shapes and lets a one-off block become recurring without changing type.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BlockSeries {
     /// Identity.
     pub id: SeriesId,
@@ -136,6 +137,7 @@ impl BlockSeries {
 /// There is deliberately no `Custom(String)` variant — a free-text kind the core cannot
 /// reason about is a title with extra steps (§3.6).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BlockKind {
     /// Accepts tasks, counts as capacity, movable. The core concept.
     #[default]
@@ -194,6 +196,7 @@ impl BlockKind {
 /// The behaviourally meaningful axes of a block. Orthogonal, hence flags rather than more
 /// kinds (§3.6).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BlockFlags {
     /// Whether tasks can be assigned into it.
     pub accepts_tasks: bool,
@@ -219,6 +222,7 @@ pub struct BlockFlags {
 /// genuinely changed that day's schedule, and it should persist and sync like any other
 /// change.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BlockException {
     /// Which series.
     pub series_id: SeriesId,
@@ -230,6 +234,7 @@ pub struct BlockException {
 
 /// What a [`BlockException`] does to its occurrence.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExceptionAction {
     /// The occurrence does not happen.
     ///
@@ -273,6 +278,7 @@ impl ExceptionAction {
 /// referencing the series and that date. This is the main reason the exception model must
 /// exist rather than being an optimization (§3.7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BlockRef {
     /// A block that happens once.
     OneOff(SeriesId),
@@ -326,6 +332,7 @@ impl BlockRef {
 /// failure mode is an *orphaned* timer — started on a phone that then died — which
 /// [`elapsed`](Self::elapsed) reports rather than silently logging fourteen hours.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BlockAssignment {
     /// Identity.
     pub id: AssignmentId,
@@ -459,6 +466,7 @@ pub struct Elapsed {
 /// history — how many sittings something took, where estimates were wrong — which
 /// Structured discards.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AssignmentStatus {
     /// Placed into the block, not yet started.
     #[default]

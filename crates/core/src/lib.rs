@@ -25,7 +25,6 @@
 //! - [`state`] — computed states, shared by filters and the accessibility layer.
 //! - [`snapshot`] — the materialized view queries run over.
 //! - [`time`] — the clock conventions every record obeys.
-//! - [`undo`] — the per-session stack of inverses (§9).
 
 pub mod edit;
 pub mod filter;
@@ -39,7 +38,6 @@ pub mod snapshot;
 pub mod suggest;
 pub mod state;
 pub mod time;
-pub mod undo;
 
 pub use id::{
     AssignmentId, CompletionId, FilterId, LabelId, NodeId, ProjectId, ReminderId, SeriesId,
@@ -49,4 +47,3 @@ pub use order::OrderKey;
 pub use snapshot::{Repairs, Snapshot};
 pub use row::{Role, Row, RowId};
 pub use state::State;
-pub use undo::UndoStack;

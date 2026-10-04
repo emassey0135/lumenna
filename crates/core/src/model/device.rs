@@ -10,6 +10,7 @@ use crate::id::NodeId;
 /// every device needs it. The device's *private* key never appears here or anywhere else
 /// that syncs (§3.12).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Device {
     /// The device's ed25519 public key, which is also its Iroh address.
     pub node_id: NodeId,
