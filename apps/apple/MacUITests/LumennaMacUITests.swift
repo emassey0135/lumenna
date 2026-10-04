@@ -76,6 +76,7 @@ final class LumennaMacUITests: XCTestCase {
         window.outlines["Tasks"].staticTexts["water plants"].click()
         let repeats = window.textFields["Repeats"]
         XCTAssertTrue(repeats.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(window.scrollViews["Task details"].exists, "the pane is one named scroll area")
         XCTAssertEqual(repeats.value as? String, "every monday")
     }
 
@@ -148,6 +149,11 @@ final class LumennaMacUITests: XCTestCase {
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
         for tab in ["General", "Planning", "Devices", "Backups", "Export and Import"] {
             settings.toolbars.buttons[tab].click()
+            if tab != "Devices" {
+                // One level: a scroll area named for the page, not a group around one.
+                XCTAssertTrue(settings.scrollViews[tab].waitForExistence(timeout: 5), "\(tab): \(settings.debugDescription)")
+                XCTAssertFalse(settings.groups[tab].exists, tab)
+            }
             try audit("settings, \(tab)", in: settings)
         }
     }

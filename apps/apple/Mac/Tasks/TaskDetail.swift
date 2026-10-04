@@ -3,7 +3,7 @@ import SwiftUI
 
 /// One task's details, editable (§16.1), in the right-hand pane: the shared form
 /// (`Shared/Forms/TaskForm.swift`), with the Mac's own sheets for choosing.
-final class TaskDetailViewController: NSHostingController<TaskDetailView>, TaskFormHost {
+final class TaskDetailViewController: HostedForm<TaskDetailView>, TaskFormHost {
     private let model: TaskDetailModel
     private let core: Core
     let taskID: String
@@ -13,15 +13,15 @@ final class TaskDetailViewController: NSHostingController<TaskDetailView>, TaskF
         self.model = model
         self.core = core
         taskID = id
-        super.init(rootView: TaskDetailView(model: model))
+        super.init("Task details", rootView: TaskDetailView(model: model))
         model.host = self
-        title = "Task"
     }
 
     @available(*, unavailable)
-    required dynamic init?(coder: NSCoder) { fatalError("not used") }
+    required init?(coder: NSCoder) { fatalError("not used") }
 
     override var preferredFirstResponder: NSView? { view }
+
 
     /// Task > Save Changes, ⌘S.
     @objc func saveTask(_ sender: Any?) { model.save() }
