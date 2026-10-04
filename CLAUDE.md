@@ -32,10 +32,10 @@ crates/ffi/     the library the Swift and Kotlin apps link; re-exports surface o
 crates/sync/    Iroh endpoints, the document sync session, and pairing (§7).
 apps/cli/       `lum` — the first target, and a permanent one.
 apps/btspeak/   the BTSpeak app, in Python, over `lum rpc`.
-apple/          `build-core.sh` builds the core for iOS and generates the Swift bindings.
+apple/          the iOS app (UIKit + SwiftUI over the generated bindings), and build-core.sh.
 ```
 
-The GUI apps in §2's layout do not exist yet; the iOS app is next.
+The other GUI apps in §2's layout do not exist yet.
 
 ### The command surface
 
@@ -180,6 +180,52 @@ is readable here and the app can be run under a pty without a second machine.
   the flag is device-wide in `/run/BTSpeak/`. With it on, printing to the terminal is
   silence, so startup errors are dialogs and the spawned server's stderr goes to `rpc.log`.
 - **No `.menu` file.** BT Code adds the user-menu entry; §16.11 has been updated to match.
+
+### The iOS app
+
+`apple/` — Swift, a UIKit shell with SwiftUI forms (§16.6), calling the surface
+through the generated `LumennaCore.swift`. `cd apple && xcodegen` makes the project from
+`project.yml`; the `.xcodeproj` and `Generated/` are build output and not committed.
+
+- **Xcode builds the core itself.** A pre-build phase runs `build-core.sh`, which builds
+  `lumenna-ffi` for the platform being built, in a clean environment (Xcode's SDK variables
+  break Cargo's host build scripts), then regenerates the bindings from a host build.
+- **The cell owns what VoiceOver says**, assembled from row components in `RowSpeech`.
+  Depth is said only where it changes.
+- **Rows are `UIListContentConfiguration`, not SwiftUI.** §16.6 suggests SwiftUI in a
+  `UIHostingConfiguration`; the accessibility audit flagged every hosted `Text` as not
+  supporting Dynamic Type and as clipped when the size changed at run time. The stock
+  configuration passes. SwiftUI stays for forms.
+- **Text entry wraps** (`LineEntry`, a `UITextView` where Return submits). A one-line field
+  scrolls sideways at large text sizes and the audit flags it as clipped. Its placeholder is
+  the VoiceOver hint.
+- **A SwiftUI `TextField`'s title is only a placeholder**: once there is text, VoiceOver reads
+  the value and never the field's name. Forms use `field(_:text:)` in `TaskDetailView`, which
+  labels the field and hides the visible name so it is not a second stop.
+- **Focus after a mutation is chosen, not left to UIKit**: the same row if it is still
+  listed, else whatever now holds its position. Then the core's announcement is queued
+  behind the focus change, so neither cuts the other off.
+- **Swipe actions are also explicit custom actions**, set on the cell so they are exactly
+  those, in that order.
+- **`TZ` is set from `TimeZone.current`** at launch and on return to the foreground.
+  jiff finds the zone through `TZ` or `/etc/localtime`, and the sandbox is no place to
+  rely on the second. A UI test checks that "today" is today where the phone is.
+- **A UI test names a fresh store** through `LUMENNA_TEST_PROFILE`, a directory under the
+  app's temporary directory. The store otherwise lives in Application Support.
+- **Operations run on the main thread.** They take milliseconds against local SQLite, and a
+  view never shows a state the store has moved past. The automatic backup is the exception.
+- **The audits collect every issue and fail once** (`audit()` in the UI tests); left alone,
+  the audit stops at the first. Only the keyboard's own `TUIPredictionViewCell` is excused.
+- **Run UI tests with `-collect-test-diagnostics never`.** On any failure xcodebuild
+  otherwise collects diagnostics from the simulator, which hangs for its full ten-minute
+  timeout after the tests have finished. Two tests take 45 seconds with it off and over ten
+  minutes with it on:
+
+  ```
+  cd apple && xcodebuild -project Lumenna.xcodeproj -scheme Lumenna \
+    -destination 'platform=iOS Simulator,name=iPhone 18 Pro' \
+    -collect-test-diagnostics never test
+  ```
 
 ### The core/store boundary
 
