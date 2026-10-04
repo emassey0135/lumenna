@@ -117,7 +117,12 @@ final class LumennaUITests: XCTestCase {
 
     /// Runs the audit and fails once with every issue it found, each with the element it
     /// objects to. Left to itself the audit stops at the first, which hides the rest.
-    private func audit(_ types: XCUIAccessibilityAuditType = .all, _ screen: String = "") throws {
+    /// `namedRows` is for forms built from `NamedRow`, whose visible field names are hidden
+    /// from VoiceOver on purpose — the field carries the name — and which the audit reports
+    /// as possibly inaccessible text. Only that finding, only on those screens.
+    private func audit(
+        _ types: XCUIAccessibilityAuditType = .all, _ screen: String = "", namedRows: Bool = false
+    ) throws {
         var issues: [String] = []
         try app.performAccessibilityAudit(for: types) { issue in
             // The keyboard's predictive-text cells are the system's, not this app's, and
@@ -130,6 +135,9 @@ final class LumennaUITests: XCTestCase {
             // of every form page at the largest size showing it at full size. Only that
             // variant, only on SwiftUI's nodes: "unsupported" outright, or on a UIKit element,
             // still fails.
+            if namedRows, issue.compactDescription == "Potentially inaccessible text" {
+                return true
+            }
             if issue.auditType == .dynamicType,
                issue.compactDescription.contains("partially"),
                issue.detailedDescription.contains("SwiftUI") {
@@ -162,6 +170,7 @@ final class LumennaUITests: XCTestCase {
         app.buttons["Add block"].tap()
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
+        try audit(.all, "block form", namedRows: true)
         name.tap()
         name.typeText("Deep work")
         app.buttons["Save"].tap()
@@ -300,7 +309,7 @@ final class LumennaUITests: XCTestCase {
             app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'errands'")).firstMatch
                 .waitForExistence(timeout: 5) || labels.value as? String == "calls, errands"
         )
-        try audit()
+        try audit(.all, "task detail", namedRows: true)
     }
 
     /// Every settings page at the largest accessibility text size, kept as screenshots: what
