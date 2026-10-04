@@ -8,8 +8,10 @@
 //!
 //! - **Apple** — macOS and iOS — through the system's own responder (`apple`). On iOS that is
 //!   Bonjour, and needs no multicast entitlement.
-//! - **Everything else** — Linux and the BTSpeak, Windows, Android — through `mdns-sd`, a
-//!   standards-compliant responder of our own (`portable`).
+//! - **Linux** through Avahi over D-Bus when it is running (`avahi`) — the BTSpeak, and most
+//!   desktops. A second responder beside Avahi heard nothing there.
+//! - **Everything else**, and Linux without Avahi, through `mdns-sd`, a standards-compliant
+//!   responder of our own (`portable`).
 //!
 //! [`LocalLookup`] plugs into an endpoint as an Iroh address lookup: Iroh hands it the
 //! endpoint's addresses to announce, and asks it where a key is. Pairing also subscribes to it,
@@ -19,13 +21,50 @@ mod txt;
 
 #[cfg(target_vendor = "apple")]
 mod apple;
-#[cfg(target_vendor = "apple")]
-use apple::Responder;
-
+#[cfg(target_os = "linux")]
+mod avahi;
 #[cfg(not(target_vendor = "apple"))]
 mod portable;
-#[cfg(not(target_vendor = "apple"))]
-use portable::Responder;
+
+/// The responder in use: the system's own wherever there is one.
+enum Responder {
+    #[cfg(target_vendor = "apple")]
+    Apple(apple::Responder),
+    #[cfg(target_os = "linux")]
+    Avahi(avahi::Responder),
+    #[cfg(not(target_vendor = "apple"))]
+    Portable(portable::Responder),
+}
+
+impl Responder {
+    /// Apple's own responder on Apple platforms; Avahi on Linux when it is running; and
+    /// otherwise a responder of our own.
+    fn start(service_type: &str, heard: Hearing) -> std::io::Result<Self> {
+        #[cfg(target_vendor = "apple")]
+        {
+            apple::Responder::start(service_type, heard).map(Self::Apple)
+        }
+        #[cfg(not(target_vendor = "apple"))]
+        {
+            #[cfg(target_os = "linux")]
+            if let Ok(avahi) = avahi::Responder::start(service_type, Arc::clone(&heard)) {
+                return Ok(Self::Avahi(avahi));
+            }
+            portable::Responder::start(service_type, heard).map(Self::Portable)
+        }
+    }
+
+    fn announce(&self, announced: &Announcement) -> std::io::Result<()> {
+        match self {
+            #[cfg(target_vendor = "apple")]
+            Self::Apple(responder) => responder.announce(announced),
+            #[cfg(target_os = "linux")]
+            Self::Avahi(responder) => responder.announce(announced),
+            #[cfg(not(target_vendor = "apple"))]
+            Self::Portable(responder) => responder.announce(announced),
+        }
+    }
+}
 
 use std::collections::HashMap;
 use std::net::SocketAddr;

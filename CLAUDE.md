@@ -121,7 +121,9 @@ is the short-lived endpoint a pairing runs on.
   lookup of our own: services `_lumenna._udp` (devices) and `_lumenna-pair._udp` (pairing
   sessions), TXT `id` plus `a0`… addresses. Apple (macOS and iOS) goes through the system
   responder's C API, which on iOS is Bonjour and needs no multicast entitlement — only the
-  types under `NSBonjourServices`; everything else uses `mdns-sd`. Iroh's own mDNS was
+  types under `NSBonjourServices`. Linux uses Avahi over D-Bus (zbus) when it runs: beside
+  Avahi, `mdns-sd` announced but heard nothing, not even itself (seen on the BTSpeak).
+  `mdns-sd` covers Windows and Linux without Avahi. Iroh's own mDNS was
   replaced because no standard browser can see it: no PTR record, every TTL zero.
 - **Bonjour reports an instance once per interface**, and a gone device's record can linger.
   So an instance is resolved once, on its own thread, and lost only when gone from every

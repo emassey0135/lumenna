@@ -28,6 +28,10 @@ libc = "0.2"
 [target.'cfg(not(target_vendor = "apple"))'.dependencies]
 mdns-sd = "0.21"
 
+# Avahi, over D-Bus, where it runs.
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = "5"
+
 [dev-dependencies]
 jiff.workspace = true
 tempfile.workspace = true
