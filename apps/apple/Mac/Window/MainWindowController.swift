@@ -90,6 +90,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             detail.show(nil)
             return
         }
+        // The same task stays as it is — it reads changes itself — so focus in the pane is
+        // not thrown away when the list reloads around a change made there.
+        if (detail.current as? TaskDetailViewController)?.taskID == id { return }
         detail.show(TaskDetailViewController(core: core, id: id, window: self))
     }
 

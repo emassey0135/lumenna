@@ -57,7 +57,8 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
     override func loadView() {
         summary.font = .preferredFont(forTextStyle: .subheadline)
         summary.textColor = .quietLabel
-        summary.setAccessibilityRole(.staticText)
+        // The day's heading, as on the phone: VoiceOver's heading commands land on it.
+        summary.setAccessibilityRole(NSAccessibility.Role(rawValue: "AXHeading"))
 
         let buttons = NSStackView(views: [
             NSButton(title: "Previous Day", target: self, action: #selector(previousDay(_:))),

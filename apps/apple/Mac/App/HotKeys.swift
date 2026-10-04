@@ -45,8 +45,9 @@ struct Shortcut: Equatable {
     /// What else answers to this, if anything — said before the person settles on it.
     ///
     /// Control-Option is VoiceOver's own modifier, so anything holding both is a VoiceOver
-    /// command first. VOCR takes Control-Command with L, I, S and P, and Shift-Control-Command
-    /// with more; macOS takes Control-Command with Q, F, D and Space.
+    /// command first. VOCR takes Control-Command with S and P, with L and I while moving
+    /// through a scan, and Shift-Control-Command with more; macOS takes Control-Command with
+    /// Q, F, D and Space.
     var conflict: String? {
         let control = modifiers & UInt32(controlKey) != 0
         let option = modifiers & UInt32(optionKey) != 0
@@ -61,7 +62,8 @@ struct Shortcut: Equatable {
             case "F": return "macOS uses this for full screen."
             case "D": return "macOS uses this to look up a word."
             case "Space": return "macOS uses this for emoji and symbols."
-            case "L", "I", "S", "P": return "VOCR uses this."
+            case "L", "I": return "VOCR uses this while you move through a scan, and not otherwise."
+            case "S", "P": return "VOCR uses this."
             default: return nil
             }
         }
@@ -95,7 +97,8 @@ enum HotKeys {
 
         var standard: Shortcut {
             switch self {
-            case .summon: Shortcut(keyCode: UInt32(kVK_ANSI_Y), modifiers: Shortcut.controlCommand, key: "Y")
+            // L for Lumenna. VOCR has it too, but only while moving through a scan.
+            case .summon: Shortcut(keyCode: UInt32(kVK_ANSI_L), modifiers: Shortcut.controlCommand, key: "L")
             case .quickAdd: Shortcut(keyCode: UInt32(kVK_ANSI_K), modifiers: Shortcut.controlCommand, key: "K")
             }
         }

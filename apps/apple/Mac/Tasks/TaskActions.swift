@@ -85,6 +85,16 @@ struct TaskActions {
     /// Puts a task into a work block on today or the next six days (§3.7), asking how long
     /// the sitting is meant to take; the planner reaches any other day.
     func assign(_ task: TaskDetail) {
+        Self.chooseBlock(core: core, window: window, for: task) { block, date, minutes in
+            perform(task.id) { try core.lumenna.assign(task: task.id, block: block, date: date, minutes: minutes) }
+        }
+    }
+
+    /// The work blocks of the coming week to choose among, then the sitting's length.
+    static func chooseBlock(
+        core: Core, window: NSWindow, for task: TaskDetail,
+        chosen: @escaping (_ block: String, _ date: String, _ minutes: UInt32?) -> Void
+    ) {
         var items: [PickerItem] = []
         var dates: [String: String] = [:]
         for offset in 0..<7 {
@@ -105,9 +115,7 @@ struct TaskActions {
         }
         PickerSheet.present(on: window, title: "Put \(task.title) in a Block", items: items) { block in
             window.askForLength("How long is this sitting meant to take?", without: "Skip") { minutes in
-                perform(task.id) {
-                    try core.lumenna.assign(task: task.id, block: block.key, date: dates[block.key], minutes: minutes)
-                }
+                chosen(block.key, dates[block.key] ?? "", minutes)
             }
         }
     }
