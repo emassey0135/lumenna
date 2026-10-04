@@ -172,9 +172,9 @@ struct BlockForm: View {
                         .multilineTextAlignment(.trailing)
                 }
                 if model.asksDay {
-                    DateRow(name: "Day", selection: $model.day, components: .date)
+                    DatePicker("Day", selection: $model.day, displayedComponents: .date)
                 }
-                DateRow(name: "Starts", selection: $model.start)
+                DatePicker("Starts", selection: $model.start, displayedComponents: .hourAndMinute)
                 Stepper(value: $model.minutes, in: 5...720, step: 5) {
                     Text("Lasts \(Clock.length(UInt32(model.minutes)))")
                 }

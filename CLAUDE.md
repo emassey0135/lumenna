@@ -244,20 +244,22 @@ through the generated `LumennaCore.swift`. `cd apps/apple && xcodegen` makes the
   reloads on. Pairing is by code on iOS — local discovery needs Apple's multicast
   entitlement — through `PairingViewController`, whose `PairingPrompt` blocks the pairing
   thread on a semaphore while the words are asked on the main thread.
-- **Form parts** (`Common/FormParts.swift`) each exist because the stock part failed the
-  audit: `NamedRow` (a `LabeledContent` control is *not* named by its label, and hiding the
-  visible name is "potentially inaccessible text" — `accessibilityLabeledPair` ties them),
-  `example(_:)` placeholders
-  (the system placeholder grey fails, and a placeholder repeating the field's name says
-  nothing), `Note` rows instead of section footers, `DateRow`. Give a SwiftUI control an
-  empty title when it has an accessibility label, or VoiceOver hears the name twice.
+- **Stock controls unless there is a reason.** What remains in `Common/FormParts.swift` each
+  has one: `NamedRow` (a SwiftUI `TextField` is not named by text beside it; the field
+  carries the name and the visible name is hidden, as Apple's UIKit forms do — combining the
+  row instead lost the text-field role and read an empty field's placeholder as its value),
+  `example(_:)` placeholders (the system placeholder grey fails contrast, and a placeholder
+  repeating the name says nothing), and `FormParts.caption` for header and footer text (the
+  system grey fails contrast). Give a control an empty title when it has an accessibility
+  label, or VoiceOver hears the name twice.
 - **The tint is `UIColor.lumennaTint`**: system blue is about 4:1 on white. Set on the window
   for UIKit **and with `.tint` on every SwiftUI form**, since SwiftUI's accent does not take
   the window's tint — that, not the control, is why stock picker checkmarks failed contrast.
   Red text uses `.warningLabel`, never `systemRed`. The app's colours have Increase Contrast
   variants (`accessibilityContrast == .high`), as the system's do.
 - **The audits collect every issue and fail once** (`audit()` in the UI tests); left alone,
-  the audit stops at the first. Two exemptions, both narrow: the keyboard's own
+  the audit stops at the first. Exemptions, all narrow: "potentially inaccessible text" on
+  screens built from `NamedRow` (`namedRows: true`), whose hidden names are deliberate; the keyboard's own
   `TUIPredictionViewCell`, and "partially unsupported" Dynamic Type on SwiftUI nodes, which
   the audit reports even for a stock button; `testSettingsPagesAtTheLargestTextSize` keeps
   whole-page screenshots at the largest size showing them scale fully. To see what an unnamed finding

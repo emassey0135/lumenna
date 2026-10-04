@@ -208,12 +208,13 @@ struct SettingsView: View {
                     get: { model.values["cascade-complete-subtasks"] == "true" },
                     set: { model.set("cascade-complete-subtasks", $0 ? "true" : "false") }
                 ))
-                DateRow(name: "Day starts", selection: model.time("day-start"))
-                DateRow(name: "Day ends", selection: model.time("day-end"))
-                DateRow(name: "All-day reminders at", selection: model.time("all-day-reminder-hour"))
-                Note("These sync to all your devices.")
+                DatePicker("Day starts", selection: model.time("day-start"), displayedComponents: .hourAndMinute)
+                DatePicker("Day ends", selection: model.time("day-end"), displayedComponents: .hourAndMinute)
+                DatePicker("All-day reminders at", selection: model.time("all-day-reminder-hour"), displayedComponents: .hourAndMinute)
             } header: {
                 FormParts.caption("Planning")
+            } footer: {
+                FormParts.caption("These sync to all your devices.")
             }
             Section {
                 Picker("Announcements", selection: model.binding("verbosity")) {
@@ -259,7 +260,8 @@ struct SettingsView: View {
                     Text("Keep \(model.values["backup-keep"] ?? "10") backups")
                 }
                 Button("Back Up Now") { model.backUpNow() }
-                Note("A backup holds your whole history, including every task you deleted, so the store can be rebuilt from it. It stays on this device.")
+            } footer: {
+                FormParts.caption("A backup holds your whole history, including every task you deleted, so the store can be rebuilt from it. It stays on this device.")
             }
     }
 
@@ -272,9 +274,10 @@ struct SettingsView: View {
                     Button("Calendar file of your blocks") { model.export(.ics) }
                 }
                 Button("Import or Restore") { model.pickImport() }
-                Note("An export is what you have now, with nothing from the trash. Importing a JSON export or restoring a backup adds what this device lacks and removes nothing.")
             } header: {
                 FormParts.caption("Export and import")
+            } footer: {
+                FormParts.caption("An export is what you have now, with nothing from the trash. Importing a JSON export or restoring a backup adds what this device lacks and removes nothing.")
             }
     }
 }

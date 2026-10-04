@@ -12,20 +12,6 @@ enum FormParts {
     }
 }
 
-/// An explanation at the foot of a section, as a row of its own. A section's footer stops
-/// growing with Dynamic Type part of the way up; a row does not.
-struct Note: View {
-    let text: String
-
-    init(_ text: String) {
-        self.text = text
-    }
-
-    var body: some View {
-        FormParts.caption(text)
-    }
-}
-
 /// A text field's placeholder: an example of what goes there, in a grey that reads. The
 /// system placeholder grey is far under contrast, and repeating the field's name beside the
 /// name says nothing.
@@ -34,29 +20,32 @@ func example(_ text: String) -> Text {
 }
 
 
-/// A control with its name beside it as ordinary text, the two tied together for VoiceOver.
+/// A text field with its name beside it, read by VoiceOver as one stop: "Due, text field,
+/// tomorrow".
 ///
-/// Neither half alone works. A SwiftUI control in `LabeledContent` is not named by the label
-/// beside it, so it reads its value with nothing to say what it is; hiding the visible name
-/// leaves text on screen that no accessibility element covers, which the audit rightly flags.
-/// `accessibilityLabeledPair` is the declared relationship between the two.
+/// The field carries the name as its label and the visible name is hidden from VoiceOver —
+/// how Apple's own UIKit forms do it. The alternatives were each worse: a SwiftUI `TextField`
+/// is not named by text beside it, so it read its value with nothing to say which field it
+/// was; a visible name that is its own element is a second stop saying the same word; and
+/// combining the row loses the text field's role and reads an empty field's placeholder as
+/// its value. The accessibility audit flags the hidden name as possibly inaccessible text,
+/// so the screens built from these rows are audited with that one finding excused.
 struct NamedRow<Control: View>: View {
     let name: String
     @ViewBuilder var control: Control
-    @Namespace private var pair
     @Environment(\.dynamicTypeSize) private var size
 
     var body: some View {
-        // Side by side until the text is large, then the name above the control, so neither
+        // Side by side until the text is large, then the name above the field, so neither
         // is squeezed.
         if size.isAccessibilitySize {
             VStack(alignment: .leading, spacing: 6) {
                 label
-                content
+                field
             }
         } else {
             LabeledContent {
-                content
+                field
             } label: {
                 label
             }
@@ -64,31 +53,11 @@ struct NamedRow<Control: View>: View {
     }
 
     private var label: some View {
-        Text(name)
-            .fixedSize(horizontal: false, vertical: true)
-            .accessibilityLabeledPair(role: .label, id: name, in: pair)
+        Text(name).accessibilityHidden(true)
     }
 
-    private var content: some View {
-        control
-            .accessibilityLabel(name)
-            .accessibilityLabeledPair(role: .content, id: name, in: pair)
-    }
-}
-
-/// A date or time with its name beside it. A `DatePicker`'s own label stops growing with
-/// Dynamic Type; this one does not.
-struct DateRow: View {
-    let name: String
-    @Binding var selection: Date
-    var components: DatePickerComponents = .hourAndMinute
-
-    var body: some View {
-        NamedRow(name: name) {
-            // An empty title, so the name is the label once rather than twice.
-            DatePicker("", selection: $selection, displayedComponents: components)
-                .labelsHidden()
-        }
+    private var field: some View {
+        control.accessibilityLabel(name)
     }
 }
 
