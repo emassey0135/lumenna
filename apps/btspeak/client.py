@@ -33,6 +33,9 @@ TIMEOUT = 20.0
 #: The notification the server sends when another process wrote to the store.
 CHANGED = "lumenna/changed"
 
+#: What a pairing says while it runs: the code to give the other device, then the words.
+PAIRING = "lumenna/pairing"
+
 
 class LumennaError(Exception):
     """A request the server refused."""
@@ -64,6 +67,8 @@ class Client:
 
         #: Set when another process wrote to the store. Menus poll it; nothing else may.
         self.changed = threading.Event()
+        #: What a pairing under way has said, oldest first: `{"code": …}`, then `{"words": …}`.
+        self.pairing: queue.Queue = queue.Queue()
 
         self._thread = threading.Thread(target=self._read_loop, daemon=True)
         self._thread.start()
@@ -75,6 +80,11 @@ class Client:
 
         Raises LumennaError if the server refused, Disconnected if it went away.
         """
+        return self.begin(method, **params).result(TIMEOUT)
+
+    def begin(self, method: str, **params) -> "Pending":
+        """Sends a request and returns at once, for one whose reply may be minutes away — a
+        pairing waits for a person on another device."""
         ident = next(self._ids)
         slot: queue.Queue = queue.Queue(maxsize=1)
         with self._lock:
@@ -82,20 +92,7 @@ class Client:
                 raise Disconnected()
             self._pending[ident] = slot
         self._send({"jsonrpc": "2.0", "id": ident, "method": method, "params": params})
-
-        try:
-            reply = slot.get(timeout=TIMEOUT)
-        except queue.Empty:
-            with self._lock:
-                self._pending.pop(ident, None)
-            raise Disconnected(f"no reply to {method}") from None
-
-        if reply is None:
-            raise Disconnected()
-        if "error" in reply:
-            error = reply["error"]
-            raise LumennaError(error.get("message", "unknown error"), error.get("code", 0))
-        return reply.get("result", {})
+        return Pending(self, method, ident, slot)
 
     def notify(self, method: str, **params) -> None:
         """Sends a request that wants no reply."""
@@ -158,6 +155,8 @@ class Client:
                         slot.put(message)
                 elif message.get("method") == CHANGED:
                     self.changed.set()
+                elif message.get("method") == PAIRING:
+                    self.pairing.put(message.get("params") or {})
         except (OSError, ValueError):
             pass
         finally:
@@ -174,3 +173,44 @@ class Client:
                 slot.put_nowait(None)
             except queue.Full:
                 pass
+
+
+class Pending:
+    """A request sent and not yet answered."""
+
+    def __init__(self, client: Client, method: str, ident: int, slot: queue.Queue) -> None:
+        self._client = client
+        self._method = method
+        self._ident = ident
+        self._slot = slot
+        self._reply = None
+        self._arrived = False
+
+    def done(self) -> bool:
+        """Whether the reply has arrived, without waiting for it."""
+        if not self._arrived:
+            try:
+                self._reply = self._slot.get_nowait()
+                self._arrived = True
+            except queue.Empty:
+                pass
+        return self._arrived
+
+    def result(self, timeout: float | None = None):
+        """Waits for the reply. Raises LumennaError if the server refused, Disconnected if it
+        went away or `timeout` passed first."""
+        if not self._arrived:
+            try:
+                self._reply = self._slot.get(timeout=timeout)
+                self._arrived = True
+            except queue.Empty:
+                with self._client._lock:
+                    self._client._pending.pop(self._ident, None)
+                raise Disconnected(f"no reply to {self._method}") from None
+        reply = self._reply
+        if reply is None:
+            raise Disconnected()
+        if "error" in reply:
+            error = reply["error"]
+            raise LumennaError(error.get("message", "unknown error"), error.get("code", 0))
+        return reply.get("result", {})
