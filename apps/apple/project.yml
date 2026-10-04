@@ -34,6 +34,19 @@ targets:
         basedOnDependencyAnalysis: false
         outputFiles:
           - $(SRCROOT)/Generated/bindings/LumennaCore.swift
+    postBuildScripts:
+      - name: Check the core is linked in, not loaded
+        basedOnDependencyAnalysis: false
+        script: |
+          # A reference to the Rust library as a dylib means the app looks for it on the
+          # Mac's disk at launch: fine in the simulator, a crash on a phone. Fail here instead.
+          for binary in "$TARGET_BUILD_DIR/$EXECUTABLE_PATH" "$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/$EXECUTABLE_NAME.debug.dylib"; do
+            [ -f "$binary" ] || continue
+            if otool -L "$binary" | grep -q liblumenna_ffi; then
+              echo "error: $binary loads liblumenna_ffi dynamically; it must be linked statically"
+              exit 1
+            fi
+          done
     dependencies:
       - sdk: Security.framework
     info:
@@ -65,9 +78,13 @@ targets:
         # script sandbox allows.
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/include
-        OTHER_LDFLAGS: -llumenna_ffi
-        "LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]": $(SRCROOT)/../../target/aarch64-apple-ios-sim/$(RUST_PROFILE)
-        "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]": $(SRCROOT)/../../target/aarch64-apple-ios/$(RUST_PROFILE)
+        # The static library, by its full path. Cargo also builds a dynamic one beside it
+        # for uniffi-bindgen, and `-llumenna_ffi` would make the linker prefer that: the app
+        # then loads it from the Mac's disk at launch, which works in the simulator — it
+        # runs on the Mac — and crashes on a phone.
+        "RUST_LIB_DIR[sdk=iphonesimulator*]": $(SRCROOT)/../../target/aarch64-apple-ios-sim/$(RUST_PROFILE)
+        "RUST_LIB_DIR[sdk=iphoneos*]": $(SRCROOT)/../../target/aarch64-apple-ios/$(RUST_PROFILE)
+        OTHER_LDFLAGS: $(RUST_LIB_DIR)/liblumenna_ffi.a
         # The core is built for Apple silicon only.
         "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
       configs:
