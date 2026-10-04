@@ -10,8 +10,13 @@ final class LumennaMacUITests: XCTestCase {
         app = XCUIApplication()
         // A fresh store for every test, in the app's temporary directory.
         app.launchEnvironment["LUMENNA_TEST_PROFILE"] = UUID().uuidString
+        app.launchEnvironment["LUMENNA_BACKUP_DIR"] = backups.path
         app.launch()
     }
+
+    /// Where this run's backups go, so a test can count them and the real ones are untouched.
+    private lazy var backups = FileManager.default.temporaryDirectory
+        .appendingPathComponent("lumenna-ui-backups-\(UUID().uuidString)", isDirectory: true)
 
     override func tearDown() {
         app.terminate()
@@ -76,7 +81,8 @@ final class LumennaMacUITests: XCTestCase {
         window.outlines["Tasks"].staticTexts["water plants"].click()
         let repeats = window.textFields["Repeats"]
         XCTAssertTrue(repeats.waitForExistence(timeout: 5), app.debugDescription)
-        XCTAssertTrue(window.scrollViews["Task details"].exists, "the pane is one named scroll area")
+        XCTAssertTrue(window.scrollViews["Task details"].waitForExistence(timeout: 5), "the pane is one named scroll area")
+        XCTAssertFalse(window.groups["Task details"].exists, "not a group around one")
         XCTAssertEqual(repeats.value as? String, "every monday")
     }
 
@@ -156,5 +162,224 @@ final class LumennaMacUITests: XCTestCase {
             }
             try audit("settings, \(tab)", in: settings)
         }
+    }
+
+    // MARK: - Helpers for menus and sheets
+
+    /// A row of the sidebar, by its name.
+    private func sidebarRow(_ name: String) -> XCUIElement {
+        window.outlines["Places"].staticTexts[name]
+    }
+
+    /// Opens a row's context menu and chooses an item from it — what VO-Shift-M does.
+    private func menu(_ element: XCUIElement, _ item: String) {
+        XCTAssertTrue(element.waitForExistence(timeout: 5), "no \(element)")
+        element.rightClick()
+        // The open context menu's, not the menu bar's item of the same name.
+        let named = app.menuItems.matching(identifier: item)
+        let deadline = Date().addingTimeInterval(5)
+        var choice: XCUIElement?
+        while choice == nil, Date() < deadline {
+            choice = named.allElementsBoundByIndex.first { $0.isHittable }
+            if choice == nil { usleep(100_000) }
+        }
+        guard let choice else { return XCTFail("no menu item \(item)") }
+        choice.click()
+    }
+
+    /// Answers the one-line question a sheet asks, and presses `button`. With `then`, the
+    /// next question follows at once, so the sheet does not close in between.
+    private func answer(_ text: String, with button: String, then next: Bool = false) {
+        let field = app.sheets.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "no question was asked")
+        enter(text, into: field)
+        app.sheets.buttons[button].firstMatch.click()
+        if next {
+            XCTAssertTrue(app.sheets.textFields.firstMatch.waitForValue(""), "the next question")
+        } else {
+            XCTAssertTrue(app.sheets.firstMatch.waitForNonExistence(timeout: 5))
+        }
+    }
+
+    /// Chooses from a picker sheet by narrowing it to `text`.
+    private func pick(_ text: String) {
+        let narrow = app.sheets.searchFields.firstMatch
+        XCTAssertTrue(narrow.waitForExistence(timeout: 5), "no list to choose from")
+        enter(text, into: narrow)
+        app.sheets.buttons["Choose"].click()
+    }
+
+    /// Presses a button in whatever sheet is showing.
+    private func sheetButton(_ title: String) {
+        let button = app.sheets.buttons[title].firstMatch
+        XCTAssertTrue(button.waitForExistence(timeout: 5), "no \(title) in the sheet")
+        button.click()
+    }
+
+    private func text(containing words: String, in parent: XCUIElement? = nil) -> XCUIElement {
+        (parent ?? window).staticTexts.matching(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", words, words)).firstMatch
+    }
+
+    // MARK: - Organising, from the sidebar
+
+    func testAProjectIsMadeRenamedArchivedAndDeletedFromTheSidebar() {
+        menu(sidebarRow("Projects"), "New Project…")
+        answer("Wrok", with: "Add")
+        XCTAssertTrue(sidebarRow("Wrok").waitForExistence(timeout: 5))
+
+        menu(sidebarRow("Wrok"), "Rename…")
+        answer("Work", with: "Save")
+        XCTAssertTrue(sidebarRow("Work").waitForExistence(timeout: 5))
+        // Undo reaches the store from anywhere, the sidebar included.
+        sidebarRow("Work").click()
+        app.typeKey("z", modifierFlags: .command)
+        XCTAssertTrue(sidebarRow("Wrok").waitForExistence(timeout: 5), "undone")
+        app.typeKey("z", modifierFlags: [.command, .shift])
+        XCTAssertTrue(sidebarRow("Work").waitForExistence(timeout: 5), "redone")
+
+        menu(sidebarRow("Work"), "Archive")
+        menu(sidebarRow("Work"), "Unarchive")
+        menu(sidebarRow("Work"), "Delete…")
+        sheetButton("Delete and Keep Its Tasks")
+        XCTAssertTrue(sidebarRow("Work").waitForNonExistence(timeout: 5))
+    }
+
+    func testALabelIsMadeColouredAndMergedIntoAnother() {
+        menu(sidebarRow("Labels"), "New Label…")
+        answer("calls", with: "Add")
+        menu(sidebarRow("Labels"), "New Label…")
+        answer("cals", with: "Add")
+        menu(sidebarRow("calls"), "Colour…")
+        answer("teal", with: "Save")
+        menu(sidebarRow("cals"), "Merge Into…")
+        pick("calls")
+        XCTAssertTrue(sidebarRow("cals").waitForNonExistence(timeout: 5))
+        XCTAssertTrue(sidebarRow("calls").exists)
+    }
+
+    func testASavedFilterIsMadeRequeriedAndDeleted() {
+        menu(sidebarRow("Saved Filters"), "New Saved Filter…")
+        answer("Urgent", with: "Next", then: true)
+        answer("p1", with: "Save")
+        XCTAssertTrue(sidebarRow("Urgent").waitForExistence(timeout: 5))
+        XCTAssertEqual(window.textFields["Filter"].value as? String, "p1", "it opens with its query")
+        menu(sidebarRow("Urgent"), "Change Query…")
+        answer("p1 | p2", with: "Save")
+        XCTAssertTrue(window.textFields["Filter"].waitForValue("p1 | p2"))
+        menu(sidebarRow("Urgent"), "Delete…")
+        sheetButton("Delete")
+        XCTAssertTrue(sidebarRow("Urgent").waitForNonExistence(timeout: 5))
+    }
+
+    // MARK: - The trash
+
+    func testATrashedTaskIsRestoredAndAnotherErasedFromTheTrash() {
+        place("Tasks")
+        addTask("keep me")
+        addTask("lose me")
+        let tasks = window.outlines["Tasks"]
+        for title in ["keep me", "lose me"] {
+            tasks.staticTexts[title].click()
+            app.typeKey(.delete, modifierFlags: [])
+            XCTAssertTrue(tasks.staticTexts[title].waitForNonExistence(timeout: 5))
+        }
+        place("Trash")
+        let trash = window.outlines["Trash"]
+        trash.staticTexts["keep me"].click()
+        app.typeKey(.space, modifierFlags: [])
+        XCTAssertTrue(trash.staticTexts["keep me"].waitForNonExistence(timeout: 5), "restored")
+        trash.staticTexts["lose me"].click()
+        app.typeKey(.delete, modifierFlags: [])
+        sheetButton("Erase")
+        XCTAssertTrue(trash.staticTexts["lose me"].waitForNonExistence(timeout: 5), "erased")
+        place("Tasks")
+        XCTAssertTrue(window.outlines["Tasks"].staticTexts["keep me"].waitForExistence(timeout: 5))
+    }
+
+    // MARK: - Blocks and the day
+
+    /// Adds a block from whichever pane is showing, through the menu bar's New Block.
+    private func addBlock(_ name: String, repeating: String? = nil) {
+        app.typeKey("n", modifierFlags: [.command, .shift])
+        let field = app.textFields["Name"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        enter(name, into: field)
+        if let repeating { enter(repeating, into: app.textFields["Repeats"]) }
+        sheetButton("Save")
+        XCTAssertTrue(app.sheets.firstMatch.waitForNonExistence(timeout: 5))
+    }
+
+    func testTheBlockListEditsEveryOccurrenceAndAsksBeforeDeleting() {
+        place("Blocks")
+        addBlock("Standup", repeating: "every day")
+        let blocks = window.tables["Blocks"]
+        let standup = blocks.staticTexts["Standup"]
+        XCTAssertTrue(standup.waitForExistence(timeout: 5))
+        XCTAssertTrue(text(containing: "every day", in: blocks).exists, "said in words")
+        standup.doubleClick()
+        XCTAssertEqual(app.textFields["Repeats"].value as? String, "every day")
+        sheetButton("Cancel")
+        standup.click()
+        app.typeKey(.delete, modifierFlags: [])
+        sheetButton("Delete")
+        XCTAssertTrue(standup.waitForNonExistence(timeout: 5))
+    }
+
+    func testTheDayAssignsTimesAndPlansASittingAndPutsBackACancelledDay() {
+        place("Tasks")
+        addTask("write")
+        place("Today")
+        addBlock("Run", repeating: "every day")
+        let day = window.outlines["The day"]
+        menu(text(containing: "Run", in: day), "Assign a Task…")
+        pick("write")
+        let minutes = app.sheets.textFields["Minutes"]
+        XCTAssertTrue(minutes.waitForExistence(timeout: 5))
+        enter("45", into: minutes)
+        sheetButton("Set")
+        XCTAssertTrue(text(containing: "planned for 45 minutes", in: day).waitForExistence(timeout: 5))
+
+        day.staticTexts["write"].click()
+        app.typeKey(.space, modifierFlags: [])
+        XCTAssertTrue(text(containing: "in progress", in: day).waitForExistence(timeout: 5), "Space starts the timer")
+        menu(day.staticTexts["write"], "Planned Length…")
+        sheetButton("No Planned Length")
+        XCTAssertTrue(text(containing: "planned", in: day).waitForNonExistence(timeout: 5) || !text(containing: "45 minutes planned", in: day).exists)
+
+        menu(text(containing: "Run", in: day), "Cancel This Day")
+        let cancelled = text(containing: "cancelled for this day", in: day)
+        XCTAssertTrue(cancelled.waitForExistence(timeout: 5))
+        menu(cancelled, "Restore This Day")
+        XCTAssertTrue(cancelled.waitForNonExistence(timeout: 5))
+    }
+
+    // MARK: - Settings
+
+    func testBackUpNowWritesABackupWhereTheyGo() throws {
+        XCTAssertTrue(window.waitForExistence(timeout: 10))
+        let count = { (try? FileManager.default.contentsOfDirectory(atPath: self.backups.path).count) ?? 0 }
+        let before = count()
+        app.typeKey(",", modifierFlags: .command)
+        let settings = app.windows["settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.toolbars.buttons["Backups"].click()
+        let backUp = settings.buttons["Back Up Now"]
+        XCTAssertTrue(backUp.waitForExistence(timeout: 5), settings.debugDescription)
+        backUp.click()
+        let deadline = Date().addingTimeInterval(5)
+        while count() == before, Date() < deadline { usleep(100_000) }
+        XCTAssertEqual(count(), before + 1)
+    }
+}
+
+private extension XCUIElement {
+    /// Waits for a field to hold `value`.
+    func waitForValue(_ value: String, timeout: TimeInterval = 5) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if (self.value as? String) == value { return true }
+            usleep(100_000)
+        }
+        return false
     }
 }

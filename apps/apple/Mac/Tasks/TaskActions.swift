@@ -95,20 +95,9 @@ struct TaskActions {
         core: Core, window: NSWindow, for task: TaskDetail,
         chosen: @escaping (_ block: String, _ date: String, _ minutes: UInt32?) -> Void
     ) {
-        var items: [PickerItem] = []
-        var dates: [String: String] = [:]
-        for offset in 0..<7 {
-            let day = Calendar.current.date(byAdding: .day, value: offset, to: .now) ?? .now
-            guard let plan = try? core.lumenna.plan(date: Clock.isoDay(day)) else { continue }
-            for block in plan.blocks where block.kind == "work" {
-                items.append(PickerItem(
-                    key: block.id,
-                    title: "\(Clock.spokenDay(plan.date)), \(Clock.time(block.start)), \(block.title)",
-                    detail: "\(Clock.time(block.start)) to \(Clock.time(block.end))"
-                ))
-                dates[block.id] = plan.date
-            }
-        }
+        let blocks = core.workBlocksThisWeek()
+        let items = blocks.map { PickerItem(key: $0.id, title: $0.title, detail: $0.detail) }
+        let dates = Dictionary(uniqueKeysWithValues: blocks.map { ($0.id, $0.date) })
         guard !items.isEmpty else {
             window.showFailure("There are no work blocks this week. Add one from Today.", title: "Put in a Block")
             return

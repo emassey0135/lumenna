@@ -38,24 +38,20 @@ final class TaskDetailViewController: UIHostingController<TaskDetailView>, TaskF
         TaskPicker.present(from: self, core: core, title: title, excluding: excluding) { item in chosen(item.key) }
     }
 
-    /// Today's and tomorrow's work blocks; the planner reaches any other day.
+    /// The coming week's work blocks, as the Mac offers them; the planner reaches any other day.
     func chooseBlock(for task: TaskDetail, chosen: @escaping (String, String, UInt32?) -> Void) {
-        var choices: [(String, () -> Void)] = []
-        for (word, day) in [("Today", nil as String?), ("Tomorrow", "tomorrow")] {
-            guard let plan = try? core.lumenna.plan(date: day) else { continue }
-            for block in plan.blocks where block.kind == "work" {
-                choices.append(("\(word), \(Clock.time(block.start)), \(block.title)", { [weak self] in
-                    self?.askForLength("How long is this sitting meant to take?", without: "Skip") { minutes in
-                        chosen(block.id, plan.date, minutes)
-                    }
-                }))
-            }
-        }
-        guard !choices.isEmpty else {
-            showFailure("There are no work blocks today or tomorrow. Add one from Today.")
+        let blocks = core.workBlocksThisWeek()
+        guard !blocks.isEmpty else {
+            showFailure("There are no work blocks this week. Add one from Today.")
             return
         }
-        choose("Put in a Block", actions: choices)
+        let items = blocks.map { Item(key: $0.id, title: $0.title, detail: $0.detail) }
+        let dates = Dictionary(uniqueKeysWithValues: blocks.map { ($0.id, $0.date) })
+        ListPicker.present(from: self, core: core, title: "Put in a Block", choices: items) { [weak self] block in
+            self?.askForLength("How long is this sitting meant to take?", without: "Skip") { minutes in
+                chosen(block.key, dates[block.key] ?? "", minutes)
+            }
+        }
     }
 
     func trashed() {

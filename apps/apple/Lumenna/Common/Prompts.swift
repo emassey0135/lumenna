@@ -111,3 +111,24 @@ extension UIViewController {
         present(alert, animated: true)
     }
 }
+
+extension UIBarButtonItem {
+    /// Undo or Redo for a navigation bar: the system's arrows, named in words for VoiceOver.
+    /// Words took the bar's room from the title, which was then clipped at large text sizes.
+    static func undo(_ action: @escaping () -> Void) -> UIBarButtonItem {
+        arrow("arrow.uturn.backward", name: "Undo", action)
+    }
+
+    static func redo(_ action: @escaping () -> Void) -> UIBarButtonItem {
+        arrow("arrow.uturn.forward", name: "Redo", action)
+    }
+
+    private static func arrow(_ symbol: String, name: String, _ action: @escaping () -> Void) -> UIBarButtonItem {
+        let item = UIBarButtonItem(image: UIImage(systemName: symbol), primaryAction: UIAction { _ in action() })
+        item.accessibilityLabel = name
+        // Shown with the name when a button is pressed and held, for those who read the arrows
+        // with Large Content Viewer.
+        item.title = name
+        return item
+    }
+}

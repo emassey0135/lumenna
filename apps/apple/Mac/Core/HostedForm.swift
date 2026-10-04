@@ -26,26 +26,33 @@ class HostedForm<Content: View>: NSViewController {
         view = host
     }
 
+    private var named = false
+
+    /// The form's scroll view exists only once SwiftUI has laid it out, which can be after
+    /// the view appears; so this tries on appearing and after each layout until it is there.
+    /// Falling back to naming the hosting view would bring back the group around the scroll
+    /// area, so it never does.
     override func viewDidAppear() {
         super.viewDidAppear()
-        // The form's scroll view exists once SwiftUI has laid out.
-        if let scroll = firstScrollView(in: host) {
-            scroll.setAccessibilityLabel(name)
-        } else {
-            host.flattened = false
-            host.setAccessibilityLabel(name)
-        }
+        nameScrollArea()
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        nameScrollArea()
+    }
+
+    private func nameScrollArea() {
+        guard !named, let scroll = firstScrollView(in: host) else { return }
+        scroll.setAccessibilityLabel(name)
+        named = true
     }
 }
 
 /// A hosting view that is not itself an accessibility element, so its contents sit directly
 /// in whatever holds it.
 final class FlatHostingView<Content: View>: NSHostingView<Content> {
-    var flattened = true
-
-    override func isAccessibilityElement() -> Bool {
-        flattened ? false : super.isAccessibilityElement()
-    }
+    override func isAccessibilityElement() -> Bool { false }
 }
 
 private func firstScrollView(in view: NSView) -> NSScrollView? {

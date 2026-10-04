@@ -161,8 +161,8 @@ final class TaskListViewController: UIViewController {
     /// tab bar floats, so a tap on Undo would land on a tab — for VoiceOver too, which
     /// activates the middle of an element's frame.
     private func buildBars() {
-        let undo = UIBarButtonItem(title: "Undo", primaryAction: UIAction { [weak self] _ in self?.undo() })
-        let redo = UIBarButtonItem(title: "Redo", primaryAction: UIAction { [weak self] _ in self?.redo() })
+        let undo = UIBarButtonItem.undo { [weak self] in self?.undo() }
+        let redo = UIBarButtonItem.redo { [weak self] in self?.redo() }
         navigationItem.leftItemsSupplementBackButton = true
         navigationItem.leftBarButtonItems = mode == .tasks ? [undo, redo] : [undo]
         guard mode == .tasks else { return }
