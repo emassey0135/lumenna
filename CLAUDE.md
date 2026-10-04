@@ -95,8 +95,8 @@ is the short-lived endpoint a pairing runs on.
 - `lum daemon install` (`service.rs`) writes a systemd user unit plus linger on Linux, a
   system unit through `sudo` on BTSpeak, a LaunchAgent on macOS, a logon task on Windows.
   The service always gets `--profile`, and a non-default profile gets a tagged name so
-  each profile can have one. Only the macOS path has been run for real; the others' text
-  is unit-tested, their commands are not.
+  each profile can have one. The macOS and Linux paths have been run for real (Linux on an
+  Arch VM); BTSpeak's and Windows' text is unit-tested, their commands are not.
 
 ### `lum rpc`
 
