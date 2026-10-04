@@ -106,6 +106,17 @@ pub(crate) enum Command {
         assignment: String,
     },
 
+    /// Set how long a sitting is meant to take, or clear it with `none`.
+    ///
+    /// The plan, not the record: what was logged stays as it is. `lum stop --minutes` is how
+    /// the time actually spent is put right.
+    Length {
+        /// A row number from `lum plan`, or the assignment identifier.
+        assignment: String,
+        /// Minutes, or `none`.
+        minutes: String,
+    },
+
     /// Start the timer on an assignment.
     Start {
         /// The assignment identifier.
@@ -825,6 +836,16 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         )?),
         Command::Unassign { assignment } => {
             Response::new(profile.unassign(&profile.row(assignment, "assignment")?)?)
+        }
+        Command::Length { assignment, minutes } => {
+            let minutes = if minutes.eq_ignore_ascii_case("none") {
+                None
+            } else {
+                Some(minutes.trim().parse::<u32>().map_err(|_| {
+                    CliError::Message(format!("'{minutes}' is not a number of minutes, or none"))
+                })?)
+            };
+            Response::new(profile.plan_minutes(&profile.row(assignment, "assignment")?, minutes)?)
         }
         Command::Start { assignment } => {
             Response::new(profile.start_timer(&profile.row(assignment, "assignment")?)?)

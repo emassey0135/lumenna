@@ -125,7 +125,7 @@ def plan_rows(plan: dict) -> list[dict]:
                 "state": state,
             })
             for sitting in block.get("assignments", []):
-                state = [sitting["status"]]
+                state = sitting_state(sitting)
                 if sitting.get("minutes"):
                     state.append(f"{length(sitting['minutes'])} logged")
                 if sitting.get("capped"):
@@ -151,6 +151,47 @@ def plan_rows(plan: dict) -> list[dict]:
             "state": ["cancelled for this day"],
         })
     return rows
+
+
+def sitting_state(sitting: dict) -> list[str]:
+    """The status, with the planned length beside it: "planned for 45 minutes" before it
+    starts and "45 minutes planned" after, as the phone and the command line say it, so the
+    two never read as "planned, planned"."""
+    planned = sitting.get("planned_mins")
+    if not planned:
+        return [sitting["status"]]
+    if sitting["status"] == "planned":
+        return [f"planned for {length(planned)}"]
+    return [sitting["status"], f"{length(planned)} planned"]
+
+
+def ask_length(prompt: str, current: int | None = None) -> tuple[bool, int | None]:
+    """A sitting's planned length: (answered, minutes), where minutes is None for none. Left
+    empty, it is none — so when assigning, Enter alone skips it."""
+    text = dialogs.request_input(
+        f"{prompt}, in minutes. Leave it empty for no planned length",
+        default_text=str(current) if current else "",
+    )
+    if text is None:
+        return False, None
+    text = text.strip()
+    if not text:
+        return True, None
+    if not text.isdigit() or int(text) == 0:
+        dialogs.show_message("That is not a number of minutes")
+        return False, None
+    return True, int(text)
+
+
+def assign(session: Session, task: str, block: dict, date: str) -> str:
+    """Puts a task in a block, asking how long the sitting is meant to take (§3.7)."""
+    answered, minutes = ask_length("How long is this sitting meant to take")
+    if not answered:
+        return ""
+    params = {"task": task, "block": block["id"], "date": date}
+    if minutes:
+        params["minutes"] = minutes
+    return session.write("assign", **params)
 
 
 def plan_actions(session: Session, plan: dict, row: dict) -> str:
@@ -186,7 +227,7 @@ def block_actions(session: Session, block: dict, date: str) -> str:
     choice = choose(actions, f"{block['title']}, {block['start']} to {block['end']}")
     if choice == "assign":
         task = tasks.pick_task(session, f"Assign to {block['title']}")
-        return session.write("assign", task=task, block=block["id"], date=date) if task else ""
+        return assign(session, task, block, date) if task else ""
     if choice == "edit":
         return edit_block(session, block, date)
     if choice == "cancel":
@@ -202,6 +243,7 @@ def sitting_actions(session: Session, sitting: dict) -> str:
     running = sitting["status"] == "in progress"
     actions = {
         "timer": "Stop the timer" if running else "Start the timer",
+        "length": "Planned length",
         "log": "Log minutes by hand",
         "task": "The task itself",
         "unassign": "Take it out of the block",
@@ -209,6 +251,11 @@ def sitting_actions(session: Session, sitting: dict) -> str:
     choice = choose(actions, sitting["title"])
     if choice == "timer":
         return session.write("stop" if running else "start", assignment=sitting["id"])
+    if choice == "length":
+        answered, minutes = ask_length(f"Planned length of {sitting['title']}", sitting.get("planned_mins"))
+        if not answered:
+            return ""
+        return session.write("length", assignment=sitting["id"], minutes=minutes)
     if choice == "log":
         text = ask(f"Minutes on {sitting['title']}, the whole of this sitting", "")
         if text is None:

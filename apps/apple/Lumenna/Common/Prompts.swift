@@ -73,3 +73,52 @@ extension UIViewController {
         }
     }
 }
+
+extension UIViewController {
+    /// Asks how long a sitting is meant to take (§3.7). `done` gets the minutes, or `nil`
+    /// for none — what `without` names: "Skip" when assigning, "No Planned Length" when
+    /// changing one. Cancel calls nothing.
+    func askForLength(
+        _ title: String,
+        current: UInt32? = nil,
+        without: String,
+        done: @escaping (UInt32?) -> Void
+    ) {
+        let alert = UIAlertController(
+            title: title, message: "In minutes. It is the plan; what you log is kept apart.",
+            preferredStyle: .alert
+        )
+        alert.addTextField { field in
+            field.placeholder = "45"
+            field.text = current.map(String.init) ?? ""
+            field.keyboardType = .numberPad
+            field.accessibilityLabel = "Minutes"
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: without, style: .default) { _ in done(nil) })
+        alert.addAction(UIAlertAction(title: "Set", style: .default) { [weak self, weak alert] _ in
+            let text = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespaces) ?? ""
+            guard let minutes = UInt32(text), minutes > 0 else {
+                if text.isEmpty {
+                    done(nil)
+                } else {
+                    self?.showFailure("That is not a number of minutes.")
+                }
+                return
+            }
+            done(minutes)
+        })
+        present(alert, animated: true)
+    }
+}
+
+/// A sitting's status with its planned length beside it: "planned for 45 minutes" before it
+/// starts, "45 minutes planned" after, so the two never read as "planned, planned" — as the
+/// command line and the BTSpeak app say it.
+func sittingStatus(_ sitting: PlanAssignment) -> [String] {
+    guard let planned = sitting.plannedMins else { return [sitting.status] }
+    if sitting.status == "planned" {
+        return ["planned for \(Clock.length(planned))"]
+    }
+    return [sitting.status, "\(Clock.length(planned)) planned"]
+}

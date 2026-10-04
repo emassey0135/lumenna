@@ -211,7 +211,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             cell.accessories = [.disclosureIndicator(displayed: .always)]
         case let .sitting(sitting, _):
             label = sitting.title
-            value = [sitting.status]
+            value = sittingStatus(sitting)
             if sitting.minutes > 0 { value.append("\(Clock.length(sitting.minutes)) logged") }
             if sitting.capped { value.append("capped, the timer looks forgotten") }
             content.text = label
@@ -291,6 +291,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
                         self.change(focusing: row) { try self.core.lumenna.startTimer(assignment: sitting.id) }
                     }
                 }),
+                ("Planned Length", false, { [weak self] in self?.planLength(sitting, row: row) }),
                 ("Log Minutes", false, { [weak self] in self?.logMinutes(sitting, row: row) }),
                 ("Unassign", true, { [weak self] in
                     self?.change(focusing: row) { try self!.core.lumenna.unassign(assignment: sitting.id) }
@@ -374,9 +375,21 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     private func assign(to block: PlanBlock) {
         TaskPicker.present(from: self, core: core, title: "Assign to \(block.title)") { [weak self] task in
             guard let self, let date = self.plan?.date else { return }
-            self.change(focusing: .block(block)) {
-                try self.core.lumenna.assign(task: task.key, block: block.series, date: date, minutes: nil)
+            self.askForLength("How long is \(task.title) meant to take?", without: "Skip") { minutes in
+                self.change(focusing: .block(block)) {
+                    try self.core.lumenna.assign(task: task.key, block: block.series, date: date, minutes: minutes)
+                }
             }
+        }
+    }
+
+    /// Sets or clears how long a sitting is meant to take; what was logged stays.
+    private func planLength(_ sitting: PlanAssignment, row: Row) {
+        askForLength(
+            "Planned length of \(sitting.title)", current: sitting.plannedMins, without: "No Planned Length"
+        ) { [weak self] minutes in
+            guard let self else { return }
+            self.change(focusing: row) { try self.core.lumenna.planMinutes(assignment: sitting.id, minutes: minutes) }
         }
     }
 

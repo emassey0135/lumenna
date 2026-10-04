@@ -116,6 +116,7 @@ const METHODS: &[&str] = &[
     "block.rm",
     "assign",
     "unassign",
+    "length",
     "start",
     "stop",
     "config.get",
@@ -635,6 +636,12 @@ fn command_for(method: &str, params: &Value) -> std::result::Result<Command, Rpc
             minutes: maybe_number(params, "minutes")?,
         },
         "unassign" => Command::Unassign { assignment: text_of(params, "assignment")? },
+        // A number, or null to clear it.
+        "length" => Command::Length {
+            assignment: text_of(params, "assignment")?,
+            minutes: maybe_number(params, "minutes")?
+                .map_or_else(|| "none".to_owned(), |minutes| minutes.to_string()),
+        },
         "start" => Command::Start { assignment: text_of(params, "assignment")? },
         "stop" => Command::Stop {
             assignment: text_of(params, "assignment")?,

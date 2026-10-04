@@ -4,7 +4,7 @@ use jiff::Zoned;
 use jiff::civil::date;
 use lumenna_core::edit::{
     Change, Edit, EditError, MoveTo, ProjectDeletion, add_dependency, adopt_inbox, assign_task,
-    complete_task, create_task, except_occurrence, log_minutes, merge_labels, move_task,
+    complete_task, create_task, except_occurrence, log_minutes, merge_labels, move_task, plan_minutes,
     purge_task, remove_dependency, restore_occurrence, restore_task, start_timer, stop_timer,
     trash_project, trash_task, uncomplete_task, unassign, update_series, update_task,
 };
@@ -738,6 +738,24 @@ fn logged_minutes_replace_a_capped_figure() {
     assert_eq!(assignment.accumulated_mins, 50);
     assert!(!assignment.is_running());
     assert!(log_minutes(&world.snapshot, assignment_id, 2026, 50).unwrap().is_empty());
+}
+
+#[test]
+fn planning_a_sittings_length_leaves_what_was_logged_alone() {
+    let mut world = World::new();
+    let id = world.add("Write the essay");
+    let block = BlockRef::Occurrence(world.daily_block(), date(2026, 5, 6));
+    world.apply(&assign_task(&world.snapshot, id, block, 2026).unwrap());
+    let assignment_id = *world.snapshot.assignments.keys().next().unwrap();
+    world.apply(&log_minutes(&world.snapshot, assignment_id, 2026, 20).unwrap());
+
+    world.apply(&plan_minutes(&world.snapshot, assignment_id, 2026, Some(45)).unwrap());
+    let assignment = &world.snapshot.assignments[&assignment_id];
+    assert_eq!((assignment.planned_mins, assignment.accumulated_mins), (Some(45), 20));
+    assert!(plan_minutes(&world.snapshot, assignment_id, 2026, Some(45)).unwrap().is_empty());
+
+    world.apply(&plan_minutes(&world.snapshot, assignment_id, 2026, None).unwrap());
+    assert_eq!(world.snapshot.assignments[&assignment_id].planned_mins, None);
 }
 
 #[test]

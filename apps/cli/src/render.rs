@@ -229,9 +229,19 @@ fn day(plan: &Plan) {
             block.row, block.start, block.end, block.title, detail.join(", ")
         );
         for assignment in &block.assignments {
+            // "planned for 45 minutes" before it starts, "45 minutes planned" after, so the
+            // status and the length never read as "planned, planned".
             let mut detail = vec![assignment.status.clone()];
+            if let Some(planned) = assignment.planned_mins {
+                let length = lumenna_surface::words::duration(planned);
+                if assignment.status == "planned" {
+                    detail[0] = format!("planned for {length}");
+                } else {
+                    detail.push(format!("{length} planned"));
+                }
+            }
             if assignment.minutes > 0 {
-                detail.push(format!("{} minutes logged", assignment.minutes));
+                detail.push(format!("{} logged", lumenna_surface::words::duration(assignment.minutes)));
             }
             if assignment.capped {
                 detail.push("capped, the timer looks forgotten".to_owned());
