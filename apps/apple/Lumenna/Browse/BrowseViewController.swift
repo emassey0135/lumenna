@@ -112,6 +112,13 @@ final class ProjectsViewController: ItemListViewController {
                 self?.perform(on: item) { try lumenna.reorderProject(name: item.key, direction: .down) }
             },
             ItemAction(title: "Move Under") { [weak self] item in self?.moveUnder(item) },
+            ItemAction(title: "Add Project Inside") { [weak self] item in
+                self?.askForText("New Project in \(item.title)", placeholder: "Name", action: "Add") { name in
+                    self?.perform(on: Item(key: name, title: name)) {
+                        try lumenna.addProject(name: name, parent: item.key)
+                    }
+                }
+            },
             ItemAction(title: "Weight") { [weak self] item in
                 self?.askForText(
                     "Weight of \(item.title)",
