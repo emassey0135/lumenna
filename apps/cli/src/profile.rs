@@ -43,7 +43,11 @@ impl Profile {
                             "cannot find a data directory; set LUMENNA_PROFILE".to_owned(),
                         )
                     })?
-                    .data_dir()
+                    // The *local* data directory. On Linux and macOS it is the same place as
+                    // `data_dir`; on Windows `data_dir` is Roaming AppData, which a domain
+                    // with roaming profiles copies to a server at every logon and logoff —
+                    // carrying the store, and its backups beside it, off the machine.
+                    .data_local_dir()
                     .to_path_buf(),
             },
         };
