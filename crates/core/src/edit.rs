@@ -61,6 +61,15 @@ pub enum EditError {
     #[error("that would put an item inside itself")]
     WouldCycle,
 
+    /// The new dependency would close a loop: the task it names already waits, directly or
+    /// through others, for the task being given it.
+    ///
+    /// Merge can still produce one, and [`crate::repair`] drops an edge when it does — but
+    /// that edge is the newest task's, which need not be the one just added. Refusing here
+    /// is what keeps the repair from quietly undoing some other dependency instead.
+    #[error("that would make tasks wait for each other in a circle")]
+    DependencyCycle,
+
     /// The task is already finished, so completing it again would record a second
     /// completion for one occurrence.
     #[error("that task is already complete")]
@@ -69,6 +78,22 @@ pub enum EditError {
     /// The task has never been completed, so there is nothing to reverse.
     #[error("that task is not complete")]
     NotComplete,
+
+    /// The block does not occur on the day the assignment names — before its series
+    /// starts, after it ends, on a day its rule skips, or on one that was cancelled.
+    #[error("that block does not happen on {date}")]
+    NoOccurrence {
+        /// The day that was asked for.
+        date: jiff::civil::Date,
+    },
+
+    /// The block is a break or an event, which take no tasks (§3.6).
+    #[error("that block does not take tasks")]
+    RefusesTasks,
+
+    /// The task is in the trash.
+    #[error("that task is in the trash")]
+    Trashed,
 
     /// A stored recurrence rule could not be used.
     #[error(transparent)]
@@ -269,7 +294,8 @@ pub fn update_task(before: Task, after: Task) -> Edit {
 ///
 /// - A [`TaskCompletion`](crate::model::TaskCompletion) is recorded. For a recurring task it
 ///   names the occurrence, since a recurring task is one task whose date advances rather
-///   than a generated series (§3.3).
+///   than a generated series (§3.3) — and so does one for a subtask of a recurring task,
+///   which recurs with it (see [`Snapshot::occurrence_of`]).
 /// - **Subtasks cascade**, if [`Settings::cascade_complete_subtasks`] is on. Their
 ///   completions record what caused them, so uncompleting the parent later reverses only
 ///   these and not a subtask you independently finished last week.
@@ -281,37 +307,40 @@ pub fn update_task(before: Task, after: Task) -> Edit {
 /// If the task is not loaded, is already complete, or carries a rule that cannot be expanded.
 pub fn complete_task(snapshot: &Snapshot, id: TaskId, now: &Zoned) -> Result<Edit, EditError> {
     let task = snapshot.tasks.get(&id).ok_or(EditError::NotFound { kind: "task" })?;
-    if snapshot.is_completed(task) {
+    let facts = snapshot.facts();
+    if facts.is_completed(task) {
         return Err(EditError::AlreadyComplete);
     }
+    let occurrence = snapshot.occurrence_of(task);
 
-    let recurring = task.due.as_ref().is_some_and(|d| d.recurrence.is_some());
-    let occurrence = recurring.then(|| task.due.as_ref().map(|d| d.date)).flatten();
-
+    // Every completion this edit writes shares one timestamp. That is what lets
+    // `uncomplete_task` find the cascade that belongs to *this* completion of the parent and
+    // leave the cascades of earlier occurrences alone.
+    let stamp = time::now();
     let mut builder = Builder::new(format!("Completed {}", task.title));
-    builder.completion(Transition::created(TaskCompletion::new(id, occurrence)));
+    builder.completion(Transition::created(TaskCompletion {
+        completed_at: stamp,
+        ..TaskCompletion::new(id, occurrence)
+    }));
 
     if snapshot.settings.cascade_complete_subtasks {
         for subtask in descendants(snapshot, id) {
-            if snapshot.is_completed(subtask) || subtask.is_deleted() {
+            if facts.is_completed(subtask) || subtask.is_deleted() {
                 continue;
             }
-            // The completion names the subtask's *own* occurrence, not the parent's, since
-            // that is what `is_completed` checks a recurring task against.
+            // The completion names the subtask's *own* occurrence — its own due date if it
+            // recurs, its recurring ancestor's otherwise — since that is what `is_completed`
+            // checks it against. Under a recurring parent that is the occurrence just closed,
+            // so the subtask reopens when the parent comes round again.
             //
             // Cascaded completions never *advance* a recurring subtask, though. The cascade
             // means "the parent is finished, so these are finished too" — moving one to next
             // week instead would resurrect the very thing that was just closed out.
-            let occurrence = subtask
-                .due
-                .as_ref()
-                .filter(|due| due.recurrence.is_some())
-                .map(|due| due.date);
-            builder.completion(Transition::created(TaskCompletion::cascaded(
-                subtask.id,
-                occurrence,
-                id,
-            )));
+            let occurrence = snapshot.occurrence_of(subtask);
+            builder.completion(Transition::created(TaskCompletion {
+                completed_at: stamp,
+                ..TaskCompletion::cascaded(subtask.id, occurrence, id)
+            }));
         }
     }
 
@@ -328,14 +357,26 @@ pub fn complete_task(snapshot: &Snapshot, id: TaskId, now: &Zoned) -> Result<Edi
     Ok(builder.finish())
 }
 
+/// How far apart a cascade and the completion that caused it may have been stamped.
+///
+/// Since `complete_task` stamps them identically they are normally equal. Completions written
+/// before that took the clock once per record, so they can sit a millisecond or two apart;
+/// a second covers that with room to spare, and two separate completions of one parent
+/// inside a second of each other are not a real case.
+const CASCADE_WINDOW_MS: i64 = 1_000;
+
 /// Reverses the most recent completion of a task.
 ///
 /// For a recurring task this also rolls the due date back to the occurrence that was
 /// completed, which is recoverable exactly because the completion record names it (§3.3).
 ///
-/// Only completions **this task's own cascade caused** are reversed alongside it. §3.3 is
+/// Only completions **caused by the completion being reversed** go with it. §3.3 is
 /// explicit: a subtask you finished independently last week must not be uncompleted because
-/// you changed your mind about the parent.
+/// you changed your mind about the parent — and neither must the cascades of a recurring
+/// parent's earlier occurrences, which were separate completions.
+///
+/// A completion a cascade wrote can be reversed on its own, too. The subtask reads as
+/// complete, so it has to be possible to say it is not.
 ///
 /// # Errors
 ///
@@ -345,21 +386,29 @@ pub fn uncomplete_task(snapshot: &Snapshot, id: TaskId) -> Result<Edit, EditErro
     let latest = snapshot
         .completions
         .values()
-        .filter(|c| c.task_id == id && c.cascaded_from.is_none())
+        .filter(|c| c.task_id == id)
         .max_by_key(|c| (c.completed_at, c.id))
         .ok_or(EditError::NotComplete)?;
 
     let mut builder = Builder::new(format!("Uncompleted {}", task.title));
     builder.completion(Transition::removed(latest.clone()));
 
-    for completion in snapshot.completions.values() {
-        if completion.cascaded_from == Some(id) {
-            builder.completion(Transition::removed(completion.clone()));
+    if latest.cascaded_from.is_none() {
+        let at = latest.completed_at.as_millisecond();
+        for completion in snapshot.completions.values() {
+            if completion.cascaded_from == Some(id)
+                && (completion.completed_at.as_millisecond() - at).abs() <= CASCADE_WINDOW_MS
+            {
+                builder.completion(Transition::removed(completion.clone()));
+            }
         }
     }
 
+    // Only a task that recurs itself moves its date back. A subtask's completion can name
+    // its recurring parent's occurrence, which says nothing about the subtask's own due date.
     if let Some(occurrence) = latest.occurrence_date
         && let Some(due) = &task.due
+        && due.recurrence.is_some()
         && due.date != occurrence
     {
         let mut rolled = task.clone();
@@ -436,6 +485,45 @@ pub fn purge_task(snapshot: &Snapshot, id: TaskId) -> Result<Edit, EditError> {
     Ok(builder.finish())
 }
 
+/// Makes one task wait for another (§3.2).
+///
+/// # Errors
+///
+/// If either task is not loaded, or the edge would close a cycle of any length.
+pub fn add_dependency(snapshot: &Snapshot, id: TaskId, on: TaskId) -> Result<Edit, EditError> {
+    let task = snapshot.tasks.get(&id).ok_or(EditError::NotFound { kind: "task" })?;
+    let other = snapshot.tasks.get(&on).ok_or(EditError::NotFound { kind: "task" })?;
+    if id == on || snapshot.waits_for(on, id) {
+        return Err(EditError::DependencyCycle);
+    }
+    let mut after = task.clone();
+    after.depends.insert(on);
+    if &after == task {
+        return Ok(Edit::nothing());
+    }
+    let mut builder = Builder::new(format!("{} now waits for {}", task.title, other.title));
+    builder.task(Transition::updated(task.clone(), after));
+    Ok(builder.finish())
+}
+
+/// Stops one task waiting for another.
+///
+/// # Errors
+///
+/// If the task is not loaded. The other one need not be: a dependency on a task this device
+/// has never seen (§3.1) must still be removable.
+pub fn remove_dependency(snapshot: &Snapshot, id: TaskId, on: TaskId) -> Result<Edit, EditError> {
+    let task = snapshot.tasks.get(&id).ok_or(EditError::NotFound { kind: "task" })?;
+    let mut after = task.clone();
+    if !after.depends.remove(&on) {
+        return Ok(Edit::nothing());
+    }
+    let other = snapshot.tasks.get(&on).map_or("a task", |t| t.title.as_str());
+    let mut builder = Builder::new(format!("{} no longer waits for {other}", task.title));
+    builder.task(Transition::updated(task.clone(), after));
+    Ok(builder.finish())
+}
+
 /// Where a task is being moved to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MoveTo {
@@ -465,9 +553,19 @@ pub fn move_task(snapshot: &Snapshot, id: TaskId, to: MoveTo) -> Result<Edit, Ed
     match to {
         MoveTo::Project(project) => {
             if task.project_id != project {
+                // A subtask whose parent stays behind would sit under a task in another
+                // project, which no view can show, so it leaves its parent and lands at the
+                // top of the new project.
+                let detach = task
+                    .parent_id
+                    .and_then(|parent| snapshot.tasks.get(&parent))
+                    .is_some_and(|parent| parent.project_id != project);
                 for target in std::iter::once(task).chain(descendants(snapshot, id)) {
                     let mut moved = target.clone();
                     moved.project_id = project;
+                    if target.id == id && detach {
+                        moved.parent_id = None;
+                    }
                     builder.task(Transition::updated(target.clone(), moved));
                 }
             }
@@ -478,10 +576,26 @@ pub fn move_task(snapshot: &Snapshot, id: TaskId, to: MoveTo) -> Result<Edit, Ed
             {
                 return Err(EditError::WouldCycle);
             }
-            if task.parent_id != parent {
+            // Joining a parent means joining its project, subtasks and all, for the same
+            // reason as above.
+            let project = match parent {
+                Some(parent) => {
+                    snapshot.tasks.get(&parent).ok_or(EditError::NotFound { kind: "task" })?.project_id
+                }
+                None => task.project_id,
+            };
+            if task.parent_id != parent || task.project_id != project {
                 let mut moved = task.clone();
                 moved.parent_id = parent;
+                moved.project_id = project;
                 builder.task(Transition::updated(task.clone(), moved));
+                if task.project_id != project {
+                    for target in descendants(snapshot, id) {
+                        let mut moved = target.clone();
+                        moved.project_id = project;
+                        builder.task(Transition::updated(target.clone(), moved));
+                    }
+                }
             }
         }
         MoveTo::Between { after, before } => {
@@ -742,9 +856,14 @@ pub fn merge_labels(snapshot: &Snapshot, from: LabelId, into: LabelId) -> Result
 /// There is deliberately **no uniqueness check** on task and date. Planning three sittings
 /// for a long essay up front is a first-class use case, not an accident to prevent.
 ///
+/// The occurrence is checked, though: it has to exist and take tasks. A sitting planned into
+/// a day the block skips, or into a break, is invisible in every view of that day and would
+/// read as planned work that silently never happened.
+///
 /// # Errors
 ///
-/// If the task is not loaded.
+/// If the task or block is not loaded, the task is in the trash, the block does not occur on
+/// that day, or it takes no tasks.
 pub fn assign_task(
     snapshot: &Snapshot,
     task_id: TaskId,
@@ -752,6 +871,14 @@ pub fn assign_task(
     year: i16,
 ) -> Result<Edit, EditError> {
     let task = snapshot.tasks.get(&task_id).ok_or(EditError::NotFound { kind: "task" })?;
+    if task.is_deleted() {
+        return Err(EditError::Trashed);
+    }
+    let occurrence = occurrence_of(snapshot, block)?;
+    if !occurrence.flags.accepts_tasks {
+        return Err(EditError::RefusesTasks);
+    }
+
     let last = snapshot
         .assignments
         .values()
@@ -769,6 +896,30 @@ pub fn assign_task(
             ))),
         }],
     })
+}
+
+/// The occurrence a block reference names, with its exception applied.
+///
+/// # Errors
+///
+/// If the series is not loaded or is trashed, the reference is the wrong shape for the
+/// series — a date on a one-off, or none on a repeating block — or the series does not
+/// occur on that day.
+pub fn occurrence_of(snapshot: &Snapshot, block: BlockRef) -> Result<recur::Occurrence, EditError> {
+    let series = snapshot
+        .series
+        .get(&block.series_id())
+        .filter(|s| s.deleted_at.is_none())
+        .ok_or(EditError::NotFound { kind: "block" })?;
+    let date = block.date().unwrap_or(series.start_date);
+    recur::expand(
+        series,
+        |day| snapshot.exceptions.get(&(series.id, day)).map(|e| &e.action),
+        &(date..=date),
+    )?
+    .into_iter()
+    .find(|occurrence| occurrence.block_ref(series) == block)
+    .ok_or(EditError::NoOccurrence { date })
 }
 
 /// Takes a task back out of a block.
@@ -834,11 +985,14 @@ pub fn start_timer(
 
 /// Stops the timer, folding the running interval into the accumulated total.
 ///
-/// `cap_mins` should be the containing block's duration. A timer left running past the end
-/// of its block — started on a phone that then died — would otherwise record the wall-clock
-/// time since, so the total is capped and the caller is told (§3.7). **Confirm with the user
-/// rather than recording the capped figure silently**; a truncated number presented as fact
-/// is its own kind of wrong.
+/// `cap_mins` should be the containing occurrence's duration. A timer left running past the
+/// end of its block — started on a phone that then died — would otherwise record the
+/// wall-clock time since, so the running interval is capped and the caller is told (§3.7).
+/// **Confirm with the user rather than recording the capped figure silently**; a truncated
+/// number presented as fact is its own kind of wrong, and [`log_minutes`] is how the user's
+/// own figure replaces it.
+///
+/// A timer that is not running produces [`Edit::nothing`], with the time already logged.
 ///
 /// # Errors
 ///
@@ -854,6 +1008,10 @@ pub fn stop_timer(
         .assignments
         .get(&assignment_id)
         .ok_or(EditError::NotFound { kind: "assignment" })?;
+    if !assignment.is_running() {
+        let logged = crate::model::Elapsed { mins: assignment.accumulated_mins, capped: false };
+        return Ok((Edit::nothing(), logged));
+    }
     let mut stopped = assignment.clone();
     let elapsed = stopped.pause(time::truncate(now.timestamp()), cap_mins);
     if stopped.status == crate::model::AssignmentStatus::InProgress {
@@ -869,6 +1027,99 @@ pub fn stop_timer(
         },
         elapsed,
     ))
+}
+
+/// Sets how long a sitting took, by hand.
+///
+/// The timer is optional (§3.7), so this is the other way time gets recorded — and the way
+/// a capped figure from an orphaned timer is put right. A running timer stops, since the
+/// figure given is the whole of the sitting.
+///
+/// # Errors
+///
+/// If the assignment is not loaded.
+pub fn log_minutes(
+    snapshot: &Snapshot,
+    assignment_id: AssignmentId,
+    year: i16,
+    mins: u32,
+) -> Result<Edit, EditError> {
+    let assignment = snapshot
+        .assignments
+        .get(&assignment_id)
+        .ok_or(EditError::NotFound { kind: "assignment" })?;
+    let mut logged = assignment.clone();
+    logged.accumulated_mins = mins;
+    logged.running_since = None;
+    if mins > 0
+        && matches!(
+            logged.status,
+            crate::model::AssignmentStatus::Planned | crate::model::AssignmentStatus::InProgress
+        )
+    {
+        logged.status = crate::model::AssignmentStatus::Worked;
+    }
+    if &logged == assignment {
+        return Ok(Edit::nothing());
+    }
+    Ok(Edit {
+        description: format!("Logged {mins} minutes"),
+        changes: vec![Change::Assignment {
+            year,
+            transition: Box::new(Transition::updated(assignment.clone(), logged)),
+        }],
+    })
+}
+
+// ---------------------------------------------------------------------------------------
+// The Inbox
+// ---------------------------------------------------------------------------------------
+
+/// Folds any Inbox other than the canonical one into it.
+///
+/// [`ProjectId::INBOX`](crate::id::ProjectId::INBOX) is the same on every device, so two
+/// devices can no longer bring an Inbox each to a merge. A store from before that has one of
+/// its own: its tasks move to the canonical Inbox, and it stops being an Inbox and goes to
+/// the trash, which keeps the step undoable.
+///
+/// Nothing to do — the usual case — is [`Edit::nothing`]. So is a store whose canonical
+/// Inbox is not loaded, since there would be nowhere to move anything to.
+#[must_use]
+pub fn adopt_inbox(snapshot: &Snapshot) -> Edit {
+    let canonical = crate::id::ProjectId::INBOX;
+    if snapshot.projects.get(&canonical).is_none_or(|p| p.deleted_at.is_some()) {
+        return Edit::nothing();
+    }
+    let legacy: BTreeSet<ProjectId> = snapshot
+        .projects
+        .values()
+        .filter(|p| p.is_inbox && p.id != canonical)
+        .map(|p| p.id)
+        .collect();
+    if legacy.is_empty() {
+        return Edit::nothing();
+    }
+
+    let stamp = time::now();
+    let mut builder = Builder::new("Merged the Inbox");
+    for task in snapshot.tasks.values().filter(|t| legacy.contains(&t.project_id)) {
+        let mut moved = task.clone();
+        moved.project_id = canonical;
+        builder.task(Transition::updated(task.clone(), moved));
+    }
+    for id in &legacy {
+        let before = &snapshot.projects[id];
+        let mut retired = before.clone();
+        retired.is_inbox = false;
+        if retired.deleted_at.is_none() {
+            retired.deleted_at = Some(stamp);
+        }
+        builder.changes.push(Change::Project(Box::new(Transition::updated(
+            before.clone(),
+            retired,
+        ))));
+    }
+    builder.finish()
 }
 
 // ---------------------------------------------------------------------------------------

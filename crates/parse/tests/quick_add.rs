@@ -378,3 +378,50 @@ fn a_repeated_token_stays_in_the_title_and_is_mentioned() {
     assert_eq!(p.priority, Priority::P1);
     assert_eq!(p.title, "task p2");
 }
+
+#[test]
+fn a_repetition_adjective_inside_a_title_stays_there() {
+    for input in ["write weekly report", "read daily news", "pay monthly rent p2"] {
+        let p = preview(input);
+        assert!(p.due.is_none(), "{input}");
+        assert!(p.title.split(' ').count() >= 3, "{input}: {}", p.title);
+    }
+    // At the end, or before another token, it is still a repetition.
+    for input in ["water plants daily", "standup daily 9am", "standup weekly #Work"] {
+        let p = preview(input);
+        assert!(p.due.as_ref().is_some_and(|d| d.recurrence.is_some()), "{input}");
+    }
+}
+
+#[test]
+fn weekday_abbreviations_that_are_words_need_context_to_be_dates() {
+    let p = preview("buy sun cream");
+    assert!(p.due.is_none());
+    assert_eq!(p.title, "buy sun cream");
+    assert!(preview("get wed").due.is_none());
+
+    // Saturday the ninth, from Wednesday the sixth.
+    for input in ["call mum on sat", "call mum next sat", "call mum sat 3pm"] {
+        let p = preview(input);
+        assert_eq!(p.title, "call mum", "{input}");
+        assert!(p.due.is_some(), "{input}");
+    }
+    assert_eq!(preview("call mum on sat").due.unwrap().date, date(2026, 5, 9));
+}
+
+#[test]
+fn a_word_ending_in_s_is_not_a_weekday_by_accident() {
+    let p = preview("thus spoke zarathustra");
+    assert!(p.due.is_none());
+    assert_eq!(preview("standup every mondays").due.unwrap().date, date(2026, 5, 11));
+}
+
+#[test]
+fn an_ordinary_preposition_is_not_reported_as_a_broken_date() {
+    for input in ["put files in the folder", "read the last chapter", "plan next steps"] {
+        let p = preview(input);
+        assert!(p.diagnostics.is_empty(), "{input}: {:?}", p.diagnostics);
+    }
+    // ...but one that looks like it was starting a date still is.
+    assert!(!preview("call in 3 dys").diagnostics.is_empty());
+}

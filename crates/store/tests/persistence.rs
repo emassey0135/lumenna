@@ -175,7 +175,9 @@ fn an_empty_profile_is_usable_immediately() {
     let (snapshot, report) = store.snapshot();
     assert!(report.is_clean());
     assert!(snapshot.tasks.is_empty());
-    assert!(snapshot.inbox().is_none(), "Inbox is a record, not an assumption (§3.4)");
+    // The Inbox is a record (§3.4), and it is the same record on every device: it comes
+    // with the store, from a deterministic change, rather than being minted by a client.
+    assert_eq!(snapshot.inbox(), Some(&lumenna_core::model::Project::inbox()));
     assert_eq!(snapshot.settings, lumenna_core::model::Settings::default());
 }
 
@@ -192,4 +194,182 @@ fn a_fresh_profile_records_its_genesis() {
     let stored = db.stored_documents().unwrap();
     assert!(stored.contains(&"core".to_owned()), "{stored:?}");
     assert!(stored.contains(&"devices".to_owned()), "{stored:?}");
+}
+
+#[test]
+fn compacting_keeps_what_another_process_wrote_since_its_last_look() {
+    // The compacting process has not refreshed, so its document lacks the other's task. A
+    // compaction that saved only what it held, then deleted every change, would lose it.
+    let dir = scratch();
+    let path = dir.path().join("profile.sqlite");
+    let mut first = Store::open(&path).unwrap();
+    let mut second = Store::open(&path).unwrap();
+
+    let mine = Task::new(lumenna_core::ProjectId::INBOX, "mine", OrderKey::middle());
+    let theirs = Task::new(lumenna_core::ProjectId::INBOX, "theirs", OrderKey::middle());
+    first.write(|docs| docs.put_task(&mine, None)).unwrap();
+    second.write(|docs| docs.put_task(&theirs, None)).unwrap();
+
+    first.compact_document(DocId::Core).unwrap();
+    assert!(first.refresh().unwrap(), "what compaction took in is still reported");
+
+    let reopened = Store::open(&path).unwrap();
+    let tasks = reopened.snapshot().0.tasks;
+    assert!(tasks.contains_key(&mine.id));
+    assert!(tasks.contains_key(&theirs.id), "the other process's task was compacted away");
+}
+
+#[test]
+fn a_running_process_keeps_seeing_writes_after_another_compacts() {
+    // Compaction deletes the newest rows. If their rowids were handed out again, a process
+    // whose cursor had already passed them would skip every write after.
+    let dir = scratch();
+    let path = dir.path().join("profile.sqlite");
+    let mut writer = Store::open(&path).unwrap();
+    let mut watcher = Store::open(&path).unwrap();
+
+    for i in 0..5 {
+        let task = Task::new(lumenna_core::ProjectId::INBOX, format!("t{i}"), OrderKey::middle());
+        writer.write(|docs| docs.put_task(&task, None)).unwrap();
+    }
+    assert!(watcher.refresh().unwrap());
+
+    writer.compact_document(DocId::Core).unwrap();
+    let late = Task::new(lumenna_core::ProjectId::INBOX, "after compaction", OrderKey::middle());
+    writer.write(|docs| docs.put_task(&late, None)).unwrap();
+
+    assert!(watcher.refresh().unwrap());
+    assert!(watcher.snapshot().0.tasks.contains_key(&late.id));
+}
+
+#[test]
+fn a_process_that_missed_changes_now_compacted_still_receives_them() {
+    let dir = scratch();
+    let path = dir.path().join("profile.sqlite");
+    let mut writer = Store::open(&path).unwrap();
+    let mut watcher = Store::open(&path).unwrap();
+
+    let task = Task::new(lumenna_core::ProjectId::INBOX, "written, then compacted", OrderKey::middle());
+    writer.write(|docs| docs.put_task(&task, None)).unwrap();
+    writer.compact_document(DocId::Core).unwrap();
+
+    // Its rows are gone; the snapshot is the only place the change remains.
+    assert!(watcher.refresh().unwrap());
+    assert!(watcher.snapshot().0.tasks.contains_key(&task.id));
+}
+
+#[test]
+fn a_changes_table_from_before_autoincrement_is_migrated_intact() {
+    let dir = scratch();
+    let path = dir.path().join("profile.sqlite");
+    let task = Task::new(lumenna_core::ProjectId::INBOX, "kept", OrderKey::middle());
+    {
+        let mut store = Store::open(&path).unwrap();
+        store.write(|docs| docs.put_task(&task, None)).unwrap();
+    }
+    {
+        // Put the table back the way the first release made it.
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE old (rowid INTEGER PRIMARY KEY, doc_id TEXT NOT NULL,
+                              hash BLOB NOT NULL, data BLOB NOT NULL, UNIQUE (doc_id, hash));
+             INSERT INTO old SELECT rowid, doc_id, hash, data FROM changes;
+             DROP TABLE changes;
+             ALTER TABLE old RENAME TO changes;",
+        )
+        .unwrap();
+    }
+
+    let store = Store::open(&path).unwrap();
+    assert!(store.snapshot().0.tasks.contains_key(&task.id));
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    let sql: String = conn
+        .query_row("SELECT sql FROM sqlite_master WHERE name = 'changes'", [], |r| r.get(0))
+        .unwrap();
+    assert!(sql.contains("AUTOINCREMENT"), "{sql}");
+}
+
+fn daily(title: &str, from: jiff::civil::Date) -> BlockSeries {
+    let mut series =
+        BlockSeries::one_off(title, BlockKind::Work, from, time(9, 0, 0, 0), 60).unwrap();
+    series.rrule = Some("FREQ=DAILY".to_owned());
+    series.end_date = None;
+    series
+}
+
+#[test]
+fn a_routine_begun_last_year_is_still_there_on_new_years_day() {
+    let dir = scratch();
+    let path = dir.path().join("profile.sqlite");
+    let routine = daily("Morning pages", date(2026, 10, 3));
+    let meeting =
+        BlockSeries::one_off("Meeting", BlockKind::Event, date(2025, 3, 1), time(9, 0, 0, 0), 30)
+            .unwrap();
+    {
+        let mut store = Store::open(&path).unwrap();
+        store
+            .write(|docs| {
+                docs.put_series(&routine, None)?;
+                docs.put_series(&meeting, None)
+            })
+            .unwrap();
+    }
+
+    let mut store = Store::open(&path).unwrap();
+    store.load_year(2027).unwrap();
+    let day = store.snapshot().0.day(date(2027, 1, 1)).unwrap();
+    assert_eq!(day.len(), 1, "the routine disappeared at New Year");
+    assert_eq!(day[0].series_id, routine.id);
+    assert_eq!(
+        store.documents().loaded_years(),
+        vec![2026, 2027],
+        "a year with only one-off blocks stays on disk"
+    );
+}
+
+#[test]
+fn a_store_from_before_the_index_has_its_routines_found() {
+    // Write a blocks year directly, alongside a `core` that has only its genesis — what a
+    // store looked like before the recurring-year index existed.
+    let dir = scratch();
+    let path = dir.path().join("profile.sqlite");
+    let routine = daily("Walk", date(2026, 6, 1));
+    {
+        let mut db = Db::open(&path).unwrap();
+        let mut docs = lumenna_store::Documents::new();
+        docs.put_series(&routine, None).unwrap();
+        let year = docs.blocks(2026).changes_since(&[]);
+        db.append_changes(DocId::Blocks(2026), &year).unwrap();
+        let core = lumenna_store::Doc::new(DocId::Core).changes_since(&[]);
+        db.append_changes(DocId::Core, &core).unwrap();
+    }
+
+    let mut store = Store::open(&path).unwrap();
+    assert_eq!(store.documents().recurring_years(), vec![2026]);
+    store.load_year(2027).unwrap();
+    assert_eq!(store.snapshot().0.day(date(2027, 2, 1)).unwrap().len(), 1);
+}
+
+#[test]
+fn moving_a_block_into_another_year_moves_the_whole_record() {
+    let dir = scratch();
+    let path = dir.path().join("profile.sqlite");
+    let before =
+        BlockSeries::one_off("Retreat", BlockKind::Work, date(2026, 12, 30), time(9, 0, 0, 0), 60)
+            .unwrap();
+    let mut after = before.clone();
+    after.start_date = date(2027, 1, 4);
+    after.end_date = Some(date(2027, 1, 4));
+    {
+        let mut store = Store::open(&path).unwrap();
+        store.write(|docs| docs.put_series(&before, None)).unwrap();
+        store.write(|docs| docs.put_series(&after, Some(&before))).unwrap();
+    }
+
+    let mut store = Store::open(&path).unwrap();
+    store.load_all_years().unwrap();
+    let (snapshot, report) = store.snapshot();
+    assert!(report.is_clean(), "a partial record was left behind: {report:?}");
+    assert_eq!(snapshot.series[&after.id], after);
+    assert_eq!(snapshot.series.len(), 1);
 }

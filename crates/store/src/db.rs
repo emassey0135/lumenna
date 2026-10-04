@@ -24,7 +24,7 @@
 //! instead of hand-rolled file locking — which is the whole of §8's coordination story.
 
 use automerge::ChangeHash;
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 
 use crate::doc::DocId;
 use crate::error::{Result, StoreError};
@@ -65,7 +65,7 @@ impl Db {
         Self::from_connection(Connection::open_in_memory()?)
     }
 
-    fn from_connection(conn: Connection) -> Result<Self> {
+    fn from_connection(mut conn: Connection) -> Result<Self> {
         // WAL is what lets a reader and a writer coexist, which §8 needs because several
         // processes on one machine share this file: the tray app, a CLI invocation, an
         // Emacs subprocess.
@@ -77,7 +77,7 @@ impl Db {
         conn.pragma_update(None, "foreign_keys", true)?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS changes (
-                 rowid  INTEGER PRIMARY KEY,
+                 rowid  INTEGER PRIMARY KEY AUTOINCREMENT,
                  doc_id TEXT NOT NULL,
                  hash   BLOB NOT NULL,
                  data   BLOB NOT NULL,
@@ -91,7 +91,43 @@ impl Db {
                  data   BLOB NOT NULL
              );",
         )?;
+        migrate_to_autoincrement(&mut conn)?;
         Ok(Self { conn })
+    }
+
+    /// Runs `read` inside one read transaction, so everything it reads comes from the same
+    /// moment.
+    ///
+    /// Two separate reads can straddle another process's compaction: the snapshot read
+    /// before it, the changes after it, and the changes that compaction folded into the new
+    /// snapshot seen by neither. WAL gives a read transaction a fixed view of the file, which
+    /// closes that gap.
+    ///
+    /// # Errors
+    ///
+    /// Whatever `read` returns, or a failure to open the transaction.
+    pub fn consistently<R>(&self, read: impl FnOnce(&Self) -> Result<R>) -> Result<R> {
+        let tx = self.conn.unchecked_transaction()?;
+        let result = read(self)?;
+        tx.commit()?;
+        Ok(result)
+    }
+
+    /// The heads a document's stored snapshot was taken at, if it has one.
+    ///
+    /// # Errors
+    ///
+    /// If the read fails.
+    pub fn snapshot_heads(&self, doc: DocId) -> Result<Option<Vec<ChangeHash>>> {
+        let heads: Option<Vec<u8>> = self
+            .conn
+            .query_row("SELECT heads FROM snapshots WHERE doc_id = ?1", params![doc.name()], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        Ok(heads.map(|bytes| {
+            bytes.as_chunks::<32>().0.iter().map(|chunk| ChangeHash(*chunk)).collect()
+        }))
     }
 
     /// A value that changes whenever another connection has modified the database.
@@ -229,18 +265,43 @@ impl Db {
 
     /// Replaces a document's stored form with a fresh snapshot.
     ///
-    /// Deleting the changes and writing the snapshot happen in **one transaction**, so
-    /// there is no instant at which a reader could see a document with neither.
+    /// `fold` is handed the stored snapshot and every stored change, applies them to the
+    /// caller's document, and returns that document's heads and saved bytes. All of it
+    /// happens inside one **immediate** transaction, which holds the write lock throughout:
+    ///
+    /// - No other process can append a change between `fold` reading the table and the
+    ///   delete that follows, so nothing is deleted that the new snapshot does not contain.
+    /// - Changes another process wrote and this one never loaded — including those inside a
+    ///   snapshot another process compacted earlier — are applied before saving, so this
+    ///   process's view going into the snapshot is never narrower than what is on disk.
+    /// - Deleting the changes and writing the snapshot commit together, so there is no
+    ///   instant at which a reader could see a document with neither.
     ///
     /// # Errors
     ///
-    /// If the write fails.
-    pub fn compact(&mut self, doc: DocId, heads: &[ChangeHash], data: &[u8]) -> Result<()> {
-        let tx = self.conn.transaction()?;
+    /// Whatever `fold` returns, or a failed read or write.
+    pub fn compact(
+        &mut self,
+        doc: DocId,
+        fold: impl FnOnce(Option<Vec<u8>>, Vec<Vec<u8>>) -> Result<(Vec<ChangeHash>, Vec<u8>)>,
+    ) -> Result<()> {
+        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let snapshot: Option<Vec<u8>> = tx
+            .query_row("SELECT data FROM snapshots WHERE doc_id = ?1", params![doc.name()], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        let changes: Vec<Vec<u8>> = {
+            let mut stmt =
+                tx.prepare("SELECT data FROM changes WHERE doc_id = ?1 ORDER BY rowid")?;
+            let rows = stmt.query_map(params![doc.name()], |row| row.get(0))?;
+            rows.collect::<std::result::Result<_, _>>()?
+        };
+        let (heads, data) = fold(snapshot, changes)?;
         tx.execute(
             "INSERT INTO snapshots (doc_id, heads, data) VALUES (?1, ?2, ?3)
              ON CONFLICT (doc_id) DO UPDATE SET heads = excluded.heads, data = excluded.data",
-            params![doc.name(), encode_heads(heads), data],
+            params![doc.name(), encode_heads(&heads), data],
         )?;
         tx.execute("DELETE FROM changes WHERE doc_id = ?1", params![doc.name()])?;
         tx.commit()?;
@@ -264,4 +325,47 @@ impl Db {
 /// Heads, concatenated. Stored for staleness checks, never parsed back by this crate.
 fn encode_heads(heads: &[ChangeHash]) -> Vec<u8> {
     heads.iter().flat_map(|h| h.0.to_vec()).collect()
+}
+
+/// Rebuilds a `changes` table from before `AUTOINCREMENT`, keeping every row and its rowid.
+///
+/// Without it SQLite hands out `max(rowid) + 1`, so once compaction deletes a document's
+/// rows — which are usually the newest — the next change reuses a rowid some running process
+/// has already read past. That process's cursor then skips it, and it never sees the edit.
+/// `AUTOINCREMENT` never reuses a rowid, which is the only property a cursor needs.
+///
+/// Checked again inside the write lock, since two processes may open an old file at once.
+fn migrate_to_autoincrement(conn: &mut Connection) -> Result<()> {
+    fn current(conn: &Connection) -> Result<bool> {
+        let sql: Option<String> = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'changes'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(sql.is_some_and(|sql| sql.to_uppercase().contains("AUTOINCREMENT")))
+    }
+    if current(conn)? {
+        return Ok(());
+    }
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    if !current(&tx)? {
+        tx.execute_batch(
+            "CREATE TABLE changes_v2 (
+                 rowid  INTEGER PRIMARY KEY AUTOINCREMENT,
+                 doc_id TEXT NOT NULL,
+                 hash   BLOB NOT NULL,
+                 data   BLOB NOT NULL,
+                 UNIQUE (doc_id, hash)
+             );
+             INSERT INTO changes_v2 (rowid, doc_id, hash, data)
+                 SELECT rowid, doc_id, hash, data FROM changes;
+             DROP TABLE changes;
+             ALTER TABLE changes_v2 RENAME TO changes;
+             CREATE INDEX IF NOT EXISTS changes_by_doc ON changes (doc_id, rowid);",
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
 }

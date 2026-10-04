@@ -205,7 +205,7 @@ TaskCompletion {
   id:              CompletionId
   task_id:         TaskId
   completed_at:    Timestamp
-  occurrence_date: Option<Date>     // which occurrence, for recurring tasks
+  occurrence_date: Option<Date>     // which occurrence, for recurring tasks and their subtasks
   cascaded_from:   Option<TaskId>   // set if caused by a parent's cascade
 }
 ```
@@ -213,6 +213,11 @@ TaskCompletion {
 Completion is a separate record because a recurring task is a *single task whose due date
 advances*, not a generated series. A recurring task accumulates completions over time; a
 one-off task has exactly one.
+
+**A subtask of a recurring task recurs with it.** Its completion names the nearest recurring
+ancestor's current occurrence, and counts only while that occurrence is current — so the
+checklist under a weekly review is open again each week, while every past week's ticks stay
+on record. A subtask with its own recurrence keeps its own dates.
 
 `cascaded_from` exists because "completing a parent completes its subtasks" is a user
 setting (default on). If you complete a parent, the cascade completes three subtasks, and
@@ -806,7 +811,10 @@ useful states in the set and the reason dependencies earn their place in the mod
 
 These come from the planner half, and they are what make `task_filter` worth having:
 
-- `unassigned` / `assigned: today` — has or lacks a block assignment on a date
+- `assigned: today` — has a block assignment on a date
+- `unassigned` — has no sitting ahead: nothing planned or under way in a block today or later.
+  A task worked on last week and not finished, or one whose planned sitting was missed, is
+  unassigned again — those are exactly what auto-suggestion has to find
 - `started` — has accumulated timer minutes but is not complete
 - `no estimate` — auto-suggestion cannot rank what it cannot size
 

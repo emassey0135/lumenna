@@ -150,7 +150,9 @@ pub fn parse_quick_add(input: &str, known: &Known) -> QuickAdd {
             index += 1;
             continue;
         }
-        if let Some(when) = parse_when(&tokens, index) {
+        if let Some(when) = parse_when(&tokens, index)
+            && !is_title_word(&tokens, index, when.words)
+        {
             let end = tokens[index + when.words - 1].end;
             if out.due.is_some() {
                 out.duplicates.push(spanned_text(input, word.start, end));
@@ -176,7 +178,9 @@ pub fn parse_quick_add(input: &str, known: &Known) -> QuickAdd {
         }
         // A word that opens a date phrase but leads nowhere is worth saying out loud rather
         // than quietly becoming part of the title (§6.1).
-        if word.any_of(&["next", "last", "every", "in"]) {
+        if word.any_of(&["next", "last", "every", "in"])
+            && tokens.get(index + 1).is_none_or(|next| looks_like_a_date(&next.lower))
+        {
             let end = tokens.get(index + 1).map_or(word.end, |w| w.end);
             out.unparsed.push(Spanned {
                 value: input.get(word.start..end).unwrap_or_default().to_owned(),
@@ -196,6 +200,54 @@ pub fn parse_quick_add(input: &str, known: &Known) -> QuickAdd {
 /// Cut from the original input rather than rejoined from words, so punctuation and spacing
 /// survive: *"buy milk, eggs (not bread) tomorrow"* keeps its commas and its parentheses and
 /// loses only the date. Runs of whitespace left behind by a removed span collapse to one.
+/// Whether a one-word date phrase is more likely part of the title.
+///
+/// Two families of word are dates only in context:
+///
+/// - **"daily", "weekly", "monthly", "yearly"** stand for a repetition at the end of the
+///   input or before another recognised token — *"water plants daily"*, *"standup daily
+///   9am"* — and are an adjective anywhere else: *"write weekly report"*.
+/// - **"sun", "sat", "wed"** are dates only with a time after them; on their own they are
+///   English (see [`crate::date::is_ambiguous_weekday`]).
+///
+/// The readback names the date either way, so a wrong guess here is heard. A date silently
+/// taken out of a title is the worse failure, and the one this avoids.
+fn is_title_word(tokens: &[Word], index: usize, used: usize) -> bool {
+    if used != 1 {
+        return false;
+    }
+    let word = &tokens[index];
+    if crate::date::is_ambiguous_weekday(&word.lower) {
+        return true;
+    }
+    if !word.any_of(&["daily", "weekly", "monthly", "yearly", "annually"]) {
+        return false;
+    }
+    let Some(next) = tokens.get(index + 1) else {
+        return false;
+    };
+    let recognised = next.lower.starts_with(['#', '@'])
+        || priority_of(&next.lower).is_some()
+        || estimate_of(&next.lower).is_some()
+        || parse_when(tokens, index + 1).is_some();
+    !recognised
+}
+
+/// Whether a word could continue a date phrase, so that one which then fails to parse is
+/// worth a notice. A phrase opener with nothing after it is always worth one — that is the
+/// line entered half-written. "in the evening" and "last chapter" are titles, and saying so after every
+/// one is noise a screen reader user has to sit through.
+fn looks_like_a_date(word: &str) -> bool {
+    word.starts_with(|c: char| c.is_ascii_digit())
+        || crate::date::weekday_of(word).is_some()
+        || crate::date::month_of(word).is_some()
+        || matches!(
+            word,
+            "!" | "other" | "day" | "days" | "week" | "weeks" | "month" | "months" | "year"
+                | "years" | "weekday" | "weekdays"
+        )
+}
+
 fn title_without(input: &str, mut spans: Vec<(usize, usize)>) -> String {
     spans.sort_unstable();
     let mut kept = String::with_capacity(input.len());
@@ -296,17 +348,16 @@ fn estimate_of(text: &str) -> Option<u32> {
         } else if let Some(after) = rest.strip_prefix('h') {
             total = total.checked_add(value.checked_mul(60)?)?;
             rest = after;
-        } else if let Some(after) = rest
-            .strip_prefix("minutes")
-            .or_else(|| rest.strip_prefix("minute"))
-            .or_else(|| rest.strip_prefix("mins"))
-            .or_else(|| rest.strip_prefix("min"))
-            .or_else(|| rest.strip_prefix('m'))
-        {
+        } else {
+            // Anything but a minute unit here means this word is not an estimate at all.
+            let after = rest
+                .strip_prefix("minutes")
+                .or_else(|| rest.strip_prefix("minute"))
+                .or_else(|| rest.strip_prefix("mins"))
+                .or_else(|| rest.strip_prefix("min"))
+                .or_else(|| rest.strip_prefix('m'))?;
             total = total.checked_add(value)?;
             rest = after;
-        } else {
-            return None;
         }
         matched = true;
     }

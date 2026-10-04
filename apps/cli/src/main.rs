@@ -122,9 +122,15 @@ pub(crate) enum Command {
     },
 
     /// Stop the timer and log the minutes.
+    ///
+    /// With --minutes, record that figure as the whole of the sitting instead — how time is
+    /// logged without a timer, and how a capped figure from a forgotten one is put right.
     Stop {
         /// The assignment identifier.
         assignment: String,
+        /// The sitting's total, replacing whatever was logged.
+        #[arg(long)]
+        minutes: Option<u32>,
     },
 
     /// Read or change settings.
@@ -317,8 +323,8 @@ pub(crate) enum ProjectCommand {
     Weight {
         /// The project.
         name: String,
-        /// The multiplier.
-        value: f32,
+        /// The multiplier, or `inherit` to take the parent's again.
+        value: String,
     },
 }
 
@@ -475,7 +481,7 @@ pub(crate) fn dispatch(
         }
         Command::Unassign { assignment } => unassign(profile, assignment),
         Command::Start { assignment } => start(profile, assignment, now),
-        Command::Stop { assignment } => stop(profile, assignment, now),
+        Command::Stop { assignment, minutes } => stop(profile, assignment, *minutes, now),
         Command::Config(command) => config(profile, command),
     }
 }
@@ -543,13 +549,16 @@ fn listing_of(outcome: &Outcome) -> Option<Vec<(&'static str, String)>> {
 }
 
 /// Every store has exactly one Inbox, and it is a real project rather than a null
-/// `project_id` (§3.4). Creating it on first use is what makes that true from the start.
+/// `project_id` (§3.4).
+///
+/// The store creates it, under the same identifier on every device, so there is nothing to
+/// create here. What is left is a store from before that, which minted an Inbox of its own:
+/// that one is folded into the shared one, once.
 fn ensure_inbox(profile: &mut Profile) -> Result<()> {
-    if profile.store.snapshot().0.inbox().is_some() {
-        return Ok(());
+    let edit = edit::adopt_inbox(&state(profile));
+    if !edit.is_empty() {
+        profile.store.apply(&edit)?;
     }
-    let edit = edit::create_project(Project::inbox());
-    profile.store.apply(&edit)?;
     Ok(())
 }
 
@@ -710,7 +719,7 @@ fn add(profile: &mut Profile, text: &str, quiet: bool, now: &Zoned) -> Result<Re
 fn list(profile: &mut Profile, query: &str, now: &Zoned) -> Result<Response> {
     let snapshot = state(profile);
     let expr = parse_query(&snapshot, query)?;
-    let cx = Context { snapshot: &snapshot, now };
+    let cx = Context::new(&snapshot, now);
 
     let unresolved: Vec<api::Unresolved> = expr
         .unresolved(&snapshot)
@@ -758,7 +767,7 @@ fn search(profile: &mut Profile, text: &str, now: &Zoned) -> Result<Response> {
     }
     let snapshot = state(profile);
     let expr = Expr::Predicate(Predicate::Search(text.to_owned()));
-    let cx = Context { snapshot: &snapshot, now };
+    let cx = Context::new(&snapshot, now);
     let rows = api::Rows::new(&snapshot.task_rows(&expr, &cx), "task");
     Ok(Response::new(render::count_line(rows.count, "task"), Outcome::Rows(rows)))
 }
@@ -814,11 +823,34 @@ fn edit_task(
     if let Some(notes) = notes {
         after.notes = notes.to_owned();
     }
-    if let Some(project) = project {
-        after.project_id = find_project(&snapshot, project)?.id;
-    }
-
-    let change = edit::update_task(before, after);
+    // A new project goes through the move, so subtasks follow and a parent left behind is
+    // let go of — the same rules as `lum task move --project`. The other fields are laid
+    // over the task's half of that move.
+    let moved = match project {
+        Some(project) => {
+            let project = find_project(&snapshot, project)?.id;
+            Some(edit::move_task(&snapshot, id, MoveTo::Project(project))?)
+        }
+        None => None,
+    };
+    let change = match moved.filter(|m| !m.is_empty()) {
+        Some(mut moved) => {
+            for change in &mut moved.changes {
+                if let edit::Change::Task(transition) = change
+                    && let Some(task) = transition.after.as_mut()
+                    && task.id == id
+                {
+                    let (project, parent) = (task.project_id, task.parent_id);
+                    *task = after.clone();
+                    task.project_id = project;
+                    task.parent_id = parent;
+                }
+            }
+            moved.description = format!("Edited {}", after.title);
+            moved
+        }
+        None => edit::update_task(before, after),
+    };
     if change.is_empty() {
         return Ok(Response::unchanged("nothing changed"));
     }
@@ -927,40 +959,22 @@ fn depend(profile: &mut Profile, command: &DependCommand) -> Result<Response> {
     };
     let id = resolve_task(profile, &snapshot, input)?;
     let dependency = resolve_task(profile, &snapshot, on)?;
-    if id == dependency {
+    if adding && id == dependency {
         return Err(CliError::Message("a task cannot wait for itself".to_owned()));
     }
-
-    let before = snapshot.tasks[&id].clone();
-    let mut after = before.clone();
-    if adding {
-        // A local edge that closes a cycle is a mistake this device can see, even though
-        // merge can still produce one and `repair` exists for that (§3.13).
-        if snapshot.tasks.get(&dependency).is_some_and(|d| d.depends.contains(&id)) {
-            return Err(CliError::Message(
-                "that would make the two tasks wait for each other".to_owned(),
-            ));
-        }
-        after.depends.insert(dependency);
+    // A local edge that closes a cycle of any length is a mistake this device can see, even
+    // though merge can still produce one and `repair` exists for that (§3.13). Core refuses
+    // it, so every client does.
+    let change = if adding {
+        edit::add_dependency(&snapshot, id, dependency)?
     } else {
-        after.depends.remove(&dependency);
-    }
-
-    let change = edit::update_task(before, after);
+        edit::remove_dependency(&snapshot, id, dependency)?
+    };
     if change.is_empty() {
         return Ok(Response::unchanged("nothing changed"));
     }
     profile.store.apply(&change)?;
-    let this = snapshot.tasks[&id].title.clone();
-    let other = snapshot.tasks[&dependency].title.clone();
-    Ok(Response::changed_as(
-        if adding {
-            format!("{this} now waits for {other}")
-        } else {
-            format!("{this} no longer waits for {other}")
-        },
-        &change,
-    ))
+    Ok(Response::changed(&change))
 }
 
 // ---------------------------------------------------------------------------------------
@@ -1027,6 +1041,9 @@ fn project(profile: &mut Profile, command: &ProjectCommand) -> Result<Response> 
         }
         ProjectCommand::Rename { name, to } => {
             let before = find_project(&snapshot, name)?.clone();
+            if snapshot.project_by_name(to).is_some_and(|other| other.id != before.id) {
+                return Err(CliError::Message(format!("there is already a project '{to}'")));
+            }
             let mut after = before.clone();
             after.name = to.clone();
             let change = edit::update_project(before, after);
@@ -1060,18 +1077,32 @@ fn project(profile: &mut Profile, command: &ProjectCommand) -> Result<Response> 
             Ok(Response::changed(&change))
         }
         ProjectCommand::Weight { name, value } => {
-            if !value.is_finite() || *value <= 0.0 {
-                return Err(CliError::Message("a weight has to be a positive number".to_owned()));
-            }
             let before = find_project(&snapshot, name)?.clone();
             let mut after = before.clone();
-            after.weight = *value;
+            if value.eq_ignore_ascii_case("inherit") {
+                let project_id = before.id;
+                after.weight = None;
+                let change = edit::update_project(before, after);
+                if change.is_empty() {
+                    return Ok(Response::unchanged("it already inherits its weight"));
+                }
+                profile.store.apply(&change)?;
+                let inherited = state(profile).effective_weight(project_id);
+                return Ok(Response::changed_as(
+                    format!("{name} now inherits its weight, which is {inherited}"),
+                    &change,
+                ));
+            }
+            let value: f32 = value.parse().ok().filter(|v: &f32| v.is_finite() && *v > 0.0).ok_or_else(
+                || CliError::Message("a weight has to be a positive number, or `inherit`".to_owned()),
+            )?;
+            after.weight = Some(value);
             let change = edit::update_project(before, after);
             profile.store.apply(&change)?;
 
             let response = Response::changed_as(format!("{name} now weighs {value}"), &change);
             let (low, high) = Project::WEIGHT_RANGE;
-            Ok(if *value < low || *value > high {
+            Ok(if value < low || value > high {
                 response.note(format!(
                     "{value} is outside the usual range of {low} to {high}; a wider range \
                      lets one project dominate every ranking"
@@ -1149,6 +1180,12 @@ fn label(profile: &mut Profile, command: &LabelCommand) -> Result<Response> {
         }
         LabelCommand::Rename { name, to } => {
             let before = find_label(&snapshot, name)?.clone();
+            let to_name = to.trim_start_matches('@');
+            if snapshot.label_by_name(to_name).is_some_and(|other| other.id != before.id) {
+                return Err(CliError::Message(format!(
+                    "there is already a label '{to_name}'; `lum label merge` folds one into the other"
+                )));
+            }
             let mut after = before.clone();
             after.name = to.trim_start_matches('@').to_owned();
             let change = edit::update_label(before, after);
@@ -1478,25 +1515,35 @@ fn resolve_assignment(
         .map_err(|_| CliError::Message(format!("'{input}' is not an assignment")))
 }
 
-fn assignment_year(snapshot: &Snapshot, id: AssignmentId) -> i16 {
-    snapshot.assignments.get(&id).map_or(0, |assignment| {
-        assignment.block_ref.date().map_or_else(
-            || {
-                snapshot
-                    .series
-                    .get(&assignment.block_ref.series_id())
-                    .map_or(0, |series| series.start_date.year())
-            },
-            |date| date.year(),
-        )
-    })
+/// Which `blocks-<year>` document an assignment lives in.
+///
+/// A one-off block's assignment names no date, so its year is its series' — and a series
+/// this device has not loaded gives no answer. Guessing would write the edit into a document
+/// for the wrong year, holding a fragment of the record, so it is an error instead.
+fn assignment_year(snapshot: &Snapshot, id: AssignmentId) -> Result<i16> {
+    snapshot
+        .assignments
+        .get(&id)
+        .and_then(|assignment| {
+            lumenna_store::doc::assignment_year(
+                assignment,
+                snapshot.series.get(&assignment.block_ref.series_id()),
+            )
+        })
+        .ok_or_else(|| {
+            CliError::Message(
+                "that assignment's block is not in this store, so there is no telling which \
+                 year it belongs to"
+                    .to_owned(),
+            )
+        })
 }
 
 fn unassign(profile: &mut Profile, input: &str) -> Result<Response> {
     profile.store.load_all_years()?;
     let snapshot = state(profile);
     let id = resolve_assignment(profile, &snapshot, input)?;
-    let change = edit::unassign(&snapshot, id, assignment_year(&snapshot, id))?;
+    let change = edit::unassign(&snapshot, id, assignment_year(&snapshot, id)?)?;
     profile.store.apply(&change)?;
     Ok(Response::changed(&change))
 }
@@ -1505,7 +1552,7 @@ fn start(profile: &mut Profile, input: &str, now: &Zoned) -> Result<Response> {
     profile.store.load_all_years()?;
     let snapshot = state(profile);
     let id = resolve_assignment(profile, &snapshot, input)?;
-    let change = edit::start_timer(&snapshot, id, assignment_year(&snapshot, id), now)?;
+    let change = edit::start_timer(&snapshot, id, assignment_year(&snapshot, id)?, now)?;
     if change.is_empty() {
         return Ok(Response::unchanged("that timer is already running"));
     }
@@ -1513,18 +1560,44 @@ fn start(profile: &mut Profile, input: &str, now: &Zoned) -> Result<Response> {
     Ok(Response::changed_as("Started timer", &change))
 }
 
-fn stop(profile: &mut Profile, input: &str, now: &Zoned) -> Result<Response> {
+fn stop(
+    profile: &mut Profile,
+    input: &str,
+    minutes: Option<u32>,
+    now: &Zoned,
+) -> Result<Response> {
     profile.store.load_all_years()?;
     let snapshot = state(profile);
     let id = resolve_assignment(profile, &snapshot, input)?;
-    let cap = snapshot
-        .assignments
-        .get(&id)
-        .and_then(|a| snapshot.series.get(&a.block_ref.series_id()))
-        .map(|series| series.duration_mins);
+    let year = assignment_year(&snapshot, id)?;
 
-    let (change, elapsed) =
-        edit::stop_timer(&snapshot, id, assignment_year(&snapshot, id), cap, now)?;
+    if let Some(minutes) = minutes {
+        let change = edit::log_minutes(&snapshot, id, year, minutes)?;
+        if change.is_empty() {
+            return Ok(Response::unchanged(format!("{minutes} minutes were already logged")));
+        }
+        profile.store.apply(&change)?;
+        return Ok(Response::changed(&change));
+    }
+
+    // The cap is the occurrence's own length — an exception may have shortened or
+    // lengthened this day's block — falling back to the series' when the occurrence cannot
+    // be found, since a timer is still worth stopping then.
+    let assignment = &snapshot.assignments[&id];
+    let cap = edit::occurrence_of(&snapshot, assignment.block_ref)
+        .map(|occurrence| occurrence.duration_mins)
+        .ok()
+        .or_else(|| {
+            snapshot.series.get(&assignment.block_ref.series_id()).map(|s| s.duration_mins)
+        });
+
+    let (change, elapsed) = edit::stop_timer(&snapshot, id, year, cap, now)?;
+    if change.is_empty() {
+        return Ok(Response::unchanged(format!(
+            "that timer is not running; {} logged",
+            render::count_line(elapsed.mins as usize, "minute")
+        )));
+    }
     profile.store.apply(&change)?;
 
     let response = Response::new(
@@ -1536,10 +1609,11 @@ fn stop(profile: &mut Profile, input: &str, now: &Zoned) -> Result<Response> {
         }),
     );
     Ok(if elapsed.capped {
-        // Never record a truncated figure as fact (§3.7).
+        // A truncated figure is not a fact (§3.7). It is recorded so the sitting is not lost,
+        // and the user is told how to replace it with the real one.
         response.note(format!(
-            "that timer ran past the end of its block, so it was capped at {} minutes; \
-             correct it with `lum task edit` if that is wrong",
+            "that timer ran past the end of its block, so it was capped at {} minutes; if \
+             that is wrong, record the real figure with `lum stop {id} --minutes <n>`",
             elapsed.mins
         ))
     } else {
@@ -1612,6 +1686,12 @@ fn config(profile: &mut Profile, command: &ConfigCommand) -> Result<Response> {
                 "all-day-reminder-hour" => after.all_day_reminder_hour = parse_time_phrase(value)?,
                 "day-start" => after.day_window.0 = parse_time_phrase(value)?,
                 "day-end" => after.day_window.1 = parse_time_phrase(value)?,
+                "week-start" => {
+                    after.week_start = lumenna_parse::date::weekday_of(&value.to_lowercase())
+                        .ok_or_else(|| {
+                            CliError::Message(format!("'{value}' is not a day of the week"))
+                        })?;
+                }
                 other => return Err(CliError::Message(format!("no setting called '{other}'"))),
             }
             let change = edit::update_settings(settings, after);

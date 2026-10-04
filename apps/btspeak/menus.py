@@ -356,6 +356,16 @@ def add_task(session: Session) -> str:
     return ", ".join([written, *notices]) if notices else written
 
 
+def char_offset(text: str, byte_offset: int) -> int:
+    """A UTF-8 byte offset from the server, as an index into a Python string.
+
+    The protocol counts bytes, as Rust strings do, and Python counts code points. They agree
+    only until the first accented letter or dash; after that, slicing with the server's
+    number would splice the completion into the wrong place.
+    """
+    prefix = text.encode("utf-8")[:byte_offset]
+    return len(prefix.decode("utf-8", errors="ignore"))
+
 def assisted_input(
     session: Session, prompt: str, syntax: str, history_key: str | None = None
 ) -> str | None:
@@ -376,11 +386,14 @@ def assisted_input(
         return text
 
     try:
-        found = session.call("complete", text=text, cursor=len(text), syntax=syntax)
+        found = session.call(
+            "complete", text=text, cursor=len(text.encode("utf-8")), syntax=syntax
+        )
     except LumennaError:
         return text
 
-    start, end = found.get("start", 0), found.get("end", 0)
+    start = char_offset(text, found.get("start", 0))
+    end = char_offset(text, found.get("end", 0))
     partial = text[start:end]
     candidates = found.get("candidates", [])
     if not partial or not candidates:

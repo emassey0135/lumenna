@@ -497,3 +497,116 @@ fn first_id(json: &str) -> String {
         .expect("an id in the JSON")
         .to_owned()
 }
+
+#[test]
+fn a_longer_dependency_cycle_is_refused_too() {
+    let lum = Lum::new();
+    for title in ["draft", "review", "publish"] {
+        lum.ok(&["task", "add", title]);
+    }
+    lum.ok(&["task", "list"]);
+    lum.ok(&["task", "depend", "add", "2", "--on", "1"]);
+    lum.ok(&["task", "depend", "add", "3", "--on", "2"]);
+    let complaint = lum.fails(&["task", "depend", "add", "1", "--on", "3"]);
+    assert!(complaint.contains("circle"), "{complaint}");
+}
+
+#[test]
+fn a_routine_survives_new_year() {
+    let lum = Lum::new();
+    lum.ok(&[
+        "block", "add", "Morning pages", "--at", "7am", "--minutes", "30", "--date",
+        "2026-12-30", "--repeat", "daily",
+    ]);
+    let plan = lum.ok(&["plan", "2027-01-01"]);
+    assert!(plan.contains("Morning pages"), "{plan}");
+}
+
+#[test]
+fn stopping_a_stopped_timer_says_so_and_minutes_can_be_logged_by_hand() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "write the chapter"]);
+    lum.ok(&["block", "add", "Deep work", "--at", "9am", "--minutes", "90"]);
+    let task = first_task_id(&lum);
+    lum.ok(&["block", "list"]);
+    lum.ok(&["assign", &task, "--block", "1"]);
+    lum.ok(&["plan"]);
+
+    let out = lum.ok(&["stop", "1"]);
+    assert!(out.contains("not running"), "{out}");
+    assert!(!out.contains("Logged"), "{out}");
+
+    lum.ok(&["stop", "1", "--minutes", "40"]);
+    assert!(lum.ok(&["plan"]).contains("40"), "the hand-logged figure is shown");
+}
+
+#[test]
+fn a_block_that_takes_no_tasks_is_refused_as_a_destination() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "write the chapter"]);
+    lum.ok(&["block", "add", "Lunch", "--at", "noon", "--minutes", "45", "--kind", "break"]);
+    let task = first_task_id(&lum);
+    lum.ok(&["block", "list"]);
+    let complaint = lum.fails(&["assign", &task, "--block", "1"]);
+    assert!(complaint.contains("does not take tasks"), "{complaint}");
+}
+
+#[test]
+fn editing_a_tasks_project_brings_its_subtasks() {
+    let lum = Lum::new();
+    lum.ok(&["project", "add", "Work"]);
+    lum.ok(&["task", "add", "ship release"]);
+    lum.ok(&["task", "add", "write notes"]);
+    lum.ok(&["task", "list"]);
+    lum.ok(&["task", "move", "2", "--parent", "1"]);
+    lum.ok(&["task", "list"]);
+    lum.ok(&["task", "edit", "1", "--project", "Work", "--title", "ship it"]);
+
+    let work = lum.ok(&["task", "list", "#Work"]);
+    assert!(work.contains("ship it"), "{work}");
+    assert!(work.contains("write notes"), "the subtask stayed behind: {work}");
+}
+
+#[test]
+fn renaming_onto_an_existing_name_is_refused() {
+    let lum = Lum::new();
+    lum.ok(&["project", "add", "Work"]);
+    lum.ok(&["project", "add", "Home"]);
+    assert!(lum.fails(&["project", "rename", "Home", "work"]).contains("already"));
+    lum.ok(&["label", "add", "laptop"]);
+    lum.ok(&["label", "add", "phone"]);
+    assert!(lum.fails(&["label", "rename", "phone", "@laptop"]).contains("merge"));
+}
+
+#[test]
+fn the_week_start_can_be_set() {
+    let lum = Lum::new();
+    lum.ok(&["config", "set", "week-start", "sunday"]);
+    assert!(lum.ok(&["config", "get", "week-start"]).contains("sunday"));
+    assert!(!lum.run(&["config", "set", "week-start", "someday"]).ok);
+}
+
+#[test]
+fn a_sub_project_can_opt_back_to_neutral_and_back_to_inheriting() {
+    let lum = Lum::new();
+    lum.ok(&["project", "add", "Thesis"]);
+    lum.ok(&["project", "add", "Admin", "--parent", "Thesis"]);
+    lum.ok(&["project", "weight", "Thesis", "2"]);
+    assert!(lum.ok(&["project", "list"]).matches("weight 2").count() == 2);
+
+    lum.ok(&["project", "weight", "Admin", "1"]);
+    assert_eq!(lum.ok(&["project", "list"]).matches("weight 2").count(), 1);
+
+    lum.ok(&["project", "weight", "Admin", "inherit"]);
+    assert_eq!(lum.ok(&["project", "list"]).matches("weight 2").count(), 2);
+}
+
+/// The identifier of the first task listed, for commands that also need a block row number.
+fn first_task_id(lum: &Lum) -> String {
+    lum.ok(&["task", "list", "--json"])
+        .lines()
+        .find(|line| line.contains("\"id\""))
+        .and_then(|line| line.split('"').nth(3))
+        .expect("an id")
+        .to_owned()
+}

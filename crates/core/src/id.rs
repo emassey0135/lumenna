@@ -113,6 +113,19 @@ id_type!(
     ReminderId
 );
 
+impl ProjectId {
+    /// The Inbox's identifier, the same on every device.
+    ///
+    /// Every store has exactly one Inbox (§3.4). If each device minted its own, two devices
+    /// that started apart would merge into a store with two, so the Inbox is created by a
+    /// deterministic change in `store` under this fixed identifier instead, and identical
+    /// changes merge into one record.
+    ///
+    /// It is a version 8 UUID with every free bit zero but the last, so it sorts before
+    /// every UUIDv7 — it is, after all, the oldest record there is.
+    pub const INBOX: Self = Self(Uuid::from_u128(0x0000_0000_0000_8000_8000_0000_0000_0001));
+}
+
 /// An Iroh node identifier: a device's ed25519 public key (§3.11).
 ///
 /// Core neither generates nor verifies these — that is `sync`'s work. It carries them

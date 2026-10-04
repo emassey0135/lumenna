@@ -97,9 +97,16 @@ impl Snapshot {
     }
 
     /// The Inbox, if the `core` document is loaded.
+    ///
+    /// The one under [`ProjectId::INBOX`] when it exists. A store created before that
+    /// identifier was fixed has an Inbox of its own as well, until `edit::adopt_inbox` folds
+    /// it in; until then it is still an Inbox, so it is the fallback rather than nothing.
     #[must_use]
     pub fn inbox(&self) -> Option<&Project> {
-        self.projects.values().find(|p| p.is_inbox && p.deleted_at.is_none())
+        self.projects
+            .get(&ProjectId::INBOX)
+            .filter(|p| p.deleted_at.is_none())
+            .or_else(|| self.projects.values().find(|p| p.is_inbox && p.deleted_at.is_none()))
     }
 
     /// The urgency multiplier in force for a project: its own weight, or the nearest
@@ -229,15 +236,19 @@ mod tests {
     fn weight_inherits_from_the_nearest_ancestor() {
         let (mut snap, ids) = snapshot_with_projects(3);
         let (thesis, chapter, section) = (ids[0], ids[1], ids[2]);
-        snap.projects.get_mut(&thesis).unwrap().weight = 2.0;
+        snap.projects.get_mut(&thesis).unwrap().weight = Some(2.0);
         snap.projects.get_mut(&chapter).unwrap().parent_id = Some(thesis);
         snap.projects.get_mut(&section).unwrap().parent_id = Some(chapter);
 
         assert!((snap.effective_weight(section) - 2.0).abs() < f32::EPSILON);
 
         // A sub-project overrides rather than compounding.
-        snap.projects.get_mut(&chapter).unwrap().weight = 0.5;
+        snap.projects.get_mut(&chapter).unwrap().weight = Some(0.5);
         assert!((snap.effective_weight(section) - 0.5).abs() < f32::EPSILON);
+
+        // Neutral is a setting too, and the way back out from under a heavy parent.
+        snap.projects.get_mut(&chapter).unwrap().weight = Some(1.0);
+        assert!((snap.effective_weight(section) - 1.0).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -246,7 +257,7 @@ mod tests {
         // would silently erase the urgency of everything beneath it.
         let (mut snap, ids) = snapshot_with_projects(1);
         for bad in [0.0, -1.0, f32::NAN, f32::INFINITY] {
-            snap.projects.get_mut(&ids[0]).unwrap().weight = bad;
+            snap.projects.get_mut(&ids[0]).unwrap().weight = Some(bad);
             assert!((snap.effective_weight(ids[0]) - 1.0).abs() < f32::EPSILON, "{bad}");
         }
     }

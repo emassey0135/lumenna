@@ -56,7 +56,7 @@ impl World {
 
     fn titles(&self, expr: &Expr) -> Vec<String> {
         let now = now();
-        let cx = Context { snapshot: &self.snapshot, now: &now };
+        let cx = Context::new(&self.snapshot, &now);
         expr.select(&cx).into_iter().map(|t| t.title.clone()).collect()
     }
 }
@@ -407,11 +407,30 @@ fn every_state_is_selectable_and_describable() {
     // the two lists ever drift.
     let world = World::new();
     let now = now();
-    let cx = Context { snapshot: &world.snapshot, now: &now };
+    let cx = Context::new(&world.snapshot, &now);
     for s in State::ALL {
         let expr = state(*s);
         assert_eq!(State::from_keyword(s.keyword()), Some(*s));
         assert!(!expr.describe().is_empty());
         let _ = expr.select(&cx);
     }
+}
+
+#[test]
+fn a_task_whose_parent_was_filtered_out_nests_under_its_grandparent() {
+    let mut world = World::new();
+    let release = world.add(world.work, "Ship release");
+    let notes = world.add(world.work, "Write notes");
+    let proofread = world.add(world.work, "Proofread");
+    world.snapshot.tasks.get_mut(&notes).unwrap().parent_id = Some(release);
+    world.snapshot.tasks.get_mut(&proofread).unwrap().parent_id = Some(notes);
+    for id in [release, proofread] {
+        world.snapshot.tasks.get_mut(&id).unwrap().priority = Priority::P1;
+    }
+
+    let now = now();
+    let cx = Context::new(&world.snapshot, &now);
+    let rows = world.snapshot.task_rows(&Expr::Predicate(Predicate::Priority(Priority::P1)), &cx);
+    let shape: Vec<(&str, u32)> = rows.iter().map(|r| (r.title.as_str(), r.depth)).collect();
+    assert_eq!(shape, vec![("Ship release", 0), ("Proofread", 1)]);
 }

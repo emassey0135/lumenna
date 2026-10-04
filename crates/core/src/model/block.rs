@@ -417,17 +417,21 @@ impl BlockAssignment {
     ///
     /// A clock that has gone backwards (`now` before the start) contributes nothing rather
     /// than subtracting.
+    ///
+    /// Only the **running interval** is capped. Time already accumulated was either timed
+    /// before or entered by hand, and neither is evidence of an orphaned timer — so a total
+    /// that legitimately exceeds the block is never cut back down to it.
     #[must_use]
     pub fn elapsed(&self, now: Timestamp, cap_mins: Option<u32>) -> Elapsed {
         let running_mins = self.running_since.map_or(0, |since| {
             let secs = now.duration_since(since).max(SignedDuration::ZERO).as_secs();
             u32::try_from(secs / 60).unwrap_or(u32::MAX)
         });
-        let raw = self.accumulated_mins.saturating_add(running_mins);
-        match cap_mins {
-            Some(cap) if raw > cap => Elapsed { mins: cap, capped: true },
-            _ => Elapsed { mins: raw, capped: false },
-        }
+        let (running_mins, capped) = match cap_mins {
+            Some(cap) if running_mins > cap => (cap, true),
+            _ => (running_mins, false),
+        };
+        Elapsed { mins: self.accumulated_mins.saturating_add(running_mins), capped }
     }
 }
 
@@ -577,6 +581,20 @@ mod tests {
         let capped = a.elapsed(next_day, Some(90));
         assert_eq!(capped.mins, 90);
         assert!(capped.capped, "callers must confirm rather than log nineteen hours");
+    }
+
+    #[test]
+    fn time_already_logged_is_never_capped_away() {
+        // Ninety minutes entered by hand against a sixty-minute block is a fact, not an
+        // orphaned timer, and must survive the cap untouched.
+        let mut a = assignment();
+        a.accumulated_mins = 90;
+        let t0 = Timestamp::from_second(1_700_000_000).unwrap();
+        assert_eq!(a.elapsed(t0, Some(60)), Elapsed { mins: 90, capped: false });
+
+        a.start(t0);
+        let later = t0 + SignedDuration::from_hours(3);
+        assert_eq!(a.elapsed(later, Some(60)), Elapsed { mins: 150, capped: true });
     }
 
     #[test]

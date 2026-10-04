@@ -50,19 +50,62 @@ class Tree:
 
     A task whose parent was filtered out appears at top level rather than vanishing, which is
     the projection's choice and the right one — so a tree here may be several trees.
+
+    **Every row's title is recomputed on every redraw**, because the level marker depends on
+    what is folded. Walking up the list to find parents and visible neighbours each time made
+    a redraw cost grow with the cube of the list, which a Raspberry Pi feels at a few hundred
+    tasks. So parents are found once, in one pass, and what is visible is worked out once per
+    set of folded rows and reused until that set changes.
     """
 
     def __init__(self, rows: list[dict]) -> None:
         self.rows = rows
         self.collapsed: set[str] = set()
+        self._parents = self._find_parents(rows)
+        self._layout_for: frozenset[str] | None = None
+        self._visible: list[bool] = []
+        self._previous: list[int | None] = []
+
+    @staticmethod
+    def _find_parents(rows: list[dict]) -> list[int | None]:
+        """Each row's parent, by keeping the chain of open ancestors as the list is read."""
+        parents: list[int | None] = []
+        chain: list[int] = []
+        for index, row in enumerate(rows):
+            depth = row.get("depth", 0)
+            while chain and rows[chain[-1]].get("depth", 0) >= depth:
+                chain.pop()
+            parents.append(chain[-1] if chain else None)
+            chain.append(index)
+        return parents
+
+    def _layout(self) -> None:
+        """Works out visibility and reading order for the current set of folded rows.
+
+        Keyed on the set itself rather than on calls to `collapse` and `expand`, so that
+        changing `collapsed` directly still takes effect.
+        """
+        key = frozenset(self.collapsed)
+        if key == self._layout_for:
+            return
+        self._layout_for = key
+        visible: list[bool] = []
+        previous: list[int | None] = []
+        last_visible: int | None = None
+        for index in range(len(self.rows)):
+            parent = self._parents[index]
+            # Parents come first in the list, so theirs is already known.
+            shown = parent is None or (visible[parent] and not self.is_collapsed(parent))
+            visible.append(shown)
+            previous.append(last_visible)
+            if shown:
+                last_visible = index
+        self._visible = visible
+        self._previous = previous
 
     def parent_of(self, index: int) -> int | None:
         """The row this one sits under, if any."""
-        depth = self.rows[index].get("depth", 0)
-        for above in range(index - 1, -1, -1):
-            if self.rows[above].get("depth", 0) < depth:
-                return above
-        return None
+        return self._parents[index]
 
     def has_children(self, index: int) -> bool:
         """Whether anything sits under this row."""
@@ -76,12 +119,8 @@ class Tree:
 
     def visible(self, index: int) -> bool:
         """Whether every ancestor is expanded."""
-        parent = self.parent_of(index)
-        while parent is not None:
-            if self.is_collapsed(parent):
-                return False
-            parent = self.parent_of(parent)
-        return True
+        self._layout()
+        return self._visible[index]
 
     def collapse(self, index: int) -> str:
         """Folds a branch away, or steps out to the parent if there is nothing to fold."""
@@ -102,10 +141,8 @@ class Tree:
 
     def previous_visible(self, index: int) -> int | None:
         """The row that will be read before this one."""
-        for above in range(index - 1, -1, -1):
-            if self.visible(above):
-                return above
-        return None
+        self._layout()
+        return self._previous[index]
 
     def title_for(self, index: int) -> str:
         """The line for one row, level marker and all.
