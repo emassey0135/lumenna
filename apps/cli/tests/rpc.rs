@@ -92,25 +92,14 @@ fn a_method_reaches_the_same_surface_the_command_line_does() {
 fn a_write_from_another_process_is_pushed_without_being_asked_for() {
     // This is the whole reason to speak a protocol rather than shell out per command (§8).
     let rpc = Rpc::new();
-    let mut server = rpc.spawn();
-    {
-        let stdin = server.stdin.as_mut().expect("stdin");
-        writeln!(stdin, r#"{{"jsonrpc":"2.0","id":1,"method":"task.list"}}"#).unwrap();
-        stdin.flush().unwrap();
-        // Give the server its first answer before anything else touches the store.
-        std::thread::sleep(std::time::Duration::from_millis(500));
-
-        rpc.cli(&["task", "add", "from another process", "--quiet"]);
-        // Long enough for the one-second poll §8 sanctions to come round.
-        std::thread::sleep(std::time::Duration::from_millis(2500));
-        writeln!(stdin, r#"{{"jsonrpc":"2.0","id":2,"method":"shutdown"}}"#).unwrap();
-    }
-    server.stdin.take();
-    let mut out = String::new();
-    server.stdout.as_mut().unwrap().read_to_string(&mut out).unwrap();
-    server.wait().unwrap();
-
-    assert!(out.contains(r#""method":"lumenna/changed""#), "no push arrived: {out}");
+    let mut live = Live::start(&rpc);
+    // The server's first answer comes before anything else touches the store, so what
+    // follows is news to it rather than something it read on the way in.
+    live.send(r#"{"jsonrpc":"2.0","id":1,"method":"task.list"}"#);
+    live.wait_for(r#""id":1"#);
+    rpc.cli(&["task", "add", "from another process", "--quiet"]);
+    // Within the one-second poll §8 sanctions.
+    live.wait_for(r#""method":"lumenna/changed""#);
 }
 
 #[test]

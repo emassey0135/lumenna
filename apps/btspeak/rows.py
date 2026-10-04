@@ -163,12 +163,13 @@ class Tree:
             line = f"level {depth + 1}, {line}"
         return line
 
-    def items(self, on_select) -> list[dialogs.DynamicMenuItem]:
+    def items(self, on_select, on_delete=None) -> list[dialogs.DynamicMenuItem]:
         """Menu items for every row, foldable where a row has children.
 
         `left` and `right` are already bound to left-arrow/Dot7 and right-arrow/Dot8 on this
         device, so folding needs no key handling of its own (§16.11). `+` and `-` are offered
-        as well, because that is what a tree view is expected to answer to.
+        as well, because that is what a tree view is expected to answer to. `on_delete`, when
+        given, is what the device's delete keys do to a row — control-D and the D chord.
         """
         items = []
         for index, row in enumerate(self.rows):
@@ -184,6 +185,9 @@ class Tree:
                         "-": (lambda index=index: self.collapse(index)),
                     },
                     hint=row.get("hint"),
+                    delete=(
+                        (lambda index=index: on_delete(self.rows[index])) if on_delete else None
+                    ),
                 )
             )
         return items
