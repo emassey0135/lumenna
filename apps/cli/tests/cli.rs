@@ -996,6 +996,8 @@ fn a_block_list_says_how_it_repeats_in_words() {
     lum.ok(&["block", "add", "Standup", "--at", "9am", "--minutes", "15", "--repeat", "every weekday"]);
     let listed = lum.ok(&["block", "list"]);
     assert!(listed.contains("every weekday") && !listed.contains("FREQ="), "{listed}");
+    let shown = lum.ok(&["block", "show", "1"]);
+    assert!(shown.contains("repeats: every weekday") && shown.contains("15 minutes"), "{shown}");
 }
 
 #[test]
