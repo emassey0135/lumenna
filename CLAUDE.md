@@ -211,8 +211,10 @@ through the generated `LumennaCore.swift`. `cd apps/apple && xcodegen` makes the
 - **Focus after a mutation is chosen, not left to UIKit**: the same row if it is still
   listed, else whatever now holds its position. Then the core's announcement is queued
   behind the focus change, so neither cuts the other off.
-- **Swipe actions are also explicit custom actions**, set on the cell so they are exactly
-  those, in that order.
+- **Swipe actions are the only actions.** UIKit offers a list cell's swipe actions to
+  VoiceOver, Switch Control and Full Keyboard Access itself; custom actions set on the cell
+  are *added* to those, so setting both lists each one twice. A swipe action's title is its
+  spoken name, so it says what it does ("Mark Done", not "Done").
 - **`TZ` is set from `TimeZone.current`** at launch and on return to the foreground.
   jiff finds the zone through `TZ` or `/etc/localtime`, and the sandbox is no place to
   rely on the second. A UI test checks that "today" is today where the phone is.

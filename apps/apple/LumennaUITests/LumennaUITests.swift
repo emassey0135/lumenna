@@ -58,7 +58,7 @@ final class LumennaUITests: XCTestCase {
         XCTAssertTrue(cell.waitForExistence(timeout: 5))
 
         cell.swipeRight()
-        app.buttons["Done"].tap()
+        app.buttons["Mark Done"].tap()
         XCTAssertTrue(cell.waitForNonExistence(timeout: 5))
 
         app.buttons["Undo"].tap()
