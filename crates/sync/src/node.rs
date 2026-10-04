@@ -150,7 +150,13 @@ impl Node {
             .endpoint
             .connect(addr, ALPN_SYNC)
             .await
-            .map_err(|e| SyncError::Network(format!("could not reach it: {e}")))?;
+            // The common reasons are the ordinary ones — the device is off, asleep, or not
+            // running sync — so say that, and keep Iroh's own words for whoever is debugging.
+            .map_err(|e| {
+                SyncError::Network(format!(
+                    "could not reach it; it may be off, asleep, or not running sync ({e})"
+                ))
+            })?;
         let (mut send, mut recv) = conn
             .open_bi()
             .await
