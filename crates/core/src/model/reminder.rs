@@ -10,6 +10,7 @@ use crate::id::{NodeId, ReminderId, SeriesId, TaskId};
 
 /// What a reminder is about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ReminderTarget {
     /// A task, anchored to its due datetime.
     Task(TaskId),
@@ -19,6 +20,7 @@ pub enum ReminderTarget {
 
 /// What a reminder's offset is measured from.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ReminderAnchor {
     /// The task's due datetime.
     ///
@@ -56,6 +58,7 @@ impl ReminderAnchor {
 /// [`Settings`](super::Settings)' default lists — so it is one type. A default reminder is
 /// exactly a reminder that has not been attached to anything yet.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Trigger {
     /// What the offset is measured from.
     pub anchor: ReminderAnchor,
@@ -93,6 +96,7 @@ impl Trigger {
 /// reminder data, each schedules its own local notifications. There is no coordinator and no
 /// "which device owns this reminder" election.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Delivery {
     /// Everywhere.
     #[default]
@@ -127,6 +131,7 @@ impl Delivery {
 /// occurrence. A cancelled occurrence must suppress its reminders — easy to miss, and very
 /// annoying when missed.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Reminder {
     /// Identity.
     pub id: ReminderId,
@@ -171,6 +176,7 @@ impl Reminder {
 /// peer-to-peer design without a central broker. Dismissal is eventually consistent, like
 /// everything else here.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ReminderAck {
     /// Which reminder.
     pub reminder_id: ReminderId,
@@ -186,6 +192,7 @@ pub struct ReminderAck {
 
 /// What the user did with a reminder.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ReminderAction {
     /// Dealt with; do not show it again.
     Dismissed,

@@ -20,6 +20,7 @@ pub mod error;
 pub mod export;
 mod records;
 pub mod store;
+pub mod undo;
 mod value;
 
 pub use db::Db;

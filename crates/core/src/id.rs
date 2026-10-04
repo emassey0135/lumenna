@@ -30,6 +30,7 @@ macro_rules! id_type {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         pub struct $name(Uuid);
 
         // No `Default`: `Uuid::default()` is the nil UUID, so a `default()` here that
@@ -131,6 +132,7 @@ impl ProjectId {
 /// Core neither generates nor verifies these — that is `sync`'s work. It carries them
 /// because reminder delivery (§3.8) and acknowledgement (§3.9) are addressed by device.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeId([u8; 32]);
 
 impl NodeId {

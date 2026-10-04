@@ -48,6 +48,7 @@ pub enum OrderError {
 /// Ordering is bytewise over the string, which for this alphabet is numeric order over the
 /// fraction it denotes.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OrderKey(String);
 
 impl OrderKey {
