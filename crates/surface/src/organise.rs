@@ -58,22 +58,23 @@ impl Lumenna {
                 snapshot.projects.values().filter(|p| p.deleted_at.is_none()).collect();
             live.sort_by(|a, b| a.order.cmp_with(&a.id, &b.order, &b.id));
             let count = to_u32(live.len());
+            let facts = snapshot.facts();
             let rows: Vec<Row> = live
                 .iter()
                 .enumerate()
                 .map(|(index, project)| {
+                    // Open tasks: a project of two hundred finished ones is not two hundred
+                    // tasks' worth of anything.
                     let tasks = snapshot
                         .tasks
                         .values()
                         .filter(|t| t.project_id == project.id && !t.is_deleted())
+                        .filter(|t| !facts.is_completed(t))
                         .count();
-                    let mut value = count_line(tasks, "task");
+                    let mut value = count_line(tasks, "open task");
                     let weight = snapshot.effective_weight(project.id);
                     if (weight - Project::NEUTRAL_WEIGHT).abs() > f32::EPSILON {
                         value.push_str(&format!(", weight {weight}"));
-                    }
-                    if project.archived {
-                        value.push_str(", archived");
                     }
                     Row {
                         id: RowId::Project(project.id),
@@ -90,7 +91,15 @@ impl Lumenna {
                     }
                 })
                 .collect();
-            Ok(Rows::new(&rows, "project"))
+            let mut rows = Rows::new(&rows, "project");
+            // Archived is a state of the row, not a word in its value, so a client can offer
+            // to unarchive without reading prose. Core's states are a task's; this is not.
+            for (row, project) in rows.rows.iter_mut().zip(&live) {
+                if project.archived {
+                    row.state.push("archived".to_owned());
+                }
+            }
+            Ok(rows)
         })
     }
 
@@ -242,6 +251,7 @@ impl Lumenna {
                 snapshot.labels.values().filter(|l| l.deleted_at.is_none()).collect();
             live.sort_by(|a, b| a.order.cmp_with(&a.id, &b.order, &b.id));
             let count = to_u32(live.len());
+            let facts = snapshot.facts();
             let rows: Vec<Row> = live
                 .iter()
                 .enumerate()
@@ -250,7 +260,13 @@ impl Lumenna {
                         .tasks
                         .values()
                         .filter(|t| t.labels.contains(&label.id) && !t.is_deleted())
+                        .filter(|t| !facts.is_completed(t))
                         .count();
+                    let mut value = count_line(used, "open task");
+                    // Said in words, never colour alone (§13).
+                    if let Some(colour) = &label.color {
+                        value.push_str(&format!(", {colour}"));
+                    }
                     Row {
                         id: RowId::Label(label.id),
                         role: Role::Label,
@@ -261,7 +277,7 @@ impl Lumenna {
                         checked: None,
                         title: label.name.clone(),
                         state: Vec::new(),
-                        value: Some(count_line(used, "task")),
+                        value: Some(value),
                         hint: None,
                     }
                 })

@@ -42,13 +42,13 @@ pub(crate) fn endpoint_held(profile: &Profile) -> Result<bool> {
     Ok(profile.endpoint_held()?)
 }
 
-fn default_name() -> String {
+pub(crate) fn default_name() -> String {
     let host = gethostname::gethostname().to_string_lossy().into_owned();
     let host = host.strip_suffix(".local").unwrap_or(&host).trim().to_owned();
     if host.is_empty() { "this device".to_owned() } else { host }
 }
 
-fn platform() -> &'static str {
+pub(crate) fn platform() -> &'static str {
     if Path::new("/BTSpeak").exists() { "btspeak" } else { std::env::consts::OS }
 }
 

@@ -247,3 +247,109 @@ fn an_export_comes_back_in_the_reply_and_a_bad_format_is_named() {
     assert!(out.contains(r"- [ ] write the chapter"), "{out}");
     assert!(out.contains("'pdf' is not a format"), "{out}");
 }
+
+/// A running server read line by line, for a conversation that has to answer what it hears.
+struct Live {
+    child: Child,
+    lines: std::sync::mpsc::Receiver<String>,
+}
+
+impl Live {
+    fn start(rpc: &Rpc) -> Self {
+        let mut child = rpc.spawn();
+        let out = child.stdout.take().unwrap();
+        let (send, lines) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+                if send.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+        Self { child, lines }
+    }
+
+    fn send(&mut self, request: &str) {
+        let stdin = self.child.stdin.as_mut().unwrap();
+        writeln!(stdin, "{request}").unwrap();
+        stdin.flush().unwrap();
+    }
+
+    /// The next line containing `needle`, skipping the rest.
+    fn wait_for(&self, needle: &str) -> String {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        loop {
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            match self.lines.recv_timeout(left) {
+                Ok(line) if line.contains(needle) => return line,
+                Ok(_) => {}
+                Err(_) => panic!("nothing containing {needle} arrived"),
+            }
+        }
+    }
+}
+
+impl Drop for Live {
+    fn drop(&mut self) {
+        self.child.stdin.take();
+        let _ = self.child.wait();
+    }
+}
+
+/// One string field out of a line of JSON.
+fn field(line: &str, key: &str) -> String {
+    let value: serde_json::Value = serde_json::from_str(line).unwrap();
+    value["params"][key].as_str().unwrap_or_default().to_owned()
+}
+
+#[test]
+fn a_pairing_can_be_cancelled_and_only_one_runs_at_a_time() {
+    let rpc = Rpc::new();
+    let mut live = Live::start(&rpc);
+    live.send(r#"{"jsonrpc":"2.0","id":1,"method":"pair.confirm","params":{"match":true}}"#);
+    assert!(live.wait_for(r#""id":1"#).contains("no pairing is under way"));
+
+    live.send(r#"{"jsonrpc":"2.0","id":2,"method":"pair","params":{"local_only":true}}"#);
+    let waiting = live.wait_for("lumenna/pairing");
+    assert!(!field(&waiting, "code").is_empty(), "the code to give the other device: {waiting}");
+
+    // The server goes on answering while the pairing waits.
+    live.send(r#"{"jsonrpc":"2.0","id":3,"method":"task.list"}"#);
+    assert!(live.wait_for(r#""id":3"#).contains(r#""result":"rows""#));
+    live.send(r#"{"jsonrpc":"2.0","id":4,"method":"pair","params":{"local_only":true}}"#);
+    assert!(live.wait_for(r#""id":4"#).contains("already under way"));
+
+    live.send(r#"{"jsonrpc":"2.0","id":5,"method":"pair.cancel"}"#);
+    let ended = live.wait_for(r#""id":2"#);
+    assert!(ended.contains("cancelled"), "{ended}");
+}
+
+#[test]
+fn two_servers_pair_by_code_comparing_words_through_notifications() {
+    let (laptop, phone) = (Rpc::new(), Rpc::new());
+    let mut waiting = Live::start(&laptop);
+    waiting.send(r#"{"jsonrpc":"2.0","id":1,"method":"task.add","params":{"text":"made on the laptop"}}"#);
+    waiting.wait_for(r#""id":1"#);
+    waiting.send(r#"{"jsonrpc":"2.0","id":2,"method":"pair","params":{"local_only":true,"name":"laptop"}}"#);
+    let code = field(&waiting.wait_for("lumenna/pairing"), "code");
+
+    let mut joining = Live::start(&phone);
+    joining.send(&format!(
+        r#"{{"jsonrpc":"2.0","id":1,"method":"pair","params":{{"local_only":true,"name":"phone","code":"{code}"}}}}"#
+    ));
+    let words_here: serde_json::Value =
+        serde_json::from_str(&joining.wait_for(r#""words""#)).unwrap();
+    let words_there: serde_json::Value =
+        serde_json::from_str(&waiting.wait_for(r#""words""#)).unwrap();
+    assert_eq!(words_here["params"]["words"], words_there["params"]["words"]);
+
+    joining.send(r#"{"jsonrpc":"2.0","id":2,"method":"pair.confirm","params":{"match":true}}"#);
+    waiting.send(r#"{"jsonrpc":"2.0","id":3,"method":"pair.confirm","params":{"match":true}}"#);
+    let joined = joining.wait_for(r#""id":1"#);
+    assert!(joined.contains(r#""result":"paired""#) && joined.contains("laptop"), "{joined}");
+    assert!(waiting.wait_for(r#""id":2"#).contains(r#""result":"paired""#));
+
+    joining.send(r#"{"jsonrpc":"2.0","id":3,"method":"task.list"}"#);
+    assert!(joining.wait_for(r#""id":3"#).contains("made on the laptop"), "the first sync came across");
+}

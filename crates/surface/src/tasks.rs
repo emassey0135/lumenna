@@ -6,7 +6,7 @@ use jiff::Zoned;
 use lumenna_core::edit::{self, Edit, EditError, MoveTo};
 use lumenna_core::filter::{Context, Expr, Predicate};
 use lumenna_core::id::LabelId;
-use lumenna_core::model::{Label, Priority, Task};
+use lumenna_core::model::{Due, Label, Priority, Recurrence, Task};
 use lumenna_core::order::OrderKey;
 use lumenna_parse::quickadd::{Known, Severity, parse_quick_add};
 use lumenna_store::Store;
@@ -221,7 +221,43 @@ impl Lumenna {
                 after.title = title;
             }
             if let Some(due) = &edit.due {
+                let kept = after.due.as_ref().and_then(|d| d.recurrence.clone());
                 after.due = resolve::due(due, &now)?;
+                // A new date that names no repetition moves the task; it does not stop it
+                // repeating. `none`, or `repeat: none`, is how that is said.
+                if let Some(due) = after.due.as_mut()
+                    && due.recurrence.is_none()
+                {
+                    due.recurrence = kept;
+                }
+            }
+            if let Some(repeat) = &edit.repeat {
+                if repeat.trim().eq_ignore_ascii_case("none") {
+                    if let Some(due) = after.due.as_mut() {
+                        due.recurrence = None;
+                    }
+                } else {
+                    let (spec, from_completion) = resolve::repetition(repeat)?;
+                    let recurrence = Recurrence { rrule: spec.to_rrule(), from_completion };
+                    match after.due.as_mut() {
+                        Some(due) => due.recurrence = Some(recurrence),
+                        None => {
+                            // Due on the first day it lands on, as quick add does with
+                            // "every monday" alone (§5).
+                            let first = lumenna_core::recur::Rule::parse(&recurrence.rrule)?
+                                .first_from(now.date())?
+                                .ok_or_else(|| {
+                                    LumennaError::new(format!("'{repeat}' never happens"))
+                                })?;
+                            after.due = Some(Due {
+                                date: first,
+                                time: None,
+                                timezone: None,
+                                recurrence: Some(recurrence),
+                            });
+                        }
+                    }
+                }
             }
             if let Some(priority) = edit.priority {
                 after.priority = Priority::from_u8(priority);

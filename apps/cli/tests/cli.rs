@@ -328,7 +328,11 @@ fn a_repeating_block_starts_on_a_day_it_actually_occurs() {
         "every monday",
     ]);
     let out = lum.ok(&["block", "list"]);
-    assert!(out.contains("FREQ=WEEKLY;BYDAY=MO"), "{out}");
+    assert!(out.contains("every monday"), "{out}");
+    let json = lum.ok(&["block", "list", "--json"]);
+    let start = json.split("from ").nth(1).and_then(|rest| rest.get(..10)).expect("a start date");
+    let start: jiff::civil::Date = start.parse().unwrap();
+    assert_eq!(start.weekday(), jiff::civil::Weekday::Monday, "{out}");
 }
 
 #[test]
@@ -938,4 +942,107 @@ fn a_saved_filter_can_be_renamed_and_requeried() {
     let listed = lum.ok(&["filter", "list"]);
     assert!(listed.contains("Now") && listed.contains("p1 | overdue"), "{listed}");
     assert!(lum.fails(&["filter", "edit", "Now", "--query", "p1 &"]).contains("lum"));
+}
+
+#[test]
+fn moving_a_repeating_task_keeps_it_repeating_and_none_stops_it() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "water plants every monday"]);
+    lum.ok(&["task", "list"]);
+    let shown = lum.ok(&["task", "show", "1"]);
+    assert!(shown.contains("every monday"), "said in words, not as a rule: {shown}");
+    assert!(!shown.contains("FREQ="), "{shown}");
+
+    lum.ok(&["task", "edit", "1", "--due", "2026-12-10"]);
+    let moved = lum.ok(&["task", "show", "1"]);
+    assert!(moved.contains("2026-12-10") && moved.contains("every monday"), "{moved}");
+
+    lum.ok(&["task", "edit", "1", "--repeat", "every! 2 weeks"]);
+    let counted = lum.ok(&["task", "show", "1"]);
+    assert!(counted.contains("every! other week"), "read back the way it is typed: {counted}");
+
+    lum.ok(&["task", "edit", "1", "--repeat", "none"]);
+    let stopped = lum.ok(&["task", "show", "1"]);
+    assert!(stopped.contains("2026-12-10") && !stopped.contains("every"), "{stopped}");
+}
+
+#[test]
+fn a_repetition_on_a_task_with_no_date_makes_it_due_when_it_first_lands() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "stretch"]);
+    lum.ok(&["task", "list"]);
+    lum.ok(&["task", "edit", "1", "--repeat", "every day"]);
+    let shown = lum.ok(&["task", "show", "1"]);
+    assert!(shown.contains("due") && shown.contains("every day"), "{shown}");
+}
+
+#[test]
+fn words_left_over_after_a_date_are_refused_rather_than_dropped() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "call mum"]);
+    lum.ok(&["task", "list"]);
+    let refused = lum.fails(&["task", "edit", "1", "--due", "friday blah"]);
+    assert!(refused.contains("blah"), "the leftover is named: {refused}");
+    assert!(!lum.ok(&["task", "show", "1"]).contains("due"));
+    let refused = lum.fails(&["plan", "tomorrow", "please"]);
+    assert!(refused.contains("please"), "{refused}");
+    let refused = lum.fails(&["block", "add", "Gym", "--at", "7am", "--minutes", "60", "--repeat", "every! day"]);
+    assert!(refused.contains("every!"), "a block has no completion to count from: {refused}");
+}
+
+#[test]
+fn a_block_list_says_how_it_repeats_in_words() {
+    let lum = Lum::new();
+    lum.ok(&["block", "add", "Standup", "--at", "9am", "--minutes", "15", "--repeat", "every weekday"]);
+    let listed = lum.ok(&["block", "list"]);
+    assert!(listed.contains("every weekday") && !listed.contains("FREQ="), "{listed}");
+}
+
+#[test]
+fn a_cancelled_day_is_listed_with_the_way_to_put_it_back() {
+    let lum = Lum::new();
+    lum.ok(&["block", "add", "Run", "--at", "7am", "--minutes", "30", "--date", "2026-12-07", "--repeat", "daily"]);
+    lum.ok(&["block", "list"]);
+    lum.ok(&["block", "cancel", "1", "--date", "2026-12-08"]);
+    let day = lum.ok(&["plan", "2026-12-08"]);
+    assert!(day.contains("cancelled for this day: Run at 07:00"), "{day}");
+    assert!(day.contains("lum block restore"), "{day}");
+    let json = lum.ok(&["plan", "2026-12-08", "--json"]);
+    assert!(json.contains("\"cancelled\""), "{json}");
+}
+
+#[test]
+fn assigning_from_a_listed_day_lands_on_that_day_not_today() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "write"]);
+    let task = first_task_id(&lum);
+    lum.ok(&["block", "add", "Focus", "--at", "9am", "--minutes", "60", "--date", "2026-12-07", "--repeat", "daily"]);
+    lum.ok(&["plan", "2026-12-09"]);
+    let assigned = lum.ok(&["assign", &task, "--block", "1"]);
+    assert!(assigned.contains("2026-12-09"), "{assigned}");
+    assert!(lum.ok(&["plan", "2026-12-09"]).contains("write"));
+}
+
+#[test]
+fn archiving_twice_unarchives_and_the_list_says_which() {
+    let lum = Lum::new();
+    lum.ok(&["project", "add", "Old"]);
+    lum.ok(&["project", "archive", "Old"]);
+    let json = lum.ok(&["project", "list", "--json"]);
+    assert!(json.contains("\"archived\""), "a state a client can test: {json}");
+    assert!(lum.ok(&["project", "archive", "Old"]).contains("Unarchived"));
+}
+
+#[test]
+fn project_and_label_counts_are_open_tasks_and_a_colour_is_said() {
+    let lum = Lum::new();
+    lum.ok(&["project", "add", "Home"]);
+    lum.ok(&["task", "add", "sweep #Home @chores"]);
+    lum.ok(&["task", "add", "dust #Home @chores"]);
+    lum.ok(&["task", "list"]);
+    lum.ok(&["task", "done", "1"]);
+    lum.ok(&["label", "colour", "chores", "teal"]);
+    assert!(lum.ok(&["project", "list"]).contains("1 open task"));
+    let labels = lum.ok(&["label", "list"]);
+    assert!(labels.contains("1 open task, teal"), "{labels}");
 }

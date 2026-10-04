@@ -160,8 +160,10 @@ fn detail(task: &TaskDetail) {
         if let Some(time) = &task.due_time {
             text.push_str(&format!(" at {time}"));
         }
-        if let Some(recurrence) = &task.recurrence {
-            text.push_str(&format!(" (repeats: {recurrence})"));
+        match (&task.repetition, &task.recurrence) {
+            (Some(phrase), _) => text.push_str(&format!(", {phrase}")),
+            (None, Some(rule)) => text.push_str(&format!(", repeats by the rule {rule}")),
+            (None, None) => {}
         }
         fields.push(("due", text));
     }
@@ -223,7 +225,6 @@ fn day(plan: &Plan) {
     // plan has none, and gets the blocks alone.
     if plan.timeline.is_empty() {
         plan.blocks.iter().for_each(block_line);
-        return;
     }
     for item in &plan.timeline {
         match item {
@@ -237,6 +238,14 @@ fn day(plan: &Plan) {
             }
             PlanItem::Now { time } => println!("   now, {time}"),
         }
+    }
+    // What is not happening today but could be put back, with the command that does it.
+    for block in &plan.cancelled {
+        let short = &block.series[..block.series.len().min(8)];
+        println!(
+            "   cancelled for this day: {} at {}  (lum block restore {short} --date {})",
+            block.title, block.start, plan.date
+        );
     }
 }
 
