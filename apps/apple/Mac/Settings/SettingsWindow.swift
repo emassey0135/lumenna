@@ -12,16 +12,15 @@ final class SettingsWindowController: NSWindowController {
         func tab(_ controller: NSViewController, _ label: String, _ symbol: String) -> NSTabViewItem {
             let item = NSTabViewItem(viewController: controller)
             item.label = label
-            controller.view.setAccessibilityLabel(label)
             item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
             return item
         }
         tabs.tabViewItems = [
-            tab(NSHostingController(rootView: GeneralSettings(model: model)), "General", "gearshape"),
-            tab(NSHostingController(rootView: PlanningSettings(model: model)), "Planning", "calendar"),
+            tab(HostedForm("General", rootView: GeneralSettings(model: model)), "General", "gearshape"),
+            tab(HostedForm("Planning", rootView: PlanningSettings(model: model)), "Planning", "calendar"),
             tab(DevicesViewController(core: core), "Devices", "laptopcomputer.and.iphone"),
-            tab(NSHostingController(rootView: BackupSettings(model: model)), "Backups", "externaldrive"),
-            tab(NSHostingController(rootView: ExportSettings(model: model)), "Export and Import", "square.and.arrow.up"),
+            tab(HostedForm("Backups", rootView: BackupSettings(model: model)), "Backups", "externaldrive"),
+            tab(HostedForm("Export and Import", rootView: ExportSettings(model: model)), "Export and Import", "square.and.arrow.up"),
         ]
         let window = NSWindow(contentViewController: tabs)
         window.title = "Settings"

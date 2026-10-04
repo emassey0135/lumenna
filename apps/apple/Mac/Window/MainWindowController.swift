@@ -158,15 +158,13 @@ final class ContainerViewController: NSViewController {
         current?.removeFromParent()
         current = controller
         view.subviews.forEach { $0.removeFromSuperview() }
-        // The pane is named once: by what fills it, or by itself while it holds nothing.
+        // The pane is named once: by what fills it — the list, the outline, the form's scroll
+        // area — or by itself while it holds nothing.
         view.setAccessibilityElement(controller == nil)
         let shown: NSView
         if let controller {
             addChild(controller)
             shown = controller.view
-            if shown.accessibilityLabel()?.isEmpty ?? true {
-                shown.setAccessibilityLabel(name)
-            }
         } else {
             let label = NSTextField(labelWithString: placeholder)
             label.textColor = .quietLabel

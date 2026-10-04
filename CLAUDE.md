@@ -338,6 +338,10 @@ Section titles are `FormParts.heading`, a header to VoiceOver's heading commands
   unnamed, and labelling it as well made it "Title, Title". On iOS the opposite (see the
   iOS app's `NamedRow` note). A growing text field draws its name in grey on macOS, under
   contrast, so Notes is a `TextEditor` there.
+- **SwiftUI is hosted through `HostedForm`** (`Mac/Core/HostedForm.swift`): the hosting view
+  steps out of VoiceOver's tree and its name goes to the form's scroll area, so a page is
+  one named scroll area rather than a group around one. It has to be the hosting view's
+  own override; set from outside, it goes on reporting itself as a group.
 - **A table cell recolours itself on selection** (`TwoLineCell.backgroundStyle`): the app's
   quiet grey on the selection highlight fails contrast.
 - **The window's minimum size is set** after its content: the split view otherwise shrinks
