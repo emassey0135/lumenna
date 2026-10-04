@@ -99,6 +99,24 @@ fn text(response: &Response) {
         },
         Outcome::Rows(rows) => list(rows, response.announcement()),
         Outcome::Task(shown) => detail(&shown.task),
+        Outcome::Block(block) => {
+            let mut fields = vec![
+                ("title", block.title.clone()),
+                ("id", block.id.clone()),
+                ("starts", format!("{} on {}", block.start, block.start_date)),
+                ("lasts", lumenna_surface::words::duration(block.minutes)),
+                ("kind", block.kind.clone()),
+            ];
+            match (&block.repetition, &block.rrule) {
+                (Some(phrase), _) => fields.push(("repeats", phrase.clone())),
+                (None, Some(rule)) => fields.push(("repeats", format!("by the rule {rule}"))),
+                (None, None) => {}
+            }
+            let width = fields.iter().map(|(key, _)| key.len()).max().unwrap_or(0);
+            for (key, value) in fields {
+                println!("{key:>width$}: {value}", width = width);
+            }
+        }
         Outcome::Plan(plan) => day(plan),
         Outcome::Filters(filters) => {
             println!("{}", response.announcement());

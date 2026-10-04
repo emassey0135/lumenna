@@ -545,6 +545,11 @@ pub(crate) enum BlockCommand {
     },
     /// List block series.
     List,
+    /// Show one block series: when, how long, what kind, and how it repeats.
+    Show {
+        /// A row number from `lum block list` or `lum plan`, or an identifier.
+        id: String,
+    },
     /// Change a block: every occurrence with --all, or one day with --date.
     ///
     /// A repeating block always needs one or the other — which occurrences a change means is
@@ -779,6 +784,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
                 })?)
             }
             BlockCommand::List => Response::new(profile.list_blocks()?),
+            BlockCommand::Show { id } => Response::new(profile.show_block(&profile.row(id, "block")?)?),
             BlockCommand::Edit { id, title, at, minutes, kind, repeat, date, all } => {
                 let id = profile.row(id, "block")?;
                 let scope = match date {
@@ -999,6 +1005,7 @@ fn listing_of(outcome: &Outcome) -> Option<Vec<(String, String)>> {
         ),
         Outcome::Change(_)
         | Outcome::Task(_)
+        | Outcome::Block(_)
         | Outcome::Filters(_)
         | Outcome::Settings(_)
         | Outcome::Timer(_)

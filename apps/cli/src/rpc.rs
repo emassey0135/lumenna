@@ -109,6 +109,7 @@ const METHODS: &[&str] = &[
     "plan",
     "block.add",
     "block.list",
+    "block.show",
     "block.edit",
     "block.cancel",
     "block.restore",
@@ -607,6 +608,7 @@ fn command_for(method: &str, params: &Value) -> std::result::Result<Command, Rpc
             repeat: maybe_text(params, "repeat"),
         }),
         "block.list" => Command::Block(BlockCommand::List),
+        "block.show" => Command::Block(BlockCommand::Show { id: text_of(params, "id")? }),
         "block.rm" => Command::Block(BlockCommand::Rm { id: text_of(params, "id")? }),
         "block.edit" => Command::Block(BlockCommand::Edit {
             id: text_of(params, "id")?,

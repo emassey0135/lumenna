@@ -10,7 +10,7 @@
 //! records, is a breaking change, and [`VERSION`] says which shape a reader is looking at.
 
 use lumenna_surface::{
-    Announced, BackupDone, Change, Completions, DeviceList, Exported, Filters, ImportDone,
+    Announced, BackupDone, BlockShown, Change, Completions, DeviceList, Exported, Filters, ImportDone,
     Imported, PairedWith, Plan, Preview, RestoreDone, Rows, SettingList, SyncReport, SyncStatus,
     TaskShown, Timer, announced,
 };
@@ -89,6 +89,8 @@ pub enum Outcome {
     Task(TaskShown),
     /// A day's blocks and what is assigned to them.
     Plan(Plan),
+    /// One block series, as an editor starts from it.
+    Block(BlockShown),
     /// Saved filters.
     Filters(Filters),
     /// Settings.
@@ -152,6 +154,7 @@ outcomes!(
     Rows(Rows),
     Task(TaskShown),
     Plan(Plan),
+    Block(BlockShown),
     Filters(Filters),
     Settings(SettingList),
     Timer(Timer),
