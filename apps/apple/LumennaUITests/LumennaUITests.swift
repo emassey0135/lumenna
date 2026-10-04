@@ -309,4 +309,32 @@ final class LumennaUITests: XCTestCase {
             app.navigationBars.buttons.element(boundBy: 0).tap()
         }
     }
+
+    /// Pairs with a device waiting in `lum pair`, whose code arrives as `PAIR_CODE`
+    /// (`TEST_RUNNER_PAIR_CODE` to xcodebuild). Skipped without one.
+    func testPairingByCodeBringsTheOtherDevicesTasks() throws {
+        guard let code = ProcessInfo.processInfo.environment["PAIR_CODE"], !code.isEmpty else {
+            throw XCTSkip("no device is waiting to pair")
+        }
+        tab("Settings")
+        cell(containing: "Devices and Sync").tap()
+        app.buttons["Pair a device"].tap()
+        let entry = app.textViews["Code from the other device"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 5))
+        entry.tap()
+        entry.typeText(code)
+        app.buttons["Pair With This Code"].tap()
+
+        let yes = app.alerts.buttons["Yes, They Match"]
+        XCTAssertTrue(yes.waitForExistence(timeout: 90), "the words never came")
+        yes.tap()
+
+        // Finished when the device list is back and names the other device — not before,
+        // or the test ending would cut the pairing's goodbyes short.
+        let other = app.cells.containing(NSPredicate(format: "value CONTAINS 'not synced yet' OR value CONTAINS 'last synced'"))
+        XCTAssertTrue(other.firstMatch.waitForExistence(timeout: 60), "pairing never finished")
+
+        tab("Tasks")
+        XCTAssertTrue(row("written on the mac").waitForExistence(timeout: 30), "the first sync brought nothing")
+    }
 }

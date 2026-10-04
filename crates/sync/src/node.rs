@@ -286,5 +286,10 @@ impl Node {
 pub(crate) async fn finish(send: &mut SendStream, recv: &mut RecvStream) -> Result<()> {
     send.finish().map_err(|e| SyncError::Network(e.to_string()))?;
     recv.read_to_end(1024).await.map_err(|e| SyncError::Network(e.to_string()))?;
+    // Having the peer's end does not mean the peer has ours: it may still be in flight, and
+    // closing the connection now would drop it, so the peer reads a lost connection where it
+    // should read a finished one. Over a relay that gap is long enough to lose every time.
+    // `stopped` resolves once the peer has read this stream to its end.
+    let _ = tokio::time::timeout(Duration::from_secs(5), send.stopped()).await;
     Ok(())
 }
