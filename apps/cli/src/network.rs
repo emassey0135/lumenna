@@ -116,7 +116,7 @@ pub(crate) fn sync_once(profile: &Profile, local_only: bool) -> Result<Response>
     match profile.sync_now(network(local_only)) {
         Ok(report) => {
             let response = Response::new(report);
-            Ok(if response.announcement().contains("not paired") {
+            Ok(if profile.at_terminal() && response.announcement().contains("not paired") {
                 response.note("`lum pair` pairs one")
             } else {
                 response
@@ -262,7 +262,7 @@ fn serve_socket(
 /// `lum sync status`: §9's sync status, as sentences rather than an icon.
 pub(crate) fn status(profile: &Profile) -> Result<Response> {
     let response = Response::new(profile.sync_status()?);
-    Ok(if response.announcement().starts_with("Not paired") {
+    Ok(if profile.at_terminal() && response.announcement().starts_with("Not paired") {
         response.note("`lum pair` pairs one")
     } else {
         response

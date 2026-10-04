@@ -825,7 +825,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         }
         Command::Stop { assignment, minutes } => {
             let timer = profile.stop_timer(&profile.row(assignment, "assignment")?, *minutes)?;
-            let capped = timer.changed && timer.capped;
+            let capped = timer.changed && timer.capped && profile.at_terminal();
             let id = timer.assignment.clone();
             let response = Response::new(timer);
             if capped {
@@ -898,7 +898,9 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
         TaskCommand::Undone { id: input } => Response::new(profile.uncomplete_task(&id(input)?)?),
         TaskCommand::Rm { id: input } => {
             let mut change = profile.trash_task(&id(input)?)?;
-            change.announcement.push_str(" (recover it with `lum task restore`)");
+            if profile.at_terminal() {
+                change.announcement.push_str(" (recover it with `lum task restore`)");
+            }
             Response::new(change)
         }
         TaskCommand::Restore { id: input } => Response::new(profile.restore_task(&id(input)?)?),

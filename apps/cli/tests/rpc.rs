@@ -353,3 +353,18 @@ fn two_servers_pair_by_code_comparing_words_through_notifications() {
     joining.send(r#"{"jsonrpc":"2.0","id":3,"method":"task.list"}"#);
     assert!(joining.wait_for(r#""id":3"#).contains("made on the laptop"), "the first sync came across");
 }
+
+#[test]
+fn hints_that_name_a_lum_command_stay_at_the_terminal() {
+    // A client says these its own way, and a screen reader would read the backticks out.
+    let rpc = Rpc::new();
+    let out = rpc.talk(&[
+        r#"{"jsonrpc":"2.0","id":1,"method":"task.add","params":{"text":"tidy"}}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"sync.status"}"#,
+    ]);
+    let id = out.split(r#""id":""#).nth(1).and_then(|rest| rest.split('"').next()).unwrap().to_owned();
+    let out = rpc.talk(&[&format!(r#"{{"jsonrpc":"2.0","id":3,"method":"task.rm","params":{{"id":"{id}"}}}}"#)]);
+    assert!(!out.contains("`lum"), "{out}");
+    let status = rpc.talk(&[r#"{"jsonrpc":"2.0","id":4,"method":"sync.status"}"#]);
+    assert!(!status.contains("`lum"), "{status}");
+}
