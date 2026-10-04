@@ -86,6 +86,14 @@ impl Profile {
         self.rows_addressable = false;
     }
 
+    /// Whether this is the terminal, rather than a client over `lum rpc` or the daemon's
+    /// socket. A hint naming a `lum` command helps only here: a client says it its own way,
+    /// and a screen reader would read the backticks out.
+    #[must_use]
+    pub const fn at_terminal(&self) -> bool {
+        self.rows_addressable
+    }
+
     /// The socket `lum sync-daemon` serves the command surface on (§8), which the BTSpeak app
     /// tries before spawning a server of its own.
     #[must_use]
