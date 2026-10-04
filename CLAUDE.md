@@ -190,6 +190,12 @@ through the generated `LumennaCore.swift`. `cd apps/apple && xcodegen` makes the
 - **Xcode builds the core itself.** A pre-build phase runs `build-core.sh`, which builds
   `lumenna-ffi` for the platform being built, in a clean environment (Xcode's SDK variables
   break Cargo's host build scripts), then regenerates the bindings from a host build.
+- **The core is linked statically, by the `.a`'s full path.** Cargo builds a dylib beside it
+  for `uniffi-bindgen`, and `-llumenna_ffi` picks the dylib: the app then loads it from the
+  Mac's disk, which works in the simulator and crashes on a phone at launch. A post-build
+  phase fails the build if either binary references `liblumenna_ffi`. A launch is not
+  proof it ran: check the process is still alive, or the crash logs
+  (`xcrun devicectl device info files --domain-type systemCrashLogs`).
 - **The cell owns what VoiceOver says**, assembled from row components in `RowSpeech`.
   Depth is said only where it changes.
 - **Rows are `UIListContentConfiguration`, not SwiftUI.** §16.6 suggests SwiftUI in a
