@@ -62,6 +62,13 @@ const BACKUP_CHECK: Duration = Duration::from_secs(60 * 60);
 /// The notification a client listens for. Everything else is a reply.
 const CHANGED: &str = "lumenna/changed";
 
+/// What a pairing tells its client while it runs: the code to give the other device, then the
+/// words to compare.
+const PAIRING: &str = "lumenna/pairing";
+
+/// How long a pairing waits for the person to say whether the words match.
+const CONFIRM_WAIT: Duration = Duration::from_secs(10 * 60);
+
 /// Every method this server answers, in the order `--help` presents the commands.
 const METHODS: &[&str] = &[
     "initialize",
@@ -114,6 +121,9 @@ const METHODS: &[&str] = &[
     "config.set",
     "undo",
     "redo",
+    "pair",
+    "pair.confirm",
+    "pair.cancel",
     "sync",
     "sync.status",
     "device.list",
@@ -142,6 +152,9 @@ struct Server {
     writer: Mutex<Writer>,
     running: AtomicBool,
     sync_hook: Option<SyncHook>,
+    /// The pairing under way, if there is one. One at a time: two would each show words,
+    /// and a person could not tell which answer went where.
+    pairing: Mutex<Option<Arc<Pairing>>>,
 }
 
 /// Stdout, and the framing to write with.
@@ -180,6 +193,7 @@ pub fn serve_streams(
         writer: Mutex::new(Writer { out, framing: Framing::Lines }),
         running: AtomicBool::new(true),
         sync_hook,
+        pairing: Mutex::new(None),
     });
 
     let watcher = Arc::clone(&server);
@@ -197,8 +211,12 @@ pub fn serve_streams(
         }
         Ok(())
     })();
-    // The client has gone; the watcher stops with it.
+    // The client has gone; the watcher stops with it, and a pairing nobody can answer
+    // gives up rather than waiting out its ten minutes.
     server.running.store(false, Ordering::Relaxed);
+    if let Some(pairing) = server.pairing.lock().ok().and_then(|p| p.clone()) {
+        pairing.cancel();
+    }
     result
 }
 
@@ -301,7 +319,7 @@ const INVALID_PARAMS: i32 = -32602;
 const COMMAND_FAILED: i32 = -32000;
 
 /// Answers one message, or returns nothing if it was a notification.
-fn handle(server: &Server, text: &str) -> Option<Value> {
+fn handle(server: &Arc<Server>, text: &str) -> Option<Value> {
     let request: Value = match serde_json::from_str(text) {
         Ok(request) => request,
         Err(error) => return Some(failure(&Value::Null, PARSE_ERROR, &error.to_string())),
@@ -315,6 +333,14 @@ fn handle(server: &Server, text: &str) -> Option<Value> {
         return Some(failure(&id, INVALID_REQUEST, "no method"));
     };
     let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
+
+    // A pairing answers when it is over, minutes from now, from a thread of its own; the
+    // server goes on answering in the meantime — `pair.confirm` among the rest.
+    if method == "pair" {
+        return start_pairing(server, id, &params).err().map(|RpcError { code, message }| {
+            failure(&request.get("id").cloned().unwrap_or(Value::Null), code, &message)
+        });
+    }
 
     let outcome = answer(server, method, &params);
     // A request without an id is a notification: it wants the work done and no reply.
@@ -377,6 +403,17 @@ fn answer(
         }
         "complete" => completions(server, params),
         "preview" => preview(server, params),
+        "pair.confirm" => {
+            let Some(answer) = params.get("match").and_then(Value::as_bool) else {
+                return Err(invalid("'match' is required: true if the words are the same"));
+            };
+            current_pairing(server)?.answer(answer);
+            Ok(Response::unchanged(if answer { "Confirming" } else { "Refusing" }))
+        }
+        "pair.cancel" => {
+            current_pairing(server)?.cancel();
+            Ok(Response::unchanged("Cancelling the pairing"))
+        }
         _ => {
             let command = command_for(method, params)?;
             // Every operation reads what another process wrote since the last poll first,
@@ -442,6 +479,7 @@ fn command_for(method: &str, params: &Value) -> std::result::Result<Command, Rpc
             id: text_of(params, "id")?,
             title: maybe_text(params, "title"),
             due: maybe_text(params, "due"),
+            repeat: maybe_text(params, "repeat"),
             priority: maybe_number(params, "priority")?
                 .map(|value| u8::try_from(value).unwrap_or(u8::MAX)),
             estimate: maybe_text(params, "estimate"),
@@ -667,4 +705,113 @@ fn completions(server: &Server, params: &Value) -> std::result::Result<Response,
 fn preview(server: &Server, params: &Value) -> std::result::Result<Response, RpcError> {
     let text = text_of(params, "text")?;
     Ok(Response::new(server.profile()?.preview_task(&text)?))
+}
+
+// ---------------------------------------------------------------------------------------
+// Pairing (§7)
+// ---------------------------------------------------------------------------------------
+
+/// One pairing's conversation with its client: whether the words matched, and whether the
+/// person gave up.
+#[derive(Default)]
+struct Pairing {
+    answer: Mutex<Option<bool>>,
+    answered: std::sync::Condvar,
+    cancelled: AtomicBool,
+}
+
+impl Pairing {
+    fn answer(&self, matched: bool) {
+        if let Ok(mut answer) = self.answer.lock() {
+            *answer = Some(matched);
+        }
+        self.answered.notify_all();
+    }
+
+    /// Ends the wait for the other device, and says no to the words if they were asked.
+    fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Relaxed);
+        self.answer(false);
+    }
+}
+
+/// The pairing's questions, as notifications to the client that asked for it.
+struct RpcPrompt {
+    server: Arc<Server>,
+    pairing: Arc<Pairing>,
+    name: String,
+}
+
+impl lumenna_surface::PairingPrompt for RpcPrompt {
+    fn show_code(&self, code: String) {
+        self.server.send(&json!({
+            "jsonrpc": "2.0",
+            "method": PAIRING,
+            "params": { "code": code, "name": self.name },
+        }));
+    }
+
+    fn confirm(&self, words: Vec<String>) -> bool {
+        self.server.send(&json!({
+            "jsonrpc": "2.0",
+            "method": PAIRING,
+            "params": { "words": words },
+        }));
+        let Ok(answer) = self.pairing.answer.lock() else { return false };
+        let waited = self.pairing.answered.wait_timeout_while(answer, CONFIRM_WAIT, |answer| {
+            answer.is_none() && !self.pairing.cancelled.load(Ordering::Relaxed)
+        });
+        waited.ok().and_then(|(answer, _)| *answer).unwrap_or(false)
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.pairing.cancelled.load(Ordering::Relaxed)
+            || !self.server.running.load(Ordering::Relaxed)
+    }
+}
+
+fn current_pairing(server: &Server) -> std::result::Result<Arc<Pairing>, RpcError> {
+    server
+        .pairing
+        .lock()
+        .ok()
+        .and_then(|pairing| pairing.clone())
+        .ok_or_else(|| RpcError { code: COMMAND_FAILED, message: "no pairing is under way".into() })
+}
+
+/// Starts `pair` on a thread of its own, which sends the reply when the pairing ends.
+fn start_pairing(server: &Arc<Server>, id: Value, params: &Value) -> std::result::Result<(), RpcError> {
+    let pairing = Arc::new(Pairing::default());
+    {
+        let mut current = server
+            .pairing
+            .lock()
+            .map_err(|_| RpcError { code: COMMAND_FAILED, message: "store is wedged".into() })?;
+        if current.is_some() {
+            return Err(RpcError {
+                code: COMMAND_FAILED,
+                message: "a pairing is already under way; cancel it first".into(),
+            });
+        }
+        *current = Some(Arc::clone(&pairing));
+    }
+    let lumenna = server.profile()?.shared();
+    let code = maybe_text(params, "code");
+    let reach = crate::network::network(flag(params, "local_only"));
+    let name = maybe_text(params, "name").unwrap_or_else(crate::network::default_name);
+    let server = Arc::clone(server);
+    std::thread::spawn(move || {
+        let prompt =
+            Arc::new(RpcPrompt { server: Arc::clone(&server), pairing, name: name.clone() });
+        let result =
+            lumenna.pair(code, reach, name, crate::network::platform().to_owned(), prompt);
+        if let Ok(mut current) = server.pairing.lock() {
+            *current = None;
+        }
+        server.send(&match result {
+            Ok(paired) => json!({ "jsonrpc": "2.0", "id": id, "result": Response::new(paired) }),
+            Err(error) => failure(&id, COMMAND_FAILED, error.message()),
+        });
+    });
+    Ok(())
 }

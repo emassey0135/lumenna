@@ -5,6 +5,7 @@
 
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use lumenna_surface::Lumenna;
 use lumenna_surface::words::count_line;
@@ -25,7 +26,7 @@ fn listing_command(kind: &str) -> &'static str {
 
 /// The open store, and what the last listing showed.
 pub struct Profile {
-    lumenna: Lumenna,
+    lumenna: Arc<Lumenna>,
     rows_addressable: bool,
 }
 
@@ -65,7 +66,14 @@ impl Profile {
                 })?,
             },
         };
-        Ok(Self { lumenna: Lumenna::open_at(&directory)?, rows_addressable: true })
+        Ok(Self { lumenna: Arc::new(Lumenna::open_at(&directory)?), rows_addressable: true })
+    }
+
+    /// The store, for work that outlives one request — a pairing, which waits minutes for
+    /// a person while the server goes on answering everything else.
+    #[must_use]
+    pub fn shared(&self) -> Arc<Lumenna> {
+        Arc::clone(&self.lumenna)
     }
 
     /// Stops row numbers meaning anything, for a client that is not the terminal.

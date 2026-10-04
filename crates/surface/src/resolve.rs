@@ -6,6 +6,7 @@ use lumenna_core::id::{AssignmentId, SeriesId, TaskId};
 use lumenna_core::model::{Due, Label, Project};
 use lumenna_core::order::OrderKey;
 use lumenna_core::snapshot::Snapshot;
+use lumenna_core::time::RecurrenceSpec;
 use lumenna_parse::quickadd::{Known, parse_quick_add};
 use lumenna_parse::{parse_filter, words};
 
@@ -85,19 +86,52 @@ pub(crate) fn date(text: Option<&str>, now: &Zoned) -> Result<civil::Date> {
     let Some(text) = text.filter(|t| !t.trim().is_empty()) else {
         return Ok(now.date());
     };
-    lumenna_parse::date::parse_date(&words(text), 0)
-        .and_then(|(spec, _)| spec.resolve(now))
+    let tokens = words(text);
+    let (spec, used) = lumenna_parse::date::parse_date(&tokens, 0)
+        .ok_or_else(|| LumennaError::new(format!("could not read a date from '{text}'")))?;
+    whole(text, &tokens, used, "a date")?;
+    spec.resolve(now)
         .ok_or_else(|| LumennaError::new(format!("could not read a date from '{text}'")))
 }
 
 /// A due phrase, or `none` to clear it.
+///
+/// The whole text has to be the phrase. Reading `friday blah` as Friday would be the silent
+/// swallowing §6.1 forbids: here there is no title for the rest to land in, so it is refused.
 pub(crate) fn due(text: &str, now: &Zoned) -> Result<Option<Due>> {
-    if text.eq_ignore_ascii_case("none") {
+    if text.trim().eq_ignore_ascii_case("none") {
         return Ok(None);
     }
-    let when = lumenna_parse::date::parse_when(&words(text), 0)
+    let tokens = words(text);
+    let when = lumenna_parse::date::parse_when(&tokens, 0)
         .ok_or_else(|| LumennaError::new(format!("could not read a date from '{text}'")))?;
+    whole(text, &tokens, when.words, "a date")?;
     Ok(when.spec.resolve(now)?)
+}
+
+/// A repetition phrase — `every monday`, `every! 2 weeks` — as the rule and whether it counts
+/// from completion. The whole text has to be the phrase.
+pub(crate) fn repetition(text: &str) -> Result<(RecurrenceSpec, bool)> {
+    let tokens = words(text);
+    let (spec, from_completion, used) = lumenna_parse::date::parse_recurrence(&tokens, 0)
+        .ok_or_else(|| {
+            LumennaError::new(format!(
+                "could not read a repetition from '{text}'; try something like 'every monday'"
+            ))
+        })?;
+    whole(text, &tokens, used, "a repetition")?;
+    Ok((spec, from_completion))
+}
+
+/// Refuses a phrase with words left over after what was understood, naming them.
+fn whole(text: &str, tokens: &[lumenna_parse::Word], used: usize, what: &str) -> Result<()> {
+    match tokens.get(used) {
+        None => Ok(()),
+        Some(word) => Err(LumennaError::new(format!(
+            "read {what} from the start of '{text}' but not '{}'",
+            text[word.start..].trim()
+        ))),
+    }
 }
 
 pub(crate) fn time(text: &str) -> Result<civil::Time> {

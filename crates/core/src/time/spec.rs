@@ -324,6 +324,121 @@ impl RecurrenceSpec {
             Self::Yearly { interval: n } => format!("FREQ=YEARLY{}", interval(*n)),
         }
     }
+
+    /// Reads back a rule [`to_rrule`](Self::to_rrule) wrote. A rule it could not have
+    /// written — one imported from a calendar, say — is `None`, not approximated: a
+    /// repetition described as something close to what it does is a wrong answer.
+    #[must_use]
+    pub fn from_rrule(rule: &str) -> Option<Self> {
+        let (mut freq, mut interval, mut days, mut month_day) = (None, 1_u16, None, None);
+        for part in rule.split(';').filter(|part| !part.is_empty()) {
+            let (key, value) = part.split_once('=')?;
+            match key.to_ascii_uppercase().as_str() {
+                "FREQ" => freq = Some(value.to_ascii_uppercase()),
+                "INTERVAL" => interval = value.parse().ok().filter(|n| *n >= 1)?,
+                "BYDAY" => {
+                    let parsed: Option<Vec<Weekday>> = value
+                        .split(',')
+                        .map(|code| {
+                            Some(match code.to_ascii_uppercase().as_str() {
+                                "MO" => Weekday::Monday,
+                                "TU" => Weekday::Tuesday,
+                                "WE" => Weekday::Wednesday,
+                                "TH" => Weekday::Thursday,
+                                "FR" => Weekday::Friday,
+                                "SA" => Weekday::Saturday,
+                                "SU" => Weekday::Sunday,
+                                _ => return None,
+                            })
+                        })
+                        .collect();
+                    days = Some(parsed?);
+                }
+                "BYMONTHDAY" => {
+                    month_day = Some(match value.parse::<i8>().ok()? {
+                        -1 => MonthDay::Last,
+                        day @ 1..=31 => MonthDay::Nth(day),
+                        _ => return None,
+                    });
+                }
+                _ => return None,
+            }
+        }
+        let weekdays = [
+            Weekday::Monday,
+            Weekday::Tuesday,
+            Weekday::Wednesday,
+            Weekday::Thursday,
+            Weekday::Friday,
+        ];
+        Some(match (freq?.as_str(), days, month_day) {
+            ("DAILY", None, None) => Self::Daily { interval },
+            ("WEEKLY", Some(days), None) if interval == 1 && days == weekdays => Self::Weekdays,
+            ("WEEKLY", days, None) => Self::Weekly { interval, days: days.unwrap_or_default() },
+            ("MONTHLY", None, day) => Self::Monthly { interval, day },
+            ("YEARLY", None, None) => Self::Yearly { interval },
+            _ => return None,
+        })
+    }
+
+    /// The repetition as the date grammar reads it — what an edit field shows, so that
+    /// saving it unchanged means the same thing. `from_completion` writes Todoist's `every!`.
+    ///
+    /// `None` for what the grammar cannot say, such as every third week on Mondays: such a
+    /// rule came from outside, and showing a phrase that would mean something else is how
+    /// saving an unrelated field would quietly change it.
+    #[must_use]
+    pub fn phrase(&self, from_completion: bool) -> Option<String> {
+        fn every(interval: u16, unit: &str) -> String {
+            match interval {
+                0 | 1 => unit.to_owned(),
+                2 => format!("other {unit}"),
+                n => format!("{n} {unit}s"),
+            }
+        }
+        // Only "other" can come before a day: "every 3 15th" is not English, nor grammar.
+        let before_a_day = |interval: u16| match interval {
+            0 | 1 => Some(""),
+            2 => Some("other "),
+            _ => None,
+        };
+        let body = match self {
+            Self::Daily { interval } => every(*interval, "day"),
+            Self::Weekly { interval, days } if days.is_empty() => every(*interval, "week"),
+            Self::Weekly { interval, days } => {
+                let names: Vec<String> =
+                    days.iter().map(|day| weekday_name(*day).to_lowercase()).collect();
+                let list = match names.split_last() {
+                    Some((last, [])) => last.clone(),
+                    Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+                    None => String::new(),
+                };
+                format!("{}{list}", before_a_day(*interval)?)
+            }
+            Self::Weekdays => "weekday".to_owned(),
+            Self::Monthly { interval, day: None } => every(*interval, "month"),
+            Self::Monthly { interval, day: Some(MonthDay::Nth(d)) } => {
+                format!("{}{}", before_a_day(*interval)?, ordinal_word(*d))
+            }
+            Self::Monthly { interval, day: Some(MonthDay::Last) } => {
+                format!("{}last day", before_a_day(*interval)?)
+            }
+            Self::Yearly { interval } => every(*interval, "year"),
+        };
+        Some(format!("every{} {body}", if from_completion { "!" } else { "" }))
+    }
+}
+
+/// `1st`, `2nd`, `23rd`, `11th`.
+fn ordinal_word(n: i8) -> String {
+    let suffix = match (n % 10, n % 100) {
+        (_, 11..=13) => "th",
+        (1, _) => "st",
+        (2, _) => "nd",
+        (3, _) => "rd",
+        _ => "th",
+    };
+    format!("{n}{suffix}")
 }
 
 /// A due date as typed, before resolution.

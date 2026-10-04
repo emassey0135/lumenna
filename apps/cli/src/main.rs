@@ -273,9 +273,14 @@ pub(crate) enum TaskCommand {
         /// A new title.
         #[arg(long)]
         title: Option<String>,
-        /// A date phrase, or `none` to clear it.
+        /// A date phrase, or `none` to clear it. A date without a repetition keeps the one
+        /// the task has.
         #[arg(long)]
         due: Option<String>,
+        /// A repetition, such as `every monday` or `every! 2 weeks`, or `none` to stop it
+        /// repeating.
+        #[arg(long)]
+        repeat: Option<String>,
         /// 1 to 4, where 1 is highest.
         #[arg(long)]
         priority: Option<u8>,
@@ -393,9 +398,9 @@ pub(crate) enum ProjectCommand {
         /// Its new name.
         to: String,
     },
-    /// Archive a project, keeping its tasks out of active views.
+    /// Archive a project, keeping its tasks out of active views — or unarchive one that is.
     Archive {
-        /// The project to archive.
+        /// The project to archive or unarchive.
         name: String,
     },
     /// Delete a project.
@@ -875,10 +880,11 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
         }
         TaskCommand::List { query } => Response::new(profile.list_tasks(&query.join(" "))?),
         TaskCommand::Show { id: input } => Response::new(profile.show_task(&id(input)?)?),
-        TaskCommand::Edit { id: input, title, due, priority, estimate, notes, project, labels } => {
+        TaskCommand::Edit { id: input, title, due, repeat, priority, estimate, notes, project, labels } => {
             Response::new(profile.edit_task(&id(input)?, TaskEdit {
                 title: title.clone(),
                 due: due.clone(),
+                repeat: repeat.clone(),
                 priority: *priority,
                 estimate: estimate.clone(),
                 notes: notes.clone(),

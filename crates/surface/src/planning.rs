@@ -11,8 +11,8 @@ use crate::error::{LumennaError, Result};
 use crate::resolve;
 use crate::tasks::{record, record_or};
 use crate::types::{
-    Announced, BlockEdit, BlockScope, BlockShown, Change, NewBlock, Plan, PlanAssignment, PlanBlock, PlanItem,
-    Rows, Timer,
+    Announced, BlockEdit, BlockScope, BlockShown, CancelledBlock, Change, NewBlock, Plan, PlanAssignment,
+    PlanBlock, PlanItem, Rows, Timer, repetition_phrase,
 };
 use crate::words::{count_line, duration, time_text};
 use crate::{Lumenna, repaired};
@@ -116,6 +116,19 @@ impl Lumenna {
                 snapshot.settings.day_window,
                 (day == now.date()).then(|| now.time()),
             );
+            let mut cancelled: Vec<CancelledBlock> = snapshot
+                .exceptions
+                .values()
+                .filter(|e| e.original_date == day && e.action == ExceptionAction::Cancelled)
+                .filter_map(|e| snapshot.series.get(&e.series_id))
+                .filter(|series| series.deleted_at.is_none())
+                .map(|series| CancelledBlock {
+                    series: series.id.to_string(),
+                    title: series.title.clone(),
+                    start: time_text(series.start_time),
+                })
+                .collect();
+            cancelled.sort_by(|a, b| (&a.start, &a.title).cmp(&(&b.start, &b.title)));
             Ok(Plan {
                 announcement: format!("{day}, {}", count_line(blocks.len(), "block")),
                 notices: Vec::new(),
@@ -124,6 +137,7 @@ impl Lumenna {
                 summary: summary(&blocks, overdue),
                 timeline,
                 blocks,
+                cancelled,
             })
         })
     }
@@ -315,6 +329,7 @@ impl Lumenna {
                 start_date: series.start_date.to_string(),
                 repeats: series.is_recurring(),
                 rrule: series.rrule.clone(),
+                repetition: series.rrule.as_deref().and_then(|rule| repetition_phrase(rule, false)),
             })
         })
     }
@@ -343,7 +358,12 @@ impl Lumenna {
                         series.start_date
                     );
                     if let Some(rrule) = &series.rrule {
-                        value.push_str(&format!(", repeats: {rrule}"));
+                        // In words where the grammar can say it; a rule from outside is
+                        // given as it is rather than approximated.
+                        match repetition_phrase(rrule, false) {
+                            Some(phrase) => value.push_str(&format!(", {phrase}")),
+                            None => value.push_str(&format!(", repeats by the rule {rrule}")),
+                        }
                     }
                     Row {
                         id: RowId::Occurrence(series.id, series.start_date),
@@ -392,6 +412,9 @@ impl Lumenna {
         minutes: Option<u32>,
     ) -> Result<Change> {
         let now = Zoned::now();
+        // An occurrence's own identifier, `<series>@<date>`, names its day — what `lum plan
+        // friday` lists — so it is not quietly put into today's instead.
+        let date = date.or_else(|| block.split_once('@').map(|(_, day)| day.to_owned()));
         self.with(|store| {
             let day = resolve::date(date.as_deref(), &now)?;
             // Looking a block up by identifier cannot know which year to open, so it opens
@@ -407,10 +430,10 @@ impl Lumenna {
             // A one-off block's assignments name only the series, so that moving the block
             // carries them with it (§3.7). A repeating block's name the day, and are sharded
             // by it; a one-off's follow the series' year.
-            let (block_ref, year) = if series.is_recurring() {
-                (BlockRef::Occurrence(series_id, day), day.year())
+            let (block_ref, year, day) = if series.is_recurring() {
+                (BlockRef::Occurrence(series_id, day), day.year(), day)
             } else {
-                (BlockRef::OneOff(series_id), series.start_date.year())
+                (BlockRef::OneOff(series_id), series.start_date.year(), series.start_date)
             };
 
             let mut change = edit::assign_task(&snapshot, task_id, block_ref, year)?;
@@ -560,11 +583,16 @@ fn block_kind(word: &str) -> Result<BlockKind> {
 }
 
 /// A repetition phrase — `every weekday` — as an RFC 5545 rule.
+/// A block's repetition as a rule. A block has no completion to count from, so `every!` is
+/// refused rather than quietly read as `every`.
 fn repetition(phrase: &str) -> Result<String> {
-    let tokens = lumenna_parse::words(phrase);
-    let (spec, _, _) = lumenna_parse::date::parse_recurrence(&tokens, 0).ok_or_else(|| {
-        LumennaError::new(format!("could not read a repetition from '{phrase}'"))
-    })?;
+    let (spec, from_completion) = resolve::repetition(phrase)?;
+    if from_completion {
+        return Err(LumennaError::new(
+            "a block repeats on the calendar; 'every!' is for tasks that count from when \
+             they are finished",
+        ));
+    }
     Ok(spec.to_rrule())
 }
 

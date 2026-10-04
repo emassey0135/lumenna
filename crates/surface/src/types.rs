@@ -449,6 +449,11 @@ pub struct TaskDetail {
     /// The repetition, as an RFC 5545 rule.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recurrence: Option<String>,
+    /// The repetition in the words quick add takes — `every monday`, `every! day` — which
+    /// [`TaskEdit::repeat`] reads back unchanged. Absent when it repeats by a rule the
+    /// grammar cannot say, which `recurrence` then holds alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repetition: Option<String>,
     /// How long it should take.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub estimate_mins: Option<u32>,
@@ -499,6 +504,11 @@ impl TaskDetail {
                 .as_ref()
                 .and_then(|due| due.recurrence.as_ref())
                 .map(|r| r.rrule.clone()),
+            repetition: task
+                .due
+                .as_ref()
+                .and_then(|due| due.recurrence.as_ref())
+                .and_then(|r| repetition_phrase(&r.rrule, r.from_completion)),
             estimate_mins: task.estimate_mins,
             state: snapshot.states_of(task, now).iter().map(|s| s.keyword().to_owned()).collect(),
             created_at: task.created_at.to_string(),
@@ -539,6 +549,22 @@ pub struct Plan {
     /// falls — §13's rule that what a timeline shows by empty space becomes a row.
     #[serde(default)]
     pub timeline: Vec<PlanItem>,
+    /// Repeating blocks cancelled for this day alone, so that the day can be put back
+    /// without remembering what used to be there.
+    #[serde(default, skip_serializing_if = "none")]
+    pub cancelled: Vec<CancelledBlock>,
+}
+
+/// A repeating block that does not happen on one day because that day was cancelled.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct CancelledBlock {
+    /// The series' identifier, for [`Lumenna::restore_occurrence`](crate::Lumenna::restore_occurrence).
+    pub series: String,
+    /// Its name.
+    pub title: String,
+    /// When the series has it start, `HH:MM`.
+    pub start: String,
 }
 
 /// One row of a day's timeline.
@@ -630,6 +656,16 @@ pub struct BlockShown {
     /// How it repeats, as an RFC 5545 rule.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rrule: Option<String>,
+    /// How it repeats in the words the block editor takes — `every weekday` — which
+    /// [`BlockEdit::repeat`] reads back unchanged. Absent for a rule the grammar cannot say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repetition: Option<String>,
+}
+
+/// A rule in the words the date grammar reads, if it can say it (§5).
+#[must_use]
+pub fn repetition_phrase(rrule: &str, from_completion: bool) -> Option<String> {
+    lumenna_core::time::RecurrenceSpec::from_rrule(rrule)?.phrase(from_completion)
 }
 
 /// One task assigned to a block for one sitting (§3.7).
@@ -1042,9 +1078,14 @@ pub struct TaskEdit {
     /// A new title.
     #[serde(default)]
     pub title: Option<String>,
-    /// A date phrase, or `none` to clear it.
+    /// A date phrase, or `none` to clear it. A phrase that names no repetition keeps the
+    /// one the task has: moving a weekly task to Thursday does not stop it repeating.
     #[serde(default)]
     pub due: Option<String>,
+    /// A repetition — `every monday`, `every! 2 weeks` — or `none` to stop it repeating.
+    /// A task with no due date becomes due on the first day the repetition lands on.
+    #[serde(default)]
+    pub repeat: Option<String>,
     /// 1 to 4, where 1 is highest.
     #[serde(default)]
     pub priority: Option<u8>,
