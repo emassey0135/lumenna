@@ -382,4 +382,79 @@ final class LumennaUITests: XCTestCase {
         tab("Tasks")
         XCTAssertTrue(row("written on the mac").waitForExistence(timeout: 30))
     }
+
+    // MARK: - Repetition, days and blocks
+
+    /// Replaces whatever a field holds: a triple tap selects all of it, so typing replaces it.
+    private func replace(_ field: XCUIElement, with text: String) {
+        field.tap(withNumberOfTaps: 3, numberOfTouches: 1)
+        field.typeText(text)
+    }
+
+    private func addBlock(_ title: String, repeating: String? = nil) {
+        tab("Today")
+        app.buttons["Add block"].tap()
+        let name = app.textFields["Name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        name.tap()
+        name.typeText(title)
+        if let repeating {
+            let repeats = app.textFields["Repeats"]
+            repeats.tap()
+            repeats.typeText(repeating)
+        }
+        app.buttons["Save"].tap()
+        XCTAssertTrue(cell(containing: title).waitForExistence(timeout: 5))
+    }
+
+    func testARepetitionIsShownInWordsAndKeptThroughANewDate() {
+        add("water plants every monday")
+        row("water plants").tap()
+        let repeats = app.textFields["Repeats"]
+        XCTAssertTrue(repeats.waitForExistence(timeout: 5))
+        XCTAssertEqual(repeats.value as? String, "every monday", "words, not an RRULE")
+        replace(app.textFields["Due"], with: "2026-12-10")
+        app.buttons["Save"].tap()
+        XCTAssertEqual(app.textFields["Due"].value as? String, "2026-12-10")
+        XCTAssertEqual(app.textFields["Repeats"].value as? String, "every monday", "a new date keeps it")
+    }
+
+    func testACancelledDayIsListedAndCanBePutBack() throws {
+        addBlock("Run", repeating: "every day")
+        cell(containing: "Run").swipeLeft()
+        app.buttons["Cancel This Day"].tap()
+        let cancelled = app.cells.containing(NSPredicate(format: "value == 'cancelled for this day'")).firstMatch
+        XCTAssertTrue(cancelled.waitForExistence(timeout: 5))
+        try audit()
+        cancelled.swipeLeft()
+        app.buttons["Restore This Day"].tap()
+        XCTAssertTrue(cancelled.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(cell(containing: "Run").exists)
+    }
+
+    func testUndoWorksFromTheDayToo() {
+        addBlock("Deep work")
+        app.navigationBars.buttons["Undo"].tap()
+        XCTAssertTrue(cell(containing: "Deep work").waitForNonExistence(timeout: 5))
+        app.navigationBars.buttons["Redo"].tap()
+        XCTAssertTrue(cell(containing: "Deep work").waitForExistence(timeout: 5))
+    }
+
+    func testEveryBlockIsListedUnderBrowseAndAsksBeforeDeleting() throws {
+        // Every day, so it is on today whatever day the test runs.
+        addBlock("Standup", repeating: "every day")
+        tab("Browse")
+        cell(containing: "Blocks").tap()
+        let standup = cell(containing: "Standup")
+        XCTAssertTrue(standup.waitForExistence(timeout: 5))
+        XCTAssertTrue((standup.value as? String)?.contains("every day") == true, "\(standup.value ?? "")")
+        try audit()
+        standup.tap()
+        XCTAssertEqual(app.textFields["Repeats"].value as? String, "every day")
+        app.buttons["Cancel"].tap()
+        standup.swipeLeft()
+        app.buttons["Delete"].tap()
+        app.alerts.buttons["Delete"].tap()
+        XCTAssertTrue(standup.waitForNonExistence(timeout: 5))
+    }
 }

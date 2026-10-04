@@ -6,8 +6,8 @@ func sigil(_ mark: Character, _ name: String) -> String {
     name.contains(" ") ? "\(mark)\"\(name)\"" : "\(mark)\(name)"
 }
 
-/// Everything that is not the day or the task list: projects, labels, saved filters and the
-/// trash (§16.1).
+/// Everything that is not the day or the task list: projects, labels, saved filters, every
+/// block series, and the trash (§16.1).
 final class BrowseViewController: ItemListViewController {
     init(core: Core) {
         super.init(core: core, title: "Browse")
@@ -17,11 +17,13 @@ final class BrowseViewController: ItemListViewController {
         let projects = try core.lumenna.listProjects().count
         let labels = try core.lumenna.listLabels().count
         let filters = try core.lumenna.listFilters().count
+        let blocks = try core.lumenna.listBlocks().count
         let trash = try core.lumenna.listTasks(query: "deleted").count
         return ([
             Item(key: "projects", title: "Projects", detail: count(projects, "project")),
             Item(key: "labels", title: "Labels", detail: count(labels, "label")),
             Item(key: "filters", title: "Saved filters", detail: count(filters, "filter")),
+            Item(key: "blocks", title: "Blocks", detail: count(blocks, "block")),
             Item(key: "trash", title: "Trash", detail: count(trash, "task")),
         ], "")
     }
@@ -36,6 +38,7 @@ final class BrowseViewController: ItemListViewController {
         case "projects": next = ProjectsViewController(core: core)
         case "labels": next = LabelsViewController(core: core)
         case "filters": next = FiltersViewController(core: core)
+        case "blocks": next = BlocksViewController(core: core)
         default: next = TaskListViewController(core: core, title: "Trash", query: "deleted", mode: .trash)
         }
         navigationController?.pushViewController(next, animated: true)
@@ -44,12 +47,16 @@ final class BrowseViewController: ItemListViewController {
 
 /// The project tree, with weights (§3.4).
 final class ProjectsViewController: ItemListViewController {
+    /// Which projects are archived, by name, so the action can say which way it goes.
+    private var archived: Set<String> = []
+
     init(core: Core) {
         super.init(core: core, title: "Projects")
     }
 
     override func load() throws -> (items: [Item], count: String) {
         let rows = try core.lumenna.listProjects()
+        archived = Set(rows.rows.filter { $0.state.contains("archived") }.map(\.title))
         // Depth is said where it changes, never as indentation alone (§16.11).
         var previous: UInt32?
         let items = rows.rows.map { row -> Item in
@@ -57,7 +64,7 @@ final class ProjectsViewController: ItemListViewController {
             return Item(
                 key: row.title,
                 title: row.title,
-                detail: row.value,
+                detail: ([row.value].compactMap { $0 } + row.state).joined(separator: ", "),
                 depth: row.depth,
                 spoken: RowSpeech.value(row, previousDepth: previous)
             )
@@ -115,7 +122,7 @@ final class ProjectsViewController: ItemListViewController {
                     self?.perform(on: item) { try lumenna.weighProject(name: item.key, weight: weight) }
                 }
             },
-            ItemAction(title: "Archive") { [weak self] item in
+            ItemAction(title: archived.contains(item.key) ? "Unarchive" : "Archive") { [weak self] item in
                 self?.perform(on: item) { try lumenna.archiveProject(name: item.key) }
             },
             ItemAction(title: "Delete", destructive: true) { [weak self] item in self?.delete(item) },
@@ -285,5 +292,59 @@ final class FiltersViewController: ItemListViewController {
                 self?.perform(on: item) { try lumenna.deleteFilter(name: item.key) }
             },
         ]
+    }
+}
+
+
+/// Every block series, by when it starts: for the ones not on any day near enough to find
+/// from the planner (§3.6).
+final class BlocksViewController: ItemListViewController {
+    init(core: Core) {
+        super.init(core: core, title: "Blocks")
+    }
+
+    override func load() throws -> (items: [Item], count: String) {
+        let rows = try core.lumenna.listBlocks()
+        return (rows.rows.map { Item(key: $0.id, title: $0.title, detail: $0.value) }, rows.announcement)
+    }
+
+    override var addTitle: String? { "Add block" }
+
+    override func add() {
+        presentBlockForm(BlockFormModel(core: core, purpose: .add) { [weak self] change in
+            self?.reload(saying: change)
+        })
+    }
+
+    override func open(_ item: Item) {
+        edit(item)
+    }
+
+    override func actions(for item: Item) -> [ItemAction] {
+        [
+            ItemAction(title: "Edit") { [weak self] item in self?.edit(item) },
+            ItemAction(title: "Delete", destructive: true) { [weak self] item in self?.delete(item) },
+        ]
+    }
+
+    private func edit(_ item: Item) {
+        do {
+            presentBlockForm(try .series(core: core, id: item.key) { [weak self] change in
+                self?.reload(focusing: item.key, saying: change)
+            })
+        } catch {
+            showFailure(error.sentence)
+        }
+    }
+
+    private func delete(_ item: Item) {
+        let repeats = (try? core.lumenna.showBlock(id: item.key).repeats) ?? false
+        let message = repeats
+            ? "Every occurrence goes. To skip one day, cancel it from the day instead."
+            : "It goes to the trash with its assignments."
+        confirm("Delete \(item.title)?", message: message, action: "Delete") { [weak self] in
+            guard let self else { return }
+            self.perform(on: item) { try self.core.lumenna.deleteBlock(id: item.key) }
+        }
     }
 }

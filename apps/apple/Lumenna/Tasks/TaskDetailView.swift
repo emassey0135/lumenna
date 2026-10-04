@@ -30,7 +30,7 @@ final class TaskDetailViewController: UIHostingController<TaskDetailView> {
 }
 
 /// The task as stored, and the fields as edited.
-final class TaskDetailModel: ObservableObject {
+final class TaskDetailModel: NSObject, ObservableObject {
     private let core: Core
     private let id: String
     /// The screen showing this, for pickers and for leaving when the task goes.
@@ -39,6 +39,7 @@ final class TaskDetailModel: ObservableObject {
     @Published private(set) var task: TaskDetail?
     @Published var title = ""
     @Published var due = ""
+    @Published var repetition = ""
     @Published var priority: UInt8 = 4
     @Published var estimate = ""
     @Published var project = ""
@@ -49,7 +50,19 @@ final class TaskDetailModel: ObservableObject {
     init(core: Core, id: String) {
         self.core = core
         self.id = id
+        super.init()
         load()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(storeChanged), name: Core.changed, object: nil
+        )
+    }
+
+    /// Another device, or this one elsewhere, changed the store. The fields follow unless the
+    /// person is part way through editing them, which would be losing their typing.
+    @objc private func storeChanged() {
+        if !hasChanges {
+            load()
+        }
     }
 
     /// Reads the task again and resets the fields to it.
@@ -59,6 +72,7 @@ final class TaskDetailModel: ObservableObject {
             task = shown.task
             title = shown.task.title
             due = Self.dueText(shown.task)
+            repetition = shown.task.repetition ?? ""
             priority = shown.task.priority
             estimate = shown.task.estimateMins.map { "\($0)m" } ?? ""
             project = shown.task.project ?? ""
@@ -76,7 +90,8 @@ final class TaskDetailModel: ObservableObject {
 
     var hasChanges: Bool {
         guard let task else { return false }
-        return title != task.title || due != Self.dueText(task) || priority != task.priority
+        return title != task.title || due != Self.dueText(task) || repetition != (task.repetition ?? "")
+            || priority != task.priority
             || estimate != (task.estimateMins.map { "\($0)m" } ?? "")
             || project != (task.project ?? "") || notes != task.notes
             || labels != task.labels.joined(separator: ", ")
@@ -93,6 +108,10 @@ final class TaskDetailModel: ObservableObject {
         let edit = TaskEdit(
             title: title != task.title ? title : nil,
             due: due != Self.dueText(task) ? (due.isEmpty ? "none" : due) : nil,
+            // Cleared, it stops repeating — unless it repeats by a rule this cannot show, when
+            // the field started empty and empty still means leave it.
+            repeat: repetition != (task.repetition ?? "")
+                ? (repetition.isEmpty ? "none" : repetition) : nil,
             priority: priority != task.priority ? priority : nil,
             estimate: estimate != (task.estimateMins.map { "\($0)m" } ?? "")
                 ? (estimate.isEmpty ? "none" : estimate) : nil,
@@ -141,6 +160,28 @@ final class TaskDetailModel: ObservableObject {
         run { try core.lumenna.moveTask(id: id, to: .top) }
     }
 
+    /// Puts this task into a work block today or tomorrow (§3.7); the planner reaches any day.
+    func assign() {
+        guard let host else { return }
+        var choices: [(String, () -> Void)] = []
+        for (word, day) in [("Today", nil as String?), ("Tomorrow", "tomorrow")] {
+            guard let plan = try? core.lumenna.plan(date: day) else { continue }
+            for block in plan.blocks where block.kind == "work" {
+                choices.append(("\(word), \(Clock.time(block.start)), \(block.title)", { [weak self] in
+                    guard let self else { return }
+                    self.run {
+                        try self.core.lumenna.assign(task: self.id, block: block.id, date: plan.date, minutes: nil)
+                    }
+                }))
+            }
+        }
+        if choices.isEmpty {
+            failure = "There are no work blocks today or tomorrow. Add one from Today."
+            return
+        }
+        host.choose("Put in a Block", actions: choices)
+    }
+
     func trash() {
         do {
             let change = try core.lumenna.trashTask(id: id)
@@ -187,7 +228,10 @@ struct TaskDetailView: View {
                 field("Title", text: $model.title, example: "What to do", axis: .vertical)
                 field("Due", text: $model.due, example: "tomorrow")
                     .textInputAutocapitalization(.never)
-                    .accessibilityHint("A date, such as tomorrow or next Friday. Empty for none.")
+                    .accessibilityHint("A date, such as tomorrow or next Friday. Empty for none. A new date keeps how it repeats.")
+                field("Repeats", text: $model.repetition, example: "every monday")
+                    .textInputAutocapitalization(.never)
+                    .accessibilityHint("Such as every Monday, or every! 2 weeks to count from when it is done. Empty for no repetition.")
                 field("Estimate", text: $model.estimate, example: "45m")
                     .textInputAutocapitalization(.never)
                     .accessibilityHint("Such as 45m or 1h30m. Empty for none.")
@@ -225,8 +269,8 @@ struct TaskDetailView: View {
                     FormParts.caption("Waits for")
                 }
                 Section {
-                    if let recurrence = task.recurrence {
-                        LabeledContent("Repeats", value: recurrence)
+                    if task.repetition == nil, let recurrence = task.recurrence {
+                        LabeledContent("Repeats by the rule", value: recurrence)
                     }
                     LabeledContent("State", value: task.state.joined(separator: ", "))
                 } header: {
@@ -236,6 +280,7 @@ struct TaskDetailView: View {
                     Button(task.state.contains("completed") ? "Mark Not Done" : "Mark Done") {
                         model.toggleDone()
                     }
+                    Button("Put in a Block…") { model.assign() }
                     Button("Make Subtask Of…") { model.makeSubtask() }
                     if task.parent != nil {
                         Button("Move to Top Level") { model.moveToTop() }
