@@ -33,12 +33,20 @@ def profile_directory() -> Path:
     """Where the store lives, by the same rule the CLI uses.
 
     `LUMENNA_PROFILE` first — which is what makes a second profile possible without a flag on
-    every invocation — then the platform data directory.
+    every invocation — then the platform data directory, which on Linux is
+    `$XDG_DATA_HOME/lumenna`, or `~/.local/share/lumenna` when that is unset.
+
+    This has to match `lum` exactly, `XDG_DATA_HOME` included: the app passes the directory it
+    found to the server it spawns, so a mismatch would quietly open a second, empty store. As
+    the `directories` crate does, a relative `XDG_DATA_HOME` is ignored — the XDG
+    specification says such a value is invalid.
     """
     explicit = os.environ.get("LUMENNA_PROFILE")
     if explicit:
         return Path(explicit)
-    return Path.home() / ".local" / "share" / "lumenna"
+    data_home = os.environ.get("XDG_DATA_HOME", "")
+    base = Path(data_home) if os.path.isabs(data_home) else Path.home() / ".local" / "share"
+    return base / "lumenna"
 
 
 def connect(profile: Path | None = None) -> Client:
