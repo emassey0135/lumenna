@@ -3006,6 +3006,13 @@ common among blind iOS users and SwiftUI's `.keyboardShortcut` is thin on iOS.
 `UICollectionViewCell`s: UIKit structure and focus behaviour, declarative cell content.
 This is the intended blend.
 
+*In practice:* the accessibility audit (`performAccessibilityAudit`) flagged every `Text`
+hosted this way as not supporting Dynamic Type, and as clipped when the size changed at run
+time. Rows that are text, a symbol and a chevron are exactly what `UIListContentConfiguration`
+draws, and it passes, so the task list uses that. `UIHostingConfiguration` remains the
+option for a row UIKit's configurations cannot express — and such a row should be checked
+against the audit before it ships.
+
 SwiftUI for detail forms, settings, and sheets — where its state binding eliminates
 "UI out of sync with model" bugs, a class of bug that's *worse* for screen reader users
 because a stale label is announced confidently and looks like truth.
