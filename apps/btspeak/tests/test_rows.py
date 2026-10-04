@@ -9,7 +9,13 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import btspeak_stub  # noqa: E402
+
+btspeak_stub.install()
+
+from menus import char_offset  # noqa: E402
 from rows import Tree, describe  # noqa: E402
 
 
@@ -100,3 +106,51 @@ class AnnouncingTheLevel(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReadingServerOffsets(unittest.TestCase):
+    """The server's spans count UTF-8 bytes; a Python string counts characters."""
+
+    def test_ascii_offsets_are_unchanged(self):
+        self.assertEqual(char_offset("call #wo", 6), 6)
+
+    def test_an_accent_before_the_span_moves_it(self):
+        text = "café #wo"
+        start = len("café ".encode("utf-8"))
+        self.assertEqual(text[char_offset(text, start):], "#wo")
+
+    def test_an_offset_inside_a_character_does_not_split_it(self):
+        self.assertEqual(char_offset("é", 1), 0)
+
+
+class ScalingToALongList(unittest.TestCase):
+    """A redraw asks every row for its title, so each title has to be cheap."""
+
+    def test_a_large_folded_branch_does_not_slow_every_row_after_it(self):
+        # The worst case for walking the list: every row after a big folded branch had to
+        # scan back across all of it to find the row read before it.
+        import time
+
+        rows = [row("big", "big project")]
+        for i in range(600):
+            rows.append(row(f"c{i}", "child", depth=1))
+            rows.append(row(f"g{i}", "grandchild", depth=2))
+        for top in range(300):
+            rows.append(row(f"t{top}", f"task {top}"))
+        tree = Tree(rows)
+        tree.collapse(0)
+
+        started = time.perf_counter()
+        titles = [tree.title_for(i) for i in range(len(rows)) if tree.visible(i)]
+        elapsed = time.perf_counter() - started
+
+        self.assertEqual(len(titles), 301, "the folded branch is hidden, the rest shown")
+        self.assertFalse(any(t.startswith("level") for t in titles))
+        self.assertLess(elapsed, 0.05, f"a redraw of 1500 rows took {elapsed:.3f}s")
+
+    def test_changing_the_folded_set_directly_still_takes_effect(self):
+        tree = Tree([row("a", "a"), row("b", "b", depth=1)])
+        self.assertTrue(tree.visible(1))
+        tree.collapsed.add("a")
+        self.assertFalse(tree.visible(1))
+

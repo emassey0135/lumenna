@@ -87,6 +87,8 @@ socket.
 - **Two framings, chosen per message by what arrived**: newline-delimited JSON (MCP's stdio
   transport, §12) and `Content-Length` headers (`jsonrpc.el`, §16.10). A reply is framed the
   way its request was.
+- **Spans are UTF-8 byte offsets**, as Rust strings are. A client in a language that indexes
+  by code point converts both ways (`menus.char_offset` in the BTSpeak app).
 - **`complete` and `preview` are RPC-only** — completion is a keystroke-rate question and a
   process per keystroke is not an answer. They are why the BTSpeak app speaks a protocol
   rather than shelling out.
@@ -139,7 +141,7 @@ Two consequences: `notes` is a `String` here even though it is Automerge `Text` 
 document, and nothing validates on construction that merge could violate — §3.1 requires
 tolerating dangling references and cycles rather than refusing to load.
 
-### Three store rules that are easy to break
+### Store rules that are easy to break
 
 **Writes take the version the user edited.** `put(record, before)` writes only the fields
 that differ. Passing a freshly read `before`, or `None` on an update, writes every field —
@@ -151,6 +153,26 @@ operation that created the object, so two devices creating a map at the same key
 maps, and on merge one loses everything written into it. Root collections are handled by a
 deterministic genesis change (`Doc::new`); per-record sets are handled by creating them when
 the record is created. Any *new* container needs the same care.
+
+**A record keyed by something two devices can produce on their own is inline.** Exceptions
+(series and date) and reminder acks (reminder and date) store each field as its own key,
+`<record>/<field>`, in the collection, so nothing is ever created for merge to choose
+between. Set `Record::INLINE` for any new record keyed that way.
+
+**Things that must exist once per store come from deterministic changes.** The genesis
+creates the root collections; `core`'s second change (`Doc::ensure_schema`) creates the Inbox
+under the fixed `ProjectId::INBOX` and the `series_years` map. Both are frozen bytes: never
+edit what they write; add another change on top instead. Clients never create an Inbox;
+`edit::adopt_inbox` folds a pre-existing one into the shared one.
+
+**A series lives in its start year's document, and recurs into later ones.**
+`series_years` in `core` records which years hold recurring series, and `Store::load_year`
+loads those years too. Without it a routine vanishes on 1 January.
+
+**Change rowids are `AUTOINCREMENT` and compaction holds the write lock.** Rowids that get
+reused after compaction make running processes skip changes. `Db::compact` folds everything
+on disk (snapshot included) into the document under `BEGIN IMMEDIATE` before deleting
+anything, and `refresh` reads in one transaction and loads a snapshot whose heads it lacks.
 
 **The change cursor only advances in `refresh`.** `PRAGMA data_version` does not move for
 your own connection's writes, and rows from another process can interleave with yours. A
@@ -172,6 +194,12 @@ it. Core writes nothing, so every rule is testable against plain structs.
 - A cascaded completion of a **recurring** subtask must name that subtask's own occurrence,
   or it reads as unfinished the moment it is written. Cascades never *advance* a subtask —
   that would resurrect what was just closed out.
+- **A subtask of a recurring task recurs with it.** `Snapshot::occurrence_of` gives the
+  occurrence a completion is scoped to: the task's own due date if it recurs, else its nearest
+  recurring ancestor's. Completions name it, and `is_completed` checks it.
+- **Ask many tasks through `Facts`.** `Snapshot::has_state` and friends scan every completion
+  and assignment per call. Anything looping over tasks uses `Context::new` (filters, rows) or
+  `Snapshot::facts()`, which index them once.
 - Every operation returns `Edit::nothing()` rather than a no-op change when nothing differs,
   so the undo stack does not fill with entries that appear to do nothing when reversed.
 

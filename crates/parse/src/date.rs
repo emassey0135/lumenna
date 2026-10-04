@@ -75,6 +75,13 @@ pub fn parse_date(words: &[Word], at: usize) -> Option<(DateSpec, usize)> {
         return Some((DateSpec::On(date), 1));
     }
 
+    // "on friday", "on sep 1": the preposition belongs to the date, not the title.
+    if word.is("on")
+        && let Some((date, used)) = parse_date(words, at + 1)
+    {
+        return Some((date, used + 1));
+    }
+
     // "this friday" / "next friday" / "last friday", and the bare weekday.
     let which = match word.lower.as_str() {
         "this" => Some(Which::This),
@@ -320,16 +327,28 @@ fn weekday_list(words: &[Word], at: usize) -> (Vec<Weekday>, usize) {
 /// A weekday by full name or three-letter abbreviation.
 #[must_use]
 pub fn weekday_of(text: &str) -> Option<Weekday> {
-    Some(match text.trim_end_matches('s') {
-        "monday" | "mon" => Weekday::Monday,
-        "tuesday" | "tue" | "tues" => Weekday::Tuesday,
-        "wednesday" | "wed" => Weekday::Wednesday,
-        "thursday" | "thu" | "thur" | "thurs" => Weekday::Thursday,
-        "friday" | "fri" => Weekday::Friday,
-        "saturday" | "sat" => Weekday::Saturday,
-        "sunday" | "sun" => Weekday::Sunday,
+    // Plurals are spelt out rather than made by trimming an `s`, which would read "thus" as
+    // Thursday.
+    Some(match text {
+        "monday" | "mondays" | "mon" => Weekday::Monday,
+        "tuesday" | "tuesdays" | "tue" | "tues" => Weekday::Tuesday,
+        "wednesday" | "wednesdays" | "wed" => Weekday::Wednesday,
+        "thursday" | "thursdays" | "thu" | "thur" | "thurs" => Weekday::Thursday,
+        "friday" | "fridays" | "fri" => Weekday::Friday,
+        "saturday" | "saturdays" | "sat" => Weekday::Saturday,
+        "sunday" | "sundays" | "sun" => Weekday::Sunday,
         _ => return None,
     })
+}
+
+/// Weekday abbreviations that are also everyday English words.
+///
+/// "Buy sun cream" is not due on Sunday. Quick add accepts these only where something else
+/// says a date is meant — `on sat`, `next wed`, `every sun`, `sat 3pm` — and never as a lone
+/// word, since a date swallowed out of a title is invisible until the task fails to appear.
+#[must_use]
+pub fn is_ambiguous_weekday(text: &str) -> bool {
+    matches!(text, "sun" | "sat" | "wed")
 }
 
 /// A month by full name or three-letter abbreviation.

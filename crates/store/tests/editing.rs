@@ -11,10 +11,11 @@ use lumenna_core::edit::{
     MoveTo, ProjectDeletion, assign_task, complete_task, create_task, merge_labels, move_task,
     trash_project, trash_task, uncomplete_task, update_task,
 };
-use lumenna_core::model::{BlockRef, Due, Label, Priority, Project, Recurrence, Task};
+use lumenna_core::model::{
+    BlockKind, BlockRef, BlockSeries, Due, Label, Priority, Project, Recurrence, Task,
+};
 use lumenna_core::order::OrderKey;
 use lumenna_core::snapshot::Snapshot;
-use lumenna_core::SeriesId;
 use lumenna_store::{Documents, Store};
 
 /// One mutation, deferred so the same list can be replayed against a changing snapshot.
@@ -84,6 +85,19 @@ fn every_operation_undoes_cleanly_through_automerge() {
     docs.apply(&create_task(parent)).unwrap();
     docs.apply(&create_task(child)).unwrap();
 
+    let mut focus = BlockSeries::one_off(
+        "Focus",
+        BlockKind::Work,
+        date(2026, 5, 1),
+        jiff::civil::time(9, 0, 0, 0),
+        90,
+    )
+    .unwrap();
+    focus.rrule = Some("FREQ=DAILY".to_owned());
+    focus.end_date = None;
+    let focus_id = focus.id;
+    docs.put_series(&focus, None).unwrap();
+
     let operations: Vec<Operation> = vec![
         Box::new(move |s| complete_task(s, parent_id, &now()).unwrap()),
         Box::new(move |s| trash_task(s, child_id).unwrap()),
@@ -101,7 +115,7 @@ fn every_operation_undoes_cleanly_through_automerge() {
             assign_task(
                 s,
                 child_id,
-                BlockRef::Occurrence(SeriesId::new(), date(2026, 5, 6)),
+                BlockRef::Occurrence(focus_id, date(2026, 5, 6)),
                 2026,
             )
             .unwrap()

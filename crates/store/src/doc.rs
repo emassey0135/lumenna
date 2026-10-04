@@ -26,6 +26,7 @@ use lumenna_core::model::{
     SavedFilter, Settings, Task, TaskCompletion,
 };
 use lumenna_core::edit::{Change, Edit};
+use lumenna_core::id::ProjectId;
 use lumenna_core::snapshot::Snapshot;
 
 use crate::error::{Result, StoreError};
@@ -36,6 +37,45 @@ use crate::value::{Reader, Writer};
 ///
 /// Shared by every device on purpose, and used for exactly one change. See [`Doc::new`].
 const GENESIS_ACTOR: &[u8] = b"lumenna-genesis-0";
+
+/// The root map in `core` that records which years hold a recurring block series.
+const SERIES_YEARS: &str = "series_years";
+
+/// `core`'s second change, and its hash. See [`Doc::ensure_schema`].
+///
+/// **Frozen.** Its bytes are part of every store's history and must come out identical from
+/// every build that ever makes it, so it writes literal keys rather than going through
+/// [`Record::write`](crate::records::Record::write), whose layout is free to change. Never
+/// edit what this writes; a further schema step is a further change on top.
+fn core_schema_change() -> &'static (ChangeHash, Vec<u8>) {
+    static CHANGE: std::sync::OnceLock<(ChangeHash, Vec<u8>)> = std::sync::OnceLock::new();
+    CHANGE.get_or_init(|| {
+        let mut doc = Doc::new(DocId::Core).doc;
+        let genesis = doc.get_heads();
+        doc.set_actor(ActorId::from(GENESIS_ACTOR));
+        let projects = match doc.get(ROOT, "projects") {
+            Ok(Some((Value::Object(ObjType::Map), id))) => id,
+            _ => unreachable!("the genesis creates `projects`"),
+        };
+        let inbox = doc
+            .put_object(&projects, ProjectId::INBOX.to_string(), ObjType::Map)
+            .expect("a fresh map accepts a key");
+        for (key, value) in [("name", "Inbox"), ("order", "V")] {
+            doc.put(&inbox, key, value).expect("a fresh map accepts a key");
+        }
+        for (key, value) in [("archived", false), ("is_inbox", true)] {
+            doc.put(&inbox, key, value).expect("a fresh map accepts a key");
+        }
+        doc.put_object(ROOT, SERIES_YEARS, ObjType::Map).expect("the root accepts a map");
+        doc.commit_with(CommitOptions::default().with_time(0).with_message("inbox"));
+        let change = doc
+            .get_changes(&genesis)
+            .into_iter()
+            .next()
+            .expect("the change just committed");
+        (change.hash(), change.raw_bytes().to_vec())
+    })
+}
 
 /// Which of §3.1's documents this is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -142,6 +182,38 @@ impl Doc {
         doc.commit_with(CommitOptions::default().with_time(0).with_message("genesis"));
         doc.set_actor(ActorId::random());
         Self { id, doc }
+    }
+
+    /// Brings in `core`'s second deterministic change, if it is not already here.
+    ///
+    /// The genesis creates the root collections; this one creates the two things that have
+    /// to exist exactly once in every store and so must never be created by a device on its
+    /// own: the **Inbox**, under [`ProjectId::INBOX`], and the **`series_years`** map that
+    /// [`Documents::recurring_years`] reads. It is built the same way as the genesis — fixed
+    /// actor, fixed time, fixed content, and depending on nothing but the genesis — so it is
+    /// byte-identical wherever it is made, and a store that applies it late gains the same
+    /// change a new store starts with.
+    ///
+    /// Returns whether it was newly applied. Other documents have nothing to apply.
+    ///
+    /// # Errors
+    ///
+    /// If Automerge refuses the change.
+    pub fn ensure_schema(&mut self) -> Result<bool> {
+        if self.id != DocId::Core {
+            return Ok(false);
+        }
+        let (hash, bytes) = core_schema_change();
+        if self.doc.get_change_by_hash(hash).is_some() {
+            return Ok(false);
+        }
+        self.doc.load_incremental(bytes)?;
+        Ok(true)
+    }
+
+    /// Whether the document holds a change.
+    pub fn has_change(&mut self, hash: &ChangeHash) -> bool {
+        self.doc.get_change_by_hash(hash).is_some()
     }
 
     /// Loads a document from a saved snapshot.
@@ -260,6 +332,18 @@ impl Doc {
         self.check_domain(R::DOMAIN)?;
         let collection = self.collection_for_write(R::COLLECTION)?;
         let key = R::key_string(&record.key());
+        if R::INLINE {
+            let mut before = before;
+            // A record written before it was inline is a map at its bare key. It goes, and
+            // the record is written whole in the inline form, so there is never more than
+            // one copy to read.
+            if let Some((Value::Object(_), _)) = self.doc.get(&collection, key.as_str())? {
+                self.doc.delete(&collection, key.as_str())?;
+                before = None;
+            }
+            let mut writer = Writer::inline(&mut self.doc, collection, format!("{key}/"));
+            return record.write(&mut writer, before);
+        }
         let obj = match self.doc.get(&collection, key.as_str())? {
             Some((Value::Object(ObjType::Map), id)) => id,
             _ => self.doc.put_object(&collection, key.as_str(), ObjType::Map)?,
@@ -284,6 +368,14 @@ impl Doc {
             if self.doc.get(&collection, key.as_str())?.is_some() {
                 self.doc.delete(&collection, key.as_str())?;
             }
+            if R::INLINE {
+                let fields = format!("{key}/");
+                let owned: Vec<String> =
+                    self.doc.keys(&collection).filter(|k| k.starts_with(&fields)).collect();
+                for field in owned {
+                    self.doc.delete(&collection, field.as_str())?;
+                }
+            }
         }
         Ok(())
     }
@@ -293,11 +385,33 @@ impl Doc {
         let Some(collection) = self.collection_for_read(R::COLLECTION) else {
             return BTreeMap::new();
         };
-        let reader = Reader::new(&self.doc, collection);
-        let mut out = BTreeMap::new();
+        let reader = Reader::new(&self.doc, collection.clone());
+        // An inline record is every key `<record>/...`; a map at a bare key is either an
+        // ordinary record or an inline one written before it was inline. Where both exist the
+        // inline form is the newer, since writing it deletes the map.
+        let mut keys: Vec<(String, bool)> = Vec::new();
+        let mut inline = std::collections::BTreeSet::new();
         for key in reader.keys() {
+            match key.split_once('/') {
+                Some((record, _)) if R::INLINE => {
+                    if inline.insert(record.to_owned()) {
+                        keys.push((record.to_owned(), true));
+                    }
+                }
+                _ => keys.push((key, false)),
+            }
+        }
+        keys.retain(|(key, is_inline)| *is_inline || !inline.contains(key));
+
+        let mut out = BTreeMap::new();
+        for (key, is_inline) in keys {
+            let fields = if is_inline {
+                Some(Reader::inline(&self.doc, collection.clone(), format!("{key}/")))
+            } else {
+                reader.map(&key)
+            };
             let record = R::parse_key(&key)
-                .zip(reader.map(&key))
+                .zip(fields)
                 .and_then(|(parsed, fields)| R::hydrate(&fields, parsed));
             match record {
                 Some(record) => {
@@ -535,7 +649,7 @@ macro_rules! core_methods {
     };
 }
 
-use lumenna_core::id::{CompletionId, FilterId, LabelId, ProjectId, ReminderId, TaskId};
+use lumenna_core::id::{CompletionId, FilterId, LabelId, ReminderId, TaskId};
 
 core_methods! {
     put_task, purge_task, Task, TaskId, "a task";
@@ -571,7 +685,69 @@ impl Documents {
     ///
     /// If Automerge refuses the write.
     pub fn put_series(&mut self, s: &BlockSeries, before: Option<&BlockSeries>) -> Result<()> {
-        self.blocks(s.start_date.year()).put(s, before)
+        let year = s.start_date.year();
+        if s.is_recurring() {
+            self.note_recurring_year(year)?;
+        }
+        match before {
+            // A series lives in the year it starts, so a new start year is a new document.
+            // Writing only the changed fields there would leave a record missing everything
+            // else, so it is written whole and removed from the old year. The old year has to
+            // be loaded for that removal to reach the disk, which is why anything editing by
+            // identifier loads every year.
+            Some(was) if was.start_date.year() != year => {
+                self.blocks(was.start_date.year()).purge::<BlockSeries>(&was.id)?;
+                self.blocks(year).put(s, None)
+            }
+            _ => self.blocks(year).put(s, before),
+        }
+    }
+
+    /// Ensures `core` is at its current schema. See [`Doc::ensure_schema`].
+    ///
+    /// # Errors
+    ///
+    /// If Automerge refuses the change.
+    pub fn ensure_schema(&mut self) -> Result<bool> {
+        self.core.ensure_schema()
+    }
+
+    /// The years whose document holds at least one recurring series.
+    ///
+    /// A series lives in the year it starts (§3.1) but recurs into every year after, so
+    /// showing a day means loading its own year **and** each of these before it. One-off
+    /// blocks never need that, which is why this is an index of recurring years rather than
+    /// a reason to load every year there is.
+    #[must_use]
+    pub fn recurring_years(&self) -> Vec<i16> {
+        let Some(obj) = self.core.collection_for_read(SERIES_YEARS) else {
+            return Vec::new();
+        };
+        let reader = Reader::new(&self.core.doc, obj);
+        reader
+            .keys()
+            .into_iter()
+            .filter(|k| reader.bool(k) == Some(true))
+            .filter_map(|k| k.parse().ok())
+            .collect()
+    }
+
+    /// Records that `year` holds a recurring series. Only ever adds, and writes nothing
+    /// when the year is already there.
+    ///
+    /// # Errors
+    ///
+    /// If Automerge refuses the write.
+    pub fn note_recurring_year(&mut self, year: i16) -> Result<()> {
+        self.core.ensure_schema()?;
+        let Some(obj) = self.core.collection_for_read(SERIES_YEARS) else {
+            return Ok(());
+        };
+        let key = year.to_string();
+        if Reader::new(&self.core.doc, obj.clone()).bool(&key) != Some(true) {
+            self.core.doc.put(&obj, key.as_str(), true)?;
+        }
+        Ok(())
     }
 
     /// Creates or updates an exception, in the year of the occurrence it modifies.

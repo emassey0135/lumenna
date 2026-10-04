@@ -37,6 +37,10 @@ pub struct Store {
     /// another process, or from a peer.
     cursor: i64,
     data_version: i64,
+    /// Set when this process took in another's changes outside [`Store::refresh`] — during
+    /// a compaction — so that the next refresh still reports them. A watcher that only ever
+    /// hears about changes from `refresh` would otherwise never be told.
+    unreported: bool,
 }
 
 impl Store {
@@ -65,12 +69,24 @@ impl Store {
             data_version: db.data_version()?,
             db,
             docs: Documents::new(),
+            unreported: false,
         };
         // `core` and `devices` are small and needed on every device; years are not loaded
         // until asked for.
         for id in [DocId::Core, DocId::Devices] {
             let (doc, stored) = store.read_document(id)?;
             store.adopt(doc, stored);
+        }
+        // The Inbox and the recurring-year index come from a deterministic change (see
+        // `Doc::ensure_schema`). A store from before it gets it now — and, once, has its
+        // years searched for recurring series the index has never heard of, since until now
+        // nothing recorded them.
+        if store.docs.ensure_schema()? {
+            store.load_all_years()?;
+            let (snapshot, _) = store.docs.snapshot();
+            for series in snapshot.series.values().filter(|s| s.is_recurring()) {
+                store.docs.note_recurring_year(series.start_date.year())?;
+            }
         }
         // A fresh profile records its genesis now rather than letting the first real edit
         // carry it. Cheap, and it means "the file exists" and "the file holds a store" are
@@ -86,8 +102,8 @@ impl Store {
     /// the two geneses are the same change.
     /// Returns the document and whether the file already held it.
     fn read_document(&self, id: DocId) -> Result<(Doc, bool)> {
-        let snapshot = self.db.snapshot(id)?;
-        let changes = self.db.changes(id)?;
+        let (snapshot, changes) =
+            self.db.consistently(|db| Ok((db.snapshot(id)?, db.changes(id)?)))?;
         let stored = snapshot.is_some() || !changes.is_empty();
         let mut doc = match snapshot {
             Some(bytes) => Doc::load(id, &bytes)?,
@@ -120,15 +136,26 @@ impl Store {
         self.docs.snapshot()
     }
 
-    /// Loads one year of blocks, if it is not already loaded.
+    /// Loads what showing a day in `year` needs: that year's blocks, and every earlier year
+    /// holding a series that recurs into it.
+    ///
+    /// A series lives in the document for the year it **starts** (§3.1), so a daily routine
+    /// begun in 2026 is in `blocks-2026` and nowhere else on 1 January 2027. Loading only
+    /// 2027 would make it vanish at New Year. [`Documents::recurring_years`] says which
+    /// earlier years hold recurring series, so those load too and years holding only one-off
+    /// blocks stay on disk — which keeps the laziness a watch depends on (§16.9).
     ///
     /// # Errors
     ///
-    /// If the document cannot be read.
+    /// If a document cannot be read.
     pub fn load_year(&mut self, year: i16) -> Result<()> {
-        if !self.docs.has_year(year) {
-            let (doc, stored) = self.read_document(DocId::Blocks(year))?;
-            self.adopt(doc, stored);
+        let mut years = vec![year];
+        years.extend(self.docs.recurring_years().into_iter().filter(|y| *y < year));
+        for year in years {
+            if !self.docs.has_year(year) {
+                let (doc, stored) = self.read_document(DocId::Blocks(year))?;
+                self.adopt(doc, stored);
+            }
         }
         Ok(())
     }
@@ -224,9 +251,26 @@ impl Store {
         let Some(doc) = self.docs.iter_mut().find(|d| d.id() == id) else {
             return Ok(());
         };
-        let heads = doc.heads();
-        let data = doc.save();
-        self.db.compact(id, &heads, &data)?;
+        let before = doc.heads();
+        // Everything on disk goes into the document before it is saved over the changes:
+        // another process may have written since this one last refreshed, or compacted
+        // changes this one never saw into the snapshot being replaced. See `Db::compact`.
+        self.db.compact(id, |snapshot, changes| {
+            if let Some(bytes) = snapshot {
+                doc.load_incremental(&bytes)?;
+            }
+            for change in &changes {
+                doc.load_incremental(change)?;
+            }
+            Ok((doc.heads(), doc.save()))
+        })?;
+        let after = doc.heads();
+        if after != before {
+            self.unreported = true;
+            if self.persisted.get(&id) == Some(&before) {
+                self.persisted.insert(id, after);
+            }
+        }
         Ok(())
     }
 
@@ -242,28 +286,49 @@ impl Store {
     ///
     /// If the changes cannot be read or applied.
     pub fn refresh(&mut self) -> Result<bool> {
+        let unreported = std::mem::take(&mut self.unreported);
         let version = self.db.data_version()?;
         if version == self.data_version {
-            return Ok(false);
+            return Ok(unreported);
         }
         self.data_version = version;
 
-        let mut changed = false;
         let cursor = self.cursor;
-        let mut highest = cursor;
-        for doc in self.docs.iter_mut() {
-            let (changes, last) = self.db.changes_after(doc.id(), cursor)?;
-            for change in &changes {
-                doc.load_incremental(change)?;
-                changed = true;
+        let Self { db, docs, persisted, .. } = self;
+        // One read transaction, so a compaction by another process cannot land between
+        // reading the snapshot and reading the changes after the cursor (see
+        // `Db::consistently`).
+        let (changed, highest) = db.consistently(|db| {
+            let mut changed = false;
+            for doc in docs.iter_mut() {
+                let before = doc.heads();
+                // A snapshot whose heads this document lacks was compacted by another
+                // process, out of changes that may now be deleted. Its rows are gone, so the
+                // cursor will never show them; the snapshot is the only place they remain.
+                if let Some(heads) = db.snapshot_heads(doc.id())?
+                    && !heads.iter().all(|h| doc.has_change(h))
+                    && let Some(bytes) = db.snapshot(doc.id())?
+                {
+                    doc.load_incremental(&bytes)?;
+                }
+                let (changes, _) = db.changes_after(doc.id(), cursor)?;
+                for change in &changes {
+                    doc.load_incremental(change)?;
+                }
+                let after = doc.heads();
+                if after != before {
+                    changed = true;
+                    // Only when nothing local was waiting to be written: marking an
+                    // unwritten local change as persisted would mean it is never written.
+                    if persisted.get(&doc.id()) == Some(&before) {
+                        persisted.insert(doc.id(), after);
+                    }
+                }
             }
-            highest = highest.max(last);
-            if changed {
-                self.persisted.insert(doc.id(), doc.heads());
-            }
-        }
-        self.cursor = highest;
-        Ok(changed)
+            Ok((changed, db.cursor()?))
+        })?;
+        self.cursor = highest.max(cursor);
+        Ok(changed || unreported)
     }
 
     /// Applies an [`Edit`] and persists it.

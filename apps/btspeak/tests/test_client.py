@@ -6,6 +6,8 @@ write from another process arrives unasked, and that a refusal is an exception r
 silent wrong answer.
 """
 
+from __future__ import annotations
+
 import os
 import shutil
 import subprocess

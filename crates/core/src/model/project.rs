@@ -40,7 +40,10 @@ pub struct Project {
     /// It **inherits down the tree** unless a sub-project sets its own — see
     /// [`crate::snapshot::Snapshot::effective_weight`]. Making `#thesis` heavy should not
     /// require touching each of its chapters.
-    pub weight: f32,
+    ///
+    /// `None` inherits. `Some(1.0)` is a real setting, not a synonym for `None`: it is how a
+    /// chapter opts back to neutral under a heavy thesis.
+    pub weight: Option<f32>,
     /// Trash, for undo.
     pub deleted_at: Option<Timestamp>,
 }
@@ -52,7 +55,7 @@ impl Project {
     /// The range the UI should offer, inclusive.
     pub const WEIGHT_RANGE: (f32, f32) = (0.5, 2.0);
 
-    /// A new project at neutral weight.
+    /// A new project that inherits its weight.
     #[must_use]
     pub fn new(name: impl Into<String>, order: OrderKey) -> Self {
         Self {
@@ -63,15 +66,19 @@ impl Project {
             order,
             archived: false,
             is_inbox: false,
-            weight: Self::NEUTRAL_WEIGHT,
+            weight: None,
             deleted_at: None,
         }
     }
 
-    /// The Inbox, which every store has exactly one of.
+    /// The Inbox, which every store has exactly one of, under [`ProjectId::INBOX`].
     #[must_use]
     pub fn inbox() -> Self {
-        Self { is_inbox: true, ..Self::new("Inbox", OrderKey::middle()) }
+        Self {
+            id: ProjectId::INBOX,
+            is_inbox: true,
+            ..Self::new("Inbox", OrderKey::middle())
+        }
     }
 
     /// Whether the project sets a weight of its own, or inherits one.
@@ -81,8 +88,7 @@ impl Project {
     /// would silently erase or invert the urgency of everything beneath it.
     #[must_use]
     pub fn declared_weight(&self) -> Option<f32> {
-        (self.weight.is_finite() && self.weight > 0.0 && self.weight != Self::NEUTRAL_WEIGHT)
-            .then_some(self.weight)
+        self.weight.filter(|w| w.is_finite() && *w > 0.0)
     }
 }
 

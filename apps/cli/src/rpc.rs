@@ -422,11 +422,12 @@ fn command_for(method: &str, params: &Value) -> std::result::Result<Command, Rpc
         }),
         "project.weight" => Command::Project(ProjectCommand::Weight {
             name: text_of(params, "name")?,
-            value: params
-                .get("value")
-                .and_then(Value::as_f64)
-                .map(|value| value as f32)
-                .ok_or_else(|| invalid("'value' is required and has to be a number"))?,
+            // A number, or the string "inherit" to go back to the parent's weight.
+            value: match params.get("value") {
+                Some(Value::Number(number)) => number.to_string(),
+                Some(Value::String(text)) if text.eq_ignore_ascii_case("inherit") => text.clone(),
+                _ => return Err(invalid("'value' is required: a number, or \"inherit\"")),
+            },
         }),
         "label.add" => Command::Label(LabelCommand::Add { name: text_of(params, "name")? }),
         "label.list" => Command::Label(LabelCommand::List),
@@ -465,7 +466,10 @@ fn command_for(method: &str, params: &Value) -> std::result::Result<Command, Rpc
         },
         "unassign" => Command::Unassign { assignment: text_of(params, "assignment")? },
         "start" => Command::Start { assignment: text_of(params, "assignment")? },
-        "stop" => Command::Stop { assignment: text_of(params, "assignment")? },
+        "stop" => Command::Stop {
+            assignment: text_of(params, "assignment")?,
+            minutes: maybe_number(params, "minutes")?,
+        },
         "config.get" => Command::Config(ConfigCommand::Get { key: maybe_text(params, "key") }),
         "config.set" => Command::Config(ConfigCommand::Set {
             key: text_of(params, "key")?,

@@ -389,3 +389,25 @@ fn an_emptied_setting_list_stays_empty() {
     docs.put_settings(&silenced, None).unwrap();
     assert!(docs.snapshot().0.settings.default_block_reminders.is_empty());
 }
+
+#[test]
+fn a_neutral_weight_is_kept_apart_from_no_weight() {
+    // `None` inherits; `Some(1.0)` opts back to neutral under a heavy parent. Storing them
+    // the same way would make the second impossible to say.
+    let mut docs = Documents::new();
+    let inherits = Project::new("inherits", OrderKey::middle());
+    let neutral = Project { weight: Some(1.0), ..Project::new("neutral", OrderKey::middle()) };
+    let heavy = Project { weight: Some(2.0), ..Project::new("heavy", OrderKey::middle()) };
+    for project in [&inherits, &neutral, &heavy] {
+        docs.put_project(project, None).unwrap();
+    }
+    let mut cleared = heavy.clone();
+    cleared.weight = None;
+    docs.put_project(&cleared, Some(&heavy)).unwrap();
+
+    let (s, report) = docs.snapshot();
+    assert!(report.is_clean(), "{report:?}");
+    assert_eq!(s.projects[&inherits.id].weight, None);
+    assert_eq!(s.projects[&neutral.id].weight, Some(1.0));
+    assert_eq!(s.projects[&cleared.id].weight, None);
+}

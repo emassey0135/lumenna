@@ -42,6 +42,13 @@ pub(crate) trait Record: Sized {
     /// The root key holding this kind of record.
     const COLLECTION: &'static str;
 
+    /// Whether the record is stored inline — a key per field in the collection, rather than
+    /// a map of its own (see [`crate::value`]).
+    ///
+    /// Required of any record whose key two devices can produce independently. A record keyed
+    /// by a fresh UUID is only ever created once, so a map is safe and is the default.
+    const INLINE: bool = false;
+
     /// How records of this kind are addressed.
     type Key: Ord + Clone;
 
@@ -399,7 +406,12 @@ impl Record for Project {
             order: r.parsed("order")?,
             archived: r.bool("archived").unwrap_or(false),
             is_inbox: r.bool("is_inbox").unwrap_or(false),
-            weight: r.f32("weight").unwrap_or(Self::NEUTRAL_WEIGHT),
+            // `own_weight` is present exactly when the project sets one. Stores from before
+            // it wrote `weight` on every project, 1.0 for "inherit", so there a 1.0 means
+            // unset and anything else is the project's own.
+            weight: r.f32("own_weight").or_else(|| {
+                r.f32("weight").filter(|w| *w != Self::NEUTRAL_WEIGHT)
+            }),
             deleted_at: r.timestamp("deleted_at"),
         })
     }
@@ -411,7 +423,14 @@ impl Record for Project {
         w.set_str("order", was.map(|b| &b.order), &self.order)?;
         w.set_bool("archived", was.map(|b| b.archived), self.archived)?;
         w.set_bool("is_inbox", was.map(|b| b.is_inbox), self.is_inbox)?;
-        w.set_f32("weight", was.map(|b| b.weight), self.weight)?;
+        if was.map(|b| b.weight) != Some(self.weight) {
+            match self.weight {
+                Some(weight) => w.set_f32("own_weight", None, weight)?,
+                None => w.clear("own_weight")?,
+            }
+            // The legacy key would otherwise go on overriding an inherited weight.
+            w.clear("weight")?;
+        }
         w.set_opt_time("deleted_at", was.map(|b| b.deleted_at.as_ref()), self.deleted_at.as_ref())
     }
 }
@@ -578,6 +597,8 @@ impl Record for BlockSeries {
 impl Record for BlockException {
     const DOMAIN: Domain = Domain::Blocks;
     const COLLECTION: &'static str = "exceptions";
+    // Keyed by series and date, which any device editing that occurrence arrives at.
+    const INLINE: bool = true;
     type Key = (SeriesId, civil::Date);
 
     fn key(&self) -> Self::Key {
@@ -622,20 +643,40 @@ impl Record for BlockException {
                 }
             }
             ExceptionAction::Modified { start_time, duration_mins, title, kind, flags } => {
-                w.set_string("action", None, "modified")?;
-                w.set_opt_str("start_time", None, start_time.as_ref())?;
-                w.set_opt_u32("duration_mins", None, *duration_mins)?;
-                w.set_opt_str("title", None, title.as_ref())?;
-                match kind {
-                    Some(k) => w.set_string("kind", None, block_kind_str(*k))?,
-                    None => w.clear("kind")?,
-                }
-                match flags {
-                    Some(f) => {
-                        let mut nested = w.map("flags")?;
-                        write_flags(&mut nested, f)?;
+                // Field by field against what was there, so that two devices changing
+                // different things about one occurrence both keep their change.
+                let before = match was.map(|b| &b.action) {
+                    Some(ExceptionAction::Modified {
+                        start_time,
+                        duration_mins,
+                        title,
+                        kind,
+                        flags,
+                    }) => Some((start_time, duration_mins, title, kind, flags)),
+                    _ => None,
+                };
+                w.set_string("action", before.map(|_| "modified"), "modified")?;
+                w.set_opt_str(
+                    "start_time",
+                    before.map(|b| b.0.as_ref()),
+                    start_time.as_ref(),
+                )?;
+                w.set_opt_u32("duration_mins", before.map(|b| *b.1), *duration_mins)?;
+                w.set_opt_str("title", before.map(|b| b.2.as_ref()), title.as_ref())?;
+                if before.map(|b| b.3) != Some(kind) {
+                    match kind {
+                        Some(k) => w.set_string("kind", None, block_kind_str(*k))?,
+                        None => w.clear("kind")?,
                     }
-                    None => w.clear("flags")?,
+                }
+                if before.map(|b| b.4) != Some(flags) {
+                    match flags {
+                        Some(f) => {
+                            let mut nested = w.map("flags")?;
+                            write_flags(&mut nested, f)?;
+                        }
+                        None => w.clear("flags")?,
+                    }
                 }
             }
         }
@@ -767,6 +808,8 @@ impl Record for Reminder {
 impl Record for ReminderAck {
     const DOMAIN: Domain = Domain::Core;
     const COLLECTION: &'static str = "acks";
+    // Keyed by reminder and date, which every device that dismisses that firing arrives at.
+    const INLINE: bool = true;
     type Key = (ReminderId, civil::Date);
 
     fn key(&self) -> Self::Key {

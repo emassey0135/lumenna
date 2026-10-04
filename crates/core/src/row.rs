@@ -177,20 +177,44 @@ impl Snapshot {
         let included: std::collections::BTreeSet<TaskId> =
             selected.iter().map(|task| task.id).collect();
 
-        // Group by the nearest ancestor that survived the filter.
+        // Group by the nearest ancestor that survived the filter. A task whose parent was
+        // filtered out but whose grandparent was not still belongs under the grandparent:
+        // dropping it to the top level would lose a relationship the list can show.
         let mut children: std::collections::BTreeMap<Option<TaskId>, Vec<&crate::model::Task>> =
             std::collections::BTreeMap::new();
         for task in &selected {
-            let parent = task.parent_id.filter(|id| included.contains(id));
-            children.entry(parent).or_default().push(task);
+            children.entry(self.surviving_ancestor(task, &included)).or_default().push(task);
         }
         for group in children.values_mut() {
             group.sort_by(|a, b| a.order.cmp_with(&a.id, &b.order, &b.id));
         }
 
         let mut rows = Vec::with_capacity(selected.len());
-        push_task_rows(self, cx, &children, None, 0, &mut rows);
+        push_task_rows(cx, &children, None, 0, &mut rows);
         rows
+    }
+
+    /// The closest ancestor of `task` that is in `included`, if any.
+    ///
+    /// Walks with a visited set, so an unrepaired parent cycle ends the walk rather than
+    /// hanging it.
+    fn surviving_ancestor(
+        &self,
+        task: &crate::model::Task,
+        included: &std::collections::BTreeSet<TaskId>,
+    ) -> Option<TaskId> {
+        let mut seen = std::collections::BTreeSet::from([task.id]);
+        let mut current = task.parent_id;
+        while let Some(id) = current {
+            if included.contains(&id) {
+                return Some(id);
+            }
+            if !seen.insert(id) {
+                return None;
+            }
+            current = self.tasks.get(&id).and_then(|t| t.parent_id);
+        }
+        None
     }
 
     /// Projects the block occurrences of one day into rows, in the order the day is lived.
@@ -269,7 +293,6 @@ fn describe_block(
 }
 
 fn push_task_rows(
-    snapshot: &Snapshot,
     cx: &Context<'_>,
     children: &std::collections::BTreeMap<Option<TaskId>, Vec<&crate::model::Task>>,
     parent: Option<TaskId>,
@@ -289,9 +312,9 @@ fn push_task_rows(
             index: u32::try_from(index).unwrap_or(u32::MAX) + 1,
             count,
             expanded: has_children.then_some(true),
-            checked: Some(snapshot.is_completed(task)),
+            checked: Some(cx.facts().is_completed(task)),
             title: task.title.clone(),
-            state: snapshot.notable_states_of(task, cx.now),
+            state: cx.facts().notable_states_of(task, cx.now),
             value: task.due.as_ref().map(|due| match due.time {
                 Some(time) => {
                     format!("due {} at {:02}:{:02}", due.date, time.hour(), time.minute())
@@ -300,6 +323,6 @@ fn push_task_rows(
             }),
             hint: None,
         });
-        push_task_rows(snapshot, cx, children, Some(task.id), depth + 1, rows);
+        push_task_rows(cx, children, Some(task.id), depth + 1, rows);
     }
 }

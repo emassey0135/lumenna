@@ -19,6 +19,21 @@
 //! saved a whole record would silently revert every field of it that someone else had
 //! touched. Passing `None` as the previous value writes everything, which is what creating
 //! a record wants and only that.
+//!
+//! # Inline records
+//!
+//! A record keyed by something two devices can produce independently — an exception is
+//! keyed by series and date, an acknowledgement by reminder and date — must not be a map of
+//! its own. Both devices would create the map, merge would keep one, and every field written
+//! into the other would be lost with it (`CLAUDE.md`'s rule about concurrent containers, one
+//! level further down than the record sets of [`Writer::set_members`]).
+//!
+//! So those records are **inline**: each field is its own key in the collection,
+//! `<record>/<field>`, and a nested map is spelt `<record>/<map>.<field>`. Nothing is ever
+//! created, so there is nothing for merge to choose between, and two devices editing
+//! different fields of the same occurrence both keep their edit. [`Reader`] and [`Writer`]
+//! take a key prefix for this and otherwise behave identically, so a record's schema reads
+//! the same either way.
 
 use std::collections::BTreeSet;
 use std::str::FromStr;
@@ -33,21 +48,50 @@ use crate::error::Result;
 pub(crate) struct Reader<'a, D: ReadDoc> {
     doc: &'a D,
     obj: ObjId,
+    /// `None` for an ordinary map. For an inline record, what every key it owns starts with.
+    prefix: Option<String>,
 }
 
 impl<'a, D: ReadDoc> Reader<'a, D> {
     /// Reads the map at `obj`.
     pub(crate) fn new(doc: &'a D, obj: ObjId) -> Self {
-        Self { doc, obj }
+        Self { doc, obj, prefix: None }
     }
 
-    /// The keys present, in document order.
+    /// Reads the keys of `obj` that start with `prefix`, as if they were a map of their own.
+    pub(crate) fn inline(doc: &'a D, obj: ObjId, prefix: String) -> Self {
+        Self { doc, obj, prefix: Some(prefix) }
+    }
+
+    fn full(&self, key: &str) -> String {
+        match &self.prefix {
+            Some(prefix) => format!("{prefix}{key}"),
+            None => key.to_owned(),
+        }
+    }
+
+    /// The keys present, in document order. For an inline record, the first segment of
+    /// each key under the prefix, once each.
     pub(crate) fn keys(&self) -> Vec<String> {
-        self.doc.keys(&self.obj).collect()
+        match &self.prefix {
+            None => self.doc.keys(&self.obj).collect(),
+            Some(prefix) => {
+                let mut keys: Vec<String> = self
+                    .doc
+                    .keys(&self.obj)
+                    .filter_map(|k| {
+                        let rest = k.strip_prefix(prefix.as_str())?;
+                        Some(rest.split('.').next().unwrap_or(rest).to_owned())
+                    })
+                    .collect();
+                keys.dedup();
+                keys
+            }
+        }
     }
 
     fn scalar(&self, key: &str) -> Option<ScalarValue> {
-        match self.doc.get(&self.obj, key) {
+        match self.doc.get(&self.obj, self.full(key)) {
             Ok(Some((Value::Scalar(s), _))) => Some(s.into_owned()),
             _ => None,
         }
@@ -55,7 +99,7 @@ impl<'a, D: ReadDoc> Reader<'a, D> {
 
     /// A nested map or text object, if the key holds one of the expected type.
     fn object(&self, key: &str, expected: ObjType) -> Option<ObjId> {
-        match self.doc.get(&self.obj, key) {
+        match self.doc.get(&self.obj, self.full(key)) {
             Ok(Some((Value::Object(actual), id))) if actual == expected => Some(id),
             _ => None,
         }
@@ -63,7 +107,16 @@ impl<'a, D: ReadDoc> Reader<'a, D> {
 
     /// A nested map, as a reader of its own.
     pub(crate) fn map(&self, key: &str) -> Option<Reader<'a, D>> {
-        self.object(key, ObjType::Map).map(|obj| Reader::new(self.doc, obj))
+        match &self.prefix {
+            None => self.object(key, ObjType::Map).map(|obj| Reader::new(self.doc, obj)),
+            Some(_) => {
+                let nested = format!("{}.", self.full(key));
+                self.doc
+                    .keys(&self.obj)
+                    .any(|k| k.starts_with(&nested))
+                    .then(|| Reader::inline(self.doc, self.obj.clone(), nested))
+            }
+        }
     }
 
     pub(crate) fn string(&self, key: &str) -> Option<String> {
@@ -155,41 +208,79 @@ impl<'a, D: ReadDoc> Reader<'a, D> {
 pub(crate) struct Writer<'a, T: Transactable> {
     tx: &'a mut T,
     obj: ObjId,
+    /// As for [`Reader`]: `None` for an ordinary map, the key prefix for an inline record.
+    prefix: Option<String>,
 }
 
 impl<'a, T: Transactable> Writer<'a, T> {
     /// Writes into the map at `obj`.
     pub(crate) fn new(tx: &'a mut T, obj: ObjId) -> Self {
-        Self { tx, obj }
+        Self { tx, obj, prefix: None }
     }
 
-    /// Gets or creates a nested map, returning a writer for it.
+    /// Writes each field as a key of `obj` starting with `prefix`, creating nothing.
+    pub(crate) fn inline(tx: &'a mut T, obj: ObjId, prefix: String) -> Self {
+        Self { tx, obj, prefix: Some(prefix) }
+    }
+
+    fn full(&self, key: &str) -> String {
+        match &self.prefix {
+            Some(prefix) => format!("{prefix}{key}"),
+            None => key.to_owned(),
+        }
+    }
+
+    /// Gets or creates a nested map, returning a writer for it. Inline, a nested map is a
+    /// longer prefix and never an object.
     pub(crate) fn map(&mut self, key: &str) -> Result<Writer<'_, T>> {
+        if self.prefix.is_some() {
+            let nested = format!("{}.", self.full(key));
+            return Ok(Writer { tx: self.tx, obj: self.obj.clone(), prefix: Some(nested) });
+        }
         let obj = match self.tx.get(&self.obj, key)? {
             Some((Value::Object(ObjType::Map), id)) => id,
             _ => self.tx.put_object(&self.obj, key, ObjType::Map)?,
         };
-        Ok(Writer { tx: self.tx, obj })
+        Ok(Writer { tx: self.tx, obj, prefix: None })
     }
 
     /// Discards whatever is at `key` and returns a writer for a fresh map there.
     fn replace_map(&mut self, key: &str) -> Result<Writer<'_, T>> {
+        if self.prefix.is_some() {
+            self.clear(key)?;
+            return self.map(key);
+        }
         let obj = self.tx.put_object(&self.obj, key, ObjType::Map)?;
-        Ok(Writer { tx: self.tx, obj })
+        Ok(Writer { tx: self.tx, obj, prefix: None })
     }
 
-    /// Removes a key entirely.
+    /// Removes a key entirely — inline, along with every key nested under it.
     pub(crate) fn clear(&mut self, key: &str) -> Result<()> {
-        if self.tx.get(&self.obj, key)?.is_some() {
-            self.tx.delete(&self.obj, key)?;
+        let full = self.full(key);
+        if self.tx.get(&self.obj, full.as_str())?.is_some() {
+            self.tx.delete(&self.obj, full.as_str())?;
         }
+        if self.prefix.is_some() {
+            let nested = format!("{full}.");
+            let under: Vec<String> =
+                self.tx.keys(&self.obj).filter(|k| k.starts_with(&nested)).collect();
+            for k in under {
+                self.tx.delete(&self.obj, k.as_str())?;
+            }
+        }
+        Ok(())
+    }
+
+    fn put(&mut self, key: &str, value: impl Into<ScalarValue>) -> Result<()> {
+        let full = self.full(key);
+        self.tx.put(&self.obj, full.as_str(), value)?;
         Ok(())
     }
 
     /// Writes a string if it differs from `before`.
     pub(crate) fn set_string(&mut self, key: &str, before: Option<&str>, now: &str) -> Result<()> {
         if before != Some(now) {
-            self.tx.put(&self.obj, key, now)?;
+            self.put(key, now)?;
         }
         Ok(())
     }
@@ -197,7 +288,7 @@ impl<'a, T: Transactable> Writer<'a, T> {
     /// Writes a boolean if it differs from `before`.
     pub(crate) fn set_bool(&mut self, key: &str, before: Option<bool>, now: bool) -> Result<()> {
         if before != Some(now) {
-            self.tx.put(&self.obj, key, now)?;
+            self.put(key, now)?;
         }
         Ok(())
     }
@@ -205,7 +296,7 @@ impl<'a, T: Transactable> Writer<'a, T> {
     /// Writes an integer if it differs from `before`.
     pub(crate) fn set_int(&mut self, key: &str, before: Option<i64>, now: i64) -> Result<()> {
         if before != Some(now) {
-            self.tx.put(&self.obj, key, now)?;
+            self.put(key, now)?;
         }
         Ok(())
     }
@@ -221,7 +312,7 @@ impl<'a, T: Transactable> Writer<'a, T> {
             return Ok(());
         }
         match now {
-            Some(value) => self.tx.put(&self.obj, key, i64::from(value))?,
+            Some(value) => self.put(key, i64::from(value))?,
             None => self.clear(key)?,
         }
         Ok(())
@@ -230,7 +321,7 @@ impl<'a, T: Transactable> Writer<'a, T> {
     /// Writes a float if it differs from `before`.
     pub(crate) fn set_f32(&mut self, key: &str, before: Option<f32>, now: f32) -> Result<()> {
         if before != Some(now) {
-            self.tx.put(&self.obj, key, f64::from(now))?;
+            self.put(key, f64::from(now))?;
         }
         Ok(())
     }
@@ -243,7 +334,7 @@ impl<'a, T: Transactable> Writer<'a, T> {
         now: &V,
     ) -> Result<()> {
         if before != Some(now) {
-            self.tx.put(&self.obj, key, now.to_string())?;
+            self.put(key, now.to_string())?;
         }
         Ok(())
     }
@@ -259,7 +350,7 @@ impl<'a, T: Transactable> Writer<'a, T> {
             return Ok(());
         }
         match now {
-            Some(value) => self.tx.put(&self.obj, key, value.to_string())?,
+            Some(value) => self.put(key, value.to_string())?,
             None => self.clear(key)?,
         }
         Ok(())
@@ -273,7 +364,7 @@ impl<'a, T: Transactable> Writer<'a, T> {
         now: &Timestamp,
     ) -> Result<()> {
         if before != Some(now) {
-            self.tx.put(&self.obj, key, ScalarValue::Timestamp(now.as_millisecond()))?;
+            self.put(key, ScalarValue::Timestamp(now.as_millisecond()))?;
         }
         Ok(())
     }
@@ -289,7 +380,7 @@ impl<'a, T: Transactable> Writer<'a, T> {
             return Ok(());
         }
         match now {
-            Some(t) => self.tx.put(&self.obj, key, ScalarValue::Timestamp(t.as_millisecond()))?,
+            Some(t) => self.put(key, ScalarValue::Timestamp(t.as_millisecond()))?,
             None => self.clear(key)?,
         }
         Ok(())
@@ -305,9 +396,10 @@ impl<'a, T: Transactable> Writer<'a, T> {
         if before == Some(now) {
             return Ok(());
         }
-        let obj = match self.tx.get(&self.obj, key)? {
+        let key = self.full(key);
+        let obj = match self.tx.get(&self.obj, key.as_str())? {
             Some((Value::Object(ObjType::Text), id)) => id,
-            _ => self.tx.put_object(&self.obj, key, ObjType::Text)?,
+            _ => self.tx.put_object(&self.obj, key.as_str(), ObjType::Text)?,
         };
         self.tx.update_text(&obj, now)?;
         Ok(())
@@ -336,7 +428,7 @@ impl<'a, T: Transactable> Writer<'a, T> {
         }
         let mut set = self.map(key)?;
         for added in now.difference(before) {
-            set.tx.put(&set.obj, added.to_string(), ScalarValue::Boolean(true))?;
+            set.put(&added.to_string(), ScalarValue::Boolean(true))?;
         }
         for removed in before.difference(now) {
             set.clear(&removed.to_string())?;

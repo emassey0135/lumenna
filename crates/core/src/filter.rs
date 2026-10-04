@@ -39,7 +39,7 @@ use jiff::{Span, Zoned};
 
 use crate::model::{Priority, Task};
 use crate::snapshot::Snapshot;
-use crate::state::State;
+use crate::state::{Facts, State};
 use crate::suggest;
 use crate::time::DateSpec;
 
@@ -109,7 +109,11 @@ pub enum DueFilter {
 }
 
 /// What evaluation needs besides the expression.
-#[derive(Debug, Clone, Copy)]
+///
+/// Built once per query with [`Context::new`], which indexes the snapshot so that matching
+/// every task in it does not rescan every completion and assignment per task (see
+/// [`Facts`]).
+#[derive(Debug, Clone)]
 pub struct Context<'a> {
     /// The data to match against.
     pub snapshot: &'a Snapshot,
@@ -117,6 +121,21 @@ pub struct Context<'a> {
     /// where the user actually is, and a filter is evaluated fresh every time precisely so
     /// that `today` keeps meaning today (§6.2).
     pub now: &'a Zoned,
+    facts: Facts<'a>,
+}
+
+impl<'a> Context<'a> {
+    /// A context for evaluating against `snapshot` as of `now`.
+    #[must_use]
+    pub fn new(snapshot: &'a Snapshot, now: &'a Zoned) -> Self {
+        Self { snapshot, now, facts: Facts::new(snapshot) }
+    }
+
+    /// The snapshot's per-task index.
+    #[must_use]
+    pub const fn facts(&self) -> &Facts<'a> {
+        &self.facts
+    }
 }
 
 /// A name in a query that does not match anything in the store.
@@ -185,7 +204,7 @@ impl Expr {
             .tasks
             .values()
             .filter(|task| wants_deleted || !task.is_deleted())
-            .filter(|task| wants_completed || !cx.snapshot.is_completed(task))
+            .filter(|task| wants_completed || !cx.facts.is_completed(task))
             .filter(|task| self.matches(task, cx))
             .collect();
         found.sort_by(|a, b| a.order.cmp_with(&a.id, &b.order, &b.id));
@@ -308,11 +327,11 @@ impl Predicate {
                 .label_by_name(name)
                 .is_some_and(|label| task.labels.contains(&label.id)),
             Self::Priority(p) => task.priority == *p,
-            Self::State(s) => snapshot.has_state(task, *s, cx.now),
+            Self::State(s) => cx.facts.has_state(task, *s, cx.now),
             Self::Due(filter) => filter.matches(task, cx),
             Self::Assigned(spec) => spec
                 .resolve(cx.now)
-                .is_some_and(|date| snapshot.is_assigned_on(task.id, date)),
+                .is_some_and(|date| cx.facts.is_assigned_on(task.id, date)),
             Self::Search(needle) => {
                 let needle = needle.to_lowercase();
                 task.title.to_lowercase().contains(&needle)
@@ -416,19 +435,10 @@ impl Snapshot {
         false
     }
 
-    /// Whether a task is placed into any block occurring on `date`.
-    ///
-    /// A one-off block's assignment names only the series (§3.7), so its date comes from
-    /// the series — which may live in a document that is not loaded, in which case it
-    /// simply does not match rather than being an error.
+    /// Whether a task is placed into any block occurring on `date`. See
+    /// [`Facts::is_assigned_on`].
     #[must_use]
     pub fn is_assigned_on(&self, task: crate::id::TaskId, date: jiff::civil::Date) -> bool {
-        self.assignments_of(task).any(|assignment| match assignment.block_ref.date() {
-            Some(on) => on == date,
-            None => self
-                .series
-                .get(&assignment.block_ref.series_id())
-                .is_some_and(|series| series.start_date == date),
-        })
+        self.facts().is_assigned_on(task, date)
     }
 }

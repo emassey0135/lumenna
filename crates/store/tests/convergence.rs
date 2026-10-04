@@ -384,3 +384,69 @@ fn a_concurrent_dependency_cycle_resolves_the_same_way_on_both_devices() {
     assert_eq!(alice_repairs, bob_repairs);
     assert_eq!(alice_state, bob_state);
 }
+
+#[test]
+fn two_devices_started_apart_share_one_inbox() {
+    let mut alice = Documents::new();
+    let mut bob = Documents::new();
+    assert!(alice.ensure_schema().unwrap());
+    assert!(bob.ensure_schema().unwrap());
+    assert!(!alice.ensure_schema().unwrap(), "applying it twice is a no-op");
+
+    alice.merge(&mut bob).unwrap();
+    let (s, report) = alice.snapshot();
+    assert!(report.is_clean(), "{report:?}");
+    let inboxes: Vec<_> = s.projects.values().filter(|p| p.is_inbox).collect();
+    assert_eq!(inboxes.len(), 1);
+    assert_eq!(inboxes[0].id, ProjectId::INBOX);
+    assert_eq!(inboxes[0], &Project::inbox(), "the frozen change spells the model's Inbox");
+}
+
+#[test]
+fn edits_to_different_fields_of_one_occurrence_both_survive() {
+    // An exception is keyed by series and date, which both devices arrive at on their own.
+    // Stored as a map of its own, one device's map would win and the other's edit vanish.
+    use jiff::civil::{date, time};
+    use lumenna_core::model::{BlockException, ExceptionAction};
+
+    let series = lumenna_core::SeriesId::new();
+    let day = date(2026, 5, 6);
+    let mut alice = Documents::new();
+    let mut bob = alice.fork();
+
+    let shorter = BlockException {
+        series_id: series,
+        original_date: day,
+        action: ExceptionAction::Modified {
+            start_time: None,
+            duration_mins: Some(45),
+            title: None,
+            kind: None,
+            flags: None,
+        },
+    };
+    let renamed = BlockException {
+        action: ExceptionAction::Modified {
+            start_time: Some(time(10, 0, 0, 0)),
+            duration_mins: None,
+            title: Some("Review".to_owned()),
+            kind: None,
+            flags: None,
+        },
+        ..shorter.clone()
+    };
+    alice.put_exception(&shorter, None).unwrap();
+    bob.put_exception(&renamed, None).unwrap();
+    alice.merge(&mut bob).unwrap();
+
+    let (s, report) = alice.snapshot();
+    assert!(report.is_clean(), "{report:?}");
+    let ExceptionAction::Modified { start_time, duration_mins, title, .. } =
+        &s.exceptions[&(series, day)].action
+    else {
+        panic!("still a modification");
+    };
+    assert_eq!(*duration_mins, Some(45));
+    assert_eq!(*start_time, Some(time(10, 0, 0, 0)));
+    assert_eq!(title.as_deref(), Some("Review"));
+}
