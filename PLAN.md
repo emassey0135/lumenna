@@ -3013,6 +3013,12 @@ draws, and it passes, so the task list uses that. `UIHostingConfiguration` remai
 option for a row UIKit's configurations cannot express — and such a row should be checked
 against the audit before it ships.
 
+*And in forms:* SwiftUI's form parts needed help to pass the same audit — a `LabeledContent`
+control is not named by its visible label, the inline picker's checkmark and the placeholder
+grey fail contrast, and a section footer stops growing with Dynamic Type. Each has a small
+replacement in the iOS app. Bottom toolbars do not survive a tab bar at all: the floating bar
+covers them, and VoiceOver's activation lands on the tab beneath.
+
 SwiftUI for detail forms, settings, and sheets — where its state binding eliminates
 "UI out of sync with model" bugs, a class of bug that's *worse* for screen reader users
 because a stale label is announced confidently and looks like truth.

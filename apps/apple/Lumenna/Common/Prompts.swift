@@ -1,0 +1,75 @@
+import UIKit
+
+extension UIViewController {
+    /// Asks for one line of text. `done` is called only if the person confirms with something
+    /// in the field.
+    func askForText(
+        _ title: String,
+        message: String? = nil,
+        placeholder: String = "",
+        initial: String = "",
+        action: String = "Save",
+        done: @escaping (String) -> Void
+    ) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addTextField { field in
+            field.placeholder = placeholder
+            field.text = initial
+            field.accessibilityLabel = title
+            field.autocapitalizationType = .sentences
+            field.clearButtonMode = .whileEditing
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: action, style: .default) { [weak alert] _ in
+            let text = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespaces) ?? ""
+            if !text.isEmpty {
+                done(text)
+            }
+        })
+        present(alert, animated: true)
+    }
+
+    /// Asks before something that cannot be taken back. The destructive choice is never the
+    /// default, so a stray Return does nothing.
+    func confirm(
+        _ title: String,
+        message: String,
+        action: String,
+        done: @escaping () -> Void
+    ) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: action, style: .destructive) { _ in done() })
+        present(alert, animated: true)
+    }
+
+    /// Offers a choice among a few actions, as a sheet anchored to `source` on iPad.
+    func choose(
+        _ title: String,
+        message: String? = nil,
+        from source: UIView? = nil,
+        actions: [(String, () -> Void)]
+    ) {
+        let sheet = UIAlertController(title: title, message: message, preferredStyle: .actionSheet)
+        for (name, run) in actions {
+            sheet.addAction(UIAlertAction(title: name, style: .default) { _ in run() })
+        }
+        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        sheet.popoverPresentationController?.sourceView = source ?? view
+        present(sheet, animated: true)
+    }
+
+    /// Runs an operation and says what it did, or why it could not (§13: announce state
+    /// changes explicitly).
+    @discardableResult
+    func run(_ operation: () throws -> Change) -> Change? {
+        do {
+            let change = try operation()
+            Announcer.say(change.announcement, notices: change.notices)
+            return change
+        } catch {
+            showFailure(error.sentence)
+            return nil
+        }
+    }
+}
