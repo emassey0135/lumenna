@@ -115,7 +115,7 @@ impl Responder {
         let thread = std::thread::Builder::new().name("lumenna-avahi".to_owned()).spawn(move || {
             // Avahi reports an instance once per interface and protocol; it is read once,
             // when first heard, and lost only when gone from all of them.
-            let on: Arc<Mutex<HashMap<String, HashSet<(i32, i32)>>>> = Arc::default();
+            let mut seen: HashMap<String, HashSet<(i32, i32)>> = HashMap::new();
             // Ends when the connection closes, as the responder does on drop.
             for message in messages {
                 let Ok(message) = message else { break };
@@ -129,7 +129,6 @@ impl Responder {
                 else {
                     continue;
                 };
-                let mut seen = on.lock().unwrap_or_else(PoisonError::into_inner);
                 match member.as_str() {
                     "ItemNew" => {
                         let places = seen.entry(name.clone()).or_default();
