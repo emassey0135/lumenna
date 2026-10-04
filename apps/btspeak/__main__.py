@@ -21,23 +21,21 @@ from menus import run
 
 
 def main() -> int:
-    """Turns self-voice on, runs the app, and puts self-voice back.
+    """Makes Lumenna the app in front, runs it, and puts back whatever was there before.
 
-    The flags comment at the top of this file is the usual mechanism: the launcher reads it
-    before starting the program and restores the setting afterwards, so a program launched
-    from a menu does not have to manage this. But it *is* only read at launch, and this app
-    is also meant to be run straight from a shell and from BT Code's project runner, where
-    nothing has read it. Setting it here costs nothing when the launcher already did.
+    `push_app_context` is how the device's own apps say they are in front. Without it the
+    device went on believing the app that launched this one was — BT Code, say — and took its
+    braille table from that app's open file, so every menu came out in computer braille
+    rather than the reader's own table. It also turns self-voice on: the dialog library speaks
+    and brailles for itself, and with self-voice off brltty would read the screen as well and
+    everything would be said twice. The flags comment at the top of this file does the same
+    for the menu launcher, which reads it before starting the program.
 
-    It matters because the dialog library speaks and brailles for itself: with self-voice
-    off, brltty reads the screen as well and everything is said twice.
-
-    The flag lives in `/run/BTSpeak/`, so it is device-wide rather than ours — which is why
-    restoring it belongs in a `finally` and not at the end of a happy path. Leaving it on
-    would stop brltty reading the screen for whatever runs next.
+    The pop is in a `finally` because what it restores is device-wide: the app in front, its
+    help, and self-voice, which left on would stop brltty reading the screen for whatever
+    runs next.
     """
-    was_self_voicing = host.get_self_voice()
-    host.set_self_voice(True)
+    host.push_app_context("lumenna", self_voice=True)
     client = None
     try:
         try:
@@ -52,7 +50,7 @@ def main() -> int:
     finally:
         if client is not None:
             client.close()
-        host.set_self_voice(was_self_voicing)
+        host.pop_app_context()
 
 
 if __name__ == "__main__":

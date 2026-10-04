@@ -11,7 +11,7 @@ use crate::durability::{absolute, refuse_inside};
 use crate::error::{LumennaError, Result};
 use crate::resolve;
 use crate::types::{Announced, Change, Setting, SettingList};
-use crate::words::count_line;
+use crate::words::{count_line, time_text};
 use crate::{DEVICE_KEYS, Lumenna, cloud_warning, repaired};
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
@@ -33,9 +33,11 @@ impl Lumenna {
                     Verbosity::Full => "full".to_owned(),
                 },
             ),
-            ("all-day-reminder-hour", settings.all_day_reminder_hour.to_string()),
-            ("day-start", settings.day_window.0.to_string()),
-            ("day-end", settings.day_window.1.to_string()),
+            // `HH:MM`, as every time is shown and typed; jiff's own form carries seconds,
+            // which nothing here has.
+            ("all-day-reminder-hour", time_text(settings.all_day_reminder_hour)),
+            ("day-start", time_text(settings.day_window.0)),
+            ("day-end", time_text(settings.day_window.1)),
             ("week-start", format!("{:?}", settings.week_start).to_lowercase()),
         ]
         .into_iter()

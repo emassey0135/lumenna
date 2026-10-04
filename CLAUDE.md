@@ -199,18 +199,14 @@ is readable here and the app can be run under a pty without a second machine.
   the connection that wrote — so `Session` tracks its own edits and ORs them with the push.
 - **Completion is not inline.** `InputDialog` has no hook and Tab is form navigation, so
   candidates are offered after the line is entered. Inline needs the same kind of subclass.
-- **Self-voice is set twice on purpose.** `# blazie-flags: self-voice` on line 2 of
-  `__main__.py` is read by the menu launcher — which follows an interpreter to the script it
-  runs — and `host.set_self_voice(True)` in `main()` covers being run from a shell or BT
-  Code, where nothing read the header. Restoring it in a `finally` is the part that matters:
-  the flag is device-wide in `/run/BTSpeak/`. With it on, printing to the terminal is
-  silence, so startup errors are dialogs and the spawned server's stderr goes to `rpc.log`.
-- **Laid out as the phone is**, one module per tab: `tasks`, `day`, `organise`, `preferences`,
-  sharing `session`. Enter on a row offers everything that can be done to it, the device's
-  delete keys delete, left and right fold. A feature on the phone and not here is a gap.
-- **`tests/test_menus.py` plays scripts** against a real `lum rpc`: `btspeak_stub` stands in
-  for `dialogs` and answers each dialog from the next step, failing if the app asks for
-  something else. Pairing is driven that way against a second server.
+- **`main()` pushes an app context** (`host.push_app_context("lumenna", self_voice=True)`,
+  popped in a `finally`), as the stock apps do. The device takes its braille table from the
+  app it believes is in front; without the push that stayed BT Code, whose open `.py` file's
+  table made every menu computer braille. The push also sets self-voice, and the pop
+  restores it, the app in front and its help — all device-wide. `# blazie-flags: self-voice`
+  on line 2 of `__main__.py` still matters for the menu launcher, which reads it before
+  starting the program. With self-voice on, printing to the terminal is silence, so startup
+  errors are dialogs and the spawned server's stderr goes to `rpc.log`.
 - **No `.menu` file.** BT Code adds the user-menu entry; §16.11 has been updated to match.
 
 ### The iOS app
