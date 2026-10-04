@@ -63,7 +63,8 @@ macro_rules! announced {
 
 announced!(
     Change, Rows, TaskShown, Plan, Filters, SettingList, Timer, Completions, Preview,
-    BackupDone, RestoreDone, Exported, ImportDone,
+    BackupDone, RestoreDone, Exported, ImportDone, PairedWith, SyncReport, SyncStatus,
+    DeviceList,
 );
 
 fn none<T>(list: &[T]) -> bool {
@@ -1030,4 +1031,123 @@ pub struct NewBlock {
     /// A repetition, such as `every weekday`.
     #[serde(default)]
     pub repeat: Option<String>,
+}
+
+// ---------------------------------------------------------------------------------------
+// Devices and sync (§7, §9)
+// ---------------------------------------------------------------------------------------
+
+/// The device a pairing joined.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct PairedWith {
+    /// Who, and how much came across.
+    pub announcement: String,
+    /// Anything else worth saying.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// What it is called.
+    pub name: String,
+    /// What it runs.
+    pub platform: String,
+    /// Its device key.
+    pub node_id: String,
+}
+
+/// How one device went in a sync round.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct PeerSync {
+    /// What it is called.
+    pub name: String,
+    /// Its device key.
+    pub node_id: String,
+    /// Whether the sync completed.
+    pub synced: bool,
+    /// The documents that changed on this side.
+    #[serde(default, skip_serializing_if = "none")]
+    pub changed: Vec<String>,
+    /// Why it did not complete.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// A sync round with every paired device.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct SyncReport {
+    /// How many were reached.
+    pub announcement: String,
+    /// Anything else worth saying.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// Each paired device, and how it went.
+    pub peers: Vec<PeerSync>,
+}
+
+/// One paired device, with how syncing with it last went.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct DeviceView {
+    /// What it is called.
+    pub name: String,
+    /// What it runs.
+    pub platform: String,
+    /// Its device key.
+    pub node_id: String,
+    /// Whether it is the device answering.
+    pub this_device: bool,
+    /// When it was paired.
+    pub paired_at: String,
+    /// When this device last tried to sync with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_attempt: Option<String>,
+    /// When that last worked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_success: Option<String>,
+    /// What went wrong, if the last attempt failed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+}
+
+/// How syncing is going (§9's `sync_status()`), as words rather than an icon.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct SyncStatus {
+    /// Whether it is running, and with how many devices.
+    pub announcement: String,
+    /// Anything else worth saying.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// Whether something on this device holds the sync endpoint — the daemon, or the app.
+    pub running: bool,
+    /// This device's key.
+    pub this_device: String,
+    /// Every paired device, this one first.
+    pub devices: Vec<DeviceView>,
+}
+
+/// The paired devices.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct DeviceList {
+    /// How many.
+    pub announcement: String,
+    /// Anything else worth saying.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// This one first, then by name.
+    pub devices: Vec<DeviceView>,
+}
+
+/// Which networks syncing may use.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+pub enum Reach {
+    /// Anywhere: a relay and the address lookup service, so devices on different networks
+    /// find each other.
+    #[default]
+    Internet,
+    /// The local network only: no relay, no lookup service.
+    LocalOnly,
 }

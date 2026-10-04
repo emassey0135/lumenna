@@ -723,6 +723,18 @@ impl Store {
         self.write(|docs| docs.apply(edit))
     }
 
+    /// Every loaded document's heads: a value that changes whenever anything is written,
+    /// whoever wrote it.
+    ///
+    /// [`refresh`](Self::refresh) only reports what *other* connections wrote, because
+    /// `data_version` does not move for this one's own writes. Something that shares this
+    /// connection and needs to notice those too — the sync loop in an app, which must send a
+    /// local edit on — compares this instead.
+    #[must_use]
+    pub fn version(&mut self) -> Vec<automerge::ChangeHash> {
+        self.docs.iter_mut().flat_map(|doc| doc.heads()).collect()
+    }
+
     /// This process's watch cursor: the highest change rowid it has seen.
     #[must_use]
     pub fn cursor(&self) -> i64 {

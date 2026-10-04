@@ -162,6 +162,11 @@ impl Node {
             .await
             .map_err(|e| SyncError::Network(e.to_string()))?;
         let summary = session::run(&self.store, &mut recv, &mut send).await?;
+        // Said as soon as the changes are in the store, not after the goodbyes below, which can
+        // take seconds — a view showing the store should redraw when the data is there.
+        if !summary.changed.is_empty() {
+            self.arrived.notify_one();
+        }
         finish(&mut send, &mut recv).await?;
         conn.close(0u32.into(), b"done");
         Ok(summary)
@@ -216,9 +221,6 @@ impl Node {
                 let Ok(conn) = accepting.await else { return };
                 let peer = node_id(conn.remote_id());
                 let outcome = node.answer(&conn).await;
-                if outcome.as_ref().is_ok_and(|summary| !summary.changed.is_empty()) {
-                    node.arrived.notify_one();
-                }
                 if !matches!(outcome, Err(SyncError::Refused(_))) {
                     node.record(peer, &outcome);
                 }
@@ -234,6 +236,11 @@ impl Node {
         let (mut send, mut recv) =
             conn.accept_bi().await.map_err(|e| SyncError::Network(e.to_string()))?;
         let summary = session::run(&self.store, &mut recv, &mut send).await?;
+        // Said as soon as the changes are in the store, not after the goodbyes below, which can
+        // take seconds — a view showing the store should redraw when the data is there.
+        if !summary.changed.is_empty() {
+            self.arrived.notify_one();
+        }
         finish(&mut send, &mut recv).await?;
         // The dialler closes once it has everything; waiting for that keeps this side from
         // tearing down data still in flight.

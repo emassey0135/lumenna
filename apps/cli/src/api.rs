@@ -6,18 +6,15 @@
 //! should stay quiet. Every payload carries its own `announcement` and `notices`, so a
 //! [`Response`] has nothing to compose.
 //!
-//! The sync payloads are here rather than in the surface because syncing is the CLI's and the
-//! daemon's for now: it drives an Iroh endpoint, not an operation on the store.
-//!
 //! `--json` is a compatibility contract (§15). Reshaping anything here, or in the surface's
 //! records, is a breaking change, and [`VERSION`] says which shape a reader is looking at.
 
-use lumenna_core::edit::Edit;
 use lumenna_surface::{
-    Announced, BackupDone, Change, Completions, Exported, Filters, ImportDone, Imported, Plan,
-    Preview, RestoreDone, Rows, SettingList, TaskShown, Timer, announced,
+    Announced, BackupDone, Change, Completions, DeviceList, Exported, Filters, ImportDone,
+    Imported, PairedWith, Plan, Preview, RestoreDone, Rows, SettingList, SyncReport, SyncStatus,
+    TaskShown, Timer, announced,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 /// The contract version, carried on every response.
 pub const VERSION: u32 = lumenna_surface::CONTRACT;
@@ -41,11 +38,6 @@ impl Response {
     /// A response carrying this payload.
     pub fn new(outcome: impl Into<Outcome>) -> Self {
         Self { version: VERSION, outcome: outcome.into(), silent: false }
-    }
-
-    /// A mutation that changed something, announced as core described it.
-    pub fn changed(edit: &Edit) -> Self {
-        Self::new(Change::of(edit))
     }
 
     /// A mutation that turned out to have nothing to do.
@@ -208,105 +200,4 @@ pub struct ServerInfo {
     pub methods: Vec<&'static str>,
 }
 
-// ---------------------------------------------------------------------------------------
-// Sync (§7, §9)
-// ---------------------------------------------------------------------------------------
-
-/// The device a pairing joined.
-#[derive(Debug, Serialize)]
-pub struct PairedWith {
-    /// Who, and how much came across.
-    pub announcement: String,
-    /// Anything else worth saying.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub notices: Vec<String>,
-    /// What it is called.
-    pub name: String,
-    /// What it runs.
-    pub platform: String,
-    /// Its device key.
-    pub node_id: String,
-}
-
-/// How one device went in a sync round.
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct PeerSync {
-    /// What it is called.
-    pub name: String,
-    /// Its device key.
-    pub node_id: String,
-    /// Whether the sync completed.
-    pub synced: bool,
-    /// The documents that changed on this side.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub changed: Vec<String>,
-    /// Why it did not complete.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// A sync round.
-#[derive(Debug, Serialize)]
-pub struct SyncReport {
-    /// How many were reached.
-    pub announcement: String,
-    /// Anything else worth saying.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub notices: Vec<String>,
-    /// Each paired device, and how it went.
-    pub peers: Vec<PeerSync>,
-}
-
-/// One paired device, with how syncing with it last went.
-#[derive(Debug, Serialize)]
-pub struct DeviceView {
-    /// What it is called.
-    pub name: String,
-    /// What it runs.
-    pub platform: String,
-    /// Its device key.
-    pub node_id: String,
-    /// Whether it is the device answering.
-    pub this_device: bool,
-    /// When it was paired.
-    pub paired_at: String,
-    /// When this device last tried to sync with it.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_attempt: Option<String>,
-    /// When that last worked.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_success: Option<String>,
-    /// What went wrong, if the last attempt failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_error: Option<String>,
-}
-
-/// §9's `sync_status()`.
-#[derive(Debug, Serialize)]
-pub struct SyncStatus {
-    /// Whether it is running, and with how many devices.
-    pub announcement: String,
-    /// Anything else worth saying.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub notices: Vec<String>,
-    /// Whether a process on this device is holding the endpoint — the daemon, usually.
-    pub running: bool,
-    /// This device's key.
-    pub this_device: String,
-    /// Every paired device, this one first.
-    pub devices: Vec<DeviceView>,
-}
-
-/// The paired devices.
-#[derive(Debug, Serialize)]
-pub struct DeviceList {
-    /// How many.
-    pub announcement: String,
-    /// Anything else worth saying.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub notices: Vec<String>,
-    /// This one first, then by name.
-    pub devices: Vec<DeviceView>,
-}
-
-announced!(ServerInfo, PairedWith, SyncReport, SyncStatus, DeviceList);
+announced!(ServerInfo);

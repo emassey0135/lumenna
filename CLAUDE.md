@@ -103,8 +103,16 @@ is the short-lived endpoint a pairing runs on.
   daemon and no IPC; the device keys are exchanged only after the words are confirmed.
 - **The words** come from the connection's TLS exporter secret plus a commit-then-reveal
   nonce exchange, three PGP words. Without the commitment, 24 bits could be ground offline.
-- **One endpoint per device**, decided by an advisory lock on `<profile>/sync.lock`. The
-  daemon holds it; `lum sync` takes it for a round or asks the daemon over the socket.
+- **Driving sync is the surface's** (`crates/surface/src/sync.rs`, the `sync` feature):
+  pairing through a `PairingPrompt` callback, `sync_now`, status, devices, and the
+  `SyncService` loop that both the daemon and the iOS app run. The CLI adds only the
+  terminal prompt, the daemon's socket and signals, and asking the daemon.
+- **One endpoint per device**, decided by an advisory lock on `<profile>/sync.lock`. A
+  `SyncService` holds it; `sync_now` takes it for a round, hands the round to this store's
+  service, or returns `LumennaError::SyncElsewhere` so the CLI asks the daemon over the socket.
+- **The service shares the operations' connection**, so it notices local edits by
+  `Store::version()` (every document's heads); `refresh` alone cannot see a connection's own
+  writes. Arrivals are signalled as soon as a session's changes are in the store.
   The device key lives in the store's `local_state` table and never syncs.
 - **The sync session is lockstep per document**: both sides send one frame (a message, or an
   empty frame for nothing) then read one; both empty ends the document. Both sides see the

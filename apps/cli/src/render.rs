@@ -207,7 +207,7 @@ fn day(plan: &Plan) {
 
 /// One device as a sentence: what it is, and how syncing with it last went. Words rather
 /// than a symbol, because §9 is explicit that a glyph communicates nothing.
-fn device_line(device: &crate::api::DeviceView) -> String {
+fn device_line(device: &lumenna_surface::DeviceView) -> String {
     let mut line = format!("{}, {}", device.name, device.platform);
     if device.this_device {
         line.push_str(", this device");

@@ -22,7 +22,7 @@ required-features = ["bindgen"]
 bindgen = ["uniffi/cli"]
 
 [dependencies]
-lumenna-surface = { path = "../surface", features = ["uniffi"] }
+lumenna-surface = { path = "../surface", features = ["uniffi", "sync"] }
 uniffi = "0.32"
 
 [dev-dependencies]
