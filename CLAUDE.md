@@ -97,7 +97,7 @@ socket.
 §3.12 says it never syncs, but a one-shot CLI process has no session, so cross-invocation
 undo needs either serialisable edits or a history-derived inverse. §15 lists the command;
 §9 and §15 disagree about whether it can exist. Also absent: sync, pairing, reminders,
-hooks, import/export, auto-scheduling — all of which depend on crates that do not exist.
+hooks, auto-scheduling — all of which depend on crates that do not exist.
 
 ### The BTSpeak app
 
@@ -178,6 +178,27 @@ anything, and `refresh` reads in one transaction and loads a snapshot whose head
 your own connection's writes, and rows from another process can interleave with yours. A
 cursor that lags re-reads a change already held, which is a no-op; a cursor that skips loses
 an edit.
+
+### Backup and export (§9)
+
+Two different things, kept apart in code, commands and wording, because confusing them is
+how someone sends a "task list" holding everything they ever deleted.
+
+- **A backup** (`store::backup`, `lum backup`/`restore`) is every document's Automerge
+  `save()`, framed in one file: the whole history, trash included. Restoring **merges** —
+  it adds what the store lacks and can never take back a later change.
+- **An export** (`store::export`, `lum export`) is current state only: no history, nothing
+  from the trash. JSON is complete and versioned (`export::VERSION`), keeps identifiers,
+  and is what `lum import` reads back; Markdown, org and ics are for reading only.
+- `crates/store/tests/export.rs` round-trips a store with every field set. **A field added
+  to the model must be added to `export/json.rs`**, or that test fails — which is the point.
+- Backups are taken automatically when the newest is older than `backup-every` (a day by
+  default): by the CLI before a command runs, and by `lum rpc` at start and hourly. They go
+  to `<profile>-backups` beside the profile, never inside it, are `0600`, and the oldest
+  beyond `backup-keep` are pruned. `backup-dir`, `backup-keep` and `backup-every` are
+  **device settings**, in `<profile>/device-settings`, and never sync (§3.12).
+- `LUMENNA_BACKUP_DIR` overrides the default directory; every test harness sets it, or
+  test runs would leave backup folders beside their temporary profiles.
 
 ### Mutations and undo
 

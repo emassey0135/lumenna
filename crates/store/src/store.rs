@@ -331,6 +331,212 @@ impl Store {
         Ok(changed || unreported)
     }
 
+    /// The whole store as a backup file (see [`crate::backup`]).
+    ///
+    /// Every year is loaded first — a backup of the years someone happened to look at is not
+    /// a backup — and another process's latest changes are taken in, so the file is as
+    /// current as the database it came from.
+    ///
+    /// # Errors
+    ///
+    /// If a document cannot be read.
+    pub fn backup(&mut self) -> Result<Vec<u8>> {
+        self.refresh()?;
+        self.load_all_years()?;
+        let documents: Vec<(DocId, Vec<u8>)> =
+            self.docs.iter_mut().map(|doc| (doc.id(), doc.save())).collect();
+        Ok(crate::backup::encode(&documents))
+    }
+
+    /// Writes a backup under `policy`, pruning old ones. See [`crate::backup::write`].
+    ///
+    /// # Errors
+    ///
+    /// If a document cannot be read or the file cannot be written.
+    pub fn back_up_to(
+        &mut self,
+        policy: &crate::backup::Policy,
+        now: jiff::Timestamp,
+    ) -> Result<std::path::PathBuf> {
+        let bytes = self.backup()?;
+        crate::backup::write(policy, &bytes, now)
+    }
+
+    /// Takes a backup if the newest under `policy` is older than its interval.
+    ///
+    /// What every client calls opportunistically (§9) — at launch, or on a one-shot command —
+    /// since a schedule only exists where something stays running.
+    ///
+    /// # Errors
+    ///
+    /// If the directory cannot be read, or a due backup cannot be written.
+    pub fn back_up_if_due(
+        &mut self,
+        policy: &crate::backup::Policy,
+        now: jiff::Timestamp,
+    ) -> Result<Option<std::path::PathBuf>> {
+        if !crate::backup::is_due(policy, now)? {
+            return Ok(None);
+        }
+        self.back_up_to(policy, now).map(Some)
+    }
+
+    /// Merges a backup into the store.
+    ///
+    /// **Merge, never replace.** A backup's documents are Automerge histories, so loading one
+    /// into the live store adds whatever changes it holds that the store lacks and leaves
+    /// everything else alone. Restoring onto a new device rebuilds the store; restoring onto
+    /// one that has moved on since loses nothing it has done. What it cannot do is take back
+    /// a later change — a task deleted after the backup stays deleted, because the deletion is
+    /// history too. That is the honest limit of restoring into a CRDT.
+    ///
+    /// # Errors
+    ///
+    /// If the file is not a readable backup, or a document in it will not load.
+    pub fn restore(&mut self, bytes: &[u8]) -> Result<Restored> {
+        let decoded = crate::backup::decode(bytes)?;
+        let mut restored = Restored { unknown: decoded.unknown, ..Restored::default() };
+        for (id, _) in &decoded.documents {
+            if let DocId::Blocks(year) = id {
+                self.load_year(*year)?;
+            }
+        }
+        self.write(|docs| {
+            for (id, data) in &decoded.documents {
+                let doc = match id {
+                    DocId::Core => docs.core(),
+                    DocId::Devices => docs.devices(),
+                    DocId::Blocks(year) => docs.blocks(*year),
+                };
+                let before = doc.heads();
+                doc.load_incremental(data)?;
+                restored.documents += 1;
+                if doc.heads() != before {
+                    restored.changed += 1;
+                }
+            }
+            // A backup of a store from before the recurring-year index still has routines in
+            // it, so the restored series are indexed the same way an old store's are.
+            let (snapshot, _) = docs.snapshot();
+            for series in snapshot.series.values().filter(|s| s.is_recurring()) {
+                docs.note_recurring_year(series.start_date.year())?;
+            }
+            Ok(())
+        })?;
+        Ok(restored)
+    }
+
+    /// Writes an export's records into the store (see [`crate::export`]).
+    ///
+    /// Identifiers are kept, so importing the same file twice changes nothing the second
+    /// time, and importing onto the store it came from only puts back what has changed since.
+    /// A record that exists here is updated field by field against what is here — the same
+    /// rule as every other write — and one that does not is created. Nothing absent from the
+    /// file is touched: an export says what *is*, not what should be removed.
+    ///
+    /// # Errors
+    ///
+    /// If a document cannot be read or written.
+    pub fn import(&mut self, imported: &crate::export::Imported) -> Result<Imports> {
+        self.refresh()?;
+        self.load_all_years()?;
+        let (current, _) = self.docs.snapshot();
+        let mut report = Imports::default();
+
+        fn tally<T: PartialEq>(report: &mut Imports, before: Option<&T>, after: &T) -> bool {
+            match before {
+                Some(before) if before == after => {
+                    report.unchanged += 1;
+                    false
+                }
+                Some(_) => {
+                    report.updated += 1;
+                    true
+                }
+                None => {
+                    report.created += 1;
+                    true
+                }
+            }
+        }
+
+        self.write(|docs| {
+            if let Some(settings) = &imported.settings
+                && settings != &current.settings
+            {
+                docs.put_settings(settings, Some(&current.settings))?;
+            }
+            for p in &imported.projects {
+                let before = current.projects.get(&p.id);
+                if tally(&mut report, before, p) {
+                    docs.put_project(p, before)?;
+                }
+            }
+            for l in &imported.labels {
+                let before = current.labels.get(&l.id);
+                if tally(&mut report, before, l) {
+                    docs.put_label(l, before)?;
+                }
+            }
+            for f in &imported.filters {
+                let before = current.saved_filters.get(&f.id);
+                if tally(&mut report, before, f) {
+                    docs.put_filter(f, before)?;
+                }
+            }
+            for t in &imported.tasks {
+                let before = current.tasks.get(&t.id);
+                if tally(&mut report, before, t) {
+                    docs.put_task(t, before)?;
+                }
+            }
+            for c in &imported.completions {
+                let before = current.completions.get(&c.id);
+                if tally(&mut report, before, c) {
+                    docs.put_completion(c, before)?;
+                }
+            }
+            for s in &imported.series {
+                let before = current.series.get(&s.id);
+                if tally(&mut report, before, s) {
+                    docs.put_series(s, before)?;
+                }
+            }
+            for e in &imported.exceptions {
+                let before = current.exceptions.get(&(e.series_id, e.original_date));
+                if tally(&mut report, before, e) {
+                    docs.put_exception(e, before)?;
+                }
+            }
+            for a in &imported.assignments {
+                // A one-off block's assignment lives in its series' year, and the series is in
+                // the file or in the store; with neither there is no telling which document it
+                // belongs to, and guessing would leave a fragment in the wrong one.
+                let series = imported
+                    .series
+                    .iter()
+                    .find(|s| s.id == a.block_ref.series_id())
+                    .or_else(|| current.series.get(&a.block_ref.series_id()));
+                let Some(year) = crate::doc::assignment_year(a, series) else {
+                    report.skipped += 1;
+                    continue;
+                };
+                let before = current.assignments.get(&a.id);
+                if tally(&mut report, before, a) {
+                    docs.put_assignment(year, a, before)?;
+                }
+            }
+            for r in &imported.reminders {
+                let before = current.reminders.get(&r.id);
+                if tally(&mut report, before, r) {
+                    docs.put_reminder(r, before)?;
+                }
+            }
+            Ok(())
+        })?;
+        Ok(report)
+    }
+
     /// Applies an [`Edit`] and persists it.
     ///
     /// # Errors
@@ -351,4 +557,28 @@ impl Store {
     pub fn db(&self) -> &Db {
         &self.db
     }
+}
+
+/// What [`Store::restore`] did.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Restored {
+    /// How many documents the backup held that this version could read.
+    pub documents: usize,
+    /// How many of them brought in anything the store did not already have.
+    pub changed: usize,
+    /// Documents of a kind this version does not know, left out.
+    pub unknown: Vec<String>,
+}
+
+/// What [`Store::import`] did, in records.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Imports {
+    /// Records the store did not have.
+    pub created: usize,
+    /// Records it had, now changed to match the file.
+    pub updated: usize,
+    /// Records already exactly as the file has them.
+    pub unchanged: usize,
+    /// Assignments left out because their block is in neither the file nor the store.
+    pub skipped: usize,
 }

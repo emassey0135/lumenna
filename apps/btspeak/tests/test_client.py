@@ -41,6 +41,8 @@ class TalkingToTheServer(unittest.TestCase):
     def setUp(self):
         self.profile = Path(tempfile.mkdtemp())
         os.environ["PATH"] = f"{Path(LUM).parent}{os.pathsep}{os.environ['PATH']}"
+        # The server and the CLI both take automatic backups; keep them in the scratch area.
+        os.environ["LUMENNA_BACKUP_DIR"] = str(self.profile / "backups")
         self.client = connect(self.profile)
 
     def tearDown(self):
@@ -51,7 +53,7 @@ class TalkingToTheServer(unittest.TestCase):
         """A second process, writing to the same store."""
         done = subprocess.run(
             [LUM, *args],
-            env=dict(os.environ, LUMENNA_PROFILE=str(self.profile)),
+env=dict(os.environ, LUMENNA_PROFILE=str(self.profile)),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,

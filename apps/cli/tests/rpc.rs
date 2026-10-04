@@ -21,6 +21,7 @@ impl Rpc {
         Command::new(env!("CARGO_BIN_EXE_lum"))
             .arg("rpc")
             .env("LUMENNA_PROFILE", self.profile.path())
+            .env("LUMENNA_BACKUP_DIR", self.profile.path().join("backups"))
             .env("NO_COLOR", "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -49,6 +50,7 @@ impl Rpc {
         let status = Command::new(env!("CARGO_BIN_EXE_lum"))
             .args(args)
             .env("LUMENNA_PROFILE", self.profile.path())
+            .env("LUMENNA_BACKUP_DIR", self.profile.path().join("backups"))
             .env("NO_COLOR", "1")
             .stdout(Stdio::null())
             .status()
@@ -231,4 +233,17 @@ fn a_preview_says_what_would_happen_without_making_it_happen() {
     assert!(out.contains(r#""new_labels":["new"]"#), "{out}");
     assert!(out.contains(r#""has_errors":false"#), "{out}");
     assert!(out.contains(r#""count":0"#), "nothing was written: {out}");
+}
+
+#[test]
+fn an_export_comes_back_in_the_reply_and_a_bad_format_is_named() {
+    let rpc = Rpc::new();
+    let out = rpc.talk(&[
+        r#"{"jsonrpc":"2.0","id":1,"method":"task.add","params":{"text":"write the chapter"}}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"export","params":{"format":"markdown"}}"#,
+        r#"{"jsonrpc":"2.0","id":3,"method":"export","params":{"format":"pdf"}}"#,
+    ]);
+    assert!(out.contains(r#""result":"export""#), "{out}");
+    assert!(out.contains(r"- [ ] write the chapter"), "{out}");
+    assert!(out.contains("'pdf' is not a format"), "{out}");
 }

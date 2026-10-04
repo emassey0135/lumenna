@@ -29,6 +29,20 @@ pub enum StoreError {
         /// What was wrong.
         detail: String,
     },
+
+    /// A file offered as a backup or an export is not one this version can read.
+    #[error("{0}")]
+    Unreadable(String),
+
+    /// The filesystem refused something — writing a backup, say.
+    #[error("{0}")]
+    Io(String),
+}
+
+impl From<std::io::Error> for StoreError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error.to_string())
+    }
 }
 
 /// Shorthand for this crate's results.

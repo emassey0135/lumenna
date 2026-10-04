@@ -5,7 +5,7 @@
 //! everything either of them says comes off the typed surface in [`api`](crate::api), which
 //! is what keeps `--json` a contract rather than a second implementation (§15).
 
-use anstream::{eprintln, println};
+use anstream::{eprintln, print, println};
 use serde::Serialize;
 
 use crate::api::{Outcome, Response, Rows};
@@ -59,7 +59,16 @@ fn text(response: &Response) {
         | Outcome::Timer(_)
         | Outcome::Completions(_)
         | Outcome::Preview(_)
-        | Outcome::Server(_) => println!("{}", response.announcement),
+        | Outcome::Server(_)
+        | Outcome::Backup(_)
+        | Outcome::Restore(_)
+        | Outcome::Import(_) => println!("{}", response.announcement),
+        // An export to standard output is the payload itself, exactly, so it can be piped
+        // or redirected into a file that is nothing but the export.
+        Outcome::Export(exported) => match &exported.content {
+            Some(content) => print!("{content}"),
+            None => println!("{}", response.announcement),
+        },
         Outcome::Rows(rows) => list(rows, &response.announcement),
         Outcome::Task(task) => detail(task),
         Outcome::Plan(plan) => day(plan),

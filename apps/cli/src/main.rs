@@ -22,6 +22,7 @@
 //! the primary discovery mechanism for anyone who cannot skim a GUI.
 
 mod api;
+mod durability;
 mod error;
 mod profile;
 mod render;
@@ -136,6 +137,51 @@ pub(crate) enum Command {
     /// Read or change settings.
     #[command(subcommand)]
     Config(ConfigCommand),
+
+    /// Back up the whole store now, history included.
+    ///
+    /// A backup holds every task ever created — including the ones you deleted — so that a
+    /// store can be rebuilt from it. One is also taken automatically when the last is a day
+    /// old; `lum config set backup-every` changes that, and `backup-dir` where they go.
+    Backup {
+        /// Write it here instead of the configured directory.
+        #[arg(long, value_name = "DIR")]
+        to: Option<PathBuf>,
+    },
+
+    /// Merge a backup into the store.
+    ///
+    /// Nothing in the store is lost: what the backup has that the store lacks comes in, and
+    /// the rest is left alone. A task deleted after the backup was taken stays deleted.
+    Restore {
+        /// The backup file.
+        file: PathBuf,
+    },
+
+    /// Write out the current state: no history, nothing from the trash.
+    ///
+    /// JSON is complete and is what `lum import` reads back. Markdown and org are task lists
+    /// for reading; ics is your blocks, for any calendar.
+    Export {
+        /// json, markdown (md), org, or ics.
+        #[arg(long, value_enum, default_value_t)]
+        format: durability::ExportFormat,
+        /// Write to this file instead of standard output.
+        #[arg(long, short, value_name = "FILE")]
+        output: Option<PathBuf>,
+        /// Replace the file if it exists.
+        #[arg(long)]
+        force: bool,
+    },
+
+    /// Read a JSON export, or a backup, into the store.
+    ///
+    /// Records keep their identifiers, so importing the same file twice changes nothing the
+    /// second time. Nothing missing from the file is removed.
+    Import {
+        /// The file.
+        file: PathBuf,
+    },
 
     /// Serve the command surface over JSON-RPC on stdin and stdout.
     ///
@@ -447,6 +493,10 @@ fn run(cli: &Cli, format: Format) -> Result<()> {
         return rpc::serve(profile);
     }
 
+    if !matches!(cli.command, Command::Backup { .. }) {
+        durability::back_up_if_due(&mut profile);
+    }
+
     let now = Zoned::now();
     let response = dispatch(&mut profile, &cli.command, &now)?;
     // Row numbers count against whatever was listed last, so the listing is recorded from
@@ -483,6 +533,12 @@ pub(crate) fn dispatch(
         Command::Start { assignment } => start(profile, assignment, now),
         Command::Stop { assignment, minutes } => stop(profile, assignment, *minutes, now),
         Command::Config(command) => config(profile, command),
+        Command::Backup { to } => durability::backup(profile, to.as_deref()),
+        Command::Restore { file } => durability::restore(profile, file),
+        Command::Export { format, output, force } => {
+            durability::export(profile, *format, output.as_deref(), *force, now)
+        }
+        Command::Import { file } => durability::import(profile, file),
     }
 }
 
@@ -544,7 +600,11 @@ fn listing_of(outcome: &Outcome) -> Option<Vec<(&'static str, String)>> {
         | Outcome::Timer(_)
         | Outcome::Completions(_)
         | Outcome::Preview(_)
-        | Outcome::Server(_) => None,
+        | Outcome::Server(_)
+        | Outcome::Backup(_)
+        | Outcome::Restore(_)
+        | Outcome::Export(_)
+        | Outcome::Import(_) => None,
     }
 }
 
@@ -1647,6 +1707,7 @@ fn config(profile: &mut Profile, command: &ConfigCommand) -> Result<Response> {
             ]
             .into_iter()
             .map(|(key, value)| api::Setting { key: key.to_owned(), value })
+            .chain(durability::device_settings(profile)?)
             .collect();
 
             match key {
@@ -1665,6 +1726,9 @@ fn config(profile: &mut Profile, command: &ConfigCommand) -> Result<Response> {
                     Outcome::Settings(api::SettingList { settings: all }),
                 )),
             }
+        }
+        ConfigCommand::Set { key, value } if durability::DEVICE_KEYS.contains(&key.as_str()) => {
+            durability::set_device_setting(profile, key, value)
         }
         ConfigCommand::Set { key, value } => {
             let mut after = settings.clone();

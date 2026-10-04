@@ -99,6 +99,16 @@ impl DocId {
         }
     }
 
+    /// The document a stored or synced name refers to, if it is one this version knows.
+    #[must_use]
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "core" => Some(Self::Core),
+            "devices" => Some(Self::Devices),
+            _ => name.strip_prefix("blocks-")?.parse().ok().map(Self::Blocks),
+        }
+    }
+
     /// The root collections a document of this kind holds, in a fixed order.
     ///
     /// Fixed because [`Doc::new`] writes them in a genesis change that must come out
