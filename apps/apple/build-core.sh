@@ -1,7 +1,7 @@
 #!/bin/bash
 # Builds Lumenna's Rust core for an Apple platform and regenerates its Swift bindings.
 #
-#   apple/build-core.sh [iphonesimulator|iphoneos] [Debug|Release]
+#   apps/apple/build-core.sh [iphonesimulator|iphoneos] [Debug|Release]
 #
 # Xcode runs this before every build, passing nothing: it reads PLATFORM_NAME and
 # CONFIGURATION from Xcode's environment. Cargo does nothing when nothing changed, so an
@@ -12,7 +12,7 @@
 # pick them up and fail in confusing ways.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 PLATFORM="${1:-${PLATFORM_NAME:-iphonesimulator}}"
 CONFIGURATION="${2:-${CONFIGURATION:-Debug}}"
 
@@ -39,7 +39,7 @@ cargo build -p lumenna-ffi --lib $PROFILE_FLAG --target "$TARGET"
 
 # The bindings come from the interface compiled into a host build of the same crate.
 cargo build -p lumenna-ffi --lib
-GENERATED="$ROOT/apple/Generated"
+GENERATED="$ROOT/apps/apple/Generated"
 mkdir -p "$GENERATED"
 cargo run -q -p lumenna-ffi --features bindgen --bin uniffi-bindgen -- \
   generate --library "$ROOT/target/debug/liblumenna_ffi.dylib" \

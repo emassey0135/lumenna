@@ -32,7 +32,7 @@ crates/ffi/     the library the Swift and Kotlin apps link; re-exports surface o
 crates/sync/    Iroh endpoints, the document sync session, and pairing (§7).
 apps/cli/       `lum` — the first target, and a permanent one.
 apps/btspeak/   the BTSpeak app, in Python, over `lum rpc`.
-apple/          the iOS app (UIKit + SwiftUI over the generated bindings), and build-core.sh.
+apps/apple/     the iOS app (UIKit + SwiftUI over the generated bindings), and build-core.sh.
 ```
 
 The other GUI apps in §2's layout do not exist yet.
@@ -183,8 +183,8 @@ is readable here and the app can be run under a pty without a second machine.
 
 ### The iOS app
 
-`apple/` — Swift, a UIKit shell with SwiftUI forms (§16.6), calling the surface
-through the generated `LumennaCore.swift`. `cd apple && xcodegen` makes the project from
+`apps/apple/` — Swift, a UIKit shell with SwiftUI forms (§16.6), calling the surface
+through the generated `LumennaCore.swift`. `cd apps/apple && xcodegen` makes the project from
 `project.yml`; the `.xcodeproj` and `Generated/` are build output and not committed.
 
 - **Xcode builds the core itself.** A pre-build phase runs `build-core.sh`, which builds
@@ -222,7 +222,7 @@ through the generated `LumennaCore.swift`. `cd apple && xcodegen` makes the proj
   minutes with it on:
 
   ```
-  cd apple && xcodebuild -project Lumenna.xcodeproj -scheme Lumenna \
+  cd apps/apple && xcodebuild -project Lumenna.xcodeproj -scheme Lumenna \
     -destination 'platform=iOS Simulator,name=iPhone 18 Pro' \
     -collect-test-diagnostics never test
   ```

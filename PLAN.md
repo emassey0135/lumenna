@@ -113,8 +113,8 @@ apps/
   windows/     Win32
   emacs/       Elisp package + optional emacspeak-lumenna.el
   btspeak/     Python app, .menu file, reminder service, systemd unit
-apple/         Xcode workspace: macOS, iOS, watchOS targets
-android/       Gradle project: phone + Wear OS modules
+  apple/       Xcode project: macOS, iOS, watchOS targets, sharing Swift code
+  android/     Gradle project: phone + Wear OS modules
 ```
 
 The CLI, the daemon, the RPC server, and the MCP server are **one executable with
