@@ -18,11 +18,10 @@
 //! the other its pairing code to dial.
 
 use iroh::endpoint::Connection;
-use iroh::{Endpoint, EndpointAddr, EndpointId, SecretKey};
-use iroh_mdns_address_lookup::{DiscoveryEvent, MdnsAddressLookup};
+use iroh::{Endpoint, EndpointAddr, SecretKey};
+use crate::discovery::LocalLookup;
 use lumenna_core::edit;
 use lumenna_core::model::Device;
-use n0_future::StreamExt;
 
 use crate::error::{Result, SyncError};
 use crate::node::{Network, finish};
@@ -36,6 +35,10 @@ const PAIRING_SERVICE: &str = "lumenna-pair";
 
 /// How long to listen on the local network for a pairing code before dialling it anyway.
 const LOCATE_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// How long a dial to a session heard on the local network gets. Plenty on one network, and
+/// short enough that a stale announcement costs seconds rather than the connection timeout.
+const HEARD_DIAL_WAIT: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// The label for the TLS exporter secret the words come from.
 const EXPORTER_LABEL: &[u8] = b"lumenna pairing v0";
@@ -53,7 +56,7 @@ pub struct Paired {
 #[derive(Debug)]
 pub struct Invitation {
     endpoint: Endpoint,
-    mdns: Option<MdnsAddressLookup>,
+    local: LocalLookup,
 }
 
 impl Invitation {
@@ -68,7 +71,7 @@ impl Invitation {
     ///
     /// If the endpoint cannot bind.
     pub async fn open(network: Network, findable: bool) -> Result<Self> {
-        let (endpoint, mdns) = crate::node::bind(
+        let (endpoint, local) = crate::node::bind(
             SecretKey::generate(),
             ALPN_PAIR,
             network,
@@ -76,7 +79,7 @@ impl Invitation {
             findable,
         )
         .await?;
-        Ok(Self { endpoint, mdns })
+        Ok(Self { endpoint, local })
     }
 
     /// The pairing code: this session's key, for the other device to dial when the two are not
@@ -107,11 +110,25 @@ impl Invitation {
             return Ok((self.dial(peer).await?, Role::Dialled));
         }
         let me = self.endpoint.id();
-        let mut found = match &self.mdns {
-            Some(mdns) => Some(mdns.subscribe().await),
-            None => None,
-        };
+        let (already, mut found) = self.local.subscribe();
+        // Sessions heard before this one started listening, then the ones heard after.
+        let mut waiting: std::collections::VecDeque<_> = already.into();
         loop {
+            if let Some(them) = waiting.pop_front() {
+                let addr = EndpointAddr::from_parts(
+                    them.id,
+                    them.addrs.into_iter().map(iroh::TransportAddr::Ip),
+                );
+                // A session that has gone without saying so — a closed laptop, a phone off
+                // the network — can stay announced for a while. Each such dial gives up
+                // quickly, rather than holding up the meeting for a full connection timeout.
+                if me < them.id
+                    && let Ok(Ok(conn)) = tokio::time::timeout(HEARD_DIAL_WAIT, self.dial(addr)).await
+                {
+                    return Ok((conn, Role::Dialled));
+                }
+                continue;
+            }
             tokio::select! {
                 incoming = self.endpoint.accept() => {
                     let incoming = incoming.ok_or_else(|| {
@@ -122,17 +139,14 @@ impl Invitation {
                         return Ok((conn, Role::Answered));
                     }
                 }
-                event = next_event(&mut found) => {
-                    let Some(DiscoveryEvent::Discovered { endpoint_info, .. }) = event else {
-                        continue;
-                    };
-                    let them: EndpointId = endpoint_info.endpoint_id;
-                    if them != me && me < them
-                        && let Ok(conn) = self.dial(EndpointAddr::new(them)).await
-                    {
-                        return Ok((conn, Role::Dialled));
+                heard = found.recv() => match heard {
+                    Ok(them) => waiting.push_back(them),
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                    // The lookup is gone; carry on waiting to be dialled.
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        return self.wait().await;
                     }
-                }
+                },
             }
         }
     }
@@ -168,20 +182,27 @@ impl Invitation {
         if !peer.addrs.is_empty() {
             return peer;
         }
-        let Some(mdns) = &self.mdns else { return peer };
-        let mut events = mdns.subscribe().await;
+        let id = peer.id;
+        let addr = move |addrs: Vec<std::net::SocketAddr>| {
+            EndpointAddr::from_parts(id, addrs.into_iter().map(iroh::TransportAddr::Ip))
+        };
+        // Heard already, or heard from now on — taken together, so a session heard in between
+        // is in one or the other rather than neither.
+        let (already, mut events) = self.local.subscribe();
+        if let Some(found) = already.into_iter().find(|found| found.id == id) {
+            return addr(found.addrs);
+        }
         let heard = tokio::time::timeout(LOCATE_WAIT, async {
-            while let Some(event) = events.next().await {
-                if let DiscoveryEvent::Discovered { endpoint_info, .. } = event
-                    && endpoint_info.endpoint_id == peer.id
-                {
-                    return Some(EndpointAddr::from(endpoint_info));
+            loop {
+                match events.recv().await {
+                    Ok(found) if found.id == id => return Some(found.addrs),
+                    Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => return None,
                 }
             }
-            None
         })
         .await;
-        heard.ok().flatten().unwrap_or(peer)
+        heard.ok().flatten().map_or(peer, addr)
     }
 
     async fn dial(&self, peer: EndpointAddr) -> Result<Connection> {
@@ -264,16 +285,6 @@ async fn close(conn: &Connection, role: Role) {
         Role::Answered => {
             let _ = tokio::time::timeout(std::time::Duration::from_secs(5), conn.closed()).await;
         }
-    }
-}
-
-async fn next_event(
-    stream: &mut Option<impl n0_future::Stream<Item = DiscoveryEvent> + Unpin>,
-) -> Option<DiscoveryEvent> {
-    match stream {
-        Some(stream) => stream.next().await,
-        // No mDNS on this network: wait on the other branch forever.
-        None => std::future::pending().await,
     }
 }
 

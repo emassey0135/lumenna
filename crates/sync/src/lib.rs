@@ -14,6 +14,7 @@
 //! listed there is refused on the sync protocol, however it was found. The only way into the
 //! list is a pairing whose words a person compared and confirmed on both devices.
 
+pub mod discovery;
 mod error;
 mod framing;
 pub mod invite;

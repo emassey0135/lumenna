@@ -60,8 +60,14 @@ fn eventually(within: Duration, check: impl Fn() -> bool) -> bool {
     check()
 }
 
+/// Pairing sessions waiting on one network find each other, which is the point — so two
+/// tests pairing at once in this process would pair with each other, both prompts saying
+/// yes. Tests that pair take turns.
+static ONE_PAIRING_AT_A_TIME: Mutex<()> = Mutex::new(());
+
 /// Pairs two fresh stores by code, as a phone and a laptop on one network would.
 fn paired() -> (tempfile::TempDir, Arc<Lumenna>, Arc<Lumenna>) {
+    let _turn = ONE_PAIRING_AT_A_TIME.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let dir = tempfile::tempdir().unwrap();
     let a = Arc::new(Lumenna::open_at(&dir.path().join("a")).unwrap());
     let b = Arc::new(Lumenna::open_at(&dir.path().join("b")).unwrap());

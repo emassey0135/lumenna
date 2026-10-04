@@ -117,6 +117,17 @@ is the short-lived endpoint a pairing runs on.
 - **The sync session is lockstep per document**: both sides send one frame (a message, or an
   empty frame for nothing) then read one; both empty ends the document. Both sides see the
   same two frames, so both stop together. Sync state is per session, not saved.
+- **Local discovery is standard DNS-SD** (`crates/sync/src/discovery`), an Iroh address
+  lookup of our own: services `_lumenna._udp` (devices) and `_lumenna-pair._udp` (pairing
+  sessions), TXT `id` plus `a0`… addresses. Apple (macOS and iOS) goes through the system
+  responder's C API, which on iOS is Bonjour and needs no multicast entitlement — only the
+  types under `NSBonjourServices`; everything else uses `mdns-sd`. Iroh's own mDNS was
+  replaced because no standard browser can see it: no PTR record, every TTL zero.
+- **Bonjour reports an instance once per interface**, and a gone device's record can linger.
+  So an instance is resolved once, on its own thread, and lost only when gone from every
+  interface; dials to heard pairing sessions give up after three seconds.
+- **Tests that pair take turns** (`ONE_PAIRING_AT_A_TIME`): waiting sessions on one network
+  find each other, so two tests pairing at once pair with each other.
 - **A session joining by code does not advertise on mDNS.** Otherwise the waiting session
   dials it back and two connections each wait for the other to speak.
 - The daemon serves the RPC surface on `<profile>/lumenna.sock` (Unix); a `sync` request
