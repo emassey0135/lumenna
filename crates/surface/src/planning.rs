@@ -3,15 +3,18 @@
 use jiff::Zoned;
 use lumenna_core::edit::{self, EditError};
 use lumenna_core::id::AssignmentId;
-use lumenna_core::model::{BlockAssignment, BlockKind, BlockRef, BlockSeries};
+use lumenna_core::model::{BlockAssignment, BlockKind, BlockRef, BlockSeries, ExceptionAction};
 use lumenna_core::row::{Role, Row, RowId};
 use lumenna_core::snapshot::Snapshot;
 
 use crate::error::{LumennaError, Result};
 use crate::resolve;
 use crate::tasks::{record, record_or};
-use crate::types::{Announced, Change, NewBlock, Plan, PlanAssignment, PlanBlock, Rows, Timer};
-use crate::words::{count_line, time_text};
+use crate::types::{
+    Announced, BlockEdit, BlockScope, BlockShown, Change, NewBlock, Plan, PlanAssignment, PlanBlock, PlanItem,
+    Rows, Timer,
+};
+use crate::words::{count_line, duration, time_text};
 use crate::{Lumenna, repaired};
 
 fn to_u32(n: usize) -> u32 {
@@ -74,6 +77,15 @@ impl Lumenna {
                     })
                     .collect();
 
+                let when = if day != now.date() {
+                    ""
+                } else if occurrence.end_time() <= now.time() {
+                    "past"
+                } else if occurrence.start_time <= now.time() {
+                    "now"
+                } else {
+                    "upcoming"
+                };
                 blocks.push(PlanBlock {
                     row: to_u32(index + 1),
                     id: format!("{}@{}", occurrence.series_id, occurrence.date),
@@ -82,15 +94,35 @@ impl Lumenna {
                     start: time_text(occurrence.start_time),
                     end: time_text(occurrence.end_time()),
                     duration_mins: occurrence.duration_mins,
+                    kind: kind_word(occurrence.kind).to_owned(),
+                    when: when.to_owned(),
+                    repeats: series.is_some_and(BlockSeries::is_recurring),
+                    changed_for_this_day: occurrence.modified,
                     assignments,
                 });
             }
 
+            let overdue = (day == now.date()).then(|| {
+                let facts = snapshot.facts();
+                snapshot
+                    .tasks
+                    .values()
+                    .filter(|t| !t.is_deleted())
+                    .filter(|t| facts.notable_states_of(t, &now).contains(&lumenna_core::State::Overdue))
+                    .count()
+            });
+            let timeline = timeline(
+                &occurrences,
+                snapshot.settings.day_window,
+                (day == now.date()).then(|| now.time()),
+            );
             Ok(Plan {
                 announcement: format!("{day}, {}", count_line(blocks.len(), "block")),
                 notices: Vec::new(),
                 date: day.to_string(),
                 count: to_u32(blocks.len()),
+                summary: summary(&blocks, overdue),
+                timeline,
                 blocks,
             })
         })
@@ -109,26 +141,12 @@ impl Lumenna {
         self.with(|store| {
             let day = resolve::date(block.date.as_deref(), &now)?;
             let start = resolve::time(&block.at)?;
-            let kind = match block.kind.to_lowercase().as_str() {
-                "work" => BlockKind::Work,
-                "break" => BlockKind::Break,
-                "event" => BlockKind::Event,
-                other => {
-                    return Err(LumennaError::new(format!(
-                        "'{other}' is not a block kind; use work, break, or event"
-                    )));
-                }
-            };
+            let kind = block_kind(&block.kind)?;
             let mut series = BlockSeries::one_off(&block.title, kind, day, start, block.minutes)
                 .map_err(|e| LumennaError::new(e.to_string()))?;
 
             if let Some(repeat) = &block.repeat {
-                let tokens = lumenna_parse::words(repeat);
-                let (spec, _, _) = lumenna_parse::date::parse_recurrence(&tokens, 0)
-                    .ok_or_else(|| {
-                        LumennaError::new(format!("could not read a repetition from '{repeat}'"))
-                    })?;
-                let rrule = spec.to_rrule();
+                let rrule = repetition(repeat)?;
                 let rule = lumenna_core::recur::Rule::parse(&rrule)?;
                 if let Some(first) = rule.first_from(day)? {
                     series.start_date = first;
@@ -145,6 +163,159 @@ impl Lumenna {
                 format!("Added block {} at {} on {first}", block.title, time_text(start)),
                 &change,
             ))
+        })
+    }
+
+    /// Changes a block: every occurrence, or only the one on a given day (§4.3 — always
+    /// asked of a repeating block, never guessed).
+    ///
+    /// A day's change is an exception; the series stays as it was, and later changes to the
+    /// series leave the overridden fields alone (§3.6).
+    ///
+    /// # Errors
+    ///
+    /// If no block matches `id`, a field cannot be read, the day is not one the block
+    /// happens on, a single day is asked to repeat differently, or a block that happens once
+    /// is asked about a single day.
+    pub fn edit_block(&self, id: &str, edit: BlockEdit, scope: BlockScope) -> Result<Change> {
+        let now = Zoned::now();
+        self.with(|store| {
+            // Looked up by identifier, so every year is opened (CLAUDE.md, `load_all_years`).
+            store.load_all_years()?;
+            let snapshot = repaired(store);
+            let series_id = resolve::series_id(&snapshot, id)?;
+            let before =
+                snapshot.series.get(&series_id).ok_or(EditError::NotFound { kind: "block" })?.clone();
+            let start = edit.at.as_deref().map(resolve::time).transpose()?;
+            let kind = edit.kind.as_deref().map(block_kind).transpose()?;
+            if edit.minutes == Some(0) {
+                return Err(LumennaError::new("a block has to last at least a minute"));
+            }
+
+            let change = match scope {
+                BlockScope::Series => {
+                    let mut after = before.clone();
+                    if let Some(title) = edit.title {
+                        after.title = title;
+                    }
+                    if let Some(start) = start {
+                        after.start_time = start;
+                    }
+                    if let Some(minutes) = edit.minutes {
+                        after.duration_mins = minutes;
+                    }
+                    if let Some(kind) = kind {
+                        after.kind = kind;
+                        after.flags = kind.default_flags();
+                    }
+                    if let Some(repeat) = &edit.repeat {
+                        if repeat.eq_ignore_ascii_case("none") {
+                            after.rrule = None;
+                            after.end_date = Some(after.start_date);
+                        } else {
+                            let rrule = repetition(repeat)?;
+                            // A series anchored on a day it never occurs is a trap (§5).
+                            let rule = lumenna_core::recur::Rule::parse(&rrule)?;
+                            if let Some(first) = rule.first_from(after.start_date)? {
+                                after.start_date = first;
+                            }
+                            after.rrule = Some(rrule);
+                            after.end_date = None;
+                        }
+                    }
+                    edit::update_series(before, after)
+                }
+                BlockScope::Occurrence { date } => {
+                    if edit.repeat.is_some() {
+                        return Err(LumennaError::new(
+                            "one day of a block cannot repeat differently; change every \
+                             occurrence to change how it repeats",
+                        ));
+                    }
+                    let day = resolve::date(Some(&date), &now)?;
+                    // Overrides already written for that day are kept unless replaced here.
+                    let earlier = match snapshot.exceptions.get(&(series_id, day)).map(|e| &e.action)
+                    {
+                        Some(ExceptionAction::Modified { start_time, duration_mins, title, kind, flags }) => {
+                            (*start_time, *duration_mins, title.clone(), *kind, *flags)
+                        }
+                        _ => (None, None, None, None, None),
+                    };
+                    let action = ExceptionAction::Modified {
+                        start_time: start.or(earlier.0),
+                        duration_mins: edit.minutes.or(earlier.1),
+                        title: edit.title.or(earlier.2),
+                        kind: kind.or(earlier.3),
+                        flags: kind.map(BlockKind::default_flags).or(earlier.4),
+                    };
+                    edit::except_occurrence(&snapshot, series_id, day, action)?
+                }
+            };
+            record_or(store, &change, "nothing changed")
+        })
+    }
+
+    /// Cancels one occurrence of a repeating block, leaving every other day alone.
+    ///
+    /// # Errors
+    ///
+    /// If no block matches `id`, it does not happen that day, or it happens only once —
+    /// which is deleting it.
+    pub fn cancel_occurrence(&self, id: &str, date: &str) -> Result<Change> {
+        let now = Zoned::now();
+        self.with(|store| {
+            store.load_all_years()?;
+            let snapshot = repaired(store);
+            let series_id = resolve::series_id(&snapshot, id)?;
+            let day = resolve::date(Some(date), &now)?;
+            let change =
+                edit::except_occurrence(&snapshot, series_id, day, ExceptionAction::Cancelled)?;
+            record_or(store, &change, "that day is already cancelled")
+        })
+    }
+
+    /// Puts one occurrence of a repeating block back as its series has it, undoing a
+    /// cancellation or a change made to that day alone.
+    ///
+    /// # Errors
+    ///
+    /// If no block matches `id`.
+    pub fn restore_occurrence(&self, id: &str, date: &str) -> Result<Change> {
+        let now = Zoned::now();
+        self.with(|store| {
+            store.load_all_years()?;
+            let snapshot = repaired(store);
+            let series_id = resolve::series_id(&snapshot, id)?;
+            let day = resolve::date(Some(date), &now)?;
+            let change = edit::restore_occurrence(&snapshot, series_id, day)?;
+            record_or(store, &change, "that day is already as the series has it")
+        })
+    }
+
+    /// One block series: what an editor starts from.
+    ///
+    /// # Errors
+    ///
+    /// If no block matches `id`.
+    pub fn show_block(&self, id: &str) -> Result<BlockShown> {
+        self.with(|store| {
+            store.load_all_years()?;
+            let snapshot = repaired(store);
+            let series_id = resolve::series_id(&snapshot, id)?;
+            let series =
+                snapshot.series.get(&series_id).ok_or(EditError::NotFound { kind: "block" })?;
+            Ok(BlockShown {
+                announcement: series.title.clone(),
+                notices: Vec::new(),
+                id: series.id.to_string(),
+                title: series.title.clone(),
+                start: time_text(series.start_time),
+                minutes: series.duration_mins,
+                kind: kind_word(series.kind).to_owned(),
+                start_date: series.start_date.to_string(),
+                repeats: series.is_recurring(),
+                rrule: series.rrule.clone(),
+            })
         })
     }
 
@@ -371,6 +542,115 @@ impl Lumenna {
             })
         })
     }
+}
+
+/// Free time shorter than this is a seam between two blocks, not time to plan into, and a
+/// row for every one would be noise (§13).
+const FREE_THRESHOLD_MINS: i64 = 15;
+
+fn block_kind(word: &str) -> Result<BlockKind> {
+    match word.to_lowercase().as_str() {
+        "work" => Ok(BlockKind::Work),
+        "break" => Ok(BlockKind::Break),
+        "event" => Ok(BlockKind::Event),
+        other => Err(LumennaError::new(format!(
+            "'{other}' is not a block kind; use work, break, or event"
+        ))),
+    }
+}
+
+/// A repetition phrase — `every weekday` — as an RFC 5545 rule.
+fn repetition(phrase: &str) -> Result<String> {
+    let tokens = lumenna_parse::words(phrase);
+    let (spec, _, _) = lumenna_parse::date::parse_recurrence(&tokens, 0).ok_or_else(|| {
+        LumennaError::new(format!("could not read a repetition from '{phrase}'"))
+    })?;
+    Ok(spec.to_rrule())
+}
+
+const fn kind_word(kind: BlockKind) -> &'static str {
+    match kind {
+        BlockKind::Work => "work",
+        BlockKind::Break => "break",
+        BlockKind::Event => "event",
+    }
+}
+
+fn minutes_of(time: jiff::civil::Time) -> i64 {
+    i64::from(time.hour()) * 60 + i64::from(time.minute())
+}
+
+fn clock(minutes: i64) -> String {
+    format!("{:02}:{:02}", minutes / 60, minutes % 60)
+}
+
+
+/// The day as it is lived: blocks, the free time around them within the day's window, and
+/// where now falls (§13).
+fn timeline(
+    occurrences: &[lumenna_core::recur::Occurrence],
+    window: (jiff::civil::Time, jiff::civil::Time),
+    now: Option<jiff::civil::Time>,
+) -> Vec<PlanItem> {
+    let mut items: Vec<(i64, PlanItem)> = Vec::new();
+    let (day_start, day_end) = (minutes_of(window.0), minutes_of(window.1));
+    let mut free_from = day_start;
+    let free = |from: i64, to: i64, items: &mut Vec<(i64, PlanItem)>| {
+        if to - from >= FREE_THRESHOLD_MINS {
+            items.push((
+                from,
+                PlanItem::Free {
+                    start: clock(from),
+                    end: clock(to),
+                    minutes: u32::try_from(to - from).unwrap_or(u32::MAX),
+                },
+            ));
+        }
+    };
+    for (index, occurrence) in occurrences.iter().enumerate() {
+        let start = minutes_of(occurrence.start_time);
+        // Overlapping blocks leave no gap between them; only time after the latest end so
+        // far is free.
+        free(free_from, start.min(day_end), &mut items);
+        items.push((start, PlanItem::Block { row: to_u32(index + 1) }));
+        let end = start + i64::from(occurrence.duration_mins);
+        free_from = free_from.max(end);
+    }
+    free(free_from, day_end, &mut items);
+
+    if let Some(now) = now {
+        let at = minutes_of(now);
+        // Inside a block, that block is where now is, and says so in its `when`.
+        let inside = occurrences.iter().any(|o| {
+            let start = minutes_of(o.start_time);
+            start <= at && at < start + i64::from(o.duration_mins)
+        });
+        if !inside {
+            let position = items.iter().position(|(start, _)| *start > at).unwrap_or(items.len());
+            items.insert(position, (at, PlanItem::Now { time: clock(at) }));
+        }
+    }
+    items.into_iter().map(|(_, item)| item).collect()
+}
+
+/// §13's opening summary row, in words.
+fn summary(blocks: &[PlanBlock], overdue: Option<usize>) -> String {
+    let work: u32 =
+        blocks.iter().filter(|b| b.kind == "work").map(|b| b.duration_mins).sum();
+    let assigned: usize = blocks.iter().map(|b| b.assignments.len()).sum();
+    if blocks.is_empty() {
+        return "No blocks".to_owned();
+    }
+    let mut parts = vec![count_line(blocks.len(), "block")];
+    if work > 0 {
+        parts.push(format!("{} of work", duration(work)));
+    }
+    parts.push(format!("{} assigned", count_line(assigned, "task")));
+    if let Some(overdue) = overdue.filter(|n| *n > 0) {
+        parts.push(format!("{overdue} overdue"));
+    }
+    let sentence = parts.join(", ");
+    sentence[..1].to_uppercase() + &sentence[1..]
 }
 
 /// Which `blocks-<year>` document an assignment lives in.

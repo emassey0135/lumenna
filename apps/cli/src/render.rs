@@ -9,7 +9,7 @@ use anstream::{eprintln, print, println};
 use serde::Serialize;
 
 use lumenna_surface::words::count_line;
-use lumenna_surface::{Plan, Rows, TaskDetail};
+use lumenna_surface::{Plan, PlanItem, Rows, TaskDetail};
 
 use crate::api::{Outcome, Response};
 
@@ -189,11 +189,27 @@ fn detail(task: &TaskDetail) {
 }
 
 fn day(plan: &Plan) {
-    println!("{}", plan.announcement);
-    for block in &plan.blocks {
-        println!("{}  {} to {}  {}", block.row, block.start, block.end, block.title);
+    // The summary carries the count the announcement does, so it replaces it rather than
+    // following it.
+    if plan.summary.is_empty() {
+        println!("{}", plan.announcement);
+    } else {
+        println!("{}. {}", plan.date, plan.summary);
+    }
+    let block_line = |block: &lumenna_surface::PlanBlock| {
+        let mut detail = vec![block.kind.clone()];
+        if !block.when.is_empty() {
+            detail.push(block.when.clone());
+        }
+        if block.changed_for_this_day {
+            detail.push("changed for this day".to_owned());
+        }
+        println!(
+            "{}  {} to {}  {}  {}",
+            block.row, block.start, block.end, block.title, detail.join(", ")
+        );
         for assignment in &block.assignments {
-            let mut detail = vec![assignment.status.to_owned()];
+            let mut detail = vec![assignment.status.clone()];
             if assignment.minutes > 0 {
                 detail.push(format!("{} minutes logged", assignment.minutes));
             }
@@ -201,6 +217,25 @@ fn day(plan: &Plan) {
                 detail.push("timer looks orphaned".to_owned());
             }
             println!("     {}  {}  {}", assignment.row, assignment.title, detail.join(", "));
+        }
+    };
+    // The timeline is the day as lived — free time and now as rows (§13). An older reader's
+    // plan has none, and gets the blocks alone.
+    if plan.timeline.is_empty() {
+        plan.blocks.iter().for_each(block_line);
+        return;
+    }
+    for item in &plan.timeline {
+        match item {
+            PlanItem::Block { row } => {
+                if let Some(block) = plan.blocks.get(*row as usize - 1) {
+                    block_line(block);
+                }
+            }
+            PlanItem::Free { start, end, minutes } => {
+                println!("   free, {} from {start} to {end}", lumenna_surface::words::duration(*minutes));
+            }
+            PlanItem::Now { time } => println!("   now, {time}"),
         }
     }
 }

@@ -851,3 +851,91 @@ fn the_daemon_serves_the_command_surface_and_takes_sync_requests_on_its_socket()
     daemon.wait().unwrap();
     assert!(!socket.exists(), "a daemon stopped by its service manager cleans up its socket");
 }
+
+#[test]
+fn editing_a_repeating_block_asks_which_occurrences_and_never_guesses() {
+    let lum = Lum::new();
+    lum.ok(&["block", "add", "Deep work", "--at", "9am", "--minutes", "90", "--date", "2026-12-07", "--repeat", "every weekday"]);
+    lum.ok(&["block", "list"]);
+    let asked = lum.fails(&["block", "edit", "1", "--at", "10am"]);
+    assert!(asked.contains("--date") && asked.contains("--all"), "{asked}");
+
+    lum.ok(&["block", "edit", "1", "--at", "2pm", "--date", "2026-12-08"]);
+    assert!(lum.ok(&["plan", "2026-12-08"]).contains("14:00 to 15:30"), "that day moved");
+    assert!(lum.ok(&["plan", "2026-12-09"]).contains("09:00 to 10:30"), "the next did not");
+
+    lum.ok(&["block", "list"]);
+    lum.ok(&["block", "edit", "1", "--all", "--title", "Writing"]);
+    let moved = lum.ok(&["plan", "2026-12-08"]);
+    assert!(moved.contains("Writing") && moved.contains("14:00"), "{moved}");
+}
+
+#[test]
+fn one_day_of_a_block_can_be_cancelled_and_put_back() {
+    let lum = Lum::new();
+    lum.ok(&["block", "add", "Run", "--at", "7am", "--minutes", "30", "--date", "2026-12-07", "--repeat", "daily"]);
+    lum.ok(&["block", "list"]);
+    lum.ok(&["block", "cancel", "1", "--date", "2026-12-08"]);
+    assert!(lum.ok(&["plan", "2026-12-08"]).contains("No blocks"));
+    assert!(lum.ok(&["plan", "2026-12-09"]).contains("Run"));
+    lum.ok(&["block", "list"]);
+    lum.ok(&["block", "restore", "1", "--date", "2026-12-08"]);
+    assert!(lum.ok(&["plan", "2026-12-08"]).contains("Run"));
+}
+
+#[test]
+fn a_day_shows_its_free_time_and_a_summary() {
+    let lum = Lum::new();
+    lum.ok(&["block", "add", "Deep work", "--at", "9am", "--minutes", "90", "--date", "2026-12-07"]);
+    lum.ok(&["block", "add", "Meeting", "--at", "11:30am", "--minutes", "30", "--date", "2026-12-07", "--kind", "event"]);
+    let day = lum.ok(&["plan", "2026-12-07"]);
+    assert!(day.contains("2 blocks, 1 hour 30 minutes of work"), "{day}");
+    assert!(day.contains("free, 1 hour from 10:30 to 11:30"), "the gap between is a row: {day}");
+    assert!(day.contains("free, 1 hour from 08:00 to 09:00"), "{day}");
+}
+
+#[test]
+fn projects_move_and_reorder_and_refuse_to_go_inside_themselves() {
+    let lum = Lum::new();
+    lum.ok(&["project", "add", "Work"]);
+    lum.ok(&["project", "add", "Clients"]);
+    lum.ok(&["project", "move", "Clients", "--parent", "Work"]);
+    let refused = lum.fails(&["project", "move", "Work", "--parent", "Clients"]);
+    assert!(refused.contains("inside itself"), "{refused}");
+
+    lum.ok(&["project", "add", "Home"]);
+    lum.ok(&["project", "order", "Home", "up"]);
+    let listed = lum.ok(&["project", "list"]);
+    assert!(listed.find("Home").unwrap() < listed.find("Work").unwrap(), "{listed}");
+}
+
+#[test]
+fn labels_reorder_take_colours_and_go_on_tasks_by_name() {
+    let lum = Lum::new();
+    lum.ok(&["label", "add", "deep"]);
+    lum.ok(&["label", "add", "calls"]);
+    lum.ok(&["label", "order", "calls", "up"]);
+    let listed = lum.ok(&["label", "list"]);
+    assert!(listed.find("calls").unwrap() < listed.find("deep").unwrap(), "{listed}");
+    lum.ok(&["label", "colour", "deep", "teal"]);
+
+    lum.ok(&["task", "add", "ring the bank"]);
+    lum.ok(&["task", "list"]);
+    let added = lum.ok(&["task", "edit", "1", "--labels", "calls, errands"]);
+    assert!(added.contains("new label 'errands'") || lum.ok(&["label", "list"]).contains("errands"));
+    lum.ok(&["task", "list"]);
+    let shown = lum.ok(&["task", "show", "1"]);
+    assert!(shown.contains("calls") && shown.contains("errands"), "{shown}");
+    lum.ok(&["task", "edit", "1", "--labels", ""]);
+    assert!(!lum.ok(&["task", "show", "1"]).contains("labels:"));
+}
+
+#[test]
+fn a_saved_filter_can_be_renamed_and_requeried() {
+    let lum = Lum::new();
+    lum.ok(&["filter", "add", "Urgent", "p1"]);
+    lum.ok(&["filter", "edit", "Urgent", "--rename", "Now", "--query", "p1 | overdue"]);
+    let listed = lum.ok(&["filter", "list"]);
+    assert!(listed.contains("Now") && listed.contains("p1 | overdue"), "{listed}");
+    assert!(lum.fails(&["filter", "edit", "Now", "--query", "p1 &"]).contains("lum"));
+}

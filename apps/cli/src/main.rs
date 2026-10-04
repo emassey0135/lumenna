@@ -34,7 +34,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use lumenna_surface::{MoveTarget, NewBlock, TaskEdit, Weight};
+use lumenna_surface::{BlockEdit, BlockScope, Direction, MoveTarget, NewBlock, TaskEdit, Weight};
 
 use api::{Outcome, Response};
 use error::{CliError, Result};
@@ -288,6 +288,10 @@ pub(crate) enum TaskCommand {
         /// Move it to a project by name.
         #[arg(long)]
         project: Option<String>,
+        /// The labels it should wear, comma-separated, replacing its own. An empty string
+        /// takes them all off. New names become labels.
+        #[arg(long)]
+        labels: Option<String>,
     },
 
     /// Mark a task done.
@@ -402,6 +406,24 @@ pub(crate) enum ProjectCommand {
         #[arg(long)]
         keep_tasks: bool,
     },
+    /// Move a project under another, or to the top level.
+    Move {
+        /// The project to move.
+        name: String,
+        /// Put it under this project.
+        #[arg(long, conflicts_with = "top")]
+        parent: Option<String>,
+        /// Put it at the top level.
+        #[arg(long)]
+        top: bool,
+    },
+    /// Move a project one place up or down among its siblings.
+    Order {
+        /// The project.
+        name: String,
+        /// up or down.
+        direction: Way,
+    },
     /// Set a project's urgency multiplier, roughly 0.5 to 2.0.
     ///
     /// This is not a second priority. Task priority is how much one item matters; weight is
@@ -437,6 +459,20 @@ pub(crate) enum LabelCommand {
         /// The label to keep.
         into: String,
     },
+    /// Move a label one place up or down.
+    Order {
+        /// The label.
+        name: String,
+        /// up or down.
+        direction: Way,
+    },
+    /// Give a label a colour, or `none`. The name always shows too.
+    Colour {
+        /// The label.
+        name: String,
+        /// A colour name, such as `red`, or `none`.
+        colour: String,
+    },
     /// Delete a label. Tasks wearing it simply stop showing it.
     Rm {
         /// The label to delete.
@@ -455,6 +491,24 @@ pub(crate) enum FilterCommand {
     },
     /// List saved filters.
     List,
+    /// Rename a saved filter or change its query.
+    Edit {
+        /// Its name.
+        name: String,
+        /// A new name.
+        #[arg(long)]
+        rename: Option<String>,
+        /// A new query.
+        #[arg(long)]
+        query: Option<String>,
+    },
+    /// Move a saved filter one place up or down.
+    Order {
+        /// Its name.
+        name: String,
+        /// up or down.
+        direction: Way,
+    },
     /// Delete a saved filter.
     Rm {
         /// Its name.
@@ -486,11 +540,74 @@ pub(crate) enum BlockCommand {
     },
     /// List block series.
     List,
+    /// Change a block: every occurrence with --all, or one day with --date.
+    ///
+    /// A repeating block always needs one or the other — which occurrences a change means is
+    /// never guessed. A block that happens once needs neither.
+    Edit {
+        /// A row number from `lum block list` or `lum plan`, or an identifier.
+        id: String,
+        /// A new name.
+        #[arg(long)]
+        title: Option<String>,
+        /// A new start time, such as `9am`.
+        #[arg(long)]
+        at: Option<String>,
+        /// A new length in minutes.
+        #[arg(long)]
+        minutes: Option<u32>,
+        /// work, break, or event.
+        #[arg(long)]
+        kind: Option<String>,
+        /// A new repetition, such as `every weekday`, or `none`. Every occurrence only.
+        #[arg(long)]
+        repeat: Option<String>,
+        /// Change only the occurrence on this day.
+        #[arg(long, conflicts_with = "all")]
+        date: Option<String>,
+        /// Change every occurrence.
+        #[arg(long)]
+        all: bool,
+    },
+    /// Cancel one day of a repeating block, leaving the rest.
+    Cancel {
+        /// A row number or identifier.
+        id: String,
+        /// Which day.
+        #[arg(long)]
+        date: String,
+    },
+    /// Put one day of a repeating block back as the series has it.
+    Restore {
+        /// A row number or identifier.
+        id: String,
+        /// Which day.
+        #[arg(long)]
+        date: String,
+    },
     /// Delete a block series.
     Rm {
         /// Its identifier.
         id: String,
     },
+}
+
+/// Which way to move something in its list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub(crate) enum Way {
+    /// One place earlier.
+    Up,
+    /// One place later.
+    Down,
+}
+
+impl From<Way> for Direction {
+    fn from(way: Way) -> Self {
+        match way {
+            Way::Up => Self::Up,
+            Way::Down => Self::Down,
+        }
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -619,6 +736,13 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
             LabelCommand::List => return Ok(Response::new(profile.list_labels()?)),
             LabelCommand::Rename { name, to } => profile.rename_label(name, to)?,
             LabelCommand::Merge { from, into } => profile.merge_labels(from, into)?,
+            LabelCommand::Order { name, direction } => {
+                profile.reorder_label(name, (*direction).into())?
+            }
+            LabelCommand::Colour { name, colour } => profile.recolour_label(
+                name,
+                Some(colour.clone()).filter(|c| !c.eq_ignore_ascii_case("none")),
+            )?,
             LabelCommand::Rm { name } => profile.delete_label(name)?,
         }),
         Command::Filter(command) => match command {
@@ -626,6 +750,12 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
                 Response::new(profile.add_filter(name, &query.join(" "))?)
             }
             FilterCommand::List => Response::new(profile.list_filters()?),
+            FilterCommand::Edit { name, rename, query } => {
+                Response::new(profile.edit_filter(name, rename.clone(), query.clone())?)
+            }
+            FilterCommand::Order { name, direction } => {
+                Response::new(profile.reorder_filter(name, (*direction).into())?)
+            }
             FilterCommand::Rm { name } => Response::new(profile.delete_filter(name)?),
         },
         Command::Plan { date } => {
@@ -644,6 +774,34 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
                 })?)
             }
             BlockCommand::List => Response::new(profile.list_blocks()?),
+            BlockCommand::Edit { id, title, at, minutes, kind, repeat, date, all } => {
+                let id = profile.row(id, "block")?;
+                let scope = match date {
+                    Some(date) => BlockScope::Occurrence { date: date.clone() },
+                    None => BlockScope::Series,
+                };
+                let edit = BlockEdit {
+                    title: title.clone(),
+                    at: at.clone(),
+                    minutes: *minutes,
+                    kind: kind.clone(),
+                    repeat: repeat.clone(),
+                };
+                if scope == BlockScope::Series && !all && profile.show_block(&id)?.repeats {
+                    return Err(CliError::Message(
+                        "that block repeats; say --date <day> to change one day, or --all to \
+                         change every one"
+                            .to_owned(),
+                    ));
+                }
+                Response::new(profile.edit_block(&id, edit, scope)?)
+            }
+            BlockCommand::Cancel { id, date } => {
+                Response::new(profile.cancel_occurrence(&profile.row(id, "block")?, date)?)
+            }
+            BlockCommand::Restore { id, date } => {
+                Response::new(profile.restore_occurrence(&profile.row(id, "block")?, date)?)
+            }
             BlockCommand::Rm { id } => {
                 Response::new(profile.delete_block(&profile.row(id, "block")?)?)
             }
@@ -717,7 +875,7 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
         }
         TaskCommand::List { query } => Response::new(profile.list_tasks(&query.join(" "))?),
         TaskCommand::Show { id: input } => Response::new(profile.show_task(&id(input)?)?),
-        TaskCommand::Edit { id: input, title, due, priority, estimate, notes, project } => {
+        TaskCommand::Edit { id: input, title, due, priority, estimate, notes, project, labels } => {
             Response::new(profile.edit_task(&id(input)?, TaskEdit {
                 title: title.clone(),
                 due: due.clone(),
@@ -725,6 +883,9 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
                 estimate: estimate.clone(),
                 notes: notes.clone(),
                 project: project.clone(),
+                labels: labels.as_ref().map(|l| {
+                    l.split(',').map(str::trim).filter(|n| !n.is_empty()).map(ToOwned::to_owned).collect()
+                }),
             })?)
         }
         TaskCommand::Done { id: input } => Response::new(profile.complete_task(&id(input)?)?),
@@ -779,6 +940,15 @@ fn project(profile: &Profile, command: &ProjectCommand) -> Result<Response> {
         ProjectCommand::List => return Ok(Response::new(profile.list_projects()?)),
         ProjectCommand::Rename { name, to } => profile.rename_project(name, to)?,
         ProjectCommand::Archive { name } => profile.archive_project(name)?,
+        ProjectCommand::Move { name, parent, top } => {
+            if parent.is_none() && !top {
+                return Err(CliError::Message("say where: --parent <project>, or --top".to_owned()));
+            }
+            profile.move_project(name, parent.clone())?
+        }
+        ProjectCommand::Order { name, direction } => {
+            profile.reorder_project(name, (*direction).into())?
+        }
         ProjectCommand::Rm { name, keep_tasks } => profile.delete_project(name, *keep_tasks)?,
         ProjectCommand::Weight { name, value } => {
             let weight = if value.eq_ignore_ascii_case("inherit") {

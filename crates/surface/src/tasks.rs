@@ -236,6 +236,26 @@ impl Lumenna {
             if let Some(notes) = edit.notes {
                 after.notes = notes;
             }
+            // Names that are not labels yet become labels, as in quick add (§3.4), and are
+            // created in the same edit so one undo takes both back.
+            let mut created = Vec::new();
+            let mut notices = Vec::new();
+            if let Some(names) = &edit.labels {
+                let mut order = order_after(snapshot.labels.values().map(|l| l.order.clone()));
+                let mut wearing = BTreeSet::new();
+                for name in names.iter().map(|n| n.trim().trim_start_matches('@')).filter(|n| !n.is_empty()) {
+                    if let Some(label) = snapshot.label_by_name(name) {
+                        wearing.insert(label.id);
+                    } else {
+                        let label = Label::new(name, order.clone());
+                        order = OrderKey::after(&order);
+                        wearing.insert(label.id);
+                        notices.push(format!("new label '{name}'"));
+                        created.extend(edit::create_label(label).changes);
+                    }
+                }
+                after.labels = wearing;
+            }
             // A new project goes through the move, so subtasks follow and a parent left
             // behind is let go of. The other fields are laid over the task's half of it.
             let moved = match &edit.project {
@@ -263,7 +283,16 @@ impl Lumenna {
                 }
                 None => edit::update_task(before, after),
             };
-            record_or(store, &change, "nothing changed")
+            let change = if created.is_empty() || change.is_empty() {
+                change
+            } else {
+                Edit { description: change.description, changes: [created, change.changes].concat() }
+            };
+            let mut result = record_or(store, &change, "nothing changed")?;
+            if result.changed {
+                result.notices = notices;
+            }
+            Ok(result)
         })
     }
 

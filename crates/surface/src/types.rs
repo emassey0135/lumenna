@@ -64,7 +64,7 @@ macro_rules! announced {
 announced!(
     Change, Rows, TaskShown, Plan, Filters, SettingList, Timer, Completions, Preview,
     BackupDone, RestoreDone, Exported, ImportDone, PairedWith, SyncReport, SyncStatus,
-    DeviceList,
+    DeviceList, BlockShown,
 );
 
 fn none<T>(list: &[T]) -> bool {
@@ -531,6 +531,41 @@ pub struct Plan {
     pub count: u32,
     /// The blocks, in time order.
     pub blocks: Vec<PlanBlock>,
+    /// The gestalt a sighted user gets from a glance at the day, as one sentence (§13):
+    /// *"Six blocks, four hours of work, three tasks assigned, one overdue."*
+    #[serde(default)]
+    pub summary: String,
+    /// The day as it is lived, in order: blocks, the free time between them, and where now
+    /// falls — §13's rule that what a timeline shows by empty space becomes a row.
+    #[serde(default)]
+    pub timeline: Vec<PlanItem>,
+}
+
+/// One row of a day's timeline.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+#[serde(tag = "item", rename_all = "snake_case")]
+pub enum PlanItem {
+    /// A block, by its position in [`Plan::blocks`] counting from one.
+    Block {
+        /// Its `row`.
+        row: u32,
+    },
+    /// Time with nothing in it, long enough to be worth a row: *"Free, 45 minutes, 10:15
+    /// to 11:00."*
+    Free {
+        /// When it starts, `HH:MM`.
+        start: String,
+        /// When it ends, `HH:MM`.
+        end: String,
+        /// How long it is.
+        minutes: u32,
+    },
+    /// Where the present falls, between the rows either side of it. Only on today.
+    Now {
+        /// The time, `HH:MM`.
+        time: String,
+    },
 }
 
 /// One block on a day.
@@ -551,8 +586,50 @@ pub struct PlanBlock {
     pub end: String,
     /// How long it runs.
     pub duration_mins: u32,
+    /// `work`, `break` or `event`. The word says which actions exist (§13): only work
+    /// blocks take tasks.
+    #[serde(default)]
+    pub kind: String,
+    /// `past`, `now` or `upcoming` on today; empty on any other day.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub when: String,
+    /// Whether it repeats — whether changing it asks "this one, or every one?"
+    #[serde(default)]
+    pub repeats: bool,
+    /// Whether this occurrence was changed apart from its series.
+    #[serde(default)]
+    pub changed_for_this_day: bool,
     /// What is assigned to it, in order.
     pub assignments: Vec<PlanAssignment>,
+}
+
+/// One block series, as [`show_block`](crate::Lumenna::show_block) returns it — what an
+/// editor starts from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct BlockShown {
+    /// Its name.
+    pub announcement: String,
+    /// Anything else worth saying.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// The series' identifier.
+    pub id: String,
+    /// Its name.
+    pub title: String,
+    /// When it starts, `HH:MM`.
+    pub start: String,
+    /// How long it lasts.
+    pub minutes: u32,
+    /// `work`, `break` or `event`.
+    pub kind: String,
+    /// The day it starts, or its only day.
+    pub start_date: String,
+    /// Whether it repeats.
+    pub repeats: bool,
+    /// How it repeats, as an RFC 5545 rule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rrule: Option<String>,
 }
 
 /// One task assigned to a block for one sitting (§3.7).
@@ -980,6 +1057,10 @@ pub struct TaskEdit {
     /// A project to move it to, by name. Subtasks follow (§3.2).
     #[serde(default)]
     pub project: Option<String>,
+    /// The labels it should wear, by name, replacing the ones it has. A name that is not a
+    /// label yet becomes one, as in quick add (§3.4).
+    #[serde(default)]
+    pub labels: Option<Vec<String>>,
 }
 
 /// Where to move a task.
@@ -1011,6 +1092,52 @@ pub enum Weight {
         /// The multiplier.
         value: f32,
     },
+}
+
+/// The fields of a block to change; `None` leaves one alone.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct BlockEdit {
+    /// What to call it.
+    #[serde(default)]
+    pub title: Option<String>,
+    /// When it starts, such as `9am`.
+    #[serde(default)]
+    pub at: Option<String>,
+    /// How many minutes it lasts.
+    #[serde(default)]
+    pub minutes: Option<u32>,
+    /// `work`, `break` or `event`.
+    #[serde(default)]
+    pub kind: Option<String>,
+    /// A repetition such as `every weekday`, or `none` to make it happen once. The whole
+    /// series only: one occurrence cannot repeat differently.
+    #[serde(default)]
+    pub repeat: Option<String>,
+}
+
+/// Which occurrences a change to a block applies to — the question §4.3 says to always ask
+/// of a repeating block, never guess.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+pub enum BlockScope {
+    /// Every occurrence: the series itself.
+    Series,
+    /// Only the occurrence on this day, a date phrase.
+    Occurrence {
+        /// The day.
+        date: String,
+    },
+}
+
+/// Which way to move something in its list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+pub enum Direction {
+    /// One place earlier.
+    Up,
+    /// One place later.
+    Down,
 }
 
 /// A new block.

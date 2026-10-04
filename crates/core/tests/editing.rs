@@ -4,14 +4,14 @@ use jiff::Zoned;
 use jiff::civil::date;
 use lumenna_core::edit::{
     Change, Edit, EditError, MoveTo, ProjectDeletion, add_dependency, adopt_inbox, assign_task,
-    complete_task, create_task, log_minutes, merge_labels, move_task, purge_task,
-    remove_dependency, restore_task, start_timer, stop_timer, trash_project, trash_task,
-    uncomplete_task, unassign, update_task,
+    complete_task, create_task, except_occurrence, log_minutes, merge_labels, move_task,
+    purge_task, remove_dependency, restore_occurrence, restore_task, start_timer, stop_timer,
+    trash_project, trash_task, uncomplete_task, unassign, update_series, update_task,
 };
 use lumenna_core::id::{LabelId, ProjectId, TaskId};
 use lumenna_core::model::{
-    BlockKind, BlockRef, BlockSeries, Due, Label, Priority, Project, Recurrence, Task,
-    TaskCompletion,
+    BlockKind, BlockRef, BlockSeries, Due, ExceptionAction, Label, Priority, Project, Recurrence,
+    Task, TaskCompletion,
 };
 use lumenna_core::order::OrderKey;
 use lumenna_core::snapshot::Snapshot;
@@ -136,6 +136,22 @@ impl World {
                     }
                 }
                 Change::Settings { after, .. } => self.snapshot.settings = (**after).clone(),
+                Change::Exception(t) => match (&t.before, &t.after) {
+                    (_, Some(after)) => {
+                        self.snapshot
+                            .exceptions
+                            .insert((after.series_id, after.original_date), after.clone());
+                    }
+                    (Some(before), None) => {
+                        self.snapshot.exceptions.remove(&(before.series_id, before.original_date));
+                    }
+                    (None, None) => {}
+                },
+                Change::Series(t) => {
+                    if let Some(after) = &t.after {
+                        self.snapshot.series.insert(after.id, after.clone());
+                    }
+                }
                 _ => unreachable!("not used by these tests"),
             }
         }
@@ -873,4 +889,93 @@ fn creating_a_task_inverts_into_removing_it() {
     assert!(world.snapshot.tasks.contains_key(&id));
     world.apply(&edit.inverse());
     assert!(!world.snapshot.tasks.contains_key(&id));
+}
+
+// ---------------------------------------------------------------------------------------
+// Changing blocks: the series, or one occurrence (§3.6)
+// ---------------------------------------------------------------------------------------
+
+fn moved_to(hour: i8) -> ExceptionAction {
+    ExceptionAction::Modified {
+        start_time: Some(jiff::civil::time(hour, 0, 0, 0)),
+        duration_mins: None,
+        title: None,
+        kind: None,
+        flags: None,
+    }
+}
+
+#[test]
+fn changing_one_occurrence_moves_that_day_and_leaves_the_rest() {
+    let mut world = World::new();
+    let block = world.daily_block();
+    let edit = except_occurrence(&world.snapshot, block, date(2026, 5, 6), moved_to(14)).unwrap();
+    world.apply(&edit);
+
+    let start = |day| world.snapshot.day(day).unwrap()[0].start_time;
+    assert_eq!(start(date(2026, 5, 6)), jiff::civil::time(14, 0, 0, 0));
+    assert_eq!(start(date(2026, 5, 7)), jiff::civil::time(9, 0, 0, 0));
+}
+
+#[test]
+fn a_cancelled_occurrence_is_gone_from_its_day_and_can_be_put_back() {
+    let mut world = World::new();
+    let block = world.daily_block();
+    let day = date(2026, 5, 6);
+    world.apply(&except_occurrence(&world.snapshot, block, day, ExceptionAction::Cancelled).unwrap());
+    assert!(world.snapshot.day(day).unwrap().is_empty());
+
+    // A cancelled occurrence is still one the rule placed there, so it can be changed again.
+    assert!(except_occurrence(&world.snapshot, block, day, moved_to(10)).is_ok());
+
+    world.apply(&restore_occurrence(&world.snapshot, block, day).unwrap());
+    assert_eq!(world.snapshot.day(day).unwrap().len(), 1);
+}
+
+#[test]
+fn a_day_the_rule_never_reaches_cannot_be_singled_out() {
+    let mut world = World::new();
+    let block = world.block(BlockKind::Work, Some("FREQ=DAILY;INTERVAL=2"));
+    // From 1 May every other day: the 2nd is skipped.
+    let refused = except_occurrence(&world.snapshot, block, date(2026, 5, 2), moved_to(10));
+    assert_eq!(refused, Err(EditError::NoOccurrence { date: date(2026, 5, 2) }));
+}
+
+#[test]
+fn a_block_that_happens_once_is_changed_through_the_block_not_an_occurrence() {
+    let mut world = World::new();
+    let block = world.block(BlockKind::Work, None);
+    let refused = except_occurrence(&world.snapshot, block, date(2026, 5, 1), moved_to(10));
+    assert_eq!(refused, Err(EditError::NotRepeating));
+
+    let before = world.snapshot.series[&block].clone();
+    let mut after = before.clone();
+    after.title = "Writing".to_owned();
+    world.apply(&update_series(before, after));
+    assert_eq!(world.snapshot.day(date(2026, 5, 1)).unwrap()[0].title, "Writing");
+}
+
+#[test]
+fn a_series_change_keeps_what_one_occurrence_overrode() {
+    let mut world = World::new();
+    let block = world.daily_block();
+    let day = date(2026, 5, 6);
+    world.apply(&except_occurrence(&world.snapshot, block, day, moved_to(14)).unwrap());
+
+    let before = world.snapshot.series[&block].clone();
+    let mut after = before.clone();
+    after.title = "Writing".to_owned();
+    world.apply(&update_series(before, after));
+
+    let moved = &world.snapshot.day(day).unwrap()[0];
+    assert_eq!(moved.title, "Writing", "the title follows the series");
+    assert_eq!(moved.start_time, jiff::civil::time(14, 0, 0, 0), "the time stays overridden");
+}
+
+#[test]
+fn changing_a_block_to_what_it_already_is_writes_nothing() {
+    let mut world = World::new();
+    let block = world.daily_block();
+    let series = world.snapshot.series[&block].clone();
+    assert!(update_series(series.clone(), series).is_empty());
 }

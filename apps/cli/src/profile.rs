@@ -163,6 +163,10 @@ impl Profile {
                     "the last listing showed {showed}s, not {kind}s; run `{command}` first, \
                      or give the identifier"
                 ),
+                None if self.listing_path().exists() => format!(
+                    "the last listing showed nothing, so there is no row {row}; run `{command}` \
+                     to list {kind}s"
+                ),
                 None => format!("nothing has been listed yet; run `{command}` first"),
             }));
         }
