@@ -50,8 +50,9 @@ BT Code already has an option to add an app to the user menu, so this does not w
 
 `lum rpc` — the typed command surface over JSON-RPC on stdio (§8, §12). `connect.py` looks
 for the sync daemon's socket first and spawns a server if nothing answers, which is §8's
-fallback rule for this class of client. No daemon exists yet, so today it always spawns; the
-socket half is written so that nothing above `connect.py` changes when one does.
+fallback rule for this class of client. `lum daemon install`, run once from a shell, sets the
+daemon up as a system service; until then the app spawns its own server, which works but does
+not sync in the background — *Devices and sync* says which it is.
 
 Nothing here parses a date, computes a state, or decides what completing a task does to its
 subtasks. That is all core's, and reimplementing any of it in a UI is the business-logic leak
@@ -64,7 +65,16 @@ principle 2 forbids.
 | `client.py` | JSON-RPC over a reader and a writer. A thread sorts replies from notifications. |
 | `connect.py` | Socket, or a spawned `lum rpc`. |
 | `rows.py` | Rows to menu items: level markers, folding, and composing a line from components. |
-| `menus.py` | The app. |
+| `session.py` | What every menu shares: the client, live rebuilding, and how a reply is said. |
+| `menus.py` | The contract check and the main menu. |
+| `tasks.py` | Task lists, what can be done to one task, quick add, and the trash. |
+| `day.py` | The planner — blocks, sittings, free time and now — and the block series. |
+| `organise.py` | Projects, labels and saved filters. |
+| `preferences.py` | Settings, devices, sync and pairing, backups, export and import. |
+
+The menus are laid out as the phone's are — the day, tasks, projects, labels, filters, the
+trash, settings — so the two can be described in one breath. Enter on a row offers
+everything that can be done to it; the device's delete keys delete; left and right fold.
 
 No third-party Python. The client is one stdlib file; a dependency to build
 `{"jsonrpc": "2.0", …}` would be more surface than it saves. `dialogs` comes from the device.
@@ -91,7 +101,11 @@ python3 -m unittest discover -s tests
 ```
 
 `test_rows.py` is pure. `test_client.py` drives a real `lum rpc`, and skips itself if the
-binary has not been built.
+binary has not been built. `test_menus.py` drives the menus themselves against a real
+server: `tests/btspeak_stub.py` stands in for the device's `dialogs` and plays a script — open
+this row, choose that, type this — failing at once if the app asks for something else, so
+each test reads as the conversation a person would have. Pairing is among them, against a
+second server.
 
 ## Not built yet
 
@@ -102,5 +116,3 @@ implementation under `/BTSpeak/Services/`, following the twenty-odd existing exa
 one thing to improve on: `btspeak-calendar-reminders` keeps its fired set in memory, so
 restarting re-announces the day, and `ReminderAck` (§3.9) already handles that properly.
 Their `# TBD: braille` also means reminders never reach the display; push to both.
-
-Sync. Blocked on the crate, not on this.
