@@ -156,6 +156,7 @@ class Menus(unittest.TestCase):
                 ("menu", "Deep work"),
                 ("choose", "Assign a task"),
                 ("choose", "write the chapter"),
+                ("input", ""),
                 ("menu", "write the chapter"),
                 ("choose", "Start the timer"),
                 ("menu", "write the chapter"),
@@ -169,6 +170,33 @@ class Menus(unittest.TestCase):
         sitting = plan["blocks"][0]["assignments"][0]
         self.assertEqual((sitting["title"], sitting["minutes"]), ("write the chapter", 25))
         self.assertIn("1 task assigned", script.titles[-1])
+
+    def test_a_sitting_is_given_a_length_when_assigned_and_can_change_it(self):
+        self.call("task.add", text="draft")
+        self.call("block.add", title="Focus", at="9am", minutes=120, date="today")
+        script = self.run_script(
+            [
+                ("menu", "draft"),
+                ("choose", "Put it in a block"),
+                ("choose", "Today"),
+                ("choose", "Focus"),
+                ("input", "45"),
+                ("back",),
+            ],
+            lambda: tasks.task_list(self.session),
+        )
+        self.assertEqual(self.call("plan")["blocks"][0]["assignments"][0]["planned_mins"], 45)
+        script = self.run_script(
+            [
+                ("menu", "planned for 45 minutes"),
+                ("choose", "Planned length"),
+                ("input", ""),
+                ("back",),
+            ],
+            lambda: day.day_plan(self.session),
+        )
+        self.assertIsNone(self.call("plan")["blocks"][0]["assignments"][0].get("planned_mins"))
+        self.assertTrue(any("Cleared" in said for said in script.said), script.said)
 
     def test_one_day_of_a_repeating_block_is_changed_cancelled_and_put_back(self):
         self.call("block.add", title="Run", at="7am", minutes=30, repeat="every day", date="today")

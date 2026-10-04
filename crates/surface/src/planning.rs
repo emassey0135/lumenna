@@ -411,6 +411,9 @@ impl Lumenna {
         date: Option<String>,
         minutes: Option<u32>,
     ) -> Result<Change> {
+        if minutes == Some(0) {
+            return Err(LumennaError::new("a sitting has to be planned for at least a minute"));
+        }
         let now = Zoned::now();
         // An occurrence's own identifier, `<series>@<date>`, names its day — what `lum plan
         // friday` lists — so it is not quietly put into today's instead.
@@ -461,6 +464,26 @@ impl Lumenna {
             let id = resolve::assignment_id(&snapshot, assignment)?;
             let change = edit::unassign(&snapshot, id, assignment_year(&snapshot, id)?)?;
             record(store, &change)
+        })
+    }
+
+    /// Sets how long a sitting is meant to take, or clears it with `None` (§3.7). What was
+    /// logged is left alone.
+    ///
+    /// # Errors
+    ///
+    /// If no assignment matches `assignment`, or `minutes` is zero.
+    pub fn plan_minutes(&self, assignment: &str, minutes: Option<u32>) -> Result<Change> {
+        if minutes == Some(0) {
+            return Err(LumennaError::new("a sitting has to be planned for at least a minute"));
+        }
+        self.with(|store| {
+            store.load_all_years()?;
+            let snapshot = repaired(store);
+            let id = resolve::assignment_id(&snapshot, assignment)?;
+            let change =
+                edit::plan_minutes(&snapshot, id, assignment_year(&snapshot, id)?, minutes)?;
+            record_or(store, &change, "that is already the plan")
         })
     }
 

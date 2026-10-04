@@ -197,6 +197,8 @@ final class LumennaUITests: XCTestCase {
         block.swipeLeft()
         app.buttons["Assign Task"].tap()
         app.cells.matching(NSPredicate(format: "label == 'write the chapter'")).firstMatch.tap()
+        XCTAssertTrue(app.alerts.buttons["Skip"].waitForExistence(timeout: 5), "asks how long, and can be skipped")
+        app.alerts.buttons["Skip"].tap()
 
         let sitting = app.cells.matching(NSPredicate(format: "label == 'write the chapter'")).firstMatch
         XCTAssertTrue(sitting.waitForExistence(timeout: 5))
@@ -456,5 +458,25 @@ final class LumennaUITests: XCTestCase {
         app.buttons["Delete"].tap()
         app.alerts.buttons["Delete"].tap()
         XCTAssertTrue(standup.waitForNonExistence(timeout: 5))
+    }
+
+    func testASittingsPlannedLengthIsAskedForShownAndCleared() {
+        add("draft")
+        addBlock("Focus")
+        cell(containing: "Focus").swipeLeft()
+        app.buttons["Assign Task"].tap()
+        app.cells.matching(NSPredicate(format: "label == 'draft'")).firstMatch.tap()
+        let minutes = app.alerts.textFields["Minutes"]
+        XCTAssertTrue(minutes.waitForExistence(timeout: 5))
+        minutes.typeText("45")
+        app.alerts.buttons["Set"].tap()
+
+        let planned = app.cells.containing(NSPredicate(format: "value CONTAINS 'planned for 45 minutes'")).firstMatch
+        XCTAssertTrue(planned.waitForExistence(timeout: 5))
+        planned.swipeLeft()
+        app.buttons["Planned Length"].tap()
+        app.alerts.buttons["No Planned Length"].tap()
+        XCTAssertTrue(planned.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.cells.matching(NSPredicate(format: "label == 'draft'")).firstMatch.exists)
     }
 }

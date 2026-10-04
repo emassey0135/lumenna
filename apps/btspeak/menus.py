@@ -38,7 +38,7 @@ CONTRACT = 1
 
 #: Methods this app calls that a server from before them would not answer. Asked for at the
 #: start, so an old `lum` is a sentence then rather than a failure halfway through a pairing.
-NEEDS = ("pair", "pair.confirm", "block.show")
+NEEDS = ("pair", "pair.confirm", "block.show", "length")
 
 
 def run(client) -> int:

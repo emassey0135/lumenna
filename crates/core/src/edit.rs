@@ -1203,6 +1203,41 @@ pub fn log_minutes(
     })
 }
 
+/// Sets how long a sitting is meant to take, or clears it (§3.7).
+///
+/// What was planned, not what was done: the logged minutes and the status are left alone, so
+/// changing the plan halfway through a sitting does not rewrite what already happened.
+///
+/// # Errors
+///
+/// If the assignment is not loaded.
+pub fn plan_minutes(
+    snapshot: &Snapshot,
+    assignment_id: AssignmentId,
+    year: i16,
+    mins: Option<u32>,
+) -> Result<Edit, EditError> {
+    let assignment = snapshot
+        .assignments
+        .get(&assignment_id)
+        .ok_or(EditError::NotFound { kind: "assignment" })?;
+    if assignment.planned_mins == mins {
+        return Ok(Edit::nothing());
+    }
+    let mut planned = assignment.clone();
+    planned.planned_mins = mins;
+    Ok(Edit {
+        description: match mins {
+            Some(mins) => format!("Planned {mins} minutes"),
+            None => "Cleared the planned length".to_owned(),
+        },
+        changes: vec![Change::Assignment {
+            year,
+            transition: Box::new(Transition::updated(assignment.clone(), planned)),
+        }],
+    })
+}
+
 // ---------------------------------------------------------------------------------------
 // Devices (§3.11)
 // ---------------------------------------------------------------------------------------

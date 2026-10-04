@@ -168,9 +168,11 @@ final class TaskDetailModel: NSObject, ObservableObject {
             guard let plan = try? core.lumenna.plan(date: day) else { continue }
             for block in plan.blocks where block.kind == "work" {
                 choices.append(("\(word), \(Clock.time(block.start)), \(block.title)", { [weak self] in
-                    guard let self else { return }
-                    self.run {
-                        try self.core.lumenna.assign(task: self.id, block: block.id, date: plan.date, minutes: nil)
+                    guard let self, let host = self.host else { return }
+                    host.askForLength("How long is this sitting meant to take?", without: "Skip") { minutes in
+                        self.run {
+                            try self.core.lumenna.assign(task: self.id, block: block.id, date: plan.date, minutes: minutes)
+                        }
                     }
                 }))
             }

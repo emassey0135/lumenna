@@ -1048,3 +1048,24 @@ fn project_and_label_counts_are_open_tasks_and_a_colour_is_said() {
     let labels = lum.ok(&["label", "list"]);
     assert!(labels.contains("1 open task, teal"), "{labels}");
 }
+
+#[test]
+fn a_sittings_planned_length_is_set_shown_changed_and_cleared() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "write"]);
+    let task = first_task_id(&lum);
+    lum.ok(&["block", "add", "Focus", "--at", "9am", "--minutes", "120"]);
+    lum.ok(&["block", "list"]);
+    lum.ok(&["assign", &task, "--block", "1", "--minutes", "45"]);
+    assert!(lum.ok(&["plan"]).contains("planned for 45 minutes"));
+
+    lum.ok(&["length", "1", "90"]);
+    assert!(lum.ok(&["plan"]).contains("planned for 1 hour 30 minutes"));
+    assert!(lum.fails(&["length", "1", "0"]).contains("at least a minute"));
+    lum.ok(&["length", "1", "none"]);
+    assert!(!lum.ok(&["plan"]).contains("planned for"));
+    lum.ok(&["undo"]);
+    assert!(lum.ok(&["plan"]).contains("planned for 1 hour 30 minutes"), "undoable like anything else");
+    lum.ok(&["start", "1"]);
+    assert!(lum.ok(&["plan"]).contains("in progress, 1 hour 30 minutes planned"));
+}

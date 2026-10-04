@@ -308,12 +308,15 @@ def assign_task(session: Session, identifier: str) -> str:
     blocks = [block for block in plan.get("blocks", []) if block["kind"] == "work"]
     if not blocks:
         return f"{plan.get('date', 'That day')} has no work blocks to put it in"
-    block = choose(
+    chosen = choose(
         {b["id"]: f"{b['title']}, {b['start']} to {b['end']}" for b in blocks}, "Put it in"
     )
-    if block is None:
+    if chosen is None:
         return ""
-    return session.write("assign", task=identifier, block=block, date=plan["date"])
+    import day  # here, since day imports this module
+
+    block = next(b for b in blocks if b["id"] == chosen)
+    return day.assign(session, identifier, block, plan["date"])
 
 
 # ---------------------------------------------------------------------------------------
