@@ -15,8 +15,11 @@ final class QuickAddViewController: UIViewController {
     private lazy var completions = CompletionBar(core: core, syntax: .quickAdd, field: field)
     private var addButton: UIBarButtonItem!
 
-    init(core: Core, added: @escaping (Change) -> Void) {
+    private let initial: String
+
+    init(core: Core, initial: String = "", added: @escaping (Change) -> Void) {
         self.core = core
+        self.initial = initial
         self.added = added
         super.init(nibName: nil, bundle: nil)
         title = "New Task"
@@ -69,6 +72,10 @@ final class QuickAddViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        if field.text.isEmpty && !initial.isEmpty {
+            field.text = initial
+            field.delegate?.textViewDidChange?(field)
+        }
         field.becomeFirstResponder()
     }
 

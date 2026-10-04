@@ -11,12 +11,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     ) {
         guard let scene = scene as? UIWindowScene else { return }
         let window = UIWindow(windowScene: scene)
+        window.tintColor = .lumennaTint
         do {
             let core = try Core()
             self.core = core
-            window.rootViewController = UINavigationController(
-                rootViewController: TaskListViewController(core: core)
-            )
+            window.rootViewController = RootTabs(core: core)
         } catch {
             // Nothing works without the store, so say why plainly rather than showing an
             // empty list that looks like there is nothing to do.
@@ -33,6 +32,14 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         core?.timeZoneMayHaveChanged()
         core?.backUpIfDue(presentingFrom: window?.rootViewController)
         NotificationCenter.default.post(name: Core.changed, object: core)
+    }
+
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        core?.startSyncing()
+    }
+
+    func sceneDidEnterBackground(_ scene: UIScene) {
+        core?.stopSyncing()
     }
 }
 

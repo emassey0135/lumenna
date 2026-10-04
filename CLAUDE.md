@@ -230,8 +230,37 @@ through the generated `LumennaCore.swift`. `cd apps/apple && xcodegen` makes the
   app's temporary directory. The store otherwise lives in Application Support.
 - **Operations run on the main thread.** They take milliseconds against local SQLite, and a
   view never shows a state the store has moved past. The automatic backup is the exception.
+- **Four tabs** (Today, Tasks, Browse, Settings), each its own navigation stack. **No bottom
+  toolbars**: inside a tab bar the floating bar sits where a toolbar's buttons are, so a tap
+  on Undo landed on the Today tab — for VoiceOver too. Actions go in the navigation bar or
+  the content.
+- **Settings is a short list of pages**, and pushed forms set `hidesBottomBarWhenPushed`.
+  Rows scrolled under the glass tab bar fail the contrast audit at any scroll position, and
+  a long form costs a VoiceOver user a swipe per row anyway.
+- **Sync runs while the app is active** (`Core.startSyncing` in `sceneDidBecomeActive`,
+  stopped on entering the background); arrivals post `Core.changed`, which every view
+  reloads on. Pairing is by code on iOS — local discovery needs Apple's multicast
+  entitlement — through `PairingViewController`, whose `PairingPrompt` blocks the pairing
+  thread on a semaphore while the words are asked on the main thread.
+- **Form parts** (`Common/FormParts.swift`) each exist because the stock part failed the
+  audit: `NamedRow` (a `LabeledContent` control is *not* named by its label, and hiding the
+  visible name is "potentially inaccessible text" — `accessibilityLabeledPair` ties them),
+  `ChoiceRows` (the inline picker's checkmark failed contrast), `example(_:)` placeholders
+  (the system placeholder grey fails, and a placeholder repeating the field's name says
+  nothing), `Note` rows instead of section footers, `DateRow`. Give a SwiftUI control an
+  empty title when it has an accessibility label, or VoiceOver hears the name twice.
+- **The tint is `UIColor.lumennaTint`**, set on the window: system blue is about 4:1 on
+  white. Red text uses `.warningLabel`, never `systemRed`.
 - **The audits collect every issue and fail once** (`audit()` in the UI tests); left alone,
-  the audit stops at the first. Only the keyboard's own `TUIPredictionViewCell` is excused.
+  the audit stops at the first. Two exemptions, both narrow: the keyboard's own
+  `TUIPredictionViewCell`, and Dynamic Type findings on elements identified `caption`, which
+  `testSettingsPagesAtTheLargestTextSize` shows scaling fully. To see what an unnamed finding
+  is, run with `AUDIT_ATTACH=1` (findings left unhandled, so Xcode attaches a screenshot)
+  and `xcrun xcresulttool export attachments`.
+- **Iroh needs `SystemConfiguration` and `Network`** linked, and the Rust C code must see
+  `IPHONEOS_DEPLOYMENT_TARGET` (build-core.sh sets it in its clean environment). A C object
+  built without it targets the SDK's own version and the linker warns; heed it, since such
+  code can fail on older iOS.
 - **Run UI tests with `-collect-test-diagnostics never`.** On any failure xcodebuild
   otherwise collects diagnostics from the simulator, which hangs for its full ten-minute
   timeout after the tests have finished. Two tests take 45 seconds with it off and over ten

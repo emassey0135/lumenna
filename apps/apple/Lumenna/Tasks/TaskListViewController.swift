@@ -10,7 +10,19 @@ import UIKit
 /// suggests. Hosted text is invisible to the accessibility audit's Dynamic Type checks and was
 /// reported clipped when the size changed at run time; the stock configuration passes both.
 final class TaskListViewController: UIViewController {
+    /// What the list is for.
+    enum Mode {
+        /// Tasks to do.
+        case tasks
+        /// The trash: restore, or erase for good (§16.1).
+        case trash
+    }
+
     private let core: Core
+    private let mode: Mode
+    /// What quick add starts with — `#Work ` in a project's list, so a task added there
+    /// lands there.
+    private let quickAddPrefix: String
     private var rows: [RowView] = []
 
     private let filterField = LineEntry(name: "Filter")
@@ -19,10 +31,13 @@ final class TaskListViewController: UIViewController {
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<Int, String>!
 
-    init(core: Core) {
+    init(core: Core, title: String = "Tasks", query: String = "", mode: Mode = .tasks, quickAddPrefix: String = "") {
         self.core = core
+        self.mode = mode
+        self.quickAddPrefix = quickAddPrefix
         super.init(nibName: nil, bundle: nil)
-        title = "Tasks"
+        self.title = title
+        filterField.text = query
     }
 
     @available(*, unavailable)
@@ -44,7 +59,6 @@ final class TaskListViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        navigationController?.setToolbarHidden(false, animated: animated)
         // Back from a task's details, which may have changed it.
         if let selected = collectionView.indexPathsForSelectedItems?.first {
             collectionView.deselectItem(at: selected, animated: animated)
@@ -73,7 +87,7 @@ final class TaskListViewController: UIViewController {
     private func buildList() {
         var configuration = UICollectionLayoutListConfiguration(appearance: .plain)
         configuration.leadingSwipeActionsConfigurationProvider = { [weak self] path in
-            guard let self, let row = self.row(at: path) else { return nil }
+            guard let self, self.mode == .tasks, let row = self.row(at: path) else { return nil }
             let action = UIContextualAction(
                 // The title is also the action's name to VoiceOver, so it says what it does.
                 style: .normal, title: row.checked == true ? "Mark Not Done" : "Mark Done"
@@ -86,6 +100,19 @@ final class TaskListViewController: UIViewController {
         }
         configuration.trailingSwipeActionsConfigurationProvider = { [weak self] path in
             guard let self, let row = self.row(at: path) else { return nil }
+            if self.mode == .trash {
+                let restore = UIContextualAction(style: .normal, title: "Restore") {
+                    [weak self] _, _, finished in
+                    self?.restore(row)
+                    finished(true)
+                }
+                let erase = UIContextualAction(style: .destructive, title: "Erase") {
+                    [weak self] _, _, finished in
+                    self?.erase(row)
+                    finished(true)
+                }
+                return UISwipeActionsConfiguration(actions: [restore, erase])
+            }
             let action = UIContextualAction(style: .destructive, title: "Delete") {
                 [weak self] _, _, finished in
                 self?.trash(row)
@@ -130,17 +157,20 @@ final class TaskListViewController: UIViewController {
         ])
     }
 
+    /// Everything in the navigation bar. A bottom toolbar inside the tab bar sits where the
+    /// tab bar floats, so a tap on Undo would land on a tab — for VoiceOver too, which
+    /// activates the middle of an element's frame.
     private func buildBars() {
+        let undo = UIBarButtonItem(title: "Undo", primaryAction: UIAction { [weak self] _ in self?.undo() })
+        let redo = UIBarButtonItem(title: "Redo", primaryAction: UIAction { [weak self] _ in self?.redo() })
+        navigationItem.leftItemsSupplementBackButton = true
+        navigationItem.leftBarButtonItems = mode == .tasks ? [undo, redo] : [undo]
+        guard mode == .tasks else { return }
         let add = UIBarButtonItem(
             systemItem: .add, primaryAction: UIAction { [weak self] _ in self?.addTask() }
         )
         add.accessibilityLabel = "Add task"
         navigationItem.rightBarButtonItem = add
-        toolbarItems = [
-            UIBarButtonItem(title: "Undo", primaryAction: UIAction { [weak self] _ in self?.undo() }),
-            UIBarButtonItem(title: "Redo", primaryAction: UIAction { [weak self] _ in self?.redo() }),
-            .flexibleSpace(),
-        ]
     }
 
     /// What a row says, and what can be done to it without seeing it.
@@ -152,7 +182,7 @@ final class TaskListViewController: UIViewController {
         cell.isAccessibilityElement = true
         cell.accessibilityLabel = RowSpeech.label(row)
         cell.accessibilityValue = RowSpeech.value(row, previousDepth: previous)
-        cell.accessibilityHint = "Shows details"
+        cell.accessibilityHint = mode == .trash ? nil : "Shows details"
         cell.accessibilityTraits = .button
         // No custom actions here: UIKit already offers the swipe actions to VoiceOver, Switch
         // Control and Full Keyboard Access, and actions set on the cell are added to those
@@ -289,6 +319,24 @@ final class TaskListViewController: UIViewController {
         perform(focusing: nil, near: index) { try core.lumenna.trashTask(id: row.id) }
     }
 
+    private func restore(_ row: RowView) {
+        let index = rows.firstIndex { $0.id == row.id }
+        perform(focusing: nil, near: index) { try core.lumenna.restoreTask(id: row.id) }
+    }
+
+    /// Erasing rebuilds the document without the task and cannot be undone (§9), so it asks.
+    private func erase(_ row: RowView) {
+        confirm(
+            "Erase \(row.title)?",
+            message: "It and its history are deleted for good. This cannot be undone.",
+            action: "Erase"
+        ) { [weak self] in
+            guard let self else { return }
+            let index = self.rows.firstIndex { $0.id == row.id }
+            self.perform(focusing: nil, near: index) { try self.core.lumenna.eraseTask(id: row.id) }
+        }
+    }
+
     @objc private func undo() {
         perform(focusing: nil, near: nil) {
             let change = try core.lumenna.undo()
@@ -301,7 +349,8 @@ final class TaskListViewController: UIViewController {
     }
 
     @objc private func addTask() {
-        let adding = QuickAddViewController(core: core) { [weak self] change in
+        guard mode == .tasks else { return }
+        let adding = QuickAddViewController(core: core, initial: quickAddPrefix) { [weak self] change in
             self?.reload(focusing: change.task?.id, near: nil, saying: change)
         }
         present(UINavigationController(rootViewController: adding), animated: true)
@@ -327,7 +376,7 @@ final class TaskListViewController: UIViewController {
 
 extension TaskListViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt path: IndexPath) {
-        guard let row = row(at: path) else { return }
+        guard mode == .tasks, let row = row(at: path) else { return }
         navigationController?.pushViewController(
             TaskDetailViewController(core: core, id: row.id), animated: true
         )

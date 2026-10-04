@@ -49,10 +49,15 @@ targets:
           done
     dependencies:
       - sdk: Security.framework
+      # Iroh's network interface and path monitoring.
+      - sdk: SystemConfiguration.framework
+      - sdk: Network.framework
     info:
       path: Lumenna/Info.plist
       properties:
         CFBundleDisplayName: Lumenna
+        # Iroh connects straight to paired devices on the same network when it can.
+        NSLocalNetworkUsageDescription: Lumenna syncs directly with your other devices when they are on the same network as this one.
         UILaunchScreen: {}
         UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations:
