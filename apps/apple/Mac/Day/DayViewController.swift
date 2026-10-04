@@ -41,7 +41,7 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
     private(set) var plan: Plan?
     private var nodes: [DayNode] = []
     let outline = TaskOutline()
-    private let summary = NSTextField(wrappingLabelWithString: "")
+    private let summary = HeadingLabel(wrappingLabelWithString: "")
     private var landedOnNow = false
 
     init(core: Core, window: MainWindowController) {
@@ -58,7 +58,6 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         summary.font = .preferredFont(forTextStyle: .subheadline)
         summary.textColor = .quietLabel
         // The day's heading, as on the phone: VoiceOver's heading commands land on it.
-        summary.setAccessibilityRole(NSAccessibility.Role(rawValue: "AXHeading"))
 
         let buttons = NSStackView(views: [
             NSButton(title: "Previous Day", target: self, action: #selector(previousDay(_:))),
