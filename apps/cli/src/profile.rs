@@ -26,6 +26,18 @@ pub struct Profile {
     rows_addressable: bool,
 }
 
+/// The profile directory when nothing names another one.
+#[must_use]
+pub fn default_directory() -> Option<PathBuf> {
+    directories::ProjectDirs::from("", "", "lumenna").map(|dirs| {
+        // The *local* data directory. On Linux and macOS it is the same place as `data_dir`;
+        // on Windows `data_dir` is Roaming AppData, which a domain with roaming profiles
+        // copies to a server at every logon and logoff — carrying the store, and its backups
+        // beside it, off the machine.
+        dirs.data_local_dir().to_path_buf()
+    })
+}
+
 impl Profile {
     /// Opens the profile, creating it if this is the first run.
     ///
@@ -37,18 +49,9 @@ impl Profile {
             Some(path) => path.to_path_buf(),
             None => match std::env::var_os("LUMENNA_PROFILE") {
                 Some(value) => PathBuf::from(value),
-                None => directories::ProjectDirs::from("", "", "lumenna")
-                    .ok_or_else(|| {
-                        CliError::Message(
-                            "cannot find a data directory; set LUMENNA_PROFILE".to_owned(),
-                        )
-                    })?
-                    // The *local* data directory. On Linux and macOS it is the same place as
-                    // `data_dir`; on Windows `data_dir` is Roaming AppData, which a domain
-                    // with roaming profiles copies to a server at every logon and logoff —
-                    // carrying the store, and its backups beside it, off the machine.
-                    .data_local_dir()
-                    .to_path_buf(),
+                None => default_directory().ok_or_else(|| {
+                    CliError::Message("cannot find a data directory; set LUMENNA_PROFILE".to_owned())
+                })?,
             },
         };
         std::fs::create_dir_all(&directory)?;
