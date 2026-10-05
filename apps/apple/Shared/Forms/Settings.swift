@@ -120,10 +120,12 @@ struct PlanningSettings: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Completing a task completes its subtasks", isOn: Binding(
-                    get: { model.values["cascade-complete-subtasks"] == "true" },
-                    set: { model.set("cascade-complete-subtasks", $0 ? "true" : "false") }
-                ))
+                Labelled("Completing a task completes its subtasks") {
+                    Toggle("Completing a task completes its subtasks", isOn: Binding(
+                        get: { model.values["cascade-complete-subtasks"] == "true" },
+                        set: { model.set("cascade-complete-subtasks", $0 ? "true" : "false") }
+                    ))
+                }
                 Labelled("Day starts") {
                     DatePicker("Day starts", selection: model.time("day-start"), displayedComponents: .hourAndMinute)
                 }
