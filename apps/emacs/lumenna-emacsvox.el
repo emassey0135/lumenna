@@ -68,13 +68,16 @@
        :id lumenna-events
        :summary "Sounds for what happens to Lumenna's tasks and timers"
        :rules
+       ;; One rule per role and event: several methods share one (a task is
+       ;; deleted by moving it to the trash or by erasing it), and a rule for
+       ;; each would play its cue once per rule.
        ,(mapcar (lambda (event)
-                  (pcase-let ((`(,method ,role ,id ,cue) event))
-                    `(:id ,(intern (format "lumenna-%s-cue" (replace-regexp-in-string "\\." "-" method)))
+                  (pcase-let* ((`(,role ,id ,cue) event)
+                               (name (format "%s-%s" id (string-remove-prefix "lumenna-" (symbol-name role)))))
+                    `(:id ,(intern (concat name "-cue"))
                       :match (:role ,role :module lumenna :event ,id)
-                      :render (:after ((:id ,(intern (format "lumenna-%s-sound" (replace-regexp-in-string "\\." "-" method)))
-                                        :kind cue :cue ,cue))))))
-                lumenna-emacsvox-events))
+                      :render (:after ((:id ,(intern (concat name "-sound")) :kind cue :cue ,cue))))))
+                (seq-uniq (mapcar #'cdr lumenna-emacsvox-events))))
      :source "lumenna-emacsvox")))
 
 (defconst lumenna-emacsvox--roles

@@ -238,9 +238,12 @@ against a real `lum rpc`, answering the minibuffer by rebinding the reading func
   Emacsvox share, plus Emacspeak auditory icons; and under Emacsvox, facts on each line and
   events on the notification lane whose sounds are a module fragment's rules — then the
   icons are not played, and the echo-area copy is shown with `emacsvox-speak-messages` nil.
-- **The Emacsvox layer is checked on the BT Braille**, where Emacsvox lives: loaded in batch
-  with its aural modules, `emacsvox-aural-validate-registry` passes and a completed task
-  resolves to the `task-done` cue. A test of its own needs Emacsvox on the load path.
+- **The Emacsvox layer is tested against Emacsvox itself** (`test/lumenna-emacsvox-test.el`,
+  skipped without it): its registry validates, each event resolves to its cue, a row
+  carries its facts, a change is one notification. Emacsvox is at `~/emacsvox` on the Mac
+  and the BT Braille. Rules are one per role and event, not per method — `task.rm` and
+  `task.erase` share one, and a rule each played the sound twice. A fact's `:content`
+  labels the object in Emacsvox's history and tuning tools; the line is still what is said.
 
 ### The iOS app
 
