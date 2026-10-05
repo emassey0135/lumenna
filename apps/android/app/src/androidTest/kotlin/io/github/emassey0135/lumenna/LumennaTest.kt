@@ -327,7 +327,7 @@ class LumennaTest {
 
     @Test
     fun theDaySaysWhatItHoldsAndShowsFreeTime() {
-        seed { it.addBlock(NewBlock("Focus", "9:00", 90u, "today", "work", null)) }
+        seed { it.addBlock(NewBlock(title = "Focus", at = "9:00", minutes = 90u, date = "today", kind = "work", repeat = null)) }
         tab("Today")
         says("Focus", "work block")
         // Before the block and after it.
@@ -339,7 +339,7 @@ class LumennaTest {
     fun aTaskCanBeAssignedToABlockAndTimed() {
         seed {
             it.addTask("write the chapter")
-            it.addBlock(NewBlock("All day", "00:00", 1439u, "today", "work", null))
+            it.addBlock(NewBlock(title = "All day", at = "00:00", minutes = 1439u, date = "today", kind = "work", repeat = null))
         }
         tab("Today")
         act("All day", "Assign Task", substring = true)
@@ -357,11 +357,46 @@ class LumennaTest {
     }
 
     @Test
+    fun aTimerStartsPausesResumesAndStops() {
+        seed {
+            it.addTask("write the chapter")
+            it.addBlock(NewBlock(title = "All day", at = "00:00", minutes = 1439u, date = "today", kind = "work", repeat = null))
+        }
+        tab("Today")
+        act("All day", "Assign Task", substring = true)
+        button("write the chapter")
+        button("Done")
+        for ((action, state) in listOf(
+            "Start Timer" to "in progress", "Pause Timer" to "paused", "Resume Timer" to "in progress",
+            "Pause Timer" to "paused", "Stop Timer" to "worked",
+        )) {
+            act("write the chapter", action)
+            says("write the chapter", state)
+        }
+    }
+
+    @Test
+    fun aBreakSetApartToTakeTasksIsOfferedForThem() {
+        tab("Today")
+        press("Add block")
+        type("Name", "Train")
+        button("Break")
+        val takes = rule.onNode(hasText("Takes tasks") and SemanticsMatcher.keyIsDefined(SemanticsProperties.ToggleableState))
+        takes.performScrollTo()
+        takes.performClick()
+        press("Save")
+        says("Train", "takes tasks")
+        val block = core.lumenna.plan(null).blocks.single()
+        assertTrue(block.acceptsTasks)
+        assertEquals("break", block.kind)
+    }
+
+    @Test
     fun aTaskIsPutInABlockFromItsOwnPage() {
         seed {
             it.addTask("tidy the desk")
-            it.addBlock(NewBlock("Chores", "10:00", 60u, "tomorrow", "work", null))
-            it.addBlock(NewBlock("Lunch", "12:00", 30u, "tomorrow", "break", null))
+            it.addBlock(NewBlock(title = "Chores", at = "10:00", minutes = 60u, date = "tomorrow", kind = "work", repeat = null))
+            it.addBlock(NewBlock(title = "Lunch", at = "12:00", minutes = 30u, date = "tomorrow", kind = "break", repeat = null))
         }
         tab("Tasks")
         row("tidy the desk").performClick()
@@ -378,7 +413,7 @@ class LumennaTest {
 
     @Test
     fun aCancelledDayIsListedAndCanBePutBack() {
-        seed { it.addBlock(NewBlock("Run", "7:00", 30u, "today", "work", "every day")) }
+        seed { it.addBlock(NewBlock(title = "Run", at = "7:00", minutes = 30u, date = "today", kind = "work", repeat = "every day")) }
         tab("Today")
         act("Run", "Cancel This Day", substring = true)
         says("Run", "cancelled for this day")
@@ -388,7 +423,7 @@ class LumennaTest {
 
     @Test
     fun undoWorksFromTheDayToo() {
-        seed { it.addBlock(NewBlock("Run", "7:00", 30u, "today", "work", "every day")) }
+        seed { it.addBlock(NewBlock(title = "Run", at = "7:00", minutes = 30u, date = "today", kind = "work", repeat = "every day")) }
         tab("Today")
         act("Run", "Cancel This Day", substring = true)
         says("Run", "cancelled for this day")
@@ -438,7 +473,7 @@ class LumennaTest {
 
     @Test
     fun everyBlockIsListedUnderBrowseAndAsksBeforeDeleting() {
-        seed { it.addBlock(NewBlock("Review", "16:00", 60u, "in 10 days", "work", null)) }
+        seed { it.addBlock(NewBlock(title = "Review", at = "16:00", minutes = 60u, date = "in 10 days", kind = "work", repeat = null)) }
         tab("Browse")
         row("Blocks").performClick()
         rule.waitForIdle()

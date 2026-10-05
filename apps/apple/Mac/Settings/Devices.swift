@@ -67,25 +67,9 @@ final class DevicesViewController: NSViewController, NSTableViewDataSource, NSTa
         table.reloadData()
     }
 
-    /// "5 minutes ago", in this Mac's words.
-    private static func ago(_ timestamp: String) -> String {
-        guard let date = try? Date(timestamp, strategy: .iso8601) else { return timestamp }
-        return date.formatted(.relative(presentation: .named))
-    }
-
+    /// Its platform, then how syncing with it is going, as the core words it for every app.
     private static func detail(_ device: DeviceView) -> String {
-        var detail = [device.platform]
-        if device.thisDevice {
-            detail.append("this device")
-        } else if let error = device.lastError {
-            detail.append("last attempt failed: \(error)")
-            if let success = device.lastSuccess { detail.append("last synced \(ago(success))") }
-        } else if let success = device.lastSuccess {
-            detail.append("last synced \(ago(success))")
-        } else {
-            detail.append("not synced yet")
-        }
-        return detail.joined(separator: ", ")
+        ([device.platform] + device.status).joined(separator: ", ")
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { devices.count }

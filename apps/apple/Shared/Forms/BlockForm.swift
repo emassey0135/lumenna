@@ -14,10 +14,13 @@ final class BlockFormModel: ObservableObject {
 
     let purpose: Purpose
     let heading: String
-    /// Whether it repeats by a rule the date grammar cannot say, which the repetition field
-    /// then leaves alone unless something is typed into it.
-    let unspeakableRule: Bool
-    private let initial: (name: String, start: Date, minutes: Int, kind: String, repeat: String)
+    /// A rule the date grammar cannot say, shown beside an empty Repeats field; saving with
+    /// the field still empty keeps it.
+    let rule: String?
+    /// Whether the block repeats, which is when it can have a last day.
+    let repeats: Bool
+    /// The fields as the form opened, which saving compares against (`blockEdit`).
+    private let initial: BlockFields
     private let core: Core
     /// Told of the change once the form has saved and closed.
     var saved: (Change) -> Void
@@ -25,37 +28,40 @@ final class BlockFormModel: ObservableObject {
     /// a UIKit or AppKit sheet reliably.
     var close: () -> Void = {}
 
-    @Published var name: String
+    /// Every field but the start and length, as the core shapes them (§16.1: block editor).
+    @Published var fields: BlockFields
     @Published var start: Date
     @Published var minutes: Int
-    @Published var kind: String
-    @Published var repetition: String
     @Published var day: Date
     @Published var failure: String?
 
     init(
         core: Core,
         purpose: Purpose,
-        name: String = "",
+        fields: BlockFields? = nil,
         start: String = "09:00",
         minutes: Int = 60,
-        kind: String = "work",
-        repetition: String = "",
         day: Date = .now,
-        unspeakableRule: Bool = false,
+        rule: String? = nil,
+        repeats: Bool = false,
         saved: @escaping (Change) -> Void = { _ in }
     ) {
         self.core = core
         self.purpose = purpose
-        self.unspeakableRule = unspeakableRule
+        self.rule = rule
+        self.repeats = repeats
         self.saved = saved
-        let startDate = Self.date(start)
-        initial = (name, startDate, minutes, kind, repetition)
-        self.name = name
-        self.start = startDate
-        self.minutes = minutes
-        self.kind = kind
-        self.repetition = repetition
+        let defaults = blockDefaults(kind: "work")
+        let fields = fields ?? BlockFields(
+            title: "", start: start, minutes: String(minutes), kind: "work",
+            acceptsTasks: defaults?.acceptsTasks ?? true, countsCapacity: defaults?.countsCapacity ?? true,
+            anchored: defaults?.anchored ?? false, repeat: "", until: "", minMinutes: "", taskFilter: "",
+            colour: "", notes: ""
+        )
+        initial = fields
+        self.fields = fields
+        self.start = Self.date(fields.start)
+        self.minutes = Int(fields.minutes) ?? minutes
         self.day = day
         switch purpose {
         case .add: heading = "New Block"
@@ -70,33 +76,49 @@ final class BlockFormModel: ObservableObject {
         return BlockFormModel(
             core: core,
             purpose: .series(shown.id),
-            name: shown.title,
-            start: shown.start,
-            minutes: Int(shown.minutes),
-            kind: shown.kind,
-            repetition: shown.repetition ?? "",
-            unspeakableRule: shown.repeats && shown.repetition == nil,
+            fields: blockFields(block: shown),
+            rule: shown.repetition == nil ? shown.rrule : nil,
+            repeats: shown.repeats,
             saved: saved
         )
     }
 
-    var asksRepetition: Bool {
-        if case .occurrence = purpose { return false }
-        return true
+    /// The form for one day of a series, from how that day stands.
+    static func occurrence(core: Core, block: PlanBlock, day: String, saved: @escaping (Change) -> Void = { _ in }) -> BlockFormModel {
+        BlockFormModel(core: core, purpose: .occurrence(block.series, day: day), fields: dayBlockFields(block: block), saved: saved)
     }
 
-    var asksDay: Bool {
+    var isAdding: Bool {
         if case .add = purpose { return true }
         return false
     }
 
+    var isOneDay: Bool {
+        if case .occurrence = purpose { return true }
+        return false
+    }
+
+    /// The kind, which brings its own flags with it: a work block takes tasks, a break does
+    /// not, an event is anchored. The flags can then be set apart from it.
+    var kind: String {
+        get { fields.kind }
+        set {
+            fields.kind = newValue
+            if let defaults = blockDefaults(kind: newValue) {
+                fields.acceptsTasks = defaults.acceptsTasks
+                fields.countsCapacity = defaults.countsCapacity
+                fields.anchored = defaults.anchored
+            }
+        }
+    }
+
     /// What the repetition field means, which differs between adding and changing.
     var repetitionHelp: String {
-        if case .add = purpose {
+        if isAdding {
             return "Such as \u{201C}every weekday\u{201D}. Empty for a block that happens once."
         }
-        if unspeakableRule {
-            return "It repeats by a rule this cannot show in words. Empty keeps it; \u{201C}none\u{201D} makes it happen once."
+        if let rule {
+            return "It repeats by the rule \(rule), which this cannot show in words. Empty keeps it; \u{201C}none\u{201D} makes it happen once."
         }
         if initial.repeat.isEmpty {
             return "It happens once now. Such as \u{201C}every weekday\u{201D} to make it repeat."
@@ -104,14 +126,9 @@ final class BlockFormModel: ObservableObject {
         return "Empty makes it happen once."
     }
 
-    /// The repetition to send: nothing if it is as it was, `none` if it was cleared.
-    private var repetitionChange: String? {
-        let typed = repetition.trimmingCharacters(in: .whitespaces)
-        guard asksRepetition, typed != initial.repeat else { return nil }
-        if typed.isEmpty {
-            return unspeakableRule ? nil : "none"
-        }
-        return typed
+    /// Whether it can have a last day: a block that repeats, or one being added to repeat.
+    var asksUntil: Bool {
+        !isOneDay && (repeats || (isAdding && !fields.repeat.trimmingCharacters(in: .whitespaces).isEmpty))
     }
 
     private static func date(_ clock: String) -> Date {
@@ -126,35 +143,33 @@ final class BlockFormModel: ObservableObject {
         return String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
     }
 
-    /// Saves, closes and tells `saved`; or says why not and stays open.
+    /// The fields as edited, with the start and length the pickers hold.
+    private var current: BlockFields {
+        var current = fields
+        current.start = Self.clock(start)
+        current.minutes = String(minutes)
+        return current
+    }
+
+    /// Saves, closes and tells `saved`; or says why not and stays open. What a block is made
+    /// from, and which fields a change sends, are the core's (`newBlock`, `blockEdit`), as for
+    /// every app: only what changed, so an edit made elsewhere to another field stands.
     func save() {
-        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else {
+        guard !fields.title.trimmingCharacters(in: .whitespaces).isEmpty else {
             failure = "A block needs a name."
             return
         }
-        guard minutes > 0 else {
-            failure = "A block has to last at least a minute."
-            return
-        }
-        let at = Self.clock(start)
         do {
             let change: Change
             switch purpose {
             case .add:
-                change = try core.lumenna.addBlock(block: NewBlock(
-                    title: name, at: at, minutes: UInt32(minutes), date: Clock.isoDay(day), kind: kind,
-                    repeat: repetition.isEmpty ? nil : repetition
-                ))
+                change = try core.lumenna.addBlock(block: newBlock(fields: current, date: Clock.isoDay(day)))
             case let .series(id), let .occurrence(id, _):
-                // Only what changed, so a field edited on another device meanwhile is not
-                // overwritten with what this form happened to show.
-                let edit = BlockEdit(
-                    title: name != initial.name ? name : nil,
-                    at: at != Self.clock(initial.start) ? at : nil,
-                    minutes: minutes != initial.minutes ? UInt32(minutes) : nil,
-                    kind: kind != initial.kind ? kind : nil,
-                    repeat: repetitionChange
-                )
+                guard let edit = try blockEdit(before: initial, after: current) else {
+                    close()
+                    Announcer.say("Nothing changed")
+                    return
+                }
                 let scope: BlockScope = if case let .occurrence(_, day) = purpose { .occurrence(date: day) } else { .series }
                 change = try core.lumenna.editBlock(id: id, edit: edit, scope: scope)
             }
@@ -172,8 +187,8 @@ struct BlockForm: View {
     var body: some View {
         Form {
             Section {
-                namedField("Name", text: $model.name, example: "Deep work")
-                if model.asksDay {
+                namedField("Name", text: $model.fields.title, example: "Deep work")
+                if model.isAdding {
                     Labelled("Day") { DatePicker("Day", selection: $model.day, displayedComponents: .date) }
                 }
                 Labelled("Starts") { DatePicker("Starts", selection: $model.start, displayedComponents: .hourAndMinute) }
@@ -187,15 +202,40 @@ struct BlockForm: View {
             ChoiceSection("Kind", selection: $model.kind, choices: [
                 ("Work, takes tasks", "work"), ("Break", "break"), ("Event", "event"),
             ])
-            if model.asksRepetition {
+            if !model.isOneDay {
                 Section {
-                    namedField("Repeats", text: $model.repetition, example: "every weekday")
+                    namedField("Repeats", text: $model.fields.repeat, example: "every weekday")
                         #if os(iOS)
                         .textInputAutocapitalization(.never)
                         #endif
                 } footer: {
                     FormParts.caption(model.repetitionHelp)
                 }
+            }
+            Section {
+                Toggle("Takes tasks", isOn: $model.fields.acceptsTasks)
+                Toggle("Counts toward hours for work", isOn: $model.fields.countsCapacity)
+                Toggle("Anchored, never moved when the day slips", isOn: $model.fields.anchored)
+            } header: {
+                FormParts.heading("What it does")
+            } footer: {
+                FormParts.caption("The kind sets these; change any of them to set it apart.")
+            }
+            if !model.isOneDay {
+                Section {
+                    if model.asksUntil {
+                        namedField("Until", text: $model.fields.until, example: "31 January")
+                    }
+                    namedField("Shortest length, in minutes", text: $model.fields.minMinutes, example: "30")
+                    namedField("Tasks from", text: $model.fields.taskFilter, example: "#Work")
+                    namedField("Colour", text: $model.fields.colour, example: "teal")
+                    namedField("Notes", text: $model.fields.notes, example: "Anything else", axis: .vertical)
+                } header: {
+                    FormParts.heading("More")
+                } footer: {
+                    FormParts.caption("Until is its last day. The shortest length is how far a slipping day may shorten it; empty for the kind's own. Tasks from is a filter for which tasks it is meant for.")
+                }
+                .autocorrectionDisabled()
             }
             #if os(macOS)
             HStack {
@@ -210,7 +250,7 @@ struct BlockForm: View {
         #if os(macOS)
         .formStyle(.grouped)
         // A grouped form scrolls, so in a sheet it would otherwise ask for no height at all.
-        .frame(width: 460, height: 500)
+        .frame(width: 480, height: 640)
         #endif
         .modifier(FailureAlert(failure: $model.failure))
     }

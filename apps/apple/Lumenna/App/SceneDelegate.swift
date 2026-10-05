@@ -25,8 +25,32 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         self.window = window
         window.makeKeyAndVisible()
+        // Launched by the Home Screen's New Task.
+        if let shortcut = connectionOptions.shortcutItem {
+            DispatchQueue.main.async { [weak self] in _ = self?.perform(shortcut) }
+        }
         core?.backUpIfDue(presentingFrom: window.rootViewController)
     }
+
+    /// The Home Screen's quick action, chosen while the app was running.
+    func windowScene(
+        _ windowScene: UIWindowScene,
+        performActionFor shortcutItem: UIApplicationShortcutItem,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        completionHandler(perform(shortcutItem))
+    }
+
+    /// New Task, from the app icon's quick actions (long press, or VoiceOver's actions rotor):
+    /// quick add, without first finding the Tasks tab.
+    private func perform(_ shortcut: UIApplicationShortcutItem) -> Bool {
+        guard shortcut.type == Self.newTask, let tabs = window?.rootViewController as? RootTabs else { return false }
+        tabs.newTask()
+        return true
+    }
+
+    /// Also under `UIApplicationShortcutItems` in Info.plist.
+    static let newTask = "io.github.emassey0135.lumenna.new-task"
 
     func sceneWillEnterForeground(_ scene: UIScene) {
         core?.timeZoneMayHaveChanged()

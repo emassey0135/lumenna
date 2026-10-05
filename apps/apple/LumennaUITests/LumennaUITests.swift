@@ -182,6 +182,43 @@ final class LumennaUITests: XCTestCase {
         try audit()
     }
 
+    func testABreakCanTakeTasksAndATimerPausesResumesAndStops() {
+        add("read the paper")
+        tab("Today")
+        app.buttons["Add block"].tap()
+        let name = app.textFields["Name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        name.tap()
+        name.typeText("Train")
+        app.buttons["Break"].tap()
+        let takes = app.switches["Takes tasks"]
+        if !takes.isHittable { app.swipeUp() }
+        XCTAssertEqual(takes.value as? String, "0", "a break takes no tasks until set apart")
+        takes.switches.firstMatch.tap()
+        app.buttons["Save"].tap()
+
+        let block = app.cells.containing(NSPredicate(format: "value CONTAINS 'takes tasks'")).firstMatch
+        XCTAssertTrue(block.waitForExistence(timeout: 5), "the details say what differs from the kind")
+        block.swipeLeft()
+        app.buttons["Assign Task"].tap()
+        app.cells.matching(NSPredicate(format: "label == 'read the paper'")).firstMatch.tap()
+        XCTAssertTrue(app.alerts.buttons["Skip"].waitForExistence(timeout: 5))
+        app.alerts.buttons["Skip"].tap()
+
+        let sitting = row("read the paper")
+        let says = { [app] (text: String) in
+            app!.cells.containing(NSPredicate(format: "label == 'read the paper' AND value CONTAINS %@", text)).firstMatch
+                .waitForExistence(timeout: 5)
+        }
+        XCTAssertTrue(sitting.waitForExistence(timeout: 5))
+        for (action, state) in [("Start Timer", "in progress"), ("Pause Timer", "paused"), ("Resume Timer", "in progress"),
+                                ("Pause Timer", "paused"), ("Stop Timer", "worked")] {
+            sitting.swipeLeft()
+            app.buttons[action].tap()
+            XCTAssertTrue(says(state), "\(action) leaves it \(state)")
+        }
+    }
+
     func testATaskCanBeAssignedToABlockAndTimed() {
         add("write the chapter")
         tab("Today")

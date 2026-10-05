@@ -348,7 +348,7 @@ final class TaskListViewController: UIViewController {
         perform(focusing: nil, near: nil) { try core.lumenna.redo() }
     }
 
-    @objc private func addTask() {
+    @objc func addTask() {
         guard mode == .tasks else { return }
         let adding = QuickAddViewController(core: core, initial: quickAddPrefix) { [weak self] change in
             self?.reload(focusing: change.task?.id, near: nil, saying: change)

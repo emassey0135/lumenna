@@ -293,13 +293,8 @@ fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
         load = {
             val status = core.lumenna.syncStatus()
             status.devices.map { device ->
-                val detail = buildList {
-                    add(device.platform)
-                    if (device.thisDevice) add("this device")
-                    device.lastError?.let { add("last attempt failed: $it") }
-                    device.lastSuccess?.let { add("last synced ${Clock.ago(it)}") }
-                    if (!device.thisDevice && device.lastSuccess == null && device.lastError == null) add("not synced yet")
-                }.joinToString(", ")
+                // How syncing with it is going, as the core words it for every app.
+                val detail = (listOf(device.platform) + device.status).joinToString(", ")
                 Item(device.nodeId, device.name, detail)
             } to status.announcement
         },

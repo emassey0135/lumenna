@@ -192,18 +192,11 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         switch node.kind {
         case let .block(block):
             label = "\(Clock.time(block.start)) to \(Clock.time(block.end)), \(block.title)"
-            value = [Clock.length(block.durationMins), "\(block.kind) block"]
-            if !block.when.isEmpty { value.append(block.when) }
-            if block.changedForThisDay { value.append("changed for this day") }
-            if block.kind == "work" {
-                let n = block.assignments.count
-                value.append(n == 0 ? "nothing assigned" : n == 1 ? "1 task assigned" : "\(n) tasks assigned")
-            }
+            // The core words the details for every app (§13).
+            value = block.details
         case let .sitting(sitting, _):
             label = sitting.title
-            value = sittingStatus(sitting: sitting)
-            if sitting.minutes > 0 { value.append("\(Clock.length(sitting.minutes)) logged") }
-            if sitting.capped { value.append("capped, the timer looks forgotten") }
+            value = sitting.details
         case let .free(start, end, minutes):
             label = "Free, \(Clock.length(minutes))"
             value = ["\(Clock.time(start)) to \(Clock.time(end))"]
@@ -268,7 +261,7 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         switch node.kind {
         case let .block(block):
             var actions: [(String, () -> Void)] = []
-            if block.kind == "work" { actions.append(("Assign a Task…", { [weak self] in self?.assign(to: block) })) }
+            if block.acceptsTasks { actions.append(("Assign a Task…", { [weak self] in self?.assign(to: block) })) }
             actions.append(("Edit…", { [weak self] in self?.edit(block) }))
             if block.repeats {
                 actions.append(("Cancel This Day", { [weak self] in
@@ -283,8 +276,15 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
             actions += [("-", {}), ("Delete Block…", { [weak self] in self?.delete(block) })]
             return actions
         case let .sitting(sitting, _):
-            return [
-                (sitting.status == "in progress" ? "Stop Timer" : "Start Timer", { [weak self] in self?.toggleTimer(sitting) }),
+            // Start, pause and stop (§3.7): stopping a running or a paused sitting ends it.
+            let paused = sitting.status == "paused"
+            var timer: [(String, () -> Void)] = [
+                (sitting.running ? "Pause Timer" : paused ? "Resume Timer" : "Start Timer", { [weak self] in self?.toggleTimer(sitting) }),
+            ]
+            if sitting.running || paused {
+                timer.append(("Stop Timer", { [weak self] in self?.stopTimer(sitting) }))
+            }
+            return timer + [
                 ("Planned Length…", { [weak self] in self?.planLength(sitting, key: node.key) }),
                 ("Log Minutes…", { [weak self] in self?.logMinutes(sitting) }),
                 ("-", {}),
@@ -311,18 +311,28 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         }
     }
 
+    /// Starts a sitting's timer, pauses it while it runs, or resumes it — Space on a sitting.
     private func toggleTimer(_ sitting: PlanAssignment) {
         let key = "sitting:\(sitting.id)"
-        if sitting.status == "in progress" {
-            do {
-                let timer = try core.lumenna.stopTimer(assignment: sitting.id, minutes: nil)
-                reload(keeping: key, near: nil)
-                Announcer.say(timer.announcement, notices: timer.notices)
-            } catch {
-                view.window?.showFailure(error.sentence)
-            }
+        if sitting.running {
+            timed(key) { try core.lumenna.pauseTimer(assignment: sitting.id) }
         } else {
             change(keeping: key) { try core.lumenna.startTimer(assignment: sitting.id) }
+        }
+    }
+
+    /// Stops a running or paused timer, ending the sitting.
+    private func stopTimer(_ sitting: PlanAssignment) {
+        timed("sitting:\(sitting.id)") { try core.lumenna.stopTimer(assignment: sitting.id, minutes: nil) }
+    }
+
+    private func timed(_ key: String, _ operation: () throws -> Timer) {
+        do {
+            let timer = try operation()
+            reload(keeping: key, near: nil)
+            Announcer.say(timer.announcement, notices: timer.notices)
+        } catch {
+            view.window?.showFailure(error.sentence)
         }
     }
 
@@ -392,10 +402,7 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         window.choose("Change \(block.title)", message: "Which occurrences?", actions: [
             ("\(Clock.spokenDay(date)) Only", { [weak self] in
                 guard let self else { return }
-                BlockFormModel(
-                    core: self.core, purpose: .occurrence(block.series, day: date), name: block.title,
-                    start: block.start, minutes: Int(block.durationMins), kind: block.kind
-                ).present(on: window, saved: saved)
+                BlockFormModel.occurrence(core: self.core, block: block, day: date).present(on: window, saved: saved)
             }),
             ("Every Occurrence", { DispatchQueue.main.async(execute: series) }),
         ])

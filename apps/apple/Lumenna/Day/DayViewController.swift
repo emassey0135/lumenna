@@ -198,25 +198,18 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         switch row {
         case let .block(block):
             label = "\(Clock.time(block.start)) to \(Clock.time(block.end)), \(block.title)"
-            value = [Clock.length(block.durationMins), "\(block.kind) block"]
-            if !block.when.isEmpty { value.append(block.when) }
-            if block.changedForThisDay { value.append("changed for this day") }
-            if block.kind == "work" {
-                let n = block.assignments.count
-                value.append(n == 0 ? "nothing assigned" : n == 1 ? "1 task assigned" : "\(n) tasks assigned")
-            }
+            // The core words the details for every app (§13).
+            value = block.details
             content.text = label
             content.secondaryText = value.joined(separator: ", ")
             content.image = UIImage(systemName: block.when == "now" ? "clock.fill" : "clock")
             cell.accessories = [.disclosureIndicator(displayed: .always)]
         case let .sitting(sitting, _):
             label = sitting.title
-            value = sittingStatus(sitting: sitting)
-            if sitting.minutes > 0 { value.append("\(Clock.length(sitting.minutes)) logged") }
-            if sitting.capped { value.append("capped, the timer looks forgotten") }
+            value = sitting.details
             content.text = label
             content.secondaryText = value.joined(separator: ", ")
-            content.image = UIImage(systemName: sitting.status == "in progress" ? "timer" : "circle.dashed")
+            content.image = UIImage(systemName: sitting.running ? "timer" : sitting.status == "paused" ? "pause.circle" : "circle.dashed")
             content.directionalLayoutMargins.leading += 24
             cell.accessories = [.disclosureIndicator(displayed: .always)]
         case let .free(start, end, minutes):
@@ -264,7 +257,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         switch row {
         case let .block(block):
             var actions: [(String, Bool, () -> Void)] = []
-            if block.kind == "work" {
+            if block.acceptsTasks {
                 actions.append(("Assign Task", false, { [weak self] in self?.assign(to: block) }))
             }
             actions.append(("Edit", false, { [weak self] in self?.edit(block) }))
@@ -281,16 +274,22 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             actions.append(("Delete Block", true, { [weak self] in self?.delete(block) }))
             return actions
         case let .sitting(sitting, _):
-            let running = sitting.status == "in progress"
-            return [
-                (running ? "Stop Timer" : "Start Timer", false, { [weak self] in
-                    guard let self else { return }
-                    if running {
-                        self.stopTimer(sitting, row: row)
-                    } else {
-                        self.change(focusing: row) { try self.core.lumenna.startTimer(assignment: sitting.id) }
-                    }
-                }),
+            // Start, pause and stop (§3.7): a paused sitting is still in progress, and stopping
+            // either a running or a paused one ends it.
+            var timer: [(String, Bool, () -> Void)] = []
+            let start = { [weak self] in
+                guard let self else { return }
+                self.change(focusing: row) { try self.core.lumenna.startTimer(assignment: sitting.id) }
+            }
+            if sitting.running {
+                timer.append(("Pause Timer", false, { [weak self] in self?.pauseTimer(sitting, row: row) }))
+            } else {
+                timer.append((sitting.status == "paused" ? "Resume Timer" : "Start Timer", false, start))
+            }
+            if sitting.running || sitting.status == "paused" {
+                timer.append(("Stop Timer", false, { [weak self] in self?.stopTimer(sitting, row: row) }))
+            }
+            return timer + [
                 ("Planned Length", false, { [weak self] in self?.planLength(sitting, row: row) }),
                 ("Log Minutes", false, { [weak self] in self?.logMinutes(sitting, row: row) }),
                 ("Unassign", true, { [weak self] in
@@ -337,6 +336,24 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     private func stopTimer(_ sitting: PlanAssignment, row: Row) {
         do {
             let timer = try core.lumenna.stopTimer(assignment: sitting.id, minutes: nil)
+            reload { [weak self] in
+                if let index = self?.rows.firstIndex(where: {
+                    if case let .sitting(s, _) = $0 { return s.id == sitting.id }
+                    return false
+                }) {
+                    self?.focus(IndexPath(item: index, section: 0))
+                }
+                Announcer.say(timer.announcement, notices: timer.notices)
+            }
+        } catch {
+            showFailure(error.sentence)
+        }
+    }
+
+    /// Pauses a running timer, keeping the time so far; the sitting stays in progress.
+    private func pauseTimer(_ sitting: PlanAssignment, row: Row) {
+        do {
+            let timer = try core.lumenna.pauseTimer(assignment: sitting.id)
             reload { [weak self] in
                 if let index = self?.rows.firstIndex(where: {
                     if case let .sitting(s, _) = $0 { return s.id == sitting.id }
@@ -414,15 +431,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     }
 
     private func presentForm(occurrence block: PlanBlock, day: String) {
-        presentBlockForm(BlockFormModel(
-            core: core,
-            purpose: .occurrence(block.series, day: day),
-            name: block.title,
-            start: block.start,
-            minutes: Int(block.durationMins),
-            kind: block.kind,
-            saved: saved(focusing: .block(block))
-        ))
+        presentBlockForm(.occurrence(core: core, block: block, day: day, saved: saved(focusing: .block(block))))
     }
 
     /// After a form saves: reload, keep focus on the row edited, and say what changed.

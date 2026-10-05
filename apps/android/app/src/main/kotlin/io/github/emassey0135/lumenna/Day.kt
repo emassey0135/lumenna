@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -27,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
@@ -47,15 +49,19 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import io.github.emassey0135.lumenna.core.BlockEdit
+import io.github.emassey0135.lumenna.core.BlockFields
 import io.github.emassey0135.lumenna.core.BlockScope
+import io.github.emassey0135.lumenna.core.LumennaException
+import io.github.emassey0135.lumenna.core.blockDefaults
+import io.github.emassey0135.lumenna.core.blockEdit
+import io.github.emassey0135.lumenna.core.blockFields
+import io.github.emassey0135.lumenna.core.dayBlockFields
+import io.github.emassey0135.lumenna.core.newBlock
 import io.github.emassey0135.lumenna.core.CancelledBlock
-import io.github.emassey0135.lumenna.core.NewBlock
 import io.github.emassey0135.lumenna.core.Plan
 import io.github.emassey0135.lumenna.core.PlanAssignment
 import io.github.emassey0135.lumenna.core.PlanBlock
 import io.github.emassey0135.lumenna.core.PlanItem
-import io.github.emassey0135.lumenna.core.sittingStatus
 
 /** One line of the day as it is lived (§13). */
 private sealed interface DayRow {
@@ -96,27 +102,9 @@ private fun rows(plan: Plan): List<DayRow> = plan.timeline.flatMap { item ->
 
 /** What a day row says: its title, then its details. */
 private fun words(row: DayRow): Pair<String, List<String>> = when (row) {
-    is DayRow.Block -> {
-        val block = row.block
-        val details = mutableListOf(Clock.length(block.durationMins), "${block.kind} block")
-        if (block.`when`.isNotEmpty()) details += block.`when`
-        if (block.changedForThisDay) details += "changed for this day"
-        if (block.kind == "work") {
-            details += when (val n = block.assignments.size) {
-                0 -> "nothing assigned"
-                1 -> "1 task assigned"
-                else -> "$n tasks assigned"
-            }
-        }
-        "${Clock.time(block.start)} to ${Clock.time(block.end)}, ${block.title}" to details
-    }
-    is DayRow.Sitting -> {
-        val sitting = row.sitting
-        val details = sittingStatus(sitting).toMutableList()
-        if (sitting.minutes > 0u) details += "${Clock.length(sitting.minutes)} logged"
-        if (sitting.capped) details += "capped, the timer looks forgotten"
-        sitting.title to details
-    }
+    // The core words a block's and a sitting's details for every app (§13).
+    is DayRow.Block -> "${Clock.time(row.block.start)} to ${Clock.time(row.block.end)}, ${row.block.title}" to row.block.details
+    is DayRow.Sitting -> row.sitting.title to row.sitting.details
     is DayRow.Free -> "Free, ${Clock.length(row.minutes)}" to listOf("${Clock.time(row.start)} to ${Clock.time(row.end)}")
     is DayRow.Now -> "Now, ${Clock.time(row.time)}" to emptyList()
     is DayRow.Cancelled -> "${Clock.time(row.block.start)}, ${row.block.title}" to listOf("cancelled for this day")
@@ -260,7 +248,7 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
                                 asking = null
                                 navigator.push(
                                     Screen.BlockForm(
-                                        BlockPurpose.Occurrence(block.series, date, block.title, block.start, block.durationMins, block.kind),
+                                        BlockPurpose.Occurrence(block, date),
                                     ),
                                 )
                             }) { Text("${Clock.spokenDay(date)} Only") }
@@ -306,7 +294,7 @@ private fun actions(
     return when (row) {
         is DayRow.Block -> buildList {
             val block = row.block
-            if (block.kind == "work") add(RowAction("Assign Task") { ask(DayAsk.Assign(block)) })
+            if (block.acceptsTasks) add(RowAction("Assign Task") { ask(DayAsk.Assign(block)) })
             add(RowAction("Edit") { edit(block) })
             if (block.repeats && date != null) {
                 add(RowAction("Cancel This Day") { core.change { it.cancelOccurrence(block.series, date) } })
@@ -318,18 +306,24 @@ private fun actions(
         }
         is DayRow.Sitting -> {
             val sitting = row.sitting
-            val running = sitting.status == "in progress"
-            listOf(
-                RowAction(if (running) "Stop Timer" else "Start Timer") {
-                    if (running) {
-                        core.attempt { core.lumenna.stopTimer(sitting.id, null) }?.let {
-                            core.changed()
-                            core.report(sentence(it.announcement, it.notices))
-                        }
-                    } else {
-                        core.change { it.startTimer(sitting.id) }
-                    }
-                },
+            val paused = sitting.status == "paused"
+            val timed = { operation: () -> io.github.emassey0135.lumenna.core.Timer ->
+                core.attempt(operation)?.let {
+                    core.changed()
+                    core.report(sentence(it.announcement, it.notices))
+                }
+            }
+            // Start, pause and stop (§3.7): stopping a running or a paused sitting ends it.
+            buildList {
+                if (sitting.running) {
+                    add(RowAction("Pause Timer") { timed { core.lumenna.pauseTimer(sitting.id) } })
+                } else {
+                    add(RowAction(if (paused) "Resume Timer" else "Start Timer") { core.change { it.startTimer(sitting.id) } })
+                }
+                if (sitting.running || paused) {
+                    add(RowAction("Stop Timer") { timed { core.lumenna.stopTimer(sitting.id, null) } })
+                }
+            } + listOf(
                 RowAction("Planned Length") { ask(DayAsk.Plan(sitting)) },
                 RowAction("Log Minutes") { ask(DayAsk.Log(sitting)) },
                 RowAction("Show the Task") { navigator.push(Screen.Task(sitting.task)) },
@@ -351,113 +345,107 @@ private fun actions(
 /** What the block form is for. */
 sealed interface BlockPurpose {
     /** A new block, on [date] at [at] for [minutes]. */
-    data class Add(val date: String? = null, val at: String = "9:00", val minutes: UInt = 60u) : BlockPurpose
+    data class Add(val date: String? = null, val at: String = "09:00", val minutes: UInt = 60u) : BlockPurpose
 
     /** Every occurrence of a series. */
     data class Series(val id: String) : BlockPurpose
 
-    /** One day of a series, starting from how that day stands. */
-    data class Occurrence(
-        val id: String,
-        val date: String,
-        val title: String,
-        val start: String,
-        val minutes: UInt,
-        val kind: String,
-    ) : BlockPurpose
+    /** One day of a series, from how that day stands. */
+    data class Occurrence(val block: PlanBlock, val date: String) : BlockPurpose
 }
 
-/** The block form's fields as text. */
-private data class BlockFields(
-    val name: String,
-    val day: String,
-    val start: String,
-    val minutes: String,
-    val kind: String,
-    val repeat: String,
-)
+/** The fields a new block starts from: the time and length given, and a work block's flags. */
+private fun newFields(at: String, minutes: UInt): BlockFields {
+    val defaults = blockDefaults("work")
+    return BlockFields(
+        title = "", start = at, minutes = minutes.toString(), kind = "work",
+        acceptsTasks = defaults?.acceptsTasks ?: true, countsCapacity = defaults?.countsCapacity ?: true,
+        anchored = defaults?.anchored ?: false, repeat = "", until = "", minMinutes = "", taskFilter = "",
+        colour = "", notes = "",
+    )
+}
 
 /**
  * A block, added or changed (§16.1: block editor). Times and days are typed as they are said —
  * "9am", "14:30", "next monday" — and the core reads them, as on the command line.
  *
- * A change sends only the fields that differ from what the form started with, so a field edited
- * on another device meanwhile is not overwritten with what this form happened to show.
+ * What a block is made from, and which fields a change sends, are the core's (`newBlock`,
+ * `blockEdit`), as for every app: only what changed, so an edit made elsewhere to another field
+ * stands. A change of kind brings the kind's flags with it (`blockDefaults`); a flag can then
+ * be set apart from it.
  */
 @Composable
 fun BlockFormScreen(core: Core, navigator: Navigator, purpose: BlockPurpose) {
-    // Every occurrence starts from the series as stored; one day, from how that day stands.
     val shown = remember(purpose) {
         (purpose as? BlockPurpose.Series)?.let { core.attempt { core.lumenna.showBlock(it.id) } }
     }
     val initial = remember(purpose) {
         when (purpose) {
-            is BlockPurpose.Add -> BlockFields("", purpose.date ?: Clock.today(), purpose.at, purpose.minutes.toString(), "work", "")
-            is BlockPurpose.Series -> BlockFields(
-                shown?.title.orEmpty(), "", shown?.start.orEmpty(), shown?.minutes?.toString().orEmpty(),
-                shown?.kind ?: "work", shown?.repetition.orEmpty(),
-            )
-            is BlockPurpose.Occurrence -> BlockFields(purpose.title, purpose.date, purpose.start, purpose.minutes.toString(), purpose.kind, "")
+            is BlockPurpose.Add -> newFields(purpose.at, purpose.minutes)
+            is BlockPurpose.Series -> shown?.let { blockFields(it) } ?: newFields("09:00", 60u)
+            is BlockPurpose.Occurrence -> dayBlockFields(purpose.block)
         }
     }
     var fields by remember(purpose) { mutableStateOf(initial) }
-    // A rule the date grammar cannot say is left alone unless something is typed over it.
-    val unspeakable = shown != null && shown.repeats && shown.repetition == null
+    var day by remember(purpose) { mutableStateOf((purpose as? BlockPurpose.Add)?.date ?: Clock.today()) }
+    val oneDay = purpose is BlockPurpose.Occurrence
+    // A rule the date grammar cannot say is shown beside an empty Repeats field, and kept.
+    val rule = shown?.rrule?.takeIf { shown.repetition == null }
+    val repeats = shown?.repeats == true || (purpose is BlockPurpose.Add && fields.repeat.isNotBlank())
     val title = when (purpose) {
         is BlockPurpose.Add -> "New Block"
         is BlockPurpose.Series -> "Every Occurrence"
         is BlockPurpose.Occurrence -> "${Clock.spokenDay(purpose.date)} Only"
     }
+    val kind = { new: String ->
+        val defaults = blockDefaults(new)
+        fields = fields.copy(
+            kind = new,
+            acceptsTasks = defaults?.acceptsTasks ?: fields.acceptsTasks,
+            countsCapacity = defaults?.countsCapacity ?: fields.countsCapacity,
+            anchored = defaults?.anchored ?: fields.anchored,
+        )
+    }
 
     val save = save@{
-        val minutes = fields.minutes.trim().toUIntOrNull()
-        when {
-            fields.name.isBlank() -> core.say("A block needs a name.")
-            minutes == null || minutes == 0u -> core.say("A block has to last at least a minute.")
-            else -> {
-                val change = when (purpose) {
-                    is BlockPurpose.Add -> core.change {
-                        it.addBlock(
-                            NewBlock(
-                                fields.name.trim(), fields.start.trim(), minutes, fields.day.trim().ifEmpty { null },
-                                fields.kind, fields.repeat.trim().ifEmpty { null },
-                            ),
-                        )
-                    }
-                    is BlockPurpose.Series, is BlockPurpose.Occurrence -> {
-                        val typed = fields.repeat.trim()
-                        val repeat = when {
-                            purpose is BlockPurpose.Occurrence || typed == initial.repeat -> null
-                            typed.isEmpty() -> if (unspeakable) null else "none"
-                            else -> typed
-                        }
-                        val edit = BlockEdit(
-                            title = fields.name.trim().takeIf { it != initial.name },
-                            at = fields.start.trim().takeIf { it != initial.start },
-                            minutes = minutes.takeIf { it.toString() != initial.minutes },
-                            kind = fields.kind.takeIf { it != initial.kind },
-                            repeat = repeat,
-                        )
-                        val (id, scope) = when (purpose) {
-                            is BlockPurpose.Series -> purpose.id to BlockScope.Series
-                            is BlockPurpose.Occurrence -> purpose.id to BlockScope.Occurrence(purpose.date)
-                            else -> return@save
-                        }
-                        core.change { it.editBlock(id, edit, scope) }
-                    }
+        if (fields.title.isBlank()) {
+            core.say("A block needs a name.")
+            return@save
+        }
+        val change = when (purpose) {
+            is BlockPurpose.Add -> core.attempt { newBlock(fields, day.trim().ifEmpty { null }) }?.let { block ->
+                core.change { it.addBlock(block) }
+            }
+            is BlockPurpose.Series, is BlockPurpose.Occurrence -> {
+                val edit = try {
+                    blockEdit(initial, fields)
+                } catch (error: LumennaException) {
+                    core.say(error.sentence)
+                    return@save
                 }
-                if (change != null) navigator.back()
+                if (edit == null) {
+                    core.say("Nothing changed")
+                    navigator.back()
+                    return@save
+                }
+                val (id, scope) = when (purpose) {
+                    is BlockPurpose.Series -> purpose.id to BlockScope.Series
+                    is BlockPurpose.Occurrence -> purpose.block.series to BlockScope.Occurrence(purpose.date)
+                    else -> return@save
+                }
+                core.change { it.editBlock(id, edit, scope) }
             }
         }
+        if (change != null) navigator.back()
     }
 
     ScreenFrame(title, core, navigator, actions = {
         IconButton(onClick = { save() }) { Icon(Icons.Filled.Check, contentDescription = "Save") }
     }) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-            BlockField("Name", fields.name, "Deep work") { fields = fields.copy(name = it) }
+            BlockField("Name", fields.title, "Deep work") { fields = fields.copy(title = it) }
             if (purpose is BlockPurpose.Add) {
-                BlockField("Day", fields.day, "tomorrow", "A date, such as tomorrow or next Monday.") { fields = fields.copy(day = it) }
+                BlockField("Day", day, "tomorrow", "A date, such as tomorrow or next Monday.") { day = it }
             }
             BlockField("Starts", fields.start, "9am", "Such as 9am or 14:30.") { fields = fields.copy(start = it) }
             BlockField(
@@ -468,33 +456,77 @@ fun BlockFormScreen(core: Core, navigator: Navigator, purpose: BlockPurpose) {
 
             Heading("Kind")
             Column(Modifier.selectableGroup()) {
-                listOf("work" to "Work, takes tasks", "break" to "Break", "event" to "Event").forEach { (kind, name) ->
+                listOf("work" to "Work, takes tasks", "break" to "Break", "event" to "Event").forEach { (value, name) ->
                     Row(
                         Modifier
                             .fillMaxWidth()
                             .heightIn(min = 48.dp)
-                            .selectable(fields.kind == kind, role = Role.RadioButton) { fields = fields.copy(kind = kind) }
+                            .selectable(fields.kind == value, role = Role.RadioButton) { kind(value) }
                             .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        RadioButton(selected = fields.kind == kind, onClick = null)
+                        RadioButton(selected = fields.kind == value, onClick = null)
                         Text(name, Modifier.padding(start = 12.dp))
                     }
                 }
             }
 
-            if (purpose !is BlockPurpose.Occurrence) {
+            if (!oneDay) {
                 BlockField(
                     "Repeats", fields.repeat, "every weekday",
                     when {
                         purpose is BlockPurpose.Add -> "Such as every weekday. Empty for a block that happens once."
-                        unspeakable -> "It repeats by a rule this cannot show in words. Empty keeps it; none makes it happen once."
+                        rule != null -> "It repeats by the rule $rule, which this cannot show in words. Empty keeps it; none makes it happen once."
                         initial.repeat.isEmpty() -> "It happens once now. Such as every weekday to make it repeat."
                         else -> "Empty makes it happen once."
                     },
                 ) { fields = fields.copy(repeat = it) }
             }
+
+            Heading("What it does")
+            Flag("Takes tasks", fields.acceptsTasks) { fields = fields.copy(acceptsTasks = it) }
+            Flag("Counts toward hours for work", fields.countsCapacity) { fields = fields.copy(countsCapacity = it) }
+            Flag("Anchored, never moved when the day slips", fields.anchored) { fields = fields.copy(anchored = it) }
+            Text(
+                "The kind sets these; change any of them to set it apart.",
+                style = MaterialTheme.typography.bodySmall,
+                color = quiet(),
+            )
+
+            if (!oneDay) {
+                Heading("More")
+                if (repeats) {
+                    BlockField("Until", fields.until, "31 January", "Its last day. Empty to repeat for good.") {
+                        fields = fields.copy(until = it)
+                    }
+                }
+                BlockField(
+                    "Shortest length, in minutes", fields.minMinutes, "30",
+                    "How far a slipping day may shorten it. Empty for the kind's own.", number = true,
+                ) { fields = fields.copy(minMinutes = it) }
+                BlockField("Tasks from", fields.taskFilter, "#Work", "A filter for which tasks it is meant for.") {
+                    fields = fields.copy(taskFilter = it)
+                }
+                BlockField("Colour", fields.colour, "teal") { fields = fields.copy(colour = it) }
+                BlockField("Notes", fields.notes, "Anything else") { fields = fields.copy(notes = it) }
+            }
         }
+    }
+}
+
+/** A flag of the block, as a switch row: one TalkBack stop that says it and whether it is on. */
+@Composable
+private fun Flag(name: String, on: Boolean, changed: (Boolean) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .toggleable(on, role = Role.Switch, onValueChange = changed)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(name, Modifier.weight(1f))
+        Switch(checked = on, onCheckedChange = null)
     }
 }
 
