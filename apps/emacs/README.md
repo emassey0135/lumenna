@@ -58,8 +58,11 @@ show under the field), and a line naming a project that does not exist is refuse
 than added. `C-c C-r` in a filter says what it means and how many tasks it matches.
 
 The day: `[` and `]` previous and next day, `.` today, `j` go to a day, `a` add a block.
-On a block, `e` edit, `i` assign a task, `x` cancel this day only, `o` put it back. On a
-sitting, `s` starts or stops its timer, `l` sets its planned length, `m` logs minutes.
+On a block, `e` changes one field at a time — its name, times, kind, repetition, notes,
+whether it takes tasks, counts toward capacity or is anchored, its shortest length, the
+filter its tasks come from, its last day and its colour — `i` assigns a task, `x` cancels
+this day only, `o` puts it back. On a sitting, `s` starts its timer, pauses it, or resumes
+it; `S` stops it, ending the sitting; `l` sets its planned length; `m` logs minutes.
 `d` deletes a block or takes a sitting off it.
 
 Projects, labels and saved filters each have their own list (`a` add, `r` rename, `d`
