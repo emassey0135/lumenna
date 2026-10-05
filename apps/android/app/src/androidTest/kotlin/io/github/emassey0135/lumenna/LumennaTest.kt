@@ -32,6 +32,7 @@ import java.time.LocalDate
 import java.util.UUID
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -211,6 +212,23 @@ class LumennaTest {
         act("Home", "Move Down")
         assertEquals(listOf("Work", "Home"), core.lumenna.listProjects().rows.map { it.title }.filter { it != "Inbox" })
         row("Home").assertIsFocused()
+    }
+
+    @Test
+    fun aWeightThatIsNotOneIsRefusedAndAskedAgain() {
+        seed { it.addProject("Home", null) }
+        tab("Browse")
+        row("Projects").performClick()
+        rule.waitForIdle()
+        act("Home", "Weight")
+        type("Weight", "1,5")
+        button("Set")
+        shows("is not a weight")
+        val home = { core.lumenna.listProjects().rows.first { it.title == "Home" }.value.orEmpty() }
+        assertFalse("a typo is not taken as inherit", "weight" in home())
+        replace("Weight", "1.5")
+        button("Set")
+        rule.waitUntil(5_000) { "weight 1.5" in home() }
     }
 
     @Test

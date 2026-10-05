@@ -77,6 +77,12 @@
 
 ;;;; Tasks
 
+(ert-deftest lumenna-a-weight-is-a-number-above-zero-or-inherit-and-nothing-else ()
+  (should (equal (lumenna--weight "1.5") 1.5))
+  (should (equal (lumenna--weight "Inherit") "inherit"))
+  (dolist (typo '("1,5" "0" "-1" "heavy" ""))
+    (should-error (lumenna--weight typo) :type 'user-error)))
+
 (ert-deftest lumenna-a-task-is-listed-in-words-completed-and-brought-back-with-undo ()
   (lumenna-test--with-store
     (lumenna-write "task.add" :text "buy milk tomorrow")

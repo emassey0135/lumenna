@@ -113,21 +113,32 @@ final class ProjectsViewController: ItemListViewController {
                     }
                 }
             },
-            ItemAction(title: "Weight") { [weak self] item in
-                self?.askForText(
-                    "Weight of \(item.title)",
-                    message: "How much this whole area matters now, roughly 0.5 to 2. Type inherit to take the parent's again.",
-                    placeholder: "1.0"
-                ) { text in
-                    let weight: Weight = Float(text).map { .value(value: $0) } ?? .inherit
-                    self?.perform(on: item) { try lumenna.weighProject(name: item.key, weight: weight) }
-                }
-            },
+            ItemAction(title: "Weight") { [weak self] item in self?.askWeight(of: item) },
             ItemAction(title: archived.contains(item.key) ? "Unarchive" : "Archive") { [weak self] item in
                 self?.perform(on: item) { try lumenna.archiveProject(name: item.key) }
             },
             ItemAction(title: "Delete", destructive: true) { [weak self] item in self?.delete(item) },
         ]
+    }
+
+    /// Asks a project's weight, and again with what was typed when it is not one: a typo
+    /// must not quietly become "inherit" (the core reads it, `parseWeight`).
+    private func askWeight(of item: Item, typed: String = "", problem: String? = nil) {
+        let help = "How much this whole area matters now, roughly 0.5 to 2. Type inherit to take the parent's again."
+        askForText(
+            "Weight of \(item.title)",
+            message: problem.map { "\($0)\n\n\(help)" } ?? help,
+            placeholder: "1.0",
+            initial: typed
+        ) { [weak self] text in
+            guard let self else { return }
+            do {
+                let weight = try parseWeight(text: text)
+                perform(on: item) { try self.core.lumenna.weighProject(name: item.key, weight: weight) }
+            } catch {
+                askWeight(of: item, typed: text, problem: error.sentence)
+            }
+        }
     }
 
     private func moveUnder(_ item: Item) {

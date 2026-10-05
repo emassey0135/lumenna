@@ -457,5 +457,13 @@ class Menus(unittest.TestCase):
             shutil.rmtree(other_profile, ignore_errors=True)
 
 
+class WeightTest(unittest.TestCase):
+    def test_a_weight_is_a_number_above_zero_or_inherit_and_nothing_else(self):
+        self.assertEqual(organise.parse_weight(" 1.5 "), 1.5)
+        self.assertEqual(organise.parse_weight("Inherit"), "inherit")
+        for typo in ["1,5", "0", "-1", "nan", "inf", "heavy", ""]:
+            self.assertIsNone(organise.parse_weight(typo), typo)
+
+
 if __name__ == "__main__":
     unittest.main()
