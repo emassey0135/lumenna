@@ -63,7 +63,7 @@ macro_rules! announced {
 
 announced!(
     Change, Rows, TaskShown, Plan, Filters, SettingList, Timer, Completions, Preview,
-    BackupDone, RestoreDone, Exported, ImportDone, PairedWith, SyncReport, SyncStatus,
+    BackupDone, BackupFile, RestoreDone, Exported, ImportDone, PairedWith, SyncReport, SyncStatus,
     DeviceList, BlockShown, WorkBlocks,
 );
 
@@ -1070,6 +1070,23 @@ pub struct BackupDone {
     pub path: String,
     /// How many backups that directory now keeps, this one included.
     pub kept: u32,
+}
+
+/// A backup as a file's contents, for a client that saves it itself — the browser, as a
+/// download (§16.12).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+pub struct BackupFile {
+    /// What was backed up, in a sentence.
+    pub announcement: String,
+    /// Anything else worth saying.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// The name a backup taken now has, `lumenna-<when>.lumbak`.
+    pub name: String,
+    /// The whole backup: every document's history, the trash included.
+    pub bytes: Vec<u8>,
 }
 
 /// What a restore did.

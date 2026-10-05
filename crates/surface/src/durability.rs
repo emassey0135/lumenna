@@ -14,7 +14,7 @@ use lumenna_store::{Store, backup};
 
 use crate::error::{LumennaError, Result};
 use crate::types::{
-    Announced, BackupDone, ExportFormat, Exported, ImportDone, Imported, RestoreDone,
+    Announced, BackupDone, BackupFile, ExportFormat, Exported, ImportDone, Imported, RestoreDone,
 };
 use crate::words::count_line;
 use crate::{Lumenna, repaired};
@@ -50,6 +50,24 @@ impl Lumenna {
         };
         done.notices.extend(cloud_warning(&policy.directory));
         Ok(done)
+    }
+
+    /// A backup taken now, as a file's contents rather than a file: for a client that saves
+    /// it where the person chooses — the browser, as a download. It is a whole backup, history
+    /// and trash included, which [`import_bytes`](Self::import_bytes) or
+    /// [`restore`](Self::restore) read back.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn backup_file(&self) -> Result<BackupFile> {
+        let bytes = self.store().backup()?;
+        Ok(BackupFile {
+            announcement: "Backed up, the whole history and the trash included".to_owned(),
+            notices: Vec::new(),
+            name: backup::file_name(Timestamp::now()),
+            bytes,
+        })
     }
 
     /// Takes a backup if the newest is older than the device's `backup-every`, and says
@@ -150,8 +168,18 @@ impl Lumenna {
     ///
     /// If the file cannot be read, or is neither a JSON export nor a backup.
     pub fn import(&self, path: &str) -> Result<Imported> {
-        let file = Path::new(path);
-        let bytes = read(file)?;
+        self.import_bytes(path, read(Path::new(path))?)
+    }
+
+    /// [`import`](Self::import), from a file's contents rather than its path: what a client
+    /// has that was handed a file rather than a name for one — the browser's upload. `name`
+    /// is what to call the file in what is said.
+    ///
+    /// # Errors
+    ///
+    /// If the contents are neither a JSON export nor a backup.
+    pub fn import_bytes(&self, name: &str, bytes: Vec<u8>) -> Result<Imported> {
+        let file = Path::new(name);
         if backup::is_backup(&bytes) {
             return self
                 .with(|store| restore_bytes(store, file, &bytes))
