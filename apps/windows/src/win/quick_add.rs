@@ -1,4 +1,4 @@
-//! Adding a task the way it would be said (§6.1): one line, read back as it is typed.
+//! Adding a task the way it would be said: one line, read back as it is typed.
 //!
 //! The readback is what a sighted user gets from inline highlighting: what will be saved,
 //! with the date resolved. It is a read-only field after the line, not spoken as it changes —
@@ -40,7 +40,7 @@ impl QuickAdd {
         } else {
             match self.lumenna.preview_task(&text) {
                 // Everything worth saying before confirming, errors included: there is no
-                // squiggle under the text, so this is the only channel (§6.3).
+                // squiggle under the text, so this is the only channel.
                 Ok(preview) => std::iter::once(preview.announcement)
                     .chain(preview.diagnostics.into_iter().map(|d| d.message))
                     .collect::<Vec<_>>()

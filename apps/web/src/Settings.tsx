@@ -1,4 +1,4 @@
-// Settings (§3.12), as the desktop apps have them: Planning, Backups, and Export and Import —
+// Settings, as the desktop apps have them: Planning, Backups, and Export and Import —
 // each a tab. A setting applies as it is made (a text field when it is left), and says so.
 //
 // A browser has no folder to back up into and nothing running to do it on a schedule, so a

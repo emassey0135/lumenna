@@ -1,4 +1,4 @@
-//! The menu bar and its shortcuts (§16.4: native `HMENU`, a standard accelerator table).
+//! The menu bar and its shortcuts: a native `HMENU` and a standard accelerator table.
 //!
 //! Every command is in the menu bar with its shortcut written beside it, because the menu
 //! bar is how a Windows user — and a screen reader user above all, with Alt — finds out what

@@ -1,4 +1,4 @@
-// The web client's window (§16.12): places, the list for the place chosen, and the chosen
+// The web client's window: places, the list for the place chosen, and the chosen
 // task's details, as the desktop apps have them — here as landmarks, navigation, main and
 // complementary, which screen readers move between with their own keys.
 
@@ -43,7 +43,7 @@ export function App() {
       (error: Error) => setFailure(error.message),
     );
     // In a local-first app the browser may hold changes that are nowhere else yet: storage it
-    // may evict under pressure is data loss (§16.12). Ask for it to be kept.
+    // may evict under pressure is data loss. Ask for it to be kept.
     void navigator.storage?.persist?.().then((kept) => {
       if (!kept) {
         setNotice(
@@ -53,7 +53,7 @@ export function App() {
     });
   }, []);
 
-  // Syncing runs while the page is open, once there is another device to sync with (§7).
+  // Syncing runs while the page is open, once there is another device to sync with.
   // What arrives is in the store already: everything showing it reads it again.
   const startSyncing = async () => {
     try {
@@ -70,7 +70,7 @@ export function App() {
     if (ready) void startSyncing();
   }, [ready]);
 
-  // Another tab or process wrote: everything showing the store reads it again (§8).
+  // Another tab or process wrote: everything showing the store reads it again.
   useEffect(() => {
     if (!ready) return;
     let last: number | undefined;

@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// The web client in a real browser (§16.12). Each test gets a fresh context, so a fresh, empty
+// The web client in a real browser. Each test gets a fresh context, so a fresh, empty
 // store in OPFS. Build the core first: `npm run core` (or `npm run core:dev`).
 export default defineConfig({
   testDir: "tests",

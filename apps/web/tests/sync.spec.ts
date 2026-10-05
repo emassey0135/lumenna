@@ -1,4 +1,4 @@
-// Devices and sync (§7, §16.12). The first test needs nothing outside the machine; the second
+// Devices and sync. The first test needs nothing outside the machine; the second
 // pairs two browsers — two contexts, so two stores — over Iroh's public relays, so it needs the
 // internet and runs only when asked: LUMENNA_NETWORK=1 npm test.
 

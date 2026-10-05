@@ -83,7 +83,7 @@ impl Core {
         Ok(Self { lumenna, sync: Arc::new(Mutex::new(None)) })
     }
 
-    /// Starts keeping this device in sync, for as long as the app runs (§16.2): the resident
+    /// Starts keeping this device in sync, for as long as the app runs: the resident
     /// app is the device's sync process, with no service to set up.
     ///
     /// If another process already holds the endpoint — `lum daemon` — that one carries on
@@ -135,7 +135,7 @@ impl Core {
         });
     }
 
-    /// Takes a backup if one is due (§9), and says so only if it failed.
+    /// Takes a backup if one is due, and says so only if it failed.
     pub fn back_up_if_due(&self, window: Poster) {
         let lumenna = Arc::clone(&self.lumenna);
         std::thread::spawn(move || {

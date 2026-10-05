@@ -4,7 +4,7 @@
 //!
 //! Each acts on a task by identifier, wherever it was chosen: the task list, a sitting on the
 //! day, or the details pane. After a change, a task list puts its selection on the same task
-//! if it is still listed, and otherwise on whatever now holds its place (§13).
+//! if it is still listed, and otherwise on whatever now holds its place.
 
 use lumenna_surface::{Change, Lumenna, MoveTarget, Result, RowView, TaskDetail};
 
@@ -128,7 +128,7 @@ fn move_to_project(app: &App, task: &TaskDetail) {
     }
 }
 
-/// Puts a task into a work block of today or the next six days (§3.7), asking how long the
+/// Puts a task into a work block of today or the next six days, asking how long the
 /// sitting is meant to take. The planner reaches any other day, from the block's side.
 fn put_in_block(app: &App, task: &TaskDetail) {
     let today = jiff::Zoned::now().date();

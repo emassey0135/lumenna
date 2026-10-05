@@ -1,9 +1,9 @@
-//! `SysTreeView32`, which every list in the app is (§16.4).
+//! `SysTreeView32`, which every list in the app is.
 //!
 //! The tree view reports each item's level, its position among its siblings and how many
 //! there are, whether it is expanded, and — with checkboxes — whether it is checked, from its
 //! own structure, through MSAA and UI Automation alike. So the core's `depth`, `index`,
-//! `count`, `expanded` and `checked` (§13) become the tree's structure rather than words.
+//! `count`, `expanded` and `checked` become the tree's structure rather than words.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
@@ -183,7 +183,7 @@ impl Tree {
     }
 
     /// Selects a row and brings it into view. The selection is the screen reader's focus
-    /// while the tree has focus, so this is where focus lands after a change (§13).
+    /// while the tree has focus, so this is where focus lands after a change.
     pub fn select(&self, index: usize) {
         let handle = self.handles.borrow().get(index).copied();
         if let Some(handle) = handle {
@@ -201,7 +201,7 @@ impl Tree {
     }
 
     /// Selects the row with this key, or else the one now at `near` — the same row if it is
-    /// still listed, else whatever holds its place (§13: focus lands somewhere predictable).
+    /// still listed, else whatever holds its place.
     pub fn select_key_or_near(&self, key: Option<&str>, near: Option<usize>) {
         let target = key.and_then(|key| self.index_of(key)).or_else(|| {
             let count = self.len();

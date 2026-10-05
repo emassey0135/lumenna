@@ -1,4 +1,4 @@
-//! Staying resident (§16.2): the notification-area icon, and one instance per profile.
+//! Staying resident: the notification-area icon, and one instance per profile.
 //!
 //! Tray icons are poorly exposed to screen readers, so the icon is never the only way back
 //! to the window: a global shortcut shows it (`shortcuts.rs`), and starting Lumenna again

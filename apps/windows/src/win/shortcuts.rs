@@ -1,4 +1,4 @@
-//! The shortcuts from anywhere (§16.2), as this PC keeps them: changeable, or off, in the
+//! The shortcuts from anywhere, as this PC keeps them: changeable, or off, in the
 //! current user's registry — this PC's own, as the Mac keeps its in that Mac's defaults.
 
 use std::sync::atomic::{AtomicBool, Ordering};

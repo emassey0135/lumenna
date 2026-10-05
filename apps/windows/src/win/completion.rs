@@ -1,11 +1,11 @@
-//! Offering what could be typed next in a quick-add or filter field (§6.3, §6.4).
+//! Offering what could be typed next in a quick-add or filter field.
 //!
 //! Down arrow — or Ctrl+Space, as in an IDE — asks the core what fits at the cursor and opens
 //! the candidates as a popup menu at the caret. Tab is never taken: it is how a screen reader
-//! user leaves the field (§6.4). Nothing opens by itself after a `#` or `@`, since typing a
+//! user leaves the field. Nothing opens by itself after a `#` or `@`, since typing a
 //! name straight through is common and a popup would interrupt it.
 //!
-//! A menu rather than a combobox, for the reasons §6.4 gives: a stock control, read with its
+//! A menu rather than a combobox: a stock control, read with its
 //! position and count, with focus back in the field after it. What has been typed narrows it
 //! before it opens. Each item leads with its name, so its first letter finds it, and the
 //! first is highlighted as the menu opens, so it is read at once.

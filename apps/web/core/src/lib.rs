@@ -1,4 +1,4 @@
-//! Lumenna's core for the web client (§16.12): the command surface, exported to JavaScript.
+//! Lumenna's core for the web client: the command surface, exported to JavaScript.
 //!
 //! The browser runs the same core every other client does — the same store, SQLite and
 //! Automerge, the same parsers, the same rules — compiled to WebAssembly. Nothing here
@@ -210,7 +210,7 @@ impl Core {
         out(self.lumenna.add_block(block.to_rust()?))
     }
 
-    /// Changes a block: every occurrence, or one day's alone (§4.3).
+    /// Changes a block: every occurrence, or one day's alone.
     #[wasm_bindgen(js_name = editBlock)]
     pub fn edit_block(
         &self,
@@ -239,7 +239,7 @@ impl Core {
         out(self.lumenna.delete_block(id))
     }
 
-    /// Puts a task in a block for one sitting (§3.7).
+    /// Puts a task in a block for one sitting.
     pub fn assign(
         &self,
         task: &str,
@@ -274,7 +274,7 @@ impl Core {
     }
 
     /// The work blocks a task could be put in, from today for a week, each as it reads in a
-    /// chooser (§3.7).
+    /// chooser.
     #[wasm_bindgen(js_name = workBlocks)]
     pub fn work_blocks(&self) -> Out<Choices> {
         out(Ok(Choices { blocks: choices::work_blocks(&self.lumenna, jiff::Zoned::now().date(), 7, &Browser) }))
@@ -282,7 +282,7 @@ impl Core {
 }
 
 // ---------------------------------------------------------------------------------------
-// The day, worded as the desktop apps word it (§13), in this browser's times and days.
+// The day, worded as the desktop apps word it, in this browser's times and days.
 // ---------------------------------------------------------------------------------------
 
 /// A block on the day: its times, name, length, kind, and what is in it.
@@ -424,7 +424,7 @@ pub struct Choices {
 }
 
 /// A paired device, as its line in the list reads: "Kitchen Mac, macos, last synced 5 minutes
-/// ago" — sync status in words rather than an icon (§9).
+/// ago" — sync status in words rather than an icon.
 #[wasm_bindgen(js_name = deviceText)]
 pub fn device_text(device: Ts<lumenna_surface::DeviceView>) -> Result<String, JsError> {
     Ok(lumenna_desktop::devices::line(&device.to_rust()?, jiff::Timestamp::now()))

@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Lumenna for Windows: Win32, standard common controls only (§16.4)."
+description = "Lumenna for Windows: Win32, standard common controls only."
 build = "build.rs"
 
 [[bin]]

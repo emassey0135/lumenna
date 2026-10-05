@@ -1,4 +1,4 @@
-// Paired devices and pairing (§7, §16.12): the desktop apps' Devices page, as a dialog.
+// Paired devices and pairing: the desktop apps' Devices page, as a dialog.
 //
 // A browser pairs by code: it has no local network to find another device on. Either it waits
 // and its code is entered on the other device, or it enters the code the other device shows.

@@ -1,5 +1,5 @@
 // Where focus goes after a change: the same row if it is still listed, else whatever now holds
-// its place (§13) — so a person working down a list does not lose their place.
+// its place — so a person working down a list does not lose their place.
 
 import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
