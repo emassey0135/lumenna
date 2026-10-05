@@ -100,9 +100,25 @@ pub fn app() -> Option<Rc<App>> {
     APP.with(|app| app.borrow().clone())
 }
 
+thread_local! {
+    /// Whether a popover menu is open, and what waits for it to close.
+    static MENU_OPEN: Cell<bool> = const { Cell::new(false) };
+    static AFTER_MENU: RefCell<Vec<std::pin::Pin<Box<dyn std::future::Future<Output = ()>>>>> =
+        RefCell::new(Vec::new());
+}
+
 /// Runs a future on the main thread: what awaits a dialog.
+///
+/// A command chosen from a popover menu runs while the menu is still up, and a dialog mapped
+/// then is not given focus — the compositor hands it back to the main window as the menu goes,
+/// and typing meant for the dialog's field is lost. So while a menu is open, the future waits
+/// for it to close.
 pub fn spawn(future: impl std::future::Future<Output = ()> + 'static) {
-    glib::spawn_future_local(future);
+    if MENU_OPEN.with(Cell::get) {
+        AFTER_MENU.with(|waiting| waiting.borrow_mut().push(Box::pin(future)));
+    } else {
+        glib::spawn_future_local(future);
+    }
 }
 
 /// An event from another thread, now on the main one.
@@ -348,8 +364,15 @@ impl App {
         popover.connect_closed(|popover| {
             let popover = popover.clone();
             // After the action it chose has run, which the closing precedes.
-            glib::idle_add_local_once(move || popover.unparent());
+            glib::idle_add_local_once(move || {
+                popover.unparent();
+                MENU_OPEN.with(|open| open.set(false));
+                for future in AFTER_MENU.with(|waiting| waiting.take()) {
+                    glib::spawn_future_local(future);
+                }
+            });
         });
+        MENU_OPEN.with(|open| open.set(true));
         popover.popup();
     }
 
@@ -524,6 +547,18 @@ impl App {
         };
         simple("new-task", |app| app.quick_add());
         simple("sync-now", |app| app.core.sync_now());
+        simple("new-project", |app| {
+            let app = Rc::clone(app);
+            spawn(async move { crate::sidebar::new_project(&app, None).await });
+        });
+        simple("new-label", |app| {
+            let app = Rc::clone(app);
+            spawn(async move { crate::sidebar::new_label(&app).await });
+        });
+        simple("new-filter", |app| {
+            let app = Rc::clone(app);
+            spawn(async move { crate::sidebar::new_filter(&app).await });
+        });
         simple("close-window", |app| app.window.set_visible(false));
         simple("quit", |app| app.quit());
         simple("undo", |app| {
@@ -715,7 +750,13 @@ fn menu_bar() -> gio::Menu {
     bar.append_submenu(
         Some("_File"),
         &submenu(vec![
-            section(vec![item("_New Task…", "win.new-task"), item("New _Block…", "win.new-block")]),
+            section(vec![
+                item("_New Task…", "win.new-task"),
+                item("New _Block…", "win.new-block"),
+                item("New _Project…", "win.new-project"),
+                item("New _Label…", "win.new-label"),
+                item("New Saved _Filter…", "win.new-filter"),
+            ]),
             section(vec![item("_Sync Now", "win.sync-now")]),
             section(vec![item("_Close Window", "win.close-window"), item("_Quit", "win.quit")]),
         ]),

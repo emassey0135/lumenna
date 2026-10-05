@@ -139,6 +139,15 @@ fn open<T: 'static>(
     receiver
 }
 
+/// Makes `widget` the focus of the window it is in. Not `grab_focus`: a window just presented
+/// may not be mapped yet, and a popover menu closing in the main window — the usual way here —
+/// moves focus around as it goes, so focus grabbed now was found lost.
+pub fn focus_on(widget: &impl IsA<gtk::Widget>) {
+    if let Some(window) = widget.root().and_downcast::<gtk::Window>() {
+        gtk::prelude::GtkWindowExt::set_focus(&window, Some(widget));
+    }
+}
+
 /// A label for `field`, with a mnemonic: the field is named by it.
 fn label_for(text: &str, field: &impl IsA<gtk::Widget>) -> gtk::Label {
     let label = gtk::Label::builder().label(text).use_underline(true).xalign(0.0).build();
@@ -159,7 +168,7 @@ pub async fn ask(parent: &impl IsA<gtk::Window>, title: &str, label: &str, messa
     }
     let field = entry.clone();
     let answer = open(parent, title, content.upcast_ref(), move || Some(field.text().to_string()), "_OK");
-    entry.grab_focus();
+    focus_on(&entry);
     answer.await.ok().flatten()
 }
 
@@ -200,7 +209,7 @@ pub async fn pick(parent: &impl IsA<gtk::Window>, title: &str, label: &str, opti
             }
     });
     if let Some(first) = list.row_at_index(0) {
-        first.grab_focus();
+        focus_on(&first);
     }
     answer.await.ok().flatten()
 }

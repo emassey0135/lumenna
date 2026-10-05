@@ -158,6 +158,9 @@ pub struct Tree {
     pub view: gtk::ListView,
     /// The view inside its scrolled window, which is what goes in a layout.
     pub widget: gtk::ScrolledWindow,
+    /// The key that asked for a context menu, until it is let go.
+    /// And whether it has been let go yet.
+    menu_key: Cell<Option<(gdk::Key, bool)>>,
     root: gio::ListStore,
     model: gtk::TreeListModel,
     selection: gtk::SingleSelection,
@@ -237,6 +240,7 @@ impl Tree {
         let tree = Rc::new(Self {
             view,
             widget,
+            menu_key: Cell::new(None),
             root,
             model,
             selection,
@@ -285,6 +289,12 @@ impl Tree {
             let Some(tree) = weak.upgrade() else { return glib::Propagation::Proceed };
             tree.key_pressed(key, modifiers)
         });
+        let weak: Weak<Self> = Rc::downgrade(self);
+        keys.connect_key_released(move |_, key, _, modifiers| {
+            if let Some(tree) = weak.upgrade() {
+                tree.key_released(key, modifiers);
+            }
+        });
         self.view.add_controller(keys);
 
         let click = gtk::GestureClick::builder().button(gdk::BUTTON_SECONDARY).build();
@@ -326,8 +336,8 @@ impl Tree {
                 }
                 return glib::Propagation::Stop;
             }
-            gdk::Key::Menu => return self.menu(position),
-            gdk::Key::F10 if modifiers.contains(gdk::ModifierType::SHIFT_MASK) => return self.menu(position),
+            gdk::Key::Menu => return self.menu(key),
+            gdk::Key::F10 if modifiers.contains(gdk::ModifierType::SHIFT_MASK) => return self.menu(key),
             _ => {}
         }
         let Some(index) = self.index_at(position) else { return glib::Propagation::Proceed };
@@ -337,11 +347,35 @@ impl Tree {
         }
     }
 
-    fn menu(&self, position: u32) -> glib::Propagation {
-        if let (Some(index), Some(callback)) = (self.index_at(position), self.on_menu.borrow().as_ref()) {
+    /// Asks for a row's context menu from the keyboard. It opens when the keys are let go: a
+    /// popover opened while Shift+F10 is still down is closed again by the release.
+    fn menu(&self, key: gdk::Key) -> glib::Propagation {
+        self.menu_key.set(Some((key, false)));
+        glib::Propagation::Stop
+    }
+
+    /// Opens the menu asked for once its key and every modifier are up.
+    fn key_released(&self, key: gdk::Key, modifiers: gdk::ModifierType) {
+        let Some((menu_key, mut up)) = self.menu_key.get() else { return };
+        up |= key == menu_key;
+        // The state is from before this release, so a Shift being let go still shows as held.
+        let mut held = modifiers & gtk::accelerator_get_default_mod_mask();
+        if matches!(key, gdk::Key::Shift_L | gdk::Key::Shift_R) {
+            held.remove(gdk::ModifierType::SHIFT_MASK);
+        }
+        if up && held.is_empty() {
+            self.menu_key.set(None);
+            self.open_menu();
+        } else {
+            self.menu_key.set(Some((menu_key, up)));
+        }
+    }
+
+    fn open_menu(&self) {
+        let Some(list_row) = self.selection.selected_item().and_downcast::<gtk::TreeListRow>() else { return };
+        if let (Some(index), Some(callback)) = (self.index_at(list_row.position()), self.on_menu.borrow().as_ref()) {
             callback(index, None);
         }
-        glib::Propagation::Stop
     }
 
     /// Moves focus and the selection to a visible position.
