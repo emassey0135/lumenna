@@ -15,6 +15,7 @@ path = "src/main.rs"
 [dependencies]
 directories.workspace = true
 jiff.workspace = true
+lumenna-desktop = { path = "../../crates/desktop" }
 lumenna-surface = { path = "../../crates/surface", features = ["sync"] }
 
 # Everything that touches Win32 is behind `cfg(windows)`, so the workspace still builds and

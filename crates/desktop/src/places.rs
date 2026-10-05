@@ -16,7 +16,12 @@ pub enum Place {
     /// The tasks wearing one label.
     Label(String),
     /// A saved filter's tasks.
-    Filter { name: String, query: String },
+    Filter {
+        /// Its name.
+        name: String,
+        /// The query it runs.
+        query: String,
+    },
     /// Every block series.
     Blocks,
     /// Trashed tasks.
@@ -68,17 +73,22 @@ pub enum Kind {
 /// The sidebar's headings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Group {
+    /// The project tree.
     Projects,
+    /// Every label.
     Labels,
+    /// The saved filters.
     Filters,
 }
 
 /// One sidebar row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
+    /// What it is.
     pub kind: Kind,
     /// The line as read: the name, then what is in it.
     pub text: String,
+    /// How deep it sits: a subproject is one deeper than its parent.
     pub depth: u32,
     /// For a project: whether it is archived, which decides "Archive" or "Unarchive".
     pub archived: bool,
