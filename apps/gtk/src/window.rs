@@ -89,8 +89,8 @@ pub struct App {
     minute: Cell<i64>,
     /// Settings' Devices page, while it is open, to hear how a sync went.
     pub devices_page: RefCell<Option<std::rc::Weak<crate::settings::Devices>>>,
-    /// The store's version when the views last read it (`Lumenna::version`).
-    version: RefCell<Option<String>>,
+    /// What another process had written by the last tick (`Lumenna::outside_version`).
+    outside: Cell<i64>,
 }
 
 thread_local! {
@@ -147,12 +147,16 @@ pub fn receive(event: Event) {
             app.say(&text);
             crate::settings::devices_heard(&app, Some(&text));
         }
+        Event::ShowWindow => app.show_window(),
+        Event::QuickAdd => app.quick_add(true),
+        Event::SyncNow => app.core.sync_now(),
+        Event::Quit => app.quit(),
     }
 }
 
 /// The application was activated: the first time, opens the store and the window; after
 /// that — the app started again, which GApplication turns into this — shows the window.
-pub fn activate(application: &gtk::Application, directory: &Path, background: bool) {
+pub fn activate(application: &gtk::Application, directory: &Path, background: bool, shortcuts: bool) {
     if let Some(app) = app() {
         app.show_window();
         return;
@@ -173,7 +177,7 @@ pub fn activate(application: &gtk::Application, directory: &Path, background: bo
     };
     let app = App::build(application, core);
     APP.with(|slot| *slot.borrow_mut() = Some(Rc::clone(&app)));
-    app.start(background);
+    app.start(background, shortcuts);
 }
 
 impl App {
@@ -241,7 +245,7 @@ impl App {
             content: RefCell::new(None),
             detail,
             minute: Cell::new(0),
-            version: RefCell::new(None),
+            outside: Cell::new(0),
             devices_page: RefCell::new(None),
         });
         app.add_actions();
@@ -260,7 +264,7 @@ impl App {
 
     /// Shows the window on Today — unless started in the background, at sign-in — and
     /// starts what runs beside it.
-    fn start(self: &Rc<Self>, background: bool) {
+    fn start(self: &Rc<Self>, background: bool, shortcuts: bool) {
         // Resident: closing the window does not end the app (§16.2).
         std::mem::forget(self.application.hold());
         self.sidebar.reload(self);
@@ -269,7 +273,7 @@ impl App {
             self.show_window();
         }
         self.minute.set(jiff::Timestamp::now().as_second() / 60);
-        *self.version.borrow_mut() = self.core.lumenna.version().ok();
+        self.outside.set(self.core.lumenna.outside_version().unwrap_or(0));
         glib::timeout_add_seconds_local(1, || {
             if let Some(app) = app() {
                 app.tick();
@@ -284,14 +288,39 @@ impl App {
         });
         self.core.start_syncing();
         self.core.back_up_if_due();
+        crate::tray::start();
+        if shortcuts {
+            let parent = self.window.is_visible().then(|| self.window.clone().upcast::<gtk::Window>());
+            // The app's own identifier, whatever the profile: the portal knows an app by its
+            // desktop entry, and there is one. A second profile's copy runs --no-shortcuts.
+            crate::shortcuts::start(
+                crate::ID.to_owned(),
+                parent,
+                |kind| {
+                    let Some(app) = app() else { return };
+                    match kind {
+                        crate::shortcuts::Kind::Show => app.show_window(),
+                        crate::shortcuts::Kind::QuickAdd => app.quick_add(true),
+                    }
+                },
+                |said| {
+                    if let Some(app) = app() {
+                        app.say(&said);
+                    }
+                },
+            );
+        }
     }
 
     /// Once a second: what another process wrote — `lum` shares this store — and once a
     /// minute, the clock.
     fn tick(&self) {
-        let version = self.core.lumenna.version().ok();
-        if version.is_some() && version != *self.version.borrow() {
-            *self.version.borrow_mut() = version;
+        // By `outside_version`, as every client does: it moves only for another process's
+        // writes, which nothing else here notices — the app's own edits redraw as they are
+        // made, and a sync's arrivals come through the listener.
+        if let Ok(outside) = self.core.lumenna.outside_version()
+            && outside != self.outside.replace(outside)
+        {
             self.store_changed();
         }
         let minute = jiff::Timestamp::now().as_second() / 60;
@@ -349,8 +378,6 @@ impl App {
     /// The store changed — here, in another process, or from another device. Everything
     /// showing it reads it again, keeping its selection.
     pub fn store_changed(&self) {
-        // Read now, so the tick does not read everything again for a change already shown.
-        *self.version.borrow_mut() = self.core.lumenna.version().ok();
         self.sidebar.reload(self);
         if let Some(content) = self.content() {
             content.reload(self);
@@ -507,10 +534,12 @@ impl App {
         self.application.quit();
     }
 
-    /// Quick add: starts with the place shown, so a task added while looking at a project
-    /// lands in it.
-    fn quick_add(self: &Rc<Self>) {
-        let prefix = self.task_list().map(|l| l.quick_add_prefix()).unwrap_or_default();
+    /// Quick add, from the menu or from anywhere: from the menu it starts with the place
+    /// shown, so a task added while looking at a project lands in it; from anywhere it starts
+    /// empty, and stands on its own unless the window is up.
+    fn quick_add(self: &Rc<Self>, from_anywhere: bool) {
+        let prefix =
+            if from_anywhere { String::new() } else { self.task_list().map(|l| l.quick_add_prefix()).unwrap_or_default() };
         let app = Rc::clone(self);
         spawn(async move {
             let parent = app.window.is_visible().then(|| app.window.clone().upcast::<gtk::Window>());
@@ -566,7 +595,7 @@ impl App {
             });
             self.window.add_action(&action);
         };
-        simple("new-task", |app| app.quick_add());
+        simple("new-task", |app| app.quick_add(false));
         simple("sync-now", |app| app.core.sync_now());
         simple("settings", |app| crate::settings::show(app, crate::settings::Page::General));
         simple("devices", |app| crate::settings::show(app, crate::settings::Page::Devices));

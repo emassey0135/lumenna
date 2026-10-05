@@ -103,32 +103,19 @@ impl Lumenna {
         Ok(self.store().refresh()?)
     }
 
-    /// Takes in what another process or a sync wrote, and returns a token that differs
-    /// whenever anything has been written since — by this process, another, or a sync.
-    ///
-    /// This, not [`refresh`](Self::refresh), is how a client learns it should redraw.
-    /// `refresh` says whether *this call* took anything in, and every operation refreshes
-    /// first, as does an app's own sync loop each tick: whichever call comes first after
-    /// `lum` writes is the one told, and a once-a-second check of `refresh` misses the
-    /// change whenever another call got there first. Comparing tokens cannot.
-    ///
-    /// # Errors
-    ///
-    /// If the store cannot be read.
-    pub fn version(&self) -> Result<String> {
-        let mut store = self.store();
-        store.refresh()?;
-        Ok(store.version().iter().map(ToString::to_string).collect::<Vec<_>>().join(" "))
-    }
-
     /// Takes in what another process wrote, and returns a number that moves whenever another
     /// process — `lum`, the daemon — has written since, and for nothing else.
     ///
-    /// For an app that already redraws for its own edits as it makes them, and hears of a
-    /// sync's arrivals from its `SyncService`: what is left to
-    /// notice is another process, and [`version`](Self::version) would also move for every
-    /// edit the app made itself, redrawing everything a second time a moment later. This does
-    /// not, and, like `version`, no other call can use it up.
+    /// This, not [`refresh`](Self::refresh), is how an app learns `lum` wrote. `refresh` says
+    /// whether *that call* took anything in, and every operation refreshes first, as does the
+    /// app's own sync loop each tick: whichever call comes first after `lum` writes is the one
+    /// told, and a once-a-second check of `refresh` misses the change whenever another call
+    /// got there first. No call can use this up.
+    ///
+    /// It is for an app that already redraws for its own edits as it makes them, and hears of
+    /// a sync's arrivals from its `SyncService`: what is left to notice is another process. A
+    /// version that also moved for the app's own edits would redraw everything a second time
+    /// a moment later.
     ///
     /// # Errors
     ///
