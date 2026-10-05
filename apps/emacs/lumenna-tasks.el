@@ -287,14 +287,14 @@ empty clears a field."
 ;;;; The trash
 
 (define-derived-mode lumenna-trash-mode lumenna-list-mode "Lumenna Trash"
-  "Deleted tasks.  RET or r restores one; d erases it for good, asking first.
+  "Deleted tasks.  RET or r restores one; d deletes it from the trash, asking first.
 
 \\{lumenna-trash-mode-map}"
   (setq-local lumenna--activate (lambda (row) (lumenna-write "task.restore" :id (plist-get row :id)))))
 
 ;;;###autoload
 (defun lumenna-trash ()
-  "Show the trash: deleted tasks, to restore or erase."
+  "Show the trash: deleted tasks, to restore or delete."
   (interactive)
   (lumenna--show-list "*Lumenna: Trash*" #'lumenna-trash-mode
                       (lambda () (lumenna--task-listing "deleted" "Trash"))))
@@ -305,10 +305,12 @@ empty clears a field."
   (lumenna-write "task.restore" :id (plist-get (lumenna-row) :id)))
 
 (defun lumenna-trash-erase ()
-  "Erase the task at point and its history for good.  This cannot be undone."
+  "Delete the task at point from the trash, asking first.
+Undo can bring it back, and it stays in the history every device keeps
+and in backups."
   (interactive)
   (let ((row (lumenna-row)))
-    (when (yes-or-no-p (format "%s and its history go for good, and this cannot be undone.  Erase it? "
+    (when (yes-or-no-p (format "Undo can bring it back.  It also stays in the history every device keeps, and in backups.  Delete %s from the trash? "
                                (plist-get row :title)))
       (lumenna-write "task.erase" :id (plist-get row :id) :confirm t))))
 
@@ -342,7 +344,7 @@ empty clears a field."
 (lumenna-define-keys lumenna-trash-mode
   ("The task at point"
    ("r" "Restore" lumenna-trash-restore)
-   ("d" "Erase for good" lumenna-trash-erase)))
+   ("d" "Delete from trash" lumenna-trash-erase)))
 
 (provide 'lumenna-tasks)
 

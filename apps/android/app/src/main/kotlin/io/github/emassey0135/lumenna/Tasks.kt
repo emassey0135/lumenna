@@ -115,7 +115,7 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks, chang
                 if (screen.trash) {
                     listOf(
                         RowAction("Restore") { core.change { it.restoreTask(row.id) } },
-                        RowAction("Erase") { erasing = row },
+                        RowAction("Delete from Trash") { erasing = row },
                     )
                 } else {
                     listOf(
@@ -133,13 +133,13 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks, chang
     erasing?.let { row ->
         AlertDialog(
             onDismissRequest = { erasing = null },
-            title = { Text("Erase ${row.title}?") },
-            text = { Text("It goes for good, with its history. This cannot be undone.") },
+            title = { Text("Delete ${row.title} from the trash?") },
+            text = { Text("Undo can bring it back. It also stays in the history every device keeps, and in backups.") },
             confirmButton = {
                 TextButton(modifier = Target, onClick = {
                     erasing = null
                     core.change { it.eraseTask(row.id) }
-                }) { Text("Erase") }
+                }) { Text("Delete") }
             },
             dismissButton = { TextButton(modifier = Target, onClick = { erasing = null }) { Text("Cancel") } },
         )

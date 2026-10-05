@@ -19,7 +19,7 @@
 //! [`Profile::detach_rows`] turns them off here: clients hold identifiers, which never go
 //! stale.
 //!
-//! **A prompt.** `lum task erase` asks before destroying history. Nothing here can ask, so
+//! **A prompt.** `lum task erase` asks before deleting from the trash. Nothing here can ask, so
 //! `task.erase` requires `confirm: true` in its parameters and refuses without it. That is
 //! the same decision the prompt makes, moved to where the caller can make it.
 //!
@@ -534,11 +534,10 @@ fn command_for(method: &str, params: &Value) -> std::result::Result<Command, Rpc
         "task.rm" => Command::Task(TaskCommand::Rm { id: text_of(params, "id")? }),
         "task.restore" => Command::Task(TaskCommand::Restore { id: text_of(params, "id")? }),
         "task.erase" => {
-            // Nothing here can prompt, so the caller confirms instead. This rebuilds the
-            // document and cannot be undone.
+            // Nothing here can prompt, so the caller confirms instead.
             if !flag(params, "confirm") {
                 return Err(invalid(
-                    "erasing is permanent and cannot be undone; pass \"confirm\": true",
+                    "deleting from the trash asks first; pass \"confirm\": true",
                 ));
             }
             Command::Task(TaskCommand::Erase { id: text_of(params, "id")?, yes: true })

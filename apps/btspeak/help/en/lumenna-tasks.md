@@ -27,4 +27,4 @@ Write it the way you would say it: "water the plants every monday", "draft the r
 
 ## The Trash
 
-Enter restores a task. Its context menu also has Erase for good, which asks first and cannot be undone; Control-D and the D chord do the same.
+Enter restores a task. Its context menu also has Delete from trash, which asks first; Control-D and the D chord do the same. Undo can bring a deleted task back, and it stays in the history every device keeps, and in backups.
