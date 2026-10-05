@@ -1,4 +1,4 @@
-//! Adding or changing a block (§16.1: block editor; §13: creating is a form).
+//! Adding or changing a block, in a form.
 //!
 //! What a form starts from and what saving it sends are the surface's (`block_fields`,
 //! `day_block_fields`, `block_edit`, `new_block`), as a task's are, so every client changes a

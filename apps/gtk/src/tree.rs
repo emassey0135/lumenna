@@ -1,5 +1,5 @@
 //! The tree every list in the app is: a `GtkListView` over a `GtkTreeListModel`, annotated so
-//! a screen reader is told it is a tree (§16.3).
+//! a screen reader is told it is a tree.
 //!
 //! Left alone, GTK 4 reports a list view as a flat list: each row's position is counted over
 //! every visible row ("3 of 60"), and the level is on the expander button inside the row —
@@ -612,7 +612,7 @@ impl Tree {
     }
 
     /// Selects the row with `key` if there still is one, else the row now at `near` — or the
-    /// last, if the list got shorter (§13: focus goes somewhere sensible, never nowhere).
+    /// last, if the list got shorter: focus goes somewhere sensible, never nowhere.
     pub fn select_key_or_near(&self, key: Option<&str>, near: Option<usize>) {
         let count = self.len();
         if count == 0 {

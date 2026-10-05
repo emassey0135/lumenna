@@ -1,11 +1,11 @@
-//! Offering what could be typed next in a quick-add or filter field (§6.3, §6.4).
+//! Offering what could be typed next in a quick-add or filter field.
 //!
 //! Down arrow — or Ctrl+Space, as in an IDE — asks the core what fits at the cursor and opens
 //! the candidates as a menu beside the cursor. Tab is never taken: it is how a screen reader
-//! user leaves the field (§6.4). Nothing opens by itself after a `#` or `@`, since typing a
-//! name straight through is common and a menu would interrupt it.
+//! user leaves the field. Nothing opens by itself after a `#` or `@`, since typing a name
+//! straight through is common and a menu would interrupt it.
 //!
-//! A menu, as on Windows, for the reasons §6.4 gives: GTK's own popover menu, each item read
+//! A menu, as on Windows, rather than a combobox: GTK's own popover menu, each item read
 //! with its position and count, its first item focused as it opens, and focus back in the
 //! field after it. Each item leads with its name.
 
@@ -47,7 +47,7 @@ fn byte_at(text: &str, chars: usize) -> usize {
     text.char_indices().nth(chars).map_or(text.len(), |(at, _)| at)
 }
 
-/// The character position of a byte offset, as the core sends spans (§12: UTF-8 bytes).
+/// The character position of a byte offset, as the core sends spans: UTF-8 bytes.
 fn char_at(text: &str, bytes: usize) -> i32 {
     i32::try_from(text[..bytes.min(text.len())].chars().count()).unwrap_or(i32::MAX)
 }

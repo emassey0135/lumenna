@@ -1,4 +1,4 @@
-//! Pairing this computer with another of the person's devices (§7).
+//! Pairing this computer with another of the person's devices.
 //!
 //! On one network the two find each other: both wait, and DNS-SD does the rest. Anywhere
 //! else, one shows a code and the other enters it. Either way both show the same three words,

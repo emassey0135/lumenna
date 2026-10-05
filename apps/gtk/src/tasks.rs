@@ -1,10 +1,10 @@
-//! Tasks, with the filter above them (§16.1: task list + filter entry).
+//! Tasks, with the filter above them.
 //!
 //! A tree, so a subtask's level and every row's position are the tree's to report. Space
 //! checks a task off, Delete trashes it, Enter opens its details, and the Menu key or
 //! Shift+F10 opens everything else. After a change the selection, which is the screen
 //! reader's focus, lands on the same task if it is still listed and otherwise on whatever now
-//! holds its place (§13).
+//! holds its place.
 
 use std::cell::RefCell;
 use std::rc::Rc;

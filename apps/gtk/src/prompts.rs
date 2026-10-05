@@ -149,7 +149,7 @@ pub fn focus_on(widget: &impl IsA<gtk::Widget>) {
 }
 
 /// Gives Tab and Shift+Tab back from a text view, to move between fields: GTK keeps them in
-/// one even when it does not accept tabs, and a keyboard user could not get out (§6.4's rule).
+/// one even when it does not accept tabs, and a keyboard user could not get out.
 pub fn leaves_on_tab(view: &gtk::TextView) {
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);

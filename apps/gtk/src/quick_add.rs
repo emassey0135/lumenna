@@ -1,4 +1,4 @@
-//! Adding a task the way it would be said (§6.1): one line, read back as it is typed.
+//! Adding a task the way it would be said: one line, read back as it is typed.
 //!
 //! The readback is what a sighted user gets from inline highlighting: what will be saved,
 //! with the date resolved. It is a read-only field after the line, not spoken as it changes —
@@ -18,7 +18,7 @@ use crate::core::sentence;
 use crate::prompts;
 
 /// What the line would add, said in full: the readback, then anything wrong with it — there
-/// is no squiggle under the text, so this is the only channel (§6.3).
+/// is no squiggle under the text, so this is the only channel.
 fn readback(lumenna: &Lumenna, text: &str) -> String {
     if text.trim().is_empty() {
         return String::new();
