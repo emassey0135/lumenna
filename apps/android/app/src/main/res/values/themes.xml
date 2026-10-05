@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Only the window behind Compose; everything drawn is Material 3, in Theme.kt. -->
+    <style name="Theme.Lumenna" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

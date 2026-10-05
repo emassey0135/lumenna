@@ -35,6 +35,7 @@ crates/desktop/ what the Windows and GTK apps decide alike: row wording, flat ro
 apps/cli/       `lum` — the first target, and a permanent one.
 apps/btspeak/   the BTSpeak app, in Python, over `lum rpc`.
 apps/emacs/     the Emacs client, in Elisp, over `lum rpc` or the daemon's socket.
+apps/android/   the Android app: Jetpack Compose over the generated Kotlin bindings.
 apps/apple/     the iOS and macOS apps over the generated bindings, Shared/ between them,
                 and build-core.sh.
 apps/windows/   the Win32 app, linking the surface directly.
@@ -571,6 +572,37 @@ Backups, Export and Import) work.
   under the app's own identifier, whatever the profile; `--no-shortcuts` keeps a second
   copy out of it. Opening at sign-in is an XDG autostart entry per profile.
 - **Not built yet**: history, reminders, an icon of its own.
+
+### The Android app
+
+`apps/android/` — Kotlin and Jetpack Compose (§16.7), calling the surface through UniFFI's
+Kotlin bindings (package `io.github.emassey0135.lumenna.core`) over JNA. A Gradle project of
+its own; see its README for the toolchain (NDK, `cargo-ndk`, Android Studio's JDK).
+
+- **Gradle builds the core itself**, as Xcode does: the `buildCore<Variant>` task runs
+  `build-core.sh`, whose output — the `.so` and the Kotlin — is registered as generated
+  sources. Only `liblumenna_ffi.so` is copied; `cargo ndk -o` would also copy Iroh's own
+  shared libraries, which nothing loads. Arm64 only for now; minSdk 28.
+- **A surface error field must not be called `message`.** Kotlin exceptions already have
+  one, and UniFFI's class declared it twice and would not compile; `LumennaError`'s field is
+  `reason`, and Kotlin reads the sentence as `message` regardless.
+- **Espresso is pinned to 3.7** for the tests: Compose's test library brings 3.5, which calls
+  an `InputManager` method Android 17 removed, and every test failed before reaching the app.
+- **The tests run Google's accessibility checks on every interaction** and render the app on
+  a store of their own (`Core(directory)`), so no activity or launch flag is involved.
+  Buttons scroll into view before a click, as TalkBack brings a node into view; a click on
+  an off-screen node lands on nothing.
+- **Material's text and outlined buttons are 40dp**, and a radio row whose button has no click
+  of its own is as tall as its padding: both failed the touch-target check. `Target` gives
+  48dp; radio rows set it themselves.
+- **Rows are one node** (`ListRow`: `clearAndSetSemantics` with the title as description,
+  the rest as state description, custom actions). A row with nothing to do is not clickable.
+- **The store is in no-backup storage** and `allowBackup` is off: Google's backup would copy
+  a store that reaches other devices by pairing (§9). `TZ` is set from the phone's zone at
+  start and on resume, as on the iPhone.
+- **Sync runs while the app is in front** (`onResume`/`onPause`). Local discovery uses
+  `mdns-sd`, which Android lets hear multicast only under a `WifiManager.MulticastLock`;
+  pairing takes one. Pairing by code is the dependable way, as on the iPhone.
 
 ### The core/store boundary
 
