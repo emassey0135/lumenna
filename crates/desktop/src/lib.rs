@@ -11,4 +11,5 @@ pub mod choices;
 pub mod devices;
 pub mod outline;
 pub mod places;
+pub mod profile;
 pub mod speech;

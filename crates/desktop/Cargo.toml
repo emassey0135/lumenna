@@ -8,6 +8,7 @@ repository.workspace = true
 description = "What the apps that link the surface directly decide alike: how rows are worded, flat rows as a tree, the sidebar's places."
 
 [dependencies]
+directories.workspace = true
 jiff.workspace = true
 lumenna-surface = { path = "../surface" }
 

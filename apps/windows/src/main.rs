@@ -15,12 +15,11 @@
 // Elsewhere the neutral modules are built for their tests alone, with nothing calling them.
 #![cfg_attr(not(windows), allow(dead_code))]
 
-mod profile;
 mod shortcut;
 
 // Wording, the tree and the places are shared with the GTK app.
 #[cfg_attr(not(windows), allow(unused_imports))]
-use lumenna_desktop::{choices, devices, outline, places, speech};
+use lumenna_desktop::{choices, devices, outline, places, profile, speech};
 #[cfg(windows)]
 mod win;
 

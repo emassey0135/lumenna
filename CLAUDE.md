@@ -31,7 +31,7 @@ crates/surface/ the command surface (§12): the `Lumenna` object, one method per
 crates/ffi/     the library the Swift and Kotlin apps link; re-exports surface over UniFFI.
 crates/sync/    Iroh endpoints, the document sync session, and pairing (§7).
 crates/desktop/ what the Windows and GTK apps decide alike: row wording, flat rows as a
-                tree, the sidebar's places, work-block choices, device wording.
+                tree, the sidebar's places, work-block choices, device wording, the profile.
 apps/cli/       `lum` — the first target, and a permanent one.
 apps/btspeak/   the BTSpeak app, in Python, over `lum rpc`.
 apps/emacs/     the Emacs client, in Elisp, over `lum rpc` or the daemon's socket.
@@ -406,10 +406,10 @@ Section titles are `FormParts.heading`, a header to VoiceOver's heading commands
 
 `apps/windows/` — Rust over `windows-rs`, linking `lumenna-surface` directly (§16.4: no FFI),
 binary `lumenna.exe`, at parity with the Mac app. Everything Win32 is in `src/win/` behind
-`cfg(windows)`; shortcuts (`shortcut.rs`) and the command line (`profile.rs`) build and are
-tested on every platform. How rows are worded (`speech`), flat rows into a tree (`outline`),
-the sidebar's places (`places`), the week's work blocks (`choices`) and device and export
-wording (`devices`) are `crates/desktop`'s, shared with the GTK app. The task form's diff is the
+`cfg(windows)`; shortcuts (`shortcut.rs`) build and are tested on every platform. How rows
+are worded (`speech`), flat rows into a tree (`outline`), the sidebar's places (`places`), the
+week's work blocks (`choices`), device and export wording (`devices`) and the command line
+(`profile`) are `crates/desktop`'s, shared with the GTK app. The task form's diff is the
 surface's (`task_edit`, below), as it is every client's.
 
 - **Building on ARM64 Windows needs clang on `PATH`** for `ring` (under Iroh's TLS). Visual
