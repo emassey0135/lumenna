@@ -34,6 +34,7 @@ apps/cli/       `lum` — the first target, and a permanent one.
 apps/btspeak/   the BTSpeak app, in Python, over `lum rpc`.
 apps/apple/     the iOS and macOS apps over the generated bindings, Shared/ between them,
                 and build-core.sh.
+apps/windows/   the Win32 app, linking the surface directly; begun, not yet complete.
 ```
 
 The other GUI apps in §2's layout do not exist yet.
@@ -354,6 +355,58 @@ Section titles are `FormParts.heading`, a header to VoiceOver's heading commands
   the Touch Bar (above the screen's top), SwiftUI pop-ups' "Action is missing", and a
   "Parent/Child mismatch" with no element at all.
 - UI tests need macOS to have authorized UI automation for Xcode once.
+
+### The Windows app
+
+`apps/windows/` — Rust over `windows-rs`, linking `lumenna-surface` directly (§16.4: no FFI),
+binary `lumenna.exe`. Everything Win32 is in `src/win/` behind `cfg(windows)`; how rows are
+worded (`speech.rs`), flat rows into a tree (`outline.rs`), the task form's diff (`form.rs`)
+and the sidebar's places (`places.rs`) build and are tested on every platform.
+
+- **Building on ARM64 Windows needs clang on `PATH`** for `ring` (under Iroh's TLS). Visual
+  Studio ships one: `VC\Tools\Llvm\ARM64\bin`. Nothing else is needed — the manifest
+  (Common Controls 6, per-monitor DPI v2) is embedded by the MSVC linker from `build.rs`,
+  with no `.rc` file.
+- **Stock controls only.** Every list is a `SysTreeView32` (`win/tree.rs`), so level,
+  position, set size, expansion and checkboxes are the control's to report; an item's text is
+  the row's components joined, with exactly those left out. Dialogs are in-memory templates
+  run by the dialog manager (`win/dialog.rs`).
+- **Names and the live region go through Dynamic Annotation** (`IAccPropServices`,
+  `win/a11y.rs`), never a provider of our own. The status line is a polite live region:
+  `EVENT_OBJECT_LIVEREGIONCHANGED` after setting its text is how a change is announced.
+- **A reload updates a tree in place when its rows are the same ones** (same keys, same
+  order), so the one-second refresh and arriving syncs do not make the screen reader read
+  the focused row again. Otherwise it rebuilds, and the selection goes back to the same key
+  or the row now at its position.
+- **Nothing that rebuilds a tree runs inside one of its notifications.** Space, Delete and
+  double-click go through `App::defer` (a posted `WM_DEFERRED`). `Tree::busy` marks
+  notifications sent by a refill, which the views ignore.
+- **IsDialogMessage runs over the whole main window**, with the panes `WS_EX_CONTROLPARENT`,
+  so Tab, mnemonics, Enter (`IDOK`) and Escape (`IDCANCEL`) work everywhere; menu command
+  ids are never 1 or 2 for that reason. Field mnemonics avoid the menu bar's letters (F E V
+  T D H): the dialog manager gives Alt+letter to a field first. F6 is explicit
+  (`App::move_pane`).
+- **A tree view passes a keyboard context menu up altered**: `WM_CONTEXTMENU` arrives naming
+  the pane, at (−2, −2). So a request from a pane is taken as from the keyboard, for what has
+  focus there, and right-clicks are handled from `NM_RCLICK` instead.
+- **The Notes field gives Tab and Escape back** (`WM_GETDLGCODE` in `detail.rs`), and panes
+  ignore `WM_CLOSE`, which a multi-line edit sends its parent on Escape.
+- **Resident, as the Mac app is**: closing hides; the tray icon, Control+Alt+Shift+L (show)
+  and Control+Alt+Shift+K (quick add from anywhere) bring it back; starting it again shows
+  the running instance (a mutex and window class named from the profile path). It shares
+  `lum`'s profile and syncs while it runs. The first launch triggers the firewall prompt,
+  since the sync endpoint listens.
+- **Completion is a popup menu** on Down or Ctrl+Space in the filter and quick-add fields —
+  a stand-in for §6.4's genuine combobox, which is still to build.
+- **`examples/inspect.rs` reads the window through native UI Automation**, as NVDA and
+  Narrator do: `cargo run -p lumenna-windows --example inspect -- Lumenna`. `--post keys…`
+  drives it through its own queue — which works with the window behind others and is not
+  eaten by a screen reader's keyboard hook — and reports focus and the status line after
+  each key. The managed `System.Windows.Automation` in Windows PowerShell is no substitute:
+  x64 under emulation, it saw every control as an unnamed pane.
+- **Not built yet**: settings, devices and pairing, backup/export/import pages, history,
+  reminders, dependencies in the task form, block assignment from the task side, the
+  combobox completion, a real icon, and changeable global shortcuts.
 
 ### The core/store boundary
 
