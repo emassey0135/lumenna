@@ -198,7 +198,7 @@ function Form(props: { request: Request; finish: (saved?: Saved) => void }) {
                   ? `Such as every weekday. It repeats by the rule ${rule}, which the repetition words cannot say; leave this empty to keep it.`
                   : "Such as every weekday. Empty for once.",
               )}
-              {field("Last day it repeats", "until", "A date. Empty for for good.")}
+              {field("Last day it repeats", "until", "A date. Empty to repeat for good.")}
               {field("Shortest length when the day runs late, in minutes", "min_minutes", "Empty for its kind's own.")}
               {field("Offers tasks matching this filter", "task_filter", "Such as #Work. Empty for any.")}
               {field("Colour", "colour", "By name, such as teal. Empty for none.")}

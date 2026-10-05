@@ -120,7 +120,7 @@ pub const MENUS: [(&str, &[(u16, &str)]); 6] = [
         (0, ""),
         (TRASH_TASK, "Move to T&rash\tDelete"),
         (RESTORE_TASK, "Rest&ore From Trash"),
-        (ERASE_TASK, "Erase &for Good..."),
+        (ERASE_TASK, "&Delete from Trash..."),
     ]),
     ("&Day", &[
         (PREVIOUS_DAY, "&Previous Day\tCtrl+Page Up"),

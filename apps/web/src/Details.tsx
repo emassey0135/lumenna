@@ -219,12 +219,12 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
               <Button onPress={() => void run(core.restore(task.id))}>Restore</Button>
               <Button
                 onPress={async () => {
-                  // Erasing cannot be undone, so it asks.
-                  const detail = "It and its history are deleted for good. This cannot be undone.";
-                  if (await confirm(`Erase ${task.title}?`, detail, "Erase")) void run(core.erase(task.id));
+                  // Deleting from the trash asks first, though undo brings it back.
+                  const detail = "Undo can bring it back. It also stays in the history every device keeps, and in backups.";
+                  if (await confirm(`Delete ${task.title} from the trash?`, detail, "Delete")) void run(core.erase(task.id));
                 }}
               >
-                Erase for Good…
+                Delete from Trash…
               </Button>
             </>
           ) : (

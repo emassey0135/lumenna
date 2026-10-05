@@ -95,7 +95,7 @@ impl TaskList {
         }
     }
 
-    /// Whether this is the trash, where only restoring and erasing apply.
+    /// Whether this is the trash, where only restoring and deleting from it apply.
     pub fn is_trash(&self) -> bool {
         self.trash
     }
@@ -113,14 +113,15 @@ impl TaskList {
         }
     }
 
-    /// Erasing rebuilds the document without the task and cannot be undone, so it asks.
+    /// Deleting from the trash takes the task out of every list and asks first; undo brings it
+    /// back, and it stays in the history and in backups.
     pub fn erase_selected(&self, app: &App) {
         let Some(row) = self.selected().filter(|_| self.trash) else { return };
         if prompts::confirm(
             app.main,
-            &format!("Erase {}?", row.title),
-            "It and its history are deleted for good. This cannot be undone.",
-            "Erase",
+            &format!("Delete {} from the trash?", row.title),
+            "Undo can bring it back. It also stays in the history every device keeps, and in backups.",
+            "Delete",
         ) {
             task_actions::perform(app, None, |lumenna| lumenna.erase_task(&row.id));
         }
@@ -252,7 +253,7 @@ impl View for TaskList {
         let Some(row) = self.selected() else { return true };
         let at = point.unwrap_or_else(|| self.tree.menu_point(index));
         let items: Vec<(u16, String)> = if self.trash {
-            vec![(menu::RESTORE_TASK, "&Restore".to_owned()), (menu::ERASE_TASK, "&Erase for Good...".to_owned())]
+            vec![(menu::RESTORE_TASK, "&Restore".to_owned()), (menu::ERASE_TASK, "&Delete from Trash...".to_owned())]
         } else {
             match app.core.lumenna.show_task(&row.id) {
                 Ok(shown) => task_actions::menu_items(&shown.task),

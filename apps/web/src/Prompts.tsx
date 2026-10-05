@@ -5,7 +5,7 @@
 // is open. They are React Aria dialogs: focus moves in, Tab stays inside, Escape cancels, and
 // focus goes back where it was when they close.
 //
-// A question that cannot be undone is an alert dialog with Cancel focused first, so Enter or
+// A question before something destructive is an alert dialog with Cancel focused first, so Enter or
 // Escape straight away does nothing harmful — not the browser's confirm(), which is modal to
 // the whole browser and which some screen readers read as a bare message.
 
@@ -55,7 +55,7 @@ export function choose(heading: string, detail: string, options: string[]): Prom
   return put((answer) => ({ kind: "choose", heading, detail, options, answer }));
 }
 
-/** Whether to go ahead with something that cannot be undone. */
+/** Whether to go ahead with something destructive. */
 export async function confirm(heading: string, detail: string, action: string): Promise<boolean> {
   return (await choose(heading, detail, [action])) === 0;
 }
