@@ -312,31 +312,42 @@ def pick_task(session: Session, prompt: str, excluding: set = frozenset()) -> st
     return choose({row["id"]: describe(row) for row in rows}, prompt)
 
 
+ANOTHER_DAY = "\0another day"
+
+
 def assign_task(session: Session, identifier: str) -> str:
-    """Puts a task into a work block, on today or another day (§3.7)."""
-    day = choose({"": "Today", "tomorrow": "Tomorrow", "other": "Another day"}, "Which day?")
-    if day is None:
-        return ""
-    if day == "other":
-        day = ask("Which day?", "next monday")
-        if day is None:
-            return ""
-    try:
-        plan = session.call("plan", date=day) if day else session.call("plan")
-    except LumennaError as error:
-        return error.message
-    blocks = [block for block in plan.get("blocks", []) if block["kind"] == "work"]
-    if not blocks:
-        return f"{plan.get('date', 'That day')} has no work blocks to put it in"
-    chosen = choose(
-        {b["id"]: f"{b['title']}, {b['start']} to {b['end']}" for b in blocks}, "Put it in"
-    )
-    if chosen is None:
-        return ""
+    """Puts a task into a work block (§3.7): one of the coming week's, which the core chooses
+    as it does for every app (`block.choices`), or one on a day named."""
     import day  # here, since day imports this module
 
+    try:
+        week = session.call("block.choices")
+    except LumennaError as error:
+        return error.message
+    blocks = week.get("blocks", [])
+    options = {
+        b["id"]: f"{day.spoken_day(b['date'])}, {b['start']} to {b['end']}, {b['title']}" for b in blocks
+    }
+    options[ANOTHER_DAY] = "Another day"
+    chosen = choose(options, "Put it in")
+    if chosen is None:
+        return ""
+    if chosen == ANOTHER_DAY:
+        when = ask("Which day?", "next monday")
+        if when is None:
+            return ""
+        try:
+            other = session.call("block.choices", **{"from": when, "days": 1})
+        except LumennaError as error:
+            return error.message
+        blocks = other.get("blocks", [])
+        if not blocks:
+            return f"{day.spoken_day(other.get('from', ''))} has no work blocks to put it in"
+        chosen = choose({b["id"]: f"{b['title']}, {b['start']} to {b['end']}" for b in blocks}, "Put it in")
+        if chosen is None:
+            return ""
     block = next(b for b in blocks if b["id"] == chosen)
-    return day.assign_to(session, identifier, block, plan["date"])
+    return day.assign_to(session, identifier, block, block["date"])
 
 
 # ---------------------------------------------------------------------------------------

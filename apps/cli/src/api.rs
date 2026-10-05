@@ -12,7 +12,7 @@
 use lumenna_surface::{
     Announced, BackupDone, BlockShown, Change, Completions, DeviceList, Exported, Filters, ImportDone,
     Imported, PairedWith, Plan, Preview, RestoreDone, Rows, SettingList, SyncReport, SyncStatus,
-    TaskShown, Timer, announced,
+    TaskShown, Timer, WorkBlocks, announced,
 };
 use serde::Serialize;
 
@@ -102,6 +102,8 @@ pub enum Outcome {
     Completions(Completions),
     /// What a quick-add line would produce, without producing it (§6.1).
     Preview(Preview),
+    /// The work blocks a task could go in (§3.7). Reachable over `lum rpc` only.
+    WorkBlocks(WorkBlocks),
     /// What this server is, for a client checking it can talk to it.
     Server(ServerInfo),
     /// A backup was written.
@@ -160,6 +162,7 @@ outcomes!(
     Timer(Timer),
     Completions(Completions),
     Preview(Preview),
+    WorkBlocks(WorkBlocks),
     Server(ServerInfo),
     Backup(BackupDone),
     Restore(RestoreDone),

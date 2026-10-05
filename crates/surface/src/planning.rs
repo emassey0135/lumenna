@@ -12,7 +12,7 @@ use crate::resolve;
 use crate::tasks::{record, record_or};
 use crate::types::{
     Announced, BlockEdit, BlockScope, BlockShown, CancelledBlock, Change, NewBlock, Plan, PlanAssignment,
-    PlanBlock, PlanItem, Rows, Timer, repetition_phrase,
+    PlanBlock, PlanItem, Rows, Timer, WorkBlock, WorkBlocks, repetition_phrase,
 };
 use crate::words::{count_line, duration, time_text};
 use crate::{Lumenna, repaired};
@@ -21,8 +21,49 @@ fn to_u32(n: usize) -> u32 {
     u32::try_from(n).unwrap_or(u32::MAX)
 }
 
+/// How far ahead putting a task in a block looks when asked from the task: a week, so the
+/// list stays short enough to choose from by ear. The planner reaches any other day.
+pub const WORK_BLOCK_DAYS: u32 = 7;
+
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
+    /// The work blocks a task could go in, over `days` days from `from` (§3.7): what putting
+    /// a task in a block offers from the task itself, rather than from a day. `from` is a date
+    /// phrase, today when absent; `days` is [`WORK_BLOCK_DAYS`] when absent, and at most 31.
+    /// Breaks and events are left out: only work blocks take tasks.
+    ///
+    /// # Errors
+    ///
+    /// If the date cannot be read, or a block's rule cannot be expanded.
+    pub fn work_blocks(&self, from: Option<String>, days: Option<u32>) -> Result<WorkBlocks> {
+        let first = resolve::date(from.as_deref(), &Zoned::now())?;
+        let days = days.unwrap_or(WORK_BLOCK_DAYS).clamp(1, 31);
+        let mut blocks = Vec::new();
+        for offset in 0..days {
+            let Ok(day) = first.checked_add(jiff::Span::new().days(i64::from(offset))) else { break };
+            let plan = self.plan(Some(day.to_string()))?;
+            blocks.extend(plan.blocks.into_iter().filter(|block| block.kind == kind_word(BlockKind::Work)).map(
+                |block| WorkBlock {
+                    assigned: to_u32(block.assignments.len()),
+                    id: block.id,
+                    date: plan.date.clone(),
+                    title: block.title,
+                    start: block.start,
+                    end: block.end,
+                    duration_mins: block.duration_mins,
+                    when: block.when,
+                },
+            ));
+        }
+        Ok(WorkBlocks {
+            announcement: format!("{} over {}", count_line(blocks.len(), "work block"), count_line(days as usize, "day")),
+            notices: Vec::new(),
+            from: first.to_string(),
+            days,
+            blocks,
+        })
+    }
+
     /// A day's blocks and what is assigned to them. `date` is a date phrase; today when
     /// absent.
     ///

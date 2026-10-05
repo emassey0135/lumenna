@@ -167,6 +167,26 @@
     (lumenna-test--goto "write the chapter")
     (should-not (string-match-p "planned" (lumenna-test--line)))))
 
+(ert-deftest lumenna-a-task-goes-in-a-work-block-the-core-offers-from-the-task ()
+  (lumenna-test--with-store
+    (lumenna-write "task.add" :text "write the chapter")
+    (lumenna-write "block.add" :title "Focus" :at "9am" :minutes 90 :date "tomorrow")
+    (lumenna-write "block.add" :title "Lunch" :at "noon" :minutes 30 :kind "break" :date "tomorrow")
+    (lumenna-tasks)
+    (lumenna-test--goto "write the chapter")
+    (let (offered)
+      (cl-letf (((symbol-function 'completing-read)
+                 (lambda (_prompt choices &rest _)
+                   (setq offered (mapcar #'car choices))
+                   (car offered)))
+                ((symbol-function 'read-string) (lambda (&rest _) "30")))
+        (lumenna-task-assign))
+      (should (equal (length offered) 1))
+      (should (string-match-p ", 09:00 to 10:30, Focus\\'" (car offered))))
+    (let ((plan (lumenna-call "plan" :date "tomorrow")))
+      (should (equal (plist-get (aref (plist-get (aref (plist-get plan :blocks) 0) :assignments) 0) :planned_mins)
+                     30)))))
+
 (ert-deftest lumenna-a-cancelled-day-is-listed-and-put-back ()
   (lumenna-test--with-store
     (lumenna-write "block.add" :title "Run" :at "7am" :minutes 30 :date "today" :repeat "every day")

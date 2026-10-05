@@ -169,7 +169,6 @@ class Menus(unittest.TestCase):
         script = self.run_script(
             [
                 ("key", "draft", "b"),
-                ("choose", "Today"),
                 ("choose", "Focus"),
                 ("input", "45"),
                 ("back",),
@@ -187,6 +186,33 @@ class Menus(unittest.TestCase):
         )
         self.assertIsNone(self.call("plan")["blocks"][0]["assignments"][0].get("planned_mins"))
         self.assertTrue(any("Cleared" in said for said in script.said), script.said)
+
+    def test_a_task_goes_in_a_block_of_the_week_or_of_a_day_named(self):
+        self.call("task.add", text="draft")
+        self.call("task.add", text="review")
+        self.call("block.add", title="Focus", at="9am", minutes=90, date="tomorrow")
+        self.call("block.add", title="Lunch", at="noon", minutes=30, kind="break", date="tomorrow")
+        self.call("block.add", title="Retreat", at="10am", minutes=60, date="in 10 days")
+        script = self.run_script(
+            [
+                ("key", "draft", "b"),
+                ("choose", "Focus"),
+                ("input", ""),
+                ("key", "review", "b"),
+                ("choose", "Another day"),
+                ("input", "in 10 days"),
+                ("choose", "Retreat"),
+                ("input", ""),
+                ("back",),
+            ],
+            lambda: tasks.task_list(self.session),
+        )
+        offered = script.offered[0]
+        self.assertEqual(len(offered), 2, offered)
+        self.assertIn("09:00 to 10:30, Focus", offered[0])
+        self.assertEqual(offered[1], "Another day")
+        self.assertEqual(self.call("plan", date="tomorrow")["blocks"][0]["assignments"][0]["title"], "draft")
+        self.assertEqual(self.call("plan", date="in 10 days")["blocks"][0]["assignments"][0]["title"], "review")
 
     def test_one_day_of_a_repeating_block_is_changed_cancelled_and_put_back(self):
         self.call("block.add", title="Run", at="7am", minutes=30, repeat="every day", date="today")

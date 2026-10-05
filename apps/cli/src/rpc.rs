@@ -110,6 +110,7 @@ const METHODS: &[&str] = &[
     "block.add",
     "block.list",
     "block.show",
+    "block.choices",
     "block.edit",
     "block.cancel",
     "block.restore",
@@ -405,6 +406,7 @@ fn answer(
         }
         "complete" => completions(server, params),
         "preview" => preview(server, params),
+        "block.choices" => block_choices(server, params),
         "pair.confirm" => {
             let Some(answer) = params.get("match").and_then(Value::as_bool) else {
                 return Err(invalid("'match' is required: true if the words are the same"));
@@ -714,6 +716,13 @@ fn completions(server: &Server, params: &Value) -> std::result::Result<Response,
 fn preview(server: &Server, params: &Value) -> std::result::Result<Response, RpcError> {
     let text = text_of(params, "text")?;
     Ok(Response::new(server.profile()?.preview_task(&text)?))
+}
+
+/// The work blocks a task could go in, from the task (§3.7). A chooser's question, so it is
+/// the surface's answer directly, with no command line of its own: `lum plan` lists a day.
+fn block_choices(server: &Server, params: &Value) -> std::result::Result<Response, RpcError> {
+    let days = maybe_number(params, "days")?;
+    Ok(Response::new(server.profile()?.work_blocks(maybe_text(params, "from"), days)?))
 }
 
 // ---------------------------------------------------------------------------------------
