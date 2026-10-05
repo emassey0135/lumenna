@@ -1,0 +1,577 @@
+//! The planner (§16.1; §13's worked example): a day as it is lived, as a tree.
+//!
+//! The first row is the summary — what a glance at a timeline gives a sighted user. Then
+//! blocks in time order with their sittings beneath them, free time as rows of its own, and
+//! now as a position rather than a highlight. Opening the day puts the selection on now, not
+//! on midnight.
+//!
+//! On a sitting, Space starts or stops its timer and Delete takes it out of the block; on a
+//! block, Enter changes it and Delete deletes it; on free time, Enter adds a block there.
+//! Everything else is in the row's context menu.
+
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
+
+use lumenna_surface::{CancelledBlock, Plan, PlanAssignment, PlanBlock, PlanItem, RowView};
+use windows::Win32::Foundation::{HWND, LPARAM, POINT};
+use windows::Win32::UI::Controls::{NM_DBLCLK, NMHDR, NMTVKEYDOWN, TVN_KEYDOWN, TVN_SELCHANGEDW, WC_BUTTONW};
+use windows::Win32::UI::Input::KeyboardAndMouse::{VK_DELETE, VK_SPACE};
+use windows::Win32::UI::WindowsAndMessaging::{BN_CLICKED, BS_PUSHBUTTON, WS_TABSTOP};
+
+use super::app::App;
+use super::block_form::{self, Fields, Purpose};
+use super::clock::Locale;
+use super::controls::{self, rect};
+use super::core::sentence;
+use super::tree::{Item, Tree};
+use super::view::{Metrics, View};
+use super::prompts;
+use crate::speech::{self, Clock};
+
+const PREVIOUS: u16 = 500;
+const TODAY: u16 = 501;
+const NEXT: u16 = 502;
+const ADD: u16 = 503;
+const TREE: u16 = 504;
+
+/// One row of the day.
+#[derive(Clone)]
+enum Row {
+    Summary(String),
+    Block(PlanBlock),
+    Sitting(PlanAssignment),
+    Free { start: String, end: String, minutes: u32 },
+    Now(String),
+    Cancelled(CancelledBlock),
+}
+
+impl Row {
+    /// What identifies it across a reload, for keeping the selection.
+    fn key(&self) -> String {
+        match self {
+            Self::Summary(_) => "summary".to_owned(),
+            Self::Block(block) => format!("block:{}", block.id),
+            Self::Sitting(sitting) => format!("sitting:{}", sitting.id),
+            Self::Free { start, .. } => format!("free:{start}"),
+            Self::Now(_) => "now".to_owned(),
+            Self::Cancelled(block) => format!("cancelled:{}", block.series),
+        }
+    }
+
+    fn text(&self) -> String {
+        let clock = Locale;
+        match self {
+            Self::Summary(text) => text.clone(),
+            Self::Block(block) => speech::block(block, &clock),
+            Self::Sitting(sitting) => speech::sitting(sitting),
+            Self::Free { start, end, minutes } => speech::free(start, end, *minutes, &clock),
+            Self::Now(time) => speech::now(time, &clock),
+            Self::Cancelled(block) => speech::cancelled(block, &clock),
+        }
+    }
+}
+
+// The row's own commands, for its context menu.
+const ASSIGN: u16 = 1;
+const EDIT: u16 = 2;
+const CANCEL_DAY: u16 = 3;
+const RESTORE_DAY: u16 = 4;
+const DELETE: u16 = 5;
+const TIMER: u16 = 6;
+const PLANNED: u16 = 7;
+const LOG: u16 = 8;
+const UNASSIGN: u16 = 9;
+const ADD_HERE: u16 = 10;
+const OPEN: u16 = 11;
+
+pub struct DayView {
+    /// The day shown, as an ISO date; `None` follows today.
+    day: RefCell<Option<String>>,
+    plan: RefCell<Option<Plan>>,
+    buttons: [HWND; 4],
+    pub tree: Tree,
+    rows: RefCell<Vec<Row>>,
+    /// Whether the day has opened on now yet.
+    landed: Cell<bool>,
+}
+
+impl DayView {
+    pub fn create(_app: &App, pane: HWND) -> Rc<Self> {
+        let button = |text: &str, id: u16| controls::create(pane, WC_BUTTONW, text, BS_PUSHBUTTON as u32 | WS_TABSTOP.0, 0, id);
+        let buttons = [
+            button("Previous Day", PREVIOUS),
+            button("Today", TODAY),
+            button("Next Day", NEXT),
+            button("Add Block...", ADD),
+        ];
+        let tree = Tree::create(pane, TREE, "The day", false);
+        Rc::new(Self {
+            day: RefCell::new(None),
+            plan: RefCell::new(None),
+            buttons,
+            tree,
+            rows: RefCell::new(Vec::new()),
+            landed: Cell::new(false),
+        })
+    }
+
+    /// The ISO date shown.
+    pub fn date(&self) -> Option<String> {
+        self.plan.borrow().as_ref().map(|plan| plan.date.clone())
+    }
+
+    fn selected(&self) -> Option<Row> {
+        let index = self.tree.selected()?;
+        self.rows.borrow().get(index).cloned()
+    }
+
+    /// The task a selected sitting is for: what the Task menu acts on from the day.
+    pub fn selected_task(&self) -> Option<String> {
+        match self.selected()? {
+            Row::Sitting(sitting) => Some(sitting.task),
+            _ => None,
+        }
+    }
+
+    fn list(&self, app: &App) {
+        let key = self.tree.selected().and_then(|index| self.tree.key(index));
+        let near = self.tree.selected();
+        let day = self.day.borrow().clone();
+        let plan = match app.core.lumenna.plan(day) {
+            Ok(plan) => plan,
+            Err(error) => {
+                let rows = vec![Row::Summary(sentence(&error))];
+                self.show(rows, key, near);
+                return;
+            }
+        };
+        let mut rows = vec![Row::Summary(speech::summary(&plan.date, &plan.summary, &Locale))];
+        for item in &plan.timeline {
+            match item {
+                PlanItem::Block { row } => {
+                    if let Some(block) = plan.blocks.iter().find(|b| b.row == *row) {
+                        rows.push(Row::Block(block.clone()));
+                        rows.extend(block.assignments.iter().cloned().map(Row::Sitting));
+                    }
+                }
+                PlanItem::Free { start, end, minutes } => {
+                    rows.push(Row::Free { start: start.clone(), end: end.clone(), minutes: *minutes });
+                }
+                PlanItem::Now { time } => rows.push(Row::Now(time.clone())),
+            }
+        }
+        rows.extend(plan.cancelled.iter().cloned().map(Row::Cancelled));
+        app.set_title(&Locale.day(&plan.date));
+        *self.plan.borrow_mut() = Some(plan);
+        self.show(rows, key, near);
+    }
+
+    fn show(&self, rows: Vec<Row>, key: Option<String>, near: Option<usize>) {
+        let items = rows
+            .iter()
+            .map(|row| Item {
+                key: row.key(),
+                text: row.text(),
+                depth: u32::from(matches!(row, Row::Sitting(_))),
+                checked: None,
+            })
+            .collect();
+        *self.rows.borrow_mut() = rows;
+        if self.tree.set(items) {
+            self.tree.select_key_or_near(key.as_deref(), near.or(Some(0)));
+        }
+    }
+
+    /// §13's "go to now": today, on the now row or the block happening now.
+    pub fn go_to_now(&self, app: &App, announce: bool) {
+        *self.day.borrow_mut() = None;
+        self.list(app);
+        let index = self.rows.borrow().iter().position(|row| match row {
+            Row::Now(_) => true,
+            Row::Block(block) => block.when == "now",
+            _ => false,
+        });
+        self.tree.select(index.unwrap_or(0));
+        if announce {
+            self.say_summary(app);
+        }
+    }
+
+    fn say_summary(&self, app: &App) {
+        let summary = self.rows.borrow().first().map(Row::text);
+        if let Some(summary) = summary {
+            app.say(&summary);
+        }
+    }
+
+    /// Moves by days, and says the new day's summary: a new day is a new screen's worth.
+    pub fn step(&self, app: &App, days: i64) {
+        let Some(shown) = self.date().and_then(|d| d.parse::<jiff::civil::Date>().ok()) else { return };
+        let Ok(next) = shown.checked_add(jiff::Span::new().days(days)) else { return };
+        self.go_to(app, next);
+    }
+
+    fn go_to(&self, app: &App, date: jiff::civil::Date) {
+        let today = jiff::Zoned::now().date();
+        *self.day.borrow_mut() = (date != today).then(|| date.to_string());
+        self.list(app);
+        self.tree.select(0);
+        self.say_summary(app);
+    }
+
+    pub fn ask_for_day(&self, app: &App) {
+        let Some(phrase) = prompts::ask_text(app.main, "Go to Day", "&Day:", "A date, such as friday, or 12 october.", "") else {
+            return;
+        };
+        match app.core.lumenna.plan(Some(phrase)) {
+            Ok(plan) => {
+                if let Ok(date) = plan.date.parse() {
+                    self.go_to(app, date);
+                }
+            }
+            Err(error) => prompts::fail(app.main, &sentence(&error)),
+        }
+    }
+
+    pub fn add_block(&self, app: &App, start: Option<&str>, minutes: Option<u32>) {
+        let date = self.date().unwrap_or_else(|| "today".to_owned());
+        let fields = Fields {
+            title: String::new(),
+            start: start.unwrap_or("09:00").to_owned(),
+            minutes: minutes.unwrap_or(60).min(720).to_string(),
+            kind: "work".to_owned(),
+            repeat: String::new(),
+        };
+        if let Some(change) = block_form::run(app.main, &app.core.lumenna, Purpose::Add { date }, fields) {
+            app.store_changed();
+            if let Some(series) = change.affected.blocks.first() {
+                let key = self.rows.borrow().iter().find_map(|row| match row {
+                    Row::Block(block) if &block.series == series => Some(row.key()),
+                    _ => None,
+                });
+                self.tree.select_key_or_near(key.as_deref(), None);
+            }
+            app.say_change(&change);
+        }
+    }
+
+    /// Changes a block — asking "this day, or every day?" of a repeating one, never guessing
+    /// (§13, §4.3).
+    fn edit(&self, app: &App, block: &PlanBlock) {
+        let Some(date) = self.date() else { return };
+        let mut fields = Fields {
+            title: block.title.clone(),
+            start: block.start.clone(),
+            minutes: block.duration_mins.to_string(),
+            kind: block.kind.clone(),
+            repeat: String::new(),
+        };
+        let purpose = if block.repeats {
+            let day = Locale.day(&date);
+            let choice = prompts::choose(
+                app.main,
+                &format!("Change {}", block.title),
+                "Which occurrences?",
+                &[&format!("{day} Only"), "Every Occurrence"],
+                false,
+            );
+            match choice {
+                Some(0) => Purpose::Occurrence { series: block.series.clone(), date },
+                Some(_) => Purpose::Series { id: block.series.clone() },
+                None => return,
+            }
+        } else {
+            Purpose::Series { id: block.series.clone() }
+        };
+        if let Purpose::Series { id } = &purpose {
+            // The series as it is, not as this day shows it.
+            match app.core.lumenna.show_block(id) {
+                Ok(shown) => {
+                    fields = Fields {
+                        title: shown.title,
+                        start: shown.start,
+                        minutes: shown.minutes.to_string(),
+                        kind: shown.kind,
+                        repeat: shown.repetition.or(shown.rrule).unwrap_or_default(),
+                    }
+                }
+                Err(error) => return prompts::fail(app.main, &sentence(&error)),
+            }
+        }
+        let key = format!("block:{}", block.id);
+        if let Some(change) = block_form::run(app.main, &app.core.lumenna, purpose, fields) {
+            app.store_changed();
+            self.tree.select_key_or_near(Some(&key), self.tree.selected());
+            app.say_change(&change);
+        }
+    }
+
+    fn delete(&self, app: &App, block: &PlanBlock) {
+        let message = if block.repeats {
+            "Every occurrence goes, not only this day. To skip one day, cancel it instead."
+        } else {
+            "It goes, with what is assigned to it."
+        };
+        if prompts::confirm(app.main, &format!("Delete {}?", block.title), message, "Delete") {
+            self.change(app, None, |lumenna| lumenna.delete_block(&block.series));
+        }
+    }
+
+    /// Runs a change, keeps the selection on `keep` or near where it was, and says it.
+    fn change(&self, app: &App, keep: Option<&str>, operation: impl FnOnce(&lumenna_surface::Lumenna) -> lumenna_surface::Result<lumenna_surface::Change>) {
+        let near = self.tree.selected();
+        if let Some(change) = app.perform(operation) {
+            self.tree.select_key_or_near(keep, near);
+            app.say_change(&change);
+        }
+    }
+
+    fn toggle_timer(&self, app: &App, sitting: &PlanAssignment) {
+        let key = format!("sitting:{}", sitting.id);
+        if sitting.status == "in progress" {
+            match app.core.lumenna.stop_timer(&sitting.id, None) {
+                Ok(timer) => {
+                    app.store_changed();
+                    self.tree.select_key_or_near(Some(&key), None);
+                    app.say(&speech::announcement(&timer.announcement, &timer.notices));
+                }
+                Err(error) => prompts::fail(app.main, &sentence(&error)),
+            }
+        } else {
+            self.change(app, Some(&key), |lumenna| lumenna.start_timer(&sitting.id));
+        }
+    }
+
+    fn plan_length(&self, app: &App, sitting: &PlanAssignment) {
+        let current = sitting.planned_mins.map(|m| m.to_string()).unwrap_or_default();
+        let Some(text) = ask_minutes(app, &format!("Planned Length of {}", sitting.title), &current, true) else { return };
+        let key = format!("sitting:{}", sitting.id);
+        self.change(app, Some(&key), |lumenna| lumenna.plan_minutes(&sitting.id, text));
+    }
+
+    /// Records a sitting's whole time by hand — without a timer, or to replace a capped one.
+    fn log_minutes(&self, app: &App, sitting: &PlanAssignment) {
+        let Some(Some(minutes)) = ask_minutes(app, &format!("Minutes on {}", sitting.title), "", false) else { return };
+        match app.core.lumenna.stop_timer(&sitting.id, Some(minutes)) {
+            Ok(timer) => {
+                app.store_changed();
+                self.tree.select_key_or_near(Some(&format!("sitting:{}", sitting.id)), None);
+                app.say(&speech::announcement(&timer.announcement, &timer.notices));
+            }
+            Err(error) => prompts::fail(app.main, &sentence(&error)),
+        }
+    }
+
+    /// Fills a block from the task side's opposite: from the block, pick a task (§13).
+    fn assign(&self, app: &App, block: &PlanBlock) {
+        let Some(date) = self.date() else { return };
+        let tasks: Vec<RowView> = app.core.lumenna.list_tasks("").map(|r| r.rows).unwrap_or_default();
+        let titles: Vec<String> = tasks.iter().map(|t| speech::row(t, false)).collect();
+        let Some(index) = prompts::pick(app.main, &format!("Assign to {}", block.title), "&Task:", &titles) else { return };
+        let task = &tasks[index];
+        let Some(minutes) = ask_minutes(app, &format!("How Long Is {} Meant to Take?", task.title), "", true) else { return };
+        let key = format!("block:{}", block.id);
+        self.change(app, Some(&key), |lumenna| lumenna.assign(&task.id, &block.series, Some(date), minutes));
+    }
+
+    fn act(&self, app: &App, command: u16, row: &Row) {
+        let date = self.date().unwrap_or_default();
+        match (command, row) {
+            (ASSIGN, Row::Block(block)) => self.assign(app, block),
+            (EDIT, Row::Block(block)) => self.edit(app, block),
+            (CANCEL_DAY, Row::Block(block)) => {
+                let key = row.key();
+                self.change(app, Some(&key), |lumenna| lumenna.cancel_occurrence(&block.series, &date));
+            }
+            (RESTORE_DAY, Row::Block(block)) => {
+                let key = row.key();
+                self.change(app, Some(&key), |lumenna| lumenna.restore_occurrence(&block.series, &date));
+            }
+            (RESTORE_DAY, Row::Cancelled(block)) => {
+                self.change(app, None, |lumenna| lumenna.restore_occurrence(&block.series, &date));
+            }
+            (DELETE, Row::Block(block)) => self.delete(app, block),
+            (TIMER, Row::Sitting(sitting)) => self.toggle_timer(app, sitting),
+            (PLANNED, Row::Sitting(sitting)) => self.plan_length(app, sitting),
+            (LOG, Row::Sitting(sitting)) => self.log_minutes(app, sitting),
+            (UNASSIGN, Row::Sitting(sitting)) => self.change(app, None, |lumenna| lumenna.unassign(&sitting.id)),
+            (OPEN, Row::Sitting(_)) => app.open_detail(),
+            (ADD_HERE, Row::Free { start, minutes, .. }) => self.add_block(app, Some(start), Some(*minutes)),
+            _ => {}
+        }
+    }
+
+    fn activate(&self, app: &App) {
+        let Some(row) = self.selected() else { return };
+        let command = match &row {
+            Row::Block(_) => EDIT,
+            Row::Sitting(_) => OPEN,
+            Row::Free { .. } => ADD_HERE,
+            Row::Cancelled(_) => RESTORE_DAY,
+            Row::Summary(_) | Row::Now(_) => return,
+        };
+        self.act(app, command, &row);
+    }
+
+    fn act_later(app: &App, command: u16) {
+        app.defer(move |app| {
+            if let Some(day) = app.day()
+                && let Some(row) = day.selected() {
+                    day.act(app, command, &row);
+                }
+        });
+    }
+}
+
+/// Asks for a number of minutes. `Some(None)` is a deliberate "no planned length", where
+/// `optional` allows one; `None` is cancelled.
+fn ask_minutes(app: &App, title: &str, initial: &str, optional: bool) -> Option<Option<u32>> {
+    let message = if optional { "Minutes, or empty for no planned length." } else { "The whole of this sitting, replacing what is logged." };
+    loop {
+        match prompts::ask(app.main, title, "&Minutes:", message, initial)? {
+            text if text.is_empty() && optional => return Some(None),
+            text => match text.parse::<u32>() {
+                Ok(minutes) if minutes > 0 => return Some(Some(minutes)),
+                _ => prompts::fail(app.main, "That is not a number of minutes."),
+            },
+        }
+    }
+}
+
+
+impl View for DayView {
+    fn focus_target(&self) -> HWND {
+        self.tree.hwnd
+    }
+
+    fn layout(&self, width: i32, height: i32, m: Metrics) {
+        let gap = m.gap();
+        let mut x = gap;
+        let widths = [m.px(100), m.px(64), m.px(80), m.px(96)];
+        for (button, width) in self.buttons.iter().zip(widths) {
+            controls::place(*button, rect(x, gap, width, m.button));
+            x += width + m.px(6);
+        }
+        let y = gap + m.button + gap;
+        controls::place(self.tree.hwnd, rect(gap, y, width - 2 * gap, (height - y - gap).max(m.line)));
+    }
+
+    fn reload(&self, app: &App) {
+        self.list(app);
+        // Opening the day lands on now (§13). Once, so coming back to it later does not move
+        // the selection from where the person left it.
+        if !self.landed.replace(true) {
+            self.go_to_now(app, false);
+        }
+    }
+
+    fn minute(&self, app: &App) {
+        if self.day.borrow().is_none() {
+            self.list(app);
+        }
+    }
+
+    fn command(&self, app: &App, control: HWND, _id: u16, code: u16) -> bool {
+        if u32::from(code) != BN_CLICKED {
+            return false;
+        }
+        match self.buttons.iter().position(|b| *b == control) {
+            Some(0) => self.step(app, -1),
+            Some(1) => self.go_to_now(app, true),
+            Some(2) => self.step(app, 1),
+            Some(3) => self.add_block(app, None, None),
+            _ => return false,
+        }
+        true
+    }
+
+    fn notify(&self, app: &App, header: &NMHDR, lparam: LPARAM) -> Option<isize> {
+        if header.hwndFrom != self.tree.hwnd {
+            return None;
+        }
+        match header.code {
+            TVN_SELCHANGEDW if !self.tree.busy() => {
+                app.detail.show(app, self.selected_task().as_deref());
+                Some(0)
+            }
+            TVN_KEYDOWN => {
+                let key = unsafe { &*(lparam.0 as *const NMTVKEYDOWN) }.wVKey;
+                let row = self.selected();
+                match (key, row) {
+                    (k, Some(Row::Sitting(_))) if k == VK_SPACE.0 => Self::act_later(app, TIMER),
+                    (k, Some(Row::Sitting(_))) if k == VK_DELETE.0 => Self::act_later(app, UNASSIGN),
+                    (k, Some(Row::Block(_))) if k == VK_DELETE.0 => Self::act_later(app, DELETE),
+                    _ => return Some(0),
+                }
+                // Not part of an incremental search.
+                Some(1)
+            }
+            NM_DBLCLK => {
+                app.defer(|app| {
+                    if let Some(day) = app.day() {
+                        day.activate(app);
+                    }
+                });
+                Some(1)
+            }
+            _ => None,
+        }
+    }
+
+    fn context_menu(&self, app: &App, control: HWND, point: Option<POINT>) -> bool {
+        if control != self.tree.hwnd {
+            return false;
+        }
+        if let Some(index) = point.and_then(|p| self.tree.index_at(p)) {
+            self.tree.select(index);
+        }
+        let (Some(index), Some(row)) = (self.tree.selected(), self.selected()) else { return true };
+        let items: Vec<(u16, &str)> = match &row {
+            Row::Block(block) => {
+                let mut items = Vec::new();
+                if block.kind == "work" {
+                    items.push((ASSIGN, "&Assign a Task..."));
+                }
+                items.push((EDIT, "&Change..."));
+                if block.repeats {
+                    items.push((CANCEL_DAY, "&Cancel This Day"));
+                }
+                if block.changed_for_this_day {
+                    items.push((RESTORE_DAY, "&Restore This Day"));
+                }
+                items.extend([(0, ""), (DELETE, "&Delete Block...")]);
+                items
+            }
+            Row::Sitting(sitting) => vec![
+                (TIMER, if sitting.status == "in progress" { "&Stop Timer" } else { "&Start Timer" }),
+                (OPEN, "&Edit Task Details"),
+                (PLANNED, "&Planned Length..."),
+                (LOG, "&Log Minutes..."),
+                (0, ""),
+                (UNASSIGN, "&Unassign"),
+            ],
+            Row::Free { .. } => vec![(ADD_HERE, "&Add Block Here...")],
+            Row::Cancelled(_) => vec![(RESTORE_DAY, "&Restore This Day")],
+            Row::Summary(_) | Row::Now(_) => return true,
+        };
+        let at = point.unwrap_or_else(|| self.tree.menu_point(index));
+        if let Some(command) = app.popup(&items, at) {
+            self.act(app, command, &row);
+        }
+        true
+    }
+
+    fn enter(&self, app: &App, focus: HWND) -> bool {
+        if focus == self.tree.hwnd {
+            self.activate(app);
+            return true;
+        }
+        false
+    }
+
+    fn windows(&self) -> Vec<HWND> {
+        let mut windows = self.buttons.to_vec();
+        windows.push(self.tree.hwnd);
+        windows
+    }
+}

@@ -2383,6 +2383,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "lumenna-windows"
+version = "0.1.0"
+dependencies = [
+ "directories",
+ "jiff",
+ "lumenna-surface",
+ "tempfile",
+ "windows",
+]
+
+[[package]]
 name = "mac-addr"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
