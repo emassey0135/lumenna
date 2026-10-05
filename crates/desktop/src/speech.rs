@@ -2,8 +2,8 @@
 //!
 //! A tree item has one text, and a screen reader reads it as the item's name, so the
 //! components are joined here: the title first and verbatim — it is what a person scans for —
-//! then the value and the states that mean something. What `SysTreeView32` reports from its
-//! own structure is left out: the level, the position in the set and its size, whether a row
+//! then the value and the states that mean something. What the tree reports from its own
+//! structure — `SysTreeView32` on Windows, the tree items the GTK app annotates — is left out: the level, the position in the set and its size, whether a row
 //! is expanded, and whether a checkbox is checked. Saying those in the text as well would say
 //! them twice.
 
@@ -148,6 +148,7 @@ pub mod testing {
 
     use super::Clock;
 
+    /// Says 14:30 as "2:30 PM".
     pub struct TwelveHour;
 
     impl Clock for TwelveHour {

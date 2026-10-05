@@ -2310,6 +2310,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lumenna-desktop"
+version = "0.1.0"
+dependencies = [
+ "jiff",
+ "lumenna-surface",
+ "tempfile",
+]
+
+[[package]]
 name = "lumenna-ffi"
 version = "0.1.0"
 dependencies = [
@@ -2388,6 +2397,7 @@ version = "0.1.0"
 dependencies = [
  "directories",
  "jiff",
+ "lumenna-desktop",
  "lumenna-surface",
  "tempfile",
  "windows",

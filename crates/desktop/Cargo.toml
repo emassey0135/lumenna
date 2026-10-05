@@ -1,0 +1,18 @@
+[package]
+name = "lumenna-desktop"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "What the apps that link the surface directly decide alike: how rows are worded, flat rows as a tree, the sidebar's places."
+
+[dependencies]
+jiff.workspace = true
+lumenna-surface = { path = "../surface" }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
