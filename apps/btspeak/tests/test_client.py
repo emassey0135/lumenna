@@ -175,3 +175,53 @@ class TalkingToTheDaemon(unittest.TestCase):
             client.close()
         # It was the socket, not a spawned `lum rpc`: closing the client left the daemon up.
         self.assertIsNone(self.daemon.poll())
+
+
+@unittest.skipIf(LUM is None, "`lum` has not been built")
+class FindingAServer(unittest.TestCase):
+    """§8's rule for this kind of client: the daemon's socket when it answers, else a
+    `lum rpc` of its own — and a socket left behind by a daemon that died is not an answer."""
+
+    def setUp(self):
+        self.profile = Path(tempfile.mkdtemp())
+        os.environ["PATH"] = f"{Path(LUM).parent}{os.pathsep}{os.environ['PATH']}"
+        os.environ["LUMENNA_BACKUP_DIR"] = str(self.profile / "backups")
+
+    def tearDown(self):
+        shutil.rmtree(self.profile, ignore_errors=True)
+
+    def test_a_running_daemon_is_used_over_its_socket(self):
+        daemon = subprocess.Popen(
+            [LUM, "--profile", str(self.profile), "sync-daemon", "--local-only"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        try:
+            socket_path = self.profile / "lumenna.sock"
+            deadline = time.monotonic() + 20
+            while not socket_path.exists() and time.monotonic() < deadline:
+                time.sleep(0.1)
+            self.assertTrue(socket_path.exists(), "the daemon made no socket")
+            client = connect(self.profile)
+            try:
+                self.assertIn("socket", repr(client._on_close), "connected some other way")
+                client.call("task.add", text="through the daemon")
+                titles = [row["title"] for row in client.call("task.list")["rows"]]
+                self.assertEqual(titles, ["through the daemon"])
+            finally:
+                client.close()
+        finally:
+            daemon.terminate()
+            daemon.wait(timeout=10)
+
+    def test_a_socket_left_by_a_dead_daemon_falls_back_to_lum_rpc(self):
+        import socket as sockets
+
+        left = sockets.socket(sockets.AF_UNIX, sockets.SOCK_STREAM)
+        left.bind(str(self.profile / "lumenna.sock"))
+        left.close()  # bound and closed: a file nobody listens on, as a crash leaves it
+        client = connect(self.profile)
+        try:
+            self.assertNotIn("socket", repr(client._on_close))
+            self.assertEqual(client.call("initialize")["name"], "lumenna")
+        finally:
+            client.close()
