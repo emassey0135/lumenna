@@ -9,9 +9,9 @@
 
 use std::cell::RefCell;
 
-use lumenna_surface::TaskDetail;
-use windows::Win32::System::SystemServices::{SS_CENTER, SS_NOPREFIX};
+use lumenna_surface::{TaskDetail, TaskFields, task_edit, task_fields};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::System::SystemServices::{SS_CENTER, SS_NOPREFIX};
 use windows::Win32::UI::Controls::{WC_BUTTONW, WC_COMBOBOXW, WC_EDITW, WC_STATICW};
 use windows::Win32::UI::Input::KeyboardAndMouse::{VK_ESCAPE, VK_TAB};
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
@@ -19,16 +19,15 @@ use windows::Win32::UI::WindowsAndMessaging::{
     BN_CLICKED, BS_PUSHBUTTON, CB_ADDSTRING, CB_FINDSTRINGEXACT, CB_GETCURSEL, CB_GETLBTEXT,
     CB_GETLBTEXTLEN, CB_RESETCONTENT, CB_SETCURSEL, CBS_DROPDOWNLIST, DLGC_WANTALLKEYS,
     DLGC_WANTMESSAGE, DLGC_WANTTAB, ES_AUTOHSCROLL, ES_AUTOVSCROLL, ES_MULTILINE, ES_READONLY,
-    ES_WANTRETURN, MSG, WM_GETDLGCODE, WM_KEYDOWN, WM_NCDESTROY,
-    WS_EX_CLIENTEDGE, WS_TABSTOP, WS_VSCROLL,
+    ES_WANTRETURN, MSG, WM_GETDLGCODE, WM_KEYDOWN, WM_NCDESTROY, WS_EX_CLIENTEDGE, WS_TABSTOP,
+    WS_VSCROLL,
 };
 use windows::core::HSTRING;
 
+use super::a11y;
 use super::app::App;
 use super::controls::{self, rect};
-use super::a11y;
 use super::view::Metrics;
-use crate::form::TaskFields;
 
 const TITLE: u16 = 300;
 const DUE: u16 = 301;
@@ -169,7 +168,7 @@ impl Detail {
         controls::show(self.save, visible);
         controls::show(self.done, visible);
         if let Some(task) = &task {
-            let fields = TaskFields::of(task);
+            let fields = task_fields(task.clone());
             controls::set_text(self.title, &fields.title);
             controls::set_text(self.due, &fields.due);
             controls::set_text(self.repeat, &fields.repeat);
@@ -205,7 +204,7 @@ impl Detail {
 
     /// Whether the fields hold typing not yet saved.
     pub fn has_changes(&self) -> bool {
-        self.shown.borrow().as_ref().is_some_and(|task| self.read().edit(task).is_some())
+        self.shown.borrow().as_ref().is_some_and(|task| task_edit(task.clone(), self.read()).is_some())
     }
 
     /// The store changed: the fields follow unless someone is part way through editing them.
@@ -219,7 +218,7 @@ impl Detail {
     /// Saves what changed, and says what that did.
     pub fn save(&self, app: &App) {
         let Some(task) = self.shown.borrow().clone() else { return };
-        let Some(edit) = self.read().edit(&task) else {
+        let Some(edit) = task_edit(task.clone(), self.read()) else {
             app.say("Nothing changed");
             return;
         };

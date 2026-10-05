@@ -141,9 +141,12 @@ fn labels(known: &Known, prefix: &str) -> Vec<Candidate> {
         .collect()
 }
 
-/// Names with spaces come back quoted, since that is the escape hatch the grammar offers
-/// (§6.2) and an unquoted insertion would re-open the ambiguity completion just resolved.
-fn quoted(sigil: &str, name: &str) -> String {
+/// A name as the grammar takes it after a sigil: `#Work`, or `#"Home Office"` when it has a
+/// space in it — the escape hatch the grammar offers (§6.2). Completion inserts names this
+/// way, since an unquoted one would re-open the ambiguity completion just resolved, and every
+/// client building a query or a quick-add prefix from a name does the same.
+#[must_use]
+pub fn quoted(sigil: &str, name: &str) -> String {
     if name.contains(char::is_whitespace) {
         format!("{sigil}\"{name}\"")
     } else {

@@ -1,6 +1,6 @@
 //! Somewhere to go in the main window, and the sidebar that lists them.
 
-use lumenna_surface::{Lumenna, RowView};
+use lumenna_surface::{Lumenna, RowView, label_reference, project_reference};
 
 use crate::speech;
 
@@ -38,8 +38,8 @@ impl Place {
     /// The query a task list starts from.
     pub fn query(&self) -> String {
         match self {
-            Self::Project(name) => sigil('#', name),
-            Self::Label(name) => sigil('@', name),
+            Self::Project(name) => project_reference(name.clone()),
+            Self::Label(name) => label_reference(name.clone()),
             Self::Filter { query, .. } => query.clone(),
             Self::Trash => "deleted".to_owned(),
             Self::Today | Self::Tasks | Self::Blocks => String::new(),
@@ -49,17 +49,11 @@ impl Place {
     /// What a new task typed here starts with, so it lands where it was added.
     pub fn quick_add_prefix(&self) -> String {
         match self {
-            Self::Project(name) => format!("{} ", sigil('#', name)),
-            Self::Label(name) => format!("{} ", sigil('@', name)),
+            Self::Project(name) => format!("{} ", project_reference(name.clone())),
+            Self::Label(name) => format!("{} ", label_reference(name.clone())),
             _ => String::new(),
         }
     }
-}
-
-/// How a name is written after a sigil in the filter and quick-add languages: quoted when it
-/// has a space in it (§6.2).
-pub fn sigil(mark: char, name: &str) -> String {
-    if name.contains(' ') { format!("{mark}\"{name}\"") } else { format!("{mark}{name}") }
 }
 
 /// What a sidebar row is.
@@ -156,12 +150,6 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let lumenna = Lumenna::open(directory.path().to_str().unwrap()).unwrap();
         (directory, lumenna)
-    }
-
-    #[test]
-    fn a_name_with_a_space_is_quoted_after_its_sigil() {
-        assert_eq!(sigil('#', "Work"), "#Work");
-        assert_eq!(sigil('@', "deep work"), "@\"deep work\"");
     }
 
     #[test]

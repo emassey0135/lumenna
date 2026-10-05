@@ -57,6 +57,12 @@ by `crates/ffi`) — no JSON crosses the FFI.
 - **Identifiers are text**: a whole UUID or a prefix that names one record. A bare number is
   refused as a row number. Row numbers are the CLI's: `Profile::row` turns them into
   identifiers before calling in.
+- **What every client's forms share is here too, as free functions** (`form.rs`):
+  `task_fields` and `task_edit` (a form's fields from a task, and the `TaskEdit` holding only
+  what changed — sending an unchanged field reverts a concurrent edit elsewhere),
+  `project_reference`/`label_reference` (`#"Home Office"`, the parser's own quoting), and
+  `sitting_status`. Swift sees `taskEdit(task:fields:)` and so on. A client does not keep
+  its own copy of any of them.
 - **Every method refreshes first** (`Lumenna::with`), so an answer is never staler than the
   last change on disk.
 - **Reshaping a record breaks `--json`, `lum rpc`, and the Swift and Kotlin types at
@@ -392,8 +398,9 @@ Section titles are `FormParts.heading`, a header to VoiceOver's heading commands
 
 `apps/windows/` — Rust over `windows-rs`, linking `lumenna-surface` directly (§16.4: no FFI),
 binary `lumenna.exe`. Everything Win32 is in `src/win/` behind `cfg(windows)`; how rows are
-worded (`speech.rs`), flat rows into a tree (`outline.rs`), the task form's diff (`form.rs`)
-and the sidebar's places (`places.rs`) build and are tested on every platform.
+worded (`speech.rs`), flat rows into a tree (`outline.rs`) and the sidebar's places
+(`places.rs`) build and are tested on every platform. The task form's diff is the surface's
+(`task_edit`, below), as it is every client's.
 
 - **Building on ARM64 Windows needs clang on `PATH`** for `ring` (under Iroh's TLS). Visual
   Studio ships one: `VC\Tools\Llvm\ARM64\bin`. Nothing else is needed — the manifest

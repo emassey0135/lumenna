@@ -7,14 +7,14 @@
 //! edit controls, combo boxes and buttons, and dialogs are the dialog manager's own.
 //!
 //! What is decided here rather than in Win32 code — how a row is worded, how flat rows become
-//! a tree, what a task form sends back, which places the sidebar holds — is in modules that
-//! build and are tested on every platform. The rest is in `win`, and exists only on Windows.
+//! a tree, which places the sidebar holds — is in modules that build and are tested on every
+//! platform. What every client shares, such as what a task form sends back, is the surface's
+//! (`lumenna_surface::task_edit`). The rest is in `win`, and exists only on Windows.
 
 #![cfg_attr(windows, windows_subsystem = "windows")]
 // Elsewhere the neutral modules are built for their tests alone, with nothing calling them.
 #![cfg_attr(not(windows), allow(dead_code))]
 
-mod form;
 mod outline;
 mod places;
 mod profile;
