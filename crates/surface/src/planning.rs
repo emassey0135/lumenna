@@ -844,7 +844,7 @@ fn apply_extras(snapshot: &Snapshot, series: &mut BlockSeries, extras: &Extras<'
 /// row for every one would be noise (§13).
 const FREE_THRESHOLD_MINS: i64 = 15;
 
-fn block_kind(word: &str) -> Result<BlockKind> {
+pub(crate) fn block_kind(word: &str) -> Result<BlockKind> {
     match word.to_lowercase().as_str() {
         "work" => Ok(BlockKind::Work),
         "break" => Ok(BlockKind::Break),
