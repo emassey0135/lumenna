@@ -1142,7 +1142,22 @@ pub fn stop_timer(
         .ok_or(EditError::NotFound { kind: "assignment" })?;
     if !assignment.is_running() {
         let logged = crate::model::Elapsed { mins: assignment.accumulated_mins, capped: false };
-        return Ok((Edit::nothing(), logged));
+        // A paused sitting is still in progress; stopping it is what ends it.
+        if assignment.status != crate::model::AssignmentStatus::InProgress {
+            return Ok((Edit::nothing(), logged));
+        }
+        let mut ended = assignment.clone();
+        ended.status = crate::model::AssignmentStatus::Worked;
+        return Ok((
+            Edit {
+                description: format!("Logged {} minutes", logged.mins),
+                changes: vec![Change::Assignment {
+                    year,
+                    transition: Box::new(Transition::updated(assignment.clone(), ended)),
+                }],
+            },
+            logged,
+        ));
     }
     let mut stopped = assignment.clone();
     let elapsed = stopped.pause(time::truncate(now.timestamp()), cap_mins);
@@ -1155,6 +1170,44 @@ pub fn stop_timer(
             changes: vec![Change::Assignment {
                 year,
                 transition: Box::new(Transition::updated(assignment.clone(), stopped)),
+            }],
+        },
+        elapsed,
+    ))
+}
+
+/// Pauses the timer: the running interval is folded into the accumulated total, as for
+/// [`stop_timer`], but the sitting stays in progress, to be resumed with [`start_timer`] or
+/// ended with [`stop_timer`] (§3.7: start, pause, stop).
+///
+/// A timer that is not running produces [`Edit::nothing`], with the time already logged.
+///
+/// # Errors
+///
+/// If the assignment is not loaded.
+pub fn pause_timer(
+    snapshot: &Snapshot,
+    assignment_id: AssignmentId,
+    year: i16,
+    cap_mins: Option<u32>,
+    now: &Zoned,
+) -> Result<(Edit, crate::model::Elapsed), EditError> {
+    let assignment = snapshot
+        .assignments
+        .get(&assignment_id)
+        .ok_or(EditError::NotFound { kind: "assignment" })?;
+    if !assignment.is_running() {
+        let logged = crate::model::Elapsed { mins: assignment.accumulated_mins, capped: false };
+        return Ok((Edit::nothing(), logged));
+    }
+    let mut paused = assignment.clone();
+    let elapsed = paused.pause(time::truncate(now.timestamp()), cap_mins);
+    Ok((
+        Edit {
+            description: format!("Paused timer, {} minutes so far", elapsed.mins),
+            changes: vec![Change::Assignment {
+                year,
+                transition: Box::new(Transition::updated(assignment.clone(), paused)),
             }],
         },
         elapsed,

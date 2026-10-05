@@ -287,9 +287,10 @@ fn a_task_is_put_in_a_block_from_this_weeks_work_blocks() {
             date: None,
             kind: "work".to_owned(),
             repeat: Some("every day".to_owned()),
+            ..NewBlock::default()
         };
         lumenna.add_block(every_day).unwrap();
-        let lunch = NewBlock { title: "Lunch".to_owned(), kind: "break".to_owned(), at: "12pm".to_owned(), minutes: 45, date: None, repeat: Some("every day".to_owned()) };
+        let lunch = NewBlock { title: "Lunch".to_owned(), kind: "break".to_owned(), at: "12pm".to_owned(), minutes: 45, date: None, repeat: Some("every day".to_owned()), ..NewBlock::default() };
         lumenna.add_block(lunch).unwrap();
     });
     app.post(&[GO_TASKS, "home", PUT_IN_BLOCK]);

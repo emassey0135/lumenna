@@ -150,6 +150,8 @@ mod tests {
             planned_mins: planned,
             minutes: 0,
             capped: false,
+            running: false,
+            details: Vec::new(),
         }
     }
 
