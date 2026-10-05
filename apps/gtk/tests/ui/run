@@ -10,4 +10,4 @@ here=$(cd "$(dirname "$0")" && pwd)
 cargo build --quiet --manifest-path "$here/../../../../Cargo.toml" -p lumenna-gtk -p lumenna-cli
 cd "$here"
 if [ $# -eq 0 ]; then set -- discover -p 'test_*.py'; fi
-exec dbus-run-session -- ./headless.sh python3 -m unittest "$@" 2> >(grep -vE '^(dbus-daemon|fusermount|discover_other|Gdk-Message|A connection to the bus)|xdg-desktop-portal|dbind-WARNING|^$|^\(' >&2)
+exec ./headless.sh python3 -m unittest "$@" 2> >(grep -vE '^(dbus-daemon|fusermount|discover_other|Gdk-Message|A connection to the bus)|xdg-desktop-portal|dbind-WARNING|^$|^\(' >&2)

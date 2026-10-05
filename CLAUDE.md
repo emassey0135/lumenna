@@ -551,10 +551,14 @@ Backups, Export and Import) work.
 - **First focus on an expandable row says "expanded" twice**: GTK creates a row's accessible
   object on its first focus and reports its initial state as a change. Later visits say it
   once.
-- **UI tests** (`tests/ui/`, Python): `apps/gtk/tests/ui/run` starts a private D-Bus session
-  with a headless mutter and the accessibility bus (`headless.sh`), presses real keys through
+- **UI tests** (`tests/ui/`, Python): `apps/gtk/tests/ui/run` starts a private runtime
+  directory, D-Bus session, headless mutter and accessibility bus (`headless.sh`), presses real keys through
   mutter's RemoteDesktop API, and reads what Orca would through AT-SPI. Nothing reaches the
-  desktop, its Orca included. `ORCA=1` runs Orca too (a copy of its launcher whose
+  desktop, its Orca included. **The runtime directory must be private, and made before the
+  bus**: the accessibility bus's socket has a fixed name in it, and a run in the desktop's
+  own `/run/user/<uid>` replaced the desktop's socket, so every app started there afterwards
+  had no screen reader. `headless.sh` refuses a shared one; the harness refuses to send keys
+  outside it. `ORCA=1` runs Orca too (a copy of its launcher whose
   single-instance check is narrowed to itself) and `Session.speech()` returns what it said.
   `explore.py` prints focus, announcements and speech after each key, for finding out.
   A new window takes the headless compositor well over half a second to show, and keys sent

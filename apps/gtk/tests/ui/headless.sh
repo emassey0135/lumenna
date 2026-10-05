@@ -1,11 +1,27 @@
 #!/bin/bash
-# Runs a command inside a session of its own: a private D-Bus session bus, a headless GNOME
-# compositor (mutter) on a Wayland display of its own, and the accessibility bus and registry.
-# Nothing reaches the desktop the tests are started from, its screen reader included.
+# Runs a command inside a session of its own: a runtime directory, a D-Bus session bus, a
+# headless GNOME compositor (mutter) on a Wayland display, and the accessibility bus and
+# registry, all private. Nothing reaches the desktop the tests are started from, its screen
+# reader included.
 #
-# Use it under dbus-run-session:  dbus-run-session -- ./headless.sh python3 -m unittest
+#   ./headless.sh python3 -m unittest
 set -u
-export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+if [ -z "${LUMENNA_HEADLESS:-}" ]; then
+    # The runtime directory first, before the bus, so that everything the bus starts — the
+    # portal, gvfs — uses it too. Sockets go in it at fixed names: the accessibility bus at
+    # at-spi/bus. Run in the desktop's own directory, that replaced the desktop's socket, and
+    # every app started on the desktop afterwards could not reach its screen reader.
+    private=$(mktemp -d "${TMPDIR:-/tmp}/lumenna-session-XXXXXX")
+    chmod 700 "$private"
+    LUMENNA_HEADLESS=$private XDG_RUNTIME_DIR=$private dbus-run-session -- "$0" "$@"
+    status=$?
+    rm -rf "$private"
+    exit $status
+fi
+if [ "$XDG_RUNTIME_DIR" != "$LUMENNA_HEADLESS" ]; then
+    echo "headless.sh: refusing to run in a shared runtime directory" >&2
+    exit 1
+fi
 unset DISPLAY
 export WAYLAND_DISPLAY=lumenna-test-$$
 export GSETTINGS_BACKEND=memory
