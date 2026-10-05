@@ -8,7 +8,7 @@
 //! them twice.
 
 use lumenna_surface::words::duration;
-use lumenna_surface::{Candidate, CancelledBlock, PlanAssignment, PlanBlock, RowView, sitting_status};
+use lumenna_surface::{Candidate, CancelledBlock, PlanAssignment, PlanBlock, RowView, TaskDetail, sitting_status};
 
 /// How this device says times and days. The core sends `HH:MM` and ISO dates, which are
 /// components; whether that is "2:30 PM" or "14:30" is the person's locale, so it is decided
@@ -41,6 +41,19 @@ pub fn trashed(row: &RowView) -> String {
     parts.extend(row.value.clone());
     parts.extend(row.trailing_states().filter(|state| *state != "deleted").map(str::to_owned));
     join(parts)
+}
+
+/// A task's computed states for its details, and the rule it repeats by when the date
+/// grammar cannot say it — which the Repeats field then shows empty and leaves alone.
+pub fn task_state(task: &TaskDetail) -> String {
+    let states: Vec<&str> = task.state.iter().map(String::as_str).filter(|s| *s != "ready").collect();
+    let mut text = if states.is_empty() { "open".to_owned() } else { states.join(", ") };
+    if task.repetition.is_none()
+        && let Some(rule) = &task.recurrence
+    {
+        text.push_str(&format!(", repeats by the rule {rule}"));
+    }
+    text
 }
 
 /// A place in the sidebar, with what is in it: "Work, 3 tasks".
