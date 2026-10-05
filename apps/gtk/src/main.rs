@@ -11,8 +11,11 @@
 //! One instance per profile: GApplication registers the app's identifier on the session bus,
 //! and starting it again activates the running one, which shows its window (§16.2).
 
+mod block_form;
+mod blocks;
 mod clock;
 mod core;
+mod day;
 mod detail;
 mod prompts;
 mod quick_add;

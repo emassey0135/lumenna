@@ -493,8 +493,7 @@ surface's (`task_edit`, below), as it is every client's.
 
 `apps/gtk/` — Rust over `gtk4-rs`, linking `lumenna-surface` directly (§16.3), binary
 `lumenna-gtk`. Wording, the tree, places and the profile are `crates/desktop`'s, as Windows'
-are. Tasks (list, filter, details, quick add, task actions) work; Today and Blocks are
-placeholders.
+are. Tasks (list, filter, details, quick add, task actions), Today and Blocks work.
 
 - **Every list is a `GtkListView` that says it is a tree** (`tree.rs`). §16.3's check came
   out this way: `GtkTreeView` exposes *no rows* to AT-SPI in GTK 4; a plain list view with

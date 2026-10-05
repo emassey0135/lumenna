@@ -36,6 +36,24 @@ pub async fn confirm(parent: &impl IsA<gtk::Window>, heading: &str, detail: &str
     dialog.choose_future(Some(parent)).await == Ok(1)
 }
 
+/// Asks which of `options` to go ahead with, or none: a button each, then Cancel, which is
+/// the default.
+pub async fn choose(parent: &impl IsA<gtk::Window>, heading: &str, detail: &str, options: &[&str]) -> Option<usize> {
+    let mut buttons: Vec<&str> = options.to_vec();
+    buttons.push("Cancel");
+    let cancel = i32::try_from(options.len()).unwrap_or(i32::MAX);
+    let dialog = gtk::AlertDialog::builder()
+        .message(heading)
+        .detail(detail)
+        .buttons(buttons)
+        .cancel_button(cancel)
+        .default_button(cancel)
+        .modal(true)
+        .build();
+    let chosen = dialog.choose_future(Some(parent)).await.ok()?;
+    usize::try_from(chosen).ok().filter(|&index| index < options.len())
+}
+
 /// Opens a modal window holding `content` above Cancel and OK, which answers with what
 /// `answer` makes of it when OK is chosen, and `None` when cancelled or closed. The window is
 /// up when this returns, so the caller can put focus in it before awaiting the answer.
