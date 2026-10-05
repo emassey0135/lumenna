@@ -149,6 +149,7 @@ impl Lumenna {
                     changed_for_this_day: occurrence.modified,
                     assignments,
                     accepts_tasks: occurrence.flags.accepts_tasks,
+                    counts_capacity: occurrence.flags.counts_capacity,
                     anchored: occurrence.flags.anchored,
                     colour: series.and_then(|s| s.color.clone()),
                     notes: series.map(|s| s.notes.clone()).unwrap_or_default(),
