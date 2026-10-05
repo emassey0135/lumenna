@@ -1,4 +1,4 @@
-// The day, blocks, and asking before what cannot be undone — read back through the browser's
+// The day, blocks, and asking before deleting from the trash — read back through the browser's
 // accessibility tree, as the other tests are.
 
 import { expect, test } from "@playwright/test";
@@ -38,7 +38,7 @@ async function axe(page: Page) {
   expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(", ")}`)).toEqual([]);
 }
 
-test("erasing asks first, with Cancel focused, and Cancel keeps the task", async ({ page }) => {
+test("deleting from the trash asks first, with Cancel focused, and Cancel keeps the task", async ({ page }) => {
   await open(page);
   await add(page, "Old idea");
   const tasks = page.getByRole("main");
@@ -47,16 +47,16 @@ test("erasing asks first, with Cancel focused, and Cancel keeps the task", async
   await place(page, /^Trash/);
   await tasks.getByRole("row", { name: /^Old idea/ }).focus();
   await page.keyboard.press("Delete");
-  const question = page.getByRole("alertdialog", { name: "Erase Old idea?" });
+  const question = page.getByRole("alertdialog", { name: "Delete Old idea from the trash?" });
   await expect(question).toBeVisible();
-  await expect(question).toHaveAccessibleDescription(/cannot be undone/);
+  await expect(question).toHaveAccessibleDescription(/Undo can bring it back/);
   await expect(question.getByRole("button", { name: "Cancel" })).toBeFocused();
   await axe(page);
   await page.keyboard.press("Escape");
   await expect(question).toBeHidden();
   await expect(tasks.getByRole("row", { name: /^Old idea/ })).toBeFocused();
   await page.keyboard.press("Delete");
-  await question.getByRole("button", { name: "Erase" }).click();
+  await question.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(tasks.getByRole("row", { name: /^Old idea/ })).toHaveCount(0);
 });
 
