@@ -1,3 +1,4 @@
+import CoreGraphics
 import XCTest
 
 /// The Mac app driven the way a VoiceOver user drives it: by accessibility label and the
@@ -106,6 +107,7 @@ final class LumennaMacUITests: XCTestCase {
     /// objects to; left to itself the audit stops at the first.
     private func audit(_ screen: String, in front: XCUIElement? = nil) throws {
         var issues: [String] = []
+        let voiceOverPanels = windows(ownedBy: "VoiceOver")
         // The audit covers every window, and the system dims a window that is not in front —
         // one behind a sheet, or behind Settings. What is dimmed is not what anyone reads, so
         // only the window in front is judged: a sheet when one is open.
@@ -121,6 +123,11 @@ final class LumennaMacUITests: XCTestCase {
             // only with no element.
             if issue.element == nil, issue.compactDescription == "Parent/Child mismatch" { return true }
             if let sheetFrame, let frame = issue.element?.frame, !sheetFrame.insetBy(dx: -1, dy: -1).contains(frame) { return true }
+            // VoiceOver's caption and braille panels float over whatever is beneath them, where
+            // the person put them, so text there is judged against the panel. Only contrast,
+            // only under a window VoiceOver owns.
+            if issue.auditType == .contrast, let frame = issue.element?.frame,
+               voiceOverPanels.contains(where: { $0.intersects(frame) }) { return true }
             // SwiftUI's pop-up menus answer VoiceOver's press but not the audit's question
             // about it; only that finding, only on pop-ups.
             if issue.element?.elementType == .popUpButton, issue.compactDescription == "Action is missing" { return true }
@@ -129,6 +136,17 @@ final class LumennaMacUITests: XCTestCase {
             return true
         }
         XCTAssertTrue(issues.isEmpty, "\(screen)\n" + issues.joined(separator: "\n"))
+    }
+
+    /// The frames of another process's windows on screen, in the top-left coordinates
+    /// XCUITest's frames use.
+    private func windows(ownedBy owner: String) -> [CGRect] {
+        let listed = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+        return listed.compactMap { window in
+            guard window[kCGWindowOwnerName as String] as? String == owner,
+                  let bounds = window[kCGWindowBounds as String] as CFTypeRef? else { return nil }
+            return CGRect(dictionaryRepresentation: bounds as! CFDictionary)
+        }
     }
 
     /// A store both the app and `lum` reach. This runner is sandboxed, and so is anything it
@@ -343,6 +361,43 @@ final class LumennaMacUITests: XCTestCase {
         if let repeating { enter(repeating, into: app.textFields["Repeats"]) }
         sheetButton("Save")
         XCTAssertTrue(app.sheets.firstMatch.waitForNonExistence(timeout: 5))
+    }
+
+    func testABreakSetApartTakesTasksAndSpacePausesAndResumesASitting() {
+        place("Tasks")
+        addTask("read")
+        place("Today")
+        app.typeKey("n", modifierFlags: [.command, .shift])
+        let field = app.textFields["Name"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        enter("Train", into: field)
+        app.sheets.popUpButtons.firstMatch.click()
+        app.menuItems["Break"].click()
+        let takes = app.sheets.checkBoxes["Takes tasks"]
+        XCTAssertTrue(takes.waitForExistence(timeout: 5))
+        XCTAssertEqual(takes.value as? Int, 0, "a break takes no tasks until set apart")
+        takes.click()
+        sheetButton("Save")
+        XCTAssertTrue(app.sheets.firstMatch.waitForNonExistence(timeout: 5))
+
+        let day = window.outlines["The day"]
+        XCTAssertTrue(text(containing: "takes tasks", in: day).waitForExistence(timeout: 5))
+        menu(text(containing: "Train", in: day), "Assign a Task…")
+        pick("read")
+        let minutes = app.sheets.textFields["Minutes"]
+        XCTAssertTrue(minutes.waitForExistence(timeout: 5))
+        enter("30", into: minutes)
+        sheetButton("Set")
+
+        let sitting = day.staticTexts["read"]
+        XCTAssertTrue(sitting.waitForExistence(timeout: 5))
+        sitting.click()
+        for state in ["in progress", "paused", "in progress"] {
+            app.typeKey(.space, modifierFlags: [])
+            XCTAssertTrue(text(containing: state, in: day).waitForExistence(timeout: 5), "Space leaves it \(state)")
+        }
+        menu(day.staticTexts["read"], "Stop Timer")
+        XCTAssertTrue(text(containing: "worked", in: day).waitForExistence(timeout: 5))
     }
 
     func testTheBlockListEditsEveryOccurrenceAndAsksBeforeDeleting() {

@@ -213,9 +213,9 @@ struct BlockForm: View {
                 }
             }
             Section {
-                Toggle("Takes tasks", isOn: $model.fields.acceptsTasks)
-                Toggle("Counts toward hours for work", isOn: $model.fields.countsCapacity)
-                Toggle("Anchored, never moved when the day slips", isOn: $model.fields.anchored)
+                Labelled("Takes tasks") { Toggle("Takes tasks", isOn: $model.fields.acceptsTasks) }
+                Labelled("Counts toward hours for work") { Toggle("Counts toward hours for work", isOn: $model.fields.countsCapacity) }
+                Labelled("Anchored, never moved when the day slips") { Toggle("Anchored, never moved when the day slips", isOn: $model.fields.anchored) }
             } header: {
                 FormParts.heading("What it does")
             } footer: {
