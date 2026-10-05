@@ -62,19 +62,16 @@ export function Devices(props: {
   const [selected, setSelected] = useState<string | undefined>();
   const [pairing, setPairing] = useState(false);
   const [reload, setReload] = useState(0);
+  const [status, setStatus] = useState("");
 
   useEffect(() => {
     if (!props.isOpen) return;
     void core.devices().then(setDevices, (error: Error) => say(error.message));
-  }, [props.isOpen, props.revision, reload]);
+    // How syncing is going, in the surface's words, given whether this browser's loop runs.
+    void core.syncStatus().then(setStatus, (error: Error) => setStatus(error.message));
+  }, [props.isOpen, props.revision, props.syncing, reload]);
 
   const others = devices.filter((d) => !d.thisDevice).length;
-  const status =
-    others === 0
-      ? "Not paired with any other device yet."
-      : props.syncing
-        ? `Syncing while this page is open, with ${others === 1 ? "1 other device" : `${others} other devices`}.`
-        : `Not syncing; ${others === 1 ? "1 other device" : `${others} other devices`} will catch up at the next sync.`;
 
   const chosen = devices.find((d) => d.id === selected);
   const refresh = () => setReload((r) => r + 1);

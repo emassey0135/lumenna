@@ -14,6 +14,7 @@
 use std::path::Path;
 
 mod clock;
+mod manage;
 mod sync;
 
 use clock::Browser;

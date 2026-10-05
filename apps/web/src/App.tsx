@@ -16,6 +16,7 @@ import { Details } from "./Details";
 import type { DetailsHandle } from "./Details";
 import { QuickAdd } from "./QuickAdd";
 import { say } from "./say";
+import { Settings } from "./Settings";
 import { Sidebar } from "./Sidebar";
 import { TaskList } from "./TaskList";
 
@@ -32,6 +33,7 @@ export function App() {
   const [selected, setSelected] = useState<string | undefined>();
   const [adding, setAdding] = useState(false);
   const [devicesOpen, setDevicesOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const details = useRef<DetailsHandle>(null);
 
@@ -98,6 +100,25 @@ export function App() {
     }
   };
 
+  // Ctrl+Z undoes and Ctrl+Shift+Z or Ctrl+Y redoes, from anywhere but a field, where they
+  // undo typing as they do in the desktop apps' fields, or a dialog, whose question is not the
+  // store's. Command for Ctrl on a Mac.
+  useEffect(() => {
+    if (!ready) return;
+    const keys = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      const redo = (key === "z" && event.shiftKey) || (key === "y" && !event.shiftKey);
+      if (key !== "z" && !redo) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, [contenteditable='true'], [role='dialog'], [role='alertdialog']")) return;
+      event.preventDefault();
+      void undo(redo);
+    };
+    window.addEventListener("keydown", keys);
+    return () => window.removeEventListener("keydown", keys);
+  }, [ready]);
+
   if (failure) {
     return (
       <main className="app">
@@ -118,6 +139,7 @@ export function App() {
         <Button onPress={() => void undo(false)}>Undo</Button>
         <Button onPress={() => void undo(true)}>Redo</Button>
         <Button onPress={() => setDevicesOpen(true)}>Devices…</Button>
+        <Button onPress={() => setSettingsOpen(true)}>Settings…</Button>
         {/* In the banner, so landmark navigation does not skip it. */}
         {notice && (
           <p className="notice" role="note">
@@ -126,7 +148,7 @@ export function App() {
         )}
       </header>
       <nav aria-label="Places">
-        <Sidebar revision={revision} place={place} onPlace={setPlace} />
+        <Sidebar revision={revision} place={place} onPlace={setPlace} onChanged={changed} />
       </nav>
       <main aria-label={shown.title}>
         {place === "Today" ? (
@@ -167,6 +189,7 @@ export function App() {
           void startSyncing();
         }}
       />
+      <Settings isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} revision={revision} onChanged={changed} />
       <Prompts />
       <BlockForms />
       <QuickAdd

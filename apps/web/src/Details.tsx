@@ -110,6 +110,13 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
 
     // Puts the task into a work block of today or the next six days (§3.7), asking how long
     // the sitting is meant to take. The day reaches any other day, from the block's side.
+    // Waiting for another task (§3.4): chosen from the open tasks, this one aside.
+    const waitFor = async (task: TaskDetail) => {
+      const others = (await core.taskChoices()).filter((choice) => choice.id !== task.id);
+      const on = await pick(`${task.title} Waits For`, "Task", others);
+      if (on) void run(core.waitFor(task.id, on));
+    };
+
     const putInBlock = async (task: TaskDetail) => {
       const blocks = await core.workBlocks();
       if (blocks.length === 0) {
@@ -183,6 +190,24 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
           <Label>Notes</Label>
           <TextArea rows={4} />
         </TextField>
+        <section aria-labelledby="waits-for">
+          <h3 id="waits-for">Waits For</h3>
+          {task.depends.length === 0 ? (
+            <p className="quiet">Nothing.</p>
+          ) : (
+            <ul className="plain">
+              {task.depends.map((other) => (
+                <li key={other.id}>
+                  {other.title}{" "}
+                  <Button aria-label={`Stop Waiting for ${other.title}`} onPress={() => void run(core.stopWaiting(task.id, other.id))}>
+                    Stop Waiting
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Button onPress={() => void waitFor(task)}>Wait For…</Button>
+        </section>
         <TextField className="field" value={state} isReadOnly>
           <Label>State</Label>
           <Input />
