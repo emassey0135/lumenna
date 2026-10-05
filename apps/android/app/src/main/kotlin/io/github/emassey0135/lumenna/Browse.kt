@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
@@ -54,6 +55,8 @@ fun ItemListScreen(
 ) {
     val loaded = remember(changes) { core.attempt(load) ?: (emptyList<Item>() to "") }
     val (items, count) = loaded
+    val state = rememberLazyListState()
+    val focus = rememberRowFocus(core, items.map { it.key }, state)
     ScreenFrame(title, core, navigator, actions = {
         if (addLabel != null) {
             IconButton(onClick = add) { Icon(Icons.Filled.Add, contentDescription = addLabel) }
@@ -67,7 +70,7 @@ fun ItemListScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
-        LazyColumn(Modifier.fillMaxSize().semantics { collectionInfo = CollectionInfo(items.size, 1) }) {
+        LazyColumn(Modifier.fillMaxSize().semantics { collectionInfo = CollectionInfo(items.size, 1) }, state = state) {
             itemsIndexed(items, key = { _, item -> item.key }) { index, item ->
                 ListRow(
                     title = item.title,
@@ -75,9 +78,11 @@ fun ItemListScreen(
                     speech = item.speech,
                     index = index,
                     depth = item.depth,
-                    actions = actions(item),
+                    actions = focus.actions(item.key, index, actions(item)),
                     open = open?.let { { it(item) } },
                     openLabel = openLabel,
+                    focus = focus.requester(item.key),
+                    key = item.key,
                 )
                 HorizontalDivider()
             }

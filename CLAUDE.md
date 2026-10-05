@@ -598,12 +598,21 @@ its own; see its README for the toolchain (NDK, `cargo-ndk`, Android Studio's JD
   48dp; radio rows set it themselves.
 - **Rows are one node** (`ListRow`: `clearAndSetSemantics` with the title as description,
   the rest as state description, custom actions). A row with nothing to do is not clickable.
+- **TalkBack does not follow input focus under touch.** After a row's action, `RowFocus`
+  gives the chosen row input focus (for a keyboard) and then performs the accessibility-focus
+  action on its node through the view's `AccessibilityNodeProvider`, found by the `RowKey`
+  semantics property; the change's announcement is held (`Core.hold`/`release`) until then.
+  `talkBackFollowsFocusToTheRowNowInTheCompletedOnesPlace` checks TalkBack's own focus and is
+  skipped unless TalkBack is on. Compose sends accessibility events only while a screen reader
+  runs, so `uiautomator events` alone shows nothing for it.
 - **The store is in no-backup storage** and `allowBackup` is off: Google's backup would copy
   a store that reaches other devices by pairing (§9). `TZ` is set from the phone's zone at
   start and on resume, as on the iPhone.
 - **Sync runs while the app is in front** (`onResume`/`onPause`). Local discovery uses
   `mdns-sd`, which Android lets hear multicast only under a `WifiManager.MulticastLock`;
-  pairing takes one. Pairing by code is the dependable way, as on the iPhone.
+  syncing and pairing each hold one. It is not exclusive, and `mdns-sd` binds 5353 with
+  `SO_REUSEADDR`/`SO_REUSEPORT`, so other apps' mDNS is unaffected. The emulator cannot test
+  it: its NAT does not pass multicast. Pairing by code is the dependable way, as on the iPhone.
 
 ### The web client
 

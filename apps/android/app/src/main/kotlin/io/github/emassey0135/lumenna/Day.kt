@@ -149,6 +149,7 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
     val shown = plan.getOrNull()
     val list = shown?.let { rows(it) }.orEmpty()
     val scroll = rememberLazyListState()
+    val focus = rememberRowFocus(core, list.map { it.key }, scroll)
 
     // Lands on now once a day is opened, so the morning's past blocks are not in the way.
     LaunchedEffect(shown?.date) {
@@ -201,7 +202,9 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
                     speech = speech.joinToString(", "),
                     index = index,
                     depth = row.depth,
-                    actions = actions(core, navigator, shown, row, edit) { asking = it },
+                    actions = focus.actions(row.key, index, actions(core, navigator, shown, row, edit) { asking = it }),
+                    focus = focus.requester(row.key),
+                    key = row.key,
                     open = when (row) {
                         is DayRow.Block -> ({ edit(row.block) })
                         is DayRow.Sitting -> ({ navigator.push(Screen.Task(row.sitting.task)) })
@@ -238,7 +241,7 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
                 asking = null
                 core.attempt { core.lumenna.stopTimer(question.sitting.id, minutes) }?.let {
                     core.changed()
-                    core.say(sentence(it.announcement, it.notices))
+                    core.report(sentence(it.announcement, it.notices))
                 }
             }
         }
@@ -321,7 +324,7 @@ private fun actions(
                     if (running) {
                         core.attempt { core.lumenna.stopTimer(sitting.id, null) }?.let {
                             core.changed()
-                            core.say(sentence(it.announcement, it.notices))
+                            core.report(sentence(it.announcement, it.notices))
                         }
                     } else {
                         core.change { it.startTimer(sitting.id) }

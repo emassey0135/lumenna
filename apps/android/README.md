@@ -37,15 +37,27 @@ ordinary Gradle project.
 - **Every action is a custom accessibility action**, named for what it does ("Mark Done",
   "Start Timer"), and the same actions are on a long press.
 - **Lists are collections**, so TalkBack says "3 of 12"; each screen is a pane with a heading.
+- **Focus after a change is chosen**, as on the iPhone: the same row if it is still listed,
+  else whichever now holds its place (`RowFocus`). TalkBack's focus is moved there
+  explicitly — it does not follow input focus under touch — and only then is the change said.
 - **What a change did is said by a snackbar**, a polite live region that stays as long as the
   person's accessibility timeout asks.
 - **The tests run Google's accessibility checks on every interaction**
   (`enableAccessibilityChecks`), as the iPhone's run Apple's audit — which is how the 40dp
-  buttons and radio rows were found and made 48dp.
+  buttons and radio rows were found and made 48dp. One test checks TalkBack's own focus after
+  a change; it runs when TalkBack is on in the emulator and is skipped otherwise:
+
+  ```
+  adb shell settings put secure enabled_accessibility_services \
+    com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService
+  adb shell settings put secure accessibility_enabled 1
+  ```
 
 ## Not yet
 
-Pairing on the local network is untested on Android: discovery uses `mdns-sd`, which hears
-multicast only while the app holds a multicast lock (taken while pairing). Pairing by code is
-the dependable way for now, as on the iPhone. The two pairing tests the iPhone has need a second
+Pairing on the local network is untested on Android, because the emulator sits behind its own
+network address translation and multicast does not cross it: it needs a real phone. Discovery uses
+`mdns-sd`, which hears multicast only while the app holds a multicast lock — held while it syncs
+in front and while it pairs; it is not exclusive, and the socket shares port 5353 with every
+other mDNS user. Pairing by code is the dependable way for now, as on the iPhone. The two pairing tests the iPhone has need a second
 device and are not ported. Wear OS (§16.8) is its own module, not begun.

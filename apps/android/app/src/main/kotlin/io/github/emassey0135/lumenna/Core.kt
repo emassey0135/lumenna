@@ -1,6 +1,7 @@
 package io.github.emassey0135.lumenna
 
 import android.content.Context
+import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
 import android.system.Os
@@ -59,8 +60,31 @@ class Core(directory: File) {
         if (text.isNotBlank()) spoken.tryEmit(text)
     }
 
+    private var held: MutableList<String>? = null
+
+    /**
+     * Holds what changes say until [release]: a list is about to put focus on a row, and the
+     * announcement should follow it rather than be cut off by it, as on the iPhone. Failures
+     * are never held — nothing will move focus for them.
+     */
+    fun hold() {
+        if (held == null) held = mutableListOf()
+    }
+
+    /** Says what was held. */
+    fun release() {
+        val texts = held ?: return
+        held = null
+        texts.forEach(::say)
+    }
+
+    /** Says what a change did, now or once focus has moved. */
+    fun report(text: String) {
+        held?.add(text) ?: say(text)
+    }
+
     /** Says what a change did: the core's sentence, then each notice. */
-    fun say(change: Change) = say(sentence(change.announcement, change.notices))
+    fun say(change: Change) = report(sentence(change.announcement, change.notices))
 
     /**
      * Runs an operation that changes the store, then has every screen read it again and says
@@ -83,8 +107,24 @@ class Core(directory: File) {
     private var sync: SyncService? = null
     private val main = Handler(Looper.getMainLooper())
 
-    /** Starts keeping this device in sync (§8), for as long as the app is in front. */
-    fun startSyncing() {
+    private var multicast: WifiManager.MulticastLock? = null
+
+    /**
+     * Starts keeping this device in sync (§8), for as long as the app is in front.
+     *
+     * Holds a multicast lock meanwhile, so local discovery hears the other devices: Android
+     * drops multicast addressed to the phone unless some app holds one. It is not exclusive —
+     * every app's mDNS keeps working, and the discovery socket shares port 5353 — and it is let
+     * go when the app leaves the front, so it costs battery only while Lumenna is open.
+     */
+    fun startSyncing(context: Context) {
+        if (multicast == null) {
+            val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            multicast = wifi.createMulticastLock("lumenna-sync").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        }
         syncThread.execute {
             if (sync == null) {
                 sync = try {
@@ -96,8 +136,10 @@ class Core(directory: File) {
         }
     }
 
-    /** Stops syncing and lets go of the endpoint. */
+    /** Stops syncing and lets go of the endpoint and the multicast lock. */
     fun stopSyncing() {
+        multicast?.release()
+        multicast = null
         syncThread.execute {
             sync?.stop()
             sync = null
