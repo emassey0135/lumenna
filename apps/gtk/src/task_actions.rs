@@ -65,7 +65,7 @@ pub fn menu(task: &TaskDetail) -> gio::Menu {
 pub fn trash_menu() -> gio::Menu {
     let menu = gio::Menu::new();
     menu.append(Some("_Restore"), Some("win.restore-task"));
-    menu.append(Some("_Erase for Good…"), Some("win.erase-task"));
+    menu.append(Some("_Delete from Trash…"), Some("win.erase-task"));
     menu
 }
 
@@ -108,10 +108,11 @@ pub fn run(app: &Rc<App>, command: Command, id: &str) {
             Command::Trash => perform(&app, None, |l| l.trash_task(&task.id)),
             Command::Restore => perform(&app, None, |l| l.restore_task(&task.id)),
             Command::Erase => {
-                // Erasing rebuilds the document without the task and cannot be undone.
-                let heading = format!("Erase {}?", task.title);
-                let detail = "It and its history are deleted for good. This cannot be undone.";
-                if prompts::confirm(&app.window, &heading, detail, "Erase").await {
+                // Takes it out of the trash and the current state; undo brings it back, and it
+                // stays in the history and in backups.
+                let heading = format!("Delete {} from the trash?", task.title);
+                let detail = "Undo can bring it back. It also stays in the history every device keeps, and in backups.";
+                if prompts::confirm(&app.window, &heading, detail, "Delete").await {
                     perform(&app, None, |l| l.erase_task(&task.id));
                 }
             }
