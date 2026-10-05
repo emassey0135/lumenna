@@ -1,0 +1,5 @@
+# The browser target (§16.12). getrandom 0.3 — under Iroh and pairing — takes its randomness
+# from crypto.getRandomValues only when this cfg says so; the `wasm_js` feature alone is not
+# enough for it.
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg", 'getrandom_backend="wasm_js"']

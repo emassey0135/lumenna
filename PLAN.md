@@ -3389,6 +3389,14 @@ dialog are the ARIA patterns implemented and screen-reader-tested, which is the 
 thing to native controls. Records reach TypeScript typed from the surface's own Rust structs
 (`tsify`), as Swift's are by UniFFI, so reshaping a record breaks the web build too.
 
+**Sync, as built:** the same `lumenna-sync`, compiled for the browser — Iroh 1.x does, relay
+only, as above. The surface's pairing and sync loop are async functions that the native
+clients block on and the browser runs on its event loop; the tab that owns the store owns the
+endpoint. Pairing is by code in both directions, with another browser or a native device
+(both tested: two browsers over n0's public relays, and the browser with `lum`). Iroh roughly
+doubles what the browser downloads: the core is about 8.7 MB, 3 MB compressed. Not yet: the
+encrypted store, so a browser alone reaches your other devices only while one is awake.
+
 #### Install it as a PWA
 
 Cheap — a manifest and a service worker — and it changes what the client is capable of rather

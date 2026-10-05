@@ -12,7 +12,9 @@ description = "Lumenna's core for the web client (§16.12): the surface, exporte
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-lumenna-surface = { path = "../../../crates/surface", features = ["wasm"] }
+lumenna-surface = { path = "../../../crates/surface", features = ["wasm", "sync"] }
+# Timers on the browser's event loop, for noticing a pairing given up.
+n0-future = "0.3"
 # The places and wording the desktop apps share, so the web says what they say.
 lumenna-desktop = { path = "../../../crates/desktop", features = ["wasm"] }
 serde.workspace = true
@@ -22,11 +24,11 @@ serde-wasm-bindgen = "0.6"
 jiff.workspace = true
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
+# The browser's own Intl for times and days, and the promises sync answers with.
+js-sys = "0.3"
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 console_error_panic_hook = "0.1"
-# The browser's own Intl, for saying times and days in the person's locale.
-js-sys = "0.3"
 # SQLite's own durable browser storage, OPFS through sync access handles (§16.12).
 sqlite-wasm-rs = { version = "0.5", default-features = false }
 sqlite-wasm-vfs = "0.2"

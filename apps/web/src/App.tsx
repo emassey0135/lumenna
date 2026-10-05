@@ -2,6 +2,7 @@
 // task's details, as the desktop apps have them — here as landmarks, navigation, main and
 // complementary, which screen readers move between with their own keys.
 
+import * as Comlink from "comlink";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "react-aria-components";
 import { Prompts } from "./Prompts";
@@ -10,6 +11,7 @@ import { Blocks } from "./Blocks";
 import { core } from "./core";
 import type { Place } from "./core";
 import { Day } from "./Day";
+import { Devices } from "./Devices";
 import { Details } from "./Details";
 import type { DetailsHandle } from "./Details";
 import { QuickAdd } from "./QuickAdd";
@@ -29,6 +31,8 @@ export function App() {
   const [shown, setShown] = useState({ title: "Tasks", query: "", quickAddPrefix: "" });
   const [selected, setSelected] = useState<string | undefined>();
   const [adding, setAdding] = useState(false);
+  const [devicesOpen, setDevicesOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const details = useRef<DetailsHandle>(null);
 
   useEffect(() => {
@@ -46,6 +50,23 @@ export function App() {
       }
     });
   }, []);
+
+  // Syncing runs while the page is open, once there is another device to sync with (§7).
+  // What arrives is in the store already: everything showing it reads it again.
+  const startSyncing = async () => {
+    try {
+      const devices = await core.devices();
+      if (!devices.some((device) => !device.thisDevice)) return;
+      await core.startSync(Comlink.proxy(() => setRevision((r) => r + 1)));
+      setSyncing(true);
+    } catch (error) {
+      say(`Syncing could not start: ${(error as Error).message}`);
+    }
+  };
+
+  useEffect(() => {
+    if (ready) void startSyncing();
+  }, [ready]);
 
   // Another tab or process wrote: everything showing the store reads it again (§8).
   useEffect(() => {
@@ -96,6 +117,7 @@ export function App() {
         <Button onPress={() => setAdding(true)}>New Task</Button>
         <Button onPress={() => void undo(false)}>Undo</Button>
         <Button onPress={() => void undo(true)}>Redo</Button>
+        <Button onPress={() => setDevicesOpen(true)}>Devices…</Button>
         {/* In the banner, so landmark navigation does not skip it. */}
         {notice && (
           <p className="notice" role="note">
@@ -135,6 +157,16 @@ export function App() {
       <aside aria-label="Task details">
         <Details ref={details} id={selected} revision={revision} onChanged={changed} />
       </aside>
+      <Devices
+        isOpen={devicesOpen}
+        onClose={() => setDevicesOpen(false)}
+        revision={revision}
+        syncing={syncing}
+        onPaired={() => {
+          changed();
+          void startSyncing();
+        }}
+      />
       <Prompts />
       <BlockForms />
       <QuickAdd
