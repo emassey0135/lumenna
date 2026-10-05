@@ -128,6 +128,30 @@ impl Shortcut {
     }
 }
 
+/// What is said when Windows would not give this copy its shortcuts.
+///
+/// Windows does not say who holds a combination of keys, but when another copy of Lumenna is
+/// open — on another profile — it is almost certainly that one, and calling it another
+/// program would send the person looking for one that is not there.
+pub fn taken(described: &[String], by_another_copy: bool) -> String {
+    let keys = described.join(" and ");
+    let they = if described.len() == 1 { "it does" } else { "they do" };
+    if by_another_copy {
+        format!("Another copy of Lumenna, open on another profile, already uses {keys}, so {they} nothing in this one.")
+    } else {
+        format!("Another program already uses {keys}, so {they} nothing here.")
+    }
+}
+
+/// What is said when new keys for a shortcut are already taken.
+pub fn refused(described: &str, by_another_copy: bool) -> String {
+    if by_another_copy {
+        format!("Another copy of Lumenna, open on another profile, already uses {described}. Choose other keys, or change them there.")
+    } else {
+        format!("Another program already uses {described}. Choose other keys.")
+    }
+}
+
 /// A virtual key's name: letters and digits as themselves, F-keys and the common rest by
 /// name.
 pub fn key_name(key: u16) -> String {
@@ -191,6 +215,25 @@ mod tests {
     #[test]
     fn the_standard_shortcuts_need_no_warning() {
         assert_eq!(Kind::Show.standard().warning(), None);
+    }
+
+    #[test]
+    fn shortcuts_another_copy_holds_are_put_down_to_it() {
+        let both = ["Control+Alt+Shift+L".to_owned(), "Control+Alt+Shift+K".to_owned()];
+        assert_eq!(
+            taken(&both, true),
+            "Another copy of Lumenna, open on another profile, already uses Control+Alt+Shift+L and Control+Alt+Shift+K, so they do nothing in this one."
+        );
+        assert_eq!(
+            taken(&both[..1], false),
+            "Another program already uses Control+Alt+Shift+L, so it does nothing here."
+        );
+    }
+
+    #[test]
+    fn new_keys_another_copy_holds_say_where_to_change_them() {
+        assert!(refused("Control+Alt+Shift+J", true).ends_with("Choose other keys, or change them there."));
+        assert_eq!(refused("Control+Alt+Shift+J", false), "Another program already uses Control+Alt+Shift+J. Choose other keys.");
     }
 
     #[test]

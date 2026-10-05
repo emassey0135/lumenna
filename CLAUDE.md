@@ -458,7 +458,9 @@ surface's (`task_edit`, below), as it is every client's.
   sign-in are this PC's: `HKCU\Software\Lumenna\Shortcuts` (0 is off) and the Run key,
   which starts it with `--background` (no window) and `--profile` for a profile not the
   usual one. Shortcuts are unregistered while new keys are chosen, so pressing the old ones
-  reaches the hotkey control.
+  reaches the hotkey control. `--no-shortcuts` leaves them to another copy. Windows does not
+  say who holds a shortcut it refuses, so when another Lumenna window is open (class
+  `LumennaMain-`, any profile) the refusal names that copy rather than "another program".
 - **Resident, as the Mac app is**: closing hides; the tray icon, Control+Alt+Shift+L (show)
   and Control+Alt+Shift+K (quick add from anywhere) bring it back; starting it again shows
   the running instance (a mutex and window class named from the profile path). It shares
@@ -473,7 +475,8 @@ surface's (`task_edit`, below), as it is every client's.
   its message queue and assert on native UI Automation — what NVDA and Narrator are given.
   They open windows and take the foreground, so they are ignored by default and take turns:
   `cargo test -p lumenna-windows --test ui -- --ignored` (about 40 seconds). A posted key
-  needs the app active and not minimized; `Automation::activate` sees to both.
+  needs the app active and not minimized; `Automation::activate` sees to both. They start
+  the app with `--no-shortcuts`: the global shortcuts belong to the person's own copy.
 - **`examples/inspect.rs`** is the same automation by hand: `cargo run -p lumenna-windows
   --example inspect -- "- Lumenna"` prints the tree; `--post` takes steps (keys, `text:`,
   `cmd:<menu id>` for a Ctrl shortcut, `context`, `focus:Name`, `select:Name`, `invoke:Name`,

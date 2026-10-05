@@ -54,6 +54,9 @@ impl App {
         let child = Command::new(env!("CARGO_BIN_EXE_lumenna"))
             .arg("--profile")
             .arg(profile.path())
+            // The shortcuts from anywhere are the person's, held by their own copy; a test's
+            // must not take them, nor say another program has.
+            .arg("--no-shortcuts")
             .env("LUMENNA_BACKUP_DIR", backups.path())
             .spawn()
             .expect("the app starts");
@@ -132,6 +135,9 @@ fn the_day_opens_with_its_summary_first_and_focus_on_a_row() {
     let first = lines[day + 1..].iter().find(|l| l.contains("TreeItem")).expect("the day has rows");
     assert!(first.contains("TreeItem 'Today."), "the summary comes first: {first}");
     assert!(app.focus().contains("TreeItem"), "focus lands on a row: {}", app.focus());
+    // A copy started with --no-shortcuts leaves them to the person's own, and says nothing
+    // about another program having them.
+    assert!(!app.status().contains("already uses"), "{}", app.status());
 }
 
 #[test]
