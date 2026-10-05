@@ -59,9 +59,12 @@ impl App {
             .expect("the app starts");
         let automation = Automation::new();
         let window = automation.window_of(child.id(), Duration::from_secs(30)).expect("the app shows its window");
-        // Settled on Today, with the store read.
-        std::thread::sleep(Duration::from_secs(1));
+        // Settled on Today, with the store read: the day drawn, and focus in it. A cold start
+        // — the first test — takes longer than the rest, and a key posted before then is lost.
+        automation::wait(Duration::from_secs(30), || automation.named(window, "The day")).expect("the day is drawn");
         automation.activate(window);
+        automation::wait(Duration::from_secs(10), || automation.focus(window).contains("TreeItem").then_some(()))
+            .expect("focus is on the day");
         Self { child, window, automation, profile, _backups: backups, _turn: turn }
     }
 
@@ -183,7 +186,7 @@ fn every_settings_page_names_its_controls() {
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn a_setting_changed_in_settings_is_said_and_kept() {
     let app = App::launch(|_| {});
-    app.post(&[SETTINGS, "select:Planning", "tab", "tab", "tab", "text:7:30", "tab"]);
+    app.post(&[SETTINGS, "select:Planning", "focus:Day ends:", "text:7:30", "tab"]);
     let page = app.front();
     assert!(page.iter().any(|l| l.contains("Day-end is now 7:30") && l.contains("live=polite")), "{page:#?}");
     app.post(&["esc"]);

@@ -22,9 +22,9 @@
 //!
 //! A step is a key's name (`enter`, `f6`, `down`, `a`…), `text:words`, `cmd:<menu command>`
 //! for a Ctrl shortcut (no modifier can be held in a posted key), `context` for a keyboard
-//! context menu, `select:Name` or `invoke:Name` for a tab, item or button in the window in
-//! front, or `dump` to print that window. The steps are `tests/automation`'s, which the UI
-//! tests use too.
+//! context menu, `focus:Name` for a field, `select:Name` or `invoke:Name` for a tab, item or
+//! button in the window in front, or `dump` to print that window. The steps are
+//! `tests/automation`'s, which the UI tests use too.
 //!
 //! `--keys` presses keys for real instead — `ctrl+`, `alt+` and `shift+` work there — after
 //! bringing the window to the front, and refuses to press anything if it is not in front: a
