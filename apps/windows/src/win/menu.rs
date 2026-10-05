@@ -27,7 +27,6 @@ pub const BACK_UP: u16 = 106;
 pub const CLOSE_WINDOW: u16 = 107;
 pub const EXIT: u16 = 108;
 pub const EXPORT_IMPORT: u16 = 109;
-pub const QUICK_ADD_ANYWHERE: u16 = 110;
 pub const SETTINGS: u16 = 111;
 pub const RESTORE_BACKUP: u16 = 112;
 
@@ -73,7 +72,6 @@ pub const ABOUT: u16 = 201;
 pub const MENUS: [(&str, &[(u16, &str)]); 6] = [
     ("&File", &[
         (NEW_TASK, "&New Task...\tCtrl+N"),
-        (QUICK_ADD_ANYWHERE, "&Quick Add From Anywhere..."),
         (NEW_BLOCK, "New &Block...\tCtrl+Shift+N"),
         (NEW_PROJECT, "New &Project..."),
         (NEW_LABEL, "New &Label..."),

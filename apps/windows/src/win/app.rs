@@ -555,8 +555,9 @@ impl App {
         }
     }
 
-    /// Quick add, from the menu or from anywhere: starts with the place shown, so a task
-    /// added while looking at a project lands in it.
+    /// Quick add: from New Task, starting with the place shown, so a task added while
+    /// looking at a project lands in it; or from anywhere — the global shortcut, or the
+    /// notification area's New Task — starting empty, over whatever is in front.
     fn quick_add(&self, from_anywhere: bool) {
         let prefix = if from_anywhere { String::new() } else { self.task_list().map(|l| l.quick_add_prefix()).unwrap_or_default() };
         let owner = (!from_anywhere || controls::is_visible(self.main)).then_some(self.main);
@@ -645,7 +646,6 @@ impl App {
                 Ok(done) => self.say(&speech::sentence(&speech::announcement(&done.announcement, &done.notices))),
                 Err(error) => self.fail(&sentence(&error)),
             },
-            menu::QUICK_ADD_ANYWHERE => self.quick_add(true),
             menu::SETTINGS => settings::show(self, Page::General),
             menu::EXPORT_IMPORT => settings::show(self, Page::Export),
             menu::RESTORE_BACKUP => {
