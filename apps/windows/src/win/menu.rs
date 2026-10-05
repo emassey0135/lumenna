@@ -68,80 +68,79 @@ pub const GO_TO_DAY: u16 = 183;
 pub const SHOW_WINDOW: u16 = 200;
 pub const ABOUT: u16 = 201;
 
+/// The menu bar: each menu's title, and its items as `(command, text)`, where command 0 is a
+/// separator. A table, so a test can check it: no item twice, no mnemonic letter twice.
+pub const MENUS: [(&str, &[(u16, &str)]); 6] = [
+    ("&File", &[
+        (NEW_TASK, "&New Task...\tCtrl+N"),
+        (QUICK_ADD_ANYWHERE, "&Quick Add From Anywhere..."),
+        (NEW_BLOCK, "New &Block...\tCtrl+Shift+N"),
+        (NEW_PROJECT, "New &Project..."),
+        (NEW_LABEL, "New &Label..."),
+        (NEW_FILTER, "New Saved &Filter..."),
+        (0, ""),
+        (SYNC_NOW, "&Sync Now\tF5"),
+        (BACK_UP, "Back &Up Now"),
+        (RESTORE_BACKUP, "&Restore From a Backup..."),
+        (EXPORT_IMPORT, "&Export and Import..."),
+        (0, ""),
+        (SETTINGS, "Se&ttings...\tCtrl+,"),
+        (0, ""),
+        (CLOSE_WINDOW, "&Close Window\tCtrl+W"),
+        (EXIT, "E&xit\tCtrl+Q"),
+    ]),
+    ("&Edit", &[
+        (UNDO, "&Undo\tCtrl+Z"),
+        (REDO, "&Redo\tCtrl+Y"),
+        (0, ""),
+        (CUT, "Cu&t\tCtrl+X"),
+        (COPY, "&Copy\tCtrl+C"),
+        (PASTE, "&Paste\tCtrl+V"),
+        (SELECT_ALL, "Select &All\tCtrl+A"),
+        (0, ""),
+        (FILTER, "&Filter Tasks\tCtrl+F"),
+    ]),
+    ("&View", &[
+        (GO_TODAY, "&Today\tCtrl+1"),
+        (GO_TASKS, "T&asks\tCtrl+2"),
+        (GO_BLOCKS, "&Blocks\tCtrl+3"),
+        (GO_TRASH, "T&rash\tCtrl+4"),
+        (0, ""),
+        (NEXT_PANE, "&Next Pane\tF6"),
+        (PREVIOUS_PANE, "&Previous Pane\tShift+F6"),
+    ]),
+    ("&Task", &[
+        (MARK_DONE, "&Mark Done\tCtrl+K"),
+        (OPEN_TASK, "&Edit Details\tEnter"),
+        (SAVE_TASK, "&Save Changes\tCtrl+S"),
+        (0, ""),
+        (PUT_IN_BLOCK, "Put in a &Block...\tCtrl+B"),
+        (MOVE_TO_PROJECT, "Move to &Project...\tCtrl+Shift+M"),
+        (MAKE_SUBTASK, "Make S&ubtask Of..."),
+        (MOVE_TO_TOP, "Move to &Top Level"),
+        (WAIT_FOR, "&Wait For..."),
+        (0, ""),
+        (TRASH_TASK, "Move to T&rash\tDelete"),
+        (RESTORE_TASK, "Rest&ore From Trash"),
+        (ERASE_TASK, "Erase &for Good..."),
+    ]),
+    ("&Day", &[
+        (PREVIOUS_DAY, "&Previous Day\tCtrl+Page Up"),
+        (NEXT_DAY, "&Next Day\tCtrl+Page Down"),
+        (GO_TO_NOW, "Go to N&ow\tCtrl+T"),
+        (GO_TO_DAY, "&Go to Day...\tCtrl+G"),
+        (0, ""),
+        (NEW_BLOCK, "&Add Block...\tCtrl+Shift+N"),
+    ]),
+    ("&Help", &[(ABOUT, "&About Lumenna")]),
+];
+
 /// Builds the menu bar.
 pub fn bar() -> HMENU {
-    fn menu<'a>(title: &str, items: &[(u16, &'a str)]) -> (String, Vec<(u16, &'a str)>) {
-        (title.to_owned(), items.to_vec())
-    }
-    let menus = [
-        menu("&File", &[
-            (NEW_TASK, "&New Task...\tCtrl+N"),
-            (QUICK_ADD_ANYWHERE, "&Quick Add From Anywhere..."),
-            (NEW_BLOCK, "New &Block...\tCtrl+Shift+N"),
-            (NEW_PROJECT, "New &Project..."),
-            (NEW_LABEL, "New &Label..."),
-            (NEW_FILTER, "New Saved &Filter..."),
-            (0, ""),
-            (SYNC_NOW, "&Sync Now\tF5"),
-            (BACK_UP, "Back &Up Now"),
-            (RESTORE_BACKUP, "&Restore From a Backup..."),
-            (EXPORT_IMPORT, "&Export and Import..."),
-            (0, ""),
-            (SETTINGS, "Se&ttings...\tCtrl+,"),
-            (0, ""),
-            (CLOSE_WINDOW, "&Close Window\tCtrl+W"),
-            (EXIT, "E&xit\tCtrl+Q"),
-        ]),
-        menu("&Edit", &[
-            (UNDO, "&Undo\tCtrl+Z"),
-            (REDO, "&Redo\tCtrl+Y"),
-            (0, ""),
-            (CUT, "Cu&t\tCtrl+X"),
-            (COPY, "&Copy\tCtrl+C"),
-            (PASTE, "&Paste\tCtrl+V"),
-            (SELECT_ALL, "Select &All\tCtrl+A"),
-            (0, ""),
-            (FILTER, "&Filter Tasks\tCtrl+F"),
-        ]),
-        menu("&View", &[
-            (GO_TODAY, "&Today\tCtrl+1"),
-            (GO_TASKS, "T&asks\tCtrl+2"),
-            (GO_BLOCKS, "&Blocks\tCtrl+3"),
-            (GO_TRASH, "T&rash\tCtrl+4"),
-            (0, ""),
-            (NEXT_PANE, "&Next Pane\tF6"),
-            (PREVIOUS_PANE, "&Previous Pane\tShift+F6"),
-        ]),
-        menu("&Task", &[
-            (MARK_DONE, "&Mark Done\tCtrl+K"),
-            (OPEN_TASK, "&Edit Details\tEnter"),
-            (SAVE_TASK, "&Save Changes\tCtrl+S"),
-            (0, ""),
-            (PUT_IN_BLOCK, "Put in a &Block...\tCtrl+B"),
-            (MOVE_TO_PROJECT, "Move to &Project...\tCtrl+Shift+M"),
-            (MAKE_SUBTASK, "Make S&ubtask Of..."),
-            (MOVE_TO_TOP, "Move to &Top Level"),
-            (WAIT_FOR, "&Wait For..."),
-            (WAIT_FOR, "&Wait For..."),
-            (0, ""),
-            (TRASH_TASK, "Move to T&rash\tDelete"),
-            (RESTORE_TASK, "Rest&ore From Trash"),
-            (ERASE_TASK, "Erase &for Good..."),
-        ]),
-        menu("&Day", &[
-            (PREVIOUS_DAY, "&Previous Day\tCtrl+Page Up"),
-            (NEXT_DAY, "&Next Day\tCtrl+Page Down"),
-            (GO_TO_NOW, "Go to N&ow\tCtrl+T"),
-            (GO_TO_DAY, "&Go to Day...\tCtrl+G"),
-            (0, ""),
-            (NEW_BLOCK, "&Add Block...\tCtrl+Shift+N"),
-        ]),
-        menu("&Help", &[(ABOUT, "&About Lumenna")]),
-    ];
     unsafe {
         let bar = CreateMenu().unwrap_or_default();
-        for (title, items) in menus {
-            let popup = popup(&items);
+        for (title, items) in MENUS {
+            let popup = popup(items);
             let _ = AppendMenuW(bar, MF_POPUP, popup.0 as usize, &HSTRING::from(title));
         }
         bar
@@ -194,4 +193,47 @@ pub fn accelerators() -> HACCEL {
         key(control, letter('G'), GO_TO_DAY),
     ];
     unsafe { CreateAcceleratorTableW(&table).unwrap_or_default() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MENUS;
+
+    /// The letter after `&`, which Alt and that letter reaches.
+    fn mnemonic(text: &str) -> Option<char> {
+        text.split_once('&').and_then(|(_, rest)| rest.chars().next()).map(|c| c.to_ascii_lowercase())
+    }
+
+    #[test]
+    fn no_menu_lists_anything_twice() {
+        for (title, items) in MENUS {
+            let mut seen: Vec<&str> = Vec::new();
+            for (id, text) in items.iter().filter(|(id, _)| *id != 0) {
+                let name = text.split('\t').next().unwrap_or(text);
+                assert!(!seen.contains(&name), "{title} lists {name} twice (command {id})");
+                seen.push(name);
+            }
+        }
+    }
+
+    #[test]
+    fn no_two_items_in_a_menu_share_a_letter() {
+        for (title, items) in MENUS {
+            let mut seen: Vec<char> = Vec::new();
+            for (_, text) in items.iter().filter(|(id, _)| *id != 0) {
+                let letter = mnemonic(text).unwrap_or_else(|| panic!("{text} in {title} has no letter"));
+                assert!(!seen.contains(&letter), "{text} in {title} shares {letter} with another item");
+                seen.push(letter);
+            }
+        }
+    }
+
+    #[test]
+    fn no_two_menus_share_a_letter() {
+        let letters: Vec<char> = MENUS.iter().filter_map(|(title, _)| mnemonic(title)).collect();
+        let mut unique = letters.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(unique.len(), letters.len(), "{letters:?}");
+    }
 }
