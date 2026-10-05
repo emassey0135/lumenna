@@ -5,7 +5,7 @@
 //! Each is a window action (`win.mark-done` and so on) acting on the task in hand: the one in
 //! the details when focus is there, else the one selected in the list or on the day. After a
 //! change, a task list puts its selection on the same task if it is still listed, and
-//! otherwise on whatever now holds its place (§13).
+//! otherwise on whatever now holds its place.
 
 use std::rc::Rc;
 
@@ -108,7 +108,7 @@ pub fn run(app: &Rc<App>, command: Command, id: &str) {
             Command::Trash => perform(&app, None, |l| l.trash_task(&task.id)),
             Command::Restore => perform(&app, None, |l| l.restore_task(&task.id)),
             Command::Erase => {
-                // Erasing rebuilds the document without the task and cannot be undone (§9).
+                // Erasing rebuilds the document without the task and cannot be undone.
                 let heading = format!("Erase {}?", task.title);
                 let detail = "It and its history are deleted for good. This cannot be undone.";
                 if prompts::confirm(&app.window, &heading, detail, "Erase").await {
@@ -159,7 +159,7 @@ async fn move_to_project(app: &App, task: &TaskDetail) {
     }
 }
 
-/// Puts a task into a block that takes tasks, today or in the next six days (§3.7), asking how long the
+/// Puts a task into a block that takes tasks, today or in the next six days, asking how long the
 /// sitting is meant to take. The planner reaches any other day, from the block's side.
 async fn put_in_block(app: &App, task: &TaskDetail) {
     let today = jiff::Zoned::now().date();

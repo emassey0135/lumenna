@@ -1,4 +1,4 @@
-//! The selected task's details (§16.1: task detail / edit), in the right-hand pane.
+//! The selected task's details, to read and edit, in the right-hand pane.
 //!
 //! Stock fields, each named by the label above it through the label's mnemonic, which is also
 //! the field's Alt shortcut. The mnemonics avoid the menu bar's letters (F E V T D H). What a
@@ -67,7 +67,7 @@ impl Detail {
         let labels = gtk::Entry::new();
         describe(&labels, "Names separated by commas. A new name becomes a label.");
         // Tab leaves the notes rather than being typed into them, or a keyboard user could
-        // not get out (§6.4's rule, for a different field).
+        // not get out.
         let notes = gtk::TextView::builder().accepts_tab(false).wrap_mode(gtk::WrapMode::WordChar).build();
         crate::prompts::leaves_on_tab(&notes);
         let waits = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::Browse).build();

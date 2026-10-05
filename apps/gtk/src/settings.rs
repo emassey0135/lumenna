@@ -1,4 +1,4 @@
-//! Settings (§3.10, §16.1): a window of tabs, opened with Ctrl+Comma — General, Planning,
+//! Settings: a window of tabs, opened with Ctrl+Comma — General, Planning,
 //! Devices, Backups, and Export and Import, as on the Mac and Windows.
 //!
 //! Every page applies a change as it is made; a text field when it is left or Enter is
@@ -326,7 +326,7 @@ fn planning(app: &Rc<App>) -> gtk::Widget {
 }
 
 // ---------------------------------------------------------------------------------------
-// Devices: sync status, pairing, renaming, unpairing (§7, §9)
+// Devices: sync status, pairing, renaming, unpairing
 // ---------------------------------------------------------------------------------------
 
 pub struct Devices {
@@ -496,7 +496,7 @@ pub fn devices_heard(app: &App, said: Option<&str>) {
 }
 
 // ---------------------------------------------------------------------------------------
-// Backups (§9): this device's alone
+// Backups: this device's alone
 // ---------------------------------------------------------------------------------------
 
 fn backups(app: &Rc<App>) -> gtk::Widget {
@@ -602,7 +602,7 @@ pub async fn import(app: &App, window: &gtk::Window, title: &str, types: &[(&str
 pub const IMPORTABLE: [(&str, &str); 1] = [("Lumenna exports and backups", "*.json;*.lumbak")];
 
 // ---------------------------------------------------------------------------------------
-// Export and import (§9): what you have now, and reading it back
+// Export and import: what you have now, and reading it back
 // ---------------------------------------------------------------------------------------
 
 fn export(app: &Rc<App>) -> gtk::Widget {

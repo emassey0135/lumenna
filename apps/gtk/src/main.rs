@@ -1,4 +1,4 @@
-//! Lumenna for Linux (§16.3): GTK 4 through `gtk4-rs`, linking the command surface directly —
+//! Lumenna for Linux: GTK 4 through `gtk4-rs`, linking the command surface directly —
 //! no FFI, no JSON, the same `Lumenna` object the command line calls.
 //!
 //! **Stock widgets, annotated where GTK under-reports.** Every list is a `GtkListView` that
@@ -9,7 +9,7 @@
 //! client shares, such as what a task form sends back, is the surface's.
 //!
 //! One instance per profile: GApplication registers the app's identifier on the session bus,
-//! and starting it again activates the running one, which shows its window (§16.2).
+//! and starting it again activates the running one, which shows its window.
 
 mod block_form;
 mod blocks;

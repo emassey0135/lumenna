@@ -1,4 +1,4 @@
-//! The planner (§16.1; §13's worked example): a day as it is lived, as a tree.
+//! The planner: a day as it is lived, as a tree.
 //!
 //! The first row is the summary — what a glance at a timeline gives a sighted user. Then
 //! blocks in time order with their sittings beneath them, free time as rows of its own, and
@@ -288,7 +288,7 @@ impl DayView {
         }
     }
 
-    /// Reads the store again; the first time, lands on now (§13). Once, so coming back to it
+    /// Reads the store again; the first time, lands on now. Once, so coming back to it
     /// later does not move the selection from where the person left it.
     pub fn reload(&self, app: &App) {
         self.list(app);
@@ -304,7 +304,7 @@ impl DayView {
         }
     }
 
-    /// §13's "go to now": today, on the now row or the block happening now.
+    /// Go to now: today, on the now row or the block happening now.
     pub fn go_to_now(&self, app: &App, announce: bool) {
         *self.day.borrow_mut() = None;
         self.list(app);
@@ -380,7 +380,7 @@ impl DayView {
     }
 
     /// Changes a block — asking "this day, or every day?" of a repeating one, never guessing
-    /// (§13, §4.3).
+    /// which occurrences a change means.
     fn edit(self: &Rc<Self>, app: &Rc<App>, block: PlanBlock) {
         let Some(date) = self.date() else { return };
         let (day, app) = (Rc::clone(self), Rc::clone(app));
@@ -443,7 +443,7 @@ impl DayView {
     }
 
     /// Space on a sitting: starts its timer, pauses it while it runs, resumes it while paused
-    /// (§3.7). Stopping, which ends the sitting, is in its menu.
+    /// Stopping, which ends the sitting, is in its menu.
     fn toggle_timer(&self, app: &App, sitting: &PlanAssignment) {
         let key = format!("sitting:{}", sitting.id);
         if sitting.running {
@@ -499,7 +499,7 @@ impl DayView {
         });
     }
 
-    /// Fills a block from the task side's opposite: from the block, pick a task (§13).
+    /// Fills a block from the task side's opposite: from the block, pick a task.
     fn assign(self: &Rc<Self>, app: &Rc<App>, block: PlanBlock) {
         let Some(date) = self.date() else { return };
         let (day, app) = (Rc::clone(self), Rc::clone(app));

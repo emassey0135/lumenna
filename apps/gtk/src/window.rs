@@ -1,20 +1,19 @@
 //! The main window: three panes and a status line, the menu bar, and the actions.
 //!
 //! The panes are the places (a tree), the view for the place chosen, and the chosen task's
-//! details, as Files and Evolution lay theirs out. **F6 and Shift+F6 move between them**
-//! (§16.3: implemented explicitly; GTK has no pane traversal of its own).
+//! details, as Files and Evolution lay theirs out. **F6 and Shift+F6 move between them**;
+//! GTK has no pane traversal of its own.
 //!
 //! What a change did is written on the status line along the bottom and announced through
-//! `gtk_accessible_announce` (§13: announce state changes explicitly), after focus has moved
-//! to the row it lands on — Orca reads an announcement as a message, which would otherwise
-//! be cut off by the focus change.
+//! `gtk_accessible_announce`, after focus has moved to the row it lands on — Orca reads an
+//! announcement as a message, which would otherwise be cut off by the focus change.
 //!
-//! Every command is an action in the menu bar, with its shortcut beside it (GMenu, §16.3),
-//! so the menu bar is how anyone finds out what the app can do. The shortcuts are GTK's
+//! Every command is an action in the menu bar (GMenu), with its shortcut beside it, so the
+//! menu bar is how anyone finds out what the app can do. The shortcuts are GTK's
 //! application accelerators. Some keys are shown in the menu without being bound, because the
 //! widget with focus answers them itself: Space and Delete on a list, Enter.
 //!
-//! Closing the window hides it; the app stays resident, syncing, until Quit (§16.2).
+//! Closing the window hides it; the app stays resident, syncing, until Quit.
 
 use std::cell::{Cell, RefCell};
 use std::path::Path;
@@ -123,7 +122,7 @@ pub fn spawn(future: impl std::future::Future<Output = ()> + 'static) {
     }
 }
 
-/// Announces `text` from the window `widget` is in (§13).
+/// Announces `text` from the window `widget` is in.
 ///
 /// From the window, not the status line that shows it: GTK dropped an announcement from a
 /// label in the settings window, whose accessible object was never made, while one from the
@@ -254,7 +253,7 @@ impl App {
         for (action, keys) in ACCELERATORS {
             application.set_accels_for_action(action, keys);
         }
-        // Hidden, not closed: the app stays resident, syncing (§16.2).
+        // Hidden, not closed: the app stays resident, syncing.
         app.window.connect_close_request(|window| {
             window.set_visible(false);
             glib::Propagation::Stop
@@ -265,7 +264,7 @@ impl App {
     /// Shows the window on Today — unless started in the background, at sign-in — and
     /// starts what runs beside it.
     fn start(self: &Rc<Self>, background: bool, shortcuts: bool) {
-        // Resident: closing the window does not end the app (§16.2).
+        // Resident: closing the window does not end the app.
         std::mem::forget(self.application.hold());
         self.sidebar.reload(self);
         self.go(Place::Today, false);
@@ -336,7 +335,7 @@ impl App {
     // Saying, failing, changing
     // -------------------------------------------------------------------------------------
 
-    /// Writes a sentence on the status line, and announces it (§13) — once focus has landed
+    /// Writes a sentence on the status line, and announces it — once focus has landed
     /// on the row a change put it on (`tree::when_settled`).
     pub fn say(&self, text: &str) {
         if text.is_empty() {
@@ -629,7 +628,7 @@ impl App {
         simple("close-window", |app| app.window.set_visible(false));
         simple("quit", |app| app.quit());
         simple("undo", |app| {
-            // In a field, its own typing; elsewhere, the store (§9).
+            // In a field, its own typing; elsewhere, the store.
             if let Some(field) = app.editing() {
                 let _ = field.activate_action("text.undo", None);
             } else if let Some(change) = app.perform(Lumenna::undo) {

@@ -1,7 +1,7 @@
-//! The icon in the tray (§16.2), through StatusNotifierItem — GTK 4 has no status icon of its
+//! The icon in the tray, through StatusNotifierItem — GTK 4 has no status icon of its
 //! own — by way of `ksni`.
 //!
-//! Never the only way back to the window, since Orca reaches a tray item poorly (§16.2): the
+//! Never the only way back to the window, since Orca reaches a tray item poorly: the
 //! shortcut from anywhere and starting the app again do the same. GNOME shows such items only
 //! with an extension; without one there is nothing to show it, and the item waits quietly
 //! for a host to appear rather than failing.

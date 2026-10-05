@@ -1,4 +1,4 @@
-//! The shortcuts that work from anywhere (§16.2): showing the window, and quick add over
+//! The shortcuts that work from anywhere: showing the window, and quick add over
 //! whatever is in front.
 //!
 //! On Wayland an app cannot grab keys for itself; it asks the desktop, through the
