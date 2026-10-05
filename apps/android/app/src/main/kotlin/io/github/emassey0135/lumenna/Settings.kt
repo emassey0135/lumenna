@@ -8,6 +8,7 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -96,7 +97,7 @@ private fun SettingRow(name: String, value: String, change: () -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
-            .toggleable(value = false, role = Role.Button, onValueChange = { change() })
+            .clickable(role = Role.Button, onClick = change)
             .semantics(mergeDescendants = true) {}
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
@@ -296,7 +297,7 @@ fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
                     add(device.platform)
                     if (device.thisDevice) add("this device")
                     device.lastError?.let { add("last attempt failed: $it") }
-                    device.lastSuccess?.let { add("last synced $it") }
+                    device.lastSuccess?.let { add("last synced ${Clock.ago(it)}") }
                     if (!device.thisDevice && device.lastSuccess == null && device.lastError == null) add("not synced yet")
                 }.joinToString(", ")
                 Item(device.nodeId, device.name, detail)
@@ -306,7 +307,9 @@ fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
         add = { navigator.push(Screen.Pairing) },
         open = null,
         actions = { item ->
-            listOf(
+            // This device cannot unpair itself, so that is not offered on its own row.
+            val self = item.detail.contains("this device")
+            listOfNotNull(
                 RowAction("Sync Now") {
                     core.say("Syncing")
                     core.syncNow { result ->
@@ -324,7 +327,7 @@ fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
                         }
                     }
                 },
-                RowAction("Stop Syncing With It") {
+                if (self) null else RowAction("Stop Syncing With It") {
                     prompt.show {
                         Confirm(
                             "Stop syncing with ${item.title}?",

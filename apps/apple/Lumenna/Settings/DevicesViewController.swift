@@ -2,12 +2,16 @@ import UIKit
 
 /// Paired devices and how syncing is going, in words rather than an icon (§9, §16.1).
 final class DevicesViewController: ItemListViewController {
+    /// This device's identifier, whose row offers no Unpair: the core refuses it.
+    private var thisDevice: Set<String> = []
+
     init(core: Core) {
         super.init(core: core, title: "Devices")
     }
 
     override func load() throws -> (items: [Item], count: String) {
         let status = try core.lumenna.syncStatus()
+        thisDevice = Set(status.devices.filter(\.thisDevice).map(\.nodeId))
         let items = status.devices.map { device -> Item in
             var detail = [device.platform]
             if device.thisDevice {
@@ -49,12 +53,16 @@ final class DevicesViewController: ItemListViewController {
     override func actions(for item: Item) -> [ItemAction] {
         guard item.key != "sync-now" else { return [] }
         let lumenna = core.lumenna
-        return [
+        var actions = [
             ItemAction(title: "Rename") { [weak self] item in
                 self?.askForText("Rename \(item.title)", initial: item.title) { name in
                     self?.perform(on: item) { try lumenna.renameDevice(device: item.key, name: name) }
                 }
             },
+        ]
+        // This device cannot unpair itself, so that is not offered on its own row.
+        guard !thisDevice.contains(item.key) else { return actions }
+        actions.append(
             ItemAction(title: "Unpair", destructive: true) { [weak self] item in
                 self?.confirm(
                     "Unpair \(item.title)?",
@@ -63,8 +71,9 @@ final class DevicesViewController: ItemListViewController {
                 ) {
                     self?.perform(on: item) { try lumenna.unpairDevice(device: item.key) }
                 }
-            },
-        ]
+            }
+        )
+        return actions
     }
 
     private func syncNow() {

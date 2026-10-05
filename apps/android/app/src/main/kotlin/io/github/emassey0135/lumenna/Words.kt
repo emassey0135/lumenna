@@ -41,6 +41,19 @@ object Clock {
         return parts.joinToString(" ")
     }
 
+    /** How long ago a timestamp was, as a person says it: "5 minutes ago", as every app says it. */
+    fun ago(timestamp: String): String {
+        val then = runCatching { java.time.Instant.parse(timestamp) }.getOrNull() ?: return timestamp
+        val seconds = java.time.Duration.between(then, java.time.Instant.now()).seconds
+        fun plural(n: Long, unit: String) = if (n == 1L) "1 $unit ago" else "$n ${unit}s ago"
+        return when {
+            seconds < 60 -> "just now"
+            seconds < 3_600 -> plural(seconds / 60, "minute")
+            seconds < 86_400 -> plural(seconds / 3_600, "hour")
+            else -> plural(seconds / 86_400, "day")
+        }
+    }
+
     /** Today, as the core reads a date. */
     fun today(): String = LocalDate.now().toString()
 
