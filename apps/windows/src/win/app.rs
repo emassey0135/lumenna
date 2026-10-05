@@ -98,6 +98,8 @@ pub struct App {
     /// Where focus was when the window was last active, to put it back on return.
     last_focus: Cell<HWND>,
     minute: Cell<i64>,
+    /// The store's version when the views last read it (`Lumenna::version`).
+    version: RefCell<String>,
     icon: HICON,
     taskbar_created: u32,
 }
@@ -250,6 +252,7 @@ impl App {
             deferred: RefCell::new(VecDeque::new()),
             last_focus: Cell::new(HWND::default()),
             minute: Cell::new(0),
+            version: RefCell::new(String::new()),
             icon,
             taskbar_created: tray::taskbar_created(),
         });
@@ -319,6 +322,11 @@ impl App {
     /// The store changed — here, in another process, or from another device. Everything
     /// showing it reads it again, keeping its selection.
     pub fn store_changed(&self) {
+        // The version read now, so the timer does not reload again for what this reload
+        // already shows — a change made here, or one a sync just brought.
+        if let Ok(version) = self.core.lumenna.version() {
+            *self.version.borrow_mut() = version;
+        }
         self.sidebar.reload(self);
         if let Some(content) = self.content() {
             content.view().reload(self);
@@ -852,8 +860,15 @@ impl App {
     }
 
     /// Once a second: what another process wrote, and once a minute, the clock.
+    ///
+    /// By the store's version, not `refresh`: `refresh` says whether that one call took
+    /// anything in, and this app's own sync loop refreshes every tick on the same
+    /// connection, as every operation does first — so whichever got there first after `lum`
+    /// wrote was told, and this was not. A version is the same whoever reads it.
     fn on_timer(&self) {
-        if self.core.lumenna.refresh().unwrap_or(false) {
+        if let Ok(version) = self.core.lumenna.version()
+            && *self.version.borrow() != version
+        {
             self.store_changed();
         }
         let minute = jiff::Timestamp::now().as_second() / 60;

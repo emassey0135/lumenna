@@ -166,6 +166,23 @@ fn f6_goes_round_the_panes() {
 
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn a_task_another_process_adds_appears_without_a_key_pressed() {
+    let app = App::launch(|lumenna| add(lumenna, "Buy milk"));
+    app.post(&[GO_TASKS]);
+    // As `lum` would, from a process of its own. Noticing by `refresh` alone could miss this
+    // when the app's sync loop refreshed first (the GTK app's tests caught it); this has not
+    // reproduced that race here, but holds the app to noticing at all.
+    for title in ["Call Sam", "Water plants", "Pay rent"] {
+        app.store().add_task(title).unwrap();
+        let listed = automation::wait(Duration::from_secs(5), || {
+            app.automation.dump(app.window, 8).iter().any(|l| l.contains(&format!("TreeItem '{title}'"))).then_some(())
+        });
+        assert!(listed.is_some(), "{title} never appeared");
+    }
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn every_control_in_the_main_window_is_named() {
     let app = App::launch(|lumenna| add(lumenna, "Buy milk"));
     app.post(&[GO_TASKS, "home"]);
