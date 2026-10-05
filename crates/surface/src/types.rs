@@ -687,6 +687,9 @@ pub struct PlanBlock {
     /// anchored block may too.
     #[serde(default)]
     pub accepts_tasks: bool,
+    /// Whether it counts toward the hours available for work.
+    #[serde(default)]
+    pub counts_capacity: bool,
     /// Whether it is fixed in time.
     #[serde(default)]
     pub anchored: bool,
