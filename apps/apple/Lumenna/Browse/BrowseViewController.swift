@@ -82,8 +82,8 @@ final class ProjectsViewController: ItemListViewController {
             TaskListViewController(
                 core: core,
                 title: item.title,
-                query: sigil("#", item.title),
-                quickAddPrefix: sigil("#", item.title) + " "
+                query: projectReference(name: item.title),
+                quickAddPrefix: projectReference(name: item.title) + " "
             ),
             animated: true
         )
@@ -182,8 +182,8 @@ final class LabelsViewController: ItemListViewController {
             TaskListViewController(
                 core: core,
                 title: item.title,
-                query: sigil("@", item.title),
-                quickAddPrefix: sigil("@", item.title) + " "
+                query: labelReference(name: item.title),
+                quickAddPrefix: labelReference(name: item.title) + " "
             ),
             animated: true
         )
