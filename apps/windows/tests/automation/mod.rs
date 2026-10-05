@@ -16,13 +16,13 @@ use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, Co
 use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 use windows::Win32::System::Variant::VARIANT;
 use windows::Win32::UI::Accessibility::*;
-use windows::Win32::UI::Controls::EM_SETSEL;
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, EnumWindows, FindWindowW, GA_ROOT, GA_ROOTOWNER, GUITHREADINFO, GetAncestor,
-    GetForegroundWindow, GetGUIThreadInfo, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+    GetForegroundWindow, GetGUIThreadInfo, GetParent, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
     PostMessageW, SW_RESTORE, ShowWindow,
     SetForegroundWindow, SwitchToThisWindow, WM_CHAR, WM_COMMAND, WM_CONTEXTMENU, WM_KEYDOWN, WM_KEYUP,
+    WM_NEXTDLGCTL,
 };
 use windows::core::{BOOL, w};
 
@@ -120,6 +120,14 @@ impl Automation {
         self.dump_elements(window).into_iter().find(|e| unsafe { e.CurrentName() }.is_ok_and(|n| n == name))
     }
 
+    /// The first element in `window` with this name that can take the keyboard focus: a
+    /// field, not the label before it, which a dialog names the same.
+    pub fn focusable(&self, window: HWND, name: &str) -> Option<IUIAutomationElement> {
+        self.dump_elements(window).into_iter().find(|e| unsafe {
+            e.CurrentName().is_ok_and(|n| n == name) && e.CurrentIsKeyboardFocusable().is_ok_and(|f| f.as_bool())
+        })
+    }
+
     /// Posts one step into `app` (see [`key`] for what a step can be), and waits for it to
     /// take effect.
     pub fn post(&self, app: HWND, step: &str) -> Result<(), String> {
@@ -140,12 +148,13 @@ impl Automation {
         } else if let Some(name) = step.strip_prefix("focus:") {
             // A field by name, as Alt and its letter would reach it.
             let front = self.front(app);
-            let found = self.named(front, name).ok_or_else(|| format!("nothing called {name} in the window in front"))?;
-            unsafe { found.SetFocus() }.map_err(|e| e.to_string())?;
-            // With its text selected, as tabbing into a field leaves it, so typing replaces it.
-            if let Ok(field) = unsafe { found.CurrentNativeWindowHandle() } {
-                post(field, EM_SETSEL, 0, -1);
-            }
+            let found = self.focusable(front, name).ok_or_else(|| format!("nothing focusable called {name} in the window in front"))?;
+            // Through the dialog manager, as Alt and a letter or Tab move focus: UI Automation's
+            // own SetFocus did not move it in a dialog. The dialog selects an edit's text as it
+            // goes, as tabbing in does, so typing replaces it.
+            let field = HWND(unsafe { found.CurrentNativeWindowHandle() }.map_err(|e| e.to_string())?.0);
+            let dialog = unsafe { GetParent(field) }.map_err(|e| e.to_string())?;
+            post(dialog, WM_NEXTDLGCTL, field.0 as usize, 1);
         } else if let Some((verb, name)) = step.split_once(':').filter(|(v, _)| *v == "select" || *v == "invoke") {
             // A tab, list item or tree item to select, or a button to press, by name, in the
             // window that has focus: what Ctrl+Tab or Alt and a letter would reach.

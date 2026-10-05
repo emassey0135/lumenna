@@ -57,15 +57,13 @@ pub fn block_details(block: &crate::types::PlanBlock) -> Vec<String> {
     if block.changed_for_this_day {
         parts.push("changed for this day".to_owned());
     }
-    let (takes, anchored) = match block.kind.as_str() {
-        "work" => (true, false),
-        "break" => (false, false),
-        _ => (false, true),
-    };
-    if block.accepts_tasks != takes {
+    // An unknown kind is taken as an event, as it always was here.
+    let kind = crate::form::block_defaults(block.kind.clone())
+        .unwrap_or(crate::form::BlockDefaults { accepts_tasks: false, counts_capacity: false, anchored: true });
+    if block.accepts_tasks != kind.accepts_tasks {
         parts.push(if block.accepts_tasks { "takes tasks" } else { "takes no tasks" }.to_owned());
     }
-    if block.anchored != anchored {
+    if block.anchored != kind.anchored {
         parts.push(if block.anchored { "anchored" } else { "movable" }.to_owned());
     }
     if block.accepts_tasks {

@@ -3,14 +3,14 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lumenna_surface::RowView;
+use lumenna_surface::{RowView, block_fields};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{NM_DBLCLK, NMHDR, NMTVKEYDOWN, TVN_KEYDOWN, TVN_SELCHANGEDW, WC_STATICW};
 use windows::Win32::UI::Input::KeyboardAndMouse::VK_DELETE;
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 
 use super::app::App;
-use super::block_form::{self, Fields, Purpose};
+use super::block_form::{self, Purpose};
 use super::controls::{self, rect};
 use super::core::sentence;
 use super::prompts;
@@ -45,16 +45,9 @@ impl BlockList {
             Ok(shown) => shown,
             Err(error) => return prompts::fail(app.main, &sentence(&error)),
         };
-        let fields = Fields {
-            title: shown.title,
-            start: shown.start,
-            minutes: shown.minutes.to_string(),
-            kind: shown.kind,
-            repeat: shown.repetition.unwrap_or_default(),
-            rule: shown.rrule.filter(|_| shown.repeats),
-        };
-        let purpose = Purpose::Series { id: shown.id };
-        if let Some(change) = block_form::run(app.main, &app.core.lumenna, purpose, fields) {
+        let rule = shown.rrule.clone().filter(|_| shown.repeats);
+        let purpose = Purpose::Series { id: shown.id.clone() };
+        if let Some(change) = block_form::run(app.main, &app.core.lumenna, purpose, block_fields(shown), rule) {
             app.store_changed();
             self.tree.select_key_or_near(Some(&row.id), self.tree.selected());
             app.say_change(&change);

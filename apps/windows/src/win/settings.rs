@@ -16,7 +16,7 @@ use windows::Win32::UI::Controls::{
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::VK_DELETE;
 use windows::Win32::UI::WindowsAndMessaging::{
-    BM_GETCHECK, BM_SETCHECK, BN_CLICKED, BS_AUTOCHECKBOX, BS_GROUPBOX, BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL,
+    BN_CLICKED, BS_AUTOCHECKBOX, BS_GROUPBOX, BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL,
     CB_RESETCONTENT, CB_SETCURSEL, CBN_SELCHANGE, CBS_DROPDOWNLIST, EN_KILLFOCUS, ES_AUTOHSCROLL, ES_MULTILINE,
     ES_NUMBER, ES_READONLY, GetParent, IDCANCEL, IDOK, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL,
     LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_WANTKEYBOARDINPUT, WM_NOTIFY, WM_VKEYTOITEM, WS_BORDER, WS_TABSTOP,
@@ -143,14 +143,6 @@ fn selected(combo: HWND) -> Option<usize> {
     usize::try_from(controls::send(combo, CB_GETCURSEL, 0, 0)).ok()
 }
 
-fn checked(button: HWND) -> bool {
-    controls::send(button, BM_GETCHECK, 0, 0) == 1
-}
-
-fn check(button: HWND, on: bool) {
-    controls::send(button, BM_SETCHECK, usize::from(on), 0);
-}
-
 /// Whether a page notification asks the page to finish what is being typed: leaving the page,
 /// or closing the sheet either way.
 fn finishing(message: u32, lparam: LPARAM) -> bool {
@@ -248,7 +240,7 @@ impl Dialog for General<'_> {
 
     fn init(&self, page: HWND) -> bool {
         a11y::make_live(dialog::item(page, STATUS));
-        check(dialog::item(page, AT_SIGN_IN), sign_in::on());
+        controls::check(dialog::item(page, AT_SIGN_IN), sign_in::on());
         for (index, kind) in Kind::ALL.into_iter().enumerate() {
             a11y::set_name(dialog::item(page, CHANGE + index as u16), &format!("Change the shortcut for {}", kind.name()));
         }
@@ -262,12 +254,12 @@ impl Dialog for General<'_> {
         }
         match id {
             AT_SIGN_IN => {
-                let on = checked(dialog::item(page, AT_SIGN_IN));
+                let on = controls::checked(dialog::item(page, AT_SIGN_IN));
                 if sign_in::set(on, self.app.core.lumenna.path()) {
                     say(page, if on { "Lumenna opens when you sign in" } else { "Lumenna no longer opens when you sign in" });
                 } else {
                     prompts::fail(sheet(page), "Windows would not change what starts when you sign in.");
-                    check(dialog::item(page, AT_SIGN_IN), sign_in::on());
+                    controls::check(dialog::item(page, AT_SIGN_IN), sign_in::on());
                 }
             }
             id if (CHANGE..CHANGE + 2).contains(&id) => self.change(page, Kind::ALL[usize::from(id - CHANGE)]),
@@ -399,7 +391,7 @@ struct Planning<'a> {
 impl Planning<'_> {
     fn load(&self, page: HWND) {
         let known = values(self.app);
-        check(dialog::item(page, CASCADE), value(&known, "cascade-complete-subtasks") == "true");
+        controls::check(dialog::item(page, CASCADE), value(&known, "cascade-complete-subtasks") == "true");
         for (id, key) in TIMES {
             controls::set_text(dialog::item(page, id), &value(&known, key));
         }
@@ -458,7 +450,7 @@ impl Dialog for Planning<'_> {
         let code = u32::from(code);
         match (id, code) {
             (CASCADE, BN_CLICKED) => {
-                let on = checked(dialog::item(page, CASCADE));
+                let on = controls::checked(dialog::item(page, CASCADE));
                 set(self.app, page, "cascade-complete-subtasks", if on { "true" } else { "false" });
                 self.load(page);
             }

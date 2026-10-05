@@ -12,14 +12,14 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use lumenna_surface::{CancelledBlock, Plan, PlanAssignment, PlanBlock, PlanItem, RowView};
+use lumenna_surface::{CancelledBlock, Lumenna, block_fields, day_block_fields, Plan, PlanAssignment, PlanBlock, PlanItem, Result, RowView, Timer};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{NM_DBLCLK, NMHDR, NMTVKEYDOWN, TVN_KEYDOWN, TVN_SELCHANGEDW, WC_BUTTONW};
 use windows::Win32::UI::Input::KeyboardAndMouse::{VK_DELETE, VK_SPACE};
 use windows::Win32::UI::WindowsAndMessaging::{BN_CLICKED, BS_PUSHBUTTON, WS_TABSTOP};
 
 use super::app::App;
-use super::block_form::{self, Fields, Purpose};
+use super::block_form::{self, Purpose};
 use super::clock::Locale;
 use super::controls::{self, rect};
 use super::core::sentence;
@@ -83,6 +83,8 @@ const LOG: u16 = 8;
 const UNASSIGN: u16 = 9;
 const ADD_HERE: u16 = 10;
 const OPEN: u16 = 11;
+const PAUSE: u16 = 12;
+const STOP: u16 = 13;
 
 pub struct DayView {
     /// The day shown, as an ISO date; `None` follows today.
@@ -235,15 +237,8 @@ impl DayView {
 
     pub fn add_block(&self, app: &App, start: Option<&str>, minutes: Option<u32>) {
         let date = self.date().unwrap_or_else(|| "today".to_owned());
-        let fields = Fields {
-            title: String::new(),
-            start: start.unwrap_or("09:00").to_owned(),
-            minutes: minutes.unwrap_or(60).min(720).to_string(),
-            kind: "work".to_owned(),
-            repeat: String::new(),
-            rule: None,
-        };
-        if let Some(change) = block_form::run(app.main, &app.core.lumenna, Purpose::Add { date }, fields) {
+        let fields = block_form::fresh(start.unwrap_or("09:00"), minutes.unwrap_or(60).min(720));
+        if let Some(change) = block_form::run(app.main, &app.core.lumenna, Purpose::Add { date }, fields, None) {
             app.store_changed();
             if let Some(series) = change.affected.blocks.first() {
                 let key = self.rows.borrow().iter().find_map(|row| match row {
@@ -260,14 +255,9 @@ impl DayView {
     /// (§13, §4.3).
     fn edit(&self, app: &App, block: &PlanBlock) {
         let Some(date) = self.date() else { return };
-        let mut fields = Fields {
-            title: block.title.clone(),
-            start: block.start.clone(),
-            minutes: block.duration_mins.to_string(),
-            kind: block.kind.clone(),
-            repeat: String::new(),
-            rule: None,
-        };
+        // One day alone: its time, length, title, kind and flags, as this day has them.
+        let mut fields = day_block_fields(block.clone());
+        let mut rule = None;
         let purpose = if block.repeats {
             let day = Locale.day(&date);
             let choice = prompts::choose(
@@ -289,20 +279,14 @@ impl DayView {
             // The series as it is, not as this day shows it.
             match app.core.lumenna.show_block(id) {
                 Ok(shown) => {
-                    fields = Fields {
-                        title: shown.title,
-                        start: shown.start,
-                        minutes: shown.minutes.to_string(),
-                        kind: shown.kind,
-                        repeat: shown.repetition.unwrap_or_default(),
-                        rule: shown.rrule.filter(|_| shown.repeats),
-                    }
+                    rule = shown.rrule.clone().filter(|_| shown.repeats);
+                    fields = block_fields(shown);
                 }
                 Err(error) => return prompts::fail(app.main, &sentence(&error)),
             }
         }
         let key = format!("block:{}", block.id);
-        if let Some(change) = block_form::run(app.main, &app.core.lumenna, purpose, fields) {
+        if let Some(change) = block_form::run(app.main, &app.core.lumenna, purpose, fields, rule) {
             app.store_changed();
             self.tree.select_key_or_near(Some(&key), self.tree.selected());
             app.say_change(&change);
@@ -329,19 +313,27 @@ impl DayView {
         }
     }
 
+    /// Space on a sitting: starts its timer, pauses it while it runs, and resumes it when
+    /// paused. Stopping ends the sitting, so it is asked for by name, from the menu.
     fn toggle_timer(&self, app: &App, sitting: &PlanAssignment) {
-        let key = format!("sitting:{}", sitting.id);
-        if sitting.status == "in progress" {
-            match app.core.lumenna.stop_timer(&sitting.id, None) {
-                Ok(timer) => {
-                    app.store_changed();
-                    self.tree.select_key_or_near(Some(&key), None);
-                    app.say(&speech::announcement(&timer.announcement, &timer.notices));
-                }
-                Err(error) => prompts::fail(app.main, &sentence(&error)),
-            }
+        if sitting.running {
+            self.timed(app, sitting, |lumenna| lumenna.pause_timer(&sitting.id));
         } else {
+            let key = format!("sitting:{}", sitting.id);
             self.change(app, Some(&key), |lumenna| lumenna.start_timer(&sitting.id));
+        }
+    }
+
+    /// Pauses or stops a timer, and says what was logged.
+    fn timed(&self, app: &App, sitting: &PlanAssignment, operation: impl FnOnce(&Lumenna) -> Result<Timer>) {
+        let key = format!("sitting:{}", sitting.id);
+        match operation(&app.core.lumenna) {
+            Ok(timer) => {
+                app.store_changed();
+                self.tree.select_key_or_near(Some(&key), None);
+                app.say(&speech::announcement(&timer.announcement, &timer.notices));
+            }
+            Err(error) => prompts::fail(app.main, &sentence(&error)),
         }
     }
 
@@ -395,6 +387,8 @@ impl DayView {
             }
             (DELETE, Row::Block(block)) => self.delete(app, block),
             (TIMER, Row::Sitting(sitting)) => self.toggle_timer(app, sitting),
+            (PAUSE, Row::Sitting(sitting)) => self.timed(app, sitting, |lumenna| lumenna.pause_timer(&sitting.id)),
+            (STOP, Row::Sitting(sitting)) => self.timed(app, sitting, |lumenna| lumenna.stop_timer(&sitting.id, None)),
             (PLANNED, Row::Sitting(sitting)) => self.plan_length(app, sitting),
             (LOG, Row::Sitting(sitting)) => self.log_minutes(app, sitting),
             (UNASSIGN, Row::Sitting(sitting)) => self.change(app, None, |lumenna| lumenna.unassign(&sitting.id)),
@@ -518,7 +512,7 @@ impl View for DayView {
         let items: Vec<(u16, &str)> = match &row {
             Row::Block(block) => {
                 let mut items = Vec::new();
-                if block.kind == "work" {
+                if block.accepts_tasks {
                     items.push((ASSIGN, "&Assign a Task..."));
                 }
                 items.push((EDIT, "&Change..."));
@@ -531,14 +525,24 @@ impl View for DayView {
                 items.extend([(0, ""), (DELETE, "&Delete Block...")]);
                 items
             }
-            Row::Sitting(sitting) => vec![
-                (TIMER, if sitting.status == "in progress" { "&Stop Timer" } else { "&Start Timer" }),
-                (OPEN, "&Edit Task Details"),
-                (PLANNED, "&Planned Length..."),
-                (LOG, "&Log Minutes..."),
-                (0, ""),
-                (UNASSIGN, "&Unassign"),
-            ],
+            Row::Sitting(sitting) => {
+                // Pause and Stop while it runs, Resume and Stop while paused, Start otherwise.
+                let mut items = if sitting.running {
+                    vec![(PAUSE, "P&ause Timer"), (STOP, "&Stop Timer")]
+                } else if sitting.status == "paused" {
+                    vec![(TIMER, "&Resume Timer"), (STOP, "&Stop Timer")]
+                } else {
+                    vec![(TIMER, "&Start Timer")]
+                };
+                items.extend([
+                    (OPEN, "&Edit Task Details"),
+                    (PLANNED, "&Planned Length..."),
+                    (LOG, "&Log Minutes..."),
+                    (0, ""),
+                    (UNASSIGN, "&Unassign"),
+                ]);
+                items
+            }
             Row::Free { .. } => vec![(ADD_HERE, "&Add Block Here...")],
             Row::Cancelled(_) => vec![(RESTORE_DAY, "&Restore This Day")],
             Row::Summary(_) | Row::Now(_) => return true,
