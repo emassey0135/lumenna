@@ -17,6 +17,14 @@ serde_json.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 
+# In the browser (§16.12), randomness and the clock come from JavaScript; elsewhere these
+# features are not wanted.
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+uuid = { workspace = true, features = ["js"] }
+jiff = { workspace = true, features = ["js"] }
+# Automerge's actor identifiers.
+getrandom = { version = "0.4", features = ["wasm_js"] }
+
 [dev-dependencies]
 proptest.workspace = true
 tempfile.workspace = true

@@ -1,0 +1,30 @@
+[package]
+name = "lumenna-web"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Lumenna's core for the web client (§16.12): the surface, exported to JavaScript."
+
+[lib]
+# The module the browser loads, and an ordinary library so the workspace checks it natively.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+lumenna-surface = { path = "../../../crates/surface", features = ["wasm"] }
+# The places and wording the desktop apps share, so the web says what they say.
+lumenna-desktop = { path = "../../../crates/desktop", features = ["wasm"] }
+serde.workspace = true
+tsify = { version = "0.5", default-features = false, features = ["js"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+console_error_panic_hook = "0.1"
+# SQLite's own durable browser storage, OPFS through sync access handles (§16.12).
+sqlite-wasm-rs = { version = "0.5", default-features = false }
+sqlite-wasm-vfs = "0.2"
+
+[lints]
+workspace = true

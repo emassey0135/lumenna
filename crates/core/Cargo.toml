@@ -20,6 +20,13 @@ rrule.workspace = true
 uuid.workspace = true
 thiserror.workspace = true
 
+# In the browser (§16.12), randomness and the clock come from JavaScript; elsewhere these
+# features are not wanted.
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+uuid = { workspace = true, features = ["js"] }
+jiff = { workspace = true, features = ["js"] }
+chrono = { workspace = true, features = ["wasmbind"] }
+
 [dev-dependencies]
 proptest.workspace = true
 
