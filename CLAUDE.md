@@ -32,6 +32,7 @@ crates/ffi/     the library the Swift and Kotlin apps link; re-exports surface o
 crates/sync/    Iroh endpoints, the document sync session, and pairing (§7).
 apps/cli/       `lum` — the first target, and a permanent one.
 apps/btspeak/   the BTSpeak app, in Python, over `lum rpc`.
+apps/emacs/     the Emacs client, in Elisp, over `lum rpc` or the daemon's socket.
 apps/apple/     the iOS and macOS apps over the generated bindings, Shared/ between them,
                 and build-core.sh.
 apps/windows/   the Win32 app, linking the surface directly; begun, not yet complete.
@@ -212,6 +213,34 @@ is readable here and the app can be run under a pty without a second machine.
   `Lumenna: run python3 <checkout>/apps/btspeak/__main__.py`, added with the device's
   `user_menu.add_item`, as BT Code does. `connect.find_lum` finds `lum` in that checkout's
   `target/` when it is not on `PATH`, which a menu launch's is not.
+
+### The Emacs client
+
+`apps/emacs/` — Elisp over `jsonrpc.el`, built-in libraries only (§16.10). Tests are ERT
+against a real `lum rpc`, answering the minibuffer by rebinding the reading functions:
+`emacs --batch -Q -L apps/emacs -l apps/emacs/test/lumenna-test.el -f ert-run-tests-batch-and-exit`.
+
+- **A client and nothing else**, like the BTSpeak app. A row is said by joining its
+  components in words (`lumenna-describe`); nothing is computed.
+- **The socket, else a child.** `lumenna-profile-directory` repeats `lum`'s own rule for the
+  default profile (the `directories` crate's local data directory), because the socket is
+  found by path before there is anything to ask.
+- **Depth is an outline level, not just indentation.** `outline-regexp` matches every line
+  and `outline-level` reads the `lumenna-level` text property, so folding and Emacspeak's
+  level announcements come from outline mode. Indentation is there for the eye.
+- **Booleans come back as `:json-false`**, which is non-nil. Test them with `lumenna--true`.
+- **Spans are bytes**: completion converts both ways (`lumenna--byte-offset`).
+- **Writes go through `lumenna-write`**, which refreshes every Lumenna buffer, runs
+  `lumenna-changed-functions`, and hands the announcement to `lumenna-announce-function`.
+  No advice anywhere: §16.10's `emacspeak-lumenna.el` advising commands became those hooks.
+- **Three speech layers, each skipped where it would double up.** Plain echo-area text
+  (speechd-el and everyone); faces mapped with `voice-setup-add-map`, which Emacspeak and
+  Emacsvox share, plus Emacspeak auditory icons; and under Emacsvox, facts on each line and
+  events on the notification lane whose sounds are a module fragment's rules — then the
+  icons are not played, and the echo-area copy is shown with `emacsvox-speak-messages` nil.
+- **The Emacsvox layer is checked on the BT Braille**, where Emacsvox lives: loaded in batch
+  with its aural modules, `emacsvox-aural-validate-registry` passes and a completed task
+  resolves to the `task-done` cue. A test of its own needs Emacsvox on the load path.
 
 ### The iOS app
 
