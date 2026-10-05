@@ -1,11 +1,13 @@
 //! Somewhere to go in the main window, and the sidebar that lists them.
 
 use lumenna_surface::{Lumenna, RowView, label_reference, project_reference};
+use serde::{Deserialize, Serialize};
 
 use crate::speech;
 
 /// Somewhere to go.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum Place {
     /// The day planner.
     Today,
@@ -62,7 +64,8 @@ impl Place {
 }
 
 /// What a sidebar row is.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum Kind {
     /// Somewhere to go.
     Place(Place),
@@ -71,7 +74,8 @@ pub enum Kind {
 }
 
 /// The sidebar's headings.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum Group {
     /// The project tree.
     Projects,
@@ -82,7 +86,8 @@ pub enum Group {
 }
 
 /// One sidebar row.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Entry {
     /// What it is.
     pub kind: Kind,

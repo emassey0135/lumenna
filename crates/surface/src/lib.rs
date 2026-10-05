@@ -140,7 +140,11 @@ impl Lumenna {
     ///
     /// If the directory cannot be created or the store cannot be opened.
     pub fn open_at(directory: &Path) -> Result<Self> {
-        std::fs::create_dir_all(directory)?;
+        // A browser's store is a file in OPFS's pool, named by its path, with no directory to
+        // make (§16.12).
+        if !cfg!(all(target_family = "wasm", target_os = "unknown")) {
+            std::fs::create_dir_all(directory)?;
+        }
         let mut store = Store::open(&directory.join("lumenna.sqlite"))?;
         // Every store has exactly one Inbox, and the store creates it under the same
         // identifier everywhere (§3.4). A store from before that minted its own, which is

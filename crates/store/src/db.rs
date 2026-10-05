@@ -69,10 +69,14 @@ impl Db {
         // WAL is what lets a reader and a writer coexist, which §8 needs because several
         // processes on one machine share this file: the tray app, a CLI invocation, an
         // Emacs subprocess.
-        let mode: String =
-            conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0)).unwrap_or_default();
-        if !mode.eq_ignore_ascii_case("wal") && !mode.eq_ignore_ascii_case("memory") {
-            return Err(StoreError::Sqlite(format!("could not enable WAL mode (got {mode})")));
+        // In a browser (§16.12) one worker owns the file — OPFS allows one connection — so
+        // there is nobody to coexist with, and its storage has no WAL to give.
+        if !cfg!(all(target_family = "wasm", target_os = "unknown")) {
+            let mode: String =
+                conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0)).unwrap_or_default();
+            if !mode.eq_ignore_ascii_case("wal") && !mode.eq_ignore_ascii_case("memory") {
+                return Err(StoreError::Sqlite(format!("could not enable WAL mode (got {mode})")));
+            }
         }
         conn.pragma_update(None, "foreign_keys", true)?;
         conn.execute_batch(

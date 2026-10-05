@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["apps/cli", "apps/gtk", "apps/windows", "crates/core", "crates/desktop", "crates/ffi", "crates/parse", "crates/store", "crates/surface", "crates/sync"]
+members = ["apps/cli", "apps/gtk", "apps/web/core", "apps/windows", "crates/core", "crates/desktop", "crates/ffi", "crates/parse", "crates/store", "crates/surface", "crates/sync"]
 
 [workspace.package]
 edition = "2024"
@@ -26,7 +26,9 @@ uuid = { version = "1", features = ["v7"] }
 thiserror = "2"
 proptest = "1"
 tempfile = "3"
-rusqlite = { version = "0.37", features = ["bundled"] }
+# 0.40 builds for the browser too, on sqlite-wasm-rs (§16.12); `bundled` applies only where
+# the native SQLite is used.
+rusqlite = { version = "0.40", features = ["bundled"] }
 lumenna-core = { path = "crates/core" }
 
 [workspace.lints.rust]
@@ -47,3 +49,12 @@ incremental = false
 
 [profile.test]
 debug = "line-tables-only"
+
+# The web client's module (§16.12), which every visit downloads: built for size rather than
+# speed, whole-program, without symbols. `npm run core` in apps/web builds with it.
+[profile.web]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

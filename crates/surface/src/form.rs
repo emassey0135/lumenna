@@ -8,13 +8,15 @@
 //! last-write-wins race it should have lost, and silently reverts another device's edit.
 
 use lumenna_parse::complete::quoted;
+use serde::{Deserialize, Serialize};
 
 use crate::types::{PlanAssignment, TaskDetail, TaskEdit};
 use crate::words::duration;
 
 /// A task's editable fields, as a form shows them: all text, apart from the priority.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct TaskFields {
     /// The title.
     pub title: String,
