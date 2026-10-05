@@ -774,8 +774,9 @@ impl Export<'_> {
 impl Dialog for Export<'_> {
     fn template(&self) -> Template {
         let mut template = page("Export and Import");
-        for (index, (_, label, _)) in devices::EXPORTS.iter().enumerate() {
-            template = template.item(Class::Button, label, EXPORT + index as u16, BUTTON, 7, 7 + index as i16 * 18, 180, 14);
+        for (index, export) in devices::EXPORTS.iter().enumerate() {
+            let label = devices::marked(export.label, export.key, '&');
+            template = template.item(Class::Button, &label, EXPORT + index as u16, BUTTON, 7, 7 + index as i16 * 18, 180, 14);
         }
         let footer = "An export is what you have now, with nothing from the trash. Importing a JSON export or restoring a backup adds what this device lacks and removes nothing.";
         template
@@ -792,8 +793,8 @@ impl Dialog for Export<'_> {
         if u32::from(code) != BN_CLICKED {
             return None;
         }
-        if let Some((format, _, _)) = id.checked_sub(EXPORT).and_then(|i| devices::EXPORTS.get(usize::from(i))) {
-            self.export(page, *format);
+        if let Some(export) = id.checked_sub(EXPORT).and_then(|i| devices::EXPORTS.get(usize::from(i))) {
+            self.export(page, export.format);
         } else if id == IMPORT
             && let Some(said) = import(self.app, sheet(page), "Import or Restore", &IMPORTABLE)
         {
