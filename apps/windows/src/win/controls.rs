@@ -5,7 +5,7 @@ use windows::Win32::Graphics::Gdi::InvalidateRect;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, GetFocus, SetFocus};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, GetWindowTextLengthW, GetWindowTextW, HMENU, IsChild, IsWindowVisible,
+    BM_GETCHECK, BM_SETCHECK, CreateWindowExW, GetWindowTextLengthW, GetWindowTextW, HMENU, IsChild, IsWindowVisible,
     MoveWindow, SW_HIDE, SW_SHOW, SendMessageW, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE,
     WINDOW_STYLE, WS_CHILD, WS_VISIBLE,
 };
@@ -139,6 +139,16 @@ pub fn units_at(text: &str, bytes: usize) -> usize {
     text[..end].encode_utf16().count()
 }
 
+/// Whether a check box is checked.
+pub fn checked(button: HWND) -> bool {
+    send(button, BM_GETCHECK, 0, 0) == 1
+}
+
+/// Checks or clears a check box.
+pub fn check(button: HWND, on: bool) {
+    send(button, BM_SETCHECK, usize::from(on), 0);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,3 +164,4 @@ mod tests {
         assert_eq!(units_at(text, 4), 1, "an offset inside a character goes back to its start");
     }
 }
+

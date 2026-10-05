@@ -301,3 +301,78 @@ fn a_task_is_put_in_a_block_from_this_weeks_work_blocks() {
     app.post(&["enter", "text:30", "enter"]);
     assert!(app.status().starts_with("Scheduled Write report into Deep work"), "{}", app.status());
 }
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn space_starts_and_pauses_a_sittings_timer_and_the_menu_offers_resume_and_stop() {
+    let app = App::launch(|lumenna| {
+        add(lumenna, "Write report");
+        let block = NewBlock {
+            title: "Deep work".to_owned(),
+            at: "11:30pm".to_owned(),
+            minutes: 25,
+            kind: "work".to_owned(),
+            ..NewBlock::default()
+        };
+        lumenna.add_block(block).unwrap();
+        let task = lumenna.list_tasks("").unwrap().rows[0].id.clone();
+        let block = lumenna.plan(None).unwrap().blocks[0].series.clone();
+        lumenna.assign(&task, &block, None, Some(20)).unwrap();
+    });
+    // The sitting's row, by the name the app gives it.
+    let row = |lumenna: &Lumenna| {
+        let plan = lumenna.plan(None).unwrap();
+        lumenna_desktop::speech::sitting(&plan.blocks[0].assignments[0])
+    };
+    app.post(&[&format!("select:{}", row(&app.store())), "space"]);
+    assert!(app.status().starts_with("Started timer"), "{}", app.status());
+    app.post(&["space"]);
+    assert!(app.status().to_lowercase().contains("paused"), "{}", app.status());
+    assert!(app.focus().contains("paused"), "the row says so: {}", app.focus());
+    app.post(&["context"]);
+    let items = app.automation.menu_items();
+    assert!(items.iter().any(|i| i.contains("Resume Timer")), "{items:#?}");
+    assert!(items.iter().any(|i| i.contains("Stop Timer")), "{items:#?}");
+    assert!(!items.iter().any(|i| i.contains("Pause Timer")), "{items:#?}");
+    app.post(&["esc"]);
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn the_block_form_has_every_setting_and_its_flags_follow_the_kind() {
+    let app = App::launch(|_| {});
+    // New Block, called Commute, at 8am, then Break as its kind — through the form in its tab
+    // order, as a keyboard reaches it.
+    app.post(&["cmd:101", "text:Commute", "tab", "text:8am", "tab", "tab", "down"]);
+    let form = app.front();
+    assert!(unnamed(&form).is_empty(), "{:#?}", unnamed(&form));
+    let flag = |name: &str| form.iter().find(|l| l.contains(&format!("CheckBox '{name}'"))).cloned().unwrap_or_default();
+    assert!(flag("Takes tasks").contains(" unchecked"), "a break takes no tasks: {form:#?}");
+    assert!(flag("Counts toward the hours for work").contains(" unchecked"), "{}", flag("Counts toward the hours for work"));
+    // Set apart from its kind — someone who works on the train — then the flags, the first
+    // day, and the right-hand column: repeats, last day, shortest length, filter, colour.
+    app.post(&[
+        "tab",
+        "space",
+        "tab",
+        "tab",
+        "tab",
+        "tab",
+        "text:every weekday",
+        "tab",
+        "tab",
+        "tab",
+        "text:#Inbox",
+        "tab",
+        "text:teal",
+        "enter",
+    ]);
+    assert!(app.status().starts_with("Added"), "{}", app.status());
+    let store = app.store();
+    let id = store.list_blocks().unwrap().rows[0].id.clone();
+    let shown = store.show_block(&id).unwrap();
+    assert_eq!((shown.kind.as_str(), shown.accepts_tasks, shown.counts_capacity), ("break", true, false));
+    assert_eq!(shown.task_filter.as_deref(), Some("#Inbox"));
+    assert_eq!(shown.colour.as_deref(), Some("teal"));
+    assert!(shown.repeats, "{shown:?}");
+}

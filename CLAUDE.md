@@ -512,8 +512,10 @@ surface's (`task_edit`, below), as it is every client's.
   `cmd:<menu id>` for a Ctrl shortcut, `context`, `focus:Name`, `select:Name`, `invoke:Name`,
   `dump`) and reports focus and the status line after each. Match `- Lumenna`, not
   `Lumenna`: a terminal or folder named after the checkout matches that too. `focus:`
-  selects the field's text as tabbing in does; focus moved by UI Automation alone leaves the
-  caret at the start, and typing goes in front of what is there. The managed
+  takes the first *focusable* element of that name (a dialog's label is named like its
+  field, and comes first) and moves to it with `WM_NEXTDLGCTL`, as Tab does, which selects
+  an edit's text. UI Automation's own SetFocus did not move focus in a modal dialog at all.
+  The managed
   `System.Windows.Automation` in Windows PowerShell is no substitute: x64 under emulation, it
   saw every control as an unnamed pane.
 - **Not built yet**: what no other client has either (history, reminders), and an icon of
