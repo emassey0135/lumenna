@@ -9,7 +9,10 @@ use std::cell::RefCell;
 
 use lumenna_surface::{Change, Direction, Lumenna, Result, Weight};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
-use windows::Win32::UI::Controls::{NMHDR, NMTREEVIEWW, TVN_ITEMEXPANDEDW, TVN_SELCHANGEDW};
+use windows::Win32::UI::Controls::{
+    NMHDR, NMTREEVIEWW, NMTVKEYDOWN, TVN_ITEMEXPANDEDW, TVN_KEYDOWN, TVN_SELCHANGEDW,
+};
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_DELETE;
 
 use super::app::App;
 use super::controls::{self, rect};
@@ -100,6 +103,19 @@ impl Sidebar {
                 self.tree.expansion_changed(unsafe { &*(lparam.0 as *const NMTREEVIEWW) });
                 Some(0)
             }
+            TVN_KEYDOWN if unsafe { &*(lparam.0 as *const NMTVKEYDOWN) }.wVKey == VK_DELETE.0 => {
+                // Delete here does what it does in every other list: the row's own Delete,
+                // asking first as the context menu's does. After the notification returns,
+                // since deleting rebuilds the tree.
+                if self.selected().is_some_and(|entry| deletable(&entry)) {
+                    app.defer(|app| {
+                        if let Some(entry) = app.sidebar.selected() {
+                            app.sidebar.act(app, DELETE, &entry);
+                        }
+                    });
+                }
+                Some(1)
+            }
             _ => None,
         }
     }
@@ -124,7 +140,7 @@ impl Sidebar {
                 (WEIGHT, "&Weight..."),
                 (ARCHIVE, if entry.archived { "Un&archive" } else { "&Archive" }),
                 (0, ""),
-                (DELETE, "D&elete..."),
+                (DELETE, "D&elete...\tDelete"),
             ],
             Kind::Place(Place::Label(_)) => vec![
                 (RENAME, "&Rename..."),
@@ -133,7 +149,7 @@ impl Sidebar {
                 (UP, "Move U&p"),
                 (DOWN, "Move &Down"),
                 (0, ""),
-                (DELETE, "D&elete..."),
+                (DELETE, "D&elete...\tDelete"),
             ],
             Kind::Place(Place::Filter { .. }) => vec![
                 (RENAME, "&Rename..."),
@@ -141,7 +157,7 @@ impl Sidebar {
                 (UP, "Move U&p"),
                 (DOWN, "Move &Down"),
                 (0, ""),
-                (DELETE, "D&elete..."),
+                (DELETE, "D&elete...\tDelete"),
             ],
             Kind::Place(_) => return true,
         };
@@ -299,4 +315,10 @@ fn project_names(lumenna: &Lumenna) -> Vec<String> {
 
 fn label_names(lumenna: &Lumenna) -> Vec<String> {
     lumenna.list_labels().map(|r| r.rows.into_iter().map(|l| l.title).collect()).unwrap_or_default()
+}
+
+/// Whether a row has a Delete: projects, labels and saved filters do; the fixed places and
+/// the headings do not.
+fn deletable(entry: &Entry) -> bool {
+    matches!(entry.kind, Kind::Place(Place::Project(_) | Place::Label(_) | Place::Filter { .. }))
 }
