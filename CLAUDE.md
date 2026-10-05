@@ -234,8 +234,8 @@ against a real `lum rpc`, answering the minibuffer by rebinding the reading func
 - **Depth is an outline level, not just indentation.** `outline-regexp` matches every line
   and `outline-level` reads the `lumenna-level` text property, so folding and Emacspeak's
   level announcements come from outline mode. Indentation is there for the eye.
-- **A list's keys are defined once** (`lumenna-define-keys`), which binds them and keeps
-  them for `?`: an ordinary buffer, one key per line, RET running it back in the list.
+- **A list's keys are defined once** (`lumenna-define-keys`), which binds them, builds
+  the list's Lumenna menu (the global keys go under Tools), and keeps them for `?`: an ordinary buffer, one key per line, RET running it back in the list.
   Not a transient menu: Emacsvox reads a transient by asking whether its command was
   called interactively, and Emacs 31's transient runs each command inside a wrapper of
   its own, so moving through one was silent. A test checks every listed key is bound. The

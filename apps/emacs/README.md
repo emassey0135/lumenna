@@ -45,6 +45,10 @@ In every list:
 
 `M-x imenu` goes to an item by name, with completion.
 
+The same commands are in the menu bar, for whoever prefers it: each list has a Lumenna
+menu of its own, grouped as `?` groups them, and Tools has Lumenna's commands from anywhere.
+In a terminal, `F10` (or `M-x tmm-menubar`) opens the menu bar as a list to choose from.
+
 Tasks: `a` add, `/` search, `c` done or not, `e` edit a field, `b` assign to a block, `m`
 move to a project, `s` make a subtask, `t` back to the top level, `w`/`W` wait for another
 task or stop, `d` to the trash. Adding is one line, written as you would say it (`call the
