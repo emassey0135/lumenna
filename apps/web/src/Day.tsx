@@ -12,8 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { Button, Collection, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
-import { blockForm } from "./BlockForm";
-import type { Fields } from "./BlockForm";
+import { blockForm, freshBlock } from "./BlockForm";
 import { core } from "./core";
 import type { DayRow, PlanAssignment, PlanBlock } from "./core";
 import { rowKey, useLanding } from "./landing";
@@ -136,7 +135,7 @@ export function Day(props: {
   const today = shown?.date ?? "";
 
   const addBlock = async (start = "09:00", minutes = 60) => {
-    const fields: Fields = { title: "", start, minutes: String(Math.min(minutes, 720)), kind: "work", repeat: "" };
+    const fields = await freshBlock(start, Math.min(minutes, 720));
     const saved = await blockForm({ kind: "add", date: shown?.date ?? "today" }, fields, "New Block");
     if (!saved) return;
     land(saved.series ? `block:${saved.series}@${today}` : undefined, keys.indexOf(selected ?? ""));
@@ -149,13 +148,6 @@ export function Day(props: {
   const edit = async (block: PlanBlock) => {
     let heading = `Change ${block.title}`;
     let purpose: Parameters<typeof blockForm>[0] = { kind: "series", id: block.series };
-    let fields: Fields = {
-      title: block.title,
-      start: block.start,
-      minutes: String(block.duration_mins),
-      kind: block.kind ?? "work",
-      repeat: "",
-    };
     if (block.repeats) {
       const which = await choose(heading, "Which occurrences?", [`${shown?.title ?? "This Day"} Only`, "Every Occurrence"]);
       if (which === undefined) return;
@@ -166,24 +158,18 @@ export function Day(props: {
         heading = `Change ${block.title}, Every Occurrence`;
       }
     }
-    if (purpose.kind === "series") {
-      // The series as it is, not as this day shows it.
-      try {
-        const series = await core.showBlock(block.series);
-        fields = {
-          title: series.title,
-          start: series.start,
-          minutes: String(series.minutes),
-          kind: series.kind,
-          repeat: series.repetition ?? "",
-          rule: series.repeats ? (series.rrule ?? undefined) : undefined,
-        };
-      } catch (error) {
-        say((error as Error).message);
-        return;
-      }
+    // One day alone starts from that day's block; every occurrence, from the series as it is
+    // rather than as this day shows it.
+    let fields;
+    let rule: string | undefined;
+    try {
+      if (purpose.kind === "series") ({ fields, rule } = await core.seriesFields(block.series));
+      else fields = await core.dayFields(block);
+    } catch (error) {
+      say((error as Error).message);
+      return;
     }
-    const saved = await blockForm(purpose, fields, heading);
+    const saved = await blockForm(purpose, fields, heading, rule);
     if (!saved) return;
     land(`block:${block.id}`, keys.indexOf(`block:${block.id}`));
     props.onChanged();
@@ -239,7 +225,7 @@ export function Day(props: {
     const { block, sitting, free, cancelled } = at;
     if (block && at.kind === "block") {
       const list: Action[] = [];
-      if (block.kind === "work") list.push({ id: "assign", label: "Assign a Task…", run: () => void assign(block) });
+      if (block.accepts_tasks) list.push({ id: "assign", label: "Assign a Task…", run: () => void assign(block) });
       list.push({ id: "edit", label: "Change…", run: () => void edit(block) });
       if (block.repeats) {
         list.push({
@@ -259,12 +245,17 @@ export function Day(props: {
       return list;
     }
     if (sitting) {
+      const start = { id: "timer", run: () => void change(core.startTimer(sitting.id), at.key) };
+      const stop = { id: "stop", label: "Stop Timer", run: () => void change(core.stopTimer(sitting.id), at.key) };
+      // Pause and Stop while it runs, Resume and Stop while paused, Start otherwise. Space is
+      // the first of them: start, pause, resume.
+      const timer: Action[] = sitting.running
+        ? [{ id: "timer", label: "Pause Timer", run: () => void change(core.pauseTimer(sitting.id), at.key) }, stop]
+        : sitting.status === "paused"
+          ? [{ ...start, label: "Resume Timer" }, stop]
+          : [{ ...start, label: "Start Timer" }];
       return [
-        {
-          id: "timer",
-          label: sitting.status === "in progress" ? "Stop Timer" : "Start Timer",
-          run: () => void change(core.timer(sitting), at.key),
-        },
+        ...timer,
         { id: "open", label: "Edit Task Details", run: () => props.onOpenTask(sitting.task) },
         { id: "planned", label: "Planned Length…", run: () => void plannedLength(sitting) },
         { id: "log", label: "Log Minutes…", run: () => void logMinutes(sitting) },

@@ -15,7 +15,7 @@ test("the devices dialog says this browser is not paired, and refuses a code tha
   await open(page);
   await page.getByRole("button", { name: "Devices…" }).click();
   const dialog = page.getByRole("dialog", { name: "Devices" });
-  await expect(dialog.getByText("Not paired with any other device yet.")).toBeVisible();
+  await expect(dialog.getByText(/^Not paired with any other device yet/)).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Sync Now" })).toBeDisabled();
   const results = await new AxeBuilder({ page }).analyze();
   expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(", ")}`)).toEqual([]);
@@ -109,7 +109,7 @@ test("a browser and lum pair by code, and lum's sync brings its task to the brow
   expect(await exited).toBe(0);
   const devices = page.getByRole("dialog", { name: "Devices" });
   await expect(devices.getByRole("option").nth(1)).toBeVisible({ timeout: 60_000 });
-  await expect(devices.getByText(/^Syncing while this page is open/)).toBeVisible({ timeout: 60_000 });
+  await expect(devices.getByText(/^Sync is running, with 1 other device/)).toBeVisible({ timeout: 60_000 });
   await page.getByRole("button", { name: "Close" }).click();
 
   // lum dials the browser, which answers while its page is open. A browser's endpoint is

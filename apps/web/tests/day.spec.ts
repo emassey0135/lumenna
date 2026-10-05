@@ -24,12 +24,12 @@ async function place(page: Page, name: RegExp) {
 async function addBlock(page: Page, title: string, at: string, repeat = "") {
   await page.getByRole("button", { name: "Add Block…" }).click();
   const form = page.getByRole("dialog", { name: "New Block" });
-  await expect(form.getByRole("textbox", { name: "Title" })).toBeFocused();
-  await form.getByRole("textbox", { name: "Title" }).fill(title);
+  await expect(form.getByRole("textbox", { name: "Title", exact: true })).toBeFocused();
+  await form.getByRole("textbox", { name: "Title", exact: true }).fill(title);
   await form.getByRole("textbox", { name: "Starts at" }).fill(at);
-  await form.getByRole("textbox", { name: "Minutes" }).fill("60");
-  if (repeat) await form.getByRole("textbox", { name: "Repeats" }).fill(repeat);
-  await form.getByRole("button", { name: "Save" }).click();
+  await form.getByRole("textbox", { name: "Minutes", exact: true }).fill("60");
+  if (repeat) await form.getByRole("textbox", { name: "Repeats", exact: true }).fill(repeat);
+  await form.getByRole("button", { name: "Add", exact: true }).click();
   await expect(form).toBeHidden();
 }
 
@@ -85,7 +85,7 @@ test("a task assigned from a block is a sitting beneath it, and Space times it",
   await page.getByRole("option", { name: /^Write report/ }).click();
   await picker.getByRole("button", { name: "OK" }).click();
   const minutes = page.getByRole("dialog", { name: /Meant to Take/ });
-  await minutes.getByRole("textbox", { name: "Minutes" }).fill("30");
+  await minutes.getByRole("textbox", { name: "Minutes", exact: true }).fill("30");
   await minutes.getByRole("button", { name: "OK" }).click();
   const sitting = day.getByRole("row", { name: /^Write report/ });
   await expect(sitting).toHaveAttribute("aria-level", "2");
@@ -108,7 +108,7 @@ test("a sitting's minutes refuse what is not a number, at the field", async ({ p
   await page.getByRole("combobox", { name: "Task" }).fill("Write");
   await page.getByRole("option", { name: /^Write report/ }).click();
   await page.getByRole("button", { name: "OK" }).click();
-  const field = page.getByRole("textbox", { name: "Minutes" });
+  const field = page.getByRole("textbox", { name: "Minutes", exact: true });
   await field.fill("soon");
   await page.getByRole("button", { name: "OK" }).click();
   await expect(field).toHaveAttribute("aria-invalid", "true");
@@ -136,8 +136,8 @@ test("a repeating block asks which occurrences a change is for", async ({ page }
   await expect(which.getByRole("button", { name: "Cancel" })).toBeFocused();
   await which.getByRole("button", { name: "Today Only" }).click();
   const form = page.getByRole("dialog", { name: "Change Standup, This Day Only" });
-  await expect(form.getByRole("textbox", { name: "Repeats" })).toHaveCount(0);
-  await form.getByRole("textbox", { name: "Minutes" }).fill("15");
+  await expect(form.getByRole("textbox", { name: "Repeats", exact: true })).toHaveCount(0);
+  await form.getByRole("textbox", { name: "Minutes", exact: true }).fill("15");
   await form.getByRole("button", { name: "Save" }).click();
   await expect(day.getByRole("row", { name: /Standup, 15 minutes.*changed for this day/ })).toBeVisible();
 });

@@ -11,6 +11,12 @@ import * as Comlink from "comlink";
 import init, {
   Core,
   announcementText,
+  blockDefaults,
+  blockEdit,
+  blockFields,
+  dayBlockFields,
+  exportChoices,
+  newBlock,
   blockText,
   cancelledText,
   dayText,
@@ -31,13 +37,16 @@ import init, {
 } from "./core/lumenna_web.js";
 import type {
   BlockChoice,
-  BlockEdit,
+  BlockDefaults,
+  BlockFields,
   BlockScope,
-  BlockShown,
+  Direction,
+  ExportChoice,
+  ExportFormat,
+  Weight,
   CancelledBlock,
   Change,
   Entry,
-  NewBlock,
   PairedWith,
   Place,
   PlanAssignment,
@@ -235,15 +244,38 @@ const api = {
     return { lines, readback: announcementText(listing.announcement, listing.notices ?? []) };
   },
 
-  showBlock: (id: string): BlockShown => store().showBlock(id),
+  /**
+   * A series' fields as the form for every occurrence starts from them, with the rule it
+   * repeats by when the repetition words cannot say it.
+   */
+  seriesFields(id: string): { fields: BlockFields; rule?: string } {
+    const shown = store().showBlock(id);
+    return { fields: blockFields(shown), rule: shown.repeats ? (shown.rrule ?? undefined) : undefined };
+  },
 
-  /** Adds a block; what was said, and the series it made. */
-  addBlock(block: NewBlock): { said: string; series?: string } {
-    const change = store().addBlock(block);
+  /** One day's block as the form for that day alone starts from it. */
+  dayFields: (block: PlanBlock): BlockFields => dayBlockFields(block),
+
+  /** What a kind of block has unless set apart. */
+  kindDefaults: (kind: string): BlockDefaults | undefined => blockDefaults(kind) ?? undefined,
+
+  /** Adds a block from its form; what was said, and the series it made. */
+  addBlock(fields: BlockFields, date: string): { said: string; series?: string } {
+    const change = store().addBlock(newBlock(fields, date));
     return { said: said(change), series: change.affected?.blocks?.[0] };
   },
 
-  editBlock: (id: string, edit: BlockEdit, scope: BlockScope): string => said(store().editBlock(id, edit, scope)),
+  /**
+   * Saves a block's form over what it started from — only what changed — to every occurrence,
+   * or to one day's when `date` is given. Undefined when nothing changed.
+   */
+  saveBlock(series: string, date: string | undefined, before: BlockFields, after: BlockFields): string | undefined {
+    const edit = blockEdit(before, after);
+    if (!edit) return undefined;
+    const scope: BlockScope = date ? { Occurrence: { date } } : "Series";
+    return said(store().editBlock(series, edit, scope));
+  },
+
   cancelOccurrence: (series: string, date: string): string => said(store().cancelOccurrence(series, date)),
   restoreOccurrence: (series: string, date: string): string => said(store().restoreOccurrence(series, date)),
   deleteBlock: (id: string): string => said(store().deleteBlock(id)),
@@ -253,10 +285,18 @@ const api = {
   unassign: (sitting: string): string => said(store().unassign(sitting)),
   planMinutes: (sitting: string, minutes: number | undefined): string => said(store().planMinutes(sitting, minutes)),
 
-  /** Starts a sitting's timer, or stops the one running. */
-  timer(sitting: PlanAssignment): string {
-    if (sitting.status !== "in progress") return said(store().startTimer(sitting.id));
-    const timer = store().stopTimer(sitting.id, undefined);
+  /** Starts a sitting's timer, or resumes it when paused. */
+  startTimer: (sitting: string): string => said(store().startTimer(sitting)),
+
+  /** Pauses a sitting's timer, keeping the time so far. */
+  pauseTimer(sitting: string): string {
+    const timer = store().pauseTimer(sitting);
+    return announcementText(timer.announcement, timer.notices ?? []);
+  },
+
+  /** Stops a sitting's timer, which ends the sitting. */
+  stopTimer(sitting: string): string {
+    const timer = store().stopTimer(sitting, undefined);
     return announcementText(timer.announcement, timer.notices ?? []);
   },
 
@@ -330,7 +370,77 @@ const api = {
 
   renameDevice: (id: string, name: string): string => said(store().renameDevice(id, name)),
   unpairDevice: (id: string): string => said(store().unpairDevice(id)),
+
+  /** How syncing is going, as one sentence. */
+  syncStatus: (): string => {
+    const status = store().syncStatus();
+    return announcementText(status.announcement, status.notices ?? []);
+  },
+
+  // -------------------------------------------------------------------------------------
+  // Projects, labels and saved filters. Each says what it did, and whether anything changed.
+  // -------------------------------------------------------------------------------------
+
+  addProject: (name: string, parent?: string) => done(store().addProject(name, parent)),
+  renameProject: (name: string, to: string) => done(store().renameProject(name, to)),
+  moveProject: (name: string, parent?: string) => done(store().moveProject(name, parent)),
+  reorderProject: (name: string, direction: Direction) => done(store().reorderProject(name, direction)),
+  weighProject: (name: string, weight: Weight) => done(store().weighProject(name, weight)),
+  archiveProject: (name: string) => done(store().archiveProject(name)),
+  deleteProject: (name: string, keepTasks: boolean) => done(store().deleteProject(name, keepTasks)),
+  addLabel: (name: string) => done(store().addLabel(name)),
+  renameLabel: (name: string, to: string) => done(store().renameLabel(name, to)),
+  mergeLabels: (from: string, into: string) => done(store().mergeLabels(from, into)),
+  recolourLabel: (name: string, colour?: string) => done(store().recolourLabel(name, colour)),
+  reorderLabel: (name: string, direction: Direction) => done(store().reorderLabel(name, direction)),
+  deleteLabel: (name: string) => done(store().deleteLabel(name)),
+  addFilter: (name: string, query: string) => done(store().addFilter(name, query)),
+  editFilter: (name: string, rename?: string, query?: string) => done(store().editFilter(name, rename, query)),
+  reorderFilter: (name: string, direction: Direction) => done(store().reorderFilter(name, direction)),
+  deleteFilter: (name: string) => done(store().deleteFilter(name)),
+
+  /** The labels, by name, for choosing one to merge into. */
+  labels: (): string[] => store().listLabels().rows.map((row) => row.title),
+
+  // Waiting for other tasks.
+  waitFor: (id: string, on: string): string => said(store().addDependency(id, on)),
+  stopWaiting: (id: string, on: string): string => said(store().removeDependency(id, on)),
+
+  // -------------------------------------------------------------------------------------
+  // Settings, backups and exports.
+  // -------------------------------------------------------------------------------------
+
+  /** Every setting, by key. */
+  settings(): Record<string, string> {
+    return Object.fromEntries(store().settings(undefined).settings.map((setting) => [setting.key, setting.value]));
+  },
+
+  setSetting: (key: string, value: string): string => said(store().setSetting(key, value)),
+
+  /** A backup taken now, for the page to download, and what to say about it. */
+  backup(): { name: string; bytes: Uint8Array; said: string } {
+    const file = store().backupFile() as { name: string; bytes: Uint8Array; said: string };
+    return Comlink.transfer(file, [file.bytes.buffer as ArrayBuffer]);
+  },
+
+  /** Reads a JSON export or a backup the person chose; what it did. */
+  importFile(name: string, bytes: Uint8Array): string {
+    const imported = store().importBytes(name, bytes);
+    const result = "Backup" in imported ? imported.Backup.done : imported.Export.done;
+    return announcementText(result.announcement, result.notices ?? []);
+  },
+
+  /** The exports Settings offers. */
+  exportChoices: (): ExportChoice[] => exportChoices().exports,
+
+  /** An export's contents, to download. */
+  exportContent: (format: ExportFormat): string => store().export(format).content ?? "",
 };
+
+/** What a change said, and whether it changed anything — which decides whether to go to it. */
+function done(change: Change): { said: string; changed: boolean } {
+  return { said: said(change), changed: change.changed };
+}
 
 /** One row of the day, with what it is and the rows beneath it. */
 export interface DayRow {

@@ -658,8 +658,11 @@ its own; see its README for the toolchain (NDK, `cargo-ndk`, Android Studio's JD
 `wasm32-unknown-unknown` (`apps/web/core`, crate `lumenna-web`). `npm run core:dev` (or
 `npm run core`, size-tuned) builds it and generates `src/core/` with wasm-bindgen, whose CLI
 must match the crate's version in `Cargo.lock`; `npm run build` builds the size-tuned core
-itself. `src/core/` is build output and not committed. Tasks, places, details, quick add,
-Today (the day, its blocks and sittings), Blocks, and Devices with pairing and sync work.
+itself. `src/core/` is build output and not committed. At parity with the desktop apps but for
+automatic backups and syncing in the background, which a page cannot do: tasks, places with
+project, label and saved-filter management, details with waiting for other tasks, quick add,
+Today and Blocks with every block setting and pausing timers, Devices with pairing and sync,
+and Settings (planning, a backup as a download, restoring, exports, import).
 
 - **The same store, in OPFS.** rusqlite 0.40 builds for the browser on `sqlite-wasm-rs`; the
   `sahpool` VFS keeps the file in OPFS through sync access handles, which only a dedicated
@@ -693,6 +696,15 @@ Today (the day, its blocks and sittings), Blocks, and Devices with pairing and s
   row, so a dialog it opens returns focus there rather than to a menu item that is gone.
 - **Times and days are the browser's** (`core/src/clock.rs`, `Intl` with no locale), as the
   desktop apps' `Clock` is theirs; the day's rows are worded by `crates/desktop`.
+- **Files are bytes, not paths.** A backup is the surface's `backup_file` offered as a
+  download; restoring and importing read the chosen file through `import_bytes`. The page
+  takes no backups by itself, and says so.
+- **The sidebar's row in hand is the one focus was last on**, not the selection: the
+  headings (Projects, Labels, Saved Filters) are never selected, and their menu is New.
+- **Ctrl+Z and Ctrl+Shift+Z or Ctrl+Y** undo and redo the store from anywhere but a field or
+  a dialog, where they are the browser's (typing) or nothing.
+- **A React Aria check box's input is visually hidden**, so Playwright's `check()` waits
+  for it forever: tests focus it and press Space, as a keyboard user does.
 - **A browser is an ordinary Iroh peer, always through a relay** (§16.12: no UDP from a
   sandbox), so `Reach::Internet`, and **it pairs by code** (no local network to find one on).
   `core/src/sync.rs` returns promises over the surface's async halves; the tab that owns the

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { Button, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
-import { blockForm } from "./BlockForm";
+import { blockForm, freshBlock } from "./BlockForm";
 import { core } from "./core";
 import type { Line } from "./core";
 import { rowKey, useLanding } from "./landing";
@@ -47,25 +47,17 @@ export function Blocks(props: { revision: number; onChanged: () => void }) {
   };
 
   const add = async () => {
-    const fields = { title: "", start: "09:00", minutes: "60", kind: "work", repeat: "" };
-    const saved = await blockForm({ kind: "add", date: "today" }, fields, "New Block");
+    const saved = await blockForm({ kind: "add", date: "today" }, await freshBlock("09:00", 60), "New Block");
     // A new series' row is listed under its first occurrence, so land near where it was.
     if (saved) changed(saved.said, undefined, ids.indexOf(selected ?? ""));
   };
 
   const edit = async (at: Line) => {
     try {
-      const series = await core.showBlock(at.row.id);
-      const fields = {
-        title: series.title,
-        start: series.start,
-        minutes: String(series.minutes),
-        kind: series.kind,
-        repeat: series.repetition ?? "",
-        rule: series.repeats ? (series.rrule ?? undefined) : undefined,
-      };
-      const heading = series.repeats ? `Change ${series.title}, Every Occurrence` : `Change ${series.title}`;
-      const saved = await blockForm({ kind: "series", id: series.id }, fields, heading);
+      const { fields, rule } = await core.seriesFields(at.row.id);
+      // A rule is given exactly when the series repeats.
+      const heading = rule ? `Change ${fields.title}, Every Occurrence` : `Change ${fields.title}`;
+      const saved = await blockForm({ kind: "series", id: at.row.id }, fields, heading, rule);
       if (saved) changed(saved.said, at.row.id, ids.indexOf(at.row.id));
     } catch (error) {
       say((error as Error).message);

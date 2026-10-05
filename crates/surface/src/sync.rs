@@ -45,10 +45,8 @@ use n0_future::time::Instant;
 
 use crate::error::{LumennaError, Result};
 use crate::tasks::record_or;
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-use crate::types::SyncStatus;
 use crate::types::{
-    Announced, Change, DeviceList, DeviceView, PairedWith, PeerSync, Reach, SyncReport,
+    Announced, Change, DeviceList, DeviceView, PairedWith, PeerSync, Reach, SyncReport, SyncStatus,
 };
 use crate::words::count_line;
 use crate::{Lumenna, repaired};
@@ -257,24 +255,7 @@ impl Lumenna {
     ///
     /// If the store cannot be read.
     pub fn sync_status(&self) -> Result<SyncStatus> {
-        let running = self.endpoint_held()?;
-        let (me, devices) = self.device_views()?;
-        let others = devices.iter().filter(|d| !d.this_device).count();
-        let announcement = match (running, others) {
-            (_, 0) => "Not paired with any other device yet".to_owned(),
-            (true, n) => format!("Sync is running, with {}", count_line(n, "other device")),
-            (false, n) => format!(
-                "Sync is not running; {} will catch up at the next sync",
-                count_line(n, "other device")
-            ),
-        };
-        Ok(SyncStatus {
-            announcement,
-            notices: Vec::new(),
-            running,
-            this_device: me.to_string(),
-            devices,
-        })
+        self.sync_status_with(self.endpoint_held()?)
     }
 
     /// Starts keeping this device in sync, for as long as the returned service lives.
@@ -309,6 +290,33 @@ impl Lumenna {
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
+    /// How syncing is going, given whether this device's endpoint is running — what
+    /// [`sync_status`](Self::sync_status) asks the lock file, and a browser knows of its own
+    /// loop (§16.12).
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn sync_status_with(&self, running: bool) -> Result<SyncStatus> {
+        let (me, devices) = self.device_views()?;
+        let others = devices.iter().filter(|d| !d.this_device).count();
+        let announcement = match (running, others) {
+            (_, 0) => "Not paired with any other device yet".to_owned(),
+            (true, n) => format!("Sync is running, with {}", count_line(n, "other device")),
+            (false, n) => format!(
+                "Sync is not running; {} will catch up at the next sync",
+                count_line(n, "other device")
+            ),
+        };
+        Ok(SyncStatus {
+            announcement,
+            notices: Vec::new(),
+            running,
+            this_device: me.to_string(),
+            devices,
+        })
+    }
+
     /// The paired devices, this one first.
     ///
     /// # Errors
