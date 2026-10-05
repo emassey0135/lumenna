@@ -245,6 +245,42 @@
         (should (member "#Work" (nth 2 found)))
         (should (equal (buffer-substring (nth 0 found) (nth 1 found)) "#Wo"))))))
 
+;;;; Keys and their help
+
+(ert-deftest lumenna-every-key-a-help-lists-is-bound-to-its-command-there ()
+  (let ((owners '(lumenna-command-map)))
+    (mapatoms (lambda (symbol) (when (get symbol 'lumenna-keys) (push symbol owners))))
+    (should (memq 'lumenna-devices-mode owners))
+    (dolist (owner owners)
+      ;; In a buffer in that mode: a derived mode's map takes its parent's keys
+      ;; only once the mode has run.
+      (with-temp-buffer
+        (let ((map (if (fboundp owner) (progn (funcall owner) (current-local-map)) (symbol-value owner))))
+          (dolist (group (lumenna--key-groups owner))
+            (dolist (binding (cdr group))
+              (should (equal (list owner (car binding) (keymap-lookup map (car binding)))
+                             (list owner (car binding) (nth 2 binding)))))))))))
+
+(ert-deftest lumenna-help-lists-a-lists-keys-once-and-runs-one-there ()
+  (lumenna-test--with-store
+    (lumenna-write "task.add" :text "buy milk")
+    (lumenna-tasks)
+    (lumenna-test--goto "buy milk")
+    (let ((list (current-buffer)))
+      (lumenna-help)
+      (should (derived-mode-p 'lumenna-help-mode))
+      (goto-char (point-min))
+      (should (string-match-p "\\`Keys in Lumenna: Tasks\\." (lumenna-test--line)))
+      ;; The list's own RET, not the one every list has; and each key once.
+      (should (= (how-many "^  RET: ") 1))
+      (lumenna-test--goto "RET: Details")
+      (lumenna-test--goto "Every list")
+      (lumenna-test--goto "  u: Undo")
+      (lumenna-test--goto "  c: Complete, or mark not done")
+      (lumenna-activate)
+      (should (eq (current-buffer) list))
+      (should (equal (lumenna-test--titles) nil)))))
+
 ;;;; Settings and connecting
 
 (ert-deftest lumenna-a-time-setting-reads-and-takes-hours-and-minutes ()

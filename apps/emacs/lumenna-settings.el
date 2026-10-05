@@ -27,19 +27,11 @@
     ("backup-dir" "Backups go to"))
   "Each setting's name in words, and the values to choose from when there are few.")
 
-(defvar-keymap lumenna-settings-mode-map
-  :doc "Keys among the settings."
-  "b" #'lumenna-back-up-now
-  "R" #'lumenna-restore-backup
-  "E" #'lumenna-export
-  "I" #'lumenna-import)
-
 (define-derived-mode lumenna-settings-mode lumenna-list-mode "Lumenna Settings"
   "Settings, one per line.  RET changes one.  The first six sync to every
 device; the backup settings are this device's alone (§3.12).
 
 \\{lumenna-settings-mode-map}"
-  (setq-local lumenna--menu #'lumenna-settings-menu)
   (setq-local lumenna--activate #'lumenna--change-setting))
 
 ;;;###autoload
@@ -73,18 +65,10 @@ Times are typed as said, 9am or 14:30; core reads and checks every value."
 
 ;;;; Devices and syncing
 
-(defvar-keymap lumenna-devices-mode-map
-  :doc "Keys among the devices."
-  "s" #'lumenna-sync-now
-  "P" #'lumenna-pair
-  "r" #'lumenna-device-rename
-  "d" #'lumenna-device-unpair)
-
 (define-derived-mode lumenna-devices-mode lumenna-list-mode "Lumenna Devices"
   "Paired devices and how syncing with each last went.  RET renames one.
 
 \\{lumenna-devices-mode-map}"
-  (setq-local lumenna--menu #'lumenna-devices-menu)
   (setq-local lumenna--activate (lambda (_row) (lumenna-device-rename))))
 
 (defun lumenna--ago (stamp)
@@ -243,33 +227,23 @@ The code to give the other device, or the words to compare."
 
 ;;;; Menus
 
-(transient-define-prefix lumenna-settings-menu ()
-  "Settings, and getting data in and out."
-  ["The setting at point"
-   ("RET" "Change it" lumenna-activate)]
-  ["Data"
+(lumenna-define-keys lumenna-settings-mode
+  ("The setting at point"
+   ("RET" "Change it" lumenna-activate))
+  ("Data"
    ("b" "Back up now" lumenna-back-up-now)
    ("R" "Restore from a backup" lumenna-restore-backup)
    ("E" "Export" lumenna-export)
-   ("I" "Import an export or a backup" lumenna-import)]
-  ["Lumenna"
-   ("u" "Undo" lumenna-undo)
-   ("y" "Redo" lumenna-redo)
-   ("L" "Lumenna's places" lumenna)])
+   ("I" "Import an export or a backup" lumenna-import)))
 
-(transient-define-prefix lumenna-devices-menu ()
-  "Devices and syncing."
-  ["The device at point"
+(lumenna-define-keys lumenna-devices-mode
+  ("The device at point"
    ("r" "Rename" lumenna-device-rename)
-   ("d" "Stop syncing with it" lumenna-device-unpair)]
-  ["Syncing"
+   ("d" "Stop syncing with it" lumenna-device-unpair))
+  ("Syncing"
    ("s" "Sync now" lumenna-sync-now)
    ("P" "Pair a device" lumenna-pair)
-   ("c" "Cancel a pairing" lumenna-pair-cancel)]
-  ["Lumenna"
-   ("u" "Undo" lumenna-undo)
-   ("y" "Redo" lumenna-redo)
-   ("L" "Lumenna's places" lumenna)])
+   ("c" "Cancel a pairing" lumenna-pair-cancel)))
 
 (provide 'lumenna-settings)
 

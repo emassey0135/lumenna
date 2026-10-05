@@ -75,6 +75,15 @@
       (should (equal (plist-get facts :content) "pay the rent")))
     (should (eq (get-text-property (point) 'emacsvox-aural-module) 'lumenna))))
 
+(ert-deftest lumenna-emacsvox-a-line-that-is-no-task-says-it-is-none ()
+  (lumenna-emacsvox-test--with-store
+    (lumenna)
+    (lumenna-test--goto "Today")
+    (should-not (get-text-property (point) emacsvox-aural-facts-property))
+    (lumenna-help)
+    (lumenna-test--goto "  u: Undo")
+    (should-not (get-text-property (point) emacsvox-aural-facts-property))))
+
 (ert-deftest lumenna-emacsvox-completing-a-task-is-one-notification-with-its-event ()
   (lumenna-emacsvox-test--with-store
     (lumenna-write "task.add" :text "buy milk")

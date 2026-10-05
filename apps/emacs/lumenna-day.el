@@ -84,29 +84,12 @@ planned\"."
 (defvar-local lumenna--day nil "The day shown, as a date phrase; nil follows today.")
 (defvar-local lumenna--date nil "The ISO date the day buffer last showed.")
 
-(defvar-keymap lumenna-day-mode-map
-  :doc "Keys in the day."
-  "a" #'lumenna-day-add-block
-  "[" #'lumenna-day-previous
-  "]" #'lumenna-day-next
-  "." #'lumenna-day-today
-  "j" #'lumenna-day-go-to
-  "e" #'lumenna-day-edit-block
-  "i" #'lumenna-day-assign
-  "x" #'lumenna-day-cancel
-  "o" #'lumenna-day-put-back
-  "s" #'lumenna-day-timer
-  "l" #'lumenna-day-planned-length
-  "m" #'lumenna-day-log-minutes
-  "d" #'lumenna-day-delete)
-
 (define-derived-mode lumenna-day-mode lumenna-list-mode "Lumenna Day"
   "A day: blocks with their sittings under them, free time, and now.
 RET edits a block, shows a sitting's task, adds a block in free time, or puts
 a cancelled day back.  [ and ] move between days.
 
 \\{lumenna-day-mode-map}"
-  (setq-local lumenna--menu #'lumenna-day-menu)
   (setq-local lumenna--activate #'lumenna--day-activate))
 
 ;;;###autoload
@@ -358,17 +341,10 @@ a rule this cannot show.  SCOPE is the plist saying which occurrences."
                        (format "Delete %s? It goes to the trash with its assignments. " title)))
     (lumenna-write "block.rm" :id series)))
 
-(defvar-keymap lumenna-blocks-mode-map
-  :doc "Keys in the list of blocks."
-  "a" #'lumenna-add-block
-  "e" #'lumenna-blocks-edit
-  "d" #'lumenna-blocks-delete)
-
 (define-derived-mode lumenna-blocks-mode lumenna-list-mode "Lumenna Blocks"
   "Every block series.  RET or e changes every occurrence; d deletes one.
 
 \\{lumenna-blocks-mode-map}"
-  (setq-local lumenna--menu #'lumenna-blocks-menu)
   (setq-local lumenna--activate (lambda (row) (lumenna-edit-series (plist-get row :id)))))
 
 ;;;###autoload
@@ -394,40 +370,29 @@ a rule this cannot show.  SCOPE is the plist saying which occurrences."
 
 ;;;; Menus
 
-(transient-define-prefix lumenna-day-menu ()
-  "What can be done in the day."
-  ["The day"
+(lumenna-define-keys lumenna-day-mode
+  ("The day"
    ("a" "Add a block" lumenna-day-add-block)
    ("[" "Previous day" lumenna-day-previous)
    ("]" "Next day" lumenna-day-next)
    ("." "Today, at now" lumenna-day-today)
-   ("j" "Go to a day" lumenna-day-go-to)]
-  ["A block"
+   ("j" "Go to a day" lumenna-day-go-to))
+  ("A block"
    ("e" "Edit" lumenna-day-edit-block)
    ("i" "Assign a task" lumenna-day-assign)
    ("x" "Cancel this day" lumenna-day-cancel)
    ("o" "Put this day back" lumenna-day-put-back)
-   ("d" "Delete the block, or take a task out of it" lumenna-day-delete)]
-  ["A task in a block"
+   ("d" "Delete the block, or take a task out of it" lumenna-day-delete))
+  ("A task in a block"
    ("RET" "The task itself" lumenna-activate)
    ("s" "Start or stop the timer" lumenna-day-timer)
    ("l" "Planned length" lumenna-day-planned-length)
-   ("m" "Log minutes by hand" lumenna-day-log-minutes)]
-  ["Lumenna"
-   ("u" "Undo" lumenna-undo)
-   ("y" "Redo" lumenna-redo)
-   ("L" "Lumenna's places" lumenna)])
+   ("m" "Log minutes by hand" lumenna-day-log-minutes)))
 
-(transient-define-prefix lumenna-blocks-menu ()
-  "What can be done in the list of blocks."
-  ["The block at point"
+(lumenna-define-keys lumenna-blocks-mode
+  ("The block at point"
    ("e" "Edit every occurrence" lumenna-blocks-edit)
-   ("d" "Delete" lumenna-blocks-delete)]
-  ["Blocks"
-   ("a" "Add a block" lumenna-add-block)
-   ("u" "Undo" lumenna-undo)
-   ("y" "Redo" lumenna-redo)
-   ("L" "Lumenna's places" lumenna)])
+   ("d" "Delete" lumenna-blocks-delete)))
 
 (provide 'lumenna-day)
 

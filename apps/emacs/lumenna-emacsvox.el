@@ -86,7 +86,7 @@
 
 (defun lumenna-emacsvox--facts (row)
   "ROW's semantic facts, or nil for a row that is not a task, block or sitting."
-  (when-let* ((role (cdr (assoc (or (plist-get row :role) "task") lumenna-emacsvox--roles))))
+  (when-let* ((role (cdr (assoc (plist-get row :role) lumenna-emacsvox--roles))))
     (let ((states (append (plist-get row :state) nil))
           (sitting (plist-get row :sitting)))
       (list :role role

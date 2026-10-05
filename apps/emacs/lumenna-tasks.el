@@ -20,26 +20,11 @@
 (defvar-local lumenna--prefix nil
   "What a task added in this list starts with: `#Work ' in a project's list.")
 
-(defvar-keymap lumenna-tasks-mode-map
-  :doc "Keys in a task list."
-  "a" #'lumenna-tasks-add
-  "/" #'lumenna-search
-  "c" #'lumenna-task-toggle-done
-  "e" #'lumenna-task-edit
-  "b" #'lumenna-task-assign
-  "m" #'lumenna-task-move-to-project
-  "s" #'lumenna-task-make-subtask
-  "t" #'lumenna-task-move-to-top
-  "w" #'lumenna-task-wait-for
-  "W" #'lumenna-task-stop-waiting
-  "d" #'lumenna-task-delete)
-
 (define-derived-mode lumenna-tasks-mode lumenna-list-mode "Lumenna Tasks"
   "A list of tasks, subtasks folded under their task.
 RET shows a task; ? shows every command.
 
 \\{lumenna-tasks-mode-map}"
-  (setq-local lumenna--menu #'lumenna-tasks-menu)
   (setq-local lumenna--activate #'lumenna-task-show))
 
 (defun lumenna--task-listing (query title)
@@ -245,23 +230,10 @@ empty clears a field."
 
 (defvar-local lumenna--task nil "The task this detail buffer shows.")
 
-(defvar-keymap lumenna-task-mode-map
-  :doc "Keys in a task's details."
-  "e" #'lumenna-task-edit
-  "c" #'lumenna-task-toggle-done
-  "b" #'lumenna-task-assign
-  "m" #'lumenna-task-move-to-project
-  "s" #'lumenna-task-make-subtask
-  "t" #'lumenna-task-move-to-top
-  "w" #'lumenna-task-wait-for
-  "W" #'lumenna-task-stop-waiting
-  "d" #'lumenna-task-delete)
-
 (define-derived-mode lumenna-task-mode lumenna-list-mode "Lumenna Task"
   "One task, a field per line.  RET or e on a field changes it.
 
 \\{lumenna-task-mode-map}"
-  (setq-local lumenna--menu #'lumenna-task-menu)
   (setq-local lumenna--describe #'lumenna--describe-field)
   (setq-local lumenna--activate (lambda (row) (lumenna-task-edit (plist-get row :field)))))
 
@@ -309,16 +281,10 @@ empty clears a field."
 
 ;;;; The trash
 
-(defvar-keymap lumenna-trash-mode-map
-  :doc "Keys in the trash."
-  "r" #'lumenna-trash-restore
-  "d" #'lumenna-trash-erase)
-
 (define-derived-mode lumenna-trash-mode lumenna-list-mode "Lumenna Trash"
   "Deleted tasks.  RET or r restores one; d erases it for good, asking first.
 
 \\{lumenna-trash-mode-map}"
-  (setq-local lumenna--menu #'lumenna-trash-menu)
   (setq-local lumenna--activate (lambda (row) (lumenna-write "task.restore" :id (plist-get row :id)))))
 
 ;;;###autoload
@@ -343,9 +309,8 @@ empty clears a field."
 
 ;;;; Menus
 
-(transient-define-prefix lumenna-tasks-menu ()
-  "What can be done in a task list."
-  ["The task at point"
+(lumenna-define-keys lumenna-tasks-mode
+  ("The task at point"
    ("RET" "Details" lumenna-activate)
    ("c" "Complete, or mark not done" lumenna-task-toggle-done)
    ("e" "Change a field" lumenna-task-edit)
@@ -355,19 +320,10 @@ empty clears a field."
    ("t" "Move it to the top level" lumenna-task-move-to-top)
    ("w" "Wait for another task" lumenna-task-wait-for)
    ("W" "Stop waiting for another" lumenna-task-stop-waiting)
-   ("d" "Delete, to the trash" lumenna-task-delete)]
-  ["The list"
-   ("a" "Add a task" lumenna-tasks-add)
-   ("/" "Search or filter" lumenna-search)
-   ("TAB" "Fold or unfold" lumenna-toggle)
-   ("g" "Read it again" lumenna-refresh)
-   ("u" "Undo" lumenna-undo)
-   ("y" "Redo" lumenna-redo)
-   ("L" "Lumenna's places" lumenna)])
+   ("d" "Delete, to the trash" lumenna-task-delete)))
 
-(transient-define-prefix lumenna-task-menu ()
-  "What can be done to this task."
-  ["This task"
+(lumenna-define-keys lumenna-task-mode
+  ("This task"
    ("e" "Change the field at point, or choose one" lumenna-task-edit)
    ("c" "Complete, or mark not done" lumenna-task-toggle-done)
    ("b" "Put it in a block" lumenna-task-assign)
@@ -376,21 +332,12 @@ empty clears a field."
    ("t" "Move it to the top level" lumenna-task-move-to-top)
    ("w" "Wait for another task" lumenna-task-wait-for)
    ("W" "Stop waiting for another" lumenna-task-stop-waiting)
-   ("d" "Delete, to the trash" lumenna-task-delete)]
-  ["Lumenna"
-   ("u" "Undo" lumenna-undo)
-   ("y" "Redo" lumenna-redo)
-   ("L" "Lumenna's places" lumenna)])
+   ("d" "Delete, to the trash" lumenna-task-delete)))
 
-(transient-define-prefix lumenna-trash-menu ()
-  "What can be done in the trash."
-  ["The task at point"
+(lumenna-define-keys lumenna-trash-mode
+  ("The task at point"
    ("r" "Restore" lumenna-trash-restore)
-   ("d" "Erase for good" lumenna-trash-erase)]
-  ["Lumenna"
-   ("u" "Undo" lumenna-undo)
-   ("y" "Redo" lumenna-redo)
-   ("L" "Lumenna's places" lumenna)])
+   ("d" "Erase for good" lumenna-trash-erase)))
 
 (provide 'lumenna-tasks)
 
