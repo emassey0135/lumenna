@@ -205,9 +205,36 @@ class Session:
         pump(wait)
 
     def focused(self):
-        """What has focus, as Orca would find it."""
+        """What has focus, as Orca would find it: in the active window, since each window keeps
+        a focused widget of its own."""
         app = self.app or self._find_app()
-        return _find(app, lambda a: a.get_state_set().contains(Atspi.StateType.FOCUSED)) if app else None
+        if not app:
+            return None
+        focused = lambda a: a.get_state_set().contains(Atspi.StateType.FOCUSED)
+        for index in range(app.get_child_count()):
+            window = app.get_child_at_index(index)
+            if window and window.get_state_set().contains(Atspi.StateType.ACTIVE):
+                return _find(window, focused)
+        return _find(app, focused)
+
+    def active_window(self):
+        """The name of the window in front."""
+        for index in range(self.app.get_child_count()):
+            window = self.app.get_child_at_index(index)
+            if window and window.get_state_set().contains(Atspi.StateType.ACTIVE):
+                return window.get_name()
+        return None
+
+    def wait_for_window(self, name, seconds=10):
+        """Waits for a window to come to the front: a new one takes the headless compositor
+        well over half a second to show, and keys sent before then go to the one behind."""
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            if self.active_window() == name and self.focused() is not None:
+                pump(0.2)
+                return
+            pump(0.1)
+        raise AssertionError(f"{name!r} never came to the front; {self.active_window()!r} is")
 
     def focus(self):
         """What has focus, described."""

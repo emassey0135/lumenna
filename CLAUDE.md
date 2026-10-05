@@ -493,7 +493,8 @@ surface's (`task_edit`, below), as it is every client's.
 
 `apps/gtk/` — Rust over `gtk4-rs`, linking `lumenna-surface` directly (§16.3), binary
 `lumenna-gtk`. Wording, the tree, places and the profile are `crates/desktop`'s, as Windows'
-are. Tasks (list, filter, details, quick add, task actions), Today and Blocks work.
+are. Tasks (list, filter, details, quick add, task actions), Today, Blocks and the sidebar's
+project, label and filter actions work.
 
 - **Every list is a `GtkListView` that says it is a tree** (`tree.rs`). §16.3's check came
   out this way: `GtkTreeView` exposes *no rows* to AT-SPI in GTK 4; a plain list view with
@@ -515,7 +516,13 @@ are. Tasks (list, filter, details, quick add, task actions), Today and Blocks wo
 - **Another process's writes are noticed by `Lumenna::version`**, not `refresh`: the sync
   loop refreshes every tick and would consume `refresh`'s answer.
 - **Dialogs are futures** (`prompts.rs`): GTK 4 has no blocking `run`, so an action that
-  asks first is `window::spawn`ed.
+  asks first is `window::spawn`ed. While a popover menu is open, `spawn` waits for it to
+  close, so the dialog is not mapped under a closing menu. Dialogs set their window's focus
+  widget (`prompts::focus_on`) rather than grabbing focus before they are mapped.
+- **A keyboard context menu opens when its keys are let go.** A popover opened on
+  Shift+F10's press is closed again by the releases; the Menu key alone did not show it.
+- **Row menus carry their own actions** (`row.` prefix, a `SimpleActionGroup` on the
+  popover); the task menu uses the window's `win.` actions, as the menu bar does.
 - **One instance per profile** through GApplication's bus name, tagged per profile
   (`main.rs`); starting it again shows the window. Closing hides it (§16.2).
 - **First focus on an expandable row says "expanded" twice**: GTK creates a row's accessible
@@ -527,7 +534,9 @@ are. Tasks (list, filter, details, quick add, task actions), Today and Blocks wo
   desktop, its Orca included. `ORCA=1` runs Orca too (a copy of its launcher whose
   single-instance check is narrowed to itself) and `Session.speech()` returns what it said.
   `explore.py` prints focus, announcements and speech after each key, for finding out.
-- **Not built yet**: Today, Blocks, the sidebar's actions, settings, devices and pairing,
+  A new window takes the headless compositor well over half a second to show, and keys sent
+  before then go to the window behind: wait with `Session.wait_for_window`.
+- **Not built yet**: settings, devices and pairing,
   backup/export/import, history, the tray (`ksni`), global shortcuts (the portal),
   completion, a `.desktop` file.
 

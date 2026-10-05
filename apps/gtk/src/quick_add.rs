@@ -145,7 +145,7 @@ pub async fn run(parent: Option<&gtk::Window>, application: &gtk::Application, l
     }
     window.add_controller(escape);
     window.present();
-    line.grab_focus();
+    prompts::focus_on(&line);
     // The cursor after the prefix, so typing carries on from `#Work `.
     line.set_position(-1);
     receiver.await.ok().flatten()

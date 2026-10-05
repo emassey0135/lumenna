@@ -222,6 +222,6 @@ pub async fn run(parent: &gtk::Window, lumenna: Arc<Lumenna>, purpose: Purpose, 
     });
     window.add_controller(escape);
     window.present();
-    form.title.grab_focus();
+    prompts::focus_on(&form.title);
     receiver.await.ok().flatten()
 }
