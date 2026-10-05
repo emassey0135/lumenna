@@ -13,8 +13,12 @@
 
 use std::path::Path;
 
+mod clock;
+
+use clock::Browser;
+use lumenna_desktop::choices;
 use lumenna_desktop::places::{self, Entry, Place};
-use lumenna_desktop::speech;
+use lumenna_desktop::speech::{self, Clock};
 use lumenna_surface::{Lumenna, LumennaError, Syntax, TaskDetail, TaskEdit, TaskFields};
 use serde::Serialize;
 use tsify::{Ts, Tsify};
@@ -184,6 +188,146 @@ impl Core {
     pub fn plan(&self, date: Option<String>) -> Out<lumenna_surface::Plan> {
         out(self.lumenna.plan(date))
     }
+
+    /// Every block series, by when it starts.
+    #[wasm_bindgen(js_name = listBlocks)]
+    pub fn list_blocks(&self) -> Out<lumenna_surface::Rows> {
+        out(self.lumenna.list_blocks())
+    }
+
+    /// One block series, as an editor starts from it.
+    #[wasm_bindgen(js_name = showBlock)]
+    pub fn show_block(&self, id: &str) -> Out<lumenna_surface::BlockShown> {
+        out(self.lumenna.show_block(id))
+    }
+
+    /// The surface's method of the same name, as `addBlock`.
+    #[wasm_bindgen(js_name = addBlock)]
+    pub fn add_block(&self, block: Ts<lumenna_surface::NewBlock>) -> Out<lumenna_surface::Change> {
+        out(self.lumenna.add_block(block.to_rust()?))
+    }
+
+    /// Changes a block: every occurrence, or one day's alone (§4.3).
+    #[wasm_bindgen(js_name = editBlock)]
+    pub fn edit_block(
+        &self,
+        id: &str,
+        edit: Ts<lumenna_surface::BlockEdit>,
+        scope: Ts<lumenna_surface::BlockScope>,
+    ) -> Out<lumenna_surface::Change> {
+        out(self.lumenna.edit_block(id, edit.to_rust()?, scope.to_rust()?))
+    }
+
+    /// The surface's method of the same name, as `cancelOccurrence`.
+    #[wasm_bindgen(js_name = cancelOccurrence)]
+    pub fn cancel_occurrence(&self, id: &str, date: &str) -> Out<lumenna_surface::Change> {
+        out(self.lumenna.cancel_occurrence(id, date))
+    }
+
+    /// The surface's method of the same name, as `restoreOccurrence`.
+    #[wasm_bindgen(js_name = restoreOccurrence)]
+    pub fn restore_occurrence(&self, id: &str, date: &str) -> Out<lumenna_surface::Change> {
+        out(self.lumenna.restore_occurrence(id, date))
+    }
+
+    /// The surface's method of the same name, as `deleteBlock`.
+    #[wasm_bindgen(js_name = deleteBlock)]
+    pub fn delete_block(&self, id: &str) -> Out<lumenna_surface::Change> {
+        out(self.lumenna.delete_block(id))
+    }
+
+    /// Puts a task in a block for one sitting (§3.7).
+    pub fn assign(
+        &self,
+        task: &str,
+        block: &str,
+        date: Option<String>,
+        minutes: Option<u32>,
+    ) -> Out<lumenna_surface::Change> {
+        out(self.lumenna.assign(task, block, date, minutes))
+    }
+
+    /// The surface's method of the same name, as `unassign`.
+    pub fn unassign(&self, assignment: &str) -> Out<lumenna_surface::Change> {
+        out(self.lumenna.unassign(assignment))
+    }
+
+    /// How long a sitting is meant to take, or none.
+    #[wasm_bindgen(js_name = planMinutes)]
+    pub fn plan_minutes(&self, assignment: &str, minutes: Option<u32>) -> Out<lumenna_surface::Change> {
+        out(self.lumenna.plan_minutes(assignment, minutes))
+    }
+
+    /// The surface's method of the same name, as `startTimer`.
+    #[wasm_bindgen(js_name = startTimer)]
+    pub fn start_timer(&self, assignment: &str) -> Out<lumenna_surface::Change> {
+        out(self.lumenna.start_timer(assignment))
+    }
+
+    /// Stops a sitting's timer, or with `minutes`, records its whole time by hand.
+    #[wasm_bindgen(js_name = stopTimer)]
+    pub fn stop_timer(&self, assignment: &str, minutes: Option<u32>) -> Out<lumenna_surface::Timer> {
+        out(self.lumenna.stop_timer(assignment, minutes))
+    }
+
+    /// The work blocks a task could be put in, from today for a week, each as it reads in a
+    /// chooser (§3.7).
+    #[wasm_bindgen(js_name = workBlocks)]
+    pub fn work_blocks(&self) -> Out<Choices> {
+        out(Ok(Choices { blocks: choices::work_blocks(&self.lumenna, jiff::Zoned::now().date(), 7, &Browser) }))
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// The day, worded as the desktop apps word it (§13), in this browser's times and days.
+// ---------------------------------------------------------------------------------------
+
+/// A block on the day: its times, name, length, kind, and what is in it.
+#[wasm_bindgen(js_name = blockText)]
+pub fn block_text(block: Ts<lumenna_surface::PlanBlock>) -> Result<String, JsError> {
+    Ok(speech::block(&block.to_rust()?, &Browser))
+}
+
+/// A sitting: a task in a block for one session.
+#[wasm_bindgen(js_name = sittingText)]
+pub fn sitting_text(sitting: Ts<lumenna_surface::PlanAssignment>) -> Result<String, JsError> {
+    Ok(speech::sitting(&sitting.to_rust()?))
+}
+
+/// Free time, which a timeline shows by empty space and a list has to say.
+#[wasm_bindgen(js_name = freeText)]
+pub fn free_text(start: &str, end: &str, minutes: u32) -> String {
+    speech::free(start, end, minutes, &Browser)
+}
+
+/// Where the present falls.
+#[wasm_bindgen(js_name = nowText)]
+pub fn now_text(time: &str) -> String {
+    speech::now(time, &Browser)
+}
+
+/// A repeating block cancelled for this day alone.
+#[wasm_bindgen(js_name = cancelledText)]
+pub fn cancelled_text(block: Ts<lumenna_surface::CancelledBlock>) -> Result<String, JsError> {
+    Ok(speech::cancelled(&block.to_rust()?, &Browser))
+}
+
+/// The day's first row: what a glance at a timeline gives.
+#[wasm_bindgen(js_name = summaryText)]
+pub fn summary_text(date: &str, summary: &str) -> String {
+    speech::summary(date, summary, &Browser)
+}
+
+/// An ISO date as a person says it: "Today", or "Monday 5 October".
+#[wasm_bindgen(js_name = dayText)]
+pub fn day_text(iso: &str) -> String {
+    Browser.day(iso)
+}
+
+/// `14:30` as this browser says it.
+#[wasm_bindgen(js_name = timeText)]
+pub fn time_text(clock: &str) -> String {
+    Browser.time(clock)
 }
 
 /// A task's fields as a form starts from them.
@@ -267,4 +411,11 @@ pub fn candidate_text(candidate: Ts<lumenna_surface::Candidate>) -> Result<Strin
 #[wasm_bindgen(js_name = announcementText)]
 pub fn announcement_text(announcement: &str, notices: Vec<String>) -> String {
     speech::sentence(&speech::announcement(announcement, &notices))
+}
+
+/// The work blocks a task could be put in, in order.
+#[derive(Serialize, serde::Deserialize, Tsify)]
+pub struct Choices {
+    /// Each block, with how it reads.
+    pub blocks: Vec<choices::BlockChoice>,
 }

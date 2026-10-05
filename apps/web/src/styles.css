@@ -189,3 +189,16 @@ output.readback {
 .contents {
   display: contents;
 }
+
+/* A form's problem: said as an alert, and set apart for the eye by more than colour. */
+.problem {
+  font-weight: bold;
+  border-inline-start: 3px solid currentColor;
+  padding-inline-start: 0.5rem;
+}
+
+/* The day's summary and now rows are where a person finds their place. */
+.row.summary,
+.row.now {
+  font-weight: bold;
+}

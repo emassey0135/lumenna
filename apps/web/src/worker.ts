@@ -11,6 +11,13 @@ import * as Comlink from "comlink";
 import init, {
   Core,
   announcementText,
+  blockText,
+  cancelledText,
+  dayText,
+  freeText,
+  nowText,
+  sittingText,
+  summaryText,
   candidateText,
   placeQuickAddPrefix,
   placeQuery,
@@ -21,7 +28,23 @@ import init, {
   taskStateText,
   trashedText,
 } from "./core/lumenna_web.js";
-import type { Change, Entry, Place, RowView, Syntax, TaskDetail, TaskFields } from "./core/lumenna_web.js";
+import type {
+  BlockChoice,
+  BlockEdit,
+  BlockScope,
+  BlockShown,
+  CancelledBlock,
+  Change,
+  Entry,
+  NewBlock,
+  Place,
+  PlanAssignment,
+  PlanBlock,
+  RowView,
+  Syntax,
+  TaskDetail,
+  TaskFields,
+} from "./core/lumenna_web.js";
 
 let core: Core | undefined;
 
@@ -155,7 +178,110 @@ const api = {
       candidates: found.candidates.map((candidate) => ({ text: candidate.text, label: candidateText(candidate) })),
     };
   },
+
+  // -------------------------------------------------------------------------------------
+  // The day and its blocks (§3.7, §13)
+  // -------------------------------------------------------------------------------------
+
+  /**
+   * A day as it is lived, as rows: the summary first, then blocks in time order with their
+   * sittings beneath them, free time and now as rows of their own, and the blocks cancelled
+   * for the day last. Today when `date` is absent.
+   */
+  day(date?: string) {
+    const plan = store().plan(date);
+    const rows: DayRow[] = [{ key: "summary", text: summaryText(plan.date, plan.summary ?? ""), kind: "summary", children: [] }];
+    for (const item of plan.timeline ?? []) {
+      if (item.item === "block") {
+        const block = plan.blocks.find((b) => b.row === item.row);
+        if (!block) continue;
+        rows.push({
+          key: `block:${block.id}`,
+          text: blockText(block),
+          kind: "block",
+          block,
+          children: block.assignments.map((sitting) => ({
+            key: `sitting:${sitting.id}`,
+            text: sittingText(sitting),
+            kind: "sitting",
+            sitting,
+            block,
+            children: [],
+          })),
+        });
+      } else if (item.item === "free") {
+        const free = { start: item.start, end: item.end, minutes: item.minutes };
+        rows.push({ key: `free:${item.start}`, text: freeText(item.start, item.end, item.minutes), kind: "free", free, children: [] });
+      } else {
+        rows.push({ key: "now", text: nowText(item.time), kind: "now", children: [] });
+      }
+    }
+    for (const cancelled of plan.cancelled ?? []) {
+      rows.push({ key: `cancelled:${cancelled.series}`, text: cancelledText(cancelled), kind: "cancelled", cancelled, children: [] });
+    }
+    return { date: plan.date, title: dayText(plan.date), rows };
+  },
+
+  /** An ISO date as a person says it, and `HH:MM` as this browser says it. */
+  dayText: (iso: string): string => dayText(iso),
+
+  /** Every block series, each with its line; and how many, as a sentence. */
+  blocks() {
+    const listing = store().listBlocks();
+    const lines: Line[] = listing.rows.map((row) => ({ row, text: rowText(row, false) }));
+    return { lines, readback: announcementText(listing.announcement, listing.notices ?? []) };
+  },
+
+  showBlock: (id: string): BlockShown => store().showBlock(id),
+
+  /** Adds a block; what was said, and the series it made. */
+  addBlock(block: NewBlock): { said: string; series?: string } {
+    const change = store().addBlock(block);
+    return { said: said(change), series: change.affected?.blocks?.[0] };
+  },
+
+  editBlock: (id: string, edit: BlockEdit, scope: BlockScope): string => said(store().editBlock(id, edit, scope)),
+  cancelOccurrence: (series: string, date: string): string => said(store().cancelOccurrence(series, date)),
+  restoreOccurrence: (series: string, date: string): string => said(store().restoreOccurrence(series, date)),
+  deleteBlock: (id: string): string => said(store().deleteBlock(id)),
+
+  assign: (task: string, block: string, date: string | undefined, minutes: number | undefined): string =>
+    said(store().assign(task, block, date, minutes)),
+  unassign: (sitting: string): string => said(store().unassign(sitting)),
+  planMinutes: (sitting: string, minutes: number | undefined): string => said(store().planMinutes(sitting, minutes)),
+
+  /** Starts a sitting's timer, or stops the one running. */
+  timer(sitting: PlanAssignment): string {
+    if (sitting.status !== "in progress") return said(store().startTimer(sitting.id));
+    const timer = store().stopTimer(sitting.id, undefined);
+    return announcementText(timer.announcement, timer.notices ?? []);
+  },
+
+  /** Records a sitting's whole time by hand, replacing what is logged. */
+  logMinutes(sitting: string, minutes: number): string {
+    const timer = store().stopTimer(sitting, minutes);
+    return announcementText(timer.announcement, timer.notices ?? []);
+  },
+
+  /** The week's work blocks a task could go in, each as it reads in a chooser. */
+  workBlocks: (): BlockChoice[] => store().workBlocks().blocks,
+
+  /** Every open task, as a chooser lists them. */
+  taskChoices: (): { id: string; text: string }[] =>
+    store().listTasks("").rows.map((row) => ({ id: row.id, text: rowText(row, false) })),
 };
+
+/** One row of the day, with what it is and the rows beneath it. */
+export interface DayRow {
+  key: string;
+  text: string;
+  kind: "summary" | "block" | "sitting" | "free" | "now" | "cancelled";
+  block?: PlanBlock;
+  sitting?: PlanAssignment;
+  free?: { start: string; end: string; minutes: number };
+  cancelled?: CancelledBlock;
+  children: DayRow[];
+}
 
 export type Api = typeof api;
 
