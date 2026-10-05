@@ -4,6 +4,10 @@
 
 Enter changes a setting. Times are written as you would say them: 9am, 14:30. These settings sync to all your devices.
 
+## Read a task back before adding it
+
+On the Settings page, r turns this on or off. When it is on, a task you type is read back — its date, priority, project and labels as understood — and you choose Add it, or Change it to edit the line. It is this device's alone.
+
 ## Devices and sync
 
 Your paired devices and how syncing with each last went. Enter renames one. Its context menu also has Stop syncing with it, which leaves that device with what it already has; Control-D does the same.

@@ -90,6 +90,7 @@ class Script:
         self.menus: list[dict] = []
         self.shown: list = []
         self.offered: list[list[str]] = []
+        self.prompts: list[str] = []
 
     def take(self, kind: str, asked: str):
         if not self.steps:
@@ -214,6 +215,7 @@ def request_choice(choices, prompt="", default=None, **_ignored):
     cancels."""
     options = dict(choices) if isinstance(choices, dict) else {c: c for c in choices}
     script.offered.append(list(options.values()))
+    script.prompts.append(prompt)
     (text,) = script.take("choose", f"{prompt}: {list(options.values())}")
     if text is None:
         return None

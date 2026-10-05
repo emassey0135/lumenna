@@ -40,6 +40,8 @@ class Menus(unittest.TestCase):
         self.profile = Path(tempfile.mkdtemp())
         os.environ["PATH"] = f"{Path(LUM).parent}{os.pathsep}{os.environ['PATH']}"
         os.environ["LUMENNA_BACKUP_DIR"] = str(self.profile / "backups")
+        # This app's own preferences, kept out of the real ones.
+        os.environ["XDG_CONFIG_HOME"] = str(self.profile / "config")
         self.client = connect(self.profile)
         self.session = Session(self.client)
 
@@ -213,6 +215,61 @@ class Menus(unittest.TestCase):
         self.assertEqual(offered[1], "Another day")
         self.assertEqual(self.call("plan", date="tomorrow")["blocks"][0]["assignments"][0]["title"], "draft")
         self.assertEqual(self.call("plan", date="in 10 days")["blocks"][0]["assignments"][0]["title"], "review")
+
+    def test_a_sitting_pauses_resumes_and_stops(self):
+        self.call("task.add", text="draft")
+        self.call("block.add", title="Focus", at="00:00", minutes=1439, date="today")
+        self.run_script(
+            [
+                ("key", "Focus", "i"),
+                ("choose", "draft"),
+                ("input", ""),
+                ("key", "draft", "s"),
+                ("context", "draft", "Pause the timer"),
+                ("context", "draft", "Resume the timer"),
+                ("context", "draft", "Pause the timer"),
+                ("context", "draft", "Stop the timer, ending the sitting"),
+                ("back",),
+            ],
+            lambda: day.day_plan(self.session),
+        )
+        sitting = self.call("plan")["blocks"][0]["assignments"][0]
+        self.assertEqual(sitting["status"], "worked")
+
+    def test_a_break_let_take_tasks_is_offered_for_them(self):
+        self.call("task.add", text="read")
+        self.call("block.add", title="Train", at="00:00", minutes=1439, date="today", kind="break")
+        self.run_script(
+            [
+                ("context", "Train", "Let it take tasks"),
+                ("key", "Train", "i"),
+                ("choose", "read"),
+                ("input", ""),
+                ("back",),
+            ],
+            lambda: day.day_plan(self.session),
+        )
+        block = self.call("plan")["blocks"][0]
+        self.assertTrue(block["accepts_tasks"])
+        self.assertIn("takes tasks", block["details"])
+        self.assertEqual(block["assignments"][0]["title"], "read")
+
+    def test_a_task_is_read_back_before_it_is_added_when_asked_for(self):
+        import options
+        options.put(options.READ_BACK, True)
+        script = self.run_script(
+            [
+                ("app", "Add a task"),
+                ("input", "call mum tomorrow"),
+                ("choose", "Change it"),
+                ("input", "call mum tomorrow p1"),
+                ("choose", "Add it"),
+                ("back",),
+            ],
+            lambda: tasks.task_list(self.session),
+        )
+        self.assertTrue(any("priority 1" in asked for asked in script.prompts), script.prompts)
+        self.assertEqual(self.titles(), ["call mum"])
 
     def test_one_day_of_a_repeating_block_is_changed_cancelled_and_put_back(self):
         self.call("block.add", title="Run", at="7am", minutes=30, repeat="every day", date="today")

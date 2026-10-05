@@ -14,6 +14,7 @@ from pathlib import Path
 
 from BTSpeak import dialogs
 
+import options
 from client import LumennaError
 from session import REFRESH, Command, Session, ask, choose, confirm, live_menu, row_item, screen, spoken
 from tasks import undo_commands
@@ -43,13 +44,25 @@ PLANNING = ["cascade-complete-subtasks", "day-start", "day-end", "all-day-remind
 BACKUPS = ["backup-every", "backup-keep", "backup-dir"]
 
 
+def read_back_title() -> str:
+    on = options.get(options.READ_BACK, False)
+    return f"Read a task back before adding it, {'on' if on else 'off'}"
+
+
+def toggle_read_back() -> str:
+    on = not options.get(options.READ_BACK, False)
+    options.put(options.READ_BACK, on)
+    return "A task is read back before it is added" if on else "A task is added as soon as it is entered"
+
+
 def settings(session: Session) -> str:
-    """A short list of pages, as on the phone."""
+    """A short list of pages, as on the phone, and this app's own preference."""
     items = [
         dialogs.DynamicMenuItem(title="Planning", shortcut="p", action=lambda: setting_page(session, "Planning", PLANNING)),
         dialogs.DynamicMenuItem(title="Devices and sync", shortcut="d", action=lambda: devices(session)),
         dialogs.DynamicMenuItem(title="Backups, on this device only", shortcut="b", action=lambda: backups(session)),
         dialogs.DynamicMenuItem(title="Export and import", shortcut="e", action=lambda: export_import(session)),
+        dialogs.DynamicMenuItem(title=lambda *_: read_back_title(), shortcut="r", action=toggle_read_back),
     ]
     with screen("lumenna-settings"):
         dialogs.dynamic_menu(items, title="Settings")
@@ -112,37 +125,10 @@ def change_setting(session: Session, key: str, value: str) -> str:
 # ---------------------------------------------------------------------------------------
 
 
-def ago(stamp: str | None) -> str:
-    """`5 minutes ago`, as the command line says it."""
-    if not stamp:
-        return ""
-    try:
-        then = datetime.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
-    except ValueError:
-        return stamp
-    seconds = max(0, int((datetime.datetime.now(datetime.timezone.utc) - then).total_seconds()))
-    for size, unit in ((86400, "day"), (3600, "hour"), (60, "minute")):
-        if seconds >= size:
-            n = seconds // size
-            return f"{n} {unit}{'s' if n != 1 else ''} ago"
-    return "just now"
-
-
 def device_line(device: dict) -> str:
-    """One device as a sentence: what it is, and how syncing with it last went. Words rather
-    than a symbol, because §9 is explicit that a glyph communicates nothing."""
-    line = f"{device['name']}, {device['platform']}"
-    if device.get("this_device"):
-        return f"{line}, this device"
-    if device.get("last_error") and device.get("last_attempt"):
-        line += f", last attempt {ago(device['last_attempt'])} failed: {device['last_error']}"
-        if device.get("last_success"):
-            line += f"; last synced {ago(device['last_success'])}"
-    elif device.get("last_success"):
-        line += f", last synced {ago(device['last_success'])}"
-    else:
-        line += ", not synced yet"
-    return line
+    """One device as a sentence: what it is, and how syncing with it last went — the status
+    the core words for every app. Words rather than a symbol (§9)."""
+    return ", ".join([device["name"], device["platform"], *device.get("status", [])])
 
 
 def devices(session: Session) -> str:

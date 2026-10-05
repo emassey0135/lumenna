@@ -9,7 +9,7 @@ Press Enter on a task to read its details. Press Z-Chord to leave the list.
 - Complete, c; or Mark not done, for a finished one.
 - Edit, e: the title, due date, repetition, priority, estimate, project, labels and notes, one form.
 - Details: everything about the task, to pan through.
-- Put it in a block, b: a block today, tomorrow or another day, and how long the sitting is meant to take.
+- Put it in a block, b: a work block of the coming week, or Another day for any other, and how long the sitting is meant to take.
 - Move to a project, m.
 - Make it a subtask of another task, s; Move it to the top level, t.
 - Wait for another task, w; Stop waiting for another task, n.

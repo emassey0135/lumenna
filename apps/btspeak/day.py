@@ -119,18 +119,8 @@ def plan_rows(plan: dict) -> list[dict]:
     for item in timeline:
         if item["item"] == "block" and item["row"] in blocks:
             block = blocks[item["row"]]
-            state = [length(block["duration_mins"]), f"{block['kind']} block"]
-            if block.get("when"):
-                state.append(block["when"])
-            if block.get("changed_for_this_day"):
-                state.append("changed for this day")
-            if block["kind"] == "work":
-                count = len(block.get("assignments", []))
-                state.append(
-                    "nothing assigned" if count == 0
-                    else "1 task assigned" if count == 1
-                    else f"{count} tasks assigned"
-                )
+            # The core words the details for every app (§13).
+            state = list(block.get("details", []))
             rows.append({
                 "id": block["id"], "role": "block", "depth": 0, "block": block,
                 "when": block.get("when", ""),
@@ -138,11 +128,7 @@ def plan_rows(plan: dict) -> list[dict]:
                 "state": state,
             })
             for sitting in block.get("assignments", []):
-                state = sitting_state(sitting)
-                if sitting.get("minutes"):
-                    state.append(f"{length(sitting['minutes'])} logged")
-                if sitting.get("capped"):
-                    state.append("capped, the timer looks forgotten")
+                state = list(sitting.get("details", []))
                 rows.append({
                     "id": sitting["id"], "role": "assignment", "depth": 1,
                     "sitting": sitting, "block": block,
@@ -164,18 +150,6 @@ def plan_rows(plan: dict) -> list[dict]:
             "state": ["cancelled for this day"],
         })
     return rows
-
-
-def sitting_state(sitting: dict) -> list[str]:
-    """The status, with the planned length beside it: "planned for 45 minutes" before it
-    starts and "45 minutes planned" after, as the phone and the command line say it, so the
-    two never read as "planned, planned"."""
-    planned = sitting.get("planned_mins")
-    if not planned:
-        return [sitting["status"]]
-    if sitting["status"] == "planned":
-        return [f"planned for {length(planned)}"]
-    return [sitting["status"], f"{length(planned)} planned"]
 
 
 def ask_length(prompt: str, current: int | None = None) -> tuple[bool, int | None]:
@@ -238,9 +212,31 @@ def day_commands(session: Session, date) -> list[Command]:
         task = tasks.pick_task(session, f"Assign to {block(row)['title']}")
         return assign_to(session, task, block(row), date()) if task else ""
 
+    def running(row):
+        return bool(sitting(row).get("running"))
+
     def toggle_timer(row):
-        running = sitting(row)["status"] == "in progress"
-        return session.write("stop" if running else "start", assignment=sitting(row)["id"])
+        """Starts the timer, pauses it while it runs, or resumes it (§3.7)."""
+        return session.write("pause" if running(row) else "start", assignment=sitting(row)["id"])
+
+    def timer_label(row):
+        if running(row):
+            return "Pause the timer"
+        return "Resume the timer" if sitting(row)["status"] == "paused" else "Start the timer"
+
+    def flag(key, on, off):
+        """A command setting one of a block's flags, asking which days of a repeating one."""
+        def change(row):
+            scope = block_scope(block(row), date())
+            if scope is None:
+                return ""
+            return session.write("block.edit", id=block(row)["series"], **{key: not block(row).get(key)}, **scope)
+
+        return Command(
+            lambda row: off if block(row).get(key) else on,
+            change,
+            applies=lambda row: role("block")(row) and key in block(row),
+        )
 
     def log_minutes(row):
         text = ask(f"Minutes on {sitting(row)['title']}, the whole of this sitting", "")
@@ -257,7 +253,10 @@ def day_commands(session: Session, date) -> list[Command]:
     return [
         # A block
         Command("Edit", lambda row: edit_block(session, block(row), date()), key="e", applies=role("block")),
-        Command("Assign a task", assign, key="i", applies=lambda row: role("block")(row) and block(row)["kind"] == "work"),
+        Command("Assign a task", assign, key="i", applies=lambda row: role("block")(row) and block(row).get("accepts_tasks")),
+        flag("accepts_tasks", "Let it take tasks", "Stop it taking tasks"),
+        flag("anchored", "Anchor it, so it never moves", "Let it move"),
+        flag("counts_capacity", "Count it toward hours for work", "Stop counting it toward hours for work"),
         Command(
             "Cancel this day",
             lambda row: session.write("block.cancel", id=block(row)["series"], date=date()),
@@ -277,9 +276,12 @@ def day_commands(session: Session, date) -> list[Command]:
             deletes=True,
         ),
         # A sitting
+        Command(timer_label, toggle_timer, key="s", applies=role("assignment")),
         Command(
-            lambda row: "Stop the timer" if sitting(row)["status"] == "in progress" else "Start the timer",
-            toggle_timer, key="s", applies=role("assignment"),
+            "Stop the timer, ending the sitting",
+            lambda row: session.write("stop", assignment=sitting(row)["id"]),
+            key="t",
+            applies=lambda row: role("assignment")(row) and (running(row) or sitting(row)["status"] == "paused"),
         ),
         Command("Planned length", plan_length, key="l", applies=role("assignment")),
         Command("Log minutes by hand", log_minutes, key="m", applies=role("assignment")),
@@ -398,15 +400,24 @@ def add_block(session: Session, date: str = "today", at: str = "9am", minutes: i
     return session.write("block.add", **params)
 
 
+def block_scope(block: dict, date: str) -> dict | None:
+    """Which days a change to `block` means: asked of a repeating one, never guessed (§4.3).
+    None when the person cancelled."""
+    if not block.get("repeats"):
+        return {"all": True}
+    scope = choose({"day": f"{spoken_day(date)} only", "all": "Every occurrence"}, "Change which?")
+    if scope is None:
+        return None
+    return {"all": True} if scope == "all" else {"date": date}
+
+
 def edit_block(session: Session, block: dict, date: str) -> str:
     """Asks "this day, or every day?" of a repeating block — never guessed (§4.3)."""
     if block.get("repeats"):
-        scope = choose(
-            {"day": f"{spoken_day(date)} only", "all": "Every occurrence"}, "Change which?"
-        )
+        scope = block_scope(block, date)
         if scope is None:
             return ""
-        if scope == "all":
+        if scope.get("all"):
             return edit_series(session, block["series"])
         return edit_fields(
             session, block["series"], block["title"], block["start"], block["duration_mins"],
@@ -427,16 +438,19 @@ def edit_series(session: Session, series: str) -> str:
         repeat = None
     return edit_fields(
         session, shown["id"], shown["title"], shown["start"], shown["minutes"], shown["kind"],
-        repeat, {"all": True},
+        repeat, {"all": True}, shown,
     )
 
 
 def edit_fields(
     session: Session, series: str, title: str, start: str, minutes: int, kind: str,
-    repeat: str | None, scope: dict,
+    repeat: str | None, scope: dict, shown: dict | None = None,
 ) -> str:
     """The block form, sending only what changed. `repeat` is None where it may not change:
-    one day of a series cannot repeat differently."""
+    one day of a series cannot repeat differently. `shown`, the series as `block.show` gives
+    it, adds what only every occurrence has: notes, the shortest length, the filter its tasks
+    come from, its last day, its colour. Its flags are commands of their own on the block,
+    since a change of kind here would reset them."""
     before = {"title": title, "at": start, "minutes": str(minutes), "kind": kind}
     fields = [
         dialogs.InputField(key="title", prompt="Name", default_text=title, required=True),
@@ -458,6 +472,34 @@ def edit_fields(
                 format_hint="such as every weekday; empty makes it happen once",
             )
         )
+    if shown is not None:
+        extras = {
+            "notes": shown.get("notes") or "",
+            "min_minutes": str(shown.get("min_minutes") or ""),
+            "task_filter": shown.get("task_filter") or "",
+            "colour": shown.get("colour") or "",
+        }
+        if shown.get("repeats"):
+            extras["until"] = shown.get("until") or ""
+        before.update(extras)
+        fields += [
+            dialogs.InputField(key="notes", prompt="Notes", default_text=extras["notes"]),
+            dialogs.InputField(
+                key="min_minutes", prompt="Shortest length", default_text=extras["min_minutes"],
+                validate=lambda text: not text.strip() or text.strip().isdigit(),
+                format_hint="minutes it may be shortened to; empty for the kind's own",
+            ),
+            dialogs.InputField(
+                key="task_filter", prompt="Tasks from", default_text=extras["task_filter"],
+                format_hint="a filter such as #Work; empty for any",
+            ),
+        ]
+        if "until" in extras:
+            fields.append(dialogs.InputField(
+                key="until", prompt="Until", default_text=extras["until"],
+                format_hint="its last day; empty to repeat for good",
+            ))
+        fields.append(dialogs.InputField(key="colour", prompt="Colour", default_text=extras["colour"]))
     answers = dialogs.request_form(fields)
     if answers is None:
         return ""
@@ -468,7 +510,9 @@ def edit_fields(
             continue
         if key == "minutes":
             changes[key] = int(now)
-        elif key == "repeat":
+        elif key == "min_minutes":
+            changes[key] = int(now) if now else 0
+        elif key in ("repeat", "until"):
             changes[key] = now or "none"
         else:
             changes[key] = now
