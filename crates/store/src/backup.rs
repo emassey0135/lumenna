@@ -187,7 +187,7 @@ pub fn list(directory: &Path) -> Result<Vec<Entry>> {
 
 /// `lumenna-20261004T003922.926Z.lumbak`: UTC, to the millisecond, so that an automatic
 /// backup and one asked for in the same second do not share a name and replace each other.
-fn file_name(taken: Timestamp) -> String {
+pub fn file_name(taken: Timestamp) -> String {
     let millis = taken.as_millisecond().rem_euclid(1000);
     format!("{PREFIX}{}.{millis:03}Z{SUFFIX}", taken.strftime("%Y%m%dT%H%M%S"))
 }
