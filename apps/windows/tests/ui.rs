@@ -232,6 +232,25 @@ fn quick_add_reads_back_what_it_will_add_before_adding_it() {
 
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn completion_offers_only_what_fits_name_first_with_the_first_highlighted() {
+    let app = App::launch(|lumenna| {
+        lumenna.add_project("Work", None).unwrap();
+        lumenna.add_project("Errands", None).unwrap();
+    });
+    app.post(&[NEW_TASK, "text:Call #Wo", "down"]);
+    // What was typed narrowed it already; the name comes first, so its letter — W, not the
+    // P of "project" — finds it; and it has focus as the menu opens, so it is read at once.
+    // (UI Automation's system-wide focused element names the menu bar while a popup is open;
+    // a screen reader follows the item's own focus, which is what this reads.)
+    assert_eq!(app.automation.menu_items(), ["MenuItem 'Work, project' [1 of 1, level 0] key=w FOCUSED"]);
+    app.post(&["enter"]);
+    assert!(app.focus().contains("value='Call #Work'"), "{}", app.focus());
+    assert!(!app.automation.menu_open());
+    app.post(&["esc"]);
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn a_task_is_put_in_a_block_from_this_weeks_work_blocks() {
     let app = App::launch(|lumenna| {
         add(lumenna, "Write report");

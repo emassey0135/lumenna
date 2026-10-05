@@ -8,7 +8,7 @@
 //! them twice.
 
 use lumenna_surface::words::duration;
-use lumenna_surface::{CancelledBlock, PlanAssignment, PlanBlock, RowView, sitting_status};
+use lumenna_surface::{Candidate, CancelledBlock, PlanAssignment, PlanBlock, RowView, sitting_status};
 
 /// How this device says times and days. The core sends `HH:MM` and ISO dates, which are
 /// components; whether that is "2:30 PM" or "14:30" is the person's locale, so it is decided
@@ -107,6 +107,20 @@ pub fn cancelled(block: &CancelledBlock, clock: &dyn Clock) -> String {
 pub fn summary(date: &str, summary: &str, clock: &dyn Clock) -> String {
     let day = clock.day(date);
     if summary.is_empty() { day } else { format!("{day}. {summary}") }
+}
+
+/// A completion as a menu item: its name first, then what kind of thing it is — "Work,
+/// project", not the core's "project Work".
+///
+/// The name is what a person scans for, and a menu jumps to an item by its first letter, so
+/// leading with the kind would put every project under P and every label under L.
+pub fn candidate(candidate: &Candidate) -> String {
+    let name = candidate
+        .label
+        .strip_prefix(candidate.kind.as_str())
+        .and_then(|rest| rest.strip_prefix(' '))
+        .unwrap_or(&candidate.label);
+    format!("{name}, {}", candidate.kind)
 }
 
 /// A result's announcement, then each notice.
@@ -272,6 +286,22 @@ mod tests {
             summary("2026-10-04", "Two blocks, three hours of work.", &TwelveHour),
             "Today. Two blocks, three hours of work."
         );
+    }
+
+    fn completion(kind: &str, label: &str) -> Candidate {
+        Candidate { text: String::new(), kind: kind.to_owned(), label: label.to_owned() }
+    }
+
+    #[test]
+    fn a_completion_leads_with_its_name_so_its_first_letter_finds_it() {
+        assert_eq!(candidate(&completion("project", "project Home Office")), "Home Office, project");
+        assert_eq!(candidate(&completion("label", "label calls")), "calls, label");
+        assert_eq!(candidate(&completion("date", "date next friday")), "next friday, date");
+    }
+
+    #[test]
+    fn a_completion_whose_label_does_not_start_with_its_kind_is_said_whole() {
+        assert_eq!(candidate(&completion("keyword", "overdue")), "overdue, keyword");
     }
 
     #[test]

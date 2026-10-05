@@ -5,9 +5,10 @@
 //! user leaves the field (§6.4). Nothing opens by itself after a `#` or `@`, since typing a
 //! name straight through is common and a popup would interrupt it.
 //!
-//! A menu is a stand-in for §6.4's genuine combobox: it is a stock control, read with its
-//! position and count, and focus comes back to the field after it, but it is not the
-//! expanded-list-under-the-field the plan describes. That is still to be built.
+//! A menu rather than a combobox, for the reasons §6.4 gives: a stock control, read with its
+//! position and count, with focus back in the field after it. What has been typed narrows it
+//! before it opens. Each item leads with its name, so its first letter finds it, and the
+//! first is highlighted as the menu opens, so it is read at once.
 
 use std::cell::Cell;
 use std::sync::Arc;
@@ -16,16 +17,24 @@ use lumenna_surface::{Lumenna, Syntax};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::UI::Controls::{EM_GETSEL, EM_POSFROMCHAR, EM_REPLACESEL, EM_SETSEL};
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_DOWN, VK_MENU, VK_SHIFT, VK_SPACE};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    GetKeyState, MAPVK_VK_TO_VSC, MapVirtualKeyW, VK_CONTROL, VK_DOWN, VK_MENU, VK_SHIFT, VK_SPACE,
+};
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    AppendMenuW, CreatePopupMenu, DestroyMenu,
+    AppendMenuW, CreatePopupMenu, DestroyMenu, PostMessageW,
     MF_GRAYED, MF_STRING, TPM_LEFTALIGN, TPM_RETURNCMD, TPM_TOPALIGN, TrackPopupMenuEx, WM_CHAR,
     WM_KEYDOWN, WM_NCDESTROY,
 };
 use windows::core::HSTRING;
 
 use super::controls;
+use crate::speech;
+
+/// A reserved bit of a key message's data, marking the Down queued to highlight a menu's first
+/// item. Should the menu not take it, the field must not either: it would open the menu again,
+/// which would queue another.
+const QUEUED: isize = 1 << 25;
 
 struct Completer {
     lumenna: Arc<Lumenna>,
@@ -59,6 +68,7 @@ unsafe extern "system" fn procedure(
     unsafe {
         let completer = &*(data as *const Completer);
         match message {
+            WM_KEYDOWN if lparam.0 & QUEUED != 0 => return windows::Win32::Foundation::LRESULT(0),
             WM_KEYDOWN => {
                 let key = wparam.0 as u16;
                 let control = pressed(VK_CONTROL);
@@ -100,9 +110,14 @@ fn offer(edit: HWND, completer: &Completer) {
             let _ = AppendMenuW(menu, MF_STRING | MF_GRAYED, 1, &HSTRING::from(menu_text(&found.announcement)));
         }
         for (index, candidate) in found.candidates.iter().enumerate() {
-            let _ = AppendMenuW(menu, MF_STRING, index + 1, &HSTRING::from(menu_text(&candidate.label)));
+            let _ = AppendMenuW(menu, MF_STRING, index + 1, &HSTRING::from(menu_text(&speech::candidate(candidate))));
         }
         let point = caret_point(edit, &text, end as usize);
+        // The first item highlighted as the menu opens, so it is read at once rather than
+        // after a first arrow. A menu has no option for that; a Down key queued now is the
+        // first thing the menu's own loop takes.
+        let scan = MapVirtualKeyW(u32::from(VK_DOWN.0), MAPVK_VK_TO_VSC) as isize;
+        let _ = PostMessageW(Some(edit), WM_KEYDOWN, WPARAM(usize::from(VK_DOWN.0)), LPARAM(1 | (scan << 16) | QUEUED));
         let chosen = TrackPopupMenuEx(menu, (TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN).0, point.x, point.y, edit, None);
         let _ = DestroyMenu(menu);
         chosen.0 as usize
