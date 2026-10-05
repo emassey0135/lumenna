@@ -28,6 +28,7 @@
 
 mod durability;
 mod error;
+mod form;
 mod organise;
 mod planning;
 mod resolve;
@@ -48,6 +49,7 @@ use lumenna_store::Store;
 
 pub use durability::{DEVICE_KEYS, cloud_warning};
 pub use error::{LumennaError, Result};
+pub use form::{TaskFields, label_reference, project_reference, sitting_status, task_edit, task_fields};
 pub use settings::{parse_every, parse_keep};
 #[cfg(feature = "sync")]
 pub use sync::{PairingPrompt, SyncListener, SyncService};

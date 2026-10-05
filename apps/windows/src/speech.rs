@@ -8,7 +8,7 @@
 //! them twice.
 
 use lumenna_surface::words::duration;
-use lumenna_surface::{CancelledBlock, PlanAssignment, PlanBlock, RowView};
+use lumenna_surface::{CancelledBlock, PlanAssignment, PlanBlock, RowView, sitting_status};
 
 /// How this device says times and days. The core sends `HH:MM` and ISO dates, which are
 /// components; whether that is "2:30 PM" or "14:30" is the person's locale, so it is decided
@@ -77,7 +77,7 @@ pub fn block(block: &PlanBlock, clock: &dyn Clock) -> String {
 /// A sitting: a task in a block for one session (§3.7).
 pub fn sitting(sitting: &PlanAssignment) -> String {
     let mut parts = vec![sitting.title.clone()];
-    parts.extend(sitting_status(sitting));
+    parts.extend(sitting_status(sitting.clone()));
     if sitting.minutes > 0 {
         parts.push(format!("{} logged", duration(sitting.minutes)));
     }
@@ -86,19 +86,6 @@ pub fn sitting(sitting: &PlanAssignment) -> String {
         parts.push("capped, the timer looks forgotten".to_owned());
     }
     join(parts)
-}
-
-/// A sitting's status with its planned length beside it: "planned for 45 minutes" before it
-/// starts, "45 minutes planned" after, so the two never read as "planned, planned" — as the
-/// command line, the BTSpeak app and the Apple apps say it.
-pub fn sitting_status(sitting: &PlanAssignment) -> Vec<String> {
-    match sitting.planned_mins {
-        None => vec![sitting.status.clone()],
-        Some(planned) if sitting.status == "planned" => {
-            vec![format!("planned for {}", duration(planned))]
-        }
-        Some(planned) => vec![sitting.status.clone(), format!("{} planned", duration(planned))],
-    }
 }
 
 /// Free time, which a timeline shows by empty space and a list has to say (§13).
