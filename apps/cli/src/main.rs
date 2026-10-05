@@ -1032,6 +1032,7 @@ fn listing_of(outcome: &Outcome) -> Option<Vec<(String, String)>> {
         | Outcome::Timer(_)
         | Outcome::Completions(_)
         | Outcome::Preview(_)
+        | Outcome::WorkBlocks(_)
         | Outcome::Server(_)
         | Outcome::Backup(_)
         | Outcome::Restore(_)

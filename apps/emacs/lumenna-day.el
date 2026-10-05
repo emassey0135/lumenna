@@ -272,19 +272,16 @@ CURRENT, the length it has now, is offered to edit."
 
 (defun lumenna-assign-task (task)
   "Put TASK in a work block of the coming week.
-The same blocks the phone and the Mac offer."
-  (let (choices)
-    (dotimes (offset 7)
-      (let* ((day (format-time-string "%Y-%m-%d" (time-add nil (* offset 86400))))
-             (plan (lumenna-call "plan" :date day)))
-        (dolist (block (append (plist-get plan :blocks) nil))
-          (when (equal (plist-get block :kind) "work")
-            (push (cons (format "%s, %s, %s" (lumenna--spoken-day (plist-get plan :date))
-                                (plist-get block :start) (plist-get block :title))
-                        (cons (plist-get block :id) (plist-get plan :date)))
-                  choices)))))
+Which blocks those are is the core's (`block.choices'), as for every app."
+  (let* ((found (lumenna-call "block.choices"))
+         (choices (mapcar (lambda (block)
+                            (cons (format "%s, %s to %s, %s"
+                                          (lumenna--spoken-day (plist-get block :date))
+                                          (plist-get block :start) (plist-get block :end)
+                                          (plist-get block :title))
+                                  (cons (plist-get block :id) (plist-get block :date))))
+                          (append (plist-get found :blocks) nil))))
     (unless choices (user-error "There are no work blocks this week; add one in the day"))
-    (setq choices (nreverse choices))
     (let ((chosen (cdr (assoc (completing-read "Put it in: " choices nil t) choices))))
       (lumenna--assign task (car chosen) (cdr chosen)))))
 

@@ -225,6 +225,25 @@ fn a_preview_says_what_would_happen_without_making_it_happen() {
 }
 
 #[test]
+fn the_block_choices_are_a_weeks_work_blocks_unless_asked_for_more() {
+    let rpc = Rpc::new();
+    rpc.cli(&["block", "add", "Focus", "--at", "9am", "--minutes", "90", "--date", "tomorrow"]);
+    rpc.cli(&["block", "add", "Lunch", "--at", "noon", "--minutes", "30", "--kind", "break", "--date", "tomorrow"]);
+    rpc.cli(&["block", "add", "Review", "--at", "4pm", "--minutes", "60", "--date", "in 10 days"]);
+    let out = rpc.talk(&[
+        r#"{"jsonrpc":"2.0","id":1,"method":"block.choices"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"block.choices","params":{"days":14}}"#,
+    ]);
+    let (week, fortnight) = out.split_once('\n').expect("two replies");
+    assert!(week.contains(r#""result":"work_blocks""#), "{week}");
+    assert!(week.contains(r#""announcement":"1 work block over 7 days""#), "{week}");
+    assert!(week.contains(r#""title":"Focus""#) && week.contains(r#""start":"09:00""#), "{week}");
+    assert!(!week.contains("Lunch"), "a break takes no tasks: {week}");
+    assert!(!week.contains("Review"), "ten days off is past the week: {week}");
+    assert!(fortnight.contains(r#""title":"Review""#), "{fortnight}");
+}
+
+#[test]
 fn an_export_comes_back_in_the_reply_and_a_bad_format_is_named() {
     let rpc = Rpc::new();
     let out = rpc.talk(&[

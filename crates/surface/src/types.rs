@@ -64,7 +64,7 @@ macro_rules! announced {
 announced!(
     Change, Rows, TaskShown, Plan, Filters, SettingList, Timer, Completions, Preview,
     BackupDone, RestoreDone, Exported, ImportDone, PairedWith, SyncReport, SyncStatus,
-    DeviceList, BlockShown,
+    DeviceList, BlockShown, WorkBlocks,
 );
 
 fn none<T>(list: &[T]) -> bool {
@@ -553,6 +553,47 @@ pub struct Plan {
     /// without remembering what used to be there.
     #[serde(default, skip_serializing_if = "none")]
     pub cancelled: Vec<CancelledBlock>,
+}
+
+/// The work blocks a task could be put in, from a task itself rather than from a day (§3.7).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct WorkBlocks {
+    /// How many there are, and over how many days.
+    pub announcement: String,
+    /// Anything else worth saying.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// The first day, as an ISO date.
+    pub from: String,
+    /// How many days they come from.
+    pub days: u32,
+    /// The work blocks, by day and then by time.
+    pub blocks: Vec<WorkBlock>,
+}
+
+/// One work block occurrence, as a chooser lists it. Components, not a line: how a day and a
+/// time are said is the platform's (§4).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct WorkBlock {
+    /// `<series>@<date>`, as [`assign`](crate::Lumenna::assign) takes it.
+    pub id: String,
+    /// Its day, as an ISO date.
+    pub date: String,
+    /// Its name.
+    pub title: String,
+    /// When it starts, `HH:MM`.
+    pub start: String,
+    /// When it ends, `HH:MM`.
+    pub end: String,
+    /// How long it runs.
+    pub duration_mins: u32,
+    /// `past`, `now` or `upcoming` on today; empty on any other day.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub when: String,
+    /// How many tasks are in it already.
+    pub assigned: u32,
 }
 
 /// A repeating block that does not happen on one day because that day was cancelled.

@@ -185,6 +185,9 @@ socket.
   question and a process per keystroke is not an answer. They are surface methods
   (`complete_text`, `preview_task`), so linked apps call them directly, and they are why the
   BTSpeak app speaks a protocol rather than shelling out.
+- **`block.choices` is the block chooser's rule** (`Lumenna::work_blocks`): the coming
+  week's work blocks, as components, which every app offers when a task is put in a block
+  from the task itself. Each app only words them; none decides which days or kinds.
 
 **Not built yet:** the encrypted store and its account key (§8), wake-up push, Windows
 named pipes, reminders, hooks, auto-scheduling.

@@ -272,20 +272,18 @@ struct BlockChoice {
 }
 
 extension Core {
-    /// The work blocks of today and the next six days, in order (§3.7) — what both apps offer
-    /// when a task is put in a block from the task itself. The planner reaches any other day.
+    /// The work blocks a task could go in from the task itself (§3.7). Which ones — the work
+    /// blocks of the coming week — is the core's (`workBlocks`), as for every app; how each
+    /// reads is this one's. The planner reaches any other day.
     func workBlocksThisWeek() -> [BlockChoice] {
-        (0..<7).flatMap { offset -> [BlockChoice] in
-            let day = Calendar.current.date(byAdding: .day, value: offset, to: .now) ?? .now
-            guard let plan = try? lumenna.plan(date: Clock.isoDay(day)) else { return [] }
-            return plan.blocks.filter { $0.kind == "work" }.map { block in
-                BlockChoice(
-                    id: block.id,
-                    date: plan.date,
-                    title: "\(Clock.spokenDay(plan.date)), \(Clock.time(block.start)), \(block.title)",
-                    detail: "\(Clock.time(block.start)) to \(Clock.time(block.end))"
-                )
-            }
+        let blocks = (try? lumenna.workBlocks(from: nil, days: nil).blocks) ?? []
+        return blocks.map { block in
+            BlockChoice(
+                id: block.id,
+                date: block.date,
+                title: "\(Clock.spokenDay(block.date)), \(Clock.time(block.start)), \(block.title)",
+                detail: "\(Clock.time(block.start)) to \(Clock.time(block.end))"
+            )
         }
     }
 }

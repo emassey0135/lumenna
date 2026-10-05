@@ -15,24 +15,27 @@ pub struct BlockChoice {
     pub text: String,
 }
 
-/// The work blocks of `days` days from `from`, in order — what putting a task in a block
-/// offers from the task itself (§3.7), as both Apple apps do over a week. The planner reaches
-/// any other day. Breaks and events are left out: only work blocks take tasks.
+/// The work blocks of `days` days from `from`, in order, as a chooser lists them — what
+/// putting a task in a block offers from the task itself (§3.7). Which blocks those are is the
+/// surface's ([`Lumenna::work_blocks`]); only how each reads is decided here. A failure offers
+/// nothing, as an empty week does.
 pub fn work_blocks(lumenna: &Lumenna, from: jiff::civil::Date, days: i64, clock: &dyn Clock) -> Vec<BlockChoice> {
-    (0..days)
-        .filter_map(|offset| from.checked_add(jiff::Span::new().days(offset)).ok())
-        .filter_map(|day| lumenna.plan(Some(day.to_string())).ok())
-        .flat_map(|plan| {
-            let day = clock.day(&plan.date);
-            plan.blocks
-                .into_iter()
-                .filter(|block| block.kind == "work")
-                .map(|block| BlockChoice {
-                    text: format!("{day}, {} to {}, {}", clock.time(&block.start), clock.time(&block.end), block.title),
-                    id: block.id,
-                    date: plan.date.clone(),
-                })
-                .collect::<Vec<_>>()
+    let days = u32::try_from(days).ok();
+    lumenna
+        .work_blocks(Some(from.to_string()), days)
+        .map(|found| found.blocks)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|block| BlockChoice {
+            text: format!(
+                "{}, {} to {}, {}",
+                clock.day(&block.date),
+                clock.time(&block.start),
+                clock.time(&block.end),
+                block.title
+            ),
+            id: block.id,
+            date: block.date,
         })
         .collect()
 }

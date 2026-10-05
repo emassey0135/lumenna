@@ -62,6 +62,7 @@ fn text(response: &Response) {
         | Outcome::Timer(_)
         | Outcome::Completions(_)
         | Outcome::Preview(_)
+        | Outcome::WorkBlocks(_)
         | Outcome::Server(_)
         | Outcome::Backup(_)
         | Outcome::Restore(_)
