@@ -30,7 +30,7 @@ KEYSYMS = {
     "Down": 0xFF54, "Up": 0xFF52, "Left": 0xFF51, "Right": 0xFF53, "Tab": 0xFF09,
     "Return": 0xFF0D, "space": 0x20, "Escape": 0xFF1B, "Home": 0xFF50, "End": 0xFF57,
     "Delete": 0xFFFF, "BackSpace": 0xFF08, "Menu": 0xFF67, "Page_Up": 0xFF55,
-    "Page_Down": 0xFF56, "Shift": 0xFFE1, "Control": 0xFFE3, "Alt": 0xFFE9,
+    "Page_Down": 0xFF56, "Shift": 0xFFE1, "Control": 0xFFE3, "Alt": 0xFFE9, "comma": 0x2C,
     **{f"F{n}": 0xFFBE + n - 1 for n in range(1, 13)},
 }
 

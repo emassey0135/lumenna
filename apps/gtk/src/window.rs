@@ -87,6 +87,8 @@ pub struct App {
     content: RefCell<Option<Content>>,
     pub detail: Rc<Detail>,
     minute: Cell<i64>,
+    /// Settings' Devices page, while it is open, to hear how a sync went.
+    pub devices_page: RefCell<Option<std::rc::Weak<crate::settings::Devices>>>,
     /// The store's version when the views last read it (`Lumenna::version`).
     version: RefCell<Option<String>>,
 }
@@ -121,12 +123,30 @@ pub fn spawn(future: impl std::future::Future<Output = ()> + 'static) {
     }
 }
 
+/// Announces `text` from the window `widget` is in (§13).
+///
+/// From the window, not the status line that shows it: GTK dropped an announcement from a
+/// label in the settings window, whose accessible object was never made, while one from the
+/// window itself always arrives.
+pub fn announce(widget: &impl IsA<gtk::Widget>, text: &str) {
+    match widget.root() {
+        Some(root) => root.announce(text, gtk::AccessibleAnnouncementPriority::Medium),
+        None => widget.as_ref().announce(text, gtk::AccessibleAnnouncementPriority::Medium),
+    }
+}
+
 /// An event from another thread, now on the main one.
 pub fn receive(event: Event) {
     let Some(app) = app() else { return };
     match event {
-        Event::Changed => app.store_changed(),
-        Event::Say(text) => app.say(&text),
+        Event::Changed => {
+            app.store_changed();
+            crate::settings::devices_heard(&app, None);
+        }
+        Event::Say(text) => {
+            app.say(&text);
+            crate::settings::devices_heard(&app, Some(&text));
+        }
     }
 }
 
@@ -222,6 +242,7 @@ impl App {
             detail,
             minute: Cell::new(0),
             version: RefCell::new(None),
+            devices_page: RefCell::new(None),
         });
         app.add_actions();
 
@@ -296,7 +317,7 @@ impl App {
         let text = text.to_owned();
         crate::tree::when_settled(move || {
             status.set_label(&text);
-            status.announce(&text, gtk::AccessibleAnnouncementPriority::Medium);
+            announce(&status, &text);
         });
     }
 
@@ -547,6 +568,23 @@ impl App {
         };
         simple("new-task", |app| app.quick_add());
         simple("sync-now", |app| app.core.sync_now());
+        simple("settings", |app| crate::settings::show(app, crate::settings::Page::General));
+        simple("devices", |app| crate::settings::show(app, crate::settings::Page::Devices));
+        simple("export-import", |app| crate::settings::show(app, crate::settings::Page::Export));
+        simple("back-up", |app| match app.core.lumenna.backup(None) {
+            Ok(done) => app.say(&speech::announcement(&done.announcement, &done.notices)),
+            Err(error) => app.fail(&sentence(&error)),
+        });
+        simple("restore-backup", |app| {
+            let app = Rc::clone(app);
+            spawn(async move {
+                let window = app.window.clone().upcast::<gtk::Window>();
+                let types = [("Lumenna backups", "*.lumbak")];
+                if let Some(said) = crate::settings::import(&app, &window, "Restore From a Backup", &types).await {
+                    app.say(&said);
+                }
+            });
+        });
         simple("new-project", |app| {
             let app = Rc::clone(app);
             spawn(async move { crate::sidebar::new_project(&app, None).await });
@@ -700,6 +738,7 @@ fn simple_with(app: &App, name: &str, run: impl Fn(&Rc<App>) + 'static) {
 const ACCELERATORS: &[(&str, &[&str])] = &[
     ("win.new-task", &["<Control>n"]),
     ("win.sync-now", &["F5"]),
+    ("win.settings", &["<Control>comma"]),
     ("win.close-window", &["<Control>w"]),
     ("win.quit", &["<Control>q"]),
     ("win.undo", &["<Control>z"]),
@@ -757,7 +796,14 @@ fn menu_bar() -> gio::Menu {
                 item("New _Label…", "win.new-label"),
                 item("New Saved _Filter…", "win.new-filter"),
             ]),
-            section(vec![item("_Sync Now", "win.sync-now")]),
+            section(vec![
+                item("_Sync Now", "win.sync-now"),
+                item("_Devices and Pairing…", "win.devices"),
+                item("Back _Up Now", "win.back-up"),
+                item("_Restore From a Backup…", "win.restore-backup"),
+                item("_Export and Import…", "win.export-import"),
+            ]),
+            section(vec![item("Se_ttings…", "win.settings")]),
             section(vec![item("_Close Window", "win.close-window"), item("_Quit", "win.quit")]),
         ]),
     );
