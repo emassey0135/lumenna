@@ -1,10 +1,10 @@
-//! Tasks, with the filter above them (§16.1: task list + filter entry).
+//! Tasks, with the filter above them.
 //!
 //! A tree view, so a subtask's level and every row's position are the control's to report.
 //! Space checks a task off — the tree's own checkbox, so its state is reported as a checkbox
 //! — Delete trashes it, Enter opens its details, and the Applications key or Shift+F10 opens
 //! everything else. After a change the selection, which is the screen reader's focus, lands on
-//! the same task if it is still listed and otherwise on whatever now holds its place (§13).
+//! the same task if it is still listed and otherwise on whatever now holds its place.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -113,7 +113,7 @@ impl TaskList {
         }
     }
 
-    /// Erasing rebuilds the document without the task and cannot be undone (§9), so it asks.
+    /// Erasing rebuilds the document without the task and cannot be undone, so it asks.
     pub fn erase_selected(&self, app: &App) {
         let Some(row) = self.selected().filter(|_| self.trash) else { return };
         if prompts::confirm(

@@ -1,4 +1,4 @@
-// The selected task's details (§16.1: task detail / edit).
+// The selected task's details.
 //
 // A form of labelled fields. Saving sends only the fields that changed, worked out by the
 // surface's `task_edit` against the task the form started from, so a concurrent edit to
@@ -108,9 +108,9 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
       }
     };
 
-    // Puts the task into a work block of today or the next six days (§3.7), asking how long
+    // Puts the task into a work block of today or the next six days, asking how long
     // the sitting is meant to take. The day reaches any other day, from the block's side.
-    // Waiting for another task (§3.4): chosen from the open tasks, this one aside.
+    // Waiting for another task: chosen from the open tasks, this one aside.
     const waitFor = async (task: TaskDetail) => {
       const others = (await core.taskChoices()).filter((choice) => choice.id !== task.id);
       const on = await pick(`${task.title} Waits For`, "Task", others);
@@ -219,7 +219,7 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
               <Button onPress={() => void run(core.restore(task.id))}>Restore</Button>
               <Button
                 onPress={async () => {
-                  // Erasing cannot be undone (§9), so it asks.
+                  // Erasing cannot be undone, so it asks.
                   const detail = "It and its history are deleted for good. This cannot be undone.";
                   if (await confirm(`Erase ${task.title}?`, detail, "Erase")) void run(core.erase(task.id));
                 }}

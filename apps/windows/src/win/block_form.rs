@@ -1,6 +1,6 @@
-//! Adding or changing a block (§16.1: block editor; §13: creating is a form).
+//! Adding or changing a block.
 //!
-//! Every setting a block has (§3.6), in two columns: what it is and when on the left — title,
+//! Every setting a block has, in two columns: what it is and when on the left — title,
 //! start, length, kind, and the three flags — and how it repeats and behaves on the right. The
 //! flags start from the kind, and follow it while it changes. The form for one day of a
 //! repeating block has only the left column: that is all one day can change.

@@ -1,4 +1,4 @@
-//! The planner (§16.1; §13's worked example): a day as it is lived, as a tree.
+//! The planner: a day as it is lived, as a tree.
 //!
 //! The first row is the summary — what a glance at a timeline gives a sighted user. Then
 //! blocks in time order with their sittings beneath them, free time as rows of its own, and
@@ -184,7 +184,7 @@ impl DayView {
         }
     }
 
-    /// §13's "go to now": today, on the now row or the block happening now.
+    /// "Go to now": today, on the now row or the block happening now.
     pub fn go_to_now(&self, app: &App, announce: bool) {
         *self.day.borrow_mut() = None;
         self.list(app);
@@ -251,8 +251,7 @@ impl DayView {
         }
     }
 
-    /// Changes a block — asking "this day, or every day?" of a repeating one, never guessing
-    /// (§13, §4.3).
+    /// Changes a block — asking "this day, or every day?" of a repeating one, never guessing.
     fn edit(&self, app: &App, block: &PlanBlock) {
         let Some(date) = self.date() else { return };
         // One day alone: its time, length, title, kind and flags, as this day has them.
@@ -357,7 +356,7 @@ impl DayView {
         }
     }
 
-    /// Fills a block from the task side's opposite: from the block, pick a task (§13).
+    /// Fills a block from the task side's opposite: from the block, pick a task.
     fn assign(&self, app: &App, block: &PlanBlock) {
         let Some(date) = self.date() else { return };
         let tasks: Vec<RowView> = app.core.lumenna.list_tasks("").map(|r| r.rows).unwrap_or_default();
@@ -441,7 +440,7 @@ impl View for DayView {
 
     fn reload(&self, app: &App) {
         self.list(app);
-        // Opening the day lands on now (§13). Once, so coming back to it later does not move
+        // Opening the day lands on now. Once, so coming back to it later does not move
         // the selection from where the person left it.
         if !self.landed.replace(true) {
             self.go_to_now(app, false);

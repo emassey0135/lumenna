@@ -1,4 +1,4 @@
-//! The shortcuts that work from anywhere (§16.2): what they are, how they are named, and
+//! The shortcuts that work from anywhere: what they are, how they are named, and
 //! which choices of keys to warn about.
 
 /// What a shortcut from anywhere does.

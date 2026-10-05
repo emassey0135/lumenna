@@ -1,4 +1,4 @@
-//! The selected task's details (§16.1: task detail / edit), in the right-hand pane.
+//! The selected task's details, in the right-hand pane.
 //!
 //! Labelled stock fields: a static label before each control is what Windows names the
 //! control by, and its mnemonic is the field's Alt shortcut. What each field takes is its
@@ -368,8 +368,7 @@ fn selected_text(combo: HWND) -> String {
 }
 
 /// A multi-line field keeps Enter for new lines but gives Tab and Escape back to the window:
-/// otherwise Tab is typed into the notes and a keyboard user cannot leave them (§6.4's rule,
-/// for a different field).
+/// otherwise Tab is typed into the notes and a keyboard user cannot leave them.
 unsafe extern "system" fn leaves_on_tab(
     hwnd: HWND,
     message: u32,

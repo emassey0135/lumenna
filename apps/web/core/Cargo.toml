@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Lumenna's core for the web client (§16.12): the surface, exported to JavaScript."
+description = "Lumenna's core for the web client: the surface, exported to JavaScript."
 
 [lib]
 # The module the browser loads, and an ordinary library so the workspace checks it natively.
@@ -29,7 +29,7 @@ js-sys = "0.3"
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 console_error_panic_hook = "0.1"
-# SQLite's own durable browser storage, OPFS through sync access handles (§16.12).
+# SQLite's own durable browser storage, OPFS through sync access handles.
 sqlite-wasm-rs = { version = "0.5", default-features = false }
 sqlite-wasm-vfs = "0.2"
 

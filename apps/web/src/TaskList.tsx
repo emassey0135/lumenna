@@ -1,9 +1,9 @@
-// Tasks, with the filter above them (§16.1: task list + filter entry).
+// Tasks, with the filter above them.
 //
 // A React Aria tree, so a subtask's level and every row's position are the tree's to say. Space
 // checks a task off, Delete trashes it — or, in the trash, Space restores and Delete erases —
 // and Enter opens its details. After a change, focus goes back to the same task if it is still
-// listed, and otherwise to whatever now holds its place (§13).
+// listed, and otherwise to whatever now holds its place.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
@@ -88,7 +88,7 @@ export function TaskList(props: {
     }
   };
 
-  // Erasing rebuilds the document without the task and cannot be undone (§9), so it asks.
+  // Erasing rebuilds the document without the task and cannot be undone, so it asks.
   const erase = async (id: string, title: string, index: number) => {
     if (await confirm(`Erase ${title}?`, "It and its history are deleted for good. This cannot be undone.", "Erase")) {
       await change(core.erase(id), undefined, index);

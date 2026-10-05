@@ -1,4 +1,4 @@
-// Asking things: whether to go ahead, which of a few, a line of text, one of many (§13).
+// Asking things: whether to go ahead, which of a few, a line of text, one of many.
 //
 // Each is a function returning a promise, so an action reads in the order it happens —
 // `if (await confirm(…))` — and one host, rendered once in the app, shows whichever question

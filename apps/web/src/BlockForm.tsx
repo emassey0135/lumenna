@@ -1,6 +1,6 @@
-// Adding or changing a block (§16.1: block editor; §13: creating is a form).
+// Adding or changing a block.
 //
-// Every setting a block has (§3.6): what it is and when — title, start, length, kind, and the
+// Every setting a block has: what it is and when — title, start, length, kind, and the
 // three flags, which start from the kind and follow it while it changes — then how it repeats
 // and behaves. The form for one day of a repeating block has only the first half: that is all
 // one day can change. What saving sends is the surface's (`new_block`, `block_edit`): only

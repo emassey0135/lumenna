@@ -1,4 +1,4 @@
-// Builds the core for the browser and generates its bindings into src/core (§16.12).
+// Builds the core for the browser and generates its bindings into src/core.
 //
 // Cargo builds lumenna-web for wasm32-unknown-unknown with the size-tuned `web` profile;
 // wasm-bindgen then writes the module, its loader and the TypeScript types derived from the

@@ -1,5 +1,5 @@
 /* Plain and legible: system colours and fonts, a visible focus ring, and nothing conveyed by
-   colour alone (§13). Forced colours (Windows High Contrast) keep their own palette. */
+   colour alone. Forced colours (Windows High Contrast) keep their own palette. */
 
 :root {
   color-scheme: light dark;

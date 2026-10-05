@@ -1,4 +1,5 @@
-// Saying what happened (§13: announce state changes explicitly).
+// Saying what happened: a screen reader does not notice a change it did not cause by moving
+// focus, so every change says what it did.
 
 import { announce } from "@react-aria/live-announcer";
 

@@ -1,4 +1,4 @@
-//! Lumenna for Windows (§16.4): Win32 through `windows-rs`, linking the command surface
+//! Lumenna for Windows: Win32 through `windows-rs`, linking the command surface
 //! directly — no FFI, no JSON, the same `Lumenna` object the command line calls.
 //!
 //! **Standard common controls only.** Every list is a `SysTreeView32`, whose level, position,

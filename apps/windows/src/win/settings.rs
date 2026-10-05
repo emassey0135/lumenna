@@ -1,4 +1,4 @@
-//! Settings (§3.10, §16.1), in Windows' own shape: a property sheet of pages, opened with
+//! Settings, in Windows' own shape: a property sheet of pages, opened with
 //! Ctrl+Comma — General, Planning, Devices, Backups, and Export and Import, as on the Mac.
 //!
 //! Like the Mac's, every page applies a change as it is made; a text field, when it is left.
@@ -482,7 +482,7 @@ impl Dialog for Planning<'_> {
 }
 
 // ---------------------------------------------------------------------------------------
-// Devices: sync status, pairing, renaming, unpairing (§7, §9)
+// Devices: sync status, pairing, renaming, unpairing
 // ---------------------------------------------------------------------------------------
 
 const SYNC_STATUS: u16 = 300;
@@ -626,7 +626,7 @@ impl Dialog for Devices<'_> {
 }
 
 // ---------------------------------------------------------------------------------------
-// Backups (§9): this device's alone
+// Backups: this device's alone
 // ---------------------------------------------------------------------------------------
 
 const EVERY: u16 = 400;
@@ -737,7 +737,7 @@ impl Dialog for Backups<'_> {
 }
 
 // ---------------------------------------------------------------------------------------
-// Export and import (§9): what you have now, and reading it back
+// Export and import: what you have now, and reading it back
 // ---------------------------------------------------------------------------------------
 
 const EXPORT: u16 = 500;

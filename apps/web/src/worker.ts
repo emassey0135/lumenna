@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-// The core, in a dedicated worker (§16.12).
+// The core, in a dedicated worker.
 //
 // SQLite keeps the store in OPFS through sync access handles, which only a dedicated worker may
 // use; and Automerge's merges and the sync loop should never stall typing. So the whole core
@@ -108,7 +108,7 @@ export interface Line {
 const api = {
   /**
    * Opens the store — one tab at a time. OPFS gives the store one connection, and a device has
-   * one sync endpoint (§8), so the first tab holds a lock for as long as it is open and any
+   * one sync endpoint, so the first tab holds a lock for as long as it is open and any
    * other is told where Lumenna is already open.
    */
   open(name: string): Promise<void> {
@@ -192,7 +192,7 @@ const api = {
   },
 
   // -------------------------------------------------------------------------------------
-  // The day and its blocks (§3.7, §13)
+  // The day and its blocks
   // -------------------------------------------------------------------------------------
 
   /**
@@ -314,7 +314,7 @@ const api = {
     store().listTasks("").rows.map((row) => ({ id: row.id, text: rowText(row, false) })),
 
   // -------------------------------------------------------------------------------------
-  // Devices and sync (§7). A browser reaches other devices through a relay, and pairs by code.
+  // Devices and sync. A browser reaches other devices through a relay, and pairs by code.
   // -------------------------------------------------------------------------------------
 
   /**

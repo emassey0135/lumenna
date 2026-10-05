@@ -1,4 +1,4 @@
-//! Every block series (§16.1: block editor): Enter changes one, Delete deletes it.
+//! Every block series: Enter changes one, Delete deletes it.
 
 use std::cell::RefCell;
 use std::rc::Rc;

@@ -1,12 +1,13 @@
 //! What screen readers are told beyond what the stock controls report, through Dynamic
 //! Annotation (`IAccPropServices`) — Microsoft's way of adding to a standard control's
 //! accessibility without writing a provider for it, which is the whole point of using stock
-//! controls (§16.4).
+//! controls.
 //!
 //! Two things only: a control's name, where no label beside it gives one; and the status
-//! line as a live region, which is how a change is announced (§13: announce state changes
-//! explicitly). The live region is the documented Win32 route — `LiveSetting` on the control,
-//! then `EVENT_OBJECT_LIVEREGIONCHANGED` — which NVDA, JAWS and Narrator all read.
+//! line as a live region, which is how a change is announced: a screen reader does not
+//! notice a change it did not cause by moving focus. The live region is the documented Win32
+//! route — `LiveSetting` on the control, then `EVENT_OBJECT_LIVEREGIONCHANGED` — which NVDA,
+//! JAWS and Narrator all read.
 
 use std::cell::OnceCell;
 

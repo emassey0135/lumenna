@@ -1,4 +1,4 @@
-// Every block series (§16.1: block editor): Enter changes one, Delete deletes it, and the
+// Every block series: Enter changes one, Delete deletes it, and the
 // rest is in its menu. A series is changed whole here; one day of it is changed from the day.
 
 import { useEffect, useMemo, useRef, useState } from "react";

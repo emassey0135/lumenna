@@ -1,4 +1,4 @@
-//! Pairing and syncing from the browser (§7, §16.12), on the browser's own event loop.
+//! Pairing and syncing from the browser, on the browser's own event loop.
 //!
 //! The surface's async halves — [`Lumenna::pair_async`] and [`Lumenna::keep_in_sync`] — are
 //! what every other client runs on a runtime of its own; here they are promises. A browser
@@ -35,7 +35,7 @@ async fn settled(value: JsValue) -> JsValue {
 
 #[wasm_bindgen]
 impl Core {
-    /// Pairs this browser with another of the person's devices (§7). Without a `code`, it
+    /// Pairs this browser with another of the person's devices. Without a `code`, it
     /// waits to be dialled, calling `show_code` with the code to give the other device; with
     /// one, it dials that device. `confirm` is called with the three words and answers — or
     /// promises — whether they match on the other device. Resolves to the device paired with.

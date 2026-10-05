@@ -1,4 +1,4 @@
-// The planner (§16.1; §13's worked example): a day as it is lived, as a tree.
+// The planner: a day as it is lived, as a tree.
 //
 // The first row is the summary — what a glance at a timeline gives a sighted user. Then
 // blocks in time order with their sittings beneath them, free time as rows of its own, and
@@ -93,7 +93,7 @@ export function Day(props: {
   };
   const land = useLanding(tree, keys, select);
 
-  // The first time, the day opens on now (§13); a new day opens on its summary, and says it.
+  // The first time, the day opens on now; a new day opens on its summary, and says it.
   useEffect(() => {
     if (!shown) return;
     if (!landed.current) {
@@ -143,8 +143,7 @@ export function Day(props: {
     say(saved.said);
   };
 
-  // Changes a block — asking "this day, or every day?" of a repeating one, never guessing
-  // (§13, §4.3).
+  // Changes a block — asking "this day, or every day?" of a repeating one, never guessing.
   const edit = async (block: PlanBlock) => {
     let heading = `Change ${block.title}`;
     let purpose: Parameters<typeof blockForm>[0] = { kind: "series", id: block.series };
@@ -183,7 +182,7 @@ export function Day(props: {
     if (await confirm(`Delete ${block.title}?`, detail, "Delete")) await change(core.deleteBlock(block.series), undefined);
   };
 
-  // Fills a block from the task side's opposite: from the block, pick a task (§13).
+  // Fills a block from the task side's opposite: from the block, pick a task.
   const assign = async (block: PlanBlock) => {
     const tasks = await core.taskChoices();
     const task = await pick(`Assign to ${block.title}`, "Task", tasks);

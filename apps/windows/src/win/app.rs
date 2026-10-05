@@ -2,14 +2,14 @@
 //!
 //! The panes are the places (a tree), the view for the place chosen, and the chosen task's
 //! details, as Outlook and Explorer lay theirs out. **F6 and Shift+F6 move between them.**
-//! Nothing provides that for free (§16.4) — the dialog manager does Tab, arrows, Escape and
+//! Nothing provides that for free — the dialog manager does Tab, arrows, Escape and
 //! mnemonics only — and without it a screen reader user reaches the details by tabbing
 //! through everything in between.
 //!
 //! The status line along the bottom is a live region: what a change did is written there
-//! and read out (§13: announce state changes explicitly), after the row focus moved to.
+//! and read out, after the row focus moved to.
 //!
-//! Closing the window hides it; the app stays resident, syncing, until Exit (§16.2).
+//! Closing the window hides it; the app stays resident, syncing, until Exit.
 
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
@@ -287,7 +287,7 @@ impl App {
     // Saying, failing, changing
     // -------------------------------------------------------------------------------------
 
-    /// Writes a sentence on the status line, which reads it out (§13).
+    /// Writes a sentence on the status line, which reads it out.
     pub fn say(&self, text: &str) {
         if text.is_empty() {
             return;
@@ -665,7 +665,7 @@ impl App {
             menu::EXIT => self.exit(),
 
             menu::UNDO | menu::REDO => {
-                // In a field, its own typing; elsewhere, the store (§9).
+                // In a field, its own typing; elsewhere, the store.
                 if let Some(field) = self.editing() {
                     controls::send(field, EM_UNDO, 0, 0);
                     return;
@@ -927,7 +927,7 @@ unsafe extern "system" fn main_procedure(hwnd: HWND, message: u32, wparam: WPARA
                 }
             }
             WM_CLOSE => {
-                // Hidden, not closed: the app stays resident, syncing (§16.2).
+                // Hidden, not closed: the app stays resident, syncing.
                 app.hide_window();
                 return LRESULT(0);
             }

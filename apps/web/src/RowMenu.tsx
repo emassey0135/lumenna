@@ -1,4 +1,4 @@
-// What can be done to the row in hand, as a menu (§13): the desktop apps' context menu.
+// What can be done to the row in hand, as a menu: the desktop apps' context menu.
 //
 // It opens from its button, or from the row itself with the Menu key or Shift+F10 — the
 // keys a screen reader user reaches for — or a right-click. Focus goes back where it was

@@ -1,4 +1,4 @@
-//! The places (§16.1: project tree, label list, saved filters): Today, Tasks, the projects as
+//! The places: Today, Tasks, the projects as
 //! they nest, labels, saved filters, Blocks, the trash.
 //!
 //! A tree view like every list here, so a subproject's level is the control's to report.

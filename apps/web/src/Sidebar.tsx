@@ -1,4 +1,4 @@
-// The places (§16.1: project tree, label list, saved filters), as the desktop apps list them —
+// The places, as the desktop apps list them —
 // the list itself is crates/desktop's `places::sidebar`, run in the worker.
 //
 // Projects, labels and saved filters are managed here, as on the desktop: each row's menu

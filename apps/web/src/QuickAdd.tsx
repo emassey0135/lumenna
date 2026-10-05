@@ -1,6 +1,6 @@
-// Adding a task the way it would be said (§6.1): one line, read back as it is typed.
+// Adding a task the way it would be said: one line, read back as it is typed.
 //
-// The line is a genuine combobox (§6.4): Down opens what could go at the cursor, as a list the
+// The line is a genuine combobox: Down opens what could go at the cursor, as a list the
 // screen reader announces with its count, and choosing one puts it into exactly the span the
 // core says it replaces — mid-line too, which the stock comboboxes of the desktop toolkits
 // cannot do. Nothing opens by itself after a `#` or `@`, since typing a name straight through
