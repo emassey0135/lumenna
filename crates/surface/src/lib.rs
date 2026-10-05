@@ -103,6 +103,24 @@ impl Lumenna {
         Ok(self.store().refresh()?)
     }
 
+    /// Takes in what another process or a sync wrote, and returns a token that differs
+    /// whenever anything has been written since — by this process, another, or a sync.
+    ///
+    /// This, not [`refresh`](Self::refresh), is how a client learns it should redraw.
+    /// `refresh` says whether *this call* took anything in, and every operation refreshes
+    /// first, as does an app's own sync loop each tick: whichever call comes first after
+    /// `lum` writes is the one told, and a once-a-second check of `refresh` misses the
+    /// change whenever another call got there first. Comparing tokens cannot.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn version(&self) -> Result<String> {
+        let mut store = self.store();
+        store.refresh()?;
+        Ok(store.version().iter().map(ToString::to_string).collect::<Vec<_>>().join(" "))
+    }
+
     /// The profile directory.
     #[must_use]
     pub fn directory(&self) -> String {
