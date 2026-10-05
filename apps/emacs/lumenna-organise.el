@@ -31,25 +31,11 @@ Quoted when it has a space in it."
 
 ;;;; Projects
 
-(defvar-keymap lumenna-projects-mode-map
-  :doc "Keys in the project tree."
-  "a" #'lumenna-project-add
-  "N" #'lumenna-project-add-inside
-  "t" #'lumenna-project-add-task
-  "r" #'lumenna-project-rename
-  "m" #'lumenna-project-move
-  "w" #'lumenna-project-weigh
-  "A" #'lumenna-project-archive
-  "d" #'lumenna-project-delete
-  "M-p" #'lumenna-project-up
-  "M-n" #'lumenna-project-down)
-
 (define-derived-mode lumenna-projects-mode lumenna-list-mode "Lumenna Projects"
   "The project tree, with weights and what is archived.
 RET shows a project's tasks.
 
 \\{lumenna-projects-mode-map}"
-  (setq-local lumenna--menu #'lumenna-projects-menu)
   (setq-local lumenna--activate
               (lambda (row) (let ((name (plist-get row :title)))
                               (lumenna-tasks (lumenna--sigil ?# name) name (concat (lumenna--sigil ?# name) " "))))))
@@ -130,22 +116,10 @@ much a whole area does (§3.4)."
 
 ;;;; Labels
 
-(defvar-keymap lumenna-labels-mode-map
-  :doc "Keys in the list of labels."
-  "a" #'lumenna-label-add
-  "t" #'lumenna-label-add-task
-  "r" #'lumenna-label-rename
-  "m" #'lumenna-label-merge
-  "C" #'lumenna-label-colour
-  "d" #'lumenna-label-delete
-  "M-p" #'lumenna-label-up
-  "M-n" #'lumenna-label-down)
-
 (define-derived-mode lumenna-labels-mode lumenna-list-mode "Lumenna Labels"
   "Labels, each with how many open tasks wear it.  RET shows those tasks.
 
 \\{lumenna-labels-mode-map}"
-  (setq-local lumenna--menu #'lumenna-labels-menu)
   (setq-local lumenna--activate
               (lambda (row) (let ((name (plist-get row :title)))
                               (lumenna-tasks (lumenna--sigil ?@ name) name (concat (lumenna--sigil ?@ name) " "))))))
@@ -208,22 +182,11 @@ much a whole area does (§3.4)."
 
 ;;;; Saved filters
 
-(defvar-keymap lumenna-filters-mode-map
-  :doc "Keys in the list of saved filters."
-  "a" #'lumenna-filter-add
-  "/" #'lumenna-search
-  "r" #'lumenna-filter-rename
-  "e" #'lumenna-filter-requery
-  "d" #'lumenna-filter-delete
-  "M-p" #'lumenna-filter-up
-  "M-n" #'lumenna-filter-down)
-
 (define-derived-mode lumenna-filters-mode lumenna-list-mode "Lumenna Filters"
   "Saved filters.  RET shows a filter's tasks.  A filter is kept as typed, so
 \"today\" means today whenever it is opened (§6.2).
 
 \\{lumenna-filters-mode-map}"
-  (setq-local lumenna--menu #'lumenna-filters-menu)
   (setq-local lumenna--activate (lambda (row) (lumenna-tasks (plist-get row :query) (plist-get row :title)))))
 
 ;;;###autoload
@@ -279,9 +242,8 @@ much a whole area does (§3.4)."
 
 ;;;; Menus
 
-(transient-define-prefix lumenna-projects-menu ()
-  "What can be done with projects."
-  ["The project at point"
+(lumenna-define-keys lumenna-projects-mode
+  ("The project at point"
    ("RET" "Show its tasks" lumenna-activate)
    ("t" "Add a task to it" lumenna-project-add-task)
    ("N" "Add a project inside it" lumenna-project-add-inside)
@@ -291,16 +253,10 @@ much a whole area does (§3.4)."
    ("M-n" "Move down" lumenna-project-down)
    ("w" "Weight" lumenna-project-weigh)
    ("A" "Archive or unarchive" lumenna-project-archive)
-   ("d" "Delete" lumenna-project-delete)]
-  ["Projects"
-   ("a" "Add a project" lumenna-project-add)
-   ("u" "Undo" lumenna-undo)
-   ("y" "Redo" lumenna-redo)
-   ("L" "Lumenna's places" lumenna)])
+   ("d" "Delete" lumenna-project-delete)))
 
-(transient-define-prefix lumenna-labels-menu ()
-  "What can be done with labels."
-  ["The label at point"
+(lumenna-define-keys lumenna-labels-mode
+  ("The label at point"
    ("RET" "Show the tasks wearing it" lumenna-activate)
    ("t" "Add a task wearing it" lumenna-label-add-task)
    ("r" "Rename" lumenna-label-rename)
@@ -308,28 +264,16 @@ much a whole area does (§3.4)."
    ("C" "Colour" lumenna-label-colour)
    ("M-p" "Move up" lumenna-label-up)
    ("M-n" "Move down" lumenna-label-down)
-   ("d" "Delete" lumenna-label-delete)]
-  ["Labels"
-   ("a" "Add a label" lumenna-label-add)
-   ("u" "Undo" lumenna-undo)
-   ("y" "Redo" lumenna-redo)
-   ("L" "Lumenna's places" lumenna)])
+   ("d" "Delete" lumenna-label-delete)))
 
-(transient-define-prefix lumenna-filters-menu ()
-  "What can be done with saved filters."
-  ["The filter at point"
+(lumenna-define-keys lumenna-filters-mode
+  ("The filter at point"
    ("RET" "Show its tasks" lumenna-activate)
    ("r" "Rename" lumenna-filter-rename)
    ("e" "Change the query" lumenna-filter-requery)
    ("M-p" "Move up" lumenna-filter-up)
    ("M-n" "Move down" lumenna-filter-down)
-   ("d" "Delete" lumenna-filter-delete)]
-  ["Filters"
-   ("a" "Add a filter" lumenna-filter-add)
-   ("/" "Search or filter now" lumenna-search)
-   ("u" "Undo" lumenna-undo)
-   ("y" "Redo" lumenna-redo)
-   ("L" "Lumenna's places" lumenna)])
+   ("d" "Delete" lumenna-filter-delete)))
 
 (provide 'lumenna-organise)
 

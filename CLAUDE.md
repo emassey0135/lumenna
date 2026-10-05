@@ -222,7 +222,7 @@ is readable here and the app can be run under a pty without a second machine.
 
 ### The Emacs client
 
-`apps/emacs/` — Elisp over `jsonrpc.el`, built-in libraries only (§16.10). Tests are ERT
+`apps/emacs/` — Elisp over `jsonrpc.el`, built-in libraries only (§16.10), and no transient. Tests are ERT
 against a real `lum rpc`, answering the minibuffer by rebinding the reading functions:
 `emacs --batch -Q -L apps/emacs -l apps/emacs/test/lumenna-test.el -f ert-run-tests-batch-and-exit`.
 
@@ -234,6 +234,12 @@ against a real `lum rpc`, answering the minibuffer by rebinding the reading func
 - **Depth is an outline level, not just indentation.** `outline-regexp` matches every line
   and `outline-level` reads the `lumenna-level` text property, so folding and Emacspeak's
   level announcements come from outline mode. Indentation is there for the eye.
+- **A list's keys are defined once** (`lumenna-define-keys`), which binds them and keeps
+  them for `?`: an ordinary buffer, one key per line, RET running it back in the list.
+  Not a transient menu: Emacsvox reads a transient by asking whether its command was
+  called interactively, and Emacs 31's transient runs each command inside a wrapper of
+  its own, so moving through one was silent. A test checks every listed key is bound. The
+  global keys are a prefix map, `lumenna-command-map`.
 - **Booleans come back as `:json-false`**, which is non-nil. Test them with `lumenna--true`.
 - **Spans are bytes**: completion converts both ways (`lumenna--byte-offset`).
 - **Writes go through `lumenna-write`**, which refreshes every Lumenna buffer, runs

@@ -27,15 +27,16 @@
 ;; `lumenna-voice' maps them to voices where Emacspeak or Emacsvox are loaded;
 ;; `lumenna-emacsvox' adds semantic facts for Emacsvox's aural presentation.
 ;;
-;; Start with M-x lumenna.  In any Lumenna buffer, ? shows every command.
+;; Start with M-x lumenna.  In any Lumenna buffer, ? lists every key it has,
+;; and RET on one runs it.
 
 ;;; Code:
 
 (require 'cl-lib)
+(require 'derived)
 (require 'jsonrpc)
 (require 'outline)
 (require 'subr-x)
-(require 'transient)
 
 (defgroup lumenna nil
   "Tasks and a day planner."
@@ -245,9 +246,6 @@ the states that mean something."
 (defvar-local lumenna--activate nil
   "What RET does: a function of the row at point.")
 
-(defvar-local lumenna--menu nil
-  "The transient ? opens in this buffer.")
-
 (defun lumenna--insert-row (row)
   "Insert ROW as one line, indented by its depth, carrying the row."
   (let* ((depth (or (plist-get row :depth) 0))
@@ -331,27 +329,25 @@ If it is gone, point stays on the line that took its place."
   (interactive)
   (lumenna-write "redo"))
 
-(defun lumenna-menu ()
-  "Show every command this buffer has."
-  (interactive)
-  (call-interactively (or lumenna--menu #'lumenna-dispatch)))
-
-(defvar-keymap lumenna-list-mode-map
-  :doc "Keys every Lumenna list has."
-  :parent special-mode-map
-  "n" #'next-line
-  "p" #'previous-line
-  "TAB" #'lumenna-toggle
-  "RET" #'lumenna-activate
-  "g" #'lumenna-refresh
-  "u" #'lumenna-undo
-  "y" #'lumenna-redo
-  "?" #'lumenna-menu
-  "h" #'lumenna-menu
-  "L" #'lumenna)
-
 (defun lumenna--outline-level ()
   (or (get-text-property (line-beginning-position) 'lumenna-level) 1))
+
+(defmacro lumenna-define-keys (owner &rest groups)
+  "Bind GROUPS in OWNER's keymap, and keep them for its help.
+OWNER is a mode, whose map is OWNER-map, or a keymap variable.  Each group
+is (HEADING (KEY DESCRIPTION COMMAND)...).  The same definition does both,
+so the help cannot name a key the buffer lacks."
+  (declare (indent 1))
+  `(lumenna--define-keys ',owner ',groups))
+
+(defun lumenna--define-keys (owner groups)
+  (let ((map (symbol-value (if (boundp (derived-mode-map-name owner))
+                               (derived-mode-map-name owner)
+                             owner))))
+    (dolist (group groups)
+      (dolist (binding (cdr group))
+        (keymap-set map (car binding) (nth 2 binding)))))
+  (put owner 'lumenna-keys groups))
 
 (define-derived-mode lumenna-list-mode special-mode "Lumenna"
   "A Lumenna list: one item per line, said in words.
@@ -365,6 +361,20 @@ Subtasks sit under their task as an outline, so TAB folds them.
   (setq-local outline-regexp "[^\n]")
   (setq-local outline-level #'lumenna--outline-level)
   (outline-minor-mode 1))
+
+(lumenna-define-keys lumenna-list-mode
+  ("Every list"
+   ("n" "Next line" next-line)
+   ("p" "Previous line" previous-line)
+   ("RET" "Do the main thing for this line" lumenna-activate)
+   ("TAB" "Fold or unfold what sits under this line" lumenna-toggle)
+   ("g" "Read the list again" lumenna-refresh)
+   ("u" "Undo" lumenna-undo)
+   ("y" "Redo" lumenna-redo)
+   ("?" "These keys" lumenna-help)
+   ("h" "These keys" lumenna-help)
+   ("L" "Lumenna's places" lumenna)
+   ("q" "Leave this list" quit-window)))
 
 (defun lumenna--show-list (name mode source &rest settings)
   "Show buffer NAME in MODE, listing SOURCE; SETTINGS are buffer-local pairs."
@@ -477,26 +487,99 @@ the line, as a project's list does with its own name."
                    lumenna--places)))
    'lumenna--activate (lambda (row) (call-interactively (plist-get row :command)))))
 
-;;;###autoload (autoload 'lumenna-dispatch "lumenna" nil t)
-(transient-define-prefix lumenna-dispatch ()
-  "Everything Lumenna does, from anywhere."
-  ["Places"
+;;;; Keys, listed
+
+;; ? lists a buffer's keys in an ordinary buffer rather than a pop-up menu: one
+;; line per key, read the way every other line is, by any screen reader.  A
+;; transient menu needs its screen reader to follow transient's own window, and
+;; Emacsvox's support for it falls silent under Emacs 31's transient.
+
+(define-derived-mode lumenna-help-mode lumenna-list-mode "Lumenna Keys"
+  "The keys of a Lumenna buffer, one per line.  RET runs one there.
+
+\{lumenna-help-mode-map}")
+
+(defvar-local lumenna--help-origin nil
+  "The buffer whose keys this lists, where RET runs them.")
+
+(defun lumenna--key-groups (owner)
+  "OWNER's key groups, then those of the modes it derives from.
+A key is listed once, under the nearest mode that binds it, as it acts."
+  (let (seen groups)
+    (while owner
+      (dolist (group (get owner 'lumenna-keys))
+        (let ((bindings (seq-remove (lambda (binding) (member (car binding) seen)) (cdr group))))
+          (setq seen (append (mapcar #'car bindings) seen))
+          (when bindings (push (cons (car group) bindings) groups))))
+      (setq owner (get owner 'derived-mode-parent)))
+    (nreverse groups)))
+
+(defun lumenna--show-help (owner title)
+  "List OWNER's keys under TITLE, to be run in the current buffer."
+  (let ((origin (current-buffer))
+        (groups (lumenna--key-groups owner)))
+    (lumenna--show-list
+     "*Lumenna keys*" #'lumenna-help-mode
+     (lambda ()
+       (cons (format "Keys in %s. RET runs one there, q goes back" title)
+             (mapcan (lambda (group)
+                       (cons (list :role "heading" :key (car group) :title (car group)
+                                   :face 'lumenna-heading)
+                             (mapcar (lambda (binding)
+                                       (list :role "key" :key (car binding) :depth 1
+                                             :title (format "%s: %s" (car binding) (nth 1 binding))
+                                             :command (nth 2 binding)))
+                                     (cdr group))))
+                     groups)))
+     'lumenna--help-origin origin
+     'lumenna--activate #'lumenna--help-run)))
+
+(defun lumenna--help-run (row)
+  "Go back to the buffer the keys are for, and run ROW's command there."
+  (let ((command (or (plist-get row :command) (user-error "A heading; its keys are under it")))
+        (origin lumenna--help-origin))
+    (quit-window)
+    (when (buffer-live-p origin) (pop-to-buffer-same-window origin))
+    (call-interactively command)))
+
+(defun lumenna-help ()
+  "List every key this buffer has, with what it does.  RET on one runs it."
+  (interactive)
+  (if (derived-mode-p 'lumenna-list-mode)
+      (lumenna--show-help major-mode (string-trim (buffer-name) "\\*" "\\*"))
+    (lumenna-dispatch)))
+
+(defvar lumenna-command-map (make-sparse-keymap)
+  "Lumenna from anywhere.  Bind it to a prefix: (keymap-global-set \"C-c l\"
+lumenna-command-map).  Its ? lists the rest.")
+
+(lumenna-define-keys lumenna-command-map
+  ("Places"
    ("t" "Today" lumenna-today)
    ("k" "Tasks" lumenna-tasks)
    ("p" "Projects" lumenna-projects)
    ("l" "Labels" lumenna-labels)
    ("f" "Saved filters" lumenna-filters)
    ("b" "Blocks" lumenna-blocks)
-   ("x" "Trash" lumenna-trash)]
-  ["Do"
+   ("x" "Trash" lumenna-trash)
+   ("L" "All of Lumenna's places" lumenna))
+  ("Do"
    ("a" "Add a task" lumenna-add)
    ("/" "Search or filter" lumenna-search)
    ("u" "Undo" lumenna-undo)
    ("y" "Redo" lumenna-redo)
-   ("n" "Sync now" lumenna-sync-now)]
-  ["Settings"
+   ("n" "Sync now" lumenna-sync-now))
+  ("Settings"
    ("d" "Devices and sync" lumenna-devices)
-   ("s" "Settings" lumenna-settings)])
+   ("s" "Settings" lumenna-settings))
+  ("Help"
+   ("?" "These keys" lumenna-dispatch)))
+
+;;;###autoload
+(defun lumenna-dispatch ()
+  "List everything Lumenna does from anywhere; RET on one runs it."
+  (interactive)
+  (lumenna--show-help 'lumenna-command-map "Lumenna, from anywhere"))
 
 (provide 'lumenna)
 

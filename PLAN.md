@@ -3163,7 +3163,10 @@ Design:
   nearly free rather than being hand-built.
 - `completing-read` for project and label selection — with vertico and consult this is
   genuinely better than any picker on any other platform in this plan.
-- `transient.el` for command menus if a magit-style interface is wanted.
+- `transient.el` for command menus if a magit-style interface is wanted. *As built: not
+  used.* A transient's screen reader has to follow transient's own window, and under
+  Emacs 31 Emacsvox's could not; `?` lists a buffer's keys in an ordinary buffer instead,
+  one per line, from the same definition that binds them.
 
 **Emacspeak** rewards deliberate support: define faces for priority, overdue, and completion
 so voice-lock maps them to distinct voices, and ship an `emacspeak-lumenna.el` advising commands

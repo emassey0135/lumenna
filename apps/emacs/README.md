@@ -2,7 +2,7 @@
 
 A client of `lum rpc` in Emacs Lisp, using only what ships with Emacs 29 and later:
 `jsonrpc.el` for the connection, `outline-minor-mode` for the subtask tree,
-`completing-read` for choosing a project or label, and `transient` for the menus. Like the
+and `completing-read` for choosing a project or label. Like the
 BTSpeak app it decides almost nothing itself; every rule, date and announcement is the
 core's (§16.10).
 
@@ -11,9 +11,10 @@ core's (§16.10).
 ```elisp
 (add-to-list 'load-path "~/lumenna/apps/emacs")
 (require 'lumenna)
-(keymap-global-set "C-c l" #'lumenna-dispatch)   ; any key you like
+(keymap-global-set "C-c l" lumenna-command-map)   ; any prefix you like
 ```
 
+Then `C-c l t` is Today, `C-c l a` adds a task, and `C-c l ?` lists the rest.
 `M-x lumenna` lists the places; `M-x lumenna-today`, `lumenna-tasks` and `lumenna-add` go
 straight there. `lum` is found on `exec-path`, or set `lumenna-lum-program`.
 
@@ -38,7 +39,7 @@ In every list:
 | TAB | fold or unfold the subtasks |
 | `g` | refresh |
 | `u`, `y` | undo, redo |
-| `?` or `h` | this list's menu, naming every key |
+| `?` or `h` | every key this list has, one per line; RET on one runs it, `q` goes back |
 | `L` | the places |
 
 Tasks: `a` add, `/` search, `c` done or not, `e` edit a field, `b` assign to a block, `m`
