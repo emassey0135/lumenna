@@ -116,6 +116,33 @@ pub fn sitting_status(sitting: PlanAssignment) -> Vec<String> {
     }
 }
 
+/// The settings a kind of block has unless a block sets them apart (§3.6): what a block
+/// form's check buttons start from, and go back to when the kind is changed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+pub struct BlockDefaults {
+    /// Whether tasks can be put in it.
+    pub accepts_tasks: bool,
+    /// Whether it counts toward the hours available for work.
+    pub counts_capacity: bool,
+    /// Whether it is fixed in time.
+    pub anchored: bool,
+}
+
+/// What a kind of block — `work`, `break` or `event` — has unless set apart, or `None` for a
+/// word that is not a kind.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+#[must_use]
+pub fn block_defaults(kind: String) -> Option<BlockDefaults> {
+    let flags = crate::planning::block_kind(&kind).ok()?.default_flags();
+    Some(BlockDefaults {
+        accepts_tasks: flags.accepts_tasks,
+        counts_capacity: flags.counts_capacity,
+        anchored: flags.anchored,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -220,5 +247,15 @@ mod tests {
         assert_eq!(sitting_status(sitting("planned", Some(45))), vec!["planned for 45 minutes"]);
         assert_eq!(sitting_status(sitting("worked", Some(45))), vec!["worked", "45 minutes planned"]);
         assert_eq!(sitting_status(sitting("planned", None)), vec!["planned"]);
+    }
+
+    #[test]
+    fn each_kind_of_block_has_its_own_defaults() {
+        let work = block_defaults("work".to_owned()).unwrap();
+        assert!(work.accepts_tasks && work.counts_capacity && !work.anchored);
+        let event = block_defaults("Event".to_owned()).unwrap();
+        assert!(!event.accepts_tasks && event.anchored);
+        assert!(!block_defaults("break".to_owned()).unwrap().accepts_tasks);
+        assert_eq!(block_defaults("nap".to_owned()), None);
     }
 }
