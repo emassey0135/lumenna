@@ -46,6 +46,8 @@ class Keyboard:
     """Key presses through the compositor's RemoteDesktop session."""
 
     def __init__(self):
+        if not os.environ.get("LUMENNA_HEADLESS"):
+            raise RuntimeError("run under headless.sh: these keys would go to the desktop")
         self.bus = Gio.bus_get_sync(Gio.BusType.SESSION)
         reply = self._call("/org/gnome/Mutter/RemoteDesktop", "org.gnome.Mutter.RemoteDesktop",
                            "CreateSession", None, "(o)")

@@ -1,6 +1,6 @@
 """Presses keys and reports, after each, what has focus, what was announced and what Orca said.
 
-    dbus-run-session -- ./headless.sh python3 explore.py Down Down F6 space
+    ./headless.sh python3 explore.py Down Down F6 space
 
 `type:text` types text. Seeded with a small store: two projects, a task with subtasks.
 """
