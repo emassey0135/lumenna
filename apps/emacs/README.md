@@ -83,4 +83,12 @@ emacs --batch -Q -L apps/emacs -l apps/emacs/test/lumenna-test.el \
   -f ert-run-tests-batch-and-exit
 ```
 
-`LUM` names another binary.
+`LUM` names another binary. The Emacsvox layer has its own file, which loads Emacsvox's
+aural layer (not its speech server) from `EMACSVOX`, else `~/emacsvox/lisp`, and is skipped
+where it is not found:
+
+```
+emacs --batch -Q -L apps/emacs -L apps/emacs/test \
+  -l apps/emacs/test/lumenna-emacsvox-test.el \
+  --eval '(ert-run-tests-batch-and-exit "^lumenna-emacsvox-")'
+```

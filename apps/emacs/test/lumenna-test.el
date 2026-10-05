@@ -271,4 +271,6 @@
         (lumenna-disconnect)
         (delete-process daemon)))))
 
+(provide 'lumenna-test)
+
 ;;; lumenna-test.el ends here
