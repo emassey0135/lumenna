@@ -51,59 +51,44 @@ final class TaskDetailModel: NSObject, ObservableObject {
         do {
             let shown = try core.lumenna.showTask(id: id)
             task = shown.task
-            title = shown.task.title
-            due = Self.dueText(shown.task)
-            repetition = shown.task.repetition ?? ""
-            priority = shown.task.priority
-            estimate = Self.estimateText(shown.task)
-            project = shown.task.project ?? ""
-            notes = shown.task.notes
-            labels = shown.task.labels.joined(separator: ", ")
+            let fields = taskFields(task: shown.task)
+            title = fields.title
+            due = fields.due
+            repetition = fields.repeat
+            priority = fields.priority
+            estimate = fields.estimate
+            project = fields.project
+            notes = fields.notes
+            labels = fields.labels
             projects = ((try? core.lumenna.listProjects().rows) ?? []).map(\.title)
         } catch {
             task = nil
         }
     }
 
-    /// The due date as a phrase the core reads back in: `2026-10-09 14:00`.
-    private static func dueText(_ task: TaskDetail) -> String {
-        [task.due, task.dueTime].compactMap { $0 }.joined(separator: " ")
+    /// The form's fields as the core compares them.
+    private var fields: TaskFields {
+        TaskFields(
+            title: title, due: due, repeat: repetition, priority: priority, estimate: estimate,
+            project: project, labels: labels, notes: notes
+        )
     }
 
-    private static func estimateText(_ task: TaskDetail) -> String {
-        task.estimateMins.map { "\($0)m" } ?? ""
+    /// What saving would send, or nil if nothing changed. The core decides (`taskEdit`), as
+    /// it does for every client: a field sent unchanged would win a last-write-wins race and
+    /// revert another device's edit to it.
+    private var edit: TaskEdit? {
+        task.flatMap { taskEdit(task: $0, fields: fields) }
     }
 
-    var hasChanges: Bool {
-        guard let task else { return false }
-        return title != task.title || due != Self.dueText(task) || repetition != (task.repetition ?? "")
-            || priority != task.priority || estimate != Self.estimateText(task)
-            || project != (task.project ?? "") || notes != task.notes
-            || labels != task.labels.joined(separator: ", ")
-    }
+    var hasChanges: Bool { edit != nil }
 
-    /// Sends only the fields that changed, so a concurrent edit to another field on another
-    /// device is not overwritten with what this form happened to show.
+    /// Sends only the fields that changed.
     func save() {
-        guard let task else { return }
-        guard hasChanges else {
+        guard let edit else {
             Announcer.say("Nothing changed")
             return
         }
-        let edit = TaskEdit(
-            title: title != task.title ? title : nil,
-            due: due != Self.dueText(task) ? (due.isEmpty ? "none" : due) : nil,
-            // Cleared, it stops repeating — unless it repeats by a rule this cannot show, when
-            // the field started empty and empty still means leave it.
-            repeat: repetition != (task.repetition ?? "") ? (repetition.isEmpty ? "none" : repetition) : nil,
-            priority: priority != task.priority ? priority : nil,
-            estimate: estimate != Self.estimateText(task) ? (estimate.isEmpty ? "none" : estimate) : nil,
-            notes: notes != task.notes ? notes : nil,
-            project: project != (task.project ?? "") && !project.isEmpty ? project : nil,
-            labels: labels != task.labels.joined(separator: ", ")
-                ? labels.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                : nil
-        )
         change { try $0.editTask(id: self.id, edit: edit) }
     }
 

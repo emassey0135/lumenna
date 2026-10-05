@@ -201,7 +201,7 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
             }
         case let .sitting(sitting, _):
             label = sitting.title
-            value = sittingStatus(sitting)
+            value = sittingStatus(sitting: sitting)
             if sitting.minutes > 0 { value.append("\(Clock.length(sitting.minutes)) logged") }
             if sitting.capped { value.append("capped, the timer looks forgotten") }
         case let .free(start, end, minutes):

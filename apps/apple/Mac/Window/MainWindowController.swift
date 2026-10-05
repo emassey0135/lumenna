@@ -65,12 +65,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case let .project(name):
             controller = TaskListViewController(
                 core: core, window: self, title: name,
-                query: sigil("#", name), quickAddPrefix: sigil("#", name) + " "
+                query: projectReference(name: name), quickAddPrefix: projectReference(name: name) + " "
             )
         case let .label(name):
             controller = TaskListViewController(
                 core: core, window: self, title: name,
-                query: sigil("@", name), quickAddPrefix: sigil("@", name) + " "
+                query: labelReference(name: name), quickAddPrefix: labelReference(name: name) + " "
             )
         case let .filter(name, query):
             controller = TaskListViewController(core: core, window: self, title: name, query: query)
