@@ -735,6 +735,19 @@ impl Store {
         self.docs.iter_mut().flat_map(|doc| doc.heads()).collect()
     }
 
+    /// A number that moves when another connection commits to the store, and for nothing
+    /// else: SQLite's `data_version`, which this connection's own writes leave alone.
+    ///
+    /// Unlike [`refresh`](Self::refresh)'s answer, no other call can use it up, and unlike
+    /// [`version`](Self::version), this connection's own edits do not move it.
+    ///
+    /// # Errors
+    ///
+    /// If SQLite cannot be asked.
+    pub fn outside_version(&self) -> Result<i64> {
+        self.db.data_version()
+    }
+
     /// This process's watch cursor: the highest change rowid it has seen.
     #[must_use]
     pub fn cursor(&self) -> i64 {

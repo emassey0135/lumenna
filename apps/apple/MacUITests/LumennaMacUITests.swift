@@ -4,12 +4,13 @@ import XCTest
 /// keyboard, not by position.
 final class LumennaMacUITests: XCTestCase {
     private var app: XCUIApplication!
+    private let profile = UUID().uuidString
 
     override func setUp() {
         continueAfterFailure = false
         app = XCUIApplication()
         // A fresh store for every test, in the app's temporary directory.
-        app.launchEnvironment["LUMENNA_TEST_PROFILE"] = UUID().uuidString
+        app.launchEnvironment["LUMENNA_TEST_PROFILE"] = profile
         app.launchEnvironment["LUMENNA_BACKUP_DIR"] = backups.path
         app.launch()
     }
@@ -128,6 +129,41 @@ final class LumennaMacUITests: XCTestCase {
             return true
         }
         XCTAssertTrue(issues.isEmpty, "\(screen)\n" + issues.joined(separator: "\n"))
+    }
+
+    /// A store both the app and `lum` reach. This runner is sandboxed, and so is anything it
+    /// starts, so it lives in the runner's temporary directory, which the app is not kept out of.
+    private lazy var sharedStore = FileManager.default.temporaryDirectory
+        .appendingPathComponent("lumenna-shared-\(profile)", isDirectory: true)
+
+    /// `lum`, built in this checkout, run against `sharedStore`.
+    private func lum(_ arguments: String...) throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let binary = root.appendingPathComponent("target/debug/lum")
+        try XCTSkipUnless(FileManager.default.isExecutableFile(atPath: binary.path), "build lum first")
+        let process = Process()
+        process.executableURL = binary
+        process.arguments = ["--profile", sharedStore.path] + arguments
+        process.environment = ["LUMENNA_BACKUP_DIR": backups.path, "PATH": "/usr/bin:/bin"]
+        try process.run()
+        process.waitUntilExit()
+        XCTAssertEqual(process.terminationStatus, 0, "lum \(arguments.joined(separator: " "))")
+    }
+
+    /// What another process writes appears without being asked for, though the app's own sync
+    /// loop and every operation take changes in too and would have swallowed a "changed".
+    func testWhatLumWritesAppearsWhileTheAppIsOpen() throws {
+        app.terminate()
+        app.launchEnvironment["LUMENNA_TEST_PROFILE"] = nil
+        app.launchEnvironment["LUMENNA_PROFILE"] = sharedStore.path
+        app.launch()
+        XCTAssertTrue(window.waitForExistence(timeout: 10))
+        place("Tasks")
+        for title in ["written elsewhere", "and again"] {
+            try lum("task", "add", title)
+            XCTAssertTrue(window.outlines["Tasks"].staticTexts[title].waitForExistence(timeout: 5), title)
+        }
     }
 
     func testTheMainWindowPassesAnAccessibilityAudit() throws {

@@ -165,9 +165,17 @@ socket.
   surface. There is one implementation of every operation, so RPC cannot drift from the CLI
   or from the apps that link it.
 - **Changes another process wrote are pushed** as a `lumenna/changed` notification, from a
-  thread polling `Store::refresh` once a second — §8 sanctions the timer, and `refresh`
-  settles in one pragma read whether there is anything to do. Every request also refreshes
-  first, so a reply is never staler than the notification that preceded it.
+  thread comparing `Lumenna::outside_version` once a second — §8 sanctions the timer. Not
+  `refresh`'s answer: every request refreshes first too, and a request just after another
+  process wrote took the change in and the push never went (a test caught it every time).
+  The client's own writes do not move it. A reply is never staler than the notification
+  that preceded it.
+- **Three ways to ask "did something change"**, for three questions. `refresh` says
+  whether *that call* took anything in, so any other call on the connection can use the
+  answer up. `version` moves for every write, this connection's included — for something
+  that must notice local edits, like a sync loop. `outside_version` (`PRAGMA data_version`)
+  moves only when another connection commits — for redrawing after `lum` or the daemon,
+  without redrawing a second time for the app's own edits.
 - **Row numbers are turned off** (`Profile::detach_rows`). The last listing is one file per
   profile, so a resident server and a shell would overwrite each other's numbering and `1`
   would silently name the wrong task. Clients hold identifiers.
@@ -367,8 +375,8 @@ Section titles are `FormParts.heading`, a header to VoiceOver's heading commands
 `LumennaMac`.
 
 - **Not sandboxed, and shares `lum`'s profile** (`~/Library/Application Support/lumenna`):
-  the app and the command line on one Mac are one device with one store. `Core` polls
-  `refresh` once a second there, since `lum` is another process writing to it.
+  the app and the command line on one Mac are one device with one store. `Core` compares
+  `outsideVersion` once a second there, since `lum` is another process writing to it.
 - **Resident in the menu bar, and the device's sync process** (§16.2): closing the window
   hides it, `NSStatusItem` and the Dock bring it back, and it syncs for as long as it runs.
   No daemon or service is needed or used.

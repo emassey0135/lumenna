@@ -103,6 +103,37 @@ fn a_write_from_another_process_is_pushed_without_being_asked_for() {
 }
 
 #[test]
+fn a_write_from_another_process_is_pushed_even_when_a_request_took_it_in_first() {
+    // A request refreshes before answering, so it can be the call that takes the write in.
+    // The push must not depend on the poll being the first to look: the client's other views
+    // only hear of it this way.
+    let rpc = Rpc::new();
+    let mut live = Live::start(&rpc);
+    live.send(r#"{"jsonrpc":"2.0","id":1,"method":"task.list"}"#);
+    live.wait_for(r#""id":1"#);
+    rpc.cli(&["task", "add", "from another process", "--quiet"]);
+    live.send(r#"{"jsonrpc":"2.0","id":2,"method":"task.list"}"#);
+    let lines = live.until(r#""id":2"#);
+    assert!(lines.last().unwrap().contains("from another process"), "{lines:?}");
+    if !lines.iter().any(|line| line.contains("lumenna/changed")) {
+        live.wait_for(r#""method":"lumenna/changed""#);
+    }
+}
+
+#[test]
+fn the_clients_own_writes_are_not_pushed_back_to_it() {
+    let rpc = Rpc::new();
+    let mut live = Live::start(&rpc);
+    live.send(r#"{"jsonrpc":"2.0","id":1,"method":"task.add","params":{"text":"mine"}}"#);
+    live.wait_for(r#""id":1"#);
+    // Three polls' worth: anything pushed would be here by then.
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    live.send(r#"{"jsonrpc":"2.0","id":2,"method":"task.list"}"#);
+    let lines = live.until(r#""id":2"#);
+    assert!(!lines.iter().any(|line| line.contains("lumenna/changed")), "{lines:?}");
+}
+
+#[test]
 fn refreshing_before_answering_keeps_a_reply_from_being_stale() {
     // The push says something happened; the next answer has to already know what.
     let rpc = Rpc::new();
@@ -282,6 +313,22 @@ impl Live {
         let stdin = self.child.stdin.as_mut().unwrap();
         writeln!(stdin, "{request}").unwrap();
         stdin.flush().unwrap();
+    }
+
+    /// Every line up to and including the next one containing `needle`.
+    fn until(&self, needle: &str) -> Vec<String> {
+        let mut seen = Vec::new();
+        loop {
+            let line = self
+                .lines
+                .recv_timeout(std::time::Duration::from_secs(60))
+                .unwrap_or_else(|_| panic!("nothing containing {needle} arrived: {seen:?}"));
+            let found = line.contains(needle);
+            seen.push(line);
+            if found {
+                return seen;
+            }
+        }
     }
 
     /// The next line containing `needle`, skipping the rest.
