@@ -3,38 +3,20 @@
 use lumenna_surface::{DeviceView, ExportFormat};
 
 /// A paired device, as its line in the list reads: "Kitchen Mac, macos, last synced 5
-/// minutes ago". Sync status in words rather than an icon (§9).
-pub fn line(device: &DeviceView, now: jiff::Timestamp) -> String {
+/// minutes ago" — its name and platform, then the status the core words for every app (§9).
+/// `now` is kept for callers; the status was worded when the devices were listed.
+pub fn line(device: &DeviceView, _now: jiff::Timestamp) -> String {
     let mut parts = vec![device.name.clone(), device.platform.clone()];
-    if device.this_device {
-        parts.push("this device".to_owned());
-    } else if let Some(error) = &device.last_error {
-        parts.push(format!("last attempt failed: {error}"));
-        if let Some(success) = &device.last_success {
-            parts.push(format!("last synced {}", ago(success, now)));
-        }
-    } else if let Some(success) = &device.last_success {
-        parts.push(format!("last synced {}", ago(success, now)));
-    } else {
-        parts.push("not synced yet".to_owned());
-    }
+    parts.extend(device.status.iter().cloned());
     parts.join(", ")
 }
 
-/// How long ago a timestamp was, as a person says it.
+/// How long ago a timestamp was, as a person says it — the core's wording.
 pub fn ago(timestamp: &str, now: jiff::Timestamp) -> String {
-    let Ok(then) = timestamp.parse::<jiff::Timestamp>() else { return timestamp.to_owned() };
-    let seconds = now.as_second() - then.as_second();
-    let plural = |n: i64, unit: &str| if n == 1 { format!("1 {unit} ago") } else { format!("{n} {unit}s ago") };
-    match seconds {
-        ..60 => "just now".to_owned(),
-        60..3_600 => plural(seconds / 60, "minute"),
-        3_600..86_400 => plural(seconds / 3_600, "hour"),
-        _ => plural(seconds / 86_400, "day"),
-    }
+    lumenna_surface::words::ago(timestamp, now)
 }
 
-/// One export Settings offers.
+/// The exports Settings offers, with what each is for and the extension its file takes.
 #[derive(Debug, Clone, Copy)]
 pub struct Export {
     /// What it writes.
@@ -89,7 +71,7 @@ mod tests {
     use super::*;
 
     fn device(this: bool, success: Option<&str>, error: Option<&str>) -> DeviceView {
-        DeviceView {
+        let mut view = DeviceView {
             name: "Kitchen Mac".to_owned(),
             platform: "macos".to_owned(),
             node_id: "ab12".to_owned(),
@@ -98,7 +80,10 @@ mod tests {
             last_attempt: None,
             last_success: success.map(str::to_owned),
             last_error: error.map(str::to_owned),
-        }
+            status: Vec::new(),
+        };
+        view.status = lumenna_surface::words::device_status(&view, now());
+        view
     }
 
     fn now() -> jiff::Timestamp {

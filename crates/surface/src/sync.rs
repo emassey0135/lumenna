@@ -489,7 +489,7 @@ impl Lumenna {
             .values()
             .map(|device| {
                 let status = peers.iter().find(|p| p.node_id == device.node_id.to_string());
-                DeviceView {
+                let mut view = DeviceView {
                     name: device.name.clone(),
                     platform: device.platform.clone(),
                     node_id: device.node_id.to_string(),
@@ -498,7 +498,10 @@ impl Lumenna {
                     last_attempt: status.and_then(|s| s.last_attempt).map(when),
                     last_success: status.and_then(|s| s.last_success).map(when),
                     last_error: status.and_then(|s| s.last_error.clone()),
-                }
+                    status: Vec::new(),
+                };
+                view.status = crate::words::device_status(&view, jiff::Timestamp::now());
+                view
             })
             .collect();
         views.sort_by(|a, b| b.this_device.cmp(&a.this_device).then(a.name.cmp(&b.name)));

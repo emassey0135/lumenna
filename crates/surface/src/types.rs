@@ -683,6 +683,23 @@ pub struct PlanBlock {
     pub changed_for_this_day: bool,
     /// What is assigned to it, in order.
     pub assignments: Vec<PlanAssignment>,
+    /// Whether tasks can be put in it — not its kind: a break may take tasks, and an
+    /// anchored block may too.
+    #[serde(default)]
+    pub accepts_tasks: bool,
+    /// Whether it is fixed in time.
+    #[serde(default)]
+    pub anchored: bool,
+    /// Its colour, by name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<String>,
+    /// Its notes.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
+    /// What a line about it says after its time and title, as parts every app words alike:
+    /// "1 hour 30 minutes", "work block", "now", "2 tasks assigned" (§13).
+    #[serde(default)]
+    pub details: Vec<String>,
 }
 
 /// One block series, as [`show_block`](crate::Lumenna::show_block) returns it — what an
@@ -717,6 +734,27 @@ pub struct BlockShown {
     /// [`BlockEdit::repeat`] reads back unchanged. Absent for a rule the grammar cannot say.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repetition: Option<String>,
+    /// Its notes.
+    #[serde(default)]
+    pub notes: String,
+    /// Whether tasks can be put in it.
+    pub accepts_tasks: bool,
+    /// Whether it counts toward the hours available for work.
+    pub counts_capacity: bool,
+    /// Whether it is fixed in time.
+    pub anchored: bool,
+    /// How short re-flow may make it, when set apart from the kind's default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_minutes: Option<u32>,
+    /// The filter scoping which tasks are offered for it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_filter: Option<String>,
+    /// The last day a repeating block happens, as an ISO date.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub until: Option<String>,
+    /// Its colour, by name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<String>,
 }
 
 /// A rule in the words the date grammar reads, if it can say it (§5).
@@ -749,6 +787,14 @@ pub struct PlanAssignment {
     /// Whether the figure was capped at the block's length because a timer looks orphaned.
     /// Never presented as fact (§3.7).
     pub capped: bool,
+    /// Whether its timer is running now; `status` is "paused" when it has run and stopped
+    /// without the sitting ending.
+    #[serde(default)]
+    pub running: bool,
+    /// What a line about it says after its title, as parts every app words alike: "planned
+    /// for 45 minutes", or "paused", "20 minutes logged" (§13).
+    #[serde(default)]
+    pub details: Vec<String>,
 }
 
 /// A timer stopped, or minutes logged by hand.
@@ -1233,6 +1279,38 @@ pub struct BlockEdit {
     /// series only: one occurrence cannot repeat differently.
     #[serde(default)]
     pub repeat: Option<String>,
+    /// New notes; empty clears them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+    pub notes: Option<String>,
+    /// Whether tasks can be put in it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+    pub accepts_tasks: Option<bool>,
+    /// Whether it counts toward the hours available for work.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+    pub counts_capacity: Option<bool>,
+    /// Whether it is fixed in time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+    pub anchored: Option<bool>,
+    /// How short re-flow may make it, in minutes; `0` returns it to the kind's default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+    pub min_minutes: Option<u32>,
+    /// A filter scoping which tasks are offered for it; empty clears it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+    pub task_filter: Option<String>,
+    /// The last day it happens, as a date phrase; `none` makes it repeat for good.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+    pub until: Option<String>,
+    /// A colour, by name; empty clears it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+    pub colour: Option<String>,
 }
 
 /// Which occurrences a change to a block applies to — the question §4.3 says to always ask
@@ -1262,7 +1340,7 @@ pub enum Direction {
 }
 
 /// A new block.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct NewBlock {
@@ -1280,6 +1358,40 @@ pub struct NewBlock {
     /// A repetition, such as `every weekday`.
     #[serde(default)]
     pub repeat: Option<String>,
+    /// Notes about the block.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+    pub notes: Option<String>,
+    /// Whether tasks can be put in it; the kind's default when absent (§3.6).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+    pub accepts_tasks: Option<bool>,
+    /// Whether it counts toward the hours available for work; the kind's default when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+    pub counts_capacity: Option<bool>,
+    /// Whether it is fixed in time, never moved when the day slips; the kind's default when
+    /// absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+    pub anchored: Option<bool>,
+    /// How short re-flow may make it, in minutes; the kind's default when absent (§3.6).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+    pub min_minutes: Option<u32>,
+    /// A filter scoping which tasks are offered for it (§10), such as `#Work`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+    pub task_filter: Option<String>,
+    /// The last day a repeating block happens, as a date phrase; it repeats for good when
+    /// absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+    pub until: Option<String>,
+    /// A colour, by name. Presentation only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+    pub colour: Option<String>,
 }
 
 // ---------------------------------------------------------------------------------------
@@ -1361,6 +1473,10 @@ pub struct DeviceView {
     /// What went wrong, if the last attempt failed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
+    /// How syncing with it is going, as parts every app words alike: "this device", or
+    /// "last synced 5 minutes ago" (§9).
+    #[serde(default)]
+    pub status: Vec<String>,
 }
 
 /// How syncing is going (§9's `sync_status()`), as words rather than an icon.

@@ -57,6 +57,12 @@ by `crates/ffi`) — no JSON crosses the FFI.
   The announcement is the one composed sentence, and only because core wrote it — an
   `Edit`'s description or a quick-add readback. Rows stay components (`role`, `state`,
   `title`, `value`) because speech and braille assemble them differently (§13).
+- **The composed phrases are the core's, as parts**: `PlanBlock::details`, `PlanAssignment::details`
+  and `DeviceView::status` ("work block", "now", "2 tasks assigned"; "paused", "20 minutes
+  logged"; "last synced 5 minutes ago"), built by `words::block_details`, `sitting_details`
+  and `device_status`. An app adds its own time format and title and joins the parts as its
+  screen reader wants; it never composes them itself, which is how seven copies drifted.
+  A block's flags are said only where they differ from its kind's.
 - **Wording stays client-neutral.** Nothing in the surface names a `lum` command or flag;
   the CLI adds those (`lum task restore` after a trash, `--force`, `lum stop … --minutes`).
 - **Identifiers are text**: a whole UUID or a prefix that names one record. A bare number is

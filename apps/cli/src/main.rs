@@ -117,8 +117,15 @@ pub(crate) enum Command {
         minutes: String,
     },
 
-    /// Start the timer on an assignment.
+    /// Start the timer on an assignment, or resume a paused one.
     Start {
+        /// The assignment identifier.
+        assignment: String,
+    },
+
+    /// Pause the timer: the time so far is kept and the sitting stays in progress, to be
+    /// resumed with `lum start` or ended with `lum stop`.
+    Pause {
         /// The assignment identifier.
         assignment: String,
     },
@@ -532,6 +539,52 @@ pub(crate) enum FilterCommand {
     },
 }
 
+/// What a block can be given beyond its time, length, kind and repetition (§3.6).
+#[derive(clap::Args, Debug, Clone, Default)]
+pub(crate) struct BlockExtras {
+    /// Notes about the block; empty clears them.
+    #[arg(long)]
+    notes: Option<String>,
+    /// Whether tasks can be put in it: yes or no. The kind decides when left out.
+    #[arg(long, value_parser = clap::builder::BoolishValueParser::new())]
+    takes_tasks: Option<bool>,
+    /// Whether it counts toward the hours available for work: yes or no.
+    #[arg(long, value_parser = clap::builder::BoolishValueParser::new())]
+    counts_capacity: Option<bool>,
+    /// Whether it is fixed in time, never moved when the day slips: yes or no.
+    #[arg(long, value_parser = clap::builder::BoolishValueParser::new())]
+    anchored: Option<bool>,
+    /// How short re-flow may make it, in minutes; 0 returns it to the kind's default.
+    #[arg(long)]
+    min_minutes: Option<u32>,
+    /// A filter scoping which tasks are offered for it, such as `#Work`; empty clears it.
+    #[arg(long)]
+    task_filter: Option<String>,
+    /// The last day a repeating block happens, or `none` to repeat for good.
+    #[arg(long)]
+    until: Option<String>,
+    /// A colour, by name; empty clears it.
+    #[arg(long)]
+    colour: Option<String>,
+}
+
+impl BlockExtras {
+    /// From `lum rpc`'s parameters, which name the fields as the surface does.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) const fn new(
+        notes: Option<String>,
+        takes_tasks: Option<bool>,
+        counts_capacity: Option<bool>,
+        anchored: Option<bool>,
+        min_minutes: Option<u32>,
+        task_filter: Option<String>,
+        until: Option<String>,
+        colour: Option<String>,
+    ) -> Self {
+        Self { notes, takes_tasks, counts_capacity, anchored, min_minutes, task_filter, until, colour }
+    }
+}
+
 #[derive(Debug, Subcommand)]
 pub(crate) enum BlockCommand {
     /// Add a block.
@@ -553,6 +606,8 @@ pub(crate) enum BlockCommand {
         /// A repetition, such as `every weekday`.
         #[arg(long)]
         repeat: Option<String>,
+        #[command(flatten)]
+        extras: BlockExtras,
     },
     /// List block series.
     List,
@@ -589,6 +644,8 @@ pub(crate) enum BlockCommand {
         /// Change every occurrence.
         #[arg(long)]
         all: bool,
+        #[command(flatten)]
+        extras: BlockExtras,
     },
     /// Cancel one day of a repeating block, leaving the rest.
     Cancel {
@@ -784,7 +841,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
             Response::new(profile.plan(Some(date).filter(|d| !d.trim().is_empty()))?)
         }
         Command::Block(command) => match command {
-            BlockCommand::Add { title, at, minutes, date, kind, repeat } => {
+            BlockCommand::Add { title, at, minutes, date, kind, repeat, extras } => {
                 Response::new(profile.add_block(NewBlock {
                     title: title.clone(),
                     at: at.clone(),
@@ -792,11 +849,19 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
                     date: date.clone(),
                     kind: kind.clone(),
                     repeat: repeat.clone(),
+                    notes: extras.notes.clone(),
+                    accepts_tasks: extras.takes_tasks,
+                    counts_capacity: extras.counts_capacity,
+                    anchored: extras.anchored,
+                    min_minutes: extras.min_minutes,
+                    task_filter: extras.task_filter.clone(),
+                    until: extras.until.clone(),
+                    colour: extras.colour.clone(),
                 })?)
             }
             BlockCommand::List => Response::new(profile.list_blocks()?),
             BlockCommand::Show { id } => Response::new(profile.show_block(&profile.row(id, "block")?)?),
-            BlockCommand::Edit { id, title, at, minutes, kind, repeat, date, all } => {
+            BlockCommand::Edit { id, title, at, minutes, kind, repeat, date, all, extras } => {
                 let id = profile.row(id, "block")?;
                 let scope = match date {
                     Some(date) => BlockScope::Occurrence { date: date.clone() },
@@ -808,6 +873,14 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
                     minutes: *minutes,
                     kind: kind.clone(),
                     repeat: repeat.clone(),
+                    notes: extras.notes.clone(),
+                    accepts_tasks: extras.takes_tasks,
+                    counts_capacity: extras.counts_capacity,
+                    anchored: extras.anchored,
+                    min_minutes: extras.min_minutes,
+                    task_filter: extras.task_filter.clone(),
+                    until: extras.until.clone(),
+                    colour: extras.colour.clone(),
                 };
                 if scope == BlockScope::Series && !all && profile.show_block(&id)?.repeats {
                     return Err(CliError::Message(
@@ -849,6 +922,9 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         }
         Command::Start { assignment } => {
             Response::new(profile.start_timer(&profile.row(assignment, "assignment")?)?)
+        }
+        Command::Pause { assignment } => {
+            Response::new(profile.pause_timer(&profile.row(assignment, "assignment")?)?)
         }
         Command::Stop { assignment, minutes } => {
             let timer = profile.stop_timer(&profile.row(assignment, "assignment")?, *minutes)?;

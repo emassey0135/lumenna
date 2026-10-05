@@ -119,6 +119,7 @@ const METHODS: &[&str] = &[
     "unassign",
     "length",
     "start",
+    "pause",
     "stop",
     "config.get",
     "config.set",
@@ -444,6 +445,29 @@ fn text_of(params: &Value, key: &str) -> std::result::Result<String, RpcError> {
         .ok_or_else(|| invalid(format!("'{key}' is required and has to be a string")))
 }
 
+/// A yes-or-no parameter: absent, or a boolean.
+fn maybe_bool(params: &Value, key: &str) -> std::result::Result<Option<bool>, RpcError> {
+    match params.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Bool(value)) => Ok(Some(*value)),
+        Some(_) => Err(invalid(format!("'{key}' must be true or false"))),
+    }
+}
+
+/// What a block can be given beyond its time, length, kind and repetition.
+fn block_extras(params: &Value) -> std::result::Result<crate::BlockExtras, RpcError> {
+    Ok(crate::BlockExtras::new(
+        maybe_text(params, "notes"),
+        maybe_bool(params, "accepts_tasks")?,
+        maybe_bool(params, "counts_capacity")?,
+        maybe_bool(params, "anchored")?,
+        maybe_number(params, "min_minutes")?,
+        maybe_text(params, "task_filter"),
+        maybe_text(params, "until"),
+        maybe_text(params, "colour"),
+    ))
+}
+
 fn maybe_text(params: &Value, key: &str) -> Option<String> {
     params.get(key).and_then(Value::as_str).map(ToOwned::to_owned)
 }
@@ -614,6 +638,7 @@ fn command_for(method: &str, params: &Value) -> std::result::Result<Command, Rpc
             date: maybe_text(params, "date"),
             kind: maybe_text(params, "kind").unwrap_or_else(|| "work".to_owned()),
             repeat: maybe_text(params, "repeat"),
+            extras: block_extras(params)?,
         }),
         "block.list" => Command::Block(BlockCommand::List),
         "block.show" => Command::Block(BlockCommand::Show { id: text_of(params, "id")? }),
@@ -627,6 +652,7 @@ fn command_for(method: &str, params: &Value) -> std::result::Result<Command, Rpc
             repeat: maybe_text(params, "repeat"),
             date: maybe_text(params, "date"),
             all: flag(params, "all"),
+            extras: block_extras(params)?,
         }),
         "block.cancel" => Command::Block(BlockCommand::Cancel {
             id: text_of(params, "id")?,
@@ -650,6 +676,7 @@ fn command_for(method: &str, params: &Value) -> std::result::Result<Command, Rpc
                 .map_or_else(|| "none".to_owned(), |minutes| minutes.to_string()),
         },
         "start" => Command::Start { assignment: text_of(params, "assignment")? },
+        "pause" => Command::Pause { assignment: text_of(params, "assignment")? },
         "stop" => Command::Stop {
             assignment: text_of(params, "assignment")?,
             minutes: maybe_number(params, "minutes")?,

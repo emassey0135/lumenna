@@ -8,7 +8,7 @@
 //! them twice.
 
 use lumenna_surface::words::duration;
-use lumenna_surface::{Candidate, CancelledBlock, PlanAssignment, PlanBlock, RowView, TaskDetail, sitting_status};
+use lumenna_surface::{Candidate, CancelledBlock, PlanAssignment, PlanBlock, RowView, TaskDetail};
 
 /// How this device says times and days. The core sends `HH:MM` and ISO dates, which are
 /// components; whether that is "2:30 PM" or "14:30" is the person's locale, so it is decided
@@ -62,42 +62,18 @@ pub fn place(title: &str, detail: &str) -> String {
 }
 
 /// A block on the day: "9:00 AM to 11:00 AM, Deep work, 2 hours, work block, now, 3 tasks
-/// assigned". The kind is said because it says which actions exist (§13): only work blocks
-/// take tasks.
+/// assigned" — the time and title, then the details the core words for every app (§13).
 pub fn block(block: &PlanBlock, clock: &dyn Clock) -> String {
-    let mut parts = vec![
-        format!("{} to {}", clock.time(&block.start), clock.time(&block.end)),
-        block.title.clone(),
-        duration(block.duration_mins),
-        format!("{} block", block.kind),
-    ];
-    if !block.when.is_empty() {
-        parts.push(block.when.clone());
-    }
-    if block.changed_for_this_day {
-        parts.push("changed for this day".to_owned());
-    }
-    if block.kind == "work" {
-        parts.push(match block.assignments.len() {
-            0 => "nothing assigned".to_owned(),
-            1 => "1 task assigned".to_owned(),
-            n => format!("{n} tasks assigned"),
-        });
-    }
+    let mut parts = vec![format!("{} to {}", clock.time(&block.start), clock.time(&block.end)), block.title.clone()];
+    parts.extend(block.details.iter().cloned());
     join(parts)
 }
 
-/// A sitting: a task in a block for one session (§3.7).
+/// A sitting: a task in a block for one session (§3.7) — its title, then the details the
+/// core words for every app, a capped timer among them, never presented as fact.
 pub fn sitting(sitting: &PlanAssignment) -> String {
     let mut parts = vec![sitting.title.clone()];
-    parts.extend(sitting_status(sitting.clone()));
-    if sitting.minutes > 0 {
-        parts.push(format!("{} logged", duration(sitting.minutes)));
-    }
-    if sitting.capped {
-        // Never presented as fact (§3.7).
-        parts.push("capped, the timer looks forgotten".to_owned());
-    }
+    parts.extend(sitting.details.iter().cloned());
     join(parts)
 }
 
@@ -201,7 +177,7 @@ mod tests {
     }
 
     fn sitting_with(status: &str, planned: Option<u32>, minutes: u32) -> PlanAssignment {
-        PlanAssignment {
+        let sitting = PlanAssignment {
             row: 1,
             id: "a".to_owned(),
             task: "t".to_owned(),
@@ -210,7 +186,10 @@ mod tests {
             planned_mins: planned,
             minutes,
             capped: false,
-        }
+            running: false,
+            details: Vec::new(),
+        };
+        PlanAssignment { details: lumenna_surface::words::sitting_details(&sitting), ..sitting }
     }
 
     #[test]
@@ -253,7 +232,13 @@ mod tests {
             repeats: true,
             changed_for_this_day: false,
             assignments: vec![sitting_with("planned", None, 0)],
+            accepts_tasks: true,
+            anchored: false,
+            colour: None,
+            notes: String::new(),
+            details: Vec::new(),
         };
+        let block = PlanBlock { details: lumenna_surface::words::block_details(&block), ..block };
         assert_eq!(
             super::block(&block, &TwelveHour),
             "9:00 AM to 11:00 AM, Deep work, 2 hours, work block, now, 1 task assigned"
@@ -275,7 +260,13 @@ mod tests {
             repeats: false,
             changed_for_this_day: false,
             assignments: Vec::new(),
+            accepts_tasks: false,
+            anchored: false,
+            colour: None,
+            notes: String::new(),
+            details: Vec::new(),
         };
+        let block = PlanBlock { details: lumenna_surface::words::block_details(&block), ..block };
         assert_eq!(super::block(&block, &TwelveHour), "12:30 PM to 1:15 PM, Lunch, 45 minutes, break block");
     }
 

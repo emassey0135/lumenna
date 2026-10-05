@@ -275,6 +275,32 @@ fn the_block_choices_are_a_weeks_work_blocks_unless_asked_for_more() {
 }
 
 #[test]
+fn a_block_takes_its_settings_and_a_sitting_pauses_over_rpc() {
+    let rpc = Rpc::new();
+    let out = rpc.talk(&[
+        r#"{"jsonrpc":"2.0","id":1,"method":"task.add","params":{"text":"read the paper"}}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"block.add","params":{"title":"Train","at":"00:00","minutes":1439,"kind":"break","accepts_tasks":true,"notes":"window seat","colour":"Blue"}}"#,
+        r#"{"jsonrpc":"2.0","id":3,"method":"plan"}"#,
+    ]);
+    assert!(out.contains(r#""accepts_tasks":true"#), "{out}");
+    assert!(out.contains(r#""takes tasks""#), "the details say what differs from the kind: {out}");
+    assert!(out.contains(r#""colour":"blue""#), "{out}");
+    let block = out.split(r#""series":""#).nth(1).and_then(|rest| rest.split('"').next()).expect("a series").to_owned();
+    let task = out.split(r#""task":{"#).nth(1).and_then(|rest| rest.split(r#""id":""#).nth(1)).and_then(|rest| rest.split('"').next()).expect("a task").to_owned();
+    let assign = format!(r#"{{"jsonrpc":"2.0","id":4,"method":"assign","params":{{"task":"{task}","block":"{block}"}}}}"#);
+    let out = rpc.talk(&[
+        &assign,
+        r#"{"jsonrpc":"2.0","id":5,"method":"plan"}"#,
+    ]);
+    let sitting = out.split(r#""assignments":[{"#).nth(1).and_then(|rest| rest.split(r#""id":""#).nth(1)).and_then(|rest| rest.split('"').next()).expect("a sitting").to_owned();
+    let start = format!(r#"{{"jsonrpc":"2.0","id":6,"method":"start","params":{{"assignment":"{sitting}"}}}}"#);
+    let pause = format!(r#"{{"jsonrpc":"2.0","id":7,"method":"pause","params":{{"assignment":"{sitting}"}}}}"#);
+    let out = rpc.talk(&[&start, &pause, r#"{"jsonrpc":"2.0","id":8,"method":"plan"}"#]);
+    assert!(out.contains("Paused timer"), "{out}");
+    assert!(out.contains(r#""status":"paused""#) && out.contains(r#""running":false"#), "{out}");
+}
+
+#[test]
 fn an_export_comes_back_in_the_reply_and_a_bad_format_is_named() {
     let rpc = Rpc::new();
     let out = rpc.talk(&[

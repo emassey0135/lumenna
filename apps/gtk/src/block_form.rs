@@ -71,6 +71,7 @@ impl Form {
                 date: Some(self.date.text().trim().to_owned()).filter(|d| !d.is_empty()),
                 kind: fields.kind.clone(),
                 repeat: Some(fields.repeat.clone()).filter(|r| !r.is_empty()),
+                ..NewBlock::default()
             }),
             // Only what changed, so a concurrent edit to another field elsewhere stands.
             Purpose::Series { id } => lumenna.edit_block(
@@ -82,6 +83,7 @@ impl Form {
                     kind: changed(&fields.kind, &initial.kind),
                     repeat: changed(&fields.repeat, &initial.repeat)
                         .map(|r| if r.is_empty() { "none".to_owned() } else { r }),
+                    ..BlockEdit::default()
                 },
                 BlockScope::Series,
             ),
@@ -93,6 +95,7 @@ impl Form {
                     minutes: (fields.minutes != initial.minutes).then_some(minutes),
                     kind: changed(&fields.kind, &initial.kind),
                     repeat: None,
+                    ..BlockEdit::default()
                 },
                 BlockScope::Occurrence { date: date.clone() },
             ),

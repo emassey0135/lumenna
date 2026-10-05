@@ -56,6 +56,7 @@ mod tests {
             date: Some(date.to_owned()),
             kind: kind.to_owned(),
             repeat: repeat.map(str::to_owned),
+            ..NewBlock::default()
         }
     }
 

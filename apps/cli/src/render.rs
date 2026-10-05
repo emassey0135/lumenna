@@ -8,7 +8,6 @@
 use anstream::{eprintln, print, println};
 use serde::Serialize;
 
-use lumenna_surface::words::count_line;
 use lumenna_surface::{Plan, PlanItem, Rows, TaskDetail};
 
 use crate::api::{Outcome, Response};
@@ -112,6 +111,25 @@ fn text(response: &Response) {
                 (Some(phrase), _) => fields.push(("repeats", phrase.clone())),
                 (None, Some(rule)) => fields.push(("repeats", format!("by the rule {rule}"))),
                 (None, None) => {}
+            }
+            let yes = |value: bool| if value { "yes" } else { "no" }.to_owned();
+            fields.push(("takes tasks", yes(block.accepts_tasks)));
+            fields.push(("counts capacity", yes(block.counts_capacity)));
+            fields.push(("anchored", yes(block.anchored)));
+            if let Some(minutes) = block.min_minutes {
+                fields.push(("shortest", lumenna_surface::words::duration(minutes)));
+            }
+            if let Some(until) = &block.until {
+                fields.push(("until", until.clone()));
+            }
+            if let Some(filter) = &block.task_filter {
+                fields.push(("tasks from", filter.clone()));
+            }
+            if let Some(colour) = &block.colour {
+                fields.push(("colour", colour.clone()));
+            }
+            if !block.notes.is_empty() {
+                fields.push(("notes", block.notes.clone()));
             }
             let width = fields.iter().map(|(key, _)| key.len()).max().unwrap_or(0);
             for (key, value) in fields {
@@ -217,27 +235,14 @@ fn day(plan: &Plan) {
     } else {
         println!("{}. {}", plan.date, plan.summary);
     }
+    // The core words the details for every app (§13); the terminal adds the row numbers.
     let block_line = |block: &lumenna_surface::PlanBlock| {
-        let mut detail = vec![block.kind.clone()];
-        if !block.when.is_empty() {
-            detail.push(block.when.clone());
-        }
-        if block.changed_for_this_day {
-            detail.push("changed for this day".to_owned());
-        }
         println!(
             "{}  {} to {}  {}  {}",
-            block.row, block.start, block.end, block.title, detail.join(", ")
+            block.row, block.start, block.end, block.title, block.details.join(", ")
         );
         for assignment in &block.assignments {
-            let mut detail = lumenna_surface::sitting_status(assignment.clone());
-            if assignment.minutes > 0 {
-                detail.push(format!("{} logged", lumenna_surface::words::duration(assignment.minutes)));
-            }
-            if assignment.capped {
-                detail.push("capped, the timer looks forgotten".to_owned());
-            }
-            println!("     {}  {}  {}", assignment.row, assignment.title, detail.join(", "));
+            println!("     {}  {}  {}", assignment.row, assignment.title, assignment.details.join(", "));
         }
     };
     // The timeline is the day as lived — free time and now as rows (§13). An older reader's
@@ -271,32 +276,8 @@ fn day(plan: &Plan) {
 /// One device as a sentence: what it is, and how syncing with it last went. Words rather
 /// than a symbol, because §9 is explicit that a glyph communicates nothing.
 fn device_line(device: &lumenna_surface::DeviceView) -> String {
-    let mut line = format!("{}, {}", device.name, device.platform);
-    if device.this_device {
-        line.push_str(", this device");
-        return line;
-    }
-    let ago = |t: &str| t.parse::<jiff::Timestamp>().map_or_else(|_| t.to_owned(), relative);
-    match (&device.last_success, &device.last_error, &device.last_attempt) {
-        (_, Some(error), Some(attempt)) => {
-            line.push_str(&format!(", last attempt {} failed: {error}", ago(attempt)));
-            if let Some(success) = &device.last_success {
-                line.push_str(&format!("; last synced {}", ago(success)));
-            }
-        }
-        (Some(success), _, _) => line.push_str(&format!(", last synced {}", ago(success))),
-        _ => line.push_str(", not synced yet"),
-    }
-    line
+    let mut parts = vec![device.name.clone(), device.platform.clone()];
+    parts.extend(device.status.iter().cloned());
+    parts.join(", ")
 }
 
-/// "just now", "5 minutes ago", "3 hours ago", "2 days ago".
-fn relative(then: jiff::Timestamp) -> String {
-    let seconds = jiff::Timestamp::now().duration_since(then).as_secs().max(0);
-    match seconds {
-        0..60 => "just now".to_owned(),
-        60..3600 => format!("{} ago", count_line((seconds / 60) as usize, "minute")),
-        3600..86_400 => format!("{} ago", count_line((seconds / 3600) as usize, "hour")),
-        _ => format!("{} ago", count_line((seconds / 86_400) as usize, "day")),
-    }
-}

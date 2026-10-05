@@ -3,7 +3,7 @@
 use jiff::Zoned;
 use lumenna_core::edit::{self, EditError};
 use lumenna_core::id::AssignmentId;
-use lumenna_core::model::{BlockAssignment, BlockKind, BlockRef, BlockSeries, ExceptionAction};
+use lumenna_core::model::{AssignmentStatus, BlockAssignment, BlockKind, BlockRef, BlockSeries, ExceptionAction};
 use lumenna_core::row::{Role, Row, RowId};
 use lumenna_core::snapshot::Snapshot;
 
@@ -14,7 +14,7 @@ use crate::types::{
     Announced, BlockEdit, BlockScope, BlockShown, CancelledBlock, Change, NewBlock, Plan, PlanAssignment,
     PlanBlock, PlanItem, Rows, Timer, WorkBlock, WorkBlocks, repetition_phrase,
 };
-use crate::words::{count_line, duration, time_text};
+use crate::words::{block_details, count_line, duration, sitting_details, time_text};
 use crate::{Lumenna, repaired};
 
 fn to_u32(n: usize) -> u32 {
@@ -42,7 +42,7 @@ impl Lumenna {
         for offset in 0..days {
             let Ok(day) = first.checked_add(jiff::Span::new().days(i64::from(offset))) else { break };
             let plan = self.plan(Some(day.to_string()))?;
-            blocks.extend(plan.blocks.into_iter().filter(|block| block.kind == kind_word(BlockKind::Work)).map(
+            blocks.extend(plan.blocks.into_iter().filter(|block| block.accepts_tasks).map(
                 |block| WorkBlock {
                     assigned: to_u32(block.assignments.len()),
                     id: block.id,
@@ -102,7 +102,11 @@ impl Lumenna {
                         let elapsed =
                             assignment.elapsed(now.timestamp(), Some(occurrence.duration_mins));
                         assignment_row += 1;
-                        PlanAssignment {
+                        // A sitting in progress whose timer is off is paused: it ran, and has
+                        // not been ended.
+                        let paused = assignment.status == AssignmentStatus::InProgress
+                            && !assignment.is_running();
+                        let mut sitting = PlanAssignment {
                             row: assignment_row,
                             id: assignment.id.to_string(),
                             task: assignment.task_id.to_string(),
@@ -110,11 +114,15 @@ impl Lumenna {
                                 .tasks
                                 .get(&assignment.task_id)
                                 .map_or_else(|| "(not loaded)".to_owned(), |t| t.title.clone()),
-                            status: assignment.status.speech().to_owned(),
+                            status: if paused { "paused" } else { assignment.status.speech() }.to_owned(),
                             planned_mins: assignment.planned_mins,
                             minutes: elapsed.mins,
                             capped: elapsed.capped,
-                        }
+                            running: assignment.is_running(),
+                            details: Vec::new(),
+                        };
+                        sitting.details = sitting_details(&sitting);
+                        sitting
                     })
                     .collect();
 
@@ -127,7 +135,7 @@ impl Lumenna {
                 } else {
                     "upcoming"
                 };
-                blocks.push(PlanBlock {
+                let mut block = PlanBlock {
                     row: to_u32(index + 1),
                     id: format!("{}@{}", occurrence.series_id, occurrence.date),
                     series: occurrence.series_id.to_string(),
@@ -140,7 +148,14 @@ impl Lumenna {
                     repeats: series.is_some_and(BlockSeries::is_recurring),
                     changed_for_this_day: occurrence.modified,
                     assignments,
-                });
+                    accepts_tasks: occurrence.flags.accepts_tasks,
+                    anchored: occurrence.flags.anchored,
+                    colour: series.and_then(|s| s.color.clone()),
+                    notes: series.map(|s| s.notes.clone()).unwrap_or_default(),
+                    details: Vec::new(),
+                };
+                block.details = block_details(&block);
+                blocks.push(block);
             }
 
             let overdue = (day == now.date()).then(|| {
@@ -209,6 +224,21 @@ impl Lumenna {
                 series.rrule = Some(rrule);
                 series.end_date = None;
             }
+            apply_extras(
+                &repaired(store),
+                &mut series,
+                &Extras {
+                    notes: block.notes.as_deref(),
+                    accepts_tasks: block.accepts_tasks,
+                    counts_capacity: block.counts_capacity,
+                    anchored: block.anchored,
+                    min_minutes: block.min_minutes,
+                    task_filter: block.task_filter.as_deref(),
+                    until: block.until.as_deref(),
+                    colour: block.colour.as_deref(),
+                },
+                &now,
+            )?;
 
             store.load_year(series.start_date.year())?;
             let (start, first) = (series.start_time, series.start_date);
@@ -278,6 +308,21 @@ impl Lumenna {
                             after.end_date = None;
                         }
                     }
+                    apply_extras(
+                        &snapshot,
+                        &mut after,
+                        &Extras {
+                            notes: edit.notes.as_deref(),
+                            accepts_tasks: edit.accepts_tasks,
+                            counts_capacity: edit.counts_capacity,
+                            anchored: edit.anchored,
+                            min_minutes: edit.min_minutes,
+                            task_filter: edit.task_filter.as_deref(),
+                            until: edit.until.as_deref(),
+                            colour: edit.colour.as_deref(),
+                        },
+                        &now,
+                    )?;
                     edit::update_series(before, after)
                 }
                 BlockScope::Occurrence { date } => {
@@ -285,6 +330,19 @@ impl Lumenna {
                         return Err(LumennaError::new(
                             "one day of a block cannot repeat differently; change every \
                              occurrence to change how it repeats",
+                        ));
+                    }
+                    // An exception holds the time, length, title, kind and flags (§3.6); the
+                    // rest belongs to the series.
+                    if edit.notes.is_some()
+                        || edit.min_minutes.is_some()
+                        || edit.task_filter.is_some()
+                        || edit.until.is_some()
+                        || edit.colour.is_some()
+                    {
+                        return Err(LumennaError::new(
+                            "notes, a task filter, a shortest length, a last day and a colour \
+                             belong to every occurrence; change every occurrence to change them",
                         ));
                     }
                     let day = resolve::date(Some(&date), &now)?;
@@ -296,12 +354,30 @@ impl Lumenna {
                         }
                         _ => (None, None, None, None, None),
                     };
+                    // Flags start from the kind chosen now, else what the day already had, else
+                    // the series', and take any flag set here.
+                    let base = kind.map(BlockKind::default_flags).or(earlier.4);
+                    let flags = if edit.accepts_tasks.is_some() || edit.counts_capacity.is_some() || edit.anchored.is_some() {
+                        let mut flags = base.unwrap_or(before.flags);
+                        if let Some(value) = edit.accepts_tasks {
+                            flags.accepts_tasks = value;
+                        }
+                        if let Some(value) = edit.counts_capacity {
+                            flags.counts_capacity = value;
+                        }
+                        if let Some(value) = edit.anchored {
+                            flags.anchored = value;
+                        }
+                        Some(flags)
+                    } else {
+                        base
+                    };
                     let action = ExceptionAction::Modified {
                         start_time: start.or(earlier.0),
                         duration_mins: edit.minutes.or(earlier.1),
                         title: edit.title.or(earlier.2),
                         kind: kind.or(earlier.3),
-                        flags: kind.map(BlockKind::default_flags).or(earlier.4),
+                        flags,
                     };
                     edit::except_occurrence(&snapshot, series_id, day, action)?
                 }
@@ -371,6 +447,14 @@ impl Lumenna {
                 repeats: series.is_recurring(),
                 rrule: series.rrule.clone(),
                 repetition: series.rrule.as_deref().and_then(|rule| repetition_phrase(rule, false)),
+                notes: series.notes.clone(),
+                accepts_tasks: series.flags.accepts_tasks,
+                counts_capacity: series.flags.counts_capacity,
+                anchored: series.flags.anchored,
+                min_minutes: series.min_duration_mins,
+                task_filter: series.task_filter.clone(),
+                until: series.is_recurring().then_some(series.end_date).flatten().map(|d| d.to_string()),
+                colour: series.color.clone(),
             })
         })
     }
@@ -544,8 +628,59 @@ impl Lumenna {
             if change.is_empty() {
                 return Ok(Change::unchanged("that timer is already running"));
             }
+            let resumed = snapshot.assignments[&id].status == AssignmentStatus::InProgress;
             store.apply_recorded(&change)?;
-            Ok(Change::announced("Started timer", &change))
+            Ok(Change::announced(if resumed { "Resumed timer" } else { "Started timer" }, &change))
+        })
+    }
+
+    /// Pauses the timer: the time so far is kept and the sitting stays in progress, to be
+    /// resumed with [`start_timer`](Self::start_timer) or ended with
+    /// [`stop_timer`](Self::stop_timer) (§3.7).
+    ///
+    /// # Errors
+    ///
+    /// If no assignment matches `assignment`.
+    pub fn pause_timer(&self, assignment: &str) -> Result<Timer> {
+        let now = Zoned::now();
+        self.with(|store| {
+            store.load_all_years()?;
+            let snapshot = repaired(store);
+            let id = resolve::assignment_id(&snapshot, assignment)?;
+            let year = assignment_year(&snapshot, id)?;
+            let sitting = &snapshot.assignments[&id];
+            let cap = edit::occurrence_of(&snapshot, sitting.block_ref)
+                .map(|occurrence| occurrence.duration_mins)
+                .ok()
+                .or_else(|| snapshot.series.get(&sitting.block_ref.series_id()).map(|s| s.duration_mins));
+            let (change, elapsed) = edit::pause_timer(&snapshot, id, year, cap, &now)?;
+            let timer = Timer {
+                announcement: change.description.clone(),
+                notices: Vec::new(),
+                changed: !change.is_empty(),
+                assignment: id.to_string(),
+                minutes: elapsed.mins,
+                capped: elapsed.capped,
+            };
+            if change.is_empty() {
+                return Ok(Timer {
+                    announcement: format!(
+                        "that timer is not running; {} logged",
+                        count_line(elapsed.mins as usize, "minute")
+                    ),
+                    ..timer
+                });
+            }
+            store.apply_recorded(&change)?;
+            Ok(if elapsed.capped {
+                timer.note(format!(
+                    "that timer ran past the end of its block, so it was capped at {} minutes; if \
+                     that is wrong, log the real figure in its place",
+                    elapsed.mins
+                ))
+            } else {
+                timer
+            })
         })
     }
 
@@ -629,6 +764,80 @@ impl Lumenna {
             })
         })
     }
+}
+
+/// What a block can be given beyond its time, length, kind and repetition.
+struct Extras<'a> {
+    notes: Option<&'a str>,
+    accepts_tasks: Option<bool>,
+    counts_capacity: Option<bool>,
+    anchored: Option<bool>,
+    min_minutes: Option<u32>,
+    task_filter: Option<&'a str>,
+    until: Option<&'a str>,
+    colour: Option<&'a str>,
+}
+
+/// Sets what `extras` gives on `series`, after its kind, so a flag given here overrides the
+/// kind's default rather than being reset by it.
+fn apply_extras(snapshot: &Snapshot, series: &mut BlockSeries, extras: &Extras<'_>, now: &Zoned) -> Result<()> {
+    if let Some(notes) = extras.notes {
+        notes.clone_into(&mut series.notes);
+    }
+    if let Some(value) = extras.accepts_tasks {
+        series.flags.accepts_tasks = value;
+    }
+    if let Some(value) = extras.counts_capacity {
+        series.flags.counts_capacity = value;
+    }
+    if let Some(value) = extras.anchored {
+        series.flags.anchored = value;
+    }
+    if let Some(minutes) = extras.min_minutes {
+        if minutes > series.duration_mins {
+            return Err(LumennaError::new(format!(
+                "a block of {} cannot be kept to at least {}",
+                duration(series.duration_mins),
+                duration(minutes)
+            )));
+        }
+        series.min_duration_mins = (minutes > 0).then_some(minutes);
+    }
+    if let Some(filter) = extras.task_filter.map(str::trim) {
+        series.task_filter = if filter.is_empty() {
+            None
+        } else {
+            // Read now, so a filter that means nothing is said when it is set rather than
+            // when it is first used.
+            resolve::query(snapshot, filter)?;
+            Some(filter.to_owned())
+        };
+    }
+    if let Some(until) = extras.until.map(str::trim) {
+        if until.eq_ignore_ascii_case("none") {
+            if series.is_recurring() {
+                series.end_date = None;
+            }
+        } else {
+            if !series.is_recurring() {
+                return Err(LumennaError::new(
+                    "a block that happens once has no last day; make it repeat first",
+                ));
+            }
+            let day = resolve::date(Some(until), now)?;
+            if day < series.start_date {
+                return Err(LumennaError::new(format!(
+                    "it would end on {day}, before it starts on {}",
+                    series.start_date
+                )));
+            }
+            series.end_date = Some(day);
+        }
+    }
+    if let Some(colour) = extras.colour.map(str::trim) {
+        series.color = (!colour.is_empty()).then(|| colour.to_lowercase());
+    }
+    Ok(())
 }
 
 /// Free time shorter than this is a seam between two blocks, not time to plan into, and a
