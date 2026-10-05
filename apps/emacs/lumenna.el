@@ -44,7 +44,7 @@
   :prefix "lumenna-")
 
 (defcustom lumenna-lum-program "lum"
-  "The `lum' program, by name on `exec-path' or by its full path."
+  "The `lum' program, by name on variable `exec-path' or by its full path."
   :type 'string)
 
 (defcustom lumenna-profile nil
@@ -163,8 +163,9 @@ The daemon's socket if it answers, else a `lum rpc' of its own."
   (or (cdr (assq 'jsonrpc-error-message (cdr err))) (format "%s" err)))
 
 (defun lumenna--params (params)
-  "PARAMS, a plist, with nil values left out: the server reads a missing key
-as absent, where a null would sometimes be read as a value."
+  "PARAMS, a plist, with nil values left out.
+The server reads a missing key as absent, where a null would sometimes be
+read as a value."
   (let (out)
     (while params
       (unless (null (cadr params))
@@ -181,7 +182,7 @@ A refusal is a `user-error' carrying the core's own sentence."
     (jsonrpc-error (user-error "%s" (lumenna--error-message err)))))
 
 (defun lumenna-write (method &rest params)
-  "Call METHOD, which changes the store; redraw, and say what happened.
+  "Call METHOD with PARAMS, which changes the store; redraw, and say it.
 Returns the result."
   (let ((result (apply #'lumenna-call method params)))
     (lumenna-refresh-all)
@@ -263,6 +264,7 @@ the states that mean something."
       (user-error "No item on this line")))
 
 (defun lumenna--row-id (row)
+  "What tells ROW apart from the rest of its list."
   (or (plist-get row :id) (plist-get row :key)))
 
 (defun lumenna-refresh ()
@@ -330,7 +332,13 @@ If it is gone, point stays on the line that took its place."
   (lumenna-write "redo"))
 
 (defun lumenna--outline-level ()
+  "The outline level of the line at point: the item's depth, below the heading."
   (or (get-text-property (line-beginning-position) 'lumenna-level) 1))
+
+(defvar lumenna-command-map (make-sparse-keymap)
+  "Lumenna's commands, from anywhere.
+Bind it to a prefix, as (keymap-global-set \"C-c l\" lumenna-command-map);
+its ? lists the rest.")
 
 (defmacro lumenna-define-keys (owner &rest groups)
   "Bind GROUPS in OWNER's keymap, and keep them for its help.
@@ -341,12 +349,21 @@ so the help cannot name a key the buffer lacks."
   `(lumenna--define-keys ',owner ',groups))
 
 (defun lumenna--define-keys (owner groups)
-  (let ((map (symbol-value (if (boundp (derived-mode-map-name owner))
-                               (derived-mode-map-name owner)
-                             owner))))
+  "Bind GROUPS in OWNER's keymap, keep them for its help, and mark the mode.
+A Lumenna command bound only in modes is marked as theirs, as
+\(interactive nil MODE) would, so \[execute-extended-command] can leave it out
+elsewhere; one the global map also binds works anywhere."
+  (let* ((mode (and (boundp (derived-mode-map-name owner)) owner))
+         (map (symbol-value (if mode (derived-mode-map-name owner) owner))))
     (dolist (group groups)
       (dolist (binding (cdr group))
-        (keymap-set map (car binding) (nth 2 binding)))))
+        (let ((command (nth 2 binding)))
+          (keymap-set map (car binding) command)
+          (cond ((not mode) (function-put command 'command-modes nil))
+                ((and (string-prefix-p "lumenna-" (symbol-name command))
+                      (not (where-is-internal command lumenna-command-map t)))
+                 (function-put command 'command-modes
+                               (cl-adjoin mode (function-get command 'command-modes)))))))))
   (put owner 'lumenna-keys groups))
 
 (define-derived-mode lumenna-list-mode special-mode "Lumenna"
@@ -360,6 +377,7 @@ Subtasks sit under their task as an outline, so TAB folds them.
   ;; and Emacsvox's and Emacspeak's outline support, come from Emacs itself.
   (setq-local outline-regexp "[^\n]")
   (setq-local outline-level #'lumenna--outline-level)
+  (setq-local imenu-create-index-function #'lumenna--imenu-index)
   (outline-minor-mode 1))
 
 (lumenna-define-keys lumenna-list-mode
@@ -375,6 +393,24 @@ Subtasks sit under their task as an outline, so TAB folds them.
    ("h" "These keys" lumenna-help)
    ("L" "Lumenna's places" lumenna)
    ("q" "Leave this list" quit-window)))
+
+;; Emacs's own undo has nothing to undo in a read-only list; what is meant
+;; there is the store's.
+(keymap-set lumenna-list-mode-map "<remap> <undo>" #'lumenna-undo)
+(keymap-set lumenna-list-mode-map "<remap> <undo-redo>" #'lumenna-redo)
+
+(defun lumenna--imenu-index ()
+  "Every item in this list, by its line, for `imenu' to go to."
+  (let (index)
+    (save-excursion
+      (goto-char (point-min))
+      (while (not (eobp))
+        (when (get-text-property (point) 'lumenna-row)
+          (push (cons (string-trim (buffer-substring-no-properties (point) (line-end-position)))
+                      (point))
+                index))
+        (forward-line 1)))
+    (nreverse index)))
 
 (defun lumenna--show-list (name mode source &rest settings)
   "Show buffer NAME in MODE, listing SOURCE; SETTINGS are buffer-local pairs."
@@ -401,7 +437,8 @@ Subtasks sit under their task as an outline, so TAB folds them.
     (length (decode-coding-string (substring encoded 0 (min bytes (length encoded))) 'utf-8))))
 
 (defun lumenna--completion (syntax)
-  "A `completion-at-point' function asking the core what could go at point."
+  "A `completion-at-point' function asking the core what could go at point.
+SYNTAX is the language of the line, \"quick-add\" or \"filter\"."
   (lambda ()
     (let* ((start (minibuffer-prompt-end))
            (text (minibuffer-contents-no-properties))
@@ -422,17 +459,44 @@ Subtasks sit under their task as an outline, so TAB folds them.
                 (lambda (candidate) (concat "  " (cdr (assoc candidate labels))))))))))
 
 (defvar-keymap lumenna-minibuffer-map
-  :doc "The minibuffer for a quick-add line or a filter: TAB completes."
+  :doc "The minibuffer for a quick-add line or a filter.
+TAB completes; C-c C-r says how the line is understood so far."
   :parent minibuffer-local-map
-  "TAB" #'completion-at-point)
+  "TAB" #'completion-at-point
+  "C-c C-r" #'lumenna-read-back)
+
+(defvar-local lumenna--syntax nil
+  "The language the minibuffer is reading, \"quick-add\" or \"filter\".")
+
+(declare-function lumenna--task-listing "lumenna-tasks" (query title))
+
+(defun lumenna-read-back ()
+  "Say how the line typed so far is understood, before it is entered.
+What the other apps show under the field as it is typed: a task's date,
+priority and labels, or a filter's meaning and how many tasks it matches."
+  (interactive nil minibuffer-mode)
+  (let ((text (minibuffer-contents-no-properties)))
+    (funcall lumenna-announce-function
+             (cond ((string-blank-p text) "Nothing typed yet")
+                   ((equal lumenna--syntax "quick-add")
+                    (let ((preview (lumenna-call "preview" :text text)))
+                      (string-join (cons (plist-get preview :announcement)
+                                         (mapcar (lambda (d) (plist-get d :message))
+                                                 (append (plist-get preview :diagnostics) nil)))
+                                   ". ")))
+                   (t (car (lumenna--task-listing text "Filter"))))
+             nil)))
 
 (defvar lumenna-add-history nil "Quick-add lines typed before.")
 (defvar lumenna-filter-history nil "Filters typed before.")
 
 (defun lumenna-read-line (prompt syntax &optional initial history)
-  "Read a line in SYNTAX, `quick-add' or `filter', with the core's completion."
+  "Read a line in SYNTAX, \"quick-add\" or \"filter\", asking PROMPT.
+The core completes it and reads it back.  INITIAL starts the line; HISTORY
+is the history variable."
   (minibuffer-with-setup-hook
       (lambda ()
+        (setq lumenna--syntax syntax)
         (add-hook 'completion-at-point-functions (lumenna--completion syntax) nil t))
     (read-from-minibuffer prompt initial lumenna-minibuffer-map nil history)))
 
@@ -440,7 +504,8 @@ Subtasks sit under their task as an outline, so TAB folds them.
 (defun lumenna-add (&optional prefix)
   "Add a task, written the way you would say it (§6.1).
 Such as \"call the bank tomorrow at 3pm p1 #Home @calls 15m\".  TAB completes
-a project or label.  The line is checked first: an unknown project is said
+a project or label, and \\<lumenna-minibuffer-map>\\[lumenna-read-back] says how the line is understood
+so far.  The line is checked first: an unknown project is said
 and nothing is added; an unknown label becomes a new label.  PREFIX starts
 the line, as a project's list does with its own name."
   (interactive)
@@ -548,10 +613,6 @@ A key is listed once, under the nearest mode that binds it, as it acts."
   (if (derived-mode-p 'lumenna-list-mode)
       (lumenna--show-help major-mode (string-trim (buffer-name) "\\*" "\\*"))
     (lumenna-dispatch)))
-
-(defvar lumenna-command-map (make-sparse-keymap)
-  "Lumenna from anywhere.  Bind it to a prefix: (keymap-global-set \"C-c l\"
-lumenna-command-map).  Its ? lists the rest.")
 
 (lumenna-define-keys lumenna-command-map
   ("Places"

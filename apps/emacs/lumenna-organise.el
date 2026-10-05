@@ -25,6 +25,7 @@ Quoted when it has a space in it."
   (plist-get (lumenna-row) :title))
 
 (defun lumenna--listing (method noun)
+  "The heading and rows METHOD lists, the heading starting with NOUN."
   (let ((listing (lumenna-call method)))
     (cons (format "%s, %s" noun (plist-get listing :announcement))
           (append (plist-get listing :rows) nil))))
@@ -177,14 +178,15 @@ much a whole area does (§3.4)."
   "Delete the label at point, asking first.  Tasks wearing it stay."
   (interactive)
   (let ((name (lumenna--name)))
-    (when (yes-or-no-p (format "Delete %s? Tasks wearing it stay; they just stop showing it. " name))
+    (when (yes-or-no-p (format "Tasks wearing %s stay, and stop showing it.  Delete the label? " name))
       (lumenna-write "label.rm" :name name))))
 
 ;;;; Saved filters
 
 (define-derived-mode lumenna-filters-mode lumenna-list-mode "Lumenna Filters"
-  "Saved filters.  RET shows a filter's tasks.  A filter is kept as typed, so
-\"today\" means today whenever it is opened (§6.2).
+  "Saved filters.  RET shows a filter's tasks.
+A filter is kept as typed, so \"today\" means today whenever it is opened
+\(§6.2).
 
 \\{lumenna-filters-mode-map}"
   (setq-local lumenna--activate (lambda (row) (lumenna-tasks (plist-get row :query) (plist-get row :title)))))
@@ -237,7 +239,7 @@ much a whole area does (§3.4)."
   "Delete the filter at point, asking first.  The tasks it shows are not touched."
   (interactive)
   (let ((name (lumenna--name)))
-    (when (yes-or-no-p (format "Delete the filter %s? The tasks it shows are not touched. " name))
+    (when (yes-or-no-p (format "The tasks %s shows are not touched.  Delete the filter? " name))
       (lumenna-write "filter.rm" :name name))))
 
 ;;;; Menus

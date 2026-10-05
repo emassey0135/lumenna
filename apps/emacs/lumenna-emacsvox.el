@@ -116,9 +116,9 @@ Emacsvox then presents the line as that object."
           (list :role (nth 1 event) :event (nth 2 event)))))
 
 (defun lumenna-emacsvox-announce (announcement notices)
-  "Say ANNOUNCEMENT and NOTICES on Emacsvox's notification lane, with the
-change's facts so its rules can add a sound; and show them, unspoken, in the
-echo area, so they are said once."
+  "Say ANNOUNCEMENT and NOTICES on Emacsvox's notification lane.
+They go with the change's facts, so its rules can add a sound, and are shown
+unspoken in the echo area, so they are said once."
   (let ((text (string-join (seq-remove #'string-empty-p (cons announcement notices)) ". "))
         (facts lumenna-emacsvox--event))
     (setq lumenna-emacsvox--event nil)
