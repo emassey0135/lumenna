@@ -36,7 +36,7 @@ type Question =
       label: string;
       description: string;
       initial: string;
-      check?: (text: string) => string | undefined;
+      check?: (text: string) => string | undefined | Promise<string | undefined>;
       answer: (text?: string) => void;
     }
   | { kind: "pick"; heading: string; label: string; items: { id: string; text: string }[]; answer: (id?: string) => void };
@@ -69,7 +69,7 @@ export function ask(
   label: string,
   description: string,
   initial = "",
-  check?: (text: string) => string | undefined,
+  check?: (text: string) => string | undefined | Promise<string | undefined>,
 ): Promise<string | undefined> {
   return put((answer) => ({ kind: "ask", heading, label, description, initial, check, answer }));
 }
@@ -144,9 +144,9 @@ function Asking(props: { question: Extract<Question, { kind: "ask" }>; close: ()
   const [text, setText] = useState(question.initial);
   const [problem, setProblem] = useState<string | undefined>();
 
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const wrong = question.check?.(text);
+    const wrong = await question.check?.(text);
     setProblem(wrong);
     if (wrong) return;
     question.answer(text);

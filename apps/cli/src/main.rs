@@ -34,7 +34,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use lumenna_surface::{BlockEdit, BlockScope, Direction, MoveTarget, NewBlock, TaskEdit, Weight};
+use lumenna_surface::{BlockEdit, BlockScope, Direction, MoveTarget, NewBlock, TaskEdit};
 
 use api::{Outcome, Response};
 use error::{CliError, Result};
@@ -1062,19 +1062,7 @@ fn project(profile: &Profile, command: &ProjectCommand) -> Result<Response> {
         }
         ProjectCommand::Rm { name, keep_tasks } => profile.delete_project(name, *keep_tasks)?,
         ProjectCommand::Weight { name, value } => {
-            let weight = if value.eq_ignore_ascii_case("inherit") {
-                Weight::Inherit
-            } else {
-                let value = value.parse::<f32>().ok().filter(|v| v.is_finite() && *v > 0.0);
-                Weight::Value {
-                    value: value.ok_or_else(|| {
-                        CliError::Message(
-                            "a weight has to be a positive number, or `inherit`".to_owned(),
-                        )
-                    })?,
-                }
-            };
-            profile.weigh_project(name, weight)?
+            profile.weigh_project(name, lumenna_surface::parse_weight(value.clone())?)?
         }
     }))
 }

@@ -199,3 +199,20 @@ test("ctrl+z undoes from the list, and ctrl+y redoes", async ({ page }) => {
   await page.keyboard.press("Control+y");
   await expect(row).toBeVisible();
 });
+
+test("a weight that is not a number is refused at the field, not taken as inherit", async ({ page }) => {
+  await open(page);
+  await placeMenu(page, /^Projects/, "New Project…");
+  await answer(page, "New Project", "Garden");
+  await placeMenu(page, /^Garden/, "Weight…");
+  const dialog = page.getByRole("dialog", { name: "Weight of Garden" });
+  const field = dialog.getByRole("textbox", { name: "Weight" });
+  await field.fill("1,5");
+  await dialog.getByRole("button", { name: "OK" }).click();
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  await expect(field).toHaveAccessibleDescription(/is not a weight/);
+  await field.fill("1.5");
+  await dialog.getByRole("button", { name: "OK" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('[aria-live="polite"]')).toContainText("Garden");
+});

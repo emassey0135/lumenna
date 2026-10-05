@@ -130,14 +130,9 @@ export function Sidebar(props: {
       label: "Weight…",
       run: async () => {
         const description = "How much this whole area matters now, roughly 0.5 to 2. Type inherit to take the parent's again.";
-        const text = await ask(`Weight of ${name}`, "Weight", description, "1.0", (text) =>
-          text.trim().toLowerCase() === "inherit" || Number.isFinite(Number(text.trim())) && text.trim() !== ""
-            ? undefined
-            : "A number, such as 1.5, or inherit.",
-        );
-        if (text === undefined) return;
-        const weight = text.trim().toLowerCase() === "inherit" ? ("Inherit" as const) : { Value: { value: Number(text) } };
-        await change(core.weighProject(name, weight));
+        // The surface reads it, refusing a typo at the field rather than taking it as inherit.
+        const text = await ask(`Weight of ${name}`, "Weight", description, "1.0", (text) => core.weightProblem(text));
+        if (text !== undefined) await change(core.weighProject(name, text));
       },
     },
     { id: "archive", label: archived ? "Unarchive" : "Archive", run: () => void change(core.archiveProject(name)) },

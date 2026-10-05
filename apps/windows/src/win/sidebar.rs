@@ -7,7 +7,7 @@
 
 use std::cell::RefCell;
 
-use lumenna_surface::{Change, Direction, Lumenna, Result, Weight};
+use lumenna_surface::{Change, Direction, Lumenna, Result, parse_weight};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{
     NMHDR, NMTREEVIEWW, NMTVKEYDOWN, TVN_ITEMEXPANDEDW, TVN_KEYDOWN, TVN_SELCHANGEDW,
@@ -16,6 +16,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::VK_DELETE;
 
 use super::app::App;
 use super::controls::{self, rect};
+use super::core::sentence;
 use super::prompts;
 use super::tree::{Item, Tree};
 use super::view::Metrics;
@@ -195,9 +196,20 @@ impl Sidebar {
                 DOWN => self.change(app, None, |l| l.reorder_project(name, Direction::Down)),
                 WEIGHT => {
                     let message = "How much this whole area matters now, roughly 0.5 to 2. Type inherit to take the parent's again.";
-                    if let Some(text) = prompts::ask_text(owner, &format!("Weight of {name}"), "&Weight:", message, "1.0") {
-                        let weight = text.parse::<f32>().map_or(Weight::Inherit, |value| Weight::Value { value });
-                        self.change(app, None, |l| l.weigh_project(name, weight));
+                    let mut typed = "1.0".to_owned();
+                    // Asked again until it reads, with what was typed, rather than a typo
+                    // quietly read as inherit.
+                    while let Some(text) = prompts::ask_text(owner, &format!("Weight of {name}"), "&Weight:", message, &typed) {
+                        match parse_weight(text.clone()) {
+                            Ok(weight) => {
+                                self.change(app, None, |l| l.weigh_project(name, weight));
+                                break;
+                            }
+                            Err(error) => {
+                                prompts::fail(owner, &sentence(&error));
+                                typed = text;
+                            }
+                        }
                     }
                 }
                 ARCHIVE => self.change(app, None, |l| l.archive_project(name)),
