@@ -226,7 +226,7 @@ impl Detail {
             }
             controls::send(self.waits, LB_SETCURSEL, 0, 0);
             controls::enable(self.wait_buttons[1].0, !task.depends.is_empty());
-            controls::set_text(self.state, &state_text(task));
+            controls::set_text(self.state, &crate::speech::task_state(task));
             let completed = task.state.iter().any(|s| s == "completed");
             for (button, action) in &self.buttons {
                 match action {
@@ -343,19 +343,6 @@ fn row_of_buttons(buttons: &[(HWND, Action)], x: i32, y: i32, width: i32, m: Met
     for (index, (button, _)) in buttons.iter().enumerate() {
         controls::place(*button, rect(x + index as i32 * (each + m.px(6)), y, each, m.button));
     }
-}
-
-/// The task's computed states, and the rule it repeats by when the date grammar cannot say it
-/// — which the Repeats field then shows empty and leaves alone.
-fn state_text(task: &TaskDetail) -> String {
-    let states: Vec<&str> = task.state.iter().map(String::as_str).filter(|s| *s != "ready").collect();
-    let mut text = if states.is_empty() { "open".to_owned() } else { states.join(", ") };
-    if task.repetition.is_none()
-        && let Some(rule) = &task.recurrence
-    {
-        text.push_str(&format!(", repeats by the rule {rule}"));
-    }
-    text
 }
 
 /// Selects the item with this text in a drop-down list, adding it if missing.
