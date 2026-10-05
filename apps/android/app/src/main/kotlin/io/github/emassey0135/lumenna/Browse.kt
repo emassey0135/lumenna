@@ -23,8 +23,8 @@ import androidx.compose.ui.semantics.collectionInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.emassey0135.lumenna.core.Direction
-import io.github.emassey0135.lumenna.core.Weight
 import io.github.emassey0135.lumenna.core.labelReference
+import io.github.emassey0135.lumenna.core.parseWeight
 import io.github.emassey0135.lumenna.core.projectReference
 
 /** One line of a list of things: what identifies it, how it reads, and how deep it sits. */
@@ -193,8 +193,10 @@ fun ProjectsScreen(core: Core, navigator: Navigator, changes: Long) {
                             hint = "How much this whole area matters now, roughly 0.5 to 2. Type inherit to take the parent's again.",
                             dismiss = prompt::close,
                         ) { text ->
+                            // A typo must not quietly become "inherit": the core reads it, and
+                            // a refusal is said and leaves the question open with what was typed.
+                            val weight = core.attempt { parseWeight(text) } ?: return@AskText
                             prompt.close()
-                            val weight = text.trim().toFloatOrNull()?.let { Weight.Value(it) } ?: Weight.Inherit
                             core.change { it.weighProject(item.key, weight) }
                         }
                     }

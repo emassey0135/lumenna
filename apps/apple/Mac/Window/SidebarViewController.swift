@@ -274,16 +274,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
                 ("Move Under…", { [weak self] in self?.moveProject(name) }),
                 ("Move Up", { [weak self] in self?.change { try lumenna.reorderProject(name: name, direction: .up) } }),
                 ("Move Down", { [weak self] in self?.change { try lumenna.reorderProject(name: name, direction: .down) } }),
-                ("Weight…", { [weak self] in
-                    self?.window?.askForText(
-                        "Weight of \(name)",
-                        message: "How much this whole area matters now, roughly 0.5 to 2. Type inherit to take the parent's again.",
-                        placeholder: "1.0"
-                    ) { text in
-                        let weight: Weight = Float(text).map { .value(value: $0) } ?? .inherit
-                        self?.change { try lumenna.weighProject(name: name, weight: weight) }
-                    }
-                }),
+                ("Weight…", { [weak self] in self?.askWeight(of: name) }),
                 (archived.contains(name) ? "Unarchive" : "Archive", { [weak self] in
                     self?.change { try lumenna.archiveProject(name: name) }
                 }),
@@ -389,6 +380,26 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
                 self?.window?.askForText("Query for \(name)", placeholder: "#Work & overdue", action: "Save") { query in
                     self?.change(then: .filter(name, query: query)) { try self!.core.lumenna.addFilter(name: name, query: query) }
                 }
+            }
+        }
+    }
+
+    /// Asks a project's weight, and again with what was typed when it is not one: a typo
+    /// must not quietly become "inherit" (the core reads it, `parseWeight`).
+    private func askWeight(of name: String, typed: String = "", problem: String? = nil) {
+        let help = "How much this whole area matters now, roughly 0.5 to 2. Type inherit to take the parent's again."
+        window?.askForText(
+            "Weight of \(name)",
+            message: problem.map { "\($0)\n\n\(help)" } ?? help,
+            initial: typed,
+            placeholder: "1.0"
+        ) { [weak self] text in
+            guard let self else { return }
+            do {
+                let weight = try parseWeight(text: text)
+                change { try self.core.lumenna.weighProject(name: name, weight: weight) }
+            } catch {
+                askWeight(of: name, typed: text, problem: error.sentence)
             }
         }
     }

@@ -7,6 +7,8 @@ when it has a space in it.
 
 from __future__ import annotations
 
+import math
+
 from BTSpeak import dialogs
 
 from rows import Tree, describe
@@ -21,6 +23,19 @@ def sigil(mark: str, name: str) -> str:
 # ---------------------------------------------------------------------------------------
 # Projects
 # ---------------------------------------------------------------------------------------
+
+
+def parse_weight(text: str) -> float | str | None:
+    """A project's weight as the core reads it (`parse_weight`): a number above zero, or
+    "inherit" in any case. None for anything else, which must not quietly become either."""
+    text = text.strip()
+    if text.lower() == "inherit":
+        return "inherit"
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    return value if math.isfinite(value) and value > 0 else None
 
 
 def projects(session: Session) -> str:
@@ -58,12 +73,10 @@ def projects(session: Session) -> str:
         )
         if text is None:
             return ""
-        if text.lower() == "inherit":
-            return session.write("project.weight", name=name, value="inherit")
-        try:
-            return session.write("project.weight", name=name, value=float(text))
-        except ValueError:
-            return "A weight is a number, such as 1.5, or inherit"
+        weight = parse_weight(text)
+        if weight is None:
+            return f"'{text.strip()}' is not a weight; use a number above zero, such as 1.5, or inherit"
+        return session.write("project.weight", name=name, value=weight)
 
     def tasks_of(row):
         name = row["title"]

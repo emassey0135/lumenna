@@ -97,10 +97,18 @@ much a whole area does (§3.4)."
   (interactive)
   (let* ((name (lumenna--name))
          (text (string-trim (read-string (format "Weight of %s, or inherit: " name) "1.0"))))
-    (lumenna-write "project.weight" :name name
-                   :value (if (string-equal-ignore-case text "inherit") "inherit"
-                            (let ((number (string-to-number text)))
-                              (if (> number 0) number (user-error "A weight is a number, such as 1.5, or inherit")))))))
+    (lumenna-write "project.weight" :name name :value (lumenna--weight text))))
+
+(defun lumenna--weight (text)
+  "TEXT as the core reads a weight: a number above zero, or \"inherit\".
+Anything else is refused rather than read as far as it goes, since
+`string-to-number' takes \"1,5\" for 1."
+  (cond ((string-equal-ignore-case text "inherit") "inherit")
+        ((and (string-match-p
+               "\\`\\(?:[0-9]+\\.?[0-9]*\\|\\.[0-9]+\\)\\(?:[eE][-+]?[0-9]+\\)?\\'" text)
+              (> (string-to-number text) 0))
+         (string-to-number text))
+        (t (user-error "'%s' is not a weight; use a number above zero, such as 1.5, or inherit" text))))
 
 (defun lumenna-project-archive ()
   "Archive the project at point, or unarchive an archived one."
