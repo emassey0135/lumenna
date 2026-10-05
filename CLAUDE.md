@@ -40,6 +40,7 @@ apps/apple/     the iOS and macOS apps over the generated bindings, Shared/ betw
                 and build-core.sh.
 apps/windows/   the Win32 app, linking the surface directly.
 apps/gtk/       the Linux app, GTK 4, linking the surface directly; begun, not yet complete.
+apps/web/       the web client: the core in WASM (core/), TypeScript and React Aria over it.
 ```
 
 The other GUI apps in §2's layout do not exist yet.
@@ -603,6 +604,41 @@ its own; see its README for the toolchain (NDK, `cargo-ndk`, Android Studio's JD
 - **Sync runs while the app is in front** (`onResume`/`onPause`). Local discovery uses
   `mdns-sd`, which Android lets hear multicast only under a `WifiManager.MulticastLock`;
   pairing takes one. Pairing by code is the dependable way, as on the iPhone.
+
+### The web client
+
+`apps/web/` — TypeScript, React and React Aria Components (§16.12), over the core compiled to
+`wasm32-unknown-unknown` (`apps/web/core`, crate `lumenna-web`). `npm run core:dev` (or
+`npm run core`, size-tuned) builds it and generates `src/core/` with wasm-bindgen, whose CLI
+must match the crate's version in `Cargo.lock`; `npm run build` builds the size-tuned core
+itself. `src/core/` is build output and not committed. Begun: tasks, places, details, quick
+add; Today, Blocks and sync are not there yet.
+
+- **The same store, in OPFS.** rusqlite 0.40 builds for the browser on `sqlite-wasm-rs`; the
+  `sahpool` VFS keeps the file in OPFS through sync access handles, which only a dedicated
+  worker may use. So the core runs in `src/worker.ts`, and the page calls it through Comlink.
+  The store skips WAL there, and `open_at` skips creating a directory.
+- **One tab owns a store** (a Web Lock named for the profile; `sahpool` is one connection).
+  Opening is idempotent per worker, because React's development mode runs effects twice and
+  the second request would find the first holding the lock.
+- **Records are typed from the surface's structs** (`tsify`, the surface's `wasm` feature).
+  Every export returns through `js()` in `lib.rs`, which writes every map as a plain object:
+  `Ts::from_rust` takes its settings from the outer type only, and a `#[serde(flatten)]`
+  record (`TaskShown`) is a map to serde, so it came out a JavaScript `Map` nothing could read.
+- **Wording comes from `crates/desktop`** (its `wasm` feature): row text, places, the
+  announcement sentence. The worker composes; it decides nothing.
+- **Spans cross as UTF-8 bytes**; the worker converts to and from the UTF-16 offsets an input
+  counts (`bytesAt`, `unitsAt`).
+- **A React Aria tree builds its collection in a pass of its own**, so the rows on the page
+  can lag the data by a render. Focus after a change waits for rows that are the current
+  ones before landing (`TaskList`). Lists use `selectionBehavior="replace"` and
+  `disallowEmptySelection`: selection follows focus and Enter opens, as on the desktop.
+- **Quick add is a real combobox, completing mid-line.** Its filter is off (the core decides
+  what fits; React Aria would match against the whole line), and Down opens the offer for
+  where the cursor is *now*, waiting for it if it is still on its way — otherwise the list
+  opened on the stale offer and closed as the fresh one replaced it.
+- Tests are Playwright over the accessibility tree, with axe on the whole page: `npm test`
+  (starts Vite itself). Each test's context is a fresh, empty OPFS.
 
 ### The core/store boundary
 

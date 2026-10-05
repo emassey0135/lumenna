@@ -1,0 +1,191 @@
+/* Plain and legible: system colours and fonts, a visible focus ring, and nothing conveyed by
+   colour alone (§13). Forced colours (Windows High Contrast) keep their own palette. */
+
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  line-height: 1.4;
+  --gap: 0.75rem;
+  --line: color-mix(in srgb, CanvasText 25%, Canvas);
+  --quiet: color-mix(in srgb, CanvasText 72%, Canvas);
+  --focus: Highlight;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: Canvas;
+  color: CanvasText;
+}
+
+:focus-visible,
+[data-focus-visible] {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: minmax(12rem, 16rem) minmax(20rem, 1fr) minmax(18rem, 24rem);
+  grid-template-rows: auto 1fr;
+  min-height: 100vh;
+}
+
+.app > header {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap);
+  padding: var(--gap);
+  border-bottom: 1px solid var(--line);
+}
+
+.app > header h1 {
+  margin: 0 auto 0 0;
+  font-size: 1.25rem;
+}
+
+nav,
+main,
+aside {
+  padding: var(--gap);
+  overflow: auto;
+}
+
+nav {
+  border-right: 1px solid var(--line);
+}
+
+aside {
+  border-left: 1px solid var(--line);
+}
+
+h2 {
+  font-size: 1.1rem;
+  margin: 0 0 var(--gap);
+}
+
+.quiet {
+  color: var(--quiet);
+}
+
+.notice {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+/* Trees: one line a row, the level shown by indentation; it is the tree's own to say. */
+.react-aria-Tree {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  min-height: 3rem;
+}
+
+.react-aria-TreeItem {
+  padding: 0.3rem 0.5rem;
+  padding-inline-start: calc(0.5rem + (var(--tree-item-level, 1) - 1) * 1.25rem);
+  cursor: default;
+}
+
+.react-aria-TreeItem[data-selected] {
+  background: SelectedItem;
+  color: SelectedItemText;
+}
+
+.react-aria-TreeItem .chevron {
+  border: none;
+  background: none;
+  color: inherit;
+  width: 1.5rem;
+  padding: 0;
+}
+
+.react-aria-TreeItem:not([data-has-child-items]) .row {
+  padding-inline-start: 1.5rem;
+}
+
+/* Forms: a label above each field. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: var(--gap);
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap);
+}
+
+input,
+textarea,
+.react-aria-Button,
+.react-aria-Select .react-aria-Button {
+  font: inherit;
+  color: inherit;
+  background: Field;
+  color: FieldText;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.35rem 0.5rem;
+}
+
+.react-aria-Button {
+  background: ButtonFace;
+  color: ButtonText;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.react-aria-Popover {
+  background: Canvas;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  min-width: var(--trigger-width);
+}
+
+.react-aria-ListBoxItem {
+  padding: 0.3rem 0.5rem;
+}
+
+.react-aria-ListBoxItem[data-focused] {
+  background: Highlight;
+  color: HighlightText;
+}
+
+.react-aria-ModalOverlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, Canvas 40%, transparent);
+}
+
+.react-aria-Dialog {
+  background: Canvas;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: calc(var(--gap) * 1.5);
+  width: min(32rem, 92vw);
+}
+
+output.readback {
+  display: block;
+  min-height: 2.6em;
+  margin-bottom: var(--gap);
+}
+
+/* A wrapper that only catches events: its children lay out as if it were not there. */
+.contents {
+  display: contents;
+}
