@@ -154,6 +154,14 @@ class Core(directory: File) {
         }
     }
 
+    /**
+     * One round with every paired device, waiting for it: through the running service while
+     * the app is in front, else on an endpoint opened for the round. On the sync thread, so it
+     * follows a stop that is still letting go of the endpoint rather than racing it.
+     */
+    fun syncRound(): SyncReport =
+        syncThread.submit(java.util.concurrent.Callable { sync?.syncNow() ?: lumenna.syncNow(Reach.INTERNET) }).get()
+
     /** Takes a backup if one is due (§9), off the main thread. */
     fun backUpIfDue() {
         syncThread.execute {

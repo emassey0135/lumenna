@@ -53,6 +53,13 @@ ordinary Gradle project.
   adb shell settings put secure accessibility_enabled 1
   ```
 
+## Syncing in the background
+
+While the app is in front it syncs continuously. When it is left, WorkManager runs one round
+at once, so what was just edited reaches the other devices, and then one every 15 minutes or
+so — Android's least, stretched when the phone dozes or the app is seldom opened. A round
+reaches only the devices running at that moment, such as a Mac or `lum daemon`.
+
 ## Not yet
 
 Pairing on the local network is untested on Android, because the emulator sits behind its own

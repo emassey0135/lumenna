@@ -6,4 +6,9 @@ import android.app.Application
 class LumennaApplication : Application() {
     /** Opened on first use, so a failure to open is shown in the activity rather than crashing. */
     val core: Result<Core> by lazy { runCatching { Core(Core.profileDirectory(this)) } }
+
+    override fun onCreate() {
+        super.onCreate()
+        SyncWorker.schedulePeriodic(this)
+    }
 }

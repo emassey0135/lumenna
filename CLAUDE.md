@@ -323,9 +323,14 @@ through the generated `LumennaCore.swift`. `cd apps/apple && xcodegen` makes the
 - **Settings is a short list of pages**, and pushed forms set `hidesBottomBarWhenPushed`.
   Rows scrolled under the glass tab bar fail the contrast audit at any scroll position, and
   a long form costs a VoiceOver user a swipe per row anyway.
-- **Sync runs while the app is active** (`Core.startSyncing` in `sceneDidBecomeActive`,
-  stopped on entering the background); arrivals post `Core.changed`, which every view
-  reloads on. Pairing is by code on iOS — local discovery needs Apple's multicast
+- **Sync runs while the app is active** (`Core.startSyncing` in `sceneDidBecomeActive`);
+  arrivals post `Core.changed`, which every view reloads on. **In the background**
+  (`BackgroundSync`): leaving runs one round in the time `beginBackgroundTask` grants, then
+  stops, and asks for a `BGAppRefreshTask` (identifier in `BGTaskSchedulerPermittedIdentifiers`,
+  `fetch` in `UIBackgroundModes`), which runs one round whenever iOS chooses. So the `Core`
+  is the app delegate's, one per process: a refresh launches the app with no scene. Apple's
+  `_simulateLaunchForTaskWithIdentifier:` hung in the iOS 27 simulator, so the refresh
+  handler has only run for real on a device. Pairing is by code on iOS — local discovery needs Apple's multicast
   entitlement — through `PairingViewController`, whose `PairingPrompt` blocks the pairing
   thread on a semaphore while the words are asked on the main thread.
 - **Stock controls unless there is a reason.** What remains in `Common/FormParts.swift` each
@@ -608,7 +613,12 @@ its own; see its README for the toolchain (NDK, `cargo-ndk`, Android Studio's JD
 - **The store is in no-backup storage** and `allowBackup` is off: Google's backup would copy
   a store that reaches other devices by pairing (§9). `TZ` is set from the phone's zone at
   start and on resume, as on the iPhone.
-- **Sync runs while the app is in front** (`onResume`/`onPause`). Local discovery uses
+- **Sync runs while the app is in front** (`onResume`/`onPause`), and **in the background
+  through WorkManager** (`SyncWorker`): one round as the app is left (expedited on Android
+  12 and later; earlier, expedited work needs a foreground notification, so it is ordinary),
+  and a round every 15 minutes, the least WorkManager allows, both needing a network. A
+  round reaches only devices that are running; two phones in the background meet through an
+  always-on one. `Core.syncRound` runs on the sync thread, after any stop in flight. Local discovery uses
   `mdns-sd`, which Android lets hear multicast only under a `WifiManager.MulticastLock`;
   syncing and pairing each hold one. It is not exclusive, and `mdns-sd` binds 5353 with
   `SO_REUSEADDR`/`SO_REUSEPORT`, so other apps' mDNS is unaffected. The emulator cannot test
