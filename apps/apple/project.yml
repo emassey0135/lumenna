@@ -66,6 +66,11 @@ targets:
           - _lumenna._udp
           - _lumenna-pair._udp
         UILaunchScreen: {}
+        # Syncing in the background: a refresh now and then (BackgroundSync).
+        UIBackgroundModes:
+          - fetch
+        BGTaskSchedulerPermittedIdentifiers:
+          - io.github.emassey0135.lumenna.sync
         UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

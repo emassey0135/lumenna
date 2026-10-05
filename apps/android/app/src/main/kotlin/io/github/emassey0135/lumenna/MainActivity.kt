@@ -45,8 +45,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Leaving: the service stops, and one more round is asked for, to send what was just edited. */
     override fun onPause() {
         core.getOrNull()?.stopSyncing()
+        SyncWorker.syncOnLeaving(this)
         super.onPause()
     }
 }

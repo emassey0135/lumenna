@@ -92,6 +92,7 @@ dependencies {
     implementation(libs.compose.material.icons)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.activity.compose)
+    implementation(libs.work.runtime)
     // UniFFI's Kotlin bindings call the core through JNA.
     implementation("${libs.jna.get()}@aar")
 
@@ -103,5 +104,6 @@ dependencies {
     // Compose's test library brings Espresso 3.5, which calls an InputManager method Android
     // 17 no longer has; every test failed before reaching the app.
     androidTestImplementation(libs.espresso.core)
+    androidTestImplementation(libs.work.testing)
     debugImplementation(libs.compose.ui.test.manifest)
 }

@@ -12,11 +12,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let scene = scene as? UIWindowScene else { return }
         let window = UIWindow(windowScene: scene)
         window.tintColor = .lumennaTint
-        do {
-            let core = try Core()
+        switch AppDelegate.core {
+        case let .success(core):
             self.core = core
             window.rootViewController = RootTabs(core: core)
-        } catch {
+        case let .failure(error):
             // Nothing works without the store, so say why plainly rather than showing an
             // empty list that looks like there is nothing to do.
             window.rootViewController = FailureViewController(
@@ -39,7 +39,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
-        core?.stopSyncing()
+        // One last round before stopping, so what was just edited is sent now.
+        if let core { BackgroundSync.leaving(core) }
     }
 }
 
