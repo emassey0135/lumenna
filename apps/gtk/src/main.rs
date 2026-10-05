@@ -14,6 +14,7 @@
 mod block_form;
 mod blocks;
 mod clock;
+mod completion;
 mod core;
 mod day;
 mod detail;

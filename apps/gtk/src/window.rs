@@ -446,7 +446,7 @@ impl App {
         let content = match &place {
             Place::Today => Content::Day(DayView::new()),
             Place::Blocks => Content::Blocks(BlockList::new()),
-            _ => Content::Tasks(TaskList::new(place.clone())),
+            _ => Content::Tasks(TaskList::new(place.clone(), self.core.lumenna.clone())),
         };
         if let Some(old) = self.content.borrow_mut().take() {
             self.content_slot.remove(&old.widget());

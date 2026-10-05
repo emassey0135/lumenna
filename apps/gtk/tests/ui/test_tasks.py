@@ -3,7 +3,7 @@
 import json
 import unittest
 
-from harness import Session
+from harness import Atspi, Session
 
 SEED = [
     ("project", "add", "Work"),
@@ -93,6 +93,16 @@ class TaskListTest(unittest.TestCase):
         said = self.session.said()
         self.assertEqual(len(said), 1)
         self.assertIn("1 task", said[0])
+
+    def test_down_in_the_filter_offers_what_could_come_next(self):
+        self.session.press("Control+f")
+        self.session.press("Control+a", "BackSpace")
+        self.session.type("#")
+        self.session.press("Down")
+        self.assertEqual(self.session.focus(), "[menu item] ''")
+        self.session.press("Down", "Return")
+        self.assertEqual(self.session.focus(), "[text] 'Filter'")
+        self.assertEqual(Atspi.Text.get_text(self.session.focused(), 0, -1), "#Work")
 
     def test_a_change_from_another_process_appears_without_moving_focus(self):
         self.session.press("Down")

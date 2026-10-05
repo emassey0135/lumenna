@@ -31,7 +31,7 @@ pub struct TaskList {
 }
 
 impl TaskList {
-    pub fn new(place: Place) -> Rc<Self> {
+    pub fn new(place: Place, lumenna: std::sync::Arc<lumenna_surface::Lumenna>) -> Rc<Self> {
         let trash = place == Place::Trash;
         let widget = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
@@ -45,8 +45,9 @@ impl TaskList {
         let label = gtk::Label::builder().label("Filte_r").use_underline(true).xalign(0.0).build();
         label.set_mnemonic_widget(Some(&filter));
         filter.update_property(&[gtk::accessible::Property::Description(
-            "Such as p1 & due before: friday, or #Work. Enter goes to what it finds.",
+            "Such as p1 & due before: friday, or #Work. Down arrow offers what could come next. Enter goes to what it finds.",
         )]);
+        crate::completion::attach(&filter, lumenna, lumenna_surface::Syntax::Filter);
         let readback = gtk::Label::builder().xalign(0.0).wrap(true).build();
         let tree = Tree::new(&place.title());
         // The trash is everything deleted, and nothing else: there is no filter to change.

@@ -529,6 +529,9 @@ Backups, Export and Import) work.
   reads as that name, so read-only text is a non-editable entry (`prompts::read_only_text`).
 - **A text view keeps Tab**, even not accepting tabs, and asked to move focus on it keeps it
   too; `prompts::leaves_on_tab` steps it out of the focus chain while the window moves on.
+- **Completion is a popover menu** on Down or Ctrl+Space in the filter and quick-add fields
+  (`completion.rs`), as on Windows: its first item focused, focus back in the field after.
+  Spans are bytes; GTK's positions are characters.
 - **Short lists have no scroller.** An empty list box is skipped by Tab; in a scroller, the
   scroller is a nameless stop, and a non-focusable scroller broke the Tab chain entirely.
 - **Another process's writes are noticed by `Lumenna::version`**, not `refresh`: the sync
@@ -555,7 +558,7 @@ Backups, Export and Import) work.
   A new window takes the headless compositor well over half a second to show, and keys sent
   before then go to the window behind: wait with `Session.wait_for_window`.
 - **Not built yet**: history, the tray (`ksni`), global shortcuts (the portal),
-  completion, a `.desktop` file.
+  a `.desktop` file.
 
 ### The core/store boundary
 

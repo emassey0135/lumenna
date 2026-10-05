@@ -42,7 +42,7 @@ pub async fn run(parent: Option<&gtk::Window>, application: &gtk::Application, l
     let line = gtk::Entry::builder().text(initial).activates_default(true).build();
     let line_label = gtk::Label::builder().label("_Task:").use_underline(true).xalign(0.0).build();
     line_label.set_mnemonic_widget(Some(&line));
-    let hint = "Such as: write the chapter tomorrow p1 #Work.";
+    let hint = "Such as: write the chapter tomorrow p1 #Work. Down arrow offers what could come next.";
     line.update_property(&[gtk::accessible::Property::Description(hint)]);
     let hint = gtk::Label::builder().label(hint).wrap(true).xalign(0.0).build();
     let shown = prompts::read_only_text();
@@ -80,6 +80,7 @@ pub async fn run(parent: Option<&gtk::Window>, application: &gtk::Application, l
     };
     update(&line);
     line.connect_changed(update);
+    crate::completion::attach(&line, Arc::clone(&lumenna), lumenna_surface::Syntax::QuickAdd);
 
     let (sender, receiver) = oneshot::channel::<Option<Change>>();
     let sender = Rc::new(RefCell::new(Some(sender)));
