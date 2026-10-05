@@ -13,11 +13,14 @@ The day as it is lived, opening on now: blocks in time order with the tasks assi
 
 On a block:
 
-- Edit, e. Assign a task, i, to a work block. Cancel this day, x, for a repeating block. Put this day back as the series has it, o, for a day changed on its own. Delete the block, also Control-D.
+- Edit, e: its name, times and kind, and for every occurrence its notes, shortest length, the filter its tasks come from, its last day and its colour.
+- Assign a task, i, to a block that takes tasks. Cancel this day, x, for a repeating block. Put this day back as the series has it, o, for a day changed on its own. Delete the block, also Control-D.
+- Let it take tasks, or Stop it taking tasks. Anchor it, so it never moves, or Let it move. Count it toward hours for work, or Stop counting it. Each asks, of a repeating block, whether for that day or every occurrence.
 
 On a task in a block, one sitting of it:
 
-- Start the timer or Stop the timer, s.
+- Start the timer, Pause the timer, or Resume the timer, s. Pausing keeps the time so far.
+- Stop the timer, ending the sitting, t: whether it is running or paused.
 - Planned length, l: how long this sitting is meant to take. Leave it empty for none.
 - Log minutes by hand, m: the whole of the sitting, replacing what was logged.
 - The task itself. Take it out of the block, also Control-D.

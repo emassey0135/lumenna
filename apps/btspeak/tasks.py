@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from BTSpeak import dialogs
 
+import options
 from client import LumennaError
 from rows import Tree, describe
 from session import Command, Session, ask, choose, confirm, live_menu, screen, spoken
@@ -379,6 +380,17 @@ def add_task(session: Session, prefix: str = "") -> str:
         )
         dialogs.show_message(problems)
         return ""
+
+    if options.get(options.READ_BACK, False):
+        said = ". ".join(
+            [preview.get("announcement", "")]
+            + [diagnostic["message"] for diagnostic in preview.get("diagnostics", [])]
+        )
+        answer = choose({"add": "Add it", "change": "Change it"}, f"{said}. Add it?")
+        if answer is None:
+            return ""
+        if answer == "change":
+            return add_task(session, prefix=text)
 
     try:
         result = session.call("task.add", text=text)
