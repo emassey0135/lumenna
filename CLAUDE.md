@@ -523,7 +523,10 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 - **Orca does not say a tree item's checked state**, so a done task says "completed" in its
   text.
 - **Focus into a row waits for the row's widget**, which does not exist until GTK lays the
-  list out. `Tree::move_to` retries each frame until it lands. `App::say` waits behind it
+  list out. `Tree::move_to` retries each frame until it lands. `scroll_to(FOCUS)` also
+  does not move focus into a list from outside it, so `land` grabs it too; and a rebuild
+  takes focus out of the list for a moment, so a tree that had focus before one still
+  counts as having it. `App::say` waits behind it
   (`tree::when_settled`): Orca reads an announcement as a message, and a later focus change
   cuts it off.
 - **Announcements are `gtk_accessible_announce` from the window**, not from a label: one
@@ -533,12 +536,14 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   read-only text is a non-editable entry, since a label named by the label above reads as
   that name.
 - **A text view keeps Tab**; `prompts::leaves_on_tab` steps it out of the focus chain.
-- **Short lists have no scroller**: in a scroller, the scroller is a nameless Tab stop.
+- **Short lists have no scroller**: in a scroller, the scroller is a nameless Tab stop, and
+  making the scroller non-focusable broke Tab for the whole page.
 - **Dialogs are futures** (GTK 4 has no blocking `run`). While a popover menu is open,
   `window::spawn` waits for it to close, so a dialog is not mapped under a closing menu.
 - **A keyboard context menu opens when its keys are let go**: a popover opened on
   Shift+F10's press is closed by the releases.
 - **One instance per profile** through GApplication's bus name, tagged per profile.
+  `--no-shortcuts` leaves the shortcuts from anywhere to another copy; the UI tests pass it.
 - **First focus on an expandable row says "expanded" twice**: GTK reports the new
   accessible object's initial state as a change.
 - **The global shortcuts go through the GlobalShortcuts portal**, which knows an
@@ -642,7 +647,7 @@ changes in different orders. It is the slowest suite and the one worth running b
 believing anything about merge.
 
 `[profile.dev]` sets `debug = "line-tables-only"` and `incremental = false` for the small
-disks of the Linux and BTSpeak machines: full debug info across `automerge`, `rrule` and a
+disk of the BTSpeak machine: full debug info across `automerge`, `rrule` and a
 bundled SQLite runs past a gigabyte, and the incremental cache did not pay for itself.
 There, `cargo clippy --all-targets` and `cargo test` do not share artifacts, so running both
 back to back can run out of space; `cargo clean` between them.
