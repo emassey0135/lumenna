@@ -19,6 +19,14 @@ pub enum Event {
     Changed,
     /// A sentence to say.
     Say(String),
+    /// From the tray: show the window.
+    ShowWindow,
+    /// From the tray: quick add, over whatever is in front.
+    QuickAdd,
+    /// From the tray: sync now.
+    SyncNow,
+    /// From the tray: quit.
+    Quit,
 }
 
 /// Hands an event to the main thread, which gives it to the window.

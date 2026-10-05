@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Lumenna
+GenericName=Task Manager and Day Planner
+Comment=Tasks, and the time blocks you work through them in
+Exec=lumenna-gtk
+Icon=x-office-calendar
+Terminal=false
+Categories=Office;ProjectManagement;Calendar;GTK;
+Keywords=tasks;todo;planner;time blocks;
+StartupNotify=true
+DBusActivatable=false
+X-GNOME-UsesNotifications=true

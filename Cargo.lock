@@ -151,6 +151,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
 
 [[package]]
+name = "ashpd"
+version = "0.13.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb8421aaa9644a5faf26735f258b669b15f063313ef8f8e2bdb28912a1a6f111"
+dependencies = [
+ "enumflags2",
+ "futures-channel",
+ "futures-util",
+ "gdk4-wayland",
+ "gdk4-x11",
+ "getrandom 0.4.3",
+ "glib",
+ "gtk4",
+ "serde",
+ "zbus",
+]
+
+[[package]]
 name = "askama"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1453,6 +1471,56 @@ dependencies = [
 ]
 
 [[package]]
+name = "gdk4-wayland"
+version = "0.11.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "99cc5266dc4e8745a4c4683b26a0c54977a452809d572c940e39c6844663c0ec"
+dependencies = [
+ "gdk4",
+ "gdk4-wayland-sys",
+ "gio",
+ "glib",
+ "libc",
+]
+
+[[package]]
+name = "gdk4-wayland-sys"
+version = "0.11.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb55bc5225519d34fdf1412db3755af88d1388a1c2a053d92e6751db13d96e68"
+dependencies = [
+ "glib-sys",
+ "libc",
+ "system-deps",
+]
+
+[[package]]
+name = "gdk4-x11"
+version = "0.11.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "519725adee2c62e6ae4cc39e2ec9137b04f0c894f1c673ce17ab8753850534a3"
+dependencies = [
+ "gdk4",
+ "gdk4-x11-sys",
+ "gio",
+ "glib",
+ "libc",
+ "x11-dl",
+]
+
+[[package]]
+name = "gdk4-x11-sys"
+version = "0.11.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cbf4849da10d077290e2bb8805278a0afd980af7928fbbb5a915821eb4b2b099"
+dependencies = [
+ "gdk4-sys",
+ "glib-sys",
+ "libc",
+ "system-deps",
+]
+
+[[package]]
 name = "generator"
 version = "0.8.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2469,6 +2537,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "ksni"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "814b44c24cd2cb236c3b8a41c7f08237b452a8e76ecaa81f1cec40b5b678215b"
+dependencies = [
+ "async-executor",
+ "async-io",
+ "async-lock",
+ "futures-channel",
+ "futures-lite",
+ "futures-util",
+ "pastey",
+ "serde",
+ "task-local",
+ "zbus",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2620,10 +2706,12 @@ dependencies = [
 name = "lumenna-gtk"
 version = "0.1.0"
 dependencies = [
+ "ashpd",
  "futures-channel",
  "futures-util",
  "gtk4",
  "jiff",
+ "ksni",
  "lumenna-desktop",
  "lumenna-surface",
  "tempfile",
@@ -3311,6 +3399,12 @@ name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
+name = "pastey"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
 
 [[package]]
 name = "pem-rfc7468"
@@ -4413,6 +4507,15 @@ name = "target-lexicon"
 version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
+
+[[package]]
+name = "task-local"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2972044a9e5e448a506a7ff6f0d03b566d8ef4cd6918a58fc59835a0f8666626"
+dependencies = [
+ "pin-project-lite",
+]
 
 [[package]]
 name = "tempfile"
@@ -5565,6 +5668,17 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "x11-dl"
+version = "2.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38735924fedd5314a6e548792904ed8c6de6636285cb9fec04d5b1db85c1516f"
+dependencies = [
+ "libc",
+ "once_cell",
+ "pkg-config",
 ]
 
 [[package]]
