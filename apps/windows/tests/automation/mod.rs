@@ -16,6 +16,7 @@ use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, Co
 use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 use windows::Win32::System::Variant::VARIANT;
 use windows::Win32::UI::Accessibility::*;
+use windows::Win32::UI::Controls::EM_SETSEL;
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, EnumWindows, FindWindowW, GA_ROOT, GA_ROOTOWNER, GUITHREADINFO, GetAncestor,
@@ -136,6 +137,15 @@ impl Automation {
             }
         } else if let Some(id) = step.strip_prefix("cmd:").and_then(|id| id.parse::<usize>().ok()) {
             post(app, WM_COMMAND, id, 0);
+        } else if let Some(name) = step.strip_prefix("focus:") {
+            // A field by name, as Alt and its letter would reach it.
+            let front = self.front(app);
+            let found = self.named(front, name).ok_or_else(|| format!("nothing called {name} in the window in front"))?;
+            unsafe { found.SetFocus() }.map_err(|e| e.to_string())?;
+            // With its text selected, as tabbing into a field leaves it, so typing replaces it.
+            if let Ok(field) = unsafe { found.CurrentNativeWindowHandle() } {
+                post(field, EM_SETSEL, 0, -1);
+            }
         } else if let Some((verb, name)) = step.split_once(':').filter(|(v, _)| *v == "select" || *v == "invoke") {
             // A tab, list item or tree item to select, or a button to press, by name, in the
             // window that has focus: what Ctrl+Tab or Alt and a letter would reach.
@@ -364,7 +374,7 @@ fn control_type(id: i32) -> &'static str {
 /// A key by name: letters and digits, `f1`–`f12`, `enter`, `esc`, `tab`, `space`, `up`,
 /// `down`, `left`, `right`, `home`, `end`, `delete`, `apps`, `pageup`, `pagedown`. A step
 /// can also be `text:words`, `cmd:<menu command>`, `context` (a context menu from the
-/// keyboard), or `select:Name` and `invoke:Name`.
+/// keyboard), `focus:Name`, or `select:Name` and `invoke:Name`.
 pub fn key(name: &str) -> Option<VIRTUAL_KEY> {
     let lower = name.to_lowercase();
     if let Some(n) = lower.strip_prefix('f').and_then(|n| n.parse::<u16>().ok()) {

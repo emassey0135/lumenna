@@ -475,11 +475,13 @@ surface's (`task_edit`, below), as it is every client's.
   needs the app active and not minimized; `Automation::activate` sees to both.
 - **`examples/inspect.rs`** is the same automation by hand: `cargo run -p lumenna-windows
   --example inspect -- "- Lumenna"` prints the tree; `--post` takes steps (keys, `text:`,
-  `cmd:<menu id>` for a Ctrl shortcut, `context`, `select:Name`, `invoke:Name`, `dump`) and
-  reports focus and the status line after each. Match `- Lumenna`, not `Lumenna`: a terminal
-  or folder named after the checkout matches that too. The managed `System.Windows.Automation`
-  in Windows PowerShell is no substitute: x64 under emulation, it saw every control as an
-  unnamed pane.
+  `cmd:<menu id>` for a Ctrl shortcut, `context`, `focus:Name`, `select:Name`, `invoke:Name`,
+  `dump`) and reports focus and the status line after each. Match `- Lumenna`, not
+  `Lumenna`: a terminal or folder named after the checkout matches that too. `focus:`
+  selects the field's text as tabbing in does; focus moved by UI Automation alone leaves the
+  caret at the start, and typing goes in front of what is there. The managed
+  `System.Windows.Automation` in Windows PowerShell is no substitute: x64 under emulation, it
+  saw every control as an unnamed pane.
 - **Not built yet**: what no other client has either (history, reminders), and an icon of
   its own.
 
