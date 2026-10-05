@@ -5,6 +5,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.hasContentDescription
@@ -19,6 +20,9 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performCustomAccessibilityActionWithLabel
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import android.app.UiAutomation
+import android.view.accessibility.AccessibilityManager
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.emassey0135.lumenna.core.NewBlock
@@ -29,6 +33,7 @@ import java.util.UUID
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -145,6 +150,79 @@ class LumennaTest {
         press("Add")
         row("call the bank").assertExists()
         assertEquals(listOf("call the bank"), titles())
+    }
+
+    @Test
+    fun completingATaskPutsFocusOnTheOneNowInItsPlaceThenSaysWhatHappened() {
+        seed {
+            it.addTask("first")
+            it.addTask("second")
+            it.addTask("third")
+        }
+        tab("Tasks")
+        act("second", "Mark Done")
+        gone("second")
+        row("third").assertIsFocused()
+        shows("Completed second")
+    }
+
+    /**
+     * With TalkBack running, its own focus — not only input focus — lands on the row now in
+     * the completed one's place. Skipped without TalkBack: turn it on in the emulator first.
+     */
+    @Test
+    fun talkBackFollowsFocusToTheRowNowInTheCompletedOnesPlace() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val manager = context.getSystemService(AccessibilityManager::class.java)
+        assumeTrue("TalkBack is not running", manager.isTouchExplorationEnabled)
+        val automation = InstrumentationRegistry.getInstrumentation()
+            .getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
+        seed {
+            it.addTask("first")
+            it.addTask("second")
+            it.addTask("third")
+        }
+        tab("Tasks")
+        act("second", "Mark Done")
+        gone("second")
+        val focused = {
+            val root = automation.rootInActiveWindow
+            val a11y = root?.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
+            val input = root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            "root=${root != null} a11y=${a11y?.contentDescription ?: a11y?.text} input=${input?.contentDescription ?: input?.text}"
+        }
+        runCatching {
+            rule.waitUntil(5_000) {
+                automation.rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
+                    ?.contentDescription?.toString() == "third"
+            }
+        }.onFailure { throw AssertionError("TalkBack's focus is not on third: ${focused()}") }
+    }
+
+    @Test
+    fun movingAProjectKeepsFocusOnIt() {
+        seed {
+            it.addProject("Home", null)
+            it.addProject("Work", null)
+        }
+        tab("Browse")
+        row("Projects").performClick()
+        rule.waitForIdle()
+        act("Home", "Move Down")
+        assertEquals(listOf("Work", "Home"), core.lumenna.listProjects().rows.map { it.title }.filter { it != "Inbox" })
+        row("Home").assertIsFocused()
+    }
+
+    @Test
+    fun deletingTheLastTaskPutsFocusOnTheNewLastOne() {
+        seed {
+            it.addTask("keep")
+            it.addTask("lose")
+        }
+        tab("Tasks")
+        act("lose", "Delete")
+        gone("lose")
+        row("keep").assertIsFocused()
     }
 
     @Test

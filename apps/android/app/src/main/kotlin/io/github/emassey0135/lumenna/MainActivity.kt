@@ -40,7 +40,7 @@ class MainActivity : ComponentActivity() {
         core.getOrNull()?.run {
             timeZoneMayHaveChanged()
             changed()
-            startSyncing()
+            startSyncing(this@MainActivity)
             backUpIfDue()
         }
     }

@@ -2,6 +2,11 @@ package io.github.emassey0135.lumenna
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -104,6 +109,7 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks, chang
         )
         val rows = listing.getOrNull()?.rows.orEmpty()
         TaskRows(
+            core,
             rows,
             actions = { row ->
                 if (screen.trash) {
@@ -157,11 +163,14 @@ private fun readback(listing: Result<Rows>): String = listing.fold(
  * state; its actions are custom accessibility actions, and the same ones on a long press.
  */
 @Composable
-fun TaskRows(rows: List<RowView>, actions: (RowView) -> List<RowAction>, open: ((RowView) -> Unit)?) {
+fun TaskRows(core: Core, rows: List<RowView>, actions: (RowView) -> List<RowAction>, open: ((RowView) -> Unit)?) {
+    val state = rememberLazyListState()
+    val focus = rememberRowFocus(core, rows.map { it.id }, state)
     LazyColumn(
         Modifier
             .fillMaxSize()
             .semantics { collectionInfo = CollectionInfo(rowCount = rows.size, columnCount = 1) },
+        state = state,
     ) {
         itemsIndexed(rows, key = { _, row -> row.id }) { index, row ->
             val previous = if (index > 0) rows[index - 1].depth else null
@@ -172,9 +181,11 @@ fun TaskRows(rows: List<RowView>, actions: (RowView) -> List<RowAction>, open: (
                 done = row.checked,
                 depth = row.depth.toInt(),
                 index = index,
-                actions = actions(row),
+                actions = focus.actions(row.id, index, actions(row)),
                 open = open?.let { { it(row) } },
                 openLabel = "Show details",
+                focus = focus.requester(row.id),
+                key = row.id,
             )
             HorizontalDivider()
         }
@@ -198,6 +209,8 @@ fun ListRow(
     openLabel: String,
     done: Boolean? = null,
     depth: Int = 0,
+    focus: FocusRequester? = null,
+    key: String? = null,
 ) {
     var menu by remember { mutableStateOf(false) }
     // A row with nothing to do — now, a free hour with no block to add — is text, not a button.
@@ -206,6 +219,13 @@ fun ListRow(
         Row(
             Modifier
                 .fillMaxWidth()
+                // Focusable even under touch, so focus — and TalkBack with it — can be put
+                // back on the row after a change (`RowFocus`).
+                .then(
+                    if (focus == null) Modifier
+                    else Modifier.focusRequester(focus).focusProperties { canFocus = true }
+                        .then(if (acts) Modifier else Modifier.focusable()),
+                )
                 .then(
                     if (!acts) Modifier
                     else Modifier.combinedClickable(
@@ -216,6 +236,7 @@ fun ListRow(
                     ),
                 )
                 .clearAndSetSemantics {
+                    if (key != null) rowKey = key
                     contentDescription = title
                     stateDescription = speech
                     collectionItemInfo = CollectionItemInfo(index, 1, 0, 1)
