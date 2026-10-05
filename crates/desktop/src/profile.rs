@@ -41,8 +41,8 @@ pub fn directory(explicit: Option<PathBuf>) -> Option<PathBuf> {
 
 /// Where the store lives when nothing names another.
 ///
-/// The same place as the command line's, as on the Mac, so the app and `lum` on one PC are
-/// one device with one store rather than two that would have to pair with each other. This
+/// The same place as the command line's, as on the Mac, so the app and `lum` on one computer
+/// are one device with one store rather than two that would have to pair with each other. This
 /// must agree with `default_directory` in `apps/cli/src/profile.rs`: the *local* data
 /// directory, because Roaming AppData is copied to a server at every logon on a domain with
 /// roaming profiles.

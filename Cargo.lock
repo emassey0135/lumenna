@@ -2313,6 +2313,7 @@ dependencies = [
 name = "lumenna-desktop"
 version = "0.1.0"
 dependencies = [
+ "directories",
  "jiff",
  "lumenna-surface",
  "tempfile",
@@ -2395,7 +2396,6 @@ dependencies = [
 name = "lumenna-windows"
 version = "0.1.0"
 dependencies = [
- "directories",
  "jiff",
  "lumenna-desktop",
  "lumenna-surface",
