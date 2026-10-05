@@ -1,6 +1,6 @@
 import AppKit
 
-/// Every block series, by when it starts (§3.6): for the ones on no day near enough to find
+/// Every block series, by when it starts: for the ones on no day near enough to find
 /// from the planner.
 final class BlocksViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
     private let core: Core

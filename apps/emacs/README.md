@@ -4,7 +4,7 @@ A client of `lum rpc` in Emacs Lisp, using only what ships with Emacs 29 and lat
 `jsonrpc.el` for the connection, `outline-minor-mode` for the subtask tree,
 and `completing-read` for choosing a project or label. Like the
 BTSpeak app it decides almost nothing itself; every rule, date and announcement is the
-core's (§16.10).
+core's.
 
 ## Running it
 

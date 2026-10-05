@@ -10,9 +10,8 @@
 
 ;;; Commentary:
 
-;; Lumenna's Emacs client (PLAN.md §16.10): the same tasks, projects, labels,
-;; filters, blocks and devices as every other Lumenna app, in ordinary Emacs
-;; buffers.
+;; Lumenna's Emacs client: the same tasks, projects, labels, filters, blocks
+;; and devices as every other Lumenna app, in ordinary Emacs buffers.
 ;;
 ;; It speaks `lum rpc', Lumenna's command surface over JSON-RPC, through the
 ;; built-in `jsonrpc.el': the sync daemon's socket when one answers, and
@@ -89,7 +88,7 @@ is nil."
 ;;;; The connection
 
 (defconst lumenna-contract 1
-  "The JSON shapes this client was written against (§15).")
+  "The JSON shapes this client was written against.")
 
 (defvar lumenna--connection nil
   "The open `jsonrpc-process-connection', or nil.")
@@ -323,7 +322,7 @@ If it is gone, point stays on the line that took its place."
   (outline-toggle-children))
 
 (defun lumenna-undo ()
-  "Undo the last change this device made to the store, wherever it was made (§9)."
+  "Undo the last change this device made to the store, wherever it was made."
   (interactive)
   (lumenna-write "undo"))
 
@@ -464,7 +463,7 @@ Subtasks sit under their task as an outline, so TAB folds them.
     (pop-to-buffer-same-window buffer)
     buffer))
 
-;;;; Typing: completion and quick add (§6)
+;;;; Typing: completion and quick add
 
 (defun lumenna--byte-offset (text chars)
   "CHARS characters into TEXT, as the UTF-8 byte offset the core counts in."
@@ -541,7 +540,7 @@ is the history variable."
 
 ;;;###autoload
 (defun lumenna-add (&optional prefix)
-  "Add a task, written the way you would say it (§6.1).
+  "Add a task, written the way you would say it.
 Such as \"call the bank tomorrow at 3pm p1 #Home @calls 15m\".  TAB completes
 a project or label, and \\<lumenna-minibuffer-map>\\[lumenna-read-back] says how the line is understood
 so far.  The line is checked first: an unknown project is said

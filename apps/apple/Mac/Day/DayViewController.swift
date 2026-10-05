@@ -28,7 +28,7 @@ final class DayNode {
     }
 }
 
-/// The planner (§16.1, §13's worked example): a day as it is lived, as an outline.
+/// The planner: a day as it is lived, as an outline.
 ///
 /// Blocks in time order with their sittings beneath them, free time as rows of its own, and
 /// now as a position rather than a highlight. The summary above says what a glance at a
@@ -108,7 +108,7 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
     override func viewDidAppear() {
         super.viewDidAppear()
         view.window?.makeFirstResponder(outline)
-        // §13: opening the day lands on now, not at midnight. Once, so coming back from
+        // Opening the day lands on now, not at midnight. Once, so coming back from
         // elsewhere does not move the selection from where the person left it.
         if !landedOnNow {
             landedOnNow = true
@@ -192,7 +192,7 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         switch node.kind {
         case let .block(block):
             label = "\(Clock.time(block.start)) to \(Clock.time(block.end)), \(block.title)"
-            // The core words the details for every app (§13).
+            // The core words the details for every app.
             value = block.details
         case let .sitting(sitting, _):
             label = sitting.title
@@ -276,7 +276,7 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
             actions += [("-", {}), ("Delete Block…", { [weak self] in self?.delete(block) })]
             return actions
         case let .sitting(sitting, _):
-            // Start, pause and stop (§3.7): stopping a running or a paused sitting ends it.
+            // Start, pause and stop: stopping a running or a paused sitting ends it.
             let paused = sitting.status == "paused"
             var timer: [(String, () -> Void)] = [
                 (sitting.running ? "Pause Timer" : paused ? "Resume Timer" : "Start Timer", { [weak self] in self?.toggleTimer(sitting) }),
@@ -382,7 +382,7 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         change(keeping: nil) { try core.lumenna.restoreOccurrence(id: block.series, date: date) }
     }
 
-    /// Asks "this day, or every day?" of a repeating block — never guessed (§4.3).
+    /// Asks "this day, or every day?" of a repeating block — never guessed.
     private func edit(_ block: PlanBlock) {
         guard let window = view.window else { return }
         let key = "block:\(block.id)"
@@ -451,7 +451,7 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         Announcer.say(summary.stringValue)
     }
 
-    /// §13's "go to now": today, on the now row or the block happening now.
+    /// "Go to now": today, on the now row or the block happening now.
     private func goToNow(announcing: Bool) {
         day = nil
         reload()

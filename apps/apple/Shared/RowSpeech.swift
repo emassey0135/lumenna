@@ -1,6 +1,6 @@
 import Foundation
 
-/// How a row is spoken, assembled from the components the core sends (§13).
+/// How a row is spoken, assembled from the components the core sends.
 ///
 /// The core sends components rather than a sentence because speech and braille compose them
 /// differently; this is the speech half. VoiceOver puts the label first, then the value, so the
@@ -14,7 +14,7 @@ enum RowSpeech {
     /// Everything after the title: done or not, the due date, notable states, and the level.
     ///
     /// `previousDepth` is the depth of the row spoken before this one. Depth is said only where
-    /// it changes (§16.11): saying "level 2" on every subtask is noise, and indentation, which is
+    /// it changes: saying "level 2" on every subtask is noise, and indentation, which is
     /// how a sighted reader gets it, says nothing at all.
     static func value(_ row: RowView, previousDepth: UInt32?) -> String {
         var parts: [String] = []

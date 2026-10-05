@@ -1,4 +1,4 @@
-//! Tasks, their completions, and due dates (§3.2, §3.3, §3.5).
+//! Tasks, their completions, and due dates.
 
 use std::collections::BTreeSet;
 
@@ -17,18 +17,18 @@ pub struct Task {
     pub id: TaskId,
     /// Last-write-wins. Character-level merge is not worth the overhead on a short field.
     pub title: String,
-    /// Automerge `Text` in the document, so long-form editing merges properly (§3.2).
+    /// Automerge `Text` in the document, so long-form editing merges properly.
     pub notes: String,
     /// Parent task, for subtasks. May dangle or form a cycle after merge; see
     /// [`crate::repair`].
     pub parent_id: Option<TaskId>,
-    /// Always set. Inbox is a real [`Project`](super::Project), not a null project (§3.4).
+    /// Always set. Inbox is a real [`Project`](super::Project), not a null project.
     pub project_id: ProjectId,
     /// How much this one item matters. Project weight is the other axis and is never
-    /// called priority (§3.4).
+    /// called priority.
     pub priority: Priority,
     /// Cross-cutting context. Entries whose [`Label`](super::Label) was deleted project as
-    /// absent (§3.4).
+    /// absent.
     pub labels: BTreeSet<LabelId>,
     /// Tasks that must complete before this one can start.
     ///
@@ -36,12 +36,12 @@ pub struct Task {
     /// What justifies it is the planner, not the list — scheduling B into the morning when
     /// A sits in the afternoon is not a suboptimal plan, it is an impossible one, and
     /// nothing else in the model catches that. It is also what gives `blocked` and `ready`
-    /// their meaning (§3.2).
+    /// their meaning.
     pub depends: BTreeSet<TaskId>,
     /// When it is due, and whether it recurs.
     pub due: Option<Due>,
     /// What makes multi-sitting work legible: remaining effort is this minus the time
-    /// logged across assignments (§3.2).
+    /// logged across assignments.
     pub estimate_mins: Option<u32>,
     /// Position among siblings.
     pub order: OrderKey,
@@ -50,7 +50,7 @@ pub struct Task {
     /// When it was created.
     pub created_at: Timestamp,
     /// Trash, for undo. A **product feature**, not a sync mechanism — Automerge handles
-    /// deletion natively and needs no tombstones to converge (§3.2).
+    /// deletion natively and needs no tombstones to converge.
     pub deleted_at: Option<Timestamp>,
 }
 
@@ -86,7 +86,7 @@ impl Task {
 /// How much one task matters, `P1` highest.
 ///
 /// Todoist's REST API inverts this — their p1 is API priority 4 — so convert at the
-/// boundary when importing (§3.2).
+/// boundary when importing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Priority {
@@ -115,8 +115,8 @@ impl Priority {
 
     /// From a stored value, tolerating anything else as "none".
     ///
-    /// A document written by a future version, or by a client with a bug, must still load
-    /// (§3.1). Refusing to open the store over one bad integer is the wrong trade.
+    /// A document written by a future version, or by a client with a bug, must still load.
+    /// Refusing to open the store over one bad integer is the wrong trade.
     #[must_use]
     pub const fn from_u8(value: u8) -> Self {
         match value {
@@ -128,7 +128,7 @@ impl Priority {
     }
 }
 
-/// When a task is due (§3.5).
+/// When a task is due.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Due {
@@ -158,7 +158,7 @@ impl Due {
     }
 }
 
-/// A repeat rule (§3.5).
+/// A repeat rule.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Recurrence {
@@ -173,7 +173,7 @@ pub struct Recurrence {
     pub from_completion: bool,
 }
 
-/// A record that a task was finished (§3.3).
+/// A record that a task was finished.
 ///
 /// Separate from the task because a recurring task is **a single task whose due date
 /// advances**, not a generated series. It accumulates completions over time; a one-off task
@@ -191,7 +191,7 @@ pub struct TaskCompletion {
     pub occurrence_date: Option<civil::Date>,
     /// Set if a parent's cascade caused this, rather than the user.
     ///
-    /// "Completing a parent completes its subtasks" is a setting (§3.10, default on). If
+    /// "Completing a parent completes its subtasks" is a setting (default on). If
     /// the cascade completes three subtasks and the parent is then uncompleted, a subtask
     /// independently finished last week must not be uncompleted with the rest — so the
     /// uncomplete path only reverses completions it caused.

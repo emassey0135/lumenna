@@ -66,7 +66,7 @@ impl Lumenna {
     }
 
     /// Changes a setting. Most sync to every device; `backup-dir`, `backup-keep` and
-    /// `backup-every` are this device's alone (§3.12), and say so.
+    /// `backup-every` are this device's alone, and say so.
     ///
     /// # Errors
     ///
@@ -109,7 +109,7 @@ impl Lumenna {
         })
     }
 
-    /// Undoes the last change made on this device (§9).
+    /// Undoes the last change made on this device.
     ///
     /// The history is this device's alone and survives restarts, so this reverses what the
     /// last command did whichever client did it. Anything changed since by something else is
@@ -165,7 +165,7 @@ impl Lumenna {
     }
 
     /// Where this device's own settings live: a file in the profile directory, never in a
-    /// document, because they are about this machine and must not sync (§3.12). Where this
+    /// document, because they are about this machine and must not sync. Where this
     /// laptop keeps its backups means nothing on a phone.
     fn device_settings_path(&self) -> PathBuf {
         self.directory.join("device-settings")
@@ -202,7 +202,7 @@ impl Lumenna {
     /// Where backups go when nothing says otherwise: beside the profile directory, never
     /// inside it.
     ///
-    /// §9 wants backups outside the live database's directory, so that a bug that corrupts
+    /// Backups belong outside the live database's directory, so that a bug that corrupts
     /// one cannot take both, and inside the platform data directory rather than anywhere a
     /// cloud service syncs. A sibling of the profile is both. `LUMENNA_BACKUP_DIR` overrides
     /// it, which is mostly for tests and for anyone running a second profile.
@@ -274,7 +274,7 @@ impl Lumenna {
                     let directory = absolute(Path::new(value));
                     refuse_inside(&self.directory, &directory)?;
                     self.write_device_setting(key, Some(&directory.display().to_string()))?;
-                    // §9: say this where the location is chosen, not in documentation.
+                    // Say this where the location is chosen, not in documentation.
                     notices.push(
                         "backups hold your whole history, including every task you have \
                          deleted; keep them somewhere only you can read"

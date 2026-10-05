@@ -1,6 +1,6 @@
 import UIKit
 
-/// Adding a task the way it would be said (§6.1).
+/// Adding a task the way it would be said.
 ///
 /// The readback under the field is what a sighted user gets from inline highlighting: what will
 /// be saved, with the date resolved. It updates as the text changes but is not spoken until the
@@ -88,7 +88,7 @@ final class QuickAddViewController: UIViewController {
             return
         }
         // Everything worth saying before confirming, errors included: there is no squiggle
-        // under the text, so this is the only channel (§6.3).
+        // under the text, so this is the only channel.
         readback.text = ([preview.announcement] + preview.diagnostics.map(\.message))
             .joined(separator: ". ")
     }

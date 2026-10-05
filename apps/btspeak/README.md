@@ -50,21 +50,18 @@ said in a dialog rather than printed to stderr, and the spawned server's stderr 
 `rpc.log` in the profile directory rather than onto the screen the app is drawing.
 
 BT Code already has an option to add an app to the user menu, so this does not write a
-`~/BTSpeak/user.menu` line itself. §16.11 originally specified a `.menu` file in
-`/BTSpeak/Menus/` as "the entire integration surface"; that was written for an app shipped
-*with* the device, and this one is installed by the person using it.
+`~/BTSpeak/user.menu` line itself. Nor does it have a `.menu` file in `/BTSpeak/Menus/`:
+that is for apps shipped *with* the device, and this one is installed by the person using it.
 
 ## What it talks to
 
-`lum rpc` — the typed command surface over JSON-RPC on stdio (§8, §12). `connect.py` looks
-for the sync daemon's socket first and spawns a server if nothing answers, which is §8's
-fallback rule for this class of client. `lum daemon install`, run once from a shell, sets the
+`lum rpc` — the typed command surface over JSON-RPC on stdio. `connect.py` looks for the
+sync daemon's socket first and spawns a server if nothing answers. `lum daemon install`, run once from a shell, sets the
 daemon up as a system service; until then the app spawns its own server, which works but does
 not sync in the background — *Devices and sync* says which it is.
 
 Nothing here parses a date, computes a state, or decides what completing a task does to its
-subtasks. That is all core's, and reimplementing any of it in a UI is the business-logic leak
-principle 2 forbids.
+subtasks. That is all core's, so that every client behaves alike and none can drift.
 
 ## Files
 
@@ -90,8 +87,8 @@ No third-party Python. The client is one stdlib file; a dependency to build
 ## Two things worth knowing before changing it
 
 **Speech and braille cannot diverge.** `DynamicMenuDialog.draw()` sets `content_text` and
-`content_braille` from the same string. §16.11 offers a compact level marker in the title or
-a ~20-line subclass overriding the selection branch of `draw()`; this uses the marker, and
+`content_braille` from the same string. The ways round it are a compact level marker in the
+title or a ~20-line subclass overriding the selection branch of `draw()`; this uses the marker, and
 announces the level only where it *changes*, which is what a screen-reader tree view does.
 `InteractiveSearchDialog` extends `ChoiceDialog`, so subclassing is an intended pattern when
 the marker stops being enough.
@@ -117,10 +114,10 @@ second server.
 
 ## Not built yet
 
-Reminders. §16.11 wants a separate resident Python service — `host.say()` plus a sound —
-because delivery belongs to whatever process owns an output device and the daemon owns none
-(§8). That needs §11's model first, and a systemd unit under `/BTSpeak/Systemd/` with the
+Reminders. They want a separate resident Python service — `host.say()` plus a sound —
+because delivery belongs to whatever process owns an output device and the daemon owns none.
+That needs the core's reminder model first, and a systemd unit under `/BTSpeak/Systemd/` with the
 implementation under `/BTSpeak/Services/`, following the twenty-odd existing examples. The
 one thing to improve on: `btspeak-calendar-reminders` keeps its fired set in memory, so
-restarting re-announces the day, and `ReminderAck` (§3.9) already handles that properly.
+restarting re-announces the day, and `ReminderAck` already handles that properly.
 Their `# TBD: braille` also means reminders never reach the display; push to both.

@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// One task's details, editable (§16.1): the shared form (`Shared/Forms/TaskForm.swift`),
+/// One task's details, editable: the shared form (`Shared/Forms/TaskForm.swift`),
 /// hosted with Save in the navigation bar and UIKit's own pickers.
 final class TaskDetailViewController: UIHostingController<TaskDetailView>, TaskFormHost {
     private let model: TaskDetailModel
@@ -24,7 +24,7 @@ final class TaskDetailViewController: UIHostingController<TaskDetailView>, TaskF
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // A UIKit button, always enabled: a disabled one failed contrast and is easy to miss
+        // A UIKit button, always enabled: a disabled one fails contrast and is easy to miss
         // without sight, and saving with nothing changed says so.
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             title: "Save", primaryAction: UIAction { [weak self] _ in self?.model.save() }

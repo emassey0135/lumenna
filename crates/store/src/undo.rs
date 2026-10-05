@@ -1,4 +1,4 @@
-//! Undo and redo (§9), kept on this device and nowhere else.
+//! Undo and redo, kept on this device and nowhere else.
 //!
 //! **Automerge does not provide undo.** It provides history, and rewinding a document would
 //! discard concurrent remote changes along with your own. Undo means applying an *inverse*,
@@ -9,7 +9,7 @@
 //! A one-shot `lum` process has no session to keep a stack in, so the history is a table in
 //! the profile's SQLite file. That makes it **per device**, not per process: `lum undo` in a
 //! terminal undoes what the BTSpeak app just did, because both are this device. It is
-//! **local-only** (§3.12): sync exchanges Automerge changes and nothing else, and a backup
+//! **local-only**: sync exchanges Automerge changes and nothing else, and a backup
 //! holds Automerge documents and nothing else, so the table never leaves the device. The
 //! change an undo *produces* is an ordinary edit, and syncs like any other.
 //!
@@ -35,14 +35,14 @@ use lumenna_core::snapshot::Snapshot;
 /// with a notice rather than guessed at.
 pub(crate) const FORMAT: i64 = 1;
 
-/// How many edits are kept. A long session must not grow without limit (§9).
+/// How many edits are kept. A long session must not grow without limit.
 pub const DEPTH: usize = 100;
 
 /// What an undo or redo did.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Reverted {
-    /// The original edit's description — *"Completed Review PR"* — for *"Undid: …"*. §9:
-    /// never a silent state change.
+    /// The original edit's description — *"Completed Review PR"* — for *"Undid: …"*, since
+    /// an undo is never a silent state change.
     pub description: String,
     /// What was actually written. Empty when everything had changed since.
     pub applied: Edit,

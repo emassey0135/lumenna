@@ -1,13 +1,13 @@
 import SwiftUI
 import UIKit
 
-/// The block editor (§16.1): the shared form (`Shared/Forms/BlockForm.swift`), in a navigation
+/// The block editor: the shared form (`Shared/Forms/BlockForm.swift`), in a navigation
 /// sheet with Cancel and Save in its bar.
 final class BlockFormViewController: UIHostingController<BlockForm> {
     init(model: BlockFormModel) {
         super.init(rootView: BlockForm(model: model))
         title = model.heading
-        // UIKit buttons, Save always enabled: a disabled one failed contrast, and saving a
+        // UIKit buttons, Save always enabled: a disabled one fails contrast, and saving a
         // block with no name says why it cannot.
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             systemItem: .cancel, primaryAction: UIAction { _ in model.close() }

@@ -1,14 +1,13 @@
 //! The date grammar, shared by both parsers.
 //!
-//! §6.2 is blunt about why this is one module and not two: *"two subtly different date
-//! parsers in one app is a bug generator."* `due before: next friday` parses exactly as
-//! `next friday` does in quick add, because it is the same code.
+//! It is one module and not two because two subtly different date parsers in one app is a
+//! bug generator. `due before: next friday` parses exactly as `next friday` does in quick
+//! add, because it is the same code.
 //!
 //! # Why this is written rather than adopted
 //!
-//! §6.1 surveys the crates — `interim`, `chrono-english`, `two_timer`, `parse_datetime` —
-//! and rejects them all for one reason: they expect their input to **be** a date expression,
-//! not to *contain* one. Quick add needs to know which span the date consumed so it can be
+//! The crates — `interim`, `chrono-english`, `two_timer`, `parse_datetime` — all fail for
+//! one reason: they expect their input to **be** a date expression, not to *contain* one. Quick add needs to know which span the date consumed so it can be
 //! cut out of the title, and no crate exposes that. Writing it also gets recurrence parsing,
 //! which nothing off the shelf provides at all.
 //!
@@ -33,8 +32,7 @@ pub struct When {
 ///
 /// Greedy on purpose, and in this order: a repetition, then a day, then a time. That is what
 /// lets *"every weekday at 9am"* and *"tomorrow 3pm"* come out as single phrases rather than
-/// leaving half of themselves in the title — which §6.1 calls out as the failure worth
-/// avoiding, since a swallowed date is invisible until the task fails to fire.
+/// leaving half of themselves in the title — the failure worth avoiding, since a swallowed date is invisible until the task fails to fire.
 #[must_use]
 pub fn parse_when(words: &[Word], at: usize) -> Option<When> {
     let mut spec = DueSpec::default();
@@ -204,7 +202,7 @@ fn clock(text: &str) -> Option<civil::Time> {
 
 /// Matches a repetition starting at `at`, returning whether it counts from completion.
 ///
-/// The trailing `!` is Todoist's, and §3.5 keeps the distinction: `every day` advances from
+/// The trailing `!` is Todoist's, and the distinction is kept: `every day` advances from
 /// the scheduled date and can fall behind, `every! day` advances from when you actually
 /// finished.
 #[must_use]
@@ -223,7 +221,7 @@ pub fn parse_recurrence(words: &[Word], at: usize) -> Option<(RecurrenceSpec, bo
     }
 
     let mut index = at + 1;
-    // Todoist writes `every!` for "advance from completion" (§3.5). The tokeniser splits the
+    // Todoist writes `every!` for "advance from completion". The tokeniser splits the
     // bang into its own word, since in a filter the same character is negation.
     let from_completion = words.get(index).is_some_and(|w| w.is("!"));
     if from_completion {

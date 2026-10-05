@@ -1,4 +1,4 @@
-//! Backup, export and import (§9): *import of our own output must be tested, not assumed.*
+//! Backup, export and import: *import of our own output must be tested, not assumed.*
 //!
 //! A recovery path never exercised does not work. These are also the tests that prove the
 //! export format is complete: a populated store goes out and comes back, and any field the

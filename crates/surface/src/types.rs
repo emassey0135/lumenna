@@ -1,16 +1,16 @@
-//! What operations return (§12), shaped for clients rather than derived from the model.
+//! What operations return, shaped for clients rather than derived from the model.
 //!
 //! **Every result carries its own `announcement`** — one sentence saying what happened, for a
 //! client with nothing better to say — and its `notices`, things worth saying that are not the
 //! answer. The sentence is composed here only because core composed it first: an edit's
-//! description, a quick-add readback (§13). Everything else stays in components.
+//! description, a quick-add readback. Everything else stays in components.
 //!
-//! **Rows carry components, never a sentence** (§13). Speech spells roles and states out;
+//! **Rows carry components, never a sentence**. Speech spells roles and states out;
 //! braille abbreviates the role and renders the title verbatim; a client assembles its own
 //! line from `role`, `state`, `title` and `value`.
 //!
-//! These are a compatibility contract twice over: the JSON `lum --json` and `lum rpc` write
-//! (§15), and the Swift and Kotlin types UniFFI generates. Renaming a field breaks both.
+//! These are a compatibility contract twice over: the JSON `lum --json` and `lum rpc` write,
+//! and the Swift and Kotlin types UniFFI generates. Renaming a field breaks both.
 
 use lumenna_core::State;
 use lumenna_core::edit::{Change as CoreChange, Edit};
@@ -97,7 +97,7 @@ pub struct Change {
     /// everything again to find it.
     #[serde(default, skip_serializing_if = "Affected::is_empty")]
     pub affected: Affected,
-    /// The task itself, when the operation created one — §12's `add_task(text) -> Task`.
+    /// The task itself, when the operation created one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task: Option<TaskDetail>,
 }
@@ -300,7 +300,7 @@ impl Rows {
     }
 }
 
-/// A filter query, read back (§6.2).
+/// A filter query, read back.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -329,7 +329,7 @@ pub struct Unresolved {
     pub suggestion: Option<String>,
 }
 
-/// One row, as its components (§13).
+/// One row, as its components.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -479,7 +479,7 @@ pub struct TaskDetail {
 pub struct Dependency {
     /// The full identifier.
     pub id: String,
-    /// Its title, or a note that this device has not seen it yet (§3.1).
+    /// Its title, or a note that this device has not seen it yet.
     pub title: String,
 }
 
@@ -551,12 +551,12 @@ pub struct Plan {
     pub count: u32,
     /// The blocks, in time order.
     pub blocks: Vec<PlanBlock>,
-    /// The gestalt a sighted user gets from a glance at the day, as one sentence (§13):
+    /// The gestalt a sighted user gets from a glance at the day, as one sentence:
     /// *"Six blocks, four hours of work, three tasks assigned, one overdue."*
     #[serde(default)]
     pub summary: String,
     /// The day as it is lived, in order: blocks, the free time between them, and where now
-    /// falls — §13's rule that what a timeline shows by empty space becomes a row.
+    /// falls: what a timeline shows by empty space, a list has to say as a row.
     #[serde(default)]
     pub timeline: Vec<PlanItem>,
     /// Repeating blocks cancelled for this day alone, so that the day can be put back
@@ -565,7 +565,7 @@ pub struct Plan {
     pub cancelled: Vec<CancelledBlock>,
 }
 
-/// The work blocks a task could be put in, from a task itself rather than from a day (§3.7).
+/// The work blocks a task could be put in, from a task itself rather than from a day.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -584,7 +584,7 @@ pub struct WorkBlocks {
 }
 
 /// One work block occurrence, as a chooser lists it. Components, not a line: how a day and a
-/// time are said is the platform's (§4).
+/// time are said is the platform's.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -668,7 +668,7 @@ pub struct PlanBlock {
     pub end: String,
     /// How long it runs.
     pub duration_mins: u32,
-    /// `work`, `break` or `event`. The word says which actions exist (§13): only work
+    /// `work`, `break` or `event`. The word says which actions exist: only work
     /// blocks take tasks.
     #[serde(default)]
     pub kind: String,
@@ -700,7 +700,7 @@ pub struct PlanBlock {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub notes: String,
     /// What a line about it says after its time and title, as parts every app words alike:
-    /// "1 hour 30 minutes", "work block", "now", "2 tasks assigned" (§13).
+    /// "1 hour 30 minutes", "work block", "now", "2 tasks assigned".
     #[serde(default)]
     pub details: Vec<String>,
 }
@@ -760,13 +760,13 @@ pub struct BlockShown {
     pub colour: Option<String>,
 }
 
-/// A rule in the words the date grammar reads, if it can say it (§5).
+/// A rule in the words the date grammar reads, if it can say it.
 #[must_use]
 pub fn repetition_phrase(rrule: &str, from_completion: bool) -> Option<String> {
     lumenna_core::time::RecurrenceSpec::from_rrule(rrule)?.phrase(from_completion)
 }
 
-/// One task assigned to a block for one sitting (§3.7).
+/// One task assigned to a block for one sitting.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -778,7 +778,7 @@ pub struct PlanAssignment {
     pub id: String,
     /// The task it puts in the block.
     pub task: String,
-    /// The task's title, or a note that this device has not seen it yet (§3.1).
+    /// The task's title, or a note that this device has not seen it yet.
     pub title: String,
     /// `planned`, `in progress`, `worked`, and so on.
     pub status: String,
@@ -788,14 +788,14 @@ pub struct PlanAssignment {
     /// Minutes logged so far.
     pub minutes: u32,
     /// Whether the figure was capped at the block's length because a timer looks orphaned.
-    /// Never presented as fact (§3.7).
+    /// Never presented as fact.
     pub capped: bool,
     /// Whether its timer is running now; `status` is "paused" when it has run and stopped
     /// without the sitting ending.
     #[serde(default)]
     pub running: bool,
     /// What a line about it says after its title, as parts every app words alike: "planned
-    /// for 45 minutes", or "paused", "20 minutes logged" (§13).
+    /// for 45 minutes", or "paused", "20 minutes logged".
     #[serde(default)]
     pub details: Vec<String>,
 }
@@ -816,7 +816,7 @@ pub struct Timer {
     pub assignment: String,
     /// Minutes logged on the sitting.
     pub minutes: u32,
-    /// Whether the figure was capped at the block's length (§3.7).
+    /// Whether the figure was capped at the block's length.
     pub capped: bool,
 }
 
@@ -840,7 +840,7 @@ pub struct Filters {
     pub filters: Vec<FilterView>,
 }
 
-/// One saved filter. Stored as text, never as a resolved date range (§6.2).
+/// One saved filter. Stored as text, never as a resolved date range.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -884,12 +884,12 @@ pub struct Setting {
 // Typing: completion and preview
 // ---------------------------------------------------------------------------------------
 
-/// What could be inserted where the cursor is (§6.3).
+/// What could be inserted where the cursor is.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Completions {
-    /// How many candidates there are, said before the list (§6.3).
+    /// How many candidates there are, said before the list.
     pub announcement: String,
     /// Anything else worth saying.
     #[serde(default, skip_serializing_if = "none")]
@@ -949,7 +949,7 @@ pub enum Syntax {
     Filter,
 }
 
-/// What a quick-add line would produce, without producing it (§6.1).
+/// What a quick-add line would produce, without producing it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -968,7 +968,7 @@ pub struct Preview {
     /// The time of day it would be due.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub due_time: Option<String>,
-    /// The date phrase as typed, to read back beside the resolved value (§6.1).
+    /// The date phrase as typed, to read back beside the resolved value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub due_phrase: Option<String>,
     /// The repetition in English.
@@ -979,7 +979,7 @@ pub struct Preview {
     pub project: Option<String>,
     /// Labels that already exist.
     pub labels: Vec<String>,
-    /// Labels that would be created on confirmation (§3.4).
+    /// Labels that would be created on confirmation.
     pub new_labels: Vec<String>,
     /// 1 to 4, where 1 is highest.
     pub priority: u8,
@@ -1004,7 +1004,7 @@ pub struct Diagnostic {
     /// One past the last.
     pub end: u32,
     /// The message, complete with position and token — there is no squiggle to point at, and
-    /// this text is the only channel (§6.3).
+    /// this text is the only channel.
     pub message: String,
 }
 
@@ -1053,7 +1053,7 @@ impl Preview {
 }
 
 // ---------------------------------------------------------------------------------------
-// Durability (§9)
+// Durability
 // ---------------------------------------------------------------------------------------
 
 /// Where a backup went.
@@ -1073,7 +1073,7 @@ pub struct BackupDone {
 }
 
 /// A backup as a file's contents, for a client that saves it itself — the browser, as a
-/// download (§16.12).
+/// download.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -1236,11 +1236,11 @@ pub struct TaskEdit {
     /// Replacement notes.
     #[serde(default)]
     pub notes: Option<String>,
-    /// A project to move it to, by name. Subtasks follow (§3.2).
+    /// A project to move it to, by name. Subtasks follow.
     #[serde(default)]
     pub project: Option<String>,
     /// The labels it should wear, by name, replacing the ones it has. A name that is not a
-    /// label yet becomes one, as in quick add (§3.4).
+    /// label yet becomes one, as in quick add.
     #[serde(default)]
     pub labels: Option<Vec<String>>,
 }
@@ -1264,7 +1264,7 @@ pub enum MoveTarget {
     Top,
 }
 
-/// A project's weight: its own, or inherited (§3.4).
+/// A project's weight: its own, or inherited.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -1333,8 +1333,8 @@ pub struct BlockEdit {
     pub colour: Option<String>,
 }
 
-/// Which occurrences a change to a block applies to — the question §4.3 says to always ask
-/// of a repeating block, never guess.
+/// Which occurrences a change to a block applies to — asked of a repeating block every
+/// time, never guessed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -1382,7 +1382,7 @@ pub struct NewBlock {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub notes: Option<String>,
-    /// Whether tasks can be put in it; the kind's default when absent (§3.6).
+    /// Whether tasks can be put in it; the kind's default when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub accepts_tasks: Option<bool>,
@@ -1395,11 +1395,11 @@ pub struct NewBlock {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub anchored: Option<bool>,
-    /// How short re-flow may make it, in minutes; the kind's default when absent (§3.6).
+    /// How short re-flow may make it, in minutes; the kind's default when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub min_minutes: Option<u32>,
-    /// A filter scoping which tasks are offered for it (§10), such as `#Work`.
+    /// A filter scoping which tasks are offered for it, such as `#Work`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub task_filter: Option<String>,
@@ -1415,7 +1415,7 @@ pub struct NewBlock {
 }
 
 // ---------------------------------------------------------------------------------------
-// Devices and sync (§7, §9)
+// Devices and sync
 // ---------------------------------------------------------------------------------------
 
 /// The device a pairing joined.
@@ -1494,12 +1494,12 @@ pub struct DeviceView {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
     /// How syncing with it is going, as parts every app words alike: "this device", or
-    /// "last synced 5 minutes ago" (§9).
+    /// "last synced 5 minutes ago".
     #[serde(default)]
     pub status: Vec<String>,
 }
 
-/// How syncing is going (§9's `sync_status()`), as words rather than an icon.
+/// How syncing is going, as words rather than an icon.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

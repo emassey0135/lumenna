@@ -2,7 +2,7 @@
 //!
 //! The C API in `<dns_sd.h>`, part of libSystem. It talks to `mDNSResponder`, which is
 //! Bonjour, so on iOS it needs no multicast entitlement — only the local network permission
-//! and the service types listed under `NSBonjourServices` (§7). On macOS it shares the one
+//! and the service types listed under `NSBonjourServices`. On macOS it shares the one
 //! responder every other app uses rather than opening port 5353 itself.
 //!
 //! Each `DNSServiceRef` is used by one thread only, as the API requires: the browse and its

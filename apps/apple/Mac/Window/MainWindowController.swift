@@ -1,10 +1,10 @@
 import AppKit
 
-/// The one main window (§16.5): a sidebar of places, the list for the place chosen, and the
+/// The one main window: a sidebar of places, the list for the place chosen, and the
 /// chosen task's details — three panes in an `NSSplitViewController`, as Mail has them.
 ///
 /// F6 and Shift-F6 move between the panes. Neither AppKit nor any other toolkit provides that
-/// for free (§16.4), and a VoiceOver user otherwise reaches the detail pane by interacting
+/// for free, and a VoiceOver user otherwise reaches the detail pane by interacting
 /// through everything in between.
 final class MainWindowController: NSWindowController, NSWindowDelegate {
     let core: Core
@@ -124,7 +124,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        // Closing hides it: the app stays resident, syncing (§16.2).
+        // Closing hides it: the app stays resident, syncing.
         sender.orderOut(nil)
         return false
     }

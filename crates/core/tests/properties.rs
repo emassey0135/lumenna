@@ -1,10 +1,10 @@
-//! Property tests for the two pieces of §3.13 that merge can break.
+//! Property tests for the two pieces of ordering and hierarchy that merge can break.
 //!
-//! §14 calls for property-based convergence tests over simulated replicas; those need a
-//! store to apply operations to and belong with it. What can be proven here, without any
-//! CRDT in the room, is that the pure machinery those tests will lean on holds up under
-//! inputs nobody thought to write down: that ordering stays strict however a list is built,
-//! and that repair terminates, converges, and only cuts what it has to.
+//! Property-based convergence tests over simulated replicas need a store to apply operations
+//! to, and belong with it. What can be proven here, without any CRDT in the room, is that
+//! the pure machinery those tests lean on holds up under inputs nobody thought to write
+//! down: that ordering stays strict however a list is built, and that repair terminates,
+//! converges, and only cuts what it has to.
 
 use std::collections::{BTreeMap, BTreeSet};
 

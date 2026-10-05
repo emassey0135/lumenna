@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Syncing with paired devices (§7): Iroh connections, and knowing when there is a network. -->
+    <!-- Syncing with paired devices: Iroh connections, and knowing when there is a network. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Hearing other devices on the local network (DNS-SD): Android passes multicast to an app
@@ -10,7 +10,7 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
     <!-- The store is not backed up to Google: it lives in no-backup storage, and syncing between
-         paired devices is the way it reaches another (§9). -->
+         paired devices is the way it reaches another. -->
     <application
         android:name=".LumennaApplication"
         android:allowBackup="false"

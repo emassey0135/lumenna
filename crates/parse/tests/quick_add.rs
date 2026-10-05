@@ -1,4 +1,4 @@
-//! Quick add (§6.1) — the highest-leverage feature in the product for a screen reader user.
+//! Quick add — the highest-leverage feature in the product for a screen reader user.
 
 use jiff::civil::{date, time};
 use jiff::Zoned;
@@ -59,7 +59,7 @@ fn a_bare_line_is_just_a_title() {
 
 #[test]
 fn the_date_phrase_is_cut_out_of_the_title_wherever_it_sits() {
-    // §6.1's actual requirement: knowing which span the date consumed.
+    // The actual requirement: knowing which span the date consumed.
     for (input, title) in [
         ("tomorrow call the dentist", "call the dentist"),
         ("call the dentist tomorrow", "call the dentist"),
@@ -193,7 +193,7 @@ fn a_trailing_and_is_not_eaten_by_a_weekday_list() {
 
 #[test]
 fn the_bang_means_advance_from_completion() {
-    // Todoist's `every!` (§3.5): the difference shows up exactly when you are late.
+    // Todoist's `every!`: the difference shows up exactly when you are late.
     let p = preview("water plants every! 3 days");
     let recurrence = p.due.as_ref().unwrap().recurrence.as_ref().unwrap();
     assert_eq!(recurrence.rrule, "FREQ=DAILY;INTERVAL=3");
@@ -206,7 +206,7 @@ fn the_bang_means_advance_from_completion() {
 #[test]
 fn a_repetition_with_no_day_starts_at_its_first_real_occurrence() {
     // Typed on a Wednesday: a weekly-Monday series must not be anchored on a Wednesday,
-    // which is a day it never occurs (§5).
+    // which is a day it never occurs.
     let p = preview("standup every monday");
     assert_eq!(p.due.as_ref().unwrap().date, date(2026, 5, 11));
 }
@@ -231,7 +231,7 @@ fn a_spelled_out_duration_stays_in_the_title() {
 
 #[test]
 fn a_multi_word_project_is_matched_greedily_and_the_priority_survives() {
-    // §6.2's name ambiguity: is `p1` part of the name or a priority?
+    // The name ambiguity: is `p1` part of the name or a priority?
     let snapshot = store();
     let known = Known::from_snapshot(&snapshot);
     let parsed = parse_quick_add("draft #My Big Project p1", &known);
@@ -251,7 +251,7 @@ fn quoting_is_the_escape_hatch() {
 
 #[test]
 fn an_unknown_project_is_an_error_and_an_unknown_label_is_a_new_label() {
-    // §3.4's asymmetry: a project has a parent, ordering, archive state and a weight, which
+    // The asymmetry: a project has a parent, ordering, archive state and a weight, which
     // is structure that wants a decision. A label has none of that.
     let p = preview("task #Nonexistent @brandnew");
     assert!(p.has_errors());
@@ -265,7 +265,7 @@ fn an_unknown_project_is_an_error_and_an_unknown_label_is_a_new_label() {
 
 #[test]
 fn a_typo_is_reported_with_its_position_and_the_nearest_match() {
-    // §6.3: the position and the token must be in the message text, because there is no
+    // The position and the token must be in the message text, because there is no
     // squiggle to point at.
     let p = preview("task @lapto");
     let message = &p.diagnostics[0].message;
@@ -282,7 +282,7 @@ fn a_typo_is_reported_with_its_position_and_the_nearest_match() {
 
 #[test]
 fn a_known_label_is_never_prompted_about() {
-    // Confirm-on-new, never prompt-on-known (§3.4).
+    // Confirm-on-new, never prompt-on-known.
     let p = preview("task @laptop");
     assert!(p.diagnostics.is_empty());
     assert_eq!(p.labels.len(), 1);
@@ -291,7 +291,7 @@ fn a_known_label_is_never_prompted_about() {
 
 #[test]
 fn a_half_written_date_is_reported_rather_than_swallowed() {
-    // §6.1: never silently fold an unrecognised token into the title. A swallowed date is
+    // Never silently fold an unrecognised token into the title. A swallowed date is
     // invisible until the task fails to fire.
     let p = preview("call next");
     assert!(p.due.is_none());
@@ -303,7 +303,7 @@ fn a_half_written_date_is_reported_rather_than_swallowed() {
 
 #[test]
 fn the_announcement_always_states_the_resolved_date() {
-    // §6.1: "Friday" is ambiguous, and the resolution is the part worth confirming.
+    // "Friday" is ambiguous, and the resolution is the part worth confirming.
     let p = preview("review PR next friday 3pm p1");
     let said = p.announcement();
     assert!(said.starts_with("review PR"), "{said}");
@@ -366,7 +366,7 @@ fn the_date_spec_is_kept_unresolved_so_it_can_be_read_back() {
 #[test]
 fn a_repeated_token_stays_in_the_title_and_is_mentioned() {
     // "book flight monday to friday" has two things that look like dates. Quietly
-    // discarding one leaves a title missing a word and no way to notice (§6.1).
+    // discarding one leaves a title missing a word and no way to notice.
     let p = preview("book flight monday to friday");
     assert_eq!(p.due.as_ref().unwrap().date, date(2026, 5, 11), "the first one wins");
     assert_eq!(p.title, "book flight to friday");

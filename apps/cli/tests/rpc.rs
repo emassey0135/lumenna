@@ -1,7 +1,7 @@
 //! `lum rpc`, exercised as a client would drive it.
 //!
-//! §8 makes this the path for every client that cannot link Rust, and §12 says it shares the
-//! CLI's command surface rather than restating it. Both claims are only worth anything if
+//! This is the path for every client that cannot link Rust, and it shares the CLI's command
+//! surface rather than restating it. Both claims are only worth anything if
 //! the protocol is driven end to end, so these tests spawn the real server and talk to it.
 
 use std::io::{Read, Write};
@@ -61,7 +61,7 @@ impl Rpc {
 
 #[test]
 fn initialize_names_the_contract_and_every_method() {
-    // §15 calls the JSON shapes a compatibility contract. A client that cannot ask which
+    // The JSON shapes are a compatibility contract. A client that cannot ask which
     // version it is talking to has to guess, and guessing is how a contract stops being one.
     let rpc = Rpc::new();
     let out = rpc.talk(&[r#"{"jsonrpc":"2.0","id":1,"method":"initialize"}"#]);
@@ -74,7 +74,7 @@ fn initialize_names_the_contract_and_every_method() {
 
 #[test]
 fn a_method_reaches_the_same_surface_the_command_line_does() {
-    // §12: one typed command surface, two ways in. A method builds the same `Command` and
+    // One typed command surface, two ways in. A method builds the same `Command` and
     // gets the same `Response`, so the two cannot drift.
     let rpc = Rpc::new();
     let out = rpc.talk(&[
@@ -90,7 +90,7 @@ fn a_method_reaches_the_same_surface_the_command_line_does() {
 
 #[test]
 fn a_write_from_another_process_is_pushed_without_being_asked_for() {
-    // This is the whole reason to speak a protocol rather than shell out per command (§8).
+    // This is the whole reason to speak a protocol rather than shell out per command.
     let rpc = Rpc::new();
     let mut live = Live::start(&rpc);
     // The server's first answer comes before anything else touches the store, so what
@@ -98,7 +98,7 @@ fn a_write_from_another_process_is_pushed_without_being_asked_for() {
     live.send(r#"{"jsonrpc":"2.0","id":1,"method":"task.list"}"#);
     live.wait_for(r#""id":1"#);
     rpc.cli(&["task", "add", "from another process", "--quiet"]);
-    // Within the one-second poll §8 sanctions.
+    // Within the one-second poll.
     live.wait_for(r#""method":"lumenna/changed""#);
 }
 
@@ -209,7 +209,7 @@ fn broken_json_is_a_parse_error_rather_than_a_dead_server() {
 
 #[test]
 fn content_length_framing_is_answered_in_kind() {
-    // MCP's stdio transport delimits by newline; `jsonrpc.el` uses headers (§12, §16.10).
+    // MCP's stdio transport delimits by newline; `jsonrpc.el` uses headers.
     // Both are clients this has to serve, so the reply is framed the way the request was.
     let rpc = Rpc::new();
     let mut server = rpc.spawn();
@@ -229,7 +229,7 @@ fn content_length_framing_is_answered_in_kind() {
 
 #[test]
 fn completion_is_reachable_here_and_nowhere_else() {
-    // A process per keystroke is not an answer, which is why §16.11 wants a protocol.
+    // A process per keystroke is not an answer, which is why the BTSpeak app speaks a protocol.
     let rpc = Rpc::new();
     rpc.cli(&["label", "add", "deep"]);
     let out = rpc.talk(&[

@@ -1,18 +1,17 @@
 """Turning rows into menu items.
 
 The server sends components — `role`, `depth`, `index`, `count`, `state`, `title`, `value` —
-and never a sentence, because speech and braille compose them differently (§13). This file is
+and never a sentence, because speech and braille compose them differently. This file is
 where the composing happens for this device.
 
 **One caveat shapes everything here.** `DynamicMenuDialog.draw()` sets `content_text` and
 `content_braille` from the same string, so with the stock library speech and braille cannot
-diverge. §16.11 offers two ways round it: put a compact level marker in the title, or
-subclass the dialog and override the selection branch of `draw()`. It says to start with the
-marker, and this does. If the marker turns out to grate in speech, the subclass is about
+diverge. There are two ways round it: put a compact level marker in the title, or
+subclass the dialog and override the selection branch of `draw()`. This uses the marker. If the marker turns out to grate in speech, the subclass is about
 twenty lines and `InteractiveSearchDialog` extends `ChoiceDialog`, so it is an intended
 pattern rather than a hack.
 
-**Depth is never indentation.** §16.11 is explicit: indentation does not work in speech. The
+**Depth is never indentation**, which does not work in speech. The
 level is announced *when it changes*, which is what a screen-reader tree view does, and
 costs nothing here because titles may be callables — so the marker is computed against the
 row above at the moment it is drawn, and stays right as branches collapse.
@@ -26,7 +25,7 @@ from BTSpeak import dialogs
 def describe(row: dict, with_role: bool = False) -> str:
     """One row, as a line to speak and to braille.
 
-    The title is never abbreviated — braille users get everything speech users get (§13).
+    The title is never abbreviated — braille users get everything speech users get.
     Only the surroundings are compressed.
     """
     parts = [row.get("title", "")]
@@ -167,7 +166,7 @@ class Tree:
         """Menu items for every row, foldable where a row has children, each carrying its row.
 
         `left` and `right` are already bound to left-arrow/Dot7 and right-arrow/Dot8 on this
-        device, so folding needs no key handling of its own (§16.11). `+` and `-` are offered
+        device, so folding needs no key handling of its own. `+` and `-` are offered
         as well, because that is what a tree view is expected to answer to. First-letter
         navigation goes by the title alone, so a level marker in front of it does not hide it.
         """

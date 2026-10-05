@@ -1,10 +1,10 @@
-//! This device on the network: dialling its paired devices, and answering them (§7, §8).
+//! This device on the network: dialling its paired devices, and answering them.
 //!
 //! The endpoint's key is the device key, kept in the store (`Store::device_secret`), so
 //! every process using the store is the same device. Only one of them runs the endpoint at a
-//! time — whichever holds the sync lock — and the rest read and write the store as usual (§8).
+//! time — whichever holds the sync lock — and the rest read and write the store as usual.
 //!
-//! **Trust is the `devices` document** (§7). A connection from a key not listed there is
+//! **Trust is the `devices` document**. A connection from a key not listed there is
 //! closed before a byte of data moves, and this device never dials one either.
 
 use std::time::Duration;
@@ -22,7 +22,7 @@ use crate::{ALPN_SYNC, SharedStore, lock};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Network {
     /// Iroh's relays and its address lookup service, plus the local network. Devices reach
-    /// each other wherever they are; the relays forward traffic they cannot read (§1).
+    /// each other wherever they are; the relays forward traffic they cannot read.
     Internet,
     /// The local network only: no relay, no lookup service, nothing outside the building.
     /// Peers are found by mDNS or given an address. Also what tests use, offline.
@@ -30,7 +30,7 @@ pub enum Network {
 }
 
 /// The mDNS service name paired devices advertise under, so they find each other on a local
-/// network without any outside service (§7).
+/// network without any outside service.
 const DEVICE_SERVICE: &str = "lumenna";
 
 /// How long one peer gets before a sync with it is given up for this round.
@@ -54,9 +54,9 @@ pub(crate) async fn bind(
         .bind()
         .await
         .map_err(|e| SyncError::Network(format!("could not open the network endpoint: {e}")))?;
-    // The local network is the path the plan says must always work (§7). Standard DNS-SD,
-    // so every platform's mDNS hears it; a network that forbids multicast leaves it hearing
-    // nothing rather than refusing everything else.
+    // The local network is the path that must always work, with no outside service.
+    // Standard DNS-SD, so every platform's mDNS hears it; a network that forbids multicast
+    // leaves it hearing nothing rather than refusing everything else.
     let local = LocalLookup::start(endpoint.id(), service, advertise);
     if let Ok(lookup) = endpoint.address_lookup() {
         lookup.add(local.clone());
@@ -266,7 +266,7 @@ impl Node {
 
     /// Signalled whenever a peer that dialled in brought changes, so whatever is driving this
     /// node can pass them on to the other devices — this is how an edit made on the phone
-    /// reaches the laptop through the Pi without either being awake at the same time (§8).
+    /// reaches the laptop through the Pi without either being awake at the same time.
     #[must_use]
     pub fn arrivals(&self) -> std::sync::Arc<tokio::sync::Notify> {
         std::sync::Arc::clone(&self.arrived)

@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Lumenna's core for Swift and Kotlin, through UniFFI (§2)."
+description = "Lumenna's core for Swift and Kotlin, through UniFFI."
 
 [lib]
 name = "lumenna_ffi"

@@ -7,7 +7,7 @@ import json
 import os
 from pathlib import Path
 
-#: Read a task back, and ask, before adding it (§6.1). Off by default: the announcement after
+#: Read a task back, and ask, before adding it. Off by default: the announcement after
 #: adding already says how it was read, and the extra step is for who wants it.
 READ_BACK = "read-back-before-adding"
 

@@ -1,11 +1,10 @@
 """Finding a server to talk to.
 
-§8's fallback rule differs by client class, and this is the RPC class: connect to the sync
-daemon's socket if one answers, otherwise spawn `lum rpc` over stdio. The two carry an
+Connect to the sync daemon's socket if one answers, otherwise spawn `lum rpc` over stdio. The two carry an
 identical command surface, so everything above this file is unaware of which it got.
 
 On this device the daemon is *required* for sync — there is no tray and no session GUI to
-keep it running (§16.11) — so the socket is the expected path and spawning is the exception.
+keep it running — so the socket is the expected path and spawning is the exception.
 That is the reverse of the desktop case, and it is why the fallback exists at all: a stopped
 unit should leave the app working-but-not-syncing rather than broken.
 
@@ -24,7 +23,7 @@ from pathlib import Path
 from client import Client, LumennaError
 
 
-#: Where the daemon will listen. One socket per profile, beside the store itself, so a second
+#: Where the daemon listens. One socket per profile, beside the store itself, so a second
 #: profile is a second daemon rather than a collision.
 SOCKET_NAME = "lumenna.sock"
 

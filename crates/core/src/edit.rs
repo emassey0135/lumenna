@@ -8,20 +8,19 @@
 //! 1. Core keeps its promise of no I/O, so every rule below is testable against a plain
 //!    struct with no CRDT and no database in the room.
 //! 2. A caller can inspect or announce a change *before* committing it, which is what the
-//!    confirmation flows of §6.1 and §16 need.
-//! 3. **Undo falls out for free.** §9 is explicit that Automerge does not provide undo —
-//!    it provides history, and rewinding would discard concurrent remote changes along with
-//!    your own. Undo means computing and applying an *inverse*, and an edit that already
+//!    readbacks and confirmation prompts need.
+//! 3. **Undo falls out for free.** Automerge does not provide undo — it provides history,
+//!    and rewinding would discard concurrent remote changes along with your own. Undo means computing and applying an *inverse*, and an edit that already
 //!    carries both sides of every record is its own inverse when you swap them.
 //!
 //! # Why operations are not just field assignments
 //!
 //! Completing a task is the worked example. It writes a
-//! [`TaskCompletion`](crate::model::TaskCompletion), cascades to subtasks if §3.10's setting
-//! says so, and advances the due date if the task recurs (§5) — three records' worth of
+//! [`TaskCompletion`](crate::model::TaskCompletion), cascades to subtasks if the setting
+//! says so, and advances the due date if the task recurs — three records' worth of
 //! consequence from one keystroke, with rules about each that no caller should have to
-//! remember. Leaving that to eleven UI targets is exactly the business-logic leak principle
-//! 2 forbids.
+//! remember. Leaving that to eleven UI targets would leak business logic into every one of
+//! them, and they would drift.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -40,7 +39,7 @@ use crate::time;
 /// A refusal to compute an edit.
 ///
 /// Deliberately narrow. Almost everything that could be wrong about a record is something
-/// CRDT merge can produce anyway (§3.1), and refusing to load or refusing to edit would be
+/// CRDT merge can produce anyway, and refusing to load or refusing to edit would be
 /// worse than tolerating it. What is here is the small set where proceeding would corrupt
 /// something a repair could not sensibly fix.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -92,7 +91,7 @@ pub enum EditError {
     #[error("that block happens once, so change the block itself")]
     NotRepeating,
 
-    /// The block is a break or an event, which take no tasks (§3.6).
+    /// The block is a break or an event, which take no tasks.
     #[error("that block does not take tasks")]
     RefusesTasks,
 
@@ -128,7 +127,7 @@ pub enum Change {
     Exception(Box<Transition<BlockException>>),
     /// An assignment. Carries its year, because
     /// [`BlockRef::OneOff`](crate::model::BlockRef::OneOff) does not name a date and the
-    /// store cannot shard it without reading the series (§3.7).
+    /// store cannot shard it without reading the series.
     Assignment {
         /// Which `blocks-<year>` document it belongs in.
         year: i16,
@@ -139,7 +138,7 @@ pub enum Change {
     Reminder(Box<Transition<Reminder>>),
     /// A reminder acknowledgement.
     Ack(Box<Transition<ReminderAck>>),
-    /// A paired device (§3.11).
+    /// A paired device.
     Device(Box<Transition<Device>>),
     /// The settings singleton, which always exists.
     Settings {
@@ -156,8 +155,7 @@ pub enum Change {
 pub struct Transition<T> {
     /// What was there, if anything.
     pub before: Option<T>,
-    /// What is there afterwards. `None` removes the record outright — *purge*, not trash
-    /// (§3.2).
+    /// What is there afterwards. `None` removes the record outright — *purge*, not trash.
     pub after: Option<T>,
 }
 
@@ -208,7 +206,7 @@ impl Change {
 pub struct Edit {
     /// What the user did, phrased for announcement: *"Completed Review PR"*.
     ///
-    /// §9 requires undo to be announceable — *"Undid: completed Review PR"* — because
+    /// Undo has to be announceable — *"Undid: completed Review PR"* — because
     /// without a visual channel a mis-keystroke can go unnoticed for minutes, by which point
     /// the context for recovering it is gone.
     pub description: String,
@@ -305,12 +303,12 @@ pub fn update_task(before: Task, after: Task) -> Edit {
 ///
 /// - A [`TaskCompletion`](crate::model::TaskCompletion) is recorded. For a recurring task it
 ///   names the occurrence, since a recurring task is one task whose date advances rather
-///   than a generated series (§3.3) — and so does one for a subtask of a recurring task,
+///   than a generated series — and so does one for a subtask of a recurring task,
 ///   which recurs with it (see [`Snapshot::occurrence_of`]).
 /// - **Subtasks cascade**, if [`Settings::cascade_complete_subtasks`] is on. Their
 ///   completions record what caused them, so uncompleting the parent later reverses only
 ///   these and not a subtask you independently finished last week.
-/// - **A recurring task advances** rather than ending (§5). If the rule has run out, it
+/// - **A recurring task advances** rather than ending. If the rule has run out, it
 ///   simply stays complete.
 ///
 /// # Errors
@@ -379,12 +377,12 @@ const CASCADE_WINDOW_MS: i64 = 1_000;
 /// Reverses the most recent completion of a task.
 ///
 /// For a recurring task this also rolls the due date back to the occurrence that was
-/// completed, which is recoverable exactly because the completion record names it (§3.3).
+/// completed, which is recoverable exactly because the completion record names it.
 ///
-/// Only completions **caused by the completion being reversed** go with it. §3.3 is
-/// explicit: a subtask you finished independently last week must not be uncompleted because
-/// you changed your mind about the parent — and neither must the cascades of a recurring
-/// parent's earlier occurrences, which were separate completions.
+/// Only completions **caused by the completion being reversed** go with it. A subtask you
+/// finished independently last week must not be uncompleted because you changed your mind
+/// about the parent — and neither must the cascades of a recurring parent's earlier
+/// occurrences, which were separate completions.
 ///
 /// A completion a cascade wrote can be reversed on its own, too. The subtask reads as
 /// complete, so it has to be possible to say it is not.
@@ -434,7 +432,7 @@ pub fn uncomplete_task(snapshot: &Snapshot, id: TaskId) -> Result<Edit, EditErro
 /// Moves a task to the trash, along with everything under it.
 ///
 /// Trash is `deleted_at` on the record, not removal: it syncs, it is undoable, and Automerge
-/// needs no tombstone to converge (§3.2). Subtasks follow, because a subtask left behind
+/// needs no tombstone to converge. Subtasks follow, because a subtask left behind
 /// when its parent is trashed is unreachable in every view that shows a tree.
 ///
 /// # Errors
@@ -476,7 +474,8 @@ pub fn restore_task(snapshot: &Snapshot, id: TaskId) -> Result<Edit, EditError> 
     Ok(builder.finish())
 }
 
-/// Removes a task and its history permanently. This is emptying the trash.
+/// Removes a task from the current state, as emptying the trash does. Its content remains in
+/// the document's history and in backups.
 ///
 /// # Errors
 ///
@@ -496,7 +495,7 @@ pub fn purge_task(snapshot: &Snapshot, id: TaskId) -> Result<Edit, EditError> {
     Ok(builder.finish())
 }
 
-/// Makes one task wait for another (§3.2).
+/// Makes one task wait for another.
 ///
 /// # Errors
 ///
@@ -522,7 +521,7 @@ pub fn add_dependency(snapshot: &Snapshot, id: TaskId, on: TaskId) -> Result<Edi
 /// # Errors
 ///
 /// If the task is not loaded. The other one need not be: a dependency on a task this device
-/// has never seen (§3.1) must still be removable.
+/// has never seen must still be removable.
 pub fn remove_dependency(snapshot: &Snapshot, id: TaskId, on: TaskId) -> Result<Edit, EditError> {
     let task = snapshot.tasks.get(&id).ok_or(EditError::NotFound { kind: "task" })?;
     let mut after = task.clone();
@@ -626,7 +625,7 @@ pub fn move_task(snapshot: &Snapshot, id: TaskId, to: MoveTo) -> Result<Edit, Ed
 
 /// Every task beneath `root`, at any depth.
 ///
-/// Walks with a visited set, so an unrepaired parent cycle (§3.13) yields a finite list
+/// Walks with a visited set, so an unrepaired parent cycle yields a finite list
 /// rather than hanging the caller.
 fn descendants(snapshot: &Snapshot, root: TaskId) -> Vec<&Task> {
     let mut children: BTreeMap<TaskId, Vec<&Task>> = BTreeMap::new();
@@ -756,7 +755,7 @@ pub fn create_label(label: Label) -> Edit {
 ///
 /// Renaming updates **one record**, and every task wearing it follows. With plain strings
 /// this would be a rewrite of every task carrying it, which in a CRDT is a large
-/// multi-object change where a concurrent edit can leave the rename half-applied (§3.4).
+/// multi-object change where a concurrent edit can leave the rename half-applied.
 #[must_use]
 pub fn update_label(before: Label, after: Label) -> Edit {
     if before == after {
@@ -770,7 +769,7 @@ pub fn update_label(before: Label, after: Label) -> Edit {
 
 /// Saves a filter query under a name.
 ///
-/// The query is stored as **text, never as a resolved date range** (§6.2). A filter
+/// The query is stored as **text, never as a resolved date range**. A filter
 /// containing `today` has to mean today at evaluation time; resolving it at save time
 /// produces one that silently rots overnight.
 #[must_use]
@@ -799,8 +798,8 @@ pub fn trash_filter(snapshot: &Snapshot, id: FilterId) -> Result<Edit, EditError
 
 /// Moves a label to the trash.
 ///
-/// **Touches no tasks.** Identifiers left pointing at it project as absent, which §3.1's
-/// tolerate-dangling-references rule already requires — so undo is free and a large
+/// **Touches no tasks.** Identifiers left pointing at it project as absent, which
+/// tolerating dangling references already requires — so undo is free and a large
 /// multi-task write is avoided entirely. The consequence is worth remembering: a later
 /// label with the same *name* is a different record, and old tasks do not acquire it.
 ///
@@ -819,7 +818,7 @@ pub fn trash_label(snapshot: &Snapshot, id: LabelId) -> Result<Edit, EditError> 
 
 /// Folds one label into another.
 ///
-/// A first-class operation precisely because implicit creation (§3.4) makes near-duplicates
+/// A first-class operation precisely because implicit creation makes near-duplicates
 /// inevitable: type `@lapto` once and you have one. Merging rewrites the affected tasks'
 /// sets and soft-deletes the loser — cheap with records, and impossible with plain strings,
 /// where the two tags were never distinguishable from intent in the first place.
@@ -855,7 +854,7 @@ pub fn merge_labels(snapshot: &Snapshot, from: LabelId, into: LabelId) -> Result
 }
 
 // ---------------------------------------------------------------------------------------
-// Assignments and timers — the join between the two halves (§3.7)
+// Blocks, assignments and timers — the join between the two halves
 // ---------------------------------------------------------------------------------------
 
 /// Adds a block series, one-off or recurring.
@@ -870,7 +869,7 @@ pub fn create_series(series: BlockSeries) -> Edit {
 /// Moves a block series to the trash.
 ///
 /// Its assignments are left alone, as a label's tasks are: identifiers pointing at a trashed
-/// series project as absent (§3.1), and restoring it brings them back with it.
+/// series project as absent, and restoring it brings them back with it.
 ///
 /// # Errors
 ///
@@ -888,12 +887,11 @@ pub fn trash_series(snapshot: &Snapshot, id: crate::id::SeriesId) -> Result<Edit
     })
 }
 
-/// Changes a block for every occurrence: the "whole series" answer to §4.3's question about
-/// a repeating block. A one-off block has only the one occurrence, so this is how it changes
-/// at all.
+/// Changes a block for every occurrence: the "whole series" answer when a repeating block is
+/// changed. A one-off block has only the one occurrence, so this is how it changes at all.
 ///
 /// Exceptions already written for single occurrences keep their overrides; only the fields
-/// they leave alone follow the series (§3.6).
+/// they leave alone follow the series.
 #[must_use]
 pub fn update_series(before: BlockSeries, after: BlockSeries) -> Edit {
     if before == after {
@@ -906,7 +904,7 @@ pub fn update_series(before: BlockSeries, after: BlockSeries) -> Edit {
 }
 
 /// Changes one occurrence of a repeating block — the "this one only" answer — by writing
-/// the sparse exception §3.6 describes, rather than touching the series.
+/// a sparse exception, rather than touching the series.
 ///
 /// # Errors
 ///
@@ -924,7 +922,7 @@ pub fn except_occurrence(
     }
     let before = snapshot.exceptions.get(&(series_id, date)).cloned();
     // An occurrence already changed or cancelled is still one the rule placed there; a date
-    // the rule never reaches is not an occurrence at all (§5).
+    // the rule never reaches is not an occurrence at all.
     let placed =
         before.is_some() || snapshot.day(date)?.iter().any(|o| o.series_id == series_id);
     if !placed {
@@ -966,8 +964,8 @@ pub fn restore_occurrence(
     })
 }
 
-/// Changes a saved filter's name or query. The query is stored as text, never resolved
-/// (§6.2), so a filter saying `today` keeps meaning today.
+/// Changes a saved filter's name or query. The query is stored as text, never resolved, so a
+/// filter saying `today` keeps meaning today.
 #[must_use]
 pub fn update_filter(before: SavedFilter, after: SavedFilter) -> Edit {
     if before == after {
@@ -983,7 +981,7 @@ pub fn update_filter(before: SavedFilter, after: SavedFilter) -> Edit {
 ///
 /// `year` says which `blocks-<year>` document it belongs in. It cannot be derived for a
 /// one-off block, whose reference names only the series so that moving the block carries its
-/// assignments with it (§3.7).
+/// assignments with it.
 ///
 /// There is deliberately **no uniqueness check** on task and date. Planning three sittings
 /// for a long essay up front is a first-class use case, not an accident to prevent.
@@ -1085,8 +1083,7 @@ pub fn unassign(
 /// Starts the timer on an assignment.
 ///
 /// Writes a fact — when it started — rather than a counter, so nothing ticks in storage and
-/// two devices starting the same timer is a harmless last-write-wins on one timestamp
-/// (§3.7).
+/// two devices starting the same timer is a harmless last-write-wins on one timestamp.
 ///
 /// # Errors
 ///
@@ -1119,7 +1116,7 @@ pub fn start_timer(
 ///
 /// `cap_mins` should be the containing occurrence's duration. A timer left running past the
 /// end of its block — started on a phone that then died — would otherwise record the
-/// wall-clock time since, so the running interval is capped and the caller is told (§3.7).
+/// wall-clock time since, so the running interval is capped and the caller is told.
 /// **Confirm with the user rather than recording the capped figure silently**; a truncated
 /// number presented as fact is its own kind of wrong, and [`log_minutes`] is how the user's
 /// own figure replaces it.
@@ -1178,7 +1175,7 @@ pub fn stop_timer(
 
 /// Pauses the timer: the running interval is folded into the accumulated total, as for
 /// [`stop_timer`], but the sitting stays in progress, to be resumed with [`start_timer`] or
-/// ended with [`stop_timer`] (§3.7: start, pause, stop).
+/// ended with [`stop_timer`].
 ///
 /// A timer that is not running produces [`Edit::nothing`], with the time already logged.
 ///
@@ -1216,7 +1213,7 @@ pub fn pause_timer(
 
 /// Sets how long a sitting took, by hand.
 ///
-/// The timer is optional (§3.7), so this is the other way time gets recorded — and the way
+/// The timer is optional, so this is the other way time gets recorded — and the way
 /// a capped figure from an orphaned timer is put right. A running timer stops, since the
 /// figure given is the whole of the sitting.
 ///
@@ -1256,7 +1253,7 @@ pub fn log_minutes(
     })
 }
 
-/// Sets how long a sitting is meant to take, or clears it (§3.7).
+/// Sets how long a sitting is meant to take, or clears it.
 ///
 /// What was planned, not what was done: the logged minutes and the status are left alone, so
 /// changing the plan halfway through a sitting does not rewrite what already happened.
@@ -1292,12 +1289,12 @@ pub fn plan_minutes(
 }
 
 // ---------------------------------------------------------------------------------------
-// Devices (§3.11)
+// Devices
 // ---------------------------------------------------------------------------------------
 
 /// Adds devices to the roster, or brings their records up to date — what pairing writes.
 ///
-/// Membership in `devices` is the trust boundary (§7): a device listed there is one every
+/// Membership in `devices` is the trust boundary: a device listed there is one every
 /// other device will sync with. So this is only ever called once the words have been compared
 /// and confirmed on both sides; nothing learned any other way belongs here.
 #[must_use]
@@ -1344,7 +1341,7 @@ pub fn rename_device(
 
 /// Takes a device out of the roster, so the others stop syncing with it.
 ///
-/// **Not revocation** (§7): the device keeps everything it already holds, and nothing in a
+/// **Not revocation**: the device keeps everything it already holds, and nothing in a
 /// CRDT stops a malicious one writing itself back. Unpair a device that was replaced; one that
 /// was stolen needs the account key rotated, which is a different and much larger thing.
 ///
@@ -1366,8 +1363,8 @@ pub fn unpair_device(snapshot: &Snapshot, id: crate::id::NodeId) -> Result<Edit,
 /// Folds any Inbox other than the canonical one into it.
 ///
 /// [`ProjectId::INBOX`](crate::id::ProjectId::INBOX) is the same on every device, so two
-/// devices can no longer bring an Inbox each to a merge. A store from before that has one of
-/// its own: its tasks move to the canonical Inbox, and it stops being an Inbox and goes to
+/// devices cannot bring an Inbox each to a merge. A store older than that identifier may have
+/// one of its own: its tasks move to the canonical Inbox, and it stops being an Inbox and goes to
 /// the trash, which keeps the step undoable.
 ///
 /// Nothing to do — the usual case — is [`Edit::nothing`]. So is a store whose canonical

@@ -42,7 +42,7 @@ pub fn ago(timestamp: &str, now: jiff::Timestamp) -> String {
     }
 }
 
-/// What a line about a block says after its time and title (§13): its length, its kind,
+/// What a line about a block says after its time and title: its length, its kind,
 /// where it falls today, whether this day was changed, what about it differs from its kind,
 /// and — for a block that takes tasks — how many are in it.
 ///
@@ -57,7 +57,7 @@ pub fn block_details(block: &crate::types::PlanBlock) -> Vec<String> {
     if block.changed_for_this_day {
         parts.push("changed for this day".to_owned());
     }
-    // An unknown kind is taken as an event, as it always was here.
+    // An unknown kind is taken as an event.
     let kind = crate::form::block_defaults(block.kind.clone())
         .unwrap_or(crate::form::BlockDefaults { accepts_tasks: false, counts_capacity: false, anchored: true });
     if block.accepts_tasks != kind.accepts_tasks {
@@ -76,7 +76,7 @@ pub fn block_details(block: &crate::types::PlanBlock) -> Vec<String> {
     parts
 }
 
-/// What a line about a sitting says after its title (§13): its status with its planned
+/// What a line about a sitting says after its title: its status with its planned
 /// length, the time logged, and a timer that looks forgotten.
 #[must_use]
 pub fn sitting_details(sitting: &crate::types::PlanAssignment) -> Vec<String> {
@@ -90,7 +90,7 @@ pub fn sitting_details(sitting: &crate::types::PlanAssignment) -> Vec<String> {
     parts
 }
 
-/// How syncing with a device is going, in words rather than an icon (§9): "this device";
+/// How syncing with a device is going, in words rather than an icon: "this device";
 /// "last synced 5 minutes ago"; or, when the last attempt failed, when and why, then when
 /// it last worked.
 #[must_use]

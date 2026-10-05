@@ -3,7 +3,7 @@
 //!
 //! These are free functions rather than methods on [`Lumenna`](crate::Lumenna) because they
 //! need no store — only what an operation already returned — but they are rules all the same,
-//! and principle 2 puts rules here rather than in each of eleven clients. The one that
+//! and rules belong here rather than in each of eleven clients. The one that
 //! matters most is [`task_edit`]: a form that sends a field it did not change wins a
 //! last-write-wins race it should have lost, and silently reverts another device's edit.
 
@@ -58,7 +58,7 @@ pub fn task_fields(task: TaskDetail) -> TaskFields {
 /// nothing if no field changed.
 ///
 /// **Only the fields that changed.** Each field sent is written, and each write wins a
-/// last-write-wins race against a concurrent edit from another device (§3.13) — so sending
+/// last-write-wins race against a concurrent edit from another device — so sending
 /// what the form merely showed would revert someone else's change. Spacing around a field is
 /// not a change; a field emptied means "none"; an emptied project is not a move, since a task
 /// is always in one; a leading `@` typed on a label name out of habit is dropped.
@@ -117,7 +117,7 @@ pub fn sitting_status(sitting: PlanAssignment) -> Vec<String> {
     }
 }
 
-/// The settings a kind of block has unless a block sets them apart (§3.6): what a block
+/// The settings a kind of block has unless a block sets them apart: what a block
 /// form's check buttons start from, and go back to when the kind is changed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
@@ -219,7 +219,7 @@ pub fn day_block_fields(block: PlanBlock) -> BlockFields {
 /// What saving `after` over `before` sends to
 /// [`edit_block`](crate::Lumenna::edit_block), or nothing if no field changed.
 ///
-/// **Only the fields that changed**, as with a task (§3.13). Changing the kind gives the
+/// **Only the fields that changed**, as with a task. Changing the kind gives the
 /// block that kind's flags, so a flag is sent where it differs from the *new* kind's, not
 /// from what it was. Empty notes, filter or colour clear them; an empty shortest length goes
 /// back to the kind's own; an empty last day repeats for good; an empty repetition stops it

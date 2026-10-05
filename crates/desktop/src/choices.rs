@@ -17,7 +17,7 @@ pub struct BlockChoice {
 }
 
 /// The work blocks of `days` days from `from`, in order, as a chooser lists them — what
-/// putting a task in a block offers from the task itself (§3.7). Which blocks those are is the
+/// putting a task in a block offers from the task itself. Which blocks those are is the
 /// surface's ([`Lumenna::work_blocks`]); only how each reads is decided here. A failure offers
 /// nothing, as an empty week does.
 pub fn work_blocks(lumenna: &Lumenna, from: jiff::civil::Date, days: i64, clock: &dyn Clock) -> Vec<BlockChoice> {

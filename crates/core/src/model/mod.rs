@@ -1,19 +1,19 @@
-//! The domain model of §3.
+//! The domain model.
 //!
 //! These are the *materialized* records — what an Automerge document means once read, not
 //! how it is stored. `store` hydrates documents into these types and translates edits back
 //! into Automerge operations; nothing here knows that Automerge exists. That boundary is
-//! what lets §8's optional SQLite read model be added later without changing an interface:
+//! what lets an optional SQLite read model be added later without changing an interface:
 //! both paths produce the same structs, and every query in this crate runs over them.
 //!
 //! Two consequences follow, and both are deliberate:
 //!
-//! - **`notes` is a `String`.** It is Automerge `Text` in the document (§3.2), merged per
+//! - **`notes` is a `String`.** It is Automerge `Text` in the document, merged per
 //!   character, but a materialized view of Text is a string. Editing it goes through an
 //!   operation that carries a splice, not through assigning the whole field.
 //! - **Nothing validates on construction that could be violated by merge.** A parent
 //!   pointer into a cycle, a `depends` edge to a task this device has never seen, a label
-//!   identifier whose `Label` was deleted — §3.1 says all of these occur and must load.
+//!   identifier whose `Label` was deleted — all of these occur and must load.
 //!   [`crate::repair`] handles the ones that would otherwise hang or mislead.
 
 use core::fmt;
@@ -43,13 +43,13 @@ pub use task::{Due, Priority, Recurrence, Task, TaskCompletion};
 /// A rule the model enforces at construction, because merge cannot violate it.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ModelError {
-    /// A reminder anchored to a block's start or end was pointed at a task (§3.8).
+    /// A reminder anchored to a block's start or end was pointed at a task.
     #[error("a task reminder cannot be anchored to {anchor:?}: tasks have no start or end")]
     AnchorNotApplicable {
         /// The anchor that was asked for.
         anchor: ReminderAnchor,
     },
-    /// A block was given a compression floor longer than the block itself (§3.6).
+    /// A block was given a compression floor longer than the block itself.
     #[error("minimum duration {min_duration_mins} exceeds duration {duration_mins}")]
     MinimumExceedsDuration {
         /// The floor as given.
@@ -69,7 +69,7 @@ pub enum ModelError {
 /// tzdb is older than the one that wrote it. Resolution is [`TzName::get`], and it can
 /// fail — on the device that syncs a zone it has never heard of.
 ///
-/// §3.5 and §3.6 both say this field is normally **absent**. A due time or a block start
+/// This field is normally **absent**. A due time or a block start
 /// with no zone floats: 3pm wherever you are, 9am after you fly to another continent. Set
 /// it only when the thing is anchored to a real place.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -113,11 +113,10 @@ impl FromStr for TzName {
     }
 }
 
-/// Where a record came from, when it was imported rather than created here (§3.6).
+/// Where a record came from, when it was imported rather than created here.
 ///
-/// Blocks import from calendars now; tasks will eventually import from team systems. The
-/// field is nearly free today and unpleasant to retrofit into a CRDT afterwards, which is
-/// why it is on both.
+/// Blocks are to import from calendars, and tasks from team systems. The field is nearly
+/// free and unpleasant to retrofit into a CRDT afterwards, which is why it is on both.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ExternalRef {

@@ -1,4 +1,4 @@
-//! The SQLite file: §8's storage layout, and the coordination that comes with it.
+//! The SQLite file: the storage layout, and the coordination that comes with it.
 //!
 //! # A document *is* its changes
 //!
@@ -21,7 +21,7 @@
 //! Chunks are stored as **opaque blobs**. SQLite replaces the *file*, not the
 //! representation, so there is no structural conversion and nothing here understands
 //! Automerge's format. What it buys is transactional appends and multi-process locking
-//! instead of hand-rolled file locking — which is the whole of §8's coordination story.
+//! instead of hand-rolled file locking — which is the whole of the coordination story.
 
 use automerge::ChangeHash;
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
@@ -66,10 +66,10 @@ impl Db {
     }
 
     fn from_connection(mut conn: Connection) -> Result<Self> {
-        // WAL is what lets a reader and a writer coexist, which §8 needs because several
+        // WAL is what lets a reader and a writer coexist, which is needed because several
         // processes on one machine share this file: the tray app, a CLI invocation, an
         // Emacs subprocess.
-        // In a browser (§16.12) one worker owns the file — OPFS allows one connection — so
+        // In a browser one worker owns the file — OPFS allows one connection — so
         // there is nobody to coexist with, and its storage has no WAL to give.
         if !cfg!(all(target_family = "wasm", target_os = "unknown")) {
             let mode: String =
@@ -95,14 +95,14 @@ impl Db {
                  data   BLOB NOT NULL
              );
 
-             -- Things about this device that must never leave it (§3.12): its secret key,
+             -- Things about this device that must never leave it: its secret key,
              -- above all. Sync and backups carry Automerge documents, never this table.
              CREATE TABLE IF NOT EXISTS local_state (
                  key   TEXT PRIMARY KEY,
                  value BLOB NOT NULL
              );
 
-             -- How syncing with each peer last went, for `lum sync status` (§9). Local:
+             -- How syncing with each peer last went, for `lum sync status`. Local:
              -- another device's view of the network is not this one's.
              CREATE TABLE IF NOT EXISTS peers (
                  node_id      TEXT PRIMARY KEY,
@@ -111,7 +111,7 @@ impl Db {
                  last_error   TEXT
              );
 
-             -- This device's undo history (§9). Local-only (§3.12): sync and backups carry
+             -- This device's undo history. Local-only: sync and backups carry
              -- Automerge documents, never this table. `undone` marks the redo side.
              CREATE TABLE IF NOT EXISTS undo (
                  seq         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -164,7 +164,7 @@ impl Db {
     ///
     /// SQLite has no cross-process notification — `sqlite3_update_hook` and the WAL hook
     /// fire only for your own connection — so this is the cheap check that stands in for
-    /// one (§8). Watching the `-wal` file tells a process *when* to look; this tells it
+    /// one. Watching the `-wal` file tells a process *when* to look; this tells it
     /// whether anything actually happened, and it is nearly free to read, so polling it on
     /// a one-second timer is a perfectly good fallback where file watching is unreliable.
     ///
@@ -235,10 +235,10 @@ impl Db {
 
     /// Changes for a document written after `cursor`, oldest first, with the new cursor.
     ///
-    /// This is the read half of §8's cross-process notification: another process appended,
+    /// This is the read half of the cross-process notification: another process appended,
     /// `data_version` moved, and these are the changes to `load_incremental`. It is the
     /// same path whether the change originated locally, in another local process, or from a
-    /// peer over Iroh — which is a good sign the design is right.
+    /// peer over Iroh.
     ///
     /// # Errors
     ///
@@ -520,7 +520,7 @@ impl Db {
     ///
     /// The race this closes is two processes on a fresh profile each minting a device key:
     /// whichever writes first wins, and the other reads the winner's back, so both are the
-    /// same device (§8: identity is per store, not per process).
+    /// same device: identity is per store, not per process.
     ///
     /// # Errors
     ///

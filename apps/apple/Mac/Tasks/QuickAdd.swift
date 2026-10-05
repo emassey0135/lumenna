@@ -1,6 +1,6 @@
 import AppKit
 
-/// Adding a task the way it would be said (§6.1): one line, read back as it is typed.
+/// Adding a task the way it would be said: one line, read back as it is typed.
 ///
 /// The readback under the field is what a sighted user gets from inline highlighting: what
 /// will be saved, with the date resolved. It is not spoken as it changes — speech on every
@@ -74,7 +74,7 @@ final class QuickAddViewController: NSViewController {
             return
         }
         // Everything worth saying before confirming, errors included: there is no squiggle
-        // under the text, so this is the only channel (§6.3).
+        // under the text, so this is the only channel.
         readback.stringValue = ([preview.announcement] + preview.diagnostics.map(\.message)).joined(separator: ". ")
     }
 
@@ -107,7 +107,7 @@ enum QuickAddSheet {
     }
 }
 
-/// Quick add from anywhere (§16.2): a floating panel the global shortcut opens over whatever
+/// Quick add from anywhere: a floating panel the global shortcut opens over whatever
 /// is in front, which takes one line and goes away.
 final class QuickAddPanel {
     private let core: Core

@@ -1,19 +1,19 @@
 //! A profile: the SQLite file and the documents currently loaded from it.
 //!
-//! This is §8's startup and write paths, and the two are shorter than the reasoning behind
+//! This is the startup and write paths, and the two are shorter than the reasoning behind
 //! them:
 //!
 //! **Startup** opens SQLite in WAL mode, loads `core` and `devices` from their snapshot plus
 //! any changes after it, and records the highest change rowid as this process's watch
 //! cursor. Year documents are *not* loaded — they arrive when a year is viewed, which is
-//! what keeps the watch viable (§16.9).
+//! what keeps a watch viable, where memory is tight.
 //!
 //! **Writes** mutate the in-memory document and append the resulting change bytes in one
 //! SQLite transaction, so what is on disk can never disagree with what is in memory about
 //! whether an edit happened.
 //!
-//! Nothing here is privileged. A `lum sync-daemon` is simply whichever participant happens
-//! to be headless, running this same code path as the tray app (§8), and several processes
+//! Nothing here is privileged. The daemon is simply whichever participant happens to be
+//! headless, running this same code path as the tray app, and several processes
 //! may hold the same file open at once — which is what [`Store::refresh`] is for.
 
 use std::collections::BTreeMap;
@@ -139,11 +139,11 @@ impl Store {
     /// Loads what showing a day in `year` needs: that year's blocks, and every earlier year
     /// holding a series that recurs into it.
     ///
-    /// A series lives in the document for the year it **starts** (§3.1), so a daily routine
+    /// A series lives in the document for the year it **starts**, so a daily routine
     /// begun in 2026 is in `blocks-2026` and nowhere else on 1 January 2027. Loading only
     /// 2027 would make it vanish at New Year. [`Documents::recurring_years`] says which
     /// earlier years hold recurring series, so those load too and years holding only one-off
-    /// blocks stay on disk — which keeps the laziness a watch depends on (§16.9).
+    /// blocks stay on disk — which keeps the laziness a watch depends on.
     ///
     /// # Errors
     ///
@@ -162,7 +162,7 @@ impl Store {
 
     /// Loads every year this file holds.
     ///
-    /// Lazy loading is what keeps a watch viable (§8), and most commands want exactly one
+    /// Lazy loading is what keeps a watch viable, and most commands want exactly one
     /// year. But anything that has to *find* a block or an assignment by identifier cannot
     /// know which year to open without opening them — so those pay the cost deliberately,
     /// rather than silently failing to find a record that is right there on disk.
@@ -238,7 +238,7 @@ impl Store {
     /// cost at a moment it chooses.
     ///
     /// It discards no operations — an Automerge snapshot carries full history, which is why
-    /// §9 can use the same bytes as a backup.
+    /// a backup uses the same bytes.
     ///
     /// # Errors
     ///
@@ -280,7 +280,7 @@ impl Store {
     /// outside — a `-wal` file event, or a one-second timer where file watching is
     /// unreliable. What makes either cheap is that
     /// [`data_version`](Db::data_version) settles in one pragma read whether there is
-    /// anything to do (§8).
+    /// anything to do.
     ///
     /// # Errors
     ///
@@ -364,7 +364,7 @@ impl Store {
 
     /// Takes a backup if the newest under `policy` is older than its interval.
     ///
-    /// What every client calls opportunistically (§9) — at launch, or on a one-shot command —
+    /// What every client calls opportunistically — at launch, or on a one-shot command —
     /// since a schedule only exists where something stays running.
     ///
     /// # Errors
@@ -537,10 +537,10 @@ impl Store {
         Ok(report)
     }
 
-    /// This device's secret key, minted the first time anything asks (§7, §8).
+    /// This device's secret key, minted the first time anything asks.
     ///
     /// It lives in the store, so every process using the store *is* the same device. It is
-    /// local state (§3.12) and never syncs, never appears in a backup, and is never typed.
+    /// local state and never syncs, never appears in a backup, and is never typed.
     /// `fresh` supplies a new key if there is none yet; store does not generate keys itself
     /// because which kind of key is the transport's business.
     ///
@@ -593,7 +593,7 @@ impl Store {
     }
 
     /// Takes in a peer's sync message for one document and persists what it brought, so
-    /// every other process on the device sees it through the ordinary change path (§8).
+    /// every other process on the device sees it through the ordinary change path.
     ///
     /// Returns whether the document changed.
     ///

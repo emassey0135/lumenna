@@ -41,7 +41,7 @@ object TextOffsets {
 
 /**
  * A line in the quick-add or filter language, with what could go at the cursor offered as
- * buttons beneath it (§6.4) — one TalkBack swipe past the field, and named as the core names
+ * buttons beneath it — one TalkBack swipe past the field, and named as the core names
  * them: "project Work", not "#Work", since the sigil is punctuation speech may skip.
  */
 @OptIn(ExperimentalLayoutApi::class)

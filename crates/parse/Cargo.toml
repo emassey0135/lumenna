@@ -11,7 +11,7 @@ description = "Quick-add and filter-query parsers, and the completion they share
 jiff.workspace = true
 lumenna-core.workspace = true
 
-# In the browser (§16.12), the clock comes from JavaScript.
+# In the browser, the clock comes from JavaScript.
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 jiff = { workspace = true, features = ["js"] }
 

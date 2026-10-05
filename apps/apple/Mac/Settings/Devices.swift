@@ -1,6 +1,6 @@
 import AppKit
 
-/// Paired devices and how syncing is going, in words rather than an icon (§9, §16.1).
+/// Paired devices and how syncing is going, in words rather than an icon.
 final class DevicesViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
     private let core: Core
     private var devices: [DeviceView] = []

@@ -102,7 +102,7 @@ final class LumennaUITests: XCTestCase {
         add("draft")
         row("draft").tap()
         // Found by its label, which a SwiftUI text field loses once it has text unless it
-        // is given one — this test is what caught that.
+        // is given one.
         let title = app.textFields["Title"]
         if !title.waitForExistence(timeout: 5) {
             XCTFail("no Title field in:\n\(app.debugDescription)")
@@ -178,7 +178,7 @@ final class LumennaUITests: XCTestCase {
         let summary = app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH '1 block'"))
         XCTAssertTrue(summary.firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(cell(containing: "Deep work").exists)
-        XCTAssertTrue(cell(containing: "Free,").exists, "free time is a row (§13)")
+        XCTAssertTrue(cell(containing: "Free,").exists, "free time is a row")
         try audit()
     }
 

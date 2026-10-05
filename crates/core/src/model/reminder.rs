@@ -1,4 +1,4 @@
-//! Reminders and their acknowledgements (§3.8, §3.9).
+//! Reminders and their acknowledgements.
 
 use std::collections::BTreeSet;
 
@@ -26,7 +26,7 @@ pub enum ReminderAnchor {
     ///
     /// Requires the task's `due.time` to be set. For a date-only due date, resolve against
     /// [`Settings::all_day_reminder_hour`](super::Settings::all_day_reminder_hour) —
-    /// otherwise "30 minutes before" has no referent (§3.8).
+    /// otherwise "30 minutes before" has no referent.
     Due,
     /// The start of a block occurrence.
     BlockStart,
@@ -39,8 +39,8 @@ pub enum ReminderAnchor {
 impl ReminderAnchor {
     /// Whether this anchor means anything for the given target.
     ///
-    /// A block has a start and an end; a task has neither. §3.8 says to validate this at
-    /// construction, and [`Reminder::new`] does.
+    /// A block has a start and an end; a task has neither. [`Reminder::new`] checks this at
+    /// construction.
     #[must_use]
     pub const fn applies_to(&self, target: &ReminderTarget) -> bool {
         match target {
@@ -89,7 +89,7 @@ impl Trigger {
     }
 }
 
-/// Which devices a reminder fires on (§3.8).
+/// Which devices a reminder fires on.
 ///
 /// The default is [`Delivery::AllDevices`], and that is what makes the architecture simple
 /// rather than merely the behaviour desirable: because every device holds the same synced
@@ -122,7 +122,7 @@ impl Delivery {
     }
 }
 
-/// A reminder (§3.8).
+/// A reminder.
 ///
 /// One shape covers every case. A task takes any number anchored to its due datetime; a
 /// block takes any number anchored to either end of each occurrence.
@@ -166,7 +166,7 @@ impl Reminder {
     }
 }
 
-/// A record that a reminder was dealt with, on some device (§3.9).
+/// A record that a reminder was dealt with, on some device.
 ///
 /// If a reminder fires on five devices and you dismiss it on one, the other four should stop
 /// nagging. This is what does that, and it propagates over the ordinary sync channel.

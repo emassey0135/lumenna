@@ -1,4 +1,4 @@
-//! How each line reads, assembled from the components the core sends (§13).
+//! How each line reads, assembled from the components the core sends.
 //!
 //! A tree item has one text, and a screen reader reads it as the item's name, so the
 //! components are joined here: the title first and verbatim — it is what a person scans for —
@@ -62,14 +62,14 @@ pub fn place(title: &str, detail: &str) -> String {
 }
 
 /// A block on the day: "9:00 AM to 11:00 AM, Deep work, 2 hours, work block, now, 3 tasks
-/// assigned" — the time and title, then the details the core words for every app (§13).
+/// assigned" — the time and title, then the details the core words for every app.
 pub fn block(block: &PlanBlock, clock: &dyn Clock) -> String {
     let mut parts = vec![format!("{} to {}", clock.time(&block.start), clock.time(&block.end)), block.title.clone()];
     parts.extend(block.details.iter().cloned());
     join(parts)
 }
 
-/// A sitting: a task in a block for one session (§3.7) — its title, then the details the
+/// A sitting: a task in a block for one session — its title, then the details the
 /// core words for every app, a capped timer among them, never presented as fact.
 pub fn sitting(sitting: &PlanAssignment) -> String {
     let mut parts = vec![sitting.title.clone()];
@@ -77,12 +77,12 @@ pub fn sitting(sitting: &PlanAssignment) -> String {
     join(parts)
 }
 
-/// Free time, which a timeline shows by empty space and a list has to say (§13).
+/// Free time, which a timeline shows by empty space and a list has to say.
 pub fn free(start: &str, end: &str, minutes: u32, clock: &dyn Clock) -> String {
     format!("Free, {}, {} to {}", duration(minutes), clock.time(start), clock.time(end))
 }
 
-/// Where the present falls: a position, not a highlight (§13).
+/// Where the present falls: a position, not a highlight.
 pub fn now(time: &str, clock: &dyn Clock) -> String {
     format!("Now, {}", clock.time(time))
 }
@@ -92,7 +92,7 @@ pub fn cancelled(block: &CancelledBlock, clock: &dyn Clock) -> String {
     format!("{}, {}, cancelled for this day", clock.time(&block.start), block.title)
 }
 
-/// The day's first row: what a glance at a timeline gives a sighted user (§13).
+/// The day's first row: what a glance at a timeline gives a sighted user.
 pub fn summary(date: &str, summary: &str, clock: &dyn Clock) -> String {
     let day = clock.day(date);
     if summary.is_empty() { day } else { format!("{day}. {summary}") }

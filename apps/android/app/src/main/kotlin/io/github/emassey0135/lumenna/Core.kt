@@ -110,7 +110,7 @@ class Core(directory: File) {
     private var multicast: WifiManager.MulticastLock? = null
 
     /**
-     * Starts keeping this device in sync (§8), for as long as the app is in front.
+     * Starts keeping this device in sync, for as long as the app is in front.
      *
      * Holds a multicast lock meanwhile, so local discovery hears the other devices: Android
      * drops multicast addressed to the phone unless some app holds one. It is not exclusive —
@@ -162,7 +162,7 @@ class Core(directory: File) {
     fun syncRound(): SyncReport =
         syncThread.submit(java.util.concurrent.Callable { sync?.syncNow() ?: lumenna.syncNow(Reach.INTERNET) }).get()
 
-    /** Takes a backup if one is due (§9), off the main thread. */
+    /** Takes a backup if one is due, off the main thread. */
     fun backUpIfDue() {
         syncThread.execute {
             try {
@@ -186,7 +186,7 @@ class Core(directory: File) {
     companion object {
         /**
          * Where the store lives: no-backup storage, the app's own and never copied to Google
-         * by Android's backup — the store reaches another device by pairing (§9).
+         * by Android's backup — the store reaches another device by pairing.
          */
         fun profileDirectory(context: Context): File = File(context.noBackupFilesDir, "lumenna")
 

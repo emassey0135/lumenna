@@ -1,6 +1,6 @@
 import UIKit
 
-/// The planner (§16.1, §13's worked example): a day as it is lived, as a list.
+/// The planner: a day as it is lived, as a list.
 ///
 /// Blocks in time order with their sittings beneath them, free time as rows of its own, and
 /// now as a position rather than a highlight. The summary above says what a glance at a
@@ -133,7 +133,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        // §13: opening the day lands on now, not at midnight. Once, so coming back from a
+        // Opening the day lands on now, not at midnight. Once, so coming back from a
         // detail does not move focus away from where the person was.
         if !landedOnNow {
             landedOnNow = true
@@ -198,7 +198,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         switch row {
         case let .block(block):
             label = "\(Clock.time(block.start)) to \(Clock.time(block.end)), \(block.title)"
-            // The core words the details for every app (§13).
+            // The core words the details for every app.
             value = block.details
             content.text = label
             content.secondaryText = value.joined(separator: ", ")
@@ -235,7 +235,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             content.image = UIImage(systemName: "xmark.circle")
             cell.accessories = [.disclosureIndicator(displayed: .always)]
         }
-        // Depth is said where it changes, never left to indentation (§16.11).
+        // Depth is said where it changes: indentation alone says nothing in speech.
         let previous = index > 0 && index - 1 < rows.count ? depth(rows[index - 1]) : 0
         if depth(row) != previous {
             value.append("level \(depth(row) + 1)")
@@ -274,7 +274,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             actions.append(("Delete Block", true, { [weak self] in self?.delete(block) }))
             return actions
         case let .sitting(sitting, _):
-            // Start, pause and stop (§3.7): a paused sitting is still in progress, and stopping
+            // Start, pause and stop: a paused sitting is still in progress, and stopping
             // either a running or a paused one ends it.
             var timer: [(String, Bool, () -> Void)] = []
             let start = { [weak self] in
@@ -309,7 +309,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     }
 
     /// Runs a change, then reloads with focus on the same row if it is still there, or on
-    /// whatever now holds its place (§13), and says what happened.
+    /// whatever now holds its place, and says what happened.
     private func change(focusing row: Row?, _ operation: () throws -> Change) {
         let index = row.flatMap { rows.firstIndex(of: $0) }
         do {
@@ -410,7 +410,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         }
     }
 
-    /// Asks "this day, or every day?" of a repeating block — never guessed (§4.3).
+    /// Asks "this day, or every day?" of a repeating block — never guessed.
     private func edit(_ block: PlanBlock) {
         guard block.repeats, let date = plan?.date else {
             presentForm(series: block)
@@ -484,7 +484,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         }
     }
 
-    /// §13's "go to now": today, on the now row or the block happening now.
+    /// "Go to now": today, on the now row or the block happening now.
     private func goToNow(announcing: Bool = true) {
         day = nil
         reload { [weak self] in

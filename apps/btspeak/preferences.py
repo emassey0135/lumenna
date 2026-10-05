@@ -1,4 +1,4 @@
-"""Settings, devices and sync, and getting data in and out (§3.12, §7, §9).
+"""Settings, devices and sync, and getting data in and out.
 
 Laid out as the phone lays it out: planning settings that sync, this device's backups, the
 devices it syncs with, and export and import. Each setting is offered the way its value is
@@ -121,13 +121,14 @@ def change_setting(session: Session, key: str, value: str) -> str:
 
 
 # ---------------------------------------------------------------------------------------
-# Devices, sync and pairing (§7)
+# Devices, sync and pairing
 # ---------------------------------------------------------------------------------------
 
 
 def device_line(device: dict) -> str:
     """One device as a sentence: what it is, and how syncing with it last went — the status
-    the core words for every app. Words rather than a symbol (§9)."""
+    the core words for every app. Words rather than a symbol, which
+    a screen reader may not say."""
     return ", ".join([device["name"], device["platform"], *device.get("status", [])])
 
 
@@ -139,7 +140,7 @@ def devices(session: Session) -> str:
         status = session.call("sync.status")
         state["heading"] = spoken(status)
         if status.get("devices") and not status.get("running"):
-            # The daemon is what syncs in the background here (§16.11), and setting it up
+            # The daemon is what syncs in the background here, and setting it up
             # asks for an administrator, which nothing in a menu can do.
             state["heading"] += (
                 ". To keep in sync in the background, run lum daemon install once from a shell"
@@ -171,7 +172,7 @@ def devices(session: Session) -> str:
 
 def sync_now(session: Session) -> str:
     """One round with every paired device — through the daemon when it runs, as it should
-    on this device (§16.11)."""
+    on this device."""
     try:
         # A device that cannot be reached takes a while to give up on, longer than the
         # client's usual wait.
@@ -208,7 +209,7 @@ def unpair_device(session: Session, device: dict) -> str:
 
 
 def pair(session: Session) -> str:
-    """Pairs with another of the person's devices, comparing three words on both (§7).
+    """Pairs with another of the person's devices, comparing three words on both.
 
     The pairing runs in the server and talks through notifications: the code to give the
     other device while this one waits, then the words. This shows each as it arrives and
@@ -300,7 +301,7 @@ def pair(session: Session) -> str:
 
 
 # ---------------------------------------------------------------------------------------
-# Backups, export and import (§9)
+# Backups, export and import
 # ---------------------------------------------------------------------------------------
 
 

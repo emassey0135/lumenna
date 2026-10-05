@@ -2,10 +2,10 @@
 //!
 //! One `VEVENT` per live series. A repeating block carries its `RRULE` as stored, a cancelled
 //! occurrence becomes an `EXDATE`, and a changed one becomes its own `VEVENT` with a
-//! `RECURRENCE-ID` — the same sparse-exception shape §3.6 uses, which is no accident: it is
+//! `RECURRENCE-ID` — the same sparse-exception shape the model uses, which is no accident: it is
 //! the calendar world's shape.
 //!
-//! Times **float** unless the block is anchored to a zone (§3.6). A floating `DTSTART` — no
+//! Times **float** unless the block is anchored to a zone. A floating `DTSTART` — no
 //! `Z`, no `TZID` — is iCalendar's own way of saying "9am wherever you are", so the meaning
 //! survives the trip. An anchored block names its IANA zone in `TZID`; no `VTIMEZONE` is
 //! written, which RFC 5545 asks for but every calendar people use resolves IANA names
@@ -127,7 +127,7 @@ fn bounded(rrule: &str, end: Option<Date>) -> String {
     }
 }
 
-/// RFC 5545 §3.3.11 text escaping.
+/// RFC 5545 section 3.3.11 text escaping.
 fn escape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {
@@ -143,7 +143,7 @@ fn escape(text: &str) -> String {
     out
 }
 
-/// RFC 5545 §3.1: lines end in CRLF and are folded at 75 octets, never inside a character.
+/// RFC 5545 section 3.1: lines end in CRLF and are folded at 75 octets, never inside a character.
 fn fold(line: &str) -> String {
     let mut out = String::with_capacity(line.len() + 8);
     let mut width = 0;

@@ -1,4 +1,4 @@
-//! How each record of §3 is laid out in an Automerge document.
+//! How each record is laid out in an Automerge document.
 //!
 //! One [`Record`] implementation per type, and each reads as the list of its fields. The
 //! mechanics — tolerant reads, difference-only writes, sets as maps, text as text — live in
@@ -7,7 +7,7 @@
 //! # Conventions
 //!
 //! - Every collection is a **map keyed by identifier**, never a list. Records have no
-//!   inherent order (§3.13 puts ordering in a fractional index instead), and a list would
+//!   inherent order (ordering is a fractional index instead), and a list would
 //!   make concurrent creation a merge problem for nothing.
 //! - Enums are stored as **lowercase strings**, not ordinals. An ordinal is one reordered
 //!   variant away from silently reinterpreting every stored record, and there is no version
@@ -36,7 +36,7 @@ use crate::value::{Reader, Writer, date_key};
 
 /// A type that lives in a keyed collection at the root of a document.
 pub(crate) trait Record: Sized {
-    /// Which of §3.1's documents this record lives in.
+    /// Which document this record lives in.
     const DOMAIN: Domain;
 
     /// The root key holding this kind of record.
@@ -63,7 +63,7 @@ pub(crate) trait Record: Sized {
 
     /// Reads a record, or `None` if it is missing something it cannot do without.
     ///
-    /// Returning `None` skips this one record and reports it (§3.1); it never fails the
+    /// Returning `None` skips this one record and reports it; it never fails the
     /// load. What counts as indispensable is deliberately narrow — a field the record
     /// cannot be displayed or placed without, such as a task's project or its position.
     /// Everything else falls back to a default, because a task that shows up with the wrong
@@ -286,8 +286,8 @@ impl Record for Task {
             title: r.string("title").unwrap_or_default(),
             notes: r.text("notes"),
             parent_id: r.parsed("parent_id"),
-            // A task with no project cannot be shown anywhere: Inbox is a real project
-            // (§3.4), so this is never legitimately absent.
+            // A task with no project cannot be shown anywhere: Inbox is a real project,
+            // so this is never legitimately absent.
             project_id: r.parsed("project_id")?,
             priority: Priority::from_u8(r.u32("priority").unwrap_or(4).try_into().unwrap_or(4)),
             labels: r.id_set("labels"),
@@ -491,7 +491,7 @@ impl Record for SavedFilter {
         Some(Self {
             id,
             name: r.string("name").unwrap_or_default(),
-            // Stored as text, never as a resolved date range (§6.2): a filter saved as
+            // Stored as text, never as a resolved date range: a filter saved as
             // "due before next Friday" must still mean that next month.
             query: r.string("query")?,
             order: r.parsed("order")?,
@@ -539,7 +539,7 @@ impl Record for BlockSeries {
             kind,
             flags: r.map("flags").map_or_else(|| kind.default_flags(), |f| read_flags(&f, kind)),
             start_time: r.parsed("start_time")?,
-            // Duration, not end time (§3.6). Zero is not a block.
+            // Duration, not end time. Zero is not a block.
             duration_mins: r.u32("duration_mins").filter(|d| *d > 0)?,
             min_duration_mins: r.u32("min_duration_mins"),
             start_date: r.parsed("start_date")?,
@@ -768,7 +768,7 @@ impl Record for Reminder {
             _ => return None,
         };
         let trigger = r.map("trigger").and_then(|t| read_trigger(&t))?;
-        // An anchor that cannot apply to its target (§3.8) means a writer that was wrong,
+        // An anchor that cannot apply to its target means a writer that was wrong,
         // and there is no sound way to guess which half it meant.
         if !trigger.anchor.applies_to(&target) {
             return None;

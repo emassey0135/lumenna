@@ -1,4 +1,4 @@
-//! Length-prefixed messages over a byte stream (§7).
+//! Length-prefixed messages over a byte stream.
 //!
 //! A four-byte big-endian length and then that many bytes. A zero length is a message too:
 //! the sync session uses it for "nothing to send this round", which an Automerge sync message

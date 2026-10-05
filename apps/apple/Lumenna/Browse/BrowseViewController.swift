@@ -1,7 +1,7 @@
 import UIKit
 
 /// Everything that is not the day or the task list: projects, labels, saved filters, every
-/// block series, and the trash (§16.1).
+/// block series, and the trash.
 final class BrowseViewController: ItemListViewController {
     init(core: Core) {
         super.init(core: core, title: "Browse")
@@ -39,7 +39,7 @@ final class BrowseViewController: ItemListViewController {
     }
 }
 
-/// The project tree, with weights (§3.4).
+/// The project tree, with weights.
 final class ProjectsViewController: ItemListViewController {
     /// Which projects are archived, by name, so the action can say which way it goes.
     private var archived: Set<String> = []
@@ -51,7 +51,7 @@ final class ProjectsViewController: ItemListViewController {
     override func load() throws -> (items: [Item], count: String) {
         let rows = try core.lumenna.listProjects()
         archived = Set(rows.rows.filter { $0.state.contains("archived") }.map(\.title))
-        // Depth is said where it changes, never as indentation alone (§16.11).
+        // Depth is said where it changes: indentation alone says nothing in speech.
         var previous: UInt32?
         let items = rows.rows.map { row -> Item in
             defer { previous = row.depth }
@@ -168,7 +168,7 @@ final class ProjectsViewController: ItemListViewController {
     }
 }
 
-/// Labels: a first-class axis, with their own list (§16.1).
+/// Labels: a first-class axis, with their own list.
 final class LabelsViewController: ItemListViewController {
     init(core: Core) {
         super.init(core: core, title: "Labels")
@@ -245,7 +245,7 @@ final class LabelsViewController: ItemListViewController {
     }
 }
 
-/// Saved filters: run, and also created, renamed, re-queried, reordered and deleted (§16.1).
+/// Saved filters: run, and also created, renamed, re-queried, reordered and deleted.
 final class FiltersViewController: ItemListViewController {
     private var queries: [String: String] = [:]
 
@@ -309,7 +309,7 @@ final class FiltersViewController: ItemListViewController {
 
 
 /// Every block series, by when it starts: for the ones not on any day near enough to find
-/// from the planner (§3.6).
+/// from the planner.
 final class BlocksViewController: ItemListViewController {
     init(core: Core) {
         super.init(core: core, title: "Blocks")

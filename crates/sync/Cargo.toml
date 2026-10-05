@@ -22,12 +22,12 @@ thiserror.workspace = true
 # tokio's own natively and the browser's event loop there.
 tokio = { version = "1", features = ["macros", "sync", "io-util"] }
 
-# Local discovery by standard DNS-SD (§7). Apple platforms use the system's own responder
+# Local discovery by standard DNS-SD. Apple platforms use the system's own responder
 # through dns_sd, which on iOS needs no multicast entitlement; everything else uses this.
 [target.'cfg(target_vendor = "apple")'.dependencies]
 libc = "0.2"
 
-# Not in a browser, which has no local network to browse (§16.12): pairing there is by code.
+# Not in a browser, which has no local network to browse: pairing there is by code.
 [target.'cfg(not(any(target_vendor = "apple", all(target_family = "wasm", target_os = "unknown"))))'.dependencies]
 mdns-sd = "0.21"
 

@@ -1,5 +1,4 @@
-//! Time blocks, their exceptions, and the assignments that join them to tasks
-//! (§3.6, §3.7).
+//! Time blocks, their exceptions, and the assignments that join them to tasks.
 
 use jiff::civil;
 use jiff::{SignedDuration, Timestamp};
@@ -29,7 +28,7 @@ pub struct BlockSeries {
     /// Wall-clock start.
     pub start_time: civil::Time,
     /// **Duration, not end time.** It cannot be negative, cannot be inverted, and survives
-    /// DST transitions cleanly (§3.6).
+    /// DST transitions cleanly.
     pub duration_mins: u32,
     /// How far re-flow may compress this block. See [`BlockKind::default_min_duration`] for
     /// what this defends against and why the default depends on the kind.
@@ -41,14 +40,14 @@ pub struct BlockSeries {
     /// An RFC 5545 `RRULE`. Absent for a one-off block.
     pub rrule: Option<String>,
     /// Normally absent: a 9am block is 9am after you fly to another continent. Set it only
-    /// for genuinely anchored blocks (§3.6).
+    /// for genuinely anchored blocks.
     pub timezone: Option<TzName>,
     /// Presentation only.
     pub color: Option<String>,
     /// Presentation only.
     pub icon: Option<String>,
     /// A filter expression scoping which tasks the core will suggest here — "this is my
-    /// `#work` block, don't offer me personal errands" (§10).
+    /// `#work` block, don't offer me personal errands".
     ///
     /// This is what makes auto-suggestion useful rather than noisy, and it is why the
     /// filter query language is load-bearing rather than a nice-to-have.
@@ -135,7 +134,7 @@ impl BlockSeries {
 ///
 /// Kind exists only where the *core* behaves differently; everything else is presentation.
 /// There is deliberately no `Custom(String)` variant — a free-text kind the core cannot
-/// reason about is a title with extra steps (§3.6).
+/// reason about is a title with extra steps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BlockKind {
@@ -170,7 +169,7 @@ impl BlockKind {
     /// How short re-flow may make a block of this kind.
     ///
     /// This is what stops re-flow destroying a block in order to save the schedule. When
-    /// the day slips, §10.1 may shrink later blocks to absorb the overrun — but whether
+    /// the day slips, re-flow may shrink later blocks to absorb the overrun — but whether
     /// shrinking is acceptable depends entirely on what the block is *for*. A work block
     /// cut from 90 minutes to 60 still does work. A fifteen-minute break cut to four is not
     /// a break; it has been deleted while appearing to survive, which is worse than being
@@ -194,7 +193,7 @@ impl BlockKind {
 }
 
 /// The behaviourally meaningful axes of a block. Orthogonal, hence flags rather than more
-/// kinds (§3.6).
+/// kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BlockFlags {
@@ -205,12 +204,12 @@ pub struct BlockFlags {
     /// Fixed in time; cannot be shifted when the day slips.
     ///
     /// Operationally the most important of the three: it is what lets the core do anything
-    /// sensible when the day runs late (§10.1), by determining which blocks can absorb a
+    /// sensible when the day runs late, by determining which blocks can absorb a
     /// slip.
     pub anchored: bool,
 }
 
-/// A single occurrence that differs from its series (§3.6).
+/// A single occurrence that differs from its series.
 ///
 /// **Sparse.** Unmodified occurrences are never stored; they are expanded from the rule at
 /// read time. Only edits and cancellations become records. Without this a daily routine
@@ -238,7 +237,7 @@ pub struct BlockException {
 pub enum ExceptionAction {
     /// The occurrence does not happen.
     ///
-    /// Its reminders must be suppressed too (§3.8) — easy to miss, and very annoying when
+    /// Its reminders must be suppressed too — easy to miss, and very annoying when
     /// missed.
     Cancelled,
     /// The occurrence happens differently. Every field is an override; `None` keeps the
@@ -276,7 +275,7 @@ impl ExceptionAction {
 /// An enum because a recurring block's occurrence has **no stable identifier** until it is
 /// excepted. Assigning a task to next Tuesday's instance of a daily focus block means
 /// referencing the series and that date. This is the main reason the exception model must
-/// exist rather than being an optimization (§3.7).
+/// exist rather than being an optimization.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BlockRef {
@@ -305,7 +304,7 @@ impl BlockRef {
     }
 }
 
-/// A task placed into a block: the join between the two halves of the app (§3.7).
+/// A task placed into a block: the join between the two halves of the app.
 ///
 /// # Why occurrences have no lifecycle state
 ///
@@ -338,8 +337,7 @@ pub struct BlockAssignment {
     pub id: AssignmentId,
     /// Which block, and which occurrence of it.
     pub block_ref: BlockRef,
-    /// Which task. May reference a task this device's `core` document has not seen yet
-    /// (§3.1).
+    /// Which task. May reference a task this device's `core` document has not seen yet.
     pub task_id: TaskId,
     /// How long this sitting is meant to take.
     pub planned_mins: Option<u32>,
@@ -444,7 +442,7 @@ impl BlockAssignment {
 
 /// The result of [`BlockAssignment::elapsed`].
 ///
-/// **Accessibility constraint (§3.7):** this must never be put in a live region or an
+/// **Accessibility constraint:** this must never be put in a live region or an
 /// announcement channel. A continuously updating value makes a screen reader announce
 /// constantly and renders the screen unusable. Expose it as *polled on demand* — a
 /// keystroke or button that reports "43 minutes elapsed, 17 remaining against your
@@ -458,7 +456,7 @@ pub struct Elapsed {
     pub capped: bool,
 }
 
-/// How one sitting went (§3.7).
+/// How one sitting went.
 ///
 /// Completion lives on the [`Task`](super::Task); this is the assignment's own state. A task
 /// worked on Monday but not finished gets `Worked` on Monday's assignment and a *fresh*

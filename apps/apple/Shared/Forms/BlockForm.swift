@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The block editor (§16.1): a new block, or a change to one — every occurrence, or one day,
+/// The block editor: a new block, or a change to one — every occurrence, or one day,
 /// as the person already chose. The model and the form both Apple apps share; each shows it
 /// its own way, iOS as a navigation sheet and macOS as a window sheet.
 final class BlockFormModel: ObservableObject {
@@ -28,7 +28,7 @@ final class BlockFormModel: ObservableObject {
     /// a UIKit or AppKit sheet reliably.
     var close: () -> Void = {}
 
-    /// Every field but the start and length, as the core shapes them (§16.1: block editor).
+    /// Every field but the start and length, as the core shapes them.
     @Published var fields: BlockFields
     @Published var start: Date
     @Published var minutes: Int

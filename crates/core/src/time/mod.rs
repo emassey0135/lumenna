@@ -1,8 +1,8 @@
 //! Clock conventions the whole model obeys.
 //!
-//! §4 settles the big question — `jiff` rather than `chrono`, because the distinction
-//! between civil (wall-clock) and absolute time is load-bearing throughout this app and
-//! `jiff` models it properly. What is here is smaller and easier to get wrong.
+//! The big decision is `jiff` rather than `chrono`, because the distinction between civil
+//! (wall-clock) and absolute time is load-bearing throughout this app and `jiff` models it
+//! properly. What is here is smaller and easier to get wrong.
 //!
 //! # Timestamps are milliseconds
 //!
@@ -20,17 +20,17 @@
 //! So the truncation happens here, at the point the value is created, and a record in memory
 //! is byte-for-byte what a record read back will be.
 //!
+//! Sub-millisecond precision would buy nothing regardless. Two events a microsecond apart on
+//! one device are not ordered by their timestamps — merge order decides, and sibling-order
+//! tie-breaks go through UUIDv7 identifiers rather than clocks.
+//!
 //! # Naming a time you have not resolved yet
 //!
 //! [`DateSpec`] and friends are the other half of this module: *"next friday"*, *"in three
 //! days"*, *"every other monday"* as values, resolved against a [`jiff::Zoned`] only when
-//! someone asks. Both parsers of §6 produce them, and §6.2 requires it — a saved filter
+//! someone asks. Quick add and the filter parser both produce them, and must — a saved filter
 //! containing `today` must mean today *at evaluation time*, and one that resolved to a date
 //! range when it was saved silently rots overnight.
-//!
-//! # Sub-millisecond precision would buy nothing regardless. Two events a microsecond apart on
-//! one device are not ordered by their timestamps in this design — merge order decides, and
-//! §3.13's tie-breaks go through UUIDv7 identifiers rather than clocks.
 
 mod spec;
 

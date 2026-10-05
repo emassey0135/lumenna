@@ -63,8 +63,8 @@ fn an_edit_applied_through_the_store_takes_effect() {
 
 #[test]
 fn every_operation_undoes_cleanly_through_automerge() {
-    // The strongest form of §9's claim: an inverse must reproduce every field exactly, or
-    // the document does not come back to where it started.
+    // Undo applies an edit's inverse, which must reproduce every field exactly, or the
+    // document does not come back to where it started.
     let (mut docs, inbox, work, laptop, lapto) = seeded();
 
     let mut parent = Task::new(work.id, "Ship release", OrderKey::middle());
@@ -188,7 +188,7 @@ fn two_devices_completing_different_tasks_both_win() {
 
 #[test]
 fn an_undo_on_one_device_reaches_the_other() {
-    // Undo is local and per-session (§3.12), but the *change* it produces is an ordinary
+    // Undo history is local to the device, but the *change* it produces is an ordinary
     // edit and syncs like any other.
     let (mut alice, _, work, _, _) = seeded();
     let task = Task::new(work.id, "Review PR", OrderKey::middle());

@@ -129,7 +129,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
 
-  # The Mac app (§16.5): AppKit, with SwiftUI for leaf forms. Not sandboxed, so it shares
+  # The Mac app: AppKit, with SwiftUI for leaf forms. Not sandboxed, so it shares
   # `lum`'s profile in ~/Library/Application Support/lumenna — the app and the command line
   # on one Mac are one device.
   LumennaMac:
@@ -163,7 +163,7 @@ targets:
       - sdk: Security.framework
       - sdk: SystemConfiguration.framework
       - sdk: Network.framework
-      # RegisterEventHotKey: global shortcuts that need no accessibility permission (§16.2).
+      # RegisterEventHotKey: global shortcuts that need no accessibility permission.
       - sdk: Carbon.framework
     info:
       path: Mac/Info.plist

@@ -5,8 +5,8 @@
 
 ;;; Commentary:
 
-;; The settings core keeps (§3.10), paired devices and syncing (§7), pairing
-;; by comparing three words, and backups, export and import (§9).
+;; The settings core keeps, paired devices and syncing, pairing by comparing
+;; three words, and backups, export and import.
 
 ;;; Code:
 
@@ -30,7 +30,7 @@
 (define-derived-mode lumenna-settings-mode lumenna-list-mode "Lumenna Settings"
   "Settings, one per line.  RET changes one.
 The first six sync to every device; the backup settings are this device's
-alone (§3.12).
+alone.
 
 \\{lumenna-settings-mode-map}"
   (setq-local lumenna--activate #'lumenna--change-setting))
@@ -73,7 +73,7 @@ Times are typed as said, 9am or 14:30; core reads and checks every value."
   (setq-local lumenna--activate (lambda (_row) (lumenna-device-rename))))
 
 (defun lumenna--device-value (device)
-  "How syncing with DEVICE last went, in words (§9: never a glyph).
+  "How syncing with DEVICE last went, in words, never a glyph.
 Its platform, then the status the core words for every app."
   (string-join (cons (plist-get device :platform) (append (plist-get device :status) nil)) ", "))
 
@@ -126,7 +126,7 @@ Its platform, then the status the core words for every app."
    :error-fn (lambda (err) (message "%s" (plist-get err :message)))
    :timeout 300))
 
-;;;; Pairing (§7)
+;;;; Pairing
 
 (defvar lumenna--pairing nil "Whether a pairing is under way here.")
 
@@ -174,7 +174,7 @@ The code to give the other device, or the words to compare."
       (lumenna-call "pair.confirm" :match (if matched t :json-false))
       (message (if matched "Finishing" "Refusing"))))))
 
-;;;; Backups, export and import (§9)
+;;;; Backups, export and import
 
 (defun lumenna-back-up-now ()
   "Back up the whole store now, history included."

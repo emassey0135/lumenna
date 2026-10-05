@@ -1,9 +1,8 @@
 """The app: the main menu, and the check that the server is one this app understands.
 
-Everything reachable here goes through `lum rpc`'s typed surface (§12). Nothing parses prose,
+Everything reachable here goes through `lum rpc`'s typed surface. Nothing parses prose,
 nothing computes a due date, nothing decides what completing a task does to its subtasks —
-that is all core's, and a UI that reimplemented any of it would be the business-logic leak
-principle 2 forbids.
+that is all core's, so that every client behaves alike and none can drift.
 
 The menus themselves live beside this file: `tasks.py`, `day.py` for the planner and blocks,
 `organise.py` for projects, labels and filters, and `preferences.py` for settings, devices
@@ -20,7 +19,7 @@ The device's conventions, followed rather than invented:
 - **The delete keys delete.** Control-D and the D chord act on the row under the cursor.
 - **H-Chord is help about the screen in front**: the app's own topics, in `help/`.
 - **Left and right fold a branch.** They are already bound to left-arrow/Dot7 and
-  right-arrow/Dot8, so a tree needs no key handling of its own (§16.11).
+  right-arrow/Dot8, so a tree needs no key handling of its own.
 - **Nothing is announced twice.** A menu action's return value is spoken by the menu itself,
   so an action that has something to say returns it rather than opening a dialog.
 """
@@ -37,9 +36,9 @@ import preferences
 import tasks
 
 
-#: The JSON shapes this app was written against (§15). The server reports its own; if they
-#: disagree, one of the two is guessing, and §15 says a client that does not know the number
-#: should refuse rather than guess.
+#: The JSON shapes this app was written against. The server reports its own; if they
+#: disagree, one of the two is guessing, and a client that does not know the number should
+#: refuse rather than guess.
 CONTRACT = 1
 
 #: Methods this app calls that a server from before them would not answer. Asked for at the

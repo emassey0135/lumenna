@@ -1,10 +1,10 @@
-//! Lumenna's command surface (§12): every operation once, typed, for every client.
+//! Lumenna's command surface: every operation once, typed, for every client.
 //!
 //! [`Lumenna`] is one open store, and its methods are the operations — `add_task(text) ->
 //! Change`, `list_tasks(query) -> Rows`, and so on — taking and returning the plain records
 //! in [`types`]. Everything a client can do is here, and nothing a client does is anywhere
 //! else: no date parsing, no rule about what completing a task does to its subtasks. That is
-//! principle 2, and it is what keeps eleven targets from becoming eleven implementations.
+//! what keeps eleven targets from becoming eleven implementations.
 //!
 //! # Every client, one definition
 //!
@@ -23,7 +23,7 @@
 //! # Identifiers
 //!
 //! Methods take identifiers as text: a whole one, or a prefix long enough to name one record,
-//! git-style. Row numbers are a terminal affordance (§15) and the CLI resolves them before it
+//! git-style. Row numbers are a terminal affordance and the CLI resolves them before it
 //! calls in; here a bare number is refused rather than mistaken for a prefix.
 
 mod durability;
@@ -60,7 +60,7 @@ pub use types::*;
 #[cfg(feature = "uniffi")]
 uniffi::setup_scaffolding!();
 
-/// The version of the shapes in [`types`], as `--json` and `lum rpc` carry them — §15's
+/// The version of the shapes in [`types`], as `--json` and `lum rpc` carry them: a
 /// compatibility contract. Bumped when a shape changes in a way a reader could not survive.
 pub const CONTRACT: u32 = 1;
 
@@ -73,7 +73,7 @@ pub struct Lumenna {
     // what it brings in is visible at once, and what they write it can see to send on.
     store: Arc<Mutex<Store>>,
     directory: PathBuf,
-    // The native service, if one is running; a browser runs its loop itself (§16.12).
+    // The native service, if one is running; a browser runs its loop itself.
     #[cfg(all(feature = "sync", not(all(target_family = "wasm", target_os = "unknown"))))]
     sync: sync::SyncState,
 }
@@ -143,14 +143,14 @@ impl Lumenna {
     ///
     /// If the directory cannot be created or the store cannot be opened.
     pub fn open_at(directory: &Path) -> Result<Self> {
-        // A browser's store is a file in OPFS's pool, named by its path, with no directory to
-        // make (§16.12).
+        // A browser's store is a file in OPFS's pool, named by its path, with no directory
+        // to make.
         if !cfg!(all(target_family = "wasm", target_os = "unknown")) {
             std::fs::create_dir_all(directory)?;
         }
         let mut store = Store::open(&directory.join("lumenna.sqlite"))?;
         // Every store has exactly one Inbox, and the store creates it under the same
-        // identifier everywhere (§3.4). A store from before that minted its own, which is
+        // identifier everywhere. A store from before that minted its own, which is
         // folded into the shared one here, once.
         let adopt = edit::adopt_inbox(&repaired(&store));
         if !adopt.is_empty() {
@@ -207,7 +207,7 @@ impl Lumenna {
 #[must_use]
 pub fn repaired(store: &Store) -> Snapshot {
     let (mut snapshot, _) = store.snapshot();
-    // §3.13: merge can produce cycles and dangling references that no single device ever
+    // Merge can produce cycles and dangling references that no single device ever
     // wrote. Repairing on read means every query can assume a tree.
     snapshot.repair();
     snapshot

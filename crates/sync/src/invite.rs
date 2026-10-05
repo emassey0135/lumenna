@@ -1,4 +1,4 @@
-//! The short-lived endpoint a pairing runs on (§7).
+//! The short-lived endpoint a pairing runs on.
 //!
 //! **A pairing never uses the device key.** It runs on a fresh endpoint with a key minted for
 //! this one pairing and thrown away after, for two reasons:
@@ -12,7 +12,7 @@
 //!   key learned that way is one a person vouched for; a key merely seen on the network never
 //!   is.
 //!
-//! Finding each other is the *where* half of §7. On one network, **both people run
+//! Finding each other is the *where* half of pairing. On one network, **both people run
 //! `lum pair`** and the two sessions find each other by mDNS, under a service name only
 //! pairing sessions use: nothing to type, no outside service. Off the network, one side gives
 //! the other its pairing code to dial.

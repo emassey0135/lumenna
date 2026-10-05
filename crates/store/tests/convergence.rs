@@ -1,10 +1,9 @@
-//! §19's third risk, retired: **CRDT tree convergence**, proven before any UI depends on
-//! the store.
+//! CRDT tree convergence.
 //!
 //! Every replica must reach the same state from the same set of changes, whatever order it
 //! receives them in. That is Automerge's guarantee for the document, but not for what this
 //! crate builds on top of it — the field-granular writes, the sets-as-maps, the fractional
-//! ordering, and above all the repairs of §3.13, which run *after* merge and could
+//! ordering, and above all the tree repairs, which run *after* merge and could
 //! themselves diverge if they depended on anything but the data.
 //!
 //! The interesting inputs are the ones nobody writes by hand: A reparenting X under Y while
@@ -31,7 +30,7 @@ const REPLICAS: usize = 3;
 enum Op {
     /// Last-write-wins on a short field.
     Rename(usize),
-    /// The tree hazard: concurrent reparenting is what makes cycles (§3.13).
+    /// The tree hazard: concurrent reparenting is what makes cycles.
     Reparent(usize, Option<usize>),
     /// Fractional ordering under concurrent moves.
     MoveAfter(usize, usize),
@@ -219,7 +218,7 @@ proptest! {
 
     /// Whatever merge produces, the tree and the dependency graph are walkable afterwards.
     ///
-    /// This is the liveness half of §3.13: an unrepaired parent cycle hangs a naive walk,
+    /// This is the liveness half of the repairs: an unrepaired parent cycle hangs a naive walk,
     /// and the only way to be sure random concurrent reparenting cannot produce one is to
     /// try it.
     #[test]
@@ -294,7 +293,7 @@ fn the_genesis_change_is_identical_wherever_it_happens() {
 
 #[test]
 fn a_task_deleted_on_one_device_and_edited_on_another_keeps_both_facts() {
-    // Trash is a field, not a tombstone (§3.2), so this is an ordinary field merge and the
+    // Trash is a field, not a tombstone, so this is an ordinary field merge and the
     // edit must not be swallowed by the deletion.
     let (mut base, cast) = genesis();
     let mut alice = base.fork();
@@ -321,7 +320,7 @@ fn a_task_deleted_on_one_device_and_edited_on_another_keeps_both_facts() {
 #[test]
 fn concurrent_reparenting_makes_a_cycle_that_every_replica_repairs_the_same_way() {
     // The property tests above assert that repairs converge, which is only worth anything
-    // if repairs actually happen. This is the case §3.13 opens with, built by hand: device
+    // if repairs actually happen. This is the canonical case, built by hand: device
     // A moves X under Y while device B moves Y under X.
     let (mut base, cast) = genesis();
     let mut alice = base.fork();

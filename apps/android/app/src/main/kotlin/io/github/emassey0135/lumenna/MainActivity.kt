@@ -48,7 +48,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Sync runs while the app is in front, as on the iPhone (§8). */
+    /** Sync runs while the app is in front, as on the iPhone. */
     override fun onResume() {
         super.onResume()
         Clock.update(this)
@@ -60,12 +60,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Leaving: the service stops, and one more round is asked for, to send what was just edited. */
     companion object {
         /** Opens quick add: the launcher shortcut's and the tile's intent. */
         const val NEW_TASK = "io.github.emassey0135.lumenna.NEW_TASK"
     }
 
+    /** Leaving: the service stops, and one more round is asked for, to send what was just edited. */
     override fun onPause() {
         core.getOrNull()?.stopSyncing()
         SyncWorker.syncOnLeaving(this)

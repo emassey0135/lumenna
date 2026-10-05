@@ -1,5 +1,5 @@
 """Projects, labels and saved filters: opened, and also made, renamed, reordered and
-removed (§3.4, §6.2).
+removed.
 
 A name is written after its sigil the way the filter and quick-add languages read it: quoted
 when it has a space in it.
@@ -130,7 +130,7 @@ def delete_project(session: Session, name: str) -> str:
 
 
 def labels(session: Session) -> str:
-    """Labels: a first-class axis, with their own list (§16.1). Enter shows the tasks wearing
+    """Labels: a first-class axis, with their own list. Enter shows the tasks wearing
     one; the rest is on its context menu."""
     state = {"heading": "Labels", "names": []}
 
@@ -202,7 +202,7 @@ def saved_filters(session: Session) -> str:
     """Saved filters, and the lists they open: Enter opens one.
 
     A filter is stored as text and evaluated when it is used, so one saved as "today" still
-    means today next month (§6.2).
+    means today next month.
     """
     state = {"heading": "Filters"}
 

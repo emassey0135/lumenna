@@ -19,7 +19,7 @@ import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.getOrNull
 
 /**
- * Where focus goes after a row's action changes the list (§13): the same row if it is still
+ * Where focus goes after a row's action changes the list: the same row if it is still
  * listed, else whichever now holds its place — not wherever a redraw happens to leave it.
  *
  * The row is given input focus, for a keyboard, and TalkBack's focus too — which does not

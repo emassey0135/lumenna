@@ -3,7 +3,7 @@
 use lumenna_surface::{DeviceView, ExportFormat};
 
 /// A paired device, as its line in the list reads: "Kitchen Mac, macos, last synced 5
-/// minutes ago" — its name and platform, then the status the core words for every app (§9).
+/// minutes ago" — its name and platform, then the status the core words for every app.
 /// `now` is kept for callers; the status was worded when the devices were listed.
 pub fn line(device: &DeviceView, _now: jiff::Timestamp) -> String {
     let mut parts = vec![device.name.clone(), device.platform.clone()];

@@ -8,7 +8,7 @@
 //!
 //! **Reads never fail on a wrong type.** Every getter returns `Option` and treats a missing
 //! key, a null, and a value of the wrong shape identically. A document written by a newer
-//! version, or by a client with a bug, has to load — §3.1 makes tolerating nonsense a
+//! version, or by a client with a bug, has to load — tolerating nonsense is a
 //! requirement rather than a kindness. Records that lose a *structurally* necessary field
 //! are skipped and reported by [`crate::doc`]; nothing else is.
 //!
@@ -191,7 +191,7 @@ impl<'a, D: ReadDoc> Reader<'a, D> {
     /// every change a whole-field write.
     ///
     /// Members that no longer parse are dropped, which is the same treatment a member
-    /// pointing at a deleted record gets (§3.4).
+    /// pointing at a deleted record gets.
     pub(crate) fn id_set<T: FromStr + Ord>(&self, key: &str) -> BTreeSet<T> {
         let Some(set) = self.map(key) else {
             return BTreeSet::new();
@@ -390,7 +390,7 @@ impl<'a, T: Transactable> Writer<'a, T> {
     ///
     /// The model carries notes as a plain `String` because core knows nothing about
     /// Automerge, and this is what makes that safe: `update_text` computes the minimal
-    /// splice rather than replacing the object, so §3.2's character-level merge survives
+    /// splice rather than replacing the object, so character-level merge survives
     /// even though the caller handed over the whole field.
     pub(crate) fn set_text(&mut self, key: &str, before: Option<&str>, now: &str) -> Result<()> {
         if before == Some(now) {

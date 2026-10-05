@@ -1,6 +1,6 @@
-//! Backups, restore, export and import (§9).
+//! Backups, restore, export and import.
 //!
-//! Two kinds of output, kept visibly apart as §9 asks: a **backup** is the whole history,
+//! Two kinds of output, kept visibly apart: a **backup** is the whole history,
 //! deleted tasks included, and an **export** is the present state with nothing from the
 //! trash. What each announces says which it is, because confusing them is how someone emails
 //! a "task list" that holds everything they ever deleted.
@@ -19,7 +19,7 @@ use crate::types::{
 use crate::words::count_line;
 use crate::{Lumenna, repaired};
 
-/// The settings that stay on this device (§3.12).
+/// The settings that stay on this device.
 pub const DEVICE_KEYS: &[&str] = &["backup-dir", "backup-keep", "backup-every"];
 
 fn to_u32(n: usize) -> u32 {
@@ -73,7 +73,7 @@ impl Lumenna {
     /// Takes a backup if the newest is older than the device's `backup-every`, and says
     /// where it went — or nothing, if none was due.
     ///
-    /// §9: every client calls this opportunistically — at launch, before a one-shot command,
+    /// Every client calls this opportunistically — at launch, before a one-shot command,
     /// hourly in anything resident — because a schedule only exists where something stays
     /// running.
     ///
@@ -303,7 +303,7 @@ fn resolved(path: &Path) -> PathBuf {
     }
 }
 
-/// §9: a backup inside the directory it protects can be lost along with it.
+/// A backup inside the directory it protects can be lost along with it.
 pub(crate) fn refuse_inside(profile: &Path, directory: &Path) -> Result<()> {
     if resolved(directory).starts_with(resolved(profile)) {
         return Err(LumennaError::new(format!(
@@ -317,8 +317,8 @@ pub(crate) fn refuse_inside(profile: &Path, directory: &Path) -> Result<()> {
 
 /// A sentence saying a directory is probably synced to someone else's server, if it is.
 ///
-/// §9: never default to a cloud-synced directory, and if the user chooses one, *say so plainly
-/// rather than silently complying*. Recognised by the folder names the common services use;
+/// Never default to a cloud-synced directory, and if the user chooses one, say so plainly
+/// rather than silently complying. Recognised by the folder names the common services use;
 /// on macOS, Desktop and Documents too, which iCloud syncs when that option is on.
 #[must_use]
 pub fn cloud_warning(directory: &Path) -> Option<String> {

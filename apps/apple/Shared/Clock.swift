@@ -2,7 +2,7 @@ import Foundation
 
 /// Times and durations as a person says them, in their own locale.
 ///
-/// The core sends `HH:MM` and minutes, which are components (§13); how a time is spoken —
+/// The core sends `HH:MM` and minutes, which are components; how a time is spoken —
 /// "9:00 AM" or "09:00" — is this device's convention, so it is decided here.
 enum Clock {
     private static let parser: DateFormatter = {

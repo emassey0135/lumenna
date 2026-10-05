@@ -82,7 +82,7 @@ struct TaskActions {
         }
     }
 
-    /// Puts a task into a work block on today or the next six days (§3.7), asking how long
+    /// Puts a task into a work block on today or the next six days, asking how long
     /// the sitting is meant to take; the planner reaches any other day.
     func assign(_ task: TaskDetail) {
         Self.chooseBlock(core: core, window: window, for: task) { block, date, minutes in

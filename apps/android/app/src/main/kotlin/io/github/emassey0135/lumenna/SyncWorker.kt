@@ -19,7 +19,7 @@ import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 
 /**
- * One sync round while the app is not in front (§8), run by WorkManager within what Android
+ * One sync round while the app is not in front, run by WorkManager within what Android
  * allows: once just after the app is left, so what was just edited is sent now, and every
  * fifteen minutes or so — longer when the phone is dozing or the app is seldom used.
  *

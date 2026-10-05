@@ -1,7 +1,7 @@
 //! Finding the store, and remembering the last listing.
 //!
 //! The store and every operation on it are [`Lumenna`]'s; a profile adds what only a terminal
-//! has — a default location, and row numbers that address the last listing (§15).
+//! has — a default location, and row numbers that address the last listing.
 
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
@@ -81,7 +81,7 @@ impl Profile {
     /// The last listing is one file per profile, so a resident `lum rpc` and a person typing
     /// `lum task list` in a shell would overwrite each other's numbering — and `1` would
     /// then silently name whichever listing landed last. Row numbers are a terminal
-    /// affordance (§15); every other client holds identifiers, which never go stale.
+    /// affordance; every other client holds identifiers, which never go stale.
     pub const fn detach_rows(&mut self) {
         self.rows_addressable = false;
     }
@@ -94,7 +94,7 @@ impl Profile {
         self.rows_addressable
     }
 
-    /// The socket `lum sync-daemon` serves the command surface on (§8), which the BTSpeak app
+    /// The socket `lum sync-daemon` serves the command surface on, which the BTSpeak app
     /// tries before spawning a server of its own.
     #[must_use]
     #[cfg(unix)]
@@ -114,7 +114,7 @@ impl Profile {
 
     /// Records what a listing showed, so `lum task done 3` can mean the third row.
     ///
-    /// §15: a UUID is thirty-six characters, miserable to type and worse to dictate. Small
+    /// A UUID is thirty-six characters, miserable to type and worse to dictate. Small
     /// integers against the last listing are what Taskwarrior does and what makes a terminal
     /// usable at all.
     ///
@@ -149,9 +149,7 @@ impl Profile {
     /// Turns a row number into the identifier it showed, and passes anything else through
     /// for the surface to resolve as an identifier or a prefix of one.
     ///
-    /// §15: a UUID is thirty-six characters, miserable to type and worse to dictate. Small
-    /// integers against the last listing are what Taskwarrior does and what makes a terminal
-    /// usable at all. They are counted within `kind`, so `--block 1` means the first block
+    /// Row numbers are counted within `kind`, so `--block 1` means the first block
     /// even when the listing also showed tasks.
     ///
     /// # Errors

@@ -20,7 +20,7 @@ struct ItemAction {
 }
 
 /// A plain list with the same focus rules as the task list: after a change, VoiceOver stays
-/// on the item if it is still there, or moves to whatever now holds its place (§13).
+/// on the item if it is still there, or moves to whatever now holds its place.
 ///
 /// Subclasses say what to list and what can be done; this does the rest.
 class ItemListViewController: UIViewController, UICollectionViewDelegate {
@@ -92,7 +92,7 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
             cell.contentConfiguration = content
             cell.accessories = [.disclosureIndicator(displayed: .always)]
             // Said explicitly. Left to itself the cell's label is its text and its detail
-            // together, so a value of the detail said it twice: "Projects, 1 project 1 project".
+            // together, so a value of the detail says it twice: "Projects, 1 project 1 project".
             cell.isAccessibilityElement = true
             cell.accessibilityLabel = item.title
             cell.accessibilityValue = item.spoken ?? item.detail
@@ -189,7 +189,7 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
         open(item)
     }
 
-    /// Undoes this device's last change to the store, wherever it was made (§9).
+    /// Undoes this device's last change to the store, wherever it was made.
     @objc func undoChange() {
         storeChange { try $0.undo() }
     }

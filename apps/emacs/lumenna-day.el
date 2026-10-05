@@ -5,7 +5,7 @@
 
 ;;; Commentary:
 
-;; The day as it is lived (§13): blocks in time order with their sittings
+;; The day as it is lived: blocks in time order with their sittings
 ;; under them, free time and now as lines of their own, and the blocks
 ;; cancelled for the day so they can be put back.  Opening on today puts point
 ;; on now.  Also the list of every block series, and the block form.
@@ -32,7 +32,7 @@
       (pcase (plist-get item :item)
         ("block"
          (when-let* ((block (seq-find (lambda (b) (equal (plist-get b :row) (plist-get item :row))) blocks)))
-           ;; The core words the details for every app (§13).
+           ;; The core words the details for every app.
            (let ((state (append (plist-get block :details) nil)))
              (push (list :id (plist-get block :id) :role "block" :block block :when (plist-get block :when)
                          :title (format "%s to %s, %s" (plist-get block :start) (plist-get block :end)
@@ -74,7 +74,7 @@ a cancelled day back.  [ and ] move between days.
 
 ;;;###autoload
 (defun lumenna-today ()
-  "Show today, with point on now (§13)."
+  "Show today, with point on now."
   (interactive)
   (lumenna--show-list "*Lumenna: Day*" #'lumenna-day-mode #'lumenna--day-listing 'lumenna--day nil)
   (lumenna--go-to-now))
@@ -169,7 +169,7 @@ a cancelled day back.  [ and ] move between days.
 
 (defun lumenna-day-edit-block ()
   "Change the block at point.
-A repeating one asks: this day only, or every one (§4.3)."
+A repeating one asks: this day only, or every one."
   (interactive)
   (let* ((block (plist-get (lumenna--day-row "block") :block))
          (series (plist-get block :series)))
@@ -214,7 +214,7 @@ A repeating one asks: this day only, or every one (§4.3)."
 
 (defun lumenna-day-timer ()
   "Start the timer on the sitting at point, pause it while it runs, or resume it.
-Pausing keeps the time so far and leaves the sitting in progress (§3.7)."
+Pausing keeps the time so far and leaves the sitting in progress."
   (interactive)
   (let ((sitting (plist-get (lumenna--day-row "assignment") :sitting)))
     (lumenna-write (if (lumenna--true (plist-get sitting :running)) "pause" "start")
@@ -236,7 +236,7 @@ CURRENT, the length it has now, is offered to edit."
           (t (user-error "That is not a number of minutes")))))
 
 (defun lumenna-day-planned-length ()
-  "Set how long the sitting at point is meant to take, or clear it (§3.7)."
+  "Set how long the sitting at point is meant to take, or clear it."
   (interactive)
   (let* ((sitting (plist-get (lumenna--day-row "assignment") :sitting))
          (minutes (lumenna--read-length (format "Planned length of %s" (plist-get sitting :title))
@@ -303,7 +303,7 @@ Which blocks those are is the core's (`block.choices'), as for every app."
   "A block's fields, by the name they are chosen by.")
 
 (defconst lumenna--day-fields '(title at minutes kind accepts_tasks counts_capacity anchored)
-  "What one day of a repeating block can change: what an exception holds (§3.6).")
+  "What one day of a repeating block can change: what an exception holds.")
 
 (defun lumenna--edit-block (series shown scope &optional day)
   "Change one field of block SERIES, chosen by name, sending only that field.
@@ -357,7 +357,7 @@ REPEATS says it is a series, so every occurrence goes."
 
 ;;;###autoload
 (defun lumenna-blocks ()
-  "Show every block series, including ones on no day near today (§3.6)."
+  "Show every block series, including ones on no day near today."
   (interactive)
   (lumenna--show-list "*Lumenna: Blocks*" #'lumenna-blocks-mode
                       (lambda ()

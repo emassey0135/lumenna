@@ -1,6 +1,6 @@
 """The client, against a real `lum rpc`.
 
-§8 makes this transport the path for every client that cannot link Rust, so the parts worth
+This transport is the path for every client that cannot link Rust, so the parts worth
 proving are the ones a mock would hide: that a reply finds the call waiting for it, that a
 write from another process arrives unasked, and that a refusal is an exception rather than a
 silent wrong answer.
@@ -71,8 +71,8 @@ env=dict(os.environ, LUMENNA_PROFILE=str(self.profile)),
         self.assertEqual(self.client.call("initialize")["contract"], CONTRACT)
 
     def test_a_created_task_comes_back_whole(self):
-        # §12's surface is `add_task(text) -> Task`: capture is the one place a round trip
-        # hurts.
+        # The surface's `add_task` returns the task whole: capture is the one place a round
+        # trip hurts.
         self.client.call("project.add", name="Work")
         result = self.client.call("task.add", text="write the chapter tomorrow p1 #Work")
         self.assertEqual(result["task"]["title"], "write the chapter")
@@ -138,7 +138,7 @@ if __name__ == "__main__":
 
 @unittest.skipIf(LUM is None, "`lum` has not been built")
 class TalkingToTheDaemon(unittest.TestCase):
-    """§8: the socket is the expected path on this device, and spawning is the fallback."""
+    """The socket is the expected path on this device, and spawning is the fallback."""
 
     def setUp(self):
         self.profile = Path(tempfile.mkdtemp())
@@ -179,7 +179,7 @@ class TalkingToTheDaemon(unittest.TestCase):
 
 @unittest.skipIf(LUM is None, "`lum` has not been built")
 class FindingAServer(unittest.TestCase):
-    """§8's rule for this kind of client: the daemon's socket when it answers, else a
+    """The rule for this kind of client: the daemon's socket when it answers, else a
     `lum rpc` of its own — and a socket left behind by a daemon that died is not an answer."""
 
     def setUp(self):

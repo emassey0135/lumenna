@@ -1,4 +1,4 @@
-//! `lum backup`, `restore`, `export` and `import` (§9).
+//! `lum backup`, `restore`, `export` and `import`.
 //!
 //! The work is in the surface — every client backs up, not just this one — and what is here
 //! is what a terminal adds: which file format a word on the command line means, `--force`, and

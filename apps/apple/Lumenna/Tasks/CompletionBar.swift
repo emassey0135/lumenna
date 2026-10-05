@@ -1,10 +1,10 @@
 import UIKit
 
-/// Suggestions for what is being typed, above the keyboard (§6.3).
+/// Suggestions for what is being typed, above the keyboard.
 ///
 /// The core says what could go at the cursor; this shows it. Nothing is announced as the
 /// suggestions change — speech on every keystroke would bury the typing — so the count comes
-/// first in the bar, and a VoiceOver user meets it before the candidates, as §6.3 asks.
+/// first in the bar, and a VoiceOver user meets it before the candidates.
 final class CompletionBar: UIInputView {
     private let core: Core
     private let syntax: Syntax

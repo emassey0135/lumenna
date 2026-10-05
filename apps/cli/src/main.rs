@@ -1,8 +1,7 @@
 //! `lum` — Lumenna's command line.
 //!
-//! §15 calls this the first target and a permanent one. It is usable in weeks rather than
-//! months, it is fully accessible by construction, and it forces the core API to be complete
-//! before any GUI can paper over gaps in it.
+//! The first target, and a permanent one. It is fully accessible by construction, and it
+//! forces the core API to be complete before any GUI can paper over gaps in it.
 //!
 //! # Completeness, for two reasons
 //!
@@ -11,9 +10,9 @@
 //! broken. Add scripting, and the CLI is a product in its own right.
 //!
 //! **And it is a test.** If something is only possible in a GUI, that is business logic that
-//! leaked out of the core, violating principle 2. CLI coverage is the cheapest checkable
-//! proxy for core coverage there is — far easier to audit than reading eleven UI
-//! implementations looking for logic that should not be there.
+//! leaked out of the core. CLI coverage is the cheapest checkable proxy for core coverage
+//! there is — far easier to audit than reading eleven UI implementations looking for logic
+//! that should not be there.
 //!
 //! Treating it only as a test would harm it, though. A test optimises for coverage; a
 //! product optimises for use. So: short identifiers, because a UUID is thirty-six characters
@@ -539,7 +538,7 @@ pub(crate) enum FilterCommand {
     },
 }
 
-/// What a block can be given beyond its time, length, kind and repetition (§3.6).
+/// What a block can be given beyond its time, length, kind and repetition.
 #[derive(clap::Args, Debug, Clone, Default)]
 pub(crate) struct BlockExtras {
     /// Notes about the block; empty clears them.
@@ -780,7 +779,7 @@ fn run(cli: &Cli, format: Format) -> Result<()> {
         return network::daemon(&profile, local_only);
     }
 
-    // §9: every client backs up opportunistically, because a schedule only exists where
+    // Every client backs up opportunistically, because a schedule only exists where
     // something stays running.
     if !matches!(cli.command, Command::Backup { .. }) {
         durability::back_up_if_due(&profile);
@@ -800,7 +799,7 @@ fn run(cli: &Cli, format: Format) -> Result<()> {
 /// Runs one command and returns what it produced.
 ///
 /// The one place a command becomes a [`Response`], so `lum rpc` reaches every operation the
-/// command line does by building the same [`Command`] (§12). Each arm resolves row numbers —
+/// command line does by building the same [`Command`]. Each arm resolves row numbers —
 /// the terminal's own affordance — and calls the surface, which does the rest.
 pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response> {
     Ok(match command {
@@ -1077,7 +1076,7 @@ fn listing_of(outcome: &Outcome) -> Option<Vec<(String, String)>> {
             Some(rows.rows.iter().map(|row| (row.role.clone(), row.id.clone())).collect())
         }
         // Blocks and assignments are numbered within their own kinds but listed together,
-        // which is what lets `lum start 1` work straight after `lum plan` (§15).
+        // which is what lets `lum start 1` work straight after `lum plan`.
         Outcome::Plan(plan) => Some(
             plan.blocks
                 .iter()

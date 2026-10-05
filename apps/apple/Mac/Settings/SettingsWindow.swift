@@ -3,7 +3,7 @@ import ServiceManagement
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Settings (§3.10, §16.1), in the Mac's own shape: a window of tabs, opened with ⌘,.
+/// Settings, in the Mac's own shape: a window of tabs, opened with ⌘,.
 final class SettingsWindowController: NSWindowController {
     init(core: Core) {
         let tabs = NSTabViewController()
@@ -35,7 +35,7 @@ final class SettingsWindowController: NSWindowController {
 }
 
 extension SettingsModel {
-    // MARK: - Shortcuts from anywhere (§16.2)
+    // MARK: - Shortcuts from anywhere
 
     func shortcutDescription(_ kind: HotKeys.Kind) -> String {
         HotKeys.description(kind)
@@ -52,7 +52,7 @@ extension SettingsModel {
         Announcer.say("\(kind.name) is \(HotKeys.description(kind))")
     }
 
-    // MARK: - Opening at login (§16.2)
+    // MARK: - Opening at login
 
     var opensAtLogin: Bool {
         get { SMAppService.mainApp.status == .enabled }
@@ -67,7 +67,7 @@ extension SettingsModel {
         }
     }
 
-    // MARK: - Files (§9)
+    // MARK: - Files
 
     func chooseBackupFolder() {
         let panel = NSOpenPanel()

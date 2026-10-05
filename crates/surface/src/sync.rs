@@ -1,4 +1,4 @@
-//! Pairing and syncing (§7, §8): what the command line, the daemon and the apps share.
+//! Pairing and syncing: what the command line, the daemon and the apps share.
 //!
 //! The protocol is `lumenna-sync`'s. What is here is how a client drives it: pairing with a
 //! person confirming the words, a round with every paired device, the device list, and a
@@ -9,7 +9,7 @@
 //!
 //! Every process on a device is the same device — the key lives in the store — but only one
 //! may answer for that key at a time. An advisory lock on `sync.lock` in the profile decides
-//! which (§8). A [`SyncService`] holds it while it runs; [`Lumenna::sync_now`] takes it for one
+//! which. A [`SyncService`] holds it while it runs; [`Lumenna::sync_now`] takes it for one
 //! round, or hands the round to the service, or says another process holds it
 //! ([`LumennaError::SyncElsewhere`]) so that a client which can reach that process — the CLI,
 //! over the daemon's socket — can ask it instead.
@@ -19,7 +19,7 @@
 //!
 //! # Async underneath, for the browser
 //!
-//! A browser cannot block, has no threads to block on, and no lock file (§16.12). So the
+//! A browser cannot block, has no threads to block on, and no lock file. So the
 //! pairing and the loop are async functions — [`Lumenna::pair_async`] and [`keep_in_sync`] —
 //! that the blocking calls here run on a runtime of their own, and the web client runs on the
 //! browser's event loop. There, one tab owns the store (a Web Lock), which is the lock file's
@@ -174,7 +174,7 @@ fn brought_anything(report: &SyncReport) -> bool {
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
-    /// Pairs this device with another of the person's (§7).
+    /// Pairs this device with another of the person's.
     ///
     /// Without a `code`, this device waits to be found — on the local network, or by the code
     /// it hands to [`PairingPrompt::show_code`]. With one, it dials the device that printed
@@ -249,7 +249,7 @@ impl Lumenna {
         Ok(report(results))
     }
 
-    /// How syncing is going, device by device — §9's status in words rather than an icon.
+    /// How syncing is going, device by device, in words rather than an icon.
     ///
     /// # Errors
     ///
@@ -292,7 +292,7 @@ impl Lumenna {
 impl Lumenna {
     /// How syncing is going, given whether this device's endpoint is running — what
     /// [`sync_status`](Self::sync_status) asks the lock file, and a browser knows of its own
-    /// loop (§16.12).
+    /// loop.
     ///
     /// # Errors
     ///
@@ -361,7 +361,7 @@ impl Lumenna {
             store.apply_recorded(&change)?;
             Ok(Change::of(&change))
         })?;
-        // §7: say plainly what unpairing does not do.
+        // Say plainly what unpairing does not do.
         Ok(change.note(format!(
             "{} keeps everything it already has. Unpairing is for a device you replaced; if it \
              was lost or stolen, unpairing alone does not take your data back from it",

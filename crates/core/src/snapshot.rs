@@ -1,13 +1,13 @@
 //! The materialized view every query runs over.
 //!
-//! §3.1 shards the data across several Automerge documents — `core`, one `blocks-<year>`
+//! The data is sharded across several Automerge documents — `core`, one `blocks-<year>`
 //! per calendar year, and `devices` — because Automerge loads and syncs whole documents and
 //! a watch should not have to hold five years of block history to show today. A
 //! [`Snapshot`] is the other side of that: whichever documents are currently loaded,
 //! flattened into one thing to query. It is assembled by `store`, and nothing here knows
 //! whether a given record arrived from an Automerge document or from the SQLite read model
-//! that §8 leaves optional — which is exactly what lets that read model be added later
-//! without changing an interface.
+//! that may come later — which is exactly what lets that read model be added without
+//! changing an interface.
 //!
 //! Because the shards are independent, a snapshot is routinely **incomplete**: an assignment
 //! in `blocks-2026` may name a task the local `core` document has not merged yet. That is
@@ -60,7 +60,7 @@ impl Snapshot {
     /// Repairs both graphs in place, returning what had to be changed.
     ///
     /// Call this when materializing, before anything walks the tree or evaluates
-    /// `ready`/`blocked` — an unrepaired parent cycle hangs a naive walk (§3.13).
+    /// `ready`/`blocked` — an unrepaired parent cycle hangs a naive walk.
     ///
     /// The result is not diagnostic noise to be discarded. A task that silently loses a
     /// dependency, or a project that silently jumps to the root, is worse than one the user
@@ -110,7 +110,7 @@ impl Snapshot {
     }
 
     /// The urgency multiplier in force for a project: its own weight, or the nearest
-    /// ancestor's (§3.4).
+    /// ancestor's.
     ///
     /// Making `#thesis` heavy should not require touching each of its chapters, so weight
     /// **inherits down the tree** and a sub-project overrides rather than compounds.
@@ -127,7 +127,7 @@ impl Snapshot {
                 break;
             }
             let Some(project) = self.projects.get(&id) else {
-                break; // Dangling parent (§3.1).
+                break; // Dangling parent.
             };
             if let Some(weight) = project.declared_weight() {
                 return weight;
@@ -139,7 +139,7 @@ impl Snapshot {
 
     /// Every block occurrence in a date range, in the order the day is lived.
     ///
-    /// Expanding on read is what §3.6's sparse exceptions buy: a daily routine is one
+    /// Expanding on read is what sparse exceptions buy: a daily routine is one
     /// series record and a handful of edits, not a row per day forever.
     ///
     /// # Errors
@@ -178,7 +178,7 @@ impl Snapshot {
     /// The label, if it still exists.
     ///
     /// Deleting a label touches no tasks, so identifiers left on tasks routinely point at
-    /// nothing. §3.4 says those project as absent, and this is where that happens.
+    /// nothing. Those project as absent, and this is where that happens.
     #[must_use]
     pub fn label(&self, id: LabelId) -> Option<&Label> {
         self.labels.get(&id).filter(|l| l.deleted_at.is_none())
@@ -316,7 +316,7 @@ mod tests {
         task.priority = Priority::P1;
         task.labels.insert(laptop_id);
         task.labels.insert(gone_id);
-        // A label that was never in this document at all: also absent, not an error (§3.1).
+        // A label that was never in this document at all: also absent, not an error.
         task.labels.insert(LabelId::new());
 
         let names: Vec<&str> = snap.labels_of(&task).iter().map(|l| l.name.as_str()).collect();

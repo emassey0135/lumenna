@@ -47,7 +47,7 @@ private sealed interface Asking {
 }
 
 /**
- * One task, its fields edited and saved together (§16.1: task detail / edit).
+ * One task, its fields edited and saved together.
  *
  * Saving sends only the fields that changed — the core decides which (`taskEdit`), as for
  * every app, since a field sent unchanged would win a last-write-wins race and revert another

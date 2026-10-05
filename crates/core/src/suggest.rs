@@ -1,7 +1,7 @@
 //! "Did you mean...?"
 //!
-//! §6.1 and §6.3 both promise this exact sentence: *"unknown label 'lapto' — did you mean
-//! 'laptop'?"*. It is not a nicety. A sighted user sees a squiggle under the offending
+//! Quick add and the filter readback both say this sentence: *"unknown label 'lapto' — did
+//! you mean 'laptop'?"*. It is not a nicety. A sighted user sees a squiggle under the offending
 //! token; here the position, the token, **and the suggestion** have to be in the message
 //! text, because that message is the only channel there is.
 //!

@@ -1,4 +1,4 @@
-//! User preferences (§3.10).
+//! User preferences.
 
 use jiff::civil;
 
@@ -8,29 +8,27 @@ use super::{ReminderAnchor, Trigger};
 ///
 /// These are decisions about the person, not about the machine, so they belong in a
 /// document. Device-specific choices — muting all reminders on one laptop, which tree nodes
-/// are expanded — are local-only state (§3.12) and are deliberately not here.
+/// are expanded — are local-only state and are deliberately not here.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Settings {
     /// Whether completing a parent completes its subtasks.
     ///
-    /// Because this can change, completions record what caused them rather than deriving it
-    /// (§3.3).
+    /// Because this can change, completions record what caused them rather than deriving it.
     pub cascade_complete_subtasks: bool,
     /// How much the core says when it announces something.
     ///
     /// A **core** setting, not a per-UI one, because the core generates the announcement
-    /// text — one setting, honoured identically on all eleven targets (§13).
+    /// text — one setting, honoured identically on all eleven targets.
     pub verbosity: Verbosity,
     /// Offered in the UI for new tasks.
     pub default_task_reminders: Vec<Trigger>,
     /// Offered in the UI for new blocks.
     pub default_block_reminders: Vec<Trigger>,
-    /// What a date-only due date means when a reminder needs a time to count back from
-    /// (§3.8).
+    /// What a date-only due date means when a reminder needs a time to count back from.
     pub all_day_reminder_hour: civil::Time,
     /// Waking hours. Bounds re-flow: the planner may not push a block past the end of your
-    /// day to make the arithmetic work (§10.1).
+    /// day to make the arithmetic work.
     pub day_window: (civil::Time, civil::Time),
     /// Which day a week starts on.
     #[cfg_attr(feature = "serde", serde(with = "weekday"))]
@@ -51,7 +49,7 @@ impl Default for Settings {
     }
 }
 
-/// How much detail announcements carry (§13).
+/// How much detail announcements carry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Verbosity {

@@ -63,7 +63,7 @@ import io.github.emassey0135.lumenna.core.PlanAssignment
 import io.github.emassey0135.lumenna.core.PlanBlock
 import io.github.emassey0135.lumenna.core.PlanItem
 
-/** One line of the day as it is lived (§13). */
+/** One line of the day as it is lived. */
 private sealed interface DayRow {
     val key: String
     val depth: Int get() = 0
@@ -102,7 +102,7 @@ private fun rows(plan: Plan): List<DayRow> = plan.timeline.flatMap { item ->
 
 /** What a day row says: its title, then its details. */
 private fun words(row: DayRow): Pair<String, List<String>> = when (row) {
-    // The core words a block's and a sitting's details for every app (§13).
+    // The core words a block's and a sitting's details for every app.
     is DayRow.Block -> "${Clock.time(row.block.start)} to ${Clock.time(row.block.end)}, ${row.block.title}" to row.block.details
     is DayRow.Sitting -> row.sitting.title to row.sitting.details
     is DayRow.Free -> "Free, ${Clock.length(row.minutes)}" to listOf("${Clock.time(row.start)} to ${Clock.time(row.end)}")
@@ -122,7 +122,7 @@ private sealed interface DayAsk {
 }
 
 /**
- * The planner (§16.1, §13's worked example): a day as it is lived, as a list.
+ * The planner: a day as it is lived, as a list.
  *
  * Blocks in time order with their sittings beneath them, free time as rows of its own, and now
  * as a position rather than a highlight. The summary above says what a glance at a timeline
@@ -237,7 +237,7 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
             val block = question.block
             val date = shown?.date ?: Clock.today()
             run {
-                // "This day, or every day?" is asked, never guessed (§4.3).
+                // "This day, or every day?" is asked, never guessed.
                 AlertDialog(
                     onDismissRequest = dismiss,
                     title = { Text("Change ${block.title}") },
@@ -313,7 +313,7 @@ private fun actions(
                     core.report(sentence(it.announcement, it.notices))
                 }
             }
-            // Start, pause and stop (§3.7): stopping a running or a paused sitting ends it.
+            // Start, pause and stop: stopping a running or a paused sitting ends it.
             buildList {
                 if (sitting.running) {
                     add(RowAction("Pause Timer") { timed { core.lumenna.pauseTimer(sitting.id) } })
@@ -366,7 +366,7 @@ private fun newFields(at: String, minutes: UInt): BlockFields {
 }
 
 /**
- * A block, added or changed (§16.1: block editor). Times and days are typed as they are said —
+ * A block, added or changed. Times and days are typed as they are said —
  * "9am", "14:30", "next monday" — and the core reads them, as on the command line.
  *
  * What a block is made from, and which fields a change sends, are the core's (`newBlock`,

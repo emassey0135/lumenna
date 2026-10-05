@@ -74,7 +74,7 @@ struct Shortcut: Equatable {
     }
 }
 
-/// Shortcuts that work from any app (§16.2): one brings the window back, one opens quick add.
+/// Shortcuts that work from any app: one brings the window back, one opens quick add.
 ///
 /// Carbon's `RegisterEventHotKey`, because it needs no accessibility permission — an event
 /// monitor for global keys does, and asking for it to make a shortcut work is asking too much.

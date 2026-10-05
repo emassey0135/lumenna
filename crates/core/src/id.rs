@@ -1,10 +1,10 @@
 //! Typed identifiers.
 //!
-//! Every record in the model is keyed by a UUIDv7 (§3): time-sortable, good index locality,
+//! Every record in the model is keyed by a UUIDv7: time-sortable, good index locality,
 //! and unique across devices without coordination. The types here are distinct so that a
 //! `TaskId` can never be passed where a `ProjectId` is wanted — a real hazard in a model
-//! where §3.1 forbids referential integrity across documents and dangling references are
-//! expected rather than exceptional.
+//! with no referential integrity across documents, where dangling references are expected
+//! rather than exceptional.
 //!
 //! `Ord` on these types is creation order. `Uuid`'s ordering is bytewise over the 16 bytes,
 //! and a v7 UUID carries its 48-bit millisecond timestamp big-endian in the leading bytes,
@@ -48,8 +48,8 @@ macro_rules! id_type {
             /// Wraps an existing UUID, for hydration from a stored document.
             ///
             /// No validation: a document written by a future version, or corrupted in
-            /// transit, must still load. §3.1 requires tolerating references that make no
-            /// sense rather than refusing to open the store.
+            /// transit, must still load: a reference that makes no sense is tolerated rather
+            /// than refusing to open the store.
             #[must_use]
             pub const fn from_uuid(uuid: Uuid) -> Self {
                 Self(uuid)
@@ -117,7 +117,7 @@ id_type!(
 impl ProjectId {
     /// The Inbox's identifier, the same on every device.
     ///
-    /// Every store has exactly one Inbox (§3.4). If each device minted its own, two devices
+    /// Every store has exactly one Inbox. If each device minted its own, two devices
     /// that started apart would merge into a store with two, so the Inbox is created by a
     /// deterministic change in `store` under this fixed identifier instead, and identical
     /// changes merge into one record.
@@ -127,10 +127,10 @@ impl ProjectId {
     pub const INBOX: Self = Self(Uuid::from_u128(0x0000_0000_0000_8000_8000_0000_0000_0001));
 }
 
-/// An Iroh node identifier: a device's ed25519 public key (§3.11).
+/// An Iroh node identifier: a device's ed25519 public key.
 ///
 /// Core neither generates nor verifies these — that is `sync`'s work. It carries them
-/// because reminder delivery (§3.8) and acknowledgement (§3.9) are addressed by device.
+/// because reminder delivery and acknowledgement are addressed by device.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeId([u8; 32]);

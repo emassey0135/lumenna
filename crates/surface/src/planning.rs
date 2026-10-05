@@ -1,4 +1,4 @@
-//! The day: blocks, what is assigned to them, and the time spent (§3.7).
+//! The day: blocks, what is assigned to them, and the time spent.
 
 use jiff::Zoned;
 use lumenna_core::edit::{self, EditError};
@@ -27,7 +27,7 @@ pub const WORK_BLOCK_DAYS: u32 = 7;
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
-    /// The work blocks a task could go in, over `days` days from `from` (§3.7): what putting
+    /// The work blocks a task could go in, over `days` days from `from`: what putting
     /// a task in a block offers from the task itself, rather than from a day. `from` is a date
     /// phrase, today when absent; `days` is [`WORK_BLOCK_DAYS`] when absent, and at most 31.
     /// Breaks and events are left out: only work blocks take tasks.
@@ -68,7 +68,7 @@ impl Lumenna {
     /// absent.
     ///
     /// Blocks and assignments are each numbered across the day, which is what lets a terminal
-    /// say `lum start 1` straight afterwards (§15).
+    /// say `lum start 1` straight afterwards.
     ///
     /// # Errors
     ///
@@ -78,7 +78,7 @@ impl Lumenna {
         self.with(|store| {
             let day = resolve::date(date.as_deref(), &now)?;
             // Year documents load only when a year is viewed, which is what keeps the watch
-            // viable (§8). This is that moment.
+            // viable. This is that moment.
             store.load_year(day.year())?;
 
             let snapshot = repaired(store);
@@ -202,7 +202,7 @@ impl Lumenna {
     /// Adds a block, once or repeating.
     ///
     /// A repeating block whose start date the rule never lands on starts on the rule's first
-    /// real occurrence instead — a series anchored on a day it never occurs is a trap (§5).
+    /// real occurrence instead — a series anchored on a day it never occurs is a trap.
     ///
     /// # Errors
     ///
@@ -252,11 +252,11 @@ impl Lumenna {
         })
     }
 
-    /// Changes a block: every occurrence, or only the one on a given day (§4.3 — always
+    /// Changes a block: every occurrence, or only the one on a given day (always
     /// asked of a repeating block, never guessed).
     ///
     /// A day's change is an exception; the series stays as it was, and later changes to the
-    /// series leave the overridden fields alone (§3.6).
+    /// series leave the overridden fields alone.
     ///
     /// # Errors
     ///
@@ -300,7 +300,7 @@ impl Lumenna {
                             after.end_date = Some(after.start_date);
                         } else {
                             let rrule = repetition(repeat)?;
-                            // A series anchored on a day it never occurs is a trap (§5).
+                            // A series anchored on a day it never occurs is a trap.
                             let rule = lumenna_core::recur::Rule::parse(&rrule)?;
                             if let Some(first) = rule.first_from(after.start_date)? {
                                 after.start_date = first;
@@ -333,7 +333,7 @@ impl Lumenna {
                              occurrence to change how it repeats",
                         ));
                     }
-                    // An exception holds the time, length, title, kind and flags (§3.6); the
+                    // An exception holds the time, length, title, kind and flags; the
                     // rest belongs to the series.
                     if edit.notes.is_some()
                         || edit.min_minutes.is_some()
@@ -524,7 +524,7 @@ impl Lumenna {
         })
     }
 
-    /// Puts a task into a block for one sitting (§3.7). `date` picks the day of a repeating
+    /// Puts a task into a block for one sitting. `date` picks the day of a repeating
     /// block, today when absent; `minutes` is how long the sitting is meant to take.
     ///
     /// # Errors
@@ -557,7 +557,7 @@ impl Lumenna {
                 snapshot.series.get(&series_id).ok_or(EditError::NotFound { kind: "block" })?;
 
             // A one-off block's assignments name only the series, so that moving the block
-            // carries them with it (§3.7). A repeating block's name the day, and are sharded
+            // carries them with it. A repeating block's name the day, and are sharded
             // by it; a one-off's follow the series' year.
             let (block_ref, year, day) = if series.is_recurring() {
                 (BlockRef::Occurrence(series_id, day), day.year(), day)
@@ -593,7 +593,7 @@ impl Lumenna {
         })
     }
 
-    /// Sets how long a sitting is meant to take, or clears it with `None` (§3.7). What was
+    /// Sets how long a sitting is meant to take, or clears it with `None`. What was
     /// logged is left alone.
     ///
     /// # Errors
@@ -637,7 +637,7 @@ impl Lumenna {
 
     /// Pauses the timer: the time so far is kept and the sitting stays in progress, to be
     /// resumed with [`start_timer`](Self::start_timer) or ended with
-    /// [`stop_timer`](Self::stop_timer) (§3.7).
+    /// [`stop_timer`](Self::stop_timer).
     ///
     /// # Errors
     ///
@@ -690,7 +690,7 @@ impl Lumenna {
     /// capped figure is put right.
     ///
     /// A timer that ran past the end of its block is capped at the block's length and says
-    /// so: a truncated figure is not a fact (§3.7).
+    /// so: a truncated figure is not a fact.
     ///
     /// # Errors
     ///
@@ -842,7 +842,7 @@ fn apply_extras(snapshot: &Snapshot, series: &mut BlockSeries, extras: &Extras<'
 }
 
 /// Free time shorter than this is a seam between two blocks, not time to plan into, and a
-/// row for every one would be noise (§13).
+/// row for every one would be noise.
 const FREE_THRESHOLD_MINS: i64 = 15;
 
 pub(crate) fn block_kind(word: &str) -> Result<BlockKind> {
@@ -888,7 +888,7 @@ fn clock(minutes: i64) -> String {
 
 
 /// The day as it is lived: blocks, the free time around them within the day's window, and
-/// where now falls (§13).
+/// where now falls.
 fn timeline(
     occurrences: &[lumenna_core::recur::Occurrence],
     window: (jiff::civil::Time, jiff::civil::Time),
@@ -935,7 +935,7 @@ fn timeline(
     items.into_iter().map(|(_, item)| item).collect()
 }
 
-/// §13's opening summary row, in words.
+/// The day's opening summary row, in words.
 fn summary(blocks: &[PlanBlock], overdue: Option<usize>) -> String {
     let work: u32 =
         blocks.iter().filter(|b| b.kind == "work").map(|b| b.duration_mins).sum();
