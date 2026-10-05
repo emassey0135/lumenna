@@ -1,4 +1,4 @@
-//! What one command produced, as `--json` and `lum rpc` carry it (§12, §15).
+//! What one command produced, as `--json` and `lum rpc` carry it.
 //!
 //! The operations and the records they return are `lumenna_surface`'s — the same ones the
 //! phone apps get through UniFFI. What is here is the envelope a terminal and a pipe need on
@@ -6,7 +6,7 @@
 //! should stay quiet. Every payload carries its own `announcement` and `notices`, so a
 //! [`Response`] has nothing to compose.
 //!
-//! `--json` is a compatibility contract (§15). Reshaping anything here, or in the surface's
+//! `--json` is a compatibility contract. Reshaping anything here, or in the surface's
 //! records, is a breaking change, and [`VERSION`] says which shape a reader is looking at.
 
 use lumenna_surface::{
@@ -97,12 +97,12 @@ pub enum Outcome {
     Settings(SettingList),
     /// A timer stopped, or minutes logged.
     Timer(Timer),
-    /// What could be typed next (§6.3). Reachable over `lum rpc` only: completion is a
+    /// What could be typed next. Reachable over `lum rpc` only: completion is a
     /// keystroke-rate question, and a process per keystroke is not an answer.
     Completions(Completions),
-    /// What a quick-add line would produce, without producing it (§6.1).
+    /// What a quick-add line would produce, without producing it.
     Preview(Preview),
-    /// The work blocks a task could go in (§3.7). Reachable over `lum rpc` only.
+    /// The work blocks a task could go in. Reachable over `lum rpc` only.
     WorkBlocks(WorkBlocks),
     /// What this server is, for a client checking it can talk to it.
     Server(ServerInfo),
@@ -114,11 +114,11 @@ pub enum Outcome {
     Export(Exported),
     /// An export was read in.
     Import(ImportDone),
-    /// A pairing finished (§7).
+    /// A pairing finished.
     Paired(PairedWith),
     /// A sync round with every paired device.
     Synced(SyncReport),
-    /// How sync is going (§9).
+    /// How sync is going.
     SyncStatus(SyncStatus),
     /// The paired devices.
     Devices(DeviceList),
@@ -199,7 +199,7 @@ pub struct ServerInfo {
     pub name: &'static str,
     /// The binary's version.
     pub version: &'static str,
-    /// The version of the shapes on the wire — §15's compatibility contract. A client that
+    /// The version of the shapes on the wire, the compatibility contract. A client that
     /// does not know this number should refuse to guess.
     pub contract: u32,
     /// Every method this server answers, so a client can find out rather than assume.

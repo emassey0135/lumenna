@@ -1,12 +1,12 @@
-//! Quick add, filter queries, and the completion they share (§6).
+//! Quick add, filter queries, and the completion they share.
 //!
 //! Both features turn typed text into something structured, both need the same date
 //! grammar, and both need position-aware errors and completion — so they are one crate with
-//! one shared vocabulary (§6.3).
+//! one shared vocabulary.
 //!
 //! What they produce lives in `core`: [`DueSpec`](lumenna_core::time::DueSpec) for dates,
-//! [`Expr`](lumenna_core::filter::Expr) for queries. That split is deliberate. §6.2 calls the
-//! AST **the stable interface**, and keeping it in the domain crate means evaluation, the
+//! [`Expr`](lumenna_core::filter::Expr) for queries. That split is deliberate. The
+//! AST is **the stable interface**, and keeping it in the domain crate means evaluation, the
 //! readback, and the accessibility layer never depend on the parser that happened to produce
 //! it.
 //!

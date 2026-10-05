@@ -1,4 +1,4 @@
-//! Automerge documents, and the sharding §3.1 imposes on them.
+//! Automerge documents, and how the data is sharded between them.
 //!
 //! Automerge loads and syncs **whole documents**, so how the data is divided between them
 //! is a modelling decision with consequences you cannot undo later:
@@ -7,7 +7,7 @@
 //!   on every device including the watch.
 //! - **`blocks-<year>`** — block series, exceptions, and assignments for one calendar year.
 //!   This is what bounds memory on constrained devices and stops history growing without
-//!   limit in one document. Years load lazily, only when viewed (§8).
+//!   limit in one document. Years load lazily, only when viewed.
 //! - **`devices`** — the paired roster.
 //!
 //! **There is no referential integrity across documents.** An assignment in `blocks-2027`
@@ -77,7 +77,7 @@ fn core_schema_change() -> &'static (ChangeHash, Vec<u8>) {
     })
 }
 
-/// Which of §3.1's documents this is.
+/// Which document this is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum DocId {
     /// Tasks, projects, labels, filters, reminders, settings.
@@ -169,7 +169,7 @@ impl Doc {
     /// merge one wins and the other's entire contents become unreachable — not a conflict
     /// to resolve, a silent loss of everything written into the loser.
     ///
-    /// That is not hypothetical here. Year documents are created on demand (§8), so two
+    /// That is not hypothetical here. Year documents are created on demand, so two
     /// devices that both schedule something in 2027 while offline each bring a
     /// `blocks-2027` into existence, and merging them would drop one device's blocks
     /// entirely.
@@ -221,7 +221,7 @@ impl Doc {
         Ok(true)
     }
 
-    /// The next Automerge sync message for a peer, if there is anything to say (§7).
+    /// The next Automerge sync message for a peer, if there is anything to say.
     ///
     /// `state` is what this side knows of the peer's view of this document; one is kept per
     /// peer and per document for the length of a sync session.
@@ -268,13 +268,13 @@ impl Doc {
         self.id
     }
 
-    /// The whole document, compacted. This is `save()`, the form §8 stores in `snapshots`
-    /// and §9 uses for backups — self-describing, and carrying full history.
+    /// The whole document, compacted. This is `save()`, the form stored in `snapshots`
+    /// and used for backups — self-describing, and carrying full history.
     pub fn save(&mut self) -> Vec<u8> {
         self.doc.save()
     }
 
-    /// The changes made since the last call, for appending to §8's `changes` table.
+    /// The changes made since the last call, for appending to the `changes` table.
     pub fn save_incremental(&mut self) -> Vec<u8> {
         self.doc.save_incremental()
     }
@@ -301,7 +301,7 @@ impl Doc {
 
     /// The individual changes made since `heads`, each with its hash.
     ///
-    /// One row per change is what §8's `changes` table is shaped for, and it is what makes
+    /// One row per change is what the `changes` table is shaped for, and it is what makes
     /// the table append-only: a change is immutable and identified by its hash, so writing
     /// one twice is a no-op rather than a conflict.
     pub fn changes_since(&mut self, heads: &[ChangeHash]) -> Vec<(ChangeHash, Vec<u8>)> {
@@ -312,7 +312,7 @@ impl Doc {
             .collect()
     }
 
-    /// The current heads, which §8 compares against `read_model_meta` to detect staleness.
+    /// The current heads, against which a read model would detect its own staleness.
     pub fn heads(&mut self) -> Vec<ChangeHash> {
         self.doc.get_heads()
     }
@@ -359,7 +359,7 @@ impl Doc {
     /// device survives instead of being reverted by a write that had nothing to say about
     /// it.
     ///
-    /// This also gives §9's undo for free, since `put(before, Some(after))` is the exact
+    /// This also gives undo for free, since `put(before, Some(after))` is the exact
     /// inverse of `put(after, Some(before))`.
     ///
     /// # Errors
@@ -391,8 +391,8 @@ impl Doc {
 
     /// Removes a record outright.
     ///
-    /// This is *purge*, not delete. Trash and undo are `deleted_at` on the record itself
-    /// (§3.2), which syncs and can be reversed; this is what emptying the trash does, and
+    /// This is *purge*, not delete. Trash and undo are `deleted_at` on the record itself,
+    /// which syncs and can be reversed; this is what emptying the trash does, and
     /// nothing else should call it.
     ///
     /// # Errors
@@ -467,9 +467,10 @@ impl Doc {
 
 /// A record that could not be read, and was left out rather than failing the load.
 ///
-/// §3.1 requires tolerating documents that make no sense, but tolerating is not the same as
-/// hiding: a task that silently fails to appear is indistinguishable from a task that was
-/// deleted, and the user deserves to know which happened.
+/// Merge can produce documents that make no sense, and loading must tolerate them. But
+/// tolerating is not the same as hiding: a task that silently fails to appear is
+/// indistinguishable from a task that was deleted, and the user deserves to know which
+/// happened.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Skipped {
     /// Which document it was in.
@@ -498,7 +499,7 @@ impl HydrationReport {
 /// The documents currently loaded, and the API for changing them.
 ///
 /// `core` and `devices` are always present. Year documents appear as they are opened, which
-/// is what §8's lazy loading means in practice — a watch showing today holds one year, not
+/// is what lazy loading means in practice — a watch showing today holds one year, not
 /// five.
 pub struct Documents {
     core: Doc,
@@ -550,8 +551,8 @@ impl Documents {
     /// A copy of every loaded document, as an independent replica.
     ///
     /// Each fork gets its own actor, so the result behaves as a second device that has
-    /// already synced everything this one has — which is exactly what pairing produces
-    /// (§7), and what a convergence test needs as its starting point.
+    /// already synced everything this one has — which is exactly what pairing produces,
+    /// and what a convergence test needs as its starting point.
     pub fn fork(&mut self) -> Self {
         let mut blocks = BTreeMap::new();
         for (year, doc) in &mut self.blocks {
@@ -760,7 +761,7 @@ impl Documents {
 
     /// The years whose document holds at least one recurring series.
     ///
-    /// A series lives in the year it starts (§3.1) but recurs into every year after, so
+    /// A series lives in the year it starts but recurs into every year after, so
     /// showing a day means loading its own year **and** each of these before it. One-off
     /// blocks never need that, which is why this is an index of recurring years rather than
     /// a reason to load every year there is.
@@ -815,7 +816,7 @@ impl Documents {
     /// occurrence date and could be sharded from that, but
     /// [`BlockRef::OneOff`](lumenna_core::model::BlockRef::OneOff) carries only the series
     /// identifier — deliberately, so that moving a one-off block carries its assignments
-    /// with it (§3.7). The consequence is that the store cannot derive the year without
+    /// with it. The consequence is that the store cannot derive the year without
     /// reading the series, which may live in a document that is not loaded. The caller
     /// knows the block; the store does not.
     ///
@@ -849,7 +850,7 @@ impl Documents {
         self.core.purge::<ReminderAck>(key)
     }
 
-    /// Permanently removes a device from the roster. This is unpairing (§7).
+    /// Permanently removes a device from the roster. This is unpairing.
     ///
     /// # Errors
     ///

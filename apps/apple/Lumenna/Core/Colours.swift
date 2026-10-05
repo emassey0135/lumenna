@@ -24,7 +24,7 @@ extension UIColor {
     }
 
     /// Red for overdue that clears 4.5 to 1 in both appearances, which `systemRed` does not
-    /// on white. Never the only signal: the word "overdue" is always beside it (§13).
+    /// on white. Never the only signal: the word "overdue" is always beside it.
     static let warningLabel = UIColor { traits in
         switch (traits.userInterfaceStyle == .dark, traits.accessibilityContrast == .high) {
         case (true, true): UIColor(red: 1.0, green: 0.62, blue: 0.60, alpha: 1)

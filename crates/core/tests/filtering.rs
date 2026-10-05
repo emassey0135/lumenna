@@ -1,4 +1,4 @@
-//! The filter language's meaning (§6.2) and its readback (§6.3).
+//! The filter language's meaning and its readback.
 
 use jiff::civil::{date, time};
 use jiff::Zoned;
@@ -137,7 +137,7 @@ fn an_unknown_project_matches_nothing_rather_than_everything() {
 
 #[test]
 fn a_project_cycle_does_not_hang_the_closure_walk() {
-    // §3.13's repair should have run, but a filter that hangs takes the UI with it.
+    // Cycle repair should have run, but a filter that hangs takes the UI with it.
     let mut world = World::new();
     world.snapshot.projects.get_mut(&world.work).unwrap().parent_id = Some(world.backend);
     world.add(world.backend, "t");
@@ -357,8 +357,8 @@ fn unknown_names_are_reported_with_the_nearest_match() {
 
 #[test]
 fn a_query_reads_back_as_a_sentence() {
-    // §6.3: a mis-parsed filter shows wrong results silently, and wrong results are
-    // invisible. The readback is the only way to notice.
+    // A mis-parsed filter shows wrong results silently, and wrong results are invisible. The
+    // readback is the only way to notice.
     let query = Expr::And(vec![
         project("Work"),
         Expr::Or(vec![
@@ -402,7 +402,7 @@ fn every_predicate_shape_reads_back() {
 
 #[test]
 fn every_state_is_selectable_and_describable() {
-    // §6.2's rule: adding a computed state means adding a State variant, and anything a
+    // The rule: adding a computed state means adding a State variant, and anything a
     // filter can select on is something a screen reader can announce. This fails loudly if
     // the two lists ever drift.
     let world = World::new();

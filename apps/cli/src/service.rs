@@ -1,9 +1,9 @@
-//! `lum daemon install|uninstall|start|stop|status` (§8): running `lum sync-daemon` as a
+//! `lum daemon install|uninstall|start|stop|status`: running `lum sync-daemon` as a
 //! service, so nobody hand-writes a service definition.
 //!
 //! CLI-only users have no tray app to hold the sync endpoint all day, and on a BTSpeak nothing
-//! else is resident at all (§16.11), so something has to keep sync running. Each platform has
-//! its own way, and §8 names them:
+//! else is resident at all, so something has to keep sync running. Each platform has its own
+//! way:
 //!
 //! - **Linux** — a `systemctl --user` unit, **plus `loginctl enable-linger`**: without
 //!   lingering the service stops when the last session ends, which defeats the purpose.
@@ -303,7 +303,7 @@ pub(crate) fn install(profile: &Profile, local_only: bool) -> Result<Response> {
             run("systemctl", &["--user", "daemon-reload"])?;
             let unit = format!("{}.service", service.unit_name());
             run("systemctl", &["--user", "enable", "--now", &unit])?;
-            // §8: without lingering the service stops with the last session.
+            // Without lingering the service stops with the last session.
             let user = current_user()?;
             if let Err(error) = run("loginctl", &["enable-linger", &user]) {
                 notes.push(format!(

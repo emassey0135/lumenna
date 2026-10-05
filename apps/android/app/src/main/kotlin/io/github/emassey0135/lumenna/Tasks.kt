@@ -64,11 +64,11 @@ import io.github.emassey0135.lumenna.core.Syntax
 data class RowAction(val name: String, val run: () -> Unit)
 
 /**
- * Tasks, with a filter field above them (§16.1: task list + filter entry), or the trash.
+ * Tasks, with a filter field above them, or the trash.
  *
  * The filter is applied as it is typed, and read back: how it was understood and how many
  * tasks it found. A misread filter shows wrong results silently, and wrong results are
- * invisible (§6.3).
+ * invisible.
  */
 @Composable
 fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks, changes: Long) {
@@ -282,7 +282,7 @@ fun ListRow(
 }
 
 /**
- * Adding a task in a line, the way it would be said (§6.1). The readback beneath the field
+ * Adding a task in a line, the way it would be said. The readback beneath the field
  * says how the line is understood as it is typed — the date, priority, project and labels —
  * since there is no highlighting under the text to show it; an unknown project is an error,
  * and nothing is added until it is fixed.

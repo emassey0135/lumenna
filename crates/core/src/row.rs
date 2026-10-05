@@ -1,4 +1,4 @@
-//! The row projection (§13): list semantics computed once, in the core.
+//! The row projection: list semantics computed once, in the core.
 //!
 //! Every list-shaped view on every platform is the same handful of facts — where you are in
 //! a list, how deep, what state the item is in — and every platform's accessibility API
@@ -114,7 +114,7 @@ pub struct Row {
     pub count: u32,
     /// Whether it can be expanded, and whether it currently is. `None` for a leaf.
     ///
-    /// Expansion state is per-device local state (§3.12) — syncing it would mean the watch
+    /// Expansion state is per-device local state — syncing it would mean the watch
     /// collapsing a project on the desktop — so a caller supplies it rather than the
     /// snapshot carrying it.
     pub expanded: Option<bool>,
@@ -254,7 +254,7 @@ impl Snapshot {
                     checked: None,
                     title: occurrence.title.clone(),
                     // A block is not a task, so it wears no task states. Whether it is
-                    // happening *now* is derived from the clock and never stored (§3.6).
+                    // happening *now* is derived from the clock and never stored.
                     state: Vec::new(),
                     value: Some(describe_block(&occurrence, assigned, running)),
                     hint: None,

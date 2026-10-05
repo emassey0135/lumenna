@@ -1,4 +1,4 @@
-//! Projects, labels, and saved filters (§3.4).
+//! Projects, labels, and saved filters.
 
 use jiff::Timestamp;
 
@@ -15,7 +15,8 @@ pub struct Project {
     pub name: String,
     /// Parent project. May dangle or form a cycle after merge; see [`crate::repair`].
     pub parent_id: Option<ProjectId>,
-    /// Presentation only. Never the sole carrier of meaning (§13).
+    /// Presentation only. Never the sole carrier of meaning, since a screen reader does not
+    /// say it.
     pub color: Option<String>,
     /// Position among siblings.
     pub order: OrderKey,
@@ -24,7 +25,7 @@ pub struct Project {
     /// Exactly one project has this. Inbox is a real record rather than a null
     /// `project_id`, which keeps ordering, view settings, and queries uniform.
     pub is_inbox: bool,
-    /// How much this whole area matters right now — a **multiplier on urgency** (§10.3).
+    /// How much this whole area matters right now — a **multiplier on urgency**.
     ///
     /// **This is not a second priority and must never be called one.** Task priority
     /// answers "how much does this one item matter"; weight answers "how much does this
@@ -99,16 +100,15 @@ impl Project {
 ///
 /// Taskwarrior and `todo.txt` treat tags as plain strings on the task — `+home` exists
 /// because something wears it and vanishes when nothing does. This model is the other kind,
-/// and [`Task::labels`](super::Task::labels) is a set of identifiers, for three reasons
-/// (§3.4):
+/// and [`Task::labels`](super::Task::labels) is a set of identifiers, for three reasons:
 ///
 /// 1. **Rename works.** Renaming `@work` to `@office` updates one record. With strings it
 ///    is a rewrite of every task carrying it, which in a CRDT is a large multi-object change
 ///    where a concurrent edit can leave the rename half-applied.
 /// 2. **A label list can exist at all.** A set derived from whatever tasks happen to mention
 ///    it cannot carry colour or ordering, and cannot be curated.
-/// 3. **Typo detection needs a closed set.** §6.3 promises *"unknown label 'lapto' — did you
-///    mean 'laptop'?"*. With free strings there is no such thing as an unknown label, and
+/// 3. **Typo detection needs a closed set.** *"unknown label 'lapto' — did you mean
+///    'laptop'?"* needs one. With free strings there is no such thing as an unknown label, and
 ///    every typo silently becomes a new one that quietly splits a filter's results.
 ///
 /// **Creation is still implicit.** Typing `@errand` for a label that does not exist creates
@@ -117,7 +117,7 @@ impl Project {
 /// resolution is *confirm-on-new, never prompt-on-known*.
 ///
 /// **Deletion touches no tasks.** It soft-deletes this record; identifiers left pointing at
-/// it project as absent, which §3.1's tolerate-dangling-references rule already requires.
+/// it project as absent, which tolerating dangling references already requires.
 /// Undo is free and a large multi-task write is avoided. The consequence is worth stating:
 /// a later label with the same *name* is a different record, and old tasks do not acquire it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -149,7 +149,7 @@ impl Label {
     }
 }
 
-/// A named query (§3.4).
+/// A named query.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SavedFilter {
@@ -157,7 +157,7 @@ pub struct SavedFilter {
     pub id: FilterId,
     /// Display name.
     pub name: String,
-    /// Stored as **text, never as a resolved date range** (§6.2). A filter saved as
+    /// Stored as **text, never as a resolved date range**. A filter saved as
     /// "due before next Friday" must still mean that next month. The same language appears
     /// inline in [`BlockSeries::task_filter`](super::BlockSeries::task_filter).
     pub query: String,

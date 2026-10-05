@@ -1,4 +1,4 @@
-//! A stored repetition read back as words, and those words read again (§5, §6.1).
+//! A stored repetition read back as words, and those words read again.
 //!
 //! An edit field shows a task's or a block's repetition as a phrase. Saving the form with
 //! that field untouched has to mean what it meant before, so every rule the grammar can write

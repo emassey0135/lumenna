@@ -1,20 +1,20 @@
 import UIKit
 
-/// Tasks, with a filter field above them (§16.1: task list + filter entry).
+/// Tasks, with a filter field above them.
 ///
-/// UIKit owns the structure — the collection view, focus, and the keyboard (§16.6). The reason
+/// UIKit owns the structure — the collection view, focus, and the keyboard. The reason
 /// is focus: after a mutation re-sorts the list, VoiceOver is put on a row chosen here,
 /// deterministically, rather than wherever a re-render leaves it.
 ///
-/// Rows are UIKit's own list content too, not SwiftUI in a `UIHostingConfiguration` as §16.6
-/// suggests. Hosted text is invisible to the accessibility audit's Dynamic Type checks and was
-/// reported clipped when the size changed at run time; the stock configuration passes both.
+/// Rows are UIKit's own list content too, not SwiftUI in a `UIHostingConfiguration`. Hosted
+/// text is invisible to the accessibility audit's Dynamic Type checks and is reported clipped
+/// when the size changes at run time; the stock configuration passes both.
 final class TaskListViewController: UIViewController {
     /// What the list is for.
     enum Mode {
         /// Tasks to do.
         case tasks
-        /// The trash: restore, or erase for good (§16.1).
+        /// The trash: restore, or erase for good.
         case trash
     }
 
@@ -77,7 +77,7 @@ final class TaskListViewController: UIViewController {
         filterField.submitted = { [weak self] in self?.filterSubmitted() }
 
         // The readback: how the query was understood, and how many it found. A mis-read
-        // filter shows wrong results silently, and wrong results are invisible (§6.3).
+        // filter shows wrong results silently, and wrong results are invisible.
         readback.font = .preferredFont(forTextStyle: .footnote)
         readback.adjustsFontForContentSizeCategory = true
         readback.textColor = .quietLabel
@@ -186,8 +186,7 @@ final class TaskListViewController: UIViewController {
         cell.accessibilityTraits = .button
         // No custom actions here: UIKit already offers the swipe actions to VoiceOver, Switch
         // Control and Full Keyboard Access, and actions set on the cell are added to those
-        // rather than replacing them, so each would be listed twice (§13: one equivalent
-        // for every swipe, not two).
+        // rather than replacing them, so each would be listed twice.
     }
 
     /// What a row looks like: the title, then the due date and notable states beneath it.
@@ -211,7 +210,7 @@ final class TaskListViewController: UIViewController {
         if !detail.isEmpty {
             content.secondaryText = detail.joined(separator: ", ")
             content.secondaryTextProperties.font = .preferredFont(forTextStyle: .subheadline)
-            // Overdue is said in words as well as colour, never colour alone (§13).
+            // Overdue is said in words as well as colour, never colour alone.
             content.secondaryTextProperties.color =
                 row.state.contains("overdue") ? .warningLabel : .quietLabel
             content.secondaryTextProperties.numberOfLines = 0
@@ -256,7 +255,7 @@ final class TaskListViewController: UIViewController {
         )
     }
 
-    /// Reloads, puts VoiceOver focus somewhere predictable, and says what happened (§13).
+    /// Reloads, puts VoiceOver focus somewhere predictable, and says what happened.
     ///
     /// Focus goes to `id` if it is still listed; otherwise to whatever now occupies the row
     /// it was in, so completing a task that leaves the list lands on the next one.
@@ -324,7 +323,7 @@ final class TaskListViewController: UIViewController {
         perform(focusing: nil, near: index) { try core.lumenna.restoreTask(id: row.id) }
     }
 
-    /// Erasing rebuilds the document without the task and cannot be undone (§9), so it asks.
+    /// Erasing rebuilds the document without the task and cannot be undone, so it asks.
     private func erase(_ row: RowView) {
         confirm(
             "Erase \(row.title)?",

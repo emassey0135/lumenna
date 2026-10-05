@@ -16,8 +16,8 @@ from client import LumennaError
 
 #: How often a menu wakes to notice that the store changed underneath it.
 #:
-#: §16.11 warns that live refresh costs battery, and prefers pushed updates. This is the
-#: cheap half of both: the push has already arrived and set a flag, and this only decides how
+#: Polling the store would cost battery, so changes are pushed instead. This is the cheap
+#: half of both: the push has already arrived and set a flag, and this only decides how
 #: long a stale list can sit on screen. One second is what the dialog library itself uses
 #: whenever any item has an idle or hint handler, so it is the device's own normal.
 REFRESH = 1
@@ -43,8 +43,8 @@ class Session:
     def call(self, method: str, **params):
         """Calls, and turns a refusal into something worth hearing.
 
-        Every message the server sends is written to be spoken — §6.3 says the text is the
-        only channel, there being no squiggle to point at — so it is passed through rather
+        Every message the server sends is written to be spoken — the text is the only
+        channel, there being no squiggle to point at — so it is passed through rather
         than wrapped in something of ours.
         """
         return self.client.call(method, **params)

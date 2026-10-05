@@ -2,10 +2,10 @@
 //!
 //! `core` holds the model and knows nothing about CRDTs; this crate is the translation.
 //! It hydrates Automerge documents into [`Snapshot`](lumenna_core::snapshot::Snapshot) and
-//! turns edits back into Automerge operations, so that the read model §8 leaves optional
+//! turns edits back into Automerge operations, so that an optional SQLite read model
 //! can arrive later without any interface changing — both paths produce the same structs.
 //!
-//! Two invariants run through everything here, and both come from §3:
+//! Two invariants run through everything here:
 //!
 //! - **Automerge is the truth.** SQLite stores change chunks as opaque blobs and, later, a
 //!   projection; it is never a source of truth for anything, and the projection is strictly

@@ -1,7 +1,7 @@
 //! The command surface, exercised through the real binary.
 //!
-//! §15 makes the CLI the completeness test for the core API: *"a capability the CLI cannot
-//! reach is a gap in the core, not in the CLI."* Running the actual executable is what makes
+//! The CLI is the completeness test for the core API: a capability the CLI cannot reach is
+//! a gap in the core, not in the CLI. Running the actual executable is what makes
 //! that a test rather than an aspiration — a command that compiles but cannot be invoked
 //! proves nothing.
 
@@ -68,7 +68,7 @@ fn a_fresh_profile_works_without_setup() {
 
 #[test]
 fn quick_add_reads_back_what_it_understood() {
-    // The announcement stands in for the inline highlighting a sighted user gets (§6.1),
+    // The announcement stands in for the inline highlighting a sighted user gets,
     // and always names the resolved date, since the phrase is the ambiguous part.
     let lum = Lum::new();
     lum.ok(&["project", "add", "Work"]);
@@ -83,7 +83,7 @@ fn quick_add_reads_back_what_it_understood() {
 
 #[test]
 fn an_unknown_project_stops_the_add_but_an_unknown_label_does_not() {
-    // §3.4's asymmetry: a project has structure that wants a decision; a label does not.
+    // The asymmetry: a project has structure that wants a decision; a label does not.
     let lum = Lum::new();
     let complaint = lum.fails(&["task", "add", "task #Nope"]);
     assert!(complaint.contains("unknown project 'Nope'"), "{complaint}");
@@ -105,7 +105,7 @@ fn a_typo_gets_a_suggestion_with_its_position() {
 
 #[test]
 fn row_numbers_address_the_last_listing() {
-    // §15: a UUID is thirty-six characters, miserable to type and worse to dictate.
+    // A UUID is thirty-six characters, miserable to type and worse to dictate.
     let lum = Lum::new();
     lum.ok(&["task", "add", "first"]);
     lum.ok(&["task", "add", "second"]);
@@ -144,8 +144,7 @@ fn identifier_prefixes_work_like_git() {
 
 #[test]
 fn the_filter_language_reads_back_before_it_lists() {
-    // A mis-parsed filter shows wrong results silently, and wrong results are invisible
-    // (§6.3).
+    // A mis-parsed filter shows wrong results silently, and wrong results are invisible.
     let lum = Lum::new();
     lum.ok(&["project", "add", "Work"]);
     lum.ok(&["task", "add", "urgent thing p1 #Work"]);
@@ -167,7 +166,7 @@ fn a_broken_filter_says_where_and_suggests() {
 
 #[test]
 fn json_carries_a_version_and_the_row_numbers() {
-    // §15: this is a compatibility contract, not a debugging convenience.
+    // This is a compatibility contract, not a debugging convenience.
     let lum = Lum::new();
     lum.ok(&["task", "add", "review PR tomorrow"]);
     let out = lum.ok(&["task", "list", "--json"]);
@@ -195,8 +194,8 @@ fn trash_is_recoverable_and_the_way_back_is_in_the_message() {
 
 #[test]
 fn dependencies_are_settable_and_then_filterable() {
-    // §15's own audit found `depends` filterable but not settable, which is exactly the
-    // failure the completeness rule is meant to catch.
+    // Filterable but not settable is exactly the failure the completeness rule is meant to
+    // catch.
     let lum = Lum::new();
     lum.ok(&["task", "add", "draft"]);
     lum.ok(&["task", "add", "review"]);
@@ -223,7 +222,7 @@ fn a_task_cannot_be_made_to_wait_for_itself() {
 #[test]
 fn project_weight_is_settable_and_warns_outside_its_range() {
     // Keep the range narrow, because anything wider lets one project dominate every ranking
-    // and the user then distrusts the whole feature (§3.4).
+    // and the user then distrusts the whole feature.
     let lum = Lum::new();
     lum.ok(&["project", "add", "Thesis"]);
     lum.ok(&["project", "weight", "Thesis", "1.5"]);
@@ -267,7 +266,7 @@ fn merging_labels_repairs_a_typo() {
 
 #[test]
 fn deleting_a_label_leaves_its_tasks_alone() {
-    // §3.4: deletion touches no tasks, and the identifiers left behind project as absent.
+    // Deletion touches no tasks, and the identifiers left behind project as absent.
     let lum = Lum::new();
     lum.ok(&["task", "add", "still here @errand"]);
     let out = lum.ok(&["label", "rm", "errand"]);
@@ -321,7 +320,7 @@ fn blocks_plans_and_timers_work_end_to_end() {
 #[test]
 fn a_repeating_block_starts_on_a_day_it_actually_occurs() {
     // RFC 5545 starts at the first date matching the rule on or after DTSTART, so a series
-    // anchored on a day it never occurs is a trap (§5). The block editor normalises it.
+    // anchored on a day it never occurs is a trap. The block editor normalises it.
     let lum = Lum::new();
     lum.ok(&[
         "block", "add", "Standup", "--at", "9am", "--minutes", "15", "--repeat",
@@ -349,7 +348,7 @@ fn settings_round_trip() {
 
 #[test]
 fn saved_filters_keep_their_text() {
-    // A filter containing `today` has to mean today at evaluation time (§6.2).
+    // A filter containing `today` has to mean today at evaluation time.
     let lum = Lum::new();
     lum.ok(&["filter", "add", "Now", "overdue | today"]);
     let out = lum.ok(&["filter", "list"]);
@@ -372,7 +371,7 @@ fn cascade_reaches_subtasks_and_the_setting_turns_it_off() {
 
 #[test]
 fn help_is_available_for_every_command() {
-    // §15: `--help` is an accessibility surface, not generated boilerplate. It is the
+    // `--help` is an accessibility surface, not generated boilerplate. It is the
     // primary discovery mechanism for anyone who cannot skim a GUI.
     let lum = Lum::new();
     let top = lum.ok(&["--help"]);
@@ -398,12 +397,12 @@ fn shell_completions_are_generated() {
 }
 
 // ---------------------------------------------------------------------------------------
-// The typed command surface (§12)
+// The typed command surface
 // ---------------------------------------------------------------------------------------
 
 #[test]
 fn a_mutation_returns_structure_rather_than_a_sentence() {
-    // §12 defines one typed command surface, and `--json` is an adapter over it. A prose
+    // There is one typed command surface, and `--json` is an adapter over it. A prose
     // sentence in a JSON envelope is not a surface: a client that cannot find out *what*
     // changed has to list everything again to guess.
     let lum = Lum::new();
@@ -415,8 +414,8 @@ fn a_mutation_returns_structure_rather_than_a_sentence() {
 
 #[test]
 fn adding_a_task_returns_the_task() {
-    // §12's surface is `add_task(text) -> Task`. Capture is the one place a round trip
-    // hurts, so the created record comes back whole rather than as an identifier to fetch.
+    // Capture is the one place a round trip hurts, so the created record comes back whole
+    // rather than as an identifier to fetch.
     let lum = Lum::new();
     lum.ok(&["project", "add", "Work"]);
     let out = lum.ok(&["task", "add", "review PR tomorrow p1 #Work @laptop", "--json"]);
@@ -462,7 +461,7 @@ fn the_day_plan_carries_its_assignments() {
 
 #[test]
 fn a_filter_reads_back_and_names_what_it_could_not_resolve() {
-    // §6.2's readback belongs on the surface, not only on stdout: every client needs to say
+    // The filter's readback belongs on the surface, not only on stdout: every client needs to say
     // how the query was understood, and a name that matched nothing is the usual reason it
     // was not.
     let lum = Lum::new();
@@ -618,7 +617,7 @@ fn first_task_id(lum: &Lum) -> String {
 }
 
 // ---------------------------------------------------------------------------------------
-// Backup, export and import (§9)
+// Backup, export and import
 // ---------------------------------------------------------------------------------------
 
 fn backups_in(lum: &Lum) -> Vec<std::path::PathBuf> {
@@ -734,7 +733,7 @@ fn choosing_where_backups_go_says_what_they_hold() {
 }
 
 // ---------------------------------------------------------------------------------------
-// Undo (§9)
+// Undo
 // ---------------------------------------------------------------------------------------
 
 #[test]
@@ -794,7 +793,7 @@ fn undo_keeps_what_has_changed_since_and_says_so() {
 }
 
 // ---------------------------------------------------------------------------------------
-// Sync (§7, §8)
+// Sync
 // ---------------------------------------------------------------------------------------
 
 #[test]

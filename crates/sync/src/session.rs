@@ -1,10 +1,10 @@
-//! The sync session (§7): every document, reconciled with Automerge's sync protocol.
+//! The sync session: every document, reconciled with Automerge's sync protocol.
 //!
 //! Both sides run the same code; nothing here knows who dialled. A session is:
 //!
 //! 1. **Hello.** Each side sends the documents it holds. A document either side holds is
 //!    synced, so a year this device has never opened arrives from a peer that has — its
-//!    genesis is deterministic, so starting it from nothing here forks nothing (§3.1).
+//!    genesis is deterministic, so starting it from nothing here forks nothing.
 //! 2. **Rounds, one document at a time, in name order.** In each round both sides send one
 //!    frame — the next Automerge sync message, or an empty frame for "nothing to say" — and
 //!    then read the other's. When both frames of a round were empty, the document is done.

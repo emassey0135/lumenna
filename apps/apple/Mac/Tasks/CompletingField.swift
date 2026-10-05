@@ -1,6 +1,6 @@
 import AppKit
 
-/// A text field that offers what could be typed next (§6.3), through the system's own
+/// A text field that offers what could be typed next, through the system's own
 /// completion: Option-Escape or F5 as in any Mac text field, and by itself after a `#` or `@`,
 /// where a name is the only thing that can follow.
 ///

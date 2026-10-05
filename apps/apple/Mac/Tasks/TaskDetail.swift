@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// One task's details, editable (§16.1), in the right-hand pane: the shared form
+/// One task's details, editable, in the right-hand pane: the shared form
 /// (`Shared/Forms/TaskForm.swift`), with the Mac's own sheets for choosing.
 final class TaskDetailViewController: HostedForm<TaskDetailView>, TaskFormHost {
     private let model: TaskDetailModel

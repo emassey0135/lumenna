@@ -1,4 +1,4 @@
-//! `lum pair`, `lum sync`, `lum sync-daemon` and `lum device` (§7, §8).
+//! `lum pair`, `lum sync`, `lum sync-daemon` and `lum device`.
 //!
 //! The protocol is in `lumenna-sync`; what is here is how a person at a terminal drives it,
 //! and how processes on one device share it.
@@ -7,7 +7,7 @@
 //!
 //! Every process on a device is the same device — the key lives in the store — but only one of
 //! them may run the endpoint at a time, or two processes would answer for one key. The **sync
-//! lock**, an advisory lock on `sync.lock` in the profile, decides which (§8). `lum
+//! lock**, an advisory lock on `sync.lock` in the profile, decides which. `lum
 //! sync-daemon` holds it for as long as it runs; `lum sync` takes it for one round when nothing
 //! else has it, and otherwise asks the daemon over its socket to sync now.
 //!
@@ -128,7 +128,7 @@ pub(crate) fn sync_once(profile: &Profile, local_only: bool) -> Result<Response>
 }
 
 /// Another process holds the endpoint — normally the daemon. Asks it to sync now.
-// The daemon's socket is Unix-only until Windows named pipes exist (§8).
+// The daemon's socket is Unix-only until Windows named pipes exist.
 #[cfg_attr(not(unix), allow(unused_variables))]
 fn ask_daemon_to_sync(profile: &Profile) -> Result<Response> {
     #[cfg(unix)]
@@ -175,7 +175,7 @@ pub(crate) fn daemon(profile: &Profile, local_only: bool) -> Result<()> {
     let _socket = serve_socket(profile, hook);
 
     runtime()?.block_on(async {
-        // §9: a resident process takes a backup when one is due, hourly.
+        // A resident process takes a backup when one is due, checking hourly.
         let mut hourly = tokio::time::interval(Duration::from_secs(60 * 60));
         hourly.tick().await;
         loop {
@@ -207,7 +207,7 @@ async fn stop_requested() {
     let _ = tokio::signal::ctrl_c().await;
 }
 
-/// Serves the command surface on the profile's socket (§8), one thread per client, each with
+/// Serves the command surface on the profile's socket, one thread per client, each with
 /// its own connection to the store. A `sync` request is passed to the daemon's loop.
 #[cfg(unix)]
 fn serve_socket(
@@ -251,7 +251,7 @@ fn serve_socket(
     _profile: &Profile,
     _hook: crate::rpc::SyncHook,
 ) -> Option<std::thread::JoinHandle<()>> {
-    // Named pipes on Windows are still to come (§8); clients spawn `lum rpc` there.
+    // Named pipes on Windows are still to come; clients spawn `lum rpc` there.
     None
 }
 
@@ -259,7 +259,7 @@ fn serve_socket(
 // Status and devices
 // ---------------------------------------------------------------------------------------
 
-/// `lum sync status`: §9's sync status, as sentences rather than an icon.
+/// `lum sync status`: how sync is going, as sentences rather than an icon.
 pub(crate) fn status(profile: &Profile) -> Result<Response> {
     let response = Response::new(profile.sync_status()?);
     Ok(if profile.at_terminal() && response.announcement().starts_with("Not paired") {

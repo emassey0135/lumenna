@@ -1,6 +1,6 @@
 import AppKit
 
-/// The Mac app (§16.5, §16.2): resident in the menu bar, syncing for as long as it runs, with
+/// The Mac app: resident in the menu bar, syncing for as long as it runs, with
 /// a window that closes to the menu bar rather than quitting.
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     static weak var shared: AppDelegate?
@@ -36,7 +36,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         core.startSyncing()
         core.watchForOtherProcesses()
         backUp()
-        // A resident app is the "something that stays running" §9 means: it checks hourly.
+        // Resident for days at a time, so a backup that falls due while it runs is taken:
+        // it checks hourly, as `lum rpc` does.
         backupTimer = Foundation.Timer.scheduledTimer(withTimeInterval: 60 * 60, repeats: true) { [weak self] _ in self?.backUp() }
     }
 
@@ -48,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         core?.timeZoneMayHaveChanged()
     }
 
-    /// Closing the window keeps the app running (§16.2); clicking the Dock icon brings it back.
+    /// Closing the window keeps the app running; clicking the Dock icon brings it back.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -80,7 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         quickAdd?.show()
     }
 
-    // MARK: - The menu bar item (§16.2)
+    // MARK: - The menu bar item
 
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -122,7 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     // MARK: - Undo and redo, of the store
 
     /// ⌘Z undoes typing while a field is being edited, and otherwise the last change this Mac
-    /// made to the store (§9) — which is what a person means by it in each place.
+    /// made to the store — which is what a person means by it in each place.
     @objc func undoChange(_ sender: Any?) {
         if let editing = editingUndoManager, editing.canUndo {
             editing.undo()

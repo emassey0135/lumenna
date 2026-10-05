@@ -1,4 +1,4 @@
-//! The filter query language (§6.2), read from text.
+//! The filter query language, read from text.
 
 use jiff::civil::Weekday;
 use lumenna_core::filter::{DueFilter, Expr, Predicate};
@@ -154,7 +154,7 @@ fn date_predicates_parse_in_the_forms_the_plan_names() {
 
 #[test]
 fn the_planner_predicates_parse() {
-    // "Work tasks not already assigned today" is the canonical block filter (§6.2).
+    // "Work tasks not already assigned today" is the canonical block filter.
     assert_eq!(
         parse("assigned: today"),
         Expr::Predicate(Predicate::Assigned(DateSpec::Today))
@@ -189,7 +189,7 @@ fn a_saved_query_round_trips_through_its_own_readback() {
 }
 
 // ---------------------------------------------------------------------------------------
-// Errors, which have to be speakable (§6.3)
+// Errors, which have to be speakable
 // ---------------------------------------------------------------------------------------
 
 #[test]

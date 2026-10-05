@@ -1,17 +1,16 @@
-//! `lum rpc` — the typed command surface over JSON-RPC on stdio (§8).
+//! `lum rpc` — the typed command surface over JSON-RPC on stdio.
 //!
-//! One server per client, for clients that cannot link Rust: Emacs (§16.10) and the BTSpeak
-//! app (§16.11). It opens the store exactly as a linked client does, watches for changes
-//! another process wrote, and pushes them — which is the whole reason to speak a protocol
-//! rather than shell out to `lum --json` per command. No Iroh: syncing is the daemon's job,
+//! One server per client, for clients that cannot link Rust: Emacs and the BTSpeak app. It
+//! opens the store exactly as a linked client does, watches for changes another process
+//! wrote, and pushes them — which is the whole reason to speak a protocol rather than shell
+//! out to `lum --json` per command. No Iroh: syncing is the daemon's job,
 //! and this is not the daemon.
 //!
 //! **The surface is `lumenna_surface`, serialised.** A method builds the same [`Command`] the
 //! command line builds and hands it to the same `dispatch`, which calls the same typed
 //! operations the phone apps link — so RPC cannot drift from the CLI or from them. There is
 //! one implementation of every operation, and this is a way in for clients that cannot link
-//! it. §8's *one protocol, two transports* then costs the daemon nothing beyond a socket: it
-//! serves exactly this.
+//! it. Serving the daemon's socket then costs nothing more: it serves exactly this.
 //!
 //! # Two things the terminal has that a client does not
 //!
@@ -27,9 +26,8 @@
 //! # Framing
 //!
 //! Newline-delimited JSON, and LSP-style `Content-Length` headers, chosen per message by
-//! what arrived: MCP's stdio transport uses the first (§12) and `jsonrpc.el` uses the second
-//! (§16.10), and both are clients this has to serve. A reply is framed the way its request
-//! was.
+//! what arrived: MCP's stdio transport uses the first and `jsonrpc.el` uses the second, and
+//! both are clients this has to serve. A reply is framed the way its request was.
 
 use std::io::{BufRead, BufReader, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -50,9 +48,8 @@ use crate::{
 
 /// How often to look for changes another process wrote.
 ///
-/// SQLite has no cross-process notification, so §8 sanctions a one-second timer where file
-/// watching is unreliable. What makes it cheap is that `refresh` settles in one pragma read
-/// whether there is anything at all to do.
+/// SQLite has no cross-process notification, and file watching is unreliable, so a timer it
+/// is. What makes it cheap is that `outside_version` is one pragma read.
 const POLL: Duration = Duration::from_secs(1);
 
 /// How often a resident server asks whether a backup is due. Hourly is plenty against a
@@ -173,8 +170,8 @@ struct Writer {
 ///
 /// If stdin cannot be read.
 pub fn serve(profile: Profile) -> Result<()> {
-    // A resident server is exactly the "something that stays running" §9 means, so it takes
-    // a backup when one is due at start, and checks again on the hour while it runs.
+    // A resident server is something that stays running, so it takes a backup when one is due
+    // at start, and checks again on the hour while it runs.
     crate::durability::back_up_if_due(&profile);
     serve_streams(profile, BufReader::new(std::io::stdin()), Box::new(std::io::stdout()), None)
 }
@@ -184,7 +181,7 @@ pub fn serve(profile: Profile) -> Result<()> {
 pub type SyncHook = Arc<dyn Fn() -> Result<Response> + Send + Sync>;
 
 /// Serves the surface over any pair of streams — stdio for `lum rpc`, a socket connection
-/// for the daemon (§8: one protocol, two transports).
+/// for the daemon: one protocol, two transports.
 pub fn serve_streams(
     mut profile: Profile,
     mut reader: impl BufRead,
@@ -537,7 +534,7 @@ fn command_for(method: &str, params: &Value) -> std::result::Result<Command, Rpc
         "task.rm" => Command::Task(TaskCommand::Rm { id: text_of(params, "id")? }),
         "task.restore" => Command::Task(TaskCommand::Restore { id: text_of(params, "id")? }),
         "task.erase" => {
-            // Nothing here can prompt, so the caller confirms instead. §9: this rebuilds the
+            // Nothing here can prompt, so the caller confirms instead. This rebuilds the
             // document and cannot be undone.
             if !flag(params, "confirm") {
                 return Err(invalid(
@@ -740,8 +737,8 @@ fn completions(server: &Server, params: &Value) -> std::result::Result<Response,
             return Err(invalid(format!("'{other}' is not a syntax; use quick-add or filter")));
         }
     };
-    // §6.3 wants the count announced before the list, and the announcement is core's
-    // sentence, so it travels as one — the candidates travel as components.
+    // The count is said before the list, and the announcement is core's sentence, so it
+    // travels as one — the candidates travel as components.
     Ok(Response::new(server.profile()?.complete_text(&text, cursor, syntax)?))
 }
 
@@ -750,7 +747,7 @@ fn preview(server: &Server, params: &Value) -> std::result::Result<Response, Rpc
     Ok(Response::new(server.profile()?.preview_task(&text)?))
 }
 
-/// The work blocks a task could go in, from the task (§3.7). A chooser's question, so it is
+/// The work blocks a task could go in, from the task. A chooser's question, so it is
 /// the surface's answer directly, with no command line of its own: `lum plan` lists a day.
 fn block_choices(server: &Server, params: &Value) -> std::result::Result<Response, RpcError> {
     let days = maybe_number(params, "days")?;
@@ -758,7 +755,7 @@ fn block_choices(server: &Server, params: &Value) -> std::result::Result<Respons
 }
 
 // ---------------------------------------------------------------------------------------
-// Pairing (§7)
+// Pairing
 // ---------------------------------------------------------------------------------------
 
 /// One pairing's conversation with its client: whether the words matched, and whether the

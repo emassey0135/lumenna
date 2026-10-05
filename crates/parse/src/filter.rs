@@ -1,22 +1,22 @@
-//! The filter query parser (§6.2).
+//! The filter query parser.
 //!
-//! Produces [`Expr`], which lives in `core` because §6.2 calls the AST the stable interface.
+//! Produces [`Expr`], which lives in `core` because the AST is the stable interface.
 //! What is here is only the reading of text.
 //!
-//! # A note on the parser library
+//! # Why recursive descent
 //!
-//! §6.3 specifies `chumsky` for both parsers, for one stated reason: it reports
+//! A combinator library such as `chumsky` would offer one thing worth having: it reports
 //! **expected-token sets at a position**, and completion depends on exactly that. This is
 //! recursive descent instead, and the reason is the date grammar.
 //!
-//! `parse_when` works over **words**, because §6.1's actual requirement is knowing which
+//! `parse_when` works over **words**, because the actual requirement is knowing which
 //! *span* a date phrase consumed, and because multi-word phrases — `next friday`, `every
 //! mon, wed and fri`, `no estimate` — are the whole vocabulary. A character-level `chumsky`
 //! grammar for filters would mean two tokenisations in one crate and a bridge between them
-//! at every `due before:` — which is the same class of mistake §6.2 warns about when it says
-//! two date parsers is a bug generator.
+//! at every `due before:` — the same class of mistake as two date parsers, which is a bug
+//! generator.
 //!
-//! The stated benefit is kept rather than lost: [`ParseError::expected`] carries exactly the
+//! That benefit is kept: [`ParseError::expected`] carries exactly the
 //! token kinds that would have been valid, [`crate::complete`] is built on it, and it is
 //! produced deliberately rather than inferred from a combinator's internals.
 
@@ -79,7 +79,7 @@ pub struct ParseError {
     /// Byte offset one past it.
     pub end: usize,
     /// The message, carrying the position and the offending token in the text itself —
-    /// because there is no squiggle to point at (§6.3).
+    /// because there is no squiggle to point at.
     pub message: String,
     /// What would have been valid here.
     pub expected: Vec<Expected>,
@@ -198,7 +198,7 @@ impl<'a> Cursor<'a> {
         self.predicate()
     }
 
-    /// Reads the name after a sigil, honouring quotes and greedy multi-word matching (§6.2).
+    /// Reads the name after a sigil, honouring quotes and greedy multi-word matching.
     fn sigil_name(&mut self, stripped: &str, known: &[String]) -> String {
         let first = self.tokens[self.at].clone();
         self.at += 1;

@@ -37,8 +37,8 @@ data class Item(
 )
 
 /**
- * A list of things with what can be done to each (§16.1's management views): a heading's worth
- * of count above, one TalkBack stop per item, its actions custom actions and a long press.
+ * A list of things with what can be done to each: a heading's worth of count above, one
+ * TalkBack stop per item, its actions custom actions and a long press.
  */
 @Composable
 fun ItemListScreen(
@@ -120,7 +120,7 @@ fun BrowseScreen(core: Core, navigator: Navigator, changes: Long) {
     )
 }
 
-/** The project tree, with weights (§3.4). Depth is said where it changes (§16.11). */
+/** The project tree, with weights. Depth is said where it changes. */
 @Composable
 fun ProjectsScreen(core: Core, navigator: Navigator, changes: Long) {
     val prompt = rememberPrompter()
@@ -232,7 +232,7 @@ fun ProjectsScreen(core: Core, navigator: Navigator, changes: Long) {
     prompt.Host()
 }
 
-/** Labels: a first-class axis, with its own list (§16.1). */
+/** Labels: a first-class axis, with its own list. */
 @Composable
 fun LabelsScreen(core: Core, navigator: Navigator, changes: Long) {
     val prompt = rememberPrompter()
@@ -305,7 +305,7 @@ fun LabelsScreen(core: Core, navigator: Navigator, changes: Long) {
     prompt.Host()
 }
 
-/** Saved filters: created, renamed, requeried, reordered and deleted, not only run (§16.1). */
+/** Saved filters: created, renamed, requeried, reordered and deleted, not only run. */
 @Composable
 fun FiltersScreen(core: Core, navigator: Navigator, changes: Long) {
     val prompt = rememberPrompter()
@@ -367,7 +367,7 @@ fun FiltersScreen(core: Core, navigator: Navigator, changes: Long) {
     prompt.Host()
 }
 
-/** Every block series: for the ones not on any day near enough to find from the planner (§3.6). */
+/** Every block series: for the ones not on any day near enough to find from the planner. */
 @Composable
 fun BlocksScreen(core: Core, navigator: Navigator, changes: Long) {
     val prompt = rememberPrompter()

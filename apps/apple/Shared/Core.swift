@@ -26,7 +26,7 @@ final class Core {
 
     /// Where the store lives. A UI test names a fresh one, so every run starts empty.
     ///
-    /// - **iOS**: Application Support, the app's own and never synced by iCloud Drive (§9).
+    /// - **iOS**: Application Support, the app's own and never synced by iCloud Drive.
     /// - **macOS**: `~/Library/Application Support/lumenna` — where `lum` keeps it too, so the
     ///   app and the command line on one Mac are one device with one store, not two that would
     ///   have to pair with each other. `LUMENNA_PROFILE` names another, as it does for `lum`.
@@ -54,7 +54,7 @@ final class Core {
     ///
     /// The core asks the operating system through `TZ` or `/etc/localtime`, and inside the iOS
     /// sandbox the second is not something to rely on. The time zone in Settings is the one
-    /// the person chose, so it is the one that counts (§4).
+    /// the person chose, so it is the one that counts.
     private static func useSystemTimeZone() {
         setenv("TZ", TimeZone.current.identifier, 1)
     }
@@ -65,9 +65,9 @@ final class Core {
         Core.useSystemTimeZone()
     }
 
-    /// Starts keeping this device in sync (§8). On iOS, for as long as the app is in front;
+    /// Starts keeping this device in sync. On iOS, for as long as the app is in front;
     /// on macOS, for as long as it runs, which is what makes the resident app the device's
-    /// sync process (§16.2) with no daemon or service to set up.
+    /// sync process with no daemon or service to set up.
     func startSyncing() {
         let lumenna = self.lumenna
         syncQueue.async { [weak self] in
@@ -97,7 +97,8 @@ final class Core {
     }
 
     /// Notices what another process — `lum`, the daemon — wrote to the store, once a second,
-    /// as `lum rpc` does (§8 sanctions the timer). Only a Mac has those other processes.
+    /// as `lum rpc` does: SQLite has no way to be told of another process's commit. Only a
+    /// Mac has those other processes.
     ///
     /// By `outsideVersion`, not by asking `refresh` whether it took anything in: every
     /// operation and the sync loop refresh too, and whichever came first after `lum` wrote
@@ -115,7 +116,7 @@ final class Core {
         }
     }
 
-    /// Takes a backup if one is due (§9), off the main thread; `failed` hears why not.
+    /// Takes a backup if one is due, off the main thread; `failed` hears why not.
     func backUpIfDue(failed: @escaping (String) -> Void) {
         let lumenna = self.lumenna
         DispatchQueue.global(qos: .utility).async {

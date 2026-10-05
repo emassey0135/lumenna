@@ -1,6 +1,6 @@
-//! Sync between one person's devices (§7): Automerge documents over Iroh, and pairing.
+//! Sync between one person's devices: Automerge documents over Iroh, and pairing.
 //!
-//! **No server ever sees the data** (§1). Devices dial each other by public key; Iroh finds a
+//! **No server ever sees the data**. Devices dial each other by public key; Iroh finds a
 //! path — the local network, a hole punched through a NAT, or a relay that forwards traffic it
 //! cannot read — and authenticates both ends. Over that connection each document is reconciled
 //! with Automerge's own sync protocol, which sends only what the other side lacks.
@@ -10,7 +10,7 @@
 //! - [`node`] — this device on the network: dialling and answering its paired devices.
 //! - [`invite`] — the short-lived endpoint a pairing runs on.
 //!
-//! **Membership in the `devices` document is the trust boundary** (§7). A peer that is not
+//! **Membership in the `devices` document is the trust boundary**. A peer that is not
 //! listed there is refused on the sync protocol, however it was found. The only way into the
 //! list is a pairing whose words a person compared and confirmed on both devices.
 

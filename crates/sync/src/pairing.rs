@@ -1,4 +1,4 @@
-//! Pairing: confirming a new device by comparing words (§7).
+//! Pairing: confirming a new device by comparing words.
 //!
 //! After the connection is up, **each side derives three words from a secret only the two ends
 //! of that one connection share, both show them, and a person confirms on both that they

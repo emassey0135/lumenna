@@ -1,12 +1,12 @@
 //! Dates, times, and repetitions named but not yet resolved.
 //!
-//! Quick add (§6.1) and the filter language (§6.2) both take date phrases, and §6.2 is
-//! explicit that they must share one grammar: *"two subtly different date parsers in one app
-//! is a bug generator."* These types are what that shared grammar produces. Parsing lives in
-//! `parse`; the meaning lives here, next to the model the meaning is about.
+//! Quick add and the filter language both take date phrases, and they share one grammar:
+//! two subtly different date parsers in one app is a bug generator. These types are what
+//! that shared grammar produces. Parsing lives in `parse`; the meaning lives here, next to
+//! the model the meaning is about.
 //!
 //! Everything resolves against a caller-supplied [`Zoned`] rather than reading the clock.
-//! Quick add anchors to the user's current zoned datetime, never UTC (§4), and a test that
+//! Quick add anchors to the user's current zoned datetime, never UTC, and a test that
 //! cannot choose "now" cannot check what happens on the last day of a month.
 
 use jiff::civil::{self, Weekday};
@@ -15,7 +15,7 @@ use jiff::{Span, Zoned};
 /// Which occurrence of a weekday a phrase means.
 ///
 /// English is genuinely ambiguous here — *"next Friday"* means different things to
-/// different people — so §6.1 does not try to be clever. It fixes a rule, and then
+/// different people — so quick add does not try to be clever. It fixes a rule, and then
 /// **announces the date it resolved to**, which is the part that actually protects the user.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Which {
@@ -43,7 +43,7 @@ pub enum RelativeUnit {
 /// A day of the month, which may count from the end.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MonthDay {
-    /// A fixed day. Months without it are skipped, not clamped (§5).
+    /// A fixed day. Months without it are skipped, not clamped.
     Nth(i8),
     /// The last day, whatever length the month is.
     Last,
@@ -115,7 +115,7 @@ impl DateSpec {
 ///
 /// *"sep 1"* typed in October means next September, because a task manager is about what is
 /// coming. A date already gone is almost never what someone meant to type, and a due date
-/// silently landing in the past is exactly the failure §6.1 warns about.
+/// silently landing in the past is exactly the failure to avoid.
 fn resolve_month_day(today: civil::Date, month: i8, day: i8) -> Option<civil::Date> {
     let this_year = civil::Date::new(today.year(), month, day).ok();
     match this_year {
@@ -146,12 +146,12 @@ fn resolve_weekday(today: civil::Date, day: Weekday, which: Which) -> Option<civ
 }
 
 impl std::fmt::Display for DateSpec {
-    /// Renders the phrase back, for the readback §6.3 requires.
+    /// Renders the phrase back, for the readback.
     ///
     /// This is the *phrase*, not the date it resolves to. Both belong in an announcement —
-    /// §6.1 insists the resolved absolute date is always exposed, because "Friday" is
-    /// ambiguous and the resolution is the part worth confirming — so a caller says both:
-    /// *"next friday, that is the fifteenth of May"*.
+    /// the resolved absolute date is always exposed, because "Friday" is ambiguous and the
+    /// resolution is the part worth confirming — so a caller says both: *"next friday, that
+    /// is the fifteenth of May"*.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         const MONTHS: [&str; 12] = [
             "January", "February", "March", "April", "May", "June", "July", "August",
@@ -211,10 +211,9 @@ pub fn weekday_name(day: Weekday) -> &'static str {
 
 /// A repetition named in prose, before it becomes an RRULE.
 ///
-/// §5 notes that no Rust crate turns English into RFC 5545, so this is written by hand as
-/// part of the quick-add grammar. Keeping it as a value rather than going straight to a
-/// string means the readback (§6.3) can describe what was understood without parsing its own
-/// output back.
+/// No Rust crate turns English into RFC 5545, so this is written by hand as part of the
+/// quick-add grammar. Keeping it as a value rather than going straight to a string means
+/// the readback can describe what was understood without parsing its own output back.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum RecurrenceSpec {
     /// *"every day"*, *"every 3 days"*.
@@ -246,7 +245,7 @@ pub enum RecurrenceSpec {
 }
 
 impl RecurrenceSpec {
-    /// The repetition in English, for the readback §6.1 requires.
+    /// The repetition in English, for the readback.
     #[must_use]
     pub fn describe(&self) -> String {
         fn every(interval: u16, unit: &str) -> String {
@@ -446,12 +445,11 @@ fn ordinal_word(n: i8) -> String {
 pub struct DueSpec {
     /// The day, if one was named.
     pub date: Option<DateSpec>,
-    /// The time of day, if one was named. Absent is a real state, not a default of midnight
-    /// (§3.5).
+    /// The time of day, if one was named. Absent is a real state, not a default of midnight.
     pub time: Option<civil::Time>,
     /// The repetition, if one was named.
     pub recurrence: Option<RecurrenceSpec>,
-    /// Whether the repetition counts from completion — Todoist's `every!` (§3.5).
+    /// Whether the repetition counts from completion — Todoist's `every!`.
     pub from_completion: bool,
 }
 
@@ -472,7 +470,7 @@ impl DueSpec {
     /// - **A time with no day means today.** *"3pm"* is this afternoon.
     /// - **A repetition with no day starts at its first occurrence from today.** *"every
     ///   monday"* typed on a Wednesday is due next Monday, not Wednesday — because a series
-    ///   anchored on a day it never occurs is a trap (§5), and quick add is where it would
+    ///   anchored on a day it never occurs is a trap, and quick add is where it would
     ///   otherwise be set.
     /// - **Nothing at all is no due date**, which is a real state and not a defaulted one.
     ///
@@ -621,7 +619,7 @@ mod tests {
     #[test]
     fn a_repetition_with_no_day_starts_at_its_first_real_occurrence() {
         // Typed on a Wednesday. Anchoring the series on Wednesday would produce a weekly
-        // Monday rule whose start date is a day it never occurs (§5).
+        // Monday rule whose start date is a day it never occurs.
         let spec = DueSpec {
             recurrence: Some(RecurrenceSpec::Weekly {
                 interval: 1,

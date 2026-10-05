@@ -1,4 +1,4 @@
-//! Undo and redo (§9): saved on the device, shared by its processes, never synced, and
+//! Undo and redo: saved on the device, shared by its processes, never synced, and
 //! always rebased against what the store holds now.
 
 use jiff::Zoned;
@@ -154,7 +154,7 @@ fn an_entry_this_version_cannot_read_is_dropped_not_guessed_at() {
 #[test]
 fn the_history_stays_on_the_device() {
     // A backup is Automerge documents and nothing else; restoring one elsewhere brings the
-    // edits but none of this device's history of making them (§3.12).
+    // edits but none of this device's history of making them.
     let (_dir, path) = profile();
     let mut store = Store::open(&path).unwrap();
     add(&mut store, "Review PR");

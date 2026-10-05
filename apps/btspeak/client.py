@@ -6,10 +6,10 @@ the work — to us anyway.
 
 Two things shape this file:
 
-**It takes streams, not a process.** §8 says the sync daemon will serve the same protocol
-over a Unix socket, and that an RPC client's normal path is the socket with a spawned
-`lum rpc` as the fallback. A client built around `Popen` would have to be rewritten for that;
-one built around a reader and a writer needs a different constructor. See `connect.py`.
+**It takes streams, not a process.** The sync daemon serves the same protocol over a Unix
+socket, and an RPC client's normal path is the socket with a spawned `lum rpc` as the
+fallback. A client built around `Popen` could not use the socket; one built around a reader
+and a writer needs only a different constructor. See `connect.py`.
 
 **Replies and notifications share one pipe.** A reader thread demultiplexes: replies go to
 the call that is waiting for them, and `lumenna/changed` sets a flag. The thread must never

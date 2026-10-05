@@ -1,7 +1,7 @@
 //! The `chrono` boundary.
 //!
 //! The `rrule` crate speaks `chrono::DateTime<rrule::Tz>` and this crate speaks
-//! [`jiff::civil::Date`] (§4). Every conversion between them happens in this file, so that
+//! [`jiff::civil::Date`]. Every conversion between them happens in this file, so that
 //! the rest of the crate never sees a `chrono` type and swapping the recurrence engine
 //! later touches one module rather than every caller.
 //!
@@ -13,7 +13,7 @@
 //! becomes midnight UTC, the expansion runs there, and the result comes back as a civil
 //! date with the time discarded.
 //!
-//! This is not ducking §4's DST question. That question is *"what does a block scheduled in
+//! This is not ducking the DST question. That question is *"what does a block scheduled in
 //! a skipped hour do"*, and it belongs where a civil occurrence is resolved against a real
 //! zone to produce an instant — reminder scheduling, timers. Answering it during expansion
 //! would mean a recurring 2:30am block silently missing a day each spring, or occurring

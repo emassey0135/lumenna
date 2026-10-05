@@ -59,8 +59,7 @@ extension UIViewController {
         present(sheet, animated: true)
     }
 
-    /// Runs an operation and says what it did, or why it could not (§13: announce state
-    /// changes explicitly).
+    /// Runs an operation and says what it did, or why it could not.
     @discardableResult
     func run(_ operation: () throws -> Change) -> Change? {
         do {
@@ -75,7 +74,7 @@ extension UIViewController {
 }
 
 extension UIViewController {
-    /// Asks how long a sitting is meant to take (§3.7). `done` gets the minutes, or `nil`
+    /// Asks how long a sitting is meant to take. `done` gets the minutes, or `nil`
     /// for none — what `without` names: "Skip" when assigning, "No Planned Length" when
     /// changing one. Cancel calls nothing.
     func askForLength(
@@ -114,7 +113,7 @@ extension UIViewController {
 
 extension UIBarButtonItem {
     /// Undo or Redo for a navigation bar: the system's arrows, named in words for VoiceOver.
-    /// Words took the bar's room from the title, which was then clipped at large text sizes.
+    /// Words would take the bar's room from the title, which is then clipped at large text sizes.
     static func undo(_ action: @escaping () -> Void) -> UIBarButtonItem {
         arrow("arrow.uturn.backward", name: "Undo", action)
     }

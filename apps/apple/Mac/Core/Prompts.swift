@@ -77,7 +77,7 @@ extension NSWindow {
         }
     }
 
-    /// Asks how long a sitting is meant to take (§3.7): minutes, or `nil` for none — what
+    /// Asks how long a sitting is meant to take: minutes, or `nil` for none — what
     /// `without` names. Cancel calls nothing.
     func askForLength(_ title: String, current: UInt32? = nil, without: String, done: @escaping (UInt32?) -> Void) {
         let alert = NSAlert()
@@ -113,7 +113,7 @@ extension NSWindow {
 }
 
 extension NSViewController {
-    /// Runs an operation and says what it did, or why it could not (§13).
+    /// Runs an operation and says what it did, or why it could not.
     @discardableResult
     func run(_ operation: () throws -> Change) -> Change? {
         do {

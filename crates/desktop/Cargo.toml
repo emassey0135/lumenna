@@ -16,7 +16,7 @@ tsify = { version = "0.5", optional = true, default-features = false, features =
 wasm-bindgen = { version = "0.2", optional = true }
 
 [features]
-# TypeScript types for the web client, which shares these places and this wording (§16.12).
+# TypeScript types for the web client, which shares these places and this wording.
 wasm = ["dep:tsify", "dep:wasm-bindgen", "lumenna-surface/wasm"]
 
 [lints]

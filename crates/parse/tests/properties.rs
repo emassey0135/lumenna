@@ -45,7 +45,7 @@ proptest! {
 
     /// Quick add never loses a character.
     ///
-    /// §6.1 forbids silently folding an unrecognised token into the title; the dual matters
+    /// An unrecognised token must never be silently folded into the title; the dual matters
     /// just as much. Every non-space character is either in the title or inside a span that
     /// was recognised — nothing simply disappears, which is the failure a user could not
     /// possibly detect.
@@ -93,7 +93,7 @@ proptest! {
         match parse_filter(&line, &known) {
             Ok(expr) => prop_assert!(!expr.describe().is_empty()),
             Err(error) => {
-                // An error is only useful if it says where. §6.3: the position and the token
+                // An error is only useful if it says where: the position and the token
                 // have to be in the message text, because there is no squiggle.
                 prop_assert!(!error.message.is_empty());
                 prop_assert!(error.start <= line.len());

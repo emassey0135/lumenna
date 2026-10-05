@@ -1,6 +1,6 @@
 import AppKit
 
-/// The menu bar (§16.5). Everything the app does is here, with its shortcut: the menu bar is
+/// The menu bar. Everything the app does is here, with its shortcut: the menu bar is
 /// how a Mac user — and a VoiceOver user especially, with VO-M — finds what an app can do.
 enum MainMenu {
     static func build() -> NSMenu {

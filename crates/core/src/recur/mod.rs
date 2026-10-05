@@ -1,19 +1,19 @@
-//! Recurrence: §5's two systems, which share a syntax and nothing else.
+//! Recurrence: two systems, which share a syntax and nothing else.
 //!
 //! **Recurring tasks** are one task whose due date advances. There is no generated series
 //! and no list of future instances — completing it moves it forward, and the history lives
-//! in [`TaskCompletion`](crate::model::TaskCompletion) records (§3.3). This is the opposite
+//! in [`TaskCompletion`](crate::model::TaskCompletion) records. This is the opposite
 //! of how calendar events work, and getting it backwards is the standard mistake in this
 //! category. [`advance`] is that whole system.
 //!
 //! **Recurring blocks** are a series definition plus sparse exceptions, expanded on read.
 //! This *is* how calendar events work: unmodified occurrences are never stored, because a
 //! daily routine would otherwise generate thousands of rows and make every sync a bulk
-//! transfer (§3.6). [`expand`] is that system.
+//! transfer. [`expand`] is that system.
 //!
 //! Both go through [`Rule`], which wraps RFC 5545 expansion. Note what is *not* here:
 //! turning English into an RRULE. No mature Rust implementation of that exists, so it is
-//! written by hand as part of the quick-add grammar (§6); this module takes the RFC string
+//! written by hand as part of the quick-add grammar; this module takes the RFC string
 //! that grammar produces, and the ones calendar import brings in from other systems.
 
 mod convert;
@@ -261,14 +261,14 @@ pub enum Advanced {
 /// # Why `occurrences_completed` has to be passed in
 ///
 /// The rule is re-anchored on each advance, because the model keeps only the *current* due
-/// date — §3.2's recurring task is one task whose date moves, not a series with a
+/// date — a recurring task is one task whose date moves, not a series with a
 /// remembered origin. Re-anchoring is exact for `UNTIL`, which is an absolute date, and for
 /// every `BY*` part, since the current due date is itself on the sequence.
 ///
 /// It is *not* exact for `COUNT`, which counts from an origin the model no longer has. So
 /// the caller supplies how many occurrences have been completed — the task's
 /// [`TaskCompletion`](crate::model::TaskCompletion) records, which exist precisely because a
-/// recurring task accumulates them (§3.3) — and this counts the one being recorded now.
+/// recurring task accumulates them — and this counts the one being recorded now.
 ///
 /// # Errors
 ///
@@ -312,7 +312,7 @@ pub struct Occurrence {
     pub start_time: civil::Time,
     /// Effective duration.
     pub duration_mins: u32,
-    /// How far re-flow may compress it (§3.6).
+    /// How far re-flow may compress it.
     pub min_duration_mins: u32,
     /// Effective title.
     pub title: String,
@@ -325,7 +325,7 @@ pub struct Occurrence {
 }
 
 impl Occurrence {
-    /// How an assignment refers to this occurrence (§3.7).
+    /// How an assignment refers to this occurrence.
     ///
     /// A one-off block's assignments name the series alone, so that moving the block
     /// carries them with it. A recurring block's occurrence has no identifier of its own
@@ -416,7 +416,7 @@ pub fn expand<'a>(
 /// The series' explicit override still applies when it fits, since it says something about
 /// this block that the kind's default does not — a two-hour work block useless under an
 /// hour stays useless under an hour when shortened to ninety minutes. When it no longer
-/// fits, the kind decides, which is what keeps a shortened break incompressible (§3.6).
+/// fits, the kind decides, which is what keeps a shortened break incompressible.
 fn floor_for(series: &BlockSeries, kind: BlockKind, duration_mins: u32) -> u32 {
     series
         .min_duration_mins

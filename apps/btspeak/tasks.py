@@ -3,7 +3,7 @@
 Every field is sent as text and read by core. `due` and `repeat` go through the same date
 grammar the quick-add line uses, so "next friday" means here exactly what it means there. The
 dialog library has its own `request_date`, with its own parsing — using it would put a second
-date parser in the product, which §6.2 warns against by name.
+date parser in the product, and two parsers would disagree.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ def task_list(session: Session, query: str = "", title: str = "Tasks", prefix: s
         heading = title
         readback = (result.get("query") or {}).get("description")
         if readback:
-            # §6.2: a mis-parsed filter shows wrong results silently, and wrong results are
+            # A mis-parsed filter shows wrong results silently, and wrong results are
             # invisible. So the query is read back before its results are.
             heading = f"{title}: {readback}"
         said = [heading, result.get("announcement", "")]
@@ -139,7 +139,7 @@ def show(session: Session, row: dict) -> str:
 
 def trash(session: Session) -> str:
     """Deleted tasks: Enter puts one back; erasing it for good is its context menu's, or the
-    delete keys' (§3.2, §9)."""
+    delete keys'."""
     state = {"heading": "Trash"}
 
     def build():
@@ -164,7 +164,7 @@ def trash(session: Session) -> str:
 
 
 def erase(session: Session, row: dict) -> str:
-    """Erasing rebuilds the document without the task and cannot be undone (§9), so it asks."""
+    """Erasing rebuilds the document without the task and cannot be undone, so it asks."""
     if not confirm(f"Erase {row['title']} and its history for good? This cannot be undone."):
         return ""
     return session.write("task.erase", id=row["id"], confirm=True)
@@ -179,7 +179,7 @@ def task_details(task: dict) -> str:
     """Everything about one task, as lines to pan through.
 
     A detail view is where the near-universal states are worth having, so this shows the full
-    set rather than the notable ones a list line carries (§13).
+    set rather than the notable ones a list line carries.
     """
     lines = [task["title"]]
     if task.get("project"):
@@ -256,7 +256,7 @@ def edit_task(session: Session, task: dict) -> str:
         ),
     ]
     if current["project"] not in projects:
-        # Not one this device can name (§3.1: not loaded yet); leave it where it is.
+        # A project this device does not know, perhaps not synced yet: leave it where it is.
         del current["project"]
     else:
         fields.append(
@@ -298,7 +298,7 @@ def edit_task(session: Session, task: dict) -> str:
 
 
 def move_to_project(session: Session, identifier: str) -> str:
-    """Puts a task in another project; its subtasks follow (§3.2)."""
+    """Puts a task in another project; its subtasks follow."""
     names = [row["title"] for row in session.call("project.list").get("rows", [])]
     choice = choose({name: name for name in names}, "Move to")
     return session.write("task.move", id=identifier, project=choice) if choice else ""
@@ -317,7 +317,7 @@ ANOTHER_DAY = "\0another day"
 
 
 def assign_task(session: Session, identifier: str) -> str:
-    """Puts a task into a work block (§3.7): one of the coming week's, which the core chooses
+    """Puts a task into a work block: one of the coming week's, which the core chooses
     as it does for every app (`block.choices`), or one on a day named."""
     import day  # here, since day imports this module
 
@@ -357,11 +357,11 @@ def assign_task(session: Session, identifier: str) -> str:
 
 
 def add_task(session: Session, prefix: str = "") -> str:
-    """Capture, in the quick-add grammar (§6.1).
+    """Capture, in the quick-add grammar.
 
     The line is previewed before it is written, because an unknown project is an error and an
     unknown label is a new label — and being told which of those just happened *after* the
-    fact is not the same thing (§3.4).
+    fact is not the same thing.
     """
     text = assisted_input(session, "Task", "quick-add", history_key="lumenna-add", default=prefix)
     if not text or not text.strip():
@@ -418,12 +418,12 @@ def assisted_input(
 
     `InputDialog` has no hook for completing as you type — Tab is form navigation — so this
     offers candidates once the line is entered instead, whenever the last word looks like a
-    name that was started and not finished. It is the honest version of §6.3's completion on
-    this toolkit: worth having for `#wo` when you cannot remember whether the project is Work
+    name that was started and not finished. It is the honest version of completion on this
+    toolkit: worth having for `#wo` when you cannot remember whether the project is Work
     or Workshop, and not pretending to be inline.
 
     Making it inline means subclassing `InputDialog` to bind a key to `complete`, which is
-    the same shape of change §16.11 describes for the menu's speech and braille, and worth
+    the same shape of change `rows.py` describes for the menu's speech and braille, and worth
     doing once the rest is in daily use.
     """
     text = dialogs.request_input(prompt, default_text=default, history_key=history_key)

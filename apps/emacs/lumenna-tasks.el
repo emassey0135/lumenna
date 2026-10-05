@@ -28,7 +28,7 @@ RET shows a task; ? shows every command.
   (setq-local lumenna--activate #'lumenna-task-show))
 
 (defun lumenna--task-listing (query title)
-  "The heading and rows for QUERY, said back as it was understood (§6.2).
+  "The heading and rows for QUERY, said back as it was understood.
 The heading starts with TITLE."
   (let* ((result (if (string-empty-p query)
                      (lumenna-call "task.list")
@@ -110,14 +110,14 @@ Tasks whose ids are in EXCLUDING are not offered."
   (mapcar (lambda (row) (plist-get row :title)) (append (plist-get (lumenna-call "project.list") :rows) nil)))
 
 (defun lumenna-task-move-to-project ()
-  "Put the task at point in another project; its subtasks follow (§3.2)."
+  "Put the task at point in another project; its subtasks follow."
   (interactive)
   (let ((id (lumenna--task-id)))
     (lumenna-write "task.move" :id id
                    :project (completing-read "Move to project: " (lumenna--project-names) nil t))))
 
 (defun lumenna-task-wait-for ()
-  "Say the task at point cannot start until another is done (§3.3)."
+  "Say the task at point cannot start until another is done."
   (interactive)
   (let* ((task (lumenna--task))
          (waiting (cons (plist-get task :id)
@@ -136,7 +136,7 @@ Tasks whose ids are in EXCLUDING are not offered."
                    :on (cdr (assoc (completing-read "Stop waiting for: " depends nil t) depends)))))
 
 (defun lumenna-task-assign ()
-  "Put the task at point in a block, for a sitting (§3.7)."
+  "Put the task at point in a block, for a sitting."
   (interactive)
   (lumenna-assign-task (lumenna--task-id)))
 
@@ -294,7 +294,7 @@ empty clears a field."
 
 ;;;###autoload
 (defun lumenna-trash ()
-  "Show the trash: deleted tasks, to restore or erase (§3.2)."
+  "Show the trash: deleted tasks, to restore or erase."
   (interactive)
   (lumenna--show-list "*Lumenna: Trash*" #'lumenna-trash-mode
                       (lambda () (lumenna--task-listing "deleted" "Trash"))))
@@ -305,7 +305,7 @@ empty clears a field."
   (lumenna-write "task.restore" :id (plist-get (lumenna-row) :id)))
 
 (defun lumenna-trash-erase ()
-  "Erase the task at point and its history for good.  This cannot be undone (§9)."
+  "Erase the task at point and its history for good.  This cannot be undone."
   (interactive)
   (let ((row (lumenna-row)))
     (when (yes-or-no-p (format "%s and its history go for good, and this cannot be undone.  Erase it? "

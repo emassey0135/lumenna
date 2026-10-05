@@ -1,4 +1,4 @@
-//! Tasks for people: Markdown, and org for the Emacs client's users (§16.10).
+//! Tasks for people: Markdown, and org for the Emacs client's users.
 //!
 //! Both are the present state only — no trash, no history — laid out the way the app shows
 //! it: projects as headings in their own tree order, tasks under them in theirs, subtasks

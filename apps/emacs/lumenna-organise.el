@@ -5,7 +5,7 @@
 
 ;;; Commentary:
 
-;; Projects, labels and saved filters (§3.4, §6.2): opened with RET, and also
+;; Projects, labels and saved filters: opened with RET, and also
 ;; made, renamed, reordered and removed.  M-p and M-n move one up or down, as
 ;; Org moves a subtree.
 
@@ -43,7 +43,7 @@ RET shows a project's tasks.
 
 ;;;###autoload
 (defun lumenna-projects ()
-  "Show the project tree (§3.4)."
+  "Show the project tree."
   (interactive)
   (lumenna--show-list "*Lumenna: Projects*" #'lumenna-projects-mode
                       (lambda () (lumenna--listing "project.list" "Projects"))))
@@ -93,7 +93,7 @@ RET shows a project's tasks.
 (defun lumenna-project-weigh ()
   "Set how much the project at point matters now, roughly 0.5 to 2, or inherit.
 Not a second priority: priority is how much one task matters; weight is how
-much a whole area does (§3.4)."
+much a whole area does."
   (interactive)
   (let* ((name (lumenna--name))
          (text (string-trim (read-string (format "Weight of %s, or inherit: " name) "1.0"))))
@@ -135,7 +135,7 @@ Anything else is refused rather than read as far as it goes, since
 
 ;;;###autoload
 (defun lumenna-labels ()
-  "Show the labels (§3.4)."
+  "Show the labels."
   (interactive)
   (lumenna--show-list "*Lumenna: Labels*" #'lumenna-labels-mode
                       (lambda () (lumenna--listing "label.list" "Labels"))))
@@ -193,15 +193,14 @@ Anything else is refused rather than read as far as it goes, since
 
 (define-derived-mode lumenna-filters-mode lumenna-list-mode "Lumenna Filters"
   "Saved filters.  RET shows a filter's tasks.
-A filter is kept as typed, so \"today\" means today whenever it is opened
-\(§6.2).
+A filter is kept as typed, so \"today\" means today whenever it is opened.
 
 \\{lumenna-filters-mode-map}"
   (setq-local lumenna--activate (lambda (row) (lumenna-tasks (plist-get row :query) (plist-get row :title)))))
 
 ;;;###autoload
 (defun lumenna-filters ()
-  "Show the saved filters (§3.4)."
+  "Show the saved filters."
   (interactive)
   (lumenna--show-list "*Lumenna: Filters*" #'lumenna-filters-mode
                       (lambda ()

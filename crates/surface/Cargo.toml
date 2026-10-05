@@ -5,15 +5,15 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Lumenna's command surface (§12): every operation once, typed, for every client."
+description = "Lumenna's command surface: every operation once, typed, for every client."
 
 [features]
-# Swift and Kotlin bindings through UniFFI (§2). Off for the CLI, which links this directly.
+# Swift and Kotlin bindings through UniFFI. Off for the CLI, which links this directly.
 uniffi = ["dep:uniffi"]
-# Pairing and syncing over Iroh (§7). On for every client that syncs; off leaves a surface
+# Pairing and syncing over Iroh. On for every client that syncs; off leaves a surface
 # with no network code at all.
 sync = ["dep:lumenna-sync", "dep:iroh", "dep:tokio", "dep:n0-future"]
-# TypeScript types for the web client (§16.12), derived from these records as UniFFI derives
+# TypeScript types for the web client, derived from these records as UniFFI derives
 # Swift's: reshaping a record breaks the web build too.
 wasm = ["dep:tsify", "dep:wasm-bindgen"]
 
@@ -32,7 +32,7 @@ iroh = { version = "1.3", optional = true }
 n0-future = { version = "0.3", optional = true }
 tokio = { version = "1", features = ["sync", "macros"], optional = true }
 
-# The blocking calls' runtime. A browser runs the async parts on its own event loop (§16.12).
+# The blocking calls' runtime. A browser runs the async parts on its own event loop.
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"], optional = true }
 

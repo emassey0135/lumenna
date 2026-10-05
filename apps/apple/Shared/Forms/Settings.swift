@@ -5,7 +5,7 @@ import UIKit
 import AppKit
 #endif
 
-/// The settings core keeps (§3.10), as both Apple apps edit them. Getting files in and out is
+/// The settings core keeps, as both Apple apps edit them. Getting files in and out is
 /// each platform's own — a share sheet and a document picker on iOS, save and open panels on
 /// macOS — in an extension beside each app; everything else is here.
 final class SettingsModel: NSObject, ObservableObject {

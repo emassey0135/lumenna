@@ -1,5 +1,5 @@
 //! Lumenna's core for the apps that link it: iOS and macOS in Swift, Android and Wear OS in
-//! Kotlin (§2). UniFFI generates the bindings.
+//! Kotlin. UniFFI generates the bindings.
 //!
 //! There is nothing to define here. The surface — the `Lumenna` object, its operations, and
 //! the records they return — is `lumenna_surface`, the same crate the command line calls, built

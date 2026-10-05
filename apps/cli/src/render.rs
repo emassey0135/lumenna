@@ -2,8 +2,8 @@
 //!
 //! Two renderings of one value: `--json` serialises the response as it stands, and text mode
 //! writes the prose a terminal wants. Neither computes anything the other does not have —
-//! everything either of them says comes off the typed surface, which
-//! is what keeps `--json` a contract rather than a second implementation (§15).
+//! everything either of them says comes off the typed surface, which is what keeps `--json` a
+//! contract rather than a second implementation.
 
 use anstream::{eprintln, print, println};
 use serde::Serialize;
@@ -66,8 +66,6 @@ fn text(response: &Response) {
         | Outcome::Backup(_)
         | Outcome::Restore(_)
         | Outcome::Import(_) => println!("{}", response.announcement()),
-        // An export to standard output is the payload itself, exactly, so it can be piped
-        // or redirected into a file that is nothing but the export.
         Outcome::Paired(_) => println!("{}", response.announcement()),
         Outcome::Synced(report) => {
             println!("{}", response.announcement());
@@ -93,6 +91,8 @@ fn text(response: &Response) {
                 println!("{}", device_line(device));
             }
         }
+        // An export to standard output is the payload itself, exactly, so it can be piped
+        // or redirected into a file that is nothing but the export.
         Outcome::Export(exported) => match &exported.content {
             Some(content) => print!("{content}"),
             None => println!("{}", response.announcement()),
@@ -159,7 +159,7 @@ fn text(response: &Response) {
 fn list(rows: &Rows, announcement: &str) {
     if let Some(query) = &rows.query {
         // The readback: a mis-parsed filter shows wrong results *silently*, and wrong
-        // results are invisible (§6.3).
+        // results are invisible.
         println!("{}", query.description);
     }
     println!("{announcement}");
@@ -235,7 +235,7 @@ fn day(plan: &Plan) {
     } else {
         println!("{}. {}", plan.date, plan.summary);
     }
-    // The core words the details for every app (§13); the terminal adds the row numbers.
+    // The core words the details for every app; the terminal adds the row numbers.
     let block_line = |block: &lumenna_surface::PlanBlock| {
         println!(
             "{}  {} to {}  {}  {}",
@@ -245,7 +245,7 @@ fn day(plan: &Plan) {
             println!("     {}  {}  {}", assignment.row, assignment.title, assignment.details.join(", "));
         }
     };
-    // The timeline is the day as lived — free time and now as rows (§13). An older reader's
+    // The timeline is the day as lived — free time and now as rows. An older reader's
     // plan has none, and gets the blocks alone.
     if plan.timeline.is_empty() {
         plan.blocks.iter().for_each(block_line);
@@ -274,7 +274,7 @@ fn day(plan: &Plan) {
 }
 
 /// One device as a sentence: what it is, and how syncing with it last went. Words rather
-/// than a symbol, because §9 is explicit that a glyph communicates nothing.
+/// than a symbol, because a glyph communicates nothing to a screen reader.
 fn device_line(device: &lumenna_surface::DeviceView) -> String {
     let mut parts = vec![device.name.clone(), device.platform.clone()];
     parts.extend(device.status.iter().cloned());

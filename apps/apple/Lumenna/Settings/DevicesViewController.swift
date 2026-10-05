@@ -1,6 +1,6 @@
 import UIKit
 
-/// Paired devices and how syncing is going, in words rather than an icon (§9, §16.1).
+/// Paired devices and how syncing is going, in words rather than an icon.
 final class DevicesViewController: ItemListViewController {
     /// This device's identifier, whose row offers no Unpair: the core refuses it.
     private var thisDevice: Set<String> = []
@@ -17,8 +17,8 @@ final class DevicesViewController: ItemListViewController {
             let detail = [device.platform] + device.status
             return Item(key: device.nodeId, title: device.name, detail: detail.joined(separator: ", "))
         }
-        // Sync Now as the first row: in the navigation bar beside Add it crowded the title
-        // until it was clipped at large text sizes.
+        // Sync Now as the first row: in the navigation bar beside Add it crowds the title
+        // until it is clipped at large text sizes.
         let syncNow = Item(key: "sync-now", title: "Sync Now", detail: nil)
         return ([syncNow] + items, status.announcement)
     }

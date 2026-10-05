@@ -26,7 +26,7 @@ uuid = { version = "1", features = ["v7"] }
 thiserror = "2"
 proptest = "1"
 tempfile = "3"
-# 0.40 builds for the browser too, on sqlite-wasm-rs (§16.12); `bundled` applies only where
+# 0.40 builds for the browser too, on sqlite-wasm-rs; `bundled` applies only where
 # the native SQLite is used.
 rusqlite = { version = "0.40", features = ["bundled"] }
 lumenna-core = { path = "crates/core" }
@@ -50,7 +50,7 @@ incremental = false
 [profile.test]
 debug = "line-tables-only"
 
-# The web client's module (§16.12), which every visit downloads: built for size rather than
+# The web client's module, which every visit downloads: built for size rather than
 # speed, whole-program, without symbols. `npm run core` in apps/web builds with it.
 [profile.web]
 inherits = "release"

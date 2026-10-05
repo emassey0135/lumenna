@@ -1,4 +1,4 @@
-//! Completion (§6.3, §6.4).
+//! Completion.
 //!
 //! One function, affordance-agnostic. Triggering and presentation differ wildly per platform
 //! — a real combobox on desktop, a custom accessibility action opening a modal list on
@@ -28,9 +28,9 @@ use crate::words::{Word, word_at, words};
 /// The trigger does not know this; the field does, because it was built as one or the other.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Syntax {
-    /// A quick-add line (§6.1).
+    /// A quick-add line.
     QuickAdd,
-    /// A filter query (§6.2).
+    /// A filter query.
     Filter,
 }
 
@@ -90,7 +90,7 @@ pub struct Completions {
     pub replace_span: (usize, usize),
     /// What could go there.
     pub candidates: Vec<Candidate>,
-    /// The count, phrased for speech. §6.3: announce the count before the list.
+    /// The count, phrased for speech, announced before the list.
     pub announcement: String,
 }
 
@@ -142,7 +142,7 @@ fn labels(known: &Known, prefix: &str) -> Vec<Candidate> {
 }
 
 /// A name as the grammar takes it after a sigil: `#Work`, or `#"Home Office"` when it has a
-/// space in it — the escape hatch the grammar offers (§6.2). Completion inserts names this
+/// space in it — the escape hatch the grammar offers. Completion inserts names this
 /// way, since an unquoted one would re-open the ambiguity completion just resolved, and every
 /// client building a query or a quick-add prefix from a name does the same.
 #[must_use]
@@ -232,8 +232,6 @@ const DATE_WORDS: &[&str] = &[
 ];
 
 /// Runs the parser over everything before the cursor and reports what it wanted next.
-///
-/// This is §6.3's stated reason for wanting expected-token sets, used for exactly that.
 fn expected_at(
     text: &str,
     cursor: usize,

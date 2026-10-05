@@ -1,10 +1,10 @@
-//! §5's two recurrence systems, which §18 calls the place where getting the model wrong is
-//! most expensive to correct later.
+//! The two recurrence systems: the place where getting the model wrong is most expensive to
+//! correct later.
 //!
 //! Expensive because it is not just a wrong answer today: `BlockException` is keyed by the
-//! date the *rule* produced (§3.6), so a change in what the rule produces orphans every
-//! exception written against the old answer. These tests pin the behaviour before anything
-//! stores a date derived from it.
+//! date the *rule* produced, so a change in what the rule produces orphans every exception
+//! written against the old answer. These tests pin the behaviour so it cannot change
+//! unnoticed.
 
 use std::collections::BTreeMap;
 
@@ -168,8 +168,8 @@ fn an_anchor_that_does_not_match_the_rule_is_not_an_occurrence() {
     //
     // This is correct, and it is a trap for the block editor rather than for this module:
     // "every Monday, starting Tuesday the 6th" is almost certainly not what the user meant,
-    // and §16 should normalise the start date to the first real occurrence rather than
-    // storing a series whose start date is a day it never happens.
+    // and the editor should normalise the start date to the first real occurrence rather
+    // than storing a series whose start date is a day it never happens.
     let tuesday = date(2026, 1, 6);
     let r = rule("FREQ=WEEKLY;BYDAY=MO");
     assert_eq!(
@@ -237,7 +237,7 @@ fn daily_recurrence_crosses_a_dst_transition_without_losing_a_day() {
 }
 
 // ---------------------------------------------------------------------------------------
-// Recurring tasks (§5's first system)
+// Recurring tasks
 // ---------------------------------------------------------------------------------------
 
 #[test]
@@ -326,7 +326,7 @@ fn a_broken_rule_surfaces_rather_than_silently_ending_the_task() {
 }
 
 // ---------------------------------------------------------------------------------------
-// Recurring blocks (§5's second system)
+// Recurring blocks
 // ---------------------------------------------------------------------------------------
 
 fn work_block(on: jiff::civil::Date, rrule: Option<&str>) -> BlockSeries {
@@ -397,7 +397,7 @@ fn a_cancelled_occurrence_disappears_and_the_rest_do_not() {
 #[test]
 fn a_modified_occurrence_carries_its_overrides_and_says_so() {
     // "I finished at 10:40 instead of 11:00" is an edit to the occurrence, not a lifecycle
-    // transition (§3.6).
+    // transition.
     let series = work_block(date(2026, 5, 4), Some("FREQ=DAILY"));
     let shortened = ExceptionAction::Modified {
         start_time: Some(time(10, 0, 0, 0)),
@@ -428,7 +428,7 @@ fn a_modified_occurrence_carries_its_overrides_and_says_so() {
 #[test]
 fn a_shortened_break_stays_incompressible() {
     // The floor comes from the effective kind, so an exception that shortens a break does
-    // not quietly make it compressible on top (§3.6).
+    // not quietly make it compressible on top.
     let series = BlockSeries {
         rrule: Some("FREQ=DAILY".to_owned()),
         end_date: None,

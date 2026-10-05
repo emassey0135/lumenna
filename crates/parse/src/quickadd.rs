@@ -1,8 +1,8 @@
-//! Quick add (§6.1).
+//! Quick add.
 //!
-//! *"Todoist-style quick add is the highest-leverage feature in the whole product for a
-//! screen reader user: typing a full task specification beats navigating any date picker on
-//! any platform."*
+//! Todoist-style quick add is the highest-leverage feature in the whole product for a screen
+//! reader user: typing a full task specification beats navigating any date picker on any
+//! platform.
 //!
 //! ```text
 //! review PR tomorrow 3pm p1 #work @laptop
@@ -16,13 +16,13 @@
 //! coloured as it is understood. That channel does not exist here, so [`Preview`] replaces
 //! it: what was understood, what was not, and a sentence ready to be spoken.
 //!
-//! Three rules from §6.1 shape it:
+//! Three rules shape it:
 //!
 //! - **Always expose the resolved absolute date**, never just the phrase. "Friday" is
 //!   ambiguous, and the resolution is the part worth confirming.
 //! - **Never silently fold an unrecognised token into the title.** A swallowed date is
 //!   invisible until the task fails to fire.
-//! - **An unknown `@label` is a new label; an unknown `#project` is an error** (§3.4). Both
+//! - **An unknown `@label` is a new label; an unknown `#project` is an error**. Both
 //!   are reported with a nearest match, but only the label proceeds on confirmation.
 
 use jiff::Zoned;
@@ -47,7 +47,7 @@ pub struct Spanned<T> {
 
 /// The names quick add matches against.
 ///
-/// §6.2's answer to the name ambiguity — *is `p1` part of the project name or a priority?* —
+/// The answer to the name ambiguity — *is `p1` part of the project name or a priority?* —
 /// is to **greedy-match against known names** and support quoting as the escape hatch. That
 /// makes parsing depend on what exists, which is why these are passed in rather than the
 /// grammar being purely syntactic.
@@ -100,7 +100,7 @@ pub struct QuickAdd {
     /// Second and later occurrences of something only one of which can be set.
     ///
     /// These are **left in the title** rather than consumed. Dropping them would be the
-    /// swallowed-token failure §6.1 forbids: `book flight monday to friday` has two things
+    /// swallowed-token failure to avoid: `book flight monday to friday` has two things
     /// that look like dates, and quietly discarding one leaves the user with a title that
     /// is missing a word and no way to notice.
     pub duplicates: Vec<Spanned<String>>,
@@ -177,7 +177,7 @@ pub fn parse_quick_add(input: &str, known: &Known) -> QuickAdd {
             continue;
         }
         // A word that opens a date phrase but leads nowhere is worth saying out loud rather
-        // than quietly becoming part of the title (§6.1).
+        // than quietly becoming part of the title.
         if word.any_of(&["next", "last", "every", "in"])
             && tokens.get(index + 1).is_none_or(|next| looks_like_a_date(&next.lower))
         {
@@ -276,7 +276,7 @@ fn sigil_name(
     first: &str,
     known: &[String],
 ) -> (String, usize) {
-    // `#"My Project"` is the escape hatch for a project genuinely named "work p1" (§6.2).
+    // `#"My Project"` is the escape hatch for a project genuinely named "work p1".
     if first.starts_with('"') {
         let mut name = String::new();
         for (offset, word) in tokens.iter().enumerate().skip(at) {
@@ -368,11 +368,11 @@ fn estimate_of(text: &str) -> Option<u32> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
     /// Confirming would lose or mistake something. An unknown `#project` is this, because
-    /// §3.4 does not auto-create projects — they have a parent, ordering, archive state and
+    /// projects are not created implicitly — they have a parent, ordering, archive state and
     /// a weight, which is structure that wants a decision.
     Error,
-    /// Worth saying before confirming, but confirming is fine. A new `@label` is this: §3.4
-    /// creates labels implicitly, because being a record is an implementation fact the user
+    /// Worth saying before confirming, but confirming is fine. A new `@label` is this: labels
+    /// are created implicitly, because being a record is an implementation fact the user
     /// should never have to think about during capture.
     Notice,
 }
@@ -387,7 +387,7 @@ pub struct Diagnostic {
     /// Byte offset one past the last.
     pub end: usize,
     /// The message, complete with position and token — because there is no squiggle to
-    /// point at and this text is the only channel (§6.3).
+    /// point at and this text is the only channel.
     pub message: String,
 }
 
@@ -406,7 +406,7 @@ pub struct Preview {
     pub project: Option<lumenna_core::id::ProjectId>,
     /// Labels that already exist.
     pub labels: Vec<lumenna_core::id::LabelId>,
-    /// Labels that would be created on confirmation (§3.4).
+    /// Labels that would be created on confirmation.
     pub new_labels: Vec<String>,
     /// The priority, defaulting to none.
     pub priority: Priority,
@@ -426,7 +426,7 @@ impl Preview {
     /// The sentence to announce, standing in for the inline highlighting a sighted user gets.
     ///
     /// The resolved date is always spoken alongside the phrase, never instead of it: *"due
-    /// next Friday, that is Friday 15 May 2026"*. §6.1 requires the absolute value precisely
+    /// next Friday, that is Friday 15 May 2026"*. The absolute value is there precisely
     /// because "Friday" is the ambiguous part, and confirming the phrase back would confirm
     /// nothing.
     #[must_use]
@@ -506,7 +506,7 @@ impl QuickAdd {
                         .filter(|l| l.deleted_at.is_none())
                         .map(|l| l.name.as_str())
                         .collect();
-                    // Confirm-on-new, never prompt-on-known (§3.4): silence would let typos
+                    // Confirm-on-new, never prompt-on-known: silence would let typos
                     // accumulate, and a prompt on every label would make capture miserable.
                     let suggestion = suggest::nearest(&spanned.value, names);
                     let message = match suggestion {

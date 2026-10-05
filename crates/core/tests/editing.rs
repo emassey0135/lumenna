@@ -1,4 +1,4 @@
-//! Mutations (§3.3, §3.4, §5, §9): the rules that no caller should have to remember.
+//! Mutations: the rules that no caller should have to remember.
 
 use jiff::Zoned;
 use jiff::civil::date;
@@ -230,8 +230,8 @@ fn the_cascade_can_be_turned_off() {
 
 #[test]
 fn uncompleting_reverses_only_the_completions_the_cascade_caused() {
-    // §3.3's worked example: a subtask you independently finished last week must not be
-    // uncompleted because you changed your mind about the parent.
+    // A subtask you independently finished last week must not be uncompleted because you
+    // changed your mind about the parent.
     let mut world = World::new();
     let parent = world.add("Ship release");
     let independent = world.child_of(parent, "Write notes");
@@ -595,7 +595,7 @@ fn deleting_a_project_takes_its_sub_projects_too() {
 #[test]
 fn merging_labels_rewrites_the_tasks_and_retires_the_loser() {
     // Cheap with records; impossible with plain strings, where the two tags were never
-    // distinguishable from intent in the first place (§3.4).
+    // distinguishable from intent in the first place.
     let mut world = World::new();
     let laptop = world.label("laptop");
     let lapto = world.label("lapto");
@@ -622,7 +622,7 @@ fn merging_labels_rewrites_the_tasks_and_retires_the_loser() {
 #[test]
 fn a_task_can_be_scheduled_into_several_sittings() {
     // Planning three sittings for a long essay up front is a first-class use case, not an
-    // accident to prevent (§3.7).
+    // accident to prevent.
     let mut world = World::new();
     let id = world.add("Write the essay");
     let series = world.daily_block();
@@ -812,13 +812,13 @@ fn a_legacy_inbox_is_folded_into_the_canonical_one() {
 }
 
 // ---------------------------------------------------------------------------------------
-// Undo (§9)
+// Undo
 // ---------------------------------------------------------------------------------------
 
 #[test]
 fn every_operation_inverts_back_to_where_it_started() {
-    // §9: Automerge provides history, not undo. Undo means computing an inverse, and an
-    // edit that carries both sides of every record is its own inverse when swapped.
+    // Automerge provides history, not undo. Undo means computing an inverse, and an edit
+    // that carries both sides of every record is its own inverse when swapped.
     let mut world = World::new();
     let parent = world.add("Ship release");
     let child = world.child_of(parent, "Write notes");
@@ -886,7 +886,7 @@ fn an_inverse_can_itself_be_inverted_for_redo() {
 
 #[test]
 fn the_description_survives_inversion_so_undo_can_be_announced() {
-    // §9: never a silent state change. Without a visual channel a mis-keystroke goes
+    // Never a silent state change. Without a visual channel a mis-keystroke goes
     // unnoticed for minutes, by which point the context for recovering it is gone.
     let mut world = World::new();
     let id = world.add("Review PR");
@@ -910,7 +910,7 @@ fn creating_a_task_inverts_into_removing_it() {
 }
 
 // ---------------------------------------------------------------------------------------
-// Changing blocks: the series, or one occurrence (§3.6)
+// Changing blocks: the series, or one occurrence
 // ---------------------------------------------------------------------------------------
 
 fn moved_to(hour: i8) -> ExceptionAction {

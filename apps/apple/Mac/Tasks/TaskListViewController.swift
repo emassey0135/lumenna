@@ -22,16 +22,16 @@ final class TaskNode {
     }
 }
 
-/// Tasks, with the filter above them (§16.1: task list + filter entry), as an outline.
+/// Tasks, with the filter above them, as an outline.
 ///
-/// `NSOutlineView` is the reason this app is AppKit (§16.5): Finder's and Mail's outline,
+/// `NSOutlineView` is the reason this app is AppKit: Finder's and Mail's outline,
 /// whose level, position and expansion VoiceOver reports without help. After a change, the
 /// selection — which is VoiceOver's focus here — is put on a row chosen deterministically:
 /// the same task if it is still listed, else whatever now holds its place.
 final class TaskListViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
     enum Mode {
         case tasks
-        /// The trash: restore, or erase for good (§16.1).
+        /// The trash: restore, or erase for good.
         case trash
     }
 
@@ -155,7 +155,7 @@ final class TaskListViewController: NSViewController, NSOutlineViewDataSource, N
     }
 
     /// Reloads, puts the selection — VoiceOver's focus — somewhere predictable, and says what
-    /// happened (§13).
+    /// happened.
     func reload(focusing id: String?, near index: Int?, saying change: Change?) {
         reload()
         let target = id.flatMap { id in row(of: id) } ?? index.map { min($0, outline.numberOfRows - 1) }
@@ -256,7 +256,7 @@ final class TaskListViewController: NSViewController, NSOutlineViewDataSource, N
         perform(focusing: nil) { try core.lumenna.restoreTask(id: row.id) }
     }
 
-    /// Erasing rebuilds the document without the task and cannot be undone (§9), so it asks.
+    /// Erasing rebuilds the document without the task and cannot be undone, so it asks.
     func erase(_ row: RowView) {
         view.window?.confirm(
             "Erase \(row.title)?",

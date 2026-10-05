@@ -1,4 +1,4 @@
-//! Finding devices and pairing sessions on the local network, by standard DNS-SD (§7).
+//! Finding devices and pairing sessions on the local network, by standard DNS-SD.
 //!
 //! Iroh's own mDNS lookup announces in a form no DNS-SD browser recognises — no PTR record,
 //! and every record sent with a time to live of zero, which mDNS reads as "gone". So Bonjour on
@@ -44,7 +44,7 @@ impl Responder {
         {
             apple::Responder::start(service_type, heard).map(Self::Apple)
         }
-        // A browser has no local network to browse (§16.12): nothing is heard, as on a network
+        // A browser has no local network to browse: nothing is heard, as on a network
         // that forbids multicast, and pairing goes by code.
         #[cfg(all(target_family = "wasm", target_os = "unknown"))]
         {

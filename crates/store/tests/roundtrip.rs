@@ -214,7 +214,7 @@ fn every_block_record_round_trips() {
 
 #[test]
 fn a_one_off_assignment_needs_its_year_stated() {
-    // BlockRef::OneOff carries no date, so the store cannot shard it (§3.7). Proving the
+    // BlockRef::OneOff carries no date, so the store cannot shard it. Proving the
     // caller's year is honoured is the only guard against assignments landing in a document
     // the day view never opens.
     let series = BlockSeries::one_off(
@@ -318,7 +318,7 @@ fn concurrent_label_additions_both_survive() {
 #[test]
 fn notes_merge_by_character() {
     // The model hands over a whole String because core knows nothing about Automerge; the
-    // store diffs it into a splice so §3.2's character-level merge is not lost on the way.
+    // store diffs it into a splice so character-level merge is not lost on the way.
     let project = Project::inbox();
     let mut task = Task::new(project.id, "t", OrderKey::middle());
     task.notes = "shared line\n".to_owned();

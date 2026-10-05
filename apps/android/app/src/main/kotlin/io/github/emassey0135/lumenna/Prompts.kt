@@ -139,7 +139,7 @@ fun Choose(title: String, choices: List<Choice>, empty: String, dismiss: () -> U
 }
 
 /**
- * How long a sitting is meant to take (§3.7): a number of minutes, or none. Hands back null
+ * How long a sitting is meant to take: a number of minutes, or none. Hands back null
  * for none, and does nothing for an answer that is not a number, saying so.
  */
 @Composable

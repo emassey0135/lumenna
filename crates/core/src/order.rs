@@ -1,6 +1,6 @@
 //! Fractional indexing: the ordering scheme for tasks, projects, labels, and assignments.
 //!
-//! §3.13 rules out an Automerge list of children on the parent. List CRDTs handle insertion
+//! Children are not an Automerge list on the parent. List CRDTs handle insertion
 //! within one list well, but reparenting between lists produces duplicates or losses. So
 //! `order` is a single last-write-wins string, sorted between its neighbours, and moving an
 //! item is one field write regardless of how far it travels or which parent it lands under.
@@ -15,8 +15,7 @@
 //! rests on. Every constructor here preserves that invariant.
 //!
 //! Two devices inserting between the same neighbours concurrently produce the *same* key.
-//! That is a tie, not a conflict: §3.13 breaks it by identifier, which [`OrderKey::cmp_with`]
-//! implements.
+//! That is a tie, not a conflict: it is broken by identifier, in [`OrderKey::cmp_with`].
 
 use core::cmp::Ordering;
 use core::fmt;
@@ -67,9 +66,9 @@ impl OrderKey {
     /// # Errors
     ///
     /// [`OrderError::NotAscending`] if the bounds are equal or reversed. That is a caller
-    /// bug in normal use, but it is reachable from data: §3.13 permits two concurrent
-    /// inserts to mint identical keys, and a UI that then asks to insert between those two
-    /// twins lands here. Resolve it by re-spacing the siblings rather than retrying.
+    /// bug in normal use, but it is reachable from data: two concurrent inserts can mint
+    /// identical keys, and a UI that then asks to insert between those two twins lands here.
+    /// Resolve it by re-spacing the siblings rather than retrying.
     pub fn between(before: Option<&Self>, after: Option<&Self>) -> Result<Self, OrderError> {
         if let (Some(a), Some(b)) = (before, after)
             && a >= b
@@ -99,7 +98,7 @@ impl OrderKey {
         &self.0
     }
 
-    /// Total order over `(order, id)`, the comparator §3.13 specifies.
+    /// Total order over `(order, id)`.
     ///
     /// Concurrent inserts between the same neighbours converge on the same key. Falling back
     /// to the identifier keeps the resulting list stable and identical on every replica,
@@ -241,7 +240,7 @@ mod tests {
 
     #[test]
     fn ties_break_by_id() {
-        // Two devices inserting at the same place converge on the same key (§3.13).
+        // Two devices inserting at the same place converge on the same key.
         let a = OrderKey::middle();
         let b = OrderKey::middle();
         assert_eq!(a, b);

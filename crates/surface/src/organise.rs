@@ -170,7 +170,7 @@ impl Lumenna {
         })
     }
 
-    /// Sets a project's urgency multiplier, or has it inherit its parent's again (§3.4).
+    /// Sets a project's urgency multiplier, or has it inherit its parent's again.
     ///
     /// This is not a second priority. Task priority is how much one item matters; weight is
     /// how much a whole area matters right now.
@@ -266,7 +266,7 @@ impl Lumenna {
                         .filter(|t| !facts.is_completed(t))
                         .count();
                     let mut value = count_line(used, "open task");
-                    // Said in words, never colour alone (§13).
+                    // Said in words, never colour alone.
                     if let Some(colour) = &label.color {
                         value.push_str(&format!(", {colour}"));
                     }
@@ -354,7 +354,7 @@ impl Lumenna {
     ///
     /// Checked now, so a broken query is caught here rather than the first time it is used,
     /// but stored as text: a saved filter containing `today` has to mean today at
-    /// evaluation time (§6.2).
+    /// evaluation time.
     ///
     /// # Errors
     ///
@@ -438,7 +438,7 @@ impl Lumenna {
             let before = resolve::project(&snapshot, name)?.clone();
             let parent = parent.map(|p| resolve::project(&snapshot, &p).map(|p| p.id)).transpose()?;
             // A local move that closes a cycle is a mistake this device can see; merge can
-            // still make one, which `repair` handles (§3.13).
+            // still make one, which `repair` handles.
             let mut ancestor = parent;
             while let Some(id) = ancestor {
                 if id == before.id {
@@ -509,7 +509,7 @@ impl Lumenna {
     }
 
     /// Gives a label a colour by name — `red`, `teal` — or takes it away. A colour is never
-    /// the only thing that says which label is which (§13): the name always shows.
+    /// the only thing that says which label is which: the name always shows.
     ///
     /// # Errors
     ///
@@ -554,7 +554,7 @@ impl Lumenna {
             }
             let mut readback = None;
             if let Some(query) = query {
-                // Checked now, stored as text (§6.2).
+                // Checked now, stored as text.
                 readback = Some(resolve::query(&snapshot, &query)?.describe());
                 after.query = query;
             }
@@ -613,7 +613,7 @@ const fn edge(direction: Direction) -> &'static str {
 
 /// The order key that puts `id` one place up or down among `siblings`, or `None` at the end
 /// of the list. Only the moved record gets a new key — a single last-writer-wins string, so a
-/// concurrent reorder elsewhere merges rather than fighting over a list (§3.13).
+/// concurrent reorder elsewhere merges rather than fighting over a list.
 fn moved<I: Ord + Copy>(
     siblings: &[(I, OrderKey)],
     id: I,
@@ -635,7 +635,7 @@ fn moved<I: Ord + Copy>(
         .map_err(|e| LumennaError::new(e.to_string()))
 }
 
-/// How deep a project sits, stopping at a cycle merge may have made (§3.13).
+/// How deep a project sits, stopping at a cycle merge may have made.
 fn depth_of(snapshot: &Snapshot, project: &Project) -> u32 {
     let mut depth = 0;
     let mut current = project.parent_id;

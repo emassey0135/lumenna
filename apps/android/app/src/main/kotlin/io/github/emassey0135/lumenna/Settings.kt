@@ -54,8 +54,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 /**
- * Settings (§16.1, §3.10): a short list of pages — what syncs, what is this device's alone,
- * and getting data in and out (§9) — so backups are reached without swiping past every weekday.
+ * Settings: a short list of pages — what syncs, what is this device's alone, and getting
+ * data in and out — so backups are reached without swiping past every weekday.
  */
 @Composable
 fun SettingsScreen(core: Core, navigator: Navigator, changes: Long) {
@@ -184,7 +184,7 @@ fun PlanningScreen(core: Core, navigator: Navigator, changes: Long) {
     prompt.Host()
 }
 
-/** Backups, which are this device's alone (§9). */
+/** Backups, which are this device's alone. */
 @Composable
 fun BackupsScreen(core: Core, navigator: Navigator, changes: Long) {
     val values = remember(changes) { settings(core) }
@@ -225,7 +225,7 @@ fun BackupsScreen(core: Core, navigator: Navigator, changes: Long) {
 }
 
 /**
- * Getting data out and back in (§9), through Android's own file picker, so an export can go to
+ * Getting data out and back in, through Android's own file picker, so an export can go to
  * Drive or anywhere else a provider offers. An export is the present state, nothing from the
  * trash; importing one, or restoring a backup, adds what this device lacks and removes nothing.
  */
@@ -284,7 +284,7 @@ private fun deviceName(context: Context): String =
     android.provider.Settings.Global.getString(context.contentResolver, android.provider.Settings.Global.DEVICE_NAME)
         ?: Build.MODEL
 
-/** The paired devices, how syncing with each last went, and pairing another (§16.1). */
+/** The paired devices, how syncing with each last went, and pairing another. */
 @Composable
 fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
     val prompt = rememberPrompter()
@@ -342,7 +342,7 @@ fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
 }
 
 /**
- * Pairing this phone with another of the person's devices (§7). On one network the two find
+ * Pairing this phone with another of the person's devices. On one network the two find
  * each other; anywhere else, one shows a code and the other enters it. Either way both show the
  * same three words, and nothing is paired unless the person says they match on both.
  */

@@ -1,14 +1,14 @@
 //! Computed states: one vocabulary, two surfaces.
 //!
 //! A [`State`] is something true about a task that nobody typed — overdue, blocked, running.
-//! §6.2 and §13 both need this list, and the whole point of this module is that they get the
-//! *same* list:
+//! Filters and the accessibility layer both need this list, and the whole point of this
+//! module is that they get the *same* list:
 //!
 //! - The **filter language** selects on them as bare words: `blocked & !recurring`.
 //! - The **accessibility row projection** announces them after the title: *"Review PR,
 //!   overdue"*.
 //!
-//! §6.2 states the consequence as a rule: **adding a computed state means adding a `State`
+//! The consequence is a rule: **adding a computed state means adding a `State`
 //! variant, and anything a filter can select on is something a screen reader can announce.**
 //! Two lists would drift, and the drift would be invisible — a state you can filter by but
 //! never hear, or hear but never filter by.
@@ -38,10 +38,10 @@ use crate::snapshot::Snapshot;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum State {
     /// Finished. For a recurring task, and for a subtask of one, this means the current
-    /// occurrence, since completing one advances the due date rather than ending the task
-    /// (§3.3) — see [`Snapshot::occurrence_of`].
+    /// occurrence, since completing one advances the due date rather than ending the task —
+    /// see [`Snapshot::occurrence_of`].
     Completed,
-    /// In the trash, recoverable (§3.2).
+    /// In the trash, recoverable.
     Deleted,
     /// Due in the past and not finished.
     Overdue,
@@ -56,7 +56,7 @@ pub enum State {
     /// A timer is running against it right now.
     Running,
     /// Time has been logged against it, but it is not finished. What multi-sitting work
-    /// looks like between sittings (§3.7).
+    /// looks like between sittings.
     Started,
     /// No sitting ahead: not planned into any block today or later, and no timer running.
     /// What auto-suggestion looks for — including a task worked on before and not finished,
@@ -66,9 +66,9 @@ pub enum State {
     NoDate,
     /// Wears no label.
     NoLabel,
-    /// Still in the Inbox, which is where captured-but-not-filed lives (§3.4).
+    /// Still in the Inbox, which is where captured-but-not-filed lives.
     NoProject,
-    /// Unsized, so auto-suggestion cannot rank it (§6.2).
+    /// Unsized, so auto-suggestion cannot rank it.
     NoEstimate,
 }
 
@@ -95,7 +95,7 @@ impl State {
         Self::NoEstimate,
     ];
 
-    /// The bare word that selects this state in a filter (§6.2).
+    /// The bare word that selects this state in a filter.
     #[must_use]
     pub const fn keyword(self) -> &'static str {
         match self {
@@ -126,8 +126,8 @@ impl State {
 
     /// The braille short form.
     ///
-    /// §13 permits abbreviating roles and states — and only those, never titles — because
-    /// the reader already knows the convention. **These need checking against the
+    /// Roles and states may be abbreviated — and only those, never titles — because the
+    /// reader already knows the convention. **These need checking against the
     /// convention BTBraille's tree view actually uses** before they ship; they are chosen to
     /// be unambiguous among themselves, which is not the same as being what a reader
     /// expects.
@@ -184,8 +184,8 @@ impl State {
 
 /// Whether a task's due date has passed.
 ///
-/// A date with no time is overdue the day after; §3.5 keeps "Tuesday" and "Tuesday at 3pm"
-/// genuinely different states, and treating the first as midnight would make everything
+/// A date with no time is overdue the day after; "Tuesday" and "Tuesday at 3pm" are
+/// genuinely different, and treating the first as midnight would make everything
 /// overdue a day early.
 ///
 /// A due time with no zone **floats** — 3pm wherever you are — so it is compared against the
@@ -214,7 +214,7 @@ pub fn is_overdue(due: &Due, now: &Zoned) -> bool {
 /// flat maps keyed by their own identifiers. Asking [`Snapshot::has_state`] of every task in a
 /// list therefore scans every completion and every assignment once per task per state —
 /// harmless on a laptop with a few hundred records, and the wrong shape for a watch holding a
-/// recurring task's whole history (§16.9). A query that asks about many tasks builds one of
+/// recurring task's whole history. A query that asks about many tasks builds one of
 /// these first, through [`Snapshot::facts`] or [`crate::filter::Context::new`], and each
 /// question is then a lookup.
 ///
@@ -275,7 +275,7 @@ impl<'a> Facts<'a> {
 
     /// Whether anything a task depends on is still outstanding.
     ///
-    /// A dependency that is not in this snapshot does not block: §3.1 forbids referential
+    /// A dependency that is not in this snapshot does not block: there is no referential
     /// integrity across documents, so a reference to a task this device has not merged is
     /// expected. Treating it as blocking would make a task on a partially synced device
     /// look unstartable for no reason the user could see.
@@ -291,7 +291,7 @@ impl<'a> Facts<'a> {
 
     /// Whether a task is placed into any block occurring on `date`.
     ///
-    /// A one-off block's assignment names only the series (§3.7), so its date comes from
+    /// A one-off block's assignment names only the series, so its date comes from
     /// the series — which may live in a document that is not loaded, in which case it
     /// simply does not match rather than being an error.
     #[must_use]
@@ -307,7 +307,7 @@ impl<'a> Facts<'a> {
     /// This, not "was ever assigned", is what makes a task *unassigned*. A task worked on
     /// last Tuesday and not finished needs another sitting, and a sitting planned for
     /// yesterday that never happened was missed rather than scheduled — both are exactly
-    /// what auto-suggestion (§10.2) has to find. A timer still running counts whatever day
+    /// what auto-suggestion has to find. A timer still running counts whatever day
     /// its block was, and so does a sitting whose day cannot be told because its block is
     /// not loaded: wrongly calling a task unscheduled invites planning it twice.
     #[must_use]
@@ -384,7 +384,7 @@ impl Snapshot {
     /// one.
     ///
     /// A recurring task's own due date, since completing it advances the date rather than
-    /// ending it (§3.3). A subtask **of** a recurring task recurs with it: "clear the inbox"
+    /// ending it. A subtask **of** a recurring task recurs with it: "clear the inbox"
     /// under a weekly review is done for this week's review, not forever, so its completion
     /// is scoped to its nearest recurring ancestor's current occurrence. When that ancestor
     /// advances, the subtask is open again — which is what a checklist under a repeating
@@ -622,7 +622,7 @@ mod tests {
 
     #[test]
     fn a_dependency_this_device_has_not_merged_does_not_block() {
-        // §3.1: a reference into a document that is not loaded is expected, not corrupt.
+        // A reference into a document that is not loaded is expected, not corrupt.
         // Blocking on it would make a task unstartable for a reason nobody could see.
         let (mut snap, inbox, _) = snapshot();
         let id = task(&mut snap, inbox, "t");

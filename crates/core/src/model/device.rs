@@ -1,4 +1,4 @@
-//! The paired device roster (§3.11).
+//! The paired device roster.
 
 use jiff::Timestamp;
 
@@ -6,9 +6,9 @@ use crate::id::NodeId;
 
 /// One of your devices.
 ///
-/// This lives in its own Automerge document (§3.1) because it is small, changes rarely, and
-/// every device needs it. The device's *private* key never appears here or anywhere else
-/// that syncs (§3.12).
+/// This lives in its own Automerge document because it is small, changes rarely, and every
+/// device needs it. The device's *private* key never appears here or anywhere else that
+/// syncs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Device {

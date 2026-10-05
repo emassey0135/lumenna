@@ -1,4 +1,4 @@
-//! §8's file: that what was written comes back, that two processes sharing it see each
+//! The profile's file: that what was written comes back, that two processes sharing it see each
 //! other, and that compaction changes the representation without discarding anything.
 
 use jiff::civil::{date, time};
@@ -39,7 +39,7 @@ fn a_written_task_survives_reopening() {
 
 #[test]
 fn years_load_only_when_asked_for() {
-    // What keeps the watch viable (§8): a device showing today holds one year, not five.
+    // What keeps a watch viable: a device showing today holds one year, not five.
     let dir = scratch();
     let path = dir.path().join("profile.sqlite");
     let series =
@@ -175,7 +175,7 @@ fn an_empty_profile_is_usable_immediately() {
     let (snapshot, report) = store.snapshot();
     assert!(report.is_clean());
     assert!(snapshot.tasks.is_empty());
-    // The Inbox is a record (§3.4), and it is the same record on every device: it comes
+    // The Inbox is a record, and it is the same record on every device: it comes
     // with the store, from a deterministic change, rather than being minted by a client.
     assert_eq!(snapshot.inbox(), Some(&lumenna_core::model::Project::inbox()));
     assert_eq!(snapshot.settings, lumenna_core::model::Settings::default());

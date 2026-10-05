@@ -1,7 +1,7 @@
 import BackgroundTasks
 import UIKit
 
-/// Syncing while the app is not in front (§8), within what iOS allows.
+/// Syncing while the app is not in front, within what iOS allows.
 ///
 /// - **On leaving**, one round in the time iOS grants a backgrounded app to finish its work,
 ///   so what was just edited reaches the other devices now rather than at the next launch.

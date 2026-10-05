@@ -19,7 +19,7 @@ use crate::types::{
 };
 use crate::{Lumenna, repaired};
 
-/// Applies a person's edit, so it can be undone (§9), and says what it did.
+/// Applies a person's edit, so it can be undone, and says what it did.
 pub(crate) fn record(store: &mut Store, change: &Edit) -> Result<Change> {
     store.apply_recorded(change)?;
     Ok(Change::of(change))
@@ -37,7 +37,7 @@ pub(crate) fn record_or(store: &mut Store, change: &Edit, otherwise: &str) -> Re
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// Adds a task written the way it would be said: a title, and optionally a date phrase,
-    /// `p1` to `p4`, `#project`, `@label` and an estimate like `45m` (§6.1).
+    /// `p1` to `p4`, `#project`, `@label` and an estimate like `45m`.
     ///
     /// The announcement is the readback — what was saved, with the resolved date — and
     /// [`Change::task`] is the task itself. Notices say what was understood but not used.
@@ -45,7 +45,7 @@ impl Lumenna {
     /// # Errors
     ///
     /// If the text is empty, or names a project that does not exist. An unknown label is
-    /// not an error: it becomes a new label (§3.4).
+    /// not an error: it becomes a new label.
     pub fn add_task(&self, text: &str) -> Result<Change> {
         if text.trim().is_empty() {
             return Err(LumennaError::new("nothing to add"));
@@ -56,9 +56,8 @@ impl Lumenna {
             let preview =
                 parse_quick_add(text, &Known::from_snapshot(&snapshot)).resolve(&snapshot, &now);
 
-            // An unknown project is an error; an unknown label is a new label (§3.4).
-            // Refusing on the first and proceeding on the second is the asymmetry that whole
-            // section argues for.
+            // An unknown project is an error; an unknown label is a new label. A mistyped
+            // project would file the task somewhere unexpected, while a label is cheap to make.
             if preview.has_errors() {
                 let messages: Vec<&str> =
                     preview.diagnostics.iter().map(|d| d.message.as_str()).collect();
@@ -102,7 +101,7 @@ impl Lumenna {
             store.apply_recorded(&change)?;
 
             // The announcement stands in for the inline highlighting a sighted user gets as
-            // they type (§6.1) — and always names the resolved date, since "Friday" is the
+            // they type — and always names the resolved date, since "Friday" is the
             // ambiguous part and confirming the phrase back would confirm nothing.
             let mut result = Change::announced(preview.announcement(), &change);
             // Read after applying: labels created alongside it are only nameable once they
@@ -118,7 +117,7 @@ impl Lumenna {
         })
     }
 
-    /// Tasks matching a filter query (§6.2), or every open task for an empty one.
+    /// Tasks matching a filter query, or every open task for an empty one.
     ///
     /// [`Rows::query`] says how the query was understood, and names anything in it that
     /// matched nothing.
@@ -203,7 +202,7 @@ impl Lumenna {
     /// Changes the fields of a task that `edit` sets.
     ///
     /// A new project moves the task the way [`move_task`](Self::move_task) does, so its
-    /// subtasks follow (§3.2).
+    /// subtasks follow.
     ///
     /// # Errors
     ///
@@ -243,7 +242,7 @@ impl Lumenna {
                         Some(due) => due.recurrence = Some(recurrence),
                         None => {
                             // Due on the first day it lands on, as quick add does with
-                            // "every monday" alone (§5).
+                            // "every monday" alone.
                             let first = lumenna_core::recur::Rule::parse(&recurrence.rrule)?
                                 .first_from(now.date())?
                                 .ok_or_else(|| {
@@ -272,7 +271,7 @@ impl Lumenna {
             if let Some(notes) = edit.notes {
                 after.notes = notes;
             }
-            // Names that are not labels yet become labels, as in quick add (§3.4), and are
+            // Names that are not labels yet become labels, as in quick add, and are
             // created in the same edit so one undo takes both back.
             let mut created = Vec::new();
             let mut notices = Vec::new();
@@ -332,8 +331,8 @@ impl Lumenna {
         })
     }
 
-    /// Marks a task done, cascading to its subtasks per the setting (§3.10) and moving a
-    /// recurring one to its next date (§5).
+    /// Marks a task done, cascading to its subtasks per the setting and moving a
+    /// recurring one to its next date.
     ///
     /// # Errors
     ///
@@ -387,8 +386,9 @@ impl Lumenna {
         })
     }
 
-    /// Deletes a task permanently, with its history. This cannot be undone, so a client asks
-    /// first — nothing here can.
+    /// Deletes a task outright rather than moving it to the trash, so a client asks first —
+    /// nothing here can. Undo brings it back, and its content stays in the document's history
+    /// and in backups until a real erasure exists.
     ///
     /// # Errors
     ///
@@ -439,8 +439,8 @@ impl Lumenna {
                 return Err(LumennaError::new("a task cannot wait for itself"));
             }
             // A local edge that closes a cycle of any length is a mistake this device can
-            // see, even though merge can still produce one and `repair` exists for that
-            // (§3.13). Core refuses it, so every client does.
+            // see, even though merge can still produce one and `repair` exists for that.
+            // Core refuses it, so every client does.
             let change = edit::add_dependency(&snapshot, id, dependency)?;
             record_or(store, &change, "nothing changed")
         })

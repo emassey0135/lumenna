@@ -2,8 +2,8 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// Settings (§16.1, §3.10): a short list of pages — what syncs, what is this device's alone,
-/// and getting data in and out (§9).
+/// Settings: a short list of pages — what syncs, what is this device's alone, and getting
+/// data in and out.
 ///
 /// Pages rather than one long form: a VoiceOver user reaches backups without swiping through
 /// every weekday, and a page pushed over the tab bar hides it, so no row is ever read through

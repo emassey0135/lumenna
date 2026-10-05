@@ -1,4 +1,4 @@
-//! Backups and imports as a file's contents rather than a path — what a browser has (§16.12).
+//! Backups and imports as a file's contents rather than a path — what a browser has.
 
 use lumenna_surface::{Imported, Lumenna};
 

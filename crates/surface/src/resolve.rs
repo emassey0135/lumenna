@@ -18,7 +18,7 @@ use crate::error::{LumennaError, Result};
 /// answer, and the whole point of short identifiers is that they are typed quickly and
 /// therefore checked less.
 ///
-/// A bare number is refused: it is a row number, which only the terminal has (§15), and
+/// A bare number is refused: it is a row number, which only the terminal has, and
 /// treating it as a prefix would quietly act on whatever happened to start with those digits.
 /// A block occurrence's `<series>@<date>` resolves to its series.
 fn resolve(input: &str, candidates: impl Iterator<Item = String>) -> Result<String> {
@@ -96,8 +96,9 @@ pub(crate) fn date(text: Option<&str>, now: &Zoned) -> Result<civil::Date> {
 
 /// A due phrase, or `none` to clear it.
 ///
-/// The whole text has to be the phrase. Reading `friday blah` as Friday would be the silent
-/// swallowing §6.1 forbids: here there is no title for the rest to land in, so it is refused.
+/// The whole text has to be the phrase. Reading `friday blah` as Friday would swallow words
+/// silently, which quick add never does: here there is no title for the rest to land in, so
+/// it is refused.
 pub(crate) fn due(text: &str, now: &Zoned) -> Result<Option<Due>> {
     if text.trim().eq_ignore_ascii_case("none") {
         return Ok(None);

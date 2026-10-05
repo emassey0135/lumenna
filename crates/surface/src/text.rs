@@ -1,4 +1,4 @@
-//! What is being typed: completion and the quick-add preview (§6.1, §6.3).
+//! What is being typed: completion and the quick-add preview.
 //!
 //! Both are keystroke-rate questions, which is why they are methods on a linked object and
 //! never a process per keystroke.
@@ -15,7 +15,7 @@ use crate::{Lumenna, repaired};
 impl Lumenna {
     /// What could be inserted at `cursor`, a UTF-8 byte offset into `text`.
     ///
-    /// The announcement is the count, to be said before the list (§6.3); the candidates are
+    /// The announcement is the count, to be said before the list; the candidates are
     /// components, for a client to present in its own medium.
     ///
     /// # Errors
@@ -37,7 +37,7 @@ impl Lumenna {
         })
     }
 
-    /// What a quick-add line would produce, without producing it (§6.1).
+    /// What a quick-add line would produce, without producing it.
     ///
     /// The announcement is the readback a sighted user gets as inline highlighting.
     ///

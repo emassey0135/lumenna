@@ -1,6 +1,6 @@
 # Lumenna on Android
 
-Jetpack Compose over the Rust core (§16.7), through UniFFI's Kotlin bindings and JNA. Four
+Jetpack Compose over the Rust core, through UniFFI's Kotlin bindings and JNA. Four
 tabs as on the iPhone — Today, Tasks, Browse, Settings — each with its own back stack, and
 every operation the core's: the app words what it returns and decides nothing else.
 
@@ -72,4 +72,4 @@ network address translation and multicast does not cross it: it needs a real pho
 `mdns-sd`, which hears multicast only while the app holds a multicast lock — held while it syncs
 in front and while it pairs; it is not exclusive, and the socket shares port 5353 with every
 other mDNS user. Pairing by code is the dependable way for now, as on the iPhone. The two pairing tests the iPhone has need a second
-device and are not ported. Wear OS (§16.8) is its own module, not begun.
+device and are not ported. Wear OS is its own module, not begun.

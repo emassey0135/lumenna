@@ -12,7 +12,7 @@ import java.util.Locale
 /**
  * Times and days as a person says them, in their own locale.
  *
- * The core sends `HH:MM` and ISO dates, which are components (§13); whether that is "2:30 PM"
+ * The core sends `HH:MM` and ISO dates, which are components; whether that is "2:30 PM"
  * or "14:30" is this phone's setting, so it is decided here.
  */
 object Clock {
@@ -63,7 +63,7 @@ object Clock {
 }
 
 /**
- * How a row is spoken, assembled from the components the core sends (§13) — as the iPhone
+ * How a row is spoken, assembled from the components the core sends — as the iPhone
  * says it, so the two read alike.
  *
  * The core sends components rather than a sentence because speech and braille compose them
@@ -77,7 +77,7 @@ object RowSpeech {
     /**
      * Everything after the title: done or not, the due date, notable states, and the level.
      *
-     * The level is said only where it changes from the row before (§16.11): "level 2" on every
+     * The level is said only where it changes from the row before: "level 2" on every
      * subtask is noise, and indentation, which is how a sighted reader gets it, says nothing.
      */
     fun value(row: RowView, previousDepth: UInt?): String {

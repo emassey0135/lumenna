@@ -1,4 +1,4 @@
-//! Completion (§6.3, §6.4): one function, whatever the affordance.
+//! Completion: one function, whatever the affordance.
 
 use lumenna_core::model::{Label, Project};
 use lumenna_core::order::OrderKey;
@@ -34,7 +34,7 @@ fn a_project_sigil_offers_projects() {
 
 #[test]
 fn a_label_sigil_offers_labels_and_nothing_else() {
-    // §6.2: `@` completion must offer the user's own labels, not a fixed vocabulary mixed in
+    // `@` completion must offer the user's own labels, not a fixed vocabulary mixed in
     // among them — in a screen reader you cannot tell them apart by styling.
     let found = texts("@l", 2, Syntax::Filter);
     assert_eq!(found, vec!["@laptop"]);
@@ -48,7 +48,7 @@ fn a_double_hash_completes_to_a_double_hash() {
 
 #[test]
 fn a_name_with_spaces_comes_back_quoted() {
-    // Inserting it unquoted would re-open the ambiguity completion just resolved (§6.2).
+    // Inserting it unquoted would re-open the ambiguity completion just resolved.
     let found = texts("#my", 3, Syntax::Filter);
     assert_eq!(found, vec!["#\"My Big Project\""]);
 }
@@ -70,7 +70,7 @@ fn the_cursor_can_sit_inside_a_word() {
 
 #[test]
 fn kind_is_carried_so_the_announcement_can_say_what_it_is() {
-    // §6.3: "project Work" tells you what you are inserting where a bare "Work" does not.
+    // "project Work" tells you what you are inserting where a bare "Work" does not.
     let result = complete("#w", 2, Syntax::Filter, &known());
     let first = &result.candidates[0];
     assert_eq!(first.kind, CandidateKind::Project);
@@ -97,8 +97,8 @@ fn the_count_is_announced_before_the_list() {
 
 #[test]
 fn after_an_operator_a_filter_offers_predicates() {
-    // This is what §6.3 wanted expected-token sets for: the parser is asked what belongs
-    // here, rather than the affordance guessing.
+    // This is what expected-token sets are for: the parser is asked what belongs here,
+    // rather than the affordance guessing.
     let found = texts("#work & ", 8, Syntax::Filter);
     assert!(found.contains(&"overdue".to_owned()), "{found:?}");
     assert!(found.contains(&"blocked".to_owned()), "{found:?}");
@@ -129,7 +129,7 @@ fn quick_add_offers_the_vocabulary_that_is_otherwise_undiscoverable() {
 
 #[test]
 fn quick_add_completes_sigils_the_same_way_a_filter_does() {
-    // One binding, context-determined (§6.4). The trigger never learns which is which.
+    // One binding, context-determined. The trigger never learns which is which.
     assert_eq!(texts("review PR #w", 12, Syntax::QuickAdd), vec!["#Website", "#Work"]);
     assert_eq!(texts("review PR @e", 12, Syntax::QuickAdd), vec!["@errand"]);
 }

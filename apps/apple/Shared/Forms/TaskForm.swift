@@ -6,13 +6,13 @@ protocol TaskFormHost: AnyObject {
     /// Offers the open tasks, less `excluding`, and hands back the one chosen.
     func chooseTask(_ title: String, excluding: Set<String>, chosen: @escaping (String) -> Void)
     /// Offers the work blocks a task could go in and asks how long the sitting is meant to
-    /// take (§3.7); hands back the block's identifier, its day, and the minutes or none.
+    /// take; hands back the block's identifier, its day, and the minutes or none.
     func chooseBlock(for task: TaskDetail, chosen: @escaping (_ block: String, _ date: String, _ minutes: UInt32?) -> Void)
     /// The task went to the trash.
     func trashed()
 }
 
-/// One task as stored, and its fields as edited (§16.1: task detail / edit) — the model both
+/// One task as stored, and its fields as edited — the model both
 /// Apple apps' task forms share.
 final class TaskDetailModel: NSObject, ObservableObject {
     let core: Core
@@ -110,7 +110,7 @@ final class TaskDetailModel: NSObject, ObservableObject {
         change { done ? try $0.uncompleteTask(id: self.id) : try $0.completeTask(id: self.id) }
     }
 
-    /// Chooses a task for this one to wait for (§3.3).
+    /// Chooses a task for this one to wait for.
     func addDependency() {
         guard let task else { return }
         host?.chooseTask("Waits For", excluding: Set(task.depends.map(\.id) + [id])) { [weak self] other in
@@ -272,7 +272,7 @@ struct BlockChoice {
 }
 
 extension Core {
-    /// The work blocks a task could go in from the task itself (§3.7). Which ones — the work
+    /// The work blocks a task could go in from the task itself. Which ones — the work
     /// blocks of the coming week — is the core's (`workBlocks`), as for every app; how each
     /// reads is this one's. The planner reaches any other day.
     func workBlocksThisWeek() -> [BlockChoice] {

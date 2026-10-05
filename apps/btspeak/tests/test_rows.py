@@ -70,7 +70,7 @@ class ReadingAFlatListAsATree(unittest.TestCase):
 
 
 class AnnouncingTheLevel(unittest.TestCase):
-    """§16.11: depth is never indentation, and the level is announced when it changes."""
+    """Depth is never indentation, and the level is announced when it changes."""
 
     def setUp(self):
         self.tree = Tree(

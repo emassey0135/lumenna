@@ -1,4 +1,4 @@
-//! Repairing the two graphs that CRDT merge can corrupt (§3.13).
+//! Repairing the two graphs that CRDT merge can corrupt.
 //!
 //! Both hazards have the same shape and neither is exotic. A parent pointer is the right
 //! representation for a tree, but nothing stops device A moving X under Y while device B
@@ -35,7 +35,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// tree.
 ///
 /// `parents` maps every node to its parent. A parent that is not itself a key is treated as
-/// the root: §3.1 forbids referential integrity across documents, so a task whose parent
+/// the root: there is no referential integrity across documents, so a task whose parent
 /// lives in a document this device has not merged yet is expected, not corrupt.
 ///
 /// The same function serves tasks and projects, which have the same hazard for the same
@@ -89,8 +89,8 @@ pub fn break_tree_cycles<I: Copy + Ord>(parents: &BTreeMap<I, Option<I>>) -> BTr
 ///
 /// `depends` maps a node to the nodes it depends on, so an entry `(a, b)` in the result
 /// means *`a` no longer depends on `b`*. Edges pointing at nodes that are not keys are left
-/// alone: a dependency on a task from an unmerged document is a dangling reference (§3.1),
-/// not a cycle.
+/// alone: a dependency on a task from an unmerged document is a dangling reference, not a
+/// cycle.
 #[must_use]
 pub fn break_dependency_cycles<I: Copy + Ord>(
     depends: &BTreeMap<I, BTreeSet<I>>,
@@ -225,7 +225,7 @@ mod tests {
 
     #[test]
     fn a_dangling_parent_is_a_root_not_a_cycle() {
-        // §3.1: an assignment may reference a task the local document has not seen yet.
+        // A parent may be a task the local document has not seen yet.
         let t = tree(&[(2, Some(99))]);
         assert!(break_tree_cycles(&t).is_empty());
     }

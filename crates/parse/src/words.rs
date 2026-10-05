@@ -1,9 +1,8 @@
 //! Splitting input into spanned words.
 //!
 //! Both parsers work over words rather than characters, because both need to answer the
-//! same question: **which span of the input did this consume?** §6.1 is explicit that quick
-//! add has to know the date phrase's span so it can be stripped from the title, and that
-//! this is the actual requirement no date crate exposes.
+//! same question: **which span of the input did this consume?** Quick add has to know the date
+//! phrase's span so it can be stripped from the title, and no date crate exposes that.
 //!
 //! Spans are byte offsets into the original input, so a caller can slice it directly and a
 //! completion can say exactly what it is replacing.

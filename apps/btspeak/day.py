@@ -1,7 +1,7 @@
-"""The day and its blocks (§3.6, §3.7).
+"""The day and its blocks.
 
-§16.11: the timeline has no visual metaphor here, and blocks as a time-ordered list lose
-nothing. What a timeline shows by empty space becomes a row (§13): free time between blocks,
+The timeline has no visual metaphor here, and blocks as a time-ordered list lose
+nothing. What a timeline shows by empty space becomes a row: free time between blocks,
 and now. Sittings sit under their block as a second level, so the same folding works.
 """
 
@@ -85,7 +85,7 @@ def day_plan(session: Session) -> str:
     def date() -> str:
         return shown["plan"].get("date", "")
 
-    # §13: opening the day lands on now, not at midnight — so the first build decides where.
+    # Opening the day lands on now, not at midnight — so the first build decides where.
     rows = plan_rows(session.call("plan"))
     now = next(
         (i for i, row in enumerate(rows) if row["role"] == "now" or row.get("when") == "now"),
@@ -119,7 +119,7 @@ def plan_rows(plan: dict) -> list[dict]:
     for item in timeline:
         if item["item"] == "block" and item["row"] in blocks:
             block = blocks[item["row"]]
-            # The core words the details for every app (§13).
+            # The core words the details for every app.
             state = list(block.get("details", []))
             rows.append({
                 "id": block["id"], "role": "block", "depth": 0, "block": block,
@@ -171,7 +171,7 @@ def ask_length(prompt: str, current: int | None = None) -> tuple[bool, int | Non
 
 
 def assign_to(session: Session, task: str, block: dict, date: str) -> str:
-    """Puts a task in a block, asking how long the sitting is meant to take (§3.7)."""
+    """Puts a task in a block, asking how long the sitting is meant to take."""
     answered, minutes = ask_length("How long is this sitting meant to take")
     if not answered:
         return ""
@@ -216,7 +216,7 @@ def day_commands(session: Session, date) -> list[Command]:
         return bool(sitting(row).get("running"))
 
     def toggle_timer(row):
-        """Starts the timer, pauses it while it runs, or resumes it (§3.7)."""
+        """Starts the timer, pauses it while it runs, or resumes it."""
         return session.write("pause" if running(row) else "start", assignment=sitting(row)["id"])
 
     def timer_label(row):
@@ -401,7 +401,7 @@ def add_block(session: Session, date: str = "today", at: str = "9am", minutes: i
 
 
 def block_scope(block: dict, date: str) -> dict | None:
-    """Which days a change to `block` means: asked of a repeating one, never guessed (§4.3).
+    """Which days a change to `block` means: asked of a repeating one, never guessed.
     None when the person cancelled."""
     if not block.get("repeats"):
         return {"all": True}
@@ -412,7 +412,7 @@ def block_scope(block: dict, date: str) -> dict | None:
 
 
 def edit_block(session: Session, block: dict, date: str) -> str:
-    """Asks "this day, or every day?" of a repeating block — never guessed (§4.3)."""
+    """Asks "this day, or every day?" of a repeating block — never guessed."""
     if block.get("repeats"):
         scope = block_scope(block, date)
         if scope is None:

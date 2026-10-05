@@ -1,4 +1,4 @@
-//! The filter query language: its shape, its meaning, and its readback (§6.2).
+//! The filter query language: its shape, its meaning, and its readback.
 //!
 //! A filter is a **boolean expression over predicates** — `&`, `|`, `!`, parentheses. That
 //! is Todoist's level, it is what people arriving from Todoist expect, and it covers
@@ -14,7 +14,7 @@
 //! personal errands"*. That second use is what promotes this from a nice-to-have to a
 //! load-bearing component.
 //!
-//! Parsing lives in `parse`. What lives here is the AST, which §6.2 calls **the stable
+//! Parsing lives in `parse`. What lives here is the AST, which is **the stable
 //! interface** — evaluation strategy can change behind it with no user-visible effect —
 //! along with evaluation and the human-readable rendering.
 //!
@@ -29,8 +29,8 @@
 //! # Names, not identifiers
 //!
 //! Predicates hold the text the user typed. Resolution needs a [`Snapshot`] and is a
-//! separate step ([`Expr::unresolved`]) precisely because §6.1 has to *report* what it could
-//! not resolve — an unknown `#project` is an error, an unknown `@label` is a new label —
+//! separate step ([`Expr::unresolved`]) precisely because what could not be resolved has to
+//! be *reported* — an unknown `#project` is an error, an unknown `@label` is a new label —
 //! rather than silently matching nothing.
 
 use std::collections::BTreeSet;
@@ -68,7 +68,7 @@ pub enum Predicate {
         /// Whether to include the full transitive closure of sub-projects.
         ///
         /// Unlimited depth, never depth-limited — there is no `###`. Evaluating it walks
-        /// the project tree, so it depends on §3.13's cycle repair having run; an unguarded
+        /// the project tree, so it depends on cycle repair having run; an unguarded
         /// closure walk over a cyclic tree never terminates.
         include_descendants: bool,
     },
@@ -76,11 +76,11 @@ pub enum Predicate {
     Label(String),
     /// `p1` through `p4`.
     Priority(Priority),
-    /// A bare word from [`State`], shared with the accessibility layer (§13).
+    /// A bare word from [`State`], shared with the accessibility layer.
     State(State),
     /// A condition on the due date.
     Due(DueFilter),
-    /// `assigned: today` — placed into a block on that day (§6.2).
+    /// `assigned: today` — placed into a block on that day.
     Assigned(DateSpec),
     /// `search: invoice` — free text over titles and notes.
     Search(String),
@@ -89,8 +89,8 @@ pub enum Predicate {
 /// A condition on a task's due date.
 ///
 /// `overdue` and `no date` are deliberately absent: they are [`State`] variants, because
-/// §6.2 requires that anything a filter can select on is something a screen reader can
-/// announce, and "overdue" is exactly the kind of thing it must say.
+/// anything a filter can select on must be something a screen reader can announce, and
+/// "overdue" is exactly the kind of thing it must say.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DueFilter {
     /// Due on the anchor's own day.
@@ -117,9 +117,9 @@ pub enum DueFilter {
 pub struct Context<'a> {
     /// The data to match against.
     pub snapshot: &'a Snapshot,
-    /// The user's current zoned datetime. Never UTC — §4 anchors every relative date to
+    /// The user's current zoned datetime. Never UTC — every relative date is anchored to
     /// where the user actually is, and a filter is evaluated fresh every time precisely so
-    /// that `today` keeps meaning today (§6.2).
+    /// that `today` keeps meaning today.
     pub now: &'a Zoned,
     facts: Facts<'a>,
 }
@@ -159,7 +159,7 @@ pub enum NameKind {
 }
 
 impl NameKind {
-    /// The word to use when announcing it — *"project Work"*, *"label laptop"* (§6.3).
+    /// The word to use when announcing it — *"project Work"*, *"label laptop"*.
     #[must_use]
     pub const fn noun(self) -> &'static str {
         match self {
@@ -193,7 +193,7 @@ impl Expr {
     /// `deleted` — opts back in, which is what makes a review view or a Trash view
     /// expressible in the same language rather than needing a special case.
     ///
-    /// Results come back in the order §3.13 defines: position, then identifier to break
+    /// Results come back in sibling order: position, then identifier to break
     /// ties, so two devices show the same list.
     #[must_use]
     pub fn select<'a>(&self, cx: &Context<'a>) -> Vec<&'a Task> {
@@ -276,7 +276,7 @@ impl Expr {
         }
     }
 
-    /// The query in English, for the readback §6.3 requires.
+    /// The query in English, for the readback.
     #[must_use]
     pub fn describe(&self) -> String {
         match self {
@@ -412,7 +412,7 @@ impl Snapshot {
 
     /// Whether `project` is `ancestor` or sits anywhere beneath it.
     ///
-    /// Walks with a visited set. §3.13's repair should have run first, but a closure walk
+    /// Walks with a visited set. Cycle repair should have run first, but a closure walk
     /// that hangs on a cyclic tree would take the whole UI with it, and this is cheap
     /// insurance against being called on an unrepaired snapshot.
     #[must_use]

@@ -1,9 +1,9 @@
-//! Backups (§9): the whole store, history and all, in one file that can rebuild it.
+//! Backups: the whole store, history and all, in one file that can rebuild it.
 //!
 //! **Sync is not backup.** Peer-to-peer sync is replication, and replicated corruption or
 //! deletion is still corruption or deletion. Every client runs these — opportunistically, when
 //! the last one is older than the interval — because the daemon is optional on most platforms
-//! and anything only it did would effectively not exist (§9).
+//! and anything only it did would effectively not exist.
 //!
 //! # The format
 //!
@@ -18,7 +18,7 @@
 //!   u64 + bytes                      its saved bytes
 //! ```
 //!
-//! §9 asks for `save()` output rather than a copy of the SQLite file: it is self-describing,
+//! A backup is `save()` output rather than a copy of the SQLite file because it is self-describing,
 //! checksummed by Automerge itself, and carries no WAL state or locks, so a backup taken while
 //! another process writes is still whole. The frame around it is deliberately trivial —
 //! anything that can read Automerge can read a backup.
@@ -28,7 +28,7 @@
 //! **Everything, including every task ever deleted.** An Automerge document keeps its change
 //! log, so this is the one file in the system that contains what the trash was emptied of.
 //! That is why it is written only where the user's own files are, never by default anywhere a
-//! cloud service would carry it off (§9), and why it is kept apart from current-state export,
+//! cloud service would carry it off, and why it is kept apart from current-state export,
 //! which holds no history at all.
 
 use std::path::{Path, PathBuf};
@@ -133,7 +133,7 @@ fn take_slice<'a>(rest: &mut &'a [u8], n: usize) -> Result<&'a [u8]> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Policy {
     /// The directory. It should be **outside** the profile directory, so that a bug that
-    /// corrupts one cannot take both (§9).
+    /// corrupts one cannot take both.
     pub directory: PathBuf,
     /// How many to keep. The oldest go first.
     pub keep: usize,

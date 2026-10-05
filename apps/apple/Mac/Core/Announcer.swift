@@ -1,6 +1,6 @@
 import AppKit
 
-/// Saying what happened (§13: announce state changes explicitly).
+/// Saying what happened: every change of state is announced, not left to be noticed.
 enum Announcer {
     /// Speaks a sentence after whatever VoiceOver is saying now, rather than cutting it off —
     /// so it follows the element focus has just moved to, instead of being lost under it.

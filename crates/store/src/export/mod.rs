@@ -1,6 +1,6 @@
-//! Current-state export and import (§9).
+//! Current-state export and import.
 //!
-//! Two things are kept visibly apart here, as §9 insists:
+//! Two things are kept visibly apart here:
 //!
 //! - **A backup** ([`crate::backup`]) is the change log — every task ever created, including
 //!   every one deleted. It is for disaster recovery and device migration.
@@ -19,7 +19,7 @@
 //! - **Markdown and org** ([`markdown`], [`org`]) — tasks, for people.
 //! - **iCalendar** ([`ics`]) — blocks, so a planned day can be read by any calendar.
 //!
-//! Import of our own output is **tested, not assumed** (§9): a recovery path never exercised
+//! Import of our own output is **tested, not assumed**: a recovery path never exercised
 //! does not work, and the round-trip test is also what proves every field of the model made
 //! it into the format.
 
