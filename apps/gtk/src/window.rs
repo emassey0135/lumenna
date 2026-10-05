@@ -31,40 +31,42 @@ use crate::core::{Core, Event, sentence};
 use crate::detail::Detail;
 use crate::sidebar::Sidebar;
 use crate::task_actions::{self, Command};
+use crate::blocks::BlockList;
+use crate::day::DayView;
 use crate::tasks::TaskList;
+use crate::tree::Tree;
 use crate::{prompts, quick_add};
 
 /// The view in the middle pane.
 #[derive(Clone)]
 pub enum Content {
     Tasks(Rc<TaskList>),
-    /// A place whose view is not built yet.
-    Unbuilt(gtk::Label),
+    Day(Rc<DayView>),
+    Blocks(Rc<BlockList>),
 }
 
 impl Content {
     fn widget(&self) -> gtk::Widget {
         match self {
             Self::Tasks(list) => list.widget.clone().upcast(),
-            Self::Unbuilt(label) => label.clone().upcast(),
+            Self::Day(day) => day.widget.clone().upcast(),
+            Self::Blocks(blocks) => blocks.widget.clone().upcast(),
+        }
+    }
+
+    fn tree(&self) -> &Tree {
+        match self {
+            Self::Tasks(list) => &list.tree,
+            Self::Day(day) => &day.tree,
+            Self::Blocks(blocks) => &blocks.tree,
         }
     }
 
     fn reload(&self, app: &App) {
         match self {
             Self::Tasks(list) => list.list(app),
-            Self::Unbuilt(_) => {}
-        }
-    }
-
-    /// Moves focus into the view. Returns whether anything there took it.
-    fn focus(&self) -> bool {
-        match self {
-            Self::Tasks(list) => {
-                list.tree.focus();
-                true
-            }
-            Self::Unbuilt(label) => label.grab_focus(),
+            Self::Day(day) => day.reload(app),
+            Self::Blocks(blocks) => blocks.reload(app),
         }
     }
 
@@ -258,6 +260,9 @@ impl App {
         let minute = jiff::Timestamp::now().as_second() / 60;
         if minute != self.minute.get() {
             self.minute.set(minute);
+            if let Some(day) = self.day() {
+                day.minute(self);
+            }
         }
     }
 
@@ -318,8 +323,13 @@ impl App {
 
     /// Opens a menu over `parent`: at a point in it after a right-click, else beside the
     /// widget with focus — the row a keyboard user asked about.
-    pub fn popup(&self, menu: &gio::Menu, parent: &gtk::Widget, point: Option<(f64, f64)>) {
+    ///
+    /// `actions`, if given, are the row's own, under the `row.` prefix.
+    pub fn popup(&self, menu: &gio::Menu, parent: &gtk::Widget, point: Option<(f64, f64)>, actions: Option<&gio::SimpleActionGroup>) {
         let popover = gtk::PopoverMenu::from_model(Some(menu));
+        if let Some(actions) = actions {
+            popover.insert_action_group("row", Some(actions));
+        }
         popover.set_parent(parent);
         popover.set_has_arrow(false);
         popover.set_halign(gtk::Align::Start);
@@ -354,8 +364,27 @@ impl App {
     pub fn task_list(&self) -> Option<Rc<TaskList>> {
         match self.content()? {
             Content::Tasks(list) => Some(list),
-            Content::Unbuilt(_) => None,
+            _ => None,
         }
+    }
+
+    pub fn day(&self) -> Option<Rc<DayView>> {
+        match self.content()? {
+            Content::Day(day) => Some(day),
+            _ => None,
+        }
+    }
+
+    pub fn blocks(&self) -> Option<Rc<BlockList>> {
+        match self.content()? {
+            Content::Blocks(blocks) => Some(blocks),
+            _ => None,
+        }
+    }
+
+    /// Names the window after what it shows.
+    pub fn set_title(&self, title: &str) {
+        self.window.set_title(Some(&format!("{title} – Lumenna")));
     }
 
     /// Goes to a place: selects it in the sidebar, shows it, and — when `focus` — moves
@@ -371,14 +400,8 @@ impl App {
     /// Shows a place in the middle pane, and clears the details until something is chosen.
     pub fn show_place(&self, place: Place) {
         let content = match &place {
-            Place::Today | Place::Blocks => {
-                let label = gtk::Label::builder()
-                    .label(format!("{} is not in this app yet. Use lum, or another of Lumenna's apps.", place.title()))
-                    .wrap(true)
-                    .focusable(true)
-                    .build();
-                Content::Unbuilt(label)
-            }
+            Place::Today => Content::Day(DayView::new()),
+            Place::Blocks => Content::Blocks(BlockList::new()),
             _ => Content::Tasks(TaskList::new(place.clone())),
         };
         if let Some(old) = self.content.borrow_mut().take() {
@@ -386,7 +409,7 @@ impl App {
         }
         self.content_slot.append(&content.widget());
         *self.content.borrow_mut() = Some(content.clone());
-        self.window.set_title(Some(&format!("{} – Lumenna", place.title())));
+        self.set_title(&place.title());
         self.detail.show(self, None);
         content.reload(self);
     }
@@ -394,7 +417,7 @@ impl App {
     /// Moves focus into the middle pane.
     pub fn focus_content(&self) {
         if let Some(content) = self.content() {
-            content.focus();
+            content.tree().focus();
         }
     }
 
@@ -476,6 +499,7 @@ impl App {
         }
         match self.content()? {
             Content::Tasks(list) if !list.is_trash() => list.selected().map(|row| row.id),
+            Content::Day(day) => day.selected_task(),
             _ => None,
         }
     }
@@ -537,6 +561,49 @@ impl App {
             }
         });
         simple("save-task", |app| app.detail.save(app));
+        simple("new-block", |app| {
+            if app.day().is_none() && app.blocks().is_none() {
+                app.go(Place::Today, false);
+            }
+            if let Some(day) = app.day() {
+                day.add_block(app, None, None);
+            } else if app.blocks().is_some() {
+                let app = Rc::clone(app);
+                spawn(async move {
+                    let fields = crate::block_form::Fields {
+                        start: "09:00".to_owned(),
+                        minutes: "60".to_owned(),
+                        kind: "work".to_owned(),
+                        ..Default::default()
+                    };
+                    let window = app.window.clone().upcast::<gtk::Window>();
+                    let purpose = crate::block_form::Purpose::Add { date: "today".to_owned() };
+                    let Some(change) = crate::block_form::run(&window, app.core.lumenna.clone(), purpose, fields).await else {
+                        return;
+                    };
+                    app.store_changed();
+                    if let (Some(blocks), Some(series)) = (app.blocks(), change.affected.blocks.first()) {
+                        blocks.land_on(series);
+                    }
+                    app.say_change(&change);
+                });
+            }
+        });
+        // The day's commands go to Today first, from anywhere.
+        let on_day = |name: &str, run: fn(&Rc<App>, &Rc<DayView>)| {
+            simple_with(self, name, move |app| {
+                if app.day().is_none() {
+                    app.go(Place::Today, true);
+                }
+                if let Some(day) = app.day() {
+                    run(app, &day);
+                }
+            });
+        };
+        on_day("previous-day", |app, day| day.step(app, -1));
+        on_day("next-day", |app, day| day.step(app, 1));
+        on_day("go-to-now", |app, day| day.go_to_now(app, true));
+        on_day("go-to-day", |app, day| day.ask_for_day(app));
         let task_command = |name: &str, command: Command| {
             simple_with(self, name, move |app| {
                 if let Some(id) = app.task_in_hand() {
@@ -613,6 +680,11 @@ const ACCELERATORS: &[(&str, &[&str])] = &[
     ("win.save-task", &["<Control>s"]),
     ("win.put-in-block", &["<Control>b"]),
     ("win.move-to-project", &["<Control><Shift>m"]),
+    ("win.previous-day", &["<Control>Page_Up"]),
+    ("win.next-day", &["<Control>Page_Down"]),
+    ("win.go-to-now", &["<Control>t"]),
+    ("win.go-to-day", &["<Control>g"]),
+    ("win.new-block", &["<Control><Shift>n"]),
 ];
 
 /// The menu bar. Mnemonics are GTK's underscores.
@@ -643,7 +715,7 @@ fn menu_bar() -> gio::Menu {
     bar.append_submenu(
         Some("_File"),
         &submenu(vec![
-            section(vec![item("_New Task…", "win.new-task")]),
+            section(vec![item("_New Task…", "win.new-task"), item("New _Block…", "win.new-block")]),
             section(vec![item("_Sync Now", "win.sync-now")]),
             section(vec![item("_Close Window", "win.close-window"), item("_Quit", "win.quit")]),
         ]),
@@ -687,6 +759,18 @@ fn menu_bar() -> gio::Menu {
                 item("Rest_ore From Trash", "win.restore-task"),
                 item("Erase _for Good…", "win.erase-task"),
             ]),
+        ]),
+    );
+    bar.append_submenu(
+        Some("_Day"),
+        &submenu(vec![
+            section(vec![
+                item("_Previous Day", "win.previous-day"),
+                item("_Next Day", "win.next-day"),
+                item("Go to N_ow", "win.go-to-now"),
+                item("_Go to Day…", "win.go-to-day"),
+            ]),
+            section(vec![item("_Add Block…", "win.new-block")]),
         ]),
     );
     bar.append_submenu(Some("_Help"), &submenu(vec![section(vec![item("_About Lumenna", "win.about")])]));

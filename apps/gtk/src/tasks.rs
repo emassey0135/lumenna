@@ -141,7 +141,7 @@ impl TaskList {
                     Err(_) => return,
                 }
             };
-            app.popup(&menu, list.tree.view.upcast_ref(), point);
+            app.popup(&menu, list.tree.view.upcast_ref(), point, None);
         });
     }
 

@@ -159,7 +159,8 @@ class Session:
         orca = os.environ.get("ORCA") == "1" if orca is None else orca
         self.orca = Orca(self.directory) if orca else None
         self.keyboard = Keyboard()
-        self.process = subprocess.Popen([str(APP)], env=self.environment,
+        # Never the person's global shortcuts, as the Windows tests do.
+        self.process = subprocess.Popen([str(APP), "--no-shortcuts"], env=self.environment,
                                         stdout=subprocess.DEVNULL,
                                         stderr=open(Path(self.directory) / "app.log", "w"))
         self.app = None
