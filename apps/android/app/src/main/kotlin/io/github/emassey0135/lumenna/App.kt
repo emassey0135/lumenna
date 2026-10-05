@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.StateFlow
 
 /** Somewhere to be: what a tab's back stack holds. */
 sealed interface Screen {
@@ -122,7 +123,7 @@ class Navigator(private val stack: SnapshotStateList<Screen>) {
 }
 
 @Composable
-fun LumennaApp(core: Core) {
+fun LumennaApp(core: Core, newTask: StateFlow<Long>? = null) {
     var tab by rememberSaveable { mutableStateOf(Tab.TODAY) }
     val stacks = remember { Tab.entries.associateWith { mutableStateListOf(it.root) } }
     val navigator = remember(tab) { Navigator(stacks.getValue(tab)) }
@@ -134,6 +135,18 @@ fun LumennaApp(core: Core) {
         core.announcements.collect { snackbar.showSnackbar(it) }
     }
     BackHandler(enabled = navigator.canGoBack) { navigator.back() }
+
+    // New Task from outside the app: the Tasks tab, with quick add over its list.
+    val requested = newTask?.collectAsState()?.value ?: 0L
+    LaunchedEffect(requested) {
+        if (requested > 0) {
+            tab = Tab.TASKS
+            stacks.getValue(Tab.TASKS).apply {
+                retainAll(listOf(Tab.TASKS.root))
+                add(Screen.QuickAdd())
+            }
+        }
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },

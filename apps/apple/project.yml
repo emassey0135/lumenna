@@ -71,6 +71,11 @@ targets:
           - fetch
         BGTaskSchedulerPermittedIdentifiers:
           - io.github.emassey0135.lumenna.sync
+        # New Task on the app icon's quick actions (SceneDelegate).
+        UIApplicationShortcutItems:
+          - UIApplicationShortcutItemType: io.github.emassey0135.lumenna.new-task
+            UIApplicationShortcutItemTitle: New Task
+            UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeAdd
         UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

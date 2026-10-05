@@ -1,6 +1,8 @@
 package io.github.emassey0135.lumenna
 
+import android.content.Intent
 import android.os.Bundle
+import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -13,14 +15,27 @@ import androidx.compose.ui.unit.dp
 class MainActivity : ComponentActivity() {
     private val core get() = (application as LumennaApplication).core
 
+    /** Counts New Task requests — the launcher shortcut, the Quick Settings tile — so each opens quick add. */
+    private val newTask = MutableStateFlow(0L)
+
+    private fun handle(intent: Intent?) {
+        if (intent?.action == NEW_TASK) newTask.value += 1
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handle(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         Clock.update(this)
+        handle(intent)
         setContent {
             LumennaTheme {
                 core.fold(
-                    onSuccess = { LumennaApp(it) },
+                    onSuccess = { LumennaApp(it, newTask) },
                     // Nothing works without the store, so say why plainly.
                     onFailure = { error ->
                         Text(
@@ -46,6 +61,11 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Leaving: the service stops, and one more round is asked for, to send what was just edited. */
+    companion object {
+        /** Opens quick add: the launcher shortcut's and the tile's intent. */
+        const val NEW_TASK = "io.github.emassey0135.lumenna.NEW_TASK"
+    }
+
     override fun onPause() {
         core.getOrNull()?.stopSyncing()
         SyncWorker.syncOnLeaving(this)

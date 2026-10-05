@@ -327,6 +327,9 @@ through the generated `LumennaCore.swift`. `cd apps/apple && xcodegen` makes the
 - **`TZ` is set from `TimeZone.current`** at launch and on return to the foreground.
   jiff finds the zone through `TZ` or `/etc/localtime`, and the sandbox is no place to
   rely on the second. A UI test checks that "today" is today where the phone is.
+- **New Task is a Home Screen quick action** (`UIApplicationShortcutItems`, handled by
+  `SceneDelegate`), so quick add is a long press on the icon — or VoiceOver's actions rotor
+  on it — away. `RootTabs.newTask` shows it over the Tasks tab from wherever the app was.
 - **A UI test names a fresh store** through `LUMENNA_TEST_PROFILE`, a directory under the
   app's temporary directory. The store otherwise lives in Application Support.
 - **Operations run on the main thread.** They take milliseconds against local SQLite, and a
@@ -631,6 +634,10 @@ its own; see its README for the toolchain (NDK, `cargo-ndk`, Android Studio's JD
   `talkBackFollowsFocusToTheRowNowInTheCompletedOnesPlace` checks TalkBack's own focus and is
   skipped unless TalkBack is on. Compose sends accessibility events only while a screen reader
   runs, so `uiautomator events` alone shows nothing for it.
+- **New Task from outside the app**: a static launcher shortcut (`res/xml/shortcuts.xml`)
+  and a Quick Settings tile (`NewTaskTile`) send `MainActivity.NEW_TASK`; the activity is
+  `singleTop` and counts each request into a flow `LumennaApp` watches, which puts quick add
+  over the Tasks tab.
 - **The store is in no-backup storage** and `allowBackup` is off: Google's backup would copy
   a store that reaches other devices by pairing (§9). `TZ` is set from the phone's zone at
   start and on resume, as on the iPhone.

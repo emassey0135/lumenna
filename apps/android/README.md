@@ -53,6 +53,11 @@ ordinary Gradle project.
   adb shell settings put secure accessibility_enabled 1
   ```
 
+## New Task from anywhere
+
+Long-pressing the app icon offers New task (TalkBack lists it among the icon's actions), and a
+Quick Settings tile does the same: the app opens on quick add, over the Tasks tab.
+
 ## Syncing in the background
 
 While the app is in front it syncs continuously. When it is left, WorkManager runs one round

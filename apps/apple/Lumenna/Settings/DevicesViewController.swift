@@ -13,29 +13,14 @@ final class DevicesViewController: ItemListViewController {
         let status = try core.lumenna.syncStatus()
         thisDevice = Set(status.devices.filter(\.thisDevice).map(\.nodeId))
         let items = status.devices.map { device -> Item in
-            var detail = [device.platform]
-            if device.thisDevice {
-                detail.append("this device")
-            } else if let error = device.lastError {
-                detail.append("last attempt failed: \(error)")
-                if let success = device.lastSuccess { detail.append("last synced \(Self.ago(success))") }
-            } else if let success = device.lastSuccess {
-                detail.append("last synced \(Self.ago(success))")
-            } else {
-                detail.append("not synced yet")
-            }
+            // How syncing with it is going, as the core words it for every app.
+            let detail = [device.platform] + device.status
             return Item(key: device.nodeId, title: device.name, detail: detail.joined(separator: ", "))
         }
         // Sync Now as the first row: in the navigation bar beside Add it crowded the title
         // until it was clipped at large text sizes.
         let syncNow = Item(key: "sync-now", title: "Sync Now", detail: nil)
         return ([syncNow] + items, status.announcement)
-    }
-
-    /// "5 minutes ago", in this device's words.
-    private static func ago(_ timestamp: String) -> String {
-        guard let date = try? Date(timestamp, strategy: .iso8601) else { return timestamp }
-        return date.formatted(.relative(presentation: .named))
     }
 
     override func open(_ item: Item) {
