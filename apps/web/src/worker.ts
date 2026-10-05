@@ -17,6 +17,7 @@ import init, {
   dayBlockFields,
   exportChoices,
   newBlock,
+  parseWeight,
   blockText,
   cancelledText,
   dayText,
@@ -43,7 +44,6 @@ import type {
   Direction,
   ExportChoice,
   ExportFormat,
-  Weight,
   CancelledBlock,
   Change,
   Entry,
@@ -385,7 +385,17 @@ const api = {
   renameProject: (name: string, to: string) => done(store().renameProject(name, to)),
   moveProject: (name: string, parent?: string) => done(store().moveProject(name, parent)),
   reorderProject: (name: string, direction: Direction) => done(store().reorderProject(name, direction)),
-  weighProject: (name: string, weight: Weight) => done(store().weighProject(name, weight)),
+  weighProject: (name: string, weight: string) => done(store().weighProject(name, parseWeight(weight))),
+
+  /** What is wrong with a weight as typed, in the surface's words, or nothing. */
+  weightProblem(text: string): string | undefined {
+    try {
+      parseWeight(text);
+      return undefined;
+    } catch (error) {
+      return (error as Error).message;
+    }
+  },
   archiveProject: (name: string) => done(store().archiveProject(name)),
   deleteProject: (name: string, keepTasks: boolean) => done(store().deleteProject(name, keepTasks)),
   addLabel: (name: string) => done(store().addLabel(name)),

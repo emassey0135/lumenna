@@ -252,3 +252,9 @@ pub fn export_choices() -> Out<ExportChoices> {
         .collect();
     js(&ExportChoices { exports })
 }
+
+/// A project's weight as typed: a number above zero, or `inherit`. Refuses anything else.
+#[wasm_bindgen(js_name = parseWeight)]
+pub fn parse_weight(text: String) -> Out<lumenna_surface::Weight> {
+    out(lumenna_surface::parse_weight(text))
+}

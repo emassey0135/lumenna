@@ -11,7 +11,7 @@ use lumenna_parse::complete::quoted;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{LumennaError, Result};
-use crate::types::{BlockEdit, BlockShown, NewBlock, PlanAssignment, PlanBlock, TaskDetail, TaskEdit};
+use crate::types::{BlockEdit, BlockShown, NewBlock, PlanAssignment, PlanBlock, TaskDetail, TaskEdit, Weight};
 use crate::words::duration;
 
 /// A task's editable fields, as a form shows them: all text, apart from the priority.
@@ -298,6 +298,26 @@ fn whole_minutes(text: &str, what: &str) -> Result<u32> {
     text.trim().parse().map_err(|_| LumennaError::new(format!("{what} has to be a whole number of minutes")))
 }
 
+/// A project's weight as typed: a number above zero, such as `1.5`, or `inherit` to take its
+/// parent's again. Anything else is refused rather than read as `inherit`, so a typo — `1,5`
+/// — says so instead of quietly undoing a weight.
+///
+/// # Errors
+///
+/// If it is neither.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn parse_weight(text: String) -> Result<Weight> {
+    let text = text.trim();
+    if text.eq_ignore_ascii_case("inherit") {
+        return Ok(Weight::Inherit);
+    }
+    text.parse::<f32>()
+        .ok()
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .map(|value| Weight::Value { value })
+        .ok_or_else(|| LumennaError::new(format!("'{text}' is not a weight; use a number above zero, such as 1.5, or inherit")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -522,5 +542,14 @@ mod tests {
         assert_eq!((day.start.as_str(), day.minutes.as_str()), ("10:00", "60"));
         assert!(!day.counts_capacity);
         assert_eq!(day.colour, "", "a day cannot change it, so the form does not hold it");
+    }
+
+    #[test]
+    fn a_weight_is_a_number_above_zero_or_inherit_and_nothing_else() {
+        assert_eq!(parse_weight(" 1.5 ".to_owned()).unwrap(), Weight::Value { value: 1.5 });
+        assert_eq!(parse_weight("Inherit".to_owned()).unwrap(), Weight::Inherit);
+        for wrong in ["1,5", "0", "-2", "", "inf", "heavy"] {
+            assert!(parse_weight(wrong.to_owned()).is_err(), "{wrong} is not a weight");
+        }
     }
 }
