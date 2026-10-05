@@ -111,7 +111,7 @@ apps/
   cli/         one binary, subcommands: add/list/..., `daemon`, `rpc`, `mcp`, `pair`
   linux/       GTK4
   windows/     Win32
-  emacs/       Elisp package + optional emacspeak-lumenna.el
+  emacs/       Elisp package; voices for Emacspeak/Emacsvox, facts for Emacsvox
   btspeak/     Python app, .menu file, reminder service, systemd unit
   apple/       Xcode project: macOS, iOS, watchOS targets, sharing Swift code
   android/     Gradle project: phone + Wear OS modules
@@ -3169,6 +3169,13 @@ Design:
 so voice-lock maps them to distinct voices, and ship an `emacspeak-lumenna.el` advising commands
 to speak confirmations, with auditory icons on completion. Plausibly worth contributing
 upstream.
+
+*As built:* no advice. Writes go through one function that runs a hook and hands the core's
+announcement to a replaceable announcer, so the Emacspeak layer is a face→voice map
+(`voice-setup-add-map`, which Emacsvox shares) plus auditory icons on that hook, and an
+Emacsvox layer puts semantic facts on each line and submits each change as an event whose
+sound is a module-fragment rule. Under Emacsvox the icons are left off, so nothing sounds
+twice.
 
 **speechd-el** is largely free — ordinary text in an ordinary buffer, with `message` for
 feedback.
