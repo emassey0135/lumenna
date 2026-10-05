@@ -225,9 +225,12 @@ pub fn serve_streams(
 
 /// Looks for changes another process wrote, and says so.
 ///
-/// A cursor that lags re-reads a change already held, which is a no-op; a cursor that skips
-/// loses an edit — so `refresh` is the only thing that moves it, here as everywhere.
+/// By `outside_version`, not by `refresh`'s answer: a request refreshes first too, and one
+/// that arrived just after another process wrote would take the change in and leave this
+/// poll told nothing — the client's other views would stay stale. The client's own writes do
+/// not move it, as they never came back as a notification.
 fn watch(server: &Server) {
+    let mut seen = server.profile.lock().ok().and_then(|profile| profile.outside_version().ok());
     let mut since_backup_check = Duration::ZERO;
     while server.running.load(Ordering::Relaxed) {
         std::thread::sleep(POLL);
@@ -238,10 +241,12 @@ fn watch(server: &Server) {
                 crate::durability::back_up_if_due(&profile);
             }
         }
-        let changed = server
-            .profile
-            .lock()
-            .map_or(Ok(false), |profile| profile.refresh());
+        let outside = server.profile.lock().map_or(Ok(seen), |profile| profile.outside_version().map(Some));
+        let changed = outside.map(|now| {
+            let moved = now != seen;
+            seen = now;
+            moved
+        });
         match changed {
             Ok(true) => server.send(&json!({
                 "jsonrpc": "2.0",

@@ -15,6 +15,8 @@ final class Core {
     private let syncQueue = DispatchQueue(label: "lumenna.sync")
     // Foundation's, named in full: the core has a record called `Timer` too.
     private var watcher: Foundation.Timer?
+    /// How far other processes' writes had got at the last look.
+    private var seenOutside: Int64?
 
     init() throws {
         Core.useSystemTimeZone()
@@ -96,12 +98,20 @@ final class Core {
 
     /// Notices what another process — `lum`, the daemon — wrote to the store, once a second,
     /// as `lum rpc` does (§8 sanctions the timer). Only a Mac has those other processes.
+    ///
+    /// By `outsideVersion`, not by asking `refresh` whether it took anything in: every
+    /// operation and the sync loop refresh too, and whichever came first after `lum` wrote
+    /// would have had the answer, leaving the change unseen. Not by `version` either, which
+    /// moves for the app's own edits as well — they redraw as they are made, and a second
+    /// redraw a moment later lands on whatever the person has opened next. A sync's arrivals
+    /// are announced by `Arrivals`.
     func watchForOtherProcesses() {
         guard watcher == nil else { return }
+        seenOutside = try? lumenna.outsideVersion()
         watcher = Foundation.Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            if (try? self?.lumenna.refresh()) == true {
-                NotificationCenter.default.post(name: Core.changed, object: nil)
-            }
+            guard let self, let outside = try? self.lumenna.outsideVersion(), outside != self.seenOutside else { return }
+            self.seenOutside = outside
+            NotificationCenter.default.post(name: Core.changed, object: nil)
         }
     }
 

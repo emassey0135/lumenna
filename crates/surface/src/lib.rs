@@ -121,6 +121,24 @@ impl Lumenna {
         Ok(store.version().iter().map(ToString::to_string).collect::<Vec<_>>().join(" "))
     }
 
+    /// Takes in what another process wrote, and returns a number that moves whenever another
+    /// process — `lum`, the daemon — has written since, and for nothing else.
+    ///
+    /// For an app that already redraws for its own edits as it makes them, and hears of a
+    /// sync's arrivals from its `SyncService`: what is left to
+    /// notice is another process, and [`version`](Self::version) would also move for every
+    /// edit the app made itself, redrawing everything a second time a moment later. This does
+    /// not, and, like `version`, no other call can use it up.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn outside_version(&self) -> Result<i64> {
+        let mut store = self.store();
+        store.refresh()?;
+        Ok(store.outside_version()?)
+    }
+
     /// The profile directory.
     #[must_use]
     pub fn directory(&self) -> String {
