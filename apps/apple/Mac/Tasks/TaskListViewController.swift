@@ -31,7 +31,7 @@ final class TaskNode {
 final class TaskListViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
     enum Mode {
         case tasks
-        /// The trash: restore, or erase for good.
+        /// The trash: restore, or delete from the trash.
         case trash
     }
 
@@ -215,7 +215,7 @@ final class TaskListViewController: NSViewController, NSOutlineViewDataSource, N
     }
 
     /// Keys on the outline itself: Space completes, Delete trashes — or, in the trash,
-    /// restores and erases — as the menus say.
+    /// restores and deletes from the trash — as the menus say.
     private func key(_ key: TaskOutline.Key) -> Bool {
         guard let row = selectedNode?.row else { return false }
         switch (key, mode) {
@@ -256,12 +256,12 @@ final class TaskListViewController: NSViewController, NSOutlineViewDataSource, N
         perform(focusing: nil) { try core.lumenna.restoreTask(id: row.id) }
     }
 
-    /// Erasing rebuilds the document without the task and cannot be undone, so it asks.
+    /// Deletes a task from the trash, asking first.
     func erase(_ row: RowView) {
         view.window?.confirm(
-            "Erase \(row.title)?",
-            message: "It and its history are deleted for good. This cannot be undone.",
-            action: "Erase"
+            "Delete \(row.title) from the trash?",
+            message: "Undo can bring it back. It also stays in the history every device keeps, and in backups.",
+            action: "Delete"
         ) { [weak self] in
             guard let self else { return }
             self.perform(focusing: nil) { try self.core.lumenna.eraseTask(id: row.id) }
@@ -291,7 +291,7 @@ final class TaskListViewController: NSViewController, NSOutlineViewDataSource, N
         }
         let actions = mode == .trash
             ? [("Restore", { [weak self] in self?.restore(node.row) }),
-               ("Erase…", { [weak self] in self?.erase(node.row) })]
+               ("Delete from Trash…", { [weak self] in self?.erase(node.row) })]
             : TaskActions(core: core, window: window, list: self).menu(for: node.row)
         for (title, action) in actions {
             if title == "-" { menu.addItem(.separator()) } else { menu.addItem(ClosureMenuItem(title: title, action: action)) }

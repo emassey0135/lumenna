@@ -138,8 +138,8 @@ def show(session: Session, row: dict) -> str:
 
 
 def trash(session: Session) -> str:
-    """Deleted tasks: Enter puts one back; erasing it for good is its context menu's, or the
-    delete keys'."""
+    """Deleted tasks: Enter puts one back; deleting one from the trash is its context menu's,
+    or the delete keys'."""
     state = {"heading": "Trash"}
 
     def build():
@@ -154,7 +154,7 @@ def trash(session: Session) -> str:
             main=restore,
             context=[
                 Command("Restore", restore, key="r"),
-                Command("Erase for good", lambda row: erase(session, row), deletes=True),
+                Command("Delete from trash", lambda row: erase(session, row), deletes=True),
             ],
             app=undo_commands(session),
             empty="The trash is empty.",
@@ -164,8 +164,11 @@ def trash(session: Session) -> str:
 
 
 def erase(session: Session, row: dict) -> str:
-    """Erasing rebuilds the document without the task and cannot be undone, so it asks."""
-    if not confirm(f"Erase {row['title']} and its history for good? This cannot be undone."):
+    """Deletes a task from the trash, asking first."""
+    if not confirm(
+        f"Delete {row['title']} from the trash? Undo can bring it back. "
+        "It also stays in the history every device keeps, and in backups."
+    ):
         return ""
     return session.write("task.erase", id=row["id"], confirm=True)
 

@@ -482,7 +482,7 @@ pub fn restore_task(snapshot: &Snapshot, id: TaskId) -> Result<Edit, EditError> 
 /// If the task is not loaded.
 pub fn purge_task(snapshot: &Snapshot, id: TaskId) -> Result<Edit, EditError> {
     let task = snapshot.tasks.get(&id).ok_or(EditError::NotFound { kind: "task" })?;
-    let mut builder = Builder::new(format!("Permanently deleted {}", task.title));
+    let mut builder = Builder::new(format!("Deleted {} from the trash", task.title));
 
     for target in std::iter::once(task).chain(descendants(snapshot, id)) {
         for completion in snapshot.completions.values() {

@@ -344,8 +344,8 @@ final class LumennaMacUITests: XCTestCase {
         XCTAssertTrue(trash.staticTexts["keep me"].waitForNonExistence(timeout: 5), "restored")
         trash.staticTexts["lose me"].click()
         app.typeKey(.delete, modifierFlags: [])
-        sheetButton("Erase")
-        XCTAssertTrue(trash.staticTexts["lose me"].waitForNonExistence(timeout: 5), "erased")
+        sheetButton("Delete")
+        XCTAssertTrue(trash.staticTexts["lose me"].waitForNonExistence(timeout: 5), "deleted from the trash")
         place("Tasks")
         XCTAssertTrue(window.outlines["Tasks"].staticTexts["keep me"].waitForExistence(timeout: 5))
     }

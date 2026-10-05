@@ -341,7 +341,8 @@ pub(crate) enum TaskCommand {
         id: String,
     },
 
-    /// Delete a task permanently, with its history. This cannot be undone.
+    /// Delete a task from the trash. Undo can bring it back, and it stays in the history every
+    /// device keeps and in backups.
     Erase {
         /// A row number from the last listing, or an identifier.
         id: String,
@@ -1011,7 +1012,8 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
             if !yes {
                 let title = profile.show_task(&id)?.task.title;
                 anstream::eprint!(
-                    "Permanently delete '{title}' and its history? Type yes to confirm: "
+                    "Delete '{title}' from the trash? Undo can bring it back. It also stays in \
+                     the history every device keeps, and in backups. Type yes to confirm: "
                 );
                 let mut answer = String::new();
                 std::io::stdin().read_line(&mut answer)?;

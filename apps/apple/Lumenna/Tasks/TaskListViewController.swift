@@ -14,7 +14,7 @@ final class TaskListViewController: UIViewController {
     enum Mode {
         /// Tasks to do.
         case tasks
-        /// The trash: restore, or erase for good.
+        /// The trash: restore, or delete from the trash.
         case trash
     }
 
@@ -106,7 +106,7 @@ final class TaskListViewController: UIViewController {
                     self?.restore(row)
                     finished(true)
                 }
-                let erase = UIContextualAction(style: .destructive, title: "Erase") {
+                let erase = UIContextualAction(style: .destructive, title: "Delete from Trash") {
                     [weak self] _, _, finished in
                     self?.erase(row)
                     finished(true)
@@ -323,12 +323,12 @@ final class TaskListViewController: UIViewController {
         perform(focusing: nil, near: index) { try core.lumenna.restoreTask(id: row.id) }
     }
 
-    /// Erasing rebuilds the document without the task and cannot be undone, so it asks.
+    /// Deletes a task from the trash, asking first.
     private func erase(_ row: RowView) {
         confirm(
-            "Erase \(row.title)?",
-            message: "It and its history are deleted for good. This cannot be undone.",
-            action: "Erase"
+            "Delete \(row.title) from the trash?",
+            message: "Undo can bring it back. It also stays in the history every device keeps, and in backups.",
+            action: "Delete"
         ) { [weak self] in
             guard let self else { return }
             let index = self.rows.firstIndex { $0.id == row.id }
