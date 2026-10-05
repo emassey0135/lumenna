@@ -72,26 +72,10 @@ Times are typed as said, 9am or 14:30; core reads and checks every value."
 \\{lumenna-devices-mode-map}"
   (setq-local lumenna--activate (lambda (_row) (lumenna-device-rename))))
 
-(defun lumenna--ago (stamp)
-  "STAMP, an RFC 3339 time, as `5 minutes ago'."
-  (let ((seconds (max 0 (floor (float-time (time-subtract nil (date-to-time stamp)))))))
-    (cond ((< seconds 60) "just now")
-          ((< seconds 3600) (format "%d minute%s ago" (/ seconds 60) (if (< seconds 120) "" "s")))
-          ((< seconds 86400) (format "%d hour%s ago" (/ seconds 3600) (if (< seconds 7200) "" "s")))
-          (t (format "%d day%s ago" (/ seconds 86400) (if (< seconds 172800) "" "s"))))))
-
 (defun lumenna--device-value (device)
-  "How syncing with DEVICE last went, in words (§9: never a glyph)."
-  (let ((error (plist-get device :last_error)) (success (plist-get device :last_success)))
-    (string-join
-     (delq nil (list (plist-get device :platform)
-                     (cond ((lumenna--true (plist-get device :this_device)) "this device")
-                           (error (format "last attempt %s failed: %s"
-                                          (lumenna--ago (plist-get device :last_attempt)) error))
-                           (success (format "last synced %s" (lumenna--ago success)))
-                           (t "not synced yet"))
-                     (and error success (format "last synced %s" (lumenna--ago success)))))
-     ", ")))
+  "How syncing with DEVICE last went, in words (§9: never a glyph).
+Its platform, then the status the core words for every app."
+  (string-join (cons (plist-get device :platform) (append (plist-get device :status) nil)) ", "))
 
 ;;;###autoload
 (defun lumenna-devices ()

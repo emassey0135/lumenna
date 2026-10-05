@@ -25,15 +25,6 @@
                      (and (or (> rest 0) (= hours 0)) (format "%d minute%s" rest (if (= rest 1) "" "s")))))
      " ")))
 
-(defun lumenna--sitting-status (sitting)
-  "SITTING's status, with its planned length beside it.
-\"planned for 45 minutes\" before it starts and \"45 minutes planned\"
-after, so the two never read \"planned, planned\"."
-  (let ((planned (plist-get sitting :planned_mins)) (status (plist-get sitting :status)))
-    (cond ((not planned) (list status))
-          ((equal status "planned") (list (format "planned for %s" (lumenna--length planned))))
-          (t (list status (format "%s planned" (lumenna--length planned)))))))
-
 (defun lumenna--day-rows (plan)
   "PLAN's timeline as rows, each said as the phone says it."
   (let ((blocks (append (plist-get plan :blocks) nil)) rows)
@@ -41,30 +32,19 @@ after, so the two never read \"planned, planned\"."
       (pcase (plist-get item :item)
         ("block"
          (when-let* ((block (seq-find (lambda (b) (equal (plist-get b :row) (plist-get item :row))) blocks)))
-           (let ((state (list (lumenna--length (plist-get block :duration_mins))
-                              (format "%s block" (plist-get block :kind)))))
-             (unless (string-empty-p (plist-get block :when)) (setq state (append state (list (plist-get block :when)))))
-             (when (lumenna--true (plist-get block :changed_for_this_day))
-               (setq state (append state '("changed for this day"))))
-             (when (equal (plist-get block :kind) "work")
-               (let ((n (length (plist-get block :assignments))))
-                 (setq state (append state (list (pcase n (0 "nothing assigned") (1 "1 task assigned")
-                                                       (_ (format "%d tasks assigned" n))))))))
+           ;; The core words the details for every app (§13).
+           (let ((state (append (plist-get block :details) nil)))
              (push (list :id (plist-get block :id) :role "block" :block block :when (plist-get block :when)
                          :title (format "%s to %s, %s" (plist-get block :start) (plist-get block :end)
                                         (plist-get block :title))
                          :state (vconcat state))
                    rows)
              (dolist (sitting (append (plist-get block :assignments) nil))
-               (let ((state (lumenna--sitting-status sitting)))
-                 (when (> (plist-get sitting :minutes) 0)
-                   (setq state (append state (list (format "%s logged" (lumenna--length (plist-get sitting :minutes)))))))
-                 (when (lumenna--true (plist-get sitting :capped))
-                   (setq state (append state '("capped, the timer looks forgotten"))))
+               (let ((state (append (plist-get sitting :details) nil)))
                  (push (list :id (plist-get sitting :id) :role "assignment" :depth 1 :sitting sitting
                              :task (plist-get sitting :task) :block block :title (plist-get sitting :title)
                              :state (vconcat state)
-                             :face (and (equal (plist-get sitting :status) "in progress") 'lumenna-running))
+                             :face (and (lumenna--true (plist-get sitting :running)) 'lumenna-running))
                        rows))))))
         ("free"
          (push (list :id (format "free@%s" (plist-get item :start)) :role "free" :free item :face 'lumenna-quiet
@@ -196,16 +176,14 @@ A repeating one asks: this day only, or every one (§4.3)."
     (if (and (lumenna--true (plist-get block :repeats))
              (equal (completing-read "Change which? " '("This day only" "Every occurrence") nil t)
                     "This day only"))
-        (lumenna--edit-block-fields series (plist-get block :title) (plist-get block :start)
-                                    (plist-get block :duration_mins) (plist-get block :kind) nil
-                                    (list :date lumenna--date))
+        (lumenna--edit-block series (lumenna-call "block.show" :id series) (list :date lumenna--date) block)
       (lumenna-edit-series series))))
 
 (defun lumenna-day-assign ()
   "Put a task in the work block at point, for a sitting of the length chosen."
   (interactive)
   (let ((block (plist-get (lumenna--day-row "block") :block)))
-    (unless (equal (plist-get block :kind) "work") (user-error "Only a work block takes tasks"))
+    (unless (lumenna--true (plist-get block :accepts_tasks)) (user-error "That block takes no tasks"))
     (lumenna--assign (lumenna--choose-task (format "Assign to %s: " (plist-get block :title)))
                      (plist-get block :id) lumenna--date)))
 
@@ -235,11 +213,18 @@ A repeating one asks: this day only, or every one (§4.3)."
 ;;;; Sittings
 
 (defun lumenna-day-timer ()
-  "Start or stop the timer on the sitting at point."
+  "Start the timer on the sitting at point, pause it while it runs, or resume it.
+Pausing keeps the time so far and leaves the sitting in progress (§3.7)."
   (interactive)
   (let ((sitting (plist-get (lumenna--day-row "assignment") :sitting)))
-    (lumenna-write (if (equal (plist-get sitting :status) "in progress") "stop" "start")
+    (lumenna-write (if (lumenna--true (plist-get sitting :running)) "pause" "start")
                    :assignment (plist-get sitting :id))))
+
+(defun lumenna-day-stop ()
+  "Stop the timer on the sitting at point, ending the sitting, running or paused."
+  (interactive)
+  (let ((sitting (plist-get (lumenna--day-row "assignment") :sitting)))
+    (lumenna-write "stop" :assignment (plist-get sitting :id))))
 
 (defun lumenna--read-length (prompt &optional current)
   "Minutes for a sitting's planned length, or nil for none, read with PROMPT.
@@ -307,35 +292,54 @@ Which blocks those are is the core's (`block.choices'), as for every app."
                    :repeat (unless (string-empty-p repeat) repeat))))
 
 (defun lumenna-edit-series (series)
-  "Change every occurrence of block SERIES."
-  (let* ((shown (lumenna-call "block.show" :id series))
-         (unspeakable (and (lumenna--true (plist-get shown :repeats)) (not (plist-get shown :repetition)))))
-    (lumenna--edit-block-fields (plist-get shown :id) (plist-get shown :title) (plist-get shown :start)
-                                (plist-get shown :minutes) (plist-get shown :kind)
-                                ;; A rule the grammar cannot say is not offered as a phrase.
-                                (if unspeakable 'keep (or (plist-get shown :repetition) ""))
-                                (list :all t))))
+  "Change every occurrence of block SERIES, a field at a time."
+  (lumenna--edit-block series (lumenna-call "block.show" :id series) (list :all t)))
 
-(defun lumenna--edit-block-fields (series title start minutes kind repeat scope)
-  "Ask for each field of block SERIES, sending only what changed.
-TITLE, START, MINUTES and KIND are what it has now, offered to edit.
-REPEAT is nil where it cannot change -- one day of a series -- and `keep' for
-a rule this cannot show.  SCOPE is the plist saying which occurrences."
-  (let* ((new-title (read-string "Name: " title))
-         (new-start (read-string "Starts at: " start))
-         (new-minutes (read-number "Minutes: " minutes))
-         (new-kind (lumenna--read-kind kind))
-         (new-repeat (and (stringp repeat)
-                          (string-trim (read-string "Repeats, empty to happen once: " repeat))))
-         (changes (append (unless (equal new-title title) (list :title new-title))
-                          (unless (equal new-start start) (list :at new-start))
-                          (unless (equal new-minutes minutes) (list :minutes new-minutes))
-                          (unless (equal new-kind kind) (list :kind new-kind))
-                          (when (and new-repeat (not (equal new-repeat repeat)))
-                            (list :repeat (if (string-empty-p new-repeat) "none" new-repeat))))))
-    (if changes
-        (apply #'lumenna-write "block.edit" :id series (append changes scope))
-      (message "Nothing changed"))))
+(defconst lumenna--block-fields
+  '(("Name" . title) ("Starts" . at) ("Lasts" . minutes) ("Kind" . kind) ("Repeats" . repeat)
+    ("Notes" . notes) ("Takes tasks" . accepts_tasks) ("Counts toward capacity" . counts_capacity)
+    ("Anchored" . anchored) ("Shortest length" . min_minutes) ("Tasks from" . task_filter)
+    ("Until" . until) ("Colour" . colour))
+  "A block's fields, by the name they are chosen by.")
+
+(defconst lumenna--day-fields '(title at minutes kind accepts_tasks counts_capacity anchored)
+  "What one day of a repeating block can change: what an exception holds (§3.6).")
+
+(defun lumenna--edit-block (series shown scope &optional day)
+  "Change one field of block SERIES, chosen by name, sending only that field.
+SHOWN is the series as `block.show' gives it; DAY, for one day of it, is that
+day's block from the plan, whose values are the day's.  SCOPE is the plist
+saying which occurrences."
+  (let* ((fields (if day
+                     (seq-filter (lambda (f) (memq (cdr f) lumenna--day-fields)) lumenna--block-fields)
+                   (seq-remove (lambda (f) (and (eq (cdr f) 'until) (not (lumenna--true (plist-get shown :repeats)))))
+                               lumenna--block-fields)))
+         (field (cdr (assoc (completing-read "Change: " fields nil t) fields)))
+         (get (lambda (key) (if (and day (plist-member day key)) (plist-get day key) (plist-get shown key))))
+         (value
+          (pcase field
+            ('title (read-string "Name: " (funcall get :title)))
+            ('at (read-string "Starts at, such as 9am or 14:30: " (funcall get :start)))
+            ('minutes (read-number "Lasts, in minutes: " (or (funcall get :duration_mins) (plist-get shown :minutes))))
+            ('kind (lumenna--read-kind (funcall get :kind)))
+            ('repeat
+             (if (and (lumenna--true (plist-get shown :repeats)) (not (plist-get shown :repetition)))
+                 (let ((typed (string-trim (read-string "Repeats by a rule this cannot show; type a new one, or none: "))))
+                   (if (string-empty-p typed) (user-error "Nothing changed") typed))
+               (let ((typed (string-trim (read-string "Repeats, empty to happen once: " (plist-get shown :repetition)))))
+                 (if (string-empty-p typed) "none" typed))))
+            ('notes (read-string "Notes, empty for none: " (plist-get shown :notes)))
+            ((or 'accepts_tasks 'counts_capacity 'anchored)
+             (let ((now (lumenna--true (funcall get (intern (format ":%s" field))))))
+               (if (y-or-n-p (format "%s? It is %s now. " (car (rassq field fields)) (if now "yes" "no")))
+                   t :json-false)))
+            ('min_minutes (read-number "Shortest length in minutes, 0 for the kind's own: "
+                                       (or (plist-get shown :min_minutes) 0)))
+            ('task_filter (lumenna-read-line "Tasks from, a filter such as #Work, empty for any: " "filter"
+                                             (plist-get shown :task_filter)))
+            ('until (read-string "Last day, such as 31 January, or none: " (plist-get shown :until)))
+            ('colour (read-string "Colour, such as teal, empty for none: " (plist-get shown :colour))))))
+    (apply #'lumenna-write "block.edit" :id series (intern (format ":%s" field)) value scope)))
 
 (defun lumenna-delete-block (series title repeats)
   "Delete block SERIES, called TITLE, asking first.
@@ -389,7 +393,8 @@ REPEATS says it is a series, so every occurrence goes."
    ("d" "Delete the block, or take a task out of it" lumenna-day-delete))
   ("A task in a block"
    ("RET" "The task itself" lumenna-activate)
-   ("s" "Start or stop the timer" lumenna-day-timer)
+   ("s" "Start the timer, or pause or resume it" lumenna-day-timer)
+   ("S" "Stop the timer, ending the sitting" lumenna-day-stop)
    ("l" "Planned length" lumenna-day-planned-length)
    ("m" "Log minutes by hand" lumenna-day-log-minutes)))
 
