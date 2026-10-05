@@ -562,6 +562,10 @@ Backups, Export and Import) work.
   client, not `refresh`: the sync loop refreshes every tick and would consume `refresh`'s
   answer. The app's own edits redraw as they are made (`App::perform`), and a sync's
   arrivals come through the `SyncListener`.
+- **The block form is the surface's** (`block_fields`, `day_block_fields`, `block_edit`,
+  `new_block`), as the task form is: every occurrence takes every setting, one day only its
+  time, length, title, kind and three flags, and the flags follow a change of kind
+  (`block_defaults`). Space on a sitting starts, pauses or resumes; Stop is in its menu.
 - **Dialogs are futures** (`prompts.rs`): GTK 4 has no blocking `run`, so an action that
   asks first is `window::spawn`ed. While a popover menu is open, `spawn` waits for it to
   close, so the dialog is not mapped under a closing menu. Dialogs set their window's focus

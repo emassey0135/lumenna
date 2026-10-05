@@ -8,7 +8,7 @@ use gtk::{gdk, gio, glib};
 use lumenna_desktop::speech;
 use lumenna_surface::RowView;
 
-use crate::block_form::{self, Fields, Purpose};
+use crate::block_form::{self, Purpose};
 use crate::core::sentence;
 use crate::prompts;
 use crate::tree::{Item, Tree};
@@ -97,19 +97,13 @@ impl BlockList {
             Ok(shown) => shown,
             Err(error) => return app.fail(&sentence(&error)),
         };
-        let fields = Fields {
-            title: shown.title,
-            start: shown.start,
-            minutes: shown.minutes.to_string(),
-            kind: shown.kind,
-            repeat: shown.repetition.unwrap_or_default(),
-            rule: shown.rrule.filter(|_| shown.repeats),
-        };
-        let purpose = Purpose::Series { id: shown.id };
+        let rule = shown.rrule.clone().filter(|_| shown.repeats);
+        let purpose = Purpose::Series { id: shown.id.clone() };
+        let fields = lumenna_surface::block_fields(shown);
         let (list, app) = (Rc::clone(self), Rc::clone(app));
         spawn(async move {
             let window = app.window.clone().upcast::<gtk::Window>();
-            if let Some(change) = block_form::run(&window, app.core.lumenna.clone(), purpose, fields).await {
+            if let Some(change) = block_form::run(&window, app.core.lumenna.clone(), purpose, fields, rule).await {
                 app.store_changed();
                 list.tree.select_key_or_near(Some(&row.id), list.tree.selected());
                 app.say_change(&change);

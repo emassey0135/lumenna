@@ -672,15 +672,10 @@ impl App {
             } else if app.blocks().is_some() {
                 let app = Rc::clone(app);
                 spawn(async move {
-                    let fields = crate::block_form::Fields {
-                        start: "09:00".to_owned(),
-                        minutes: "60".to_owned(),
-                        kind: "work".to_owned(),
-                        ..Default::default()
-                    };
+                    let fields = crate::block_form::new_fields("09:00", 60);
                     let window = app.window.clone().upcast::<gtk::Window>();
                     let purpose = crate::block_form::Purpose::Add { date: "today".to_owned() };
-                    let Some(change) = crate::block_form::run(&window, app.core.lumenna.clone(), purpose, fields).await else {
+                    let Some(change) = crate::block_form::run(&window, app.core.lumenna.clone(), purpose, fields, None).await else {
                         return;
                     };
                     app.store_changed();

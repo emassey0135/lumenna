@@ -5,9 +5,9 @@
 //! now as a position rather than a highlight. Opening the day puts focus on now, not on
 //! midnight.
 //!
-//! On a sitting, Space starts or stops its timer and Delete takes it out of the block; on a
-//! block, Enter changes it and Delete deletes it; on free time, Enter adds a block there.
-//! Everything else is in the row's context menu.
+//! On a sitting, Space starts, pauses or resumes its timer and Delete takes it out of the
+//! block; on a block, Enter changes it and Delete deletes it; on free time, Enter adds a block
+//! there. Everything else is in the row's context menu.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -17,7 +17,7 @@ use gtk::{gdk, gio, glib};
 use lumenna_desktop::speech::{self, Clock};
 use lumenna_surface::{CancelledBlock, Change, Lumenna, Plan, PlanAssignment, PlanBlock, PlanItem, Result, RowView};
 
-use crate::block_form::{self, Fields, Purpose};
+use crate::block_form::{self, Purpose};
 use crate::core::sentence;
 use crate::tree::{Item, Tree};
 use crate::window::{App, spawn};
@@ -67,7 +67,9 @@ enum Command {
     CancelDay,
     RestoreDay,
     Delete,
+    /// Starts the timer, pauses it or resumes it: what Space does.
     Timer,
+    Stop,
     Planned,
     Log,
     Unassign,
@@ -84,6 +86,7 @@ impl Command {
             Self::RestoreDay => "restore-day",
             Self::Delete => "delete",
             Self::Timer => "timer",
+            Self::Stop => "stop",
             Self::Planned => "planned",
             Self::Log => "log",
             Self::Unassign => "unassign",
@@ -176,7 +179,7 @@ impl DayView {
             let items: Vec<(Command, &str)> = match &row {
                 Row::Block(block) => {
                     let mut items = Vec::new();
-                    if block.kind == "work" {
+                    if block.accepts_tasks {
                         items.push((Command::Assign, "_Assign a Task…"));
                     }
                     items.push((Command::Edit, "_Change…"));
@@ -189,13 +192,19 @@ impl DayView {
                     items.push((Command::Delete, "_Delete Block…"));
                     items
                 }
-                Row::Sitting(sitting) => vec![
-                    (Command::Timer, if sitting.status == "in progress" { "_Stop Timer" } else { "_Start Timer" }),
+                Row::Sitting(sitting) => {
+                    let mut items = vec![(Command::Timer, timer_label(sitting))];
+                    if sitting.running || sitting.status == "paused" {
+                        items.push((Command::Stop, "S_top Timer"));
+                    }
+                    items.extend([
                     (Command::Open, "_Edit Task Details"),
                     (Command::Planned, "_Planned Length…"),
                     (Command::Log, "_Log Minutes…"),
                     (Command::Unassign, "_Unassign"),
-                ],
+                    ]);
+                    items
+                }
                 Row::Free { .. } => vec![(Command::AddHere, "_Add Block Here…")],
                 Row::Cancelled(_) => vec![(Command::RestoreDay, "_Restore This Day")],
                 Row::Summary(_) | Row::Now(_) => return,
@@ -351,19 +360,12 @@ impl DayView {
 
     pub fn add_block(self: &Rc<Self>, app: &Rc<App>, start: Option<&str>, minutes: Option<u32>) {
         let date = self.date().unwrap_or_else(|| "today".to_owned());
-        let fields = Fields {
-            title: String::new(),
-            start: start.unwrap_or("09:00").to_owned(),
-            minutes: minutes.unwrap_or(60).min(720).to_string(),
-            kind: "work".to_owned(),
-            repeat: String::new(),
-            rule: None,
-        };
+        let fields = block_form::new_fields(start.unwrap_or("09:00"), minutes.unwrap_or(60).min(720));
         let (day, app) = (Rc::clone(self), Rc::clone(app));
         spawn(async move {
             let lumenna = app.core.lumenna.clone();
             let window = app.window.clone().upcast::<gtk::Window>();
-            let Some(change) = block_form::run(&window, lumenna, Purpose::Add { date }, fields).await else { return };
+            let Some(change) = block_form::run(&window, lumenna, Purpose::Add { date }, fields, None).await else { return };
             app.store_changed();
             if let Some(series) = change.affected.blocks.first() {
                 let key = day.rows.borrow().iter().find_map(|row| match row {
@@ -383,14 +385,9 @@ impl DayView {
         let Some(date) = self.date() else { return };
         let (day, app) = (Rc::clone(self), Rc::clone(app));
         spawn(async move {
-            let mut fields = Fields {
-                title: block.title.clone(),
-                start: block.start.clone(),
-                minutes: block.duration_mins.to_string(),
-                kind: block.kind.clone(),
-                repeat: String::new(),
-                rule: None,
-            };
+            // One day starts from that day; every occurrence, from the series.
+            let mut fields = lumenna_surface::day_block_fields(block.clone());
+            let mut rule = None;
             let purpose = if block.repeats {
                 let on = format!("{} Only", app.clock.day(&date));
                 let heading = format!("Change {}", block.title);
@@ -406,21 +403,15 @@ impl DayView {
                 // The series as it is, not as this day shows it.
                 match app.core.lumenna.show_block(id) {
                     Ok(shown) => {
-                        fields = Fields {
-                            title: shown.title,
-                            start: shown.start,
-                            minutes: shown.minutes.to_string(),
-                            kind: shown.kind,
-                            repeat: shown.repetition.unwrap_or_default(),
-                            rule: shown.rrule.filter(|_| shown.repeats),
-                        }
+                        rule = shown.rrule.clone().filter(|_| shown.repeats);
+                        fields = lumenna_surface::block_fields(shown);
                     }
                     Err(error) => return app.fail(&sentence(&error)),
                 }
             }
             let key = format!("block:{}", block.id);
             let window = app.window.clone().upcast::<gtk::Window>();
-            if let Some(change) = block_form::run(&window, app.core.lumenna.clone(), purpose, fields).await {
+            if let Some(change) = block_form::run(&window, app.core.lumenna.clone(), purpose, fields, rule).await {
                 app.store_changed();
                 day.tree.select_key_or_near(Some(&key), day.tree.selected());
                 app.say_change(&change);
@@ -451,19 +442,32 @@ impl DayView {
         }
     }
 
+    /// Space on a sitting: starts its timer, pauses it while it runs, resumes it while paused
+    /// (§3.7). Stopping, which ends the sitting, is in its menu.
     fn toggle_timer(&self, app: &App, sitting: &PlanAssignment) {
         let key = format!("sitting:{}", sitting.id);
-        if sitting.status == "in progress" {
-            match app.core.lumenna.stop_timer(&sitting.id, None) {
-                Ok(timer) => {
-                    app.store_changed();
-                    self.tree.select_key_or_near(Some(&key), None);
-                    app.say(&speech::announcement(&timer.announcement, &timer.notices));
-                }
-                Err(error) => app.fail(&sentence(&error)),
-            }
+        if sitting.running {
+            self.timer(app, &key, app.core.lumenna.pause_timer(&sitting.id));
         } else {
+            // Starting a paused sitting resumes it.
             self.change(app, Some(&key), |lumenna| lumenna.start_timer(&sitting.id));
+        }
+    }
+
+    fn stop_timer(&self, app: &App, sitting: &PlanAssignment) {
+        let key = format!("sitting:{}", sitting.id);
+        self.timer(app, &key, app.core.lumenna.stop_timer(&sitting.id, None));
+    }
+
+    /// Says what pausing or stopping a timer did, from the sitting it was on.
+    fn timer(&self, app: &App, key: &str, result: lumenna_surface::Result<lumenna_surface::Timer>) {
+        match result {
+            Ok(timer) => {
+                app.store_changed();
+                self.tree.select_key_or_near(Some(key), None);
+                app.say(&speech::announcement(&timer.announcement, &timer.notices));
+            }
+            Err(error) => app.fail(&sentence(&error)),
         }
     }
 
@@ -530,6 +534,7 @@ impl DayView {
             }
             (Command::Delete, Row::Block(block)) => self.delete(app, block),
             (Command::Timer, Row::Sitting(sitting)) => self.toggle_timer(app, &sitting),
+            (Command::Stop, Row::Sitting(sitting)) => self.stop_timer(app, &sitting),
             (Command::Planned, Row::Sitting(sitting)) => self.plan_length(app, sitting),
             (Command::Log, Row::Sitting(sitting)) => self.log_minutes(app, sitting),
             (Command::Unassign, Row::Sitting(sitting)) => self.change(app, None, |lumenna| lumenna.unassign(&sitting.id)),
@@ -549,5 +554,16 @@ impl DayView {
             Row::Summary(_) | Row::Now(_) => return,
         };
         self.act(app, command, row);
+    }
+}
+
+/// What Space does to a sitting's timer, as its menu says it.
+fn timer_label(sitting: &PlanAssignment) -> &'static str {
+    if sitting.running {
+        "_Pause Timer"
+    } else if sitting.status == "paused" {
+        "_Resume Timer"
+    } else {
+        "_Start Timer"
     }
 }
