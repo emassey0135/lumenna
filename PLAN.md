@@ -919,11 +919,16 @@ The point is not the key binding but the control type: make quick-add and filter
 **genuine comboboxes**, so expansion state, candidate count, and active descendant are
 reported by the platform rather than reimplemented by you.
 
-- **Windows** — expose UIA `ComboBox` with the ExpandCollapse pattern; NVDA and JAWS then
-  announce "expanded, list, 1 of 5" with no custom work. *Investigate* `IAutoComplete2` with
-  `ACO_AUTOSUGGEST` — the system's own autocomplete, used by Explorer's address bar, so
-  maximally screen-reader-compatible; but its `IEnumString` source may not suit
-  position-dependent candidates. Check before committing.
+- **Windows** — *a popup menu at the caret*, not a combobox, decided after checking. The
+  stock combobox puts the whole chosen item into the field, and completion replaces a span,
+  often mid-line. `IAutoComplete2` matches the whole field from its end, so each suggestion
+  would be the entire line, read out in full. A field with a list of our own would mean
+  writing its UI Automation by hand, which §16.4 rules out, with no assurance JAWS or NVDA
+  would follow it. A menu is a stock control every screen reader reads, with position and
+  count, and focus returns to the field after it. What the combobox would add, narrowing
+  while it is open, mostly happens before it opens: the core offers only what fits the text
+  at the cursor. So each item leads with its name — "Work, project" — so that a letter finds
+  it, and the first is highlighted as the menu opens, so it is read at once.
 - **GTK4** — `GtkEntryCompletion` is deprecated in 4.10+, so this is a `GtkPopover` with a
   `GtkListView` plus `gtk_accessible_update_relation` setting `ACTIVE_DESCENDANT` and
   `CONTROLS`. The combobox pattern spelled out manually.

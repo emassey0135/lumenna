@@ -458,8 +458,11 @@ surface's (`task_edit`, below), as it is every client's.
   the running instance (a mutex and window class named from the profile path). It shares
   `lum`'s profile and syncs while it runs. The first launch triggers the firewall prompt,
   since the sync endpoint listens.
-- **Completion is a popup menu** on Down or Ctrl+Space in the filter and quick-add fields —
-  a stand-in for §6.4's genuine combobox, which is still to build.
+- **Completion is a popup menu**, decided (§6.4): Down or Ctrl+Space in the filter and
+  quick-add fields. Items lead with the name ("Work, project") so a letter finds them, and
+  the first is highlighted by a Down queued before the menu opens — marked with a reserved
+  bit of the key data, so if the menu does not take it the field swallows it rather than
+  opening the menu again.
 - **UI tests** (`tests/ui.rs`) start the real app on a store of their own, drive it through
   its message queue and assert on native UI Automation — what NVDA and Narrator are given.
   They open windows and take the foreground, so they are ignored by default and take turns:
@@ -472,8 +475,8 @@ surface's (`task_edit`, below), as it is every client's.
   or folder named after the checkout matches that too. The managed `System.Windows.Automation`
   in Windows PowerShell is no substitute: x64 under emulation, it saw every control as an
   unnamed pane.
-- **Not built yet**: what no other client has either (history, reminders), the combobox
-  completion, and an icon of its own.
+- **Not built yet**: what no other client has either (history, reminders), and an icon of
+  its own.
 
 ### The core/store boundary
 

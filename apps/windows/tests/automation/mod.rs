@@ -200,6 +200,12 @@ impl Automation {
         Ok(said)
     }
 
+    /// The items of the popup menu open now, as described.
+    pub fn menu_items(&self) -> Vec<String> {
+        let Ok(menu) = (unsafe { FindWindowW(w!("#32768"), None) }) else { return Vec::new() };
+        self.dump(menu, 2).into_iter().map(|line| line.trim_start().to_owned()).filter(|line| line.starts_with("MenuItem")).collect()
+    }
+
     /// Whether a popup menu is open anywhere.
     pub fn menu_open(&self) -> bool {
         unsafe { FindWindowW(w!("#32768"), None) }.is_ok_and(|menu| unsafe { IsWindowVisible(menu) }.as_bool())
