@@ -498,11 +498,16 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 - **UI tests** (`tests/ui.rs`) drive the real app and assert on UI Automation. They take the
   foreground, so they are ignored by default and take turns:
   `cargo test -p lumenna-windows --test ui -- --ignored`. A posted key needs the app active
-  and not minimized.
+  and not minimized, and a window holding the foreground (a firewall prompt) fails the
+  focus checks. They start the app with `--no-shortcuts`, or a test's copy takes the
+  person's shortcuts and theirs says they are in use. While the person's own copy runs from
+  `target/debug`, `lumenna.exe` cannot be replaced: build them with
+  `CARGO_TARGET_DIR=target/ui-tests`.
 - **`examples/inspect.rs`** is the same automation by hand (`cargo run -p lumenna-windows
   --example inspect -- "- Lumenna"`, with `--post` steps). Match `- Lumenna`: a terminal
   named after the checkout matches `Lumenna`. UI Automation's SetFocus does not move focus
-  in a modal dialog, so `focus:` uses `WM_NEXTDLGCTL`. PowerShell's managed
+  in a modal dialog, so `focus:` uses `WM_NEXTDLGCTL`, on the first *focusable* element of
+  the name: a dialog's label is named like its field, and comes first. PowerShell's managed
   `System.Windows.Automation` is no substitute: under x64 emulation it saw unnamed panes.
 
 ## The GTK app
@@ -604,6 +609,10 @@ with `lum`.
   A refused answer stays in its dialog.
 - **A row's action runs after its menu has closed** and focus is back on the row, so a
   dialog it opens returns focus there.
+- **The sidebar's row in hand is the one focus was last on**, not the selection: its
+  headings (Projects, Labels, Saved Filters) are never selected.
+- **A React Aria check box's input is visually hidden**, so Playwright's `check()` waits for
+  it forever: tests focus it and press Space.
 - **A browser is an ordinary Iroh peer, always through a relay** (no UDP from a sandbox),
   and pairs by code. `.cargo/config.toml` sets getrandom's `wasm_js` backend.
 - **Callbacks into the core are wrapped in the worker**: a Comlink proxy answers any
