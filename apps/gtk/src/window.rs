@@ -867,7 +867,7 @@ fn menu_bar() -> gio::Menu {
             section(vec![
                 shown("Move to T_rash", "win.trash-task", "Delete"),
                 item("Rest_ore From Trash", "win.restore-task"),
-                item("Erase _for Good…", "win.erase-task"),
+                item("_Delete from Trash…", "win.erase-task"),
             ]),
         ]),
     );

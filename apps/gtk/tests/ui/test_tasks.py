@@ -111,6 +111,23 @@ class TaskListTest(unittest.TestCase):
         self.assertEqual(self.session.focus(), "[tree item] 'Write the report' level 1 2 of 3 expanded")
         self.assertIn("Call the bank", [a.get_name() for a in self.session.find_all("tree item")])
 
+    def test_delete_in_the_trash_asks_first_and_undo_brings_it_back(self):
+        self.session.lum("task", "rm", self.ids["Buy milk"])
+        self.session.press("Control+4", wait=1.5)
+        self.assertIn("Buy milk", self.session.focus())
+        self.session.press("Delete")
+        self.session.wait_for_window("")
+        self.assertEqual(self.session.focus(), "[button] 'Cancel'", "Cancel is the default")
+        self.session.press("Shift+Tab")
+        self.assertEqual(self.session.focus(), "[button] 'Delete'")
+        self.session.press("Return", wait=1)
+        said = self.session.said()
+        self.assertEqual(len(said), 1, said)
+        self.assertIn("Buy milk", said[0])
+        self.assertNotIn("Buy milk", self.session.lum("task", "list", "deleted"))
+        self.session.press("Control+z", wait=1)
+        self.assertIn("Buy milk", self.session.lum("task", "list", "deleted"))
+
     def test_delete_moves_a_task_to_the_trash(self):
         self.session.press("Delete")
         self.assertEqual(self.session.said(), ["Deleted Buy milk"])

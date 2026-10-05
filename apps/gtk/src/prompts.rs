@@ -23,7 +23,7 @@ pub async fn tell(parent: &impl IsA<gtk::Window>, message: &str) {
     let _ = dialog.choose_future(Some(parent)).await;
 }
 
-/// Asks whether to go ahead with something that cannot be undone. Cancel is the default.
+/// Asks whether to go ahead with something worth asking about first. Cancel is the default.
 pub async fn confirm(parent: &impl IsA<gtk::Window>, heading: &str, detail: &str, action: &str) -> bool {
     let dialog = gtk::AlertDialog::builder()
         .message(heading)
