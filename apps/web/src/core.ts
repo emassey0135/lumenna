@@ -7,5 +7,15 @@ const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "modu
 
 export const core: Comlink.Remote<Api> = Comlink.wrap<Api>(worker);
 
-export type { Line } from "./worker";
-export type { Entry, Place, RowView, TaskDetail, TaskFields } from "./core/lumenna_web.js";
+export type { DayRow, Line } from "./worker";
+export type {
+  BlockChoice,
+  BlockShown,
+  Entry,
+  Place,
+  PlanAssignment,
+  PlanBlock,
+  RowView,
+  TaskDetail,
+  TaskFields,
+} from "./core/lumenna_web.js";

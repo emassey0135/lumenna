@@ -20,6 +20,7 @@ import {
   TextArea,
   TextField,
 } from "react-aria-components";
+import { askMinutes, confirm, pick } from "./Prompts";
 import { core } from "./core";
 import type { TaskDetail, TaskFields } from "./core";
 import { say } from "./say";
@@ -90,6 +91,7 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
 
     const set = (change: Partial<TaskFields>) => setFields({ ...fields, ...change });
     const done = task.state.includes("completed");
+    const trashed = task.state.includes("deleted");
 
     const run = async (operation: Promise<string | undefined>, reread = true) => {
       try {
@@ -104,6 +106,22 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
       } catch (error) {
         say((error as Error).message);
       }
+    };
+
+    // Puts the task into a work block of today or the next six days (§3.7), asking how long
+    // the sitting is meant to take. The day reaches any other day, from the block's side.
+    const putInBlock = async (task: TaskDetail) => {
+      const blocks = await core.workBlocks();
+      if (blocks.length === 0) {
+        say("There are no work blocks this week. Add one from Today.");
+        return;
+      }
+      const block = await pick(`Put ${task.title} in a Block`, "Block", blocks);
+      const chosen = blocks.find((b) => b.id === block);
+      if (!chosen) return;
+      const minutes = await askMinutes(`How Long Is ${task.title} Meant to Take?`, "", true);
+      if (minutes === undefined) return;
+      void run(core.assign(task.id, chosen.id, chosen.date, minutes ?? undefined));
     };
 
     const field = (label: string, value: string, key: keyof TaskFields, description?: string) => (
@@ -171,8 +189,26 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
         </TextField>
         <div className="buttons">
           <Button type="submit">Save</Button>
-          <Button onPress={() => void run(core.complete(task.id, done))}>{done ? "Mark Not Done" : "Mark Done"}</Button>
-          <Button onPress={() => void run(core.trash(task.id))}>Move to Trash</Button>
+          {trashed ? (
+            <>
+              <Button onPress={() => void run(core.restore(task.id))}>Restore</Button>
+              <Button
+                onPress={async () => {
+                  // Erasing cannot be undone (§9), so it asks.
+                  const detail = "It and its history are deleted for good. This cannot be undone.";
+                  if (await confirm(`Erase ${task.title}?`, detail, "Erase")) void run(core.erase(task.id));
+                }}
+              >
+                Erase for Good…
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button onPress={() => void run(core.complete(task.id, done))}>{done ? "Mark Not Done" : "Mark Done"}</Button>
+              <Button onPress={() => void putInBlock(task)}>Put in a Block…</Button>
+              <Button onPress={() => void run(core.trash(task.id))}>Move to Trash</Button>
+            </>
+          )}
         </div>
       </Form>
     );

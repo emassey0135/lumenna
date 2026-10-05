@@ -4,8 +4,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "react-aria-components";
+import { Prompts } from "./Prompts";
+import { BlockForms } from "./BlockForm";
+import { Blocks } from "./Blocks";
 import { core } from "./core";
 import type { Place } from "./core";
+import { Day } from "./Day";
 import { Details } from "./Details";
 import type { DetailsHandle } from "./Details";
 import { QuickAdd } from "./QuickAdd";
@@ -85,8 +89,6 @@ export function App() {
     return <p role="status">Opening Lumenna…</p>;
   }
 
-  const list = place !== "Today" && place !== "Blocks";
-
   return (
     <div className="app">
       <header>
@@ -105,7 +107,19 @@ export function App() {
         <Sidebar revision={revision} place={place} onPlace={setPlace} />
       </nav>
       <main aria-label={shown.title}>
-        {list ? (
+        {place === "Today" ? (
+          <Day
+            revision={revision}
+            onChanged={changed}
+            onSelectTask={setSelected}
+            onOpenTask={(id) => {
+              setSelected(id);
+              details.current?.focus();
+            }}
+          />
+        ) : place === "Blocks" ? (
+          <Blocks revision={revision} onChanged={changed} />
+        ) : (
           <TaskList
             revision={revision}
             place={place}
@@ -116,16 +130,13 @@ export function App() {
             onOpen={() => details.current?.focus()}
             onChanged={changed}
           />
-        ) : (
-          <>
-            <h2>{shown.title}</h2>
-            <p>This view is not in the web client yet.</p>
-          </>
         )}
       </main>
       <aside aria-label="Task details">
         <Details ref={details} id={selected} revision={revision} onChanged={changed} />
       </aside>
+      <Prompts />
+      <BlockForms />
       <QuickAdd
         prefix={shown.quickAddPrefix}
         isOpen={adding}

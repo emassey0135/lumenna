@@ -5,7 +5,8 @@ use lumenna_surface::Lumenna;
 use crate::speech::Clock;
 
 /// A work block a task could be put in.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct BlockChoice {
     /// The occurrence, `<series>@<date>`, as `assign` takes it.
     pub id: String,

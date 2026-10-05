@@ -11,6 +11,8 @@ import { Button, Collection, Input, Label, TextField, Tree, TreeItem, TreeItemCo
 import type { Key, Selection } from "react-aria-components";
 import { core } from "./core";
 import type { Line, Place } from "./core";
+import { confirm } from "./Prompts";
+import { rowKey, useLanding } from "./landing";
 import { say } from "./say";
 import { nest, parents } from "./tree";
 import type { Node } from "./tree";
@@ -31,8 +33,6 @@ export function TaskList(props: {
   const [readback, setReadback] = useState("");
   const [collapsed, setCollapsed] = useState<Set<Key>>(new Set());
   const tree = useRef<HTMLDivElement>(null);
-  // Where focus goes once the rows a change produced are shown.
-  const landing = useRef<{ id?: string; index: number } | undefined>(undefined);
 
   useEffect(() => setFilter(props.query), [props.query]);
 
@@ -55,43 +55,13 @@ export function TaskList(props: {
   const nodes = useMemo(() => nest(lines, (line) => line.row.id, (line) => line.row.depth), [lines]);
   const expanded = useMemo(() => new Set<Key>(parents(nodes).filter((id) => !collapsed.has(id))), [nodes, collapsed]);
 
-  // Focus lands somewhere predictable after a change: the same task, else what holds its place.
-  // The tree builds its collection in a pass of its own, so the rows on the page can still be
-  // the old ones when the lines change: land only on rows that are the current lines' own.
-  useEffect(() => {
-    const target = landing.current;
-    if (!target) return;
-    landing.current = undefined;
-    const current = new Set(lines.map((line) => line.row.id));
-    let frame = 0;
-    let tries = 0;
-    const land = () => {
-      const rows = [...(tree.current?.querySelectorAll<HTMLElement>('[role="row"]') ?? [])].filter(
-        (row) => row.dataset.key !== undefined,
-      );
-      const stale = rows.some((row) => !current.has(row.dataset.key!));
-      if ((stale || rows.length === 0) && lines.length > 0 && tries++ < 20) {
-        frame = requestAnimationFrame(land);
-        return;
-      }
-      const row = rows.find((r) => r.dataset.key === target.id) ?? rows[Math.min(target.index, rows.length - 1)];
-      if (row) {
-        row.focus();
-        props.onSelect(row.dataset.key);
-      } else {
-        // Nothing left to hold focus: the list itself does, so it is not lost to the page.
-        tree.current?.focus();
-        props.onSelect(undefined);
-      }
-    };
-    land();
-    return () => cancelAnimationFrame(frame);
-  }, [lines]);
+  const ids = useMemo(() => lines.map((line) => line.row.id), [lines]);
+  const land = useLanding(tree, ids, props.onSelect);
 
   const change = async (operation: Promise<string>, keep: string | undefined, index: number) => {
     try {
       const said = await operation;
-      landing.current = { id: keep, index };
+      land(keep, index);
       props.onChanged();
       say(said);
     } catch (error) {
@@ -101,7 +71,7 @@ export function TaskList(props: {
 
   const keys = (event: KeyboardEvent) => {
     if (event.key !== " " && event.key !== "Delete") return;
-    const id = (event.target as HTMLElement).closest<HTMLElement>('[role="row"]')?.dataset.key;
+    const id = rowKey(event);
     const index = lines.findIndex((l) => l.row.id === id);
     const line = lines[index];
     if (!line) return;
@@ -114,9 +84,14 @@ export function TaskList(props: {
       event.preventDefault();
       event.stopPropagation();
       if (!trash) void change(core.trash(line.row.id), undefined, index);
-      else if (confirm(`Erase ${line.row.title}? It and its history are deleted for good. This cannot be undone.`)) {
-        void change(core.erase(line.row.id), undefined, index);
-      }
+      else void erase(line.row.id, line.row.title, index);
+    }
+  };
+
+  // Erasing rebuilds the document without the task and cannot be undone (§9), so it asks.
+  const erase = async (id: string, title: string, index: number) => {
+    if (await confirm(`Erase ${title}?`, "It and its history are deleted for good. This cannot be undone.", "Erase")) {
+      await change(core.erase(id), undefined, index);
     }
   };
 

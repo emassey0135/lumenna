@@ -620,8 +620,8 @@ its own; see its README for the toolchain (NDK, `cargo-ndk`, Android Studio's JD
 `wasm32-unknown-unknown` (`apps/web/core`, crate `lumenna-web`). `npm run core:dev` (or
 `npm run core`, size-tuned) builds it and generates `src/core/` with wasm-bindgen, whose CLI
 must match the crate's version in `Cargo.lock`; `npm run build` builds the size-tuned core
-itself. `src/core/` is build output and not committed. Begun: tasks, places, details, quick
-add; Today, Blocks and sync are not there yet.
+itself. `src/core/` is build output and not committed. Tasks, places, details, quick add,
+Today (the day, its blocks and sittings) and Blocks work; sync is not there yet.
 
 - **The same store, in OPFS.** rusqlite 0.40 builds for the browser on `sqlite-wasm-rs`; the
   `sahpool` VFS keeps the file in OPFS through sync access handles, which only a dedicated
@@ -646,6 +646,15 @@ add; Today, Blocks and sync are not there yet.
   what fits; React Aria would match against the whole line), and Down opens the offer for
   where the cursor is *now*, waiting for it if it is still on its way — otherwise the list
   opened on the stale offer and closed as the fresh one replaced it.
+- **Asking is a promise** (`Prompts.tsx`: `confirm`, `choose`, `ask`, `pick`, `askMinutes`;
+  `BlockForm.tsx`), each shown by one host in `App`. What cannot be undone is an
+  `alertdialog` with Cancel focused first, never the browser's `confirm()`. A refused answer
+  stays in its dialog, at the field (`aria-invalid` and its description) or as an alert.
+- **A row's actions are a menu** (`RowMenu`): the Actions button, the Menu key, Shift+F10 or
+  a right-click. The chosen action runs after the menu has closed and focus is back on the
+  row, so a dialog it opens returns focus there rather than to a menu item that is gone.
+- **Times and days are the browser's** (`core/src/clock.rs`, `Intl` with no locale), as the
+  desktop apps' `Clock` is theirs; the day's rows are worded by `crates/desktop`.
 - Tests are Playwright over the accessibility tree, with axe on the whole page: `npm test`
   (starts Vite itself). Each test's context is a fresh, empty OPFS.
 
