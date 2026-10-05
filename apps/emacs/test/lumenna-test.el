@@ -261,6 +261,23 @@
               (should (equal (list owner (car binding) (keymap-lookup map (car binding)))
                              (list owner (car binding) (nth 2 binding)))))))))))
 
+(ert-deftest lumenna-every-command-a-help-lists-is-in-the-menu-bar-too ()
+  (let (modes)
+    (mapatoms (lambda (symbol) (when (and (get symbol 'lumenna-keys) (fboundp symbol)) (push symbol modes))))
+    (dolist (mode modes)
+      (with-temp-buffer
+        (funcall mode)
+        (dolist (group (lumenna--key-groups mode))
+          (dolist (binding (cdr group))
+            (should (equal (list mode (nth 2 binding))
+                           (list mode (and (seq-find (lambda (keys) (equal (aref keys 0) 'menu-bar))
+                                                     (where-is-internal (nth 2 binding) (current-local-map)))
+                                           (nth 2 binding)))))))))
+    (dolist (group (get 'lumenna-command-map 'lumenna-keys))
+      (dolist (binding (cdr group))
+        (should (seq-find (lambda (keys) (equal (seq-take keys 3) [menu-bar tools lumenna]))
+                          (where-is-internal (nth 2 binding) global-map)))))))
+
 (ert-deftest lumenna-help-lists-a-lists-keys-once-and-runs-one-there ()
   (lumenna-test--with-store
     (lumenna-write "task.add" :text "buy milk")

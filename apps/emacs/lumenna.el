@@ -34,6 +34,7 @@
 
 (require 'cl-lib)
 (require 'derived)
+(require 'easymenu)
 (require 'jsonrpc)
 (require 'outline)
 (require 'subr-x)
@@ -364,7 +365,45 @@ elsewhere; one the global map also binds works anywhere."
                       (not (where-is-internal command lumenna-command-map t)))
                  (function-put command 'command-modes
                                (cl-adjoin mode (function-get command 'command-modes)))))))))
-  (put owner 'lumenna-keys groups))
+  (put owner 'lumenna-keys groups)
+  (lumenna--define-menu owner))
+
+(defun lumenna--key-groups (owner)
+  "OWNER's key groups, then those of the modes it derives from.
+A key is listed once, under the nearest mode that binds it, as it acts."
+  (let (seen groups)
+    (while owner
+      (dolist (group (get owner 'lumenna-keys))
+        (let ((bindings (seq-remove (lambda (binding) (member (car binding) seen)) (cdr group))))
+          (setq seen (append (mapcar #'car bindings) seen))
+          (when bindings (push (cons (car group) bindings) groups))))
+      (setq owner (get owner 'derived-mode-parent)))
+    (nreverse groups)))
+
+(defun lumenna--menu (owner)
+  "A menu of OWNER's keys, grouped as its help groups them.
+Where two keys run one command, the menu lists it once; the menu shows
+whichever key it is reached by."
+  (cons "Lumenna"
+        (mapcar (lambda (group)
+                  (let (seen)
+                    (cons (car group)
+                          (delq nil (mapcar (lambda (binding)
+                                              (unless (memq (nth 2 binding) seen)
+                                                (push (nth 2 binding) seen)
+                                                (vector (nth 1 binding) (nth 2 binding))))
+                                            (cdr group))))))
+                (lumenna--key-groups owner))))
+
+(defun lumenna--define-menu (owner)
+  "Give OWNER's keys a menu: a mode's in its own map, the global ones under Tools.
+The same definition makes the keys, the help and the menu, so a person can
+use whichever they prefer and find the same commands."
+  (if (boundp (derived-mode-map-name owner))
+      (easy-menu-define nil (symbol-value (derived-mode-map-name owner))
+        "Lumenna's commands here." (lumenna--menu owner))
+    (define-key-after (lookup-key global-map [menu-bar tools]) [lumenna]
+      (cons "Lumenna" (easy-menu-create-menu "Lumenna" (cdr (lumenna--menu owner)))))))
 
 (define-derived-mode lumenna-list-mode special-mode "Lumenna"
   "A Lumenna list: one item per line, said in words.
@@ -566,18 +605,6 @@ the line, as a project's list does with its own name."
 
 (defvar-local lumenna--help-origin nil
   "The buffer whose keys this lists, where RET runs them.")
-
-(defun lumenna--key-groups (owner)
-  "OWNER's key groups, then those of the modes it derives from.
-A key is listed once, under the nearest mode that binds it, as it acts."
-  (let (seen groups)
-    (while owner
-      (dolist (group (get owner 'lumenna-keys))
-        (let ((bindings (seq-remove (lambda (binding) (member (car binding) seen)) (cdr group))))
-          (setq seen (append (mapcar #'car bindings) seen))
-          (when bindings (push (cons (car group) bindings) groups))))
-      (setq owner (get owner 'derived-mode-parent)))
-    (nreverse groups)))
 
 (defun lumenna--show-help (owner title)
   "List OWNER's keys under TITLE, to be run in the current buffer."
