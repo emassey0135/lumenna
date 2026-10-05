@@ -95,7 +95,8 @@
             :content (plist-get row :title)))))
 
 (defun lumenna-emacsvox--annotate (start end row)
-  "Put ROW's facts on its line, START to END, so Emacsvox presents it as that object."
+  "Put ROW's facts on its line, START to END.
+Emacsvox then presents the line as that object."
   (when-let* ((facts (lumenna-emacsvox--facts row)))
     (add-text-properties start end
                          (list emacsvox-aural-facts-property facts
@@ -106,6 +107,7 @@
   "The facts of the change about to be announced, set just before it is.")
 
 (defun lumenna-emacsvox--changed (method _result)
+  "Remember METHOD's event, for the announcement that follows it."
   (setq lumenna-emacsvox--event
         (when-let* ((event (assoc method lumenna-emacsvox-events)))
           (list :role (nth 1 event) :event (nth 2 event)))))
