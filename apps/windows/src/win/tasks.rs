@@ -9,7 +9,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lumenna_surface::{MoveTarget, RowView, Syntax};
+use lumenna_surface::{RowView, Syntax};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{
     NM_DBLCLK, NM_TVSTATEIMAGECHANGING, NMHDR, NMTREEVIEWW, NMTVKEYDOWN, NMTVSTATEIMAGECHANGING,
@@ -24,7 +24,7 @@ use super::controls::{self, rect};
 use super::core::sentence;
 use super::tree::{Item, Tree};
 use super::view::{Metrics, View};
-use super::{completion, menu, prompts};
+use super::{completion, menu, prompts, task_actions};
 use crate::places::Place;
 use crate::speech;
 
@@ -95,37 +95,21 @@ impl TaskList {
         }
     }
 
-    /// Runs a change, puts the selection on `keep` or near where it was, and says what
-    /// happened.
-    fn perform(&self, app: &App, keep: Option<&str>, operation: impl FnOnce(&lumenna_surface::Lumenna) -> lumenna_surface::Result<lumenna_surface::Change>) {
-        let near = self.tree.selected();
-        if let Some(change) = app.perform(operation) {
-            self.tree.select_key_or_near(keep, near);
-            app.say_change(&change);
-        }
+    /// Whether this is the trash, where only restoring and erasing apply.
+    pub fn is_trash(&self) -> bool {
+        self.trash
     }
 
+    /// The checkbox, Space or a click: checks the task off, or back on.
     pub fn toggle_done(&self, app: &App, id: &str, done: bool) {
-        self.perform(app, Some(id), |lumenna| {
+        task_actions::perform(app, Some(id), |lumenna| {
             if done { lumenna.uncomplete_task(id) } else { lumenna.complete_task(id) }
         });
     }
 
-    pub fn mark_selected_done(&self, app: &App) {
-        if let Some(row) = self.selected().filter(|_| !self.trash) {
-            self.toggle_done(app, &row.id, row.checked == Some(true));
-        }
-    }
-
-    pub fn trash_selected(&self, app: &App) {
-        if let Some(row) = self.selected().filter(|_| !self.trash) {
-            self.perform(app, None, |lumenna| lumenna.trash_task(&row.id));
-        }
-    }
-
     pub fn restore_selected(&self, app: &App) {
         if let Some(row) = self.selected().filter(|_| self.trash) {
-            self.perform(app, None, |lumenna| lumenna.restore_task(&row.id));
+            task_actions::perform(app, None, |lumenna| lumenna.restore_task(&row.id));
         }
     }
 
@@ -138,38 +122,7 @@ impl TaskList {
             "It and its history are deleted for good. This cannot be undone.",
             "Erase",
         ) {
-            self.perform(app, None, |lumenna| lumenna.erase_task(&row.id));
-        }
-    }
-
-    pub fn move_selected_to_project(&self, app: &App) {
-        let Some(row) = self.selected().filter(|_| !self.trash) else { return };
-        let projects: Vec<String> =
-            app.core.lumenna.list_projects().map(|r| r.rows.into_iter().map(|p| p.title).collect()).unwrap_or_default();
-        if let Some(index) = prompts::pick(app.main, &format!("Move {}", row.title), "&Project:", &projects) {
-            let name = projects[index].clone();
-            self.perform(app, Some(&row.id), |lumenna| lumenna.move_task(&row.id, MoveTarget::Project { name }));
-        }
-    }
-
-    pub fn make_selected_subtask(&self, app: &App) {
-        let Some(row) = self.selected().filter(|_| !self.trash) else { return };
-        let others: Vec<RowView> = app
-            .core
-            .lumenna
-            .list_tasks("")
-            .map(|r| r.rows.into_iter().filter(|t| t.id != row.id).collect())
-            .unwrap_or_default();
-        let titles: Vec<String> = others.iter().map(|t| speech::row(t, false)).collect();
-        if let Some(index) = prompts::pick(app.main, &format!("Make {} a Subtask", row.title), "Of &task:", &titles) {
-            let parent = others[index].id.clone();
-            self.perform(app, Some(&row.id), |lumenna| lumenna.move_task(&row.id, MoveTarget::Parent { id: parent }));
-        }
-    }
-
-    pub fn move_selected_to_top(&self, app: &App) {
-        if let Some(row) = self.selected().filter(|_| !self.trash) {
-            self.perform(app, Some(&row.id), |lumenna| lumenna.move_task(&row.id, MoveTarget::Top));
+            task_actions::perform(app, None, |lumenna| lumenna.erase_task(&row.id));
         }
     }
 
@@ -254,7 +207,11 @@ impl View for TaskList {
                     let trash = self.trash;
                     app.defer(move |app| {
                         if let Some(list) = app.task_list() {
-                            if trash { list.erase_selected(app) } else { list.trash_selected(app) }
+                            if trash {
+                                list.erase_selected(app);
+                            } else if let Some(row) = list.selected() {
+                                task_actions::run(app, menu::TRASH_TASK, &row.id);
+                            }
                         }
                     });
                     return Some(1);
@@ -294,23 +251,15 @@ impl View for TaskList {
         let Some(index) = self.tree.selected() else { return true };
         let Some(row) = self.selected() else { return true };
         let at = point.unwrap_or_else(|| self.tree.menu_point(index));
-        let items: Vec<(u16, &str)> = if self.trash {
-            vec![(menu::RESTORE_TASK, "&Restore"), (menu::ERASE_TASK, "&Erase for Good...")]
+        let items: Vec<(u16, String)> = if self.trash {
+            vec![(menu::RESTORE_TASK, "&Restore".to_owned()), (menu::ERASE_TASK, "&Erase for Good...".to_owned())]
         } else {
-            let done = if row.checked == Some(true) { "&Mark Not Done" } else { "&Mark Done" };
-            let mut items = vec![
-                (menu::MARK_DONE, done),
-                (menu::OPEN_TASK, "&Edit Details"),
-                (0, ""),
-                (menu::MOVE_TO_PROJECT, "Move to &Project..."),
-                (menu::MAKE_SUBTASK, "Make Su&btask Of..."),
-            ];
-            if row.depth > 0 || row.state.iter().any(|s| s == "subtask") {
-                items.push((menu::MOVE_TO_TOP, "Move to &Top Level"));
+            match app.core.lumenna.show_task(&row.id) {
+                Ok(shown) => task_actions::menu_items(&shown.task),
+                Err(_) => return true,
             }
-            items.extend([(0, ""), (menu::TRASH_TASK, "Move to T&rash")]);
-            items
         };
+        let items: Vec<(u16, &str)> = items.iter().map(|(id, text)| (*id, text.as_str())).collect();
         // The same commands as the menu bar's, acting on the same selection.
         if let Some(command) = app.popup(&items, at) {
             app.menu_command(command);

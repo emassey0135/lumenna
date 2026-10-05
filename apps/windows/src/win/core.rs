@@ -33,11 +33,19 @@ impl Poster {
 
     /// Asks the window to say something.
     pub fn say(self, text: String) {
-        let boxed = Box::into_raw(Box::new(text));
-        if !self.post(WM_SAY, boxed as isize) {
-            // Never received, so never freed by the window.
+        self.send(WM_SAY, text);
+    }
+
+    /// Posts a value to the window, boxed in `lparam`, for it to take back with [`taken`].
+    /// Returns whether it was posted; a window that has gone never receives it, and the
+    /// value is dropped here instead.
+    pub fn send<T>(self, message: u32, value: T) -> bool {
+        let boxed = Box::into_raw(Box::new(value));
+        let posted = self.post(message, boxed as isize);
+        if !posted {
             drop(unsafe { Box::from_raw(boxed) });
         }
+        posted
     }
 
     pub fn changed(self) {
@@ -51,7 +59,16 @@ impl Poster {
 ///
 /// `lparam` must be what a `WM_SAY` carried, and taken back once.
 pub unsafe fn said(lparam: LPARAM) -> String {
-    *unsafe { Box::from_raw(lparam.0 as *mut String) }
+    unsafe { taken(lparam) }
+}
+
+/// Takes back a value posted with [`Poster::send`].
+///
+/// # Safety
+///
+/// `lparam` must be what that message carried, of type `T`, and taken back once.
+pub unsafe fn taken<T>(lparam: LPARAM) -> T {
+    *unsafe { Box::from_raw(lparam.0 as *mut T) }
 }
 
 /// The open store.

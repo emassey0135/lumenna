@@ -1,0 +1,804 @@
+//! Settings (§3.10, §16.1), in Windows' own shape: a property sheet of pages, opened with
+//! Ctrl+Comma — General, Planning, Devices, Backups, and Export and Import, as on the Mac.
+//!
+//! Like the Mac's, every page applies a change as it is made; a text field, when it is left.
+//! Each page has its own status line, a polite live region, for what a change did: the main
+//! window's is behind the sheet.
+
+use std::cell::RefCell;
+
+use lumenna_surface::{ExportFormat, Imported};
+use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+use windows::Win32::System::SystemServices::SS_NOPREFIX;
+use windows::Win32::UI::Controls::{
+    HKM_GETHOTKEY, HKM_SETHOTKEY, HOTKEYF_ALT, HOTKEYF_CONTROL, HOTKEYF_SHIFT, NMHDR, PSN_APPLY, PSN_KILLACTIVE,
+    PSN_RESET,
+};
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_DELETE;
+use windows::Win32::UI::WindowsAndMessaging::{
+    BM_GETCHECK, BM_SETCHECK, BN_CLICKED, BS_AUTOCHECKBOX, BS_GROUPBOX, BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL,
+    CB_RESETCONTENT, CB_SETCURSEL, CBN_SELCHANGE, CBS_DROPDOWNLIST, EN_KILLFOCUS, ES_AUTOHSCROLL, ES_MULTILINE,
+    ES_NUMBER, ES_READONLY, GetParent, IDCANCEL, IDOK, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL,
+    LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_WANTKEYBOARDINPUT, WM_NOTIFY, WM_VKEYTOITEM, WS_BORDER, WS_TABSTOP,
+    WS_VSCROLL,
+};
+use windows::core::HSTRING;
+
+use super::app::App;
+use super::core::{Poster, WM_SAY, WM_STORE_CHANGED, sentence, said};
+use super::dialog::{self, Class, Dialog, Template};
+use super::{a11y, controls, pairing, prompts, shortcuts, system};
+use crate::devices;
+use crate::shortcut::{Kind, Shortcut};
+use crate::speech;
+
+/// Every page's status line.
+const STATUS: u16 = 199;
+const WIDTH: i16 = 252;
+const HEIGHT: i16 = 230;
+
+/// The pages, in order. Only some are opened directly, from the menu bar; the rest are named
+/// so the order is written down once.
+#[derive(Clone, Copy)]
+#[allow(dead_code)]
+pub enum Page {
+    General = 0,
+    Planning = 1,
+    Devices = 2,
+    Backups = 3,
+    Export = 4,
+}
+
+/// Opens Settings on a page.
+pub fn show(app: &App, page: Page) {
+    let general = General { app };
+    let planning = Planning { app, known: RefCell::new(Vec::new()) };
+    let devices = Devices { app, list: RefCell::new(Vec::new()) };
+    let backups = Backups { app, known: RefCell::new(Vec::new()) };
+    let export = Export { app };
+    let pages: [&dyn Dialog; 5] = [&general, &planning, &devices, &backups, &export];
+    dialog::sheet(app.main, "Settings", &pages, page as usize);
+}
+
+/// Reads a file in — a JSON export or a backup, the core tells which — and says what it did.
+/// From the menu bar, where the main window says it.
+pub fn import(app: &App, owner: HWND, title: &str, types: &[(&str, &str)]) -> Option<String> {
+    let path = system::open_file(owner, title, types)?;
+    match app.core.lumenna.import(&path.display().to_string()) {
+        Ok(imported) => {
+            app.store_changed();
+            Some(match imported {
+                Imported::Export { done } => speech::announcement(&done.announcement, &done.notices),
+                Imported::Backup { done } => speech::announcement(&done.announcement, &done.notices),
+            })
+        }
+        Err(error) => {
+            prompts::fail(owner, &sentence(&error));
+            None
+        }
+    }
+}
+
+/// What a backup file is called in a file dialog.
+pub const BACKUPS: [(&str, &str); 2] = [("Lumenna backups", "*.lumbak"), ("All files", "*.*")];
+/// What can be read in.
+pub const IMPORTABLE: [(&str, &str); 2] = [("Lumenna exports and backups", "*.json;*.lumbak"), ("All files", "*.*")];
+
+// ---------------------------------------------------------------------------------------
+// What every page shares
+// ---------------------------------------------------------------------------------------
+
+/// A page, its status line first: placed at the bottom, but made before anything else, since
+/// Windows names an empty static after the label made just before it — and a status line
+/// named after the page's footer would read that footer out twice.
+fn page(title: &str) -> Template {
+    Template::page(title, WIDTH, HEIGHT).item(Class::Static, "", STATUS, SS_NOPREFIX.0, 7, HEIGHT - 30, WIDTH - 14, 24)
+}
+
+/// Says something on a page's status line.
+fn say(page: HWND, text: &str) {
+    let status = dialog::item(page, STATUS);
+    controls::set_text(status, &speech::sentence(text));
+    a11y::changed(status);
+}
+
+/// The sheet a page is in, which owns the dialogs a page opens.
+fn sheet(page: HWND) -> HWND {
+    unsafe { GetParent(page).unwrap_or(page) }
+}
+
+fn values(app: &App) -> Vec<(String, String)> {
+    app.core.lumenna.settings(None).map(|s| s.settings.into_iter().map(|s| (s.key, s.value)).collect()).unwrap_or_default()
+}
+
+fn value(known: &[(String, String)], key: &str) -> String {
+    known.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone()).unwrap_or_default()
+}
+
+/// Changes a setting and says so; on a failure says why and returns false.
+fn set(app: &App, page: HWND, key: &str, to: &str) -> bool {
+    match app.core.lumenna.set_setting(key, to) {
+        Ok(change) => {
+            say(page, &speech::announcement(&change.announcement, &change.notices));
+            app.store_changed();
+            true
+        }
+        Err(error) => {
+            prompts::fail(sheet(page), &sentence(&error));
+            false
+        }
+    }
+}
+
+fn fill_combo(combo: HWND, items: &[&str], selected: Option<usize>) {
+    controls::send(combo, CB_RESETCONTENT, 0, 0);
+    for item in items {
+        let text = HSTRING::from(*item);
+        controls::send(combo, CB_ADDSTRING, 0, text.as_ptr() as isize);
+    }
+    controls::send(combo, CB_SETCURSEL, selected.unwrap_or(usize::MAX), 0);
+}
+
+fn selected(combo: HWND) -> Option<usize> {
+    usize::try_from(controls::send(combo, CB_GETCURSEL, 0, 0)).ok()
+}
+
+fn checked(button: HWND) -> bool {
+    controls::send(button, BM_GETCHECK, 0, 0) == 1
+}
+
+fn check(button: HWND, on: bool) {
+    controls::send(button, BM_SETCHECK, usize::from(on), 0);
+}
+
+/// Whether a page notification asks the page to finish what is being typed: leaving the page,
+/// or closing the sheet either way.
+fn finishing(message: u32, lparam: LPARAM) -> bool {
+    message == WM_NOTIFY && {
+        let code = unsafe { &*(lparam.0 as *const NMHDR) }.code;
+        code == PSN_KILLACTIVE || code == PSN_APPLY || code == PSN_RESET
+    }
+}
+
+const BUTTON: u32 = BS_PUSHBUTTON as u32 | WS_TABSTOP.0;
+const FIELD: u32 = ES_AUTOHSCROLL as u32 | WS_BORDER.0 | WS_TABSTOP.0;
+const READ_ONLY: u32 = ES_AUTOHSCROLL as u32 | ES_READONLY as u32 | WS_BORDER.0 | WS_TABSTOP.0;
+const LIST: u32 = CBS_DROPDOWNLIST as u32 | WS_VSCROLL.0 | WS_TABSTOP.0;
+
+// ---------------------------------------------------------------------------------------
+// General: opening at sign-in, and the shortcuts from anywhere
+// ---------------------------------------------------------------------------------------
+
+const AT_SIGN_IN: u16 = 100;
+const SHORTCUT: u16 = 110;
+const CHANGE: u16 = 120;
+const TOGGLE: u16 = 130;
+
+struct General<'a> {
+    app: &'a App,
+}
+
+impl General<'_> {
+    fn show_shortcuts(&self, page: HWND) {
+        for (index, kind) in Kind::ALL.into_iter().enumerate() {
+            let index = index as u16;
+            controls::set_text(dialog::item(page, SHORTCUT + index), &shortcuts::describe(kind));
+            let on = shortcuts::current(kind).is_some();
+            let toggle = dialog::item(page, TOGGLE + index);
+            controls::set_text(toggle, if on { "Turn Off" } else { "Turn On" });
+            let verb = if on { "Turn off" } else { "Turn on" };
+            a11y::set_name(toggle, &format!("{verb} the shortcut for {}", kind.name()));
+        }
+    }
+
+    fn change(&self, page: HWND, kind: Kind) {
+        // While the keys are chosen, pressing the current ones must reach the field, not
+        // summon the window.
+        shortcuts::unregister_all(self.app.main);
+        let recorder = Recorder { kind, chosen: RefCell::new(None) };
+        dialog::run(Some(sheet(page)), &recorder);
+        let chosen = recorder.chosen.into_inner();
+        shortcuts::register_all(self.app.main);
+        if let Some(shortcut) = chosen {
+            match shortcuts::change(self.app.main, kind, Some(shortcut)) {
+                Ok(said) => say(page, &said),
+                Err(why) => prompts::fail(sheet(page), &why),
+            }
+            self.show_shortcuts(page);
+        }
+    }
+
+    fn toggle(&self, page: HWND, kind: Kind) {
+        let to = if shortcuts::current(kind).is_some() { None } else { Some(kind.standard()) };
+        match shortcuts::change(self.app.main, kind, to) {
+            Ok(said) => say(page, &said),
+            Err(why) => prompts::fail(sheet(page), &why),
+        }
+        self.show_shortcuts(page);
+    }
+}
+
+impl Dialog for General<'_> {
+    fn template(&self) -> Template {
+        let mut template = page("General")
+            .item(Class::Button, "&Open Lumenna when you sign in to Windows", AT_SIGN_IN, BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0, 7, 7, 238, 10)
+            .item(
+                Class::Static,
+                "Lumenna stays running in the notification area when its window is closed, so your devices stay in sync. Exit it from the File menu or the notification area.",
+                u16::MAX,
+                SS_NOPREFIX.0,
+                7,
+                20,
+                238,
+                26,
+            )
+            .item(Class::Button, "Shortcuts from anywhere", u16::MAX, BS_GROUPBOX as u32, 7, 50, 238, 92);
+        for (index, kind) in Kind::ALL.into_iter().enumerate() {
+            let y = 62 + index as i16 * 38;
+            let index = index as u16;
+            template = template
+                .item(Class::Static, &format!("{}:", kind.name()), u16::MAX, SS_NOPREFIX.0, 14, y, 224, 9)
+                .item(Class::Edit, "", SHORTCUT + index, READ_ONLY, 14, y + 10, 110, 14)
+                .item(Class::Button, "Change...", CHANGE + index, BUTTON, 128, y + 10, 52, 14)
+                .item(Class::Button, "Turn Off", TOGGLE + index, BUTTON, 184, y + 10, 54, 14);
+        }
+        let footer = "These work in any program, so they take their keys from whatever is in front. Control+Alt+Shift, because Control+Alt alone is AltGr on many keyboards, where it types letters.";
+        template.item(Class::Static, footer, u16::MAX, SS_NOPREFIX.0, 7, 148, 238, 36)
+    }
+
+    fn init(&self, page: HWND) -> bool {
+        a11y::make_live(dialog::item(page, STATUS));
+        check(dialog::item(page, AT_SIGN_IN), sign_in::on());
+        for (index, kind) in Kind::ALL.into_iter().enumerate() {
+            a11y::set_name(dialog::item(page, CHANGE + index as u16), &format!("Change the shortcut for {}", kind.name()));
+        }
+        self.show_shortcuts(page);
+        false
+    }
+
+    fn command(&self, page: HWND, id: u16, code: u16) -> Option<isize> {
+        if u32::from(code) != BN_CLICKED {
+            return None;
+        }
+        match id {
+            AT_SIGN_IN => {
+                let on = checked(dialog::item(page, AT_SIGN_IN));
+                if sign_in::set(on, self.app.core.lumenna.path()) {
+                    say(page, if on { "Lumenna opens when you sign in" } else { "Lumenna no longer opens when you sign in" });
+                } else {
+                    prompts::fail(sheet(page), "Windows would not change what starts when you sign in.");
+                    check(dialog::item(page, AT_SIGN_IN), sign_in::on());
+                }
+            }
+            id if (CHANGE..CHANGE + 2).contains(&id) => self.change(page, Kind::ALL[usize::from(id - CHANGE)]),
+            id if (TOGGLE..TOGGLE + 2).contains(&id) => self.toggle(page, Kind::ALL[usize::from(id - TOGGLE)]),
+            _ => {}
+        }
+        None
+    }
+}
+
+/// Choosing new keys for a shortcut, with Windows' own hotkey control.
+struct Recorder {
+    kind: Kind,
+    chosen: RefCell<Option<Shortcut>>,
+}
+
+const KEYS: u16 = 100;
+
+impl Dialog for Recorder {
+    fn template(&self) -> Template {
+        let message = format!(
+            "Press the new keys for {}: Control, Alt or both, with Shift, and a letter, digit or function key. Backspace clears them.",
+            self.kind.name()
+        );
+        Template::new("Change Shortcut", 240, 92)
+            .item(Class::Static, &message, u16::MAX, SS_NOPREFIX.0, 7, 7, 226, 28)
+            .item(Class::Static, "&Keys:", u16::MAX, 0, 7, 38, 226, 9)
+            .named("msctls_hotkey32", "", KEYS, WS_BORDER.0 | WS_TABSTOP.0, 7, 48, 226, 14)
+            .item(Class::Button, "OK", IDOK.0 as u16, windows::Win32::UI::WindowsAndMessaging::BS_DEFPUSHBUTTON as u32 | WS_TABSTOP.0, 129, 71, 50, 14)
+            .item(Class::Button, "Cancel", IDCANCEL.0 as u16, BUTTON, 183, 71, 50, 14)
+    }
+
+    fn init(&self, hwnd: HWND) -> bool {
+        if let Some(current) = shortcuts::current(self.kind) {
+            let mut flags = 0;
+            if current.shift {
+                flags |= HOTKEYF_SHIFT;
+            }
+            if current.control {
+                flags |= HOTKEYF_CONTROL;
+            }
+            if current.alt {
+                flags |= HOTKEYF_ALT;
+            }
+            let value = (current.key as usize & 0xFF) | ((flags as usize) << 8);
+            controls::send(dialog::item(hwnd, KEYS), HKM_SETHOTKEY, value, 0);
+        }
+        false
+    }
+
+    fn command(&self, hwnd: HWND, id: u16, _code: u16) -> Option<isize> {
+        match i32::from(id) {
+            id if id == IDOK.0 => {
+                let value = controls::send(dialog::item(hwnd, KEYS), HKM_GETHOTKEY, 0, 0) as u32;
+                let (key, flags) = (value & 0xFF, (value >> 8) & 0xFF);
+                if key == 0 {
+                    prompts::fail(hwnd, "Press the keys first, or choose Cancel.");
+                    return None;
+                }
+                let shortcut = Shortcut {
+                    control: flags & HOTKEYF_CONTROL != 0,
+                    alt: flags & HOTKEYF_ALT != 0,
+                    shift: flags & HOTKEYF_SHIFT != 0,
+                    windows: false,
+                    key: key as u16,
+                };
+                if let Some(warning) = shortcut.warning() {
+                    let title = format!("Use {}?", shortcut.describe());
+                    if prompts::choose(hwnd, &title, warning, &["Use These Keys Anyway"], true) != Some(0) {
+                        return None;
+                    }
+                }
+                *self.chosen.borrow_mut() = Some(shortcut);
+                Some(1)
+            }
+            id if id == IDCANCEL.0 => Some(0),
+            _ => None,
+        }
+    }
+}
+
+/// Opening at sign-in: the current user's Run key, as every Windows program does it. Started
+/// that way, the app opens in the notification area without its window (`--background`).
+mod sign_in {
+    use super::system;
+
+    const NAME: &str = "Lumenna";
+
+    pub fn on() -> bool {
+        system::read_string(system::RUN_KEY, NAME).is_some()
+    }
+
+    /// Turns it on or off for the profile at `profile`.
+    pub fn set(on: bool, profile: &std::path::Path) -> bool {
+        if !on {
+            system::delete_value(system::RUN_KEY, NAME);
+            return !self::on();
+        }
+        let Ok(exe) = std::env::current_exe() else { return false };
+        let mut command = format!("\"{}\" --background", exe.display());
+        // A profile other than the usual one is the one opened at sign-in, too.
+        if crate::profile::default_directory().as_deref() != Some(profile) {
+            command.push_str(&format!(" --profile \"{}\"", profile.display()));
+        }
+        system::write_string(system::RUN_KEY, NAME, &command)
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// Planning: what syncs to every device
+// ---------------------------------------------------------------------------------------
+
+const CASCADE: u16 = 200;
+const DAY_START: u16 = 201;
+const DAY_END: u16 = 202;
+const ALL_DAY: u16 = 203;
+const VERBOSITY: u16 = 204;
+const WEEK_START: u16 = 205;
+
+const VERBOSITIES: [(&str, &str); 2] = [("Full sentences", "full"), ("Terse", "terse")];
+const WEEKDAYS: [&str; 7] = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+const TIMES: [(u16, &str); 3] = [(DAY_START, "day-start"), (DAY_END, "day-end"), (ALL_DAY, "all-day-reminder-hour")];
+
+struct Planning<'a> {
+    app: &'a App,
+    known: RefCell<Vec<(String, String)>>,
+}
+
+impl Planning<'_> {
+    fn load(&self, page: HWND) {
+        let known = values(self.app);
+        check(dialog::item(page, CASCADE), value(&known, "cascade-complete-subtasks") == "true");
+        for (id, key) in TIMES {
+            controls::set_text(dialog::item(page, id), &value(&known, key));
+        }
+        let verbosity = value(&known, "verbosity");
+        let labels: Vec<&str> = VERBOSITIES.iter().map(|(l, _)| *l).collect();
+        fill_combo(dialog::item(page, VERBOSITY), &labels, VERBOSITIES.iter().position(|(_, v)| *v == verbosity));
+        let week = value(&known, "week-start");
+        let days: Vec<String> = WEEKDAYS.iter().map(|d| speech::sentence(d)).collect();
+        let days: Vec<&str> = days.iter().map(String::as_str).collect();
+        fill_combo(dialog::item(page, WEEK_START), &days, WEEKDAYS.iter().position(|d| *d == week));
+        *self.known.borrow_mut() = known;
+    }
+
+    /// A time field, when it is left: written if it changed, and put back if it does not read.
+    fn commit_times(&self, page: HWND) {
+        for (id, key) in TIMES {
+            let field = dialog::item(page, id);
+            let typed = controls::text(field).trim().to_owned();
+            let was = value(&self.known.borrow(), key);
+            if typed != was && !set(self.app, page, key, &typed) {
+                controls::set_text(field, &was);
+            }
+        }
+        self.load(page);
+    }
+}
+
+impl Dialog for Planning<'_> {
+    fn template(&self) -> Template {
+        
+        page("Planning")
+            .item(Class::Button, "&Completing a task completes its subtasks", CASCADE, BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0, 7, 7, 238, 10)
+            .item(Class::Static, "Day &starts:", u16::MAX, 0, 7, 24, 110, 9)
+            .item(Class::Edit, "", DAY_START, FIELD, 7, 34, 110, 14)
+            .item(Class::Static, "Day &ends:", u16::MAX, 0, 128, 24, 110, 9)
+            .item(Class::Edit, "", DAY_END, FIELD, 128, 34, 110, 14)
+            .item(Class::Static, "&All-day reminders at:", u16::MAX, 0, 7, 54, 110, 9)
+            .item(Class::Edit, "", ALL_DAY, FIELD, 7, 64, 110, 14)
+            .item(Class::Static, "Announce&ments:", u16::MAX, 0, 7, 84, 110, 9)
+            .item(Class::ComboBox, "", VERBOSITY, LIST, 7, 94, 110, 60)
+            .item(Class::Static, "&Week starts on:", u16::MAX, 0, 128, 84, 110, 9)
+            .item(Class::ComboBox, "", WEEK_START, LIST, 128, 94, 110, 120)
+            .item(Class::Static, "These sync to all your devices.", u16::MAX, SS_NOPREFIX.0, 7, 116, 238, 9)
+    }
+
+    fn init(&self, page: HWND) -> bool {
+        a11y::make_live(dialog::item(page, STATUS));
+        for (id, _) in TIMES {
+            a11y::set_description(dialog::item(page, id), "A time, such as 8:00 or 8am.");
+        }
+        self.load(page);
+        false
+    }
+
+    fn command(&self, page: HWND, id: u16, code: u16) -> Option<isize> {
+        let code = u32::from(code);
+        match (id, code) {
+            (CASCADE, BN_CLICKED) => {
+                let on = checked(dialog::item(page, CASCADE));
+                set(self.app, page, "cascade-complete-subtasks", if on { "true" } else { "false" });
+                self.load(page);
+            }
+            (VERBOSITY, CBN_SELCHANGE) => {
+                if let Some(index) = selected(dialog::item(page, VERBOSITY)) {
+                    set(self.app, page, "verbosity", VERBOSITIES[index].1);
+                }
+                self.load(page);
+            }
+            (WEEK_START, CBN_SELCHANGE) => {
+                if let Some(index) = selected(dialog::item(page, WEEK_START)) {
+                    set(self.app, page, "week-start", WEEKDAYS[index]);
+                }
+                self.load(page);
+            }
+            (id, EN_KILLFOCUS) if TIMES.iter().any(|(t, _)| *t == id) => self.commit_times(page),
+            _ => {}
+        }
+        None
+    }
+
+    fn message(&self, page: HWND, message: u32, _wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
+        if finishing(message, lparam) {
+            self.commit_times(page);
+            return Some(0);
+        }
+        None
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// Devices: sync status, pairing, renaming, unpairing (§7, §9)
+// ---------------------------------------------------------------------------------------
+
+const SYNC_STATUS: u16 = 300;
+const DEVICES: u16 = 301;
+const SYNC_NOW: u16 = 302;
+const PAIR: u16 = 303;
+const RENAME: u16 = 304;
+const UNPAIR: u16 = 305;
+
+struct Devices<'a> {
+    app: &'a App,
+    list: RefCell<Vec<lumenna_surface::DeviceView>>,
+}
+
+impl Devices<'_> {
+    fn load(&self, page: HWND) {
+        match self.app.core.lumenna.sync_status() {
+            Ok(status) => {
+                let text = speech::sentence(&speech::announcement(&status.announcement, &status.notices));
+                controls::set_text(dialog::item(page, SYNC_STATUS), &text);
+                let list = dialog::item(page, DEVICES);
+                let kept = usize::try_from(controls::send(list, LB_GETCURSEL, 0, 0)).unwrap_or(0);
+                controls::send(list, LB_RESETCONTENT, 0, 0);
+                let now = jiff::Timestamp::now();
+                for device in &status.devices {
+                    let text = HSTRING::from(devices::line(device, now));
+                    controls::send(list, LB_ADDSTRING, 0, text.as_ptr() as isize);
+                }
+                controls::send(list, LB_SETCURSEL, kept.min(status.devices.len().saturating_sub(1)), 0);
+                *self.list.borrow_mut() = status.devices;
+            }
+            Err(error) => controls::set_text(dialog::item(page, SYNC_STATUS), &sentence(&error)),
+        }
+    }
+
+    fn chosen(&self, page: HWND) -> Option<lumenna_surface::DeviceView> {
+        let index = usize::try_from(controls::send(dialog::item(page, DEVICES), LB_GETCURSEL, 0, 0)).ok()?;
+        self.list.borrow().get(index).cloned()
+    }
+
+    fn rename(&self, page: HWND) {
+        let Some(device) = self.chosen(page) else { return };
+        let Some(name) = prompts::ask_text(sheet(page), &format!("Rename {}", device.name), "&Name:", "", &device.name) else {
+            return;
+        };
+        self.change(page, |l| l.rename_device(&device.node_id, &name));
+    }
+
+    fn unpair(&self, page: HWND) {
+        let Some(device) = self.chosen(page) else { return };
+        if device.this_device {
+            return prompts::fail(sheet(page), "This is the device you are using. Unpair it from another one.");
+        }
+        let message = "It stops syncing with your devices but keeps everything it already has. Unpairing is for a device you replaced; it does not take data back from a lost one.";
+        if prompts::confirm(sheet(page), &format!("Unpair {}?", device.name), message, "Unpair") {
+            self.change(page, |l| l.unpair_device(&device.node_id));
+        }
+    }
+
+    fn change(&self, page: HWND, operation: impl FnOnce(&lumenna_surface::Lumenna) -> lumenna_surface::Result<lumenna_surface::Change>) {
+        match operation(&self.app.core.lumenna) {
+            Ok(change) => {
+                self.load(page);
+                self.app.store_changed();
+                say(page, &speech::announcement(&change.announcement, &change.notices));
+            }
+            Err(error) => prompts::fail(sheet(page), &sentence(&error)),
+        }
+    }
+}
+
+impl Dialog for Devices<'_> {
+    fn template(&self) -> Template {
+        let list = (LBS_NOTIFY | LBS_NOINTEGRALHEIGHT | LBS_WANTKEYBOARDINPUT) as u32 | WS_VSCROLL.0 | WS_BORDER.0 | WS_TABSTOP.0;
+        let status = READ_ONLY | ES_MULTILINE as u32 | WS_VSCROLL.0;
+        
+        page("Devices")
+            .item(Class::Static, "S&ync status:", u16::MAX, 0, 7, 7, 238, 9)
+            .item(Class::Edit, "", SYNC_STATUS, status, 7, 17, 238, 28)
+            .item(Class::Static, "Paired &devices:", u16::MAX, 0, 7, 50, 238, 9)
+            .item(Class::ListBox, "", DEVICES, list, 7, 60, 238, 80)
+            .item(Class::Button, "Sync &Now", SYNC_NOW, BUTTON, 7, 146, 56, 14)
+            .item(Class::Button, "&Pair a Device...", PAIR, BUTTON, 67, 146, 70, 14)
+            .item(Class::Button, "&Rename...", RENAME, BUTTON, 141, 146, 50, 14)
+            .item(Class::Button, "&Unpair...", UNPAIR, BUTTON, 195, 146, 50, 14)
+    }
+
+    fn init(&self, page: HWND) -> bool {
+        a11y::make_live(dialog::item(page, STATUS));
+        a11y::set_description(dialog::item(page, DEVICES), "Delete unpairs the selected device.");
+        self.load(page);
+        false
+    }
+
+    fn command(&self, page: HWND, id: u16, code: u16) -> Option<isize> {
+        if u32::from(code) != BN_CLICKED {
+            return None;
+        }
+        match id {
+            SYNC_NOW => {
+                say(page, "Syncing");
+                // The round's result comes back to this page, which says it.
+                self.app.core.sync_now(Poster::new(page));
+            }
+            PAIR => {
+                if let Some(said) = pairing::run(sheet(page), self.app.core.lumenna.clone()) {
+                    self.load(page);
+                    self.app.store_changed();
+                    say(page, &said);
+                }
+            }
+            RENAME => self.rename(page),
+            UNPAIR => self.unpair(page),
+            _ => {}
+        }
+        None
+    }
+
+    fn message(&self, page: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
+        match message {
+            WM_SAY => {
+                let text = unsafe { said(lparam) };
+                self.load(page);
+                say(page, &text);
+                Some(0)
+            }
+            WM_STORE_CHANGED => {
+                self.load(page);
+                self.app.store_changed();
+                Some(0)
+            }
+            // Delete in the list unpairs, as it removes in every other list.
+            WM_VKEYTOITEM if controls::low_word(wparam.0) == VK_DELETE.0 => {
+                self.unpair(page);
+                Some(-2)
+            }
+            WM_VKEYTOITEM => Some(-1),
+            _ => None,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// Backups (§9): this device's alone
+// ---------------------------------------------------------------------------------------
+
+const EVERY: u16 = 400;
+const KEEP: u16 = 401;
+const FOLDER: u16 = 402;
+const CHOOSE: u16 = 403;
+const BACK_UP: u16 = 404;
+const RESTORE: u16 = 405;
+
+const FREQUENCIES: [(&str, &str); 4] = [("Every 12 hours", "12h"), ("Every day", "1d"), ("Every week", "7d"), ("Off", "off")];
+
+struct Backups<'a> {
+    app: &'a App,
+    known: RefCell<Vec<(String, String)>>,
+}
+
+impl Backups<'_> {
+    fn load(&self, page: HWND) {
+        let known = values(self.app);
+        let every = value(&known, "backup-every");
+        let mut labels: Vec<String> = FREQUENCIES.iter().map(|(l, _)| (*l).to_owned()).collect();
+        let mut position = FREQUENCIES.iter().position(|(_, v)| *v == every);
+        // A frequency set elsewhere — `lum config set backup-every 3d` — is shown as it is.
+        if position.is_none() && !every.is_empty() {
+            labels.push(format!("Every {every}"));
+            position = Some(labels.len() - 1);
+        }
+        let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
+        fill_combo(dialog::item(page, EVERY), &labels, position);
+        controls::set_text(dialog::item(page, KEEP), &value(&known, "backup-keep"));
+        controls::set_text(dialog::item(page, FOLDER), &value(&known, "backup-dir"));
+        *self.known.borrow_mut() = known;
+    }
+
+    fn commit_keep(&self, page: HWND) {
+        let field = dialog::item(page, KEEP);
+        let typed = controls::text(field).trim().to_owned();
+        let was = value(&self.known.borrow(), "backup-keep");
+        if typed != was && !set(self.app, page, "backup-keep", &typed) {
+            controls::set_text(field, &was);
+        }
+        self.load(page);
+    }
+}
+
+impl Dialog for Backups<'_> {
+    fn template(&self) -> Template {
+        let footer = "A backup holds your whole history, including every task you deleted, so the store can be rebuilt from it. It stays on this device, as these settings do.";
+        
+        page("Backups")
+            .item(Class::Static, "&Automatic backups:", u16::MAX, 0, 7, 7, 120, 9)
+            .item(Class::ComboBox, "", EVERY, LIST, 7, 17, 120, 70)
+            .item(Class::Static, "&Keep this many backups:", u16::MAX, 0, 134, 7, 111, 9)
+            .item(Class::Edit, "", KEEP, FIELD | ES_NUMBER as u32, 134, 17, 60, 14)
+            .item(Class::Static, "Backups go &to:", u16::MAX, 0, 7, 37, 238, 9)
+            .item(Class::Edit, "", FOLDER, READ_ONLY, 7, 47, 182, 14)
+            .item(Class::Button, "C&hoose...", CHOOSE, BUTTON, 193, 47, 52, 14)
+            .item(Class::Button, "&Back Up Now", BACK_UP, BUTTON, 7, 67, 70, 14)
+            .item(Class::Button, "&Restore From a Backup...", RESTORE, BUTTON, 81, 67, 100, 14)
+            .item(Class::Static, footer, u16::MAX, SS_NOPREFIX.0, 7, 88, 238, 36)
+    }
+
+    fn init(&self, page: HWND) -> bool {
+        a11y::make_live(dialog::item(page, STATUS));
+        self.load(page);
+        false
+    }
+
+    fn command(&self, page: HWND, id: u16, code: u16) -> Option<isize> {
+        let code = u32::from(code);
+        match (id, code) {
+            (EVERY, CBN_SELCHANGE) => {
+                if let Some(index) = selected(dialog::item(page, EVERY)).filter(|i| *i < FREQUENCIES.len()) {
+                    set(self.app, page, "backup-every", FREQUENCIES[index].1);
+                }
+                self.load(page);
+            }
+            (KEEP, EN_KILLFOCUS) => self.commit_keep(page),
+            (CHOOSE, BN_CLICKED) => {
+                let current = value(&self.known.borrow(), "backup-dir");
+                let start = std::path::PathBuf::from(&current);
+                if let Some(folder) = system::choose_folder(sheet(page), "Back Up Here", Some(&start)) {
+                    set(self.app, page, "backup-dir", &folder.display().to_string());
+                    self.load(page);
+                }
+            }
+            (BACK_UP, BN_CLICKED) => match self.app.core.lumenna.backup(None) {
+                Ok(done) => say(page, &speech::announcement(&done.announcement, &done.notices)),
+                Err(error) => prompts::fail(sheet(page), &sentence(&error)),
+            },
+            (RESTORE, BN_CLICKED) => {
+                if let Some(said) = import(self.app, sheet(page), "Restore From a Backup", &BACKUPS) {
+                    say(page, &said);
+                }
+            }
+            _ => {}
+        }
+        None
+    }
+
+    fn message(&self, page: HWND, message: u32, _wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
+        if finishing(message, lparam) {
+            self.commit_keep(page);
+            return Some(0);
+        }
+        None
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// Export and import (§9): what you have now, and reading it back
+// ---------------------------------------------------------------------------------------
+
+const EXPORT: u16 = 500;
+const IMPORT: u16 = 510;
+
+struct Export<'a> {
+    app: &'a App,
+}
+
+impl Export<'_> {
+    fn export(&self, page: HWND, format: ExportFormat) {
+        let today = jiff::Zoned::now().date();
+        let name = devices::export_name(format, today);
+        let extension = name.rsplit('.').next().unwrap_or("txt").to_owned();
+        let pattern = format!("*.{extension}");
+        let kind = format!("{} files", format.word());
+        let Some(path) = system::save_file(sheet(page), "Export", &name, &[(&kind, &pattern)]) else { return };
+        // The dialog already asked about replacing a file that was there.
+        match self.app.core.lumenna.export(format, Some(path.display().to_string()), true) {
+            Ok(done) => say(page, &speech::announcement(&done.announcement, &done.notices)),
+            Err(error) => prompts::fail(sheet(page), &sentence(&error)),
+        }
+    }
+}
+
+impl Dialog for Export<'_> {
+    fn template(&self) -> Template {
+        let mut template = page("Export and Import");
+        for (index, (_, label, _)) in devices::EXPORTS.iter().enumerate() {
+            template = template.item(Class::Button, label, EXPORT + index as u16, BUTTON, 7, 7 + index as i16 * 18, 180, 14);
+        }
+        let footer = "An export is what you have now, with nothing from the trash. Importing a JSON export or restoring a backup adds what this device lacks and removes nothing.";
+        template
+            .item(Class::Button, "&Import or Restore...", IMPORT, BUTTON, 7, 79, 180, 14)
+            .item(Class::Static, footer, u16::MAX, SS_NOPREFIX.0, 7, 100, 238, 36)
+    }
+
+    fn init(&self, page: HWND) -> bool {
+        a11y::make_live(dialog::item(page, STATUS));
+        false
+    }
+
+    fn command(&self, page: HWND, id: u16, code: u16) -> Option<isize> {
+        if u32::from(code) != BN_CLICKED {
+            return None;
+        }
+        if let Some((format, _, _)) = id.checked_sub(EXPORT).and_then(|i| devices::EXPORTS.get(usize::from(i))) {
+            self.export(page, *format);
+        } else if id == IMPORT
+            && let Some(said) = import(self.app, sheet(page), "Import or Restore", &IMPORTABLE)
+        {
+            say(page, &said);
+        }
+        None
+    }
+}

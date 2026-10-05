@@ -25,7 +25,7 @@ use super::controls::{self, rect};
 use super::core::sentence;
 use super::tree::{Item, Tree};
 use super::view::{Metrics, View};
-use super::prompts;
+use super::{prompts, task_actions};
 use crate::speech::{self, Clock};
 
 const PREVIOUS: u16 = 500;
@@ -241,6 +241,7 @@ impl DayView {
             minutes: minutes.unwrap_or(60).min(720).to_string(),
             kind: "work".to_owned(),
             repeat: String::new(),
+            rule: None,
         };
         if let Some(change) = block_form::run(app.main, &app.core.lumenna, Purpose::Add { date }, fields) {
             app.store_changed();
@@ -265,6 +266,7 @@ impl DayView {
             minutes: block.duration_mins.to_string(),
             kind: block.kind.clone(),
             repeat: String::new(),
+            rule: None,
         };
         let purpose = if block.repeats {
             let day = Locale.day(&date);
@@ -292,7 +294,8 @@ impl DayView {
                         start: shown.start,
                         minutes: shown.minutes.to_string(),
                         kind: shown.kind,
-                        repeat: shown.repetition.or(shown.rrule).unwrap_or_default(),
+                        repeat: shown.repetition.unwrap_or_default(),
+                        rule: shown.rrule.filter(|_| shown.repeats),
                     }
                 }
                 Err(error) => return prompts::fail(app.main, &sentence(&error)),
@@ -344,14 +347,14 @@ impl DayView {
 
     fn plan_length(&self, app: &App, sitting: &PlanAssignment) {
         let current = sitting.planned_mins.map(|m| m.to_string()).unwrap_or_default();
-        let Some(text) = ask_minutes(app, &format!("Planned Length of {}", sitting.title), &current, true) else { return };
+        let Some(text) = task_actions::ask_minutes(app, &format!("Planned Length of {}", sitting.title), &current, true) else { return };
         let key = format!("sitting:{}", sitting.id);
         self.change(app, Some(&key), |lumenna| lumenna.plan_minutes(&sitting.id, text));
     }
 
     /// Records a sitting's whole time by hand — without a timer, or to replace a capped one.
     fn log_minutes(&self, app: &App, sitting: &PlanAssignment) {
-        let Some(Some(minutes)) = ask_minutes(app, &format!("Minutes on {}", sitting.title), "", false) else { return };
+        let Some(Some(minutes)) = task_actions::ask_minutes(app, &format!("Minutes on {}", sitting.title), "", false) else { return };
         match app.core.lumenna.stop_timer(&sitting.id, Some(minutes)) {
             Ok(timer) => {
                 app.store_changed();
@@ -369,7 +372,7 @@ impl DayView {
         let titles: Vec<String> = tasks.iter().map(|t| speech::row(t, false)).collect();
         let Some(index) = prompts::pick(app.main, &format!("Assign to {}", block.title), "&Task:", &titles) else { return };
         let task = &tasks[index];
-        let Some(minutes) = ask_minutes(app, &format!("How Long Is {} Meant to Take?", task.title), "", true) else { return };
+        let Some(minutes) = task_actions::ask_minutes(app, &format!("How Long Is {} Meant to Take?", task.title), "", true) else { return };
         let key = format!("block:{}", block.id);
         self.change(app, Some(&key), |lumenna| lumenna.assign(&task.id, &block.series, Some(date), minutes));
     }
@@ -423,20 +426,6 @@ impl DayView {
     }
 }
 
-/// Asks for a number of minutes. `Some(None)` is a deliberate "no planned length", where
-/// `optional` allows one; `None` is cancelled.
-fn ask_minutes(app: &App, title: &str, initial: &str, optional: bool) -> Option<Option<u32>> {
-    let message = if optional { "Minutes, or empty for no planned length." } else { "The whole of this sitting, replacing what is logged." };
-    loop {
-        match prompts::ask(app.main, title, "&Minutes:", message, initial)? {
-            text if text.is_empty() && optional => return Some(None),
-            text => match text.parse::<u32>() {
-                Ok(minutes) if minutes > 0 => return Some(Some(minutes)),
-                _ => prompts::fail(app.main, "That is not a number of minutes."),
-            },
-        }
-    }
-}
 
 
 impl View for DayView {

@@ -9,7 +9,7 @@
 //! control in focus answers them itself: Space and Delete on a list, and the edit commands
 //! in a text field. Taking them as accelerators would take them from the controls.
 
-use windows::Win32::UI::Input::KeyboardAndMouse::{VK_F5, VK_F6, VK_NEXT, VK_PRIOR};
+use windows::Win32::UI::Input::KeyboardAndMouse::{VK_F5, VK_F6, VK_NEXT, VK_OEM_COMMA, VK_PRIOR};
 use windows::Win32::UI::WindowsAndMessaging::{
     ACCEL, ACCEL_VIRT_FLAGS, AppendMenuW, CreateAcceleratorTableW, CreateMenu, CreatePopupMenu,
     FCONTROL, FSHIFT, FVIRTKEY, HACCEL, HMENU, MF_POPUP, MF_SEPARATOR, MF_STRING,
@@ -26,6 +26,10 @@ pub const SYNC_NOW: u16 = 105;
 pub const BACK_UP: u16 = 106;
 pub const CLOSE_WINDOW: u16 = 107;
 pub const EXIT: u16 = 108;
+pub const EXPORT_IMPORT: u16 = 109;
+pub const QUICK_ADD_ANYWHERE: u16 = 110;
+pub const SETTINGS: u16 = 111;
+pub const RESTORE_BACKUP: u16 = 112;
 
 pub const UNDO: u16 = 120;
 pub const REDO: u16 = 121;
@@ -51,6 +55,10 @@ pub const MOVE_TO_TOP: u16 = 165;
 pub const TRASH_TASK: u16 = 166;
 pub const RESTORE_TASK: u16 = 167;
 pub const ERASE_TASK: u16 = 168;
+pub const PUT_IN_BLOCK: u16 = 169;
+pub const WAIT_FOR: u16 = 170;
+/// The first of a run of commands, one per task the selected one waits for: "Stop Waiting for …".
+pub const STOP_WAITING: u16 = 900;
 
 pub const PREVIOUS_DAY: u16 = 180;
 pub const NEXT_DAY: u16 = 181;
@@ -68,6 +76,7 @@ pub fn bar() -> HMENU {
     let menus = [
         menu("&File", &[
             (NEW_TASK, "&New Task...\tCtrl+N"),
+            (QUICK_ADD_ANYWHERE, "&Quick Add From Anywhere..."),
             (NEW_BLOCK, "New &Block...\tCtrl+Shift+N"),
             (NEW_PROJECT, "New &Project..."),
             (NEW_LABEL, "New &Label..."),
@@ -75,6 +84,10 @@ pub fn bar() -> HMENU {
             (0, ""),
             (SYNC_NOW, "&Sync Now\tF5"),
             (BACK_UP, "Back &Up Now"),
+            (RESTORE_BACKUP, "&Restore From a Backup..."),
+            (EXPORT_IMPORT, "&Export and Import..."),
+            (0, ""),
+            (SETTINGS, "Se&ttings...\tCtrl+,"),
             (0, ""),
             (CLOSE_WINDOW, "&Close Window\tCtrl+W"),
             (EXIT, "E&xit\tCtrl+Q"),
@@ -104,9 +117,12 @@ pub fn bar() -> HMENU {
             (OPEN_TASK, "&Edit Details\tEnter"),
             (SAVE_TASK, "&Save Changes\tCtrl+S"),
             (0, ""),
+            (PUT_IN_BLOCK, "Put in a &Block...\tCtrl+B"),
             (MOVE_TO_PROJECT, "Move to &Project...\tCtrl+Shift+M"),
-            (MAKE_SUBTASK, "Make Su&btask Of..."),
+            (MAKE_SUBTASK, "Make S&ubtask Of..."),
             (MOVE_TO_TOP, "Move to &Top Level"),
+            (WAIT_FOR, "&Wait For..."),
+            (WAIT_FOR, "&Wait For..."),
             (0, ""),
             (TRASH_TASK, "Move to T&rash\tDelete"),
             (RESTORE_TASK, "Rest&ore From Trash"),
@@ -170,6 +186,8 @@ pub fn accelerators() -> HACCEL {
         key(control, letter('K'), MARK_DONE),
         key(control, letter('S'), SAVE_TASK),
         key(control | FSHIFT, letter('M'), MOVE_TO_PROJECT),
+        key(control, letter('B'), PUT_IN_BLOCK),
+        key(control, VK_OEM_COMMA.0, SETTINGS),
         key(control, VK_PRIOR.0, PREVIOUS_DAY),
         key(control, VK_NEXT.0, NEXT_DAY),
         key(control, letter('T'), GO_TO_NOW),

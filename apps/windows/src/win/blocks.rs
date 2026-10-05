@@ -50,7 +50,8 @@ impl BlockList {
             start: shown.start,
             minutes: shown.minutes.to_string(),
             kind: shown.kind,
-            repeat: shown.repetition.or(shown.rrule).unwrap_or_default(),
+            repeat: shown.repetition.unwrap_or_default(),
+            rule: shown.rrule.filter(|_| shown.repeats),
         };
         let purpose = Purpose::Series { id: shown.id };
         if let Some(change) = block_form::run(app.main, &app.core.lumenna, purpose, fields) {

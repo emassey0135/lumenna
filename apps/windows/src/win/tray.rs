@@ -1,15 +1,11 @@
-//! Staying resident (§16.2): the notification-area icon, the global shortcuts, and one
-//! instance per profile.
+//! Staying resident (§16.2): the notification-area icon, and one instance per profile.
 //!
 //! Tray icons are poorly exposed to screen readers, so the icon is never the only way back
-//! to the window: a global shortcut shows it, and starting Lumenna again shows the running
-//! one rather than opening a second.
+//! to the window: a global shortcut shows it (`shortcuts.rs`), and starting Lumenna again
+//! shows the running one rather than opening a second.
 
 use windows::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HWND, LPARAM, WPARAM};
 use windows::Win32::System::Threading::CreateMutexW;
-use windows::Win32::UI::Input::KeyboardAndMouse::{
-    MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, RegisterHotKey, UnregisterHotKey,
-};
 use windows::Win32::UI::Shell::{
     NIF_ICON, NIF_MESSAGE, NIF_SHOWTIP, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_SETVERSION,
     NOTIFYICON_VERSION_4, NOTIFYICONDATAW, Shell_NotifyIconW,
@@ -24,36 +20,6 @@ use windows::core::{HSTRING, w};
 pub const WM_TRAY: u32 = WM_APP + 4;
 /// Sent by a second instance: show the window.
 pub const WM_SHOW_RUNNING: u32 = WM_APP + 5;
-
-pub const HOTKEY_SHOW: i32 = 1;
-pub const HOTKEY_QUICK_ADD: i32 = 2;
-
-/// The global shortcuts, and what they are called in the menu and in a failure.
-///
-/// Control+Alt+Shift: Windows keeps Windows-key combinations for itself, and Control+Alt
-/// alone is AltGr on many keyboards, where it types letters. Not yet changeable, as the Mac's
-/// are; until they are, a clash is reported rather than silently lost.
-pub const SHORTCUTS: [(i32, u32, &str); 2] =
-    [(HOTKEY_SHOW, 'L' as u32, "Control+Alt+Shift+L"), (HOTKEY_QUICK_ADD, 'K' as u32, "Control+Alt+Shift+K")];
-
-/// Registers the global shortcuts, returning those another program already has.
-pub fn register_shortcuts(main: HWND) -> Vec<&'static str> {
-    SHORTCUTS
-        .iter()
-        .filter(|(id, key, _)| unsafe {
-            RegisterHotKey(Some(main), *id, MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, *key).is_err()
-        })
-        .map(|(_, _, name)| *name)
-        .collect()
-}
-
-pub fn unregister_shortcuts(main: HWND) {
-    for (id, _, _) in SHORTCUTS {
-        unsafe {
-            let _ = UnregisterHotKey(Some(main), id);
-        }
-    }
-}
 
 fn icon_data(main: HWND, icon: HICON) -> NOTIFYICONDATAW {
     let mut data = NOTIFYICONDATAW {

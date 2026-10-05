@@ -4,6 +4,7 @@ use std::cell::RefCell;
 
 use lumenna_surface::{BlockEdit, BlockScope, Change, Lumenna, NewBlock};
 use windows::Win32::Foundation::HWND;
+use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::WindowsAndMessaging::{
     BS_DEFPUSHBUTTON, BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL, CB_SETCURSEL, CBS_DROPDOWNLIST,
     ES_AUTOHSCROLL, ES_NUMBER, IDCANCEL, IDOK, WS_BORDER, WS_TABSTOP, WS_VSCROLL,
@@ -42,6 +43,10 @@ pub struct Fields {
     pub minutes: String,
     pub kind: String,
     pub repeat: String,
+    /// The RFC 5545 rule it repeats by. When `repeat` is empty, it is a rule the repetition
+    /// words cannot say: the field starts empty, the rule is said beside it, and it is left
+    /// alone unless something is typed there.
+    pub rule: Option<String>,
 }
 
 struct Form<'a> {
@@ -61,6 +66,7 @@ impl Form<'_> {
             minutes: controls::text(dialog::item(hwnd, MINUTES)).trim().to_owned(),
             kind: usize::try_from(kind).ok().and_then(|i| KINDS.get(i)).map_or("work", |k| k.0).to_owned(),
             repeat: controls::text(dialog::item(hwnd, REPEAT)).trim().to_owned(),
+            rule: self.initial.rule.clone(),
         }
     }
 
@@ -130,6 +136,11 @@ impl Dialog for Form<'_> {
         if !once {
             template = field(template, "&Repeats, such as every weekday; empty for once:", REPEAT, ES_AUTOHSCROLL as u32, y);
             y += 28;
+            if let Some(rule) = self.initial.rule.as_ref().filter(|_| self.initial.repeat.is_empty()) {
+                let note = format!("It repeats by the rule {rule}, which the repetition words cannot say. Leave Repeats empty to keep it.");
+                template = template.item(Class::Static, &note, u16::MAX, SS_NOPREFIX.0, 7, y, 216, 26);
+                y += 30;
+            }
         }
         if adding {
             template = field(template, "Starts &on:", DATE, ES_AUTOHSCROLL as u32, y);

@@ -129,10 +129,12 @@ fn join(parts: Vec<String>) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+pub mod testing {
+    //! A clock for tests: twelve-hour times, and one fixed day called Today.
 
-    struct TwelveHour;
+    use super::Clock;
+
+    pub struct TwelveHour;
 
     impl Clock for TwelveHour {
         fn time(&self, clock: &str) -> String {
@@ -146,6 +148,12 @@ mod tests {
             if iso == "2026-10-04" { "Today".to_owned() } else { iso.to_owned() }
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::testing::TwelveHour;
+    use super::*;
 
     fn task(title: &str, value: Option<&str>, state: &[&str], checked: bool) -> RowView {
         RowView {
