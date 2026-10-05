@@ -9,32 +9,35 @@
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Error))]
 pub enum LumennaError {
-    /// The operation failed; the message says why.
-    #[error("{message}")]
+    /// The operation failed; the reason says why.
+    ///
+    /// Not called `message`: Kotlin's exceptions already have a `message`, and UniFFI's
+    /// generated class would declare it twice. Kotlin reads the sentence as `message` anyway.
+    #[error("{reason}")]
     Failed {
         /// What went wrong.
-        message: String,
+        reason: String,
     },
     /// Another process holds this device's sync endpoint, so this one cannot open it. A client
     /// that can reach that process — the CLI, over the daemon's socket — asks it instead.
-    #[error("{message}")]
+    #[error("{reason}")]
     SyncElsewhere {
         /// Said as it is.
-        message: String,
+        reason: String,
     },
 }
 
 impl LumennaError {
     /// A failure with this message.
     pub fn new(message: impl Into<String>) -> Self {
-        Self::Failed { message: message.into() }
+        Self::Failed { reason: message.into() }
     }
 
     /// The sentence.
     #[must_use]
     pub fn message(&self) -> &str {
         match self {
-            Self::Failed { message } | Self::SyncElsewhere { message } => message,
+            Self::Failed { reason } | Self::SyncElsewhere { reason } => reason,
         }
     }
 }
