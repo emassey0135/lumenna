@@ -15,7 +15,12 @@ if [ -z "${LUMENNA_HEADLESS:-}" ]; then
     chmod 700 "$private"
     LUMENNA_HEADLESS=$private XDG_RUNTIME_DIR=$private dbus-run-session -- "$0" "$@"
     status=$?
-    rm -rf "$private"
+    # The bus's services make doc/ and gvfs/ in it again as they shut down, so it goes once
+    # they have.
+    for _ in 1 2 3 4 5; do
+        sleep 0.5
+        rm -rf "$private" 2>/dev/null && [ ! -e "$private" ] && break
+    done
     exit $status
 fi
 if [ "$XDG_RUNTIME_DIR" != "$LUMENNA_HEADLESS" ]; then

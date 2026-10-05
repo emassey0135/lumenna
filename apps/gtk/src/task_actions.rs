@@ -159,13 +159,13 @@ async fn move_to_project(app: &App, task: &TaskDetail) {
     }
 }
 
-/// Puts a task into a work block of today or the next six days (§3.7), asking how long the
+/// Puts a task into a block that takes tasks, today or in the next six days (§3.7), asking how long the
 /// sitting is meant to take. The planner reaches any other day, from the block's side.
 async fn put_in_block(app: &App, task: &TaskDetail) {
     let today = jiff::Zoned::now().date();
     let blocks = choices::work_blocks(&app.core.lumenna, today, 7, &app.clock);
     if blocks.is_empty() {
-        return app.fail("There are no work blocks this week. Add one from Today.");
+        return app.fail("No block this week takes tasks. Add one from Today.");
     }
     let texts: Vec<String> = blocks.iter().map(|b| b.text.clone()).collect();
     let title = format!("Put {} in a Block", task.title);
