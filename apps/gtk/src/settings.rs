@@ -608,12 +608,11 @@ pub const IMPORTABLE: [(&str, &str); 1] = [("Lumenna exports and backups", "*.js
 fn export(app: &Rc<App>) -> gtk::Widget {
     let page = PageBox::new();
     let mut buttons = Vec::new();
-    for (format, label, _) in devices::EXPORTS {
-        // The shared labels mark their mnemonic Windows' way.
-        let button = gtk::Button::with_mnemonic(&label.replace('_', "__").replace('&', "_"));
+    for export in devices::EXPORTS {
+        let button = gtk::Button::with_mnemonic(&devices::marked(export.label, export.key, '_'));
         button.set_halign(gtk::Align::Start);
         page.add(&button);
-        buttons.push((format, button));
+        buttons.push((export.format, button));
     }
     let import_button = gtk::Button::with_mnemonic("_Import or Restore…");
     import_button.set_halign(gtk::Align::Start);

@@ -34,17 +34,53 @@ pub fn ago(timestamp: &str, now: jiff::Timestamp) -> String {
     }
 }
 
-/// The exports Settings offers, with what each is for and the extension its file takes.
-pub const EXPORTS: [(ExportFormat, &str, &str); 4] = [
-    (ExportFormat::Json, "Export &JSON, Complete, Can Be Imported...", "json"),
-    (ExportFormat::Markdown, "Export a &Markdown Checklist...", "md"),
-    (ExportFormat::Org, "Export an &Org Outline...", "org"),
-    (ExportFormat::Ics, "Export a &Calendar File of Your Blocks...", "ics"),
+/// One export Settings offers.
+#[derive(Debug, Clone, Copy)]
+pub struct Export {
+    /// What it writes.
+    pub format: ExportFormat,
+    /// Its button's text, plain: each toolkit marks the mnemonic its own way (`marked`).
+    pub label: &'static str,
+    /// The letter that is its mnemonic.
+    pub key: char,
+    /// The extension its file takes.
+    pub extension: &'static str,
+}
+
+/// The exports Settings offers, with what each is for.
+pub const EXPORTS: [Export; 4] = [
+    Export {
+        format: ExportFormat::Json,
+        label: "Export JSON, Complete, Can Be Imported...",
+        key: 'J',
+        extension: "json",
+    },
+    Export { format: ExportFormat::Markdown, label: "Export a Markdown Checklist...", key: 'M', extension: "md" },
+    Export { format: ExportFormat::Org, label: "Export an Org Outline...", key: 'O', extension: "org" },
+    Export { format: ExportFormat::Ics, label: "Export a Calendar File of Your Blocks...", key: 'C', extension: "ics" },
 ];
+
+/// `text` with its mnemonic marked the way a toolkit marks one: `&` for Win32, `_` for GTK.
+/// The marker goes before the first `key`; a marker already in the text is doubled, so it
+/// shows as itself.
+pub fn marked(text: &str, key: char, marker: char) -> String {
+    let mut out = String::with_capacity(text.len() + 1);
+    let mut placed = false;
+    for c in text.chars() {
+        if c == marker {
+            out.push(marker);
+        } else if c == key && !placed {
+            out.push(marker);
+            placed = true;
+        }
+        out.push(c);
+    }
+    out
+}
 
 /// The file name an export is offered under, dated: "Lumenna 2026-10-04.json".
 pub fn export_name(format: ExportFormat, today: jiff::civil::Date) -> String {
-    let extension = EXPORTS.iter().find(|(f, _, _)| *f == format).map_or("txt", |(_, _, e)| e);
+    let extension = EXPORTS.iter().find(|e| e.format == format).map_or("txt", |e| e.extension);
     format!("Lumenna {today}.{extension}")
 }
 
@@ -96,5 +132,19 @@ mod tests {
         let today = "2026-10-04".parse().unwrap();
         assert_eq!(export_name(ExportFormat::Markdown, today), "Lumenna 2026-10-04.md");
         assert_eq!(export_name(ExportFormat::Ics, today), "Lumenna 2026-10-04.ics");
+    }
+
+    #[test]
+    fn each_toolkit_marks_the_mnemonic_its_own_way() {
+        assert_eq!(marked("Export a Markdown Checklist...", 'M', '&'), "Export a &Markdown Checklist...");
+        assert_eq!(marked("Export a Markdown Checklist...", 'M', '_'), "Export a _Markdown Checklist...");
+        assert_eq!(marked("Save_as & Close", 'C', '&'), "Save_as && &Close", "a marker in the text shows as itself");
+    }
+
+    #[test]
+    fn every_export_has_its_mnemonic_letter_in_its_label() {
+        for export in EXPORTS {
+            assert!(export.label.contains(export.key), "{}", export.label);
+        }
     }
 }
