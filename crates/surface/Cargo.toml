@@ -12,7 +12,7 @@ description = "Lumenna's command surface (§12): every operation once, typed, fo
 uniffi = ["dep:uniffi"]
 # Pairing and syncing over Iroh (§7). On for every client that syncs; off leaves a surface
 # with no network code at all.
-sync = ["dep:lumenna-sync", "dep:iroh", "dep:tokio"]
+sync = ["dep:lumenna-sync", "dep:iroh", "dep:tokio", "dep:n0-future"]
 # TypeScript types for the web client (§16.12), derived from these records as UniFFI derives
 # Swift's: reshaping a record breaks the web build too.
 wasm = ["dep:tsify", "dep:wasm-bindgen"]
@@ -29,6 +29,11 @@ tsify = { version = "0.5", optional = true, default-features = false, features =
 wasm-bindgen = { version = "0.2", optional = true }
 lumenna-sync = { path = "../sync", optional = true }
 iroh = { version = "1.3", optional = true }
+n0-future = { version = "0.3", optional = true }
+tokio = { version = "1", features = ["sync", "macros"], optional = true }
+
+# The blocking calls' runtime. A browser runs the async parts on its own event loop (§16.12).
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"], optional = true }
 
 [dev-dependencies]

@@ -14,6 +14,7 @@
 use std::path::Path;
 
 mod clock;
+mod sync;
 
 use clock::Browser;
 use lumenna_desktop::choices;
@@ -50,7 +51,8 @@ fn error(error: LumennaError) -> JsError {
 /// One open store.
 #[wasm_bindgen]
 pub struct Core {
-    lumenna: Lumenna,
+    lumenna: std::rc::Rc<Lumenna>,
+    syncing: std::rc::Rc<sync::Syncing>,
 }
 
 #[wasm_bindgen]
@@ -67,7 +69,7 @@ impl Core {
                 .map_err(|e| JsError::new(&format!("This browser's storage could not be opened: {e}")))?;
         }
         let lumenna = Lumenna::open_at(Path::new(&format!("/{name}"))).map_err(error)?;
-        Ok(Core { lumenna })
+        Ok(Core { lumenna: std::rc::Rc::new(lumenna), syncing: std::rc::Rc::default() })
     }
 
     /// A number that moves whenever another tab or process has written: what a view
@@ -418,4 +420,11 @@ pub fn announcement_text(announcement: &str, notices: Vec<String>) -> String {
 pub struct Choices {
     /// Each block, with how it reads.
     pub blocks: Vec<choices::BlockChoice>,
+}
+
+/// A paired device, as its line in the list reads: "Kitchen Mac, macos, last synced 5 minutes
+/// ago" — sync status in words rather than an icon (§9).
+#[wasm_bindgen(js_name = deviceText)]
+pub fn device_text(device: Ts<lumenna_surface::DeviceView>) -> Result<String, JsError> {
+    Ok(lumenna_desktop::devices::line(&device.to_rust()?, jiff::Timestamp::now()))
 }

@@ -128,6 +128,15 @@ is the short-lived endpoint a pairing runs on.
   `Store::version()` (every document's heads); `refresh` alone cannot see a connection's own
   writes. Arrivals are signalled as soon as a session's changes are in the store.
   The device key lives in the store's `local_state` table and never syncs.
+- **Async underneath, blocking on top.** `Lumenna::pair_async` (the prompt as plain
+  callbacks) and `keep_in_sync` (a `SyncLoop` handle plus the loop, for the caller to run)
+  are the implementation; `pair`, `sync_now` and `SyncService` run them on a runtime of their
+  own and are native only. The browser runs them on its event loop. So the sync crate uses
+  n0-future for time and spawning (tokio's own natively), never tokio's runtime, and local
+  discovery is a stub there.
+- **A round that misses a device is retried**, after 5 seconds and doubling to the full
+  round's five minutes. Otherwise a change sent while a device was briefly unreachable — just
+  started, asleep — sat until the next full round.
 - **The sync session is lockstep per document**: both sides send one frame (a message, or an
   empty frame for nothing) then read one; both empty ends the document. Both sides see the
   same two frames, so both stop together. Sync state is per session, not saved.
@@ -631,7 +640,7 @@ its own; see its README for the toolchain (NDK, `cargo-ndk`, Android Studio's JD
 `npm run core`, size-tuned) builds it and generates `src/core/` with wasm-bindgen, whose CLI
 must match the crate's version in `Cargo.lock`; `npm run build` builds the size-tuned core
 itself. `src/core/` is build output and not committed. Tasks, places, details, quick add,
-Today (the day, its blocks and sittings) and Blocks work; sync is not there yet.
+Today (the day, its blocks and sittings), Blocks, and Devices with pairing and sync work.
 
 - **The same store, in OPFS.** rusqlite 0.40 builds for the browser on `sqlite-wasm-rs`; the
   `sahpool` VFS keeps the file in OPFS through sync access handles, which only a dedicated
@@ -665,8 +674,19 @@ Today (the day, its blocks and sittings) and Blocks work; sync is not there yet.
   row, so a dialog it opens returns focus there rather than to a menu item that is gone.
 - **Times and days are the browser's** (`core/src/clock.rs`, `Intl` with no locale), as the
   desktop apps' `Clock` is theirs; the day's rows are worded by `crates/desktop`.
+- **A browser is an ordinary Iroh peer, always through a relay** (§16.12: no UDP from a
+  sandbox), so `Reach::Internet`, and **it pairs by code** (no local network to find one on).
+  `core/src/sync.rs` returns promises over the surface's async halves; the tab that owns the
+  store owns the endpoint, as the lock file decides elsewhere. Syncing starts when the page
+  opens with another device paired, and after a pairing. `.cargo/config.toml` sets getrandom's
+  `wasm_js` backend for the browser target, which getrandom 0.3 needs besides the feature.
+- **Callbacks into the core are wrapped in the worker.** A Comlink proxy answers any
+  property, `.call` included, so wasm-bindgen's `f.call(…)` on one would be a remote call
+  named "call": the worker hands the core plain functions that call the proxies.
 - Tests are Playwright over the accessibility tree, with axe on the whole page: `npm test`
-  (starts Vite itself). Each test's context is a fresh, empty OPFS.
+  (starts Vite itself). Each test's context is a fresh, empty OPFS. `LUMENNA_NETWORK=1` adds
+  two browsers pairing over n0's public relays; `LUMENNA_LUM=<path to lum>` adds pairing with
+  `lum` and syncing from it.
 
 ### The core/store boundary
 

@@ -123,7 +123,7 @@ impl Invitation {
                 // the network — can stay announced for a while. Each such dial gives up
                 // quickly, rather than holding up the meeting for a full connection timeout.
                 if me < them.id
-                    && let Ok(Ok(conn)) = tokio::time::timeout(HEARD_DIAL_WAIT, self.dial(addr)).await
+                    && let Ok(Ok(conn)) = n0_future::time::timeout(HEARD_DIAL_WAIT, self.dial(addr)).await
                 {
                     return Ok((conn, Role::Dialled));
                 }
@@ -192,7 +192,7 @@ impl Invitation {
         if let Some(found) = already.into_iter().find(|found| found.id == id) {
             return addr(found.addrs);
         }
-        let heard = tokio::time::timeout(LOCATE_WAIT, async {
+        let heard = n0_future::time::timeout(LOCATE_WAIT, async {
             loop {
                 match events.recv().await {
                     Ok(found) if found.id == id => return Some(found.addrs),
@@ -283,7 +283,7 @@ async fn close(conn: &Connection, role: Role) {
     match role {
         Role::Dialled => conn.close(0u32.into(), b"done"),
         Role::Answered => {
-            let _ = tokio::time::timeout(std::time::Duration::from_secs(5), conn.closed()).await;
+            let _ = n0_future::time::timeout(std::time::Duration::from_secs(5), conn.closed()).await;
         }
     }
 }

@@ -39,6 +39,10 @@ pub(crate) fn service_type(service: &str) -> String {
 }
 
 /// The instance name an endpoint announces under.
+#[cfg_attr(
+    all(target_family = "wasm", target_os = "unknown"),
+    expect(dead_code, reason = "only a responder hears, and a browser has none")
+)]
 pub(crate) fn instance(id: &EndpointId) -> String {
     let text = id.to_string();
     format!("lumenna-{}", &text[..text.len().min(16)])

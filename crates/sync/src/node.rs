@@ -186,9 +186,9 @@ impl Node {
         let mut tasks = Vec::new();
         for (node_id, name) in peers {
             let node = self.clone();
-            tasks.push(tokio::spawn(async move {
+            tasks.push(n0_future::task::spawn(async move {
                 let outcome = match endpoint_id(node_id) {
-                    Ok(id) => tokio::time::timeout(PEER_TIMEOUT, node.sync_with(id))
+                    Ok(id) => n0_future::time::timeout(PEER_TIMEOUT, node.sync_with(id))
                         .await
                         .unwrap_or_else(|_| {
                             Err(SyncError::Network("it did not answer in time".to_owned()))
@@ -213,7 +213,7 @@ impl Node {
     pub async fn serve(&self) {
         while let Some(incoming) = self.endpoint.accept().await {
             let node = self.clone();
-            tokio::spawn(async move {
+            n0_future::task::spawn(async move {
                 let Ok(accepting) = incoming.accept() else { return };
                 let Ok(conn) = accepting.await else { return };
                 let peer = node_id(conn.remote_id());
@@ -241,7 +241,7 @@ impl Node {
         finish(&mut send, &mut recv).await?;
         // The dialler closes once it has everything; waiting for that keeps this side from
         // tearing down data still in flight.
-        let _ = tokio::time::timeout(Duration::from_secs(5), conn.closed()).await;
+        let _ = n0_future::time::timeout(Duration::from_secs(5), conn.closed()).await;
         Ok(summary)
     }
 
@@ -287,6 +287,6 @@ pub(crate) async fn finish(send: &mut SendStream, recv: &mut RecvStream) -> Resu
     // closing the connection now would drop it, so the peer reads a lost connection where it
     // should read a finished one. Over a relay that gap is long enough to lose every time.
     // `stopped` resolves once the peer has read this stream to its end.
-    let _ = tokio::time::timeout(Duration::from_secs(5), send.stopped()).await;
+    let _ = n0_future::time::timeout(Duration::from_secs(5), send.stopped()).await;
     Ok(())
 }

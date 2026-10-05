@@ -23,7 +23,7 @@ mod txt;
 mod apple;
 #[cfg(target_os = "linux")]
 mod avahi;
-#[cfg(not(target_vendor = "apple"))]
+#[cfg(not(any(target_vendor = "apple", all(target_family = "wasm", target_os = "unknown"))))]
 mod portable;
 
 /// The responder in use: the system's own wherever there is one.
@@ -32,7 +32,7 @@ enum Responder {
     Apple(apple::Responder),
     #[cfg(target_os = "linux")]
     Avahi(avahi::Responder),
-    #[cfg(not(target_vendor = "apple"))]
+    #[cfg(not(any(target_vendor = "apple", all(target_family = "wasm", target_os = "unknown"))))]
     Portable(portable::Responder),
 }
 
@@ -44,7 +44,14 @@ impl Responder {
         {
             apple::Responder::start(service_type, heard).map(Self::Apple)
         }
-        #[cfg(not(target_vendor = "apple"))]
+        // A browser has no local network to browse (§16.12): nothing is heard, as on a network
+        // that forbids multicast, and pairing goes by code.
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        {
+            let _ = (service_type, heard);
+            Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "no local network in a browser"))
+        }
+        #[cfg(not(any(target_vendor = "apple", all(target_family = "wasm", target_os = "unknown"))))]
         {
             #[cfg(target_os = "linux")]
             if let Ok(avahi) = avahi::Responder::start(service_type, Arc::clone(&heard)) {
@@ -54,14 +61,20 @@ impl Responder {
         }
     }
 
+    // Through `*self` with `ref`, so a browser's responder — which has no variants — still
+    // matches exhaustively.
+    #[cfg_attr(
+        all(target_family = "wasm", target_os = "unknown"),
+        expect(unused_variables, reason = "a browser has no responder to announce through")
+    )]
     fn announce(&self, announced: &Announcement) -> std::io::Result<()> {
-        match self {
+        match *self {
             #[cfg(target_vendor = "apple")]
-            Self::Apple(responder) => responder.announce(announced),
+            Self::Apple(ref responder) => responder.announce(announced),
             #[cfg(target_os = "linux")]
-            Self::Avahi(responder) => responder.announce(announced),
-            #[cfg(not(target_vendor = "apple"))]
-            Self::Portable(responder) => responder.announce(announced),
+            Self::Avahi(ref responder) => responder.announce(announced),
+            #[cfg(not(any(target_vendor = "apple", all(target_family = "wasm", target_os = "unknown"))))]
+            Self::Portable(ref responder) => responder.announce(announced),
         }
     }
 }
@@ -92,6 +105,10 @@ pub struct Found {
 }
 
 /// What a responder heard: an instance found with what it announces, or an instance gone.
+#[cfg_attr(
+    all(target_family = "wasm", target_os = "unknown"),
+    expect(dead_code, reason = "only a responder hears, and a browser has none")
+)]
 pub(crate) enum Heard {
     Found(String, Announcement),
     Lost(String),

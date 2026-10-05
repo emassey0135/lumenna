@@ -14,6 +14,7 @@ import init, {
   blockText,
   cancelledText,
   dayText,
+  deviceText,
   freeText,
   nowText,
   sittingText,
@@ -37,11 +38,13 @@ import type {
   Change,
   Entry,
   NewBlock,
+  PairedWith,
   Place,
   PlanAssignment,
   PlanBlock,
   RowView,
   Syntax,
+  SyncReport,
   TaskDetail,
   TaskFields,
 } from "./core/lumenna_web.js";
@@ -269,6 +272,64 @@ const api = {
   /** Every open task, as a chooser lists them. */
   taskChoices: (): { id: string; text: string }[] =>
     store().listTasks("").rows.map((row) => ({ id: row.id, text: rowText(row, false) })),
+
+  // -------------------------------------------------------------------------------------
+  // Devices and sync (§7). A browser reaches other devices through a relay, and pairs by code.
+  // -------------------------------------------------------------------------------------
+
+  /**
+   * Pairs with another device: waits with a code of its own, given to `showCode`, or dials
+   * `code`. `confirm` is asked whether the words match. Resolves to what to say.
+   *
+   * The page's callbacks arrive as Comlink proxies, which answer any property — `.call`
+   * included — so the core is handed plain functions that call them.
+   */
+  async pair(
+    code: string | undefined,
+    name: string,
+    showCode: (code: string) => void,
+    confirm: (words: string[]) => Promise<boolean>,
+  ): Promise<string> {
+    const paired: PairedWith = await store().pair(
+      code,
+      name,
+      (shown: string) => void showCode(shown),
+      (words: string[]) => confirm(words),
+    );
+    return announcementText(paired.announcement, paired.notices ?? []);
+  },
+
+  cancelPairing: () => store().cancelPairing(),
+
+  /** Keeps this browser in sync while it is open; `changed` hears what arrives. */
+  async startSync(changed: () => void): Promise<void> {
+    await store().startSync(() => void changed());
+  },
+
+  /** Syncs now; what to say about it, each device that could not be reached included. */
+  async syncNow(): Promise<string> {
+    const report: SyncReport = await store().syncNow();
+    const failures = report.peers.filter((peer) => peer.error).map((peer) => `${peer.name}: ${peer.error}`);
+    return announcementText(report.announcement, failures);
+  },
+
+  stopSync: () => store().stopSync(),
+  syncRunning: (): boolean => store().syncRunning(),
+
+  /** The paired devices, this one first, each with its line. */
+  devices(): { id: string; name: string; thisDevice: boolean; text: string }[] {
+    return store()
+      .devices()
+      .devices.map((device) => ({
+        id: device.node_id,
+        name: device.name,
+        thisDevice: device.this_device,
+        text: deviceText(device),
+      }));
+  },
+
+  renameDevice: (id: string, name: string): string => said(store().renameDevice(id, name)),
+  unpairDevice: (id: string): string => said(store().unpairDevice(id)),
 };
 
 /** One row of the day, with what it is and the rows beneath it. */

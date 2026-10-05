@@ -52,7 +52,9 @@ pub use error::{LumennaError, Result};
 pub use form::{TaskFields, label_reference, project_reference, sitting_status, task_edit, task_fields};
 pub use settings::{parse_every, parse_keep};
 #[cfg(feature = "sync")]
-pub use sync::{PairingPrompt, SyncListener, SyncService};
+pub use sync::{PairingPrompt, SyncListener, SyncLoop, keep_in_sync};
+#[cfg(all(feature = "sync", not(all(target_family = "wasm", target_os = "unknown"))))]
+pub use sync::SyncService;
 pub use types::*;
 
 #[cfg(feature = "uniffi")]
@@ -71,7 +73,8 @@ pub struct Lumenna {
     // what it brings in is visible at once, and what they write it can see to send on.
     store: Arc<Mutex<Store>>,
     directory: PathBuf,
-    #[cfg(feature = "sync")]
+    // The native service, if one is running; a browser runs its loop itself (§16.12).
+    #[cfg(all(feature = "sync", not(all(target_family = "wasm", target_os = "unknown"))))]
     sync: sync::SyncState,
 }
 
@@ -156,7 +159,7 @@ impl Lumenna {
         Ok(Self {
             store: Arc::new(Mutex::new(store)),
             directory: directory.to_path_buf(),
-            #[cfg(feature = "sync")]
+            #[cfg(all(feature = "sync", not(all(target_family = "wasm", target_os = "unknown"))))]
             sync: sync::SyncState::default(),
         })
     }

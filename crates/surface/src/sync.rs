@@ -16,11 +16,23 @@
 //!
 //! **Pairing needs no lock.** It runs on an endpoint of its own with a key minted for it, so a
 //! person can pair while the service carries on syncing.
+//!
+//! # Async underneath, for the browser
+//!
+//! A browser cannot block, has no threads to block on, and no lock file (§16.12). So the
+//! pairing and the loop are async functions — [`Lumenna::pair_async`] and [`keep_in_sync`] —
+//! that the blocking calls here run on a runtime of their own, and the web client runs on the
+//! browser's event loop. There, one tab owns the store (a Web Lock), which is the lock file's
+//! job; the blocking calls and [`SyncService`] are for everything else.
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use std::fs::File;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use std::path::Path;
-use std::sync::{Arc, Mutex, Weak};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use std::sync::{Mutex, Weak};
+use std::time::Duration;
 
 use lumenna_core::edit;
 use lumenna_core::id::NodeId;
@@ -29,12 +41,14 @@ use lumenna_store::ChangeHash;
 use lumenna_sync::invite::{Invitation, identity};
 use lumenna_sync::node::{Network, Node, PeerResult};
 use lumenna_sync::{SharedStore, SyncError};
+use n0_future::time::Instant;
 
 use crate::error::{LumennaError, Result};
 use crate::tasks::record_or;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use crate::types::SyncStatus;
 use crate::types::{
     Announced, Change, DeviceList, DeviceView, PairedWith, PeerSync, Reach, SyncReport,
-    SyncStatus,
 };
 use crate::words::count_line;
 use crate::{Lumenna, repaired};
@@ -48,6 +62,11 @@ const FULL_ROUND: Duration = Duration::from_secs(5 * 60);
 
 /// How often a running service looks for local changes to send on.
 const TICK: Duration = Duration::from_secs(1);
+
+/// How soon a round that missed a device is tried again, doubling each time it misses again
+/// up to [`FULL_ROUND`]. A change sent while a device was briefly out of reach — asleep, or
+/// not yet findable through the relay just after it started — otherwise waited minutes.
+const FIRST_RETRY: Duration = Duration::from_secs(5);
 
 impl From<SyncError> for LumennaError {
     fn from(error: SyncError) -> Self {
@@ -86,11 +105,13 @@ pub trait SyncListener: Send + Sync {
 }
 
 /// The sync state of one open store: the running service, if there is one.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 #[derive(Default)]
 pub(crate) struct SyncState {
     service: Mutex<Weak<SyncService>>,
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 fn runtime() -> Result<tokio::runtime::Runtime> {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -99,6 +120,7 @@ fn runtime() -> Result<tokio::runtime::Runtime> {
 }
 
 /// Takes the sync lock, or `None` if another process holds it.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 fn take_lock(profile: &Path) -> Result<Option<File>> {
     let file = std::fs::OpenOptions::new()
         .create(true)
@@ -151,6 +173,7 @@ fn brought_anything(report: &SyncReport) -> bool {
     report.peers.iter().any(|peer| !peer.changed.is_empty())
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// Pairs this device with another of the person's (§7).
@@ -176,75 +199,23 @@ impl Lumenna {
         platform: String,
         prompt: Arc<dyn PairingPrompt>,
     ) -> Result<PairedWith> {
-        let peer = code
-            .map(|code| {
-                code.trim().parse::<iroh::EndpointId>().map_err(|_| {
-                    LumennaError::new(format!(
-                        "'{code}' is not a pairing code; it is the long code the other \
-                         device shows while it waits"
-                    ))
-                })
-            })
-            .transpose()?;
-        let store = self.shared();
-        let me = this_node(&store)?;
-        let known = repaired(&self.store()).devices.get(&me).map(|d| d.name.clone());
-        let me = identity(&store, &known.unwrap_or(name), &platform)?;
-
-        let paired = runtime()?.block_on(async {
-            let session = Invitation::open(reach.into(), peer.is_none()).await?;
-            if peer.is_none() {
-                prompt.show_code(session.code());
-            }
-            let cancelled = {
-                let prompt = Arc::clone(&prompt);
-                async move {
-                    while !prompt.is_cancelled() {
-                        tokio::time::sleep(Duration::from_millis(250)).await;
-                    }
+        let showing = Arc::clone(&prompt);
+        let watching = Arc::clone(&prompt);
+        runtime()?.block_on(self.pair_async(
+            code,
+            reach,
+            name,
+            platform,
+            move |code| showing.show_code(code),
+            async move {
+                while !watching.is_cancelled() {
+                    tokio::time::sleep(Duration::from_millis(250)).await;
                 }
-            };
-            let met = tokio::select! {
-                met = tokio::time::timeout(PAIR_WAIT, session.meet(peer.map(iroh::EndpointAddr::new))) => met,
-                () = cancelled => {
-                    session.close().await;
-                    return Err(SyncError::NotPaired("pairing was cancelled".to_owned()));
-                }
-            };
-            let met = met.map_err(|_| {
-                SyncError::NotPaired("no other device turned up in ten minutes".to_owned())
-            });
-            let (conn, role) = match met {
-                Ok(Ok(met)) => met,
-                Ok(Err(error)) | Err(error) => {
-                    session.close().await;
-                    return Err(error);
-                }
-            };
-            let asking = Arc::clone(&prompt);
-            let result = session
-                .pair(&conn, role, &store, me, |words| async move {
-                    tokio::task::spawn_blocking(move || asking.confirm(words))
-                        .await
-                        .unwrap_or(false)
-                })
-                .await;
-            session.close().await;
-            result
-        })?;
-
-        Ok(PairedWith {
-            announcement: format!(
-                "Paired with {}. Synced {}, {} brought in changes.",
-                paired.peer.name,
-                count_line(paired.summary.documents, "document"),
-                paired.summary.changed.len()
-            ),
-            notices: Vec::new(),
-            name: paired.peer.name,
-            platform: paired.peer.platform,
-            node_id: paired.peer.node_id,
-        })
+            },
+            move |words| async move {
+                tokio::task::spawn_blocking(move || prompt.confirm(words)).await.unwrap_or(false)
+            },
+        ))
     }
 
     /// Syncs with every paired device now.
@@ -306,6 +277,38 @@ impl Lumenna {
         })
     }
 
+    /// Starts keeping this device in sync, for as long as the returned service lives.
+    ///
+    /// The service holds this device's endpoint: it answers other devices, sends local
+    /// changes on within a second or so, and syncs with everyone every few minutes regardless.
+    /// What arrives is announced through `listener`.
+    ///
+    /// # Errors
+    ///
+    /// [`LumennaError::SyncElsewhere`] if another process holds the endpoint; otherwise if it
+    /// cannot be opened.
+    pub fn start_sync(
+        &self,
+        reach: Reach,
+        listener: Arc<dyn SyncListener>,
+    ) -> Result<Arc<SyncService>> {
+        if let Some(service) = self.running_service() {
+            return Ok(service);
+        }
+        let Some(lock) = take_lock(&self.directory)? else {
+            return Err(LumennaError::SyncElsewhere {
+                reason: "another process is syncing this device already".to_owned(),
+            });
+        };
+        let service = SyncService::start(self.shared(), reach, listener, lock)?;
+        *self.sync.service.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Arc::downgrade(&service);
+        Ok(service)
+    }
+}
+
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl Lumenna {
     /// The paired devices, this one first.
     ///
     /// # Errors
@@ -357,37 +360,101 @@ impl Lumenna {
             found.name
         )))
     }
+}
 
-    /// Starts keeping this device in sync, for as long as the returned service lives.
-    ///
-    /// The service holds this device's endpoint: it answers other devices, sends local
-    /// changes on within a second or so, and syncs with everyone every few minutes regardless.
-    /// What arrives is announced through `listener`.
+impl Lumenna {
+    /// Pairing as async code, for a client that runs its own executor — the browser — and
+    /// underneath [`Lumenna::pair`] for everyone else. What it does is `pair`'s: `show_code`
+    /// is called with the code when this device waits to be found, the wait ends early when
+    /// `cancelled` completes, and `confirm` is asked whether the words match.
     ///
     /// # Errors
     ///
-    /// [`LumennaError::SyncElsewhere`] if another process holds the endpoint; otherwise if it
-    /// cannot be opened.
-    pub fn start_sync(
+    /// As [`Lumenna::pair`].
+    #[expect(clippy::too_many_arguments, reason = "pair's arguments, with its prompt in parts")]
+    pub async fn pair_async<Fut: Future<Output = bool>>(
+        &self,
+        code: Option<String>,
+        reach: Reach,
+        name: String,
+        platform: String,
+        show_code: impl FnOnce(String),
+        cancelled: impl Future<Output = ()>,
+        confirm: impl FnOnce(Vec<String>) -> Fut,
+    ) -> Result<PairedWith> {
+        let peer = code
+            .map(|code| {
+                code.trim().parse::<iroh::EndpointId>().map_err(|_| {
+                    LumennaError::new(format!(
+                        "'{code}' is not a pairing code; it is the long code the other \
+                         device shows while it waits"
+                    ))
+                })
+            })
+            .transpose()?;
+        let store = self.shared();
+        let me = this_node(&store)?;
+        let known = repaired(&self.store()).devices.get(&me).map(|d| d.name.clone());
+        let me = identity(&store, &known.unwrap_or(name), &platform)?;
+
+        let paired = async {
+            let session = Invitation::open(reach.into(), peer.is_none()).await?;
+            if peer.is_none() {
+                show_code(session.code());
+            }
+            let met = tokio::select! {
+                met = n0_future::time::timeout(PAIR_WAIT, session.meet(peer.map(iroh::EndpointAddr::new))) => met,
+                () = cancelled => {
+                    session.close().await;
+                    return Err(SyncError::NotPaired("pairing was cancelled".to_owned()));
+                }
+            };
+            let met = met.map_err(|_| {
+                SyncError::NotPaired("no other device turned up in ten minutes".to_owned())
+            });
+            let (conn, role) = match met {
+                Ok(Ok(met)) => met,
+                Ok(Err(error)) | Err(error) => {
+                    session.close().await;
+                    return Err(error);
+                }
+            };
+            let result = session.pair(&conn, role, &store, me, confirm).await;
+            session.close().await;
+            result
+        }
+        .await?;
+
+        Ok(PairedWith {
+            announcement: format!(
+                "Paired with {}. Synced {}, {} brought in changes.",
+                paired.peer.name,
+                count_line(paired.summary.documents, "document"),
+                paired.summary.changed.len()
+            ),
+            notices: Vec::new(),
+            name: paired.peer.name,
+            platform: paired.peer.platform,
+            node_id: paired.peer.node_id,
+        })
+    }
+
+    /// Opens this device's endpoint and returns the loop that keeps it in sync — see
+    /// [`keep_in_sync`]. The caller makes sure nothing else on the device holds the endpoint.
+    ///
+    /// # Errors
+    ///
+    /// If the endpoint cannot be opened.
+    pub async fn keep_in_sync<F: Fn()>(
         &self,
         reach: Reach,
-        listener: Arc<dyn SyncListener>,
-    ) -> Result<Arc<SyncService>> {
-        if let Some(service) = self.running_service() {
-            return Ok(service);
-        }
-        let Some(lock) = take_lock(&self.directory)? else {
-            return Err(LumennaError::SyncElsewhere {
-                reason: "another process is syncing this device already".to_owned(),
-            });
-        };
-        let service = SyncService::start(self.shared(), reach, listener, lock)?;
-        *self.sync.service.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
-            Arc::downgrade(&service);
-        Ok(service)
+        changed: F,
+    ) -> Result<(SyncLoop, impl Future<Output = ()> + use<F>)> {
+        keep_in_sync(self.shared(), reach, changed).await
     }
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl Lumenna {
     /// Whether anything on this device holds the sync endpoint — this store's own service,
     /// or another process. Taking the lock to find out and letting go at once changes
@@ -408,7 +475,9 @@ impl Lumenna {
             .upgrade()
             .filter(|service| service.is_running())
     }
+}
 
+impl Lumenna {
     fn device_views(&self) -> Result<(NodeId, Vec<DeviceView>)> {
         let me = this_node(&self.shared())?;
         let (snapshot, peers) = self.with(|store| Ok((repaired(store), store.peers()?)))?;
@@ -456,14 +525,68 @@ impl Lumenna {
     }
 }
 
+/// A sync loop's handle: asks it for a round, or stops it. Dropping every handle stops it too.
+#[derive(Clone)]
+pub struct SyncLoop {
+    requests: tokio::sync::mpsc::Sender<tokio::sync::oneshot::Sender<SyncReport>>,
+    stop: Arc<tokio::sync::watch::Sender<bool>>,
+}
+
+impl SyncLoop {
+    /// Syncs with every paired device now, on the loop's endpoint.
+    ///
+    /// # Errors
+    ///
+    /// If the loop has stopped.
+    pub async fn sync_now(&self) -> Result<SyncReport> {
+        let (reply, answer) = tokio::sync::oneshot::channel();
+        self.requests.send(reply).await.map_err(|_| LumennaError::new("syncing has stopped"))?;
+        answer.await.map_err(|_| LumennaError::new("syncing stopped mid-round"))
+    }
+
+    /// Stops the loop, which closes the endpoint.
+    pub fn stop(&self) {
+        let _ = self.stop.send(true);
+    }
+
+    /// Whether it is still running.
+    #[must_use]
+    pub fn is_running(&self) -> bool {
+        !*self.stop.borrow() && !self.requests.is_closed()
+    }
+}
+
+/// Opens this device's endpoint on `store` and returns the loop that keeps it in sync, ready to
+/// run on whatever executor the caller has, with its handle.
+///
+/// The loop answers other devices, sends local changes on within a second or so, syncs with
+/// everyone every few minutes regardless, and runs a round whenever the handle asks. It calls
+/// `changed` when something arrives from another device. It ends when stopped, or when every
+/// handle is gone.
+///
+/// # Errors
+///
+/// If the endpoint cannot be opened.
+pub async fn keep_in_sync<F: Fn()>(
+    store: SharedStore,
+    reach: Reach,
+    changed: F,
+) -> Result<(SyncLoop, impl Future<Output = ()> + use<F>)> {
+    let node = Node::bind(Arc::clone(&store), reach.into()).await?;
+    let (requests, asked) = tokio::sync::mpsc::channel(8);
+    let (stop, stopping) = tokio::sync::watch::channel(false);
+    Ok((SyncLoop { requests, stop: Arc::new(stop) }, run(node, store, changed, asked, stopping)))
+}
+
 /// Keeps a device in sync while it runs: the daemon's loop, and the app's while it is open.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub struct SyncService {
-    requests: tokio::sync::mpsc::Sender<tokio::sync::oneshot::Sender<SyncReport>>,
-    stop: tokio::sync::watch::Sender<bool>,
+    handle: SyncLoop,
     thread: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl SyncService {
     /// Syncs with every paired device now, on the running endpoint.
@@ -473,7 +596,8 @@ impl SyncService {
     /// If the service has stopped.
     pub fn sync_now(&self) -> Result<SyncReport> {
         let (reply, answer) = tokio::sync::oneshot::channel();
-        self.requests
+        self.handle
+            .requests
             .blocking_send(reply)
             .map_err(|_| LumennaError::new("syncing has stopped"))?;
         answer.blocking_recv().map_err(|_| LumennaError::new("syncing stopped mid-round"))
@@ -482,7 +606,7 @@ impl SyncService {
     /// Stops: closes the endpoint and lets go of the lock. Waits for that to finish, so a
     /// service started straight afterwards can take the lock.
     pub fn stop(&self) {
-        let _ = self.stop.send(true);
+        self.handle.stop();
         let thread = self.thread.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
         if let Some(thread) = thread {
             let _ = thread.join();
@@ -492,7 +616,7 @@ impl SyncService {
     /// Whether it is still running.
     #[must_use]
     pub fn is_running(&self) -> bool {
-        !*self.stop.borrow()
+        self.handle.is_running()
             && self
                 .thread
                 .lock()
@@ -502,12 +626,14 @@ impl SyncService {
     }
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl Drop for SyncService {
     fn drop(&mut self) {
-        let _ = self.stop.send(true);
+        self.handle.stop();
     }
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl SyncService {
     fn start(
         store: SharedStore,
@@ -515,8 +641,6 @@ impl SyncService {
         listener: Arc<dyn SyncListener>,
         lock: File,
     ) -> Result<Arc<Self>> {
-        let (requests, asked) = tokio::sync::mpsc::channel(8);
-        let (stop, stopping) = tokio::sync::watch::channel(false);
         let (bound, started) = std::sync::mpsc::channel();
         let thread = std::thread::Builder::new()
             .name("lumenna-sync".to_owned())
@@ -530,38 +654,37 @@ impl SyncService {
                         return;
                     }
                 };
-                runtime.block_on(run(store, reach, listener, asked, stopping, bound));
+                runtime.block_on(async move {
+                    match keep_in_sync(store, reach, move || listener.changed()).await {
+                        Ok((handle, looping)) => {
+                            let _ = bound.send(Ok(handle));
+                            looping.await;
+                        }
+                        Err(error) => {
+                            let _ = bound.send(Err(error));
+                        }
+                    }
+                });
             })
             .map_err(|e| LumennaError::new(format!("could not start syncing: {e}")))?;
         // Opening the endpoint is the part that can fail; wait for it, so the caller hears.
-        started
+        let handle = started
             .recv()
             .map_err(|_| LumennaError::new("syncing stopped before it started"))??;
-        Ok(Arc::new(Self { requests, stop, thread: Mutex::new(Some(thread)) }))
+        Ok(Arc::new(Self { handle, thread: Mutex::new(Some(thread)) }))
     }
 }
 
 /// The loop: answer, send local changes on, catch up periodically, and do rounds on request.
 async fn run(
+    node: Node,
     store: SharedStore,
-    reach: Reach,
-    listener: Arc<dyn SyncListener>,
+    changed: impl Fn(),
     mut asked: tokio::sync::mpsc::Receiver<tokio::sync::oneshot::Sender<SyncReport>>,
     mut stopping: tokio::sync::watch::Receiver<bool>,
-    bound: std::sync::mpsc::Sender<Result<()>>,
 ) {
-    let node = match Node::bind(Arc::clone(&store), reach.into()).await {
-        Ok(node) => {
-            let _ = bound.send(Ok(()));
-            node
-        }
-        Err(error) => {
-            let _ = bound.send(Err(error.into()));
-            return;
-        }
-    };
     let serving = node.clone();
-    let server = tokio::spawn(async move { serving.serve().await });
+    let server = n0_future::task::spawn(async move { serving.serve().await });
     let arrivals = node.arrivals();
 
     // What the documents held after the last round. Anything different — written here, by
@@ -575,18 +698,28 @@ async fn run(
     let mut synced = None;
     let mut dirty = true;
     let mut last_round = Instant::now();
-    let mut tick = tokio::time::interval(TICK);
+    // After a round that missed a device: when to try again, and how long the wait was.
+    let mut retry: Option<(Instant, Duration)> = None;
+    let missed = |round: &SyncReport, retry: Option<(Instant, Duration)>| {
+        round.peers.iter().any(|peer| !peer.synced).then(|| {
+            let wait = retry.map_or(FIRST_RETRY, |(_, wait)| (wait * 2).min(FULL_ROUND));
+            (Instant::now() + wait, wait)
+        })
+    };
+    let mut tick = n0_future::time::interval(TICK);
     loop {
         tokio::select! {
             _ = tick.tick() => {
                 let now = version(&store);
-                if dirty || now != synced || last_round.elapsed() >= FULL_ROUND {
+                let due = retry.is_some_and(|(at, _)| Instant::now() >= at);
+                if dirty || now != synced || due || last_round.elapsed() >= FULL_ROUND {
                     let round = report(node.sync_all().await);
+                    retry = missed(&round, retry);
                     // What arrived from one peer goes on to the others next round; a round
                     // that brings nothing in ends the chain.
                     dirty = brought_anything(&round);
                     if dirty {
-                        listener.changed();
+                        changed();
                     }
                     synced = version(&store);
                     last_round = Instant::now();
@@ -594,17 +727,19 @@ async fn run(
             }
             () = arrivals.notified() => {
                 dirty = true;
-                listener.changed();
+                changed();
             }
             Some(reply) = asked.recv() => {
                 let round = report(node.sync_all().await);
+                retry = missed(&round, retry);
                 if brought_anything(&round) {
-                    listener.changed();
+                    changed();
                 }
                 synced = version(&store);
                 last_round = Instant::now();
                 let _ = reply.send(round);
             }
+            // Stopped, or every handle dropped.
             _ = stopping.changed() => break,
         }
     }
