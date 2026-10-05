@@ -98,8 +98,8 @@ pub struct App {
     /// Where focus was when the window was last active, to put it back on return.
     last_focus: Cell<HWND>,
     minute: Cell<i64>,
-    /// The store's version when the views last read it (`Lumenna::version`).
-    version: RefCell<String>,
+    /// What another process had written by the last tick (`Lumenna::outside_version`).
+    version: Cell<i64>,
     icon: HICON,
     taskbar_created: u32,
 }
@@ -238,6 +238,8 @@ impl App {
         a11y::make_live(status);
         let sidebar = Sidebar::create(panes[0]);
         let detail = Detail::create(panes[2]);
+        // Where the store is now, so the first tick does not reload for nothing.
+        let outside = core.lumenna.outside_version().unwrap_or(0);
         let app = Rc::new(Self {
             core,
             main,
@@ -252,7 +254,7 @@ impl App {
             deferred: RefCell::new(VecDeque::new()),
             last_focus: Cell::new(HWND::default()),
             minute: Cell::new(0),
-            version: RefCell::new(String::new()),
+            version: Cell::new(outside),
             icon,
             taskbar_created: tray::taskbar_created(),
         });
@@ -322,11 +324,6 @@ impl App {
     /// The store changed — here, in another process, or from another device. Everything
     /// showing it reads it again, keeping its selection.
     pub fn store_changed(&self) {
-        // The version read now, so the timer does not reload again for what this reload
-        // already shows — a change made here, or one a sync just brought.
-        if let Ok(version) = self.core.lumenna.version() {
-            *self.version.borrow_mut() = version;
-        }
         self.sidebar.reload(self);
         if let Some(content) = self.content() {
             content.view().reload(self);
@@ -861,13 +858,15 @@ impl App {
 
     /// Once a second: what another process wrote, and once a minute, the clock.
     ///
-    /// By the store's version, not `refresh`: `refresh` says whether that one call took
+    /// By `outside_version`, not `refresh`: `refresh` says whether that one call took
     /// anything in, and this app's own sync loop refreshes every tick on the same
     /// connection, as every operation does first — so whichever got there first after `lum`
-    /// wrote was told, and this was not. A version is the same whoever reads it.
+    /// wrote was told, and this was not. `outside_version` is the same whoever reads it, and
+    /// moves only for another process: this app's own edits redraw as they are made, and a
+    /// sync's arrivals come from its `SyncService`, so neither is reloaded twice.
     fn on_timer(&self) {
-        if let Ok(version) = self.core.lumenna.version()
-            && *self.version.borrow() != version
+        if let Ok(version) = self.core.lumenna.outside_version()
+            && self.version.replace(version) != version
         {
             self.store_changed();
         }
