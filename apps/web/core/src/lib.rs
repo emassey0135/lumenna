@@ -24,8 +24,18 @@ use wasm_bindgen::prelude::*;
 type Out<T> = Result<Ts<T>, JsError>;
 
 fn out<T: Tsify + Serialize>(result: lumenna_surface::Result<T>) -> Out<T> {
-    let value = result.map_err(error)?;
-    Ok(Ts::from_rust(&value)?)
+    js(&result.map_err(error)?)
+}
+
+/// A record as the plain object its TypeScript type describes.
+///
+/// Not `Ts::from_rust`, which takes the serialiser's settings from the outermost type alone:
+/// serde writes a `#[serde(flatten)]` record (`TaskShown`) as a map, and a map not marked
+/// otherwise becomes a JavaScript `Map` — whose fields nothing reads, and which the core then
+/// cannot read back. Here every map is an object, wherever it sits.
+fn js<T: Tsify + Serialize>(value: &T) -> Out<T> {
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+    Ok(Ts::new_unchecked(value.serialize(&serializer)?))
 }
 
 /// The core's own sentence, which is written to be read out.
@@ -186,7 +196,7 @@ pub fn task_fields(task: Ts<TaskDetail>) -> Out<TaskFields> {
 /// changed, so a concurrent edit on another device is not reverted.
 #[wasm_bindgen(js_name = taskEdit)]
 pub fn task_edit(task: Ts<TaskDetail>, fields: Ts<TaskFields>) -> Result<Option<Ts<TaskEdit>>, JsError> {
-    lumenna_surface::task_edit(task.to_rust()?, fields.to_rust()?).map(|edit| Ok(Ts::from_rust(&edit)?)).transpose()
+    lumenna_surface::task_edit(task.to_rust()?, fields.to_rust()?).map(|edit| js(&edit)).transpose()
 }
 
 // ---------------------------------------------------------------------------------------

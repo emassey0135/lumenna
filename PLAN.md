@@ -3354,8 +3354,8 @@ someone checking their day on a borrowed machine, not installing anything, with 
 likely to be cleared afterwards. That is flow 2, once, and it is the Bitwarden web vault
 experience — acceptable precisely because the alternative is no access at all.
 
-*Two wrinkles worth writing down.* The browser's device keypair lives in IndexedDB, so storage
-eviction loses the identity and forces re-pairing — which is a further argument for the
+*Two wrinkles worth writing down.* The browser's device keypair lives in the store (OPFS), so
+storage eviction loses the identity and forces re-pairing — which is a further argument for the
 persistent-storage grant below. And relay-only means bandwidth flows through someone's relay:
 n0's public ones by default, or your own, since relays are self-hostable and this is the one
 piece of infrastructure worth being deliberate about depending on.
@@ -3370,12 +3370,24 @@ than in JS shrinks the surface but does not remove it.
 that where someone signs in (§16.1) — but disclosure is the remedy, not a reduced feature set:
 restricting the UI cannot constrain a bundle that already holds the password.
 
-Build notes: `rusqlite` does not target `wasm32-unknown-unknown`, but the read model is
-optional (§8), so the browser build can simply scan the in-memory document and persist change
-chunks to IndexedDB. Automerge itself is proven on WASM — the JS library *is* this Rust
-implementation compiled for the browser. If the read model turns out to matter (full-text
-search is the likely trigger), SQLite's own WASM build backed by **OPFS** is the escape hatch;
-it is a different binding than `rusqlite`, not an impossibility.
+Build notes: **the browser runs the same store as every other client.** `rusqlite` 0.40
+targets `wasm32-unknown-unknown` through `sqlite-wasm-rs` (SQLite's own C, compiled to WASM),
+so the store crate — Automerge chunks in SQLite, the undo table, `local_state` — compiles
+unchanged, with no second persistence path to keep in step. The file lives in **OPFS** through
+the `sahpool` VFS (`sqlite-wasm-vfs`): sync access handles, which only a dedicated worker may
+use, so the whole core runs in one and the page reaches it by message. That is also the
+faster choice — OPFS writes in place, where an IndexedDB VFS rewrites pages as blobs — and
+both are evictable alike, so durability is the persistent-storage grant's job either way (below).
+`sahpool` holds one connection, so **one tab owns the store** (a Web Lock), and another is told
+where it is open. WAL is unavailable there and is skipped. *Fallback, if needed:* a browser
+without sync access handles in workers could take an IndexedDB VFS under the same `rusqlite`
+— a different VFS, not a different store. Automerge itself is proven on WASM — the JS library
+*is* this Rust implementation compiled for the browser.
+
+The UI is TypeScript and **React Aria Components** (Adobe): its tree, combobox, listbox and
+dialog are the ARIA patterns implemented and screen-reader-tested, which is the web's nearest
+thing to native controls. Records reach TypeScript typed from the surface's own Rust structs
+(`tsify`), as Swift's are by UniFFI, so reshaping a record breaks the web build too.
 
 #### Install it as a PWA
 

@@ -17,6 +17,8 @@ lumenna-surface = { path = "../../../crates/surface", features = ["wasm"] }
 lumenna-desktop = { path = "../../../crates/desktop", features = ["wasm"] }
 serde.workspace = true
 tsify = { version = "0.5", default-features = false, features = ["js"] }
+# Serialises every returned record the one way the TypeScript types describe: see `js` in lib.rs.
+serde-wasm-bindgen = "0.6"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 

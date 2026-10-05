@@ -2884,6 +2884,7 @@ dependencies = [
  "lumenna-desktop",
  "lumenna-surface",
  "serde",
+ "serde-wasm-bindgen",
  "sqlite-wasm-rs",
  "sqlite-wasm-vfs",
  "tsify",
