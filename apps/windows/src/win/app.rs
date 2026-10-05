@@ -46,7 +46,7 @@ use super::task_actions;
 use super::tasks::TaskList;
 use super::settings::{self, Page};
 use super::shortcuts;
-use crate::shortcut::Kind;
+use crate::shortcut::{self, Kind};
 use super::tray::{self, WM_SHOW_RUNNING, WM_TRAY};
 use super::view::{Metrics, View};
 use super::{a11y, core::sentence};
@@ -136,6 +136,9 @@ pub fn run() {
     };
     let Some(app) = App::create(core, &tray::class_name(&directory)) else { return };
     APP.with(|slot| *slot.borrow_mut() = Some(Rc::clone(&app)));
+    if arguments.no_shortcuts {
+        shortcuts::leave_to_another_copy();
+    }
     app.start(arguments.background);
     message_loop(&app);
     APP.with(|slot| slot.borrow_mut().take());
@@ -271,7 +274,7 @@ impl App {
         self.core.start_syncing(poster);
         self.core.back_up_if_due(poster);
         if !taken.is_empty() {
-            self.say(&format!("Another program already uses {}, so that shortcut does nothing here.", taken.join(" and ")));
+            self.say(&shortcut::taken(&taken, shortcuts::another_copy_open(self.main)));
         }
     }
 

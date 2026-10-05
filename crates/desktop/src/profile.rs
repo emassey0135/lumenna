@@ -10,6 +10,9 @@ pub struct Arguments {
     /// `--background`: start in the notification area without showing the window — how it is
     /// started at sign-in.
     pub background: bool,
+    /// `--no-shortcuts`: leave the shortcuts from anywhere to another copy — one open on
+    /// another profile, or the UI tests', which must not take the person's keys.
+    pub no_shortcuts: bool,
 }
 
 /// Reads the arguments after the program's name. Anything not understood is ignored, so an
@@ -20,6 +23,7 @@ pub fn arguments(args: impl IntoIterator<Item = String>) -> Arguments {
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--background" => parsed.background = true,
+            "--no-shortcuts" => parsed.no_shortcuts = true,
             "--profile" => parsed.profile = args.next().map(PathBuf::from),
             other => {
                 if let Some(path) = other.strip_prefix("--profile=") {
@@ -74,6 +78,12 @@ mod tests {
         let parsed = parse(&["--background", "--profile", "D:\\work"]);
         assert!(parsed.background);
         assert_eq!(parsed.profile, Some(PathBuf::from("D:\\work")));
+    }
+
+    #[test]
+    fn a_copy_can_leave_the_shortcuts_to_another() {
+        assert!(parse(&["--no-shortcuts"]).no_shortcuts);
+        assert!(!parse(&[]).no_shortcuts, "the shortcuts are taken unless asked not to");
     }
 
     #[test]

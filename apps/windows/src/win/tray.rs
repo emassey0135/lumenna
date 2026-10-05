@@ -60,13 +60,17 @@ pub fn taskbar_created() -> u32 {
     unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) }
 }
 
+/// What every main window's class begins with, whatever its profile — how one copy of
+/// Lumenna knows another is open.
+pub const CLASS_PREFIX: &str = "LumennaMain-";
+
 /// Held for as long as this is the profile's running instance.
 pub struct Instance(#[allow(dead_code)] HANDLE);
 
 /// The window class for this profile's main window, which is how a second instance finds
 /// the first. One per profile, so two profiles can run side by side.
 pub fn class_name(profile: &std::path::Path) -> String {
-    format!("LumennaMain-{:016x}", fnv(&profile.display().to_string().to_lowercase()))
+    format!("{CLASS_PREFIX}{:016x}", fnv(&profile.display().to_string().to_lowercase()))
 }
 
 /// Becomes the profile's running instance, or — if there already is one — shows it and
