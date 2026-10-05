@@ -534,8 +534,10 @@ Backups, Export and Import) work.
   Spans are bytes; GTK's positions are characters.
 - **Short lists have no scroller.** An empty list box is skipped by Tab; in a scroller, the
   scroller is a nameless stop, and a non-focusable scroller broke the Tab chain entirely.
-- **Another process's writes are noticed by `Lumenna::version`**, not `refresh`: the sync
-  loop refreshes every tick and would consume `refresh`'s answer.
+- **Another process's writes are noticed by `Lumenna::outside_version`**, as in every
+  client, not `refresh`: the sync loop refreshes every tick and would consume `refresh`'s
+  answer. The app's own edits redraw as they are made (`App::perform`), and a sync's
+  arrivals come through the `SyncListener`.
 - **Dialogs are futures** (`prompts.rs`): GTK 4 has no blocking `run`, so an action that
   asks first is `window::spawn`ed. While a popover menu is open, `spawn` waits for it to
   close, so the dialog is not mapped under a closing menu. Dialogs set their window's focus
@@ -557,8 +559,14 @@ Backups, Export and Import) work.
   `explore.py` prints focus, announcements and speech after each key, for finding out.
   A new window takes the headless compositor well over half a second to show, and keys sent
   before then go to the window behind: wait with `Session.wait_for_window`.
-- **Not built yet**: history, the tray (`ksni`), global shortcuts (the portal),
-  a `.desktop` file.
+- **Resident** (§16.2): closing hides; the tray item (`tray.rs`, StatusNotifierItem through
+  `ksni`) waits quietly for a host, since GNOME has none without an extension; the shortcuts
+  from anywhere go through the GlobalShortcuts portal (`shortcuts.rs`, `ashpd`), which asks
+  the person once and lets them choose the keys. The portal knows an unsandboxed app only by
+  an installed desktop entry (`data/`, installed by `install.sh`), so it is always asked
+  under the app's own identifier, whatever the profile; `--no-shortcuts` keeps a second
+  copy out of it. Opening at sign-in is an XDG autostart entry per profile.
+- **Not built yet**: history, reminders, an icon of its own.
 
 ### The core/store boundary
 

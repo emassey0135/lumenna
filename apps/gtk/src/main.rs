@@ -22,9 +22,11 @@ mod pairing;
 mod prompts;
 mod quick_add;
 mod settings;
+mod shortcuts;
 mod sidebar;
 mod task_actions;
 mod tasks;
+mod tray;
 mod tree;
 mod window;
 
@@ -35,7 +37,7 @@ use gtk::prelude::*;
 use lumenna_desktop::profile;
 
 /// The application identifier, which is also the name it owns on the session bus.
-const ID: &str = "io.github.emassey0135.Lumenna";
+pub const ID: &str = "io.github.emassey0135.Lumenna";
 
 /// The identifier for a profile: the usual one plain, any other tagged by its path, so each
 /// profile has one instance of its own and none answers for another's.
@@ -59,8 +61,8 @@ fn main() -> glib::ExitCode {
         return glib::ExitCode::FAILURE;
     };
     let application = gtk::Application::builder().application_id(application_id(&directory)).build();
-    let background = arguments.background;
-    application.connect_activate(move |application| window::activate(application, &directory, background));
+    let (background, shortcuts) = (arguments.background, !arguments.no_shortcuts);
+    application.connect_activate(move |application| window::activate(application, &directory, background, shortcuts));
     // GTK is given no arguments: they were ours, and were read above.
     let program = std::env::args().next().unwrap_or_else(|| "lumenna-gtk".to_owned());
     application.run_with_args(&[program])

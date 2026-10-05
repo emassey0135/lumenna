@@ -20,6 +20,8 @@ lumenna-surface = { path = "../../crates/surface", features = ["sync"] }
 gtk = { package = "gtk4", version = "0.11", features = ["v4_14"] }
 futures-channel = "0.3"
 futures-util = { version = "0.3", default-features = false }
+ashpd = { version = "0.13", default-features = false, features = ["async-io", "global_shortcuts", "gtk4"] }
+ksni = { version = "0.3", default-features = false, features = ["async-io"] }
 
 [lints]
 workspace = true
