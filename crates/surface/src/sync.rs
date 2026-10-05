@@ -263,7 +263,7 @@ impl Lumenna {
         }
         let Some(_lock) = take_lock(&self.directory)? else {
             return Err(LumennaError::SyncElsewhere {
-                message: "another process is syncing this device already".to_owned(),
+                reason: "another process is syncing this device already".to_owned(),
             });
         };
         let store = self.shared();
@@ -378,7 +378,7 @@ impl Lumenna {
         }
         let Some(lock) = take_lock(&self.directory)? else {
             return Err(LumennaError::SyncElsewhere {
-                message: "another process is syncing this device already".to_owned(),
+                reason: "another process is syncing this device already".to_owned(),
             });
         };
         let service = SyncService::start(self.shared(), reach, listener, lock)?;
