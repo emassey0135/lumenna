@@ -28,8 +28,9 @@
   "Each setting's name in words, and the values to choose from when there are few.")
 
 (define-derived-mode lumenna-settings-mode lumenna-list-mode "Lumenna Settings"
-  "Settings, one per line.  RET changes one.  The first six sync to every
-device; the backup settings are this device's alone (§3.12).
+  "Settings, one per line.  RET changes one.
+The first six sync to every device; the backup settings are this device's
+alone (§3.12).
 
 \\{lumenna-settings-mode-map}"
   (setq-local lumenna--activate #'lumenna--change-setting))
@@ -118,7 +119,7 @@ Times are typed as said, 9am or 14:30; core reads and checks every value."
   (interactive)
   (let ((device (plist-get (lumenna-row) :device)))
     (when (lumenna--true (plist-get device :this_device)) (user-error "That is this device"))
-    (when (yes-or-no-p (format "Stop syncing with %s? It keeps what it already has: this is for a device you replaced, not one that was stolen. "
+    (when (yes-or-no-p (format "%s keeps what it already has: this is for a device you replaced, not one that was stolen.  Stop syncing with it? "
                                (plist-get device :name)))
       (lumenna-write "device.unpair" :device (plist-get device :node_id)))))
 
@@ -203,6 +204,7 @@ The code to give the other device, or the words to compare."
   (lumenna-write "restore" :file (expand-file-name file)))
 
 (defun lumenna--settings-alist ()
+  "Every setting's key and value, as text."
   (mapcar (lambda (s) (cons (plist-get s :key) (plist-get s :value)))
           (append (plist-get (lumenna-call "config.get") :settings) nil)))
 

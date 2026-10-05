@@ -28,7 +28,8 @@ RET shows a task; ? shows every command.
   (setq-local lumenna--activate #'lumenna-task-show))
 
 (defun lumenna--task-listing (query title)
-  "The heading and rows for QUERY, said back as it was understood (§6.2)."
+  "The heading and rows for QUERY, said back as it was understood (§6.2).
+The heading starts with TITLE."
   (let* ((result (if (string-empty-p query)
                      (lumenna-call "task.list")
                    (lumenna-call "task.list" :query query)))
@@ -84,7 +85,8 @@ PREFIX starts a task added here."
   (when (derived-mode-p 'lumenna-task-mode) (quit-window)))
 
 (defun lumenna--choose-task (prompt &optional excluding)
-  "An open task chosen by title with completion, less EXCLUDING ids."
+  "An open task chosen by title with completion, asking PROMPT.
+Tasks whose ids are in EXCLUDING are not offered."
   (let* ((rows (seq-remove (lambda (row) (member (plist-get row :id) excluding))
                            (append (plist-get (lumenna-call "task.list") :rows) nil)))
          (choices (mapcar (lambda (row) (cons (lumenna-describe row) (plist-get row :id))) rows)))
@@ -104,6 +106,7 @@ PREFIX starts a task added here."
   (lumenna-write "task.move" :id (lumenna--task-id) :top t))
 
 (defun lumenna--project-names ()
+  "Every project's name."
   (mapcar (lambda (row) (plist-get row :title)) (append (plist-get (lumenna-call "project.list") :rows) nil)))
 
 (defun lumenna-task-move-to-project ()
@@ -198,7 +201,8 @@ empty clears a field."
   "C-c C-k" #'lumenna-notes-cancel)
 
 (define-minor-mode lumenna-notes-mode
-  "Editing a task's notes.  C-c C-c saves them; C-c C-k leaves them as they were."
+  "Editing a task's notes.
+\\<lumenna-notes-mode-map>\\[lumenna-notes-save] saves them; \\[lumenna-notes-cancel] leaves them as they were."
   :lighter " Notes")
 
 (defun lumenna--edit-notes (task)
@@ -238,6 +242,7 @@ empty clears a field."
   (setq-local lumenna--activate (lambda (row) (lumenna-task-edit (plist-get row :field)))))
 
 (defun lumenna--describe-field (row)
+  "A field ROW of a task's details, as its line."
   (format "%s: %s" (plist-get row :title) (plist-get row :value)))
 
 (defun lumenna--task-fields (task)
@@ -303,7 +308,7 @@ empty clears a field."
   "Erase the task at point and its history for good.  This cannot be undone (§9)."
   (interactive)
   (let ((row (lumenna-row)))
-    (when (yes-or-no-p (format "Erase %s and its history for good? This cannot be undone. "
+    (when (yes-or-no-p (format "%s and its history go for good, and this cannot be undone.  Erase it? "
                                (plist-get row :title)))
       (lumenna-write "task.erase" :id (plist-get row :id) :confirm t))))
 

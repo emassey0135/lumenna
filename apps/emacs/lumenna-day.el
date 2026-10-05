@@ -26,9 +26,9 @@
      " ")))
 
 (defun lumenna--sitting-status (sitting)
-  "SITTING's status with its planned length: \"planned for 45 minutes\" before
-it starts and \"45 minutes planned\" after, so they never read \"planned,
-planned\"."
+  "SITTING's status, with its planned length beside it.
+\"planned for 45 minutes\" before it starts and \"45 minutes planned\"
+after, so the two never read \"planned, planned\"."
   (let ((planned (plist-get sitting :planned_mins)) (status (plist-get sitting :status)))
     (cond ((not planned) (list status))
           ((equal status "planned") (list (format "planned for %s" (lumenna--length planned))))
@@ -100,6 +100,7 @@ a cancelled day back.  [ and ] move between days.
   (lumenna--go-to-now))
 
 (defun lumenna--day-listing ()
+  "The heading and rows of the day this buffer shows."
   (let ((plan (if lumenna--day (lumenna-call "plan" :date lumenna--day) (lumenna-call "plan"))))
     (setq lumenna--date (plist-get plan :date))
     (cons (format "%s, %s" (lumenna--spoken-day lumenna--date)
@@ -133,6 +134,7 @@ a cancelled day back.  [ and ] move between days.
   (message "%s" (buffer-substring-no-properties (point-min) (line-end-position 0))))
 
 (defun lumenna--day-shift (days)
+  "The date DAYS after the one this buffer shows, as YYYY-MM-DD."
   (let ((time (encode-time (append '(0 0 12) (reverse (mapcar #'string-to-number (split-string lumenna--date "-")))))))
     (format-time-string "%Y-%m-%d" (time-add time (* days 86400)))))
 
@@ -166,6 +168,7 @@ a cancelled day back.  [ and ] move between days.
     row))
 
 (defun lumenna--day-activate (row)
+  "RET on ROW: edit a block, open a sitting's task, put a cancelled day back."
   (pcase (plist-get row :role)
     ("block" (lumenna-day-edit-block))
     ("assignment" (lumenna-task-show row))
@@ -239,7 +242,8 @@ A repeating one asks: this day only, or every one (§4.3)."
                    :assignment (plist-get sitting :id))))
 
 (defun lumenna--read-length (prompt &optional current)
-  "Minutes for a sitting's planned length, or nil for none, read with PROMPT."
+  "Minutes for a sitting's planned length, or nil for none, read with PROMPT.
+CURRENT, the length it has now, is offered to edit."
   (let ((text (string-trim (read-string (format "%s, in minutes, empty for none: " prompt)
                                         (and current (number-to-string current))))))
     (cond ((string-empty-p text) nil)
@@ -287,6 +291,7 @@ The same blocks the phone and the Mac offer."
 ;;;; Blocks: the form, and every series
 
 (defun lumenna--read-kind (&optional current)
+  "A block's kind, chosen by name, starting from CURRENT."
   (let ((choices '(("Work, takes tasks" . "work") ("Break" . "break") ("Event" . "event"))))
     (cdr (assoc (completing-read "Kind: " choices nil t nil nil (car (rassoc (or current "work") choices)))
                 choices))))
@@ -315,7 +320,8 @@ The same blocks the phone and the Mac offer."
                                 (list :all t))))
 
 (defun lumenna--edit-block-fields (series title start minutes kind repeat scope)
-  "Ask for each field of a block, sending only what changed.
+  "Ask for each field of block SERIES, sending only what changed.
+TITLE, START, MINUTES and KIND are what it has now, offered to edit.
 REPEAT is nil where it cannot change -- one day of a series -- and `keep' for
 a rule this cannot show.  SCOPE is the plist saying which occurrences."
   (let* ((new-title (read-string "Name: " title))
@@ -335,9 +341,10 @@ a rule this cannot show.  SCOPE is the plist saying which occurrences."
       (message "Nothing changed"))))
 
 (defun lumenna-delete-block (series title repeats)
-  "Delete block SERIES, asking first."
+  "Delete block SERIES, called TITLE, asking first.
+REPEATS says it is a series, so every occurrence goes."
   (when (yes-or-no-p (if repeats
-                         (format "Delete %s? Every occurrence goes, not only one day; to skip a day, cancel it instead. " title)
+                         (format "Every occurrence of %s goes, not only one day; to skip a day, cancel it instead.  Delete it? " title)
                        (format "Delete %s? It goes to the trash with its assignments. " title)))
     (lumenna-write "block.rm" :id series)))
 

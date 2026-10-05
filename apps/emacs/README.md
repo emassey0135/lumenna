@@ -38,15 +38,20 @@ In every list:
 | RET | the line's main action: open a task, a project's tasks, change a setting |
 | TAB | fold or unfold the subtasks |
 | `g` | refresh |
-| `u`, `y` | undo, redo |
+| `u`, `y` | undo, redo — and Emacs's own `C-/` and `C-?` do the same here |
 | `?` or `h` | every key this list has, one per line; RET on one runs it, `q` goes back |
 | `L` | the places |
+| `q` | leave the list |
+
+`M-x imenu` goes to an item by name, with completion.
 
 Tasks: `a` add, `/` search, `c` done or not, `e` edit a field, `b` assign to a block, `m`
 move to a project, `s` make a subtask, `t` back to the top level, `w`/`W` wait for another
 task or stop, `d` to the trash. Adding is one line, written as you would say it (`call the
-bank tomorrow at 3pm p1 #Home @calls 15m`); TAB completes a project or label, and a line
-naming a project that does not exist is refused rather than added.
+bank tomorrow at 3pm p1 #Home @calls 15m`); TAB completes a project or label, `C-c C-r` says how
+the line is understood so far (the date, priority, project and labels, as the other apps
+show under the field), and a line naming a project that does not exist is refused rather
+than added. `C-c C-r` in a filter says what it means and how many tasks it matches.
 
 The day: `[` and `]` previous and next day, `.` today, `j` go to a day, `a` add a block.
 On a block, `e` edit, `i` assign a task, `x` cancel this day only, `o` put it back. On a

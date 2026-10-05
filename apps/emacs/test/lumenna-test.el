@@ -281,6 +281,43 @@
       (should (eq (current-buffer) list))
       (should (equal (lumenna-test--titles) nil)))))
 
+;;;; Emacs's own conventions
+
+(ert-deftest lumenna-the-minibuffer-reads-a-line-back-before-it-is-entered ()
+  (lumenna-test--with-store
+    (lumenna-write "task.add" :text "ring the bank p1")
+    (let (said)
+      (cl-letf (((symbol-function 'minibuffer-contents-no-properties) (lambda () "call mum tomorrow p2 @calls"))
+                (lumenna-announce-function (lambda (text _) (setq said text))))
+        (with-temp-buffer
+          (setq lumenna--syntax "quick-add")
+          (lumenna-read-back)
+          (should (string-match-p "\\`call mum, due tomorrow.*priority 2.*new label calls" said))
+          (cl-letf (((symbol-function 'minibuffer-contents-no-properties) (lambda () "p1")))
+            (setq lumenna--syntax "filter")
+            (lumenna-read-back)
+            (should (string-match-p "1 task" said))))))))
+
+(ert-deftest lumenna-a-list-takes-emacs-undo-as-the-stores-and-goes-to-items-by-imenu ()
+  (lumenna-test--with-store
+    (lumenna-write "task.add" :text "buy milk")
+    (lumenna-write "task.add" :text "post the letter")
+    (lumenna-tasks)
+    (should (eq (key-binding (kbd "C-/")) 'lumenna-undo))
+    (should (eq (command-remapping 'undo-redo) 'lumenna-redo))
+    (let ((index (funcall imenu-create-index-function)))
+      (goto-char (cdr (assoc "post the letter" index)))
+      (should (equal (lumenna-test--line) "post the letter")))
+    (call-interactively (key-binding (kbd "C-/")))
+    (should (equal (lumenna-test--titles) '("buy milk")))))
+
+(ert-deftest lumenna-a-lists-commands-are-marked-for-it-and-global-ones-are-not ()
+  (should (memq 'lumenna-tasks-mode (function-get 'lumenna-task-toggle-done 'command-modes)))
+  (should (memq 'lumenna-task-mode (function-get 'lumenna-task-toggle-done 'command-modes)))
+  (should (memq 'lumenna-list-mode (function-get 'lumenna-refresh 'command-modes)))
+  (dolist (global '(lumenna-undo lumenna-redo lumenna lumenna-search lumenna-add lumenna-today))
+    (should-not (function-get global 'command-modes))))
+
 ;;;; Settings and connecting
 
 (ert-deftest lumenna-a-time-setting-reads-and-takes-hours-and-minutes ()
