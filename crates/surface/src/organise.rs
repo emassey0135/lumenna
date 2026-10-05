@@ -32,6 +32,7 @@ impl Lumenna {
     ///
     /// If there is already a project by that name, or no parent by that one.
     pub fn add_project(&self, name: &str, parent: Option<String>) -> Result<Change> {
+        named("project", name)?;
         self.with(|store| {
             let snapshot = repaired(store);
             if snapshot.project_by_name(name).is_some() {
@@ -109,6 +110,7 @@ impl Lumenna {
     ///
     /// If there is no project by the first name, or already one by the second.
     pub fn rename_project(&self, name: &str, to: &str) -> Result<Change> {
+        named("project", to)?;
         self.with(|store| {
             let snapshot = repaired(store);
             let before = resolve::project(&snapshot, name)?.clone();
@@ -225,6 +227,7 @@ impl Lumenna {
     ///
     /// If there is already a label by that name.
     pub fn add_label(&self, name: &str) -> Result<Change> {
+        named("label", name)?;
         self.with(|store| {
             let snapshot = repaired(store);
             let name = name.trim_start_matches('@');
@@ -293,6 +296,7 @@ impl Lumenna {
     /// If there is no label by the first name, or already one by the second — which is what
     /// [`merge_labels`](Self::merge_labels) is for.
     pub fn rename_label(&self, name: &str, to: &str) -> Result<Change> {
+        named("label", to)?;
         self.with(|store| {
             let snapshot = repaired(store);
             let before = resolve::label(&snapshot, name)?.clone();
@@ -356,6 +360,7 @@ impl Lumenna {
     ///
     /// If the query cannot be read.
     pub fn add_filter(&self, name: &str, query: &str) -> Result<Change> {
+        named("saved filter", name)?;
         self.with(|store| {
             let snapshot = repaired(store);
             let expr = resolve::query(&snapshot, query)?;
@@ -532,6 +537,9 @@ impl Lumenna {
         rename: Option<String>,
         query: Option<String>,
     ) -> Result<Change> {
+        if let Some(to) = &rename {
+            named("saved filter", to)?;
+        }
         self.with(|store| {
             let snapshot = repaired(store);
             let before = live_filter(&snapshot, name)?.clone();
@@ -640,4 +648,12 @@ fn depth_of(snapshot: &Snapshot, project: &Project) -> u32 {
         current = snapshot.projects.get(&id).and_then(|p| p.parent_id);
     }
     depth
+}
+
+/// Refuses a blank name: nothing could be listed, said or typed to reach it.
+fn named(kind: &str, name: &str) -> Result<()> {
+    if name.trim().is_empty() {
+        return Err(LumennaError::new(format!("a {kind} needs a name")));
+    }
+    Ok(())
 }
