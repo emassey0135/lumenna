@@ -1,0 +1,27 @@
+[package]
+name = "lumenna-gtk"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Lumenna for Linux: GTK 4, linking the command surface directly (§16.3)."
+
+[[bin]]
+name = "lumenna-gtk"
+path = "src/main.rs"
+
+[dependencies]
+jiff.workspace = true
+lumenna-desktop = { path = "../../crates/desktop" }
+lumenna-surface = { path = "../../crates/surface", features = ["sync"] }
+# 4.14 for `gtk_accessible_announce`, which is how a change is said (§13). Ubuntu 24.04 and
+# Debian 13 ship it; nothing older is worth a second way of announcing.
+gtk = { package = "gtk4", version = "0.11", features = ["v4_14"] }
+futures-channel = "0.3"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

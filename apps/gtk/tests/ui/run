@@ -1,0 +1,13 @@
+#!/bin/bash
+# Runs the GTK app's UI tests in a session of their own (headless.sh), after building the app
+# and `lum`, which seeds each test's store. Arguments go to unittest: a test's name runs it alone.
+#
+#   apps/gtk/tests/ui/run
+#   apps/gtk/tests/ui/run test_tasks.TaskListTest.test_space_completes_a_task_and_says_so_from_the_row_focus_moved_to
+#   ORCA=1 apps/gtk/tests/ui/run    # with Orca running too, for harness.Session.speech()
+set -e
+here=$(cd "$(dirname "$0")" && pwd)
+cargo build --quiet --manifest-path "$here/../../../../Cargo.toml" -p lumenna-gtk -p lumenna-cli
+cd "$here"
+if [ $# -eq 0 ]; then set -- discover -p 'test_*.py'; fi
+exec dbus-run-session -- ./headless.sh python3 -m unittest "$@" 2> >(grep -vE '^(dbus-daemon|fusermount|discover_other|Gdk-Message|A connection to the bus)|xdg-desktop-portal|dbind-WARNING|^$|^\(' >&2)

@@ -38,6 +38,7 @@ apps/emacs/     the Emacs client, in Elisp, over `lum rpc` or the daemon's socke
 apps/apple/     the iOS and macOS apps over the generated bindings, Shared/ between them,
                 and build-core.sh.
 apps/windows/   the Win32 app, linking the surface directly.
+apps/gtk/       the Linux app, GTK 4, linking the surface directly; begun, not yet complete.
 ```
 
 The other GUI apps in §2's layout do not exist yet.
@@ -484,6 +485,49 @@ surface's (`task_edit`, below), as it is every client's.
   saw every control as an unnamed pane.
 - **Not built yet**: what no other client has either (history, reminders), and an icon of
   its own.
+
+### The GTK app
+
+`apps/gtk/` — Rust over `gtk4-rs`, linking `lumenna-surface` directly (§16.3), binary
+`lumenna-gtk`. Wording, the tree, places and the profile are `crates/desktop`'s, as Windows'
+are. Tasks (list, filter, details, quick add, task actions) work; Today and Blocks are
+placeholders.
+
+- **Every list is a `GtkListView` that says it is a tree** (`tree.rs`). §16.3's check came
+  out this way: `GtkTreeView` exposes *no rows* to AT-SPI in GTK 4; a plain list view with
+  `TreeExpander` reports a flat list ("3 of 60") with the level on an inner button, wrong for
+  leaves. Orca says levels only inside a tree and reads what has focus. So the view is built
+  with `AccessibleRole::Tree`, the list item is not focusable, and a `TreeExpander` built with
+  `AccessibleRole::TreeItem` is, given its level and position among its siblings in `bind`.
+  Left and Right are ours: GTK binds nothing to expand or collapse a list row.
+- **Orca does not say a tree item's checked state**, so a done task says "completed" in its
+  text (`speech::row(row, false)`).
+- **Focus into a row waits for the row's widget.** After a rebuild, or in a list just made,
+  the row has no widget until GTK lays the list out; `scroll_to(FOCUS)` then leaves focus on
+  whatever row holds the old place, and does not move focus into a list from outside at all.
+  `Tree::move_to` retries each frame until it lands, and a tree that had focus before a
+  rebuild still counts as having it. `App::say` waits behind it (`tree::when_settled`),
+  because Orca reads an announcement as a message and a later focus change cuts it off.
+- **Announcements are `gtk_accessible_announce`** on the status line (GTK 4.14), which Orca
+  presents as a message.
+- **Another process's writes are noticed by `Lumenna::version`**, not `refresh`: the sync
+  loop refreshes every tick and would consume `refresh`'s answer.
+- **Dialogs are futures** (`prompts.rs`): GTK 4 has no blocking `run`, so an action that
+  asks first is `window::spawn`ed.
+- **One instance per profile** through GApplication's bus name, tagged per profile
+  (`main.rs`); starting it again shows the window. Closing hides it (§16.2).
+- **First focus on an expandable row says "expanded" twice**: GTK creates a row's accessible
+  object on its first focus and reports its initial state as a change. Later visits say it
+  once.
+- **UI tests** (`tests/ui/`, Python): `apps/gtk/tests/ui/run` starts a private D-Bus session
+  with a headless mutter and the accessibility bus (`headless.sh`), presses real keys through
+  mutter's RemoteDesktop API, and reads what Orca would through AT-SPI. Nothing reaches the
+  desktop, its Orca included. `ORCA=1` runs Orca too (a copy of its launcher whose
+  single-instance check is narrowed to itself) and `Session.speech()` returns what it said.
+  `explore.py` prints focus, announcements and speech after each key, for finding out.
+- **Not built yet**: Today, Blocks, the sidebar's actions, settings, devices and pairing,
+  backup/export/import, history, the tray (`ksni`), global shortcuts (the portal),
+  completion, a `.desktop` file.
 
 ### The core/store boundary
 
