@@ -69,12 +69,13 @@ impl Detail {
         // Tab leaves the notes rather than being typed into them, or a keyboard user could
         // not get out (§6.4's rule, for a different field).
         let notes = gtk::TextView::builder().accepts_tab(false).wrap_mode(gtk::WrapMode::WordChar).build();
+        crate::prompts::leaves_on_tab(&notes);
         let waits = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::Browse).build();
         describe(&waits, "The tasks this one waits for. It is blocked until they are done.");
-        let add_wait = gtk::Button::builder().label("Add…").action_name("win.wait-for").build();
-        add_wait.update_property(&[gtk::accessible::Property::Label("Add something it waits for")]);
-        let stop_waiting = gtk::Button::builder().label("Stop Waiting").build();
-        stop_waiting.update_property(&[gtk::accessible::Property::Label("Stop waiting for the selected task")]);
+        // Said in full on the buttons themselves: GTK names a button by its text, whatever
+        // accessible label it is given.
+        let add_wait = gtk::Button::builder().label("Wait for Another Task…").action_name("win.wait-for").build();
+        let stop_waiting = gtk::Button::builder().label("Stop Waiting for the Selected Task").build();
         let state = gtk::Entry::builder().editable(false).build();
 
         let save = gtk::Button::with_mnemonic("_Save");
@@ -111,14 +112,11 @@ impl Detail {
             .build();
         grid.attach(&label("_Notes", &notes), 0, 8, 2, 1);
         grid.attach(&notes_scroll, 0, 9, 2, 1);
-        let waits_scroll = gtk::ScrolledWindow::builder()
-            .child(&waits)
-            .min_content_height(64)
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .has_frame(true)
-            .build();
+        // No scroller: an empty list in one is a Tab stop with nothing in it, while an empty
+        // list on its own is skipped.
+        waits.add_css_class("boxed-list");
         grid.attach(&label("_Waits for", &waits), 0, 10, 2, 1);
-        grid.attach(&waits_scroll, 0, 11, 2, 1);
+        grid.attach(&waits, 0, 11, 2, 1);
         grid.attach(&add_wait, 0, 12, 1, 1);
         grid.attach(&stop_waiting, 1, 12, 1, 1);
         let state_label = gtk::Label::builder().label("State").xalign(0.0).build();

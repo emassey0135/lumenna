@@ -148,6 +148,48 @@ pub fn focus_on(widget: &impl IsA<gtk::Widget>) {
     }
 }
 
+/// Gives Tab and Shift+Tab back from a text view, to move between fields: GTK keeps them in
+/// one even when it does not accept tabs, and a keyboard user could not get out (§6.4's rule).
+pub fn leaves_on_tab(view: &gtk::TextView) {
+    let keys = gtk::EventControllerKey::new();
+    keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let weak = view.downgrade();
+    keys.connect_key_pressed(move |_, key, _, modifiers| {
+        let Some(view) = weak.upgrade() else { return glib::Propagation::Proceed };
+        let direction = match key {
+            gdk::Key::Tab | gdk::Key::KP_Tab if !modifiers.contains(gdk::ModifierType::SHIFT_MASK) => {
+                gtk::DirectionType::TabForward
+            }
+            gdk::Key::Tab | gdk::Key::KP_Tab | gdk::Key::ISO_Left_Tab => gtk::DirectionType::TabBackward,
+            _ => return glib::Propagation::Proceed,
+        };
+        // A text view with focus keeps it when asked to move on, so it steps out of the focus
+        // chain while the window finds the next field.
+        if let Some(root) = view.root() {
+            view.set_focusable(false);
+            root.child_focus(direction);
+            view.set_focusable(true);
+        }
+        glib::Propagation::Stop
+    });
+    view.add_controller(keys);
+}
+
+/// Text to read and not change, which Tab reaches and leaves like a field: a read-only entry,
+/// which Orca reads whole, rather than a label, which named by the label above it is read as
+/// that name.
+pub fn read_only_text() -> gtk::Entry {
+    gtk::Entry::builder().editable(false).build()
+}
+
+/// A check box with a mnemonic. Named in so many words, since GTK leaves the underscore that
+/// marks the mnemonic in a check box's accessible name, and Orca reads it out.
+pub fn check(text: &str) -> gtk::CheckButton {
+    let check = gtk::CheckButton::with_mnemonic(text);
+    check.update_property(&[gtk::accessible::Property::Label(&text.replace('_', ""))]);
+    check
+}
+
 /// A label for `field`, with a mnemonic: the field is named by it.
 fn label_for(text: &str, field: &impl IsA<gtk::Widget>) -> gtk::Label {
     let label = gtk::Label::builder().label(text).use_underline(true).xalign(0.0).build();

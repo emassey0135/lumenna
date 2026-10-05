@@ -45,20 +45,9 @@ pub async fn run(parent: Option<&gtk::Window>, application: &gtk::Application, l
     let hint = "Such as: write the chapter tomorrow p1 #Work.";
     line.update_property(&[gtk::accessible::Property::Description(hint)]);
     let hint = gtk::Label::builder().label(hint).wrap(true).xalign(0.0).build();
-    let shown = gtk::TextView::builder()
-        .editable(false)
-        .cursor_visible(false)
-        .wrap_mode(gtk::WrapMode::WordChar)
-        .accepts_tab(false)
-        .build();
+    let shown = prompts::read_only_text();
     let shown_label = gtk::Label::builder().label("_Will add:").use_underline(true).xalign(0.0).build();
     shown_label.set_mnemonic_widget(Some(&shown));
-    let shown_scroll = gtk::ScrolledWindow::builder()
-        .child(&shown)
-        .min_content_height(64)
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .has_frame(true)
-        .build();
     let add = gtk::Button::with_mnemonic("_Add");
     add.add_css_class("suggested-action");
     let cancel = gtk::Button::with_mnemonic("_Cancel");
@@ -73,7 +62,7 @@ pub async fn run(parent: Option<&gtk::Window>, application: &gtk::Application, l
         .margin_start(12)
         .margin_end(12)
         .build();
-    for widget in [line_label.upcast_ref::<gtk::Widget>(), line.upcast_ref(), hint.upcast_ref(), shown_label.upcast_ref(), shown_scroll.upcast_ref(), buttons.upcast_ref()] {
+    for widget in [line_label.upcast_ref::<gtk::Widget>(), line.upcast_ref(), hint.upcast_ref(), shown_label.upcast_ref(), shown.upcast_ref(), buttons.upcast_ref()] {
         body.append(widget);
     }
     window.set_child(Some(&body));
@@ -85,7 +74,7 @@ pub async fn run(parent: Option<&gtk::Window>, application: &gtk::Application, l
         let add = add.clone();
         move |line: &gtk::Entry| {
             let text = line.text();
-            shown.buffer().set_text(&readback(&lumenna, &text));
+            shown.set_text(&readback(&lumenna, &text));
             add.set_sensitive(!text.trim().is_empty());
         }
     };

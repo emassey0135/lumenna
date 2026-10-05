@@ -2621,6 +2621,7 @@ name = "lumenna-gtk"
 version = "0.1.0"
 dependencies = [
  "futures-channel",
+ "futures-util",
  "gtk4",
  "jiff",
  "lumenna-desktop",

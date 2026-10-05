@@ -501,8 +501,9 @@ surface's (`task_edit`, below), as it is every client's.
 
 `apps/gtk/` — Rust over `gtk4-rs`, linking `lumenna-surface` directly (§16.3), binary
 `lumenna-gtk`. Wording, the tree, places and the profile are `crates/desktop`'s, as Windows'
-are. Tasks (list, filter, details, quick add, task actions), Today, Blocks and the sidebar's
-project, label and filter actions work.
+are. Tasks (list, filter, details, quick add, task actions), Today, Blocks, the sidebar's
+project, label and filter actions, and Settings (General, Planning, Devices with pairing,
+Backups, Export and Import) work.
 
 - **Every list is a `GtkListView` that says it is a tree** (`tree.rs`). §16.3's check came
   out this way: `GtkTreeView` exposes *no rows* to AT-SPI in GTK 4; a plain list view with
@@ -519,8 +520,17 @@ project, label and filter actions work.
   `Tree::move_to` retries each frame until it lands, and a tree that had focus before a
   rebuild still counts as having it. `App::say` waits behind it (`tree::when_settled`),
   because Orca reads an announcement as a message and a later focus change cuts it off.
-- **Announcements are `gtk_accessible_announce`** on the status line (GTK 4.14), which Orca
-  presents as a message.
+- **Announcements are `gtk_accessible_announce` from the window** (`window::announce`, GTK
+  4.14), which Orca presents as a message. Not from the status label that shows the text:
+  one from a label in Settings never arrived.
+- **GTK's accessible names need help in places.** A check box made with a mnemonic keeps the
+  underscore in its name (`prompts::check` names it); a button is named by its text whatever
+  accessible label it is given, so its text says it all; a label named by the label above it
+  reads as that name, so read-only text is a non-editable entry (`prompts::read_only_text`).
+- **A text view keeps Tab**, even not accepting tabs, and asked to move focus on it keeps it
+  too; `prompts::leaves_on_tab` steps it out of the focus chain while the window moves on.
+- **Short lists have no scroller.** An empty list box is skipped by Tab; in a scroller, the
+  scroller is a nameless stop, and a non-focusable scroller broke the Tab chain entirely.
 - **Another process's writes are noticed by `Lumenna::version`**, not `refresh`: the sync
   loop refreshes every tick and would consume `refresh`'s answer.
 - **Dialogs are futures** (`prompts.rs`): GTK 4 has no blocking `run`, so an action that
@@ -544,8 +554,7 @@ project, label and filter actions work.
   `explore.py` prints focus, announcements and speech after each key, for finding out.
   A new window takes the headless compositor well over half a second to show, and keys sent
   before then go to the window behind: wait with `Session.wait_for_window`.
-- **Not built yet**: settings, devices and pairing,
-  backup/export/import, history, the tray (`ksni`), global shortcuts (the portal),
+- **Not built yet**: history, the tray (`ksni`), global shortcuts (the portal),
   completion, a `.desktop` file.
 
 ### The core/store boundary

@@ -19,6 +19,7 @@ lumenna-surface = { path = "../../crates/surface", features = ["sync"] }
 # Debian 13 ship it; nothing older is worth a second way of announcing.
 gtk = { package = "gtk4", version = "0.11", features = ["v4_14"] }
 futures-channel = "0.3"
+futures-util = { version = "0.3", default-features = false }
 
 [lints]
 workspace = true
