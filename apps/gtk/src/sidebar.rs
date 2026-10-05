@@ -12,7 +12,7 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use lumenna_desktop::places::{self, Entry, Group, Kind, Place};
-use lumenna_surface::{Change, Direction, Lumenna, Result, Weight};
+use lumenna_surface::{Change, Direction, Lumenna, Result, parse_weight};
 
 use crate::prompts;
 use crate::tree::{Item, Tree};
@@ -217,9 +217,20 @@ impl Sidebar {
                 Command::Down => change(app, None, |l| l.reorder_project(name, Direction::Down)),
                 Command::Weight => {
                     let message = "How much this whole area matters now, roughly 0.5 to 2. Type inherit to take the parent's again.";
-                    if let Some(text) = prompts::ask(window, &format!("Weight of {name}"), "_Weight:", message, "1.0").await {
-                        let weight = text.trim().parse::<f32>().map_or(Weight::Inherit, |value| Weight::Value { value });
-                        change(app, None, |l| l.weigh_project(name, weight));
+                    let mut typed = "1.0".to_owned();
+                    // Read as the surface reads a weight; one that does not read is said, and
+                    // asked for again with what was typed, rather than taken as inherit.
+                    while let Some(text) = prompts::ask(window, &format!("Weight of {name}"), "_Weight:", message, &typed).await {
+                        match parse_weight(text.clone()) {
+                            Ok(weight) => {
+                                change(app, None, |l| l.weigh_project(name, weight));
+                                break;
+                            }
+                            Err(error) => {
+                                prompts::tell(window, &crate::core::sentence(&error)).await;
+                                typed = text;
+                            }
+                        }
                     }
                 }
                 Command::Archive => change(app, None, |l| l.archive_project(name)),

@@ -62,6 +62,25 @@ class SidebarTest(unittest.TestCase):
         self.assertEqual(self.session.active_window(), "Job – Lumenna")
         self.assertIn("'Job, 1 open task' level 2", self.session.focus())
 
+    def test_a_weight_that_does_not_read_is_refused_and_asked_again(self):
+        self.go_to("Work")
+        self.session.press("Menu")
+        self.session.press(*["Down"] * 5)
+        self.session.press("Return")
+        self.session.wait_for_window("Weight of Work")
+        self.session.press("Control+a")
+        self.session.type("1,5")
+        self.session.press("Return")
+        self.session.wait_for_window("")
+        self.session.press("Return")
+        self.session.wait_for_window("Weight of Work")
+        self.session.press("Control+a")
+        self.session.type("1.5")
+        self.session.press("Return", wait=1)
+        said = self.session.said()
+        self.assertEqual(len(said), 1, said)
+        self.assertIn("1.5", said[0])
+
     def test_delete_on_a_label_asks_first_and_cancel_is_the_default(self):
         self.go_to("calls")
         self.session.press("Delete")
