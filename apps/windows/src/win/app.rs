@@ -23,7 +23,8 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
 use windows::Win32::UI::Controls::{
-    ICC_STANDARD_CLASSES, ICC_TREEVIEW_CLASSES, INITCOMMONCONTROLSEX, InitCommonControlsEx, NM_RCLICK, NMHDR,
+    ICC_HOTKEY_CLASS, ICC_STANDARD_CLASSES, ICC_TAB_CLASSES, ICC_TREEVIEW_CLASSES, INITCOMMONCONTROLSEX,
+    InitCommonControlsEx, NM_RCLICK, NMHDR,
     WC_STATICW,
 };
 use windows::Win32::UI::HiDpi::{GetDpiForWindow, SystemParametersInfoForDpi};
@@ -41,7 +42,11 @@ use super::menu;
 use super::prompts;
 use super::quick_add;
 use super::sidebar::Sidebar;
+use super::task_actions;
 use super::tasks::TaskList;
+use super::settings::{self, Page};
+use super::shortcuts;
+use crate::shortcut::Kind;
 use super::tray::{self, WM_SHOW_RUNNING, WM_TRAY};
 use super::view::{Metrics, View};
 use super::{a11y, core::sentence};
@@ -112,11 +117,12 @@ pub fn run() {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let controls = INITCOMMONCONTROLSEX {
             dwSize: size_of::<INITCOMMONCONTROLSEX>() as u32,
-            dwICC: ICC_STANDARD_CLASSES | ICC_TREEVIEW_CLASSES,
+            dwICC: ICC_STANDARD_CLASSES | ICC_TREEVIEW_CLASSES | ICC_TAB_CLASSES | ICC_HOTKEY_CLASS,
         };
         let _ = InitCommonControlsEx(&controls);
     }
-    let Some(directory) = profile::directory() else {
+    let arguments = profile::arguments(std::env::args().skip(1));
+    let Some(directory) = profile::directory(arguments.profile) else {
         prompts::fail(HWND::default(), "Lumenna cannot find a folder for its data. Set LUMENNA_PROFILE to one.");
         return;
     };
@@ -130,7 +136,7 @@ pub fn run() {
     };
     let Some(app) = App::create(core, &tray::class_name(&directory)) else { return };
     APP.with(|slot| *slot.borrow_mut() = Some(Rc::clone(&app)));
-    app.start();
+    app.start(arguments.background);
     message_loop(&app);
     APP.with(|slot| slot.borrow_mut().take());
 }
@@ -248,16 +254,19 @@ impl App {
         Some(app)
     }
 
-    /// Shows the window on Today, and starts what runs beside it.
-    fn start(&self) {
+    /// Shows the window on Today — unless started in the background, at sign-in, when it
+    /// waits in the notification area — and starts what runs beside it.
+    fn start(&self, background: bool) {
         self.sidebar.reload(self);
         self.go(Place::Today, true);
         unsafe {
-            let _ = ShowWindow(self.main, SW_SHOWDEFAULT);
+            if !background {
+                let _ = ShowWindow(self.main, SW_SHOWDEFAULT);
+            }
             let _ = SetTimer(Some(self.main), TIMER_REFRESH, 1000, None);
         }
         tray::add_icon(self.main, self.icon);
-        let taken = tray::register_shortcuts(self.main);
+        let taken = shortcuts::register_all(self.main);
         let poster = Poster::new(self.main);
         self.core.start_syncing(poster);
         self.core.back_up_if_due(poster);
@@ -538,7 +547,7 @@ impl App {
         unsafe {
             let _ = KillTimer(Some(self.main), TIMER_REFRESH);
         }
-        tray::unregister_shortcuts(self.main);
+        shortcuts::unregister_all(self.main);
         tray::remove_icon(self.main);
         self.core.stop_syncing();
         unsafe {
@@ -636,6 +645,14 @@ impl App {
                 Ok(done) => self.say(&speech::sentence(&speech::announcement(&done.announcement, &done.notices))),
                 Err(error) => self.fail(&sentence(&error)),
             },
+            menu::QUICK_ADD_ANYWHERE => self.quick_add(true),
+            menu::SETTINGS => settings::show(self, Page::General),
+            menu::EXPORT_IMPORT => settings::show(self, Page::Export),
+            menu::RESTORE_BACKUP => {
+                if let Some(said) = settings::import(self, self.main, "Restore From a Backup", &settings::BACKUPS) {
+                    self.say(&said);
+                }
+            }
             menu::CLOSE_WINDOW => self.hide_window(),
             menu::EXIT => self.exit(),
 
@@ -677,39 +694,20 @@ impl App {
             menu::NEXT_PANE => self.move_pane(1),
             menu::PREVIOUS_PANE => self.move_pane(-1),
 
-            menu::MARK_DONE => {
-                if controls::within(self.panes[2], controls::focused()) {
-                    self.detail.toggle_done(self);
-                } else if let Some(list) = self.task_list() {
-                    list.mark_selected_done(self);
-                } else if self.task_in_hand().is_some() {
-                    self.detail.toggle_done(self);
-                }
-            }
             menu::OPEN_TASK => {
                 if self.task_in_hand().is_some() {
                     self.open_detail();
                 }
             }
             menu::SAVE_TASK => self.detail.save(self),
-            menu::MOVE_TO_PROJECT => {
-                if let Some(list) = self.task_list() {
-                    list.move_selected_to_project(self);
+            command if task_actions::handles(command) => {
+                // The trash has its own two commands; a trashed task takes none of these.
+                if self.task_list().is_some_and(|list| list.is_trash()) {
+                    return;
                 }
-            }
-            menu::MAKE_SUBTASK => {
-                if let Some(list) = self.task_list() {
-                    list.make_selected_subtask(self);
-                }
-            }
-            menu::MOVE_TO_TOP => {
-                if let Some(list) = self.task_list() {
-                    list.move_selected_to_top(self);
-                }
-            }
-            menu::TRASH_TASK => {
-                if let Some(list) = self.task_list() {
-                    list.trash_selected(self);
+                match self.task_in_hand() {
+                    Some(id) => task_actions::run(self, command, &id),
+                    None => self.say("No task is selected"),
                 }
             }
             menu::RESTORE_TASK => {
@@ -925,10 +923,10 @@ unsafe extern "system" fn main_procedure(hwnd: HWND, message: u32, wparam: WPARA
                     action(&app);
                 }
             }
-            WM_HOTKEY => match wparam.0 as i32 {
-                tray::HOTKEY_SHOW => app.show_window(),
-                tray::HOTKEY_QUICK_ADD => app.quick_add(true),
-                _ => {}
+            WM_HOTKEY => match shortcuts::kind_of(wparam.0 as i32) {
+                Some(Kind::Show) => app.show_window(),
+                Some(Kind::QuickAdd) => app.quick_add(true),
+                None => {}
             },
             WM_TRAY => app.on_tray(wparam, lparam),
             WM_SHOW_RUNNING => app.show_window(),

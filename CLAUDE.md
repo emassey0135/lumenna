@@ -35,7 +35,7 @@ apps/btspeak/   the BTSpeak app, in Python, over `lum rpc`.
 apps/emacs/     the Emacs client, in Elisp, over `lum rpc` or the daemon's socket.
 apps/apple/     the iOS and macOS apps over the generated bindings, Shared/ between them,
                 and build-core.sh.
-apps/windows/   the Win32 app, linking the surface directly; begun, not yet complete.
+apps/windows/   the Win32 app, linking the surface directly.
 ```
 
 The other GUI apps in §2's layout do not exist yet.
@@ -403,10 +403,12 @@ Section titles are `FormParts.heading`, a header to VoiceOver's heading commands
 ### The Windows app
 
 `apps/windows/` — Rust over `windows-rs`, linking `lumenna-surface` directly (§16.4: no FFI),
-binary `lumenna.exe`. Everything Win32 is in `src/win/` behind `cfg(windows)`; how rows are
-worded (`speech.rs`), flat rows into a tree (`outline.rs`) and the sidebar's places
-(`places.rs`) build and are tested on every platform. The task form's diff is the surface's
-(`task_edit`, below), as it is every client's.
+binary `lumenna.exe`, at parity with the Mac app. Everything Win32 is in `src/win/` behind
+`cfg(windows)`; how rows are worded (`speech.rs`), flat rows into a tree (`outline.rs`), the
+sidebar's places (`places.rs`), the week's work blocks (`choices.rs`), shortcuts
+(`shortcut.rs`), device and export wording (`devices.rs`) and the command line
+(`profile.rs`) build and are tested on every platform. The task form's diff is the
+surface's (`task_edit`, below), as it is every client's.
 
 - **Building on ARM64 Windows needs clang on `PATH`** for `ring` (under Iroh's TLS). Visual
   Studio ships one: `VC\Tools\Llvm\ARM64\bin`. Nothing else is needed — the manifest
@@ -414,11 +416,15 @@ worded (`speech.rs`), flat rows into a tree (`outline.rs`) and the sidebar's pla
   with no `.rc` file.
 - **Stock controls only.** Every list is a `SysTreeView32` (`win/tree.rs`), so level,
   position, set size, expansion and checkboxes are the control's to report; an item's text is
-  the row's components joined, with exactly those left out. Dialogs are in-memory templates
-  run by the dialog manager (`win/dialog.rs`).
+  the row's components joined, with exactly those left out. Dialogs and Settings' property
+  sheet are in-memory templates run by the dialog manager (`win/dialog.rs`); the file
+  dialogs are the shell's own (`win/system.rs`).
 - **Names and the live region go through Dynamic Annotation** (`IAccPropServices`,
   `win/a11y.rs`), never a provider of our own. The status line is a polite live region:
-  `EVENT_OBJECT_LIVEREGIONCHANGED` after setting its text is how a change is announced.
+  `EVENT_OBJECT_LIVEREGIONCHANGED` after setting its text is how a change is announced. A
+  dialog in front hides it, so each settings page and the pairing dialog has its own.
+- **An empty static is named after the label made just before it**, so a page's status line
+  is made first (placed at the bottom) — or it would read the page's footer twice.
 - **A reload updates a tree in place when its rows are the same ones** (same keys, same
   order), so the one-second refresh and arriving syncs do not make the screen reader read
   the focused row again. Otherwise it rebuilds, and the selection goes back to the same key
@@ -426,6 +432,9 @@ worded (`speech.rs`), flat rows into a tree (`outline.rs`) and the sidebar's pla
 - **Nothing that rebuilds a tree runs inside one of its notifications.** Space, Delete and
   double-click go through `App::defer` (a posted `WM_DEFERRED`). `Tree::busy` marks
   notifications sent by a refill, which the views ignore.
+- **What can be done to a task is in one place** (`win/task_actions.rs`): the list's context
+  menu, the Task menu and the details pane's buttons, acting on the task in hand — the list's,
+  a sitting's on the day, or the details' when focus is there — as the Mac's `TaskActions`.
 - **IsDialogMessage runs over the whole main window**, with the panes `WS_EX_CONTROLPARENT`,
   so Tab, mnemonics, Enter (`IDOK`) and Escape (`IDCANCEL`) work everywhere; menu command
   ids are never 1 or 2 for that reason. Field mnemonics avoid the menu bar's letters (F E V
@@ -434,8 +443,16 @@ worded (`speech.rs`), flat rows into a tree (`outline.rs`) and the sidebar's pla
 - **A tree view passes a keyboard context menu up altered**: `WM_CONTEXTMENU` arrives naming
   the pane, at (−2, −2). So a request from a pane is taken as from the keyboard, for what has
   focus there, and right-clicks are handled from `NM_RCLICK` instead.
+- **Never disable the control that has focus** without moving focus first: it leaves focus
+  nowhere (found in the pairing dialog).
 - **The Notes field gives Tab and Escape back** (`WM_GETDLGCODE` in `detail.rs`), and panes
   ignore `WM_CLOSE`, which a multi-line edit sends its parent on Escape.
+- **Settings apply as they are made**, as the Mac's do (a text field when it is left, or the
+  sheet closes), so the sheet has one button, Close. The global shortcuts and opening at
+  sign-in are this PC's: `HKCU\Software\Lumenna\Shortcuts` (0 is off) and the Run key,
+  which starts it with `--background` (no window) and `--profile` for a profile not the
+  usual one. Shortcuts are unregistered while new keys are chosen, so pressing the old ones
+  reaches the hotkey control.
 - **Resident, as the Mac app is**: closing hides; the tray icon, Control+Alt+Shift+L (show)
   and Control+Alt+Shift+K (quick add from anywhere) bring it back; starting it again shows
   the running instance (a mutex and window class named from the profile path). It shares
@@ -443,15 +460,20 @@ worded (`speech.rs`), flat rows into a tree (`outline.rs`) and the sidebar's pla
   since the sync endpoint listens.
 - **Completion is a popup menu** on Down or Ctrl+Space in the filter and quick-add fields —
   a stand-in for §6.4's genuine combobox, which is still to build.
-- **`examples/inspect.rs` reads the window through native UI Automation**, as NVDA and
-  Narrator do: `cargo run -p lumenna-windows --example inspect -- Lumenna`. `--post keys…`
-  drives it through its own queue — which works with the window behind others and is not
-  eaten by a screen reader's keyboard hook — and reports focus and the status line after
-  each key. The managed `System.Windows.Automation` in Windows PowerShell is no substitute:
-  x64 under emulation, it saw every control as an unnamed pane.
-- **Not built yet**: settings, devices and pairing, backup/export/import pages, history,
-  reminders, dependencies in the task form, block assignment from the task side, the
-  combobox completion, a real icon, and changeable global shortcuts.
+- **UI tests** (`tests/ui.rs`) start the real app on a store of their own, drive it through
+  its message queue and assert on native UI Automation — what NVDA and Narrator are given.
+  They open windows and take the foreground, so they are ignored by default and take turns:
+  `cargo test -p lumenna-windows --test ui -- --ignored` (about 40 seconds). A posted key
+  needs the app active and not minimized; `Automation::activate` sees to both.
+- **`examples/inspect.rs`** is the same automation by hand: `cargo run -p lumenna-windows
+  --example inspect -- "- Lumenna"` prints the tree; `--post` takes steps (keys, `text:`,
+  `cmd:<menu id>` for a Ctrl shortcut, `context`, `select:Name`, `invoke:Name`, `dump`) and
+  reports focus and the status line after each. Match `- Lumenna`, not `Lumenna`: a terminal
+  or folder named after the checkout matches that too. The managed `System.Windows.Automation`
+  in Windows PowerShell is no substitute: x64 under emulation, it saw every control as an
+  unnamed pane.
+- **Not built yet**: what no other client has either (history, reminders), the combobox
+  completion, and an icon of its own.
 
 ### The core/store boundary
 

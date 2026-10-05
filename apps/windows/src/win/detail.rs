@@ -2,7 +2,8 @@
 //!
 //! Labelled stock fields: a static label before each control is what Windows names the
 //! control by, and its mnemonic is the field's Alt shortcut. What each field takes is its
-//! accessible description. Saving sends only the fields that changed (`form.rs`).
+//! accessible description. Saving sends only the fields that changed (the surface's
+//! `task_edit`), and the buttons are the Task menu's own actions (`task_actions.rs`).
 //!
 //! The fields follow the store while nobody is editing them: a change from another device or
 //! another process refills them, unless they hold typing not yet saved, which it would lose.
@@ -12,14 +13,15 @@ use std::cell::RefCell;
 use lumenna_surface::{TaskDetail, TaskFields, task_edit, task_fields};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::SystemServices::{SS_CENTER, SS_NOPREFIX};
-use windows::Win32::UI::Controls::{WC_BUTTONW, WC_COMBOBOXW, WC_EDITW, WC_STATICW};
+use windows::Win32::UI::Controls::{WC_BUTTONW, WC_COMBOBOXW, WC_EDITW, WC_LISTBOXW, WC_STATICW};
 use windows::Win32::UI::Input::KeyboardAndMouse::{VK_ESCAPE, VK_TAB};
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     BN_CLICKED, BS_PUSHBUTTON, CB_ADDSTRING, CB_FINDSTRINGEXACT, CB_GETCURSEL, CB_GETLBTEXT,
     CB_GETLBTEXTLEN, CB_RESETCONTENT, CB_SETCURSEL, CBS_DROPDOWNLIST, DLGC_WANTALLKEYS,
     DLGC_WANTMESSAGE, DLGC_WANTTAB, ES_AUTOHSCROLL, ES_AUTOVSCROLL, ES_MULTILINE, ES_READONLY,
-    ES_WANTRETURN, MSG, WM_GETDLGCODE, WM_KEYDOWN, WM_NCDESTROY, WS_EX_CLIENTEDGE, WS_TABSTOP,
+    ES_WANTRETURN, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBS_NOINTEGRALHEIGHT,
+    LBS_NOTIFY, MSG, WM_GETDLGCODE, WM_KEYDOWN, WM_NCDESTROY, WS_EX_CLIENTEDGE, WS_TABSTOP,
     WS_VSCROLL,
 };
 use windows::core::HSTRING;
@@ -28,6 +30,7 @@ use super::a11y;
 use super::app::App;
 use super::controls::{self, rect};
 use super::view::Metrics;
+use super::{menu, task_actions};
 
 const TITLE: u16 = 300;
 const DUE: u16 = 301;
@@ -37,17 +40,34 @@ const ESTIMATE: u16 = 304;
 const PROJECT: u16 = 305;
 const LABELS: u16 = 306;
 const NOTES: u16 = 307;
-const STATE: u16 = 308;
-const SAVE: u16 = 309;
-const DONE: u16 = 310;
+const WAITS: u16 = 308;
+const STATE: u16 = 309;
 
 const PRIORITIES: [&str; 4] = ["Priority 1, highest", "Priority 2", "Priority 3", "Priority 4, none"];
 
-/// A field: its label, its control, and how many lines tall the control is.
+/// Where a field sits: across the pane, or in one of its two columns.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Column {
+    Full,
+    Left,
+    Right,
+}
+
+/// A field: its label, its control, where it sits, and how many lines tall it is.
 struct Field {
     label: HWND,
     control: HWND,
+    column: Column,
     lines: i32,
+}
+
+/// What a button does: saving, or one of the task's actions as the Task menu has them.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Action {
+    Save,
+    Command(u16),
+    AddWait,
+    StopWaiting,
 }
 
 pub struct Detail {
@@ -61,9 +81,12 @@ pub struct Detail {
     project: HWND,
     labels: HWND,
     notes: HWND,
+    waits: HWND,
+    /// "Add…" and "Stop Waiting", under the list of what it waits for.
+    wait_buttons: Vec<(HWND, Action)>,
     state: HWND,
-    save: HWND,
-    done: HWND,
+    /// Save, Mark Done and the rest, in rows of three.
+    buttons: Vec<(HWND, Action)>,
     shown: RefCell<Option<TaskDetail>>,
 }
 
@@ -71,28 +94,44 @@ impl Detail {
     pub fn create(pane: HWND) -> Self {
         let placeholder = controls::create(pane, WC_STATICW, "No task selected", SS_CENTER.0 | SS_NOPREFIX.0, 0, 0);
         let mut fields = Vec::new();
-        let mut field = |label: &str, class, style: u32, id: u16, lines: i32, description: &str| {
+        let mut field = |label: &str, class, style: u32, id: u16, column: Column, lines: i32, description: &str| {
             let label = controls::create(pane, WC_STATICW, label, 0, 0, 0);
             let control = controls::create(pane, class, "", style | WS_TABSTOP.0, WS_EX_CLIENTEDGE.0, id);
             if !description.is_empty() {
                 a11y::set_description(control, description);
             }
-            fields.push(Field { label, control, lines });
+            fields.push(Field { label, control, column, lines });
             control
         };
         let line = ES_AUTOHSCROLL as u32;
-        let title = field("T&itle", WC_EDITW, line, TITLE, 1, "");
-        let due = field("D&ue", WC_EDITW, line, DUE, 1, "A date, such as tomorrow or next Friday. Empty for none. A new date keeps how it repeats.");
-        let repeat = field("Re&peats", WC_EDITW, line, REPEAT, 1, "Such as every Monday, or every! 2 weeks to count from when it is done. Empty for no repetition.");
-        let priority = field("Pri&ority", WC_COMBOBOXW, CBS_DROPDOWNLIST as u32 | WS_VSCROLL.0, PRIORITY, 1, "");
-        let estimate = field("Esti&mate", WC_EDITW, line, ESTIMATE, 1, "Such as 45m or 1h30m. Empty for none.");
-        let project = field("Pro&ject", WC_COMBOBOXW, CBS_DROPDOWNLIST as u32 | WS_VSCROLL.0, PROJECT, 1, "");
-        let labels = field("&Labels", WC_EDITW, line, LABELS, 1, "Names separated by commas. A new name becomes a label.");
+        let list = CBS_DROPDOWNLIST as u32 | WS_VSCROLL.0;
+        // Made in reading order, which is also Tab's.
+        let title = field("T&itle", WC_EDITW, line, TITLE, Column::Full, 1, "");
+        let due = field("D&ue", WC_EDITW, line, DUE, Column::Left, 1, "A date, such as tomorrow or next Friday. Empty for none. A new date keeps how it repeats.");
+        let repeat = field("Re&peats", WC_EDITW, line, REPEAT, Column::Right, 1, "Such as every Monday, or every! 2 weeks to count from when it is done. Empty for no repetition.");
+        let priority = field("Pri&ority", WC_COMBOBOXW, list, PRIORITY, Column::Left, 1, "");
+        let estimate = field("Esti&mate", WC_EDITW, line, ESTIMATE, Column::Right, 1, "Such as 45m or 1h30m. Empty for none.");
+        let project = field("Pro&ject", WC_COMBOBOXW, list, PROJECT, Column::Left, 1, "");
+        let labels = field("&Labels", WC_EDITW, line, LABELS, Column::Right, 1, "Names separated by commas. A new name becomes a label.");
         let multiline = (ES_MULTILINE | ES_WANTRETURN | ES_AUTOVSCROLL) as u32 | WS_VSCROLL.0;
-        let notes = field("&Notes", WC_EDITW, multiline, NOTES, 5, "");
-        let state = field("State", WC_EDITW, line | ES_READONLY as u32, STATE, 1, "");
-        let save = controls::create(pane, WC_BUTTONW, "&Save", BS_PUSHBUTTON as u32 | WS_TABSTOP.0, 0, SAVE);
-        let done = controls::create(pane, WC_BUTTONW, "Mark Done", BS_PUSHBUTTON as u32 | WS_TABSTOP.0, 0, DONE);
+        let notes = field("&Notes", WC_EDITW, multiline, NOTES, Column::Full, 4, "");
+        let waits_style = (LBS_NOTIFY | LBS_NOINTEGRALHEIGHT) as u32 | WS_VSCROLL.0;
+        let waits = field("&Waits for", WC_LISTBOXW, waits_style, WAITS, Column::Full, 3, "The tasks this one waits for. It is blocked until they are done.");
+        let button = |text: &str, action: Action| {
+            (controls::create(pane, WC_BUTTONW, text, BS_PUSHBUTTON as u32 | WS_TABSTOP.0, 0, 0), action)
+        };
+        let wait_buttons = vec![button("Add...", Action::AddWait), button("Stop Waiting", Action::StopWaiting)];
+        a11y::set_name(wait_buttons[0].0, "Add something it waits for");
+        a11y::set_name(wait_buttons[1].0, "Stop waiting for the selected task");
+        let state = field("State", WC_EDITW, line | ES_READONLY as u32, STATE, Column::Full, 1, "");
+        let buttons = vec![
+            button("&Save", Action::Save),
+            button("Mark Done", Action::Command(menu::MARK_DONE)),
+            button("Put in a Block...", Action::Command(menu::PUT_IN_BLOCK)),
+            button("Make Subtask Of...", Action::Command(menu::MAKE_SUBTASK)),
+            button("Move to Top Level", Action::Command(menu::MOVE_TO_TOP)),
+            button("Move to Trash", Action::Command(menu::TRASH_TASK)),
+        ];
 
         for text in PRIORITIES {
             let text = HSTRING::from(text);
@@ -112,9 +151,10 @@ impl Detail {
             project,
             labels,
             notes,
+            waits,
+            wait_buttons,
             state,
-            save,
-            done,
+            buttons,
             shown: RefCell::new(None),
         };
         detail.fill(None);
@@ -165,8 +205,9 @@ impl Detail {
             controls::show(field.label, visible);
             controls::show(field.control, visible);
         }
-        controls::show(self.save, visible);
-        controls::show(self.done, visible);
+        for (button, _) in self.wait_buttons.iter().chain(&self.buttons) {
+            controls::show(*button, visible);
+        }
         if let Some(task) = &task {
             let fields = task_fields(task.clone());
             controls::set_text(self.title, &fields.title);
@@ -178,11 +219,25 @@ impl Detail {
             controls::set_text(self.labels, &fields.labels);
             // An edit control's lines end in CR LF.
             controls::set_text(self.notes, &fields.notes.replace("\r\n", "\n").replace('\n', "\r\n"));
-            let states: Vec<&str> = task.state.iter().map(String::as_str).filter(|s| *s != "ready").collect();
-            let state = if states.is_empty() { "open".to_owned() } else { states.join(", ") };
-            controls::set_text(self.state, &state);
+            controls::send(self.waits, LB_RESETCONTENT, 0, 0);
+            for other in &task.depends {
+                let text = HSTRING::from(other.title.as_str());
+                controls::send(self.waits, LB_ADDSTRING, 0, text.as_ptr() as isize);
+            }
+            controls::send(self.waits, LB_SETCURSEL, 0, 0);
+            controls::enable(self.wait_buttons[1].0, !task.depends.is_empty());
+            controls::set_text(self.state, &state_text(task));
             let completed = task.state.iter().any(|s| s == "completed");
-            controls::set_text(self.done, if completed { "Mark Not Done" } else { "Mark Done" });
+            for (button, action) in &self.buttons {
+                match action {
+                    Action::Command(menu::MARK_DONE) => {
+                        controls::set_text(*button, if completed { "Mark Not Done" } else { "Mark Done" });
+                    }
+                    // Only a subtask has a top level to move to.
+                    Action::Command(menu::MOVE_TO_TOP) => controls::enable(*button, task.parent.is_some()),
+                    _ => {}
+                }
+            }
         }
         *self.shown.borrow_mut() = task;
     }
@@ -210,9 +265,10 @@ impl Detail {
     /// The store changed: the fields follow unless someone is part way through editing them.
     pub fn reload(&self, app: &App) {
         if let Some(id) = self.task_id()
-            && !self.has_changes() {
-                self.load(app, &id);
-            }
+            && !self.has_changes()
+        {
+            self.load(app, &id);
+        }
     }
 
     /// Saves what changed, and says what that did.
@@ -228,27 +284,23 @@ impl Detail {
         }
     }
 
-    pub fn toggle_done(&self, app: &App) {
-        let Some(task) = self.shown.borrow().clone() else { return };
-        let completed = task.state.iter().any(|s| s == "completed");
-        if let Some(change) = app.perform(|lumenna| {
-            if completed { lumenna.uncomplete_task(&task.id) } else { lumenna.complete_task(&task.id) }
-        }) {
-            self.load(app, &task.id);
-            app.say_change(&change);
-        }
-    }
-
     pub fn command(&self, app: &App, control: HWND, _id: u16, code: u16) -> bool {
         if u32::from(code) != BN_CLICKED {
             return false;
         }
-        if control == self.save {
-            self.save(app);
-        } else if control == self.done {
-            self.toggle_done(app);
-        } else {
-            return false;
+        let action = self.wait_buttons.iter().chain(&self.buttons).find(|(b, _)| *b == control).map(|(_, a)| *a);
+        let Some(action) = action else { return false };
+        let Some(id) = self.task_id() else { return true };
+        match action {
+            Action::Save => self.save(app),
+            Action::Command(command) => task_actions::run(app, command, &id),
+            Action::AddWait => task_actions::run(app, menu::WAIT_FOR, &id),
+            Action::StopWaiting => {
+                let index = controls::send(self.waits, LB_GETCURSEL, 0, 0);
+                if let Ok(index) = u16::try_from(index) {
+                    task_actions::run(app, menu::STOP_WAITING + index, &id);
+                }
+            }
         }
         true
     }
@@ -256,21 +308,54 @@ impl Detail {
     pub fn layout(&self, width: i32, height: i32, m: Metrics) {
         let gap = m.gap();
         let inner = width - 2 * gap;
+        let half = (inner - gap) / 2;
         controls::place(self.placeholder, rect(gap, height / 3, inner, m.line * 2));
         let mut y = gap;
         for field in &self.fields {
-            controls::place(field.label, rect(gap, y, inner, m.line));
-            y += m.line + m.px(2);
+            let (x, w) = match field.column {
+                Column::Full => (gap, inner),
+                Column::Left => (gap, half),
+                Column::Right => (gap + half + gap, half),
+            };
             let tall = if field.lines > 1 { m.line * field.lines + m.px(8) } else { m.field };
+            controls::place(field.label, rect(x, y, w, m.line));
             // A drop-down list's height includes its list.
             let list = if [self.priority, self.project].contains(&field.control) { m.line * 8 } else { 0 };
-            controls::place(field.control, rect(gap, y, inner, tall + list));
-            y += tall + m.px(6);
+            controls::place(field.control, rect(x, y + m.line + m.px(2), w, tall + list));
+            // A left field shares its row with the right one after it.
+            if field.column != Column::Left {
+                y += m.line + m.px(2) + tall + m.px(6);
+            }
+            if field.control == self.waits {
+                row_of_buttons(&self.wait_buttons, gap, y - m.px(2), inner, m);
+                y += m.button + m.px(8);
+            }
         }
-        let button = m.px(110);
-        controls::place(self.save, rect(gap, y + m.px(4), button, m.button));
-        controls::place(self.done, rect(gap + button + m.px(8), y + m.px(4), button, m.button));
+        for (row, chunk) in self.buttons.chunks(3).enumerate() {
+            row_of_buttons(chunk, gap, y + row as i32 * (m.button + m.px(6)), inner, m);
+        }
     }
+}
+
+/// Lays buttons out in a row, three to its width.
+fn row_of_buttons(buttons: &[(HWND, Action)], x: i32, y: i32, width: i32, m: Metrics) {
+    let each = (width - 2 * m.px(6)) / 3;
+    for (index, (button, _)) in buttons.iter().enumerate() {
+        controls::place(*button, rect(x + index as i32 * (each + m.px(6)), y, each, m.button));
+    }
+}
+
+/// The task's computed states, and the rule it repeats by when the date grammar cannot say it
+/// — which the Repeats field then shows empty and leaves alone.
+fn state_text(task: &TaskDetail) -> String {
+    let states: Vec<&str> = task.state.iter().map(String::as_str).filter(|s| *s != "ready").collect();
+    let mut text = if states.is_empty() { "open".to_owned() } else { states.join(", ") };
+    if task.repetition.is_none()
+        && let Some(rule) = &task.recurrence
+    {
+        text.push_str(&format!(", repeats by the rule {rule}"));
+    }
+    text
 }
 
 /// Selects the item with this text in a drop-down list, adding it if missing.

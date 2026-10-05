@@ -15,9 +15,12 @@
 // Elsewhere the neutral modules are built for their tests alone, with nothing calling them.
 #![cfg_attr(not(windows), allow(dead_code))]
 
+mod choices;
+mod devices;
 mod outline;
 mod places;
 mod profile;
+mod shortcut;
 mod speech;
 #[cfg(windows)]
 mod win;

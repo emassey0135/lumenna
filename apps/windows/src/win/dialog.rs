@@ -1,4 +1,4 @@
-//! Modal dialogs from templates built in memory.
+//! Modal dialogs and property sheets from templates built in memory.
 //!
 //! The dialog manager is Windows' own: Tab and Shift-Tab, Enter for the default button,
 //! Escape to cancel, Alt and a mnemonic to reach a field, and a static label naming the field
@@ -7,11 +7,18 @@
 //! keeps each dialog's layout beside the code that runs it.
 
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
-use windows::Win32::UI::WindowsAndMessaging::{
-    DLGTEMPLATE, DS_CENTER, DS_MODALFRAME, DS_SETFONT, DialogBoxIndirectParamW, EndDialog,
-    GWLP_USERDATA, GetDlgItem, GetWindowLongPtrW, IDCANCEL, IDOK, SetWindowLongPtrW,
-    WM_COMMAND, WM_INITDIALOG, WS_CAPTION, WS_CHILD, WS_POPUP, WS_SYSMENU, WS_VISIBLE,
+use windows::Win32::UI::Controls::{
+    PROPSHEETHEADERW_V2, PROPSHEETHEADERW_V2_1, PROPSHEETHEADERW_V2_2, PROPSHEETPAGEW, PROPSHEETPAGEW_0, PSCB_INITIALIZED,
+    PSH_NOAPPLYNOW, PSH_NOCONTEXTHELP, PSH_PROPSHEETPAGE, PSH_USECALLBACK, PSP_DLGINDIRECT, PropertySheetW,
 };
+use windows::Win32::UI::WindowsAndMessaging::{
+    DLGTEMPLATE, DS_CENTER, DS_MODALFRAME, DS_SETFONT, DWLP_MSGRESULT, DialogBoxIndirectParamW, EndDialog,
+    GWLP_USERDATA, GetDlgItem, GetWindowLongPtrW, IDCANCEL, IDOK, SetWindowLongPtrW,
+    WINDOW_LONG_PTR_INDEX, WM_COMMAND, WM_INITDIALOG, WM_VKEYTOITEM, WS_CAPTION, WS_CHILD, WS_DISABLED, WS_POPUP, WS_SYSMENU,
+    WS_VISIBLE,
+};
+
+use windows::core::{HSTRING, PCWSTR};
 
 use super::controls;
 
@@ -56,24 +63,59 @@ impl Template {
         template
     }
 
+    /// A page of a property sheet: a child the sheet places, titled on its tab.
+    pub fn page(title: &str, width: i16, height: i16) -> Self {
+        let mut template = Self { words: Vec::new(), count: 0 };
+        template.dword(WS_CHILD.0 | WS_DISABLED.0 | WS_CAPTION.0 | DS_SETFONT as u32);
+        template.dword(0);
+        template.words.push(0);
+        for value in [0, 0, width, height] {
+            template.words.push(value as u16);
+        }
+        template.words.push(0);
+        template.words.push(0);
+        template.string(title);
+        template.words.push(9);
+        template.string("Segoe UI");
+        template
+    }
+
     /// Adds an item. `style` gets `WS_CHILD | WS_VISIBLE` added.
     #[allow(clippy::too_many_arguments)]
     pub fn item(mut self, class: Class, text: &str, id: u16, style: u32, x: i16, y: i16, width: i16, height: i16) -> Self {
+        self.start_item(style, [x, y, width, height], id);
+        self.words.push(0xFFFF);
+        self.words.push(class as u16);
+        self.end_item(text);
+        self
+    }
+
+    /// Adds an item of a class named rather than one of the stock six, such as the hotkey
+    /// control.
+    #[allow(clippy::too_many_arguments)]
+    pub fn named(mut self, class: &str, text: &str, id: u16, style: u32, x: i16, y: i16, width: i16, height: i16) -> Self {
+        self.start_item(style, [x, y, width, height], id);
+        self.string(class);
+        self.end_item(text);
+        self
+    }
+
+    fn start_item(&mut self, style: u32, place: [i16; 4], id: u16) {
         if self.words.len() % 2 == 1 {
             self.words.push(0); // each item starts on a four-byte boundary
         }
         self.dword(WS_CHILD.0 | WS_VISIBLE.0 | style);
         self.dword(0);
-        for value in [x, y, width, height] {
+        for value in place {
             self.words.push(value as u16);
         }
         self.words.push(id);
-        self.words.push(0xFFFF);
-        self.words.push(class as u16);
+    }
+
+    fn end_item(&mut self, text: &str) {
         self.string(text);
         self.words.push(0); // no creation data
         self.count += 1;
-        self
     }
 
     /// Sets the dialog's size, for one whose height depends on which items it has.
@@ -104,7 +146,7 @@ impl Template {
     }
 }
 
-/// What a dialog does.
+/// What a dialog, or a page of a property sheet, does.
 pub trait Dialog {
     fn template(&self) -> Template;
 
@@ -114,13 +156,20 @@ pub trait Dialog {
         false
     }
 
-    /// A control's command. `Some` closes the dialog with that result.
+    /// A control's command. `Some` closes the dialog with that result; a page cannot close
+    /// its sheet, so there it is ignored.
     fn command(&self, _hwnd: HWND, id: u16, _code: u16) -> Option<isize> {
         match i32::from(id) {
             id if id == IDOK.0 => Some(1),
             id if id == IDCANCEL.0 => Some(0),
             _ => None,
         }
+    }
+
+    /// Any other message — a notification, or a result posted from another thread. `Some`
+    /// is the message's result.
+    fn message(&self, _hwnd: HWND, _message: u32, _wparam: WPARAM, _lparam: LPARAM) -> Option<isize> {
+        None
     }
 }
 
@@ -142,6 +191,54 @@ pub fn run(owner: Option<HWND>, dialog: &dyn Dialog) -> isize {
     }
 }
 
+/// Runs a property sheet of `pages` until it is closed, starting on page `start`.
+///
+/// The sheet has one button, Close: like the Mac's Settings, every page applies a change as
+/// it is made, so there is nothing for OK to apply or Cancel to take back. Escape closes it.
+pub fn sheet(owner: HWND, title: &str, pages: &[&dyn Dialog], start: usize) {
+    let templates: Vec<Vec<u32>> = pages.iter().map(|page| page.template().build()).collect();
+    // As for `run`: each page's procedure gets a pointer to its reference here.
+    let references: Vec<&dyn Dialog> = pages.to_vec();
+    let mut descriptions: Vec<PROPSHEETPAGEW> = templates
+        .iter()
+        .zip(&references)
+        .map(|(template, reference)| PROPSHEETPAGEW {
+            dwSize: size_of::<PROPSHEETPAGEW>() as u32,
+            dwFlags: PSP_DLGINDIRECT,
+            hInstance: controls::instance(),
+            Anonymous1: PROPSHEETPAGEW_0 { pResource: template.as_ptr().cast_mut().cast::<DLGTEMPLATE>() },
+            pfnDlgProc: Some(page_procedure),
+            lParam: LPARAM(std::ptr::from_ref(reference) as isize),
+            ..Default::default()
+        })
+        .collect();
+    let caption = HSTRING::from(title);
+    let mut header = PROPSHEETHEADERW_V2 {
+        dwSize: size_of::<PROPSHEETHEADERW_V2>() as u32,
+        dwFlags: PSH_PROPSHEETPAGE | PSH_NOAPPLYNOW | PSH_NOCONTEXTHELP | PSH_USECALLBACK,
+        hwndParent: owner,
+        hInstance: controls::instance(),
+        pszCaption: PCWSTR(caption.as_ptr()),
+        nPages: descriptions.len() as u32,
+        Anonymous2: PROPSHEETHEADERW_V2_1 { nStartPage: start as u32 },
+        Anonymous3: PROPSHEETHEADERW_V2_2 { ppsp: descriptions.as_mut_ptr() },
+        pfnCallback: Some(sheet_callback),
+        ..Default::default()
+    };
+    unsafe {
+        PropertySheetW(&mut header);
+    }
+}
+
+/// Once the sheet exists: OK hidden, and Cancel called what it does, Close.
+unsafe extern "system" fn sheet_callback(hwnd: HWND, message: u32, _lparam: LPARAM) -> i32 {
+    if message == PSCB_INITIALIZED {
+        controls::show(item(hwnd, IDOK.0 as u16), false);
+        controls::set_text(item(hwnd, IDCANCEL.0 as u16), "Close");
+    }
+    0
+}
+
 /// A control in a dialog, by identifier.
 pub fn item(hwnd: HWND, id: u16) -> HWND {
     unsafe { GetDlgItem(Some(hwnd), i32::from(id)).unwrap_or_default() }
@@ -152,6 +249,23 @@ unsafe extern "system" fn procedure(hwnd: HWND, message: u32, wparam: WPARAM, lp
         if message == WM_INITDIALOG {
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, lparam.0);
         }
+        dispatch(hwnd, message, wparam, lparam, false)
+    }
+}
+
+/// A page: the same, but its reference arrives inside the page's description.
+unsafe extern "system" fn page_procedure(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> isize {
+    unsafe {
+        if message == WM_INITDIALOG {
+            let page = &*(lparam.0 as *const PROPSHEETPAGEW);
+            SetWindowLongPtrW(hwnd, GWLP_USERDATA, page.lParam.0);
+        }
+        dispatch(hwnd, message, wparam, lparam, true)
+    }
+}
+
+unsafe fn dispatch(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM, page: bool) -> isize {
+    unsafe {
         let pointer = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const &dyn Dialog;
         if pointer.is_null() {
             return 0;
@@ -162,12 +276,23 @@ unsafe extern "system" fn procedure(hwnd: HWND, message: u32, wparam: WPARAM, lp
             WM_COMMAND => {
                 let id = controls::low_word(wparam.0);
                 let code = controls::high_word(wparam.0);
-                if let Some(result) = dialog.command(hwnd, id, code) {
+                if let Some(result) = dialog.command(hwnd, id, code)
+                    && !page
+                {
                     let _ = EndDialog(hwnd, result);
                 }
                 1
             }
-            _ => 0,
+            _ => match dialog.message(hwnd, message, wparam, lparam) {
+                // A few messages take a dialog procedure's own return as their answer.
+                Some(result) if message == WM_VKEYTOITEM => result,
+                Some(result) => {
+                    // The rest — notifications above all — take it from DWLP_MSGRESULT.
+                    SetWindowLongPtrW(hwnd, WINDOW_LONG_PTR_INDEX(DWLP_MSGRESULT as i32), result);
+                    1
+                }
+                None => 0,
+            },
         }
     }
 }
