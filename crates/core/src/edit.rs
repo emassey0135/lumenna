@@ -1353,7 +1353,12 @@ pub fn enroll_devices(snapshot: &Snapshot, devices: &[Device]) -> Edit {
         let before = snapshot.devices.get(&device.node_id);
         // Keep the original pairing time; it is history, not something a re-pair rewrites.
         let after = match before {
-            Some(existing) => Device { paired_at: existing.paired_at, ..device.clone() },
+            // Nor does it lower the version the device has said it runs.
+            Some(existing) => Device {
+                paired_at: existing.paired_at,
+                schema: existing.schema.max(device.schema),
+                ..device.clone()
+            },
             None => device.clone(),
         };
         if before != Some(&after) {
@@ -1386,6 +1391,22 @@ pub fn rename_device(
         description: format!("Renamed {} to {name}", before.name),
         changes: vec![Change::Device(Box::new(Transition::updated(before.clone(), after)))],
     })
+}
+
+/// Records the stored-format version this device runs, in its own entry in the device list,
+/// so the others can tell when it is behind. Only a device writes its own.
+#[must_use]
+pub fn note_own_version(snapshot: &Snapshot, this: crate::id::NodeId) -> Edit {
+    match snapshot.devices.get(&this) {
+        Some(before) if before.schema != crate::model::SCHEMA_VERSION => Edit {
+            description: format!("{} runs version {}", before.name, crate::model::SCHEMA_VERSION),
+            changes: vec![Change::Device(Box::new(Transition::updated(
+                before.clone(),
+                Device { schema: crate::model::SCHEMA_VERSION, ..before.clone() },
+            )))],
+        },
+        _ => Edit::nothing(),
+    }
 }
 
 /// Takes a device out of the roster, so the others stop syncing with it.

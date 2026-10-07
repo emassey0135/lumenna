@@ -301,6 +301,7 @@ fn enroll(store: &SharedStore, me: &Identity, peer: &Identity) -> Result<()> {
             platform: identity.platform.clone(),
             paired_at: now,
             last_seen: now,
+            schema: identity.schema,
         })
     };
     let devices = [device(me)?, device(peer)?];
@@ -323,5 +324,6 @@ pub fn identity(store: &SharedStore, name: &str, platform: &str) -> Result<Ident
         node_id: key.public().to_string(),
         name: name.to_owned(),
         platform: platform.to_owned(),
+        schema: lumenna_core::model::SCHEMA_VERSION,
     })
 }

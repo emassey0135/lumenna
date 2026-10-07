@@ -33,6 +33,17 @@ pub use block::{
     ExceptionAction, Elapsed, AssignmentStatus,
 };
 pub use device::Device;
+
+/// The version of the stored format this build writes, raised whenever it changes in a way
+/// an older build could misread.
+///
+/// Every document records the highest version that has written it, and every device records
+/// its own in the device list. Builds of different versions sync with each other for good —
+/// nothing can make every device update — so a change to the format is made only once every
+/// listed device reports at least the version that understands it
+/// ([`Snapshot::all_devices_at_least`](crate::snapshot::Snapshot::all_devices_at_least)), and
+/// a device on another version is said to be, in words.
+pub const SCHEMA_VERSION: u32 = 1;
 pub use project::{Label, Project, SavedFilter};
 pub use reminder::{
     Delivery, Reminder, ReminderAck, ReminderAction, ReminderAnchor, ReminderTarget, Trigger,

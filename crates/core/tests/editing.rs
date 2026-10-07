@@ -997,3 +997,25 @@ fn changing_a_block_to_what_it_already_is_writes_nothing() {
     let series = world.snapshot.series[&block].clone();
     assert!(update_series(series.clone(), series).is_empty());
 }
+
+#[test]
+fn the_format_changes_only_once_every_listed_device_has_said_it_understands() {
+    use lumenna_core::model::{Device, SCHEMA_VERSION};
+    let mut snapshot = lumenna_core::snapshot::Snapshot::default();
+    let device = |byte: u8, schema: u32| Device {
+        node_id: lumenna_core::id::NodeId::from_bytes([byte; 32]),
+        name: format!("device {byte}"),
+        platform: "linux".to_owned(),
+        paired_at: lumenna_core::time::now(),
+        last_seen: lumenna_core::time::now(),
+        schema,
+    };
+    for d in [device(1, SCHEMA_VERSION), device(2, 0)] {
+        snapshot.devices.insert(d.node_id, d);
+    }
+    assert!(!snapshot.all_devices_at_least(SCHEMA_VERSION), "one has not said: it counts as older");
+    let late = device(2, SCHEMA_VERSION);
+    snapshot.devices.insert(late.node_id, late);
+    assert!(snapshot.all_devices_at_least(SCHEMA_VERSION));
+    assert!(!snapshot.all_devices_at_least(SCHEMA_VERSION + 1));
+}

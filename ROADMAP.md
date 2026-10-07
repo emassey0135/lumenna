@@ -8,7 +8,7 @@ Every client gets every feature. A platform may get it later, never a smaller ve
 
 The order, and why:
 
-1. **Safeguards first**: schema versions before real data makes them harder, and CI.
+1. **Safeguards first**: CI.
 2. **Reminders**, the biggest gap in daily use, and the scheduler the planner's overrun
    warning and hooks' time events also need.
 3. **The planner**, in dependency order: urgency and history, suggestions, carrying work
@@ -23,14 +23,6 @@ The order, and why:
 
 ## 1. Safeguards
 
-- **Schema versions**, designed before real data ships: a `schema_version` per document and
-  per device in the device list; a migration runs only once every listed device reports at
-  least its version, since nothing can force an update; version skew is told plainly ("your
-  iPhone is running an older version"). Mixed versions coexist permanently, so **unknown
-  fields are kept** when writing back. That holds for ordinary edits and is untested, and it
-  fails for whole-record rewrites (moving a block to another year, restoring a purged record
-  through undo, converting to inline, replacing a nested map), for unknown enum values (an
-  unknown block kind reads as work), and in JSON export and import.
 - **CI**: none. Even `cargo test` and clippy on Linux and Windows on every push would catch
   drift between the apps the sessions keep.
 
@@ -344,6 +336,10 @@ Each is a thin adapter over the command surface.
 - **Packaging**: a `lumenna` alias for `lum`, a Homebrew formula (`brew services start
   lum`), a winget manifest, Flatpak and AppStream for GTK. A command-line user has no app to
   prompt for updates, so packages matter most there.
+- **Fields this build does not know, everywhere**: kept by edits and by the store's own
+  rewrites, but not yet by a record restored by undoing a delete from the trash, nor by JSON
+  export and import, which carry only what the model holds. Keeping them means the model
+  carrying what it cannot read.
 - **Real erasure.** Erasing a task removes it from the current state only: its content stays
   in the history and in backups, and undo brings it back. Truly erasing means rebuilding the
   document without it, losing all history, every device syncing afresh, and clearing the

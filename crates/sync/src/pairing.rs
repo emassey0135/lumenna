@@ -52,6 +52,10 @@ pub struct Identity {
     pub name: String,
     /// What it runs: `linux`, `macos`, `windows`, `btspeak`.
     pub platform: String,
+    /// The stored-format version it runs. A build from before versions sends none, which
+    /// reads as zero.
+    #[serde(default)]
+    pub schema: u32,
 }
 
 /// Exchanges nonces with the commit-then-reveal order and returns the words for this
@@ -184,7 +188,7 @@ mod tests {
     use super::*;
 
     fn identity(name: &str) -> Identity {
-        Identity { node_id: "ab".repeat(32), name: name.to_owned(), platform: "linux".to_owned() }
+        Identity { node_id: "ab".repeat(32), name: name.to_owned(), platform: "linux".to_owned(), schema: 1 }
     }
 
     async fn both<A, B, FA, FB>(a: A, b: B) -> (FA, FB)

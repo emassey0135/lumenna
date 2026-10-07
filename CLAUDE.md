@@ -227,6 +227,24 @@ transaction and loads a snapshot whose heads it lacks.
 your own connection's writes, and other processes' rows can interleave with yours. A cursor
 that lags re-reads a change already held (a no-op); one that skips loses an edit.
 
+### Versions and fields this build does not know
+
+Builds of different versions sync with each other for good: nothing can make every device
+update. So:
+
+- **`SCHEMA_VERSION`** (core) is the stored format this build writes. Every document records
+  the highest that has written it (`Doc::stamp_version`, on the way to disk), and every
+  device its own in the device list (`edit::note_own_version`, on open; pairing says it
+  too). A device on another version says so in its status. A change to the format waits for
+  `Snapshot::all_devices_at_least`.
+- **Never drop what you cannot read.** An edit writes only the fields it changed, so a field
+  a newer build added survives. The store's own whole-record rewrites — a series moving to
+  another year's document, a record becoming inline — copy the old record as it stands
+  (`Raw`) and write only the changes over it, so an unknown field, or a value read as a
+  default (an unknown block kind reads as work), survives those too. A new rewrite must do
+  the same. Not yet kept: a record restored by undoing a delete from the trash, and JSON
+  export, which carry only what the model holds.
+
 ### Mutations and undo
 
 `core::edit` computes an `Edit` (before/after record pairs) and `store` applies it. Core

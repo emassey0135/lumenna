@@ -80,6 +80,7 @@ mod tests {
             last_attempt: None,
             last_success: success.map(str::to_owned),
             last_error: error.map(str::to_owned),
+            schema_version: 1,
             status: Vec::new(),
         };
         view.status = lumenna_surface::words::device_status(&view, now());

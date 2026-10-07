@@ -146,6 +146,7 @@ fn device(this: bool, success: Option<&str>, error: Option<&str>, attempt: Optio
         last_attempt: attempt.map(str::to_owned),
         last_success: success.map(str::to_owned),
         last_error: error.map(str::to_owned),
+        schema_version: lumenna_core::model::SCHEMA_VERSION,
         status: Vec::new(),
     }
 }
@@ -177,4 +178,15 @@ fn the_days_hours_of_work_follow_the_flag_not_the_kind() {
     lumenna.add_block(NewBlock { counts_capacity: Some(false), ..short("Admin", "11:00", "work") }).unwrap();
     let summary = lumenna.plan(None).unwrap().summary;
     assert!(summary.contains("1 hour of work"), "{summary}");
+}
+
+#[test]
+fn a_device_on_another_version_says_so() {
+    use lumenna_surface::words::device_status;
+    let now: jiff::Timestamp = "2026-10-04T12:00:00Z".parse().unwrap();
+    let ours = lumenna_core::model::SCHEMA_VERSION;
+    let older = DeviceView { schema_version: ours - 1, ..device(false, Some("2026-10-04T11:55:00Z"), None, None) };
+    assert_eq!(device_status(&older, now)[0], "runs an older version of Lumenna, so update it");
+    let newer = DeviceView { schema_version: ours + 1, ..device(false, None, None, None) };
+    assert_eq!(device_status(&newer, now), ["runs a newer version of Lumenna, so update this device", "not synced yet"]);
 }

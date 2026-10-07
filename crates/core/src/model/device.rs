@@ -22,4 +22,8 @@ pub struct Device {
     pub paired_at: Timestamp,
     /// When it was last heard from. Best-effort, like everything else that crosses devices.
     pub last_seen: Timestamp,
+    /// The [`SCHEMA_VERSION`](super::SCHEMA_VERSION) it runs, which only it writes. Zero for
+    /// a device that has not said, which a build from before versions never does.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub schema: u32,
 }

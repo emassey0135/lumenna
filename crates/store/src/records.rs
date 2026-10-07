@@ -888,6 +888,7 @@ impl Record for Device {
             platform: r.string("platform").unwrap_or_default(),
             paired_at: r.timestamp("paired_at")?,
             last_seen: r.timestamp("last_seen")?,
+            schema: r.u32("schema").unwrap_or(0),
         })
     }
 
@@ -895,7 +896,8 @@ impl Record for Device {
         w.set_string("name", was.map(|b| b.name.as_str()), &self.name)?;
         w.set_string("platform", was.map(|b| b.platform.as_str()), &self.platform)?;
         w.set_time("paired_at", was.map(|b| &b.paired_at), &self.paired_at)?;
-        w.set_time("last_seen", was.map(|b| &b.last_seen), &self.last_seen)
+        w.set_time("last_seen", was.map(|b| &b.last_seen), &self.last_seen)?;
+        w.set_int("schema", was.map(|b| i64::from(b.schema)), i64::from(self.schema))
     }
 }
 
