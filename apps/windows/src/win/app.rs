@@ -18,7 +18,7 @@ use std::rc::Rc;
 use lumenna_surface::{Change, Lumenna, Result};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    COLOR_BTNFACE, CreateFontIndirectW, DeleteObject, GetDC, GetTextMetricsW, HBRUSH, HFONT,
+    COLOR_BTNFACE, CreateFontIndirectW, DeleteObject, GetDC, GetTextMetricsW, HBRUSH, HFONT, LOGFONTW,
     ReleaseDC, SelectObject, TEXTMETRICW,
 };
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
@@ -88,6 +88,9 @@ pub struct App {
     pub main: HWND,
     accelerators: HACCEL,
     font: Cell<HFONT>,
+    /// The message font's height and face the font was made from, to tell whether a setting
+    /// change changed it.
+    font_made_from: Cell<(i32, [u16; 32])>,
     metrics: Cell<Metrics>,
     panes: [HWND; 3],
     status: HWND,
@@ -248,6 +251,7 @@ impl App {
             main,
             accelerators: menu::accelerators(),
             font: Cell::new(HFONT::default()),
+            font_made_from: Cell::new((0, [0; 32])),
             metrics: Cell::new(Metrics { scale: 1.0, line: 16, field: 24, button: 26 }),
             panes,
             status,
@@ -469,11 +473,11 @@ impl App {
     // Layout and fonts
     // -------------------------------------------------------------------------------------
 
-    /// The system's message font at the window's DPI, given to every control.
-    fn update_font(&self) {
+    /// The system's message font at the window's DPI: what Windows' Text size setting enlarges.
+    fn message_font(&self) -> LOGFONTW {
         let dpi = unsafe { GetDpiForWindow(self.main) }.max(96);
         let mut metrics = NONCLIENTMETRICSW { cbSize: size_of::<NONCLIENTMETRICSW>() as u32, ..Default::default() };
-        let font = unsafe {
+        unsafe {
             let _ = SystemParametersInfoForDpi(
                 SPI_GETNONCLIENTMETRICS.0,
                 metrics.cbSize,
@@ -481,8 +485,27 @@ impl App {
                 0,
                 dpi,
             );
-            CreateFontIndirectW(&metrics.lfMessageFont)
-        };
+        }
+        metrics.lfMessageFont
+    }
+
+    /// A setting changed. Windows' Text size, among others, changes the message font, and
+    /// which message announces it is not documented, so any change is looked at, and the
+    /// window is laid out again only if the font is not what it was.
+    fn setting_changed(&self) {
+        let font = self.message_font();
+        if self.font_made_from.get() != (font.lfHeight, font.lfFaceName) {
+            self.update_font();
+            self.layout();
+        }
+    }
+
+    /// The system's message font at the window's DPI, given to every control.
+    fn update_font(&self) {
+        let dpi = unsafe { GetDpiForWindow(self.main) }.max(96);
+        let message = self.message_font();
+        self.font_made_from.set((message.lfHeight, message.lfFaceName));
+        let font = unsafe { CreateFontIndirectW(&message) };
         let line = unsafe {
             let dc = GetDC(Some(self.main));
             let old = SelectObject(dc, font.into());
@@ -901,6 +924,16 @@ unsafe extern "system" fn main_procedure(hwnd: HWND, message: u32, wparam: WPARA
             WM_NOTIFY => return LRESULT(app.on_notify(lparam).unwrap_or(0)),
             WM_CONTEXTMENU => app.on_context_menu(HWND(wparam.0 as _), lparam),
             WM_SIZE => app.layout(),
+            WM_SETTINGCHANGE => app.setting_changed(),
+            // Common controls take the system's colours from this, which only a top-level
+            // window is sent.
+            WM_SYSCOLORCHANGE => {
+                unsafe extern "system" fn tell(child: HWND, _: LPARAM) -> windows::core::BOOL {
+                    controls::send(child, WM_SYSCOLORCHANGE, 0, 0);
+                    true.into()
+                }
+                let _ = EnumChildWindows(Some(hwnd), Some(tell), LPARAM(0));
+            }
             WM_DPICHANGED => {
                 let suggested = &*(lparam.0 as *const RECT);
                 let _ = SetWindowPos(
