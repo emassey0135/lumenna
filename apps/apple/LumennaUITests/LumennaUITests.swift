@@ -30,6 +30,17 @@ final class LumennaUITests: XCTestCase {
         app.cells.containing(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
     }
 
+    /// A cell, scrolled to first: a list makes no cell for a row off the screen, which on a
+    /// small phone at a large text size is most of them.
+    private func reveal(_ text: String) -> XCUIElement {
+        let found = cell(containing: text)
+        // Down the list first, then back up for a row above.
+        for step in 0..<14 where !found.exists || !found.isHittable {
+            if step < 6 { app.swipeUp() } else { app.swipeDown() }
+        }
+        return found
+    }
+
     private func add(_ text: String) {
         app.buttons["Add task"].tap()
         let field = app.textViews["New task"]
@@ -328,13 +339,13 @@ final class LumennaUITests: XCTestCase {
         try audit(.all, "settings")
 
         for page in ["Planning", "Backups", "Export and Import"] {
-            cell(containing: page).tap()
+            reveal(page).tap()
             XCTAssertTrue(app.navigationBars[page].waitForExistence(timeout: 5))
             try audit(.all, page)
             app.navigationBars.buttons.element(boundBy: 0).tap()
         }
 
-        cell(containing: "Devices and Sync").tap()
+        reveal("Devices and Sync").tap()
         let status = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Not paired'"))
         XCTAssertTrue(status.firstMatch.waitForExistence(timeout: 10))
         try audit(.all, "devices")
@@ -369,7 +380,7 @@ final class LumennaUITests: XCTestCase {
         app.launch()
         tab("Settings")
         for page in ["Planning", "Backups", "Export and Import"] {
-            cell(containing: page).tap()
+            reveal(page).tap()
             XCTAssertTrue(app.navigationBars[page].waitForExistence(timeout: 5))
             // The whole page, a screenful at a time.
             for part in 1...4 {

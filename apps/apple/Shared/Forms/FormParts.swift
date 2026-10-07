@@ -68,18 +68,22 @@ struct Named<Control: View>: View {
 
     var body: some View {
         #if os(iOS)
-        // Side by side until the text is large, then the name above the field, so neither
-        // is squeezed.
+        // Side by side where the name fits whole, else the name above the field, so neither
+        // is squeezed: at the accessibility sizes always, and on a narrow phone sooner.
+        let stacked = VStack(alignment: .leading, spacing: 6) {
+            Text(name).accessibilityHidden(true)
+            control.accessibilityLabel(name)
+        }
         if size.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(name).accessibilityHidden(true)
-                control.accessibilityLabel(name)
-            }
+            stacked
         } else {
-            LabeledContent {
-                control.accessibilityLabel(name)
-            } label: {
-                Text(name).accessibilityHidden(true)
+            ViewThatFits(in: .horizontal) {
+                LabeledContent {
+                    control.accessibilityLabel(name)
+                } label: {
+                    Text(name).fixedSize().accessibilityHidden(true)
+                }
+                stacked
             }
         }
         #else

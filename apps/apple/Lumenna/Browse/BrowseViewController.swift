@@ -248,7 +248,9 @@ final class FiltersViewController: ItemListViewController {
     private var queries: [String: String] = [:]
 
     init(core: Core) {
-        super.init(core: core, title: "Saved Filters")
+        // Short: a bar title is one line between its buttons, and "Saved Filters" overflows a
+        // small phone at the largest text sizes. Browse lists it by its full name.
+        super.init(core: core, title: "Filters")
     }
 
     override func load() throws -> (items: [Item], count: String) {
