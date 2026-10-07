@@ -376,3 +376,15 @@ fn the_block_form_has_every_setting_and_its_flags_follow_the_kind() {
     assert_eq!(shown.colour.as_deref(), Some("teal"));
     assert!(shown.repeats, "{shown:?}");
 }
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn the_pairing_dialog_says_an_empty_code_takes_the_clipboard() {
+    let app = App::launch(|_| {});
+    app.post(&[SETTINGS, "select:Devices", "invoke:Pair a Device..."]);
+    let dialog = app.front();
+    assert!(dialog.iter().any(|l| l.contains("Window 'Pair a Device'")), "{dialog:#?}");
+    assert!(dialog.iter().any(|l| l.contains("Left empty, the code on the clipboard is used.")), "{dialog:#?}");
+    assert!(unnamed(&dialog).is_empty(), "{:#?}", unnamed(&dialog));
+    app.post(&["esc"]);
+}

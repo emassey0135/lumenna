@@ -39,6 +39,9 @@ const WM_PAIR_WORDS: u32 = WM_APP + 21;
 /// The pairing ended: a boxed `Result<PairedWith, String>`.
 const WM_PAIR_DONE: u32 = WM_APP + 22;
 
+/// What an empty code field means, said with the field and shown under it.
+const EMPTY_MEANS: &str = "Left empty, the code on the clipboard is used.";
+
 const INTRO: &str = "On the same network, start pairing on both devices and they find each other: choose Wait for the Other Device here, and pair on the other one too. On different networks, one shows a code and the other enters it.";
 
 struct Pairing {
@@ -123,20 +126,23 @@ impl Dialog for Pairing {
     fn template(&self) -> Template {
         let field = ES_AUTOHSCROLL as u32 | WS_BORDER.0 | WS_TABSTOP.0;
         let button = BS_PUSHBUTTON as u32 | WS_TABSTOP.0;
-        Template::new("Pair a Device", 280, 197)
+        Template::new("Pair a Device", 280, 207)
             .item(Class::Static, INTRO, u16::MAX, SS_NOPREFIX.0, 7, 7, 266, 36)
             .item(Class::Button, "&Wait for the Other Device", WAIT, button, 7, 46, 120, 14)
             .item(Class::Static, "This device's &code:", MY_CODE_LABEL, 0, 7, 66, 266, 9)
             .item(Class::Edit, "", MY_CODE, field | ES_READONLY as u32, 7, 76, 266, 14)
             .item(Class::Static, "Code from the &other device:", u16::MAX, 0, 7, 96, 266, 9)
             .item(Class::Edit, "", THEIR_CODE, field, 7, 106, 266, 14)
-            .item(Class::Button, "&Pair With This Code", WITH_CODE, button, 7, 124, 120, 14)
-            .item(Class::Static, "", STATUS, SS_NOPREFIX.0, 7, 144, 266, 28)
-            .item(Class::Button, "Cancel", IDCANCEL.0 as u16, button, 223, 176, 50, 14)
+            .item(Class::Static, EMPTY_MEANS, u16::MAX, SS_NOPREFIX.0, 7, 123, 266, 9)
+            .item(Class::Button, "&Pair With This Code", WITH_CODE, button, 7, 134, 120, 14)
+            .item(Class::Static, "", STATUS, SS_NOPREFIX.0, 7, 154, 266, 28)
+            .item(Class::Button, "Cancel", IDCANCEL.0 as u16, button, 223, 186, 50, 14)
     }
 
     fn init(&self, hwnd: HWND) -> bool {
         a11y::make_live(dialog::item(hwnd, STATUS));
+        // Read with the field, as well as shown under it.
+        a11y::set_description(dialog::item(hwnd, THEIR_CODE), EMPTY_MEANS);
         // This device's code shows once there is one.
         controls::show(dialog::item(hwnd, MY_CODE_LABEL), false);
         controls::show(dialog::item(hwnd, MY_CODE), false);
