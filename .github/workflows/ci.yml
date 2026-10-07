@@ -1,9 +1,8 @@
 # Builds and tests everything, on every push and pull request: the Rust workspace on Linux,
 # macOS and Windows, each on x86_64 and arm64; the GTK and Windows apps' UI tests; the
 # BTSpeak and Emacs clients against a real `lum rpc`; the web client in a browser; the Apple
-# apps; and Android
-# for both its ABIs. Several sessions work on this repository at once, and this is what
-# catches one breaking another.
+# apps; and Android for both its ABIs. Several sessions work on this repository at once,
+# and this is what catches one breaking another.
 name: CI
 
 on:
