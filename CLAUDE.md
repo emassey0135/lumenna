@@ -139,8 +139,16 @@ byte stream; `pairing` is the word comparison; `node` is the device's Iroh endpo
 - **The words** come from the connection's TLS exporter secret plus a commit-then-reveal
   nonce exchange: three PGP words. Without the commitment, 24 bits could be ground offline.
 - **One endpoint per device**, decided by an advisory lock on `<profile>/sync.lock`. A
-  `SyncService` holds it; `sync_now` takes it for a round, hands the round to this store's
-  service, or returns `LumennaError::SyncElsewhere` so the CLI asks the daemon.
+  `SyncService` holds it, or, started while another process does, waits its turn (trying
+  every five seconds) and takes over when that process stops. The holder answers "sync" on
+  `<profile>/sync.sock` (Unix only), so `sync_now` anywhere else on the device runs its
+  round there; only when nothing answers is it `LumennaError::SyncElsewhere`. That socket
+  is not the daemon's `lumenna.sock`, which serves the whole RPC surface and only `lum` can
+  answer. A second daemon is refused; a daemon started while an app holds the endpoint
+  waits for it.
+- **A loop merging makes is written down once and said once** (`edit::repair`, through
+  `Lumenna::told`): looked for whenever the documents' heads moved from outside, or right
+  after an operation that called `merged()` (restore, import).
 - **The service shares the operations' connection**, so it notices local edits by
   `Store::version()`; `refresh` cannot see a connection's own writes. The device key lives
   in the store's `local_state` table and never syncs.

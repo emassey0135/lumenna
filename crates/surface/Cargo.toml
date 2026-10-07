@@ -12,7 +12,7 @@ description = "Lumenna's command surface: every operation once, typed, for every
 uniffi = ["dep:uniffi"]
 # Pairing and syncing over Iroh. On for every client that syncs; off leaves a surface
 # with no network code at all.
-sync = ["dep:lumenna-sync", "dep:iroh", "dep:tokio", "dep:n0-future"]
+sync = ["dep:lumenna-sync", "dep:iroh", "dep:tokio", "dep:n0-future", "dep:serde_json"]
 # TypeScript types for the web client, derived from these records as UniFFI derives
 # Swift's: reshaping a record breaks the web build too.
 wasm = ["dep:tsify", "dep:wasm-bindgen"]
@@ -23,6 +23,7 @@ lumenna-core.workspace = true
 lumenna-parse.workspace = true
 lumenna-store.workspace = true
 serde.workspace = true
+serde_json = { workspace = true, optional = true }
 thiserror.workspace = true
 uniffi = { version = "0.32", optional = true }
 tsify = { version = "0.5", optional = true, default-features = false, features = ["js"] }
