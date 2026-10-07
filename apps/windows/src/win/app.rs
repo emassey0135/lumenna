@@ -27,7 +27,7 @@ use windows::Win32::UI::Controls::{
     InitCommonControlsEx, NM_RCLICK, NMHDR,
     WC_STATICW,
 };
-use windows::Win32::UI::HiDpi::{GetDpiForWindow, SystemParametersInfoForDpi};
+use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::System::SystemServices::{SS_ENDELLIPSIS, SS_NOPREFIX};
 use windows::Win32::UI::Controls::{EM_SETSEL, EM_UNDO};
 use windows::Win32::UI::WindowsAndMessaging::*;
@@ -37,6 +37,7 @@ use super::blocks::BlockList;
 use super::controls::{self, rect};
 use super::core::{Core, Poster, WM_SAY, WM_STORE_CHANGED, said};
 use super::day::DayView;
+use super::font;
 use super::detail::Detail;
 use super::menu;
 use super::prompts;
@@ -475,18 +476,7 @@ impl App {
 
     /// The system's message font at the window's DPI: what Windows' Text size setting enlarges.
     fn message_font(&self) -> LOGFONTW {
-        let dpi = unsafe { GetDpiForWindow(self.main) }.max(96);
-        let mut metrics = NONCLIENTMETRICSW { cbSize: size_of::<NONCLIENTMETRICSW>() as u32, ..Default::default() };
-        unsafe {
-            let _ = SystemParametersInfoForDpi(
-                SPI_GETNONCLIENTMETRICS.0,
-                metrics.cbSize,
-                Some((&raw mut metrics).cast()),
-                0,
-                dpi,
-            );
-        }
-        metrics.lfMessageFont
+        font::message_font(unsafe { GetDpiForWindow(self.main) }.max(96))
     }
 
     /// A setting changed. Windows' Text size, among others, changes the message font, and

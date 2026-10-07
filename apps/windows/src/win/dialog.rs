@@ -20,7 +20,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use windows::core::{HSTRING, PCWSTR};
 
-use super::controls;
+use super::{controls, font};
 
 /// The stock classes a dialog item can be.
 #[derive(Clone, Copy)]
@@ -37,16 +37,23 @@ pub enum Class {
 pub struct Template {
     words: Vec<u16>,
     count: u16,
+    /// Where the font's size sits, set when the template is fitted to the screen.
+    font_at: usize,
+    face: String,
+    points: u16,
 }
 
 /// Where the item count sits in the header, to be filled in last.
 const COUNT_AT: usize = 4;
 /// Where the width and height sit, after the count and the position.
 const SIZE_AT: usize = 7;
+/// What a property sheet adds around a page, in dialog units: its margins, the tab strip,
+/// and the row of buttons.
+const SHEET_AROUND: (i16, i16) = (14, 52);
 
 impl Template {
     pub fn new(title: &str, width: i16, height: i16) -> Self {
-        let mut template = Self { words: Vec::new(), count: 0 };
+        let mut template = Self { words: Vec::new(), count: 0, font_at: 0, face: String::new(), points: 0 };
         let style = WS_POPUP.0 | WS_CAPTION.0 | WS_SYSMENU.0 | (DS_MODALFRAME | DS_SETFONT | DS_CENTER) as u32;
         template.dword(style);
         template.dword(0);
@@ -57,15 +64,13 @@ impl Template {
         template.words.push(0); // no menu
         template.words.push(0); // the standard dialog class
         template.string(title);
-        // The shell's font, at the size dialogs use.
-        template.words.push(9);
-        template.string("Segoe UI");
+        template.font();
         template
     }
 
     /// A page of a property sheet: a child the sheet places, titled on its tab.
     pub fn page(title: &str, width: i16, height: i16) -> Self {
-        let mut template = Self { words: Vec::new(), count: 0 };
+        let mut template = Self { words: Vec::new(), count: 0, font_at: 0, face: String::new(), points: 0 };
         template.dword(WS_CHILD.0 | WS_DISABLED.0 | WS_CAPTION.0 | DS_SETFONT as u32);
         template.dword(0);
         template.words.push(0);
@@ -75,9 +80,26 @@ impl Template {
         template.words.push(0);
         template.words.push(0);
         template.string(title);
-        template.words.push(9);
-        template.string("Segoe UI");
+        template.font();
         template
+    }
+
+    /// The system's message font, so a dialog grows with Text size as well as DPI, and its
+    /// layout, in dialog units, grows with it.
+    fn font(&mut self) {
+        let font = font::dialog_font();
+        self.font_at = self.words.len();
+        self.words.push(font.points);
+        self.string(&font.face);
+        self.face = font.face;
+        self.points = font.points;
+    }
+
+    /// The largest size up to the message font's at which this fits the screen of `owner`,
+    /// with `extra` dialog units around it.
+    fn fitting(&self, owner: Option<HWND>, extra: (i16, i16)) -> u16 {
+        let (width, height) = (self.words[SIZE_AT] as i16, self.words[SIZE_AT + 1] as i16);
+        font::fitting_points(owner, &self.face, self.points, width, height, extra)
     }
 
     /// Adds an item. `style` gets `WS_CHILD | WS_VISIBLE` added.
@@ -135,10 +157,12 @@ impl Template {
         self.words.push(0);
     }
 
-    /// The template, four-byte aligned as `DialogBoxIndirectParamW` requires.
-    fn build(&self) -> Vec<u32> {
+    /// The template, written in a font of `points`, four-byte aligned as
+    /// `DialogBoxIndirectParamW` requires.
+    fn build(&self, points: u16) -> Vec<u32> {
         let mut words = self.words.clone();
         words[COUNT_AT] = self.count;
+        words[self.font_at] = points;
         if words.len() % 2 == 1 {
             words.push(0);
         }
@@ -175,7 +199,8 @@ pub trait Dialog {
 
 /// Runs a dialog until it closes, and returns what it closed with.
 pub fn run(owner: Option<HWND>, dialog: &dyn Dialog) -> isize {
-    let template = dialog.template().build();
+    let template = dialog.template();
+    let template = template.build(template.fitting(owner, (0, 0)));
     // The dialog procedure gets a pointer to this reference, which lives until this returns,
     // and the dialog cannot outlive the call.
     let reference: &dyn Dialog = dialog;
@@ -196,7 +221,11 @@ pub fn run(owner: Option<HWND>, dialog: &dyn Dialog) -> isize {
 /// The sheet has one button, Close: like the Mac's Settings, every page applies a change as
 /// it is made, so there is nothing for OK to apply or Cancel to take back. Escape closes it.
 pub fn sheet(owner: HWND, title: &str, pages: &[&dyn Dialog], start: usize) {
-    let templates: Vec<Vec<u32>> = pages.iter().map(|page| page.template().build()).collect();
+    let templates: Vec<Template> = pages.iter().map(|page| page.template()).collect();
+    // One size for every page, the largest at which each fits with the sheet's tabs, margins
+    // and buttons around it.
+    let points = templates.iter().map(|template| template.fitting(Some(owner), SHEET_AROUND)).min().unwrap_or(9);
+    let templates: Vec<Vec<u32>> = templates.iter().map(|template| template.build(points)).collect();
     // As for `run`: each page's procedure gets a pointer to its reference here.
     let references: Vec<&dyn Dialog> = pages.to_vec();
     let mut descriptions: Vec<PROPSHEETPAGEW> = templates
