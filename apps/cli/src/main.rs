@@ -20,19 +20,19 @@
 //! debugging convenience; and `--help` treated as an **accessibility surface**, since it is
 //! the primary discovery mechanism for anyone who cannot skim a GUI.
 
-mod api;
 mod durability;
 mod error;
 mod network;
 mod profile;
 mod render;
-mod rpc;
 mod service;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
+// The envelope `--json` writes is the one every RPC server writes.
+pub(crate) use lumenna_surface::rpc::api;
 use lumenna_surface::{BlockEdit, BlockScope, Direction, MoveTarget, NewBlock, TaskEdit};
 
 use api::{Outcome, Response};
@@ -568,23 +568,6 @@ pub(crate) struct BlockExtras {
     colour: Option<String>,
 }
 
-impl BlockExtras {
-    /// From `lum rpc`'s parameters, which name the fields as the surface does.
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) const fn new(
-        notes: Option<String>,
-        takes_tasks: Option<bool>,
-        counts_capacity: Option<bool>,
-        anchored: Option<bool>,
-        min_minutes: Option<u32>,
-        task_filter: Option<String>,
-        until: Option<String>,
-        colour: Option<String>,
-    ) -> Self {
-        Self { notes, takes_tasks, counts_capacity, anchored, min_minutes, task_filter, until, colour }
-    }
-}
-
 #[derive(Debug, Subcommand)]
 pub(crate) enum BlockCommand {
     /// Add a block.
@@ -773,7 +756,7 @@ fn run(cli: &Cli, format: Format) -> Result<()> {
 
     let profile = Profile::open(cli.profile.as_deref())?;
     if matches!(cli.command, Command::Rpc) {
-        return rpc::serve(profile);
+        return network::serve_rpc(&profile);
     }
     if let Command::SyncDaemon { local_only } = cli.command {
         durability::back_up_if_due(&profile);

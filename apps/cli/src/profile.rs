@@ -76,30 +76,12 @@ impl Profile {
         Arc::clone(&self.lumenna)
     }
 
-    /// Stops row numbers meaning anything, for a client that is not the terminal.
-    ///
-    /// The last listing is one file per profile, so a resident `lum rpc` and a person typing
-    /// `lum task list` in a shell would overwrite each other's numbering — and `1` would
-    /// then silently name whichever listing landed last. Row numbers are a terminal
-    /// affordance; every other client holds identifiers, which never go stale.
-    pub const fn detach_rows(&mut self) {
-        self.rows_addressable = false;
-    }
-
     /// Whether this is the terminal, rather than a client over `lum rpc` or the daemon's
     /// socket. A hint naming a `lum` command helps only here: a client says it its own way,
     /// and a screen reader would read the backticks out.
     #[must_use]
     pub const fn at_terminal(&self) -> bool {
         self.rows_addressable
-    }
-
-    /// The socket `lum sync-daemon` serves the command surface on, which the BTSpeak app
-    /// tries before spawning a server of its own.
-    #[must_use]
-    #[cfg(unix)]
-    pub fn socket_path(&self) -> PathBuf {
-        self.path().join("lumenna.sock")
     }
 
     /// The profile directory.

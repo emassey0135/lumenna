@@ -16,6 +16,9 @@ sync = ["dep:lumenna-sync", "dep:iroh", "dep:tokio", "dep:n0-future", "dep:serde
 # TypeScript types for the web client, derived from these records as UniFFI derives
 # Swift's: reshaping a record breaks the web build too.
 wasm = ["dep:tsify", "dep:wasm-bindgen"]
+# The command surface over JSON-RPC, served on stdio, a Unix socket or a named pipe: by `lum
+# rpc`, the daemon, and the desktop apps while they hold this device's endpoint.
+rpc = ["sync"]
 
 [dependencies]
 jiff.workspace = true
@@ -36,6 +39,9 @@ tokio = { version = "1", features = ["sync", "macros"], optional = true }
 # The blocking calls' runtime. A browser runs the async parts on its own event loop.
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"], optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Pipes", "Win32_System_IO"] }
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -440,13 +440,6 @@ What the web client gains from it:
 
 ## 9. Only when needed
 
-- **The daemon on Windows**: the same JSON-RPC over a named pipe. Until then RPC clients
-  there spawn `lum rpc`, and `sync.sock` has no Windows equivalent either, so a second
-  process's Sync Now there says another is syncing rather than asking it.
-- **One socket, not two**: `lumenna.sock` (the whole RPC surface, the daemon's alone, since
-  the RPC dispatch lives in `lum`) and `sync.sock` (one request, answered by whichever
-  process holds the endpoint) could be one if the dispatch moved into the surface, so every
-  resident app could answer the whole protocol.
 - **Watching the WAL** (inotify, FSEvents, `ReadDirectoryChangesW`) instead of polling
   `data_version` every second; keep the poll where watching is unreliable, such as network
   filesystems.

@@ -12,6 +12,8 @@ final class Core {
 
     let lumenna: Lumenna
     private var sync: SyncService?
+    /// The command surface this app serves while it holds the endpoint (macOS).
+    private var commands: CommandServer?
     private let syncQueue = DispatchQueue(label: "lumenna.sync")
     // Foundation's, named in full: the core has a record called `Timer` too.
     private var watcher: Foundation.Timer?
@@ -73,6 +75,17 @@ final class Core {
         syncQueue.async { [weak self] in
             guard let self, self.sync == nil else { return }
             self.sync = try? lumenna.startSync(reach: .internet, listener: Arrivals())
+            #if os(macOS)
+            // While this app holds the device's endpoint it answers the command surface, as
+            // the daemon would, so Emacs and the BTSpeak app reach it. A client's writes come
+            // through a store connection of its own, which `outsideVersion` already notices.
+            if let sync = self.sync {
+                self.commands = lumenna.serveCommands(
+                    service: sync, app: "Lumenna for Mac",
+                    deviceName: Host.current().localizedName ?? "Mac", platform: "macos"
+                )
+            }
+            #endif
         }
     }
 
@@ -80,6 +93,8 @@ final class Core {
     /// app must when it quits.
     func stopSyncing(waiting: Bool = false) {
         let stop = { [weak self] in
+            self?.commands?.stop()
+            self?.commands = nil
             self?.sync?.stop()
             self?.sync = nil
         }

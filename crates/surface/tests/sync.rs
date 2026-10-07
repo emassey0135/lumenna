@@ -153,12 +153,17 @@ fn another_store_on_the_same_profile_asks_the_holder_for_its_round() {
     let a = Lumenna::open_at(&dir.path().join("a")).unwrap();
     let elsewhere = Lumenna::open_at(&dir.path().join("a")).unwrap();
     let service = a.start_sync(Reach::LocalOnly, Arc::new(Count::default())).unwrap();
-    let asked = elsewhere.sync_now(Reach::LocalOnly);
-    if cfg!(unix) {
-        assert!(asked.is_ok(), "the holder ran the round: {asked:?}");
+    // The holder answers the command surface, as the daemon and the desktop apps do.
+    #[cfg(feature = "rpc")]
+    let served = a.serve_commands(Arc::clone(&service), "test".to_owned(), "laptop".to_owned(), "linux".to_owned());
+    let asked = || elsewhere.sync_now(Reach::LocalOnly);
+    if cfg!(all(unix, feature = "rpc")) {
+        assert!(eventually(Duration::from_secs(10), || asked().is_ok()), "the holder ran the round: {:?}", asked());
     } else {
-        assert!(matches!(asked, Err(lumenna_surface::LumennaError::SyncElsewhere { .. })));
+        assert!(matches!(asked(), Err(lumenna_surface::LumennaError::SyncElsewhere { .. })));
     }
+    #[cfg(feature = "rpc")]
+    served.stop();
     service.stop();
 }
 

@@ -741,10 +741,8 @@ impl SyncService {
                                 if stopping.load(std::sync::atomic::Ordering::Relaxed) {
                                     running.stop();
                                 }
-                                let answering = serve_holder(&directory, running);
                                 let _ = bound.send(Ok(()));
                                 looping.await;
-                                drop(answering);
                             }
                             Err(error) => {
                                 let _ = bound.send(Err(error));
@@ -787,80 +785,35 @@ fn elsewhere() -> LumennaError {
     LumennaError::SyncElsewhere { reason: "another process is syncing this device already".to_owned() }
 }
 
-/// The socket the endpoint's holder answers on, so anything else on the device can ask it
-/// for a round.
-#[cfg(unix)]
-fn holder_socket(directory: &Path) -> std::path::PathBuf {
-    directory.join("sync.sock")
-}
-
-/// Answers "sync" on [`holder_socket`] with a round's report, for as long as `running` is.
-/// The socket is removed when it ends. Nothing on Windows yet, which has no such socket in
-/// the standard library: there, another process's Sync Now says another is syncing.
-#[cfg(unix)]
-fn serve_holder(directory: &Path, running: SyncLoop) -> Option<std::thread::JoinHandle<()>> {
-    use std::io::{BufRead, BufReader, Write};
-    let path = holder_socket(directory);
-    // This process holds the lock, so whatever socket is there is a dead holder's.
-    let _ = std::fs::remove_file(&path);
-    let listener = std::os::unix::net::UnixListener::bind(&path).ok()?;
-    listener.set_nonblocking(true).ok()?;
-    std::thread::Builder::new()
-        .name("lumenna-sync-asked".to_owned())
-        .spawn(move || {
-            while running.is_running() {
-                match listener.accept() {
-                    Ok((stream, _)) => {
-                        let _ = stream.set_nonblocking(false);
-                        let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-                        let mut line = String::new();
-                        let mut reader = BufReader::new(&stream);
-                        if reader.read_line(&mut line).is_ok() && line.trim() == "sync" {
-                            let answer = match running.blocking_sync_now() {
-                                Ok(report) => serde_json::to_string(&report).unwrap_or_default(),
-                                Err(_) => String::new(),
-                            };
-                            let _ = (&stream).write_all(format!("{answer}\n").as_bytes());
-                        }
-                    }
-                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                        std::thread::sleep(Duration::from_millis(200));
-                    }
-                    Err(_) => break,
-                }
-            }
-            let _ = std::fs::remove_file(&path);
-        })
-        .ok()
-}
-
-#[cfg(all(not(unix), not(all(target_family = "wasm", target_os = "unknown"))))]
-fn serve_holder(_directory: &Path, _running: SyncLoop) -> Option<std::thread::JoinHandle<()>> {
-    None
-}
-
-/// Asks the process holding the endpoint for a round, or `None` if none answers.
-#[cfg(unix)]
+/// Asks the process holding the endpoint for a round, over the command surface it serves,
+/// or `None` if none answers.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 fn ask_holder(directory: &Path) -> Option<Result<SyncReport>> {
     use std::io::{BufRead, BufReader, Write};
-    let mut stream = std::os::unix::net::UnixStream::connect(holder_socket(directory)).ok()?;
+    let mut connection = crate::endpoint::connect(directory)?;
     // A round with a device out of reach waits for it; give it time.
-    stream.set_read_timeout(Some(Duration::from_secs(120))).ok()?;
-    stream.write_all(b"sync\n").ok()?;
-    let mut line = String::new();
-    BufReader::new(&stream).read_line(&mut line).ok()?;
-    if line.trim().is_empty() {
-        return None;
+    connection.set_read_timeout(Some(Duration::from_secs(120))).ok()?;
+    connection.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"sync\"}\n").ok()?;
+    let mut reader = BufReader::new(connection);
+    // Anything before the reply is a notification, pushed while the round ran.
+    loop {
+        let mut line = String::new();
+        if reader.read_line(&mut line).ok()? == 0 {
+            return None;
+        }
+        let Ok(message) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
+        if message.get("id").is_none() {
+            continue;
+        }
+        if let Some(error) = message.pointer("/error/message").and_then(|m| m.as_str()) {
+            return Some(Err(LumennaError::new(error.to_owned())));
+        }
+        return Some(serde_json::from_value(message.get("result")?.clone()).map_err(|error| {
+            LumennaError::new(format!("the process syncing this device gave an answer this one cannot read: {error}"))
+        }));
     }
-    Some(serde_json::from_str(&line).map_err(|error| {
-        LumennaError::new(format!("the process syncing this device gave an answer this one cannot read: {error}"))
-    }))
 }
 
-#[cfg(all(not(unix), not(all(target_family = "wasm", target_os = "unknown"))))]
-fn ask_holder(_directory: &Path) -> Option<Result<SyncReport>> {
-    None
-}
 
 /// The loop: answer, send local changes on, catch up periodically, and do rounds on request.
 async fn run(
