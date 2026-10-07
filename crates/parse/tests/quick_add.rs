@@ -426,3 +426,11 @@ fn an_ordinary_preposition_is_not_reported_as_a_broken_date() {
     // ...but one that looks like it was starting a date still is.
     assert!(!preview("call in 3 dys").diagnostics.is_empty());
 }
+
+#[test]
+fn the_readback_names_the_project_and_labels_as_they_resolved() {
+    let p = preview("call the bank #work @errand");
+    let said = p.announcement();
+    assert!(said.contains("in Work"), "{said}");
+    assert!(said.contains("labelled errand"), "{said}");
+}

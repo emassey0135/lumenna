@@ -404,8 +404,12 @@ pub struct Preview {
     pub repetition: Option<String>,
     /// The project it would go in. `None` means the Inbox.
     pub project: Option<lumenna_core::id::ProjectId>,
+    /// That project's name as stored, for reading back.
+    pub project_name: Option<String>,
     /// Labels that already exist.
     pub labels: Vec<lumenna_core::id::LabelId>,
+    /// Their names as stored, for reading back.
+    pub label_names: Vec<String>,
     /// Labels that would be created on confirmation.
     pub new_labels: Vec<String>,
     /// The priority, defaulting to none.
@@ -453,6 +457,14 @@ impl Preview {
                 phrase.push_str(", counting from when you finish it");
             }
             parts.push(phrase);
+        }
+        // The project and labels are said as they resolved, since a name that matched the
+        // wrong one is what the readback is there to catch.
+        if let Some(project) = &self.project_name {
+            parts.push(format!("in {project}"));
+        }
+        if !self.label_names.is_empty() {
+            parts.push(format!("labelled {}", self.label_names.join(", ")));
         }
         if self.priority != Priority::P4 {
             parts.push(format!("priority {}", self.priority.as_u8()));
@@ -569,13 +581,17 @@ impl QuickAdd {
         }
         diagnostics.sort_by_key(|d| d.start);
 
+        let project_name = project.and_then(|id| snapshot.projects.get(&id)).map(|p| p.name.clone());
+        let label_names = labels.iter().filter_map(|id| snapshot.labels.get(id)).map(|l| l.name.clone()).collect();
         Preview {
             title: self.title.clone(),
             due,
             due_phrase,
             repetition,
             project,
+            project_name,
             labels,
+            label_names,
             new_labels,
             priority: self.priority.as_ref().map_or(Priority::P4, |p| p.value),
             estimate_mins: self.estimate_mins.as_ref().map(|e| e.value),

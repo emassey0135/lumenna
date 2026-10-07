@@ -75,7 +75,7 @@ impl Lumenna {
         if DEVICE_KEYS.contains(&key) {
             return self.set_device_setting(key, value);
         }
-        self.with(|store| {
+        self.told(|store| {
             let before = repaired(store).settings;
             let mut after = before.clone();
             match key {
@@ -135,7 +135,7 @@ impl Lumenna {
 
 impl Lumenna {
     fn step(&self, redo: bool) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             let taken = if redo { store.redo()? } else { store.undo()? };
             Ok(match taken {
                 Step::Nothing => {

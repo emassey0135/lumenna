@@ -213,7 +213,11 @@ pub fn parse_recurrence(words: &[Word], at: usize) -> Option<(RecurrenceSpec, bo
         let standalone = match word.lower.as_str() {
             "daily" => RecurrenceSpec::Daily { interval: 1 },
             "weekly" => RecurrenceSpec::Weekly { interval: 1, days: Vec::new() },
-            "monthly" => RecurrenceSpec::Monthly { interval: 1, day: None },
+            "monthly" => {
+                // "monthly on the 15th"
+                let (day, used) = month_day(words, at + 1).map_or((None, 0), |(d, n)| (Some(d), n));
+                return Some((RecurrenceSpec::Monthly { interval: 1, day }, false, 1 + used));
+            }
             "yearly" | "annually" => RecurrenceSpec::Yearly { interval: 1 },
             _ => return None,
         };
@@ -277,14 +281,14 @@ pub fn parse_recurrence(words: &[Word], at: usize) -> Option<(RecurrenceSpec, bo
         ));
     }
 
-    // "every 15th"
+    // "every 15th (of the month)"
     if let Some(day) = ordinal(&word.lower)
         && (1..=31).contains(&day)
     {
         return Some((
             RecurrenceSpec::Monthly { interval, day: Some(MonthDay::Nth(day as i8)) },
             from_completion,
-            index + 1 - at,
+            index + 1 + of_the_month(words, index + 1) - at,
         ));
     }
 
@@ -292,10 +296,48 @@ pub fn parse_recurrence(words: &[Word], at: usize) -> Option<(RecurrenceSpec, bo
     let spec = match unit_of(&word.lower)? {
         RelativeUnit::Day => RecurrenceSpec::Daily { interval },
         RelativeUnit::Week => RecurrenceSpec::Weekly { interval, days: Vec::new() },
-        RelativeUnit::Month => RecurrenceSpec::Monthly { interval, day: None },
+        RelativeUnit::Month => {
+            // "every month on the 15th", "every 2 months on the last day"
+            let (day, used) = month_day(words, index + 1).map_or((None, 0), |(d, n)| (Some(d), n));
+            return Some((RecurrenceSpec::Monthly { interval, day }, from_completion, index + 1 + used - at));
+        }
         RelativeUnit::Year => RecurrenceSpec::Yearly { interval },
     };
     Some((spec, from_completion, index + 1 - at))
+}
+
+/// A day of the month after a monthly repetition: "on the 15th", "on 15", "on the last day",
+/// each with an optional "of the month". Returns the day and how many words it took.
+fn month_day(words: &[Word], at: usize) -> Option<(MonthDay, usize)> {
+    if !words.get(at)?.is("on") {
+        return None;
+    }
+    let mut index = at + 1;
+    if words.get(index).is_some_and(|w| w.is("the")) {
+        index += 1;
+    }
+    let word = words.get(index)?;
+    let day = if word.is("last") && words.get(index + 1).is_some_and(|w| w.is("day")) {
+        index += 2;
+        MonthDay::Last
+    } else {
+        let n = ordinal(&word.lower).filter(|n| (1..=31).contains(n))?;
+        index += 1;
+        MonthDay::Nth(i8::try_from(n).ok()?)
+    };
+    Some((day, index + of_the_month(words, index) - at))
+}
+
+/// How many words an optional "of the month" (or "of each month") takes at `at`.
+fn of_the_month(words: &[Word], at: usize) -> usize {
+    if !words.get(at).is_some_and(|w| w.is("of")) {
+        return 0;
+    }
+    let mut index = at + 1;
+    if words.get(index).is_some_and(|w| w.any_of(&["the", "each", "every"])) {
+        index += 1;
+    }
+    if words.get(index).is_some_and(|w| w.is("month")) { index + 1 - at } else { 0 }
 }
 
 /// Reads `mon, wed and fri` as a list, returning the days and words consumed.
