@@ -41,10 +41,18 @@ for _ in $(seq 100); do
     sleep 0.1
 done
 # The registry is normally started by systemd, which a private bus does not have.
-/usr/lib/at-spi-bus-launcher --launch-immediately >/dev/null 2>&1 &
+# Arch keeps these in /usr/lib, Debian and Ubuntu in /usr/libexec.
+found() {
+    for directory in /usr/lib /usr/libexec /usr/lib/at-spi2-core; do
+        [ -x "$directory/$1" ] && { echo "$directory/$1"; return; }
+    done
+    echo "headless.sh: $1 not found" >&2
+    echo false
+}
+"$(found at-spi-bus-launcher)" --launch-immediately >/dev/null 2>&1 &
 bus=$!
 sleep 0.5
-/usr/lib/at-spi2-registryd >/dev/null 2>&1 &
+"$(found at-spi2-registryd)" >/dev/null 2>&1 &
 registry=$!
 sleep 0.5
 "$@"
