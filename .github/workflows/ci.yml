@@ -60,14 +60,15 @@ jobs:
   gtk-ui:
     name: GTK UI tests
     runs-on: ubuntu-24.04
+    # Arch, for a current GTK. What the tests check is what Orca is told, and GTK only tells
+    # AT-SPI a tree item's level from 4.16 and its position among its siblings from 4.22;
+    # Ubuntu 24.04's 4.14 gives neither, so its lists read flat.
+    container: archlinux:latest
     steps:
+      - name: GTK, a headless GNOME session, AT-SPI and Rust
+        run: pacman -Syu --noconfirm --needed base-devel git rust gtk4 mutter dbus at-spi2-core python-gobject gsettings-desktop-schemas ttf-dejavu
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: GTK, a headless GNOME session, and AT-SPI
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev mutter dbus dbus-x11 at-spi2-core python3-gi gir1.2-atspi-2.0 gir1.2-glib-2.0
       - name: UI tests
         run: apps/gtk/tests/ui/run
 
