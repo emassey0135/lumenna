@@ -104,7 +104,8 @@ fn only_this_user_may_open_the_pipe() {
 
     use windows_sys::Win32::Foundation::LocalFree;
     use windows_sys::Win32::Security::Authorization::{
-        ConvertSecurityDescriptorToStringSecurityDescriptorW, GetSecurityInfo, SDDL_REVISION_1, SE_KERNEL_OBJECT,
+        ConvertSecurityDescriptorToStringSecurityDescriptorW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
+        GetSecurityInfo, SDDL_REVISION_1, SE_KERNEL_OBJECT,
     };
     use windows_sys::Win32::Security::{DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR};
 
@@ -133,26 +134,41 @@ fn only_this_user_may_open_the_pipe() {
         )
     };
     assert_eq!(read, 0, "the pipe's security is readable by its user");
-    let mut text: *mut u16 = std::ptr::null_mut();
-    let converted = unsafe {
-        ConvertSecurityDescriptorToStringSecurityDescriptorW(
-            descriptor,
-            SDDL_REVISION_1,
-            DACL_SECURITY_INFORMATION,
-            &raw mut text,
-            std::ptr::null_mut(),
-        )
+
+    // A descriptor's DACL as Windows writes it. Both sides go through this, because Windows
+    // writes a well-known account by its alias — the built-in Administrator CI runs as is
+    // "LA", not its SID — so a SID written out by hand would not compare equal.
+    let dacl = |descriptor: PSECURITY_DESCRIPTOR| {
+        let mut text: *mut u16 = std::ptr::null_mut();
+        let converted = unsafe {
+            ConvertSecurityDescriptorToStringSecurityDescriptorW(
+                descriptor,
+                SDDL_REVISION_1,
+                DACL_SECURITY_INFORMATION,
+                &raw mut text,
+                std::ptr::null_mut(),
+            )
+        };
+        assert_ne!(converted, 0);
+        let length = (0..).take_while(|&i| unsafe { *text.add(i) } != 0).count();
+        let sddl = String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(text, length) });
+        unsafe { LocalFree(text.cast()) };
+        sddl
     };
-    assert_ne!(converted, 0);
-    let length = (0..).take_while(|&i| unsafe { *text.add(i) } != 0).count();
-    let sddl = String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(text, length) });
-    unsafe {
-        LocalFree(text.cast());
-        LocalFree(descriptor);
-    }
-    let user = lumenna_surface::rpc::pipe_user().unwrap();
+    let actual = dacl(descriptor);
+    unsafe { LocalFree(descriptor) };
+
     // Protected from inheritance, and one entry: full access for this user, nobody else.
-    assert_eq!(sddl, format!("D:P(A;;FA;;;{user})"));
+    let user = lumenna_surface::rpc::pipe_user().unwrap();
+    let wanted: Vec<u16> = format!("D:P(A;;FA;;;{user})").encode_utf16().chain(Some(0)).collect();
+    let mut expected: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+    let made = unsafe {
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(wanted.as_ptr(), SDDL_REVISION_1, &raw mut expected, std::ptr::null_mut())
+    };
+    assert_ne!(made, 0);
+    let expected_text = dacl(expected);
+    unsafe { LocalFree(expected) };
+    assert_eq!(actual, expected_text);
     drop(pipe);
     endpoint.stop();
 }
