@@ -123,13 +123,27 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         guard let days = dayButtons else { return }
-        let needed = days.arrangedSubviews.reduce(CGFloat(0)) { $0 + $1.intrinsicContentSize.width }
+        // Each title's width on one line: a wrapping button reports its size at the width it
+        // was squeezed to, so once wrapped it would always seem to fit.
+        let oneLine = { (view: UIView) -> CGFloat in
+            guard let button = view as? UIButton, let label = button.titleLabel, let text = label.text,
+                  let font = label.font else { return view.intrinsicContentSize.width }
+            let insets = button.configuration?.contentInsets ?? .zero
+            return ceil((text as NSString).size(withAttributes: [.font: font]).width) + insets.leading + insets.trailing
+        }
+        let needed = days.arrangedSubviews.reduce(CGFloat(0)) { $0 + oneLine($1) }
             + days.spacing * CGFloat(days.arrangedSubviews.count - 1)
         let fits = needed <= view.layoutMarginsGuide.layoutFrame.width
         let axis: NSLayoutConstraint.Axis = fits ? .horizontal : .vertical
         if days.axis != axis {
             days.axis = axis
-            days.alignment = fits ? .fill : .leading
+            // Stacked, each spans the width with its title at the start of the line: left to
+            // its own width it would keep the narrow one it had side by side, and wrap there.
+            days.alignment = .fill
+            days.distribution = fits ? .equalSpacing : .fill
+            for case let button as UIButton in days.arrangedSubviews {
+                button.contentHorizontalAlignment = fits ? .center : .leading
+            }
         }
     }
 
@@ -156,6 +170,10 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         var configuration = UIButton.Configuration.plain()
         configuration.title = title
         configuration.titleLineBreakMode = .byWordWrapping
+        // Narrow sides, so the four fit in a row at the usual text sizes; the tap target
+        // stays the full height.
+        configuration.contentInsets.leading = 6
+        configuration.contentInsets.trailing = 6
         let button = UIButton(configuration: configuration, primaryAction: UIAction { _ in action() })
         return button
     }
