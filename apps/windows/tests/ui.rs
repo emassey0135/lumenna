@@ -47,6 +47,11 @@ struct App {
 impl App {
     /// Starts the app on a fresh store, filled in by `seed` first.
     fn launch(seed: impl FnOnce(&Lumenna)) -> Self {
+        Self::launch_with(&[], seed)
+    }
+
+    /// Starts the app as `launch` does, with `env` set as well.
+    fn launch_with(env: &[(&str, &str)], seed: impl FnOnce(&Lumenna)) -> Self {
         let turn = ONE_WINDOW_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
         let profile = tempfile::tempdir().unwrap();
         let backups = tempfile::tempdir().unwrap();
@@ -58,6 +63,7 @@ impl App {
             // must not take them, nor say another program has.
             .arg("--no-shortcuts")
             .env("LUMENNA_BACKUP_DIR", backups.path())
+            .envs(env.iter().copied())
             .spawn()
             .expect("the app starts");
         let automation = Automation::new();
@@ -470,3 +476,67 @@ fn lum_sync_runs_its_round_on_the_running_app() {
         std::thread::sleep(Duration::from_millis(500));
     }
 }
+
+/// Checks the window in front fits its screen's work area, and that nothing directly in it
+/// lies outside it or over anything else: what Text size at its largest would break.
+fn fits_and_nothing_overlaps(app: &App, what: &str) {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow};
+
+    let front = app.automation.front(app.window);
+    let (window, items) = app.automation.boxes(front);
+    let mut monitor = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..Default::default() };
+    unsafe {
+        let _ = GetMonitorInfoW(MonitorFromWindow(front, MONITOR_DEFAULTTONEAREST), &mut monitor);
+    }
+    let work = monitor.rcWork;
+    assert!(
+        window.left >= work.left && window.top >= work.top && window.right <= work.right && window.bottom <= work.bottom,
+        "{what} is off the screen: {window:?} in {work:?}"
+    );
+    let inside = |r: &RECT| r.left >= window.left && r.top >= window.top && r.right <= window.right && r.bottom <= window.bottom;
+    let over = |a: &RECT, b: &RECT| a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    // A property sheet's tab strip spans its page, and the title bar is the frame's.
+    let laid: Vec<&(String, RECT)> = items
+        .iter()
+        .filter(|(line, r)| {
+            r.right > r.left && r.bottom > r.top && !["Tab ", "TitleBar ", "Pane ", "Window "].iter().any(|k| line.starts_with(k))
+        })
+        .collect();
+    for (line, r) in &laid {
+        assert!(inside(r), "{what}: {line} lies outside it: {r:?} in {window:?}");
+    }
+    // A group box frames the controls inside it.
+    let laid: Vec<&&(String, RECT)> = laid.iter().filter(|(line, _)| !line.starts_with("Group ")).collect();
+    for (i, (a, ra)) in laid.iter().enumerate() {
+        for (b, rb) in &laid[i + 1..] {
+            assert!(!over(ra, rb), "{what}: {a} {ra:?} overlaps {b} {rb:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn every_dialog_fits_the_screen_at_the_largest_text_size_with_nothing_overlapping() {
+    // Windows' largest Text size, 225%, without changing the person's own setting.
+    let app = App::launch_with(&[("LUMENNA_TEXT_SCALE", "2.25")], |lumenna| {
+        add(lumenna, "Write report");
+        let block = NewBlock { title: "Deep work".to_owned(), at: "11pm".to_owned(), minutes: 30, kind: "work".to_owned(), ..NewBlock::default() };
+        lumenna.add_block(block).unwrap();
+    });
+    app.post(&[NEW_TASK]);
+    fits_and_nothing_overlaps(&app, "New Task");
+    app.post(&["esc", "cmd:101"]);
+    fits_and_nothing_overlaps(&app, "New Block");
+    app.post(&["esc", GO_TASKS, "home", PUT_IN_BLOCK]);
+    fits_and_nothing_overlaps(&app, "Put in a Block");
+    app.post(&["esc", SETTINGS]);
+    for page in ["General", "Planning", "Devices", "Backups", "Export and Import"] {
+        app.post(&[&format!("select:{page}")]);
+        fits_and_nothing_overlaps(&app, &format!("Settings, {page}"));
+    }
+    app.post(&["select:Devices", "invoke:Pair a Device..."]);
+    fits_and_nothing_overlaps(&app, "Pair a Device");
+    app.post(&["esc", "esc"]);
+}
+

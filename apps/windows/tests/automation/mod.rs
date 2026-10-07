@@ -11,7 +11,7 @@
 
 use std::time::{Duration, Instant};
 
-use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
 use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx};
 use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 use windows::Win32::System::Variant::VARIANT;
@@ -69,6 +69,23 @@ impl Automation {
             walk(&walker, &root, 0, depth, &mut lines);
         }
         lines
+    }
+
+    /// A window's own rectangle, and each element directly in it — described, with where it
+    /// is on the screen — for checking that a layout fits and nothing overlaps.
+    pub fn boxes(&self, window: HWND) -> (RECT, Vec<(String, RECT)>) {
+        let mut found = Vec::new();
+        let mut own = RECT::default();
+        if let (Ok(root), Ok(walker)) = unsafe { (self.uia.ElementFromHandle(window), self.uia.ControlViewWalker()) } {
+            own = unsafe { root.CurrentBoundingRectangle() }.unwrap_or_default();
+            let mut child = unsafe { walker.GetFirstChildElement(&root) }.ok();
+            while let Some(current) = child {
+                let place = unsafe { current.CurrentBoundingRectangle() }.unwrap_or_default();
+                found.push((describe(&current), place));
+                child = unsafe { walker.GetNextSiblingElement(&current) }.ok();
+            }
+        }
+        (own, found)
     }
 
     /// Where focus is in `app`, as a screen reader would say it: the focused control, and in
