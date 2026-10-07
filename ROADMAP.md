@@ -1,130 +1,60 @@
 # Roadmap
 
-What Lumenna does not do yet, with the decisions already made about it. What is built is
-not listed: the code says how it works, and `CLAUDE.md` says what is easy to get wrong.
+What Lumenna does not do yet, with the decisions already made about it, in the order it is
+to be done. What is built is not listed: the code says how it works, and `CLAUDE.md` says
+what is easy to get wrong.
 
 Every client gets every feature. A platform may get it later, never a smaller version of it.
 
-## Planning
+The order, and why:
 
-The planner is four capabilities: urgency, suggestions for a block, re-flow when the day
-slips, and a whole-day plan. None is built. What they will read already exists: block
-minimum lengths and compression floors, the `anchored`, `accepts_tasks` and
-`counts_capacity` flags, the day window, block task filters, project weights, and the day's
-timeline with its free time.
+1. **Safeguards first**: schema versions before real data makes them harder, CI, and the
+   small correctness bugs.
+2. **Reminders**, the biggest gap in daily use, and the scheduler the planner's overrun
+   warning and hooks' time events also need.
+3. **The planner**, in dependency order: urgency and history, suggestions, carrying work
+   forward and day commands, re-flow, the whole-day plan.
+4. **Smaller gaps**, threaded through the two above.
+5. **The watches**: the watchOS spike early, since it decides the toolchain and whether the
+   watch can be a full peer; then both watch apps.
+6. **Integrations**, once reminders and the planner exist for them to expose.
+7. **Before others use it**: packaging, real erasure, installing the web client.
+8. **The encrypted store and accounts**, which the web's reminders and syncing alone wait on.
+9. **Only when needed**: performance and network extras.
 
-### Rules for all of it
+## 1. Safeguards
 
-- **Pure, deterministic functions over the day's state**, in the core, property-tested.
-- **A proposal, never a mutation.** An accepted proposal is applied through the ordinary
-  operations, so it can be undone and it syncs. A day that reorganises itself unannounced is
-  disorienting, above all to someone who cannot glance at it.
-- **Every proposal can be said in full before it is accepted**: "Deep work moves from 9:00
-  to 9:45; Email shortens from 30 to 15 minutes; Review PR does not fit and moves to
-  tomorrow." For this audience the description *is* the verification.
-- **Constraints bind the planner, never the person.** A block's minimum length, `anchored`
-  and the day window say what may be *proposed*; no operation consults them, and someone can
-  still shorten a break to five minutes or delete it. The minimum is hard in the main
-  proposal, soft in alternatives (which may break it if they say what it costs), and absent
-  for anything the person does directly.
-- **No language model.** It cannot explain itself or be property-tested, and it would send
-  the day to a server.
-
-### Urgency
-
-`urgency(task, now) -> f32`, computed and never stored, after Taskwarrior's. It orders block
-suggestions, the default sort of task lists, and a `sort: urgency` clause the filter
-language does not have yet. It never schedules anything by itself.
-
-- Additive terms: due proximity (rising, and still rising while overdue, up to a ceiling);
-  priority; age (small); partly worked (finishing beats starting); blocking other tasks;
-  blocked (strongly negative: not actionable); already assigned today (mildly negative).
-- **Project weight multiplies the sum.** An additive project term lets a heavy project's
-  trivia outrank another project's emergency; multiplying keeps the order within each
-  project and scales between them. Weights stay narrow (about 0.5 to 2), a sub-project's own
-  weight replaces the inherited one, and labels have none.
-- The coefficients are synced settings with good defaults, so ranking agrees across
-  devices. `lum task show --urgency` breaks a score into its terms.
-- If a task becomes permanent furniture at the top, add a staleness question ("this has
-  been at the top for three weeks; is it real?") rather than a bigger formula.
-
-### Suggestions for a block
-
-`suggest_tasks(block, now, limit) -> [Suggestion { task, reasons }]`, behind "what should I
-work on?" in a block, behind adding tasks to a block, and for filling free time.
-
-- Candidates are the tasks the block's `task_filter` admits, ranked by urgency, with a task
-  whose estimate fits the block's remaining time raised and one already assigned elsewhere
-  today lowered, never excluded.
-- **Reasons are required and are the accessible label**: "Suggested because overdue by two
-  days, priority 1, and its 30-minute estimate fits your remaining 35 minutes."
-- `task_filter` is stored and validated but evaluated nowhere. Today, "Assign a task" from a
-  block offers every task, and the block chooser (`work_blocks`) offers every block that
-  takes tasks; it should offer only blocks whose filter admits the task.
-
-### Re-flow when the day slips
-
-`propose_reflow(day, now, pinned) -> Proposal { changes, unplaceable, alternatives }`.
-
-- **Three situations, kept apart.** Assigned work exceeding the block is a plan that was
-  wrong when made, predictable in advance. A block running past its end, and a block that
-  never happened because the one before ran through it, are slips.
-- **Say it before the clock does**: fire when the remaining assigned work first exceeds the
-  block's remaining time. A sighted person sees that on a timeline; a list must compute and
-  say it. It runs on the reminder scheduler, anchored to block ends.
-- **The walk**: forward from now. Anchored blocks are fixed and routed around. A movable
-  block with slack above its minimum shrinks; one at its minimum moves later. A break's
-  minimum is its whole length by default, so a break moves rather than being squeezed to
-  three minutes; a work block may shrink to about half, never below 15 minutes. Nothing
-  moves before now or past the day window. What does not fit is `unplaceable`, and said: the
-  planner cannot create time.
-- **Move the work before moving the day.** Deferring a task out of an overrunning block
-  touches no commitment; a block is a commitment, an assignment only a plan.
-- **One concrete proposal**, accepted whole, per change, or refused. Alternatives sit behind
-  "other options" and name their cost ("or skip the 3:00 break: your only break today").
-  Never a menu of strategies.
-- **Re-entrant**: the person's decisions ("skip the 3:00 break", "keep this here") come back
-  as pinned constraints and the proposal is recomputed, never applied on stale assumptions.
-  Skipping is a cancelled occurrence and "end at 4" a modified one, both of which exist.
-- **An anchored block already under way** (a class that started ten minutes ago) is a
-  conflict to report (stop now, or miss it), never a re-flow that pretends it moved.
-- **Stay silent** when the overrun fits the gap after it, is under a few minutes, or was
-  dismissed for this block.
-
-### Carrying unfinished work forward
-
-At a block's end, a sitting with less logged than planned and its task not done is
-**offered** onward: "Deep work ended. Essay draft: 40 of 90 minutes. Carry the remaining 50
-to tomorrow's Deep work?" The destination is the next block whose filter admits the task,
-with the same capacity check, and overfill is reported. Never carried automatically: silent
-carries build a tomorrow nobody decided on, and the question is where "the estimate was
-wrong" gets noticed.
-
-### Day commands
-
-End the day now, clear the rest of the day, replan from now; and on one block, end it now
-or add fifteen minutes (a modified occurrence each, since occurrences have no lifecycle
-state that could survive a merge). Each is the person's own decision and needs no proposal,
-though ending early offers carry-forward. Skipping an occurrence is built.
-
-### The whole-day plan
-
-`propose_day(date, now, pinned)`: walk the day's work blocks in order, run suggestions for
-each, and assign greedily until the estimates fill it. One proposal, naming what did not
-fit, pinned the same way. Greedy and editable is worth more than optimal packing. Always
-optional.
-
-### Smaller planning gaps
-
+- **Schema versions**, designed before real data ships: a `schema_version` per document and
+  per device in the device list; a migration runs only once every listed device reports at
+  least its version, since nothing can force an update; version skew is told plainly ("your
+  iPhone is running an older version"). Mixed versions coexist permanently, so **unknown
+  fields are kept** when writing back. That holds for ordinary edits and is untested, and it
+  fails for whole-record rewrites (moving a block to another year, restoring a purged record
+  through undo, converting to inline, replacing a nested map), for unknown enum values (an
+  unknown block kind reads as work), and in JSON export and import.
+- **CI**: none. Even `cargo test` and clippy on Linux and Windows on every push would catch
+  drift between the apps the sessions keep.
 - **Capacity follows the kind, not the flag.** The day summary's "N of work" adds up blocks
   of kind `work`; it should add those with `counts_capacity`, since every flag can be
   overridden.
-- **Planning against a dependency** is allowed without a word: task B can go in a block
-  before the one holding the task it waits for.
-- **Sittings cannot be reordered** within a block once assigned.
-- **Skipped and Deferred sittings** exist in the model and nothing sets them.
+- **The quick-add readback omits the project and existing labels**, though it is the
+  stand-in for the highlighting a sighted person sees: a project resolved to the wrong one
+  goes unnoticed.
+- **"every month on the 15th"** reads as "every month" and leaves "on the 15th" in the title
+  without a notice. A phrase that starts like a date is parsed or flagged, never folded
+  away. `every 15th` reads back without its ordinal.
+- **Repairs are not told.** `Snapshot::repair()` reports tasks moved to the top and
+  dependencies dropped, and `surface::repaired` discards it. A task that silently loses a
+  dependency is worse than one the person is told about.
+- **Taking over and asking the holder.** The CLI takes the sync lock for a round and asks
+  the daemon when it holds it. The resident apps call `start_sync` once and never again
+  after `SyncElsewhere`, so they do not take over when the daemon stops; their Sync Now
+  fails instead of asking the holder; and the Mac and Windows apps serve no socket, so `lum
+  sync` cannot ask them. The rule: whoever holds the lock runs the endpoint; the next to want
+  it takes it; anything else asks the holder for pairing, status and a forced round, and
+  does them itself when nothing answers.
 
-## Reminders and time events
+## 2. Reminders and time events
 
 The model is built: `Reminder` (targeting a task or a block series, anchored to a due date,
 a block's start or end, or an absolute time, with an offset that may be after), `Delivery`
@@ -172,7 +102,53 @@ unit has no session bus.
   convenience only.
 - **The web**: see the web client below.
 
-## History
+## 3. Planning
+
+The planner is four capabilities: urgency, suggestions for a block, re-flow when the day
+slips, and a whole-day plan. None is built. Per-task history comes with urgency: it is
+cheap, and its facts ("rescheduled 7 times") feed suggestions' reasons. What they will read
+already exists: block minimum lengths and compression floors, the `anchored`,
+`accepts_tasks` and `counts_capacity` flags, the day window, block task filters, project
+weights, and the day's timeline with its free time.
+
+### Rules for all of it
+
+- **Pure, deterministic functions over the day's state**, in the core, property-tested.
+- **A proposal, never a mutation.** An accepted proposal is applied through the ordinary
+  operations, so it can be undone and it syncs. A day that reorganises itself unannounced is
+  disorienting, above all to someone who cannot glance at it.
+- **Every proposal can be said in full before it is accepted**: "Deep work moves from 9:00
+  to 9:45; Email shortens from 30 to 15 minutes; Review PR does not fit and moves to
+  tomorrow." For this audience the description *is* the verification.
+- **Constraints bind the planner, never the person.** A block's minimum length, `anchored`
+  and the day window say what may be *proposed*; no operation consults them, and someone can
+  still shorten a break to five minutes or delete it. The minimum is hard in the main
+  proposal, soft in alternatives (which may break it if they say what it costs), and absent
+  for anything the person does directly.
+- **No language model.** It cannot explain itself or be property-tested, and it would send
+  the day to a server.
+
+### Urgency
+
+`urgency(task, now) -> f32`, computed and never stored, after Taskwarrior's. It orders block
+suggestions, the default sort of task lists, and a `sort: urgency` clause the filter
+language does not have yet. It never schedules anything by itself.
+
+- Additive terms: due proximity (rising, and still rising while overdue, up to a ceiling);
+  priority; age (small); partly worked (finishing beats starting); blocking other tasks;
+  blocked (strongly negative: not actionable); already assigned today (mildly negative).
+- **Project weight multiplies the sum.** An additive project term lets a heavy project's
+  trivia outrank another project's emergency; multiplying keeps the order within each
+  project and scales between them. Weights stay narrow (about 0.5 to 2), a sub-project's own
+  weight replaces the inherited one, and labels have none.
+- The coefficients are synced settings with good defaults, so ranking agrees across
+  devices. `lum task show --urgency` breaks a score into its terms.
+- If a task becomes permanent furniture at the top, add a staleness question ("this has
+  been at the top for three weeks; is it real?") rather than a bigger formula.
+- **Filters have no `sort` clause** (for `sort: urgency`, among others). Comparison
+  operators stay out: the vocabulary grows by named predicates.
+
+### History
 
 **Per-task history from the records already kept**, first: "rescheduled 7 times", "three
 sittings, 90 minutes logged against a 60-minute estimate", "created four months ago, never
@@ -182,14 +158,88 @@ defined or secretly unimportant: support for executive function, not a statistic
 history view in every app and `lum history`. Field-level history from Automerge (title and
 due-date changes over time) later, with its own API.
 
-## Tasks, blocks and text entry
+### Suggestions for a block
+
+`suggest_tasks(block, now, limit) -> [Suggestion { task, reasons }]`, behind "what should I
+work on?" in a block, behind adding tasks to a block, and for filling free time.
+
+- Candidates are the tasks the block's `task_filter` admits, ranked by urgency, with a task
+  whose estimate fits the block's remaining time raised and one already assigned elsewhere
+  today lowered, never excluded.
+- **Reasons are required and are the accessible label**: "Suggested because overdue by two
+  days, priority 1, and its 30-minute estimate fits your remaining 35 minutes."
+- `task_filter` is stored and validated but evaluated nowhere. Today, "Assign a task" from a
+  block offers every task, and the block chooser (`work_blocks`) offers every block that
+  takes tasks; it should offer only blocks whose filter admits the task.
+
+### Carrying unfinished work forward
+
+At a block's end, a sitting with less logged than planned and its task not done is
+**offered** onward: "Deep work ended. Essay draft: 40 of 90 minutes. Carry the remaining 50
+to tomorrow's Deep work?" The destination is the next block whose filter admits the task,
+with the same capacity check, and overfill is reported. Never carried automatically: silent
+carries build a tomorrow nobody decided on, and the question is where "the estimate was
+wrong" gets noticed.
+
+### Day commands
+
+End the day now, clear the rest of the day, replan from now; and on one block, end it now
+or add fifteen minutes (a modified occurrence each, since occurrences have no lifecycle
+state that could survive a merge). Each is the person's own decision and needs no proposal,
+though ending early offers carry-forward. Skipping an occurrence is built.
+
+### Re-flow when the day slips
+
+`propose_reflow(day, now, pinned) -> Proposal { changes, unplaceable, alternatives }`.
+
+- **Three situations, kept apart.** Assigned work exceeding the block is a plan that was
+  wrong when made, predictable in advance. A block running past its end, and a block that
+  never happened because the one before ran through it, are slips.
+- **Say it before the clock does**: fire when the remaining assigned work first exceeds the
+  block's remaining time. A sighted person sees that on a timeline; a list must compute and
+  say it. It runs on the reminder scheduler, anchored to block ends.
+- **The walk**: forward from now. Anchored blocks are fixed and routed around. A movable
+  block with slack above its minimum shrinks; one at its minimum moves later. A break's
+  minimum is its whole length by default, so a break moves rather than being squeezed to
+  three minutes; a work block may shrink to about half, never below 15 minutes. Nothing
+  moves before now or past the day window. What does not fit is `unplaceable`, and said: the
+  planner cannot create time.
+- **Move the work before moving the day.** Deferring a task out of an overrunning block
+  touches no commitment; a block is a commitment, an assignment only a plan.
+- **One concrete proposal**, accepted whole, per change, or refused. Alternatives sit behind
+  "other options" and name their cost ("or skip the 3:00 break: your only break today").
+  Never a menu of strategies.
+- **Re-entrant**: the person's decisions ("skip the 3:00 break", "keep this here") come back
+  as pinned constraints and the proposal is recomputed, never applied on stale assumptions.
+  Skipping is a cancelled occurrence and "end at 4" a modified one, both of which exist.
+- **An anchored block already under way** (a class that started ten minutes ago) is a
+  conflict to report (stop now, or miss it), never a re-flow that pretends it moved.
+- **Stay silent** when the overrun fits the gap after it, is under a few minutes, or was
+  dismissed for this block.
+
+### The whole-day plan
+
+`propose_day(date, now, pinned)`: walk the day's work blocks in order, run suggestions for
+each, and assign greedily until the estimates fill it. One proposal, naming what did not
+fit, pinned the same way. Greedy and editable is worth more than optimal packing. Always
+optional.
+
+### Smaller planning gaps
+
+- **Planning against a dependency** is allowed without a word: task B can go in a block
+  before the one holding the task it waits for.
+- **Sittings cannot be reordered** within a block once assigned.
+- **Skipped and Deferred sittings** exist in the model and nothing sets them.
+
+## 4. Smaller gaps
+
+A day or less each, for between the larger pieces.
+
+### Tasks, blocks and text entry
 
 - **Reordering tasks among siblings.** New tasks go last and only "move to top" exists. The
   fractional `order` key supports any position; ties break by identifier.
 - **Completed subtasks**: a setting to show them, and a completion count on the parent row.
-- **Repairs are not told.** `Snapshot::repair()` reports tasks moved to the top and
-  dependencies dropped, and `surface::repaired` discards it. A task that silently loses a
-  dependency is worse than one the person is told about.
 - **Time zones** on tasks and blocks are stored and nothing can set them. Normally absent,
   so times float; set only for something tied to a real place.
 - **Colours** for projects and saved filters exist in the model with no way to set them.
@@ -199,16 +249,10 @@ due-date changes over time) later, with its own API.
 - **Week start is stored and read by nothing**: week-relative phrases, the block chooser's
   coming week.
 - **Quick add for blocks**, in the same grammar: `block "Deep work" 9-11am weekdays`.
-- **The quick-add readback omits the project and existing labels**, though it is the
-  stand-in for the highlighting a sighted person sees: a project resolved to the wrong one
-  goes unnoticed.
-- **"every month on the 15th"** reads as "every month" and leaves "on the 15th" in the title
-  without a notice. A phrase that starts like a date is parsed or flagged, never folded
-  away. `every 15th` reads back without its ordinal.
-- **Filters have no `sort` clause** (for `sort: urgency`, among others). Comparison
-  operators stay out: the vocabulary grows by named predicates.
+- **The block editor** should move a start date that does not match the repetition to the
+  first real occurrence ("every Monday, starting Tuesday" never occurs on its start date).
 
-## Completion
+### Completion
 
 The core's `complete` works everywhere; what is missing is how each app offers it.
 
@@ -229,43 +273,117 @@ The core's `complete` works everywhere; what is missing is how each app offers i
 - **The shell**: `lum completions` is static. clap_complete's dynamic mode would complete
   project, label and filter names from the store.
 
-## Sync and storage
+### Each app
 
-- **Taking over and asking the holder.** The CLI takes the sync lock for a round and asks
-  the daemon when it holds it. The resident apps call `start_sync` once and never again
-  after `SyncElsewhere`, so they do not take over when the daemon stops; their Sync Now
-  fails instead of asking the holder; and the Mac and Windows apps serve no socket, so `lum
-  sync` cannot ask them. The rule: whoever holds the lock runs the endpoint; the next to want
-  it takes it; anything else asks the holder for pairing, status and a forced round, and
-  does them itself when nothing answers.
-- **The daemon on Windows**: the same JSON-RPC over a named pipe. Until then RPC clients
-  there spawn `lum rpc`.
-- **Watching the WAL** (inotify, FSEvents, `ReadDirectoryChangesW`) instead of polling
-  `data_version` every second; keep the poll where watching is unreliable, such as network
-  filesystems.
-- **Closed years**: a finished year's document is history. Leave it out of the default sync
-  set and fetch it on demand; the always-on peer keeps every year. Nothing is ever
-  discarded: pruning history would break offline replicas.
-- **Sync status**: live reachability per device. `Device.last_seen` is written at pairing
-  and never again; status comes from this device's own record, so leave the synced field.
-- **A relay of one's own**: `node.rs` always uses n0's relays.
-- **Pairing across networks by a spoken code**: the cross-network code is the pairing key,
-  fine to paste and too long to read aloud. An optional rendezvous service could hold it
-  under a short code; the words still confirm both sides, and pasting must keep working.
-- **Unattended provisioning**: a long pre-shared token in a headless device's config file in
-  place of the words. Everything a person does still goes through the words.
-- **Wake-up push** (optional, can be turned off): a silent APNs push when a device changes
-  something, on top of background refresh, never instead; Web Push with VAPID for an
-  installed web client. The push server learns timing, so say so, and batch with jitter. A
-  sync wake-up needs no data; a reminder does, which is why the encrypted store can never
-  send reminders.
-- **The SQLite read model**, only if queries become slow or full-text search is wanted: a
-  rebuildable projection (flattened tasks with depth and path, date indexes, FTS5, block
-  occurrences for a window), recording the Automerge heads it reflects, filled in the same
-  transaction as the changes, producing the same core structs. Filters would then compile
-  partly to SQL, with the rest evaluated in memory over what remains.
+- **iOS**: custom rotors (overdue, running, next block).
+- **Android**: arm64 only; pairing on the local network untried on a real phone (the
+  emulator's NAT passes no multicast); the iPhone's two pairing tests not ported.
+- **GTK**: type-ahead in lists (the Windows and Mac lists jump to a row by its first
+  letters; GTK's list view does not); shortcuts from anywhere without the GlobalShortcuts
+  portal (an X11 key grab for Xfce and older GNOME); no tray on GNOME without the
+  AppIndicator extension; "expanded" said twice on first focus of a row with subtasks.
+- **Emacs**: priority faces, mapped to voices.
+- **The web client**: making a task a subtask or moving it to the top level (the export
+  exists; nothing calls it).
+- **Every app**: icons of their own (GTK and Windows have none); one binding for "go to now"
+  (Ctrl+T on Windows and GTK, Cmd+T on the Mac, `t` on BTSpeak, but Cmd+J on iPad, which is
+  Go to Day on the Mac, and none on the web or Android).
+- **Screen readers not yet tried by a person**: JAWS, Narrator, ChromeVox, Emacspeak and
+  speechd-el. NVDA (Windows and the web), Orca, VoiceOver on the Mac and iPhone, TalkBack,
+  Emacsvox and the BTSpeak have been. The braille short forms for states and roles are
+  unchecked against BTBraille's tree-view convention.
+- **Snapshot tests of the row projection** for task lists and the day: index and count,
+  expanded and checked, states, speech and braille.
 
-## The encrypted store and accounts
+## 5. The watches
+
+Both are full peers with every view, not companions of the phone.
+
+- **watchOS** (SwiftUI; WatchKit only for haptics, the Crown and sessions): a full peer
+  running the whole core with the phone off, with every view. **Spike first**: a throwaway
+  crate with quinn/rustls, rusqlite, automerge and jiff, built with `cargo build -Z
+  build-std=std,panic_abort --target arm64_32-apple-watchos` on a pinned nightly. Risks in
+  order: the 32-bit pointer ABI; Iroh's crypto (`ring`, `aws-lc-rs`) failing to build;
+  bundled SQLite cross-compiling (the system `libsqlite3` avoids it); watchOS policy against
+  independent connections; memory, since Automerge loads whole documents. If Iroh or
+  independent QUIC fails there, the watch becomes a phone accessory. `WatchConnectivity` is
+  a battery-saving shortcut near the phone; complications through WidgetKit.
+- **Wear OS** (Compose for Wear OS): a standalone full peer, the core through `cargo-ndk`,
+  every view. Check rotary scrolling with TalkBack. The hardware is here to test on.
+- **Toolchain**: unpinned; the watchOS spike decides the nightly.
+
+## 6. Integrations
+
+Each is a thin adapter over the command surface.
+
+- **App Intents** (iOS and macOS; watchOS later): one implementation for Siri, Shortcuts,
+  Spotlight, widgets, Control Center and the Action Button. `AppEntity` and `EntityQuery`
+  for tasks, projects and blocks so Shortcuts can find things, not only make them;
+  `AppShortcutsProvider` for Siri phrases with no setup. Add (in the quick-add grammar),
+  complete, query by filter, today's plan, assign, start and stop. Hands-free capture is an
+  accessibility feature. Check for an assistant-schema domain for tasks when building.
+- **Android App Functions** (`androidx.appfunctions`, for Gemini) with AppSearch for
+  retrieval; not the old App Actions.
+- **A "Today" shortcut** on the iOS and Android icons, beside New Task.
+- **Widgets**: WidgetKit (iOS, macOS) and Glance (Android): today's blocks and what is due.
+- **PowerShell module** wrapping `lum --json`; the same language as Windows hooks.
+- **`lum mcp`**, in the same binary so versions on a machine cannot drift. Tasks and the day
+  are resources, operations are tools, plus "undo last action". stdio, and Streamable HTTP
+  (not HTTP+SSE) as a daemon listener, since Home Assistant usually runs elsewhere:
+  loopback by default, a bearer token required off loopback, no TLS (a reverse proxy or
+  Tailscale). Read-only unless writes are turned on. Say plainly that a cloud-hosted model
+  sends what it reads off the device; the point is a fully local voice pipeline.
+- **Hooks**, `lum hook add|list|test|rm`:
+  - **Reactive, never interceptive**: a change can arrive already committed from an
+    unreachable device, and convergence cannot be vetoed. Hooks fire after a change is
+    durable, see before and after, may make further changes, and cannot report failure to
+    the person who made the change (log it; show it in sync status).
+  - Change events: task created, completed, uncompleted, updated, deleted; assignment
+    created, removed; timer started, stopped; block edited. Time events, from the scheduler:
+    block started, ended, upcoming(offset); day start, end; task due. A time event past its
+    hook's maximum lateness (a few minutes by default) is dropped and logged: Do Not Disturb
+    40 minutes late is wrong.
+  - `Hook { event, filter, action, max_lateness_secs }`, the filter in the filter language.
+  - **Local only, never synced**: a hook running `ssh` belongs to one machine, and synced
+    hooks would be remote code execution for anyone who can write the document. On one
+    machine only the sync-lock holder runs them.
+  - The event is JSON on stdin in `lum --json`'s shape, common fields in the environment.
+    argv is run directly, without a shell unless asked. Windows: `pwsh -NoProfile
+    -ExecutionPolicy Bypass -File` (without Bypass, unsigned scripts fail silently).
+    Android: a broadcast, `com.lumenna.EVENT`, for Tasker and the like.
+  - With nothing resident, hooks run late over the backlog; there is no ordering across
+    devices; an always-on peer is the best host.
+- **Calendar import**, read-only first (so the planner knows about real meetings), through
+  `ExternalRef` (EventKit, CalDAV, ICS URL), which exists in the model only; `lum calendar
+  add|list|rm`. Read-only must be enforced on edit. Two-way sync is a separate project.
+- **Imports from other systems**: Todoist (whose API priority 4 is P1), then Jira, Linear
+  and GitHub, which `ExternalRef` was shaped for.
+
+## 7. Before others use it
+
+- **Packaging**: a `lumenna` alias for `lum`, a Homebrew formula (`brew services start
+  lum`), a winget manifest, Flatpak and AppStream for GTK. A command-line user has no app to
+  prompt for updates, so packages matter most there.
+- **Real erasure.** Erasing a task removes it from the current state only: its content stays
+  in the history and in backups, and undo brings it back. Truly erasing means rebuilding the
+  document without it, losing all history, every device syncing afresh, and clearing the
+  undo table's copies. Rare and expensive, so it says so: "Permanently erase — rebuilds your
+  database and re-syncs all devices."
+- **Property tests**: back up and restore a randomly generated store; an export never holds
+  a deleted task (a privacy guarantee, not formatting).
+- **An always-on peer**, documented: `lum daemon` on hardware the person controls. A VPS
+  works, but say the provider can read the data, and make no encryption claim: unattended
+  boot and provider-proof encryption conflict.
+- **Apple builds** are arm64 only: no Intel Mac or Intel simulator slice.
+- **Installing the web client as a PWA**: a manifest and service worker;
+  `navigator.storage.persist()`, because OPFS can be evicted and the device key with it;
+  offline loading; a badge for what is due; Background Sync to send pending changes when the
+  connection returns; File System Access as a backup destination.
+- **Browsers for the web client**: only Chromium is tested. Safari, Firefox (OPFS sync access
+  handles there) and ChromeVox are unchecked; an IndexedDB fallback for browsers without sync
+  access handles is optional.
+
+## 8. The encrypted store and accounts
 
 Storage for change chunks that are encrypted before they leave a device, addressed by hash
 and served on request. It never runs Automerge and never holds a key, so it is encrypted at
@@ -332,137 +450,49 @@ six days to guess"), never a coloured bar. Rate-limit wrapper fetches per accoun
 protection. "We cannot read your tasks" is true; "we learn nothing" is not (identity, chunk
 counts and sizes, timing, which devices connect when).
 
-## Durability
+What the web client gains from it:
 
-- **Real erasure.** Erasing a task removes it from the current state only: its content stays
-  in the history and in backups, and undo brings it back. Truly erasing means rebuilding the
-  document without it, losing all history, every device syncing afresh, and clearing the
-  undo table's copies. Rare and expensive, so it says so: "Permanently erase — rebuilds your
-  database and re-syncs all devices."
-- **Schema versions**, designed before real data ships: a `schema_version` per document and
-  per device in the device list; a migration runs only once every listed device reports at
-  least its version, since nothing can force an update; version skew is told plainly ("your
-  iPhone is running an older version"). Mixed versions coexist permanently, so **unknown
-  fields are kept** when writing back. That holds for ordinary edits and is untested, and it
-  fails for whole-record rewrites (moving a block to another year, restoring a purged record
-  through undo, converting to inline, replacing a nested map), for unknown enum values (an
-  unknown block kind reads as work), and in JSON export and import.
-- **Property tests**: back up and restore a randomly generated store; an export never holds
-  a deleted task (a privacy guarantee, not formatting).
+- **Reminders**: only as an installed PWA, through a classic service-worker push (not
+  Declarative Web Push, which needs plaintext at the sender). The wake-up carries no
+  content: the service worker syncs, works out what is due, and shows it, within Chrome's
+  budget for pushes that show nothing. The sender is an awake peer that can decrypt, or the
+  encrypted store sending a content-free wake-up on a schedule the person chose to give it
+  (off by default, the trade-off stated).
+- **Keys**: the account key as a non-extractable WebCrypto key.
+- **Verifiability**: subresource integrity and a published bundle hash, and a one-time plain
+  notice at sign-in that a web client is harder to verify than a native one.
+
+## 9. Only when needed
+
+- **The daemon on Windows**: the same JSON-RPC over a named pipe. Until then RPC clients
+  there spawn `lum rpc`.
+- **Watching the WAL** (inotify, FSEvents, `ReadDirectoryChangesW`) instead of polling
+  `data_version` every second; keep the poll where watching is unreliable, such as network
+  filesystems.
+- **Closed years**: a finished year's document is history. Leave it out of the default sync
+  set and fetch it on demand; the always-on peer keeps every year. Nothing is ever
+  discarded: pruning history would break offline replicas.
+- **Sync status**: live reachability per device. `Device.last_seen` is written at pairing
+  and never again; status comes from this device's own record, so leave the synced field.
+- **A relay of one's own**: `node.rs` always uses n0's relays.
+- **Pairing across networks by a spoken code**: the cross-network code is the pairing key,
+  fine to paste and too long to read aloud. An optional rendezvous service could hold it
+  under a short code; the words still confirm both sides, and pasting must keep working.
+- **Unattended provisioning**: a long pre-shared token in a headless device's config file in
+  place of the words. Everything a person does still goes through the words.
+- **Wake-up push** (optional, can be turned off): a silent APNs push when a device changes
+  something, on top of background refresh, never instead; Web Push with VAPID for an
+  installed web client. The push server learns timing, so say so, and batch with jitter. A
+  sync wake-up needs no data; a reminder does, which is why the encrypted store can never
+  send reminders.
+- **The SQLite read model**, only if queries become slow or full-text search is wanted: a
+  rebuildable projection (flattened tasks with depth and path, date indexes, FTS5, block
+  occurrences for a window), recording the Automerge heads it reflects, filled in the same
+  transaction as the changes, producing the same core structs. Filters would then compile
+  partly to SQL, with the rest evaluated in memory over what remains.
+- **The web's WASM** is 8.7 MB (3 MB compressed), mostly Iroh; worth trimming.
 - **The web takes no automatic backups**; it asks for downloads. Revisit if a browser path
   appears; a backup must live outside the live store.
-
-## Automation
-
-Each is a thin adapter over the command surface.
-
-- **App Intents** (iOS and macOS; watchOS later): one implementation for Siri, Shortcuts,
-  Spotlight, widgets, Control Center and the Action Button. `AppEntity` and `EntityQuery`
-  for tasks, projects and blocks so Shortcuts can find things, not only make them;
-  `AppShortcutsProvider` for Siri phrases with no setup. Add (in the quick-add grammar),
-  complete, query by filter, today's plan, assign, start and stop. Hands-free capture is an
-  accessibility feature. Check for an assistant-schema domain for tasks when building.
-- **Android App Functions** (`androidx.appfunctions`, for Gemini) with AppSearch for
-  retrieval; not the old App Actions.
-- **A "Today" shortcut** on the iOS and Android icons, beside New Task.
-- **Widgets**: WidgetKit (iOS, macOS) and Glance (Android): today's blocks and what is due.
-- **PowerShell module** wrapping `lum --json`; the same language as Windows hooks.
-- **`lum mcp`**, in the same binary so versions on a machine cannot drift. Tasks and the day
-  are resources, operations are tools, plus "undo last action". stdio, and Streamable HTTP
-  (not HTTP+SSE) as a daemon listener, since Home Assistant usually runs elsewhere:
-  loopback by default, a bearer token required off loopback, no TLS (a reverse proxy or
-  Tailscale). Read-only unless writes are turned on. Say plainly that a cloud-hosted model
-  sends what it reads off the device; the point is a fully local voice pipeline.
-- **Hooks**, `lum hook add|list|test|rm`:
-  - **Reactive, never interceptive**: a change can arrive already committed from an
-    unreachable device, and convergence cannot be vetoed. Hooks fire after a change is
-    durable, see before and after, may make further changes, and cannot report failure to
-    the person who made the change (log it; show it in sync status).
-  - Change events: task created, completed, uncompleted, updated, deleted; assignment
-    created, removed; timer started, stopped; block edited. Time events, from the scheduler:
-    block started, ended, upcoming(offset); day start, end; task due. A time event past its
-    hook's maximum lateness (a few minutes by default) is dropped and logged: Do Not Disturb
-    40 minutes late is wrong.
-  - `Hook { event, filter, action, max_lateness_secs }`, the filter in the filter language.
-  - **Local only, never synced**: a hook running `ssh` belongs to one machine, and synced
-    hooks would be remote code execution for anyone who can write the document. On one
-    machine only the sync-lock holder runs them.
-  - The event is JSON on stdin in `lum --json`'s shape, common fields in the environment.
-    argv is run directly, without a shell unless asked. Windows: `pwsh -NoProfile
-    -ExecutionPolicy Bypass -File` (without Bypass, unsigned scripts fail silently).
-    Android: a broadcast, `com.lumenna.EVENT`, for Tasker and the like.
-  - With nothing resident, hooks run late over the backlog; there is no ordering across
-    devices; an always-on peer is the best host.
-
-## Platforms
-
-- **watchOS** (SwiftUI; WatchKit only for haptics, the Crown and sessions): a full peer
-  running the whole core with the phone off, with every view. **Spike first**: a throwaway
-  crate with quinn/rustls, rusqlite, automerge and jiff, built with `cargo build -Z
-  build-std=std,panic_abort --target arm64_32-apple-watchos` on a pinned nightly. Risks in
-  order: the 32-bit pointer ABI; Iroh's crypto (`ring`, `aws-lc-rs`) failing to build;
-  bundled SQLite cross-compiling (the system `libsqlite3` avoids it); watchOS policy against
-  independent connections; memory, since Automerge loads whole documents. If Iroh or
-  independent QUIC fails there, the watch becomes a phone accessory. `WatchConnectivity` is
-  a battery-saving shortcut near the phone; complications through WidgetKit.
-- **Wear OS** (Compose for Wear OS): a standalone full peer, the core through `cargo-ndk`,
-  every view. Check rotary scrolling with TalkBack. Needs real hardware.
-- **iOS**: custom rotors (overdue, running, next block).
-- **Android**: arm64 only; pairing on the local network untried on a real phone (the
-  emulator's NAT passes no multicast); the iPhone's two pairing tests not ported.
-- **GTK**: type-ahead in lists (the Windows and Mac lists jump to a row by its first
-  letters; GTK's list view does not); shortcuts from anywhere without the GlobalShortcuts
-  portal (an X11 key grab for Xfce and older GNOME); no tray on GNOME without the
-  AppIndicator extension; a pairing UI test; a pass with Orca on a real desktop; "expanded"
-  said twice on first focus of a row with subtasks.
-- **Emacs**: priority faces, mapped to voices.
-- **The web client**: making a task a subtask or moving it to the top level (the export
-  exists; nothing calls it).
-  - **Installing it as a PWA**: a manifest and service worker; `navigator.storage.persist()`,
-    because OPFS can be evicted and the device key with it; offline loading; a badge for
-    what is due; Background Sync to send pending changes when the connection returns; File
-    System Access as a backup destination.
-  - **Reminders**: only as an installed PWA, through a classic service-worker push (not
-    Declarative Web Push, which needs plaintext at the sender). The wake-up carries no
-    content: the service worker syncs, works out what is due, and shows it, within Chrome's
-    budget for pushes that show nothing. The sender is an awake peer that can decrypt, or the
-    encrypted store sending a content-free wake-up on a schedule the person chose to give it
-    (off by default, the trade-off stated).
-  - **Keys**: the account key as a non-extractable WebCrypto key, once there is one.
-  - **Verifiability**: subresource integrity and a published bundle hash, and a one-time
-    plain notice at sign-in that a web client is harder to verify than a native one.
-  - **Browsers**: only Chromium is tested. Safari, Firefox (OPFS sync access handles there)
-    and ChromeVox are unchecked; an IndexedDB fallback for browsers without sync access
-    handles is optional.
-- **Real screen readers**: the tests read UI Automation, AT-SPI and the browser's
-  accessibility tree, not speech. NVDA and JAWS on Windows and the web, ChromeVox, and Orca
-  on a real desktop have not been tried by a person. The braille short forms for states and
-  roles are unchecked against BTBraille's tree-view convention.
-- **The block editor** should move a start date that does not match the repetition to the
-  first real occurrence ("every Monday, starting Tuesday" never occurs on its start date).
-- **The web's WASM** is 8.7 MB (3 MB compressed), mostly Iroh; worth trimming.
-- **Every app**: icons of their own (GTK and Windows have none); one binding for "go to now"
-  (Ctrl+T on Windows and GTK, Cmd+T on the Mac, `t` on BTSpeak, but Cmd+J on iPad, which is
-  Go to Day on the Mac, and none on the web or Android).
-- **Packaging**: a `lumenna` alias for `lum`, a Homebrew formula (`brew services start
-  lum`), a winget manifest, Flatpak and AppStream for GTK. A command-line user has no app to
-  prompt for updates, so packages matter most there.
-- **An always-on peer**, documented: `lum daemon` on hardware the person controls. A VPS
-  works, but say the provider can read the data, and make no encryption claim: unattended
-  boot and provider-proof encryption conflict.
-
-## Tooling
-
-- **CI**: none.
-- **Toolchain**: unpinned; the watchOS spike decides the nightly.
-- **Apple builds** are arm64 only: no Intel Mac or Intel simulator slice.
-- **Snapshot tests of the row projection** for task lists and the day: index and count,
-  expanded and checked, states, speech and braille.
-- **Calendar import**, read-only first (so the planner knows about real meetings), through
-  `ExternalRef` (EventKit, CalDAV, ICS URL), which exists in the model only; `lum calendar
-  add|list|rm`. Read-only must be enforced on edit. Two-way sync is a separate project.
-- **Imports from other systems**: Todoist (whose API priority 4 is P1), then Jira, Linear
-  and GitHub, which `ExternalRef` was shaped for.
 
 ## Open questions
 
