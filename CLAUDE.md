@@ -566,9 +566,11 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   `bind`. Left and Right are ours, and `ListTabBehavior::Item` makes Tab leave the tree:
   by default it went through every row. Every list is one, the Devices list and the
   chooser dialog's included; a `GtkListBox` has no such setting.
-- **Trees read fully only from GTK 4.22.** GTK gives AT-SPI a tree item's level from 4.16
-  and its position and set size from 4.22; Ubuntu 24.04's 4.14 gives neither, so its lists
-  read flat. CI runs the UI tests in an Arch container for that reason.
+- **GTK gives AT-SPI a tree item's level from 4.16, and its position and set size from
+  4.22.** Below 4.16 (Ubuntu 24.04, Debian 13) a row says "level 2" in its text where the
+  level changes against the row shown before, as the other apps word it; position is left
+  to the platform. Decided at run time; `LUMENNA_LEVEL_IN_TEXT=1` forces it for tests. CI
+  runs the UI tests on Arch, so the native path is what it covers by default.
 - **Orca does not say a tree item's checked state**, so a done task says "completed" in its
   text.
 - **Focus into a row waits for the row's widget**, which does not exist until GTK lays the

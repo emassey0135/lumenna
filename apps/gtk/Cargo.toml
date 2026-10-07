@@ -15,9 +15,8 @@ path = "src/main.rs"
 jiff.workspace = true
 lumenna-desktop = { path = "../../crates/desktop" }
 lumenna-surface = { path = "../../crates/surface", features = ["rpc", "sync"] }
-# 4.14 for `gtk_accessible_announce`, which is how a change is said. It builds against
-# that, but reads fully only from 4.22: GTK tells AT-SPI a tree item's level from 4.16 and
-# its position among its siblings from 4.22, so on Ubuntu 24.04's 4.14 every list reads flat.
+# 4.14 for `gtk_accessible_announce`, which is how a change is said. GTK tells AT-SPI a tree
+# item's level only from 4.16, so below that a row says its level in its text (`tree.rs`).
 gtk = { package = "gtk4", version = "0.11", features = ["v4_14"] }
 futures-channel = "0.3"
 futures-util = { version = "0.3", default-features = false }
