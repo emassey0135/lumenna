@@ -98,7 +98,8 @@ pub trait PairingPrompt: Send + Sync {
 /// What a running [`SyncService`] tells its client.
 #[cfg_attr(feature = "uniffi", uniffi::export(with_foreign))]
 pub trait SyncListener: Send + Sync {
-    /// Something arrived from another device; whatever shows the store should read it again.
+    /// Something arrived from another device, or how syncing with one went has changed;
+    /// whatever shows the store or the devices should read them again.
     fn changed(&self);
 }
 
@@ -169,6 +170,13 @@ fn report(results: Vec<PeerResult>) -> SyncReport {
 
 fn brought_anything(report: &SyncReport) -> bool {
     report.peers.iter().any(|peer| !peer.changed.is_empty())
+}
+
+/// How each device's round went: what a devices list shows, so a change in it is a change.
+type Outcomes = Vec<(String, bool, Option<String>)>;
+
+fn outcomes(report: &SyncReport) -> Outcomes {
+    report.peers.iter().map(|peer| (peer.node_id.clone(), peer.synced, peer.error.clone())).collect()
 }
 
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
@@ -717,6 +725,15 @@ async fn run(
             (Instant::now() + wait, wait)
         })
     };
+    // A round that brings nothing in still changes what the devices list says — a device
+    // just paired goes from "not synced yet" to synced — so that is a change to tell too.
+    let mut last_outcomes: Option<Outcomes> = None;
+    let mut told = |round: &SyncReport| {
+        let now = outcomes(round);
+        let news = brought_anything(round) || last_outcomes.as_ref() != Some(&now);
+        last_outcomes = Some(now);
+        news
+    };
     let mut tick = n0_future::time::interval(TICK);
     loop {
         tokio::select! {
@@ -729,7 +746,7 @@ async fn run(
                     // What arrived from one peer goes on to the others next round; a round
                     // that brings nothing in ends the chain.
                     dirty = brought_anything(&round);
-                    if dirty {
+                    if told(&round) {
                         changed();
                     }
                     synced = version(&store);
@@ -743,7 +760,7 @@ async fn run(
             Some(reply) = asked.recv() => {
                 let round = report(node.sync_all().await);
                 retry = missed(&round, retry);
-                if brought_anything(&round) {
+                if told(&round) {
                     changed();
                 }
                 synced = version(&store);

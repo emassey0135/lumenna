@@ -260,7 +260,8 @@ fn an_unknown_project_is_an_error_and_an_unknown_label_is_a_new_label() {
 
     let severities: Vec<Severity> = p.diagnostics.iter().map(|d| d.severity).collect();
     assert!(severities.contains(&Severity::Error));
-    assert!(severities.contains(&Severity::Notice));
+    // The readback says "new label brandnew"; a notice saying it again would be said twice.
+    assert!(!severities.contains(&Severity::Notice), "{:?}", p.diagnostics);
 }
 
 #[test]
