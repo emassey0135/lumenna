@@ -43,7 +43,8 @@ final class PairingViewController: UIViewController {
         code.accessibilityLabel = "Pairing code"
         code.isHidden = true
 
-        entry.placeholder = "the code the other device shows"
+        // Also the VoiceOver hint: left empty, the clipboard's code is used.
+        entry.placeholder = "the code the other device shows; left empty, the one on the clipboard is used"
         entry.autocapitalizationType = .none
         entry.autocorrectionType = .no
         entry.spellCheckingType = .no
