@@ -86,12 +86,16 @@ impl Pairing {
     }
 
     /// Pairs with the code typed in — or, if nothing was typed, the one on the clipboard,
-    /// which is how a code sent from the other device usually arrives.
+    /// which is how a code sent from the other device usually arrives. Not this device's own
+    /// code, which waiting copied there: that would pair it with itself.
     fn with_code(&self, hwnd: HWND) {
         let field = dialog::item(hwnd, THEIR_CODE);
         let mut code = controls::text(field).trim().to_owned();
+        let mine = controls::text(dialog::item(hwnd, MY_CODE)).trim().to_owned();
         if code.is_empty()
-            && let Some(pasted) = system::pasted(hwnd).map(|p| p.trim().to_owned()).filter(|p| !p.is_empty())
+            && let Some(pasted) = system::pasted(hwnd)
+                .map(|p| p.trim().to_owned())
+                .filter(|p| !p.is_empty() && *p != mine)
         {
             controls::set_text(field, &pasted);
             code = pasted;
