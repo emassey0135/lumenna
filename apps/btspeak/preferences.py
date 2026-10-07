@@ -12,7 +12,7 @@ import datetime
 import queue
 from pathlib import Path
 
-from BTSpeak import dialogs
+from BTSpeak import clipboard, dialogs
 
 import options
 from client import LumennaError
@@ -208,6 +208,22 @@ def unpair_device(session: Session, device: dict) -> str:
     return session.write("device.unpair", device=device["node_id"])
 
 
+def ask_code(own: str = "") -> str | None:
+    """The other device's code: typed, or, left empty, the clipboard's, where a code sent from
+    the other device usually arrives. This device's own code, copied while it waits, is never
+    the other's. None if cancelled; empty if there is no code to be had."""
+    text = dialogs.request_input("The other device's pairing code. Left empty, the clipboard's is used", default_text="")
+    if text is None:
+        return None
+    text = text.strip()
+    if not text:
+        _, pasted = clipboard.paste(False, 200, multiline=False)
+        text = pasted.strip()
+        if text == own:
+            text = ""
+    return text.replace(" ", "")
+
+
 def pair(session: Session) -> str:
     """Pairs with another of the person's devices, comparing three words on both.
 
@@ -226,10 +242,12 @@ def pair(session: Session) -> str:
         return ""
     params = {}
     if how == "code":
-        code = ask("The other device's pairing code")
+        code = ask_code()
         if code is None:
             return ""
-        params["code"] = code.replace(" ", "")
+        if not code:
+            return "Type or paste the code the other device shows."
+        params["code"] = code
     return run_pairing(session, params)
 
 
@@ -257,10 +275,12 @@ def run_pairing(session: Session, params: dict) -> str:
         menu.close()
 
     def code_instead(menu) -> None:
-        code = ask("The other device's pairing code")
+        code = ask_code(own=shown["code"])
         if code:
-            shown["instead"] = code.replace(" ", "")
+            shown["instead"] = code
             menu.close()
+        elif code is not None:
+            dialogs.show_message("Type or paste the code the other device shows.")
 
     while True:
         items = [
@@ -297,10 +317,12 @@ def run_pairing(session: Session, params: dict) -> str:
             continue
         if event.get("code"):
             shown["code"] = event["code"]
+            # Copied, as every app does: the Blazie clipboard is the desktop's too.
+            clipboard.copy(event["code"], False)
             shown["status"] = (
                 f"Waiting to pair, as {event.get('name', 'this device')}. On the other device, "
-                "pair too while on this network, or type this code there. Enter reads the code "
-                f"a character at a time: {event['code']}"
+                "pair too while on this network, or type this code there; it is copied. Enter "
+                f"reads the code a character at a time: {event['code']}"
             )
         elif event.get("words"):
             words = ", ".join(event["words"])
