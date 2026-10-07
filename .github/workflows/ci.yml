@@ -1,6 +1,7 @@
 # Builds and tests everything, on every push and pull request: the Rust workspace on Linux,
-# macOS and Windows, each on x86_64 and arm64; the GTK app's UI tests; the BTSpeak and Emacs
-# clients against a real `lum rpc`; the web client in a browser; the Apple apps; and Android
+# macOS and Windows, each on x86_64 and arm64; the GTK and Windows apps' UI tests; the
+# BTSpeak and Emacs clients against a real `lum rpc`; the web client in a browser; the Apple
+# apps; and Android
 # for both its ABIs. Several sessions work on this repository at once, and this is what
 # catches one breaking another.
 name: CI
@@ -70,6 +71,20 @@ jobs:
           sudo apt-get install -y libgtk-4-dev mutter dbus dbus-x11 at-spi2-core python3-gi gir1.2-atspi-2.0 gir1.2-glib-2.0
       - name: UI tests
         run: apps/gtk/tests/ui/run
+
+  windows-ui:
+    name: Windows UI tests
+    # The real app, driven through its message queue and read back through UI Automation:
+    # what NVDA and Narrator are given. It needs the runner's interactive desktop.
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build lum, which two of the tests reach the running app through
+        run: cargo build -p lumenna-cli
+      - name: UI tests
+        run: cargo test -p lumenna-windows --test ui -- --ignored
 
   clients:
     name: BTSpeak and Emacs clients
