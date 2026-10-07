@@ -443,7 +443,7 @@ class Menus(unittest.TestCase):
         self.assertTrue(preferences.import_file(self.session))
         self.assertTrue(said.finished())
 
-    def test_pairing_by_code_compares_the_words_and_syncs(self):
+    def test_pairing_by_a_code_from_the_clipboard_compares_the_words_and_syncs(self):
         other_profile = Path(tempfile.mkdtemp())
         other = connect(other_profile)
         try:
@@ -456,9 +456,12 @@ class Menus(unittest.TestCase):
                 other.call("pair.confirm", match=bool(event.get("words")))
 
             threading.Thread(target=confirm_there, daemon=True).start()
+            # Left empty, the code comes from the clipboard, as one sent from the other
+            # device would arrive.
+            btspeak_stub._clipboard[0] = code
             script = play([
                 ("choose", "Type the code"),
-                ("input", code),
+                ("input", ""),
                 ("wait",),
                 ("confirm", True),
                 ("wait",),

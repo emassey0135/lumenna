@@ -144,13 +144,29 @@ Its platform, then the status the core words for every app."
 (defvar lumenna--next-code nil
   "A code given while waiting, to join with once the wait has ended.")
 
+(defvar lumenna--shown-code nil
+  "The code this device shows while it waits, copied to the kill ring.")
+
+(defun lumenna--read-code ()
+  "The other device's code: typed, or, left empty, the latest kill.
+That is where a code sent from the other device usually arrives, by way of
+the system clipboard.  This device's own code, copied while it waits, is
+never the other's."
+  (let ((typed (string-trim (read-string "The other device's code, or empty for the clipboard's: "))))
+    (if (not (string-empty-p typed))
+        typed
+      (let ((killed (ignore-errors (string-trim (current-kill 0 t)))))
+        (if (or (null killed) (string-empty-p killed) (equal killed lumenna--shown-code))
+            (user-error "Type or paste the code the other device shows")
+          killed)))))
+
 ;;;###autoload
 (defun lumenna-pair (&optional code)
   "Pair this device with another of yours.
 Start pairing on both: on one network they find each other.  Otherwise type
 on one the CODE the other shows; with a prefix argument, this asks for it.
 Both show three words; say yes only if they are the same on both."
-  (interactive (list (and current-prefix-arg (read-string "The other device's code: "))))
+  (interactive (list (and current-prefix-arg (lumenna--read-code))))
   (cond
    ;; A code given while waiting means the other way was chosen: give up the wait, and
    ;; join with the code once it has ended.
@@ -163,7 +179,8 @@ Both show three words; say yes only if they are the same on both."
 
 (defun lumenna--start-pairing (code)
   "Pair by CODE, or wait to be found when it is nil."
-  (setq lumenna--pairing (if code 'joining 'waiting))
+  (setq lumenna--pairing (if code 'joining 'waiting)
+        lumenna--shown-code nil)
   (message (if code "Connecting to the other device" "Waiting for the other device"))
   (jsonrpc-async-request
    (lumenna--connection) 'pair
@@ -193,7 +210,8 @@ Both show three words; say yes only if they are the same on both."
 The code to give the other device, or the words to compare."
   (cond
    ((plist-get params :code)
-    (kill-new (plist-get params :code))
+    (setq lumenna--shown-code (plist-get params :code))
+    (kill-new lumenna--shown-code)
     (message "Waiting to pair, as %s. On the other device, pair too while on this network, or give it this code, which is copied: %s"
              (plist-get params :name) (plist-get params :code)))
    ((plist-get params :words)

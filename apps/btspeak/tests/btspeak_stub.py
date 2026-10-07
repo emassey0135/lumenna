@@ -279,6 +279,10 @@ def activity(message=None, stdscr=None):
     yield
 
 
+#: The device's clipboard, as one string.
+_clipboard = [""]
+
+
 def install() -> None:
     try:
         import BTSpeak  # noqa: F401
@@ -295,12 +299,17 @@ def install() -> None:
                     "request_input", "request_form", "request_confirmation", "show_message",
                     "view_lines", "request_file", "request_directory", "activity"}:
             setattr(dialogs, name, value)
+    clipboard = types.ModuleType("BTSpeak.clipboard")
+    clipboard.copy = lambda text, isbraille, append=False: _clipboard.__setitem__(0, text) or "copied"
+    clipboard.paste = lambda isbraille, size, multiline=True: ("pasted", _clipboard[0][:size])
     package = types.ModuleType("BTSpeak")
     package.dialogs = dialogs
     package.host = host
+    package.clipboard = clipboard
     sys.modules["BTSpeak"] = package
     sys.modules["BTSpeak.dialogs"] = dialogs
     sys.modules["BTSpeak.host"] = host
+    sys.modules["BTSpeak.clipboard"] = clipboard
 
 
 def play(steps) -> Script:
