@@ -46,6 +46,10 @@ struct Pairing {
     /// Set when the person gives up, which ends the wait for the other device.
     cancelled: RefCell<Option<Arc<AtomicBool>>>,
     running: Cell<bool>,
+    /// Whether the pairing running is waiting to be found, rather than dialling a code.
+    waiting: Cell<bool>,
+    /// A code entered while waiting: the wait is given up, and this is dialled once it ends.
+    then: RefCell<Option<String>>,
     paired: RefCell<Option<PairedWith>>,
 }
 
@@ -63,7 +67,10 @@ impl Pairing {
         // Focus somewhere that stays: a disabled button that had it leaves it nowhere.
         controls::focus(dialog::item(hwnd, IDCANCEL.0 as u16));
         controls::enable(dialog::item(hwnd, WAIT), false);
-        controls::enable(dialog::item(hwnd, WITH_CODE), false);
+        // While waiting, a code can still be entered: it gives up the wait and dials. One
+        // pairing runs at a time, so while dialling there is nothing more to enter.
+        self.waiting.set(code.is_none());
+        controls::enable(dialog::item(hwnd, WITH_CODE), code.is_none());
         self.say(hwnd, if code.is_none() { "Opening a pairing session." } else { "Connecting to the other device." });
         let cancelled = Arc::new(AtomicBool::new(false));
         *self.cancelled.borrow_mut() = Some(Arc::clone(&cancelled));
@@ -92,6 +99,16 @@ impl Pairing {
         if code.is_empty() {
             prompts::fail(hwnd, "Type or paste the code the other device shows.");
             controls::focus(field);
+            return;
+        }
+        if self.running.get() {
+            if self.waiting.get() {
+                *self.then.borrow_mut() = Some(code);
+                if let Some(cancelled) = self.cancelled.borrow().as_ref() {
+                    cancelled.store(true, Ordering::Relaxed);
+                }
+                self.say(hwnd, "Giving up waiting, then connecting to the other device.");
+            }
             return;
         }
         self.start(hwnd, Some(code));
@@ -166,12 +183,19 @@ impl Dialog for Pairing {
             WM_PAIR_DONE => {
                 let result: Result<PairedWith, String> = unsafe { taken(lparam) };
                 self.running.set(false);
+                let then = self.then.borrow_mut().take();
                 match result {
                     Ok(paired) => {
                         *self.paired.borrow_mut() = Some(paired);
                         unsafe {
                             let _ = windows::Win32::UI::WindowsAndMessaging::EndDialog(hwnd, 1);
                         }
+                    }
+                    // The wait was given up for a code entered meanwhile: dial it now.
+                    Err(_) if then.is_some() => {
+                        controls::show(dialog::item(hwnd, MY_CODE_LABEL), false);
+                        controls::show(dialog::item(hwnd, MY_CODE), false);
+                        self.start(hwnd, then);
                     }
                     Err(message) => {
                         controls::show(dialog::item(hwnd, MY_CODE_LABEL), false);
@@ -227,6 +251,8 @@ pub fn run(owner: HWND, lumenna: Arc<Lumenna>) -> Option<String> {
         lumenna,
         cancelled: RefCell::new(None),
         running: Cell::new(false),
+        waiting: Cell::new(false),
+        then: RefCell::new(None),
         paired: RefCell::new(None),
     };
     dialog::run(Some(owner), &pairing);

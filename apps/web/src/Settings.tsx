@@ -1,4 +1,4 @@
-// Settings, as the desktop apps have them: Planning, Backups, and Export and Import —
+// Settings, as the desktop apps have them: Planning, Devices, Backups, and Export and Import —
 // each a tab. A setting applies as it is made (a text field when it is left), and says so.
 //
 // A browser has no folder to back up into and nothing running to do it on a schedule, so a
@@ -26,6 +26,7 @@ import {
   TextField,
 } from "react-aria-components";
 import { core } from "./core";
+import { DevicesPage } from "./Devices";
 import type { ExportChoice } from "./core";
 import { say } from "./say";
 
@@ -55,7 +56,16 @@ function download(name: string, data: BlobPart, type: string) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-export function Settings(props: { isOpen: boolean; onClose: () => void; revision: number; onChanged: () => void }) {
+export function Settings(props: {
+  isOpen: boolean;
+  onClose: () => void;
+  revision: number;
+  onChanged: () => void;
+  /** Whether this browser is keeping in sync. */
+  syncing: boolean;
+  /** A device was paired: syncing may need to start. */
+  onPaired: () => void;
+}) {
   return (
     <Modal isDismissable isOpen={props.isOpen} onOpenChange={(open) => !open && props.onClose()}>
       <Dialog>
@@ -63,11 +73,15 @@ export function Settings(props: { isOpen: boolean; onClose: () => void; revision
         <Tabs>
           <TabList aria-label="Settings pages">
             <Tab id="planning">Planning</Tab>
+            <Tab id="devices">Devices</Tab>
             <Tab id="backups">Backups</Tab>
             <Tab id="export">Export and Import</Tab>
           </TabList>
           <TabPanel id="planning">
             <Planning revision={props.revision} />
+          </TabPanel>
+          <TabPanel id="devices">
+            <DevicesPage revision={props.revision} syncing={props.syncing} onPaired={props.onPaired} />
           </TabPanel>
           <TabPanel id="backups">
             <Backups onChanged={props.onChanged} />

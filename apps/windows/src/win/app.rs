@@ -100,6 +100,9 @@ pub struct App {
     minute: Cell<i64>,
     /// What another process had written by the last tick (`Lumenna::outside_version`).
     version: Cell<i64>,
+    /// The Settings sheet's Devices page while it is open, which reads the store again when
+    /// a sync round changes how a device is going, not only when one brings data in.
+    pub devices_page: Cell<Option<HWND>>,
     icon: HICON,
     taskbar_created: u32,
 }
@@ -255,6 +258,7 @@ impl App {
             last_focus: Cell::new(HWND::default()),
             minute: Cell::new(0),
             version: Cell::new(outside),
+            devices_page: Cell::new(None),
             icon,
             taskbar_created: tray::taskbar_created(),
         });
@@ -324,6 +328,9 @@ impl App {
     /// The store changed — here, in another process, or from another device. Everything
     /// showing it reads it again, keeping its selection.
     pub fn store_changed(&self) {
+        if let Some(page) = self.devices_page.get() {
+            settings::devices_changed(page);
+        }
         self.sidebar.reload(self);
         if let Some(content) = self.content() {
             content.view().reload(self);
