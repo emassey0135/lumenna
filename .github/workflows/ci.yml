@@ -176,9 +176,11 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - uses: android-actions/setup-android@v3
+      # The runner has the Android SDK already; android-actions/setup-android fails asking for
+      # the long-gone "tools" package.
       - name: NDK, platform and cargo-ndk
         run: |
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           # The platform's licence is asked for even when the others are accepted.
           yes | sdkmanager --licenses > /dev/null
           yes | sdkmanager "ndk;30.0.16248370" "platforms;android-37" > /dev/null
