@@ -80,14 +80,14 @@ object RowSpeech {
      * The level is said only where it changes from the row before: "level 2" on every
      * subtask is noise, and indentation, which is how a sighted reader gets it, says nothing.
      */
-    fun value(row: RowView, previousDepth: UInt?): String {
+    fun value(row: RowView, previousDepth: UInt?, fold: String? = null): String {
         val parts = mutableListOf<String>()
         if (row.checked == true) parts += "done"
         row.value?.let { parts += it }
         // `ready` is true of almost every task; saying it everywhere buries the states that
         // mean something.
         parts += row.state.filter { it != "ready" }
-        if (row.expanded != null) parts += "has subtasks"
+        if (fold != null) parts += fold else if (row.expanded != null) parts += "has subtasks"
         if (row.depth != (previousDepth ?: 0u)) parts += "level ${row.depth + 1u}"
         return parts.joinToString(", ")
     }

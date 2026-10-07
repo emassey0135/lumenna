@@ -29,12 +29,15 @@ def undo_commands(session: Session) -> list[Command]:
     ]
 
 
-def task_list(session: Session, query: str = "", title: str = "Tasks", prefix: str = "") -> str:
+def task_list(
+    session: Session, query: str = "", title: str = "Tasks", prefix: str = "", more: list | None = None
+) -> str:
     """A filtered list of tasks, as a foldable tree.
 
     Enter shows a task; its context menu (M-Chord with Dot 7) has everything else, and the main
     menu (M-Chord) adds a task. `prefix` starts the quick-add line — `#Work ` in a project's
-    list, so a task added there lands there, as on the phone.
+    list, so a task added there lands there, as on the phone. `more` adds to the main menu:
+    a project's list can add a project inside it.
     """
     state = {"heading": title}
 
@@ -65,6 +68,7 @@ def task_list(session: Session, query: str = "", title: str = "Tasks", prefix: s
             app=[
                 Command("Add a task", lambda _: add_task(session, prefix), key="a"),
                 Command("Search or filter", lambda _: query_tasks(session), key="/"),
+                *(more or []),
                 *undo_commands(session),
             ],
             empty="No tasks here. Press a to add one.",

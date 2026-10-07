@@ -217,6 +217,16 @@ final class LumennaUITests: XCTestCase {
             app.buttons[action].tap()
             XCTAssertTrue(says(state), "\(action) leaves it \(state)")
         }
+
+        // A block with sittings under it folds, so they can be skipped past.
+        block.swipeLeft()
+        app.buttons["Collapse"].tap()
+        XCTAssertTrue(sitting.waitForNonExistence(timeout: 5), "collapsing hides the sittings")
+        let collapsed = app.cells.containing(NSPredicate(format: "value CONTAINS 'collapsed'")).firstMatch
+        XCTAssertTrue(collapsed.waitForExistence(timeout: 5), "the block says it is collapsed")
+        collapsed.swipeLeft()
+        app.buttons["Expand"].tap()
+        XCTAssertTrue(sitting.waitForExistence(timeout: 5), "expanding shows them again")
     }
 
     func testATaskCanBeAssignedToABlockAndTimed() {

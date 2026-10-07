@@ -30,6 +30,7 @@ import io.github.emassey0135.lumenna.core.TaskEdit
 import java.io.File
 import java.time.LocalDate
 import java.util.UUID
+import io.github.emassey0135.lumenna.core.MoveTarget
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -76,11 +77,13 @@ class LumennaTest {
         rule.waitForIdle()
     }
 
-    /** A row, by the title it says first. */
+    /** A row, by its title. */
     private fun row(title: String, substring: Boolean = false): SemanticsNodeInteraction =
-        rule.onNode(hasContentDescription(title, substring = substring) and hasStateDescription())
+        rule.onNode(titled(title, substring))
 
-    private fun hasStateDescription() = SemanticsMatcher.keyIsDefined(SemanticsProperties.StateDescription)
+    private fun titled(title: String, substring: Boolean = false) = SemanticsMatcher("row titled $title") { node ->
+        node.config.getOrNull(RowTitle)?.let { if (substring) title in it else it == title } == true
+    }
 
     private fun act(title: String, action: String, substring: Boolean = false) {
         row(title, substring).performCustomAccessibilityActionWithLabel(action)
@@ -121,14 +124,14 @@ class LumennaTest {
 
     private fun says(row: String, state: String) {
         rule.waitUntil(5_000) {
-            rule.onAllNodes(hasContentDescription(row, substring = true)).fetchSemanticsNodes().any { node ->
-                node.config.getOrNull(SemanticsProperties.StateDescription)?.contains(state) == true
+            rule.onAllNodes(titled(row, substring = true)).fetchSemanticsNodes().any { node ->
+                node.config.getOrNull(SemanticsProperties.ContentDescription)?.joinToString()?.contains(state) == true
             }
         }
     }
 
     private fun gone(title: String) {
-        rule.waitUntil(5_000) { rule.onAllNodes(hasContentDescription(title)).fetchSemanticsNodes().isEmpty() }
+        rule.waitUntil(5_000) { rule.onAllNodes(titled(title)).fetchSemanticsNodes().isEmpty() }
     }
 
     private fun seed(operation: (io.github.emassey0135.lumenna.core.Lumenna) -> Unit) {
@@ -165,6 +168,23 @@ class LumennaTest {
         gone("second")
         row("third").assertIsFocused()
         shows("Completed second")
+    }
+
+    @Test
+    fun aTaskWithSubtasksCollapsesAndExpandsAndSaysWhichItIs() {
+        seed {
+            it.addTask("essay")
+            it.addTask("outline")
+            val rows = it.listTasks("").rows
+            it.moveTask(rows.first { r -> r.title == "outline" }.id, MoveTarget.Parent(rows.first { r -> r.title == "essay" }.id))
+        }
+        tab("Tasks")
+        says("essay", "expanded")
+        act("essay", "Collapse")
+        gone("outline")
+        says("essay", "collapsed")
+        act("essay", "Expand")
+        row("outline").assertExists()
     }
 
     /**
@@ -349,7 +369,7 @@ class LumennaTest {
         tab("Today")
         says("Focus", "work block")
         // Before the block and after it.
-        assertEquals(2, rule.onAllNodes(hasContentDescription("Free", substring = true) and hasStateDescription()).fetchSemanticsNodes().size)
+        assertEquals(2, rule.onAllNodes(titled("Free", substring = true)).fetchSemanticsNodes().size)
         shows("1 block", substring = true)
     }
 

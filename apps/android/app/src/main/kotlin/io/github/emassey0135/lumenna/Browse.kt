@@ -54,7 +54,10 @@ fun ItemListScreen(
     actions: (Item) -> List<RowAction> = { emptyList() },
 ) {
     val loaded = remember(changes) { core.attempt(load) ?: (emptyList<Item>() to "") }
-    val (items, count) = loaded
+    val (all, count) = loaded
+    val folding = rememberFolding()
+    val folds = folded(all, { it.depth }, { it.key }, folding.value)
+    val items = folds.map { it.item }
     val state = rememberLazyListState()
     val focus = rememberRowFocus(core, items.map { it.key }, state)
     ScreenFrame(title, core, navigator, actions = {
@@ -75,10 +78,13 @@ fun ItemListScreen(
                 ListRow(
                     title = item.title,
                     detail = item.detail,
-                    speech = item.speech,
+                    // The level is said against the row shown before, which folding can change.
+                    speech = listOfNotNull(item.speech.ifEmpty { null }, folds[index].state, levelChange(folds, index))
+                        .joinToString(", "),
                     index = index,
                     depth = item.depth,
-                    actions = focus.actions(item.key, index, actions(item)),
+                    actions = focus.actions(item.key, index, actions(item)) +
+                        listOfNotNull(foldAction(core, folds[index], item.key, folding)),
                     open = open?.let { { it(item) } },
                     openLabel = openLabel,
                     focus = focus.requester(item.key),
@@ -132,12 +138,12 @@ fun ProjectsScreen(core: Core, navigator: Navigator, changes: Long) {
             val rows = core.lumenna.listProjects()
             archived.clear()
             archived += rows.rows.filter { "archived" in it.state }.map { it.title }
-            var previous: UInt? = null
+            // The level is added as shown, against the row before it once folded.
             val items = rows.rows.map { row ->
                 Item(
                     row.title, row.title, (listOfNotNull(row.value) + row.state).joinToString(", "),
-                    row.depth.toInt(), RowSpeech.value(row, previous),
-                ).also { previous = row.depth }
+                    row.depth.toInt(), RowSpeech.value(row, row.depth),
+                )
             }
             all.clear()
             all += items

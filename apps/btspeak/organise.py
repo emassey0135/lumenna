@@ -80,7 +80,8 @@ def projects(session: Session) -> str:
 
     def tasks_of(row):
         name = row["title"]
-        return tasks.task_list(session, sigil("#", name), name, prefix=sigil("#", name) + " ")
+        inside = Command(f"Add a project inside {name}", lambda _: add_project(session, parent=name), key="p")
+        return tasks.task_list(session, sigil("#", name), name, prefix=sigil("#", name) + " ", more=[inside])
 
     with screen("lumenna-organise"):
         live_menu(

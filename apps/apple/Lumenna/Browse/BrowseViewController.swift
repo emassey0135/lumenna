@@ -51,16 +51,14 @@ final class ProjectsViewController: ItemListViewController {
     override func load() throws -> (items: [Item], count: String) {
         let rows = try core.lumenna.listProjects()
         archived = Set(rows.rows.filter { $0.state.contains("archived") }.map(\.title))
-        // Depth is said where it changes: indentation alone says nothing in speech.
-        var previous: UInt32?
+        // The level is added as shown, against the item before it once folded.
         let items = rows.rows.map { row -> Item in
-            defer { previous = row.depth }
-            return Item(
+            Item(
                 key: row.title,
                 title: row.title,
                 detail: ([row.value].compactMap { $0 } + row.state).joined(separator: ", "),
                 depth: row.depth,
-                spoken: RowSpeech.value(row, previousDepth: previous)
+                spoken: RowSpeech.value(row, previousDepth: row.depth)
             )
         }
         return (items, rows.announcement)

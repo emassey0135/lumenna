@@ -408,6 +408,14 @@
       (lumenna-activate))
     (lumenna-test--goto "Day starts, 09:30")))
 
+(ert-deftest lumenna-devices-and-sync-is-the-first-line-of-settings ()
+  (lumenna-test--with-store
+    (lumenna-settings)
+    (goto-char (point-min))
+    (lumenna-test--goto "Devices and sync")
+    (lumenna-activate)
+    (should (derived-mode-p 'lumenna-devices-mode))))
+
 (ert-deftest lumenna-a-running-daemon-is-used-over-its-socket ()
   (skip-when (eq system-type 'windows-nt))
   (lumenna-test--with-store

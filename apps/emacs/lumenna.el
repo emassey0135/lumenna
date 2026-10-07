@@ -570,7 +570,7 @@ the line, as a project's list does with its own name."
 (defconst lumenna--places
   '(("Today" . lumenna-today) ("Tasks" . lumenna-tasks) ("Projects" . lumenna-projects)
     ("Labels" . lumenna-labels) ("Saved filters" . lumenna-filters) ("Blocks" . lumenna-blocks)
-    ("Trash" . lumenna-trash) ("Devices and sync" . lumenna-devices) ("Settings" . lumenna-settings))
+    ("Trash" . lumenna-trash) ("Settings" . lumenna-settings))
   "Lumenna's places, as the main buffer lists them.")
 
 (define-derived-mode lumenna-home-mode lumenna-list-mode "Lumenna"

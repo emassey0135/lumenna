@@ -19,7 +19,11 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     /// The day shown, as an ISO date; `nil` follows today.
     private var day: String?
     private var plan: Plan?
+    /// Every row of the day, and those shown once folded.
+    private var listed: [Row] = []
+    private var shown: [Folding.Shown<Row>] = []
     private var rows: [Row] = []
+    private var folding = Folding()
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<Int, Row>!
     private let summary = UILabel()
@@ -65,11 +69,17 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         var configuration = UICollectionLayoutListConfiguration(appearance: .plain)
         configuration.trailingSwipeActionsConfigurationProvider = { [weak self] path in
             guard let self, let row = self.dataSource.itemIdentifier(for: path) else { return nil }
-            let actions = self.actions(for: row).map { title, destructive, run in
+            var actions = self.actions(for: row).map { title, destructive, run in
                 UIContextualAction(style: destructive ? .destructive : .normal, title: title) { _, _, done in
                     run()
                     done(true)
                 }
+            }
+            if let index = self.rows.firstIndex(of: row),
+               let fold = self.folding.action(for: self.shown[index], key: self.foldKey(row), changed: { [weak self] key, said in
+                   self?.fold(key, saying: said)
+               }) {
+                actions.append(fold)
             }
             return actions.isEmpty ? nil : UISwipeActionsConfiguration(actions: actions)
         }
@@ -162,7 +172,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             self.plan = plan
             title = Clock.spokenDay(plan.date)
             summary.text = plan.summary
-            rows = plan.timeline.flatMap { item -> [Row] in
+            listed = plan.timeline.flatMap { item -> [Row] in
                 switch item {
                 case let .block(row):
                     guard let block = plan.blocks.first(where: { $0.row == row }) else { return [] }
@@ -176,10 +186,36 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         } catch {
             summary.text = error.sentence
         }
+        apply(then: finished)
+    }
+
+    /// Shows the day's rows as folded.
+    private func apply(then finished: (() -> Void)? = nil) {
+        shown = folding.shown(listed, depth: depth, key: foldKey)
+        rows = shown.map(\.item)
         var snapshot = NSDiffableDataSourceSnapshot<Int, Row>()
         snapshot.appendSections([0])
         snapshot.appendItems(rows)
+        // A block's fold state is in its value, so every row is redrawn.
+        snapshot.reconfigureItems(rows)
         dataSource.apply(snapshot, animatingDifferences: false, completion: finished)
+    }
+
+    /// What identifies a row for folding; only a block has anything under it.
+    private func foldKey(_ row: Row) -> String {
+        if case let .block(block) = row { return "block:\(block.id)" }
+        return String(describing: row)
+    }
+
+    /// Folds or unfolds the block `key`, keeping VoiceOver on it.
+    private func fold(_ key: String, saying said: String) {
+        folding.toggle(key)
+        apply { [weak self] in
+            guard let self, let index = self.rows.firstIndex(where: { self.foldKey($0) == key }) else { return }
+            let path = IndexPath(item: index, section: 0)
+            UIAccessibility.post(notification: .layoutChanged, argument: self.collectionView.cellForItem(at: path))
+            Announcer.say(said)
+        }
     }
 
     private func depth(_ row: Row) -> Int {
@@ -234,6 +270,9 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             content.textProperties.color = .quietLabel
             content.image = UIImage(systemName: "xmark.circle")
             cell.accessories = [.disclosureIndicator(displayed: .always)]
+        }
+        if index < shown.count, let fold = shown[index].state {
+            value.append(fold)
         }
         // Depth is said where it changes: indentation alone says nothing in speech.
         let previous = index > 0 && index - 1 < rows.count ? depth(rows[index - 1]) : 0

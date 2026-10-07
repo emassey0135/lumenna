@@ -29,8 +29,8 @@
 
 (define-derived-mode lumenna-settings-mode lumenna-list-mode "Lumenna Settings"
   "Settings, one per line.  RET changes one.
-The first six sync to every device; the backup settings are this device's
-alone.
+The first line opens Devices and sync.  The next six sync to every device;
+the backup settings are this device's alone.
 
 \\{lumenna-settings-mode-map}"
   (setq-local lumenna--activate #'lumenna--change-setting))
@@ -43,17 +43,27 @@ alone.
    "*Lumenna: Settings*" #'lumenna-settings-mode
    (lambda ()
      (cons "Settings"
-           (mapcar (lambda (setting)
-                     (let* ((key (plist-get setting :key))
-                            (named (assoc key lumenna--setting-names))
-                            (value (plist-get setting :value)))
-                       (list :key key :title (or (nth 1 named) key) :raw value
-                             :value (or (cdr (assoc value (nthcdr 2 named))) value))))
-                   (append (plist-get (lumenna-call "config.get") :settings) nil))))))
+           ;; Devices and sync first, as every app's settings have it.
+           (cons (list :key 'devices :title "Devices and sync"
+                       :value (plist-get (lumenna-call "sync.status") :announcement))
+                 (mapcar (lambda (setting)
+                           (let* ((key (plist-get setting :key))
+                                  (named (assoc key lumenna--setting-names))
+                                  (value (plist-get setting :value)))
+                             (list :key key :title (or (nth 1 named) key) :raw value
+                                   :value (or (cdr (assoc value (nthcdr 2 named))) value))))
+                         (append (plist-get (lumenna-call "config.get") :settings) nil)))))))
 
 (defun lumenna--change-setting (row)
   "Change the setting in ROW: a choice where it has few values, else typed.
-Times are typed as said, 9am or 14:30; core reads and checks every value."
+Times are typed as said, 9am or 14:30; core reads and checks every value.
+The Devices and sync line opens its own buffer."
+  (if (eq (plist-get row :key) 'devices)
+      (lumenna-devices)
+    (lumenna--change-setting-value row)))
+
+(defun lumenna--change-setting-value (row)
+  "Ask for and set a new value for the setting in ROW."
   (let* ((key (plist-get row :key))
          (choices (mapcar (lambda (pair) (cons (cdr pair) (car pair))) (nthcdr 2 (assoc key lumenna--setting-names))))
          (value (if choices
@@ -128,7 +138,11 @@ Its platform, then the status the core words for every app."
 
 ;;;; Pairing
 
-(defvar lumenna--pairing nil "Whether a pairing is under way here.")
+(defvar lumenna--pairing nil
+  "The pairing under way here: `waiting' to be found, `joining' by a code, or nil.")
+
+(defvar lumenna--next-code nil
+  "A code given while waiting, to join with once the wait has ended.")
 
 ;;;###autoload
 (defun lumenna-pair (&optional code)
@@ -137,8 +151,19 @@ Start pairing on both: on one network they find each other.  Otherwise type
 on one the CODE the other shows; with a prefix argument, this asks for it.
 Both show three words; say yes only if they are the same on both."
   (interactive (list (and current-prefix-arg (read-string "The other device's code: "))))
-  (when lumenna--pairing (user-error "A pairing is already under way; M-x lumenna-pair-cancel ends it"))
-  (setq lumenna--pairing t)
+  (cond
+   ;; A code given while waiting means the other way was chosen: give up the wait, and
+   ;; join with the code once it has ended.
+   ((and code (eq lumenna--pairing 'waiting))
+    (setq lumenna--next-code code)
+    (message "Stopping the wait, then connecting with this code")
+    (lumenna-call "pair.cancel"))
+   (lumenna--pairing (user-error "A pairing is already under way; M-x lumenna-pair-cancel ends it"))
+   (t (lumenna--start-pairing code))))
+
+(defun lumenna--start-pairing (code)
+  "Pair by CODE, or wait to be found when it is nil."
+  (setq lumenna--pairing (if code 'joining 'waiting))
   (message (if code "Connecting to the other device" "Waiting for the other device"))
   (jsonrpc-async-request
    (lumenna--connection) 'pair
@@ -150,7 +175,11 @@ Both show three words; say yes only if they are the same on both."
                  (lumenna-say paired))
    :error-fn (lambda (err)
                (setq lumenna--pairing nil)
-               (message "%s" (plist-get err :message)))
+               (if lumenna--next-code
+                   (let ((next lumenna--next-code))
+                     (setq lumenna--next-code nil)
+                     (lumenna--start-pairing next))
+                 (message "%s" (plist-get err :message))))
    :timeout 700))
 
 (defun lumenna-pair-cancel ()
@@ -216,6 +245,8 @@ The code to give the other device, or the words to compare."
 (lumenna-define-keys lumenna-settings-mode
   ("The setting at point"
    ("RET" "Change it" lumenna-activate))
+  ("Devices"
+   ("d" "Devices and sync" lumenna-devices))
   ("Data"
    ("b" "Back up now" lumenna-back-up-now)
    ("R" "Restore from a backup" lumenna-restore-backup)

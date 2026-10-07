@@ -16,7 +16,7 @@ enum RowSpeech {
     /// `previousDepth` is the depth of the row spoken before this one. Depth is said only where
     /// it changes: saying "level 2" on every subtask is noise, and indentation, which is
     /// how a sighted reader gets it, says nothing at all.
-    static func value(_ row: RowView, previousDepth: UInt32?) -> String {
+    static func value(_ row: RowView, previousDepth: UInt32?, fold: String? = nil) -> String {
         var parts: [String] = []
         if row.checked == true {
             parts.append("done")
@@ -27,7 +27,9 @@ enum RowSpeech {
         // `ready` is true of almost every task; saying it everywhere buries the states that
         // mean something.
         parts += row.state.filter { $0 != "ready" }
-        if row.expanded != nil {
+        if let fold {
+            parts.append(fold)
+        } else if row.expanded != nil {
             parts.append("has subtasks")
         }
         if row.depth != (previousDepth ?? 0) {
