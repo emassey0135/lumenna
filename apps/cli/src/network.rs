@@ -157,15 +157,19 @@ fn ask_daemon_to_sync(profile: &Profile) -> Result<Response> {
 
 /// `lum sync-daemon`: holds the endpoint and keeps this device in sync until stopped.
 pub(crate) fn daemon(profile: &Profile, local_only: bool) -> Result<()> {
-    let service = match profile.start_sync(network(local_only), Arc::new(Quietly)) {
-        Err(LumennaError::SyncElsewhere { .. }) => {
-            return Err(CliError::Message(
-                "a sync daemon is already running for this profile".to_owned(),
-            ));
-        }
-        started => started?,
-    };
-    eprintln!("lum: syncing as {}", profile.sync_status()?.this_device);
+    // A daemon already answering is refused: two would fight over its socket. An app holding
+    // the endpoint is waited for instead, and taken over from when it quits.
+    #[cfg(unix)]
+    if profile.endpoint_held()? && std::os::unix::net::UnixStream::connect(profile.socket_path()).is_ok() {
+        return Err(CliError::Message("a sync daemon is already running for this profile".to_owned()));
+    }
+    let service = profile.start_sync(network(local_only), Arc::new(Quietly))?;
+    if service.is_running() {
+        eprintln!("lum: syncing as {}", profile.sync_status()?.this_device);
+    } else {
+        // An app, or another daemon, holds the endpoint: this one takes over when it stops.
+        eprintln!("lum: another process is syncing this profile; this daemon takes over when it stops");
+    }
 
     // `lum sync` and the RPC `sync` method reach the running endpoint through this.
     let hook: crate::rpc::SyncHook = {

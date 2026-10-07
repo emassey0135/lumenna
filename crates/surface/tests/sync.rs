@@ -144,16 +144,35 @@ fn a_second_service_on_one_store_is_the_first() {
 }
 
 #[test]
-fn another_store_on_the_same_profile_is_told_the_endpoint_is_taken() {
+fn another_store_on_the_same_profile_asks_the_holder_for_its_round() {
     let dir = tempfile::tempdir().unwrap();
     let a = Lumenna::open_at(&dir.path().join("a")).unwrap();
     let elsewhere = Lumenna::open_at(&dir.path().join("a")).unwrap();
     let service = a.start_sync(Reach::LocalOnly, Arc::new(Count::default())).unwrap();
-    assert!(matches!(
-        elsewhere.sync_now(Reach::LocalOnly),
-        Err(lumenna_surface::LumennaError::SyncElsewhere { .. })
-    ));
+    let asked = elsewhere.sync_now(Reach::LocalOnly);
+    if cfg!(unix) {
+        assert!(asked.is_ok(), "the holder ran the round: {asked:?}");
+    } else {
+        assert!(matches!(asked, Err(lumenna_surface::LumennaError::SyncElsewhere { .. })));
+    }
     service.stop();
+}
+
+#[test]
+fn a_service_started_while_another_holds_the_endpoint_takes_over_when_it_stops() {
+    let dir = tempfile::tempdir().unwrap();
+    let daemon = Lumenna::open_at(&dir.path().join("a")).unwrap();
+    let app = Lumenna::open_at(&dir.path().join("a")).unwrap();
+    let first = daemon.start_sync(Reach::LocalOnly, Arc::new(Count::default())).unwrap();
+    let waiting = app.start_sync(Reach::LocalOnly, Arc::new(Count::default())).unwrap();
+    assert!(first.is_running());
+    assert!(!waiting.is_running(), "it waits its turn rather than failing");
+    first.stop();
+    assert!(
+        eventually(Duration::from_secs(20), || waiting.is_running()),
+        "the waiting service took over once the endpoint was free"
+    );
+    waiting.stop();
 }
 
 #[test]

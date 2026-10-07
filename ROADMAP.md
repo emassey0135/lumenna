@@ -8,8 +8,7 @@ Every client gets every feature. A platform may get it later, never a smaller ve
 
 The order, and why:
 
-1. **Safeguards first**: schema versions before real data makes them harder, CI, and the
-   small correctness bugs.
+1. **Safeguards first**: schema versions before real data makes them harder, and CI.
 2. **Reminders**, the biggest gap in daily use, and the scheduler the planner's overrun
    warning and hooks' time events also need.
 3. **The planner**, in dependency order: urgency and history, suggestions, carrying work
@@ -34,25 +33,6 @@ The order, and why:
   unknown block kind reads as work), and in JSON export and import.
 - **CI**: none. Even `cargo test` and clippy on Linux and Windows on every push would catch
   drift between the apps the sessions keep.
-- **Capacity follows the kind, not the flag.** The day summary's "N of work" adds up blocks
-  of kind `work`; it should add those with `counts_capacity`, since every flag can be
-  overridden.
-- **The quick-add readback omits the project and existing labels**, though it is the
-  stand-in for the highlighting a sighted person sees: a project resolved to the wrong one
-  goes unnoticed.
-- **"every month on the 15th"** reads as "every month" and leaves "on the 15th" in the title
-  without a notice. A phrase that starts like a date is parsed or flagged, never folded
-  away. `every 15th` reads back without its ordinal.
-- **Repairs are not told.** `Snapshot::repair()` reports tasks moved to the top and
-  dependencies dropped, and `surface::repaired` discards it. A task that silently loses a
-  dependency is worse than one the person is told about.
-- **Taking over and asking the holder.** The CLI takes the sync lock for a round and asks
-  the daemon when it holds it. The resident apps call `start_sync` once and never again
-  after `SyncElsewhere`, so they do not take over when the daemon stops; their Sync Now
-  fails instead of asking the holder; and the Mac and Windows apps serve no socket, so `lum
-  sync` cannot ask them. The rule: whoever holds the lock runs the endpoint; the next to want
-  it takes it; anything else asks the holder for pairing, status and a forced round, and
-  does them itself when nothing answers.
 
 ## 2. Reminders and time events
 
@@ -465,7 +445,12 @@ What the web client gains from it:
 ## 9. Only when needed
 
 - **The daemon on Windows**: the same JSON-RPC over a named pipe. Until then RPC clients
-  there spawn `lum rpc`.
+  there spawn `lum rpc`, and `sync.sock` has no Windows equivalent either, so a second
+  process's Sync Now there says another is syncing rather than asking it.
+- **One socket, not two**: `lumenna.sock` (the whole RPC surface, the daemon's alone, since
+  the RPC dispatch lives in `lum`) and `sync.sock` (one request, answered by whichever
+  process holds the endpoint) could be one if the dispatch moved into the surface, so every
+  resident app could answer the whole protocol.
 - **Watching the WAL** (inotify, FSEvents, `ReadDirectoryChangesW`) instead of polling
   `data_version` every second; keep the poll where watching is unreliable, such as network
   filesystems.

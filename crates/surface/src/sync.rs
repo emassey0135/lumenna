@@ -231,17 +231,16 @@ impl Lumenna {
     ///
     /// # Errors
     ///
-    /// [`LumennaError::SyncElsewhere`] if another process holds this device's endpoint;
-    /// otherwise if the endpoint cannot be opened. A device that cannot be reached is not an
-    /// error: the report says so.
+    /// [`LumennaError::SyncElsewhere`] if another process holds this device's endpoint and
+    /// cannot be asked to run the round; otherwise if the endpoint cannot be opened. A device
+    /// that cannot be reached is not an error: the report says so.
     pub fn sync_now(&self, reach: Reach) -> Result<SyncReport> {
         if let Some(service) = self.running_service() {
             return service.sync_now();
         }
         let Some(_lock) = take_lock(&self.directory)? else {
-            return Err(LumennaError::SyncElsewhere {
-                reason: "another process is syncing this device already".to_owned(),
-            });
+            // Whoever holds the endpoint runs the round.
+            return ask_holder(&self.directory).unwrap_or_else(|| Err(elsewhere()));
         };
         let store = self.shared();
         let results = runtime()?.block_on(async {
@@ -274,8 +273,8 @@ impl Lumenna {
     ///
     /// # Errors
     ///
-    /// [`LumennaError::SyncElsewhere`] if another process holds the endpoint; otherwise if it
-    /// cannot be opened.
+    /// If the endpoint cannot be opened. Another process holding it is not an error: the
+    /// service waits its turn, and takes over when that process stops.
     pub fn start_sync(
         &self,
         reach: Reach,
@@ -284,12 +283,9 @@ impl Lumenna {
         if let Some(service) = self.running_service() {
             return Ok(service);
         }
-        let Some(lock) = take_lock(&self.directory)? else {
-            return Err(LumennaError::SyncElsewhere {
-                reason: "another process is syncing this device already".to_owned(),
-            });
-        };
-        let service = SyncService::start(self.shared(), reach, listener, lock)?;
+        // Without the lock, the service waits its turn.
+        let lock = take_lock(&self.directory)?;
+        let service = SyncService::start(self.shared(), reach, listener, &self.directory, lock)?;
         *self.sync.service.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
             Arc::downgrade(&service);
         Ok(service)
@@ -563,6 +559,14 @@ impl SyncLoop {
         answer.await.map_err(|_| LumennaError::new("syncing stopped mid-round"))
     }
 
+    /// [`sync_now`](Self::sync_now), from a thread outside the loop's runtime.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    fn blocking_sync_now(&self) -> Result<SyncReport> {
+        let (reply, answer) = tokio::sync::oneshot::channel();
+        self.requests.blocking_send(reply).map_err(|_| LumennaError::new("syncing has stopped"))?;
+        answer.blocking_recv().map_err(|_| LumennaError::new("syncing stopped mid-round"))
+    }
+
     /// Stops the loop, which closes the endpoint.
     pub fn stop(&self) {
         let _ = self.stop.send(true);
@@ -597,45 +601,60 @@ pub async fn keep_in_sync<F: Fn()>(
     Ok((SyncLoop { requests, stop: Arc::new(stop) }, run(node, store, changed, asked, stopping)))
 }
 
+/// How often a service waiting its turn tries for the endpoint again.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+const STANDBY: Duration = Duration::from_secs(5);
+
 /// Keeps a device in sync while it runs: the daemon's loop, and the app's while it is open.
+///
+/// One process per device holds the endpoint. A service started while another holds it waits
+/// its turn, trying again every few seconds, and takes over when that process stops — so an
+/// app opened while the daemon ran still syncs once the daemon is gone. Until then its
+/// rounds are asked of the holder.
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub struct SyncService {
-    handle: SyncLoop,
+    /// The loop's handle, once this service holds the endpoint.
+    handle: Arc<Mutex<Option<SyncLoop>>>,
+    stopping: Arc<std::sync::atomic::AtomicBool>,
+    directory: std::path::PathBuf,
     thread: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl SyncService {
-    /// Syncs with every paired device now, on the running endpoint.
+    /// Syncs with every paired device now: on this service's endpoint, or, while another
+    /// process holds it, by asking that process.
     ///
     /// # Errors
     ///
-    /// If the service has stopped.
+    /// If the service has stopped, or another process holds the endpoint and cannot be asked.
     pub fn sync_now(&self) -> Result<SyncReport> {
-        let (reply, answer) = tokio::sync::oneshot::channel();
-        self.handle
-            .requests
-            .blocking_send(reply)
-            .map_err(|_| LumennaError::new("syncing has stopped"))?;
-        answer.blocking_recv().map_err(|_| LumennaError::new("syncing stopped mid-round"))
+        if let Some(handle) = self.handle() {
+            return handle.blocking_sync_now();
+        }
+        ask_holder(&self.directory).unwrap_or_else(|| Err(elsewhere()))
     }
 
-    /// Stops: closes the endpoint and lets go of the lock. Waits for that to finish, so a
-    /// service started straight afterwards can take the lock.
+    /// Stops: closes the endpoint and lets go of the lock, or stops waiting for it. Waits for
+    /// that to finish, so a service started straight afterwards can take the lock.
     pub fn stop(&self) {
-        self.handle.stop();
+        self.stopping.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(handle) = self.handle() {
+            handle.stop();
+        }
         let thread = self.thread.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
         if let Some(thread) = thread {
             let _ = thread.join();
         }
     }
 
-    /// Whether it is still running.
+    /// Whether it holds this device's endpoint and is syncing. A service waiting its turn is
+    /// not running yet.
     #[must_use]
     pub fn is_running(&self) -> bool {
-        self.handle.is_running()
+        self.handle().is_some_and(|handle| handle.is_running())
             && self
                 .thread
                 .lock()
@@ -648,50 +667,181 @@ impl SyncService {
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl Drop for SyncService {
     fn drop(&mut self) {
-        self.handle.stop();
+        self.stopping.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(handle) = self.handle() {
+            handle.stop();
+        }
     }
 }
 
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl SyncService {
+    fn handle(&self) -> Option<SyncLoop> {
+        self.handle.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
+    }
+
+    /// Starts the service. With `lock`, it opens the endpoint now and says if it cannot;
+    /// without, it waits for the lock in the background.
     fn start(
         store: SharedStore,
         reach: Reach,
         listener: Arc<dyn SyncListener>,
-        lock: File,
+        directory: &Path,
+        lock: Option<File>,
     ) -> Result<Arc<Self>> {
+        let handle: Arc<Mutex<Option<SyncLoop>>> = Arc::new(Mutex::new(None));
+        let stopping = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let waiting = lock.is_none();
         let (bound, started) = std::sync::mpsc::channel();
-        let thread = std::thread::Builder::new()
-            .name("lumenna-sync".to_owned())
-            .spawn(move || {
-                // Held for as long as the endpoint is open, and dropped with it.
-                let _lock = lock;
-                let runtime = match runtime() {
-                    Ok(runtime) => runtime,
-                    Err(error) => {
-                        let _ = bound.send(Err(error));
-                        return;
-                    }
-                };
-                runtime.block_on(async move {
-                    match keep_in_sync(store, reach, move || listener.changed()).await {
-                        Ok((handle, looping)) => {
-                            let _ = bound.send(Ok(handle));
-                            looping.await;
-                        }
+        let thread = {
+            let (handle, stopping, directory) = (Arc::clone(&handle), Arc::clone(&stopping), directory.to_path_buf());
+            std::thread::Builder::new()
+                .name("lumenna-sync".to_owned())
+                .spawn(move || {
+                    let lock = match lock {
+                        Some(lock) => lock,
+                        None => match wait_for_lock(&directory, &stopping) {
+                            Some(lock) => lock,
+                            None => return,
+                        },
+                    };
+                    // Held for as long as the endpoint is open, and dropped with it.
+                    let _lock = lock;
+                    let runtime = match runtime() {
+                        Ok(runtime) => runtime,
                         Err(error) => {
                             let _ = bound.send(Err(error));
+                            return;
+                        }
+                    };
+                    runtime.block_on(async move {
+                        match keep_in_sync(store, reach, move || listener.changed()).await {
+                            Ok((running, looping)) => {
+                                *handle.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
+                                    Some(running.clone());
+                                // Stopped while it was opening: close at once.
+                                if stopping.load(std::sync::atomic::Ordering::Relaxed) {
+                                    running.stop();
+                                }
+                                let answering = serve_holder(&directory, running);
+                                let _ = bound.send(Ok(()));
+                                looping.await;
+                                drop(answering);
+                            }
+                            Err(error) => {
+                                let _ = bound.send(Err(error));
+                            }
+                        }
+                    });
+                })
+                .map_err(|e| LumennaError::new(format!("could not start syncing: {e}")))?
+        };
+        // Opening the endpoint is the part that can fail; wait for it, so the caller hears.
+        // A service waiting its turn has nothing to say yet.
+        if !waiting {
+            started.recv().map_err(|_| LumennaError::new("syncing stopped before it started"))??;
+        }
+        Ok(Arc::new(Self { handle, stopping, directory: directory.to_path_buf(), thread: Mutex::new(Some(thread)) }))
+    }
+}
+
+/// Tries for the sync lock every [`STANDBY`] until it is free, or `stopping` is set.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+fn wait_for_lock(directory: &Path, stopping: &std::sync::atomic::AtomicBool) -> Option<File> {
+    let step = Duration::from_millis(200);
+    loop {
+        if let Ok(Some(lock)) = take_lock(directory) {
+            return Some(lock);
+        }
+        let mut waited = Duration::ZERO;
+        while waited < STANDBY {
+            if stopping.load(std::sync::atomic::Ordering::Relaxed) {
+                return None;
+            }
+            std::thread::sleep(step);
+            waited += step;
+        }
+    }
+}
+
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+fn elsewhere() -> LumennaError {
+    LumennaError::SyncElsewhere { reason: "another process is syncing this device already".to_owned() }
+}
+
+/// The socket the endpoint's holder answers on, so anything else on the device can ask it
+/// for a round.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+fn holder_socket(directory: &Path) -> std::path::PathBuf {
+    directory.join("sync.sock")
+}
+
+/// Answers "sync" on [`holder_socket`] with a round's report, for as long as `running` is.
+/// The socket is removed when it ends. Nothing on Windows yet, which has no such socket in
+/// the standard library: there, another process's Sync Now says another is syncing.
+#[cfg(unix)]
+fn serve_holder(directory: &Path, running: SyncLoop) -> Option<std::thread::JoinHandle<()>> {
+    use std::io::{BufRead, BufReader, Write};
+    let path = holder_socket(directory);
+    // This process holds the lock, so whatever socket is there is a dead holder's.
+    let _ = std::fs::remove_file(&path);
+    let listener = std::os::unix::net::UnixListener::bind(&path).ok()?;
+    listener.set_nonblocking(true).ok()?;
+    std::thread::Builder::new()
+        .name("lumenna-sync-asked".to_owned())
+        .spawn(move || {
+            while running.is_running() {
+                match listener.accept() {
+                    Ok((stream, _)) => {
+                        let _ = stream.set_nonblocking(false);
+                        let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+                        let mut line = String::new();
+                        let mut reader = BufReader::new(&stream);
+                        if reader.read_line(&mut line).is_ok() && line.trim() == "sync" {
+                            let answer = match running.blocking_sync_now() {
+                                Ok(report) => serde_json::to_string(&report).unwrap_or_default(),
+                                Err(_) => String::new(),
+                            };
+                            let _ = (&stream).write_all(format!("{answer}\n").as_bytes());
                         }
                     }
-                });
-            })
-            .map_err(|e| LumennaError::new(format!("could not start syncing: {e}")))?;
-        // Opening the endpoint is the part that can fail; wait for it, so the caller hears.
-        let handle = started
-            .recv()
-            .map_err(|_| LumennaError::new("syncing stopped before it started"))??;
-        Ok(Arc::new(Self { handle, thread: Mutex::new(Some(thread)) }))
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(200));
+                    }
+                    Err(_) => break,
+                }
+            }
+            let _ = std::fs::remove_file(&path);
+        })
+        .ok()
+}
+
+#[cfg(all(not(unix), not(all(target_family = "wasm", target_os = "unknown"))))]
+fn serve_holder(_directory: &Path, _running: SyncLoop) -> Option<std::thread::JoinHandle<()>> {
+    None
+}
+
+/// Asks the process holding the endpoint for a round, or `None` if none answers.
+#[cfg(unix)]
+fn ask_holder(directory: &Path) -> Option<Result<SyncReport>> {
+    use std::io::{BufRead, BufReader, Write};
+    let mut stream = std::os::unix::net::UnixStream::connect(holder_socket(directory)).ok()?;
+    // A round with a device out of reach waits for it; give it time.
+    stream.set_read_timeout(Some(Duration::from_secs(120))).ok()?;
+    stream.write_all(b"sync\n").ok()?;
+    let mut line = String::new();
+    BufReader::new(&stream).read_line(&mut line).ok()?;
+    if line.trim().is_empty() {
+        return None;
     }
+    Some(serde_json::from_str(&line).map_err(|error| {
+        LumennaError::new(format!("the process syncing this device gave an answer this one cannot read: {error}"))
+    }))
+}
+
+#[cfg(all(not(unix), not(all(target_family = "wasm", target_os = "unknown"))))]
+fn ask_holder(_directory: &Path) -> Option<Result<SyncReport>> {
+    None
 }
 
 /// The loop: answer, send local changes on, catch up periodically, and do rounds on request.
