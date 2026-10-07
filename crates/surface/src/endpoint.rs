@@ -39,9 +39,9 @@ pub enum Connection {
     /// A Unix socket.
     #[cfg(unix)]
     Socket(std::os::unix::net::UnixStream),
-    /// A named pipe, which a client opens as a file.
+    /// A named pipe.
     #[cfg(windows)]
-    Pipe(std::fs::File),
+    Pipe(Pipe),
 }
 
 impl Connection {
@@ -56,7 +56,7 @@ impl Connection {
             #[cfg(unix)]
             Self::Socket(stream) => stream.try_clone().map(Self::Socket),
             #[cfg(windows)]
-            Self::Pipe(file) => file.try_clone().map(Self::Pipe),
+            Self::Pipe(pipe) => pipe.try_clone().map(Self::Pipe),
         }
     }
 
@@ -65,14 +65,13 @@ impl Connection {
     /// # Errors
     ///
     /// If the system refuses the timeout.
-    pub fn set_read_timeout(&self, limit: Option<std::time::Duration>) -> std::io::Result<()> {
+    pub fn set_read_timeout(&mut self, limit: Option<std::time::Duration>) -> std::io::Result<()> {
         match self {
             #[cfg(unix)]
             Self::Socket(stream) => stream.set_read_timeout(limit),
-            // A pipe opened as a file has no timeout; the holder answers or closes.
             #[cfg(windows)]
-            Self::Pipe(_) => {
-                let _ = limit;
+            Self::Pipe(pipe) => {
+                pipe.timeout = limit;
                 Ok(())
             }
         }
@@ -85,7 +84,7 @@ impl Read for Connection {
             #[cfg(unix)]
             Self::Socket(stream) => stream.read(buf),
             #[cfg(windows)]
-            Self::Pipe(file) => file.read(buf),
+            Self::Pipe(pipe) => pipe.read(buf),
         }
     }
 }
@@ -96,7 +95,7 @@ impl Write for Connection {
             #[cfg(unix)]
             Self::Socket(stream) => stream.write(buf),
             #[cfg(windows)]
-            Self::Pipe(file) => file.write(buf),
+            Self::Pipe(pipe) => pipe.write(buf),
         }
     }
 
@@ -105,7 +104,7 @@ impl Write for Connection {
             #[cfg(unix)]
             Self::Socket(stream) => stream.flush(),
             #[cfg(windows)]
-            Self::Pipe(file) => file.flush(),
+            Self::Pipe(pipe) => pipe.flush(),
         }
     }
 }
@@ -119,6 +118,180 @@ pub fn connect(directory: &Path) -> Option<Connection> {
     }
     #[cfg(windows)]
     {
-        std::fs::OpenOptions::new().read(true).write(true).open(address(directory)).ok().map(Connection::Pipe)
+        use std::os::windows::fs::OpenOptionsExt;
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OVERLAPPED)
+            .open(address(directory))
+            .ok()?;
+        Some(Connection::Pipe(Pipe::new(file.into())))
     }
 }
+
+/// One end of a named pipe, opened for overlapped I/O.
+///
+/// Not a `std::fs::File`: Windows serialises synchronous I/O on one file object, so a
+/// thread blocked reading a pipe would hold up another writing to it — the relay reading
+/// replies while it sends requests, a server pushing a notification while it waits for the
+/// next request — and both would wait for ever. Overlapped I/O lets the two run at once, each
+/// waiting on an event of its own, and gives a read its timeout.
+#[cfg(windows)]
+pub struct Pipe {
+    handle: std::os::windows::io::OwnedHandle,
+    timeout: Option<std::time::Duration>,
+}
+
+#[cfg(windows)]
+mod overlapped {
+    use std::io;
+    use std::os::windows::io::AsRawHandle;
+    use std::time::Duration;
+
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, ERROR_BROKEN_PIPE, ERROR_IO_PENDING, ERROR_OPERATION_ABORTED, ERROR_PIPE_CONNECTED,
+        ERROR_PIPE_NOT_CONNECTED, GetLastError, HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    };
+    use windows_sys::Win32::Storage::FileSystem::{ReadFile, WriteFile};
+    use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
+    use windows_sys::Win32::System::Pipes::ConnectNamedPipe;
+    use windows_sys::Win32::System::Threading::{CreateEventW, INFINITE, WaitForSingleObject};
+
+    use super::Pipe;
+
+    /// An event for one operation, closed with it.
+    struct Event(HANDLE);
+
+    impl Event {
+        fn new() -> io::Result<Self> {
+            // Manual reset, as overlapped I/O requires.
+            let event = unsafe { CreateEventW(std::ptr::null(), 1, 0, std::ptr::null()) };
+            if event.is_null() { Err(io::Error::last_os_error()) } else { Ok(Self(event)) }
+        }
+    }
+
+    impl Drop for Event {
+        fn drop(&mut self) {
+            unsafe { CloseHandle(self.0) };
+        }
+    }
+
+    /// How an operation ended.
+    enum Ended {
+        Done(u32),
+        TimedOut,
+        Failed(u32),
+    }
+
+    impl Pipe {
+        fn raw(&self) -> HANDLE {
+            self.handle.as_raw_handle()
+        }
+
+        /// Starts an operation with `start` and waits for it, no longer than `limit`;
+        /// `keep_waiting` is asked each time the limit passes, and ends the wait when it says
+        /// no. A wait given up cancels the operation before returning, so nothing is left
+        /// writing into memory this frame no longer owns.
+        fn run(
+            &self,
+            limit: Option<Duration>,
+            keep_waiting: &dyn Fn() -> bool,
+            start: impl FnOnce(HANDLE, *mut OVERLAPPED) -> i32,
+        ) -> io::Result<Ended> {
+            let event = Event::new()?;
+            let mut overlapped: OVERLAPPED = unsafe { std::mem::zeroed() };
+            overlapped.hEvent = event.0;
+            if start(self.raw(), &raw mut overlapped) == 0 {
+                let error = unsafe { GetLastError() };
+                if error != ERROR_IO_PENDING {
+                    return Ok(Ended::Failed(error));
+                }
+                let millis = limit.map_or(INFINITE, |limit| u32::try_from(limit.as_millis()).unwrap_or(INFINITE - 1));
+                loop {
+                    match unsafe { WaitForSingleObject(event.0, millis) } {
+                        WAIT_OBJECT_0 => break,
+                        WAIT_TIMEOUT if keep_waiting() => {}
+                        WAIT_TIMEOUT => {
+                            unsafe { CancelIoEx(self.raw(), &raw const overlapped) };
+                            let mut moved = 0;
+                            unsafe { GetOverlappedResult(self.raw(), &raw const overlapped, &raw mut moved, 1) };
+                            return Ok(Ended::TimedOut);
+                        }
+                        _ => return Err(io::Error::last_os_error()),
+                    }
+                }
+            }
+            let mut moved = 0;
+            if unsafe { GetOverlappedResult(self.raw(), &raw const overlapped, &raw mut moved, 0) } == 0 {
+                return Ok(Ended::Failed(unsafe { GetLastError() }));
+            }
+            Ok(Ended::Done(moved))
+        }
+
+        /// Waits for a client to connect to this server end, asking `keep_waiting` every
+        /// `step` whether to go on: true once one has, false if the wait was given up.
+        pub(crate) fn accept(&self, step: Duration, keep_waiting: &dyn Fn() -> bool) -> io::Result<bool> {
+            match self.run(Some(step), keep_waiting, |handle, overlapped| unsafe { ConnectNamedPipe(handle, overlapped) })? {
+                Ended::Done(_) => Ok(true),
+                // A client that connected between the pipe's making and the wait.
+                Ended::Failed(ERROR_PIPE_CONNECTED) => Ok(true),
+                Ended::TimedOut | Ended::Failed(ERROR_OPERATION_ABORTED) => Ok(false),
+                Ended::Failed(error) => Err(io::Error::from_raw_os_error(error as i32)),
+            }
+        }
+    }
+
+    impl io::Read for Pipe {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            let length = u32::try_from(buf.len()).unwrap_or(u32::MAX);
+            let ended = self.run(self.timeout, &|| false, |handle, overlapped| unsafe {
+                ReadFile(handle, buf.as_mut_ptr(), length, std::ptr::null_mut(), overlapped)
+            })?;
+            match ended {
+                Ended::Done(read) => Ok(read as usize),
+                // The other end has gone: the end of what it sent.
+                Ended::Failed(ERROR_BROKEN_PIPE | ERROR_PIPE_NOT_CONNECTED) => Ok(0),
+                Ended::Failed(error) => Err(io::Error::from_raw_os_error(error as i32)),
+                Ended::TimedOut => Err(io::Error::new(io::ErrorKind::TimedOut, "no answer in time")),
+            }
+        }
+    }
+
+    impl io::Write for Pipe {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            let length = u32::try_from(buf.len()).unwrap_or(u32::MAX);
+            let ended = self.run(None, &|| true, |handle, overlapped| unsafe {
+                WriteFile(handle, buf.as_ptr(), length, std::ptr::null_mut(), overlapped)
+            })?;
+            match ended {
+                Ended::Done(written) => Ok(written as usize),
+                Ended::Failed(error) => Err(io::Error::from_raw_os_error(error as i32)),
+                Ended::TimedOut => Err(io::Error::new(io::ErrorKind::TimedOut, "the pipe took nothing")),
+            }
+        }
+
+        /// Nothing to do: what is written is in the pipe, for the other end to read. Waiting
+        /// for it to be read (`FlushFileBuffers`) would hang on a reader that has stopped.
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Pipe {
+    /// Takes an end opened with `FILE_FLAG_OVERLAPPED`.
+    pub(crate) fn new(handle: std::os::windows::io::OwnedHandle) -> Self {
+        Self { handle, timeout: None }
+    }
+
+    /// A second handle on the same end, for reading on one thread while writing on another.
+    ///
+    /// # Errors
+    ///
+    /// If the system will not duplicate it.
+    pub fn try_clone(&self) -> std::io::Result<Self> {
+        Ok(Self { handle: self.handle.try_clone()?, timeout: self.timeout })
+    }
+}
+

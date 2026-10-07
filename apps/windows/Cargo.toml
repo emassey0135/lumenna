@@ -15,7 +15,7 @@ path = "src/main.rs"
 [dependencies]
 jiff.workspace = true
 lumenna-desktop = { path = "../../crates/desktop" }
-lumenna-surface = { path = "../../crates/surface", features = ["sync"] }
+lumenna-surface = { path = "../../crates/surface", features = ["sync", "rpc"] }
 
 # Everything that touches Win32 is behind `cfg(windows)`, so the workspace still builds and
 # tests on every other platform: the wording, the form and the places are tested there too.

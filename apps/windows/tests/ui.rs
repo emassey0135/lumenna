@@ -388,3 +388,85 @@ fn the_pairing_dialog_says_an_empty_code_takes_the_clipboard() {
     assert!(unnamed(&dialog).is_empty(), "{:#?}", unnamed(&dialog));
     app.post(&["esc"]);
 }
+
+/// `lum`, built beside the app: `cargo build -p lumenna-cli` with the same target directory.
+fn lum() -> std::path::PathBuf {
+    let lum = std::path::Path::new(env!("CARGO_BIN_EXE_lumenna")).with_file_name("lum.exe");
+    assert!(lum.exists(), "build lum first, into the same target directory: cargo build -p lumenna-cli");
+    lum
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn lum_rpc_reaches_the_running_app_through_its_pipe_and_the_app_shows_what_it_added() {
+    use std::io::{BufRead, BufReader, Write};
+
+    let app = App::launch(|_| {});
+    let started = std::time::Instant::now();
+    // The app serves once its sync service holds the endpoint; until then lum serves itself.
+    let (mut rpc, mut replies, answer) = loop {
+        let mut rpc = Command::new(lum())
+            .arg("rpc")
+            .env("LUMENNA_PROFILE", app.profile.path())
+            .env("LUMENNA_BACKUP_DIR", app.profile.path().with_extension("backups"))
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .expect("lum runs");
+        let mut replies = BufReader::new(rpc.stdout.take().unwrap());
+        writeln!(rpc.stdin.as_mut().unwrap(), r#"{{"jsonrpc":"2.0","id":1,"method":"initialize"}}"#).unwrap();
+        let mut answer = String::new();
+        replies.read_line(&mut answer).unwrap();
+        if answer.contains(r#""process":"Lumenna for Windows""#) || started.elapsed() > Duration::from_secs(20) {
+            break (rpc, replies, answer);
+        }
+        let _ = rpc.kill();
+        let _ = rpc.wait();
+        std::thread::sleep(Duration::from_millis(500));
+    };
+    assert!(answer.contains(r#""process":"Lumenna for Windows""#), "the app answers, not lum: {answer}");
+    writeln!(rpc.stdin.as_mut().unwrap(), r#"{{"jsonrpc":"2.0","id":2,"method":"task.add","params":{{"text":"Sent through the pipe"}}}}"#).unwrap();
+    let mut added = String::new();
+    replies.read_line(&mut added).unwrap();
+    assert!(added.contains("Sent through the pipe"), "{added}");
+    // A client whose input ends is answered, then lum rpc ends with it: the relay tells the
+    // app the client has gone, as a pipe has no half-close to say it.
+    drop(rpc.stdin.take());
+    let (ended, exited) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = ended.send(rpc.wait());
+    });
+    assert!(exited.recv_timeout(Duration::from_secs(10)).is_ok(), "lum rpc ends when its input does");
+    // Another connection's write, which the app's poll redraws for within a second or so.
+    app.post(&[GO_TASKS]);
+    automation::wait(Duration::from_secs(5), || {
+        app.automation.dump(app.window, 6).iter().any(|l| l.contains("TreeItem 'Sent through the pipe")).then_some(())
+    })
+    .expect("the app lists the task lum added through it");
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn lum_sync_runs_its_round_on_the_running_app() {
+    let app = App::launch(|_| {});
+    // The app answers at its pipe only while it holds the endpoint, and then lum cannot run a
+    // round of its own: a round lum reports is the app's.
+    automation::wait(Duration::from_secs(20), || lumenna_surface::endpoint::connect(app.profile.path()).map(drop))
+        .expect("the app serves its pipe");
+    let started = std::time::Instant::now();
+    loop {
+        let output = Command::new(lum())
+            .arg("sync")
+            .env("LUMENNA_PROFILE", app.profile.path())
+            .env("LUMENNA_BACKUP_DIR", app.profile.path().with_extension("backups"))
+            .output()
+            .expect("lum runs");
+        let said = String::from_utf8_lossy(&output.stdout).to_string() + &String::from_utf8_lossy(&output.stderr);
+        // Not paired with anything, so the app's round reaches nobody, and says so.
+        if output.status.success() && said.contains("not paired") {
+            break;
+        }
+        assert!(started.elapsed() < Duration::from_secs(20), "lum sync did not get a round from the app: {said}");
+        std::thread::sleep(Duration::from_millis(500));
+    }
+}

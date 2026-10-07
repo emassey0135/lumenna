@@ -7,10 +7,12 @@
 
 use std::sync::{Arc, Mutex, PoisonError};
 
+use lumenna_surface::rpc::CommandServer;
 use lumenna_surface::{Lumenna, LumennaError, Reach, SyncListener, SyncService};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_APP};
 
+use super::system;
 use crate::speech;
 
 /// Something arrived from another device, or another process wrote to the store.
@@ -75,12 +77,16 @@ pub unsafe fn taken<T>(lparam: LPARAM) -> T {
 pub struct Core {
     pub lumenna: Arc<Lumenna>,
     sync: Arc<Mutex<Option<Arc<SyncService>>>>,
+    /// The command surface at this profile's named pipe, served while the sync service holds
+    /// the endpoint, so Emacs and the BTSpeak app (through `lum rpc`) reach this app as they
+    /// would the daemon.
+    commands: Arc<Mutex<Option<Arc<CommandServer>>>>,
 }
 
 impl Core {
     pub fn open(directory: &std::path::Path) -> Result<Self, LumennaError> {
         let lumenna = Lumenna::open(&directory.display().to_string())?;
-        Ok(Self { lumenna, sync: Arc::new(Mutex::new(None)) })
+        Ok(Self { lumenna, sync: Arc::new(Mutex::new(None)), commands: Arc::new(Mutex::new(None)) })
     }
 
     /// Starts keeping this device in sync, for as long as the app runs: the resident
@@ -92,17 +98,32 @@ impl Core {
     pub fn start_syncing(&self, window: Poster) {
         let lumenna = Arc::clone(&self.lumenna);
         let sync = Arc::clone(&self.sync);
+        let commands = Arc::clone(&self.commands);
         std::thread::spawn(move || {
             let listener: Arc<dyn SyncListener> = Arc::new(Arrivals(window));
             match lumenna.start_sync(Reach::Internet, listener) {
-                Ok(service) => *sync.lock().unwrap_or_else(PoisonError::into_inner) = Some(service),
+                Ok(service) => {
+                    let server = lumenna.serve_commands(
+                        Arc::clone(&service),
+                        "Lumenna for Windows".to_owned(),
+                        system::computer_name(),
+                        "windows".to_owned(),
+                    );
+                    *commands.lock().unwrap_or_else(PoisonError::into_inner) = Some(server);
+                    *sync.lock().unwrap_or_else(PoisonError::into_inner) = Some(service);
+                }
                 Err(error) => window.say(format!("Syncing could not start. {}", sentence(&error))),
             }
         });
     }
 
-    /// Stops syncing and lets go of the endpoint, before returning.
+    /// Stops serving the command surface and syncing, and lets go of the pipe and the
+    /// endpoint, before returning.
     pub fn stop_syncing(&self) {
+        let server = self.commands.lock().unwrap_or_else(PoisonError::into_inner).take();
+        if let Some(server) = server {
+            server.stop();
+        }
         let service = self.sync.lock().unwrap_or_else(PoisonError::into_inner).take();
         if let Some(service) = service {
             service.stop();
