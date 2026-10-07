@@ -36,6 +36,7 @@ use windows::core::{HSTRING, w};
 use super::blocks::BlockList;
 use super::controls::{self, rect};
 use super::core::{Core, Poster, WM_SAY, WM_STORE_CHANGED, said};
+use super::dark;
 use super::day::DayView;
 use super::font;
 use super::detail::Detail;
@@ -174,6 +175,8 @@ fn message_loop(app: &App) {
 
 impl App {
     fn create(core: Core, class: &str) -> Option<Rc<Self>> {
+        // Before any window, so menus are made in the mode.
+        dark::refresh();
         let instance = controls::instance();
         let icon = unsafe { LoadIconW(None, IDI_APPLICATION).unwrap_or_default() };
         let class = HSTRING::from(class);
@@ -268,6 +271,7 @@ impl App {
             taskbar_created: tray::taskbar_created(),
         });
         app.update_font();
+        dark::window(main);
         Some(app)
     }
 
@@ -430,6 +434,7 @@ impl App {
         self.set_title(&place.title());
         *self.content.borrow_mut() = Some(content.clone());
         self.apply_font(pane);
+        dark::controls_in(pane);
         self.layout();
         content.view().reload(self);
     }
@@ -483,6 +488,10 @@ impl App {
     /// which message announces it is not documented, so any change is looked at, and the
     /// window is laid out again only if the font is not what it was.
     fn setting_changed(&self) {
+        // Dark or light, and whether a high-contrast theme came or went.
+        if dark::refresh() {
+            dark::window(self.main);
+        }
         let font = self.message_font();
         if self.font_made_from.get() != (font.lfHeight, font.lfFaceName) {
             self.update_font();
@@ -915,6 +924,15 @@ unsafe extern "system" fn main_procedure(hwnd: HWND, message: u32, wparam: WPARA
             WM_CONTEXTMENU => app.on_context_menu(HWND(wparam.0 as _), lparam),
             WM_SIZE => app.layout(),
             WM_SETTINGCHANGE => app.setting_changed(),
+            WM_CTLCOLORSTATIC | WM_CTLCOLORBTN | WM_CTLCOLOREDIT | WM_CTLCOLORLISTBOX => {
+                if let Some(answer) = dark::colour(message, wparam, lparam) {
+                    return answer;
+                }
+                return DefWindowProcW(hwnd, message, wparam, lparam);
+            }
+            WM_ERASEBKGND => {
+                return dark::erase(hwnd, wparam).unwrap_or_else(|| DefWindowProcW(hwnd, message, wparam, lparam));
+            }
             // Common controls take the system's colours from this, which only a top-level
             // window is sent.
             WM_SYSCOLORCHANGE => {
@@ -996,6 +1014,10 @@ unsafe extern "system" fn pane_procedure(hwnd: HWND, message: u32, wparam: WPARA
             // A multi-line field sends its parent WM_CLOSE on Escape, which would destroy the
             // pane.
             WM_CLOSE => LRESULT(0),
+            WM_CTLCOLORSTATIC | WM_CTLCOLORBTN | WM_CTLCOLOREDIT | WM_CTLCOLORLISTBOX => {
+                dark::colour(message, wparam, lparam).unwrap_or_else(|| DefWindowProcW(hwnd, message, wparam, lparam))
+            }
+            WM_ERASEBKGND => dark::erase(hwnd, wparam).unwrap_or_else(|| DefWindowProcW(hwnd, message, wparam, lparam)),
             _ => DefWindowProcW(hwnd, message, wparam, lparam),
         }
     }

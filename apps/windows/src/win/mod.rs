@@ -8,6 +8,7 @@ mod clock;
 mod completion;
 mod controls;
 mod core;
+mod dark;
 mod day;
 mod detail;
 mod dialog;

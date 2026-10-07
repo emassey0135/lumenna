@@ -14,13 +14,14 @@ use windows::Win32::UI::Controls::{
 use windows::Win32::UI::WindowsAndMessaging::{
     DLGTEMPLATE, DS_CENTER, DS_MODALFRAME, DS_SETFONT, DWLP_MSGRESULT, DialogBoxIndirectParamW, EndDialog,
     GWLP_USERDATA, GetDlgItem, GetWindowLongPtrW, IDCANCEL, IDOK, SetWindowLongPtrW,
-    WINDOW_LONG_PTR_INDEX, WM_COMMAND, WM_INITDIALOG, WM_VKEYTOITEM, WS_CAPTION, WS_CHILD, WS_DISABLED, WS_POPUP, WS_SYSMENU,
+    WINDOW_LONG_PTR_INDEX, WM_COMMAND, WM_CTLCOLORBTN, WM_CTLCOLORDLG, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX,
+    WM_CTLCOLORSTATIC, WM_INITDIALOG, WM_VKEYTOITEM, WS_CAPTION, WS_CHILD, WS_DISABLED, WS_POPUP, WS_SYSMENU,
     WS_VISIBLE,
 };
 
 use windows::core::{HSTRING, PCWSTR};
 
-use super::{controls, font};
+use super::{controls, dark, font};
 
 /// The stock classes a dialog item can be.
 #[derive(Clone, Copy)]
@@ -262,6 +263,11 @@ pub fn sheet(owner: HWND, title: &str, pages: &[&dyn Dialog], start: usize) {
 /// Once the sheet exists: OK hidden, and Cancel called what it does, Close.
 unsafe extern "system" fn sheet_callback(hwnd: HWND, message: u32, _lparam: LPARAM) -> i32 {
     if message == PSCB_INITIALIZED {
+        // The sheet's frame is drawn by its own procedure, which knows no dark mode.
+        unsafe {
+            let _ = windows::Win32::UI::Shell::SetWindowSubclass(hwnd, Some(dark::sheet_colours), 1, 0);
+        }
+        dark::window(hwnd);
         controls::show(item(hwnd, IDOK.0 as u16), false);
         controls::set_text(item(hwnd, IDCANCEL.0 as u16), "Close");
     }
@@ -300,8 +306,22 @@ unsafe fn dispatch(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM, pag
             return 0;
         }
         let dialog = *pointer;
+        if let WM_CTLCOLORSTATIC | WM_CTLCOLORBTN | WM_CTLCOLORDLG | WM_CTLCOLOREDIT | WM_CTLCOLORLISTBOX = message
+            && let Some(brush) = dark::colour(message, wparam, lparam)
+        {
+            // A dialog procedure answers these with the brush itself.
+            return brush.0;
+        }
         match message {
-            WM_INITDIALOG => isize::from(!dialog.init(hwnd)),
+            WM_INITDIALOG => {
+                // A page's title bar is its sheet's.
+                if page {
+                    dark::controls_in(hwnd);
+                } else {
+                    dark::window(hwnd);
+                }
+                isize::from(!dialog.init(hwnd))
+            }
             WM_COMMAND => {
                 let id = controls::low_word(wparam.0);
                 let code = controls::high_word(wparam.0);
