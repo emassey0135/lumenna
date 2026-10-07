@@ -205,10 +205,12 @@ impl Store {
         for doc in self.docs.iter_mut() {
             let id = doc.id();
             let known = self.persisted.get(&id).cloned().unwrap_or_default();
-            let heads = doc.heads();
-            if heads == known {
+            if doc.heads() == known {
                 continue;
             }
+            // Written to by this build: it says so, on the way to disk, so no write misses it.
+            doc.stamp_version()?;
+            let heads = doc.heads();
             let changes = doc.changes_since(&known);
             self.db.append_changes(id, &changes)?;
             self.persisted.insert(id, heads);

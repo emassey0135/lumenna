@@ -57,6 +57,14 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
+    /// Whether every listed device reports at least `version`: the condition for a change to
+    /// the stored format, which an older device would misread. A device that has not said
+    /// counts as older.
+    #[must_use]
+    pub fn all_devices_at_least(&self, version: u32) -> bool {
+        self.devices.values().all(|device| device.schema >= version)
+    }
+
     /// Repairs both graphs in place, returning what had to be changed.
     ///
     /// Call this when materializing, before anything walks the tree or evaluates

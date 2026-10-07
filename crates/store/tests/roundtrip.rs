@@ -113,6 +113,7 @@ fn every_core_record_round_trips() {
         platform: "linux".to_owned(),
         paired_at: now(),
         last_seen: now(),
+        schema: 1,
     };
     let settings = Settings {
         cascade_complete_subtasks: false,

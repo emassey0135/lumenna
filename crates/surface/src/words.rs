@@ -99,6 +99,13 @@ pub fn device_status(device: &crate::types::DeviceView, now: jiff::Timestamp) ->
         return vec!["this device".to_owned()];
     }
     let mut parts = Vec::new();
+    // Builds of different versions go on syncing; what one cannot read, it does not show.
+    let ours = lumenna_core::model::SCHEMA_VERSION;
+    if device.schema_version < ours {
+        parts.push("runs an older version of Lumenna, so update it".to_owned());
+    } else if device.schema_version > ours {
+        parts.push("runs a newer version of Lumenna, so update this device".to_owned());
+    }
     if let Some(error) = &device.last_error {
         parts.push(match &device.last_attempt {
             Some(attempt) => format!("last attempt {} failed: {error}", ago(attempt, now)),
@@ -107,7 +114,7 @@ pub fn device_status(device: &crate::types::DeviceView, now: jiff::Timestamp) ->
     }
     match &device.last_success {
         Some(success) => parts.push(format!("last synced {}", ago(success, now))),
-        None if parts.is_empty() => parts.push("not synced yet".to_owned()),
+        None if device.last_error.is_none() => parts.push("not synced yet".to_owned()),
         None => {}
     }
     parts

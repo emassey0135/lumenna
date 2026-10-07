@@ -142,6 +142,7 @@ async fn a_device_that_was_never_paired_is_refused() {
         platform: "linux".to_owned(),
         paired_at: lumenna_core::time::now(),
         last_seen: lumenna_core::time::now(),
+        schema: 1,
     };
     stranger.lock().unwrap().write(|docs| docs.put_device(&laptop, None)).unwrap();
     let secret = add(&stranger, "planted by a stranger");

@@ -103,6 +103,10 @@ fn pairing_by_code_enrolls_both_devices_and_brings_everything_across() {
     let (_dir, a, b) = paired();
     assert_eq!(a.devices().unwrap().devices.len(), 2);
     assert_eq!(b.devices().unwrap().devices.len(), 2);
+    // Each said its version while pairing, so neither shows the other as behind.
+    for device in a.devices().unwrap().devices {
+        assert_eq!(device.schema_version, lumenna_core::model::SCHEMA_VERSION, "{}", device.name);
+    }
     assert!(titles(&b).contains(&"written on a before pairing".to_owned()));
 }
 

@@ -133,6 +133,23 @@ fn take_lock(profile: &Path) -> Result<Option<File>> {
     }
 }
 
+impl Lumenna {
+    /// Records this build's stored-format version in this device's entry in the device
+    /// list, if it is listed and says another.
+    pub(crate) fn note_own_version(&self) -> Result<()> {
+        let snapshot = repaired(&self.store());
+        if snapshot.devices.is_empty() {
+            return Ok(());
+        }
+        let me = this_node(&self.shared())?;
+        let edit = edit::note_own_version(&snapshot, me);
+        if !edit.is_empty() {
+            self.store().apply(&edit)?;
+        }
+        Ok(())
+    }
+}
+
 fn this_node(store: &SharedStore) -> Result<NodeId> {
     let key = lumenna_sync::node::device_key(store)?;
     Ok(NodeId::from_bytes(*key.public().as_bytes()))
@@ -510,6 +527,7 @@ impl Lumenna {
                     last_attempt: status.and_then(|s| s.last_attempt).map(when),
                     last_success: status.and_then(|s| s.last_success).map(when),
                     last_error: status.and_then(|s| s.last_error.clone()),
+                    schema_version: device.schema,
                     status: Vec::new(),
                 };
                 view.status = crate::words::device_status(&view, jiff::Timestamp::now());

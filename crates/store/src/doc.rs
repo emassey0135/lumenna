@@ -21,6 +21,7 @@ use automerge::transaction::Transactable;
 use automerge::transaction::CommitOptions;
 use automerge::{ActorId, AutoCommit, ChangeHash, ObjId, ObjType, ROOT, ReadDoc, Value};
 use jiff::civil;
+use lumenna_core::model::SCHEMA_VERSION;
 use lumenna_core::model::{
     BlockAssignment, BlockException, BlockSeries, Device, Label, Project, Reminder, ReminderAck,
     SavedFilter, Settings, Task, TaskCompletion,
@@ -221,6 +222,31 @@ impl Doc {
         Ok(true)
     }
 
+    /// The highest stored-format version that has written this document, or zero if none
+    /// has said: a document from before versions.
+    #[must_use]
+    pub fn schema_version(&self) -> u32 {
+        match self.doc.get(ROOT, "schema") {
+            Ok(Some((Value::Scalar(value), _))) => value.to_i64().and_then(|v| u32::try_from(v).ok()).unwrap_or(0),
+            _ => 0,
+        }
+    }
+
+    /// Records that this build's [`SCHEMA_VERSION`] has written the document, unless one as
+    /// new or newer already has. A plain value at the root, so two devices writing it at once
+    /// create nothing for merge to choose between; whichever wins, the next write by the
+    /// newer device raises it again.
+    ///
+    /// # Errors
+    ///
+    /// If Automerge refuses the write.
+    pub fn stamp_version(&mut self) -> Result<()> {
+        if self.schema_version() < SCHEMA_VERSION {
+            self.doc.put(ROOT, "schema", i64::from(SCHEMA_VERSION))?;
+        }
+        Ok(())
+    }
+
     /// The next Automerge sync message for a peer, if there is anything to say.
     ///
     /// `state` is what this side knows of the peer's view of this document; one is kept per
@@ -370,13 +396,14 @@ impl Doc {
         let collection = self.collection_for_write(R::COLLECTION)?;
         let key = R::key_string(&record.key());
         if R::INLINE {
-            let mut before = before;
-            // A record written before it was inline is a map at its bare key. It goes, and
-            // the record is written whole in the inline form, so there is never more than
-            // one copy to read.
-            if let Some((Value::Object(_), _)) = self.doc.get(&collection, key.as_str())? {
+            // A record written before it was inline is a map at its bare key. Its fields are
+            // copied into the inline form as they stand — fields and values this build does
+            // not know included — and the map goes, so there is never more than one copy to
+            // read. Then only what the edit changed is written over them.
+            if let Some((Value::Object(ObjType::Map), old)) = self.doc.get(&collection, key.as_str())? {
+                let raw = Raw::read_map(&self.doc, &old);
+                raw.write_inline(&mut self.doc, &collection, &format!("{key}/"))?;
                 self.doc.delete(&collection, key.as_str())?;
-                before = None;
             }
             let mut writer = Writer::inline(&mut self.doc, collection, format!("{key}/"));
             return record.write(&mut writer, before);
@@ -387,6 +414,29 @@ impl Doc {
         };
         let mut writer = Writer::new(&mut self.doc, obj);
         record.write(&mut writer, before)
+    }
+
+    /// A record's fields as they stand, known or not, or `None` if it is not here or is
+    /// inline.
+    pub(crate) fn raw<R: Record>(&self, key: &R::Key) -> Option<Raw> {
+        let collection = self.collection_for_read(R::COLLECTION)?;
+        match self.doc.get(&collection, R::key_string(key).as_str()).ok()?? {
+            (Value::Object(ObjType::Map), obj) => Some(Raw::read_map(&self.doc, &obj)),
+            _ => None,
+        }
+    }
+
+    /// Writes a record copied from elsewhere exactly as it was, then `record` over it with
+    /// only what differs from `before` — so a move keeps what this build cannot read.
+    ///
+    /// # Errors
+    ///
+    /// If the record does not belong in this document, or Automerge refuses the write.
+    pub(crate) fn put_moved<R: Record>(&mut self, raw: &Raw, record: &R, before: &R) -> Result<()> {
+        self.check_domain(R::DOMAIN)?;
+        let collection = self.collection_for_write(R::COLLECTION)?;
+        raw.write_at(&mut self.doc, &collection, &R::key_string(&record.key()))?;
+        self.put(record, Some(before))
     }
 
     /// Removes a record outright.
@@ -743,8 +793,13 @@ impl Documents {
             // be loaded for that removal to reach the disk, which is why anything editing by
             // identifier loads every year.
             Some(was) if was.start_date.year() != year => {
-                self.blocks(was.start_date.year()).purge::<BlockSeries>(&was.id)?;
-                self.blocks(year).put(s, None)
+                let from = was.start_date.year();
+                let raw = self.blocks(from).raw::<BlockSeries>(&was.id);
+                self.blocks(from).purge::<BlockSeries>(&was.id)?;
+                match raw {
+                    Some(raw) => self.blocks(year).put_moved(&raw, s, was),
+                    None => self.blocks(year).put(s, None),
+                }
             }
             _ => self.blocks(year).put(s, before),
         }
@@ -989,4 +1044,214 @@ pub fn assignment_year(a: &BlockAssignment, series: Option<&BlockSeries>) -> Opt
         .date()
         .map(civil::Date::year)
         .or_else(|| series.map(|s| s.start_date.year()))
+}
+
+/// A value as it stands in a document, known to this build or not, to be copied somewhere
+/// else whole. Builds of different versions sync for good, so a field one does not know is
+/// still another's data, and moving a record must not drop it.
+#[derive(Debug, Clone)]
+pub(crate) enum Raw {
+    Scalar(automerge::ScalarValue),
+    Map(Vec<(String, Raw)>),
+    List(Vec<Raw>),
+    Text(String),
+}
+
+impl Raw {
+    fn read_map(doc: &AutoCommit, obj: &ObjId) -> Self {
+        Self::Map(
+            doc.keys(obj)
+                .filter_map(|key| doc.get(obj, key.as_str()).ok().flatten().map(|v| (key, v)))
+                .map(|(key, (value, id))| (key, Self::read(doc, value, &id)))
+                .collect(),
+        )
+    }
+
+    fn read(doc: &AutoCommit, value: Value<'_>, id: &ObjId) -> Self {
+        match value {
+            Value::Scalar(scalar) => Self::Scalar(scalar.into_owned()),
+            Value::Object(ObjType::Text) => Self::Text(doc.text(id).unwrap_or_default()),
+            Value::Object(ObjType::List) => Self::List(
+                (0..doc.length(id))
+                    .filter_map(|i| doc.get(id, i).ok().flatten())
+                    .map(|(value, inner)| Self::read(doc, value, &inner))
+                    .collect(),
+            ),
+            Value::Object(_) => Self::read_map(doc, id),
+        }
+    }
+
+    /// Writes this at `key` of `obj`: a map becomes a map, and so on.
+    fn write_at(&self, doc: &mut AutoCommit, obj: &ObjId, key: &str) -> Result<()> {
+        match self {
+            Self::Scalar(scalar) => {
+                doc.put(obj, key, scalar.clone())?;
+            }
+            Self::Text(text) => {
+                let id = doc.put_object(obj, key, ObjType::Text)?;
+                doc.splice_text(&id, 0, 0, text)?;
+            }
+            Self::List(items) => {
+                let id = doc.put_object(obj, key, ObjType::List)?;
+                for (index, item) in items.iter().enumerate() {
+                    item.insert_into(doc, &id, index)?;
+                }
+            }
+            Self::Map(fields) => {
+                let id = doc.put_object(obj, key, ObjType::Map)?;
+                for (field, value) in fields {
+                    value.write_at(doc, &id, field)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn insert_into(&self, doc: &mut AutoCommit, list: &ObjId, index: usize) -> Result<()> {
+        match self {
+            Self::Scalar(scalar) => {
+                doc.insert(list, index, scalar.clone())?;
+            }
+            Self::Text(text) => {
+                let id = doc.insert_object(list, index, ObjType::Text)?;
+                doc.splice_text(&id, 0, 0, text)?;
+            }
+            Self::List(items) => {
+                let id = doc.insert_object(list, index, ObjType::List)?;
+                for (i, item) in items.iter().enumerate() {
+                    item.insert_into(doc, &id, i)?;
+                }
+            }
+            Self::Map(fields) => {
+                let id = doc.insert_object(list, index, ObjType::Map)?;
+                for (field, value) in fields {
+                    value.write_at(doc, &id, field)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Writes a map's fields as keys of `collection` starting with `prefix`, a nested map
+    /// as a longer prefix, as inline records are stored. Text is written as a plain string;
+    /// a list, which the inline form cannot hold, is left behind.
+    fn write_inline(&self, doc: &mut AutoCommit, collection: &ObjId, prefix: &str) -> Result<()> {
+        let Self::Map(fields) = self else { return Ok(()) };
+        for (field, value) in fields {
+            let key = format!("{prefix}{field}");
+            match value {
+                Self::Scalar(scalar) => {
+                    doc.put(collection, key.as_str(), scalar.clone())?;
+                }
+                Self::Text(text) => {
+                    doc.put(collection, key.as_str(), text.as_str())?;
+                }
+                Self::Map(_) => value.write_inline(doc, collection, &format!("{key}."))?,
+                Self::List(_) => {}
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod unknown_fields {
+    //! A build syncs with older and newer ones for good, so what it cannot read it must not
+    //! drop when it writes.
+
+    use automerge::transaction::Transactable;
+    use automerge::{ObjType, ROOT, ReadDoc, Value};
+    use jiff::civil::{date, time};
+    use lumenna_core::id::NodeId;
+    use lumenna_core::model::{BlockKind, BlockSeries, Device, Project, Task};
+    use lumenna_core::order::OrderKey;
+
+    use super::{Doc, Documents};
+    use crate::records::Record;
+
+    /// The map a non-inline record lives in.
+    fn record_map<R: Record>(doc: &Doc, key: &R::Key) -> automerge::ObjId {
+        let (_, collection) = doc.doc.get(ROOT, R::COLLECTION).unwrap().unwrap();
+        let (_, obj) = doc.doc.get(&collection, R::key_string(key).as_str()).unwrap().unwrap();
+        obj
+    }
+
+    fn string_at(doc: &Doc, obj: &automerge::ObjId, key: &str) -> Option<String> {
+        match doc.doc.get(obj, key).unwrap()? {
+            (Value::Scalar(value), _) => value.to_str().map(str::to_owned),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn an_edit_keeps_a_field_this_build_does_not_know() {
+        let mut docs = Documents::new();
+        let task = Task::new(Project::inbox().id, "essay", OrderKey::middle());
+        docs.core().put(&task, None).unwrap();
+        let obj = record_map::<Task>(&docs.core, &task.id);
+        docs.core.doc.put(&obj, "written_by_a_newer_build", "keep me").unwrap();
+
+        let edited = Task { title: "the essay".to_owned(), ..task.clone() };
+        docs.core().put(&edited, Some(&task)).unwrap();
+        assert_eq!(string_at(&docs.core, &obj, "written_by_a_newer_build").as_deref(), Some("keep me"));
+    }
+
+    #[test]
+    fn a_series_moved_to_another_year_keeps_what_this_build_does_not_know() {
+        let mut docs = Documents::new();
+        let series = BlockSeries::one_off("Deep work", BlockKind::Work, date(2026, 12, 31), time(9, 0, 0, 0), 60).unwrap();
+        docs.put_series(&series, None).unwrap();
+        let obj = record_map::<BlockSeries>(docs.blocks(2026), &series.id);
+        let year = docs.blocks(2026);
+        year.doc.put(&obj, "written_by_a_newer_build", "keep me").unwrap();
+        // A kind this build reads as work, which writing back must not turn into one.
+        year.doc.put(&obj, "kind", "focus").unwrap();
+
+        let moved = BlockSeries { start_date: date(2027, 1, 4), ..series.clone() };
+        docs.put_series(&moved, Some(&series)).unwrap();
+        let obj = record_map::<BlockSeries>(docs.blocks(2027), &series.id);
+        let next = docs.blocks(2027);
+        assert_eq!(string_at(next, &obj, "written_by_a_newer_build").as_deref(), Some("keep me"));
+        assert_eq!(string_at(next, &obj, "kind").as_deref(), Some("focus"));
+        assert_eq!(string_at(next, &obj, "start_date").as_deref(), Some("2027-01-04"));
+    }
+
+    #[test]
+    fn a_record_made_inline_keeps_what_this_build_does_not_know() {
+        let mut docs = Documents::new();
+        let device = Device {
+            node_id: NodeId::from_bytes([7; 32]),
+            name: "Laptop".to_owned(),
+            platform: "linux".to_owned(),
+            paired_at: lumenna_core::time::now(),
+            last_seen: lumenna_core::time::now(),
+            schema: 1,
+        };
+        // Written as a map, as before the device list was inline, with a field from elsewhere.
+        let devices = docs.devices();
+        let (_, collection) = devices.doc.get(ROOT, Device::COLLECTION).unwrap().unwrap();
+        let key = Device::key_string(&device.node_id);
+        let obj = devices.doc.put_object(&collection, key.as_str(), ObjType::Map).unwrap();
+        devices.doc.put(&obj, "name", "Laptop").unwrap();
+        devices.doc.put(&obj, "written_by_a_newer_build", "keep me").unwrap();
+
+        let renamed = Device { name: "Work laptop".to_owned(), ..device.clone() };
+        docs.put_device(&renamed, Some(&device)).unwrap();
+        let devices = docs.devices();
+        let kept = format!("{key}/written_by_a_newer_build");
+        assert!(matches!(devices.doc.get(&collection, kept.as_str()).unwrap(), Some((Value::Scalar(_), _))));
+        assert_eq!(string_at(devices, &collection, &format!("{key}/name")).as_deref(), Some("Work laptop"));
+    }
+
+    #[test]
+    fn a_document_says_which_version_wrote_it_and_never_goes_down() {
+        let mut doc = Doc::new(super::DocId::Core);
+        assert_eq!(doc.schema_version(), 0, "a document from before versions says none");
+        doc.stamp_version().unwrap();
+        assert_eq!(doc.schema_version(), lumenna_core::model::SCHEMA_VERSION);
+        // A newer build wrote it: this one leaves that alone.
+        doc.doc.put(ROOT, "schema", i64::from(lumenna_core::model::SCHEMA_VERSION) + 1).unwrap();
+        doc.stamp_version().unwrap();
+        assert_eq!(doc.schema_version(), lumenna_core::model::SCHEMA_VERSION + 1);
+    }
 }

@@ -1493,6 +1493,10 @@ pub struct DeviceView {
     /// What went wrong, if the last attempt failed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
+    /// The stored-format version it runs; zero if it has not said, as a build from before
+    /// versions never does.
+    #[serde(default)]
+    pub schema_version: u32,
     /// How syncing with it is going, as parts every app words alike: "this device", or
     /// "last synced 5 minutes ago".
     #[serde(default)]

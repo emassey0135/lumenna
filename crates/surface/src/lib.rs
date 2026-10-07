@@ -164,7 +164,7 @@ impl Lumenna {
         if !adopt.is_empty() {
             store.apply(&adopt)?;
         }
-        Ok(Self {
+        let lumenna = Self {
             store: Arc::new(Mutex::new(store)),
             directory: directory.to_path_buf(),
             #[cfg(all(feature = "sync", not(all(target_family = "wasm", target_os = "unknown"))))]
@@ -172,7 +172,12 @@ impl Lumenna {
             looked: Mutex::new(None),
             unsaid: Mutex::new(Vec::new()),
             merged: std::sync::atomic::AtomicBool::new(false),
-        })
+        };
+        // A device that took a new build says so in the device list, for the others to see.
+        // Failing to is no reason not to open.
+        #[cfg(feature = "sync")]
+        let _ = lumenna.note_own_version();
+        Ok(lumenna)
     }
 
     /// The store itself, for the parts of a client that are not operations on it — the sync
