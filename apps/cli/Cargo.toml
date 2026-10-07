@@ -21,7 +21,7 @@ jiff.workspace = true
 lumenna-core.workspace = true
 lumenna-parse.workspace = true
 lumenna-store.workspace = true
-lumenna-surface = { path = "../../crates/surface", features = ["sync"] }
+lumenna-surface = { path = "../../crates/surface", features = ["sync", "rpc"] }
 lumenna-sync = { path = "../../crates/sync" }
 iroh = "1.3"
 gethostname = "1"

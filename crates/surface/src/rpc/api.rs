@@ -1,4 +1,4 @@
-//! What one command produced, as `--json` and `lum rpc` carry it.
+//! What one command produced, as `lum --json` and every RPC server carry it.
 //!
 //! The operations and the records they return are `lumenna_surface`'s — the same ones the
 //! phone apps get through UniFFI. What is here is the envelope a terminal and a pipe need on
@@ -9,7 +9,7 @@
 //! `--json` is a compatibility contract. Reshaping anything here, or in the surface's
 //! records, is a breaking change, and [`VERSION`] says which shape a reader is looking at.
 
-use lumenna_surface::{
+use crate::{
     Announced, BackupDone, BlockShown, Change, Completions, DeviceList, Exported, Filters, ImportDone,
     Imported, PairedWith, Plan, Preview, RestoreDone, Rows, SettingList, SyncReport, SyncStatus,
     TaskShown, Timer, WorkBlocks, announced,
@@ -17,7 +17,7 @@ use lumenna_surface::{
 use serde::Serialize;
 
 /// The contract version, carried on every response.
-pub const VERSION: u32 = lumenna_surface::CONTRACT;
+pub const VERSION: u32 = crate::CONTRACT;
 
 /// What one command produced.
 #[derive(Debug, Serialize)]
@@ -199,6 +199,9 @@ pub struct ServerInfo {
     pub name: &'static str,
     /// The binary's version.
     pub version: &'static str,
+    /// What is answering: `daemon` for `lum`'s, an app's name for an app holding this
+    /// device's endpoint, or `lum rpc` for a server of a client's own.
+    pub process: String,
     /// The version of the shapes on the wire, the compatibility contract. A client that
     /// does not know this number should refuse to guess.
     pub contract: u32,

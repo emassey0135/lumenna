@@ -33,7 +33,7 @@ crates/desktop/ what the Windows, GTK and web apps decide alike: row wording, fl
                 tree, the sidebar's places, work-block choices, device wording, the profile.
 apps/cli/       `lum`, and `lum rpc` for clients that cannot link Rust.
 apps/btspeak/   the BTSpeak app, in Python, over `lum rpc`.
-apps/emacs/     the Emacs client, in Elisp, over `lum rpc` or the daemon's socket.
+apps/emacs/     the Emacs client, in Elisp, over `lum rpc` or the profile's socket.
 apps/android/   Jetpack Compose over the generated Kotlin bindings.
 apps/apple/     the iOS and macOS apps over the generated Swift bindings, Shared/ between them.
 apps/windows/   the Win32 app, linking the surface directly.
@@ -96,13 +96,27 @@ real profile.
 - **`--json` is a versioned compatibility contract** for scripts. Reshaping `api.rs` or a
   surface record is a breaking change.
 
-## `lum rpc`
+## The RPC server
 
-The surface over JSON-RPC on stdio, for Emacs and the BTSpeak app. One server per client.
-The daemon serves the same on `<profile>/lumenna.sock` (Unix).
+The surface over JSON-RPC (`crates/surface/src/rpc`, the `rpc` feature), for Emacs and the
+BTSpeak app. `lum rpc` serves it on stdio to one client. Whichever process holds the
+device's sync endpoint — `lum`'s daemon, or the Mac, GTK or Windows app — serves it at the
+profile's address (`surface::endpoint`: `<profile>/lumenna.sock`, or on Windows a named
+pipe named from the profile's path) to any number of clients, for as long as it holds the
+endpoint (`Endpoint::serve`, `Lumenna::serve_commands`).
 
-- **A method builds the same `Command` and calls the same `dispatch`** as the CLI, so RPC
-  cannot drift from it.
+- **A method calls the surface's operation and returns its record in the `rpc::api`
+  envelope**, the one `lum --json` writes, so no transport drifts from another.
+- **Each client gets a store connection of its own**, so what it writes is another
+  connection's write to the process serving it, which already redraws for those by
+  `outside_version`.
+- **`sync` runs on the holder's own service**; `Lumenna::sync_now` anywhere else on the
+  device asks the holder over this address. `initialize` says what is answering
+  (`process`: `daemon`, an app's name, `lum rpc`); a second daemon is refused by it, while a
+  daemon finding an app waits its turn.
+- **`lum rpc` relays to a running holder** before serving on its own. Emacs on Windows
+  cannot open a local socket or a named pipe (the Emacs manual: MS-Windows does not
+  support local sockets), so it starts `lum rpc`, which reaches the running app this way.
 - **Three ways to ask "did something change"**, for three questions. `refresh` says whether
   *that call* took anything in, so any other call can use the answer up. `version` moves for
   every write, this connection's included: for a sync loop. `outside_version` (`PRAGMA
@@ -110,8 +124,9 @@ The daemon serves the same on `<profile>/lumenna.sock` (Unix).
   the daemon wrote. `lumenna/changed` is pushed from `outside_version`, polled once a
   second; built on `refresh`, a request just after another process wrote took the change in
   and the push never went.
-- **Row numbers are turned off** (`Profile::detach_rows`). The last listing is one file per
-  profile, so a resident server and a shell would overwrite each other's numbering.
+- **No row numbers**: the server addresses records by identifier only. The last listing is
+  one file per profile, so a resident server and a shell would overwrite each other's
+  numbering.
 - **`task.erase` requires `"confirm": true`**: nothing here can prompt.
 - **Two framings, chosen per message by what arrived**: newline-delimited JSON (MCP's stdio
   transport) and `Content-Length` headers (`jsonrpc.el`). A reply is framed as its request.
@@ -121,7 +136,8 @@ The daemon serves the same on `<profile>/lumenna.sock` (Unix).
   or `pair.cancel`, and the server keeps answering everything else. One pairing at a time.
 - **`complete` and `preview` have no command line**: completion is a keystroke-rate question
   and a process per keystroke is not an answer.
-- **Backups are taken at start and hourly**, as the CLI takes them before a command.
+- **`lum rpc` takes backups at start and hourly** (`Host::backups`), as the CLI takes them
+  before a command; a daemon or app serving the address takes its own.
 
 ## Sync
 
@@ -140,12 +156,10 @@ byte stream; `pairing` is the word comparison; `node` is the device's Iroh endpo
   nonce exchange: three PGP words. Without the commitment, 24 bits could be ground offline.
 - **One endpoint per device**, decided by an advisory lock on `<profile>/sync.lock`. A
   `SyncService` holds it, or, started while another process does, waits its turn (trying
-  every five seconds) and takes over when that process stops. The holder answers "sync" on
-  `<profile>/sync.sock` (Unix only), so `sync_now` anywhere else on the device runs its
-  round there; only when nothing answers is it `LumennaError::SyncElsewhere`. That socket
-  is not the daemon's `lumenna.sock`, which serves the whole RPC surface and only `lum` can
-  answer. A second daemon is refused; a daemon started while an app holds the endpoint
-  waits for it.
+  every five seconds) and takes over when that process stops. The holder serves
+  the profile's address with the whole RPC surface (see the RPC server), so `sync_now`
+  anywhere else on the device runs its round there; only when nothing answers is it
+  `LumennaError::SyncElsewhere`.
 - **A loop merging makes is written down once and said once** (`edit::repair`, through
   `Lumenna::told`): looked for whenever the documents' heads moved from outside, or right
   after an operation that called `merged()` (restore, import).

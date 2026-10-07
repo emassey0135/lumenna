@@ -27,11 +27,15 @@
 //! calls in; here a bare number is refused rather than mistaken for a prefix.
 
 mod durability;
+#[cfg(any(unix, windows))]
+pub mod endpoint;
 mod error;
 mod form;
 mod organise;
 mod planning;
 mod resolve;
+#[cfg(all(feature = "rpc", any(unix, windows)))]
+pub mod rpc;
 mod settings;
 #[cfg(feature = "sync")]
 mod sync;

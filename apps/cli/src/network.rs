@@ -110,8 +110,8 @@ pub(crate) fn pair(profile: &Profile, code: Option<&str>, local_only: bool) -> R
     )?))
 }
 
-/// `lum sync`: one round with every paired device — or, when the daemon holds the endpoint,
-/// a request to it to do the round.
+/// `lum sync`: one round with every paired device — on the endpoint the daemon or an app
+/// holds, when one does.
 pub(crate) fn sync_once(profile: &Profile, local_only: bool) -> Result<Response> {
     match profile.sync_now(network(local_only)) {
         Ok(report) => {
@@ -122,61 +122,57 @@ pub(crate) fn sync_once(profile: &Profile, local_only: bool) -> Result<Response>
                 response
             })
         }
-        Err(LumennaError::SyncElsewhere { .. }) => ask_daemon_to_sync(profile),
+        // Held, and the holder could not be asked.
+        Err(LumennaError::SyncElsewhere { .. }) => Ok(Response::unchanged(
+            "another process is running sync for this profile, so it is already syncing; \
+             `lum sync status` says how it is going",
+        )),
         Err(error) => Err(error.into()),
     }
 }
 
-/// Another process holds the endpoint — normally the daemon. Asks it to sync now.
-// The daemon's socket is Unix-only until Windows named pipes exist.
-#[cfg_attr(not(unix), allow(unused_variables))]
-fn ask_daemon_to_sync(profile: &Profile) -> Result<Response> {
-    #[cfg(unix)]
-    {
-        use std::io::{BufRead, BufReader, Write};
-        if let Ok(mut socket) = std::os::unix::net::UnixStream::connect(profile.socket_path()) {
-            socket.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"sync\"}\n")?;
-            let mut line = String::new();
-            BufReader::new(&socket).read_line(&mut line)?;
-            let reply: serde_json::Value = serde_json::from_str(&line)
-                .map_err(|e| CliError::Message(format!("the daemon's answer did not read: {e}")))?;
-            if let Some(error) = reply.pointer("/error/message").and_then(|m| m.as_str()) {
-                return Err(CliError::Message(error.to_owned()));
-            }
-            let report: lumenna_surface::SyncReport =
-                serde_json::from_value(reply.get("result").cloned().unwrap_or_default())
-                    .map_err(|e| CliError::Message(format!("the daemon's answer did not read: {e}")))?;
-            return Ok(Response::new(report));
-        }
-    }
-    Ok(Response::unchanged(
-        "another process is running sync for this profile, so it is already syncing; \
-         `lum sync status` says how it is going",
-    ))
+/// What is answering at the profile's address, by what it says it is: `daemon`, an app's
+/// name, or nothing.
+fn answering(profile: &Profile) -> Option<String> {
+    use std::io::{BufRead, BufReader, Write};
+    let mut connection = lumenna_surface::endpoint::connect(profile.directory())?;
+    connection.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
+    connection.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}\n").ok()?;
+    let mut line = String::new();
+    BufReader::new(connection).read_line(&mut line).ok()?;
+    let reply: serde_json::Value = serde_json::from_str(&line).ok()?;
+    reply.pointer("/result/process").and_then(|p| p.as_str()).map(ToOwned::to_owned)
 }
 
-/// `lum sync-daemon`: holds the endpoint and keeps this device in sync until stopped.
+/// `lum sync-daemon`: holds the endpoint and keeps this device in sync until stopped,
+/// serving the command surface at the profile's address while it does.
 pub(crate) fn daemon(profile: &Profile, local_only: bool) -> Result<()> {
-    // A daemon already answering is refused: two would fight over its socket. An app holding
-    // the endpoint is waited for instead, and taken over from when it quits.
-    #[cfg(unix)]
-    if profile.endpoint_held()? && std::os::unix::net::UnixStream::connect(profile.socket_path()).is_ok() {
+    // A second daemon is refused. An app holding the endpoint is waited for instead, and
+    // taken over from when it quits.
+    if answering(profile).as_deref() == Some("daemon") {
         return Err(CliError::Message("a sync daemon is already running for this profile".to_owned()));
     }
     let service = profile.start_sync(network(local_only), Arc::new(Quietly))?;
     if service.is_running() {
         eprintln!("lum: syncing as {}", profile.sync_status()?.this_device);
     } else {
-        // An app, or another daemon, holds the endpoint: this one takes over when it stops.
         eprintln!("lum: another process is syncing this profile; this daemon takes over when it stops");
     }
 
-    // `lum sync` and the RPC `sync` method reach the running endpoint through this.
-    let hook: crate::rpc::SyncHook = {
-        let service = Arc::clone(&service);
-        Arc::new(move || Ok(Response::new(service.sync_now()?)))
+    let host = lumenna_surface::rpc::Host {
+        process: "daemon".to_owned(),
+        device_name: default_name(),
+        platform: platform().to_owned(),
+        // A round asked of the daemon runs on the endpoint it holds.
+        sync: Some({
+            let service = Arc::clone(&service);
+            Arc::new(move || service.sync_now())
+        }),
+        // The daemon takes them itself, below.
+        backups: false,
     };
-    let _socket = serve_socket(profile, hook);
+    let holding = Arc::clone(&service);
+    let endpoint = lumenna_surface::rpc::Endpoint::serve(profile.directory().to_path_buf(), host, move || holding.is_running());
 
     runtime()?.block_on(async {
         // A resident process takes a backup when one is due, checking hourly.
@@ -189,9 +185,8 @@ pub(crate) fn daemon(profile: &Profile, local_only: bool) -> Result<()> {
             }
         }
     });
+    endpoint.stop();
     service.stop();
-    #[cfg(unix)]
-    let _ = std::fs::remove_file(profile.socket_path());
     Ok(())
 }
 
@@ -211,52 +206,28 @@ async fn stop_requested() {
     let _ = tokio::signal::ctrl_c().await;
 }
 
-/// Serves the command surface on the profile's socket, one thread per client, each with
-/// its own connection to the store. A `sync` request is passed to the daemon's loop.
-#[cfg(unix)]
-fn serve_socket(
-    profile: &Profile,
-    hook: crate::rpc::SyncHook,
-) -> Option<std::thread::JoinHandle<()>> {
-    use std::os::unix::fs::PermissionsExt;
-    use std::os::unix::net::UnixListener;
-
-    let path = profile.socket_path();
-    // The lock is held, so any socket file here is a dead daemon's.
-    let _ = std::fs::remove_file(&path);
-    let listener = match UnixListener::bind(&path) {
-        Ok(listener) => listener,
-        Err(error) => {
-            eprintln!("lum: not serving {}: {error}", path.display());
-            return None;
-        }
+/// `lum rpc`: the command surface on stdio, for one client. When the daemon or an app holds
+/// this profile's endpoint, it is relayed there, so the client reaches the running process
+/// as a client that can open its address does; otherwise this serves it.
+pub(crate) fn serve_rpc(profile: &Profile) -> Result<()> {
+    if lumenna_surface::rpc::relay(profile.directory())? {
+        return Ok(());
+    }
+    let host = lumenna_surface::rpc::Host {
+        process: "lum rpc".to_owned(),
+        device_name: default_name(),
+        platform: platform().to_owned(),
+        sync: None,
+        // Something that stays running, so it takes the backup when one is due.
+        backups: true,
     };
-    let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
-    let directory = profile.directory().to_path_buf();
-    Some(std::thread::spawn(move || {
-        for stream in listener.incoming().flatten() {
-            let (directory, hook) = (directory.clone(), Arc::clone(&hook));
-            std::thread::spawn(move || {
-                let Ok(reader) = stream.try_clone() else { return };
-                let Ok(profile) = Profile::open(Some(&directory)) else { return };
-                let _ = crate::rpc::serve_streams(
-                    profile,
-                    std::io::BufReader::new(reader),
-                    Box::new(stream),
-                    Some(hook),
-                );
-            });
-        }
-    }))
-}
-
-#[cfg(not(unix))]
-fn serve_socket(
-    _profile: &Profile,
-    _hook: crate::rpc::SyncHook,
-) -> Option<std::thread::JoinHandle<()>> {
-    // Named pipes on Windows are still to come; clients spawn `lum rpc` there.
-    None
+    lumenna_surface::rpc::serve_streams(
+        profile.shared(),
+        std::io::BufReader::new(std::io::stdin()),
+        Box::new(std::io::stdout()),
+        host,
+    )?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------------------
