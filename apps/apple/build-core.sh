@@ -16,17 +16,29 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 PLATFORM="${1:-${PLATFORM_NAME:-iphonesimulator}}"
 CONFIGURATION="${2:-${CONFIGURATION:-Debug}}"
 
+# The Mac app is built for every architecture Xcode asks for (ARCHS: Apple silicon and
+# Intel for a release, the Mac's own for a debug build) and the libraries joined into one.
+ARCHS="${ARCHS:-arm64}"
 case "$PLATFORM" in
-  iphonesimulator) TARGET=aarch64-apple-ios-sim ;;
-  iphoneos) TARGET=aarch64-apple-ios ;;
+  iphonesimulator) TARGETS=aarch64-apple-ios-sim ;;
+  iphoneos) TARGETS=aarch64-apple-ios ;;
   # Named rather than left to the host build, so the Mac app's library is built against
   # its deployment target and kept apart from the one uniffi-bindgen reads.
-  macosx) TARGET=aarch64-apple-darwin ;;
+  macosx)
+    TARGETS=
+    for arch in $ARCHS; do
+      case "$arch" in
+        arm64) TARGETS="$TARGETS aarch64-apple-darwin" ;;
+        x86_64) TARGETS="$TARGETS x86_64-apple-darwin" ;;
+        *) echo "error: no Rust target for the Mac architecture $arch" >&2; exit 1 ;;
+      esac
+    done
+    ;;
   *) echo "error: no Rust target for platform $PLATFORM" >&2; exit 1 ;;
 esac
 case "$CONFIGURATION" in
-  Release) PROFILE_FLAG=--release ;;
-  *) PROFILE_FLAG= ;;
+  Release) PROFILE_FLAG=--release; PROFILE=release ;;
+  *) PROFILE_FLAG=; PROFILE=debug ;;
 esac
 
 DEVELOPER="${DEVELOPER_DIR:-$(xcode-select -p)}"
@@ -38,7 +50,17 @@ cargo() {
 }
 
 cd "$ROOT"
-cargo build -p lumenna-ffi --lib $PROFILE_FLAG --target "$TARGET"
+for target in $TARGETS; do
+  cargo build -p lumenna-ffi --lib $PROFILE_FLAG --target "$target"
+done
+if [ "$PLATFORM" = macosx ]; then
+  # One library for every architecture asked for, where the Mac target links it from.
+  UNIVERSAL="$ROOT/target/universal-apple-darwin/$PROFILE"
+  mkdir -p "$UNIVERSAL"
+  LIBS=()
+  for target in $TARGETS; do LIBS+=("$ROOT/target/$target/$PROFILE/liblumenna_ffi.a"); done
+  lipo -create "${LIBS[@]}" -output "$UNIVERSAL/liblumenna_ffi.a"
+fi
 
 # The bindings come from the interface compiled into a host build of the same crate.
 cargo build -p lumenna-ffi --lib

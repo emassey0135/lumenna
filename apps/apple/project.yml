@@ -182,10 +182,9 @@ targets:
         ENABLE_HARDENED_RUNTIME: YES
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/include
-        RUST_LIB_DIR: $(SRCROOT)/../../target/aarch64-apple-darwin/$(RUST_PROFILE)
+        # Every architecture built, joined by build-core.sh: Apple silicon and Intel.
+        RUST_LIB_DIR: $(SRCROOT)/../../target/universal-apple-darwin/$(RUST_PROFILE)
         OTHER_LDFLAGS: $(RUST_LIB_DIR)/liblumenna_ffi.a
-        # The core is built for Apple silicon only, as for iOS.
-        ARCHS: arm64
       configs:
         Debug:
           RUST_PROFILE: debug
@@ -204,7 +203,6 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.emassey0135.lumenna.mac.uitests
         TEST_TARGET_NAME: LumennaMac
         GENERATE_INFOPLIST_FILE: YES
-        ARCHS: arm64
 
 schemes:
   Lumenna:

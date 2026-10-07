@@ -28,20 +28,29 @@ if [ ! -d "$NDK" ]; then
 fi
 
 cargo() {
-  env -i HOME="$HOME" USER="${USER:-}" \
+  env -i HOME="$HOME" USER="${USER:-}" ${CARGO_HOME:+CARGO_HOME="$CARGO_HOME"} ${RUSTUP_HOME:+RUSTUP_HOME="$RUSTUP_HOME"} \
     PATH="$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin" \
     ANDROID_HOME="$SDK" ANDROID_NDK_HOME="$NDK" \
     cargo "$@"
 }
 
 cd "$ROOT"
-# Arm64 only for now: every phone sold for years, and the emulator on an Apple Silicon Mac.
-# The platform is the app's minSdk.
-cargo ndk -t arm64-v8a --platform 28 build -p lumenna-ffi --lib $PROFILE_FLAG
-# Only the core: `cargo ndk -o` would copy every shared library in the build, Iroh's own
-# included, which nothing loads.
-mkdir -p "$JNI_LIBS/arm64-v8a"
-cp "$ROOT/target/aarch64-linux-android/${PROFILE}/liblumenna_ffi.so" "$JNI_LIBS/arm64-v8a/"
+# Both 64-bit ABIs: arm64 for phones and watches, x86_64 for ChromeOS and the emulators on
+# Intel machines and CI. LUMENNA_ANDROID_ABIS narrows it for a quicker build of one.
+ABIS="${LUMENNA_ANDROID_ABIS:-arm64-v8a x86_64}"
+for abi in $ABIS; do
+  case "$abi" in
+    arm64-v8a) triple=aarch64-linux-android ;;
+    x86_64) triple=x86_64-linux-android ;;
+    *) echo "error: no Rust target for the Android ABI $abi" >&2; exit 1 ;;
+  esac
+  # The platform is the app's minSdk.
+  cargo ndk -t "$abi" --platform 28 build -p lumenna-ffi --lib $PROFILE_FLAG
+  # Only the core: `cargo ndk -o` would copy every shared library in the build, Iroh's own
+  # included, which nothing loads.
+  mkdir -p "$JNI_LIBS/$abi"
+  cp "$ROOT/target/$triple/${PROFILE}/liblumenna_ffi.so" "$JNI_LIBS/$abi/"
+done
 
 # The bindings come from the interface compiled into a host build of the same crate.
 cargo build -p lumenna-ffi --lib
