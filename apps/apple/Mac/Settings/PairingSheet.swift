@@ -37,8 +37,9 @@ final class PairingSheet: NSViewController {
         code.isSelectable = true
         code.setAccessibilityLabel("Pairing code")
         code.isHidden = true
-        entry.placeholderString = "the code the other device shows"
+        entry.placeholderString = "the code the other device shows, or empty for the one on the clipboard"
         entry.setAccessibilityLabel("Code from the other device")
+        entry.setAccessibilityHelp("Left empty, the code on the clipboard is used.")
 
         wait = NSButton(title: "Wait for the Other Device", target: self, action: #selector(waitForOther))
         enter = NSButton(title: "Pair With This Code", target: self, action: #selector(pairWithCode))

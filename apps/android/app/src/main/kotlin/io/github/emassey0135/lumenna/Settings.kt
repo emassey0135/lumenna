@@ -446,6 +446,7 @@ fun PairingScreen(core: Core, navigator: Navigator) {
                 value = entered,
                 onValueChange = { entered = it },
                 label = { Text("Code from the other device") },
+                supportingText = { Text("Left empty, the code on the clipboard is used.") },
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
                 modifier = Modifier.fillMaxWidth(),
             )
