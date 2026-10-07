@@ -76,6 +76,14 @@ pub struct Lumenna {
     // The native service, if one is running; a browser runs its loop itself.
     #[cfg(all(feature = "sync", not(all(target_family = "wasm", target_os = "unknown"))))]
     sync: sync::SyncState,
+    /// The documents' heads after the last operation, so a repair is looked for only when
+    /// something came in from outside: an operation's own writes cannot make a loop.
+    looked: Mutex<Option<Vec<lumenna_store::ChangeHash>>>,
+    /// Repairs made and not yet said, for the next record that can carry a notice.
+    unsaid: Mutex<Vec<String>>,
+    /// Set by an operation that merged another store's changes in — a restore, an import —
+    /// which can make a loop, so the repair is looked for straight after it.
+    merged: std::sync::atomic::AtomicBool,
 }
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
@@ -161,6 +169,9 @@ impl Lumenna {
             directory: directory.to_path_buf(),
             #[cfg(all(feature = "sync", not(all(target_family = "wasm", target_os = "unknown"))))]
             sync: sync::SyncState::default(),
+            looked: Mutex::new(None),
+            unsaid: Mutex::new(Vec::new()),
+            merged: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -199,7 +210,44 @@ impl Lumenna {
         // Another process may have written since, and answering from a stale document would
         // be a wrong answer rather than a slow one.
         store.refresh()?;
-        operation(&mut store)
+        self.write_repairs(&mut store)?;
+        let result = operation(&mut store);
+        if self.merged.swap(false, std::sync::atomic::Ordering::Relaxed) {
+            self.write_repairs(&mut store)?;
+        } else {
+            *self.looked.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(store.version());
+        }
+        result
+    }
+
+    /// Marks the operation running as one that merged changes in from elsewhere.
+    pub(crate) fn merged(&self) {
+        self.merged.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// As [`with`](Self::with), and says any repair made since on the record it returns.
+    fn told<T: Announced>(&self, operation: impl FnOnce(&mut Store) -> Result<T>) -> Result<T> {
+        let mut record = self.with(operation)?;
+        let unsaid = std::mem::take(&mut *self.unsaid.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
+        record.notices_mut().extend(unsaid);
+        Ok(record)
+    }
+
+    /// Writes down any repair a merge made necessary, once, keeping what to say about it.
+    fn write_repairs(&self, store: &mut Store) -> Result<()> {
+        let version = store.version();
+        let mut looked = self.looked.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if looked.as_ref() == Some(&version) {
+            return Ok(());
+        }
+        let (snapshot, _) = store.snapshot();
+        let (repair, said) = edit::repair(&snapshot);
+        if !repair.is_empty() {
+            store.apply(&repair)?;
+            self.unsaid.lock().unwrap_or_else(std::sync::PoisonError::into_inner).extend(said);
+        }
+        *looked = Some(store.version());
+        Ok(())
     }
 }
 

@@ -31,7 +31,7 @@ impl Lumenna {
             Syntax::QuickAdd => complete::Syntax::QuickAdd,
             Syntax::Filter => complete::Syntax::Filter,
         };
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             Ok(Completions::of(&complete(text, cursor, syntax, &Known::from_snapshot(&snapshot))))
         })
@@ -46,7 +46,7 @@ impl Lumenna {
     /// If the store cannot be read.
     pub fn preview_task(&self, text: &str) -> Result<Preview> {
         let now = Zoned::now();
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let parsed = parse_quick_add(text, &Known::from_snapshot(&snapshot));
             Ok(Preview::of(&parsed.resolve(&snapshot, &now), &snapshot))

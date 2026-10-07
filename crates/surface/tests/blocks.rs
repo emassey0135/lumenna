@@ -168,3 +168,13 @@ fn a_device_says_how_syncing_with_it_last_went() {
         ["last attempt 1 hour ago failed: timed out", "last synced 1 day ago"]
     );
 }
+
+#[test]
+fn the_days_hours_of_work_follow_the_flag_not_the_kind() {
+    let (_directory, lumenna) = open();
+    let short = |title: &str, at: &str, kind: &str| NewBlock { at: at.to_owned(), minutes: 60, ..block(title, kind) };
+    lumenna.add_block(NewBlock { counts_capacity: Some(true), ..short("Study", "09:00", "break") }).unwrap();
+    lumenna.add_block(NewBlock { counts_capacity: Some(false), ..short("Admin", "11:00", "work") }).unwrap();
+    let summary = lumenna.plan(None).unwrap().summary;
+    assert!(summary.contains("1 hour of work"), "{summary}");
+}

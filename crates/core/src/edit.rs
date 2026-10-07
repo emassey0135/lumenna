@@ -495,6 +495,55 @@ pub fn purge_task(snapshot: &Snapshot, id: TaskId) -> Result<Edit, EditError> {
     Ok(builder.finish())
 }
 
+/// Writes down what [`Snapshot::repair`] does on read, with a sentence for each thing it
+/// fixed. Merging can make a loop no device ever wrote — a task under its own subtask, two
+/// tasks waiting for each other — and repairing only on read would fix it silently on every
+/// read. Written once, it is fixed, and said, once. The repair is deterministic, so devices
+/// that each write it agree.
+#[must_use]
+pub fn repair(snapshot: &Snapshot) -> (Edit, Vec<String>) {
+    let mut repaired = snapshot.clone();
+    let repairs = repaired.repair();
+    let mut builder = Builder::new("Repaired the store");
+    let mut said = Vec::new();
+    for id in &repairs.reparented_tasks {
+        if let (Some(before), Some(after)) = (snapshot.tasks.get(id), repaired.tasks.get(id)) {
+            builder.task(Transition::updated(before.clone(), after.clone()));
+            said.push(format!(
+                "{} was in a loop of subtasks, made by changes from two devices, so it moved to the top level",
+                before.title
+            ));
+        }
+    }
+    for id in &repairs.reparented_projects {
+        if let (Some(before), Some(after)) = (snapshot.projects.get(id), repaired.projects.get(id)) {
+            builder.changes.push(Change::Project(Box::new(Transition::updated(before.clone(), after.clone()))));
+            said.push(format!(
+                "The project {} was in a loop of projects, made by changes from two devices, so it moved to the top level",
+                before.name
+            ));
+        }
+    }
+    let mut waiting: BTreeSet<TaskId> = BTreeSet::new();
+    for (from, to) in &repairs.dropped_dependencies {
+        waiting.insert(*from);
+        let name = |id: &TaskId| snapshot.tasks.get(id).map_or_else(|| "a task".to_owned(), |t| t.title.clone());
+        said.push(format!(
+            "{} no longer waits for {}: changes from two devices made them wait for each other",
+            name(from),
+            name(to)
+        ));
+    }
+    for id in waiting {
+        if let (Some(before), Some(after)) = (snapshot.tasks.get(&id), repaired.tasks.get(&id))
+            && !repairs.reparented_tasks.contains(&id)
+        {
+            builder.task(Transition::updated(before.clone(), after.clone()));
+        }
+    }
+    (builder.finish(), said)
+}
+
 /// Makes one task wait for another.
 ///
 /// # Errors

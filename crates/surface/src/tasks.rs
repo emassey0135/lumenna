@@ -51,7 +51,7 @@ impl Lumenna {
             return Err(LumennaError::new("nothing to add"));
         }
         let now = Zoned::now();
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let preview =
                 parse_quick_add(text, &Known::from_snapshot(&snapshot)).resolve(&snapshot, &now);
@@ -127,7 +127,7 @@ impl Lumenna {
     /// If the query cannot be read; the message says where and what was expected.
     pub fn list_tasks(&self, query: &str) -> Result<Rows> {
         let now = Zoned::now();
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let expr = resolve::query(&snapshot, query)?;
             let cx = Context::new(&snapshot, &now);
@@ -175,7 +175,7 @@ impl Lumenna {
             return Err(LumennaError::new("nothing to search for"));
         }
         let now = Zoned::now();
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let expr = Expr::Predicate(Predicate::Search(text.to_owned()));
             let cx = Context::new(&snapshot, &now);
@@ -190,7 +190,7 @@ impl Lumenna {
     /// If no task matches `id`.
     pub fn show_task(&self, id: &str) -> Result<TaskShown> {
         let now = Zoned::now();
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let id = resolve::task_id(&snapshot, id)?;
             let task = snapshot.tasks.get(&id).ok_or(EditError::NotFound { kind: "task" })?;
@@ -209,7 +209,7 @@ impl Lumenna {
     /// If no task matches `id`, or a field cannot be read.
     pub fn edit_task(&self, id: &str, edit: TaskEdit) -> Result<Change> {
         let now = Zoned::now();
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let id = resolve::task_id(&snapshot, id)?;
             let before =
@@ -339,7 +339,7 @@ impl Lumenna {
     /// If no task matches `id`.
     pub fn complete_task(&self, id: &str) -> Result<Change> {
         let now = Zoned::now();
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let change = edit::complete_task(&snapshot, resolve::task_id(&snapshot, id)?, &now)?;
             record(store, &change)
@@ -352,7 +352,7 @@ impl Lumenna {
     ///
     /// If no task matches `id`, or it has no completion to take back.
     pub fn uncomplete_task(&self, id: &str) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let change = edit::uncomplete_task(&snapshot, resolve::task_id(&snapshot, id)?)?;
             record(store, &change)
@@ -366,7 +366,7 @@ impl Lumenna {
     ///
     /// If no task matches `id`.
     pub fn trash_task(&self, id: &str) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let change = edit::trash_task(&snapshot, resolve::task_id(&snapshot, id)?)?;
             record(store, &change)
@@ -379,7 +379,7 @@ impl Lumenna {
     ///
     /// If no task matches `id`.
     pub fn restore_task(&self, id: &str) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let change = edit::restore_task(&snapshot, resolve::task_id(&snapshot, id)?)?;
             record(store, &change)
@@ -394,7 +394,7 @@ impl Lumenna {
     ///
     /// If no task matches `id`.
     pub fn erase_task(&self, id: &str) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let change = edit::purge_task(&snapshot, resolve::task_id(&snapshot, id)?)?;
             record(store, &change)
@@ -408,7 +408,7 @@ impl Lumenna {
     /// If either task cannot be found, the project does not exist, or the move would put a
     /// task under itself.
     pub fn move_task(&self, id: &str, to: MoveTarget) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let id = resolve::task_id(&snapshot, id)?;
             let destination = match to {
@@ -431,7 +431,7 @@ impl Lumenna {
     ///
     /// If either task cannot be found, or the dependency would close a cycle.
     pub fn add_dependency(&self, id: &str, on: &str) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let id = resolve::task_id(&snapshot, id)?;
             let dependency = resolve::task_id(&snapshot, on)?;
@@ -452,7 +452,7 @@ impl Lumenna {
     ///
     /// If either task cannot be found.
     pub fn remove_dependency(&self, id: &str, on: &str) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let id = resolve::task_id(&snapshot, id)?;
             let dependency = resolve::task_id(&snapshot, on)?;

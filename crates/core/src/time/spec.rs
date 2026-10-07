@@ -274,7 +274,7 @@ impl RecurrenceSpec {
             Self::Weekdays => "every weekday".to_owned(),
             Self::Monthly { interval, day: None } => every(*interval, "month"),
             Self::Monthly { interval, day: Some(MonthDay::Nth(d)) } => {
-                format!("{} on the {d}", every(*interval, "month"))
+                format!("{} on the {}", every(*interval, "month"), ordinal_word(*d))
             }
             Self::Monthly { interval, day: Some(MonthDay::Last) } => {
                 format!("{} on the last day", every(*interval, "month"))

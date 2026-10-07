@@ -75,7 +75,7 @@ impl Lumenna {
     /// If the date cannot be read, or a block's rule cannot be expanded.
     pub fn plan(&self, date: Option<String>) -> Result<Plan> {
         let now = Zoned::now();
-        self.with(|store| {
+        self.told(|store| {
             let day = resolve::date(date.as_deref(), &now)?;
             // Year documents load only when a year is viewed, which is what keeps the watch
             // viable. This is that moment.
@@ -209,7 +209,7 @@ impl Lumenna {
     /// If the time, date, kind or repetition cannot be read, or the block is malformed.
     pub fn add_block(&self, block: NewBlock) -> Result<Change> {
         let now = Zoned::now();
-        self.with(|store| {
+        self.told(|store| {
             let day = resolve::date(block.date.as_deref(), &now)?;
             let start = resolve::time(&block.at)?;
             let kind = block_kind(&block.kind)?;
@@ -265,7 +265,7 @@ impl Lumenna {
     /// is asked about a single day.
     pub fn edit_block(&self, id: &str, edit: BlockEdit, scope: BlockScope) -> Result<Change> {
         let now = Zoned::now();
-        self.with(|store| {
+        self.told(|store| {
             // Looked up by identifier, so every year is opened (CLAUDE.md, `load_all_years`).
             store.load_all_years()?;
             let snapshot = repaired(store);
@@ -395,7 +395,7 @@ impl Lumenna {
     /// which is deleting it.
     pub fn cancel_occurrence(&self, id: &str, date: &str) -> Result<Change> {
         let now = Zoned::now();
-        self.with(|store| {
+        self.told(|store| {
             store.load_all_years()?;
             let snapshot = repaired(store);
             let series_id = resolve::series_id(&snapshot, id)?;
@@ -414,7 +414,7 @@ impl Lumenna {
     /// If no block matches `id`.
     pub fn restore_occurrence(&self, id: &str, date: &str) -> Result<Change> {
         let now = Zoned::now();
-        self.with(|store| {
+        self.told(|store| {
             store.load_all_years()?;
             let snapshot = repaired(store);
             let series_id = resolve::series_id(&snapshot, id)?;
@@ -430,7 +430,7 @@ impl Lumenna {
     ///
     /// If no block matches `id`.
     pub fn show_block(&self, id: &str) -> Result<BlockShown> {
-        self.with(|store| {
+        self.told(|store| {
             store.load_all_years()?;
             let snapshot = repaired(store);
             let series_id = resolve::series_id(&snapshot, id)?;
@@ -466,7 +466,7 @@ impl Lumenna {
     ///
     /// If a year's document cannot be loaded.
     pub fn list_blocks(&self) -> Result<Rows> {
-        self.with(|store| {
+        self.told(|store| {
             store.load_all_years()?;
             let snapshot = repaired(store);
             let mut live: Vec<&BlockSeries> =
@@ -516,7 +516,7 @@ impl Lumenna {
     ///
     /// If no block matches `id`.
     pub fn delete_block(&self, id: &str) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             store.load_all_years()?;
             let snapshot = repaired(store);
             let change = edit::trash_series(&snapshot, resolve::series_id(&snapshot, id)?)?;
@@ -544,7 +544,7 @@ impl Lumenna {
         // An occurrence's own identifier, `<series>@<date>`, names its day — what `lum plan
         // friday` lists — so it is not quietly put into today's instead.
         let date = date.or_else(|| block.split_once('@').map(|(_, day)| day.to_owned()));
-        self.with(|store| {
+        self.told(|store| {
             let day = resolve::date(date.as_deref(), &now)?;
             // Looking a block up by identifier cannot know which year to open, so it opens
             // them all rather than failing to find one that is on disk.
@@ -584,7 +584,7 @@ impl Lumenna {
     ///
     /// If no assignment matches `assignment`.
     pub fn unassign(&self, assignment: &str) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             store.load_all_years()?;
             let snapshot = repaired(store);
             let id = resolve::assignment_id(&snapshot, assignment)?;
@@ -603,7 +603,7 @@ impl Lumenna {
         if minutes == Some(0) {
             return Err(LumennaError::new("a sitting has to be planned for at least a minute"));
         }
-        self.with(|store| {
+        self.told(|store| {
             store.load_all_years()?;
             let snapshot = repaired(store);
             let id = resolve::assignment_id(&snapshot, assignment)?;
@@ -620,7 +620,7 @@ impl Lumenna {
     /// If no assignment matches `assignment`.
     pub fn start_timer(&self, assignment: &str) -> Result<Change> {
         let now = Zoned::now();
-        self.with(|store| {
+        self.told(|store| {
             store.load_all_years()?;
             let snapshot = repaired(store);
             let id = resolve::assignment_id(&snapshot, assignment)?;
@@ -644,7 +644,7 @@ impl Lumenna {
     /// If no assignment matches `assignment`.
     pub fn pause_timer(&self, assignment: &str) -> Result<Timer> {
         let now = Zoned::now();
-        self.with(|store| {
+        self.told(|store| {
             store.load_all_years()?;
             let snapshot = repaired(store);
             let id = resolve::assignment_id(&snapshot, assignment)?;
@@ -697,7 +697,7 @@ impl Lumenna {
     /// If no assignment matches `assignment`.
     pub fn stop_timer(&self, assignment: &str, minutes: Option<u32>) -> Result<Timer> {
         let now = Zoned::now();
-        self.with(|store| {
+        self.told(|store| {
             store.load_all_years()?;
             let snapshot = repaired(store);
             let id = resolve::assignment_id(&snapshot, assignment)?;
@@ -937,8 +937,9 @@ fn timeline(
 
 /// The day's opening summary row, in words.
 fn summary(blocks: &[PlanBlock], overdue: Option<usize>) -> String {
+    // The flag, not the kind: a kind only presets it, and any block can be set apart.
     let work: u32 =
-        blocks.iter().filter(|b| b.kind == "work").map(|b| b.duration_mins).sum();
+        blocks.iter().filter(|b| b.counts_capacity).map(|b| b.duration_mins).sum();
     let assigned: usize = blocks.iter().map(|b| b.assignments.len()).sum();
     if blocks.is_empty() {
         return "No blocks".to_owned();

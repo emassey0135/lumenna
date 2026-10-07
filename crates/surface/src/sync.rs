@@ -346,7 +346,7 @@ impl Lumenna {
     /// If no device, or more than one, matches.
     pub fn rename_device(&self, device: &str, name: &str) -> Result<Change> {
         let found = self.find_device(device)?;
-        self.with(|store| {
+        self.told(|store| {
             let change = edit::rename_device(&repaired(store), found.node_id, name)?;
             record_or(store, &change, "it already has that name")
         })
@@ -364,7 +364,7 @@ impl Lumenna {
                 "this device cannot unpair itself; unpair it from one of your other devices",
             ));
         }
-        let change = self.with(|store| {
+        let change = self.told(|store| {
             let change = edit::unpair_device(&repaired(store), found.node_id)?;
             store.apply_recorded(&change)?;
             Ok(Change::of(&change))

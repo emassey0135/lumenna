@@ -33,7 +33,7 @@ impl Lumenna {
     /// If there is already a project by that name, or no parent by that one.
     pub fn add_project(&self, name: &str, parent: Option<String>) -> Result<Change> {
         named("project", name)?;
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             if snapshot.project_by_name(name).is_some() {
                 return Err(LumennaError::new(format!("there is already a project '{name}'")));
@@ -53,7 +53,7 @@ impl Lumenna {
     ///
     /// If the store cannot be read.
     pub fn list_projects(&self) -> Result<Rows> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let live = in_tree_order(&snapshot);
             let count = to_u32(live.len());
@@ -109,7 +109,7 @@ impl Lumenna {
     /// If there is no project by the first name, or already one by the second.
     pub fn rename_project(&self, name: &str, to: &str) -> Result<Change> {
         named("project", to)?;
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let before = resolve::project(&snapshot, name)?.clone();
             if snapshot.project_by_name(to).is_some_and(|other| other.id != before.id) {
@@ -130,7 +130,7 @@ impl Lumenna {
     ///
     /// If there is no project by that name.
     pub fn archive_project(&self, name: &str) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let before = resolve::project(&snapshot, name)?.clone();
             let mut after = before.clone();
@@ -152,7 +152,7 @@ impl Lumenna {
     ///
     /// If there is no project by that name, or it is the Inbox.
     pub fn delete_project(&self, name: &str, keep_tasks: bool) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let target = resolve::project(&snapshot, name)?;
             if target.is_inbox {
@@ -177,7 +177,7 @@ impl Lumenna {
     ///
     /// If there is no project by that name, or the weight is not a positive number.
     pub fn weigh_project(&self, name: &str, weight: Weight) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let before = resolve::project(&snapshot, name)?.clone();
             let mut after = before.clone();
@@ -226,7 +226,7 @@ impl Lumenna {
     /// If there is already a label by that name.
     pub fn add_label(&self, name: &str) -> Result<Change> {
         named("label", name)?;
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let name = name.trim_start_matches('@');
             if snapshot.label_by_name(name).is_some() {
@@ -246,7 +246,7 @@ impl Lumenna {
     ///
     /// If the store cannot be read.
     pub fn list_labels(&self) -> Result<Rows> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let mut live: Vec<&Label> =
                 snapshot.labels.values().filter(|l| l.deleted_at.is_none()).collect();
@@ -295,7 +295,7 @@ impl Lumenna {
     /// [`merge_labels`](Self::merge_labels) is for.
     pub fn rename_label(&self, name: &str, to: &str) -> Result<Change> {
         named("label", to)?;
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let before = resolve::label(&snapshot, name)?.clone();
             let to = to.trim_start_matches('@');
@@ -316,7 +316,7 @@ impl Lumenna {
     ///
     /// If either label does not exist.
     pub fn merge_labels(&self, from: &str, into: &str) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let loser = resolve::label(&snapshot, from)?.id;
             let winner = resolve::label(&snapshot, into)?.id;
@@ -331,7 +331,7 @@ impl Lumenna {
     ///
     /// If there is no label by that name.
     pub fn delete_label(&self, name: &str) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let target = resolve::label(&snapshot, name)?.id;
             let change = edit::trash_label(&snapshot, target)?;
@@ -359,7 +359,7 @@ impl Lumenna {
     /// If the query cannot be read.
     pub fn add_filter(&self, name: &str, query: &str) -> Result<Change> {
         named("saved filter", name)?;
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let expr = resolve::query(&snapshot, query)?;
             let change = edit::create_filter(SavedFilter {
@@ -381,7 +381,7 @@ impl Lumenna {
     ///
     /// If the store cannot be read.
     pub fn list_filters(&self) -> Result<Filters> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let mut live: Vec<&SavedFilter> =
                 snapshot.saved_filters.values().filter(|f| f.deleted_at.is_none()).collect();
@@ -410,7 +410,7 @@ impl Lumenna {
     ///
     /// If there is no filter by that name.
     pub fn delete_filter(&self, name: &str) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let target = snapshot
                 .saved_filters
@@ -431,7 +431,7 @@ impl Lumenna {
     ///
     /// If either project does not exist, or the move would put a project inside itself.
     pub fn move_project(&self, name: &str, parent: Option<String>) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let before = resolve::project(&snapshot, name)?.clone();
             let parent = parent.map(|p| resolve::project(&snapshot, &p).map(|p| p.id)).transpose()?;
@@ -464,7 +464,7 @@ impl Lumenna {
     ///
     /// If there is no project by that name.
     pub fn reorder_project(&self, name: &str, direction: Direction) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let before = resolve::project(&snapshot, name)?.clone();
             let siblings: Vec<(lumenna_core::id::ProjectId, OrderKey)> = snapshot
@@ -488,7 +488,7 @@ impl Lumenna {
     ///
     /// If there is no label by that name.
     pub fn reorder_label(&self, name: &str, direction: Direction) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let before = resolve::label(&snapshot, name)?.clone();
             let siblings: Vec<_> = snapshot
@@ -513,7 +513,7 @@ impl Lumenna {
     ///
     /// If there is no label by that name.
     pub fn recolour_label(&self, name: &str, colour: Option<String>) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let before = resolve::label(&snapshot, name)?.clone();
             let mut after = before.clone();
@@ -538,7 +538,7 @@ impl Lumenna {
         if let Some(to) = &rename {
             named("saved filter", to)?;
         }
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let before = live_filter(&snapshot, name)?.clone();
             let mut after = before.clone();
@@ -575,7 +575,7 @@ impl Lumenna {
     ///
     /// If there is no filter by that name.
     pub fn reorder_filter(&self, name: &str, direction: Direction) -> Result<Change> {
-        self.with(|store| {
+        self.told(|store| {
             let snapshot = repaired(store);
             let before = live_filter(&snapshot, name)?.clone();
             let siblings: Vec<_> = snapshot

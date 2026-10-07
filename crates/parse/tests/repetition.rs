@@ -72,3 +72,28 @@ fn what_the_grammar_cannot_say_has_no_phrase() {
     assert_eq!(RecurrenceSpec::from_rrule(&spec.to_rrule()), Some(spec.clone()));
     assert_eq!(spec.phrase(false), None);
 }
+
+#[test]
+fn a_day_of_the_month_is_read_after_every_way_of_saying_monthly() {
+    let fifteenth = RecurrenceSpec::Monthly { interval: 1, day: Some(MonthDay::Nth(15)) };
+    for phrase in [
+        "every month on the 15th",
+        "every month on 15",
+        "monthly on the 15th",
+        "every 15th of the month",
+        "every month on the 15th of the month",
+    ] {
+        let parsed = words(phrase);
+        let (spec, _, used) = parse_recurrence(&parsed, 0).unwrap_or_else(|| panic!("{phrase}"));
+        assert_eq!(spec, fifteenth, "{phrase}");
+        assert_eq!(used, parsed.len(), "every word of '{phrase}' is taken");
+    }
+    let last = parse_recurrence(&words("every 2 months on the last day"), 0).unwrap().0;
+    assert_eq!(last, RecurrenceSpec::Monthly { interval: 2, day: Some(MonthDay::Last) });
+}
+
+#[test]
+fn a_day_of_the_month_reads_back_with_its_ordinal() {
+    let spec = RecurrenceSpec::Monthly { interval: 1, day: Some(MonthDay::Nth(1)) };
+    assert_eq!(spec.describe(), "every month on the 1st");
+}

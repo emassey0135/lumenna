@@ -103,7 +103,10 @@ impl Lumenna {
                 file.display()
             )));
         }
-        self.with(|store| restore_bytes(store, file, &bytes))
+        self.told(|store| {
+            self.merged();
+            restore_bytes(store, file, &bytes)
+        })
     }
 
     /// The current state, with no history and nothing from the trash — written to `path`,
@@ -182,7 +185,10 @@ impl Lumenna {
         let file = Path::new(name);
         if backup::is_backup(&bytes) {
             return self
-                .with(|store| restore_bytes(store, file, &bytes))
+                .with(|store| {
+                    self.merged();
+                    restore_bytes(store, file, &bytes)
+                })
                 .map(|done| Imported::Backup { done });
         }
         let text = String::from_utf8(bytes).map_err(|_| {
@@ -195,6 +201,7 @@ impl Lumenna {
             ))
         })?;
         self.with(|store| {
+            self.merged();
             let report = store.import(&imported)?;
             fold_inbox(store)?;
             let announcement = if imported.is_empty() {
