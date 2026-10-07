@@ -23,6 +23,8 @@ mod endpoint;
 mod server;
 
 pub use endpoint::{Endpoint, relay};
+#[cfg(windows)]
+pub use endpoint::pipe_user;
 pub use server::{Host, METHODS, SyncHook, serve_streams};
 
 use std::sync::{Arc, Mutex};
