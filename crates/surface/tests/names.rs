@@ -29,3 +29,16 @@ fn a_blank_name_is_refused_when_renaming() {
     assert!(lumenna.edit_filter("Urgent", Some(String::new()), None).is_err());
     assert!(lumenna.edit_filter("Urgent", None, Some("p2".to_owned())).is_ok(), "a new query alone needs no name");
 }
+
+#[test]
+fn a_subproject_is_listed_under_its_parent_whatever_order_it_was_made_in() {
+    let (_directory, lumenna) = open();
+    for name in ["Work", "Test", "Home"] {
+        lumenna.add_project(name, None).unwrap();
+    }
+    lumenna.move_project("Test", Some("Work".to_owned())).unwrap();
+    let listed: Vec<(String, u32)> =
+        lumenna.list_projects().unwrap().rows.into_iter().map(|r| (r.title, r.depth)).collect();
+    let expected = [("Inbox", 0), ("Work", 0), ("Test", 1), ("Home", 0)];
+    assert_eq!(listed, expected.map(|(t, d)| (t.to_owned(), d)));
+}

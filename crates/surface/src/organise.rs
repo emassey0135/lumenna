@@ -1,9 +1,9 @@
 //! Projects, labels, and saved filters.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use lumenna_core::edit::{self, EditError, ProjectDeletion};
-use lumenna_core::id::FilterId;
+use lumenna_core::id::{FilterId, ProjectId};
 use lumenna_core::model::{Label, Project, SavedFilter};
 use lumenna_core::order::OrderKey;
 use lumenna_core::row::{Role, Row, RowId};
@@ -55,15 +55,13 @@ impl Lumenna {
     pub fn list_projects(&self) -> Result<Rows> {
         self.with(|store| {
             let snapshot = repaired(store);
-            let mut live: Vec<&Project> =
-                snapshot.projects.values().filter(|p| p.deleted_at.is_none()).collect();
-            live.sort_by(|a, b| a.order.cmp_with(&a.id, &b.order, &b.id));
+            let live = in_tree_order(&snapshot);
             let count = to_u32(live.len());
             let facts = snapshot.facts();
             let rows: Vec<Row> = live
                 .iter()
                 .enumerate()
-                .map(|(index, project)| {
+                .map(|(index, (project, depth))| {
                     // Open tasks: a project of two hundred finished ones is not two hundred
                     // tasks' worth of anything.
                     let tasks = snapshot
@@ -80,7 +78,7 @@ impl Lumenna {
                     Row {
                         id: RowId::Project(project.id),
                         role: Role::Project,
-                        depth: depth_of(&snapshot, project),
+                        depth: *depth,
                         index: to_u32(index) + 1,
                         count,
                         expanded: None,
@@ -95,7 +93,7 @@ impl Lumenna {
             let mut rows = Rows::new(&rows, "project");
             // Archived is a state of the row, not a word in its value, so a client can offer
             // to unarchive without reading prose. Core's states are a task's; this is not.
-            for (row, project) in rows.rows.iter_mut().zip(&live) {
+            for (row, (project, _)) in rows.rows.iter_mut().zip(&live) {
                 if project.archived {
                     row.state.push("archived".to_owned());
                 }
@@ -636,18 +634,41 @@ fn moved<I: Ord + Copy>(
 }
 
 /// How deep a project sits, stopping at a cycle merge may have made.
-fn depth_of(snapshot: &Snapshot, project: &Project) -> u32 {
-    let mut depth = 0;
-    let mut current = project.parent_id;
-    let mut seen = BTreeSet::from([project.id]);
-    while let Some(id) = current {
-        if !seen.insert(id) {
-            break;
-        }
-        depth += 1;
-        current = snapshot.projects.get(&id).and_then(|p| p.parent_id);
+/// Live projects with their depths, each followed by its own subprojects, siblings in their
+/// order. A list sorted by order alone puts a subproject wherever its key falls, which in a
+/// list that shows depth reads as a child of whatever is above it. A project whose parent is
+/// gone is at the top.
+fn in_tree_order(snapshot: &Snapshot) -> Vec<(&Project, u32)> {
+    let live: Vec<&Project> = snapshot.projects.values().filter(|p| p.deleted_at.is_none()).collect();
+    let ids: BTreeSet<ProjectId> = live.iter().map(|p| p.id).collect();
+    let mut children: BTreeMap<Option<ProjectId>, Vec<&Project>> = BTreeMap::new();
+    for project in &live {
+        let parent = project.parent_id.filter(|id| ids.contains(id) && *id != project.id);
+        children.entry(parent).or_default().push(project);
     }
-    depth
+    for siblings in children.values_mut() {
+        siblings.sort_by(|a, b| a.order.cmp_with(&a.id, &b.order, &b.id));
+    }
+    let mut ordered = Vec::with_capacity(live.len());
+    let mut seen = BTreeSet::new();
+    let mut stack: Vec<(&Project, u32)> =
+        children.get(&None).into_iter().flatten().rev().map(|p| (*p, 0)).collect();
+    while let Some((project, depth)) = stack.pop() {
+        if !seen.insert(project.id) {
+            continue;
+        }
+        ordered.push((project, depth));
+        if let Some(under) = children.get(&Some(project.id)) {
+            stack.extend(under.iter().rev().map(|p| (*p, depth + 1)));
+        }
+    }
+    // A cycle that repair has not broken yet is unreachable from the top; list it anyway.
+    for project in live {
+        if seen.insert(project.id) {
+            ordered.push((project, 0));
+        }
+    }
+    ordered
 }
 
 /// Refuses a blank name: nothing could be listed, said or typed to reach it.

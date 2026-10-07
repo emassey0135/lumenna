@@ -508,20 +508,19 @@ impl QuickAdd {
                         .collect();
                     // Confirm-on-new, never prompt-on-known: silence would let typos
                     // accumulate, and a prompt on every label would make capture miserable.
-                    let suggestion = suggest::nearest(&spanned.value, names);
-                    let message = match suggestion {
-                        Some(near) => format!(
-                            "new label '{}' at position {}; did you mean '{near}'?",
-                            spanned.value, spanned.start
-                        ),
-                        None => format!("new label '{}'", spanned.value),
-                    };
-                    diagnostics.push(Diagnostic {
-                        severity: Severity::Notice,
-                        start: spanned.start,
-                        end: spanned.end,
-                        message,
-                    });
+                    // The readback already says "new label …"; a notice is added only when
+                    // it has more to say, or every client would say it twice.
+                    if let Some(near) = suggest::nearest(&spanned.value, names) {
+                        diagnostics.push(Diagnostic {
+                            severity: Severity::Notice,
+                            start: spanned.start,
+                            end: spanned.end,
+                            message: format!(
+                                "new label '{}' at position {}; did you mean '{near}'?",
+                                spanned.value, spanned.start
+                            ),
+                        });
+                    }
                     new_labels.push(spanned.value.clone());
                 }
             }

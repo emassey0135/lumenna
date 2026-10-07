@@ -155,3 +155,21 @@ fn another_store_on_the_same_profile_is_told_the_endpoint_is_taken() {
     ));
     service.stop();
 }
+
+#[test]
+fn a_round_that_brings_nothing_still_tells_the_app_a_new_device_was_synced() {
+    // Just paired, nothing to send either way: the devices list must still change from
+    // "not synced yet" without anyone pressing Sync Now.
+    let (_dir, a, b) = paired();
+    let heard_on_a = Arc::new(Count::default());
+    let service_a = a.start_sync(Reach::LocalOnly, heard_on_a.clone()).unwrap();
+    let service_b = b.start_sync(Reach::LocalOnly, Arc::new(Count::default())).unwrap();
+    assert!(
+        eventually(Duration::from_secs(60), || heard_on_a.0.load(Ordering::SeqCst) > 0),
+        "a's listener was never told the round went through"
+    );
+    let phone = a.devices().unwrap().devices.into_iter().find(|d| !d.this_device).unwrap();
+    assert!(phone.status.iter().any(|s| s.starts_with("last synced")), "{:?}", phone.status);
+    service_a.stop();
+    service_b.stop();
+}
