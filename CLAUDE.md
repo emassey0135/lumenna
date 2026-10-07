@@ -595,6 +595,8 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   `window::spawn` waits for it to close, so a dialog is not mapped under a closing menu.
 - **A keyboard context menu opens when its keys are let go**: a popover opened on
   Shift+F10's press is closed by the releases.
+- **It serves the command surface while it holds the sync endpoint** (`Core::start_syncing`,
+  the surface's `rpc` feature), and stops serving before it stops syncing.
 - **One instance per profile** through GApplication's bus name, tagged per profile.
   `--no-shortcuts` leaves the shortcuts from anywhere to another copy; the UI tests pass it.
 - **First focus on an expandable row says "expanded" twice**: GTK reports the new
