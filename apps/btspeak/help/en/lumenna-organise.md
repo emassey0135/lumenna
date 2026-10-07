@@ -9,7 +9,7 @@ The project tree, with each project's open tasks, its weight and whether it is a
 - Weight, w: how much the whole project matters now, roughly 0.5 to 2, or "inherit".
 - Archive or Unarchive. Delete, which asks whether its tasks go to the Trash or to the Inbox.
 
-The main menu, M-Chord, has Add a project, a.
+The main menu, M-Chord, has Add a project, a. Inside a project's tasks, its main menu also has Add a project inside it, p.
 
 ## Labels
 

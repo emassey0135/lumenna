@@ -23,7 +23,11 @@ final class TaskListViewController: UIViewController {
     /// What quick add starts with — `#Work ` in a project's list, so a task added there
     /// lands there.
     private let quickAddPrefix: String
+    /// Every row listed, and those shown once folded.
+    private var listed: [RowView] = []
+    private var shown: [Folding.Shown<RowView>] = []
     private var rows: [RowView] = []
+    private var folding = Folding()
 
     private let filterField = LineEntry(name: "Filter")
     private let readback = UILabel()
@@ -118,7 +122,10 @@ final class TaskListViewController: UIViewController {
                 self?.trash(row)
                 finished(true)
             }
-            return UISwipeActionsConfiguration(actions: [action])
+            let fold = self.shown.first { $0.item.id == row.id }.flatMap { shown in
+                self.folding.action(for: shown, key: row.id) { [weak self] key, said in self?.fold(key, saying: said) }
+            }
+            return UISwipeActionsConfiguration(actions: [action] + [fold].compactMap { $0 })
         }
         collectionView = UICollectionView(
             frame: .zero,
@@ -181,7 +188,8 @@ final class TaskListViewController: UIViewController {
         let previous = index > 0 && index - 1 < rows.count ? rows[index - 1].depth : nil
         cell.isAccessibilityElement = true
         cell.accessibilityLabel = RowSpeech.label(row)
-        cell.accessibilityValue = RowSpeech.value(row, previousDepth: previous)
+        let fold = index < shown.count ? shown[index].state : nil
+        cell.accessibilityValue = RowSpeech.value(row, previousDepth: previous, fold: fold)
         cell.accessibilityHint = mode == .trash ? nil : "Shows details"
         cell.accessibilityTraits = .button
         // No custom actions here: UIKit already offers the swipe actions to VoiceOver, Switch
@@ -233,7 +241,7 @@ final class TaskListViewController: UIViewController {
         let query = filterField.text ?? ""
         do {
             let listing = try core.lumenna.listTasks(query: query)
-            rows = listing.rows
+            listed = listing.rows
             var said = [listing.announcement] + listing.notices
             if let understood = listing.query?.description {
                 said.insert(understood, at: 0)
@@ -242,6 +250,13 @@ final class TaskListViewController: UIViewController {
         } catch {
             readback.text = error.sentence
         }
+        apply(then: finished)
+    }
+
+    /// Shows the listed rows as folded, redrawing each in place.
+    private func apply(then finished: (() -> Void)? = nil) {
+        shown = folding.shown(listed, depth: { Int($0.depth) }, key: \.id)
+        rows = shown.map(\.item)
         var snapshot = NSDiffableDataSourceSnapshot<Int, String>()
         snapshot.appendSections([0])
         snapshot.appendItems(rows.map(\.id))
@@ -274,6 +289,17 @@ final class TaskListViewController: UIViewController {
                 )
             }
             Announcer.say(change.announcement, notices: change.notices)
+        }
+    }
+
+    /// Folds or unfolds the row `key`, keeping VoiceOver on it.
+    private func fold(_ key: String, saying said: String) {
+        folding.toggle(key)
+        apply { [weak self] in
+            guard let self, let index = self.rows.firstIndex(where: { $0.id == key }) else { return }
+            let path = IndexPath(item: index, section: 0)
+            UIAccessibility.post(notification: .layoutChanged, argument: self.collectionView.cellForItem(at: path))
+            Announcer.say(said)
         }
     }
 

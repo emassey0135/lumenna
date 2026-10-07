@@ -135,7 +135,9 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
     var asking by remember { mutableStateOf<DayAsk?>(null) }
     val plan: Result<Plan> = remember(day, changes) { runCatching { core.lumenna.plan(day) } }
     val shown = plan.getOrNull()
-    val list = shown?.let { rows(it) }.orEmpty()
+    val folding = rememberFolding()
+    val folds = folded(shown?.let { rows(it) }.orEmpty(), { it.depth }, { it.key }, folding.value)
+    val list = folds.map { it.item }
     val scroll = rememberLazyListState()
     val focus = rememberRowFocus(core, list.map { it.key }, scroll)
 
@@ -182,15 +184,15 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
         ) {
             itemsIndexed(list, key = { _, row -> row.key }) { index, row ->
                 val (title, details) = words(row)
-                val previous = if (index > 0) list[index - 1].depth else 0
-                val speech = details + if (row.depth != previous) listOf("level ${row.depth + 1}") else emptyList()
+                val speech = details + listOfNotNull(folds[index].state, levelChange(folds, index))
                 ListRow(
                     title = title,
                     detail = details.joinToString(", "),
                     speech = speech.joinToString(", "),
                     index = index,
                     depth = row.depth,
-                    actions = focus.actions(row.key, index, actions(core, navigator, shown, row, edit) { asking = it }),
+                    actions = focus.actions(row.key, index, actions(core, navigator, shown, row, edit) { asking = it }) +
+                        listOfNotNull(foldAction(core, folds[index], row.key, folding)),
                     focus = focus.requester(row.key),
                     key = row.key,
                     open = when (row) {

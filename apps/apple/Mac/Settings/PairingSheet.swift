@@ -11,6 +11,8 @@ final class PairingSheet: NSViewController {
     private let code = NSTextField(wrappingLabelWithString: "")
     private let entry = NSTextField()
     private var prompt: MacPrompt?
+    /// A code entered while waiting, to join with once the wait has ended.
+    private var nextCode: String?
     private var wait: NSButton!
     private var enter: NSButton!
 
@@ -61,12 +63,23 @@ final class PairingSheet: NSViewController {
     /// which is how a code sent from the other device usually arrives.
     @objc private func pairWithCode() {
         var given = entry.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        if given.isEmpty, let pasted = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines) {
+        // This Mac's own code, copied while it waits, is never the other device's.
+        if given.isEmpty, let pasted = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           code.isHidden || pasted != code.stringValue {
             given = pasted
             entry.stringValue = pasted
         }
         guard !given.isEmpty else {
             view.window?.showFailure("Type or paste the code the other device shows.")
+            return
+        }
+        // A code entered while this Mac waits to be found means the person chose the other
+        // way: give up the wait, and join with the code once it has ended.
+        if let waiting = prompt {
+            nextCode = given
+            enter.isEnabled = false
+            say("Stopping the wait, then connecting with this code.")
+            waiting.cancel()
             return
         }
         start(code: given)
@@ -77,7 +90,7 @@ final class PairingSheet: NSViewController {
         let prompt = MacPrompt(screen: self)
         self.prompt = prompt
         wait.isEnabled = false
-        enter.isEnabled = false
+        enter.isEnabled = given == nil
         say(given == nil ? "Opening a pairing session." : "Connecting to the other device.")
         let lumenna = core.lumenna
         let name = Host.current().localizedName ?? "Mac"
@@ -98,6 +111,12 @@ final class PairingSheet: NSViewController {
         prompt = nil
         wait.isEnabled = true
         enter.isEnabled = true
+        if let next = nextCode {
+            nextCode = nil
+            code.isHidden = true
+            start(code: next)
+            return
+        }
         switch result {
         case let .success(paired):
             NotificationCenter.default.post(name: Core.changed, object: nil)

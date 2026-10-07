@@ -360,6 +360,9 @@ fun PairingScreen(core: Core, navigator: Navigator) {
     var asked by remember { mutableStateOf<Pair<List<String>, (Boolean) -> Unit>?>(null) }
     val cancelled = remember { AtomicBoolean(false) }
     var running by remember { mutableStateOf(false) }
+    // A code entered while this phone waits to be found: joined with once the wait has ended.
+    var nextCode by remember { mutableStateOf<String?>(null) }
+    var waiting by remember { mutableStateOf(false) }
 
     // Leaving the screen gives up, which ends the wait for the other device.
     DisposableEffect(Unit) { onDispose { cancelled.set(true) } }
@@ -367,6 +370,7 @@ fun PairingScreen(core: Core, navigator: Navigator) {
     fun start(given: String?) {
         if (running) return
         running = true
+        waiting = given == null
         cancelled.set(false)
         status = if (given == null) "Opening a pairing session." else "Connecting to the other device."
         core.say(status)
@@ -409,6 +413,12 @@ fun PairingScreen(core: Core, navigator: Navigator) {
             main.post {
                 running = false
                 asked = null
+                nextCode?.let { next ->
+                    nextCode = null
+                    code = null
+                    start(next)
+                    return@post
+                }
                 result.fold(
                     { paired: PairedWith ->
                         core.changed()
@@ -444,10 +454,23 @@ fun PairingScreen(core: Core, navigator: Navigator) {
                 if (given.isEmpty()) {
                     given = (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
                         .primaryClip?.getItemAt(0)?.text?.toString()?.trim().orEmpty()
+                    // This phone's own code, copied while it waits, is never the other device's.
+                    if (given == code) given = ""
                     entered = given
                 }
-                if (given.isEmpty()) core.say("Type or paste the code the other device shows.") else start(given)
-            }, enabled = !running) { Text("Pair With This Code") }
+                when {
+                    given.isEmpty() -> core.say("Type or paste the code the other device shows.")
+                    // Entering a code while waiting means choosing the other way: give up the
+                    // wait, and join with the code once it has ended.
+                    running -> {
+                        nextCode = given
+                        status = "Stopping the wait, then connecting with this code."
+                        core.say(status)
+                        cancelled.set(true)
+                    }
+                    else -> start(given)
+                }
+            }, enabled = nextCode == null && (!running || waiting)) { Text("Pair With This Code") }
         }
     }
 

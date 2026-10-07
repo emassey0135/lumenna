@@ -230,7 +230,12 @@ def pair(session: Session) -> str:
         if code is None:
             return ""
         params["code"] = code.replace(" ", "")
+    return run_pairing(session, params)
 
+
+def run_pairing(session: Session, params: dict) -> str:
+    """One pairing, waiting to be found or joining by `params["code"]`. While waiting, a
+    code can be typed instead: the wait is given up and the code joined once it has ended."""
     client = session.client
     while not client.pairing.empty():
         client.pairing.get_nowait()
@@ -239,6 +244,7 @@ def pair(session: Session) -> str:
         "status": "Connecting to the other device" if params else "Starting",
         "code": "",
         "cancel": False,
+        "instead": None,
     }
 
     def read_code() -> str:
@@ -250,9 +256,16 @@ def pair(session: Session) -> str:
         shown["cancel"] = True
         menu.close()
 
+    def code_instead(menu) -> None:
+        code = ask("The other device's pairing code")
+        if code:
+            shown["instead"] = code.replace(" ", "")
+            menu.close()
+
     while True:
         items = [
             dialogs.DynamicMenuItem(title=lambda: shown["status"], action=read_code),
+            *([] if params else [dialogs.DynamicMenuItem(title="Type the other device's code instead", action=code_instead)]),
             dialogs.DynamicMenuItem(title="Cancel the pairing", action=cancel),
         ]
         choice = dialogs.dynamic_menu(
@@ -268,12 +281,18 @@ def pair(session: Session) -> str:
         except queue.Empty:
             event = None
         if event is None:
-            # The person left, or chose to cancel.
-            if choice is None or shown["cancel"]:
+            # The person left, chose to cancel, or typed the other device's code instead.
+            if choice is None or shown["cancel"] or shown["instead"]:
                 try:
                     client.call("pair.cancel")
                 except LumennaError:
                     pass  # It ended on its own in the meantime.
+                if shown["instead"]:
+                    try:
+                        pending.result(timeout=60)
+                    except LumennaError:
+                        pass  # The wait, given up.
+                    return run_pairing(session, {"code": shown["instead"]})
                 break
             continue
         if event.get("code"):

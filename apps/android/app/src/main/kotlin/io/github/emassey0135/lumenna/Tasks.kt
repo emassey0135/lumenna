@@ -49,7 +49,6 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
@@ -163,7 +162,10 @@ private fun readback(listing: Result<Rows>): String = listing.fold(
  * state; its actions are custom accessibility actions, and the same ones on a long press.
  */
 @Composable
-fun TaskRows(core: Core, rows: List<RowView>, actions: (RowView) -> List<RowAction>, open: ((RowView) -> Unit)?) {
+fun TaskRows(core: Core, all: List<RowView>, actions: (RowView) -> List<RowAction>, open: ((RowView) -> Unit)?) {
+    val folding = rememberFolding()
+    val shown = folded(all, { it.depth.toInt() }, { it.id }, folding.value)
+    val rows = shown.map { it.item }
     val state = rememberLazyListState()
     val focus = rememberRowFocus(core, rows.map { it.id }, state)
     LazyColumn(
@@ -172,16 +174,18 @@ fun TaskRows(core: Core, rows: List<RowView>, actions: (RowView) -> List<RowActi
             .semantics { collectionInfo = CollectionInfo(rowCount = rows.size, columnCount = 1) },
         state = state,
     ) {
-        itemsIndexed(rows, key = { _, row -> row.id }) { index, row ->
+        itemsIndexed(shown, key = { _, row -> row.item.id }) { index, fold ->
+            val row = fold.item
+            // The level is said against the row shown before, which folding can change.
             val previous = if (index > 0) rows[index - 1].depth else null
             ListRow(
                 title = row.title,
                 detail = listOfNotNull(row.value).plus(row.state.filter { it != "ready" }).joinToString(", "),
-                speech = RowSpeech.value(row, previous),
+                speech = RowSpeech.value(row, previous, fold.state),
                 done = row.checked,
                 depth = row.depth.toInt(),
                 index = index,
-                actions = focus.actions(row.id, index, actions(row)),
+                actions = focus.actions(row.id, index, actions(row)) + listOfNotNull(foldAction(core, fold, row.id, folding)),
                 open = open?.let { { it(row) } },
                 openLabel = "Show details",
                 focus = focus.requester(row.id),
@@ -237,8 +241,10 @@ fun ListRow(
                 )
                 .clearAndSetSemantics {
                     if (key != null) rowKey = key
-                    contentDescription = title
-                    stateDescription = speech
+                    rowTitle = title
+                    // One description, the title first. As a separate state description the
+                    // rest was said before the title.
+                    contentDescription = listOf(title, speech).filter { it.isNotEmpty() }.joinToString(", ")
                     collectionItemInfo = CollectionItemInfo(index, 1, 0, 1)
                     customActions = actions.map { action -> CustomAccessibilityAction(action.name) { action.run(); true } }
                     if (acts) {

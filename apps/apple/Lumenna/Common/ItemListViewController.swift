@@ -25,7 +25,12 @@ struct ItemAction {
 /// Subclasses say what to list and what can be done; this does the rest.
 class ItemListViewController: UIViewController, UICollectionViewDelegate {
     let core: Core
+    /// The items shown, once folded, each saying its fold state and level.
     private(set) var items: [Item] = []
+    /// Every item loaded, before folding.
+    private var listed: [Item] = []
+    private var shown: [Folding.Shown<Item>] = []
+    private var folding = Folding()
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<Int, Item>!
     private let header = UILabel()
@@ -63,13 +68,19 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
         configuration.headerMode = .supplementary
         configuration.trailingSwipeActionsConfigurationProvider = { [weak self] path in
             guard let self, let item = self.dataSource.itemIdentifier(for: path) else { return nil }
-            let actions = self.actions(for: item).map { action in
+            var actions = self.actions(for: item).map { action in
                 UIContextualAction(
                     style: action.destructive ? .destructive : .normal, title: action.title
                 ) { _, _, finished in
                     action.run(item)
                     finished(true)
                 }
+            }
+            if let row = self.shown.first(where: { $0.item.key == item.key }),
+               let fold = self.folding.action(for: row, key: item.key, changed: { [weak self] key, said in
+                   self?.fold(key, saying: said)
+               }) {
+                actions.append(fold)
             }
             return actions.isEmpty ? nil : UISwipeActionsConfiguration(actions: actions)
         }
@@ -149,11 +160,12 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
         let previous = key.flatMap { key in items.firstIndex { $0.key == key } }
         do {
             let loaded = try load()
-            items = loaded.items
+            listed = loaded.items
             header.text = loaded.count
         } catch {
             header.text = error.sentence
         }
+        refold()
         var snapshot = NSDiffableDataSourceSnapshot<Int, Item>()
         snapshot.appendSections([0])
         snapshot.appendItems(items)
@@ -171,6 +183,33 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
                 )
             }
             Announcer.say(change.announcement, notices: change.notices)
+        }
+    }
+
+    /// Folds the loaded items into those shown, each saying whether it is collapsed and,
+    /// against the item shown before it, its level.
+    private func refold() {
+        shown = folding.shown(listed, depth: { Int($0.depth) }, key: \.key)
+        items = shown.indices.map { index in
+            var item = shown[index].item
+            let parts = [item.spoken ?? item.detail, shown[index].state, Folding.levelChange(shown, at: index)]
+            item.spoken = parts.compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+            return item
+        }
+    }
+
+    /// Folds or unfolds the item `key`, keeping VoiceOver on it.
+    private func fold(_ key: String, saying said: String) {
+        folding.toggle(key)
+        refold()
+        var snapshot = NSDiffableDataSourceSnapshot<Int, Item>()
+        snapshot.appendSections([0])
+        snapshot.appendItems(items)
+        dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
+            guard let self, let index = self.items.firstIndex(where: { $0.key == key }) else { return }
+            let path = IndexPath(item: index, section: 0)
+            UIAccessibility.post(notification: .layoutChanged, argument: self.collectionView.cellForItem(at: path))
+            Announcer.say(said)
         }
     }
 

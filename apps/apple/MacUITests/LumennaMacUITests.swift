@@ -363,6 +363,18 @@ final class LumennaMacUITests: XCTestCase {
         XCTAssertTrue(app.sheets.firstMatch.waitForNonExistence(timeout: 5))
     }
 
+    func testTheLengthStepperSaysTheLengthAndFollowsAChange() {
+        place("Today")
+        app.typeKey("n", modifierFlags: [.command, .shift])
+        XCTAssertTrue(app.textFields["Name"].waitForExistence(timeout: 5))
+        let stepper = app.sheets.steppers["Length"]
+        XCTAssertTrue(stepper.waitForExistence(timeout: 5))
+        XCTAssertEqual(stepper.value as? String, "1 hour", "the stepper says the length, not a percentage")
+        stepper.incrementArrows.firstMatch.click()
+        XCTAssertEqual(stepper.value as? String, "1 hour, 5 minutes", "and follows a change")
+        sheetButton("Cancel")
+    }
+
     func testABreakSetApartTakesTasksAndSpacePausesAndResumesASitting() {
         place("Tasks")
         addTask("read")

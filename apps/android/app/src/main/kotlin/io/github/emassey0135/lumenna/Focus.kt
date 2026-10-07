@@ -75,6 +75,10 @@ fun rememberRowFocus(core: Core, keys: List<String>, state: LazyListState): RowF
 val RowKey = SemanticsPropertyKey<String>("RowKey")
 var SemanticsPropertyReceiver.rowKey by RowKey
 
+/** A row's title alone, for finding it; what TalkBack says is the whole description. */
+val RowTitle = SemanticsPropertyKey<String>("RowTitle")
+var SemanticsPropertyReceiver.rowTitle by RowTitle
+
 /**
  * Puts TalkBack's focus on the row whose key is [key], as TalkBack itself does: by performing
  * the accessibility-focus action on its node. Nothing happens when no screen reader is on.

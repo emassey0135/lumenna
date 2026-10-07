@@ -328,6 +328,22 @@ class Menus(unittest.TestCase):
         work = next(r for r in self.call("project.list")["rows"] if r["title"] == "Work")
         self.assertNotIn("archived", work["state"])
 
+    def test_a_projects_own_task_list_adds_a_project_inside_it(self):
+        self.call("project.add", name="Work")
+        self.run_script(
+            [
+                ("menu", "Work"),
+                ("app", "Add a project inside Work"),
+                ("input", "Errands"),
+                ("back",),
+                ("back",),
+            ],
+            lambda: organise.projects(self.session),
+        )
+        rows = [(r["title"], r["depth"]) for r in self.call("project.list")["rows"]]
+        self.assertIn(("Errands", 1), rows)
+        self.assertEqual(rows.index(("Errands", 1)), rows.index(("Work", 0)) + 1, "listed under Work")
+
     def test_a_label_takes_a_colour_and_merges_into_another(self):
         self.call("task.add", text="ring the bank @calls")
         self.call("label.add", name="cals")

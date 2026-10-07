@@ -55,7 +55,6 @@ enum MainMenu {
     private static func file() -> NSMenu {
         let menu = NSMenu(title: "File")
         menu.addItem(item("New Task…", #selector(AppDelegate.newTask(_:)), "n"))
-        menu.addItem(item("Quick Add From Anywhere…", #selector(AppDelegate.showQuickAdd(_:))))
         menu.addItem(item("New Block…", #selector(AppDelegate.newBlock(_:)), "n", [.command, .shift]))
         menu.addItem(item("New Project…", #selector(AppDelegate.newProject(_:))))
         menu.addItem(item("New Label…", #selector(AppDelegate.newLabel(_:))))

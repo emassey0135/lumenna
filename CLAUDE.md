@@ -434,6 +434,10 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   VoiceOver, VOCR (Control-Command S, P, L, I; Shift-Control-Command more) and macOS
   (Control-Command Q, F, D, Space).
 - **The core has a record called `Timer`**, so Foundation's is named in full.
+- **A stepper that stands for something says it** (`LengthStepper`): AppKit's says its
+  number, which VoiceOver reads as a percentage of its range, and SwiftUI's
+  `accessibilityValue` on it is ignored. An `NSStepper` subclass overrides
+  `accessibilityValue` and posts the change.
 - **SwiftUI form controls go inside `Named`/`Labelled`**: on macOS a `LabeledContent`. A
   bare `TextField("Title", …)` showed its name as separate text and left the field unnamed;
   a bare `Toggle` was an unnamed switch. On iOS the opposite (see `NamedRow`). A growing
@@ -582,8 +586,13 @@ gives the toolchain.
   off-screen node lands on nothing.
 - **Material's text and outlined buttons are 40dp**, and a radio row is as tall as its
   padding: both failed the touch-target check. `Target` gives 48dp.
-- **A row is one node** (`ListRow`: `clearAndSetSemantics`, title as description, the rest
-  as state description, custom actions).
+- **A row is one node** (`ListRow`: `clearAndSetSemantics`, custom actions) with one
+  description, the title first. As a separate state description, the rest was said before
+  the title. `RowTitle` carries the title alone, for tests to find a row by.
+- **Nested lists fold** (`Folding.kt`): everything starts expanded, and a row with
+  something under it has Collapse or Expand among its actions and says which it is. The
+  level is said against the row shown before, after folding. The iPhone does the same
+  (`Folding.swift`, as a swipe action).
 - **TalkBack does not follow input focus under touch.** `RowFocus` gives the row input focus,
   then performs the accessibility-focus action through the view's
   `AccessibilityNodeProvider`, found by the `RowKey` property; the announcement is held

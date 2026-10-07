@@ -13,6 +13,8 @@ final class PairingViewController: UIViewController {
     private let entry = LineEntry(name: "Code from the other device")
     private let stack = UIStackView()
     private var prompt: Prompt?
+    /// A code entered while waiting, to join with once the wait has ended.
+    private var nextCode: String?
 
     init(core: Core) {
         self.core = core
@@ -82,7 +84,9 @@ final class PairingViewController: UIViewController {
     /// which is how a code sent from the other device usually arrives.
     private func pairWithEnteredCode() {
         var code = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if code.isEmpty, let pasted = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines) {
+        // This device's own code, copied while it waits, is never the other device's.
+        if code.isEmpty, let pasted = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines),
+           self.code.isHidden || pasted != self.code.text {
             code = pasted
             entry.text = pasted
         }
@@ -91,6 +95,15 @@ final class PairingViewController: UIViewController {
             return
         }
         entry.resignFirstResponder()
+        // A code entered while this device waits to be found means the person chose the
+        // other way: give up the wait, and join with the code once it has ended.
+        if let waiting = prompt {
+            nextCode = code
+            status.text = "Stopping the wait, then connecting with this code."
+            Announcer.say(status.text ?? "")
+            waiting.cancel()
+            return
+        }
         start(code: code)
     }
 
@@ -118,6 +131,12 @@ final class PairingViewController: UIViewController {
 
     private func finished(_ result: Result<PairedWith, Error>) {
         prompt = nil
+        if let next = nextCode {
+            nextCode = nil
+            code.isHidden = true
+            start(code: next)
+            return
+        }
         switch result {
         case let .success(paired):
             Announcer.say(paired.announcement, notices: paired.notices)
