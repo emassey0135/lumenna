@@ -226,6 +226,11 @@ pub async fn run(parent: &gtk::Window, lumenna: Arc<Lumenna>) -> Option<String> 
     let their_code = gtk::Entry::builder().activates_default(false).build();
     let their_label = gtk::Label::builder().label("Code from the _other device").use_underline(true).xalign(0.0).build();
     their_label.set_mnemonic_widget(Some(&their_code));
+    // Shown, and read with the field as its description: a placeholder would go as soon as
+    // anything was typed.
+    let empty = "Left empty, the code on the clipboard is used.";
+    let clipboard = gtk::Label::builder().label(empty).wrap(true).xalign(0.0).build();
+    their_code.update_property(&[gtk::accessible::Property::Description(empty)]);
     let with_code = gtk::Button::with_mnemonic("_Pair With This Code");
     let status = gtk::Label::builder().wrap(true).xalign(0.0).build();
     let cancel = gtk::Button::with_mnemonic("_Cancel");
@@ -244,6 +249,7 @@ pub async fn run(parent: &gtk::Window, lumenna: Arc<Lumenna>) -> Option<String> 
         my_code.upcast_ref(),
         their_label.upcast_ref(),
         their_code.upcast_ref(),
+        clipboard.upcast_ref(),
         with_code.upcast_ref(),
         status.upcast_ref(),
     ] {
