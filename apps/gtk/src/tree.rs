@@ -230,6 +230,9 @@ impl Tree {
             .factory(&factory)
             .build();
         view.update_property(&[gtk::accessible::Property::Label(name)]);
+        // Tab goes past the tree, as from any one control; the arrows move between its rows.
+        // Left at GTK's default, Tab went through every row.
+        view.set_tab_behavior(gtk::ListTabBehavior::Item);
         let widget = gtk::ScrolledWindow::builder()
             .child(&view)
             .hscrollbar_policy(gtk::PolicyType::Never)
@@ -443,6 +446,13 @@ impl Tree {
             target = parents.get(wanted).copied().flatten();
         }
         None
+    }
+
+    /// Sizes the tree to its rows, up to `most` pixels high: a short list in a form.
+    pub fn fit(&self, most: i32) {
+        self.widget.set_vexpand(false);
+        self.widget.set_propagate_natural_height(true);
+        self.widget.set_max_content_height(most);
     }
 
     /// Calls `callback` with the flat index of the row selected, as the selection moves.

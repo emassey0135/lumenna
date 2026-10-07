@@ -17,6 +17,7 @@ use lumenna_desktop::speech;
 use lumenna_surface::{TaskDetail, TaskFields, task_edit, task_fields};
 
 use crate::task_actions::{self, Command};
+use crate::tree::{Item, Tree};
 use crate::window::App;
 
 const PRIORITIES: [&str; 4] = ["Priority 1, highest", "Priority 2", "Priority 3", "Priority 4, none"];
@@ -33,7 +34,8 @@ pub struct Detail {
     projects: gtk::StringList,
     labels: gtk::Entry,
     notes: gtk::TextView,
-    waits: gtk::ListBox,
+    waits: Rc<Tree>,
+    waits_label: gtk::Label,
     stop_waiting: gtk::Button,
     state: gtk::Entry,
     mark_done: gtk::Button,
@@ -70,8 +72,9 @@ impl Detail {
         // not get out.
         let notes = gtk::TextView::builder().accepts_tab(false).wrap_mode(gtk::WrapMode::WordChar).build();
         crate::prompts::leaves_on_tab(&notes);
-        let waits = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::Browse).build();
-        describe(&waits, "The tasks this one waits for. It is blocked until they are done.");
+        let waits = Tree::new("Waits for");
+        waits.fit(120);
+        describe(&waits.view, "The tasks this one waits for. It is blocked until they are done.");
         // Said in full on the buttons themselves: GTK names a button by its text, whatever
         // accessible label it is given.
         let add_wait = gtk::Button::builder().label("Wait for Another Task…").action_name("win.wait-for").build();
@@ -112,11 +115,9 @@ impl Detail {
             .build();
         grid.attach(&label("_Notes", &notes), 0, 8, 2, 1);
         grid.attach(&notes_scroll, 0, 9, 2, 1);
-        // No scroller: an empty list in one is a Tab stop with nothing in it, while an empty
-        // list on its own is skipped.
-        waits.add_css_class("boxed-list");
-        grid.attach(&label("_Waits for", &waits), 0, 10, 2, 1);
-        grid.attach(&waits, 0, 11, 2, 1);
+        let waits_label = label("_Waits for", &waits.view);
+        grid.attach(&waits_label, 0, 10, 2, 1);
+        grid.attach(&waits.widget, 0, 11, 2, 1);
         grid.attach(&add_wait, 0, 12, 1, 1);
         grid.attach(&stop_waiting, 1, 12, 1, 1);
         let state_label = gtk::Label::builder().label("State").xalign(0.0).build();
@@ -167,6 +168,7 @@ impl Detail {
             labels,
             notes,
             waits,
+            waits_label,
             stop_waiting,
             state,
             mark_done,
@@ -188,7 +190,7 @@ impl Detail {
         self.stop_waiting.connect_clicked(move |_| {
             let (Some(detail), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
             let Some(task) = detail.shown.borrow().clone() else { return };
-            let index = detail.waits.selected_row().and_then(|row| usize::try_from(row.index()).ok());
+            let index = detail.waits.selected();
             if let Some(other) = index.and_then(|i| task.depends.get(i)) {
                 task_actions::run(&app, Command::StopWaiting(other.id.clone()), &task.id);
             }
@@ -257,16 +259,14 @@ impl Detail {
             self.select_project(&fields.project);
             self.labels.set_text(&fields.labels);
             self.notes.buffer().set_text(&fields.notes);
-            while let Some(row) = self.waits.row_at_index(0) {
-                self.waits.remove(&row);
+            let items =
+                task.depends.iter().map(|other| Item { key: other.id.clone(), text: other.title.clone(), depth: 0 }).collect();
+            if self.waits.set(items) {
+                self.waits.select_key_or_near(None, Some(0));
             }
-            for other in &task.depends {
-                let label = gtk::Label::builder().label(&other.title).xalign(0.0).margin_start(6).build();
-                self.waits.append(&label);
-            }
-            if let Some(first) = self.waits.row_at_index(0) {
-                self.waits.select_row(Some(&first));
-            }
+            // An empty list is not worth a stop: Wait for Another Task says what to do.
+            self.waits_label.set_visible(!task.depends.is_empty());
+            self.waits.widget.set_visible(!task.depends.is_empty());
             self.stop_waiting.set_sensitive(!task.depends.is_empty());
             self.state.set_text(&speech::task_state(task));
             let completed = task.state.iter().any(|s| s == "completed");

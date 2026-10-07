@@ -519,7 +519,9 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   exposes no rows to AT-SPI in GTK 4, and a list view with `TreeExpander` reports a flat
   list. So the view has `AccessibleRole::Tree`, the list item is not focusable, and a
   `TreeExpander` with `AccessibleRole::TreeItem` is, given its level and position in
-  `bind`. Left and Right are ours.
+  `bind`. Left and Right are ours, and `ListTabBehavior::Item` makes Tab leave the tree:
+  by default it went through every row. Every list is one, the Devices list and the
+  chooser dialog's included; a `GtkListBox` has no such setting.
 - **Orca does not say a tree item's checked state**, so a done task says "completed" in its
   text.
 - **Focus into a row waits for the row's widget**, which does not exist until GTK lays the
@@ -535,9 +537,16 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   name (`prompts::check`); a button is named by its text whatever label it is given;
   read-only text is a non-editable entry, since a label named by the label above reads as
   that name.
+- **Settings' tabs are a `GtkStackSwitcher`, not a notebook.** A notebook keeps focus
+  itself, so Orca reached its tab bar as an unnamed "grouping". Only the current tab is
+  focusable, so the row is one Tab stop; the arrows and Ctrl+Tab/Page Up/Down are ours.
+- **GTK adds "Alt+" and the mnemonic to a menu item's key shortcuts**, after whatever the
+  property holds, so Orca reads "Control+N Alt+N". Alt+N does nothing; the letter alone works
+  in an open menu. Only dropping the mnemonic removes it.
 - **A text view keeps Tab**; `prompts::leaves_on_tab` steps it out of the focus chain.
-- **Short lists have no scroller**: in a scroller, the scroller is a nameless Tab stop, and
-  making the scroller non-focusable broke Tab for the whole page.
+- **A short list is a tree sized to its rows** (`Tree::fit`), hidden when empty. A list box
+  in a scroller made the scroller a nameless Tab stop, and making the scroller
+  non-focusable broke Tab for the whole page.
 - **Dialogs are futures** (GTK 4 has no blocking `run`). While a popover menu is open,
   `window::spawn` waits for it to close, so a dialog is not mapped under a closing menu.
 - **A keyboard context menu opens when its keys are let go**: a popover opened on

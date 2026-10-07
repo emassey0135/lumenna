@@ -12,6 +12,8 @@ use futures_channel::oneshot;
 use gtk::prelude::*;
 use gtk::{gdk, glib};
 
+use crate::tree::{Item, Tree};
+
 /// Says something went wrong, with an OK button.
 pub fn fail(parent: &impl IsA<gtk::Window>, message: &str) {
     gtk::AlertDialog::builder().message(message).modal(true).build().show(Some(parent));
@@ -215,43 +217,35 @@ pub async fn ask(parent: &impl IsA<gtk::Window>, title: &str, label: &str, messa
 }
 
 /// Asks for one of `options`, from a list. Enter or a double click on one chooses it.
+///
+/// The list is the app's tree, as every list is, so it reads and moves as they do: the arrows
+/// move between the options, and Tab goes on to the buttons.
 pub async fn pick(parent: &impl IsA<gtk::Window>, title: &str, label: &str, options: &[String]) -> Option<usize> {
-    let list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::Browse).build();
-    for option in options {
-        let row = gtk::ListBoxRow::builder()
-            .child(&gtk::Label::builder().label(option).xalign(0.0).margin_top(4).margin_bottom(4).margin_start(6).build())
-            .build();
-        list.append(&row);
+    let name = label.replace('_', "");
+    let list = Tree::new(name.trim_end_matches(':'));
+    list.widget.set_min_content_height(240);
+    let items = options
+        .iter()
+        .enumerate()
+        .map(|(index, option)| Item { key: index.to_string(), text: option.clone(), depth: 0 })
+        .collect();
+    if list.set(items) {
+        list.select_key_or_near(None, Some(0));
     }
-    if let Some(first) = list.row_at_index(0) {
-        list.select_row(Some(&first));
-    }
-    let scrolled = gtk::ScrolledWindow::builder()
-        .child(&list)
-        .min_content_height(240)
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .has_frame(true)
-        .build();
     let content = gtk::Box::new(gtk::Orientation::Vertical, 6);
-    content.append(&label_for(label, &list));
-    content.append(&scrolled);
-    let chosen = list.clone();
-    let answer = open(
-        parent,
-        title,
-        content.upcast_ref(),
-        move || chosen.selected_row().and_then(|row| usize::try_from(row.index()).ok()),
-        "_OK",
-    );
+    content.append(&label_for(label, &list.view));
+    content.append(&list.widget);
+    let chosen = Rc::clone(&list);
+    let answer = open(parent, title, content.upcast_ref(), move || chosen.selected(), "_OK");
     // Enter on a row is OK, as in any list chooser.
-    list.connect_row_activated(|list, _| {
-        if let Some(window) = list.root().and_downcast::<gtk::Window>()
-            && let Some(default) = window.default_widget() {
-                default.activate();
-            }
+    let view = list.view.downgrade();
+    list.connect_activate(move |_| {
+        if let Some(window) = view.upgrade().and_then(|view| view.root()).and_downcast::<gtk::Window>()
+            && let Some(default) = window.default_widget()
+        {
+            default.activate();
+        }
     });
-    if let Some(first) = list.row_at_index(0) {
-        focus_on(&first);
-    }
+    list.focus();
     answer.await.ok().flatten()
 }

@@ -18,6 +18,25 @@ class SettingsTest(unittest.TestCase):
     def page(self, steps):
         self.session.press(*["Control+Page_Down"] * steps)
 
+    def test_settings_opens_on_its_tab_and_tab_comes_back_to_it(self):
+        self.assertEqual(self.session.focus(), "[page tab] 'General' selected")
+        self.session.press("Tab")
+        self.assertIn("[check box]", self.session.focus())
+        self.session.press("Shift+Tab")
+        self.assertEqual(self.session.focus(), "[page tab] 'General' selected")
+
+    def test_the_arrows_and_control_tab_go_from_page_to_page(self):
+        self.session.press("Right")
+        self.assertEqual(self.session.focus(), "[page tab] 'Planning' selected")
+        self.session.press("Tab")
+        self.assertEqual(self.session.focus(), "[check box] 'Completing a task completes its subtasks' checked")
+        self.session.press("Control+Tab")
+        self.assertEqual(self.session.focus(), "[page tab] 'Devices' selected")
+        self.session.press("Control+Shift+Tab")
+        self.assertEqual(self.session.focus(), "[page tab] 'Planning' selected")
+        self.session.press("Control+Page_Up")
+        self.assertEqual(self.session.focus(), "[page tab] 'General' selected")
+
     def test_a_check_box_is_named_without_its_mnemonic_marker(self):
         self.session.press("Tab")
         self.assertEqual(self.session.focus(), "[check box] 'Open Lumenna when you sign in, in the background'")
@@ -56,6 +75,23 @@ class SettingsTest(unittest.TestCase):
         self.assertIn("Not paired", Atspi.Text.get_text(status, 0, -1))
         self.session.press("Tab")
         self.assertEqual(self.session.focus(), "[button] 'Sync Now'")
+
+    def test_a_code_entered_while_waiting_gives_up_the_wait_and_joins(self):
+        self.page(2)
+        self.session.press("Tab", "Tab", "Tab")
+        self.assertEqual(self.session.focus(), "[button] 'Pair a Device…'")
+        self.session.press("Return")
+        self.session.wait_for_window("Pair a Device")
+        self.session.press("Return", wait=4)
+        self.assertEqual(self.session.focus(), "[text] \"This device's code\"")
+        self.session.said()
+        self.session.press("Tab")
+        self.assertEqual(self.session.focus(), "[text] 'Code from the other device'")
+        self.session.type("notacode")
+        self.session.press("Return", wait=4)
+        said = self.session.said()
+        self.assertEqual(said[0], "Joining with the code.")
+        self.assertIn("'notacode' is not a pairing code", said[-1])
 
     def test_escape_closes_settings(self):
         self.session.press("Escape")
