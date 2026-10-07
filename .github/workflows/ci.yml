@@ -136,6 +136,10 @@ jobs:
   apple:
     name: iOS and macOS apps
     runs-on: macos-15
+    env:
+      # An audit finding is attached as a screenshot of its element, so a failure on the
+      # runner's iOS can be seen in the uploaded results, not only read about.
+      TEST_RUNNER_AUDIT_ATTACH: "1"
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -165,10 +169,12 @@ jobs:
           device=$(echo "$line" | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}')
           xcodebuild -project Lumenna.xcodeproj -scheme Lumenna \
             -destination "platform=iOS Simulator,id=$device" \
-            -collect-test-diagnostics never CODE_SIGNING_ALLOWED=NO test
+            -collect-test-diagnostics never -resultBundlePath $RUNNER_TEMP/iphone.xcresult CODE_SIGNING_ALLOWED=NO test
 
       - name: iPhone app on the smallest screen
-        # Large text on a small phone is where layouts break first.
+        # Large text on a small phone is where layouts break first. Run whether or not the
+        # Pro-sized run passed, so a failure there does not hide this one.
+        if: success() || failure()
         working-directory: apps/apple
         run: |
           line=$(xcrun simctl list devices available | grep -E '^\s+iPhone SE' | tail -1)
@@ -177,7 +183,16 @@ jobs:
           device=$(echo "$line" | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}')
           xcodebuild -project Lumenna.xcodeproj -scheme Lumenna \
             -destination "platform=iOS Simulator,id=$device" \
-            -collect-test-diagnostics never CODE_SIGNING_ALLOWED=NO test
+            -collect-test-diagnostics never -resultBundlePath $RUNNER_TEMP/iphone-se.xcresult CODE_SIGNING_ALLOWED=NO test
+
+
+      - name: Test results, when a test failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iphone-test-results
+          path: ${{ runner.temp }}/*.xcresult
+          retention-days: 14
 
   android:
     name: Android (arm64 and x86_64)
