@@ -155,7 +155,11 @@ final class LumennaUITests: XCTestCase {
                 return true
             }
             let element = issue.element.map { "\($0.elementType.rawValue) '\($0.label)' \($0.frame)" }
-            issues.append("\(issue.compactDescription) — \(issue.detailedDescription) [\(element ?? "unnamed element")]")
+            let finding = "\(issue.compactDescription) — \(issue.detailedDescription) [\(element ?? "unnamed element")]"
+            issues.append(finding)
+            // Printed as well: with AUDIT_ATTACH the audit fails the test itself, before the
+            // assertion below can say which element it was.
+            print("AUDIT \(screen): \(finding)")
             return ProcessInfo.processInfo.environment["AUDIT_ATTACH"] == nil
         }
         XCTAssertTrue(issues.isEmpty, "\(screen)\n" + issues.joined(separator: "\n"))

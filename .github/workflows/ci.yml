@@ -135,7 +135,10 @@ jobs:
 
   apple:
     name: iOS and macOS apps
-    runs-on: macos-15
+    # Xcode 27 and the iOS 27 simulator, which people run. iOS 26's audit judges text faded
+    # under the navigation bar's scroll-edge blur as failing contrast (and reports it with
+    # no element); iOS 27's judges only what is shown.
+    runs-on: xcode-27
     env:
       # An audit finding is attached as a screenshot of its element, so a failure on the
       # runner's iOS can be seen in the uploaded results, not only read about.
