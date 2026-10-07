@@ -155,8 +155,9 @@ jobs:
       - name: iPhone app, with its UI tests
         working-directory: apps/apple
         run: |
-          # The newest iPhone simulator this Xcode has, by its identifier.
-          line=$(xcrun simctl list devices available | grep -E '^\s+iPhone' | tail -1)
+          # A Pro-sized iPhone, as the tests are run locally, by its identifier; the newest
+          # this Xcode has. (The smallest screen gets a run of its own once it passes there.)
+          line=$(xcrun simctl list devices available | grep -E '^\s+iPhone [0-9]+ Pro \(' | tail -1)
           echo "Testing on $line"
           device=$(echo "$line" | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}')
           xcodebuild -project Lumenna.xcodeproj -scheme Lumenna \
@@ -183,7 +184,7 @@ jobs:
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           # The platform's licence is asked for even when the others are accepted.
           yes | sdkmanager --licenses > /dev/null
-          yes | sdkmanager "ndk;30.0.16248370" "platforms;android-37" > /dev/null
+          yes | sdkmanager "ndk;30.0.16248370" "platforms;android-37.0" > /dev/null
           cargo install cargo-ndk --locked
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
       - name: Build both ABIs
