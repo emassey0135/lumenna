@@ -170,24 +170,28 @@ jobs:
           line=$(xcrun simctl list devices available | grep -E '^\s+iPhone [0-9]+ Pro \(' | tail -1)
           echo "Testing on $line"
           device=$(echo "$line" | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}')
+          # Booted and settled first: a test runner started on a cold simulator timed out
+          # waiting for accessibility to load, and ran nothing.
+          xcrun simctl bootstatus "$device" -b
           xcodebuild -project Lumenna.xcodeproj -scheme Lumenna \
             -destination "platform=iOS Simulator,id=$device" \
             -collect-test-diagnostics never -resultBundlePath $RUNNER_TEMP/iphone.xcresult CODE_SIGNING_ALLOWED=NO test
+          xcrun simctl shutdown "$device"
 
       - name: iPhone app on the smallest screen
         # Large text on a small phone is where layouts break first. Run whether or not the
-        # Pro-sized run passed, so a failure there does not hide this one.
+        # Pro-sized run passed, so a failure there does not hide this one. Xcode lists no SE
+        # of its own, but its iOS still runs on one.
         if: success() || failure()
         working-directory: apps/apple
         run: |
-          line=$(xcrun simctl list devices available | grep -E '^\s+iPhone SE' | tail -1)
-          if [ -z "$line" ]; then echo "No iPhone SE simulator in this Xcode; skipped"; exit 0; fi
-          echo "Testing on $line"
-          device=$(echo "$line" | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}')
+          runtime=$(xcrun simctl list runtimes available | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9-]+' | tail -1)
+          device=$(xcrun simctl create "iPhone SE" com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation "$runtime")
+          echo "Testing on an iPhone SE (3rd generation), $runtime"
+          xcrun simctl bootstatus "$device" -b
           xcodebuild -project Lumenna.xcodeproj -scheme Lumenna \
             -destination "platform=iOS Simulator,id=$device" \
             -collect-test-diagnostics never -resultBundlePath $RUNNER_TEMP/iphone-se.xcresult CODE_SIGNING_ALLOWED=NO test
-
 
       - name: Test results, when a test failed
         if: failure()
