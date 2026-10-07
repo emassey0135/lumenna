@@ -236,6 +236,29 @@ impl Automation {
         Ok(said)
     }
 
+    /// A visible top-level window titled exactly `title`.
+    pub fn window_named(&self, title: &str) -> Option<HWND> {
+        find_window(|hwnd, text, _| unsafe { IsWindowVisible(hwnd) }.as_bool() && text == title)
+    }
+
+    /// Sets the slider or other range called `name` in `window` to `value`.
+    pub fn set_range(&self, window: HWND, name: &str, value: f64) -> Result<(), String> {
+        let found = self.named(window, name).ok_or_else(|| format!("nothing called {name}"))?;
+        unsafe {
+            let range: IUIAutomationRangeValuePattern = found.GetCurrentPatternAs(UIA_RangeValuePatternId).map_err(|e| e.to_string())?;
+            range.SetValue(value).map_err(|e| e.to_string())
+        }
+    }
+
+    /// Presses the button called `name` in `window`.
+    pub fn invoke(&self, window: HWND, name: &str) -> Result<(), String> {
+        let found = self.named(window, name).ok_or_else(|| format!("nothing called {name}"))?;
+        unsafe {
+            let button: IUIAutomationInvokePattern = found.GetCurrentPatternAs(UIA_InvokePatternId).map_err(|e| e.to_string())?;
+            button.Invoke().map_err(|e| e.to_string())
+        }
+    }
+
     /// The items of the popup menu open now, as described.
     pub fn menu_items(&self) -> Vec<String> {
         let Ok(menu) = (unsafe { FindWindowW(w!("#32768"), None) }) else { return Vec::new() };

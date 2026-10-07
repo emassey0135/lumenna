@@ -540,3 +540,117 @@ fn every_dialog_fits_the_screen_at_the_largest_text_size_with_nothing_overlappin
     app.post(&["esc", "esc"]);
 }
 
+/// Windows' own Text size, as the Settings app sets it: its slider and its Apply button, so
+/// what Windows does when a person changes it is what the app is given. What this found set
+/// is put back when it is dropped, whatever happened in between.
+struct TextSize<'a> {
+    automation: &'a Automation,
+    was: u32,
+    opened_settings: bool,
+}
+
+impl<'a> TextSize<'a> {
+    fn new(automation: &'a Automation) -> Self {
+        let opened_settings = automation.window_named("Settings").is_none();
+        Self { automation, was: Self::now(), opened_settings }
+    }
+
+    /// The setting, in percent: no value is 100.
+    fn now() -> u32 {
+        use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
+        let mut value = 0u32;
+        let mut size = 4u32;
+        let read = unsafe {
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                windows::core::w!(r"Software\Microsoft\Accessibility"),
+                windows::core::w!("TextScaleFactor"),
+                RRF_RT_REG_DWORD,
+                None,
+                Some((&raw mut value).cast()),
+                Some(&mut size),
+            )
+        };
+        if read.is_ok() { value } else { 100 }
+    }
+
+    /// Moves the slider to `percent` and applies it, waiting until Windows has.
+    fn set(&self, percent: u32) -> Result<(), String> {
+        Command::new("explorer.exe").arg("ms-settings:easeofaccess-display").status().map_err(|e| e.to_string())?;
+        let settings = automation::wait(Duration::from_secs(20), || {
+            self.automation.window_named("Settings").filter(|w| self.automation.named(*w, "Apply").is_some())
+        })
+        .ok_or("the Settings app did not show Text size")?;
+        self.automation.set_range(settings, "Text size", f64::from(percent))?;
+        std::thread::sleep(automation::SETTLE);
+        self.automation.invoke(settings, "Apply")?;
+        automation::wait(Duration::from_secs(20), || (Self::now() == percent).then_some(()))
+            .ok_or_else(|| format!("Text size did not become {percent}%"))
+    }
+}
+
+impl Drop for TextSize<'_> {
+    fn drop(&mut self) {
+        if Self::now() != self.was
+            && let Err(why) = self.set(self.was)
+        {
+            eprintln!("COULD NOT PUT TEXT SIZE BACK to {}%: {why}. Set it in Settings, Accessibility, Text size.", self.was);
+        }
+        if self.opened_settings
+            && let Some(settings) = self.automation.window_named("Settings")
+        {
+            unsafe {
+                let _ = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
+                    Some(settings),
+                    windows::Win32::UI::WindowsAndMessaging::WM_CLOSE,
+                    windows::Win32::Foundation::WPARAM(0),
+                    windows::Win32::Foundation::LPARAM(0),
+                );
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn text_grows_without_a_restart_when_windows_text_size_is_raised() {
+    // It changes Text size for the whole PC while it runs, so only when asked.
+    if std::env::var_os("LUMENNA_CHANGE_TEXT_SIZE").is_none() {
+        eprintln!("skipped: set LUMENNA_CHANGE_TEXT_SIZE=1 to let it raise Windows' Text size, and put it back");
+        return;
+    }
+    let app = App::launch(|lumenna| {
+        add(lumenna, "Write report");
+        add(lumenna, "Call Sam");
+    });
+    app.post(&[GO_TASKS, "home"]);
+    // The heights things are drawn at: Win32's fields offer no text pattern, so UI
+    // Automation has no font size to give for them.
+    let measure = || {
+        let height = |element: Option<windows::Win32::UI::Accessibility::IUIAutomationElement>, what: &str| {
+            let place = unsafe { element.unwrap_or_else(|| panic!("no {what}")).CurrentBoundingRectangle() }.unwrap();
+            place.bottom - place.top
+        };
+        [
+            height(app.automation.named(app.window, "Write report"), "row for the task"),
+            height(app.automation.focusable(app.window, "Title"), "Title field"),
+            // The first thing named Title is its label.
+            height(app.automation.named(app.window, "Title"), "Title label"),
+        ]
+    };
+    let before = measure();
+
+    let text_size = TextSize::new(&app.automation);
+    let was = text_size.was;
+    let raised = if was >= 200 { was - 50 } else { was + 50 };
+    text_size.set(raised).unwrap_or_else(|why| panic!("{why}"));
+    // Half the change at least: a row and a field add padding that does not grow with text.
+    let enough = f64::from(raised - was) / f64::from(was) / 2.0;
+    let grew = |now: &[i32; 3]| now.iter().zip(&before).all(|(n, b)| f64::from(*n) >= f64::from(*b) * (1.0 + enough));
+    let after = automation::wait(Duration::from_secs(10), || Some(measure()).filter(grew));
+    drop(text_size);
+
+    let names = ["the task's row", "the Title field", "the Title label"];
+    eprintln!("Text size {was}% -> {raised}%: {}", names.iter().zip(before).zip(after.unwrap_or_else(measure)).map(|((n, b), a)| format!("{n} {b}px -> {a}px")).collect::<Vec<_>>().join(", "));
+    assert!(after.is_some(), "the app did not grow its text without a restart when Text size went from {was}% to {raised}%");
+}
