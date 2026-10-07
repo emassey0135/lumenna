@@ -82,6 +82,10 @@ struct Dialog {
     lumenna: Arc<Lumenna>,
     cancelled: RefCell<Option<Arc<AtomicBool>>>,
     running: Cell<bool>,
+    /// Whether the pairing running is the wait to be found, which a code entered gives up.
+    waiting: Cell<bool>,
+    /// A code entered while waiting, to join with once the wait has ended.
+    pending: RefCell<Option<String>>,
     finished: RefCell<Option<oneshot::Sender<Option<PairedWith>>>>,
 }
 
@@ -108,7 +112,9 @@ impl Dialog {
         // Focus somewhere that stays: a disabled button that had it leaves it nowhere.
         self.cancel.grab_focus();
         self.wait.set_sensitive(false);
-        self.with_code.set_sensitive(false);
+        // While waiting, a code can still be entered: it gives the wait up and joins instead.
+        self.with_code.set_sensitive(code.is_none());
+        self.waiting.set(code.is_none());
         self.say(if code.is_none() { "Opening a pairing session." } else { "Connecting to the other device." });
         let cancelled = Arc::new(AtomicBool::new(false));
         *self.cancelled.borrow_mut() = Some(Arc::clone(&cancelled));
@@ -160,6 +166,12 @@ impl Dialog {
             }
             Message::Done(Err(message)) => {
                 self.running.set(false);
+                // The wait was given up for a code entered meanwhile: join with it now. That
+                // the wait was cancelled is not news.
+                if let Some(code) = self.pending.borrow_mut().take() {
+                    self.start(Some(code));
+                    return false;
+                }
                 self.my_code_label.set_visible(false);
                 self.my_code.set_visible(false);
                 self.wait.set_sensitive(true);
@@ -177,7 +189,9 @@ impl Dialog {
         let mut code = self.their_code.text().trim().to_owned();
         if code.is_empty() {
             let pasted = self.their_code.clipboard().read_text_future().await.ok().flatten();
-            if let Some(pasted) = pasted.map(|p| p.trim().to_owned()).filter(|p| !p.is_empty()) {
+            // Not this device's own code, which waiting put on the clipboard.
+            let own = self.my_code.text();
+            if let Some(pasted) = pasted.map(|p| p.trim().to_owned()).filter(|p| !p.is_empty() && *p != own) {
                 self.their_code.set_text(&pasted);
                 code = pasted;
             }
@@ -185,6 +199,17 @@ impl Dialog {
         if code.is_empty() {
             prompts::tell(&self.window, "Type or paste the code the other device shows.").await;
             prompts::focus_on(&self.their_code);
+            return;
+        }
+        if self.running.get() {
+            if self.waiting.get() {
+                // One pairing at a time: the wait ends, and the pairing with the code follows.
+                *self.pending.borrow_mut() = Some(code);
+                if let Some(cancelled) = self.cancelled.borrow().as_ref() {
+                    cancelled.store(true, Ordering::Relaxed);
+                }
+                self.say("Joining with the code.");
+            }
             return;
         }
         self.start(Some(code));
@@ -249,6 +274,8 @@ pub async fn run(parent: &gtk::Window, lumenna: Arc<Lumenna>) -> Option<String> 
         lumenna,
         cancelled: RefCell::new(None),
         running: Cell::new(false),
+        waiting: Cell::new(false),
+        pending: RefCell::new(None),
         finished: RefCell::new(Some(finished)),
     });
     {

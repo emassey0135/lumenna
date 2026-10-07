@@ -34,6 +34,9 @@ class TaskListTest(unittest.TestCase):
         self.assertEqual(self.session.focus(), "[tree item] 'Inbox, 1 open task' level 2 1 of 2")
         self.session.press("Down")
         self.assertEqual(self.session.focus(), "[tree item] 'Work, 3 open tasks' level 2 2 of 2 expanded")
+        # A subproject under its parent, not after the Inbox, which would nest it there.
+        self.session.press("Down")
+        self.assertEqual(self.session.focus(), "[tree item] 'Reports, no open tasks' level 3 1 of 1")
 
     def test_a_subtask_is_a_level_deeper_and_counted_among_its_own_siblings(self):
         self.assertEqual(self.session.focus(), "[tree item] 'Buy milk' level 1 1 of 2")
@@ -72,6 +75,26 @@ class TaskListTest(unittest.TestCase):
         self.session.type(" today")
         self.session.press("Return")
         self.assertIn("Buy milk today", self.session.lum("task", "list"))
+
+    def test_tab_leaves_a_tree_rather_than_going_through_its_rows(self):
+        self.session.press("Tab")
+        self.assertEqual(self.session.focus(), "[text] 'Title'")
+        self.session.press("Shift+Tab")
+        self.assertEqual(self.session.focus(), "[tree item] 'Buy milk' level 1 1 of 2")
+        self.session.press("Shift+Tab")
+        self.assertEqual(self.session.focus(), "[text] 'Filter'")
+
+    def test_a_chooser_is_a_list_tab_leaves(self):
+        self.session.press("Control+Shift+m")
+        self.session.wait_for_window("Move Buy milk")
+        self.assertEqual(self.session.focus(), "[tree item] 'Work' level 1 1 of 2")
+        self.session.press("Down")
+        self.assertEqual(self.session.focus(), "[tree item] 'Reports' level 1 2 of 2")
+        self.session.press("Tab")
+        self.assertEqual(self.session.focus(), "[button] 'Cancel'")
+        self.session.press("Shift+Tab", "Return", wait=1)
+        self.assertEqual(self.session.said(), ["Moved Buy milk"])
+        self.assertIn("Buy milk", self.session.lum("task", "list", '#Reports'))
 
     def test_f6_goes_through_the_places_the_list_and_the_details(self):
         self.session.press("F6")

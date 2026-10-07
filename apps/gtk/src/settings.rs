@@ -16,6 +16,7 @@ use lumenna_surface::{DeviceView, ExportFormat, Imported};
 
 use crate::core::sentence;
 use crate::window::{App, spawn};
+use crate::tree::{Item, Tree};
 use crate::{pairing, prompts};
 
 const VERBOSITIES: [(&str, &str); 2] = [("Full sentences", "full"), ("Terse", "terse")];
@@ -30,56 +31,159 @@ pub enum Page {
     Export = 4,
 }
 
+const PAGES: [&str; 5] = ["General", "Planning", "Devices", "Backups", "Export and Import"];
+
 thread_local! {
     /// The settings window, while it is open: opening it again brings it forward.
-    static OPEN: RefCell<Option<(gtk::Window, gtk::Notebook)>> = const { RefCell::new(None) };
+    static OPEN: RefCell<Option<(gtk::Window, Rc<Tabs>)>> = const { RefCell::new(None) };
+}
+
+/// The pages and the row of tabs over them.
+///
+/// A stack switcher, not a notebook: a notebook keeps keyboard focus itself, so Orca reached
+/// its tab bar as an unnamed "grouping". A stack switcher's tabs take focus and are read as
+/// tabs, but each is a Tab stop of its own; so only the current one takes Tab, and the arrows
+/// move to the next and open it, as a tab bar does.
+struct Tabs {
+    stack: gtk::Stack,
+    switcher: gtk::StackSwitcher,
+}
+
+impl Tabs {
+    fn buttons(&self) -> Vec<gtk::Widget> {
+        std::iter::successors(self.switcher.first_child(), |button| button.next_sibling()).collect()
+    }
+
+    fn current(&self) -> usize {
+        let name = self.stack.visible_child_name();
+        PAGES.iter().position(|page| name.as_deref() == Some(*page)).unwrap_or(0)
+    }
+
+    /// Only the current tab is a Tab stop.
+    fn settle(&self) {
+        let current = self.current();
+        for (index, button) in self.buttons().iter().enumerate() {
+            button.set_focusable(index == current);
+        }
+    }
+
+    /// Opens a page, and puts focus on its tab when `focus`.
+    fn go(&self, index: usize, focus: bool) {
+        let index = index.min(PAGES.len() - 1);
+        self.stack.set_visible_child_name(PAGES[index]);
+        self.settle();
+        if focus && let Some(button) = self.buttons().get(index) {
+            button.grab_focus();
+        }
+    }
+
+    /// Opens the page `step` along, wrapping round.
+    fn step(&self, step: isize, focus: bool) {
+        let count = PAGES.len() as isize;
+        let next = (self.current() as isize + step).rem_euclid(count) as usize;
+        self.go(next, focus);
+    }
 }
 
 /// Opens Settings on a page.
 pub fn show(app: &Rc<App>, page: Page) {
-    if let Some((window, notebook)) = OPEN.with(|open| open.borrow().clone()) {
-        notebook.set_current_page(Some(page as u32));
+    if let Some((window, tabs)) = OPEN.with(|open| open.borrow().clone()) {
+        tabs.go(page as usize, false);
         window.present();
         return;
     }
-    let notebook = gtk::Notebook::new();
-    let pages: [(&str, gtk::Widget); 5] = [
-        ("General", general(app)),
-        ("Planning", planning(app)),
-        ("Devices", devices_page(app)),
-        ("Backups", backups(app)),
-        ("Export and Import", export(app)),
-    ];
-    for (title, page) in pages {
-        notebook.append_page(&page, Some(&gtk::Label::new(Some(title))));
+    let stack = gtk::Stack::new();
+    let pages: [gtk::Widget; 5] = [general(app), planning(app), devices_page(app), backups(app), export(app)];
+    for (title, page) in PAGES.iter().zip(pages) {
+        stack.add_titled(&page, Some(title), title);
     }
+    let switcher = gtk::StackSwitcher::builder().stack(&stack).halign(gtk::Align::Center).margin_top(6).build();
+    let tabs = Rc::new(Tabs { stack: stack.clone(), switcher: switcher.clone() });
+    tabs.go(page as usize, false);
+    {
+        // A click on a tab opens its page too.
+        let tabs = Rc::downgrade(&tabs);
+        stack.connect_visible_child_name_notify(move |_| {
+            if let Some(tabs) = tabs.upgrade() {
+                tabs.settle();
+            }
+        });
+    }
+    let arrows = gtk::EventControllerKey::new();
+    {
+        let tabs = Rc::downgrade(&tabs);
+        arrows.connect_key_pressed(move |_, key, _, modifiers| {
+            let Some(tabs) = tabs.upgrade() else { return glib::Propagation::Proceed };
+            if !modifiers.is_empty() {
+                return glib::Propagation::Proceed;
+            }
+            match key {
+                gdk::Key::Right | gdk::Key::KP_Right => tabs.step(1, true),
+                gdk::Key::Left | gdk::Key::KP_Left => tabs.step(-1, true),
+                gdk::Key::Home | gdk::Key::KP_Home => tabs.go(0, true),
+                gdk::Key::End | gdk::Key::KP_End => tabs.go(PAGES.len() - 1, true),
+                _ => return glib::Propagation::Proceed,
+            }
+            glib::Propagation::Stop
+        });
+    }
+    switcher.add_controller(arrows);
+
+    let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    body.append(&switcher);
+    body.append(&stack);
     let window = gtk::Window::builder()
         .title("Settings")
         .transient_for(&app.window)
         .destroy_with_parent(true)
         .default_width(560)
         .default_height(480)
-        .child(&notebook)
+        .child(&body)
         .build();
-    notebook.set_current_page(Some(page as u32));
-    let escape = gtk::EventControllerKey::new();
-    let closing = window.downgrade();
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key == gdk::Key::Escape
-            && let Some(window) = closing.upgrade()
-        {
-            window.close();
-            return glib::Propagation::Stop;
-        }
-        glib::Propagation::Proceed
-    });
-    window.add_controller(escape);
+    // From anywhere in the window: Escape closes it; Control with Tab or Page Up and Down
+    // goes to the next or previous page, onto its tab.
+    let keys = gtk::EventControllerKey::new();
+    keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+    {
+        let (closing, tabs) = (window.downgrade(), Rc::downgrade(&tabs));
+        keys.connect_key_pressed(move |_, key, _, modifiers| {
+            let control = modifiers.contains(gdk::ModifierType::CONTROL_MASK);
+            let shift = modifiers.contains(gdk::ModifierType::SHIFT_MASK);
+            let step = match key {
+                gdk::Key::Escape if modifiers.is_empty() => {
+                    if let Some(window) = closing.upgrade() {
+                        window.close();
+                    }
+                    return glib::Propagation::Stop;
+                }
+                gdk::Key::Tab | gdk::Key::KP_Tab if control && !shift => 1,
+                gdk::Key::Tab | gdk::Key::KP_Tab | gdk::Key::ISO_Left_Tab if control && shift => -1,
+                gdk::Key::Page_Down | gdk::Key::KP_Page_Down if control => 1,
+                gdk::Key::Page_Up | gdk::Key::KP_Page_Up if control => -1,
+                _ => return glib::Propagation::Proceed,
+            };
+            if let Some(tabs) = tabs.upgrade() {
+                tabs.step(step, true);
+            }
+            glib::Propagation::Stop
+        });
+    }
+    window.add_controller(keys);
     window.connect_close_request(|_| {
         OPEN.with(|open| open.borrow_mut().take());
         glib::Propagation::Proceed
     });
-    OPEN.with(|open| *open.borrow_mut() = Some((window.clone(), notebook.clone())));
+    OPEN.with(|open| *open.borrow_mut() = Some((window.clone(), Rc::clone(&tabs))));
     window.present();
+    // Opening on the tab says where Settings opened.
+    let tabs = Rc::downgrade(&tabs);
+    glib::idle_add_local_once(move || {
+        if let Some(tabs) = tabs.upgrade()
+            && let Some(button) = tabs.buttons().get(tabs.current())
+        {
+            prompts::focus_on(button);
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------------------
@@ -331,7 +435,8 @@ fn planning(app: &Rc<App>) -> gtk::Widget {
 
 pub struct Devices {
     sync_status: gtk::Entry,
-    list: gtk::ListBox,
+    label: gtk::Label,
+    list: Rc<Tree>,
     devices: RefCell<Vec<DeviceView>>,
     status: Status,
 }
@@ -342,27 +447,29 @@ impl Devices {
             Ok(status) => {
                 let text = speech::sentence(&speech::announcement(&status.announcement, &status.notices));
                 self.sync_status.set_text(&text);
-                let kept = self.list.selected_row().map_or(0, |row| row.index().max(0));
-                while let Some(row) = self.list.row_at_index(0) {
-                    self.list.remove(&row);
-                }
+                let key = self.list.selected().and_then(|index| self.list.key(index));
+                let near = self.list.selected().or(Some(0));
                 let now = jiff::Timestamp::now();
-                for device in &status.devices {
-                    let label = gtk::Label::builder().label(devices::line(device, now)).xalign(0.0).margin_start(6).build();
-                    self.list.append(&label);
-                }
-                let last = i32::try_from(status.devices.len()).unwrap_or(1) - 1;
-                if let Some(row) = self.list.row_at_index(kept.min(last.max(0))) {
-                    self.list.select_row(Some(&row));
-                }
+                let items = status
+                    .devices
+                    .iter()
+                    .map(|device| Item { key: device.node_id.clone(), text: devices::line(device, now), depth: 0 })
+                    .collect();
+                // An empty list is no use to reach: the sync status already says there is
+                // nothing paired.
+                self.label.set_visible(!status.devices.is_empty());
+                self.list.widget.set_visible(!status.devices.is_empty());
                 *self.devices.borrow_mut() = status.devices;
+                if self.list.set(items) {
+                    self.list.select_key_or_near(key.as_deref(), near);
+                }
             }
             Err(error) => self.sync_status.set_text(&sentence(&error)),
         }
     }
 
     fn chosen(&self) -> Option<DeviceView> {
-        let index = usize::try_from(self.list.selected_row()?.index()).ok()?;
+        let index = self.list.selected()?;
         self.devices.borrow().get(index).cloned()
     }
 
@@ -373,13 +480,13 @@ impl Devices {
                 app.store_changed();
                 self.status.say(&speech::announcement(&change.announcement, &change.notices));
             }
-            Err(error) => prompts::fail(&window_of(&self.list, app), &sentence(&error)),
+            Err(error) => prompts::fail(&window_of(&self.list.view, app), &sentence(&error)),
         }
     }
 
     async fn rename(&self, app: &App) {
         let Some(device) = self.chosen() else { return };
-        let window = window_of(&self.list, app);
+        let window = window_of(&self.list.view, app);
         let Some(name) = prompts::ask(&window, &format!("Rename {}", device.name), "_Name:", "", &device.name).await else {
             return;
         };
@@ -388,7 +495,7 @@ impl Devices {
 
     async fn unpair(&self, app: &App) {
         let Some(device) = self.chosen() else { return };
-        let window = window_of(&self.list, app);
+        let window = window_of(&self.list.view, app);
         if device.this_device {
             return prompts::tell(&window, "This is the device you are using. Unpair it from another one.").await;
         }
@@ -403,15 +510,13 @@ fn devices_page(app: &Rc<App>) -> gtk::Widget {
     let page = PageBox::new();
     let sync_status = prompts::read_only_text();
     page.field("S_ync status", &sync_status);
-    let list = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::Browse).build();
-    list.update_property(&[gtk::accessible::Property::Description("Delete unpairs the selected device.")]);
-    // No scroller: a person has a handful of devices, and an empty list in one is a Tab stop
-    // with nothing in it, while an empty list on its own is skipped.
-    list.add_css_class("boxed-list");
+    let list = Tree::new("Paired devices");
+    list.fit(160);
+    list.view.update_property(&[gtk::accessible::Property::Description("Delete unpairs the selected device.")]);
     let label = gtk::Label::builder().label("Paired _devices").use_underline(true).xalign(0.0).margin_top(6).build();
-    label.set_mnemonic_widget(Some(&list));
+    label.set_mnemonic_widget(Some(&list.view));
     page.add(&label);
-    page.add(&list);
+    page.add(&list.widget);
     let buttons = gtk::Box::builder().spacing(6).margin_top(6).build();
     let sync_now = gtk::Button::with_mnemonic("Sync _Now");
     let pair = gtk::Button::with_mnemonic("_Pair a Device…");
@@ -422,7 +527,13 @@ fn devices_page(app: &Rc<App>) -> gtk::Widget {
     }
     page.add(&buttons);
     let (widget, status) = page.finish();
-    let devices = Rc::new(Devices { sync_status, list: list.clone(), devices: RefCell::new(Vec::new()), status: status.clone() });
+    let devices = Rc::new(Devices {
+        sync_status,
+        label,
+        list: Rc::clone(&list),
+        devices: RefCell::new(Vec::new()),
+        status: status.clone(),
+    });
     devices.load(app);
     *app.devices_page.borrow_mut() = Some(Rc::downgrade(&devices));
 
@@ -466,21 +577,18 @@ fn devices_page(app: &Rc<App>) -> gtk::Widget {
         });
     }
     // Delete in the list unpairs, as it removes in every other list.
-    let keys = gtk::EventControllerKey::new();
     {
-        let (devices, app) = (Rc::clone(&devices), Rc::downgrade(app));
-        keys.connect_key_pressed(move |_, key, _, _| {
-            if !matches!(key, gdk::Key::Delete | gdk::Key::KP_Delete) {
+        let (devices, app) = (Rc::downgrade(&devices), Rc::downgrade(app));
+        list.connect_key(move |key, modifiers, _| {
+            if !matches!(key, gdk::Key::Delete | gdk::Key::KP_Delete) || !modifiers.is_empty() {
                 return glib::Propagation::Proceed;
             }
-            if let Some(app) = app.upgrade() {
-                let devices = Rc::clone(&devices);
+            if let (Some(app), Some(devices)) = (app.upgrade(), devices.upgrade()) {
                 spawn(async move { devices.unpair(&app).await });
             }
             glib::Propagation::Stop
         });
     }
-    list.add_controller(keys);
     widget
 }
 
