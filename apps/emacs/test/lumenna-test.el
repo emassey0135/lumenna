@@ -429,7 +429,7 @@
       (should (equal (lumenna--read-code) "typed456")))))
 
 (ert-deftest lumenna-a-running-daemon-is-used-over-its-socket ()
-  (skip-when (eq system-type 'windows-nt))
+  (skip-unless (not (eq system-type 'windows-nt)))
   (lumenna-test--with-store
     (let ((daemon (start-process "lumenna-daemon" nil lumenna-lum-program
                                  "--profile" lumenna-profile "sync-daemon" "--local-only")))

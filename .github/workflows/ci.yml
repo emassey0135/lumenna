@@ -162,7 +162,9 @@ jobs:
       - uses: android-actions/setup-android@v3
       - name: NDK, platform and cargo-ndk
         run: |
-          sdkmanager "ndk;30.0.16248370" "platforms;android-37"
+          # The platform's licence is asked for even when the others are accepted.
+          yes | sdkmanager --licenses > /dev/null
+          yes | sdkmanager "ndk;30.0.16248370" "platforms;android-37" > /dev/null
           cargo install cargo-ndk --locked
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
       - name: Build both ABIs
