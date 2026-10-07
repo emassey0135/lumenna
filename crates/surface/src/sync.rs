@@ -771,7 +771,7 @@ fn elsewhere() -> LumennaError {
 
 /// The socket the endpoint's holder answers on, so anything else on the device can ask it
 /// for a round.
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg(unix)]
 fn holder_socket(directory: &Path) -> std::path::PathBuf {
     directory.join("sync.sock")
 }
