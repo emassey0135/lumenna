@@ -11,7 +11,6 @@ import { Blocks } from "./Blocks";
 import { core } from "./core";
 import type { Place } from "./core";
 import { Day } from "./Day";
-import { Devices } from "./Devices";
 import { Details } from "./Details";
 import type { DetailsHandle } from "./Details";
 import { QuickAdd } from "./QuickAdd";
@@ -32,7 +31,6 @@ export function App() {
   const [shown, setShown] = useState({ title: "Tasks", query: "", quickAddPrefix: "" });
   const [selected, setSelected] = useState<string | undefined>();
   const [adding, setAdding] = useState(false);
-  const [devicesOpen, setDevicesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const details = useRef<DetailsHandle>(null);
@@ -138,7 +136,6 @@ export function App() {
         <Button onPress={() => setAdding(true)}>New Task</Button>
         <Button onPress={() => void undo(false)}>Undo</Button>
         <Button onPress={() => void undo(true)}>Redo</Button>
-        <Button onPress={() => setDevicesOpen(true)}>Devices…</Button>
         <Button onPress={() => setSettingsOpen(true)}>Settings…</Button>
         {/* In the banner, so landmark navigation does not skip it. */}
         {notice && (
@@ -179,17 +176,17 @@ export function App() {
       <aside aria-label="Task details">
         <Details ref={details} id={selected} revision={revision} onChanged={changed} />
       </aside>
-      <Devices
-        isOpen={devicesOpen}
-        onClose={() => setDevicesOpen(false)}
+      <Settings
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
         revision={revision}
+        onChanged={changed}
         syncing={syncing}
         onPaired={() => {
           changed();
           void startSyncing();
         }}
       />
-      <Settings isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} revision={revision} onChanged={changed} />
       <Prompts />
       <BlockForms />
       <QuickAdd

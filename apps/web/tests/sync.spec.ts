@@ -11,22 +11,44 @@ async function open(page: Page) {
   await expect(page.getByRole("heading", { name: "Lumenna", level: 1 })).toBeVisible({ timeout: 30_000 });
 }
 
-test("the devices dialog says this browser is not paired, and refuses a code that is not one", async ({ page }) => {
+/** Settings' Devices page. */
+async function devices(page: Page) {
+  await page.getByRole("button", { name: "Settings…" }).click();
+  await page.getByRole("tab", { name: "Devices" }).click();
+  return page.getByRole("tabpanel", { name: "Devices" });
+}
+
+test("the devices page says this browser is not paired, and refuses a code that is not one", async ({ page }) => {
   await open(page);
-  await page.getByRole("button", { name: "Devices…" }).click();
-  const dialog = page.getByRole("dialog", { name: "Devices" });
+  const dialog = await devices(page);
   await expect(dialog.getByText(/^Not paired with any other device yet/)).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Sync Now" })).toBeDisabled();
   const results = await new AxeBuilder({ page }).analyze();
   expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(", ")}`)).toEqual([]);
   await dialog.getByRole("button", { name: "Pair a Device…" }).click();
-  const pairing = page.getByRole("dialog", { name: "Pair a Device" });
+  const pairing = dialog;
+  await expect(pairing.getByRole("heading", { name: "Pair a Device" })).toBeVisible();
   await expect(pairing.getByRole("textbox", { name: "Name for this browser" })).toBeFocused();
   await pairing.getByRole("textbox", { name: "Code from the other device" }).fill("not-a-code");
   await pairing.getByRole("button", { name: "Pair With This Code" }).click();
   await expect(pairing.getByRole("alert")).toContainText("is not a pairing code");
   await pairing.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByRole("dialog", { name: "Devices" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Sync Now" })).toBeVisible();
+});
+
+test("a code entered while waiting gives up the wait, then tries the code", async ({ page }) => {
+  test.skip(!process.env.LUMENNA_NETWORK, "needs the internet: LUMENNA_NETWORK=1");
+  test.setTimeout(120_000);
+  await open(page);
+  const pairing = await devices(page);
+  await pairing.getByRole("button", { name: "Pair a Device…" }).click();
+  await pairing.getByRole("button", { name: "Wait for the Other Device" }).click();
+  await expect(pairing.getByRole("textbox", { name: "This browser's code" })).toBeVisible({ timeout: 60_000 });
+  // One pairing runs at a time; the code field stays open while waiting all the same.
+  await pairing.getByRole("textbox", { name: "Code from the other device" }).fill("not-a-code");
+  await pairing.getByRole("button", { name: "Pair With This Code" }).click();
+  await expect(pairing.getByRole("alert")).toContainText("is not a pairing code", { timeout: 30_000 });
+  await expect(pairing.getByRole("button", { name: "Wait for the Other Device" })).toBeEnabled();
 });
 
 test("two browsers pair by code over a relay, and a task added in one arrives in the other", async ({ browser }) => {
@@ -38,8 +60,7 @@ test("two browsers pair by code over a relay, and a task added in one arrives in
   await open(b);
 
   const start = async (page: Page, name: string) => {
-    await page.getByRole("button", { name: "Devices…" }).click();
-    await page.getByRole("button", { name: "Pair a Device…" }).click();
+    await (await devices(page)).getByRole("button", { name: "Pair a Device…" }).click();
     await page.getByRole("textbox", { name: "Name for this browser" }).fill(name);
   };
 
@@ -88,8 +109,7 @@ test("a browser and lum pair by code, and lum's sync brings its task to the brow
   const env = { ...process.env, LUMENNA_PROFILE: join(home, "profile"), LUMENNA_BACKUP_DIR: join(home, "backups") };
 
   await open(page);
-  await page.getByRole("button", { name: "Devices…" }).click();
-  await page.getByRole("button", { name: "Pair a Device…" }).click();
+  await (await devices(page)).getByRole("button", { name: "Pair a Device…" }).click();
   await page.getByRole("button", { name: "Wait for the Other Device" }).click();
   const code = page.getByRole("textbox", { name: "This browser's code" });
   await expect(code).toBeVisible({ timeout: 60_000 });
@@ -107,9 +127,9 @@ test("a browser and lum pair by code, and lum's sync brings its task to the brow
   pairing.stdin.write("yes\n");
   await words.getByRole("button", { name: "Yes, They Match" }).click();
   expect(await exited).toBe(0);
-  const devices = page.getByRole("dialog", { name: "Devices" });
-  await expect(devices.getByRole("option").nth(1)).toBeVisible({ timeout: 60_000 });
-  await expect(devices.getByText(/^Sync is running, with 1 other device/)).toBeVisible({ timeout: 60_000 });
+  const list = page.getByRole("tabpanel", { name: "Devices" });
+  await expect(list.getByRole("option").nth(1)).toBeVisible({ timeout: 60_000 });
+  await expect(list.getByText(/^Sync is running, with 1 other device/)).toBeVisible({ timeout: 60_000 });
   await page.getByRole("button", { name: "Close" }).click();
 
   // lum dials the browser, which answers while its page is open. A browser's endpoint is

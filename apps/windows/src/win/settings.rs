@@ -19,7 +19,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     BN_CLICKED, BS_AUTOCHECKBOX, BS_GROUPBOX, BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL,
     CB_RESETCONTENT, CB_SETCURSEL, CBN_SELCHANGE, CBS_DROPDOWNLIST, EN_KILLFOCUS, ES_AUTOHSCROLL, ES_MULTILINE,
     ES_NUMBER, ES_READONLY, GetParent, IDCANCEL, IDOK, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL,
-    LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_WANTKEYBOARDINPUT, WM_NOTIFY, WM_VKEYTOITEM, WS_BORDER, WS_TABSTOP,
+    LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_WANTKEYBOARDINPUT, PostMessageW, WM_DESTROY, WM_NOTIFY, WM_VKEYTOITEM, WS_BORDER, WS_TABSTOP,
     WS_VSCROLL,
 };
 use windows::core::HSTRING;
@@ -574,6 +574,7 @@ impl Dialog for Devices<'_> {
         a11y::make_live(dialog::item(page, STATUS));
         a11y::set_description(dialog::item(page, DEVICES), "Delete unpairs the selected device.");
         self.load(page);
+        self.app.devices_page.set(Some(page));
         false
     }
 
@@ -609,10 +610,19 @@ impl Dialog for Devices<'_> {
                 say(page, &text);
                 Some(0)
             }
+            // From the app (`devices_changed`): the rest of the window has been redrawn.
+            WM_STORE_CHANGED if wparam.0 == FROM_APP => {
+                self.load(page);
+                Some(0)
+            }
             WM_STORE_CHANGED => {
                 self.load(page);
                 self.app.store_changed();
                 Some(0)
+            }
+            WM_DESTROY => {
+                self.app.devices_page.set(None);
+                None
             }
             // Delete in the list unpairs, as it removes in every other list.
             WM_VKEYTOITEM if controls::low_word(wparam.0) == VK_DELETE.0 => {
@@ -622,6 +632,17 @@ impl Dialog for Devices<'_> {
             WM_VKEYTOITEM => Some(-1),
             _ => None,
         }
+    }
+}
+
+/// Marks a `WM_STORE_CHANGED` the app sent the Devices page, so the page does not send it
+/// back.
+const FROM_APP: usize = 1;
+
+/// Has the open Devices page read the store again.
+pub fn devices_changed(page: HWND) {
+    unsafe {
+        let _ = PostMessageW(Some(page), WM_STORE_CHANGED, WPARAM(FROM_APP), LPARAM(0));
     }
 }
 
