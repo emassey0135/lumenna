@@ -146,12 +146,13 @@ class Orca:
 class Session:
     """One run of the app on a store of its own."""
 
-    def __init__(self, seed=(), orca=None):
+    def __init__(self, seed=(), orca=None, environment=None):
         self.directory = tempfile.mkdtemp(prefix="lumenna-ui-")
         self.environment = dict(
             os.environ,
             LUMENNA_PROFILE=str(Path(self.directory) / "profile"),
             LUMENNA_BACKUP_DIR=str(Path(self.directory) / "backups"),
+            **(environment or {}),
         )
         for command in seed:
             self.lum(*command)

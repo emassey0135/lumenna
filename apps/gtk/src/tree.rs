@@ -50,9 +50,13 @@ mod imp {
     #[derive(Default, Properties)]
     #[properties(wrapper_type = super::Row)]
     pub struct Row {
-        /// The line as read, which the row's label shows.
+        /// The line as the view gave it.
         #[property(get, set)]
         pub text: RefCell<String>,
+        /// The line as the row's label shows it: the text, with its level after it where
+        /// GTK cannot report the level itself (`Tree::word_levels`).
+        #[property(get, set)]
+        pub shown: RefCell<String>,
         /// Where it is in the flat list the tree was given.
         pub index: Cell<usize>,
         /// Its position among its siblings, from one, and how many siblings there are.
@@ -79,7 +83,7 @@ glib::wrapper! {
 
 impl Row {
     fn new(text: &str, index: usize) -> Self {
-        let row: Self = glib::Object::builder().property("text", text).build();
+        let row: Self = glib::Object::builder().property("text", text).property("shown", text).build();
         row.imp().index.set(index);
         row
     }
@@ -87,6 +91,14 @@ impl Row {
     fn index(&self) -> usize {
         self.imp().index.get()
     }
+}
+
+/// Whether a row has to say its level in words: GTK reports a tree item's level to AT-SPI
+/// only from 4.16. (Its position among its siblings it reports from 4.22; that is left to the
+/// platform, as the other apps leave it.) `LUMENNA_LEVEL_IN_TEXT=1` forces it, to test.
+fn level_in_text() -> bool {
+    std::env::var_os("LUMENNA_LEVEL_IN_TEXT").is_some_and(|value| value == "1")
+        || (gtk::major_version(), gtk::minor_version()) < (4, 16)
 }
 
 thread_local! {
@@ -168,6 +180,8 @@ pub struct Tree {
     rows: RefCell<Vec<Row>>,
     collapsed: RefCell<HashSet<String>>,
     busy: Cell<bool>,
+    /// Whether rows say their level in words, because this GTK does not report it.
+    level_in_text: bool,
     /// Whether focus was on the tree when it was last rebuilt, until the selection is put back.
     had_focus: Cell<bool>,
     /// The visible position focus is on its way to, while its row has no widget yet.
@@ -203,7 +217,7 @@ impl Tree {
             item.set_child(Some(&expander));
             item.property_expression("item")
                 .chain_property::<gtk::TreeListRow>("item")
-                .chain_property::<Row>("text")
+                .chain_property::<Row>("shown")
                 .bind(&label, "label", gtk::Widget::NONE);
         });
         factory.connect_bind(|_, item| {
@@ -251,6 +265,7 @@ impl Tree {
             rows: RefCell::new(Vec::new()),
             collapsed: RefCell::new(HashSet::new()),
             busy: Cell::new(false),
+            level_in_text: level_in_text(),
             had_focus: Cell::new(false),
             target: Rc::new(Cell::new(None)),
             on_selected: RefCell::new(None),
@@ -259,6 +274,13 @@ impl Tree {
             on_menu: RefCell::new(None),
         });
         tree.connect_signals();
+        let weak = Rc::downgrade(&tree);
+        tree.model.connect_items_changed(move |_, _, _, _| {
+            // A row expanded or collapsed changes which row each is read after.
+            if let Some(tree) = weak.upgrade() {
+                tree.word_levels();
+            }
+        });
         tree
     }
 
@@ -492,6 +514,7 @@ impl Tree {
                 }
             }
             *self.items.borrow_mut() = items;
+            self.word_levels();
             return false;
         }
         self.remember_expansion();
@@ -529,8 +552,27 @@ impl Tree {
         *self.rows.borrow_mut() = rows;
         self.root.splice(0, self.root.n_items(), &tops);
         self.expand();
+        self.word_levels();
         self.busy.set(false);
         true
+    }
+
+    /// Words each shown row's level where GTK cannot report it: only where it changes against
+    /// the row shown before, as the BTSpeak, iPhone and Android apps say it, so a run of
+    /// siblings is not each told its level. Elsewhere a row shows its text as given.
+    fn word_levels(&self) {
+        let mut previous = 0;
+        for position in 0..self.model.n_items() {
+            let Some(list_row) = self.model.item(position).and_downcast::<gtk::TreeListRow>() else { continue };
+            let Some(row) = list_row.item().and_downcast::<Row>() else { continue };
+            let depth = list_row.depth();
+            let shown =
+                if self.level_in_text && depth != previous { format!("{}, level {}", row.text(), depth + 1) } else { row.text() };
+            if row.shown() != shown {
+                row.set_shown(shown);
+            }
+            previous = depth;
+        }
     }
 
     /// Notes which visible rows are collapsed and which expanded, before a rebuild. Rows out
