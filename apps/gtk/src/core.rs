@@ -49,8 +49,9 @@ impl Core {
     /// Starts keeping this device in sync, for as long as the app runs: the resident
     /// app is the device's sync process, with no service to set up.
     ///
-    /// If another process already holds the endpoint — `lum daemon` — that one carries on
-    /// and this does nothing: either way the device is in sync.
+    /// If another process already holds the endpoint — `lum daemon` — the service waits its
+    /// turn and takes over when that process stops, so it is kept either way; meanwhile Sync
+    /// Now asks that process for a round.
     pub fn start_syncing(&self) {
         let lumenna = Arc::clone(&self.lumenna);
         let sync = Arc::clone(&self.sync);
@@ -58,7 +59,6 @@ impl Core {
             let listener: Arc<dyn SyncListener> = Arc::new(Arrivals);
             match lumenna.start_sync(Reach::Internet, listener) {
                 Ok(service) => *sync.lock().unwrap_or_else(PoisonError::into_inner) = Some(service),
-                Err(LumennaError::SyncElsewhere { .. }) => {}
                 Err(error) => post(Event::Say(format!("Syncing could not start. {}", sentence(&error)))),
             }
         });
