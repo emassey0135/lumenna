@@ -248,6 +248,15 @@ The core's `complete` works everywhere; what is missing is how each app offers i
 ### Each app
 
 - **iOS**: custom rotors (overdue, running, next block).
+- **iPad**, found by its UI tests, each skipped there until fixed:
+  - ⌘Z right after quick add closes does not reach the list (it does from the list itself).
+  - A block's Delete swipe action does not appear to the test in Browse's Blocks list.
+  - The audit fails contrast on the task form's About heading, which looks like the
+    headings that pass.
+  - In the simulator, the first tap on a button of an alert with an untouched text field
+    only ends editing (Skip when assigning a task). Try it on a real iPad; VoiceOver, which
+    activates rather than taps, is not affected.
+  - ⌘F never reaches the app in the simulator; try it on a real iPad too.
 - **Android**: pairing on the local network untried on a real phone (the emulator's NAT
   passes no multicast); the iPhone's two pairing tests not ported. The keyboard commands
   and the wide layout are tested in the emulator, not yet with TalkBack and a real keyboard.
@@ -258,9 +267,9 @@ The core's `complete` works everywhere; what is missing is how each app offers i
 - **Emacs**: priority faces, mapped to voices.
 - **The web client**: making a task a subtask or moving it to the top level (the export
   exists; nothing calls it).
-- **Every app**: icons of their own (GTK and Windows have none); one binding for "go to now"
-  (Ctrl+T on Windows, GTK and Android, Cmd+T on the Mac, `t` on BTSpeak, but Cmd+J on iPad,
-  which is Go to Day on the Mac, and none on the web).
+- **Every app**: icons of their own (GTK and Windows have none); a key for "go to now" on
+  the web (Ctrl+T on Windows, GTK and Android, Cmd+T on the Mac, iPad and iPhone, `t` on
+  BTSpeak).
 - **Screen readers not yet tried by a person**: JAWS, Narrator, ChromeVox, Emacspeak and
   speechd-el. NVDA (Windows and the web), Orca, VoiceOver on the Mac and iPhone, TalkBack,
   Emacsvox and the BTSpeak have been. The braille short forms for states and roles are

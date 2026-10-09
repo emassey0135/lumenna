@@ -133,86 +133,115 @@ jobs:
       - name: Playwright and axe
         run: npm run core:dev && npm test
 
-  apple:
-    name: iOS and macOS apps
-    # Xcode 27 and the iOS 27 simulator, which people run. iOS 26's audit judges text faded
-    # under the navigation bar's scroll-edge blur as failing contrast (and reports it with
-    # no element); iOS 27's judges only what is shown.
+  mac:
+    name: Mac app, Apple silicon and Intel
     runs-on: xcode-27
-    env:
-      # An audit finding is attached as a screenshot of its element, so a failure on the
-      # runner's iOS can be seen in the uploaded results, not only read about.
-      TEST_RUNNER_AUDIT_ATTACH: "1"
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-ios, aarch64-apple-ios-sim, aarch64-apple-darwin, x86_64-apple-darwin
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Newest Xcode, and XcodeGen
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          brew install xcodegen
+      - name: Build
+        working-directory: apps/apple
+        run: |
+          xcodegen
+          xcodebuild -project Lumenna.xcodeproj -scheme LumennaMac -configuration Release \
+            -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO build
+
+  ios-build:
+    name: iOS app and its tests, built once
+    # Xcode 27 and the iOS 27 simulator, which people run. iOS 26's audit judges text faded
+    # under the navigation bar's scroll-edge blur as failing contrast (and reports it with
+    # no element); iOS 27's judges only what is shown.
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios, aarch64-apple-ios-sim
       - uses: Swatinem/rust-cache@v2
       - name: Newest Xcode, and XcodeGen
         run: |
           sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
           xcodebuild -version
           brew install xcodegen
-      - name: Project
-        working-directory: apps/apple
-        run: xcodegen
-      - name: Mac app, Apple silicon and Intel
+      - name: Build for testing
+        # The core and the app are built once here; each device below only runs the tests.
         working-directory: apps/apple
         run: |
-          xcodebuild -project Lumenna.xcodeproj -scheme LumennaMac -configuration Release \
-            -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO build
-      - name: iPhone app, with its UI tests
-        working-directory: apps/apple
-        run: |
-          # A Pro-sized iPhone, as the tests are run locally, by its identifier; the newest
-          # this Xcode has.
-          line=$(xcrun simctl list devices available | grep -E '^\s+iPhone [0-9]+ Pro \(' | tail -1)
-          echo "Testing on $line"
-          device=$(echo "$line" | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}')
-          # Booted and settled first: a test runner started on a cold simulator timed out
-          # waiting for accessibility to load, and ran nothing.
-          xcrun simctl bootstatus "$device" -b
+          xcodegen
           xcodebuild -project Lumenna.xcodeproj -scheme Lumenna \
-            -destination "platform=iOS Simulator,id=$device" \
-            -collect-test-diagnostics never -resultBundlePath $RUNNER_TEMP/iphone.xcresult CODE_SIGNING_ALLOWED=NO test
-          xcrun simctl shutdown "$device"
-
-      - name: iPhone app on the smallest screen
-        # Large text on a small phone is where layouts break first. Run whether or not the
-        # Pro-sized run passed, so a failure there does not hide this one. Xcode lists no SE
-        # of its own, but its iOS still runs on one.
-        if: success() || failure()
-        working-directory: apps/apple
-        run: |
-          runtime=$(xcrun simctl list runtimes available | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9-]+' | tail -1)
-          device=$(xcrun simctl create "iPhone SE" com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation "$runtime")
-          echo "Testing on an iPhone SE (3rd generation), $runtime"
-          xcrun simctl bootstatus "$device" -b
-          xcodebuild -project Lumenna.xcodeproj -scheme Lumenna \
-            -destination "platform=iOS Simulator,id=$device" \
-            -collect-test-diagnostics never -resultBundlePath $RUNNER_TEMP/iphone-se.xcresult CODE_SIGNING_ALLOWED=NO test
-
-      - name: Test results, when a test failed
-        if: failure()
-        uses: actions/upload-artifact@v4
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/derived" \
+            CODE_SIGNING_ALLOWED=NO build-for-testing
+          tar -C "$RUNNER_TEMP/derived/Build" -cf "$RUNNER_TEMP/products.tar" Products
+      - uses: actions/upload-artifact@v4
         with:
-          name: iphone-test-results
-          path: ${{ runner.temp }}/*.xcresult
-          retention-days: 14
+          name: ios-products
+          path: ${{ runner.temp }}/products.tar
+          retention-days: 1
 
-  android:
-    name: Android (${{ matrix.name }})
+  ios:
+    name: iOS (${{ matrix.name }})
+    needs: ios-build
     strategy:
       fail-fast: false
       matrix:
         include:
-          # A phone, on the 16 KB pages Android 17's newer devices use.
-          - { name: "phone, 16 KB pages", image: "37.2", target: google_apis_ps16k, profile: "", keyboard: false }
-          # A desktop-sized screen with a keyboard: every screen in its wide layout, at its
-          # real density, so the touch targets are checked as they are. The system images
-          # stopped having a desktop of their own at API 34; this is the large screen alone.
-          - { name: "desktop screen and keyboard", image: "37.0", target: google_apis, profile: desktop_medium, keyboard: true }
+          # Pro-sized, as the tests are run locally: the newest this Xcode has.
+          - { name: iPhone, find: '^\s+iPhone [0-9]+ Pro \(' }
+          # Large text on a small phone is where layouts break first. Xcode lists no SE of
+          # its own, but its iOS still runs on one.
+          - { name: iPhone SE, create: com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation }
+          # The sidebar, the split views and the menu bar.
+          - { name: iPad, find: '^\s+iPad Pro 11-inch' }
+    runs-on: xcode-27
+    env:
+      # An audit finding is attached as a screenshot of its element, so a failure on the
+      # runner's iOS can be seen in the uploaded results, not only read about.
+      TEST_RUNNER_AUDIT_ATTACH: "1"
+    steps:
+      - name: Newest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-products
+          path: ${{ runner.temp }}
+      - name: Simulator
+        run: |
+          if [ -n "${{ matrix.create }}" ]; then
+            runtime=$(xcrun simctl list runtimes available | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9-]+' | tail -1)
+            device=$(xcrun simctl create "${{ matrix.name }}" "${{ matrix.create }}" "$runtime")
+          else
+            device=$(xcrun simctl list devices available | grep -E '${{ matrix.find }}' | tail -1 | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}')
+          fi
+          echo "Testing on $(xcrun simctl list devices | grep "$device")"
+          # Booted and settled first: a test runner started on a cold simulator timed out
+          # waiting for accessibility to load, and ran nothing.
+          xcrun simctl bootstatus "$device" -b
+          echo "DEVICE=$device" >> "$GITHUB_ENV"
+      - name: UI tests
+        run: |
+          tar -C "$RUNNER_TEMP" -xf "$RUNNER_TEMP/products.tar"
+          xcodebuild test-without-building \
+            -xctestrun "$(ls "$RUNNER_TEMP"/Products/*.xctestrun | head -1)" \
+            -destination "platform=iOS Simulator,id=$DEVICE" \
+            -collect-test-diagnostics never -resultBundlePath "$RUNNER_TEMP/results.xcresult" \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 300
+      - name: Test results, when a test failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-test-results-${{ matrix.name }}
+          path: ${{ runner.temp }}/results.xcresult
+          retention-days: 14
+
+  android-build:
+    name: Android app and its tests, both ABIs
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -234,9 +263,52 @@ jobs:
           yes | sdkmanager "ndk;30.0.16248370" "platforms;android-37.0" > /dev/null
           cargo install cargo-ndk --locked
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
-      - name: Build both ABIs
+      - name: Build
         working-directory: apps/android
         run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Ready for 16 KB pages
+        # Every native library must load at 16 KB boundaries, and sit 16 KB aligned in the
+        # APK, or a 16 KB-page device refuses it. An x86_64 emulator emulates 16 KB pages,
+        # and did not boot in ten minutes, so this is checked here instead.
+        working-directory: apps/android
+        run: |
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          "$(ls -d $ANDROID_HOME/build-tools/*/ | sort -V | tail -1)zipalign" -c -P 16 4 "$apk"
+          readelf="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          dir=$(mktemp -d) && unzip -q "$apk" 'lib/*' -d "$dir"
+          for lib in "$dir"/lib/*/*.so; do
+            align=$("$readelf" -lW "$lib" | awk '/LOAD/ {print $NF}' | sort -u)
+            echo "$lib: $align"
+            [ "$align" = 0x4000 ] || { echo "::error::$lib is not 16 KB aligned"; exit 1; }
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apks
+          path: apps/android/app/build/outputs/apk
+          retention-days: 1
+
+  android:
+    name: Android (${{ matrix.name }})
+    needs: android-build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: phone, profile: "", keyboard: false }
+          # A desktop-sized screen with a keyboard: every screen in its wide layout, at its
+          # real density, so the touch targets are checked as they are. The system images
+          # stopped having a desktop of their own at API 34; this is the large screen alone.
+          - { name: "desktop screen and keyboard", profile: desktop_medium, keyboard: true }
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: apps/android/run-instrumented-tests.sh
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-apks
+          path: apps/android/app/build/outputs/apk
       - name: KVM for the emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -246,10 +318,16 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: "37.0"
-          system-image-api-level: ${{ matrix.image }}
-          target: ${{ matrix.target }}
+          target: google_apis
           arch: x86_64
           profile: ${{ matrix.profile }}
           enable-hw-keyboard: ${{ matrix.keyboard }}
           working-directory: apps/android
-          script: ./gradlew --no-daemon :app:connectedDebugAndroidTest
+          script: ./run-instrumented-tests.sh test-output
+      - name: Screenshots at the largest font
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-screenshots-${{ matrix.profile || 'phone' }}
+          path: apps/android/test-output
+          retention-days: 14

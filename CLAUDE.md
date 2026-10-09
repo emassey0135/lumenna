@@ -30,7 +30,7 @@ crates/surface/ the command surface: the `Lumenna` object, one method per operat
 crates/ffi/     the library the Swift and Kotlin apps link; re-exports surface over UniFFI.
 crates/sync/    Iroh endpoints, the document sync session, and pairing.
 crates/desktop/ what the Windows, GTK and web apps decide alike: row wording, flat rows as a
-                tree, the sidebar's places, work-block choices, device wording, the profile.
+                tree, work-block choices, device wording, the profile.
 apps/cli/       `lum`, and `lum rpc` for clients that cannot link Rust.
 apps/btspeak/   the BTSpeak app, in Python, over `lum rpc`.
 apps/emacs/     the Emacs client, in Elisp, over `lum rpc` or the profile's socket.
@@ -448,6 +448,36 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
   `TUIPredictionViewCell`, and "partially unsupported" Dynamic Type on SwiftUI nodes (the
   audit reports it even for a stock button). To see an unnamed finding, run with
   `AUDIT_ATTACH=1` and `xcrun xcresulttool export attachments`.
+- **Keyboard commands are the Mac's keys and names, once** (`KeyboardCommands.swift`): on
+  iPad the menu bar (`AppDelegate.buildMenu`, with Find and Format removed, which would take
+  ⌘F and ⌘B), on iPhone, which has none, `RootTabs.keyCommands`; never both, or a key has
+  two commands. Each is a selector up the responder chain, so the screen in front answers
+  before `RootTabs`. **Something must be first responder** or the chain is empty and the
+  Task and Day menus reach nothing: each screen with commands calls `takeKeyboardCommands`
+  as it appears, unless text is being edited. ⌘Z in a field with typing to undo undoes
+  the typing. Row commands act on the row with keyboard focus, else VoiceOver's, else the
+  one open beside the list; the task open beside a list answers them itself.
+- **The iPad is the Mac's layout, not the iPhone's tabs** (`IPadRoot`, three columns): the
+  core's places in a sidebar (`SidebarViewController`, from `Lumenna.places`, plus
+  Settings), the place chosen, and what was opened from it (`showBeside`, which pushes on
+  iPhone and in a narrow window). The sidebar is an `ItemListViewController`, so headings
+  and project trees fold with Expand and Collapse actions and say which they are; a
+  project's, label's or filter's actions are the ones Browse offers (`PlaceActions.swift`,
+  once for both). A screen chosen by a command acts a turn later: it is not in the window
+  until then.
+- **⌘F never reaches the app in the iPad simulator**: no responder is asked about it, where
+  ⌘3 is. Filter Tasks stays on ⌘F in the Edit menu, and its test skips on iPad.
+- **iPad UI tests run in portrait**: in landscape XCUITest's coordinates come out rotated, so
+  part-swipes and taps land on the wrong row, and screenshots come out half black. A hidden
+  sidebar's rows still exist off the screen, so a place is used only once it is hittable.
+  Swipe actions are revealed by a slow, held part-swipe (`reveal(actionsOf:)`): across a
+  narrow column a whole swipe runs the first action itself. Every failure attaches a
+  screenshot (`record(_:)`).
+- **`apps/apple/test-all.sh`** runs every iOS UI test on the iPhone, an SE and the iPad at
+  once, built once, each device's tests shared over clones, each test stopped after three
+  minutes: one waiting forever held a whole run.
+- **The iPad's menu bar is invisible to XCUITest while hidden**, so the keyboard tests
+  (`KeyboardUITests`) prove it by its keys: on iPad they exist only there.
 - **A UI test names a fresh store** through `LUMENNA_TEST_PROFILE`.
 - **Run UI tests with `-collect-test-diagnostics never`**, or any failure hangs xcodebuild
   for ten minutes collecting simulator diagnostics:
@@ -593,6 +623,8 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   property holds, so Orca reads "Control+N Alt+N". Alt+N does nothing; the letter alone works
   in an open menu. Only dropping the mnemonic removes it.
 - **A text view keeps Tab**; `prompts::leaves_on_tab` steps it out of the focus chain.
+- **The sidebar's places are the surface's** (`surface::places`, `Lumenna.places`), shared
+  by Windows, GTK, the web, the Mac, the iPad and Android.
 - **A short list is a tree sized to its rows** (`Tree::fit`), hidden when empty. A list box
   in a scroller made the scroller a nameless Tab stop, and making the scroller
   non-focusable broke Tab for the whole page.
@@ -654,8 +686,14 @@ gives the toolchain.
   anything has focus; `MainActivity.dispatchKeyEvent` takes them when nothing does.
 - **Buttons take focus only out of touch mode**, which a key press leaves; the keyboard
   tests leave it first (`setInTouchMode(false)`), or no tab could be focused.
-- **A wide window** has the tabs as a rail from 600dp, and from 840dp shows a screen beside
-  the one it was opened from (`Navigator`'s depth: a row chosen in the parent replaces the
+- **A wide window has the desktop apps' sidebar** (`Sidebar.kt`, from `Lumenna.places`,
+  plus Settings) from 840dp, with a stack of its own for the place chosen; headings and
+  project trees fold with Expand and Collapse actions, and a project's, label's or filter's
+  actions are Browse's (`PlaceActions.kt`, once for both). Between 600 and 840dp the tabs
+  are a rail. `LumennaTest` and `NewTaskTest` show the app at a phone's width (`PhoneWidth`),
+  so they run on the desktop-sized emulator too; `SidebarTest` and `KeyboardTest` are the
+  wide window's.
+- **A wide window** shows a screen beside the one it was opened from (`Navigator`'s depth: a row chosen in the parent replaces the
   child rather than stacking). F6 moves between the tabs and panes, back onto the row a
   pane was left on (`Pane`): Compose's `saveFocusedChild` keeps only the pane's immediate
   child. Tests force only the width: a forced size bigger than the window is drawn at a
@@ -664,6 +702,10 @@ gives the toolchain.
   the wide layout for real. The desktop system images ended at API 34: `desktop_medium`
   on 37 is a large screen without freeform windows. A real Googlebook (Android 17) has
   those, a title bar per window, and no menu bar.
+- **`run-instrumented-tests.sh`** runs the instrumented tests from APKs already built, with
+  `am instrument`, which exits 0 whatever happened, so its summary decides. CI builds once
+  and runs it on each emulator. It never uninstalls, unlike `connectedAndroidTest`, but
+  never point it at a device whose own data matters.
 - **The store is in no-backup storage** and `allowBackup` is off: Google's backup would copy
   a store that reaches other devices by pairing.
 - **Background sync is WorkManager** (`SyncWorker`): a round on leaving (expedited on
@@ -725,6 +767,12 @@ cargo test --workspace
 cargo clippy --workspace --all-targets
 PROPTEST_CASES=20000 cargo test -p lumenna-core --test properties
 ```
+
+CI (`.github/workflows/ci.yml`) builds each mobile app once and tests it on several devices
+in parallel jobs that share the build as an artifact: `ios-build` with `build-for-testing`,
+then an iPhone, an SE and an iPad with `test-without-building`; `android-build`, which
+also checks 16 KB alignment, then a phone and a desktop-sized emulator with
+`run-instrumented-tests.sh`. The test jobs need no Rust.
 
 `crates/store/tests/convergence.rs` checks replicas reaching the same state from the same
 changes in different orders. It is the slowest suite and the one worth running before
