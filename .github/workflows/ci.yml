@@ -423,6 +423,9 @@ jobs:
           profile: ${{ matrix.profile }}
           enable-hw-keyboard: ${{ matrix.keyboard }}
           emulator-boot-timeout: 900
+          # The default data partition has no room for the app: "Requested internal only,
+          # but not enough space". The RAM stays the profile's own.
+          disk-size: 6000M
           working-directory: apps/android
           script: TESTS="${{ matrix.tests }}" ./run-instrumented-tests.sh test-output
       - name: Screenshots at the largest font
