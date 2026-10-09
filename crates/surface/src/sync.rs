@@ -66,12 +66,6 @@ const TICK: Duration = Duration::from_secs(1);
 /// not yet findable through the relay just after it started — otherwise waited minutes.
 const FIRST_RETRY: Duration = Duration::from_secs(5);
 
-impl From<SyncError> for LumennaError {
-    fn from(error: SyncError) -> Self {
-        Self::new(error.to_string())
-    }
-}
-
 impl From<Reach> for Network {
     fn from(reach: Reach) -> Self {
         match reach {
