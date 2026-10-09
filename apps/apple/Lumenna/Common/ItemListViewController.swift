@@ -72,24 +72,7 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
         view.backgroundColor = .systemBackground
         var configuration = UICollectionLayoutListConfiguration(appearance: isSidebar ? .sidebar : .insetGrouped)
         configuration.headerMode = isSidebar ? .none : .supplementary
-        configuration.trailingSwipeActionsConfigurationProvider = { [weak self] path in
-            guard let self, let item = self.dataSource.itemIdentifier(for: path) else { return nil }
-            var actions = self.actions(for: item).map { action in
-                UIContextualAction(
-                    style: action.destructive ? .destructive : .normal, title: action.title
-                ) { _, _, finished in
-                    action.run(item)
-                    finished(true)
-                }
-            }
-            if let row = self.shown.first(where: { $0.item.key == item.key }),
-               let fold = self.folding.action(for: row, key: item.key, changed: { [weak self] key, said in
-                   self?.fold(key, saying: said)
-               }) {
-                actions.append(fold)
-            }
-            return actions.isEmpty ? nil : UISwipeActionsConfiguration(actions: actions)
-        }
+        configuration.trailingSwipeActionsConfigurationProvider = { [weak self] path in self?.trailingSwipeActions(at: path) }
         collectionView = UICollectionView(
             frame: view.bounds,
             collectionViewLayout: UICollectionViewCompositionalLayout.list(using: configuration)
@@ -284,5 +267,28 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         if action == #selector(undoChange) || action == #selector(redoChange) { return offersUndo }
         return super.canPerformAction(action, withSender: sender)
+    }
+}
+
+// The swipe actions, apart from the layout that asks for them, so a test can ask too.
+extension ItemListViewController {
+    /// What a trailing swipe on the row at `path` offers: VoiceOver's actions for the row too.
+    func trailingSwipeActions(at path: IndexPath) -> UISwipeActionsConfiguration? {
+        guard let item = self.dataSource.itemIdentifier(for: path) else { return nil }
+        var actions = self.actions(for: item).map { action in
+            UIContextualAction(
+                style: action.destructive ? .destructive : .normal, title: action.title
+            ) { _, _, finished in
+                action.run(item)
+                finished(true)
+            }
+        }
+        if let row = self.shown.first(where: { $0.item.key == item.key }),
+           let fold = self.folding.action(for: row, key: item.key, changed: { [weak self] key, said in
+               self?.fold(key, saying: said)
+           }) {
+            actions.append(fold)
+        }
+        return actions.isEmpty ? nil : UISwipeActionsConfiguration(actions: actions)
     }
 }

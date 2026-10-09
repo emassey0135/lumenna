@@ -467,6 +467,13 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
   until then.
 - **⌘F never reaches the app in the iPad simulator**: no responder is asked about it, where
   ⌘3 is. Filter Tasks stays on ⌘F in the Edit menu, and its test skips on iPad.
+- **Three layers of iOS tests.** `LumennaTests` (unit tests hosted in the app) asks each
+  list for its swipe actions (`leadingSwipeActions(at:)`, `trailingSwipeActions(at:)`)
+  and runs them: the list VoiceOver offers as a row's actions, with no gesture to land, so
+  they block in CI. `VoiceOverUITests` turns VoiceOver on (`XCUIVoiceOverService`, iOS 27)
+  and checks what it says, acting through the keyboard commands, which act on VoiceOver's
+  row; its output carries a hint's first word only ("Actions"). The rest of the UI tests
+  drive the app by gestures, and report rather than block.
 - **iPad UI tests run in portrait**: in landscape XCUITest's coordinates come out rotated, so
   part-swipes and taps land on the wrong row, and screenshots come out half black. A hidden
   sidebar's rows still exist off the screen, so a place is used only once it is hittable.

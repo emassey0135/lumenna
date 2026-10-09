@@ -99,43 +99,8 @@ final class TaskListViewController: UIViewController {
 
     private func buildList() {
         var configuration = UICollectionLayoutListConfiguration(appearance: .plain)
-        configuration.leadingSwipeActionsConfigurationProvider = { [weak self] path in
-            guard let self, self.mode == .tasks, let row = self.row(at: path) else { return nil }
-            let action = UIContextualAction(
-                // The title is also the action's name to VoiceOver, so it says what it does.
-                style: .normal, title: row.checked == true ? "Mark Not Done" : "Mark Done"
-            ) { [weak self] _, _, finished in
-                self?.toggleDone(row)
-                finished(true)
-            }
-            action.backgroundColor = .systemGreen
-            return UISwipeActionsConfiguration(actions: [action])
-        }
-        configuration.trailingSwipeActionsConfigurationProvider = { [weak self] path in
-            guard let self, let row = self.row(at: path) else { return nil }
-            if self.mode == .trash {
-                let restore = UIContextualAction(style: .normal, title: "Restore") {
-                    [weak self] _, _, finished in
-                    self?.restore(row)
-                    finished(true)
-                }
-                let erase = UIContextualAction(style: .destructive, title: "Delete from Trash") {
-                    [weak self] _, _, finished in
-                    self?.erase(row)
-                    finished(true)
-                }
-                return UISwipeActionsConfiguration(actions: [restore, erase])
-            }
-            let action = UIContextualAction(style: .destructive, title: "Delete") {
-                [weak self] _, _, finished in
-                self?.trash(row)
-                finished(true)
-            }
-            let fold = self.shown.first { $0.item.id == row.id }.flatMap { shown in
-                self.folding.action(for: shown, key: row.id) { [weak self] key, said in self?.fold(key, saying: said) }
-            }
-            return UISwipeActionsConfiguration(actions: [action] + [fold].compactMap { $0 })
-        }
+        configuration.leadingSwipeActionsConfigurationProvider = { [weak self] path in self?.leadingSwipeActions(at: path) }
+        configuration.trailingSwipeActionsConfigurationProvider = { [weak self] path in self?.trailingSwipeActions(at: path) }
         collectionView = UICollectionView(
             frame: .zero,
             collectionViewLayout: UICollectionViewCompositionalLayout.list(using: configuration)
@@ -455,5 +420,49 @@ extension TaskListViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt path: IndexPath) {
         guard mode == .tasks, let row = row(at: path) else { return }
         showBeside(TaskDetailViewController(core: core, id: row.id))
+    }
+}
+
+// The swipe actions, apart from the layout that asks for them, so a test can ask too.
+extension TaskListViewController {
+    /// What a leading swipe on the row at `path` offers: VoiceOver's actions for the row too.
+    func leadingSwipeActions(at path: IndexPath) -> UISwipeActionsConfiguration? {
+        guard self.mode == .tasks, let row = self.row(at: path) else { return nil }
+        let action = UIContextualAction(
+            // The title is also the action's name to VoiceOver, so it says what it does.
+            style: .normal, title: row.checked == true ? "Mark Not Done" : "Mark Done"
+        ) { [weak self] _, _, finished in
+            self?.toggleDone(row)
+            finished(true)
+        }
+        action.backgroundColor = .systemGreen
+        return UISwipeActionsConfiguration(actions: [action])
+    }
+
+    /// What a trailing swipe on the row at `path` offers: VoiceOver's actions for the row too.
+    func trailingSwipeActions(at path: IndexPath) -> UISwipeActionsConfiguration? {
+        guard let row = self.row(at: path) else { return nil }
+        if self.mode == .trash {
+            let restore = UIContextualAction(style: .normal, title: "Restore") {
+                [weak self] _, _, finished in
+                self?.restore(row)
+                finished(true)
+            }
+            let erase = UIContextualAction(style: .destructive, title: "Delete from Trash") {
+                [weak self] _, _, finished in
+                self?.erase(row)
+                finished(true)
+            }
+            return UISwipeActionsConfiguration(actions: [restore, erase])
+        }
+        let action = UIContextualAction(style: .destructive, title: "Delete") {
+            [weak self] _, _, finished in
+            self?.trash(row)
+            finished(true)
+        }
+        let fold = self.shown.first { $0.item.id == row.id }.flatMap { shown in
+            self.folding.action(for: shown, key: row.id) { [weak self] key, said in self?.fold(key, saying: said) }
+        }
+        return UISwipeActionsConfiguration(actions: [action] + [fold].compactMap { $0 })
     }
 }
