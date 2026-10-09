@@ -1,7 +1,7 @@
 #!/bin/bash
 # Builds Lumenna's Rust core for an Apple platform and regenerates its Swift bindings.
 #
-#   apps/apple/build-core.sh [iphonesimulator|iphoneos|macosx] [Debug|Release]
+#   apps/apple/build-core.sh [iphonesimulator|iphoneos|macosx|watchsimulator|watchos] [Debug|Release]
 #
 # Xcode runs this before every build, passing nothing: it reads PLATFORM_NAME and
 # CONFIGURATION from Xcode's environment. Cargo does nothing when nothing changed, so an
@@ -19,9 +19,20 @@ CONFIGURATION="${2:-${CONFIGURATION:-Debug}}"
 # The Mac app is built for every architecture Xcode asks for (ARCHS: Apple silicon and
 # Intel for a release, the Mac's own for a debug build) and the libraries joined into one.
 ARCHS="${ARCHS:-arm64}"
+# The watch's core has no network of its own: watchOS allows no sockets outside an audio
+# session, so it syncs through its iPhone (crates/surface/src/link.rs), and Iroh is left out.
+FEATURES=
+GENERATED="$ROOT/apps/apple/Generated"
+case "$PLATFORM" in
+  watchsimulator|watchos) FEATURES=--no-default-features; GENERATED="$ROOT/apps/apple/Generated/Watch" ;;
+esac
 case "$PLATFORM" in
   iphonesimulator) TARGETS=aarch64-apple-ios-sim ;;
   iphoneos) TARGETS=aarch64-apple-ios ;;
+  watchsimulator) TARGETS=aarch64-apple-watchos-sim ;;
+  # A 64-bit watch (Series 9 and later, Ultra 2 and later). Older ones are arm64_32, which
+  # Rust has only as a tier 3 target, built with -Z build-std on nightly.
+  watchos) TARGETS=aarch64-apple-watchos ;;
   # Named rather than left to the host build, so the Mac app's library is built against
   # its deployment target and kept apart from the one uniffi-bindgen reads.
   macosx)
@@ -46,12 +57,13 @@ cargo() {
   env -i HOME="$HOME" USER="${USER:-}" \
     PATH="$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin" \
     DEVELOPER_DIR="$DEVELOPER" IPHONEOS_DEPLOYMENT_TARGET=17.0 MACOSX_DEPLOYMENT_TARGET=14.0 \
+    WATCHOS_DEPLOYMENT_TARGET=11.0 \
     cargo "$@"
 }
 
 cd "$ROOT"
 for target in $TARGETS; do
-  cargo build -p lumenna-ffi --lib $PROFILE_FLAG --target "$target"
+  cargo build -p lumenna-ffi --lib $PROFILE_FLAG $FEATURES --target "$target"
 done
 if [ "$PLATFORM" = macosx ]; then
   # One library for every architecture asked for, where the Mac target links it from.
@@ -62,12 +74,15 @@ if [ "$PLATFORM" = macosx ]; then
   lipo -create "${LIBS[@]}" -output "$UNIVERSAL/liblumenna_ffi.a"
 fi
 
-# The bindings come from the interface compiled into a host build of the same crate.
-cargo build -p lumenna-ffi --lib
-GENERATED="$ROOT/apps/apple/Generated"
+# The bindings come from the interface compiled into a host build of the same crate, with
+# the same features: the watch's in a target directory of its own, so the two host builds
+# do not undo each other.
+HOST_TARGET="$ROOT/target"
+[ -n "$FEATURES" ] && HOST_TARGET="$ROOT/target/watch-host"
+cargo build -p lumenna-ffi --lib $FEATURES --target-dir "$HOST_TARGET"
 mkdir -p "$GENERATED"
-cargo run -q -p lumenna-ffi --features bindgen --bin uniffi-bindgen -- \
-  generate --library "$ROOT/target/debug/liblumenna_ffi.dylib" \
+cargo run -q -p lumenna-ffi $FEATURES --features bindgen --bin uniffi-bindgen --target-dir "$HOST_TARGET" -- \
+  generate --library "$HOST_TARGET/debug/liblumenna_ffi.dylib" \
   --language swift --out-dir "$GENERATED/bindings"
 
 # Swift imports the C half as the module LumennaCoreFFI (named in crates/surface/uniffi.toml);
