@@ -72,8 +72,18 @@ impl Db {
         // In a browser one worker owns the file — OPFS allows one connection — so
         // there is nobody to coexist with, and its storage has no WAL to give.
         if !cfg!(all(target_family = "wasm", target_os = "unknown")) {
-            let mode: String =
-                conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0)).unwrap_or_default();
+            // Turning WAL on needs the file to itself for a moment, and SQLite answers "busy"
+            // at once rather than waiting: two processes opening a new store together — a
+            // `lum` command beside the BTSpeak app's server — failed here. WAL, once set,
+            // stays, so asking again soon finds it set by the other.
+            let mut mode = String::new();
+            for _ in 0..100 {
+                mode = conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0)).unwrap_or_default();
+                if mode.eq_ignore_ascii_case("wal") || mode.eq_ignore_ascii_case("memory") {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
             if !mode.eq_ignore_ascii_case("wal") && !mode.eq_ignore_ascii_case("memory") {
                 return Err(StoreError::Sqlite(format!("could not enable WAL mode (got {mode})")));
             }

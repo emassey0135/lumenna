@@ -17,8 +17,9 @@ adb wait-for-device
 # before it broke off ("Broken pipe"). Then each install is tried a few times.
 until adb shell pm path android > /dev/null 2>&1; do sleep 2; done
 # Nor is shared storage, where the tests' screenshots go: "Transport endpoint is not
-# connected" until it is mounted.
-until adb shell ls /sdcard/Android > /dev/null 2>&1; do sleep 2; done
+# connected" until it is mounted, even after /sdcard answers. Ready is when the folder can
+# be made.
+until adb shell mkdir -p "$device_output" > /dev/null 2>&1; do sleep 2; done
 install() {
   for attempt in 1 2 3; do
     adb install -r -t "$1" && return 0
@@ -29,8 +30,7 @@ install() {
 }
 install "$apks/debug/app-debug.apk"
 install "$apks/androidTest/debug/app-debug-androidTest.apk"
-adb shell rm -rf "$device_output"
-adb shell mkdir -p "$device_output"
+adb shell rm -rf "$device_output/*" || true
 
 # `am instrument` exits 0 whatever the tests did, so its summary decides: "OK (n tests)",
 # or "FAILURES!!!" with each failure above it. $TESTS narrows it to some, as the
