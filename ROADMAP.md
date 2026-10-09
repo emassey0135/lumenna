@@ -257,6 +257,9 @@ The core's `complete` works everywhere; what is missing is how each app offers i
     only ends editing (Skip when assigning a task). Try it on a real iPad; VoiceOver, which
     activates rather than taps, is not affected.
   - ⌘F never reaches the app in the simulator; try it on a real iPad too.
+  - In CI the iPad suite takes over half an hour on the runner and times out where it
+    passes locally, so its job reports without blocking: make it fit the runner (fewer
+    simulator round trips, or splitting it across jobs), then make it block again.
 - **Android**: pairing on the local network untried on a real phone (the emulator's NAT
   passes no multicast); the iPhone's two pairing tests not ported. The keyboard commands
   and the wide layout are tested in the emulator, not yet with TalkBack and a real keyboard.
