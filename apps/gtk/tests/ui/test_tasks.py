@@ -1,6 +1,7 @@
 """The task list and its tree, as a screen reader is given them."""
 
 import json
+import subprocess
 import unittest
 
 from harness import Atspi, Session
@@ -155,6 +156,26 @@ class TaskListTest(unittest.TestCase):
         self.session.press("Delete")
         self.assertEqual(self.session.said(), ["Deleted Buy milk"])
         self.assertEqual(self.session.focus(), "[tree item] 'Write the report, priority 1' level 1 1 of 1 expanded")
+
+
+
+class ClockTest(unittest.TestCase):
+    def test_a_due_time_is_said_in_the_desktops_own_clock(self):
+        # GNOME's clock format defaults by the locale's time: 24-hour under C, 12-hour under
+        # en_US. The core says when it is due; the time is the desktop's to word.
+        installed = subprocess.run(["locale", "-a"], capture_output=True, text=True).stdout.lower()
+        for locale, expected in [("C.UTF-8", "15:00"), ("en_US.UTF-8", "3:00 PM")]:
+            with self.subTest(locale=locale):
+                # A locale not installed falls back to C, which would test nothing.
+                if locale.lower().replace("-", "") not in installed.replace("-", ""):
+                    self.skipTest(f"{locale} is not installed")
+                session = Session([("task", "add", "Call the bank tomorrow at 3pm")], environment={"LC_TIME": locale})
+                try:
+                    session.press("Control+2", wait=1.5)
+                    names = [row.get_name() for row in session.find_all("tree item")]
+                    self.assertIn(f"Call the bank, due tomorrow at {expected}", names)
+                finally:
+                    session.close()
 
 
 if __name__ == "__main__":
