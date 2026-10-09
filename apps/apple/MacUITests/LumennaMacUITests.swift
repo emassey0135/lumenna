@@ -13,6 +13,10 @@ final class LumennaMacUITests: XCTestCase {
         // A fresh store for every test, in the app's temporary directory.
         app.launchEnvironment["LUMENNA_TEST_PROFILE"] = profile
         app.launchEnvironment["LUMENNA_BACKUP_DIR"] = backups.path
+        // No sync: on a fresh Mac, as CI's is, listening brings macOS's local-network and
+        // incoming-connection prompts up over the window, which then has neither focus nor
+        // its own colours, and every keystroke and audit after went wrong.
+        app.launchEnvironment["LUMENNA_NO_SYNC"] = "1"
         app.launch()
     }
 
