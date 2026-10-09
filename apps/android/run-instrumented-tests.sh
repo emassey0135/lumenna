@@ -58,7 +58,7 @@ only=()
 [ -n "${TESTS:-}" ] && only=(-e class "$TESTS")
 echo "Running the tests"
 result=$(adb shell am instrument -w "${only[@]}" -e additionalTestOutputDir "$device_output" \
-  "$package.test/androidx.test.runner.AndroidJUnitRunner" 2>&1 | tr -d '\r')
+  "$package.test/androidx.test.runner.AndroidJUnitRunner" 2>&1 | tr -d '\r') || true
 echo "$result"
 
 mkdir -p "$out"

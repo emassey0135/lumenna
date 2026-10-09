@@ -426,11 +426,12 @@ jobs:
           # The default data partition has no room for the app: "Requested internal only,
           # but not enough space". The RAM stays the profile's own.
           disk-size: 6000M
-          # Rendered inside the emulator: with the default, swiftshader_indirect, the
-          # system's display server aborted as the tests began ("Assertion failed:
-          # !rcEnc->featureInfo()->hasReadColorBufferDma", reading a buffer back from the
-          # host), and the instrumentation with it: "System has crashed".
-          emulator-options: -no-window -gpu guest -no-snapshot -noaudio -no-boot-anim
+          # Without GL DMA: with it, the host's software renderer offers reading a buffer
+          # back by DMA, which this image's graphics mapper refuses, so the display server
+          # aborted as the tests began ("Assertion failed:
+          # !rcEnc->featureInfo()->hasReadColorBufferDma") and the instrumentation said
+          # "System has crashed". `-gpu guest` changed nothing. Not seen on a Mac.
+          emulator-options: -no-window -gpu swiftshader_indirect -feature -GLDMA,-GLDMA2 -no-snapshot -noaudio -no-boot-anim
           working-directory: apps/android
           script: TESTS="${{ matrix.tests }}" ./run-instrumented-tests.sh test-output
       - name: Screenshots at the largest font
