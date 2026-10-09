@@ -1,8 +1,8 @@
 //! Somewhere to go, and the sidebar that lists them: the same places, in the same order and
 //! the same words, in every app that has a sidebar — Windows, GTK, the web, the iPad.
 //!
-//! The Rust names say what each is beside the rest of the surface (`SidebarEntry`); to the
-//! web they keep the short names they had (`Entry`), and `Group` would shadow SwiftUI's.
+//! Named for what they are beside the rest of the surface (`SidebarEntry`): a bare `Group`
+//! would shadow SwiftUI's in the Swift bindings.
 
 use serde::{Deserialize, Serialize};
 
@@ -72,7 +72,6 @@ impl Place {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[serde(rename = "Kind")]
 pub enum SidebarKind {
     /// Somewhere to go.
     Place(Place),
@@ -84,7 +83,6 @@ pub enum SidebarKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[serde(rename = "Group")]
 pub enum SidebarGroup {
     /// The project tree.
     Projects,
@@ -98,7 +96,6 @@ pub enum SidebarGroup {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[serde(rename = "Entry")]
 pub struct SidebarEntry {
     /// What it is.
     pub kind: SidebarKind,

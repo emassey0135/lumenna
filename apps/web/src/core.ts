@@ -12,7 +12,7 @@ export type {
   BlockChoice,
   BlockFields,
   BlockShown,
-  Entry,
+  SidebarEntry,
   ExportChoice,
   Place,
   PlanAssignment,

@@ -402,8 +402,8 @@ final class TaskListViewController: UIViewController {
         }
         // Not in the window yet, or the tab still changing: once it appears, or shortly.
         filterAsked = true
-        // Two seconds at most: with three simulators running, a tab can take that to show.
-        guard attempt < 40 else { return }
+        // Five seconds at most: on a slow machine a tab can take that to show.
+        guard attempt < 100 else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let self, self.filterAsked else { return }
             self.focusFilter(attempt: attempt + 1)

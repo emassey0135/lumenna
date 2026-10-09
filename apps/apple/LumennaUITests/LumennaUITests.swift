@@ -519,8 +519,11 @@ final class LumennaUITests: XCTestCase {
     // MARK: - Repetition, days and blocks
 
     /// Replaces whatever a field holds: a triple tap selects all of it, so typing replaces it.
+    /// Replaces a field's text. ⌘A rather than a triple tap, which under load selected
+    /// nothing, and what was typed went in beside the old date.
     private func replace(_ field: XCUIElement, with text: String) {
-        field.tap(withNumberOfTaps: 3, numberOfTouches: 1)
+        field.tap()
+        field.typeKey("a", modifierFlags: .command)
         field.typeText(text)
     }
 

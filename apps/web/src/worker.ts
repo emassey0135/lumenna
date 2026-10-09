@@ -46,7 +46,7 @@ import type {
   ExportFormat,
   CancelledBlock,
   Change,
-  Entry,
+  SidebarEntry,
   PairedWith,
   Place,
   PlanAssignment,
@@ -122,7 +122,7 @@ const api = {
   outsideVersion: (): number => store().outsideVersion(),
 
   /** The places, as the sidebar lists them. */
-  sidebar: (): Entry[] => store().sidebar().entries,
+  sidebar: (): SidebarEntry[] => store().sidebar().entries,
 
   place: (place: Place) => ({
     title: placeTitle(place),
