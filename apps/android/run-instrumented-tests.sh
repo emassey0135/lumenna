@@ -16,6 +16,9 @@ adb wait-for-device
 # Booted is not ready: the package manager answers a little later, and an install sent
 # before it broke off ("Broken pipe"). Then each install is tried a few times.
 until adb shell pm path android > /dev/null 2>&1; do sleep 2; done
+# Nor is shared storage, where the tests' screenshots go: "Transport endpoint is not
+# connected" until it is mounted.
+until adb shell ls /sdcard/Android > /dev/null 2>&1; do sleep 2; done
 install() {
   for attempt in 1 2 3; do
     adb install -r -t "$1" && return 0
@@ -30,8 +33,11 @@ adb shell rm -rf "$device_output"
 adb shell mkdir -p "$device_output"
 
 # `am instrument` exits 0 whatever the tests did, so its summary decides: "OK (n tests)",
-# or "FAILURES!!!" with each failure above it.
-result=$(adb shell am instrument -w -e additionalTestOutputDir "$device_output" \
+# or "FAILURES!!!" with each failure above it. $TESTS narrows it to some, as the
+# instrumentation's `class` argument takes them: Class#method, comma-separated.
+only=()
+[ -n "${TESTS:-}" ] && only=(-e class "$TESTS")
+result=$(adb shell am instrument -w "${only[@]}" -e additionalTestOutputDir "$device_output" \
   "$package.test/androidx.test.runner.AndroidJUnitRunner" 2>&1 | tr -d '\r')
 echo "$result"
 
