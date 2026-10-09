@@ -13,8 +13,19 @@ package=io.github.emassey0135.lumenna
 device_output=/sdcard/Android/media/$package/additional_test_output
 
 adb wait-for-device
-adb install -r -t "$apks/debug/app-debug.apk"
-adb install -r -t "$apks/androidTest/debug/app-debug-androidTest.apk"
+# Booted is not ready: the package manager answers a little later, and an install sent
+# before it broke off ("Broken pipe"). Then each install is tried a few times.
+until adb shell pm path android > /dev/null 2>&1; do sleep 2; done
+install() {
+  for attempt in 1 2 3; do
+    adb install -r -t "$1" && return 0
+    echo "Install failed, attempt $attempt; trying again" >&2
+    sleep 10
+  done
+  return 1
+}
+install "$apks/debug/app-debug.apk"
+install "$apks/androidTest/debug/app-debug-androidTest.apk"
 adb shell rm -rf "$device_output"
 adb shell mkdir -p "$device_output"
 
