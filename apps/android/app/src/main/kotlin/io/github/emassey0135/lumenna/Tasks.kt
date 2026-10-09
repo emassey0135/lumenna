@@ -54,6 +54,9 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
+import androidx.compose.foundation.background
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
@@ -240,6 +243,8 @@ fun ListRow(
     depth: Int = 0,
     focus: FocusRequester? = null,
     key: String? = null,
+    heading: Boolean = false,
+    selected: Boolean = false,
 ) {
     var menu by remember { mutableStateOf(false) }
     val pane = LocalPane.current
@@ -285,6 +290,9 @@ fun ListRow(
                     // rest was said before the title.
                     contentDescription = listOf(title, speech).filter { it.isNotEmpty() }.joinToString(", ")
                     collectionItemInfo = CollectionItemInfo(index, 1, 0, 1)
+                    if (heading) heading()
+                    // The sidebar's row for the place shown.
+                    if (selected) this.selected = true
                     customActions = actions.map { action -> CustomAccessibilityAction(action.name) { action.run(); true } }
                     if (acts) {
                         onClick(label = if (open != null) openLabel else "Actions") {
@@ -293,6 +301,7 @@ fun ListRow(
                         }
                     }
                 }
+                .then(if (selected) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier)
                 .padding(start = (16 + 24 * depth).dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -307,7 +316,7 @@ fun ListRow(
             Column(Modifier.weight(1f)) {
                 Text(
                     title,
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = if (heading) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge,
                     textDecoration = if (done == true) TextDecoration.LineThrough else null,
                 )
                 if (detail.isNotEmpty()) {

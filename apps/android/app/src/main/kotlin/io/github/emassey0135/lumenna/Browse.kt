@@ -150,90 +150,13 @@ fun ProjectsScreen(core: Core, navigator: Navigator, changes: Long) {
             items to rows.announcement
         },
         addLabel = "Add project",
-        add = {
-            prompt.show {
-                AskText("New Project", "Name", "Add", dismiss = prompt::close) { name ->
-                    prompt.close()
-                    core.change { it.addProject(name.trim(), null) }
-                }
-            }
-        },
+        add = { addProject(core, prompt) },
         open = { item ->
             val reference = projectReference(item.title)
             navigator.push(Screen.Tasks(item.title, reference, "$reference "))
         },
         openLabel = "Show its tasks",
-        actions = { item ->
-            listOf(
-                RowAction("Rename") {
-                    prompt.show {
-                        AskText("Rename ${item.title}", "Name", "Rename", initial = item.title, dismiss = prompt::close) { name ->
-                            prompt.close()
-                            core.change { it.renameProject(item.key, name.trim()) }
-                        }
-                    }
-                },
-                RowAction("Move Up") { core.change { it.reorderProject(item.key, Direction.UP) } },
-                RowAction("Move Down") { core.change { it.reorderProject(item.key, Direction.DOWN) } },
-                RowAction("Move Under") {
-                    prompt.show {
-                        val choices = listOf(Choice("", "Top Level")) + all.filter { it.key != item.key }.map { Choice(it.key, it.title) }
-                        Choose("Move ${item.title} under", choices, "", prompt::close) { parent ->
-                            prompt.close()
-                            core.change { it.moveProject(item.key, parent.key.ifEmpty { null }) }
-                        }
-                    }
-                },
-                RowAction("Add Project Inside") {
-                    prompt.show {
-                        AskText("New Project in ${item.title}", "Name", "Add", dismiss = prompt::close) { name ->
-                            prompt.close()
-                            core.change { it.addProject(name.trim(), item.key) }
-                        }
-                    }
-                },
-                RowAction("Weight") {
-                    prompt.show {
-                        AskText(
-                            "Weight of ${item.title}", "Weight", "Set", example = "1.0",
-                            hint = "How much this whole area matters now, roughly 0.5 to 2. Type inherit to take the parent's again.",
-                            dismiss = prompt::close,
-                        ) { text ->
-                            // A typo must not quietly become "inherit": the core reads it, and
-                            // a refusal is said and leaves the question open with what was typed.
-                            val weight = core.attempt { parseWeight(text) } ?: return@AskText
-                            prompt.close()
-                            core.change { it.weighProject(item.key, weight) }
-                        }
-                    }
-                },
-                RowAction(if (item.key in archived) "Unarchive" else "Archive") {
-                    core.change { it.archiveProject(item.key) }
-                },
-                RowAction("Delete") {
-                    prompt.show {
-                        AlertDialog(
-                            onDismissRequest = prompt::close,
-                            title = { Text("Delete ${item.title}?") },
-                            text = { Text("Its tasks can go to the trash with it, or move to the Inbox.") },
-                            confirmButton = {
-                                Column {
-                                    TextButton(modifier = Target, onClick = {
-                                        prompt.close()
-                                        core.change { it.deleteProject(item.key, false) }
-                                    }) { Text("Delete and Trash Its Tasks") }
-                                    TextButton(modifier = Target, onClick = {
-                                        prompt.close()
-                                        core.change { it.deleteProject(item.key, true) }
-                                    }) { Text("Delete and Keep Its Tasks") }
-                                    TextButton(modifier = Target, onClick = prompt::close) { Text("Cancel") }
-                                }
-                            },
-                        )
-                    }
-                },
-            )
-        },
+        actions = { item -> projectActions(core, prompt, item.key, item.key in archived) { all.map { it.key } } },
     )
     prompt.Host()
 }
@@ -253,60 +176,13 @@ fun LabelsScreen(core: Core, navigator: Navigator, changes: Long) {
             items to rows.announcement
         },
         addLabel = "Add label",
-        add = {
-            prompt.show {
-                AskText("New Label", "Name", "Add", dismiss = prompt::close) { name ->
-                    prompt.close()
-                    core.change { it.addLabel(name.trim()) }
-                }
-            }
-        },
+        add = { addLabel(core, prompt) },
         open = { item ->
             val reference = labelReference(item.title)
             navigator.push(Screen.Tasks(item.title, reference, "$reference "))
         },
         openLabel = "Show the tasks wearing it",
-        actions = { item ->
-            listOf(
-                RowAction("Rename") {
-                    prompt.show {
-                        AskText("Rename ${item.title}", "Name", "Rename", initial = item.title, dismiss = prompt::close) { name ->
-                            prompt.close()
-                            core.change { it.renameLabel(item.key, name.trim()) }
-                        }
-                    }
-                },
-                RowAction("Move Up") { core.change { it.reorderLabel(item.key, Direction.UP) } },
-                RowAction("Move Down") { core.change { it.reorderLabel(item.key, Direction.DOWN) } },
-                RowAction("Merge Into") {
-                    prompt.show {
-                        Choose("Merge ${item.title} into", all.filter { it.key != item.key }.map { Choice(it.key, it.title) }, "There are no other labels.", prompt::close) { into ->
-                            prompt.close()
-                            core.change { it.mergeLabels(item.key, into.key) }
-                        }
-                    }
-                },
-                RowAction("Colour") {
-                    prompt.show {
-                        AskText(
-                            "Colour of ${item.title}", "Colour", "Set", example = "teal",
-                            hint = "A colour name, such as teal or orange. Empty for none.", dismiss = prompt::close,
-                        ) { colour ->
-                            prompt.close()
-                            core.change { it.recolourLabel(item.key, colour.trim().ifEmpty { null }) }
-                        }
-                    }
-                },
-                RowAction("Delete") {
-                    prompt.show {
-                        Confirm("Delete ${item.title}?", "Tasks wearing it stay; they just stop showing it.", "Delete", prompt::close) {
-                            prompt.close()
-                            core.change { it.deleteLabel(item.key) }
-                        }
-                    }
-                },
-            )
-        },
+        actions = { item -> labelActions(core, prompt, item.key) { all.map { it.key } } },
     )
     prompt.Host()
 }
@@ -325,50 +201,10 @@ fun FiltersScreen(core: Core, navigator: Navigator, changes: Long) {
             filters.filters.map { Item(it.name, it.name, it.query) } to filters.announcement
         },
         addLabel = "Add filter",
-        add = {
-            prompt.show {
-                AskText("New Filter", "Name", "Next", dismiss = prompt::close) { name ->
-                    prompt.show {
-                        AskText("Query for $name", "Query", "Save", example = "#Work & overdue", dismiss = prompt::close) { query ->
-                            prompt.close()
-                            core.change { it.addFilter(name.trim(), query.trim()) }
-                        }
-                    }
-                }
-            }
-        },
+        add = { addFilter(core, prompt) },
         open = { item -> navigator.push(Screen.Tasks(item.title, queries[item.key].orEmpty())) },
         openLabel = "Show its tasks",
-        actions = { item ->
-            listOf(
-                RowAction("Rename") {
-                    prompt.show {
-                        AskText("Rename ${item.title}", "Name", "Rename", initial = item.title, dismiss = prompt::close) { name ->
-                            prompt.close()
-                            core.change { it.editFilter(item.key, name.trim(), null) }
-                        }
-                    }
-                },
-                RowAction("Change Query") {
-                    prompt.show {
-                        AskText("Query for ${item.title}", "Query", "Save", initial = queries[item.key].orEmpty(), dismiss = prompt::close) { query ->
-                            prompt.close()
-                            core.change { it.editFilter(item.key, null, query.trim()) }
-                        }
-                    }
-                },
-                RowAction("Move Up") { core.change { it.reorderFilter(item.key, Direction.UP) } },
-                RowAction("Move Down") { core.change { it.reorderFilter(item.key, Direction.DOWN) } },
-                RowAction("Delete") {
-                    prompt.show {
-                        Confirm("Delete ${item.title}?", "The tasks it shows are not touched.", "Delete", prompt::close) {
-                            prompt.close()
-                            core.change { it.deleteFilter(item.key) }
-                        }
-                    }
-                },
-            )
-        },
+        actions = { item -> filterActions(core, prompt, item.key, queries[item.key].orEmpty()) },
     )
     prompt.Host()
 }

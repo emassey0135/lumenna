@@ -23,7 +23,7 @@ class NewTaskTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val core = Core(File(context.cacheDir, "test-${UUID.randomUUID()}"))
         val requests = MutableStateFlow(0L)
-        rule.setContent { LumennaTheme { LumennaApp(core, requests) } }
+        rule.setContent { PhoneWidth { LumennaTheme { LumennaApp(core, requests) } } }
         requests.value = 1
         rule.waitUntil(5_000) {
             rule.onAllNodes(hasSetTextAction() and hasText("Task")).fetchSemanticsNodes().isNotEmpty()

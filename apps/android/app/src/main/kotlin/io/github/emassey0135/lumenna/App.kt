@@ -2,9 +2,16 @@ package io.github.emassey0135.lumenna
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import io.github.emassey0135.lumenna.core.Place
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.VerticalDivider
@@ -149,62 +156,96 @@ class Navigator(private val stack: SnapshotStateList<Screen>, private val depth:
 /** From this width the tabs are a rail at the side, as Material lays out a medium window. */
 private val RailWidth = 600.dp
 
-/** From this width a screen opened from another shows beside it: Material's expanded window. */
+/**
+ * From this width the places are a sidebar, and a screen opened from another shows beside
+ * it: Material's expanded window.
+ */
 private val SplitWidth = 840.dp
+
+/** The sidebar's width, as Material's navigation drawer's. */
+private val SidebarWidth = 300.dp
 
 @Composable
 fun LumennaApp(core: Core, newTask: StateFlow<Long>? = null, shortcuts: Shortcuts = remember { Shortcuts() }) {
     var tab by rememberSaveable { mutableStateOf(Tab.TODAY) }
     val stacks = remember { Tab.entries.associateWith { mutableStateListOf(it.root) } }
-    val stack = stacks.getValue(tab)
+    // A wide window's: the place the sidebar chose, and what was opened from it.
+    var destination by remember { mutableStateOf<Destination>(Destination.At(Place.Today)) }
+    val placeStack = remember { mutableStateListOf<Screen>(Screen.Day()) }
     val snackbar = remember { SnackbarHostState() }
     // Each screen keeps what it holds — its scroll, a half-typed filter — while another is
     // over it, or as it moves between panes.
     val saved = rememberSaveableStateHolder()
-
-    /** A tab at its root, with [screens] opened on it. */
-    fun go(to: Tab, vararg screens: Screen) {
-        tab = to
-        stacks.getValue(to).apply {
-            while (size > 1) removeAt(lastIndex)
-            addAll(screens)
-        }
-    }
 
     // The core's sentence for each change, said politely: a snackbar is a live region, and
     // Material gives it the time the person's accessibility settings ask for.
     LaunchedEffect(core) {
         core.announcements.collect { snackbar.showSnackbar(it) }
     }
-    BackHandler(enabled = stack.size > 1) { Navigator(stack).back() }
-
-    // New Task from outside the app: the Tasks tab, with quick add over its list.
-    val requested = newTask?.collectAsState()?.value ?: 0L
-    LaunchedEffect(requested) {
-        if (requested > 0) go(Tab.TASKS, Screen.QuickAdd())
-    }
 
     CompositionLocalProvider(LocalShortcuts provides shortcuts) {
-        // The commands any screen answers; a screen offering one of its own answers instead.
-        Offer(Command.NEW_TASK) { go(Tab.TASKS, Screen.QuickAdd()) }
-        Offer(Command.NEW_BLOCK) { go(Tab.TODAY, Screen.BlockForm(BlockPurpose.Add(date = null))) }
-        Offer(Command.FILTER) {
-            go(Tab.TASKS)
-            shortcuts.filterAsked.value = true
-        }
-        Offer(Command.UNDO) { core.change { it.undo() } }
-        Offer(Command.REDO) { core.change { it.redo() } }
-        Offer(Command.GO_TODAY) { go(Tab.TODAY) }
-        Offer(Command.GO_TASKS) { go(Tab.TASKS) }
-        Offer(Command.GO_BLOCKS) { go(Tab.BROWSE, Screen.Blocks) }
-        Offer(Command.GO_TRASH) { go(Tab.BROWSE, Screen.Tasks(title = "Trash", query = "deleted", trash = true)) }
-        Offer(Command.SETTINGS) { go(Tab.SETTINGS) }
-        Offer(Command.SYNC_NOW) { syncNow(core) }
-
         BoxWithConstraints(Modifier.fillMaxSize().onKeyEvent { shortcuts.handle(it.nativeKeyEvent) }) {
-            val rail = maxWidth >= RailWidth
-            val split = maxWidth >= SplitWidth && stack.size > 1
-            // The tabs, then each pane shown: what F6 moves between, as on Windows and GTK.
+            // Wide, the places are a sidebar, as on the desktop apps and the iPad; narrower,
+            // the tabs are a rail, then a bar along the bottom.
+            val wide = maxWidth >= SplitWidth
+            val rail = !wide && maxWidth >= RailWidth
+            val stack = if (wide) placeStack else stacks.getValue(tab)
+
+            /** The sidebar's [place], with [screens] opened from it. */
+            fun show(place: Destination, vararg screens: Screen) {
+                destination = place
+                placeStack.clear()
+                placeStack.add(place.screen())
+                placeStack.addAll(screens)
+            }
+
+            /** A tab at its root, with [screens] opened on it; wide, the sidebar's place for it. */
+            fun go(to: Tab, vararg screens: Screen) {
+                if (wide) {
+                    val first = screens.firstOrNull()
+                    when {
+                        to == Tab.TODAY -> show(Destination.At(Place.Today), *screens)
+                        to == Tab.SETTINGS -> show(Destination.Settings, *screens)
+                        first == Screen.Blocks -> show(Destination.At(Place.Blocks))
+                        first is Screen.Tasks && first.trash -> show(Destination.At(Place.Trash))
+                        else -> show(Destination.At(Place.Tasks), *screens)
+                    }
+                    return
+                }
+                tab = to
+                stacks.getValue(to).apply {
+                    while (size > 1) removeAt(lastIndex)
+                    addAll(screens)
+                }
+            }
+
+            BackHandler(enabled = stack.size > 1) { Navigator(stack).back() }
+
+            // New Task from outside the app: the Tasks tab, with quick add over its list.
+            val requested = newTask?.collectAsState()?.value ?: 0L
+            LaunchedEffect(requested) {
+                if (requested > 0) go(Tab.TASKS, Screen.QuickAdd())
+            }
+
+            // The commands any screen answers; a screen offering one of its own answers instead.
+            Offer(Command.NEW_TASK) { go(Tab.TASKS, Screen.QuickAdd()) }
+            Offer(Command.NEW_BLOCK) { go(Tab.TODAY, Screen.BlockForm(BlockPurpose.Add(date = null))) }
+            Offer(Command.FILTER) {
+                go(Tab.TASKS)
+                shortcuts.filterAsked.value = true
+            }
+            Offer(Command.UNDO) { core.change { it.undo() } }
+            Offer(Command.REDO) { core.change { it.redo() } }
+            Offer(Command.GO_TODAY) { go(Tab.TODAY) }
+            Offer(Command.GO_TASKS) { go(Tab.TASKS) }
+            Offer(Command.GO_BLOCKS) { go(Tab.BROWSE, Screen.Blocks) }
+            Offer(Command.GO_TRASH) { go(Tab.BROWSE, Screen.Tasks(title = "Trash", query = "deleted", trash = true)) }
+            Offer(Command.SETTINGS) { go(Tab.SETTINGS) }
+            Offer(Command.SYNC_NOW) { syncNow(core) }
+
+            val split = wide && stack.size > 1
+            // The tabs or the sidebar, then each pane shown: what F6 moves between, as on
+            // Windows and GTK.
             val regions = remember { List(3) { FocusRequester() } }
             var inRegion by remember { mutableIntStateOf(-1) }
             val shownRegions = if (split) 3 else 2
@@ -223,18 +264,19 @@ fun LumennaApp(core: Core, newTask: StateFlow<Long>? = null, shortcuts: Shortcut
                 .focusGroup()
 
             val choose = { each: Tab -> if (each == tab) go(each) else tab = each }
+            val changes by core.changes.collectAsState()
 
             Scaffold(
                 snackbarHost = { SnackbarHost(snackbar) },
                 bottomBar = {
-                    if (!rail) {
+                    if (!wide && !rail) {
                         NavigationBar(Modifier.region(0)) {
                             Tab.entries.forEach { each ->
                                 NavigationBarItem(
                                     selected = each == tab,
                                     onClick = { choose(each) },
                                     icon = { Icon(each.icon, contentDescription = null) },
-                                    label = { Text(each.title) },
+                                    label = { TabLabel(each.title) },
                                 )
                             }
                         }
@@ -242,25 +284,31 @@ fun LumennaApp(core: Core, newTask: StateFlow<Long>? = null, shortcuts: Shortcut
                 },
             ) { padding ->
                 Row(Modifier.padding(padding).fillMaxSize()) {
-                    if (rail) {
+                    if (wide) {
+                        Sidebar(
+                            core, changes, destination, choose = { show(it) },
+                            modifier = Modifier.width(SidebarWidth).fillMaxHeight().region(0),
+                        )
+                        VerticalDivider()
+                    } else if (rail) {
                         NavigationRail(Modifier.region(0)) {
                             Tab.entries.forEach { each ->
                                 NavigationRailItem(
                                     selected = each == tab,
                                     onClick = { choose(each) },
                                     icon = { Icon(each.icon, contentDescription = null) },
-                                    label = { Text(each.title) },
+                                    label = { TabLabel(each.title) },
                                 )
                             }
                         }
                     }
-                    val changes by core.changes.collectAsState()
                     @Composable
                     fun Pane(depth: Int, modifier: Modifier, region: Int) {
                         val screen = stack[depth]
+                        val owner = if (wide) "place" else tab.name
                         Box(modifier.fillMaxHeight().region(region)) {
                             CompositionLocalProvider(LocalPane provides panes[region]) {
-                                saved.SaveableStateProvider("$tab $depth $screen") {
+                                saved.SaveableStateProvider("$owner $depth $screen") {
                                     Screens(core, Navigator(stack, depth), screen, changes)
                                 }
                             }
@@ -293,6 +341,24 @@ class Pane {
 
 /** The pane a screen is shown in. */
 val LocalPane = staticCompositionLocalOf<Pane?> { null }
+
+/**
+ * A tab's name on one line, shrunk only as far as it must be to fit. At the largest font in
+ * a small phone a four-tab bar has no room for "Settings" at full size, and wrapped, it broke
+ * mid-word ("Setting", "s"). TalkBack reads the whole name either way.
+ */
+@Composable
+private fun TabLabel(title: String) {
+    val style = LocalTextStyle.current
+    val colour = LocalContentColor.current
+    BasicText(
+        title,
+        style = style.copy(color = colour),
+        maxLines = 1,
+        softWrap = false,
+        autoSize = TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = style.fontSize),
+    )
+}
 
 /** Focus into what [this] is attached to, if it is shown. */
 private fun FocusRequester.tryFocus() {
