@@ -658,8 +658,12 @@ gives the toolchain.
   the one it was opened from (`Navigator`'s depth: a row chosen in the parent replaces the
   child rather than stacking). F6 moves between the tabs and panes, back onto the row a
   pane was left on (`Pane`): Compose's `saveFocusedChild` keeps only the pane's immediate
-  child. Wide tests force the size, which shrinks the density to fit, so they excuse the
-  touch-target check, and only that.
+  child. Tests force only the width: a forced size bigger than the window is drawn at a
+  smaller density, and every touch target measures small. So touch targets are excused
+  only when the forced width exceeds the screen; CI's desktop-screen run checks them in
+  the wide layout for real. The desktop system images ended at API 34: `desktop_medium`
+  on 37 is a large screen without freeform windows. A real Googlebook (Android 17) has
+  those, a title bar per window, and no menu bar.
 - **The store is in no-backup storage** and `allowBackup` is off: Google's backup would copy
   a store that reaches other devices by pairing.
 - **Background sync is WorkManager** (`SyncWorker`): a round on leaving (expedited on
