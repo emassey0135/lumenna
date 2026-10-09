@@ -539,6 +539,34 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   missing", and a "Parent/Child mismatch" with no element.
 - UI tests need macOS to have authorized UI automation for Xcode once.
 
+## The Apple Watch app
+
+`apps/apple/Watch/`: SwiftUI, embedded in the iPhone app. Scheme `LumennaWatch`.
+
+- **No Iroh on the watch.** watchOS allows low-level networking only inside an audio session
+  (TN3135), and that includes sockets and even `URLSessionWebSocketTask`; the simulator does
+  not enforce it, so a build that syncs there proves nothing. The core is built without
+  `lumenna-ffi`'s `network` feature, with bindings of its own (`Generated/Watch/`, from a host
+  build in `target/watch-host`).
+- **A whole store, synced through the phone** (`PhoneLink`, `lumenna-sync`'s `exchange`):
+  every document in each message, over WatchConnectivity's message and reply. The watch
+  starts every exchange, since its message wakes the iPhone app and the reverse needs the
+  watch app open; the phone only nudges an open watch app when its store changes. The iPhone
+  app (`WatchLink`) answers on the operations' own connection, so its own sync carries what
+  the watch wrote to every other device. The watch is not in the device list: trust is the
+  system's pairing of watch and phone.
+- **What the phone and watch word alike is shared**: `Shared/Clock.swift`, `RowSpeech.swift`
+  and `Words.swift`. The watch has its own core (`WatchCore`), since `Shared/Core.swift`
+  starts Iroh.
+- **A row owns its speech**: the title as its name and the rest as its value, set inside the
+  `NavigationLink`; set on the link, watchOS made the whole line the name.
+- **UI tests launch with `LUMENNA_NO_SYNC`**: a simulated watch is paired with a simulated
+  phone, whose store otherwise arrives. A watch list holds only the rows on screen, so tests
+  scroll by the Digital Crown, a little at a time, to what they look for; a swipe moved past
+  it. A text field opens the system's input screen: type into its text view, then Done. A
+  place's row is named with what is in it ("Inbox, no tasks").
+- Built for 64-bit watches only (`aarch64-apple-watchos`, on stable).
+
 ## The Windows app
 
 `apps/windows/`: Rust over `windows-rs`, linking `lumenna-surface` directly, binary
@@ -800,4 +828,4 @@ bundled SQLite runs past a gigabyte, and the incremental cache did not pay for i
 There, `cargo clippy --all-targets` and `cargo test` do not share artifacts, so running both
 back to back can run out of space; `cargo clean` between them.
 
-The toolchain is not pinned; only a watchOS target would need nightly.
+The toolchain is not pinned; only older Apple Watches (`arm64_32`) would need nightly.

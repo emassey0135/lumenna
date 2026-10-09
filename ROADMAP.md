@@ -282,20 +282,28 @@ The core's `complete` works everywhere; what is missing is how each app offers i
 
 ## 5. The watches
 
-Both are full peers with every view, not companions of the phone.
+Both have every view and work with the phone away, each with a whole store of its own.
 
-- **watchOS** (SwiftUI; WatchKit only for haptics, the Crown and sessions): a full peer
-  running the whole core with the phone off, with every view. **Spike first**: a throwaway
-  crate with quinn/rustls, rusqlite, automerge and jiff, built with `cargo build -Z
-  build-std=std,panic_abort --target arm64_32-apple-watchos` on a pinned nightly. Risks in
-  order: the 32-bit pointer ABI; Iroh's crypto (`ring`, `aws-lc-rs`) failing to build;
-  bundled SQLite cross-compiling (the system `libsqlite3` avoids it); watchOS policy against
-  independent connections; memory, since Automerge loads whole documents. If Iroh or
-  independent QUIC fails there, the watch becomes a phone accessory. `WatchConnectivity` is
-  a battery-saving shortcut near the phone; complications through WidgetKit.
-- **Wear OS** (Compose for Wear OS): a standalone full peer, the core through `cargo-ndk`,
-  every view. Check rotary scrolling with TalkBack. The hardware is here to test on.
-- **Toolchain**: unpinned; the watchOS spike decides the nightly.
+- **watchOS** is built (`apps/apple/Watch`): the whole core without Iroh, since watchOS allows
+  no sockets outside an audio session (TN3135; even a WebSocket counts), syncing with its
+  iPhone over WatchConnectivity, which the phone passes on. Still to come, in this order:
+  - **On a real watch**: TN3135 is not enforced in the simulator, nor is memory, and
+    Automerge loads whole documents.
+  - **Editing a task's fields** and **adding and changing blocks**, as the phone's forms do;
+    projects, labels and filters managed as Browse does; settings.
+  - **Completion in quick add**, offered after the line is entered, as BTSpeak does.
+  - **Syncing out of reach**: queued for when the phone is next reachable
+    (`transferUserInfo`, which needs the exchange to carry changes without a reply), and
+    background refresh (`WKApplicationRefreshBackgroundTask`).
+  - **Complications** through WidgetKit, and the running timer on the watch face.
+  - **Older watches** (`arm64_32`: Series 8 and earlier, SE 2), a tier 3 Rust target needing
+    `-Z build-std` on a pinned nightly.
+  - **Later, if it matters**: syncing far from the phone through a relay of our own that the
+    watch polls over plain HTTPS, the one networking watchOS allows.
+- **Wear OS** (Compose for Wear OS): a standalone full peer, the core and Iroh through
+  `cargo-ndk`, every view; Wear OS allows sockets. Check rotary scrolling with TalkBack. The
+  hardware is here to test on.
+- **Toolchain**: unpinned. Only older Apple Watches would need nightly.
 
 ## 6. Integrations
 
