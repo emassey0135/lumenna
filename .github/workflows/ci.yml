@@ -3,6 +3,12 @@
 # BTSpeak and Emacs clients against a real `lum rpc`; the web client in a browser; the Apple
 # apps; and Android for both its ABIs. Several sessions work on this repository at once,
 # and this is what catches one breaking another.
+#
+# Two tiers. What blocks is what fails only for a reason: the Rust tests, every build, the
+# clients, the GTK and Windows UI tests, and a smoke set of the iOS and Android UI tests.
+# The full iOS and Android suites run too and report, but do not block: they drive
+# simulators and emulators through gestures and timing, and a slow runner fails them
+# where nothing is wrong.
 name: CI
 
 on:
@@ -186,7 +192,7 @@ jobs:
           retention-days: 1
 
   ios:
-    name: iOS (${{ matrix.name }})
+    name: iOS, every test (${{ matrix.name }})
     needs: ios-build
     strategy:
       fail-fast: false
@@ -197,11 +203,11 @@ jobs:
           # Large text on a small phone is where layouts break first. Xcode lists no SE of
           # its own, but its iOS still runs on one.
           - { name: iPhone SE, create: com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation }
-          # The sidebar, the split views and the menu bar. Not yet blocking: on the runner its
-          # suite takes over half an hour and times out where it passes locally (ROADMAP).
-          - { name: iPad, find: '^\s+iPad Pro 11-inch', optional: true }
+          # The sidebar, the split views and the menu bar.
+          - { name: iPad, find: '^\s+iPad Pro 11-inch' }
     runs-on: xcode-27
-    continue-on-error: ${{ matrix.optional == true }}
+    # Reports; the smoke set below is what blocks.
+    continue-on-error: true
     env:
       # An audit finding is attached as a screenshot of its element, so a failure on the
       # runner's iOS can be seen in the uploaded results, not only read about.
@@ -242,6 +248,49 @@ jobs:
           path: ${{ runner.temp }}/results.xcresult
           retention-days: 14
 
+  ios-smoke:
+    name: iOS smoke tests (iPhone)
+    needs: ios-build
+    runs-on: xcode-27
+    env:
+      TEST_RUNNER_AUDIT_ATTACH: "1"
+    steps:
+      - name: Newest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-products
+          path: ${{ runner.temp }}
+      - name: Simulator
+        run: |
+          device=$(xcrun simctl list devices available | grep -E '^\s+iPhone [0-9]+ Pro \(' | tail -1 | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}')
+          xcrun simctl bootstatus "$device" -b
+          echo "DEVICE=$device" >> "$GITHUB_ENV"
+      - name: Smoke tests
+        # Adding, completing and undoing; the day; the audits of the main screens; a
+        # keyboard command. A few minutes, and each one has only failed for a reason.
+        run: |
+          tar -C "$RUNNER_TEMP" -xf "$RUNNER_TEMP/products.tar"
+          t=LumennaUITests/LumennaUITests
+          xcodebuild test-without-building \
+            -xctestrun "$(ls "$RUNNER_TEMP"/Products/*.xctestrun | head -1)" \
+            -destination "platform=iOS Simulator,id=$DEVICE" \
+            -only-testing:$t/testAddingATaskReadsItBackAndListsIt \
+            -only-testing:$t/testCompletingRemovesTheTaskAndUndoBringsItBack \
+            -only-testing:$t/testTheTaskListPassesAnAccessibilityAudit \
+            -only-testing:$t/testTheDaySaysWhatItHoldsAndShowsFreeTime \
+            -only-testing:$t/testSettingsAndDevicesPassAnAudit \
+            -only-testing:LumennaUITests/KeyboardUITests/testCommandNOpensQuickAddFromAnotherTab \
+            -collect-test-diagnostics never -resultBundlePath "$RUNNER_TEMP/smoke.xcresult" \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 300
+      - name: Test results, when a test failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-smoke-results
+          path: ${{ runner.temp }}/smoke.xcresult
+          retention-days: 14
+
   android-build:
     name: Android app and its tests, both ABIs
     runs-on: ubuntu-24.04
@@ -267,6 +316,10 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
       - name: Build
         working-directory: apps/android
+        # The core optimized: a debug one is about 160 MB an ABI, and the emulators took that
+        # APK badly.
+        env:
+          LUMENNA_CORE_PROFILE: release
         run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
       - name: Ready for 16 KB pages
         # Every native library must load at 16 KB boundaries, and sit 16 KB aligned in the
@@ -290,7 +343,7 @@ jobs:
           retention-days: 1
 
   android:
-    name: Android (${{ matrix.name }})
+    name: Android, ${{ matrix.blocking && '' || 'every test, ' }}${{ matrix.name }}
     needs: android-build
     strategy:
       fail-fast: false
@@ -302,7 +355,17 @@ jobs:
           # real density, so the touch targets are checked as they are. The system images
           # stopped having a desktop of their own at API 34; this is the large screen alone.
           - { name: "desktop screen and keyboard", profile: desktop_medium, keyboard: true }
+          # The smoke set, which blocks: adding and completing, folding, focus after a
+          # change, a keyboard command, and the large-text screens, each under Google's
+          # accessibility checks.
+          - name: smoke tests (phone)
+            profile: medium_phone
+            keyboard: false
+            blocking: true
+            tests: "io.github.emassey0135.lumenna.LumennaTest#addingATaskReadsItBackAndListsIt,io.github.emassey0135.lumenna.LumennaTest#completingATaskPutsFocusOnTheOneNowInItsPlaceThenSaysWhatHappened,io.github.emassey0135.lumenna.LumennaTest#aTaskWithSubtasksCollapsesAndExpandsAndSaysWhichItIs,io.github.emassey0135.lumenna.KeyboardTest#ctrlNOpensQuickAddFromAnotherTab,io.github.emassey0135.lumenna.LargeTextTest"
     runs-on: ubuntu-24.04
+    # The full suites report; the smoke set blocks.
+    continue-on-error: ${{ matrix.blocking != true }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -330,11 +393,11 @@ jobs:
           ram-size: 4096M
           emulator-boot-timeout: 900
           working-directory: apps/android
-          script: ./run-instrumented-tests.sh test-output
+          script: TESTS="${{ matrix.tests }}" ./run-instrumented-tests.sh test-output
       - name: Screenshots at the largest font
         if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
-          name: android-screenshots-${{ matrix.profile }}
+          name: android-screenshots-${{ matrix.profile }}${{ matrix.blocking && '-smoke' || '' }}
           path: apps/android/test-output
           retention-days: 14

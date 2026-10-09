@@ -771,8 +771,12 @@ PROPTEST_CASES=20000 cargo test -p lumenna-core --test properties
 CI (`.github/workflows/ci.yml`) builds each mobile app once and tests it on several devices
 in parallel jobs that share the build as an artifact: `ios-build` with `build-for-testing`,
 then an iPhone, an SE and an iPad with `test-without-building`; `android-build`, which
-also checks 16 KB alignment, then a phone and a desktop-sized emulator with
-`run-instrumented-tests.sh`. The test jobs need no Rust.
+also checks 16 KB alignment and builds the core optimized (`LUMENNA_CORE_PROFILE`), then
+a phone and a desktop-sized emulator with `run-instrumented-tests.sh`. The test jobs need
+no Rust. **Two tiers**: the Rust tests, the builds, the clients, the GTK and Windows UI
+tests and a smoke set of iOS and Android UI tests block; the full iOS and Android suites
+report without blocking, since a slow runner fails them where nothing is wrong. A test
+that has only failed for a reason can join the smoke set.
 
 `crates/store/tests/convergence.rs` checks replicas reaching the same state from the same
 changes in different orders. It is the slowest suite and the one worth running before

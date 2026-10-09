@@ -13,7 +13,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 JNI_LIBS="$1"
 KOTLIN="$2"
-PROFILE="${3:-debug}"
+# LUMENNA_CORE_PROFILE overrides the variant's: CI builds the core optimized even in a debug
+# APK, which is a fraction of the size, quicker to install on an emulator, and nearer what ships.
+PROFILE="${LUMENNA_CORE_PROFILE:-${3:-debug}}"
 case "$PROFILE" in
   release) PROFILE_FLAG=--release ;;
   *) PROFILE_FLAG= ;;
