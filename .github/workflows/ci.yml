@@ -296,7 +296,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: phone, profile: "", keyboard: false }
+          # The action's default device did not boot Android 37 in fifteen minutes.
+          - { name: phone, profile: medium_phone, keyboard: false }
           # A desktop-sized screen with a keyboard: every screen in its wide layout, at its
           # real density, so the touch targets are checked as they are. The system images
           # stopped having a desktop of their own at API 34; this is the large screen alone.
@@ -326,6 +327,7 @@ jobs:
           enable-hw-keyboard: ${{ matrix.keyboard }}
           # A debug build's native libraries are large: the default data partition ran out.
           disk-size: 6000M
+          ram-size: 4096M
           emulator-boot-timeout: 900
           working-directory: apps/android
           script: ./run-instrumented-tests.sh test-output
@@ -333,6 +335,6 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
-          name: android-screenshots-${{ matrix.profile || 'phone' }}
+          name: android-screenshots-${{ matrix.profile }}
           path: apps/android/test-output
           retention-days: 14
