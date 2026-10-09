@@ -54,7 +54,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         // floating tab bar would cover.
         let days = UIStackView(arrangedSubviews: [
             dayButton("Previous Day") { [weak self] in self?.step(-1) },
-            dayButton("Now") { [weak self] in self?.goToNow() },
+            dayButton("Now") { [weak self] in self?.showNow() },
             dayButton("Next Day") { [weak self] in self?.step(1) },
             dayButton("Go to Day") { [weak self] in self?.chooseDay() },
         ])
@@ -112,8 +112,8 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         // In the navigation bar, as on the task list: a bottom toolbar would sit under the
         // floating tab bar.
         navigationItem.leftBarButtonItems = [
-            .undo { [weak self] in self?.undo() },
-            .redo { [weak self] in self?.redo() },
+            .undo { [weak self] in self?.undoChange() },
+            .redo { [weak self] in self?.redoChange() },
         ]
         NotificationCenter.default.addObserver(self, selector: #selector(storeChanged), name: Core.changed, object: nil)
     }
@@ -157,11 +157,12 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        takeKeyboardCommands()
         // Opening the day lands on now, not at midnight. Once, so coming back from a
         // detail does not move focus away from where the person was.
         if !landedOnNow {
             landedOnNow = true
-            goToNow(announcing: false)
+            showNow(announcing: false)
         }
     }
 
@@ -542,7 +543,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     }
 
     /// "Go to now": today, on the now row or the block happening now.
-    private func goToNow(announcing: Bool = true) {
+    private func showNow(announcing: Bool = true) {
         day = nil
         reload { [weak self] in
             guard let self else { return }
@@ -566,7 +567,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         switch row {
         case let .block(block): edit(block)
         case let .sitting(sitting, _):
-            navigationController?.pushViewController(TaskDetailViewController(core: core, id: sitting.task), animated: true)
+            showBeside(TaskDetailViewController(core: core, id: sitting.task))
         case let .free(start, _, minutes): addBlock(at: start, minutes: minutes)
         case let .cancelled(block):
             collectionView.deselectItem(at: path, animated: true)
@@ -577,11 +578,13 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
 
     // MARK: - Undo, and going to a day
 
-    @objc private func undo() {
+    @objc func undoChange() {
+        if let typing = UIResponder.editingWithUndo, typing.canUndo { typing.undo(); return }
         change(focusing: nil) { try core.lumenna.undo() }
     }
 
-    @objc private func redo() {
+    @objc func redoChange() {
+        if let typing = UIResponder.editingWithUndo, typing.canRedo { typing.redo(); return }
         change(focusing: nil) { try core.lumenna.redo() }
     }
 
@@ -599,21 +602,12 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
 
     // MARK: - Keyboard
 
+    // The Day menu's commands, and New Block on the day shown (`KeyboardCommands`).
     override var canBecomeFirstResponder: Bool { true }
 
-    override var keyCommands: [UIKeyCommand]? {
-        [
-            UIKeyCommand(title: "Previous Day", action: #selector(previousDay), input: UIKeyCommand.inputLeftArrow, modifierFlags: .command),
-            UIKeyCommand(title: "Next Day", action: #selector(nextDay), input: UIKeyCommand.inputRightArrow, modifierFlags: .command),
-            UIKeyCommand(title: "Go to Now", action: #selector(now), input: "j", modifierFlags: .command),
-            UIKeyCommand(title: "New Block", action: #selector(newBlock), input: "n", modifierFlags: .command),
-            UIKeyCommand(title: "Undo", action: #selector(undo), input: "z", modifierFlags: .command),
-            UIKeyCommand(title: "Redo", action: #selector(redo), input: "z", modifierFlags: [.command, .shift]),
-        ]
-    }
-
-    @objc private func previousDay() { step(-1) }
-    @objc private func nextDay() { step(1) }
-    @objc private func now() { goToNow() }
-    @objc private func newBlock() { addBlock() }
+    @objc func previousDay() { step(-1) }
+    @objc func nextDay() { step(1) }
+    @objc func goToNow() { showNow() }
+    @objc func goToDay() { chooseDay() }
+    @objc func newBlock() { addBlock() }
 }

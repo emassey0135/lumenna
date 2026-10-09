@@ -9,6 +9,8 @@ struct Item: Hashable {
     var depth: UInt32 = 0
     /// What VoiceOver says after the title.
     var spoken: String?
+    /// A heading over the items under it, as the sidebar's Projects and Labels are.
+    var heading = false
 }
 
 /// What can be done to an item: a swipe action, which UIKit also offers to VoiceOver, Switch
@@ -58,14 +60,18 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
     /// Whether Undo and Redo are offered: on every screen that changes the store, so undoing
     /// a rename never means going to another tab first. Not in a picker sheet.
     var offersUndo: Bool { true }
+    /// The sidebar's look rather than a list's, with no line counting what is listed.
+    var isSidebar: Bool { false }
+    /// The item to keep selected, as the sidebar keeps the place shown; nil selects nothing.
+    var selectedKey: String? { nil }
 
     // MARK: - Doing it
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
-        var configuration = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
-        configuration.headerMode = .supplementary
+        var configuration = UICollectionLayoutListConfiguration(appearance: isSidebar ? .sidebar : .insetGrouped)
+        configuration.headerMode = isSidebar ? .none : .supplementary
         configuration.trailingSwipeActionsConfigurationProvider = { [weak self] path in
             guard let self, let item = self.dataSource.itemIdentifier(for: path) else { return nil }
             var actions = self.actions(for: item).map { action in
@@ -92,22 +98,26 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
         collectionView.delegate = self
         view.addSubview(collectionView)
 
+        let sidebar = isSidebar
         let cell = UICollectionView.CellRegistration<UICollectionViewListCell, Item> { cell, _, item in
-            var content = UIListContentConfiguration.subtitleCell()
+            var content = sidebar
+                ? (item.heading ? UIListContentConfiguration.sidebarHeader() : .sidebarSubtitleCell())
+                : UIListContentConfiguration.subtitleCell()
             content.text = item.title
             content.textProperties.numberOfLines = 0
             content.secondaryText = item.detail
             content.secondaryTextProperties.color = .quietLabel
             content.secondaryTextProperties.numberOfLines = 0
             content.directionalLayoutMargins.leading += CGFloat(item.depth) * 20
+            if sidebar { content.textProperties.color = .label }
             cell.contentConfiguration = content
-            cell.accessories = [.disclosureIndicator(displayed: .always)]
+            cell.accessories = sidebar ? [] : [.disclosureIndicator(displayed: .always)]
             // Said explicitly. Left to itself the cell's label is its text and its detail
             // together, so a value of the detail says it twice: "Projects, 1 project 1 project".
             cell.isAccessibilityElement = true
             cell.accessibilityLabel = item.title
             cell.accessibilityValue = item.spoken ?? item.detail
-            cell.accessibilityTraits = .button
+            cell.accessibilityTraits = item.heading ? [.header, .button] : .button
         }
         let headerRegistration = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
             elementKind: UICollectionView.elementKindSectionHeader
@@ -144,10 +154,15 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        if let selected = collectionView.indexPathsForSelectedItems?.first {
+        if selectedKey == nil, let selected = collectionView.indexPathsForSelectedItems?.first {
             collectionView.deselectItem(at: selected, animated: animated)
         }
         reload()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        takeKeyboardCommands()
     }
 
     @objc private func storeChanged() {
@@ -171,6 +186,7 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
         snapshot.appendItems(items)
         snapshot.reloadSections([0])
         dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
+            self?.reselect()
             guard let self, let change else { return }
             let index = key.flatMap { key in self.items.firstIndex { $0.key == key } }
                 ?? previous.map { min($0, self.items.count - 1) }
@@ -198,6 +214,18 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
         }
     }
 
+    /// Selects `selectedKey`, if it is shown.
+    func reselect() {
+        guard let key = selectedKey, let index = items.firstIndex(where: { $0.key == key }) else { return }
+        collectionView.selectItem(at: IndexPath(item: index, section: 0), animated: false, scrollPosition: [])
+    }
+
+    /// Folds or unfolds the item `key`, as its Expand or Collapse action does.
+    func toggleFold(_ key: String) {
+        guard let row = shown.first(where: { $0.item.key == key }), row.parent else { return }
+        fold(key, saying: row.collapsed ? "Expanded" : "Collapsed")
+    }
+
     /// Folds or unfolds the item `key`, keeping VoiceOver on it.
     private func fold(_ key: String, saying said: String) {
         folding.toggle(key)
@@ -206,6 +234,7 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
         snapshot.appendSections([0])
         snapshot.appendItems(items)
         dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
+            self?.reselect()
             guard let self, let index = self.items.firstIndex(where: { $0.key == key }) else { return }
             let path = IndexPath(item: index, section: 0)
             UIAccessibility.post(notification: .layoutChanged, argument: self.collectionView.cellForItem(at: path))
@@ -248,21 +277,12 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
         }
     }
 
+    // Undo and Redo from the keyboard come here (`KeyboardCommands`); ⌘N is New Task
+    // everywhere, as on the Mac, and New Project and the others are menu items of their own.
     override var canBecomeFirstResponder: Bool { true }
 
-    override var keyCommands: [UIKeyCommand]? {
-        var commands: [UIKeyCommand] = []
-        if let addTitle {
-            commands.append(UIKeyCommand(title: addTitle, action: #selector(addFromKeyboard), input: "n", modifierFlags: .command))
-        }
-        if offersUndo {
-            commands.append(UIKeyCommand(title: "Undo", action: #selector(undoChange), input: "z", modifierFlags: .command))
-            commands.append(UIKeyCommand(title: "Redo", action: #selector(redoChange), input: "z", modifierFlags: [.command, .shift]))
-        }
-        return commands
-    }
-
-    @objc private func addFromKeyboard() {
-        add()
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(undoChange) || action == #selector(redoChange) { return offersUndo }
+        return super.canPerformAction(action, withSender: sender)
     }
 }

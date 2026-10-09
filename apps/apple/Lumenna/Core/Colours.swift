@@ -8,7 +8,7 @@ extension UIColor {
     /// With Increase Contrast on it is the full text colour, as the system's own greys go
     /// darker then.
     static let quietLabel = UIColor { traits in
-        traits.accessibilityContrast == .high ? .label : UIColor.label.resolvedColor(with: traits).withAlphaComponent(0.78)
+        traits.accessibilityContrast == .high ? .label : UIColor.label.resolvedColor(with: traits).withAlphaComponent(0.85)
     }
 
     /// The app's tint. The system blue is about 4 to 1 on white, under the 4.5 to 1 that text

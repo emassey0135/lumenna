@@ -70,6 +70,15 @@ final class TaskListViewController: UIViewController {
         reload()
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        takeKeyboardCommands()
+        if filterAsked {
+            filterAsked = false
+            filterField.becomeFirstResponder()
+        }
+    }
+
     private func buildFilter() {
         filterField.placeholder = "#Work & overdue"
         filterField.autocapitalizationType = .none
@@ -132,6 +141,8 @@ final class TaskListViewController: UIViewController {
             collectionViewLayout: UICollectionViewCompositionalLayout.list(using: configuration)
         )
         collectionView.delegate = self
+        // Rows take keyboard focus on iPad, for the Task menu's commands to act on.
+        collectionView.allowsFocus = true
         collectionView.keyboardDismissMode = .onDrag
         collectionView.accessibilityLabel = "Tasks"
 
@@ -168,8 +179,8 @@ final class TaskListViewController: UIViewController {
     /// tab bar floats, so a tap on Undo would land on a tab — for VoiceOver too, which
     /// activates the middle of an element's frame.
     private func buildBars() {
-        let undo = UIBarButtonItem.undo { [weak self] in self?.undo() }
-        let redo = UIBarButtonItem.redo { [weak self] in self?.redo() }
+        let undo = UIBarButtonItem.undo { [weak self] in self?.undoChange() }
+        let redo = UIBarButtonItem.redo { [weak self] in self?.redoChange() }
         navigationItem.leftItemsSupplementBackButton = true
         navigationItem.leftBarButtonItems = mode == .tasks ? [undo, redo] : [undo]
         guard mode == .tasks else { return }
@@ -362,14 +373,13 @@ final class TaskListViewController: UIViewController {
         }
     }
 
-    @objc private func undo() {
-        perform(focusing: nil, near: nil) {
-            let change = try core.lumenna.undo()
-            return change
-        }
+    @objc func undoChange() {
+        if let typing = UIResponder.editingWithUndo, typing.canUndo { typing.undo(); return }
+        perform(focusing: nil, near: nil) { try core.lumenna.undo() }
     }
 
-    @objc private func redo() {
+    @objc func redoChange() {
+        if let typing = UIResponder.editingWithUndo, typing.canRedo { typing.redo(); return }
         perform(focusing: nil, near: nil) { try core.lumenna.redo() }
     }
 
@@ -378,32 +388,72 @@ final class TaskListViewController: UIViewController {
         let adding = QuickAddViewController(core: core, initial: quickAddPrefix) { [weak self] change in
             self?.reload(focusing: change.task?.id, near: nil, saying: change)
         }
+        adding.closed = { [weak self] in self?.takeKeyboardCommands() }
         present(UINavigationController(rootViewController: adding), animated: true)
     }
 
-    @objc private func focusFilter() {
-        filterField.becomeFirstResponder()
+    /// ⌘F from another tab, before this one is in the window: done once it appears.
+    private var filterAsked = false
+
+    func focusFilter(attempt: Int = 0) {
+        if view.window != nil, filterField.becomeFirstResponder() {
+            filterAsked = false
+            return
+        }
+        // Not in the window yet, or the tab still changing: once it appears, or shortly.
+        filterAsked = true
+        // Two seconds at most: with three simulators running, a tab can take that to show.
+        guard attempt < 40 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self, self.filterAsked else { return }
+            self.focusFilter(attempt: attempt + 1)
+        }
     }
 
     // MARK: - Keyboard
 
+    // The Task menu's commands act on the row in hand (`KeyboardCommands`).
     override var canBecomeFirstResponder: Bool { true }
 
-    override var keyCommands: [UIKeyCommand]? {
-        [
-            UIKeyCommand(title: "New Task", action: #selector(addTask), input: "n", modifierFlags: .command),
-            UIKeyCommand(title: "Filter", action: #selector(focusFilter), input: "f", modifierFlags: .command),
-            UIKeyCommand(title: "Undo", action: #selector(undo), input: "z", modifierFlags: .command),
-            UIKeyCommand(title: "Redo", action: #selector(redo), input: "z", modifierFlags: [.command, .shift]),
-        ]
+    /// The row a command acts on: the one with keyboard focus, else VoiceOver's, else the one
+    /// open beside the list.
+    private var rowInHand: RowView? {
+        let focused = UIFocusSystem.focusSystem(for: view)?.focusedItem as? UIView
+        let spoken = UIAccessibility.focusedElement(using: .notificationVoiceOver) as? UIView
+        for view in [focused, spoken].compactMap({ $0 }) {
+            let cell = sequence(first: view, next: \.superview).first { $0 is UICollectionViewCell } as? UICollectionViewCell
+            if let cell, let path = collectionView.indexPath(for: cell) { return row(at: path) }
+        }
+        return collectionView.indexPathsForSelectedItems?.first.flatMap(row(at:))
+    }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        switch action {
+        case #selector(toggleDone as () -> Void), #selector(moveToTrash):
+            mode == .tasks && rowInHand != nil
+        case #selector(filterTasks):
+            mode == .tasks
+        default:
+            super.canPerformAction(action, withSender: sender)
+        }
+    }
+
+    @objc func toggleDone() {
+        if let row = rowInHand { toggleDone(row) }
+    }
+
+    @objc func moveToTrash() {
+        if let row = rowInHand { trash(row) }
+    }
+
+    @objc func filterTasks() {
+        focusFilter()
     }
 }
 
 extension TaskListViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt path: IndexPath) {
         guard mode == .tasks, let row = row(at: path) else { return }
-        navigationController?.pushViewController(
-            TaskDetailViewController(core: core, id: row.id), animated: true
-        )
+        showBeside(TaskDetailViewController(core: core, id: row.id))
     }
 }

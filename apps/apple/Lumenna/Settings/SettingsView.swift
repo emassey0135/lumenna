@@ -29,7 +29,7 @@ final class SettingsViewController: ItemListViewController {
         case "backups": SettingsPageViewController(core: core, page: .backups)
         default: SettingsPageViewController(core: core, page: .export)
         }
-        navigationController?.pushViewController(next, animated: true)
+        showBeside(next)
     }
 }
 
