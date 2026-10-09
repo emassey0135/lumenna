@@ -439,7 +439,6 @@ fun BlockFormScreen(core: Core, navigator: Navigator, purpose: BlockPurpose) {
                 val (id, scope) = when (purpose) {
                     is BlockPurpose.Series -> purpose.id to BlockScope.Series
                     is BlockPurpose.Occurrence -> purpose.block.series to BlockScope.Occurrence(purpose.date)
-                    else -> return@save
                 }
                 core.change { it.editBlock(id, edit, scope) }
             }
