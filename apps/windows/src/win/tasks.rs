@@ -25,7 +25,7 @@ use super::core::sentence;
 use super::tree::{Item, Tree};
 use super::view::{Metrics, View};
 use super::{completion, menu, prompts, task_actions};
-use crate::places::Place;
+use lumenna_surface::places::Place;
 use crate::speech;
 
 const FILTER: u16 = 400;

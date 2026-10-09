@@ -20,7 +20,7 @@ use super::core::sentence;
 use super::prompts;
 use super::tree::{Item, Tree};
 use super::view::Metrics;
-use crate::places::{self, Entry, Group, Kind, Place};
+use lumenna_surface::places::{self, Place, SidebarEntry, SidebarGroup, SidebarKind};
 
 const TREE: u16 = 200;
 
@@ -39,7 +39,7 @@ const QUERY: u16 = 12;
 
 pub struct Sidebar {
     pub tree: Tree,
-    entries: RefCell<Vec<Entry>>,
+    entries: RefCell<Vec<SidebarEntry>>,
     /// The place shown, by key.
     current: RefCell<String>,
 }
@@ -80,7 +80,7 @@ impl Sidebar {
         }
     }
 
-    fn selected(&self) -> Option<Entry> {
+    fn selected(&self) -> Option<SidebarEntry> {
         let index = self.tree.selected()?;
         self.entries.borrow().get(index).cloned()
     }
@@ -91,7 +91,7 @@ impl Sidebar {
         }
         match header.code {
             TVN_SELCHANGEDW if !self.tree.busy() => {
-                if let Some(Entry { kind: Kind::Place(place), .. }) = self.selected() {
+                if let Some(SidebarEntry { kind: SidebarKind::Place(place), .. }) = self.selected() {
                     let key = place_key(&place);
                     if *self.current.borrow() != key {
                         *self.current.borrow_mut() = key;
@@ -129,10 +129,10 @@ impl Sidebar {
         let Some(index) = index else { return true };
         let Some(entry) = self.entries.borrow().get(index).cloned() else { return true };
         let items: Vec<(u16, &str)> = match &entry.kind {
-            Kind::Group(Group::Projects) => vec![(NEW, "New &Project...")],
-            Kind::Group(Group::Labels) => vec![(NEW, "New &Label...")],
-            Kind::Group(Group::Filters) => vec![(NEW, "New Saved &Filter...")],
-            Kind::Place(Place::Project(_)) => vec![
+            SidebarKind::Group(SidebarGroup::Projects) => vec![(NEW, "New &Project...")],
+            SidebarKind::Group(SidebarGroup::Labels) => vec![(NEW, "New &Label...")],
+            SidebarKind::Group(SidebarGroup::Filters) => vec![(NEW, "New Saved &Filter...")],
+            SidebarKind::Place(Place::Project(_)) => vec![
                 (RENAME, "&Rename..."),
                 (NEW_INSIDE, "&New Project Inside..."),
                 (MOVE_UNDER, "Move &Under..."),
@@ -143,7 +143,7 @@ impl Sidebar {
                 (0, ""),
                 (DELETE, "D&elete...\tDelete"),
             ],
-            Kind::Place(Place::Label(_)) => vec![
+            SidebarKind::Place(Place::Label(_)) => vec![
                 (RENAME, "&Rename..."),
                 (MERGE, "&Merge Into..."),
                 (COLOUR, "&Colour..."),
@@ -152,7 +152,7 @@ impl Sidebar {
                 (0, ""),
                 (DELETE, "D&elete...\tDelete"),
             ],
-            Kind::Place(Place::Filter { .. }) => vec![
+            SidebarKind::Place(Place::Filter { .. }) => vec![
                 (RENAME, "&Rename..."),
                 (QUERY, "Change &Query..."),
                 (UP, "Move U&p"),
@@ -160,7 +160,7 @@ impl Sidebar {
                 (0, ""),
                 (DELETE, "D&elete...\tDelete"),
             ],
-            Kind::Place(_) => return true,
+            SidebarKind::Place(_) => return true,
         };
         let at = point.unwrap_or_else(|| self.tree.menu_point(index));
         if let Some(command) = app.popup(&items, at) {
@@ -169,15 +169,15 @@ impl Sidebar {
         true
     }
 
-    fn act(&self, app: &App, command: u16, entry: &Entry) {
+    fn act(&self, app: &App, command: u16, entry: &SidebarEntry) {
         let owner = app.main;
         let lumenna = &app.core.lumenna;
         match (&entry.kind, command) {
-            (Kind::Group(Group::Projects), NEW) => self.new_project(app, None),
-            (Kind::Group(Group::Labels), NEW) => self.new_label(app),
-            (Kind::Group(Group::Filters), NEW) => self.new_filter(app),
+            (SidebarKind::Group(SidebarGroup::Projects), NEW) => self.new_project(app, None),
+            (SidebarKind::Group(SidebarGroup::Labels), NEW) => self.new_label(app),
+            (SidebarKind::Group(SidebarGroup::Filters), NEW) => self.new_filter(app),
 
-            (Kind::Place(Place::Project(name)), command) => match command {
+            (SidebarKind::Place(Place::Project(name)), command) => match command {
                 RENAME => {
                     if let Some(to) = prompts::ask_text(owner, &format!("Rename {name}"), "&Name:", "", name) {
                         self.change(app, Some(Place::Project(to.clone())), |l| l.rename_project(name, &to));
@@ -228,7 +228,7 @@ impl Sidebar {
                 _ => {}
             },
 
-            (Kind::Place(Place::Label(name)), command) => match command {
+            (SidebarKind::Place(Place::Label(name)), command) => match command {
                 RENAME => {
                     if let Some(to) = prompts::ask_text(owner, &format!("Rename {name}"), "&Name:", "", name) {
                         self.change(app, Some(Place::Label(to.clone())), |l| l.rename_label(name, &to));
@@ -258,7 +258,7 @@ impl Sidebar {
                 _ => {}
             },
 
-            (Kind::Place(Place::Filter { name, query }), command) => match command {
+            (SidebarKind::Place(Place::Filter { name, query }), command) => match command {
                 RENAME => {
                     if let Some(to) = prompts::ask_text(owner, &format!("Rename {name}"), "&Name:", "", name) {
                         let then = Place::Filter { name: to.clone(), query: query.clone() };
@@ -318,7 +318,7 @@ impl Sidebar {
 }
 
 fn place_key(place: &Place) -> String {
-    Entry { kind: Kind::Place(place.clone()), text: String::new(), depth: 0, archived: false }.key()
+    SidebarEntry { kind: SidebarKind::Place(place.clone()), text: String::new(), depth: 0, archived: false }.key()
 }
 
 fn project_names(lumenna: &Lumenna) -> Vec<String> {
@@ -331,6 +331,6 @@ fn label_names(lumenna: &Lumenna) -> Vec<String> {
 
 /// Whether a row has a Delete: projects, labels and saved filters do; the fixed places and
 /// the headings do not.
-fn deletable(entry: &Entry) -> bool {
-    matches!(entry.kind, Kind::Place(Place::Project(_) | Place::Label(_) | Place::Filter { .. }))
+fn deletable(entry: &SidebarEntry) -> bool {
+    matches!(entry.kind, SidebarKind::Place(Place::Project(_) | Place::Label(_) | Place::Filter { .. }))
 }
