@@ -71,6 +71,10 @@ final class Core {
     /// on macOS, for as long as it runs, which is what makes the resident app the device's
     /// sync process with no daemon or service to set up.
     func startSyncing() {
+        // The UI tests' copy: syncing would listen on the network, and on a fresh machine
+        // macOS then asks about local networks and incoming connections, over the window
+        // under test.
+        if ProcessInfo.processInfo.environment["LUMENNA_NO_SYNC"] != nil { return }
         let lumenna = self.lumenna
         syncQueue.async { [weak self] in
             guard let self, self.sync == nil else { return }
