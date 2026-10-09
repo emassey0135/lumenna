@@ -21,6 +21,7 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.withKeyDown
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
@@ -72,20 +73,26 @@ class KeyboardTest {
         directory.deleteRecursively()
     }
 
-    /** The app in a window [width] wide: a phone's by default. */
+    /**
+     * The app in a window [width] wide: a phone's by default. Only the width is forced; the
+     * height is the window's, since a forced size larger than the window is drawn at a
+     * smaller density to fit, and every touch target measures smaller than it is.
+     */
     private fun show(width: Dp = 400.dp) {
-        // A window wider than the screen is drawn at a smaller density to fit, so every touch
-        // target measures smaller than it is — a 48dp button as 19dp. Touch targets are
-        // checked at their real size in the phone-sized window, and in LumennaTest.
-        val wide = width > 500.dp
+        val screen = InstrumentationRegistry.getInstrumentation().targetContext.resources.configuration
+        // Wider than this screen — a phone asked for a wide window — the density shrinks, so
+        // touch targets are excused, and only then: on a tablet or a desktop they are checked.
+        val shrunk = width.value > screen.screenWidthDp
         rule.enableAccessibilityChecks(
             AccessibilityValidator().setRunChecksFromRootView(true).apply {
-                if (wide) setSuppressingResultMatcher(matchesCheck(TouchTargetSizeCheck::class.java))
+                if (shrunk) setSuppressingResultMatcher(matchesCheck(TouchTargetSizeCheck::class.java))
             },
         )
         rule.setContent {
-            DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(DpSize(width, 800.dp))) {
-                LumennaTheme { LumennaApp(core, shortcuts = shortcuts) }
+            BoxWithConstraints {
+                DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(DpSize(width, maxHeight))) {
+                    LumennaTheme { LumennaApp(core, shortcuts = shortcuts) }
+                }
             }
         }
         rule.waitForIdle()
