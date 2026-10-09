@@ -248,8 +248,9 @@ The core's `complete` works everywhere; what is missing is how each app offers i
 ### Each app
 
 - **iOS**: custom rotors (overdue, running, next block).
-- **Android**: arm64 only; pairing on the local network untried on a real phone (the
-  emulator's NAT passes no multicast); the iPhone's two pairing tests not ported.
+- **Android**: pairing on the local network untried on a real phone (the emulator's NAT
+  passes no multicast); the iPhone's two pairing tests not ported. The keyboard commands
+  and the wide layout are tested in the emulator, not yet with TalkBack and a real keyboard.
 - **GTK**: type-ahead in lists (the Windows and Mac lists jump to a row by its first
   letters; GTK's list view does not); shortcuts from anywhere without the GlobalShortcuts
   portal (an X11 key grab for Xfce and older GNOME); no tray on GNOME without the
@@ -258,8 +259,8 @@ The core's `complete` works everywhere; what is missing is how each app offers i
 - **The web client**: making a task a subtask or moving it to the top level (the export
   exists; nothing calls it).
 - **Every app**: icons of their own (GTK and Windows have none); one binding for "go to now"
-  (Ctrl+T on Windows and GTK, Cmd+T on the Mac, `t` on BTSpeak, but Cmd+J on iPad, which is
-  Go to Day on the Mac, and none on the web or Android).
+  (Ctrl+T on Windows, GTK and Android, Cmd+T on the Mac, `t` on BTSpeak, but Cmd+J on iPad,
+  which is Go to Day on the Mac, and none on the web).
 - **Screen readers not yet tried by a person**: JAWS, Narrator, ChromeVox, Emacspeak and
   speechd-el. NVDA (Windows and the web), Orca, VoiceOver on the Mac and iPhone, TalkBack,
   Emacsvox and the BTSpeak have been. The braille short forms for states and roles are

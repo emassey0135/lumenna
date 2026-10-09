@@ -158,6 +158,12 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
         day = from.plusDays(days).toString()
     }
 
+    Offer(Command.PREVIOUS_DAY) { step(-1) }
+    Offer(Command.NEXT_DAY) { step(1) }
+    Offer(Command.GO_TO_NOW) { day = null }
+    Offer(Command.GO_TO_DAY) { asking = DayAsk.GoTo }
+    Offer(Command.NEW_BLOCK) { navigator.push(Screen.BlockForm(BlockPurpose.Add(date = shown?.date))) }
+
     ScreenFrame(shown?.let { Clock.spokenDay(it.date) } ?: "Today", core, navigator, actions = {
         IconButton(onClick = { navigator.push(Screen.BlockForm(BlockPurpose.Add(date = shown?.date))) }) {
             Icon(Icons.Filled.Add, contentDescription = "Add block")
@@ -440,6 +446,7 @@ fun BlockFormScreen(core: Core, navigator: Navigator, purpose: BlockPurpose) {
         }
         if (change != null) navigator.back()
     }
+    Offer(Command.SAVE) { save() }
 
     ScreenFrame(title, core, navigator, actions = {
         IconButton(onClick = { save() }) { Icon(Icons.Filled.Check, contentDescription = "Save") }
