@@ -4,9 +4,9 @@
 //! **Stock widgets, annotated where GTK under-reports.** Every list is a `GtkListView` that
 //! tells Orca it is a tree, with each row's level, position and expansion (`tree`); forms are
 //! entries, drop-downs and buttons named by their labels; dialogs are GTK's own. What is
-//! decided rather than drawn — how a row is worded, how flat rows become a tree, which places
-//! the sidebar holds — is `lumenna-desktop`'s, shared with the Windows app, and what every
-//! client shares, such as what a task form sends back, is the surface's.
+//! decided rather than drawn — how a row is worded, how flat rows become a tree — is
+//! `lumenna-desktop`'s, shared with the Windows app, and what every client shares, such as
+//! which places the sidebar holds or what a task form sends back, is the surface's.
 //!
 //! One instance per profile: GApplication registers the app's identifier on the session bus,
 //! and starting it again activates the running one, which shows its window.

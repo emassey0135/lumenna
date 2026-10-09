@@ -21,7 +21,7 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gio, glib};
-use lumenna_desktop::places::Place;
+use lumenna_surface::places::Place;
 use lumenna_desktop::speech;
 use lumenna_surface::{Change, Lumenna, Result};
 

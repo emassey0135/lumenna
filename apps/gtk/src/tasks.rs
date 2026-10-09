@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gdk, glib};
-use lumenna_desktop::places::Place;
+use lumenna_surface::places::Place;
 use lumenna_desktop::speech;
 use lumenna_surface::RowView;
 

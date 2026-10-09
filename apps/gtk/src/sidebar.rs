@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
-use lumenna_desktop::places::{self, Entry, Group, Kind, Place};
+use lumenna_surface::places::{self, Place, SidebarEntry, SidebarGroup, SidebarKind};
 use lumenna_surface::{Change, Direction, Lumenna, Result, parse_weight};
 
 use crate::prompts;
@@ -56,7 +56,7 @@ impl Command {
 
 pub struct Sidebar {
     pub tree: Rc<Tree>,
-    entries: RefCell<Vec<Entry>>,
+    entries: RefCell<Vec<SidebarEntry>>,
     /// The place shown, by key.
     current: RefCell<String>,
 }
@@ -67,7 +67,7 @@ impl Sidebar {
         let weak = Rc::downgrade(&sidebar);
         sidebar.tree.connect_selected(move |_| {
             let (Some(sidebar), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
-            if let Some(Entry { kind: Kind::Place(place), .. }) = sidebar.selected() {
+            if let Some(SidebarEntry { kind: SidebarKind::Place(place), .. }) = sidebar.selected() {
                 let key = place_key(&place);
                 if *sidebar.current.borrow() != key {
                     *sidebar.current.borrow_mut() = key;
@@ -78,7 +78,7 @@ impl Sidebar {
         let weak = Rc::downgrade(&sidebar);
         sidebar.tree.connect_activate(move |_| {
             let (Some(sidebar), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
-            if matches!(sidebar.selected(), Some(Entry { kind: Kind::Place(_), .. })) {
+            if matches!(sidebar.selected(), Some(SidebarEntry { kind: SidebarKind::Place(_), .. })) {
                 app.focus_content();
             }
         });
@@ -102,10 +102,10 @@ impl Sidebar {
             let (Some(sidebar), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
             let Some(entry) = sidebar.entries.borrow().get(index).cloned() else { return };
             let items: Vec<(Command, &str)> = match &entry.kind {
-                Kind::Group(Group::Projects) => vec![(Command::New, "New _Project…")],
-                Kind::Group(Group::Labels) => vec![(Command::New, "New _Label…")],
-                Kind::Group(Group::Filters) => vec![(Command::New, "New Saved _Filter…")],
-                Kind::Place(Place::Project(_)) => vec![
+                SidebarKind::Group(SidebarGroup::Projects) => vec![(Command::New, "New _Project…")],
+                SidebarKind::Group(SidebarGroup::Labels) => vec![(Command::New, "New _Label…")],
+                SidebarKind::Group(SidebarGroup::Filters) => vec![(Command::New, "New Saved _Filter…")],
+                SidebarKind::Place(Place::Project(_)) => vec![
                     (Command::Rename, "_Rename…"),
                     (Command::NewInside, "_New Project Inside…"),
                     (Command::MoveUnder, "Move _Under…"),
@@ -115,7 +115,7 @@ impl Sidebar {
                     (Command::Archive, if entry.archived { "Un_archive" } else { "_Archive" }),
                     (Command::Delete, "D_elete…"),
                 ],
-                Kind::Place(Place::Label(_)) => vec![
+                SidebarKind::Place(Place::Label(_)) => vec![
                     (Command::Rename, "_Rename…"),
                     (Command::Merge, "_Merge Into…"),
                     (Command::Colour, "_Colour…"),
@@ -123,14 +123,14 @@ impl Sidebar {
                     (Command::Down, "Move _Down"),
                     (Command::Delete, "D_elete…"),
                 ],
-                Kind::Place(Place::Filter { .. }) => vec![
+                SidebarKind::Place(Place::Filter { .. }) => vec![
                     (Command::Rename, "_Rename…"),
                     (Command::Query, "Change _Query…"),
                     (Command::Up, "Move U_p"),
                     (Command::Down, "Move _Down"),
                     (Command::Delete, "D_elete…"),
                 ],
-                Kind::Place(_) => return,
+                SidebarKind::Place(_) => return,
             };
             let menu = gio::Menu::new();
             let actions = gio::SimpleActionGroup::new();
@@ -178,27 +178,27 @@ impl Sidebar {
         }
     }
 
-    fn selected(&self) -> Option<Entry> {
+    fn selected(&self) -> Option<SidebarEntry> {
         let index = self.tree.selected()?;
         self.entries.borrow().get(index).cloned()
     }
 }
 
 impl Sidebar {
-    fn act(self: &Rc<Self>, app: &Rc<App>, command: Command, entry: Entry) {
+    fn act(self: &Rc<Self>, app: &Rc<App>, command: Command, entry: SidebarEntry) {
         let (sidebar, app) = (Rc::clone(self), Rc::clone(app));
         spawn(async move { sidebar.run(&app, command, entry).await });
     }
 
-    async fn run(&self, app: &Rc<App>, command: Command, entry: Entry) {
+    async fn run(&self, app: &Rc<App>, command: Command, entry: SidebarEntry) {
         let window = &app.window;
         let lumenna = &app.core.lumenna;
         match (&entry.kind, command) {
-            (Kind::Group(Group::Projects), Command::New) => new_project(app, None).await,
-            (Kind::Group(Group::Labels), Command::New) => new_label(app).await,
-            (Kind::Group(Group::Filters), Command::New) => new_filter(app).await,
+            (SidebarKind::Group(SidebarGroup::Projects), Command::New) => new_project(app, None).await,
+            (SidebarKind::Group(SidebarGroup::Labels), Command::New) => new_label(app).await,
+            (SidebarKind::Group(SidebarGroup::Filters), Command::New) => new_filter(app).await,
 
-            (Kind::Place(Place::Project(name)), command) => match command {
+            (SidebarKind::Place(Place::Project(name)), command) => match command {
                 Command::Rename => {
                     if let Some(to) = prompts::ask(window, &format!("Rename {name}"), "_Name:", "", name).await {
                         change(app, Some(Place::Project(to.clone())), |l| l.rename_project(name, &to));
@@ -249,7 +249,7 @@ impl Sidebar {
                 _ => {}
             },
 
-            (Kind::Place(Place::Label(name)), command) => match command {
+            (SidebarKind::Place(Place::Label(name)), command) => match command {
                 Command::Rename => {
                     if let Some(to) = prompts::ask(window, &format!("Rename {name}"), "_Name:", "", name).await {
                         change(app, Some(Place::Label(to.clone())), |l| l.rename_label(name, &to));
@@ -281,7 +281,7 @@ impl Sidebar {
                 _ => {}
             },
 
-            (Kind::Place(Place::Filter { name, query }), command) => match command {
+            (SidebarKind::Place(Place::Filter { name, query }), command) => match command {
                 Command::Rename => {
                     if let Some(to) = prompts::ask(window, &format!("Rename {name}"), "_Name:", "", name).await {
                         let then = Place::Filter { name: to.clone(), query: query.clone() };
@@ -352,11 +352,11 @@ fn label_names(lumenna: &Lumenna) -> Vec<String> {
 
 /// Whether a row has a Delete: projects, labels and saved filters do; the fixed places and
 /// the headings do not.
-fn deletable(entry: &Entry) -> bool {
-    matches!(entry.kind, Kind::Place(Place::Project(_) | Place::Label(_) | Place::Filter { .. }))
+fn deletable(entry: &SidebarEntry) -> bool {
+    matches!(entry.kind, SidebarKind::Place(Place::Project(_) | Place::Label(_) | Place::Filter { .. }))
 }
 
 /// The key a place's row has in the sidebar.
 fn place_key(place: &Place) -> String {
-    Entry { kind: Kind::Place(place.clone()), text: String::new(), depth: 0, archived: false }.key()
+    SidebarEntry { kind: SidebarKind::Place(place.clone()), text: String::new(), depth: 0, archived: false }.key()
 }
