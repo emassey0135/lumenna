@@ -126,7 +126,8 @@ test("a backup downloads, and restores into another browser", async ({ browser }
   const choosing = there.waitForEvent("filechooser");
   await there.getByRole("button", { name: "Restore from a Backup…" }).click();
   await (await choosing).setFiles(path);
-  await expect(there.locator('[aria-live="polite"]')).toContainText("Restored");
+  // A restore merges every document in the worker, which takes a while beside other tests.
+  await expect(there.locator('[aria-live="polite"]')).toContainText("Restored", { timeout: 20_000 });
   await there.getByRole("button", { name: "Close" }).click();
   await expect(there.getByRole("main").getByRole("row", { name: /^Remember this/ })).toBeVisible();
 });

@@ -44,6 +44,8 @@ test("deleting from the trash asks first, with Cancel focused, and Cancel keeps 
   const tasks = page.getByRole("main");
   await tasks.getByRole("row", { name: /^Old idea/ }).focus();
   await page.keyboard.press("Delete");
+  // Gone from Tasks first, or the row focused next can be this list's, not the trash's.
+  await expect(tasks.getByRole("row", { name: /^Old idea/ })).toHaveCount(0);
   await place(page, /^Trash/);
   await tasks.getByRole("row", { name: /^Old idea/ }).focus();
   await page.keyboard.press("Delete");
