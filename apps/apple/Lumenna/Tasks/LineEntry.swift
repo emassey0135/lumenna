@@ -16,6 +16,12 @@ final class LineEntry: UITextView, UITextViewDelegate {
 
     private let placeholderLabel = UILabel()
 
+    // Set in code — a project's list opens with its query in the filter — the placeholder
+    // must go too, or it is drawn under the text.
+    override var text: String! {
+        didSet { placeholderLabel.isHidden = !text.isEmpty }
+    }
+
     /// What shows while it is empty. VoiceOver hears it as the hint instead, since a label
     /// drawn over the view is not part of it.
     var placeholder: String? {

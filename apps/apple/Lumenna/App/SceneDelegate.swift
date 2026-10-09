@@ -15,7 +15,9 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         switch AppDelegate.core {
         case let .success(core):
             self.core = core
-            window.rootViewController = RootTabs(core: core)
+            // The iPad's sidebar, as on the Mac; the iPhone's tabs.
+            window.rootViewController = UIDevice.current.userInterfaceIdiom == .pad
+                ? IPadRoot(core: core) : RootTabs(core: core)
         case let .failure(error):
             // Nothing works without the store, so say why plainly rather than showing an
             // empty list that looks like there is nothing to do.
@@ -44,8 +46,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// New Task, from the app icon's quick actions (long press, or VoiceOver's actions rotor):
     /// quick add, without first finding the Tasks tab.
     private func perform(_ shortcut: UIApplicationShortcutItem) -> Bool {
-        guard shortcut.type == Self.newTask, let tabs = window?.rootViewController as? RootTabs else { return false }
-        tabs.newTask()
+        guard shortcut.type == Self.newTask, let root = window?.rootViewController as? CommandActions else { return false }
+        root.newTask?()
         return true
     }
 

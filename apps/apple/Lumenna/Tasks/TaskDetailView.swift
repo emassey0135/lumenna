@@ -32,6 +32,13 @@ final class TaskDetailViewController: UIHostingController<TaskDetailView>, TaskF
         navigationItem.rightBarButtonItem?.style = .done
     }
 
+    override var canBecomeFirstResponder: Bool { true }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        takeKeyboardCommands()
+    }
+
     // MARK: - TaskFormHost
 
     func chooseTask(_ title: String, excluding: Set<String>, chosen: @escaping (String) -> Void) {
@@ -55,6 +62,21 @@ final class TaskDetailViewController: UIHostingController<TaskDetailView>, TaskF
     }
 
     func trashed() {
-        navigationController?.popViewController(animated: true)
+        closeBeside()
+    }
+
+    // The Task menu, for the task shown (`KeyboardCommands`): beside its list on iPad, the
+    // list is not in the responder chain, so the open task answers.
+
+    @objc func saveChanges() {
+        model.save()
+    }
+
+    @objc func toggleDone() {
+        model.toggleDone()
+    }
+
+    @objc func moveToTrash() {
+        model.trash()
     }
 }

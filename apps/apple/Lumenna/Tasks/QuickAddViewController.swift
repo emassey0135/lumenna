@@ -28,6 +28,20 @@ final class QuickAddViewController: UIViewController {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    /// Called once it has gone, added or cancelled: on iPad a sheet's closing does not make
+    /// the list appear again, so the list takes keyboard commands back here.
+    var closed: () -> Void = {}
+
+    // Add and Cancel both close it here; a sheet swiped away closes in
+    // `presentationControllerDidDismiss`.
+    override func dismiss(animated: Bool, completion: (() -> Void)? = nil) {
+        let closed = self.closed
+        super.dismiss(animated: animated) {
+            completion?()
+            closed()
+        }
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
@@ -72,6 +86,7 @@ final class QuickAddViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        navigationController?.presentationController?.delegate = self
         if field.text.isEmpty && !initial.isEmpty {
             field.text = initial
             field.delegate?.textViewDidChange?(field)
@@ -109,5 +124,11 @@ final class QuickAddViewController: UIViewController {
 
     @objc private func cancel() {
         dismiss(animated: true)
+    }
+}
+
+extension QuickAddViewController: UIAdaptivePresentationControllerDelegate {
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        closed()
     }
 }

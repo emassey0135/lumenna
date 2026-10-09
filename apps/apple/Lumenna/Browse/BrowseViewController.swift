@@ -67,12 +67,7 @@ final class ProjectsViewController: ItemListViewController {
     override var addTitle: String? { "Add project" }
 
     override func add() {
-        askForText("New Project", placeholder: "Name", action: "Add") { [weak self] name in
-            guard let self else { return }
-            self.perform(on: Item(key: name, title: name)) {
-                try self.core.lumenna.addProject(name: name, parent: nil)
-            }
-        }
+        addProject(key: { $0 })
     }
 
     override func open(_ item: Item) {
@@ -88,81 +83,7 @@ final class ProjectsViewController: ItemListViewController {
     }
 
     override func actions(for item: Item) -> [ItemAction] {
-        let lumenna = core.lumenna
-        return [
-            ItemAction(title: "Rename") { [weak self] item in
-                self?.askForText("Rename \(item.title)", initial: item.title) { name in
-                    self?.perform(on: item, renamedTo: name) {
-                        try lumenna.renameProject(name: item.key, to: name)
-                    }
-                }
-            },
-            ItemAction(title: "Move Up") { [weak self] item in
-                self?.perform(on: item) { try lumenna.reorderProject(name: item.key, direction: .up) }
-            },
-            ItemAction(title: "Move Down") { [weak self] item in
-                self?.perform(on: item) { try lumenna.reorderProject(name: item.key, direction: .down) }
-            },
-            ItemAction(title: "Move Under") { [weak self] item in self?.moveUnder(item) },
-            ItemAction(title: "Add Project Inside") { [weak self] item in
-                self?.askForText("New Project in \(item.title)", placeholder: "Name", action: "Add") { name in
-                    self?.perform(on: Item(key: name, title: name)) {
-                        try lumenna.addProject(name: name, parent: item.key)
-                    }
-                }
-            },
-            ItemAction(title: "Weight") { [weak self] item in self?.askWeight(of: item) },
-            ItemAction(title: archived.contains(item.key) ? "Unarchive" : "Archive") { [weak self] item in
-                self?.perform(on: item) { try lumenna.archiveProject(name: item.key) }
-            },
-            ItemAction(title: "Delete", destructive: true) { [weak self] item in self?.delete(item) },
-        ]
-    }
-
-    /// Asks a project's weight, and again with what was typed when it is not one: a typo
-    /// must not quietly become "inherit" (the core reads it, `parseWeight`).
-    private func askWeight(of item: Item, typed: String = "", problem: String? = nil) {
-        let help = "How much this whole area matters now, roughly 0.5 to 2. Type inherit to take the parent's again."
-        askForText(
-            "Weight of \(item.title)",
-            message: problem.map { "\($0)\n\n\(help)" } ?? help,
-            placeholder: "1.0",
-            initial: typed
-        ) { [weak self] text in
-            guard let self else { return }
-            do {
-                let weight = try parseWeight(text: text)
-                perform(on: item) { try self.core.lumenna.weighProject(name: item.key, weight: weight) }
-            } catch {
-                askWeight(of: item, typed: text, problem: error.sentence)
-            }
-        }
-    }
-
-    private func moveUnder(_ item: Item) {
-        let others = items.filter { $0.key != item.key }
-        var choices: [(String, () -> Void)] = [("Top Level", { [weak self] in
-            self?.perform(on: item) { try self!.core.lumenna.moveProject(name: item.key, parent: nil) }
-        })]
-        choices += others.map { other in
-            (other.title, { [weak self] in
-                self?.perform(on: item) {
-                    try self!.core.lumenna.moveProject(name: item.key, parent: other.key)
-                }
-            })
-        }
-        choose("Move \(item.title) under", actions: choices)
-    }
-
-    private func delete(_ item: Item) {
-        choose("Delete \(item.title)?", message: "Its tasks can go to the trash with it, or move to the Inbox.", actions: [
-            ("Delete and Trash Its Tasks", { [weak self] in
-                self?.perform(on: item) { try self!.core.lumenna.deleteProject(name: item.key, keepTasks: false) }
-            }),
-            ("Delete and Keep Its Tasks", { [weak self] in
-                self?.perform(on: item) { try self!.core.lumenna.deleteProject(name: item.key, keepTasks: true) }
-            }),
-        ])
+        projectActions(item.key, archived: archived.contains(item.key), others: { [weak self] in self?.items.map(\.key) ?? [] }, key: { $0 })
     }
 }
 
@@ -180,10 +101,7 @@ final class LabelsViewController: ItemListViewController {
     override var addTitle: String? { "Add label" }
 
     override func add() {
-        askForText("New Label", placeholder: "Name", action: "Add") { [weak self] name in
-            guard let self else { return }
-            self.perform(on: Item(key: name, title: name)) { try self.core.lumenna.addLabel(name: name) }
-        }
+        addLabel(key: { $0 })
     }
 
     override func open(_ item: Item) {
@@ -199,47 +117,7 @@ final class LabelsViewController: ItemListViewController {
     }
 
     override func actions(for item: Item) -> [ItemAction] {
-        let lumenna = core.lumenna
-        return [
-            ItemAction(title: "Rename") { [weak self] item in
-                self?.askForText("Rename \(item.title)", initial: item.title) { name in
-                    self?.perform(on: item, renamedTo: name) { try lumenna.renameLabel(name: item.key, to: name) }
-                }
-            },
-            ItemAction(title: "Move Up") { [weak self] item in
-                self?.perform(on: item) { try lumenna.reorderLabel(name: item.key, direction: .up) }
-            },
-            ItemAction(title: "Move Down") { [weak self] item in
-                self?.perform(on: item) { try lumenna.reorderLabel(name: item.key, direction: .down) }
-            },
-            ItemAction(title: "Merge Into") { [weak self] item in
-                guard let self else { return }
-                // For when a typo made a near-duplicate: this one's tasks move to the other.
-                let others = self.items.filter { $0.key != item.key }
-                self.choose("Merge \(item.title) into", actions: others.map { other in
-                    (other.title, { [weak self] in
-                        self?.perform(on: item, renamedTo: other.key) {
-                            try lumenna.mergeLabels(from: item.key, into: other.key)
-                        }
-                    })
-                })
-            },
-            ItemAction(title: "Colour") { [weak self] item in
-                self?.askForText(
-                    "Colour for \(item.title)",
-                    message: "A colour name, such as red or teal, or none. The name always shows too.",
-                    placeholder: "teal"
-                ) { colour in
-                    let chosen = colour.lowercased() == "none" ? nil : colour
-                    self?.perform(on: item) { try lumenna.recolourLabel(name: item.key, colour: chosen) }
-                }
-            },
-            ItemAction(title: "Delete", destructive: true) { [weak self] item in
-                self?.confirm("Delete \(item.title)?", message: "Tasks wearing it stay; they just stop showing it.", action: "Delete") {
-                    self?.perform(on: item) { try lumenna.deleteLabel(name: item.key) }
-                }
-            },
-        ]
+        labelActions(item.key, others: { [weak self] in self?.items.map(\.key) ?? [] }, key: { $0 })
     }
 }
 
@@ -262,14 +140,7 @@ final class FiltersViewController: ItemListViewController {
     override var addTitle: String? { "Add filter" }
 
     override func add() {
-        askForText("New Filter", placeholder: "Name", action: "Next") { [weak self] name in
-            self?.askForText("Query for \(name)", placeholder: "#Work & overdue", action: "Save") { query in
-                guard let self else { return }
-                self.perform(on: Item(key: name, title: name)) {
-                    try self.core.lumenna.addFilter(name: name, query: query)
-                }
-            }
-        }
+        addFilter(key: { $0 })
     }
 
     override func open(_ item: Item) {
@@ -280,30 +151,7 @@ final class FiltersViewController: ItemListViewController {
     }
 
     override func actions(for item: Item) -> [ItemAction] {
-        let lumenna = core.lumenna
-        return [
-            ItemAction(title: "Rename") { [weak self] item in
-                self?.askForText("Rename \(item.title)", initial: item.title) { name in
-                    self?.perform(on: item, renamedTo: name) {
-                        try lumenna.editFilter(name: item.key, rename: name, query: nil)
-                    }
-                }
-            },
-            ItemAction(title: "Change Query") { [weak self] item in
-                self?.askForText("Query for \(item.title)", initial: self?.queries[item.key] ?? "") { query in
-                    self?.perform(on: item) { try lumenna.editFilter(name: item.key, rename: nil, query: query) }
-                }
-            },
-            ItemAction(title: "Move Up") { [weak self] item in
-                self?.perform(on: item) { try lumenna.reorderFilter(name: item.key, direction: .up) }
-            },
-            ItemAction(title: "Move Down") { [weak self] item in
-                self?.perform(on: item) { try lumenna.reorderFilter(name: item.key, direction: .down) }
-            },
-            ItemAction(title: "Delete", destructive: true) { [weak self] item in
-                self?.perform(on: item) { try lumenna.deleteFilter(name: item.key) }
-            },
-        ]
+        filterActions(item.key, query: queries[item.key] ?? "", key: { $0 })
     }
 }
 

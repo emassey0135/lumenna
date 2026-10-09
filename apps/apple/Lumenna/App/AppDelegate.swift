@@ -23,4 +23,10 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     ) -> UISceneConfiguration {
         UISceneConfiguration(name: "Default", sessionRole: connectingSceneSession.role)
     }
+
+    /// The iPad's menu bar, and the shortcuts a held ⌘ lists (`KeyboardCommands`).
+    override func buildMenu(with builder: UIMenuBuilder) {
+        super.buildMenu(with: builder)
+        KeyboardCommands.build(builder)
+    }
 }
