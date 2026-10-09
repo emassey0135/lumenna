@@ -711,7 +711,7 @@ gives the toolchain.
   smaller density, and every touch target measures small. So touch targets are excused
   only when the forced width exceeds the screen; CI's desktop-screen run checks them in
   the wide layout for real. The desktop system images ended at API 34: `desktop_medium`
-  on 37 is a large screen without freeform windows. A real Googlebook (Android 17) has
+  on 36 is a large screen without freeform windows. A real Googlebook (Android 17) has
   those, a title bar per window, and no menu bar.
 - **`run-instrumented-tests.sh`** runs the instrumented tests from APKs already built, with
   `am instrument`, which exits 0 whatever happened, so its summary decides. CI builds once
@@ -783,7 +783,8 @@ CI (`.github/workflows/ci.yml`) builds each mobile app once and tests it on seve
 in parallel jobs that share the build as an artifact: `ios-build` with `build-for-testing`,
 then an iPhone, an SE and an iPad with `test-without-building`; `android-build`, which
 also checks 16 KB alignment and builds the core optimized (`LUMENNA_CORE_PROFILE`), then
-a phone and a desktop-sized emulator with `run-instrumented-tests.sh`. The test jobs need
+a phone and a desktop-sized emulator with `run-instrumented-tests.sh`, on Android 36:
+every Android 37 image crashed its display server on the runners' software renderer. The test jobs need
 no Rust. **Two tiers**: the Rust tests, the builds, the clients, the GTK and Windows UI
 tests and a smoke set of iOS and Android UI tests block; the full iOS and Android suites
 report without blocking, since a slow runner fails them where nothing is wrong. A test

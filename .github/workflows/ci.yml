@@ -384,11 +384,11 @@ jobs:
       matrix:
         include:
           # The action's default device did not boot Android 37 in fifteen minutes.
-          - { name: "phone, every test", profile: medium_phone, keyboard: false, api: "37.2", target: google_apis_ps16k }
+          - { name: "phone, every test", profile: medium_phone, keyboard: false }
           # A desktop-sized screen with a keyboard: every screen in its wide layout, at its
           # real density, so the touch targets are checked as they are. The system images
           # stopped having a desktop of their own at API 34; this is the large screen alone.
-          - { name: "desktop screen and keyboard, every test", profile: desktop_medium, keyboard: true, api: "37.1", target: google_apis_ps16k }
+          - { name: "desktop screen and keyboard, every test", profile: desktop_medium, keyboard: true }
           # The smoke set, which blocks: adding and completing, folding, focus after a
           # change, a keyboard command, and the large-text screens, each under Google's
           # accessibility checks.
@@ -396,8 +396,6 @@ jobs:
             profile: medium_phone
             keyboard: false
             blocking: true
-            api: "37.2"
-            target: google_apis_ps16k
             tests: "io.github.emassey0135.lumenna.LumennaTest#addingATaskReadsItBackAndListsIt,io.github.emassey0135.lumenna.LumennaTest#completingATaskPutsFocusOnTheOneNowInItsPlaceThenSaysWhatHappened,io.github.emassey0135.lumenna.LumennaTest#aTaskWithSubtasksCollapsesAndExpandsAndSaysWhichItIs,io.github.emassey0135.lumenna.KeyboardTest#ctrlNOpensQuickAddFromAnotherTab,io.github.emassey0135.lumenna.LargeTextTest"
     runs-on: ubuntu-24.04
     # The full suites report; the smoke set blocks.
@@ -419,8 +417,13 @@ jobs:
       - name: Instrumented tests, on an x86_64 emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: ${{ matrix.api }}
-          target: ${{ matrix.target }}
+          # Android 36, not 37: every 37 image (37.0, 37.1, 37.2) aborted its display
+          # server on the Linux software renderer as the tests began ("Assertion failed:
+          # !rcEnc->featureInfo()->hasReadColorBufferDma"), and the instrumentation said
+          # "System has crashed". Guest rendering, ANGLE, GLDMA off and three-button
+          # navigation changed nothing; on a Mac, 37 runs. The app still targets 37.
+          api-level: "36"
+          target: google_apis
           arch: x86_64
           profile: ${{ matrix.profile }}
           enable-hw-keyboard: ${{ matrix.keyboard }}
@@ -428,12 +431,6 @@ jobs:
           # The default data partition has no room for the app: "Requested internal only,
           # but not enough space". The RAM stays the profile's own.
           disk-size: 6000M
-          # On 37.0's image the display server aborted as the tests began ("Assertion
-          # failed: !rcEnc->featureInfo()->hasReadColorBufferDma": its graphics mapper wants
-          # a readback the Linux software renderer does not offer; a Mac's does), and the
-          # instrumentation said "System has crashed". Guest rendering, ANGLE, GLDMA off
-          # and three-button navigation did not help. Being tried: the later 37 images,
-          # which have 16 KB pages, as the app is built for.
           working-directory: apps/android
           script: TESTS="${{ matrix.tests }}" ./run-instrumented-tests.sh test-output
       - name: Screenshots at the largest font
