@@ -126,16 +126,13 @@ final class LumennaUITests: XCTestCase {
 
     func testTodayMeansTodayWhereThePhoneIs() {
         add("water the plants today")
-        // In the phone's own time zone: the ISO style's default is UTC, which is already
-        // tomorrow every evening in the Americas.
-        let today = Date.now.formatted(
-            Date.ISO8601FormatStyle(timeZone: .current).year().month().day()
-        )
+        // The core works "today" out in the phone's own time zone; in UTC it is already
+        // tomorrow every evening in the Americas, and the row would say "due yesterday".
         let cell = row("water the plants")
         XCTAssertTrue(cell.waitForExistence(timeout: 5))
         XCTAssertTrue(
-            (cell.value as? String ?? "").contains(today),
-            "due \(today), but the row says \(cell.value ?? "nothing")"
+            (cell.value as? String ?? "").contains("due today"),
+            "the row says \(cell.value ?? "nothing")"
         )
     }
 
