@@ -29,7 +29,7 @@ class LevelsInTextTest(unittest.TestCase):
         self.assertIn("Outline, subtask, level 2", names, "deeper than the row before")
         self.assertIn("Find sources, subtask", names, "the same level as the row before")
         self.assertIn("Call the bank, level 1", names, "back out")
-        self.assertIn("Write the report", names, "the same as the row before, at the top")
+        self.assertIn("Write the report, priority 1", names, "the same as the row before, at the top")
         self.assertIn("Inbox, 2 open tasks, level 2", names, "the sidebar too")
 
     def test_collapsing_says_the_level_against_the_new_row_before(self):
