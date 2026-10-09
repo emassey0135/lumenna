@@ -292,6 +292,20 @@ fn describe_block(
     parts.join(", ")
 }
 
+/// What a task's row says after its title: when it is due, in words, then its priority if
+/// it has one (P4 is none). *"due tomorrow at 3:00 PM, priority 1"*.
+fn task_value(task: &crate::model::Task, today: jiff::civil::Date) -> Option<String> {
+    let due = task.due.as_ref().map(|due| crate::time::due_words(due.date, due.time, today));
+    let priority = match task.priority {
+        crate::model::Priority::P1 => Some("priority 1"),
+        crate::model::Priority::P2 => Some("priority 2"),
+        crate::model::Priority::P3 => Some("priority 3"),
+        crate::model::Priority::P4 => None,
+    };
+    let parts: Vec<String> = due.into_iter().chain(priority.map(str::to_owned)).collect();
+    (!parts.is_empty()).then(|| parts.join(", "))
+}
+
 fn push_task_rows(
     cx: &Context<'_>,
     children: &std::collections::BTreeMap<Option<TaskId>, Vec<&crate::model::Task>>,
@@ -315,12 +329,7 @@ fn push_task_rows(
             checked: Some(cx.facts().is_completed(task)),
             title: task.title.clone(),
             state: cx.facts().notable_states_of(task, cx.now),
-            value: task.due.as_ref().map(|due| match due.time {
-                Some(time) => {
-                    format!("due {} at {:02}:{:02}", due.date, time.hour(), time.minute())
-                }
-                None => format!("due {}", due.date),
-            }),
+            value: task_value(task, cx.now.date()),
             hint: None,
         });
         push_task_rows(cx, children, Some(task.id), depth + 1, rows);

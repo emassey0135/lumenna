@@ -609,29 +609,4 @@ fn unknown_message(noun: &str, name: &str, position: usize, candidates: &[&str])
     }
 }
 
-/// *"Friday 15 May 2026"* — the form a screen reader can read without spelling out digits.
-fn long_date(date: jiff::civil::Date) -> String {
-    const MONTHS: [&str; 12] = [
-        "January", "February", "March", "April", "May", "June", "July", "August", "September",
-        "October", "November", "December",
-    ];
-    let month = MONTHS.get((date.month() as usize).wrapping_sub(1)).copied().unwrap_or("");
-    format!(
-        "{} {} {month} {}",
-        lumenna_core::time::weekday_name(date.weekday()),
-        date.day(),
-        date.year()
-    )
-}
-
-/// *"3:00 PM"*.
-fn clock_words(time: jiff::civil::Time) -> String {
-    let hour = time.hour();
-    let (display, meridiem) = match hour {
-        0 => (12, "AM"),
-        1..=11 => (hour, "AM"),
-        12 => (12, "PM"),
-        _ => (hour - 12, "PM"),
-    };
-    format!("{display}:{:02} {meridiem}", time.minute())
-}
+use lumenna_core::time::{clock_words, long_date};
