@@ -33,10 +33,6 @@ wait_for "the device" timeout 60 adb wait-for-device
 # Booted is not ready: the package manager answers a little later, and an install sent
 # before it broke off ("Broken pipe"). Then each install is tried a few times.
 wait_for "the package manager" timeout 30 adb shell pm path android
-# Nor is shared storage, where the tests' screenshots go: "Transport endpoint is not
-# connected" until it is mounted, even after /sdcard answers. Ready is when the folder can
-# be made.
-wait_for "shared storage" timeout 30 adb shell mkdir -p "$device_output"
 install() {
   for attempt in 1 2 3; do
     echo "Installing $1"
@@ -48,6 +44,11 @@ install() {
 }
 install "$apks/debug/app-debug.apk"
 install "$apks/androidTest/debug/app-debug-androidTest.apk"
+# Nor is shared storage, where the tests' screenshots go: "Transport endpoint is not
+# connected" until it is mounted. The tests make their folder themselves: on CI's fresh
+# emulator `/sdcard/Android` is not there yet and the shell may not make it ("Permission
+# denied"), where the app may make its own.
+wait_for "shared storage" timeout 30 adb shell ls /sdcard/
 adb shell rm -rf "$device_output/*" || true
 
 # `am instrument` exits 0 whatever the tests did, so its summary decides: "OK (n tests)",
