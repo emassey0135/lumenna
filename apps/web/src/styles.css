@@ -105,6 +105,16 @@ h2 {
   padding: 0;
 }
 
+/* Pointing down while what is under it shows. */
+.react-aria-TreeItem[data-expanded] .chevron {
+  transform: rotate(90deg);
+}
+
+/* Toward the text when collapsed, whichever way it runs. */
+.react-aria-TreeItem:not([data-expanded]) .chevron:dir(rtl) {
+  transform: scaleX(-1);
+}
+
 .react-aria-TreeItem:not([data-has-child-items]) .row {
   padding-inline-start: 1.5rem;
 }
