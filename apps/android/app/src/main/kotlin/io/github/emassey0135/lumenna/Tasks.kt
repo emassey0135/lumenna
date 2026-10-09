@@ -7,6 +7,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -80,6 +85,20 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks, chang
         runCatching { core.lumenna.listTasks(filter.text) }
     }
 
+    val field = remember { FocusRequester() }
+    if (!screen.trash) {
+        val shortcuts = LocalShortcuts.current
+        val asked by shortcuts.filterAsked.collectAsState()
+        LaunchedEffect(asked) {
+            if (asked) {
+                shortcuts.filterAsked.value = false
+                withFrameNanos {}
+                runCatching { field.requestFocus() }
+            }
+        }
+        Offer(Command.FILTER) { runCatching { field.requestFocus() } }
+    }
+
     ScreenFrame(screen.title, core, navigator, actions = {
         if (!screen.trash) {
             IconButton(onClick = { navigator.push(Screen.QuickAdd(screen.prefix)) }) {
@@ -98,6 +117,7 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks, chang
                 onSubmit = {},
                 imeAction = ImeAction.Search,
                 modifier = Modifier.padding(horizontal = 16.dp),
+                focus = field,
             )
         }
         Text(
@@ -217,6 +237,7 @@ fun ListRow(
     key: String? = null,
 ) {
     var menu by remember { mutableStateOf(false) }
+    val pane = LocalPane.current
     // A row with nothing to do — now, a free hour with no block to add — is text, not a button.
     val acts = open != null || actions.isNotEmpty()
     Box {
@@ -230,6 +251,19 @@ fun ListRow(
                     else Modifier.focusRequester(focus).focusProperties { canFocus = true }
                         .then(if (acts) Modifier else Modifier.focusable()),
                 )
+                .onFocusChanged { if (it.isFocused && focus != null) pane?.row = focus }
+                // A row command runs this row's action of that name; a key the row has no
+                // action for goes on to the list, which may move focus with it.
+                .onKeyEvent { key ->
+                    val command = Command.of(key.nativeKeyEvent) ?: return@onKeyEvent false
+                    if (command == Command.ACTIONS) {
+                        if (actions.isNotEmpty()) menu = true
+                        return@onKeyEvent actions.isNotEmpty()
+                    }
+                    val action = command.rowActions.firstNotNullOfOrNull { name -> actions.firstOrNull { it.name == name } }
+                    action?.run()
+                    action != null
+                }
                 .then(
                     if (!acts) Modifier
                     else Modifier.combinedClickable(

@@ -625,7 +625,8 @@ gives the toolchain.
 
 - **Gradle builds the core itself**: `buildCore<Variant>` runs `build-core.sh`. Only
   `liblumenna_ffi.so` is copied; `cargo ndk -o` would also copy Iroh's shared libraries,
-  which nothing loads. Arm64 only; minSdk 28.
+  which nothing loads. Arm64 and x86_64 (the emulator's, and any x86 device), and
+  `abiFilters` keeps JNA's six others out of the APK; minSdk 28. Both are 16 KB aligned.
 - **Espresso is pinned to 3.7**: Compose's test library brings 3.5, which calls an
   `InputManager` method Android 17 removed.
 - **The tests run Google's accessibility checks on every interaction**, on a store of their
@@ -645,6 +646,20 @@ gives the toolchain.
   `AccessibilityNodeProvider`, found by the `RowKey` property; the announcement is held
   (`Core.hold`/`release`) until then. The test of it is skipped unless TalkBack is on.
   Compose sends accessibility events only while a screen reader runs.
+- **Keyboard commands are the Windows and GTK apps' keys** (`Shortcuts.kt`), on Ctrl:
+  TalkBack's are on Alt or Search. A screen offers a command while shown (`Offer`), the
+  newest winning, and the system's shortcuts helper (Meta+/) lists what is offered now. A
+  row's own commands (Ctrl+K, Delete, Shift+F10) run its action of that name, so a key
+  never does what the row's action list does not. Compose's root takes the keys while
+  anything has focus; `MainActivity.dispatchKeyEvent` takes them when nothing does.
+- **Buttons take focus only out of touch mode**, which a key press leaves; the keyboard
+  tests leave it first (`setInTouchMode(false)`), or no tab could be focused.
+- **A wide window** has the tabs as a rail from 600dp, and from 840dp shows a screen beside
+  the one it was opened from (`Navigator`'s depth: a row chosen in the parent replaces the
+  child rather than stacking). F6 moves between the tabs and panes, back onto the row a
+  pane was left on (`Pane`): Compose's `saveFocusedChild` keeps only the pane's immediate
+  child. Wide tests force the size, which shrinks the density to fit, so they excuse the
+  touch-target check, and only that.
 - **The store is in no-backup storage** and `allowBackup` is off: Google's backup would copy
   a store that reaches other devices by pairing.
 - **Background sync is WorkManager** (`SyncWorker`): a round on leaving (expedited on

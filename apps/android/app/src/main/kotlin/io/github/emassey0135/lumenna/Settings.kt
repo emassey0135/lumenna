@@ -305,15 +305,7 @@ fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
             // This device cannot unpair itself, so that is not offered on its own row.
             val self = item.detail.contains("this device")
             listOfNotNull(
-                RowAction("Sync Now") {
-                    core.say("Syncing")
-                    core.syncNow { result ->
-                        result.fold(
-                            { core.changed(); core.say(sentence(it.announcement, it.notices)) },
-                            { core.say((it as? LumennaException)?.sentence ?: it.message.orEmpty()) },
-                        )
-                    }
-                },
+                RowAction("Sync Now") { syncNow(core) },
                 RowAction("Rename") {
                     prompt.show {
                         AskText("Rename ${item.title}", "Name", "Rename", initial = item.title, dismiss = prompt::close) { name ->

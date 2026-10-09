@@ -57,8 +57,8 @@ fun CompletingField(
     modifier: Modifier = Modifier,
     imeAction: ImeAction = ImeAction.Done,
     focused: Boolean = false,
+    focus: FocusRequester = remember { FocusRequester() },
 ) {
-    val focus = remember { FocusRequester() }
     if (focused) LaunchedEffect(Unit) { focus.requestFocus() }
     // What could go at the cursor, and the span it would replace, in UTF-16 units.
     val offered: Pair<List<Candidate>, IntRange>? = remember(value.text, value.selection) {

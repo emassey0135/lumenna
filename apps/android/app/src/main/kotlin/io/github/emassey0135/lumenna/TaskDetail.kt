@@ -77,6 +77,8 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task, chan
         if (edit == null) core.say("Nothing changed") else core.change { it.editTask(before.id, edit) }
     }
 
+    Offer(Command.SAVE) { save() }
+
     ScreenFrame(current?.title ?: "Task", core, navigator, actions = {
         if (current != null) {
             IconButton(onClick = { save() }) { Icon(Icons.Filled.Check, contentDescription = "Save") }

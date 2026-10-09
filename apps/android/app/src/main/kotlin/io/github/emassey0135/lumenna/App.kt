@@ -1,6 +1,23 @@
 package io.github.emassey0135.lumenna
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.VerticalDivider
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.onKeyEvent
+import io.github.emassey0135.lumenna.core.LumennaException
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.RowScope
@@ -108,65 +125,188 @@ enum class Tab(val title: String, val icon: ImageVector, val root: Screen) {
     SETTINGS("Settings", Icons.Filled.Settings, Screen.Settings),
 }
 
-/** Going somewhere, and coming back. */
-class Navigator(private val stack: SnapshotStateList<Screen>) {
-    val current: Screen get() = stack.last()
-    val canGoBack: Boolean get() = stack.size > 1
+/**
+ * Going somewhere, and coming back, from one place in a tab's stack: [depth], or the top when
+ * null. Side by side, the parent's pane and the child's each have one, so a row chosen in
+ * the parent replaces the child beside it rather than stacking a third screen.
+ */
+class Navigator(private val stack: SnapshotStateList<Screen>, private val depth: Int? = null) {
+    private val at: Int get() = depth ?: stack.lastIndex
+    val current: Screen get() = stack[at]
+    val canGoBack: Boolean get() = at > 0
 
     fun push(screen: Screen) {
+        while (stack.size > at + 1) stack.removeAt(stack.lastIndex)
         stack.add(screen)
     }
 
+    /** Leaves this screen, and whatever was opened from it. */
     fun back() {
-        if (canGoBack) stack.removeAt(stack.lastIndex)
+        if (canGoBack) while (stack.size > at) stack.removeAt(stack.lastIndex)
     }
 }
 
+/** From this width the tabs are a rail at the side, as Material lays out a medium window. */
+private val RailWidth = 600.dp
+
+/** From this width a screen opened from another shows beside it: Material's expanded window. */
+private val SplitWidth = 840.dp
+
 @Composable
-fun LumennaApp(core: Core, newTask: StateFlow<Long>? = null) {
+fun LumennaApp(core: Core, newTask: StateFlow<Long>? = null, shortcuts: Shortcuts = remember { Shortcuts() }) {
     var tab by rememberSaveable { mutableStateOf(Tab.TODAY) }
     val stacks = remember { Tab.entries.associateWith { mutableStateListOf(it.root) } }
-    val navigator = remember(tab) { Navigator(stacks.getValue(tab)) }
+    val stack = stacks.getValue(tab)
     val snackbar = remember { SnackbarHostState() }
+    // Each screen keeps what it holds — its scroll, a half-typed filter — while another is
+    // over it, or as it moves between panes.
+    val saved = rememberSaveableStateHolder()
+
+    /** A tab at its root, with [screens] opened on it. */
+    fun go(to: Tab, vararg screens: Screen) {
+        tab = to
+        stacks.getValue(to).apply {
+            while (size > 1) removeAt(lastIndex)
+            addAll(screens)
+        }
+    }
 
     // The core's sentence for each change, said politely: a snackbar is a live region, and
     // Material gives it the time the person's accessibility settings ask for.
     LaunchedEffect(core) {
         core.announcements.collect { snackbar.showSnackbar(it) }
     }
-    BackHandler(enabled = navigator.canGoBack) { navigator.back() }
+    BackHandler(enabled = stack.size > 1) { Navigator(stack).back() }
 
     // New Task from outside the app: the Tasks tab, with quick add over its list.
     val requested = newTask?.collectAsState()?.value ?: 0L
     LaunchedEffect(requested) {
-        if (requested > 0) {
-            tab = Tab.TASKS
-            stacks.getValue(Tab.TASKS).apply {
-                retainAll(listOf(Tab.TASKS.root))
-                add(Screen.QuickAdd())
+        if (requested > 0) go(Tab.TASKS, Screen.QuickAdd())
+    }
+
+    CompositionLocalProvider(LocalShortcuts provides shortcuts) {
+        // The commands any screen answers; a screen offering one of its own answers instead.
+        Offer(Command.NEW_TASK) { go(Tab.TASKS, Screen.QuickAdd()) }
+        Offer(Command.NEW_BLOCK) { go(Tab.TODAY, Screen.BlockForm(BlockPurpose.Add(date = null))) }
+        Offer(Command.FILTER) {
+            go(Tab.TASKS)
+            shortcuts.filterAsked.value = true
+        }
+        Offer(Command.UNDO) { core.change { it.undo() } }
+        Offer(Command.REDO) { core.change { it.redo() } }
+        Offer(Command.GO_TODAY) { go(Tab.TODAY) }
+        Offer(Command.GO_TASKS) { go(Tab.TASKS) }
+        Offer(Command.GO_BLOCKS) { go(Tab.BROWSE, Screen.Blocks) }
+        Offer(Command.GO_TRASH) { go(Tab.BROWSE, Screen.Tasks(title = "Trash", query = "deleted", trash = true)) }
+        Offer(Command.SETTINGS) { go(Tab.SETTINGS) }
+        Offer(Command.SYNC_NOW) { syncNow(core) }
+
+        BoxWithConstraints(Modifier.fillMaxSize().onKeyEvent { shortcuts.handle(it.nativeKeyEvent) }) {
+            val rail = maxWidth >= RailWidth
+            val split = maxWidth >= SplitWidth && stack.size > 1
+            // The tabs, then each pane shown: what F6 moves between, as on Windows and GTK.
+            val regions = remember { List(3) { FocusRequester() } }
+            var inRegion by remember { mutableIntStateOf(-1) }
+            val shownRegions = if (split) 3 else 2
+            // Coming back to a pane lands on the row it was left on, not its first control.
+            // Compose's own saveFocusedChild remembers only a pane's immediate child, which
+            // gives focus to that child's first control.
+            val panes = remember { List(3) { Pane() } }
+            fun moveTo(index: Int) {
+                val back = panes[index].row?.let { runCatching { it.requestFocus() }.isSuccess } == true
+                if (!back) regions[index].tryFocus()
+            }
+            Offer(Command.NEXT_PANE) { moveTo((inRegion + 1).mod(shownRegions)) }
+            Offer(Command.PREVIOUS_PANE) { moveTo((inRegion - 1).mod(shownRegions)) }
+            fun Modifier.region(index: Int) = onFocusChanged { if (it.hasFocus) inRegion = index }
+                .focusRequester(regions[index])
+                .focusGroup()
+
+            val choose = { each: Tab -> if (each == tab) go(each) else tab = each }
+
+            Scaffold(
+                snackbarHost = { SnackbarHost(snackbar) },
+                bottomBar = {
+                    if (!rail) {
+                        NavigationBar(Modifier.region(0)) {
+                            Tab.entries.forEach { each ->
+                                NavigationBarItem(
+                                    selected = each == tab,
+                                    onClick = { choose(each) },
+                                    icon = { Icon(each.icon, contentDescription = null) },
+                                    label = { Text(each.title) },
+                                )
+                            }
+                        }
+                    }
+                },
+            ) { padding ->
+                Row(Modifier.padding(padding).fillMaxSize()) {
+                    if (rail) {
+                        NavigationRail(Modifier.region(0)) {
+                            Tab.entries.forEach { each ->
+                                NavigationRailItem(
+                                    selected = each == tab,
+                                    onClick = { choose(each) },
+                                    icon = { Icon(each.icon, contentDescription = null) },
+                                    label = { Text(each.title) },
+                                )
+                            }
+                        }
+                    }
+                    val changes by core.changes.collectAsState()
+                    @Composable
+                    fun Pane(depth: Int, modifier: Modifier, region: Int) {
+                        val screen = stack[depth]
+                        Box(modifier.fillMaxHeight().region(region)) {
+                            CompositionLocalProvider(LocalPane provides panes[region]) {
+                                saved.SaveableStateProvider("$tab $depth $screen") {
+                                    Screens(core, Navigator(stack, depth), screen, changes)
+                                }
+                            }
+                        }
+                    }
+                    if (split) {
+                        Pane(stack.lastIndex - 1, Modifier.weight(2f), 1)
+                        VerticalDivider()
+                        Pane(stack.lastIndex, Modifier.weight(3f), 2)
+                        // A screen opened beside its parent takes focus, as it would replacing
+                        // it — unless it has already put focus in itself, as quick add does.
+                        LaunchedEffect(stack.size, stack.last()) {
+                            withFrameNanos {}
+                            withFrameNanos {}
+                            if (inRegion != 2) regions[2].tryFocus()
+                        }
+                    } else {
+                        Pane(stack.lastIndex, Modifier.weight(1f), 1)
+                    }
+                }
             }
         }
     }
+}
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbar) },
-        bottomBar = {
-            NavigationBar {
-                Tab.entries.forEach { each ->
-                    NavigationBarItem(
-                        selected = each == tab,
-                        onClick = { if (each == tab) stacks.getValue(each).retainAll(listOf(each.root)) else tab = each },
-                        icon = { Icon(each.icon, contentDescription = null) },
-                        label = { Text(each.title) },
-                    )
-                }
-            }
-        },
-    ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
-            val changes by core.changes.collectAsState()
-            Screens(core, navigator, navigator.current, changes)
-        }
+/** One of the window's panes: the row focus was last on in it, for F6 to come back to. */
+class Pane {
+    var row: FocusRequester? = null
+}
+
+/** The pane a screen is shown in. */
+val LocalPane = staticCompositionLocalOf<Pane?> { null }
+
+/** Focus into what [this] is attached to, if it is shown. */
+private fun FocusRequester.tryFocus() {
+    runCatching { requestFocus() }
+}
+
+/** A round with every paired device now, saying how it went. */
+fun syncNow(core: Core) {
+    core.say("Syncing")
+    core.syncNow { result ->
+        result.fold(
+            { core.changed(); core.say(sentence(it.announcement, it.notices)) },
+            { core.say((it as? LumennaException)?.sentence ?: it.message.orEmpty()) },
+        )
     }
 }
 
