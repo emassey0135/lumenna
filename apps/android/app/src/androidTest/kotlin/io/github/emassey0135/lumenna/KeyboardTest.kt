@@ -98,8 +98,11 @@ class KeyboardTest {
         rule.waitForIdle()
     }
 
-    private fun tab(name: String): SemanticsNodeInteraction =
-        rule.onNode(hasText(name) and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab))
+    /** A tab; in a wide window, the sidebar's place of that name. */
+    private fun tab(name: String): SemanticsNodeInteraction {
+        val asTab = hasText(name) and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)
+        return if (rule.onAllNodes(asTab).fetchSemanticsNodes().isNotEmpty()) rule.onNode(asTab) else row(name)
+    }
 
     private fun row(title: String): SemanticsNodeInteraction = rule.onNode(titled(title))
 
@@ -189,7 +192,7 @@ class KeyboardTest {
     }
 
     @Test
-    fun aWideWindowHasItsTabsAtTheSideAndATaskOpensBesideItsList() {
+    fun aWideWindowHasThePlacesInASidebarAndATaskOpensBesideItsList() {
         show(width = 1000.dp)
         seed("plan the trip")
         tab("Tasks").performClick()

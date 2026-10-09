@@ -62,7 +62,7 @@ class LumennaTest {
         core = Core(directory)
         Clock.update(context)
         rule.enableAccessibilityChecks()
-        rule.setContent { LumennaTheme { LumennaApp(core) } }
+        rule.setContent { PhoneWidth { LumennaTheme { LumennaApp(core) } } }
     }
 
     @After
