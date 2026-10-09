@@ -373,3 +373,26 @@ fn moving_a_block_into_another_year_moves_the_whole_record() {
     assert_eq!(snapshot.series[&after.id], after);
     assert_eq!(snapshot.series.len(), 1);
 }
+
+#[test]
+fn several_processes_opening_a_new_store_at_once_all_get_it() {
+    // Each opening turns WAL on, which needs the file to itself for a moment; a second
+    // opener was told "busy" and failed, as `lum` did beside the BTSpeak app's server.
+    for _ in 0..20 {
+        let dir = scratch();
+        let path = dir.path().join("lumenna.db");
+        let start = std::sync::Arc::new(std::sync::Barrier::new(4));
+        let openers: Vec<_> = (0..4)
+            .map(|_| {
+                let (path, start) = (path.clone(), start.clone());
+                std::thread::spawn(move || {
+                    start.wait();
+                    Store::open(&path).map(|_| ())
+                })
+            })
+            .collect();
+        for opener in openers {
+            opener.join().unwrap().expect("every opener gets the store");
+        }
+    }
+}

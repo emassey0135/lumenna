@@ -377,22 +377,22 @@ jobs:
           retention-days: 1
 
   android:
-    name: Android, ${{ matrix.blocking && '' || 'every test, ' }}${{ matrix.name }}
+    name: Android (${{ matrix.name }})
     needs: android-build
     strategy:
       fail-fast: false
       matrix:
         include:
           # The action's default device did not boot Android 37 in fifteen minutes.
-          - { name: phone, profile: medium_phone, keyboard: false }
+          - { name: "phone, every test", profile: medium_phone, keyboard: false }
           # A desktop-sized screen with a keyboard: every screen in its wide layout, at its
           # real density, so the touch targets are checked as they are. The system images
           # stopped having a desktop of their own at API 34; this is the large screen alone.
-          - { name: "desktop screen and keyboard", profile: desktop_medium, keyboard: true }
+          - { name: "desktop screen and keyboard, every test", profile: desktop_medium, keyboard: true }
           # The smoke set, which blocks: adding and completing, folding, focus after a
           # change, a keyboard command, and the large-text screens, each under Google's
           # accessibility checks.
-          - name: smoke tests (phone)
+          - name: "phone, smoke tests"
             profile: medium_phone
             keyboard: false
             blocking: true
