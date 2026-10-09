@@ -228,13 +228,10 @@ jobs:
         continue-on-error: true
         working-directory: apps/apple
         run: |
-          # Opened once first: the first test's launch on a just-booted watch timed out.
-          app="$RUNNER_TEMP/derived/Build/Products/Debug-watchsimulator/LumennaWatch.app"
-          xcrun simctl install "$WATCH" "$app"
-          xcrun simctl launch "$WATCH" io.github.emassey0135.lumenna.watchkitapp
-          sleep 10
-          xcrun simctl terminate "$WATCH" io.github.emassey0135.lumenna.watchkitapp || true
+          # Each test once more if it fails: whichever test came first timed out launching the
+          # app through Xcode on the just-booted watch, even after opening it with simctl.
           xcodebuild -project Lumenna.xcodeproj -scheme LumennaWatch -destination "id=$WATCH" \
+            -retry-tests-on-failure -test-iterations 2 \
             -derivedDataPath "$RUNNER_TEMP/derived" CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never \
             -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 300 \
             test-without-building
