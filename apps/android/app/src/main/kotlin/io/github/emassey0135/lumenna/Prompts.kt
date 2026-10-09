@@ -180,7 +180,7 @@ fun Confirm(title: String, message: String, action: String, dismiss: () -> Unit,
 fun taskChoices(core: Core, excluding: Set<String> = emptySet()): List<Choice> =
     core.attempt { core.lumenna.listTasks("") }?.rows.orEmpty()
         .filter { it.id !in excluding }
-        .map { Choice(it.id, it.title, listOfNotNull(it.value).joinToString(", ")) }
+        .map { Choice(it.id, it.title, RowSpeech.details(it).orEmpty()) }
 
 /** The work blocks a task could go in: which ones is the core's (`workBlocks`). */
 fun blockChoices(core: Core): List<Pair<Choice, String>> =

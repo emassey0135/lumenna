@@ -124,7 +124,12 @@ pub struct Row {
     pub title: String,
     /// What is true about it, in announcement order.
     pub state: Vec<State>,
-    /// A secondary value: a due date, a block's time, a project's task count.
+    /// When a task is due, in words and without its time: *"due tomorrow"*.
+    pub due: Option<String>,
+    /// The time of day it is due, if it has one: its own part, so each app says it in the
+    /// clock its person chose.
+    pub due_time: Option<jiff::civil::Time>,
+    /// A secondary value: a task's priority, a block's time, a project's task count.
     pub value: Option<String>,
     /// A hint about what can be done here, if the platform has somewhere to put one.
     pub hint: Option<String>,
@@ -139,6 +144,7 @@ impl Row {
     pub fn speech(&self) -> String {
         let mut parts = vec![self.title.clone(), self.role.speech().to_owned()];
         parts.extend(self.state.iter().map(|s| s.speech().to_owned()));
+        parts.extend(self.due_phrase());
         if let Some(value) = &self.value {
             parts.push(value.clone());
         }
@@ -153,6 +159,7 @@ impl Row {
     pub fn braille(&self) -> String {
         let mut parts = vec![self.role.abbreviation().to_owned(), self.title.clone()];
         parts.extend(self.state.iter().map(|s| s.abbreviation().to_owned()));
+        parts.extend(self.due_phrase());
         if let Some(value) = &self.value {
             parts.push(value.clone());
         }
@@ -161,6 +168,15 @@ impl Row {
             line.push_str(&format!(" {}/{}", self.index, self.count));
         }
         line
+    }
+
+    /// The due words with the time in the twelve-hour clock: what an app does with its own.
+    fn due_phrase(&self) -> Option<String> {
+        let due = self.due.clone()?;
+        Some(match self.due_time {
+            Some(time) => format!("{due} at {}", crate::time::clock_words(time)),
+            None => due,
+        })
     }
 }
 
@@ -256,6 +272,8 @@ impl Snapshot {
                     // A block is not a task, so it wears no task states. Whether it is
                     // happening *now* is derived from the clock and never stored.
                     state: Vec::new(),
+                    due: None,
+                    due_time: None,
                     value: Some(describe_block(&occurrence, assigned, running)),
                     hint: None,
                 }
@@ -292,18 +310,14 @@ fn describe_block(
     parts.join(", ")
 }
 
-/// What a task's row says after its title: when it is due, in words, then its priority if
-/// it has one (P4 is none). *"due tomorrow at 3:00 PM, priority 1"*.
-fn task_value(task: &crate::model::Task, today: jiff::civil::Date) -> Option<String> {
-    let due = task.due.as_ref().map(|due| crate::time::due_words(due.date, due.time, today));
-    let priority = match task.priority {
+/// A task's priority as its row says it; P4 is none, so says nothing.
+const fn priority_words(priority: crate::model::Priority) -> Option<&'static str> {
+    match priority {
         crate::model::Priority::P1 => Some("priority 1"),
         crate::model::Priority::P2 => Some("priority 2"),
         crate::model::Priority::P3 => Some("priority 3"),
         crate::model::Priority::P4 => None,
-    };
-    let parts: Vec<String> = due.into_iter().chain(priority.map(str::to_owned)).collect();
-    (!parts.is_empty()).then(|| parts.join(", "))
+    }
 }
 
 fn push_task_rows(
@@ -329,7 +343,9 @@ fn push_task_rows(
             checked: Some(cx.facts().is_completed(task)),
             title: task.title.clone(),
             state: cx.facts().notable_states_of(task, cx.now),
-            value: task_value(task, cx.now.date()),
+            due: task.due.as_ref().map(|due| crate::time::due_words(due.date, cx.now.date())),
+            due_time: task.due.as_ref().and_then(|due| due.time),
+            value: priority_words(task.priority).map(str::to_owned),
             hint: None,
         });
         push_task_rows(cx, children, Some(task.id), depth + 1, rows);

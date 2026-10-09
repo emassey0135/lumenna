@@ -11,6 +11,14 @@ enum RowSpeech {
         row.title
     }
 
+    /// When the row is due, its time in this device's clock, then the rest of its value:
+    /// "due tomorrow at 3:00 PM, priority 1".
+    static func details(_ row: RowView) -> String? {
+        let due = row.due.map { due in row.dueTime.map { "\(due) at \(Clock.time($0))" } ?? due }
+        let parts = [due, row.value].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    }
+
     /// Everything after the title: done or not, the due date, notable states, and the level.
     ///
     /// `previousDepth` is the depth of the row spoken before this one. Depth is said only where
@@ -21,7 +29,7 @@ enum RowSpeech {
         if row.checked == true {
             parts.append("done")
         }
-        if let value = row.value {
+        if let value = details(row) {
             parts.append(value)
         }
         // `ready` is true of almost every task; saying it everywhere buries the states that

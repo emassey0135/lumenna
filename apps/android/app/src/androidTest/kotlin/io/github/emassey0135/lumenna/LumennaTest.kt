@@ -157,6 +157,13 @@ class LumennaTest {
     }
 
     @Test
+    fun aTaskDueAtATimeSaysItInThePhonesClockThenItsPriority() {
+        seed { it.addTask("call the bank tomorrow at 3pm p1") }
+        tab("Tasks")
+        says("call the bank", "due tomorrow at ${Clock.time("15:00")}, priority 1")
+    }
+
+    @Test
     fun completingATaskPutsFocusOnTheOneNowInItsPlaceThenSaysWhatHappened() {
         seed {
             it.addTask("first")

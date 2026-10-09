@@ -20,12 +20,13 @@ pub trait Clock {
     fn day(&self, iso: &str) -> String;
 }
 
-/// One row of a listing: the title, then its value and notable states.
+/// One row of a listing: the title, then when it is due, its value and notable states.
 ///
 /// `ready` is true of almost every task, and saying it everywhere buries the states that
 /// mean something. `completed` is left to the checkbox where there is one.
-pub fn row(row: &RowView, checkbox: bool) -> String {
+pub fn row(row: &RowView, checkbox: bool, clock: &dyn Clock) -> String {
     let mut parts = vec![row.title.clone()];
+    parts.extend(due(row, clock));
     parts.extend(row.value.clone());
     parts.extend(
         row.trailing_states()
@@ -36,11 +37,21 @@ pub fn row(row: &RowView, checkbox: bool) -> String {
 }
 
 /// A row in the trash, where every row is `deleted` and saying so on each is noise.
-pub fn trashed(row: &RowView) -> String {
+pub fn trashed(row: &RowView, clock: &dyn Clock) -> String {
     let mut parts = vec![row.title.clone()];
+    parts.extend(due(row, clock));
     parts.extend(row.value.clone());
     parts.extend(row.trailing_states().filter(|state| *state != "deleted").map(str::to_owned));
     join(parts)
+}
+
+/// When a row is due, with the time in this device's clock: "due tomorrow at 3:00 PM".
+fn due(row: &RowView, clock: &dyn Clock) -> Option<String> {
+    let due = row.due.clone()?;
+    Some(match &row.due_time {
+        Some(time) => format!("{due} at {}", clock.time(time)),
+        None => due,
+    })
 }
 
 /// A task's computed states for its details, and the rule it repeats by when the date
@@ -171,6 +182,8 @@ mod tests {
             expanded: None,
             title: title.to_owned(),
             state: state.iter().map(|s| (*s).to_owned()).collect(),
+            due: None,
+            due_time: None,
             value: value.map(str::to_owned),
             hint: None,
         }
@@ -194,27 +207,36 @@ mod tests {
 
     #[test]
     fn a_task_reads_title_first_then_its_date_and_the_states_that_mean_something() {
-        let row = task("Buy milk", Some("tomorrow"), &["overdue", "ready", "recurring"], false);
-        assert_eq!(super::row(&row, true), "Buy milk, tomorrow, overdue, recurring");
+        let row = task("Buy milk", Some("priority 1"), &["overdue", "ready", "recurring"], false);
+        let row = RowView { due: Some("due tomorrow".to_owned()), ..row };
+        assert_eq!(super::row(&row, true, &TwelveHour), "Buy milk, due tomorrow, priority 1, overdue, recurring");
+    }
+
+    #[test]
+    fn a_due_time_is_said_in_this_devices_clock() {
+        let row = task("Call the bank", None, &[], false);
+        let row = RowView { due: Some("due today".to_owned()), due_time: Some("15:00".to_owned()), ..row };
+        assert_eq!(super::row(&row, true, &TwelveHour), "Call the bank, due today at 3:00 PM");
     }
 
     #[test]
     fn completed_is_left_to_the_checkbox_where_there_is_one() {
         let row = task("Buy milk", None, &["completed"], true);
-        assert_eq!(super::row(&row, true), "Buy milk");
-        assert_eq!(super::row(&row, false), "Buy milk, completed");
+        assert_eq!(super::row(&row, true, &TwelveHour), "Buy milk");
+        assert_eq!(super::row(&row, false, &TwelveHour), "Buy milk, completed");
     }
 
     #[test]
     fn the_trash_does_not_say_deleted_on_every_row() {
-        let row = task("Buy milk", Some("due 2026-10-05"), &["deleted", "completed"], true);
-        assert_eq!(trashed(&row), "Buy milk, due 2026-10-05, completed");
+        let row = task("Buy milk", None, &["deleted", "completed"], true);
+        let row = RowView { due: Some("due Monday".to_owned()), ..row };
+        assert_eq!(trashed(&row, &TwelveHour), "Buy milk, due Monday, completed");
     }
 
     #[test]
     fn a_title_is_never_abbreviated_or_rearranged() {
         let row = task("Call Sam, re: the 3:00 thing", None, &[], false);
-        assert_eq!(super::row(&row, true), "Call Sam, re: the 3:00 thing");
+        assert_eq!(super::row(&row, true, &TwelveHour), "Call Sam, re: the 3:00 thing");
     }
 
     #[test]

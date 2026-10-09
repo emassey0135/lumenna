@@ -75,6 +75,15 @@ object RowSpeech {
     fun label(row: RowView): String = row.title
 
     /**
+     * When the row is due, its time in this phone's clock, then the rest of its value: "due
+     * tomorrow at 3:00 PM, priority 1".
+     */
+    fun details(row: RowView): String? {
+        val due = row.due?.let { due -> row.dueTime?.let { "$due at ${Clock.time(it)}" } ?: due }
+        return listOfNotNull(due, row.value).joinToString(", ").ifEmpty { null }
+    }
+
+    /**
      * Everything after the title: done or not, the due date, notable states, and the level.
      *
      * The level is said only where it changes from the row before: "level 2" on every
@@ -83,7 +92,7 @@ object RowSpeech {
     fun value(row: RowView, previousDepth: UInt?, fold: String? = null): String {
         val parts = mutableListOf<String>()
         if (row.checked == true) parts += "done"
-        row.value?.let { parts += it }
+        details(row)?.let { parts += it }
         // `ready` is true of almost every task; saying it everywhere buries the states that
         // mean something.
         parts += row.state.filter { it != "ready" }

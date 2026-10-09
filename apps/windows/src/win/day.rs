@@ -360,7 +360,7 @@ impl DayView {
     fn assign(&self, app: &App, block: &PlanBlock) {
         let Some(date) = self.date() else { return };
         let tasks: Vec<RowView> = app.core.lumenna.list_tasks("").map(|r| r.rows).unwrap_or_default();
-        let titles: Vec<String> = tasks.iter().map(|t| speech::row(t, false)).collect();
+        let titles: Vec<String> = tasks.iter().map(|t| speech::row(t, false, &Locale)).collect();
         let Some(index) = prompts::pick(app.main, &format!("Assign to {}", block.title), "&Task:", &titles) else { return };
         let task = &tasks[index];
         let Some(minutes) = task_actions::ask_minutes(app, &format!("How Long Is {} Meant to Take?", task.title), "", true) else { return };

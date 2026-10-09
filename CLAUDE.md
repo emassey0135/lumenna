@@ -57,6 +57,10 @@ JSON crosses the FFI.
   `PlanAssignment::details` and `DeviceView::status`, built in `words.rs`. An app adds its
   own time format and title and joins the parts as its screen reader wants; it never
   composes them itself, which is how seven copies drifted.
+- **A time of day goes out as `HH:MM`, for the app's clock.** A task row's `due` is words
+  without the time ("due tomorrow") and `due_time` the time, which each app says as its
+  platform's setting has it: the locale or desktop setting, BTSpeak's Time Format, Emacs's
+  `display-time-24hr-format`, and for `lum` the `clock` device setting.
 - **What every client's forms share is here too**, as free functions in `form.rs`:
   `task_fields`/`task_edit`, the block form's `block_fields`/`block_edit`/`new_block`,
   `parse_weight`, the `#"Home Office"` references. `task_edit` and `block_edit` hold only
@@ -335,7 +339,7 @@ Kept apart in code, commands and wording, because confusing them is how someone 
   are for reading only. **A field added to the model must be added to `export/json.rs`**,
   or `crates/store/tests/export.rs`, which round-trips every field, fails.
 - Automatic backups go to `<profile>-backups` beside the profile, never inside it, `0600`,
-  pruned beyond `backup-keep`. `backup-dir`, `backup-keep` and `backup-every` are **device
+  pruned beyond `backup-keep`. `backup-dir`, `backup-keep`, `backup-every` (and `clock`) are **device
   settings** (`<profile>/device-settings`) and never sync. `LUMENNA_BACKUP_DIR` overrides
   the directory; every test harness sets it.
 

@@ -189,7 +189,7 @@ final class TaskListViewController: UIViewController {
             ]
         )
         content.textProperties.numberOfLines = 0
-        var detail = row.value.map { [$0] } ?? []
+        var detail = RowSpeech.details(row).map { [$0] } ?? []
         detail += row.state.filter { $0 != "ready" }
         if !detail.isEmpty {
             content.secondaryText = detail.joined(separator: ", ")

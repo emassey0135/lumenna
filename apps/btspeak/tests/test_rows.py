@@ -16,7 +16,8 @@ import btspeak_stub  # noqa: E402
 btspeak_stub.install()
 
 from tasks import char_offset  # noqa: E402
-from rows import Tree, describe  # noqa: E402
+import rows  # noqa: E402
+from rows import Tree, clock, describe  # noqa: E402
 
 
 def row(identifier, title, depth=0, **extra):
@@ -29,8 +30,31 @@ class DescribingARow(unittest.TestCase):
         self.assertTrue(line.startswith("write the chapter"))
 
     def test_states_follow_the_value(self):
-        line = describe(row("a", "ship it", value="due 2026-01-01", state=["overdue"]))
-        self.assertEqual(line, "ship it, due 2026-01-01, overdue")
+        line = describe(row("a", "ship it", due="due yesterday", value="priority 1", state=["overdue"]))
+        self.assertEqual(line, "ship it, due yesterday, priority 1, overdue")
+
+
+class SayingATime(unittest.TestCase):
+    def use(self, time_format):
+        btspeak_stub.device_settings["time-format"] = time_format
+        rows._clock_read = (float("-inf"), "")
+
+    def tearDown(self):
+        self.use("24-hour")
+
+    def test_a_time_follows_the_devices_time_format_setting(self):
+        self.use("12-hour")
+        self.assertEqual([clock(t) for t in ("00:05", "09:00", "15:30")], ["12:05 AM", "9:00 AM", "3:30 PM"])
+        self.use("24-hour")
+        self.assertEqual(clock("09:00"), "09:00")
+
+    def test_a_due_time_is_said_in_the_devices_clock_before_the_priority(self):
+        self.use("12-hour")
+        line = describe(row("a", "call the bank", due="due tomorrow", due_time="15:00", value="priority 1"))
+        self.assertEqual(line, "call the bank, due tomorrow at 3:00 PM, priority 1")
+
+    def test_a_time_that_cannot_be_read_is_said_as_it_came(self):
+        self.assertEqual(clock("soon"), "soon")
 
     def test_a_completed_row_says_so(self):
         self.assertIn("done", describe(row("a", "ship it", checked=True)))

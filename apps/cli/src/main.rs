@@ -776,8 +776,19 @@ fn run(cli: &Cli, format: Format) -> Result<()> {
     if let Some(listing) = listing_of(&response.outcome) {
         profile.remember(&listing);
     }
-    render::emit(&response, format);
+    let clock = if format == Format::Text { clock(&profile) } else { render::Clock::default() };
+    render::emit(&response, format, clock);
     Ok(())
+}
+
+/// This device's `clock` setting, read after the command so `lum config set clock` takes
+/// effect at once. A store that cannot answer prints the 24-hour clock rather than nothing.
+fn clock(profile: &Profile) -> render::Clock {
+    profile
+        .settings(Some("clock".to_owned()))
+        .ok()
+        .and_then(|list| list.settings.into_iter().next())
+        .map_or_else(render::Clock::default, |setting| render::Clock::from_setting(&setting.value))
 }
 
 /// Runs one command and returns what it produced.

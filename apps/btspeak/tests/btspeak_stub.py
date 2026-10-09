@@ -279,6 +279,9 @@ def activity(message=None, stdscr=None):
     yield
 
 
+#: The device's settings, as `BTSpeak.settings.getValue` reads them; a test may change one.
+device_settings = {"time-format": "24-hour"}
+
 #: The device's clipboard, as one string.
 _clipboard = [""]
 
@@ -302,14 +305,18 @@ def install() -> None:
     clipboard = types.ModuleType("BTSpeak.clipboard")
     clipboard.copy = lambda text, isbraille, append=False: _clipboard.__setitem__(0, text) or "copied"
     clipboard.paste = lambda isbraille, size, multiline=True: ("pasted", _clipboard[0][:size])
+    settings = types.ModuleType("BTSpeak.settings")
+    settings.getValue = lambda setting: device_settings.get(setting, "")
     package = types.ModuleType("BTSpeak")
     package.dialogs = dialogs
     package.host = host
     package.clipboard = clipboard
+    package.settings = settings
     sys.modules["BTSpeak"] = package
     sys.modules["BTSpeak.dialogs"] = dialogs
     sys.modules["BTSpeak.host"] = host
     sys.modules["BTSpeak.clipboard"] = clipboard
+    sys.modules["BTSpeak.settings"] = settings
 
 
 def play(steps) -> Script:

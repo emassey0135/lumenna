@@ -385,17 +385,17 @@ pub fn place_quick_add_prefix(place: Ts<Place>) -> Result<String, JsError> {
     Ok(place.to_rust()?.quick_add_prefix())
 }
 
-/// A row's line: its title, then its value and the states that mean something — with
-/// `completed` left out where a checkbox says it.
+/// A row's line: its title, when it is due in the browser's clock, its value and the states
+/// that mean something — with `completed` left out where a checkbox says it.
 #[wasm_bindgen(js_name = rowText)]
 pub fn row_text(row: Ts<lumenna_surface::RowView>, checkbox: bool) -> Result<String, JsError> {
-    Ok(speech::row(&row.to_rust()?, checkbox))
+    Ok(speech::row(&row.to_rust()?, checkbox, &Browser))
 }
 
 /// A row in the trash, where saying `deleted` on every one is noise.
 #[wasm_bindgen(js_name = trashedText)]
 pub fn trashed_text(row: Ts<lumenna_surface::RowView>) -> Result<String, JsError> {
-    Ok(speech::trashed(&row.to_rust()?))
+    Ok(speech::trashed(&row.to_rust()?, &Browser))
 }
 
 /// A task's state as its details show it.

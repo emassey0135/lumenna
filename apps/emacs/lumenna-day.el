@@ -35,8 +35,8 @@
            ;; The core words the details for every app.
            (let ((state (append (plist-get block :details) nil)))
              (push (list :id (plist-get block :id) :role "block" :block block :when (plist-get block :when)
-                         :title (format "%s to %s, %s" (plist-get block :start) (plist-get block :end)
-                                        (plist-get block :title))
+                         :title (format "%s to %s, %s" (lumenna-time (plist-get block :start))
+                                        (lumenna-time (plist-get block :end)) (plist-get block :title))
                          :state (vconcat state))
                    rows)
              (dolist (sitting (append (plist-get block :assignments) nil))
@@ -49,14 +49,14 @@
         ("free"
          (push (list :id (format "free@%s" (plist-get item :start)) :role "free" :free item :face 'lumenna-quiet
                      :title (format "Free, %s" (lumenna--length (plist-get item :minutes)))
-                     :value (format "%s to %s" (plist-get item :start) (plist-get item :end)))
+                     :value (format "%s to %s" (lumenna-time (plist-get item :start)) (lumenna-time (plist-get item :end))))
                rows))
         ("now"
-         (push (list :id "now" :role "now" :face 'lumenna-now :title (format "Now, %s" (plist-get item :time)))
+         (push (list :id "now" :role "now" :face 'lumenna-now :title (format "Now, %s" (lumenna-time (plist-get item :time))))
                rows))))
     (dolist (cancelled (append (plist-get plan :cancelled) nil))
       (push (list :id (format "cancelled@%s" (plist-get cancelled :series)) :role "cancelled" :cancelled cancelled
-                  :face 'lumenna-quiet :title (format "%s, %s" (plist-get cancelled :start) (plist-get cancelled :title))
+                  :face 'lumenna-quiet :title (format "%s, %s" (lumenna-time (plist-get cancelled :start)) (plist-get cancelled :title))
                   :state ["cancelled for this day"])
             rows))
     (nreverse rows)))
@@ -262,7 +262,8 @@ Which blocks those are is the core's (`block.choices'), as for every app."
          (choices (mapcar (lambda (block)
                             (cons (format "%s, %s to %s, %s"
                                           (lumenna--spoken-day (plist-get block :date))
-                                          (plist-get block :start) (plist-get block :end)
+                                          (lumenna-time (plist-get block :start))
+                                          (lumenna-time (plist-get block :end))
                                           (plist-get block :title))
                                   (cons (plist-get block :id) (plist-get block :date))))
                           (append (plist-get found :blocks) nil))))

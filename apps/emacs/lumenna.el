@@ -37,6 +37,7 @@
 (require 'jsonrpc)
 (require 'outline)
 (require 'subr-x)
+(require 'time)
 
 (defgroup lumenna nil
   "Tasks and a day planner."
@@ -218,13 +219,31 @@ Every speech system reads the echo area."
 
 ;;;; Rows and the buffers that list them
 
+(defun lumenna-time (time)
+  "TIME, `HH:MM' as the core sends it, in Emacs's own clock.
+That is `display-time-24hr-format', as the mode line's clock follows:
+\"15:00\" when it is set, else \"3:00 PM\"."
+  (if (or display-time-24hr-format
+          (not (and (stringp time) (string-match "\\`\\([0-9]+\\):\\([0-9]+\\)\\'" time))))
+      time
+    (let ((hour (string-to-number (match-string 1 time))))
+      (format "%d:%s %s" (1+ (% (+ hour 11) 12)) (match-string 2 time) (if (< hour 12) "AM" "PM")))))
+
+(defun lumenna--due (row)
+  "When ROW is due, its time in Emacs's clock: \"due tomorrow at 3:00 PM\"."
+  (when-let* ((due (plist-get row :due)))
+    (if-let* ((time (plist-get row :due_time)))
+        (format "%s at %s" due (lumenna-time time))
+      due)))
+
 (defun lumenna-describe (row)
-  "ROW as one line of words: the title, done, the value, then the states.
+  "ROW as one line of words: the title, done, when due, the value, then the states.
 \"ready\" is true of almost every task, so saying it everywhere would bury
 the states that mean something."
   (string-join
    (delq nil (append (list (plist-get row :title)
                            (and (lumenna--true (plist-get row :checked)) "done")
+                           (lumenna--due row)
                            (plist-get row :value))
                      (seq-remove (lambda (state) (equal state "ready"))
                                  (append (plist-get row :state) nil))))

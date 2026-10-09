@@ -12,7 +12,7 @@ from BTSpeak import dialogs
 
 import options
 from client import LumennaError
-from rows import Tree, describe
+from rows import Tree, clock, describe
 from session import Command, Session, ask, choose, confirm, live_menu, screen, spoken
 
 
@@ -334,7 +334,7 @@ def assign_task(session: Session, identifier: str) -> str:
         return error.message
     blocks = week.get("blocks", [])
     options = {
-        b["id"]: f"{day.spoken_day(b['date'])}, {b['start']} to {b['end']}, {b['title']}" for b in blocks
+        b["id"]: f"{day.spoken_day(b['date'])}, {clock(b['start'])} to {clock(b['end'])}, {b['title']}" for b in blocks
     }
     options[ANOTHER_DAY] = "Another day"
     chosen = choose(options, "Put it in")
@@ -351,7 +351,7 @@ def assign_task(session: Session, identifier: str) -> str:
         blocks = other.get("blocks", [])
         if not blocks:
             return f"{day.spoken_day(other.get('from', ''))} has no work blocks to put it in"
-        chosen = choose({b["id"]: f"{b['title']}, {b['start']} to {b['end']}" for b in blocks}, "Put it in")
+        chosen = choose({b["id"]: f"{b['title']}, {clock(b['start'])} to {clock(b['end'])}" for b in blocks}, "Put it in")
         if chosen is None:
             return ""
     block = next(b for b in blocks if b["id"] == chosen)

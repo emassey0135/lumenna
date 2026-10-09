@@ -85,6 +85,8 @@ impl Lumenna {
                         checked: None,
                         title: project.name.clone(),
                         state: Vec::new(),
+                        due: None,
+                        due_time: None,
                         value: Some(value),
                         hint: None,
                     }
@@ -278,6 +280,8 @@ impl Lumenna {
                         checked: None,
                         title: label.name.clone(),
                         state: Vec::new(),
+                        due: None,
+                        due_time: None,
                         value: Some(value),
                         hint: None,
                     }

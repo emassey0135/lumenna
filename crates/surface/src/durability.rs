@@ -20,7 +20,7 @@ use crate::words::count_line;
 use crate::{Lumenna, repaired};
 
 /// The settings that stay on this device.
-pub const DEVICE_KEYS: &[&str] = &["backup-dir", "backup-keep", "backup-every"];
+pub const DEVICE_KEYS: &[&str] = &["backup-dir", "backup-keep", "backup-every", "clock"];
 
 fn to_u32(n: usize) -> u32 {
     u32::try_from(n).unwrap_or(u32::MAX)
