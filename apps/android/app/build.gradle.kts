@@ -52,6 +52,9 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // The ABIs the core is built for (build-core.sh). JNA ships its library for six more,
+        // and without the filter the APK carried each, though nothing could run the app there.
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 
     buildTypes {
