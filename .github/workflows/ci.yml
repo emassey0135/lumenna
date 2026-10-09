@@ -159,6 +159,38 @@ jobs:
           xcodebuild -project Lumenna.xcodeproj -scheme LumennaMac -configuration Release \
             -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO build
 
+  mac-ui:
+    name: Mac app, every UI test
+    # Reports without blocking, as the other full UI suites do. Locally they run with
+    # VoiceOver on, which is why they enter text by pasting.
+    runs-on: xcode-27
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Newest Xcode, and XcodeGen
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          brew install xcodegen
+      - name: UI tests
+        working-directory: apps/apple
+        run: |
+          xcodegen
+          xcodebuild -project Lumenna.xcodeproj -scheme LumennaMac -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never \
+            -resultBundlePath "$RUNNER_TEMP/mac.xcresult" \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 300 test
+      - name: Test results, when a test failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-test-results
+          path: ${{ runner.temp }}/mac.xcresult
+          retention-days: 14
+
   ios-build:
     name: iOS app and its tests, built once
     # Xcode 27 and the iOS 27 simulator, which people run. iOS 26's audit judges text faded
@@ -268,7 +300,8 @@ jobs:
           echo "DEVICE=$device" >> "$GITHUB_ENV"
       - name: Smoke tests
         # Adding, completing and undoing; the day; the audits of the main screens; a
-        # keyboard command. A few minutes, and each one has only failed for a reason.
+        # keyboard command; and every list's swipe actions, run without a swipe
+        # (LumennaTests). A few minutes, and each one has only failed for a reason.
         run: |
           tar -C "$RUNNER_TEMP" -xf "$RUNNER_TEMP/products.tar"
           t=LumennaUITests/LumennaUITests
@@ -281,6 +314,7 @@ jobs:
             -only-testing:$t/testTheDaySaysWhatItHoldsAndShowsFreeTime \
             -only-testing:$t/testSettingsAndDevicesPassAnAudit \
             -only-testing:LumennaUITests/KeyboardUITests/testCommandNOpensQuickAddFromAnotherTab \
+            -only-testing:LumennaTests \
             -collect-test-diagnostics never -resultBundlePath "$RUNNER_TEMP/smoke.xcresult" \
             -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 300
       - name: Test results, when a test failed

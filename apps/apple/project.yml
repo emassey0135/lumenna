@@ -129,6 +129,23 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
 
+  # Tests hosted in the iPhone app, of what it offers without driving it through gestures:
+  # each list's swipe actions, which VoiceOver offers as its actions, run directly.
+  LumennaTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: LumennaTests
+    dependencies:
+      - target: Lumenna
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.emassey0135.lumenna.tests
+        GENERATE_INFOPLIST_FILE: YES
+        # The app's module refers to the core's C module, which tests importing it need too.
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/include
+        "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
+
   # The Mac app: AppKit, with SwiftUI for leaf forms. Not sandboxed, so it shares
   # `lum`'s profile in ~/Library/Application Support/lumenna — the app and the command line
   # on one Mac are one device.
@@ -210,8 +227,10 @@ schemes:
       targets:
         Lumenna: all
         LumennaUITests: [test]
+        LumennaTests: [test]
     test:
       targets:
+        - LumennaTests
         - LumennaUITests
   LumennaMac:
     build:

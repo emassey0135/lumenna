@@ -67,22 +67,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         view.addSubview(header)
 
         var configuration = UICollectionLayoutListConfiguration(appearance: .plain)
-        configuration.trailingSwipeActionsConfigurationProvider = { [weak self] path in
-            guard let self, let row = self.dataSource.itemIdentifier(for: path) else { return nil }
-            var actions = self.actions(for: row).map { title, destructive, run in
-                UIContextualAction(style: destructive ? .destructive : .normal, title: title) { _, _, done in
-                    run()
-                    done(true)
-                }
-            }
-            if let index = self.rows.firstIndex(of: row),
-               let fold = self.folding.action(for: self.shown[index], key: self.foldKey(row), changed: { [weak self] key, said in
-                   self?.fold(key, saying: said)
-               }) {
-                actions.append(fold)
-            }
-            return actions.isEmpty ? nil : UISwipeActionsConfiguration(actions: actions)
-        }
+        configuration.trailingSwipeActionsConfigurationProvider = { [weak self] path in self?.trailingSwipeActions(at: path) }
         collectionView = UICollectionView(
             frame: .zero, collectionViewLayout: UICollectionViewCompositionalLayout.list(using: configuration)
         )
@@ -610,4 +595,25 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     @objc func goToNow() { showNow() }
     @objc func goToDay() { chooseDay() }
     @objc func newBlock() { addBlock() }
+}
+
+// The swipe actions, apart from the layout that asks for them, so a test can ask too.
+extension DayViewController {
+    /// What a trailing swipe on the row at `path` offers: VoiceOver's actions for the row too.
+    func trailingSwipeActions(at path: IndexPath) -> UISwipeActionsConfiguration? {
+        guard let row = self.dataSource.itemIdentifier(for: path) else { return nil }
+        var actions = self.actions(for: row).map { title, destructive, run in
+            UIContextualAction(style: destructive ? .destructive : .normal, title: title) { _, _, done in
+                run()
+                done(true)
+            }
+        }
+        if let index = self.rows.firstIndex(of: row),
+           let fold = self.folding.action(for: self.shown[index], key: self.foldKey(row), changed: { [weak self] key, said in
+               self?.fold(key, saying: said)
+           }) {
+            actions.append(fold)
+        }
+        return actions.isEmpty ? nil : UISwipeActionsConfiguration(actions: actions)
+    }
 }
