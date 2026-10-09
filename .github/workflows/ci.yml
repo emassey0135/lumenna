@@ -422,9 +422,6 @@ jobs:
           arch: x86_64
           profile: ${{ matrix.profile }}
           enable-hw-keyboard: ${{ matrix.keyboard }}
-          # A debug build's native libraries are large: the default data partition ran out.
-          disk-size: 6000M
-          ram-size: 4096M
           emulator-boot-timeout: 900
           working-directory: apps/android
           script: TESTS="${{ matrix.tests }}" ./run-instrumented-tests.sh test-output

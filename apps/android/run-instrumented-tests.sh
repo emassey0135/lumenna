@@ -44,4 +44,9 @@ echo "$result"
 mkdir -p "$out"
 adb pull "$device_output/." "$out" > /dev/null 2>&1 || true
 
-grep -q '^OK (' <<< "$result"
+if ! grep -q '^OK (' <<< "$result"; then
+  # What crashed, if anything did: the summary only says "Process crashed".
+  echo "--- crash log"
+  adb logcat -d -b crash | tail -60 || true
+  exit 1
+fi
