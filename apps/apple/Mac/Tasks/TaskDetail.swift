@@ -32,7 +32,7 @@ final class TaskDetailViewController: HostedForm<TaskDetailView>, TaskFormHost {
         guard let window = view.window else { return }
         let items = ((try? core.lumenna.listTasks(query: "").rows) ?? [])
             .filter { !excluding.contains($0.id) }
-            .map { PickerItem(key: $0.id, title: $0.title, detail: $0.value) }
+            .map { PickerItem(key: $0.id, title: $0.title, detail: RowSpeech.details($0)) }
         PickerSheet.present(on: window, title: title, items: items) { chosen($0.key) }
     }
 

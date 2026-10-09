@@ -174,7 +174,7 @@ impl TaskList {
                         key: row.id.clone(),
                         // Orca does not read a tree item's checked state, so "completed" is
                         // said in words (`tree`).
-                        text: if self.trash { speech::trashed(row) } else { speech::row(row, false) },
+                        text: if self.trash { speech::trashed(row, &app.clock) } else { speech::row(row, false, &app.clock) },
                         depth: row.depth,
                     })
                     .collect();

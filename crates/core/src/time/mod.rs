@@ -89,7 +89,7 @@ pub fn clock_words(time: jiff::civil::Time) -> String {
 /// October"*, with the year only when it is not this one. Never digits: a screen reader
 /// reads "2026-10-10" as numbers.
 #[must_use]
-pub fn due_words(date: jiff::civil::Date, time: Option<jiff::civil::Time>, today: jiff::civil::Date) -> String {
+pub fn due_words(date: jiff::civil::Date, today: jiff::civil::Date) -> String {
     // Whole days from today: `until` counts in days between civil dates.
     let days = today.until(date).map_or(i32::MAX, |span| span.get_days());
     let day = match days {
@@ -100,10 +100,7 @@ pub fn due_words(date: jiff::civil::Date, time: Option<jiff::civil::Time>, today
         _ if date.year() == today.year() => format!("{} {}", weekday_name(date.weekday()), day_and_month(date)),
         _ => long_date(date),
     };
-    match time {
-        Some(time) => format!("due {day} at {}", clock_words(time)),
-        None => format!("due {day}"),
-    }
+    format!("due {day}")
 }
 
 #[cfg(test)]
@@ -136,15 +133,14 @@ mod tests {
 
     #[test]
     fn a_due_date_is_said_in_words_near_by_name_then_by_weekday_then_by_date() {
-        use jiff::civil::{date, time};
+        use jiff::civil::date;
         let today = date(2026, 10, 9); // a Friday
-        assert_eq!(due_words(today, None, today), "due today");
-        assert_eq!(due_words(date(2026, 10, 10), None, today), "due tomorrow");
-        assert_eq!(due_words(date(2026, 10, 8), None, today), "due yesterday");
-        assert_eq!(due_words(date(2026, 10, 14), None, today), "due Wednesday");
-        assert_eq!(due_words(date(2026, 10, 23), None, today), "due Friday 23 October");
-        assert_eq!(due_words(date(2026, 9, 30), None, today), "due Wednesday 30 September");
-        assert_eq!(due_words(date(2027, 1, 4), None, today), "due Monday 4 January 2027");
-        assert_eq!(due_words(date(2026, 10, 10), Some(time(15, 0, 0, 0)), today), "due tomorrow at 3:00 PM");
+        assert_eq!(due_words(today, today), "due today");
+        assert_eq!(due_words(date(2026, 10, 10), today), "due tomorrow");
+        assert_eq!(due_words(date(2026, 10, 8), today), "due yesterday");
+        assert_eq!(due_words(date(2026, 10, 14), today), "due Wednesday");
+        assert_eq!(due_words(date(2026, 10, 23), today), "due Friday 23 October");
+        assert_eq!(due_words(date(2026, 9, 30), today), "due Wednesday 30 September");
+        assert_eq!(due_words(date(2027, 1, 4), today), "due Monday 4 January 2027");
     }
 }

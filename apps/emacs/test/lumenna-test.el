@@ -83,6 +83,20 @@
   (dolist (typo '("1,5" "0" "-1" "heavy" ""))
     (should-error (lumenna--weight typo) :type 'user-error)))
 
+(ert-deftest lumenna-a-time-is-said-in-the-clock-the-mode-line-uses ()
+  (let ((display-time-24hr-format nil))
+    (should (equal (mapcar #'lumenna-time '("00:05" "09:00" "12:30" "15:00")) '("12:05 AM" "9:00 AM" "12:30 PM" "3:00 PM"))))
+  (let ((display-time-24hr-format t))
+    (should (equal (lumenna-time "15:00") "15:00"))))
+
+(ert-deftest lumenna-a-task-due-at-a-time-says-it-in-emacss-clock-before-its-priority ()
+  (lumenna-test--with-store
+    (lumenna-write "task.add" :text "call the bank tomorrow at 3pm p1")
+    (let ((display-time-24hr-format t))
+      (lumenna-tasks)
+      (lumenna-test--goto "call the bank")
+      (should (equal (lumenna-test--line) "call the bank, due tomorrow at 15:00, priority 1")))))
+
 (ert-deftest lumenna-a-task-is-listed-in-words-completed-and-brought-back-with-undo ()
   (lumenna-test--with-store
     (lumenna-write "task.add" :text "buy milk tomorrow")
@@ -188,7 +202,7 @@
                 ((symbol-function 'read-string) (lambda (&rest _) "30")))
         (lumenna-task-assign))
       (should (equal (length offered) 1))
-      (should (string-match-p ", 09:00 to 10:30, Focus\\'" (car offered))))
+      (should (string-match-p ", 9:00 AM to 10:30 AM, Focus\\'" (car offered))))
     (let ((plan (lumenna-call "plan" :date "tomorrow")))
       (should (equal (plist-get (aref (plist-get (aref (plist-get plan :blocks) 0) :assignments) 0) :planned_mins)
                      30)))))
@@ -413,6 +427,7 @@
     (lumenna-settings)
     (goto-char (point-min))
     (lumenna-test--goto "Devices and sync")
+    (should-not (save-excursion (goto-char (point-min)) (re-search-forward "^clock" nil t)))
     (lumenna-activate)
     (should (derived-mode-p 'lumenna-devices-mode))))
 

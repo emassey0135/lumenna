@@ -11,6 +11,7 @@ use windows::Win32::System::SystemServices::SS_NOPREFIX;
 
 use super::app::App;
 use super::block_form::{self, Purpose};
+use super::clock::Locale;
 use super::controls::{self, rect};
 use super::core::sentence;
 use super::prompts;
@@ -108,7 +109,7 @@ impl View for BlockList {
                 let items = listing
                     .rows
                     .iter()
-                    .map(|row| Item { key: row.id.clone(), text: speech::row(row, false), depth: 0, checked: None })
+                    .map(|row| Item { key: row.id.clone(), text: speech::row(row, false, &Locale), depth: 0, checked: None })
                     .collect();
                 *self.rows.borrow_mut() = listing.rows;
                 if self.tree.set(items) {

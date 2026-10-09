@@ -19,7 +19,57 @@ row above at the moment it is drawn, and stays right as branches collapse.
 
 from __future__ import annotations
 
-from BTSpeak import dialogs
+import locale
+import time
+
+from BTSpeak import dialogs, settings
+
+#: The device's clock setting, read again once this many seconds have passed: a redraw
+#: describes every row, and a Pi feels a file read per row.
+_CLOCK_FOR = 5.0
+_clock_read: tuple[float, str] = (float("-inf"), "")
+
+
+def _time_format() -> str:
+    """The device's own time format, as its say-time command chooses it: the 12- or 24-hour
+    clock if the Time Format setting says one, else the locale's, never with seconds."""
+    global _clock_read
+    read_at, chosen = _clock_read
+    now = time.monotonic()
+    if now - read_at > _CLOCK_FOR:
+        try:
+            chosen = settings.getValue("time-format")
+        except Exception:  # noqa: BLE001 - a setting the device cannot read is the locale's
+            chosen = ""
+        _clock_read = (now, chosen)
+    if chosen == "12-hour":
+        return "%l:%M %p"
+    if chosen == "24-hour":
+        return "%H:%M"
+    try:
+        local = locale.nl_langinfo(locale.T_FMT)
+    except (AttributeError, ValueError):
+        local = "%H:%M:%S"
+    local = local.replace("%r", "%l:%M:%S %p").replace("%T", "%H:%M:%S").replace("%I", "%l")
+    return local.replace(":%S", "") or "%H:%M"
+
+
+def clock(hhmm: str) -> str:
+    """A time of day, `HH:MM` as the server sends it, as this device says times."""
+    try:
+        hour, minute = (int(part) for part in hhmm.split(":"))
+    except (AttributeError, ValueError):
+        return hhmm
+    return time.strftime(_time_format(), (2000, 1, 1, hour, minute, 0, 5, 1, -1)).strip()
+
+
+def due(row: dict) -> str:
+    """When a row is due, its time in the device's clock: "due tomorrow at 3:00 PM"."""
+    words = row.get("due")
+    if not words:
+        return ""
+    at = row.get("due_time")
+    return f"{words} at {clock(at)}" if at else words
 
 
 def describe(row: dict, with_role: bool = False) -> str:
@@ -33,6 +83,7 @@ def describe(row: dict, with_role: bool = False) -> str:
         parts.append(row.get("role", ""))
     if row.get("checked") is True:
         parts.append("done")
+    parts.append(due(row))
     value = row.get("value")
     if value:
         parts.append(value)

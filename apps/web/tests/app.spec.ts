@@ -36,6 +36,15 @@ test("quick add reads back what it will add, and adds it", async ({ page }) => {
   await expect(page.getByRole("main").getByRole("row", { name: /^Call Sam/ })).toBeVisible();
 });
 
+test("a task due at a time says it in the browser's clock, then its priority", async ({ page }) => {
+  await open(page);
+  await add(page, "Call the bank tomorrow at 3pm p1");
+  // The browser's locale words the time; Playwright's default is en-US, and Intl may put a
+  // narrow no-break space before PM.
+  await expect(page.getByRole("main").getByRole("row", { name: /^Call the bank, due tomorrow at 3:00\sPM, priority 1/ }))
+    .toBeVisible();
+});
+
 test("space checks a task off and focus moves to the one that took its place", async ({ page }) => {
   await open(page);
   await add(page, "Buy milk");

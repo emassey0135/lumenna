@@ -29,11 +29,48 @@ impl Format {
     }
 }
 
+/// How a time of day is printed: this device's `clock` setting, since a terminal has no
+/// clock setting of its own to follow. JSON keeps `HH:MM` whatever it says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Clock {
+    /// `15:00`.
+    #[default]
+    TwentyFourHour,
+    /// `3:00 PM`.
+    TwelveHour,
+}
+
+impl Clock {
+    /// Reads the setting's value; anything else is the 24-hour clock.
+    #[must_use]
+    pub fn from_setting(value: &str) -> Self {
+        if value == "12-hour" { Self::TwelveHour } else { Self::TwentyFourHour }
+    }
+
+    /// An `HH:MM` time from the surface, in this clock. Anything unreadable is printed as
+    /// it came rather than lost.
+    #[must_use]
+    pub fn time(self, hhmm: &str) -> String {
+        let parsed = hhmm.split_once(':').and_then(|(h, m)| Some((h.parse::<u32>().ok()?, m)));
+        match (self, parsed) {
+            (Self::TwelveHour, Some((hour, minute))) if hour < 24 => {
+                let meridiem = if hour < 12 { "AM" } else { "PM" };
+                let display = match hour % 12 {
+                    0 => 12,
+                    h => h,
+                };
+                format!("{display}:{minute} {meridiem}")
+            }
+            _ => hhmm.to_owned(),
+        }
+    }
+}
+
 /// Writes a response.
-pub fn emit(response: &Response, format: Format) {
+pub fn emit(response: &Response, format: Format, clock: Clock) {
     match format {
         Format::Json => print_json(response),
-        Format::Text => text(response),
+        Format::Text => text(response, clock),
     }
 }
 
@@ -44,7 +81,7 @@ fn print_json<T: Serialize>(value: &T) {
     }
 }
 
-fn text(response: &Response) {
+fn text(response: &Response, clock: Clock) {
     if response.silent {
         return;
     }
@@ -97,13 +134,13 @@ fn text(response: &Response) {
             Some(content) => print!("{content}"),
             None => println!("{}", response.announcement()),
         },
-        Outcome::Rows(rows) => list(rows, response.announcement()),
-        Outcome::Task(shown) => detail(&shown.task),
+        Outcome::Rows(rows) => list(rows, response.announcement(), clock),
+        Outcome::Task(shown) => detail(&shown.task, clock),
         Outcome::Block(block) => {
             let mut fields = vec![
                 ("title", block.title.clone()),
                 ("id", block.id.clone()),
-                ("starts", format!("{} on {}", block.start, block.start_date)),
+                ("starts", format!("{} on {}", clock.time(&block.start), block.start_date)),
                 ("lasts", lumenna_surface::words::duration(block.minutes)),
                 ("kind", block.kind.clone()),
             ];
@@ -136,7 +173,7 @@ fn text(response: &Response) {
                 println!("{key:>width$}: {value}", width = width);
             }
         }
-        Outcome::Plan(plan) => day(plan),
+        Outcome::Plan(plan) => day(plan, clock),
         Outcome::Filters(filters) => {
             println!("{}", response.announcement());
             for filter in &filters.filters {
@@ -156,7 +193,7 @@ fn text(response: &Response) {
     }
 }
 
-fn list(rows: &Rows, announcement: &str) {
+fn list(rows: &Rows, announcement: &str, clock: Clock) {
     if let Some(query) = &rows.query {
         // The readback: a mis-parsed filter shows wrong results *silently*, and wrong
         // results are invisible.
@@ -171,6 +208,12 @@ fn list(rows: &Rows, announcement: &str) {
         if row.checked == Some(true) {
             trailing.push("done".to_owned());
         }
+        if let Some(due) = &row.due {
+            trailing.push(match &row.due_time {
+                Some(time) => format!("{due} at {}", clock.time(time)),
+                None => due.clone(),
+            });
+        }
         if let Some(value) = &row.value {
             trailing.push(value.clone());
         }
@@ -183,7 +226,7 @@ fn list(rows: &Rows, announcement: &str) {
     }
 }
 
-fn detail(task: &TaskDetail) {
+fn detail(task: &TaskDetail, clock: Clock) {
     let mut fields: Vec<(&str, String)> = vec![("title", task.title.clone())];
     fields.push(("id", task.id.clone()));
     if let Some(project) = &task.project {
@@ -195,7 +238,7 @@ fn detail(task: &TaskDetail) {
     if let Some(due) = &task.due {
         let mut text = due.clone();
         if let Some(time) = &task.due_time {
-            text.push_str(&format!(" at {time}"));
+            text.push_str(&format!(" at {}", clock.time(time)));
         }
         match (&task.repetition, &task.recurrence) {
             (Some(phrase), _) => text.push_str(&format!(", {phrase}")),
@@ -227,7 +270,7 @@ fn detail(task: &TaskDetail) {
     }
 }
 
-fn day(plan: &Plan) {
+fn day(plan: &Plan, clock: Clock) {
     // The summary carries the count the announcement does, so it replaces it rather than
     // following it.
     if plan.summary.is_empty() {
@@ -239,7 +282,11 @@ fn day(plan: &Plan) {
     let block_line = |block: &lumenna_surface::PlanBlock| {
         println!(
             "{}  {} to {}  {}  {}",
-            block.row, block.start, block.end, block.title, block.details.join(", ")
+            block.row,
+            clock.time(&block.start),
+            clock.time(&block.end),
+            block.title,
+            block.details.join(", ")
         );
         for assignment in &block.assignments {
             println!("     {}  {}  {}", assignment.row, assignment.title, assignment.details.join(", "));
@@ -258,9 +305,14 @@ fn day(plan: &Plan) {
                 }
             }
             PlanItem::Free { start, end, minutes } => {
-                println!("   free, {} from {start} to {end}", lumenna_surface::words::duration(*minutes));
+                println!(
+                    "   free, {} from {} to {}",
+                    lumenna_surface::words::duration(*minutes),
+                    clock.time(start),
+                    clock.time(end)
+                );
             }
-            PlanItem::Now { time } => println!("   now, {time}"),
+            PlanItem::Now { time } => println!("   now, {}", clock.time(time)),
         }
     }
     // What is not happening today but could be put back, with the command that does it.
@@ -268,7 +320,9 @@ fn day(plan: &Plan) {
         let short = &block.series[..block.series.len().min(8)];
         println!(
             "   cancelled for this day: {} at {}  (lum block restore {short} --date {})",
-            block.title, block.start, plan.date
+            block.title,
+            clock.time(&block.start),
+            plan.date
         );
     }
 }

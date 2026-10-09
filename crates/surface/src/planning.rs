@@ -501,6 +501,8 @@ impl Lumenna {
                         checked: None,
                         title: series.title.clone(),
                         state: Vec::new(),
+                        due: None,
+                        due_time: None,
                         value: Some(value),
                         hint: None,
                     }

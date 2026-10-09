@@ -110,7 +110,7 @@ fn choose_task(app: &App, title: &str, label: &str, excluded: &[&str]) -> Option
         .list_tasks("")
         .map(|r| r.rows.into_iter().filter(|t| !excluded.contains(&t.id.as_str())).collect())
         .unwrap_or_default();
-    let texts: Vec<String> = tasks.iter().map(|t| speech::row(t, false)).collect();
+    let texts: Vec<String> = tasks.iter().map(|t| speech::row(t, false, &Locale)).collect();
     let index = prompts::pick(app.main, title, label, &texts)?;
     Some(tasks[index].id.clone())
 }

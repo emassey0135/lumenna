@@ -52,7 +52,10 @@ the backup settings are this device's alone.
                                   (value (plist-get setting :value)))
                              (list :key key :title (or (nth 1 named) key) :raw value
                                    :value (or (cdr (assoc value (nthcdr 2 named))) value))))
-                         (append (plist-get (lumenna-call "config.get") :settings) nil)))))))
+                         ;; `clock' is for clients with no clock of their own; Emacs
+                         ;; follows `display-time-24hr-format'.
+                         (seq-remove (lambda (setting) (equal (plist-get setting :key) "clock"))
+                                     (append (plist-get (lumenna-call "config.get") :settings) nil))))))))
 
 (defun lumenna--change-setting (row)
   "Change the setting in ROW: a choice where it has few values, else typed.

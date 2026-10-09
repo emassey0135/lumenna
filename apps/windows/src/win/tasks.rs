@@ -21,6 +21,7 @@ use windows::Win32::UI::WindowsAndMessaging::{EN_CHANGE, ES_AUTOHSCROLL, WS_EX_C
 
 use super::app::App;
 use super::controls::{self, rect};
+use super::clock::Locale;
 use super::core::sentence;
 use super::tree::{Item, Tree};
 use super::view::{Metrics, View};
@@ -81,7 +82,7 @@ impl TaskList {
                     .iter()
                     .map(|row| Item {
                         key: row.id.clone(),
-                        text: if self.trash { speech::trashed(row) } else { speech::row(row, true) },
+                        text: if self.trash { speech::trashed(row, &Locale) } else { speech::row(row, true, &Locale) },
                         depth: row.depth,
                         checked: (!self.trash).then_some(row.checked == Some(true)),
                     })

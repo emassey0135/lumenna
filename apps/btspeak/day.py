@@ -12,7 +12,7 @@ import datetime
 from BTSpeak import dialogs
 
 from client import LumennaError
-from rows import Tree, describe
+from rows import Tree, clock, describe
 from session import Command, Flag, Session, ask, choose, confirm, live_menu, row_item, screen
 import tasks
 
@@ -124,7 +124,7 @@ def plan_rows(plan: dict) -> list[dict]:
             rows.append({
                 "id": block["id"], "role": "block", "depth": 0, "block": block,
                 "when": block.get("when", ""),
-                "title": f"{block['start']} to {block['end']}, {block['title']}",
+                "title": f"{clock(block['start'])} to {clock(block['end'])}, {block['title']}",
                 "state": state,
             })
             for sitting in block.get("assignments", []):
@@ -138,15 +138,15 @@ def plan_rows(plan: dict) -> list[dict]:
             rows.append({
                 "id": f"free@{item['start']}", "role": "free", "depth": 0, "free": item,
                 "title": f"Free, {length(item['minutes'])}",
-                "value": f"{item['start']} to {item['end']}",
+                "value": f"{clock(item['start'])} to {clock(item['end'])}",
             })
         elif item["item"] == "now":
-            rows.append({"id": "now", "role": "now", "depth": 0, "title": f"Now, {item['time']}"})
+            rows.append({"id": "now", "role": "now", "depth": 0, "title": f"Now, {clock(item['time'])}"})
     for cancelled in plan.get("cancelled", []):
         rows.append({
             "id": f"cancelled@{cancelled['series']}", "role": "cancelled", "depth": 0,
             "cancelled": cancelled,
-            "title": f"{cancelled['start']}, {cancelled['title']}",
+            "title": f"{clock(cancelled['start'])}, {cancelled['title']}",
             "state": ["cancelled for this day"],
         })
     return rows

@@ -141,7 +141,7 @@ async fn choose_task(app: &App, title: &str, label: &str, excluded: &[&str]) -> 
         .list_tasks("")
         .map(|r| r.rows.into_iter().filter(|t| !excluded.contains(&t.id.as_str())).collect())
         .unwrap_or_default();
-    let texts: Vec<String> = tasks.iter().map(|t| speech::row(t, false)).collect();
+    let texts: Vec<String> = tasks.iter().map(|t| speech::row(t, false, &app.clock)).collect();
     let index = prompts::pick(&app.window, title, label, &texts).await?;
     Some(tasks[index].id.clone())
 }

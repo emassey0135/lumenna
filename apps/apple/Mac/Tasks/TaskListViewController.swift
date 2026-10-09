@@ -351,7 +351,7 @@ final class TaskCell: NSTableCellView {
         check.state = done ? .on : .off
         check.isHidden = trash
         check.setAccessibilityLabel(done ? "Done, \(row.title)" : "Mark \(row.title) done")
-        var detail = row.value.map { [$0] } ?? []
+        var detail = RowSpeech.details(row).map { [$0] } ?? []
         detail += row.state.filter { $0 != "ready" }
         lines.show(title: row.title, detail: detail.joined(separator: ", "), warning: row.state.contains("overdue"))
         lines.title.attributedStringValue = NSAttributedString(

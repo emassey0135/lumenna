@@ -208,7 +208,7 @@ fun TaskRows(core: Core, all: List<RowView>, actions: (RowView) -> List<RowActio
             val previous = if (index > 0) rows[index - 1].depth else null
             ListRow(
                 title = row.title,
-                detail = listOfNotNull(row.value).plus(row.state.filter { it != "ready" }).joinToString(", "),
+                detail = listOfNotNull(RowSpeech.details(row)).plus(row.state.filter { it != "ready" }).joinToString(", "),
                 speech = RowSpeech.value(row, previous, fold.state),
                 done = row.checked,
                 depth = row.depth.toInt(),

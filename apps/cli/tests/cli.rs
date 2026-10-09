@@ -647,6 +647,22 @@ fn a_backup_is_taken_automatically_once_a_day_and_on_request() {
 }
 
 #[test]
+fn times_are_printed_in_the_clock_setting_and_json_keeps_hh_mm() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "call the bank tomorrow at 3pm p1"]);
+    let out = lum.ok(&["task", "list"]);
+    assert!(out.contains("call the bank  due tomorrow at 15:00, priority 1"), "{out}");
+
+    let out = lum.ok(&["config", "set", "clock", "12-hour"]);
+    assert!(out.contains("on this device only"), "{out}");
+    let out = lum.ok(&["task", "list"]);
+    assert!(out.contains("due tomorrow at 3:00 PM, priority 1"), "{out}");
+    let json = lum.ok(&["--json", "task", "list"]);
+    assert!(json.contains(r#""due_time": "15:00""#), "{json}");
+    assert!(lum.fails(&["config", "set", "clock", "sundial"]).contains("24-hour or 12-hour"));
+}
+
+#[test]
 fn a_backup_rebuilds_the_store_somewhere_else_trash_and_all() {
     let lum = Lum::new();
     lum.ok(&["task", "add", "keep me p1 tomorrow"]);

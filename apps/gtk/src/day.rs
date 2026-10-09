@@ -505,7 +505,7 @@ impl DayView {
         let (day, app) = (Rc::clone(self), Rc::clone(app));
         spawn(async move {
             let tasks: Vec<RowView> = app.core.lumenna.list_tasks("").map(|r| r.rows).unwrap_or_default();
-            let titles: Vec<String> = tasks.iter().map(|t| speech::row(t, false)).collect();
+            let titles: Vec<String> = tasks.iter().map(|t| speech::row(t, false, &app.clock)).collect();
             let heading = format!("Assign to {}", block.title);
             let Some(index) = prompts::pick(&app.window, &heading, "_Task:", &titles).await else { return };
             let task = &tasks[index];

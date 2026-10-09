@@ -56,7 +56,7 @@ final class ProjectsViewController: ItemListViewController {
             Item(
                 key: row.title,
                 title: row.title,
-                detail: ([row.value].compactMap { $0 } + row.state).joined(separator: ", "),
+                detail: ([RowSpeech.details(row)].compactMap { $0 } + row.state).joined(separator: ", "),
                 depth: row.depth,
                 spoken: RowSpeech.value(row, previousDepth: row.depth)
             )

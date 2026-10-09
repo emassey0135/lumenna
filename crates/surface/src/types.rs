@@ -292,6 +292,8 @@ impl Rows {
                     expanded: row.expanded,
                     title: row.title.clone(),
                     state: row.state.iter().map(|state| state.keyword().to_owned()).collect(),
+                    due: row.due.clone(),
+                    due_time: row.due_time.map(time_text),
                     value: row.value.clone(),
                     hint: row.hint.clone(),
                 })
@@ -358,7 +360,14 @@ pub struct RowView {
     /// Computed states, as their filter keywords — a client can feed one straight back into
     /// a filter.
     pub state: Vec<String>,
-    /// A secondary value, such as a due date.
+    /// When a task is due, in words and without its time: *"due tomorrow"*.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub due: Option<String>,
+    /// The time it is due, `HH:MM`, for the client to say in its own clock after `due`:
+    /// *"due tomorrow at 3:00 PM"*.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub due_time: Option<String>,
+    /// What else the row says, after when it is due: a task's priority, a project's count.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
     /// What can be done here, for a client with somewhere to put a hint.

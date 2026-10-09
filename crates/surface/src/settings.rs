@@ -65,8 +65,8 @@ impl Lumenna {
         }
     }
 
-    /// Changes a setting. Most sync to every device; `backup-dir`, `backup-keep` and
-    /// `backup-every` are this device's alone, and say so.
+    /// Changes a setting. Most sync to every device; `backup-dir`, `backup-keep`,
+    /// `backup-every` and `clock` are this device's alone, and say so.
     ///
     /// # Errors
     ///
@@ -261,6 +261,11 @@ impl Lumenna {
                     },
                 ),
             },
+            // For a client with no clock setting of its own to follow, as a terminal has none.
+            Setting {
+                key: "clock".to_owned(),
+                value: self.device_setting("clock").unwrap_or_else(|| "24-hour".to_owned()),
+            },
         ])
     }
 
@@ -290,6 +295,14 @@ impl Lumenna {
             "backup-every" => {
                 parse_every(value)?;
                 self.write_device_setting(key, Some(&value.trim().to_lowercase()))?;
+            }
+            "clock" => {
+                let clock = match value.trim().to_lowercase().as_str() {
+                    "24-hour" | "24" => "24-hour",
+                    "12-hour" | "12" => "12-hour",
+                    _ => return Err(LumennaError::new("clock is 24-hour or 12-hour")),
+                };
+                self.write_device_setting(key, Some(clock))?;
             }
             other => return Err(LumennaError::new(format!("no setting called '{other}'"))),
         }

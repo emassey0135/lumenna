@@ -26,7 +26,7 @@ final class TaskPicker: ItemListViewController {
         let items = rows.rows.filter { !excluding.contains($0.id) }.map { row -> Item in
             defer { previous = row.depth }
             return Item(
-                key: row.id, title: row.title, detail: row.value, depth: row.depth,
+                key: row.id, title: row.title, detail: RowSpeech.details(row), depth: row.depth,
                 spoken: RowSpeech.value(row, previousDepth: previous)
             )
         }
