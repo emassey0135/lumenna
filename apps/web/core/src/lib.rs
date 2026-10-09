@@ -19,7 +19,7 @@ mod sync;
 
 use clock::Browser;
 use lumenna_desktop::choices;
-use lumenna_desktop::places::{self, Entry, Place};
+use lumenna_surface::places::{self, Place, SidebarEntry};
 use lumenna_desktop::speech::{self, Clock};
 use lumenna_surface::{Lumenna, LumennaError, Syntax, TaskDetail, TaskEdit, TaskFields};
 use serde::Serialize;
@@ -355,7 +355,7 @@ pub fn task_edit(task: Ts<TaskDetail>, fields: Ts<TaskFields>) -> Result<Option<
 #[derive(Serialize, serde::Deserialize, Tsify)]
 pub struct Sidebar {
     /// Each row, with what it is and how deep.
-    pub entries: Vec<Entry>,
+    pub entries: Vec<SidebarEntry>,
 }
 
 #[wasm_bindgen]

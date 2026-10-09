@@ -58,7 +58,7 @@ pub fn task_state(task: &TaskDetail) -> String {
 
 /// A place in the sidebar, with what is in it: "Work, 3 tasks".
 pub fn place(title: &str, detail: &str) -> String {
-    if detail.is_empty() { title.to_owned() } else { format!("{title}, {detail}") }
+    lumenna_surface::places::line(title, detail)
 }
 
 /// A block on the day: "9:00 AM to 11:00 AM, Deep work, 2 hours, work block, now, 3 tasks

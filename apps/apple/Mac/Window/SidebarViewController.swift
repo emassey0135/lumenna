@@ -1,12 +1,6 @@
 import AppKit
 
-/// Somewhere to go in the main window.
-enum Place: Hashable {
-    case today, tasks, blocks, trash
-    case project(String)
-    case label(String)
-    case filter(String, query: String)
-}
+// Somewhere to go in the main window is the core's `Place`, which every sidebar shares.
 
 /// One row of the sidebar.
 final class SidebarNode {
@@ -118,7 +112,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         let filtersGroup = SidebarNode(.group("Saved Filters"), title: "Saved Filters")
         if let filters = try? core.lumenna.listFilters().filters {
             filtersGroup.children = filters.map {
-                SidebarNode(.place(.filter($0.name, query: $0.query)), title: $0.name, detail: $0.query)
+                SidebarNode(.place(.filter(name: $0.name, query: $0.query)), title: $0.name, detail: $0.query)
             }
         }
         let trash = (try? core.lumenna.listTasks(query: "deleted").count).map { $0 == 1 ? "1 task" : "\($0) tasks" }
@@ -326,12 +320,12 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             return [
                 ("Rename…", { [weak self] in
                     self?.window?.askForText("Rename \(name)", initial: name) { to in
-                        self?.change(then: .filter(to, query: query)) { try lumenna.editFilter(name: name, rename: to, query: nil) }
+                        self?.change(then: .filter(name: to, query: query)) { try lumenna.editFilter(name: name, rename: to, query: nil) }
                     }
                 }),
                 ("Change Query…", { [weak self] in
                     self?.window?.askForText("Query for \(name)", initial: query) { new in
-                        self?.change(then: .filter(name, query: new)) { try lumenna.editFilter(name: name, rename: nil, query: new) }
+                        self?.change(then: .filter(name: name, query: new)) { try lumenna.editFilter(name: name, rename: nil, query: new) }
                     }
                 }),
                 ("Move Up", { [weak self] in self?.change { try lumenna.reorderFilter(name: name, direction: .up) } }),
@@ -378,7 +372,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             // A sheet cannot open while the last is still closing.
             DispatchQueue.main.async {
                 self?.window?.askForText("Query for \(name)", placeholder: "#Work & overdue", action: "Save") { query in
-                    self?.change(then: .filter(name, query: query)) { try self!.core.lumenna.addFilter(name: name, query: query) }
+                    self?.change(then: .filter(name: name, query: query)) { try self!.core.lumenna.addFilter(name: name, query: query) }
                 }
             }
         }
