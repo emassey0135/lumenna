@@ -625,7 +625,7 @@ gives the toolchain.
 
 - **Gradle builds the core itself**: `buildCore<Variant>` runs `build-core.sh`. Only
   `liblumenna_ffi.so` is copied; `cargo ndk -o` would also copy Iroh's shared libraries,
-  which nothing loads. Arm64 and x86_64 (the emulator's, and any x86 device), and
+  which nothing loads. Arm64 and x86_64 (Googlebooks have both, and the emulator is x86_64), and
   `abiFilters` keeps JNA's six others out of the APK; minSdk 28. Both are 16 KB aligned.
 - **Espresso is pinned to 3.7**: Compose's test library brings 3.5, which calls an
   `InputManager` method Android 17 removed.

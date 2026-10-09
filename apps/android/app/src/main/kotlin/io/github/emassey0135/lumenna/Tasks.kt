@@ -9,8 +9,8 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -88,12 +88,17 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks, chang
     val field = remember { FocusRequester() }
     if (!screen.trash) {
         val shortcuts = LocalShortcuts.current
-        val asked by shortcuts.filterAsked.collectAsState()
-        LaunchedEffect(asked) {
-            if (asked) {
+        // Collected, not a key: clearing the request would change the key, and cancel the
+        // effect before the field had focus.
+        LaunchedEffect(shortcuts) {
+            shortcuts.filterAsked.collect { asked ->
+                if (!asked) return@collect
+                // The tab was only just chosen: the field takes focus once it is laid out.
+                for (frame in 1..10) {
+                    withFrameNanos {}
+                    if (runCatching { field.requestFocus(FocusDirection.Enter) }.getOrDefault(false)) break
+                }
                 shortcuts.filterAsked.value = false
-                withFrameNanos {}
-                runCatching { field.requestFocus() }
             }
         }
         Offer(Command.FILTER) { runCatching { field.requestFocus() } }
