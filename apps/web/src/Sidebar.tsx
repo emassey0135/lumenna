@@ -10,7 +10,7 @@ import type { FocusEvent, KeyboardEvent, MouseEvent } from "react";
 import { Button, Collection, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
 import { core } from "./core";
-import type { Entry, Place } from "./core";
+import type { SidebarEntry, Place } from "./core";
 import { rowKey } from "./landing";
 import { ask, choose, confirm, pick } from "./Prompts";
 import { asksForMenu, RowMenu } from "./RowMenu";
@@ -24,12 +24,12 @@ export function placeKey(place: Place): string {
   return JSON.stringify({ Place: place });
 }
 
-function key(entry: Entry): string {
+function key(entry: SidebarEntry): string {
   return JSON.stringify(entry.kind);
 }
 
 /** Whether a row has a Delete: projects, labels and saved filters do. */
-function deletable(entry: Entry): boolean {
+function deletable(entry: SidebarEntry): boolean {
   if (!("Place" in entry.kind)) return false;
   const place = entry.kind.Place;
   return typeof place === "object" && ("Project" in place || "Label" in place || "Filter" in place);
@@ -41,7 +41,7 @@ export function Sidebar(props: {
   onPlace: (place: Place) => void;
   onChanged: () => void;
 }) {
-  const [entries, setEntries] = useState<Entry[]>([]);
+  const [entries, setEntries] = useState<SidebarEntry[]>([]);
   const [expanded, setExpanded] = useState<Set<Key> | undefined>();
   // The row in hand: the one focus was last on. Headings are never selected, so it is not
   // the selection.
@@ -222,7 +222,7 @@ export function Sidebar(props: {
   ];
 
   /** What can be done to a row, as its menu lists it. */
-  const actions = (at: Entry | undefined): Action[] => {
+  const actions = (at: SidebarEntry | undefined): Action[] => {
     if (!at) return [];
     if ("Group" in at.kind) {
       if (at.kind.Group === "Projects") return [{ id: "new", label: "New Project…", run: () => void newProject() }];
@@ -283,7 +283,7 @@ export function Sidebar(props: {
           expandedKeys={shown}
           onExpandedChange={setExpanded}
         >
-          {function item(node: Node<Entry>) {
+          {function item(node: Node<SidebarEntry>) {
             return (
               <TreeItem id={node.id} textValue={node.item.text}>
                 <TreeItemContent>
