@@ -32,6 +32,7 @@ pub mod endpoint;
 mod error;
 mod form;
 mod organise;
+pub mod places;
 mod planning;
 mod resolve;
 #[cfg(all(feature = "rpc", any(unix, windows)))]
