@@ -52,7 +52,7 @@ use crate::shortcut::{self, Kind};
 use super::tray::{self, WM_SHOW_RUNNING, WM_TRAY};
 use super::view::{Metrics, View};
 use super::{a11y, core::sentence};
-use crate::places::Place;
+use lumenna_surface::places::Place;
 use crate::{profile, speech};
 
 /// Runs a deferred action: something a notification asked for that changes the window it
