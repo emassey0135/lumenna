@@ -6,6 +6,8 @@
 //! with Automerge's own sync protocol, which sends only what the other side lacks.
 //!
 //! - [`session`] — the document sync protocol itself, over any byte stream.
+//! - [`exchange`] — the same, over a link that carries messages and replies, such as the
+//!   watch's to its phone. The only part built without the `network` feature.
 //! - [`pairing`] — confirming a new device by comparing words, and the handshake behind it.
 //! - [`node`] — this device on the network: dialling and answering its paired devices.
 //! - [`invite`] — the short-lived endpoint a pairing runs on.
@@ -14,20 +16,29 @@
 //! listed there is refused on the sync protocol, however it was found. The only way into the
 //! list is a pairing whose words a person compared and confirmed on both devices.
 
+#[cfg(feature = "network")]
 pub mod discovery;
 mod error;
+pub mod exchange;
+#[cfg(feature = "network")]
 mod framing;
+#[cfg(feature = "network")]
 pub mod invite;
+#[cfg(feature = "network")]
 pub mod node;
+#[cfg(feature = "network")]
 pub mod pairing;
+#[cfg(feature = "network")]
 pub mod session;
 
 pub use error::{Result, SyncError};
 
 /// The protocol a device speaks to its paired devices.
+#[cfg(feature = "network")]
 pub const ALPN_SYNC: &[u8] = b"lumenna/sync/0";
 
 /// The protocol a pairing session speaks.
+#[cfg(feature = "network")]
 pub const ALPN_PAIR: &[u8] = b"lumenna/pair/0";
 
 /// The store, shared between the tasks of one process.
@@ -37,6 +48,7 @@ pub const ALPN_PAIR: &[u8] = b"lumenna/pair/0";
 pub type SharedStore = std::sync::Arc<std::sync::Mutex<lumenna_store::Store>>;
 
 /// Locks the shared store, turning a poisoned lock into an error rather than a panic.
+#[cfg(feature = "network")]
 pub(crate) fn lock(store: &SharedStore) -> Result<std::sync::MutexGuard<'_, lumenna_store::Store>> {
     store.lock().map_err(|_| SyncError::Protocol("the store is wedged after an earlier failure".to_owned()))
 }

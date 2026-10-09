@@ -7,38 +7,47 @@ license.workspace = true
 repository.workspace = true
 description = "Peer-to-peer sync between one person's devices: Automerge over Iroh, and pairing."
 
+[features]
+default = ["network"]
+# Iroh, pairing, discovery and the session over a stream: everything but the exchange. Off
+# for the Apple Watch, where watchOS allows no sockets outside an audio session.
+network = [
+  "dep:blake3", "dep:getrandom", "dep:iroh", "dep:n0-future", "dep:pgp-words", "dep:serde",
+  "dep:serde_json", "dep:tokio", "dep:libc", "dep:mdns-sd", "dep:zbus",
+]
+
 [dependencies]
-blake3 = "1"
-getrandom = "0.3"
-iroh = "1.3"
+blake3 = { version = "1", optional = true }
+getrandom = { version = "0.3", optional = true }
+iroh = { version = "1.3", optional = true }
 lumenna-core.workspace = true
 lumenna-store.workspace = true
-n0-future = "0.3"
-pgp-words = "1.1"
-serde.workspace = true
-serde_json.workspace = true
+n0-future = { version = "0.3", optional = true }
+pgp-words = { version = "1.1", optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
 thiserror.workspace = true
 # Only what also builds for the browser: timers and spawning come from n0-future, which is
 # tokio's own natively and the browser's event loop there.
-tokio = { version = "1", features = ["macros", "sync", "io-util"] }
+tokio = { version = "1", features = ["macros", "sync", "io-util"], optional = true }
 
 # Local discovery by standard DNS-SD. Apple platforms use the system's own responder
 # through dns_sd, which on iOS needs no multicast entitlement; everything else uses this.
 [target.'cfg(target_vendor = "apple")'.dependencies]
-libc = "0.2"
+libc = { version = "0.2", optional = true }
 
 # Not in a browser, which has no local network to browse: pairing there is by code.
 [target.'cfg(not(any(target_vendor = "apple", all(target_family = "wasm", target_os = "unknown"))))'.dependencies]
-mdns-sd = "0.21"
+mdns-sd = { version = "0.21", optional = true }
 
 # The browser's crypto.getRandomValues, for pairing's nonces. getrandom 0.3 also needs the
 # `getrandom_backend` cfg, which `.cargo/config.toml` sets for the browser target.
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
-getrandom = { version = "0.3", features = ["wasm_js"] }
+getrandom = { version = "0.3", features = ["wasm_js"], optional = true }
 
 # Avahi, over D-Bus, where it runs.
 [target.'cfg(target_os = "linux")'.dependencies]
-zbus = "5"
+zbus = { version = "5", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "io-util"] }
@@ -47,3 +56,7 @@ tempfile.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "network"
+required-features = ["network"]
