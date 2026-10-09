@@ -8,7 +8,7 @@ Every client gets every feature. A platform may get it later, never a smaller ve
 
 The order, and why:
 
-1. **Safeguards first**: CI.
+1. **Safeguards first**: CI, now built: every app and the core on every push.
 2. **Reminders**, the biggest gap in daily use, and the scheduler the planner's overrun
    warning and hooks' time events also need.
 3. **The planner**, in dependency order: urgency and history, suggestions, carrying work
@@ -23,8 +23,8 @@ The order, and why:
 
 ## 1. Safeguards
 
-- **CI**: none. Even `cargo test` and clippy on Linux and Windows on every push would catch
-  drift between the apps the sessions keep.
+- **CI** runs (`.github/workflows/ci.yml`). Still to come with packaging: release builds,
+  signing, and publishing from it.
 
 ## 2. Reminders and time events
 
@@ -360,7 +360,6 @@ Each is a thin adapter over the command surface.
 - **An always-on peer**, documented: `lum daemon` on hardware the person controls. A VPS
   works, but say the provider can read the data, and make no encryption claim: unattended
   boot and provider-proof encryption conflict.
-- **Apple builds** are arm64 only: no Intel Mac or Intel simulator slice.
 - **Installing the web client as a PWA**: a manifest and service worker;
   `navigator.storage.persist()`, because OPFS can be evicted and the device key with it;
   offline loading; a badge for what is due; Background Sync to send pending changes when the
