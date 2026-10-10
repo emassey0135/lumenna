@@ -506,11 +506,28 @@ class LumennaTest {
         }
     }
 
+    private fun valueOf(label: String): String =
+        field(label).fetchSemanticsNode().config.getOrNull(SemanticsProperties.EditableText)?.text.orEmpty()
+
+    @Test
+    fun aNewBlockStartsWhenTheCoreSaysAndFollowsTheDayUntilItsStartIsChosen() {
+        tab("Today")
+        press("Add block")
+        assertEquals(core.lumenna.newBlockStart(null), valueOf("Starts at"))
+        replace("Day", "in 3 days")
+        assertEquals(core.lumenna.newBlockStart("in 3 days"), valueOf("Starts at"))
+        replace("Starts at", "7:15pm")
+        replace("Day", "tomorrow")
+        assertEquals("a start the person chose stays", "7:15pm", valueOf("Starts at"))
+    }
+
     @Test
     fun aBreakSetApartToTakeTasksIsOfferedForThem() {
         tab("Today")
         press("Add block")
         type("Name", "Train")
+        // Its own start, so what it says holds at any time of day the test runs.
+        replace("Starts at", "00:00")
         button("Break")
         val takes = rule.onNode(hasText("Takes tasks") and SemanticsMatcher.keyIsDefined(SemanticsProperties.ToggleableState))
         takes.performScrollTo()

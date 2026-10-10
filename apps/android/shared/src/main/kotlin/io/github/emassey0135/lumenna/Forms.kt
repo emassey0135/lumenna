@@ -121,15 +121,46 @@ fun BlockFields.withFlag(key: String, on: Boolean): BlockFields = when (key) {
 class BlockFormModel(private val core: Core, val purpose: BlockPurpose) {
     private val shown = (purpose as? BlockPurpose.Series)?.let { core.attempt { core.lumenna.showBlock(it.id) } }
 
+    /**
+     * When a new block on [date] starts unless the person says otherwise: the core's (the next
+     * whole hour today, else when the day starts), never a fixed hour of the app's own.
+     */
+    private fun startFor(date: String?): String? =
+        runCatching { core.lumenna.newBlockStart(date?.trim()?.ifEmpty { null }) }.getOrNull()
+
+    /** The start the core suggested, while the form still shows it: it follows the day. */
+    private var suggested: String? =
+        (purpose as? BlockPurpose.Add)?.takeIf { it.at == null }?.let { startFor(it.date) }
+
     /** The fields as the form opened, which saving compares against. */
     val initial: BlockFields = when (purpose) {
-        is BlockPurpose.Add -> newFields(purpose.at, purpose.minutes)
-        is BlockPurpose.Series -> shown?.let { blockFields(it) } ?: newFields("09:00", 60u)
+        is BlockPurpose.Add -> newFields(purpose.at ?: suggested ?: "", purpose.minutes)
+        is BlockPurpose.Series -> shown?.let { blockFields(it) } ?: newFields(startFor(null).orEmpty(), 60u)
         is BlockPurpose.Occurrence -> dayBlockFields(purpose.block)
     }
 
     var fields by mutableStateOf(initial)
-    var day by mutableStateOf((purpose as? BlockPurpose.Add)?.date ?: Clock.today())
+
+    private var dayState by mutableStateOf((purpose as? BlockPurpose.Add)?.date ?: Clock.today())
+
+    /**
+     * A new block's day. Changing it asks the core again when the block starts, unless the
+     * person has already changed Starts at; a day it cannot read yet leaves the start alone.
+     */
+    var day: String
+        get() = dayState
+        set(value) {
+            dayState = value
+            val was = suggested ?: return
+            if (fields.start != was) {
+                suggested = null
+                return
+            }
+            startFor(value)?.let {
+                suggested = it
+                fields = fields.copy(start = it)
+            }
+        }
 
     val oneDay get() = purpose is BlockPurpose.Occurrence
 
