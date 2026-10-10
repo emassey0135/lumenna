@@ -105,8 +105,10 @@ impl Lumenna {
                     last_error: status.and_then(|s| s.last_error.clone()),
                     schema_version: device.schema,
                     status: Vec::new(),
+                    actions: Vec::new(),
                 };
                 view.status = crate::words::device_status(&view, jiff::Timestamp::now(), me.is_some());
+                view.actions = crate::actions::device(&view.name, &view.node_id, view.this_device);
                 view
             })
             .collect();

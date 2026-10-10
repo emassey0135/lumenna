@@ -296,6 +296,7 @@ impl Rows {
                     due_time: row.due_time.map(time_text),
                     value: row.value.clone(),
                     hint: row.hint.clone(),
+                    actions: Vec::new(),
                 })
                 .collect(),
         }
@@ -373,6 +374,9 @@ pub struct RowView {
     /// What can be done here, for a client with somewhere to put a hint.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
+    /// What can be done to it, in the order offered ([`crate::actions`]).
+    #[serde(default, skip_serializing_if = "none")]
+    pub actions: Vec<crate::actions::Action>,
 }
 
 impl RowView {
@@ -479,6 +483,9 @@ pub struct TaskDetail {
     pub state: Vec<String>,
     /// When it was created.
     pub created_at: String,
+    /// What can be done to it, in the order offered ([`crate::actions`]).
+    #[serde(default, skip_serializing_if = "none")]
+    pub actions: Vec<crate::actions::Action>,
 }
 
 /// A task another task waits for.
@@ -530,6 +537,7 @@ impl TaskDetail {
             estimate_mins: task.estimate_mins,
             state: snapshot.states_of(task, now).iter().map(|s| s.keyword().to_owned()).collect(),
             created_at: task.created_at.to_string(),
+            actions: crate::actions::task(snapshot, task, snapshot.facts().is_completed(task), true),
         }
     }
 
@@ -628,6 +636,9 @@ pub struct CancelledBlock {
     pub title: String,
     /// When the series has it start, `HH:MM`.
     pub start: String,
+    /// What can be done to it, in the order offered ([`crate::actions`]).
+    #[serde(default, skip_serializing_if = "none")]
+    pub actions: Vec<crate::actions::Action>,
 }
 
 /// One row of a day's timeline.
@@ -650,6 +661,9 @@ pub enum PlanItem {
         end: String,
         /// How long it is.
         minutes: u32,
+        /// What can be done with it.
+        #[serde(default, skip_serializing_if = "none")]
+        actions: Vec<crate::actions::Action>,
     },
     /// Where the present falls, between the rows either side of it. Only on today.
     Now {
@@ -712,6 +726,9 @@ pub struct PlanBlock {
     /// "1 hour 30 minutes", "work block", "now", "2 tasks assigned".
     #[serde(default)]
     pub details: Vec<String>,
+    /// What can be done to it, in the order offered ([`crate::actions`]).
+    #[serde(default, skip_serializing_if = "none")]
+    pub actions: Vec<crate::actions::Action>,
 }
 
 /// One block series, as [`show_block`](crate::Lumenna::show_block) returns it — what an
@@ -807,6 +824,9 @@ pub struct PlanAssignment {
     /// for 45 minutes", or "paused", "20 minutes logged".
     #[serde(default)]
     pub details: Vec<String>,
+    /// What can be done to it, in the order offered ([`crate::actions`]).
+    #[serde(default, skip_serializing_if = "none")]
+    pub actions: Vec<crate::actions::Action>,
 }
 
 /// A timer stopped, or minutes logged by hand.
@@ -862,6 +882,9 @@ pub struct FilterView {
     pub name: String,
     /// The query, as written.
     pub query: String,
+    /// What can be done to it, in the order offered ([`crate::actions`]).
+    #[serde(default, skip_serializing_if = "none")]
+    pub actions: Vec<crate::actions::Action>,
 }
 
 /// Settings, in a fixed order.
@@ -1532,6 +1555,9 @@ pub struct DeviceView {
     /// "last synced 5 minutes ago".
     #[serde(default)]
     pub status: Vec<String>,
+    /// What can be done to it, in the order offered ([`crate::actions`]).
+    #[serde(default, skip_serializing_if = "none")]
+    pub actions: Vec<crate::actions::Action>,
 }
 
 /// How syncing is going, as words rather than an icon.

@@ -120,6 +120,7 @@ impl Lumenna {
                             capped: elapsed.capped,
                             running: assignment.is_running(),
                             details: Vec::new(),
+                            actions: Vec::new(),
                         };
                         sitting.details = sitting_details(&sitting);
                         sitting
@@ -154,6 +155,7 @@ impl Lumenna {
                     colour: series.and_then(|s| s.color.clone()),
                     notes: series.map(|s| s.notes.clone()).unwrap_or_default(),
                     details: Vec::new(),
+                    actions: Vec::new(),
                 };
                 block.details = block_details(&block);
                 blocks.push(block);
@@ -183,10 +185,11 @@ impl Lumenna {
                     series: series.id.to_string(),
                     title: series.title.clone(),
                     start: time_text(series.start_time),
+                    actions: Vec::new(),
                 })
                 .collect();
             cancelled.sort_by(|a, b| (&a.start, &a.title).cmp(&(&b.start, &b.title)));
-            Ok(Plan {
+            let mut plan = Plan {
                 announcement: format!("{day}, {}", count_line(blocks.len(), "block")),
                 notices: Vec::new(),
                 date: day.to_string(),
@@ -195,7 +198,9 @@ impl Lumenna {
                 timeline,
                 blocks,
                 cancelled,
-            })
+            };
+            crate::actions::fill_plan(&mut plan);
+            Ok(plan)
         })
     }
 
@@ -508,7 +513,9 @@ impl Lumenna {
                     }
                 })
                 .collect();
-            Ok(Rows::new(&rows, "block"))
+            let mut rows = Rows::new(&rows, "block");
+            crate::actions::fill_rows(&mut rows, &snapshot);
+            Ok(rows)
         })
     }
 
@@ -907,6 +914,7 @@ fn timeline(
                     start: clock(from),
                     end: clock(to),
                     minutes: u32::try_from(to - from).unwrap_or(u32::MAX),
+                    actions: Vec::new(),
                 },
             ));
         }

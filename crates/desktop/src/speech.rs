@@ -186,6 +186,7 @@ mod tests {
             due_time: None,
             value: value.map(str::to_owned),
             hint: None,
+            actions: Vec::new(),
         }
     }
 
@@ -201,6 +202,7 @@ mod tests {
             capped: false,
             running: false,
             details: Vec::new(),
+            actions: Vec::new(),
         };
         PlanAssignment { details: lumenna_surface::words::sitting_details(&sitting), ..sitting }
     }
@@ -260,6 +262,7 @@ mod tests {
             colour: None,
             notes: String::new(),
             details: Vec::new(),
+            actions: Vec::new(),
         };
         let block = PlanBlock { details: lumenna_surface::words::block_details(&block), ..block };
         assert_eq!(
@@ -289,6 +292,7 @@ mod tests {
             colour: None,
             notes: String::new(),
             details: Vec::new(),
+            actions: Vec::new(),
         };
         let block = PlanBlock { details: lumenna_surface::words::block_details(&block), ..block };
         assert_eq!(super::block(&block, &TwelveHour), "12:30 PM to 1:15 PM, Lunch, 45 minutes, break block");

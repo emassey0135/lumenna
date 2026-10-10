@@ -62,6 +62,15 @@ JSON crosses the FFI.
   without the time ("due tomorrow") and `due_time` the time, which each app says as its
   platform's setting has it: the locale or desktop setting, BTSpeak's Time Format, Emacs's
   `display-time-24hr-format`, and for `lum` the `clock` device setting.
+- **Every row's actions are the core's** (`actions.rs`): each listed record carries
+  `actions` (which apply now, in order, spoken names, `destructive`, and the `Question` each
+  asks: immediate, a confirmation, a line of text, a pick, a choice of answers, or the
+  client's own form). A client offers them, asks the question its own way, and hands the
+  action back with the `Answer` to `Lumenna::act`; what a pick offers is
+  `Lumenna::choices`, so no client offers a task as its own parent or a wait that loops.
+  `ActionKind` is generic across subjects so a key means one thing on every row (Delete is
+  `Delete`), with `Subject` saying what it is done to. Only `Question::Form` is the
+  client's: the task and block forms. Never decide in a client which actions a row has.
 - **What every client's forms share is here too**, as free functions in `form.rs`:
   `task_fields`/`task_edit`, the block form's `block_fields`/`block_edit`/`new_block`,
   `parse_weight`, the `#"Home Office"` references. `task_edit` and `block_edit` hold only
@@ -139,6 +148,10 @@ endpoint (`Endpoint::serve`, `Lumenna::serve_commands`).
 - **`pair` replies when the pairing ends**, talking in between through `lumenna/pairing`
   notifications (`{code, name}`, then `{words}`); the client answers `pair.confirm {match}`
   or `pair.cancel`, and the server keeps answering everything else. One pairing at a time.
+- **`act`, `choices`, `places` and `form.*`** (the form functions: `task_fields`,
+  `task_edit`, `block_fields`, `day_block_fields`, `block_edit`, `new_block`,
+  `block_defaults`) are here so a client over the pipe keeps no copy of any rule. A form
+  function's answer is a `value` result: computed from what the client sent, nothing read.
 - **`complete` and `preview` have no command line**: completion is a keystroke-rate question
   and a process per keystroke is not an answer.
 - **`lum rpc` takes backups at start and hourly** (`Host::backups`), as the CLI takes them

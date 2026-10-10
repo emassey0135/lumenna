@@ -105,6 +105,9 @@ pub struct SidebarEntry {
     pub depth: u32,
     /// For a project: whether it is archived, which decides "Archive" or "Unarchive".
     pub archived: bool,
+    /// What can be done to it: a project's, label's or saved filter's own, a heading's New.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actions: Vec<crate::actions::Action>,
 }
 
 impl SidebarEntry {
@@ -180,12 +183,14 @@ pub fn sidebar(lumenna: &Lumenna) -> Vec<SidebarEntry> {
         kind: SidebarKind::Place(place),
         depth,
         archived: false,
+        actions: Vec::new(),
     };
     let group = |group: SidebarGroup, title: &str| SidebarEntry {
         kind: SidebarKind::Group(group),
         text: title.to_owned(),
         depth: 0,
         archived: false,
+        actions: crate::actions::heading(group),
     };
     let detail = |row: &RowView| {
         row.value.iter().cloned().chain(row.state.iter().cloned()).collect::<Vec<_>>().join(", ")
@@ -197,18 +202,23 @@ pub fn sidebar(lumenna: &Lumenna) -> Vec<SidebarEntry> {
     for row in lumenna.list_projects().map(|r| r.rows).unwrap_or_default() {
         let mut entry = place(Place::Project(row.title.clone()), &detail(&row), row.depth + 1);
         entry.archived = row.state.iter().any(|s| s == "archived");
+        entry.actions = row.actions;
         entries.push(entry);
     }
 
     entries.push(group(SidebarGroup::Labels, "Labels"));
     for row in lumenna.list_labels().map(|r| r.rows).unwrap_or_default() {
-        entries.push(place(Place::Label(row.title.clone()), &detail(&row), 1));
+        let mut entry = place(Place::Label(row.title.clone()), &detail(&row), 1);
+        entry.actions = row.actions;
+        entries.push(entry);
     }
 
     entries.push(group(SidebarGroup::Filters, "Saved Filters"));
     for filter in lumenna.list_filters().map(|f| f.filters).unwrap_or_default() {
         let query = filter.query.clone();
-        entries.push(place(Place::Filter { name: filter.name, query: filter.query }, &query, 1));
+        let mut entry = place(Place::Filter { name: filter.name, query: filter.query }, &query, 1);
+        entry.actions = filter.actions;
+        entries.push(entry);
     }
 
     entries.push(place(Place::Blocks, "", 0));

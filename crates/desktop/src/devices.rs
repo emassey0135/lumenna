@@ -82,6 +82,7 @@ mod tests {
             last_error: error.map(str::to_owned),
             schema_version: 1,
             status: Vec::new(),
+            actions: Vec::new(),
         };
         view.status = lumenna_surface::words::device_status(&view, now(), true);
         view
