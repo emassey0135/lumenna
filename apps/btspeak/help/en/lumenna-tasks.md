@@ -8,13 +8,13 @@ Press Enter on a task to read its details. Press Z-Chord to leave the list.
 
 It holds what can be done to the task now, as every Lumenna app offers it, then Details:
 
-- Mark Done, c; or Mark Not Done, for a finished one.
-- Edit Details, e: the title, due date, repetition, priority, estimate, project, labels and notes, one form.
-- Put in a Block, b: a work block of the coming week, or Another day for any other, and how long the sitting is meant to take.
-- Move to Project, m.
-- Make Subtask Of, s; Move to Top Level, t, for a subtask.
-- Wait For, w; Stop Waiting for each task it waits for, n.
-- Move to Trash. Control-D and the D chord do the same.
+- Mark done, c; or Mark not done, for a finished one.
+- Edit details, e: the title, due date, repetition, priority, estimate, project, labels and notes, one form.
+- Put in a block, b: a work block of the coming week, or Another day for any other, and how long the sitting is meant to take.
+- Move to project, m.
+- Make subtask of, s; Move to top level, t, for a subtask.
+- Wait for, w; Stop waiting for each task it waits for, n.
+- Move to trash. Control-D and the D chord do the same.
 - Details: everything about the task, to pan through.
 
 ## The list's main menu, M-Chord

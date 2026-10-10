@@ -39,6 +39,21 @@ class Session:
     def __init__(self, client) -> None:
         self.client = client
         self.dirty = False
+        self._words: dict = {}
+
+    def words(self, method: str, **params):
+        """What a form function of the core says, asked once: a form's fields
+        (`form.task_form`, `form.block_form`), pairing's sentences, a button in sentence case.
+        They are the core's fixed words, so they never change while the app runs."""
+        key = (method, tuple(sorted(params.items())))
+        if key not in self._words:
+            self._words[key] = self.call(method, **params).get("value")
+        return self._words[key]
+
+    def sentence(self, text: str) -> str:
+        """Fixed text — a button, an answer — in sentence case, as the core writes it: every
+        capital costs a braille cell, and the device's own menus are in sentence case."""
+        return self.words("form.sentence_case", text=text) if text else text
 
     def call(self, method: str, **params):
         """Calls, and turns a refusal into something worth hearing.
@@ -119,14 +134,16 @@ def row_of(item):
 
 def live_menu(
     session: Session, build, title, default: int = 0, moved=None, *,
-    main=None, context=(), app=(), empty: str = "Nothing here", app_title: str = "",
+    main=None, context=(), app=(), empty="Nothing here", app_title: str = "",
 ) -> None:
     """A menu rebuilt whenever the store moves, reopened where the cursor was.
 
     `build()` returns the rows (`row_item`s), or a string to say instead of opening at all.
     `main(row)` is what Enter does on a row; `context` and `app` are `Command`s for the two
     menus, and `context` may be a function of the rows giving them, for commands that are the
-    rows' own actions (`actions.commands`). `title` is a string or a function of nothing, read on each rebuild. `moved`, when
+    rows' own actions (`actions.commands`). `title` is a string or a function of nothing, read on each rebuild, and
+    so is `empty`, what an empty list says: the listing's own `empty` (`Rows::empty`), read
+    after `build`. `moved`, when
     given, is another reason to rebuild — the day changing under the planner — and is cleared
     here. Losing your place in a list when it refreshes is the sort of thing that makes a UI
     unusable without sight, so the selection is kept by position.
@@ -151,7 +168,7 @@ def live_menu(
             app_menu=app_commands(app),
             app_menu_title=app_title or f"{heading.split(',')[0]} menu",
             global_keys=keys(here, app),
-            empty_message=empty,
+            empty_message=empty() if callable(empty) else empty,
         )
         nudged = bool(moved and moved(clear=True))
         if not session.settle() and not nudged:
@@ -270,6 +287,12 @@ def ask(prompt: str, default: str = "") -> str | None:
     if text is None or not text.strip():
         return None
     return text.strip()
+
+
+def empty_then(state: dict, then: str = ""):
+    """What an empty list says: the listing's own words, which `build` keeps in
+    `state["empty"]`, then what this screen adds, such as the key that adds one."""
+    return lambda: " ".join(part for part in (state.get("empty", ""), then) if part)
 
 
 class Flag:

@@ -107,7 +107,7 @@ class Menus(unittest.TestCase):
         self.call("task.add", text="buy paint")
         self.run_script(
             [
-                ("context", "paint", "Wait For"),
+                ("context", "paint", "Wait for"),
                 ("choose", "buy paint"),
                 ("key", "buy paint", "s"),
                 ("choose", "paint, Inbox"),
@@ -154,7 +154,7 @@ class Menus(unittest.TestCase):
                 ("choose", "write the chapter"),
                 ("input", ""),
                 ("key", "write the chapter", "s"),
-                ("context", "write the chapter", "Log Minutes"),
+                ("context", "write the chapter", "Log minutes"),
                 ("input", "25"),
                 ("back",),
             ],
@@ -225,10 +225,10 @@ class Menus(unittest.TestCase):
                 ("choose", "draft"),
                 ("input", ""),
                 ("key", "draft", "s"),
-                ("context", "draft", "Pause Timer"),
-                ("context", "draft", "Resume Timer"),
-                ("context", "draft", "Pause Timer"),
-                ("context", "draft", "Stop Timer"),
+                ("context", "draft", "Pause timer"),
+                ("context", "draft", "Resume timer"),
+                ("context", "draft", "Pause timer"),
+                ("context", "draft", "Stop timer"),
                 ("back",),
             ],
             lambda: day.day_plan(self.session),
@@ -241,7 +241,7 @@ class Menus(unittest.TestCase):
         self.call("block.add", title="Train", at="00:00", minutes=1439, date="today", kind="break")
         self.run_script(
             [
-                ("context", "Train", "Edit Block"),
+                ("context", "Train", "Edit block"),
                 ("form", {"accepts_tasks": "yes"}),
                 ("key", "Train", "i"),
                 ("choose", "read"),
@@ -311,12 +311,52 @@ class Menus(unittest.TestCase):
         )
         self.assertEqual(self.call("block.list")["rows"], [])
 
+    def test_the_day_says_free_time_now_and_a_cancelled_day_in_the_cores_order(self):
+        added = self.call("block.add", title="Run", at="7am", minutes=30, repeat="every day", date="today")
+        series = self.call("block.list")["rows"][0]["id"].split("@")[0]
+        self.call("block.cancel", id=series, date="tomorrow")
+        tomorrow = day.plan_rows(self.call("plan", date="tomorrow"))
+        cancelled = next(row for row in tomorrow if row["role"] == "cancelled")
+        self.assertEqual(day.describe(cancelled), "07:00, Run, cancelled for this day")
+        free = next(row for row in tomorrow if row["role"] == "free")
+        self.assertRegex(day.describe(free), r"^Free, \d+ hours?( \d+ minutes?)?, \d\d:\d\d to \d\d:\d\d$")
+        now = next(row for row in day.plan_rows(self.call("plan")) if row["role"] == "now")
+        self.assertRegex(now["title"], r"^Now, \d\d:\d\d$")
+        self.assertTrue(added)
+
+    def test_the_block_form_names_its_fields_and_kinds_as_the_core_does(self):
+        script = self.run_script(
+            [("app", "Add a block"), ("form", None), ("back",)],
+            lambda: day.day_plan(self.session),
+        )
+        fields = {f.key: f for f in script.forms[0]}
+        self.assertEqual(list(fields), ["title", "date", "start", "minutes", "kind", "repeat"])
+        self.assertEqual(fields["minutes"].prompt, "Lasts, in minutes")
+        self.assertEqual(fields["kind"].choices, {"work": "Work", "break": "Break", "event": "Event"})
+        self.assertEqual(fields["repeat"].format_hint, "Such as every weekday. Empty for once.")
+
+    def test_a_block_form_for_one_day_asks_only_what_one_day_can_change(self):
+        self.call("block.add", title="Run", at="7am", minutes=30, repeat="every day", date="today")
+        script = self.run_script(
+            [("menu", "Run"), ("choose", "only"), ("form", None), ("back",)],
+            lambda: day.day_plan(self.session),
+        )
+        self.assertEqual(
+            [f.prompt for f in script.forms[0]],
+            ["Name", "Starts at", "Lasts, in minutes", "Kind", "Takes tasks", "Counts toward hours for work",
+             "Anchored, never moved when the day slips"],
+        )
+
+    def test_an_empty_task_list_says_the_cores_words_then_the_key_that_adds(self):
+        script = self.run_script([("back",)], lambda: tasks.task_list(self.session))
+        self.assertEqual(script.menus[0]["empty"], "No open tasks. Press a to add one.")
+
     # -- organising -------------------------------------------------------------------
 
     def test_a_project_is_made_renamed_archived_and_unarchived(self):
         self.run_script(
             [
-                ("app", "New Project"),
+                ("app", "New project"),
                 ("input", "Wrok"),
                 ("key", "Wrok", "r"),
                 ("input", "Work"),
@@ -334,7 +374,7 @@ class Menus(unittest.TestCase):
         self.run_script(
             [
                 ("menu", "Work"),
-                ("app", "New Project Inside"),
+                ("app", "New project inside"),
                 ("input", "Errands"),
                 ("back",),
                 ("back",),
@@ -365,7 +405,7 @@ class Menus(unittest.TestCase):
         self.call("task.add", text="urgent thing p1")
         self.run_script(
             [
-                ("app", "New Saved Filter"),
+                ("app", "New saved filter"),
                 ("input", "Urgent"),
                 ("input", "p1"),
                 ("key", "Urgent", "q"),
@@ -406,17 +446,17 @@ class Menus(unittest.TestCase):
         # The core's actions, in its order and under its names, then this app's Details.
         self.assertEqual(
             labels,
-            ["Mark Done, c", "Edit Details, e", "Put in a Block, b", "Move to Project, m",
-             "Make Subtask Of, s", "Wait For, w", "Move to Trash", "Details"],
+            ["Mark done, c", "Edit details, e", "Put in a block, b", "Move to project, m",
+             "Make subtask of, s", "Wait for, w", "Move to trash", "Details"],
         )
-        self.assertNotIn("Move to Top Level, t", labels, "only for a subtask")
+        self.assertNotIn("Move to top level, t", labels, "only for a subtask")
 
     def test_an_empty_list_says_so_and_still_adds_from_its_main_menu(self):
         script = self.run_script(
-            [("app", "New Label"), ("input", "calls"), ("back",)],
+            [("app", "New label"), ("input", "calls"), ("back",)],
             lambda: organise.labels(self.session),
         )
-        self.assertIn("No labels yet", script.menus[0]["empty"])
+        self.assertEqual("No labels. Press a to add one.", script.menus[0]["empty"])
         self.assertEqual([r["title"] for r in self.call("label.list")["rows"]], ["calls"])
 
     def test_a_weight_typed_wrong_is_refused_in_the_cores_words(self):
@@ -454,13 +494,13 @@ class Menus(unittest.TestCase):
         self.assertIn("There is no task it could wait for.", script.said)
 
     def test_the_main_menu_lists_the_cores_places(self):
-        script = self.run_script([("menu", "Saved Filters"), ("back",), ("back",)], lambda: menus.main_menu(self.session))
+        script = self.run_script([("menu", "Saved filters"), ("back",), ("back",)], lambda: menus.main_menu(self.session))
         self.assertTrue(script.titles[1].startswith("Filters"), script.titles)
 
     def test_a_priority_is_chosen_by_the_cores_words(self):
         self.call("task.add", text="file taxes")
         self.run_script(
-            [("context", "file taxes", "Edit Details"), ("form", {"priority": "1"}), ("back",)],
+            [("context", "file taxes", "Edit details"), ("form", {"priority": "1"}), ("back",)],
             lambda: tasks.task_list(self.session),
         )
         self.assertEqual(self.task("file taxes")["priority"], 1)
@@ -520,7 +560,7 @@ class Menus(unittest.TestCase):
             # device would arrive.
             btspeak_stub._clipboard[0] = code
             script = play([
-                ("choose", "Type the code"),
+                ("choose", "Pair with this code"),
                 ("input", ""),
                 ("wait",),
                 ("confirm", True),
@@ -529,6 +569,8 @@ class Menus(unittest.TestCase):
             said = preferences.pair(self.session)
             self.assertTrue(script.finished(), script.steps)
             self.assertIn("Paired with laptop", said)
+            self.assertTrue(any(asked.startswith("Pair a device.") for asked in script.prompts), script.prompts)
+            self.assertEqual(script.offered[0], ["Wait for the other device", "Pair with this code"])
             self.assertEqual(waiting.result(timeout=60)["result"], "paired")
             self.assertIn("from the other device", self.titles())
         finally:
