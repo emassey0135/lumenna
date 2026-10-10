@@ -6,7 +6,7 @@ final class RowSpeechTests: XCTestCase {
     private func task(due: String?, at time: String?, value: String?) -> RowView {
         RowView(
             row: 1, id: "0199", role: "task", depth: 0, index: 1, count: 1, checked: false, expanded: nil,
-            title: "call the bank", state: [], due: due, dueTime: time, value: value, hint: nil
+            title: "call the bank", state: [], due: due, dueTime: time, value: value, hint: nil, actions: []
         )
     }
 

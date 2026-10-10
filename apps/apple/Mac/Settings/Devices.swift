@@ -88,41 +88,34 @@ final class DevicesViewController: NSViewController, NSTableViewDataSource, NSTa
         let clicked = table.clickedRow >= 0 ? table.clickedRow : table.selectedRow
         guard clicked >= 0 else { return }
         table.selectRowIndexes([clicked], byExtendingSelection: false)
-        menu.addItem(ClosureMenuItem(title: "Rename…") { [weak self] in self?.renameSelected() })
-        if !devices[clicked].thisDevice {
-            menu.addItem(ClosureMenuItem(title: "Unpair…") { [weak self] in self?.unpairSelected() })
-        }
+        menu.add(devices[clicked].actions) { [weak self] action in self?.perform(action) }
     }
 
     private var selected: DeviceView? {
         table.selectedRow >= 0 && table.selectedRow < devices.count ? devices[table.selectedRow] : nil
     }
 
+    // The buttons and keys are the selected device's own actions of those kinds: this
+    // device's row has no Unpair, so its button does nothing there.
     @objc private func renameSelected() {
-        guard let device = selected, let window = view.window else { return }
-        window.askForText("Rename \(device.name)", initial: device.name) { [weak self] name in
-            self?.change { try self!.core.lumenna.renameDevice(device: device.nodeId, name: name) }
-        }
+        guard let device = selected else { return }
+        if let action = device.actions.first(.rename) { perform(action) } else { said(.rename, device) }
     }
 
     @objc private func unpairSelected() {
-        guard let device = selected, !device.thisDevice, let window = view.window else { return }
-        window.confirm(
-            "Unpair \(device.name)?",
-            message: "It stops syncing with your devices but keeps everything it already has. Unpairing is for a device you replaced; it does not take data back from a lost one.",
-            action: "Unpair"
-        ) { [weak self] in
-            self?.change { try self!.core.lumenna.unpairDevice(device: device.nodeId) }
-        }
+        guard let device = selected else { return }
+        if let action = device.actions.first(.unpair) { perform(action) } else { said(.unpair, device) }
     }
 
-    private func change(_ operation: () throws -> Change) {
-        do {
-            let change = try operation()
-            reload()
+    /// Why the device does not offer `kind`, in the core's words.
+    private func said(_ kind: ActionKind, _ device: DeviceView) {
+        view.window?.showFailure(notOffered(kind: kind, subject: .device, thisDevice: device.thisDevice))
+    }
+
+    private func perform(_ action: Action) {
+        view.window?.run(action, core: core) { [weak self] change, _ in
+            self?.reload()
             Announcer.say(change.announcement, notices: change.notices)
-        } catch {
-            view.window?.showFailure(error.sentence)
         }
     }
 

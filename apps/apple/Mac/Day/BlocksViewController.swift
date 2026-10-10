@@ -90,9 +90,16 @@ final class BlocksViewController: NSViewController, NSTableViewDataSource, NSTab
         let clicked = table.clickedRow >= 0 ? table.clickedRow : table.selectedRow
         guard clicked >= 0 else { return }
         table.selectRowIndexes([clicked], byExtendingSelection: false)
-        menu.addItem(ClosureMenuItem(title: "Edit…") { [weak self] in self?.editSelected() })
-        menu.addItem(.separator())
-        menu.addItem(ClosureMenuItem(title: "Delete…") { [weak self] in self?.deleteSelected() })
+        menu.add(rows[clicked].actions) { [weak self] action in self?.perform(action) }
+    }
+
+    /// Runs one of the selected block's actions, the core's: Edit Block is the block form.
+    private func perform(_ action: Action) {
+        guard let window = view.window else { return }
+        window.run(action, core: core, form: { [weak self] _ in self?.editSelected() }) { [weak self] change, _ in
+            self?.reload()
+            Announcer.say(change.announcement, notices: change.notices)
+        }
     }
 
     @objc private func editSelected() {
@@ -108,23 +115,10 @@ final class BlocksViewController: NSViewController, NSTableViewDataSource, NSTab
         }
     }
 
+    /// Delete: the block's own Delete Block.
     private func deleteSelected() {
-        guard table.selectedRow >= 0, let window = view.window else { return }
-        let row = rows[table.selectedRow]
-        let repeats = (try? core.lumenna.showBlock(id: row.id).repeats) ?? false
-        let message = repeats
-            ? "Every occurrence goes. To skip one day, cancel it from the day instead."
-            : "It goes to the trash with its assignments."
-        window.confirm("Delete \(row.title)?", message: message, action: "Delete") { [weak self] in
-            guard let self else { return }
-            do {
-                let change = try self.core.lumenna.deleteBlock(id: row.id)
-                self.reload()
-                Announcer.say(change.announcement, notices: change.notices)
-            } catch {
-                window.showFailure(error.sentence)
-            }
-        }
+        guard table.selectedRow >= 0, let action = rows[table.selectedRow].actions.first(.delete) else { return }
+        perform(action)
     }
 
     @objc func newBlock(_ sender: Any?) {

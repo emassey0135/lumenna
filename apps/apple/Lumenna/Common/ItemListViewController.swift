@@ -11,14 +11,9 @@ struct Item: Hashable {
     var spoken: String?
     /// A heading over the items under it, as the sidebar's Projects and Labels are.
     var heading = false
-}
-
-/// What can be done to an item: a swipe action, which UIKit also offers to VoiceOver, Switch
-/// Control and Full Keyboard Access as an action.
-struct ItemAction {
-    var title: String
-    var destructive = false
-    var run: (Item) -> Void
+    /// What can be done to it, as the core says: its swipe actions, which UIKit also offers
+    /// to VoiceOver, Switch Control and Full Keyboard Access as its actions.
+    var actions: [Action] = []
 }
 
 /// A plain list with the same focus rules as the task list: after a change, VoiceOver stays
@@ -50,8 +45,18 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
 
     /// The items, and a line saying how many there are. Thrown errors are shown.
     func load() throws -> (items: [Item], count: String) { ([], "") }
-    /// What a trailing swipe offers, most often used first.
-    func actions(for item: Item) -> [ItemAction] { [] }
+    /// What a trailing swipe offers: the item's own actions, from the core.
+    func actions(for item: Item) -> [Action] { item.actions }
+    /// Opens the app's own form an action asks for (`Question.form`).
+    func form(_ action: Action, on item: Item) {}
+    /// The key of the item a place named `name` is listed under, for focus after a rename.
+    func key(forName name: String, subject: Subject) -> String { name }
+    /// After an action changed something: reloads, keeping focus on the item, or the one it
+    /// became, or whatever holds its place, and says what happened.
+    func acted(_ action: Action, on item: Item, answer: Answer, change: Change) {
+        let renamed = ActionRun.name(after: action, answer: answer).map { key(forName: $0, subject: action.subject) }
+        reload(focusing: renamed ?? item.key, saying: change)
+    }
     /// What tapping does.
     func open(_ item: Item) {}
     /// What the add button does; `nil` hides it.
@@ -235,6 +240,13 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
         }
     }
 
+    /// Runs one of an item's actions: asks its question, then keeps focus by `acted`.
+    func perform(_ action: Action, on item: Item) {
+        run(action, core: core, form: { [weak self] action in self?.form(action, on: item) }) { [weak self] change, answer in
+            self?.acted(action, on: item, answer: answer, change: change)
+        }
+    }
+
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt path: IndexPath) {
         guard let item = dataSource.itemIdentifier(for: path) else { return }
         open(item)
@@ -276,12 +288,7 @@ extension ItemListViewController {
     func trailingSwipeActions(at path: IndexPath) -> UISwipeActionsConfiguration? {
         guard let item = self.dataSource.itemIdentifier(for: path) else { return nil }
         var actions = self.actions(for: item).map { action in
-            UIContextualAction(
-                style: action.destructive ? .destructive : .normal, title: action.title
-            ) { _, _, finished in
-                action.run(item)
-                finished(true)
-            }
+            swipeAction(action) { [weak self] in self?.perform(action, on: item) }
         }
         if let row = self.shown.first(where: { $0.item.key == item.key }),
            let fold = self.folding.action(for: row, key: item.key, changed: { [weak self] key, said in

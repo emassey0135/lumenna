@@ -277,10 +277,10 @@ final class LumennaUITests: XCTestCase {
         let block = app.cells.containing(NSPredicate(format: "value CONTAINS 'takes tasks'")).firstMatch
         XCTAssertTrue(block.waitForExistence(timeout: 5), "the details say what differs from the kind")
         reveal(actionsOf: block)
-        app.buttons["Assign Task"].tap()
+        app.buttons["Assign a Task"].tap()
         app.cells.matching(NSPredicate(format: "label == 'read the paper'")).firstMatch.tap()
-        XCTAssertTrue(app.alerts.buttons["Skip"].waitForExistence(timeout: 5))
-        press(alertButton: "Skip")
+        XCTAssertTrue(app.alerts["Planned Length"].waitForExistence(timeout: 5))
+        press(alertButton: "Save")
 
         let sitting = row("read the paper")
         let says = { [app] (text: String) in
@@ -319,10 +319,10 @@ final class LumennaUITests: XCTestCase {
         let block = cell(containing: "Writing")
         XCTAssertTrue(block.waitForExistence(timeout: 5))
         reveal(actionsOf: block)
-        app.buttons["Assign Task"].tap()
+        app.buttons["Assign a Task"].tap()
         app.cells.matching(NSPredicate(format: "label == 'write the chapter'")).firstMatch.tap()
-        XCTAssertTrue(app.alerts.buttons["Skip"].waitForExistence(timeout: 5), "asks how long, and can be skipped")
-        press(alertButton: "Skip")
+        XCTAssertTrue(app.alerts["Planned Length"].waitForExistence(timeout: 5), "asks how long, and can be left empty")
+        press(alertButton: "Save")
 
         let sitting = app.cells.matching(NSPredicate(format: "label == 'write the chapter'")).firstMatch
         XCTAssertTrue(sitting.waitForExistence(timeout: 5))
@@ -341,7 +341,7 @@ final class LumennaUITests: XCTestCase {
         tab("Browse")
         cell(containing: "Projects").tap()
         app.buttons["Add project"].tap()
-        answer("Work", with: "Add")
+        answer("Work", with: "Save")
         XCTAssertTrue(cell(containing: "Work").waitForExistence(timeout: 5))
         try audit()
 
@@ -368,7 +368,7 @@ final class LumennaUITests: XCTestCase {
         tab("Browse")
         cell(containing: "Labels").tap()
         app.buttons["Add label"].tap()
-        answer("calls", with: "Add")
+        answer("calls", with: "Save")
         XCTAssertTrue(cell(containing: "calls").waitForExistence(timeout: 5))
         goBack()
 
@@ -384,8 +384,13 @@ final class LumennaUITests: XCTestCase {
         add("throw me away")
         let task = row("throw me away")
         XCTAssertTrue(task.waitForExistence(timeout: 5))
-        reveal(actionsOf: task)
-        app.buttons["Delete"].tap()
+        // A task has more swipe actions than a phone's row shows; Move to Trash, the last, is
+        // the task page's too (the swipe actions' list itself is SwipeActionTests').
+        task.tap()
+        let trash = app.buttons["Move to Trash"]
+        for _ in 0..<6 where !trash.isHittable { app.swipeUp() }
+        // The page closes itself once its task is in the trash.
+        trash.tap()
         XCTAssertTrue(task.waitForNonExistence(timeout: 5))
 
         tab("Browse")
@@ -590,8 +595,8 @@ final class LumennaUITests: XCTestCase {
         // The sheet's close button: "Cancel" on iPhone, an X called "Close" on iPad.
         app.buttons.matching(NSPredicate(format: "label IN {'Cancel', 'Close'}")).firstMatch.tap()
         reveal(actionsOf: standup)
-        app.buttons["Delete"].tap()
-        press(alertButton: "Delete")
+        app.buttons["Delete Block"].tap()
+        press(alertButton: "Delete Block")
         XCTAssertTrue(standup.waitForNonExistence(timeout: 5))
     }
 
@@ -599,18 +604,22 @@ final class LumennaUITests: XCTestCase {
         add("draft")
         addBlock("Focus")
         reveal(actionsOf: cell(containing: "Focus"))
-        app.buttons["Assign Task"].tap()
+        app.buttons["Assign a Task"].tap()
         app.cells.matching(NSPredicate(format: "label == 'draft'")).firstMatch.tap()
-        let minutes = app.alerts.textFields["Minutes"]
+        let minutes = app.alerts.textFields["Planned length"]
         XCTAssertTrue(minutes.waitForExistence(timeout: 5))
-        minutes.typeText("45")
-        press(alertButton: "Set")
+        minutes.typeText("45m")
+        press(alertButton: "Save")
 
         let planned = app.cells.containing(NSPredicate(format: "value CONTAINS 'planned for 45 minutes'")).firstMatch
         XCTAssertTrue(planned.waitForExistence(timeout: 5))
         reveal(actionsOf: planned)
         app.buttons["Planned Length"].tap()
-        press(alertButton: "No Planned Length")
+        // Emptied, for no planned length.
+        let length = app.alerts.textFields["Planned length"]
+        XCTAssertTrue(length.waitForExistence(timeout: 5))
+        length.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 6))
+        press(alertButton: "Save")
         XCTAssertTrue(planned.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.cells.matching(NSPredicate(format: "label == 'draft'")).firstMatch.exists)
     }
@@ -620,7 +629,7 @@ final class LumennaUITests: XCTestCase {
         tab("Browse")
         cell(containing: "Projects").tap()
         app.buttons["Add project"].tap()
-        answer("Work", with: "Add")
+        answer("Work", with: "Save")
         let work = app.cells.matching(NSPredicate(format: "label == 'Work'")).firstMatch
         XCTAssertTrue(work.waitForExistence(timeout: 5))
         app.navigationBars.buttons["Undo"].tap()
@@ -635,14 +644,14 @@ final class LumennaUITests: XCTestCase {
         tab("Tasks")
         row("draft").tap()
         // Far down the form, and SwiftUI makes rows only once they are on screen.
-        let put = app.buttons["Put in a Block…"]
+        let put = app.buttons["Put in a Block"]
         for _ in 0..<6 where !put.exists { app.swipeUp() }
         put.tap()
         let block = app.cells.containing(NSPredicate(format: "label CONTAINS 'Focus'")).firstMatch
         XCTAssertTrue(block.waitForExistence(timeout: 5), "the week's work blocks, listed")
         block.tap()
-        XCTAssertTrue(app.alerts.buttons["Skip"].waitForExistence(timeout: 5))
-        press(alertButton: "Skip")
+        XCTAssertTrue(app.alerts["Planned Length"].waitForExistence(timeout: 5))
+        press(alertButton: "Save")
         XCTAssertTrue(app.alerts.firstMatch.waitForNonExistence(timeout: 5))
         let state = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'ready'")).firstMatch
         XCTAssertTrue(state.waitForExistence(timeout: 5))

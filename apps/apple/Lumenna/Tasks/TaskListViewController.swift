@@ -306,36 +306,19 @@ final class TaskListViewController: UIViewController {
         }
     }
 
-    private func toggleDone(_ row: RowView) {
+    /// Runs one of a row's actions, the core's, then keeps focus on the task, or — when it
+    /// left the list, to the trash or back from it — on whatever now holds its place.
+    private func perform(_ action: Action, on row: RowView) {
         let index = rows.firstIndex { $0.id == row.id }
-        perform(focusing: row.id, near: index) {
-            row.checked == true
-                ? try core.lumenna.uncompleteTask(id: row.id)
-                : try core.lumenna.completeTask(id: row.id)
+        let leaves = [.delete, .restore, .deleteForGood].contains(action.kind)
+        run(action, core: core, form: { [weak self] _ in self?.open(row) }) { [weak self] change, _ in
+            self?.reload(focusing: leaves ? nil : row.id, near: index, saying: change)
         }
     }
 
-    private func trash(_ row: RowView) {
-        let index = rows.firstIndex { $0.id == row.id }
-        perform(focusing: nil, near: index) { try core.lumenna.trashTask(id: row.id) }
-    }
-
-    private func restore(_ row: RowView) {
-        let index = rows.firstIndex { $0.id == row.id }
-        perform(focusing: nil, near: index) { try core.lumenna.restoreTask(id: row.id) }
-    }
-
-    /// Deletes a task from the trash, asking first.
-    private func erase(_ row: RowView) {
-        confirm(
-            "Delete \(row.title) from the trash?",
-            message: "Undo can bring it back. It also stays in the history every device keeps, and in backups.",
-            action: "Delete"
-        ) { [weak self] in
-            guard let self else { return }
-            let index = self.rows.firstIndex { $0.id == row.id }
-            self.perform(focusing: nil, near: index) { try self.core.lumenna.eraseTask(id: row.id) }
-        }
+    /// Edit Details: the task's own screen, beside the list on iPad.
+    private func open(_ row: RowView) {
+        showBeside(TaskDetailViewController(core: core, id: row.id))
     }
 
     @objc func undoChange() {
@@ -395,7 +378,7 @@ final class TaskListViewController: UIViewController {
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         switch action {
         case #selector(toggleDone as () -> Void), #selector(moveToTrash):
-            mode == .tasks && rowInHand != nil
+            rowInHand != nil
         case #selector(filterTasks):
             mode == .tasks
         default:
@@ -403,12 +386,25 @@ final class TaskListViewController: UIViewController {
         }
     }
 
+    // Each command is the row's own action of that kind, so a key never does what the row's
+    // actions do not.
+    // A row without one (a trashed task has no Mark Done) says why, in the core's words.
     @objc func toggleDone() {
-        if let row = rowInHand { toggleDone(row) }
+        guard let row = rowInHand else { return }
+        if let action = row.actions.first(.markDone, .markNotDone) {
+            perform(action, on: row)
+        } else {
+            Announcer.say(notOffered(kind: .markDone, subject: .task, thisDevice: false))
+        }
     }
 
     @objc func moveToTrash() {
-        if let row = rowInHand { trash(row) }
+        guard let row = rowInHand else { return }
+        if let action = row.actions.first(.delete) {
+            perform(action, on: row)
+        } else {
+            Announcer.say(notOffered(kind: .delete, subject: .task, thisDevice: false))
+        }
     }
 
     @objc func filterTasks() {
@@ -419,50 +415,32 @@ final class TaskListViewController: UIViewController {
 extension TaskListViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt path: IndexPath) {
         guard mode == .tasks, let row = row(at: path) else { return }
-        showBeside(TaskDetailViewController(core: core, id: row.id))
+        open(row)
     }
 }
 
 // The swipe actions, apart from the layout that asks for them, so a test can ask too.
 extension TaskListViewController {
-    /// What a leading swipe on the row at `path` offers: VoiceOver's actions for the row too.
+    /// What a leading swipe on the row at `path` offers: Mark Done or Mark Not Done, the
+    /// row's first action. VoiceOver lists it first among the row's actions.
     func leadingSwipeActions(at path: IndexPath) -> UISwipeActionsConfiguration? {
-        guard self.mode == .tasks, let row = self.row(at: path) else { return nil }
-        let action = UIContextualAction(
-            // The title is also the action's name to VoiceOver, so it says what it does.
-            style: .normal, title: row.checked == true ? "Mark Not Done" : "Mark Done"
-        ) { [weak self] _, _, finished in
-            self?.toggleDone(row)
-            finished(true)
-        }
-        action.backgroundColor = .systemGreen
-        return UISwipeActionsConfiguration(actions: [action])
+        guard let row = self.row(at: path), let done = row.actions.first, [.markDone, .markNotDone].contains(done.kind) else { return nil }
+        return UISwipeActionsConfiguration(actions: [swipeAction(done) { [weak self] in self?.perform(done, on: row) }])
     }
 
-    /// What a trailing swipe on the row at `path` offers: VoiceOver's actions for the row too.
+    /// What a trailing swipe on the row at `path` offers: the rest of the row's actions, in
+    /// the core's order, then Expand or Collapse.
     func trailingSwipeActions(at path: IndexPath) -> UISwipeActionsConfiguration? {
         guard let row = self.row(at: path) else { return nil }
-        if self.mode == .trash {
-            let restore = UIContextualAction(style: .normal, title: "Restore") {
-                [weak self] _, _, finished in
-                self?.restore(row)
-                finished(true)
-            }
-            let erase = UIContextualAction(style: .destructive, title: "Delete from Trash") {
-                [weak self] _, _, finished in
-                self?.erase(row)
-                finished(true)
-            }
-            return UISwipeActionsConfiguration(actions: [restore, erase])
+        let leading = leadingSwipeActions(at: path) == nil ? 0 : 1
+        var actions = row.actions.dropFirst(leading).map { action in
+            swipeAction(action) { [weak self] in self?.perform(action, on: row) }
         }
-        let action = UIContextualAction(style: .destructive, title: "Delete") {
-            [weak self] _, _, finished in
-            self?.trash(row)
-            finished(true)
-        }
-        let fold = self.shown.first { $0.item.id == row.id }.flatMap { shown in
+        if let fold = self.shown.first(where: { $0.item.id == row.id }).flatMap({ shown in
             self.folding.action(for: shown, key: row.id) { [weak self] key, said in self?.fold(key, saying: said) }
+        }) {
+            actions.append(fold)
         }
-        return UISwipeActionsConfiguration(actions: [action] + [fold].compactMap { $0 })
+        return actions.isEmpty ? nil : UISwipeActionsConfiguration(actions: actions)
     }
 }

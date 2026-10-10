@@ -19,6 +19,9 @@ final class SettingsModel: NSObject, ObservableObject {
     weak var window: NSWindow?
     #endif
     @Published var values: [String: String] = [:]
+    /// Every setting as the core describes it — its name, its control, what it can be, whether
+    /// it syncs — in the core's order.
+    @Published var settings: [Setting] = []
     @Published var failure: String?
 
     init(core: Core) {
@@ -32,7 +35,8 @@ final class SettingsModel: NSObject, ObservableObject {
 
     func load() {
         do {
-            values = Dictionary(uniqueKeysWithValues: try core.lumenna.settings(key: nil).settings.map { ($0.key, $0.value) })
+            settings = try core.lumenna.settings(key: nil).settings
+            values = Dictionary(uniqueKeysWithValues: settings.map { ($0.key, $0.value) })
         } catch {
             failure = error.sentence
         }
@@ -114,37 +118,115 @@ struct SettingsPage: ViewModifier {
     }
 }
 
+/// One setting, with the control its kind asks for, under the core's name for it. A choice is
+/// a section of its own; the rest sit in the section around them.
+struct SettingControl: View {
+    @ObservedObject var model: SettingsModel
+    let setting: Setting
+
+    var body: some View {
+        control.modifier(SettingHint(text: setting.kind == .choice ? "" : setting.hint))
+    }
+
+    @ViewBuilder private var control: some View {
+        switch setting.kind {
+        case .toggle:
+            Labelled(setting.title) {
+                Toggle(setting.title, isOn: Binding(
+                    get: { model.values[setting.key] == "true" },
+                    set: { model.set(setting.key, $0 ? "true" : "false") }
+                ))
+            }
+        case .time:
+            Labelled(setting.title) {
+                DatePicker(setting.title, selection: model.time(setting.key), displayedComponents: .hourAndMinute)
+            }
+        case .number:
+            Stepper(value: Binding(
+                get: { Int(model.values[setting.key] ?? "") ?? 1 },
+                set: { model.set(setting.key, String($0)) }
+            ), in: 1...100) {
+                Text("\(setting.title): \(model.values[setting.key] ?? "")")
+            }
+        case .folder:
+            #if os(macOS)
+            Named(setting.title) {
+                HStack {
+                    Text(model.values[setting.key] ?? "").textSelection(.enabled).lineLimit(2)
+                    Button("Choose…") { model.chooseBackupFolder() }
+                }
+            }
+            #else
+            // A folder of this device's is chosen where there is a file system to choose from.
+            EmptyView()
+            #endif
+        case .choice:
+            ChoiceSection(
+                setting.title,
+                selection: model.binding(setting.key),
+                choices: options,
+                footer: setting.hint.isEmpty ? nil : setting.hint
+            )
+        }
+    }
+
+    /// Its options, and the value it has if that is not among them: a newer build may have set it.
+    private var options: [(label: String, value: String)] {
+        let listed = setting.options.map { (label: $0.title, value: $0.id) }
+        let value = model.values[setting.key] ?? setting.value
+        return listed.contains { $0.value == value } || value.isEmpty ? listed : listed + [(label: value, value: value)]
+    }
+}
+
+/// What a setting takes, the core's words: said by VoiceOver after a pause on iOS and the
+/// watch, a tooltip on the Mac. A choice says it under its section instead.
+private struct SettingHint: ViewModifier {
+    let text: String
+
+    func body(content: Content) -> some View {
+        if text.isEmpty {
+            content
+        } else {
+            #if os(macOS)
+            content.help(text)
+            #else
+            content.accessibilityHint(text)
+            #endif
+        }
+    }
+}
+
+extension SettingsModel {
+    /// The settings that sync, of `kinds`, in the core's order.
+    func synced(_ kinds: [SettingKind]) -> [Setting] {
+        settings.filter { $0.syncs && kinds.contains($0.kind) }
+    }
+
+    /// This device's backup settings: what the core keeps apart from what syncs, but the clock,
+    /// which the Apple apps take from the system.
+    func backups(_ kinds: [SettingKind]) -> [Setting] {
+        settings.filter { !$0.syncs && $0.key.hasPrefix("backup-") && kinds.contains($0.kind) }
+    }
+}
+
+/// The settings that sync, as the core describes them. Which page each goes on is the app's.
 struct PlanningSettings: View {
     @ObservedObject var model: SettingsModel
-    private static let weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
     var body: some View {
         Form {
             Section {
-                Labelled("Completing a task completes its subtasks") {
-                    Toggle("Completing a task completes its subtasks", isOn: Binding(
-                        get: { model.values["cascade-complete-subtasks"] == "true" },
-                        set: { model.set("cascade-complete-subtasks", $0 ? "true" : "false") }
-                    ))
-                }
-                Labelled("Day starts") {
-                    DatePicker("Day starts", selection: model.time("day-start"), displayedComponents: .hourAndMinute)
-                }
-                Labelled("Day ends") {
-                    DatePicker("Day ends", selection: model.time("day-end"), displayedComponents: .hourAndMinute)
-                }
-                Labelled("All-day reminders at") {
-                    DatePicker("All-day reminders at", selection: model.time("all-day-reminder-hour"), displayedComponents: .hourAndMinute)
+                ForEach(model.synced([.toggle, .time, .number]), id: \.key) { setting in
+                    SettingControl(model: model, setting: setting)
                 }
             } header: {
                 FormParts.heading("Planning")
             } footer: {
                 FormParts.caption("These sync to all your devices.")
             }
-            ChoiceSection("Announcements", selection: model.binding("verbosity"), choices: [
-                ("Full sentences", "full"), ("Terse", "terse"),
-            ])
-            ChoiceSection("Week starts on", selection: model.binding("week-start"), choices: Self.weekdays.map { ($0.capitalized, $0) })
+            ForEach(model.synced([.choice]), id: \.key) { setting in
+                SettingControl(model: model, setting: setting)
+            }
         }
         .modifier(SettingsPage(model: model))
     }
@@ -156,30 +238,19 @@ struct BackupSettings: View {
 
     var body: some View {
         Form {
-            ChoiceSection("Automatic backups", selection: model.binding("backup-every"), choices: [
-                ("Every 12 hours", "12h"), ("Every day", "1d"), ("Every week", "7d"), ("Off", "off"),
-            ])
+            ForEach(model.backups([.choice]), id: \.key) { setting in
+                SettingControl(model: model, setting: setting)
+            }
             Section {
-                Stepper(value: Binding(
-                    get: { Int(model.values["backup-keep"] ?? "10") ?? 10 },
-                    set: { model.set("backup-keep", String($0)) }
-                ), in: 1...100) {
-                    Text("Keep \(model.values["backup-keep"] ?? "10") backups")
+                ForEach(model.backups([.toggle, .time, .number, .folder]), id: \.key) { setting in
+                    SettingControl(model: model, setting: setting)
                 }
-                #if os(macOS)
-                Named("Backups go to") {
-                    HStack {
-                        Text(model.values["backup-dir"] ?? "").textSelection(.enabled).lineLimit(2)
-                        Button("Choose…") { model.chooseBackupFolder() }
-                    }
-                }
-                #endif
                 Button("Back Up Now") { model.backUpNow() }
                 #if os(macOS)
                 Button("Restore From a Backup…") { model.importFile() }
                 #endif
             } footer: {
-                FormParts.caption("A backup holds your whole history, including every task you deleted, so the store can be rebuilt from it. It stays on this device, as these settings do.")
+                FormParts.caption("These settings are this device's alone.")
             }
         }
         .modifier(SettingsPage(model: model))

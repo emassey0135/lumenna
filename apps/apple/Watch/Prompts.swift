@@ -42,13 +42,17 @@ struct TextPrompt: View {
     var placeholder = ""
     var action = "Save"
     var syntax: Syntax?
+    /// Whether an empty line is handed on: the core's questions take it, and refuse it
+    /// themselves where they must.
+    var allowsEmpty = false
     let done: (String) -> Void
     @State private var text: String
 
     init(
         _ title: String, message: String? = nil, initial: String = "", placeholder: String = "",
-        action: String = "Save", syntax: Syntax? = nil, done: @escaping (String) -> Void
+        action: String = "Save", syntax: Syntax? = nil, allowsEmpty: Bool = false, done: @escaping (String) -> Void
     ) {
+        self.allowsEmpty = allowsEmpty
         self.title = title
         self.message = message
         self.placeholder = placeholder
@@ -74,7 +78,7 @@ struct TextPrompt: View {
                 dismiss()
                 done(text.trimmingCharacters(in: .whitespaces))
             }
-            .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
+            .disabled(!allowsEmpty && text.trimmingCharacters(in: .whitespaces).isEmpty)
         }
         .navigationTitle(title)
     }
@@ -85,12 +89,17 @@ struct ChoicePrompt: View {
     @Environment(\.dismiss) private var dismiss
     let title: String
     var message: String?
+    /// Cancel first, before what cannot be taken back.
+    var cancel = false
     let choices: [(String, () -> Void)]
 
     var body: some View {
         List {
             if let message {
                 Text(message).font(.footnote)
+            }
+            if cancel {
+                Button("Cancel", role: .cancel) { dismiss() }
             }
             ForEach(Array(choices.enumerated()), id: \.offset) { _, choice in
                 Button(choice.0) {

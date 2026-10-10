@@ -9,7 +9,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     private enum Row: Hashable {
         case block(PlanBlock)
         case sitting(PlanAssignment, in: PlanBlock)
-        case free(start: String, end: String, minutes: UInt32)
+        case free(start: String, end: String, minutes: UInt32, actions: [Action])
         case now(String)
         /// A repeating block cancelled for this day alone, so the day can be put back.
         case cancelled(CancelledBlock)
@@ -181,8 +181,8 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
                 case let .block(row):
                     guard let block = plan.blocks.first(where: { $0.row == row }) else { return [] }
                     return [.block(block)] + block.assignments.map { .sitting($0, in: block) }
-                case let .free(start, end, minutes):
-                    return [.free(start: start, end: end, minutes: minutes)]
+                case let .free(start, end, minutes, actions):
+                    return [.free(start: start, end: end, minutes: minutes, actions: actions)]
                 case let .now(time):
                     return [.now(time)]
                 }
@@ -205,10 +205,16 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         dataSource.apply(snapshot, animatingDifferences: false, completion: finished)
     }
 
-    /// What identifies a row for folding; only a block has anything under it.
+    /// What identifies a row across a reload, for folding and for keeping focus on it: only
+    /// a block has anything under it.
     private func foldKey(_ row: Row) -> String {
-        if case let .block(block) = row { return "block:\(block.id)" }
-        return String(describing: row)
+        switch row {
+        case let .block(block): "block:\(block.id)"
+        case let .sitting(sitting, _): "sitting:\(sitting.id)"
+        case let .free(start, _, _, _): "free:\(start)"
+        case .now: "now"
+        case let .cancelled(block): "cancelled:\(block.series)"
+        }
     }
 
     /// Folds or unfolds the block `key`, keeping VoiceOver on it.
@@ -252,7 +258,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             content.image = UIImage(systemName: sitting.running ? "timer" : sitting.status == "paused" ? "pause.circle" : "circle.dashed")
             content.directionalLayoutMargins.leading += 24
             cell.accessories = [.disclosureIndicator(displayed: .always)]
-        case let .free(start, end, minutes):
+        case let .free(start, end, minutes, _):
             label = "Free, \(Clock.length(minutes))"
             value = ["\(Clock.time(start)) to \(Clock.time(end))"]
             content.text = label
@@ -295,61 +301,54 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
 
     // MARK: - Actions
 
-    /// What can be done to a row: its swipe actions, which VoiceOver lists as actions. Which
-    /// apply is shared with the watch (`DayAction`); running them is this screen's.
-    private func actions(for row: Row) -> [(String, Bool, () -> Void)] {
-        let listed: [DayAction] = switch row {
-        case let .block(block): DayAction.of(block)
-        case let .sitting(sitting, _): DayAction.of(sitting)
-        case .free: DayAction.ofFreeTime
-        case .cancelled: DayAction.ofCancelled
+    /// What can be done to a row, the core's: its swipe actions, which VoiceOver lists as
+    /// actions. Asking and running them is `ActionRun`'s; the forms are this screen's.
+    private func actions(for row: Row) -> [Action] {
+        switch row {
+        case let .block(block): block.actions
+        case let .sitting(sitting, _): sitting.actions
+        case let .free(_, _, _, actions): actions
+        case let .cancelled(block): block.actions
         case .now: []
         }
-        return listed.map { action in (action.title, action.destructive, { [weak self] in self?.run(action, on: row) }) }
     }
 
-    private func run(_ action: DayAction, on row: Row) {
-        let lumenna = core.lumenna
-        switch (action, row) {
-        case let (.assignTask, .block(block)): assign(to: block)
+    private func perform(_ action: Action, on row: Row) {
+        let key = foldKey(row)
+        let index = rows.firstIndex(of: row)
+        run(action, core: core, form: { [weak self] action in self?.form(action, on: row) }) { [weak self] change, _ in
+            self?.changed(change, keeping: key, near: index)
+        }
+    }
+
+    /// The forms an action opens: a block's, a new block in free time, a sitting's task.
+    private func form(_ action: Action, on row: Row) {
+        switch (action.kind, row) {
         case let (.edit, .block(block)): edit(block)
-        case let (.cancelThisDay, .block(block)):
-            guard let date = plan?.date else { return }
-            change(focusing: row) { try lumenna.cancelOccurrence(id: block.series, date: date) }
-        case let (.restoreThisDay, .block(block)):
-            guard let date = plan?.date else { return }
-            change(focusing: row) { try lumenna.restoreOccurrence(id: block.series, date: date) }
-        case let (.restoreThisDay, .cancelled(block)):
-            guard let date = plan?.date else { return }
-            change(focusing: row) { try lumenna.restoreOccurrence(id: block.series, date: date) }
-        case let (.deleteBlock, .block(block)): delete(block)
-        case let (.startTimer, .sitting(sitting, _)), let (.resumeTimer, .sitting(sitting, _)):
-            change(focusing: row) { try lumenna.startTimer(assignment: sitting.id) }
-        case let (.pauseTimer, .sitting(sitting, _)): pauseTimer(sitting, row: row)
-        case let (.stopTimer, .sitting(sitting, _)): stopTimer(sitting, row: row)
-        case let (.plannedLength, .sitting(sitting, _)): planLength(sitting, row: row)
-        case let (.logMinutes, .sitting(sitting, _)): logMinutes(sitting, row: row)
-        case let (.unassign, .sitting(sitting, _)):
-            change(focusing: row) { try lumenna.unassign(assignment: sitting.id) }
-        case let (.addBlockHere, .free(start, _, minutes)): addBlock(at: start, minutes: minutes)
+        case let (.addBlock, .free(start, _, minutes, _)): addBlock(at: action.other ?? start, minutes: minutes)
+        case (.editTask, _): showBeside(TaskDetailViewController(core: core, id: action.target))
         default: break
         }
     }
 
-    /// Runs a change, then reloads with focus on the same row if it is still there, or on
-    /// whatever now holds its place, and says what happened.
-    private func change(focusing row: Row?, _ operation: () throws -> Change) {
-        let index = row.flatMap { rows.firstIndex(of: $0) }
-        do {
-            let change = try operation()
-            reload { [weak self] in
-                guard let self else { return }
-                let target = index.map { min($0, self.rows.count - 1) }
-                if let target, target >= 0 {
-                    self.focus(IndexPath(item: target, section: 0))
-                }
-                Announcer.say(change.announcement, notices: change.notices)
+    /// After a change: reloads with focus on the same row if it is still there, or on
+    /// whatever now holds its place, and says what happened behind the focus change.
+    private func changed(_ change: Change, keeping key: String?, near index: Int?) {
+        reload { [weak self] in
+            guard let self else { return }
+            let target = key.flatMap { key in self.rows.firstIndex { self.foldKey($0) == key } }
+                ?? index.map { min($0, self.rows.count - 1) }
+            if let target, target >= 0 {
+                self.focus(IndexPath(item: target, section: 0))
             }
+            Announcer.say(change.announcement, notices: change.notices)
+        }
+    }
+
+    /// Runs a change made here, not through a row's action: undo and redo.
+    private func change(focusing row: Row?, _ operation: () throws -> Change) {
+        do {
+            changed(try operation(), keeping: row.map(foldKey), near: row.flatMap { rows.firstIndex(of: $0) })
         } catch {
             showFailure(error.sentence)
         }
@@ -359,83 +358,6 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         collectionView.scrollToItem(at: path, at: .centeredVertically, animated: false)
         collectionView.layoutIfNeeded()
         UIAccessibility.post(notification: .layoutChanged, argument: collectionView.cellForItem(at: path))
-    }
-
-    private func stopTimer(_ sitting: PlanAssignment, row: Row) {
-        do {
-            let timer = try core.lumenna.stopTimer(assignment: sitting.id, minutes: nil)
-            reload { [weak self] in
-                if let index = self?.rows.firstIndex(where: {
-                    if case let .sitting(s, _) = $0 { return s.id == sitting.id }
-                    return false
-                }) {
-                    self?.focus(IndexPath(item: index, section: 0))
-                }
-                Announcer.say(timer.announcement, notices: timer.notices)
-            }
-        } catch {
-            showFailure(error.sentence)
-        }
-    }
-
-    /// Pauses a running timer, keeping the time so far; the sitting stays in progress.
-    private func pauseTimer(_ sitting: PlanAssignment, row: Row) {
-        do {
-            let timer = try core.lumenna.pauseTimer(assignment: sitting.id)
-            reload { [weak self] in
-                if let index = self?.rows.firstIndex(where: {
-                    if case let .sitting(s, _) = $0 { return s.id == sitting.id }
-                    return false
-                }) {
-                    self?.focus(IndexPath(item: index, section: 0))
-                }
-                Announcer.say(timer.announcement, notices: timer.notices)
-            }
-        } catch {
-            showFailure(error.sentence)
-        }
-    }
-
-    /// Records a sitting's whole time by hand — without a timer, or to replace a capped one.
-    private func logMinutes(_ sitting: PlanAssignment, row: Row) {
-        askForText(
-            "Minutes on \(sitting.title)",
-            message: DayAction.loggingMinutes,
-            placeholder: "45",
-            action: "Log"
-        ) { [weak self] text in
-            guard let self, let minutes = UInt32(text) else {
-                self?.showFailure("That is not a number of minutes.")
-                return
-            }
-            do {
-                let timer = try self.core.lumenna.stopTimer(assignment: sitting.id, minutes: minutes)
-                self.reload { Announcer.say(timer.announcement, notices: timer.notices) }
-            } catch {
-                self.showFailure(error.sentence)
-            }
-        }
-    }
-
-    private func assign(to block: PlanBlock) {
-        TaskPicker.present(from: self, core: core, title: "Assign to \(block.title)") { [weak self] task in
-            guard let self, let date = self.plan?.date else { return }
-            self.askForLength("How long is \(task.title) meant to take?", without: "Skip") { minutes in
-                self.change(focusing: .block(block)) {
-                    try self.core.lumenna.assign(task: task.key, block: block.series, date: date, minutes: minutes)
-                }
-            }
-        }
-    }
-
-    /// Sets or clears how long a sitting is meant to take; what was logged stays.
-    private func planLength(_ sitting: PlanAssignment, row: Row) {
-        askForLength(
-            "Planned length of \(sitting.title)", current: sitting.plannedMins, without: "No Planned Length"
-        ) { [weak self] minutes in
-            guard let self else { return }
-            self.change(focusing: row) { try self.core.lumenna.planMinutes(assignment: sitting.id, minutes: minutes) }
-        }
     }
 
     /// Asks "this day, or every day?" of a repeating block — never guessed.
@@ -464,16 +386,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
 
     /// After a form saves: reload, keep focus on the row edited, and say what changed.
     private func saved(focusing row: Row) -> (Change) -> Void {
-        { [weak self] change in
-            guard let self else { return }
-            let index = self.rows.firstIndex(of: row)
-            self.reload {
-                if let index, !self.rows.isEmpty {
-                    self.focus(IndexPath(item: min(index, self.rows.count - 1), section: 0))
-                }
-                Announcer.say(change.announcement, notices: change.notices)
-            }
-        }
+        { [weak self] change in self?.change(focusing: row) { change } }
     }
 
     private func addBlock(at start: String? = nil, minutes: UInt32? = nil) {
@@ -488,13 +401,6 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             self?.reload { Announcer.say(change.announcement, notices: change.notices) }
         }
         presentBlockForm(model)
-    }
-
-    private func delete(_ block: PlanBlock) {
-        let message = DayAction.deleting(block)
-        confirm("Delete \(block.title)?", message: message, action: "Delete") { [weak self] in
-            self?.change(focusing: .block(block)) { try self!.core.lumenna.deleteBlock(id: block.series) }
-        }
     }
 
     // MARK: - Moving through days
@@ -536,10 +442,12 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         case let .block(block): edit(block)
         case let .sitting(sitting, _):
             showBeside(TaskDetailViewController(core: core, id: sitting.task))
-        case let .free(start, _, minutes): addBlock(at: start, minutes: minutes)
+        case let .free(start, _, minutes, _): addBlock(at: start, minutes: minutes)
         case let .cancelled(block):
             collectionView.deselectItem(at: path, animated: true)
-            choose("\(block.title) is cancelled for this day", actions: actions(for: row).map { ($0.0, $0.2) })
+            choose("\(block.title) is cancelled for this day", actions: actions(for: row).map { action in
+                (action.title, { [weak self] in self?.perform(action, on: row) })
+            })
         case .now: collectionView.deselectItem(at: path, animated: true)
         }
     }
@@ -585,11 +493,8 @@ extension DayViewController {
     /// What a trailing swipe on the row at `path` offers: VoiceOver's actions for the row too.
     func trailingSwipeActions(at path: IndexPath) -> UISwipeActionsConfiguration? {
         guard let row = self.dataSource.itemIdentifier(for: path) else { return nil }
-        var actions = self.actions(for: row).map { title, destructive, run in
-            UIContextualAction(style: destructive ? .destructive : .normal, title: title) { _, _, done in
-                run()
-                done(true)
-            }
+        var actions = self.actions(for: row).map { action in
+            swipeAction(action) { [weak self] in self?.perform(action, on: row) }
         }
         if let index = self.rows.firstIndex(of: row),
            let fold = self.folding.action(for: self.shown[index], key: self.foldKey(row), changed: { [weak self] key, said in

@@ -189,9 +189,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    @objc func newProject(_ sender: Any?) { showMainWindow(nil); main?.sidebar.newProject(inside: nil) }
+    @objc func newProject(_ sender: Any?) { showMainWindow(nil); main?.sidebar.newProject() }
     @objc func newLabel(_ sender: Any?) { showMainWindow(nil); main?.sidebar.newLabel() }
-    @objc func newFilter(_ sender: Any?) { showMainWindow(nil); main?.sidebar.newFilter() }
+    @objc func newFilter(_ sender: Any?) { showMainWindow(nil); main?.sidebar.newSavedFilter() }
 
     @objc func focusFilter(_ sender: Any?) {
         if main?.taskList == nil { go(.tasks) }
@@ -205,20 +205,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return try? core.lumenna.showTask(id: id).task
     }
 
-    private var actions: TaskActions? {
-        guard let window = main?.window else { return nil }
-        return TaskActions(core: core, window: window, list: main?.taskList)
+    /// Each Task menu command is the selected task's own action of that kind, so the menu
+    /// never offers what the task's actions do not.
+    private static func kinds(_ command: Selector?) -> [ActionKind] {
+        switch command {
+        case #selector(toggleDone(_:)): [.markDone, .markNotDone]
+        case #selector(putInBlock(_:)): [.putInBlock]
+        case #selector(moveToProject(_:)): [.moveToProject]
+        case #selector(makeSubtask(_:)): [.makeSubtaskOf]
+        case #selector(waitFor(_:)): [.waitFor]
+        case #selector(moveToTrash(_:)): [.delete]
+        default: []
+        }
     }
 
-    @objc func toggleDone(_ sender: Any?) { if let task = selectedTask { actions?.toggleDone(task) } }
-    @objc func putInBlock(_ sender: Any?) { if let task = selectedTask { actions?.assign(task) } }
-    @objc func moveToProject(_ sender: Any?) { if let task = selectedTask { actions?.moveToProject(task) } }
-    @objc func makeSubtask(_ sender: Any?) { if let task = selectedTask { actions?.makeSubtask(task) } }
-    @objc func waitFor(_ sender: Any?) { if let task = selectedTask { actions?.waitFor(task) } }
-    @objc func moveToTrash(_ sender: Any?) {
-        guard let task = selectedTask else { return }
-        actions?.perform(nil) { try self.core.lumenna.trashTask(id: task.id) }
+    private func action(for command: Selector?) -> (TaskDetail, Action)? {
+        let kinds = Self.kinds(command)
+        guard let task = selectedTask, let action = task.actions.first(where: { kinds.contains($0.kind) }) else { return nil }
+        return (task, action)
     }
+
+    private func perform(_ command: Selector) {
+        guard let window = main?.window, let (task, action) = action(for: command) else { return }
+        TaskActions(core: core, window: window, list: main?.taskList).perform(action, on: task.id)
+    }
+
+    @objc func toggleDone(_ sender: Any?) { perform(#selector(toggleDone(_:))) }
+    @objc func putInBlock(_ sender: Any?) { perform(#selector(putInBlock(_:))) }
+    @objc func moveToProject(_ sender: Any?) { perform(#selector(moveToProject(_:))) }
+    @objc func makeSubtask(_ sender: Any?) { perform(#selector(makeSubtask(_:))) }
+    @objc func waitFor(_ sender: Any?) { perform(#selector(waitFor(_:))) }
+    @objc func moveToTrash(_ sender: Any?) { perform(#selector(moveToTrash(_:))) }
 
     @objc func nextPane(_ sender: Any?) { main?.nextPane(sender) }
     @objc func previousPane(_ sender: Any?) { main?.previousPane(sender) }
@@ -250,11 +267,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         switch item.action {
         case #selector(toggleDone(_:)), #selector(putInBlock(_:)), #selector(moveToProject(_:)),
              #selector(makeSubtask(_:)), #selector(waitFor(_:)), #selector(moveToTrash(_:)):
-            let task = selectedTask
+            let found = action(for: item.action)
             if item.action == #selector(toggleDone(_:)) {
-                item.title = task?.state.contains("completed") == true ? "Mark Not Done" : "Mark Done"
+                item.title = found?.1.title ?? "Mark Done"
             }
-            return task != nil && main?.taskList?.mode != .trash
+            return found != nil
         case #selector(previousDay(_:)), #selector(nextDay(_:)):
             return main?.day != nil
         case #selector(undoChange(_:)):

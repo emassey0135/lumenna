@@ -126,3 +126,79 @@ extension NSViewController {
         }
     }
 }
+
+/// How the Mac asks an action's questions (`ActionRun`): sheets on the window. Each follows
+/// once the sheet before it has gone, since a sheet cannot open while the last is closing.
+extension NSWindow: ActionAsking {
+    func askConfirm(title: String, message: String, yes: String, destructive: Bool, then: @escaping () -> Void) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        let go = alert.addButton(withTitle: yes)
+        go.hasDestructiveAction = destructive
+        let cancel = alert.addButton(withTitle: "Cancel")
+        // Cancel is the default, so a stray Return does nothing.
+        go.keyEquivalent = ""
+        cancel.keyEquivalent = "\r"
+        alert.beginSheetModal(for: self) { response in
+            if response == .alertFirstButtonReturn { DispatchQueue.main.async(execute: then) }
+        }
+    }
+
+    func askText(title: String, label: String, initial: String, hint: String, problem: String?, then: @escaping (String) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = [problem, hint.isEmpty ? nil : hint].compactMap { $0 }.joined(separator: "\n\n")
+        let field = NSTextField(string: initial)
+        field.placeholderString = label
+        field.setAccessibilityLabel(label)
+        field.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: self) { response in
+            let text = field.stringValue
+            if response == .alertFirstButtonReturn { DispatchQueue.main.async { then(text) } }
+        }
+    }
+
+    func askPick(title: String, choices: [Choice], then: @escaping (Choice) -> Void) {
+        let items = choices.map { PickerItem(key: $0.id, title: $0.shownTitle, detail: $0.shownDetail, depth: Int($0.depth)) }
+        PickerSheet.present(on: self, title: title, items: items) { item in
+            if let choice = choices.first(where: { $0.id == item.key }) { then(choice) }
+        }
+    }
+
+    func askChoose(title: String, message: String, answers: [Choice], then: @escaping (Choice) -> Void) {
+        choose(title, message: message, actions: answers.map { answer in
+            (answer.title, { DispatchQueue.main.async { then(answer) } })
+        })
+    }
+
+    func tell(title: String, _ sentence: String) {
+        showFailure(sentence, title: title)
+    }
+
+    func fail(_ sentence: String) {
+        showFailure(sentence)
+    }
+
+    /// Runs one of the core's actions, asking its question here. A form opens through
+    /// `form`; what changed goes to `done`.
+    func run(_ action: Action, core: Core, form: (Action) -> Void = { _ in }, done: @escaping (Change, Answer) -> Void) {
+        ActionRun.run(action, on: core.lumenna, asking: self, form: form, done: done)
+    }
+}
+
+extension NSMenu {
+    /// A menu of the core's actions, in its order: one that asks something ends in "…", as
+    /// the Mac's menus say, and one that removes something comes after a separator.
+    func add(_ actions: [Action], run: @escaping (Action) -> Void) {
+        for action in actions {
+            if action.destructive, !items.isEmpty, items.last?.isSeparatorItem == false { addItem(.separator()) }
+            addItem(ClosureMenuItem(title: action.asks ? action.title + "…" : action.title) { run(action) })
+        }
+    }
+}

@@ -286,7 +286,7 @@ final class LumennaMacUITests: XCTestCase {
 
     func testAProjectIsMadeRenamedArchivedAndDeletedFromTheSidebar() {
         menu(sidebarRow("Projects"), "New Project…")
-        answer("Wrok", with: "Add")
+        answer("Wrok", with: "Save")
         XCTAssertTrue(sidebarRow("Wrok").waitForExistence(timeout: 5))
 
         menu(sidebarRow("Wrok"), "Rename…")
@@ -308,9 +308,9 @@ final class LumennaMacUITests: XCTestCase {
 
     func testALabelIsMadeColouredAndMergedIntoAnother() {
         menu(sidebarRow("Labels"), "New Label…")
-        answer("calls", with: "Add")
+        answer("calls", with: "Save")
         menu(sidebarRow("Labels"), "New Label…")
-        answer("cals", with: "Add")
+        answer("cals", with: "Save")
         menu(sidebarRow("calls"), "Colour…")
         answer("teal", with: "Save")
         menu(sidebarRow("cals"), "Merge Into…")
@@ -329,7 +329,7 @@ final class LumennaMacUITests: XCTestCase {
         answer("p1 | p2", with: "Save")
         XCTAssertTrue(window.textFields["Filter"].waitForValue("p1 | p2"))
         menu(sidebarRow("Urgent"), "Delete…")
-        sheetButton("Delete")
+        sheetButton("Delete Filter")
         XCTAssertTrue(sidebarRow("Urgent").waitForNonExistence(timeout: 5))
     }
 
@@ -404,10 +404,10 @@ final class LumennaMacUITests: XCTestCase {
         XCTAssertTrue(text(containing: "takes tasks", in: day).waitForExistence(timeout: 5))
         menu(text(containing: "Train", in: day), "Assign a Task…")
         pick("read")
-        let minutes = app.sheets.textFields["Minutes"]
+        let minutes = app.sheets.textFields["Planned length"]
         XCTAssertTrue(minutes.waitForExistence(timeout: 5))
-        enter("30", into: minutes)
-        sheetButton("Set")
+        enter("30m", into: minutes)
+        sheetButton("Save")
 
         let sitting = day.staticTexts["read"]
         XCTAssertTrue(sitting.waitForExistence(timeout: 5))
@@ -432,7 +432,7 @@ final class LumennaMacUITests: XCTestCase {
         sheetButton("Cancel")
         standup.click()
         app.typeKey(.delete, modifierFlags: [])
-        sheetButton("Delete")
+        sheetButton("Delete Block")
         XCTAssertTrue(standup.waitForNonExistence(timeout: 5))
     }
 
@@ -444,17 +444,24 @@ final class LumennaMacUITests: XCTestCase {
         let day = window.outlines["The day"]
         menu(text(containing: "Run", in: day), "Assign a Task…")
         pick("write")
-        let minutes = app.sheets.textFields["Minutes"]
+        let minutes = app.sheets.textFields["Planned length"]
         XCTAssertTrue(minutes.waitForExistence(timeout: 5))
-        enter("45", into: minutes)
-        sheetButton("Set")
+        enter("45m", into: minutes)
+        sheetButton("Save")
         XCTAssertTrue(text(containing: "planned for 45 minutes", in: day).waitForExistence(timeout: 5))
 
         day.staticTexts["write"].click()
         app.typeKey(.space, modifierFlags: [])
         XCTAssertTrue(text(containing: "in progress", in: day).waitForExistence(timeout: 5), "Space starts the timer")
         menu(day.staticTexts["write"], "Planned Length…")
-        sheetButton("No Planned Length")
+        // Emptied, for no planned length.
+        let length = app.sheets.textFields["Planned length"]
+        XCTAssertTrue(length.waitForExistence(timeout: 5))
+        length.click()
+        length.typeKey("a", modifierFlags: .command)
+        length.typeKey(.delete, modifierFlags: [])
+        XCTAssertTrue(length.waitForValue(""))
+        sheetButton("Save")
         XCTAssertTrue(text(containing: "planned", in: day).waitForNonExistence(timeout: 5) || !text(containing: "45 minutes planned", in: day).exists)
 
         menu(text(containing: "Run", in: day), "Cancel This Day")

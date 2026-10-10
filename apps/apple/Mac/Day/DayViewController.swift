@@ -5,7 +5,7 @@ final class DayNode {
     enum Kind {
         case block(PlanBlock)
         case sitting(PlanAssignment, in: PlanBlock)
-        case free(start: String, end: String, minutes: UInt32)
+        case free(start: String, end: String, minutes: UInt32, actions: [Action])
         case now(String)
         /// A repeating block cancelled for this day alone, so the day can be put back.
         case cancelled(CancelledBlock)
@@ -21,7 +21,7 @@ final class DayNode {
         switch kind {
         case let .block(block): "block:\(block.id)"
         case let .sitting(sitting, _): "sitting:\(sitting.id)"
-        case let .free(start, _, _): "free:\(start)"
+        case let .free(start, _, _, _): "free:\(start)"
         case .now: "now"
         case let .cancelled(block): "cancelled:\(block.series)"
         }
@@ -137,8 +137,8 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
                     let node = DayNode(.block(block))
                     node.children = block.assignments.map { DayNode(.sitting($0, in: block)) }
                     nodes.append(node)
-                case let .free(start, end, minutes):
-                    nodes.append(DayNode(.free(start: start, end: end, minutes: minutes)))
+                case let .free(start, end, minutes, actions):
+                    nodes.append(DayNode(.free(start: start, end: end, minutes: minutes, actions: actions)))
                 case let .now(time):
                     nodes.append(DayNode(.now(time)))
                 }
@@ -197,7 +197,7 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         case let .sitting(sitting, _):
             label = sitting.title
             value = sitting.details
-        case let .free(start, end, minutes):
+        case let .free(start, end, minutes, _):
             label = "Free, \(Clock.length(minutes))"
             value = ["\(Clock.time(start)) to \(Clock.time(end))"]
         case let .now(time):
@@ -224,23 +224,31 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         switch node.kind {
         case let .block(block): edit(block)
         case .sitting: main?.nextPane(nil)
-        case let .free(start, _, minutes): addBlock(at: start, minutes: minutes)
+        case let .free(start, _, minutes, _): addBlock(at: start, minutes: minutes)
         case let .cancelled(block): restore(block)
         case .now: break
         }
     }
 
-    /// Return activates a row, Space starts or stops a sitting's timer, Delete takes a sitting
-    /// out or deletes a block — each also in the row's menu.
+    /// Return activates a row; Space and Delete are the row's own actions of those kinds:
+    /// Space starts, pauses or resumes a sitting's timer, Delete takes a sitting out or
+    /// deletes a block — each also in the row's menu.
     private func key(_ key: TaskOutline.Key) -> Bool {
         guard let node = selected else { return false }
-        switch (key, node.kind) {
-        case (.returnKey, _): activate()
-        case let (.space, .sitting(sitting, _)): toggleTimer(sitting)
-        case let (.delete, .sitting(sitting, _)):
-            change(keeping: nil) { try self.core.lumenna.unassign(assignment: sitting.id) }
-        case let (.delete, .block(block)): delete(block)
-        default: return false
+        let actions = actions(for: node)
+        let action: Action? = switch key {
+        case .returnKey: nil
+        case .space: actions.first(.startTimer, .resumeTimer, .pauseTimer)
+        case .delete: actions.first(.delete, .unassign)
+        }
+        if key == .returnKey {
+            activate()
+        } else if let action {
+            perform(action, on: node)
+        } else {
+            // Why not, in the core's words: silence would leave the key a guess.
+            let subject: Subject = if case .sitting = node.kind { .sitting } else { .block }
+            Announcer.say(notOffered(kind: key == .space ? .startTimer : .delete, subject: subject, thisDevice: false))
         }
         return true
     }
@@ -250,136 +258,46 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         let clicked = outline.clickedRow >= 0 ? outline.clickedRow : outline.selectedRow
         guard let node = outline.item(atRow: clicked) as? DayNode else { return }
         if outline.selectedRow != clicked { outline.selectRowIndexes([clicked], byExtendingSelection: false) }
-        for (title, action) in actions(for: node) {
-            if title == "-" { menu.addItem(.separator()) } else { menu.addItem(ClosureMenuItem(title: title, action: action)) }
-        }
+        menu.add(actions(for: node)) { [weak self] action in self?.perform(action, on: node) }
     }
 
-    private func actions(for node: DayNode) -> [(String, () -> Void)] {
-        let lumenna = core.lumenna
-        let date = plan?.date ?? ""
+    /// What can be done to a row, the core's.
+    private func actions(for node: DayNode) -> [Action] {
         switch node.kind {
-        case let .block(block):
-            var actions: [(String, () -> Void)] = []
-            if block.acceptsTasks { actions.append(("Assign a Task…", { [weak self] in self?.assign(to: block) })) }
-            actions.append(("Edit…", { [weak self] in self?.edit(block) }))
-            if block.repeats {
-                actions.append(("Cancel This Day", { [weak self] in
-                    self?.change(keeping: node.key) { try lumenna.cancelOccurrence(id: block.series, date: date) }
-                }))
-            }
-            if block.changedForThisDay {
-                actions.append(("Restore This Day", { [weak self] in
-                    self?.change(keeping: node.key) { try lumenna.restoreOccurrence(id: block.series, date: date) }
-                }))
-            }
-            actions += [("-", {}), ("Delete Block…", { [weak self] in self?.delete(block) })]
-            return actions
-        case let .sitting(sitting, _):
-            // Start, pause and stop: stopping a running or a paused sitting ends it.
-            let paused = sitting.status == "paused"
-            var timer: [(String, () -> Void)] = [
-                (sitting.running ? "Pause Timer" : paused ? "Resume Timer" : "Start Timer", { [weak self] in self?.toggleTimer(sitting) }),
-            ]
-            if sitting.running || paused {
-                timer.append(("Stop Timer", { [weak self] in self?.stopTimer(sitting) }))
-            }
-            return timer + [
-                ("Planned Length…", { [weak self] in self?.planLength(sitting, key: node.key) }),
-                ("Log Minutes…", { [weak self] in self?.logMinutes(sitting) }),
-                ("-", {}),
-                ("Unassign", { [weak self] in self?.change(keeping: nil) { try lumenna.unassign(assignment: sitting.id) } }),
-            ]
-        case let .free(start, _, minutes):
-            return [("Add Block Here…", { [weak self] in self?.addBlock(at: start, minutes: minutes) })]
-        case let .cancelled(block):
-            return [("Restore This Day", { [weak self] in self?.restore(block) })]
-        case .now:
-            return []
+        case let .block(block): block.actions
+        case let .sitting(sitting, _): sitting.actions
+        case let .free(_, _, _, actions): actions
+        case let .cancelled(block): block.actions
+        case .now: []
         }
     }
 
     // MARK: - Doing things
 
-    private func change(keeping key: String?, _ operation: () throws -> Change) {
+    /// Runs a row's action: asks its question, then keeps the selection on the row, or near
+    /// where it was, and says what happened. The forms are this screen's.
+    private func perform(_ action: Action, on node: DayNode) {
+        guard let window = view.window else { return }
+        let key = node.key
         let index = outline.selectedRow
-        do {
-            let change = try operation()
-            reload(keeping: key, near: index, saying: change)
-        } catch {
-            view.window?.showFailure(error.sentence)
+        window.run(action, core: core, form: { [weak self] action in self?.form(action, on: node) }) { [weak self] change, _ in
+            self?.reload(keeping: key, near: index, saying: change)
         }
     }
 
-    /// Starts a sitting's timer, pauses it while it runs, or resumes it — Space on a sitting.
-    private func toggleTimer(_ sitting: PlanAssignment) {
-        let key = "sitting:\(sitting.id)"
-        if sitting.running {
-            timed(key) { try core.lumenna.pauseTimer(assignment: sitting.id) }
-        } else {
-            change(keeping: key) { try core.lumenna.startTimer(assignment: sitting.id) }
+    private func form(_ action: Action, on node: DayNode) {
+        switch (action.kind, node.kind) {
+        case let (.edit, .block(block)): edit(block)
+        case let (.addBlock, .free(start, _, minutes, _)): addBlock(at: action.other ?? start, minutes: minutes)
+        case (.editTask, _): main?.showTask(action.target); main?.nextPane(nil)
+        default: break
         }
     }
 
-    /// Stops a running or paused timer, ending the sitting.
-    private func stopTimer(_ sitting: PlanAssignment) {
-        timed("sitting:\(sitting.id)") { try core.lumenna.stopTimer(assignment: sitting.id, minutes: nil) }
-    }
-
-    private func timed(_ key: String, _ operation: () throws -> Timer) {
-        do {
-            let timer = try operation()
-            reload(keeping: key, near: nil)
-            Announcer.say(timer.announcement, notices: timer.notices)
-        } catch {
-            view.window?.showFailure(error.sentence)
-        }
-    }
-
-    private func planLength(_ sitting: PlanAssignment, key: String) {
-        view.window?.askForLength("Planned length of \(sitting.title)", current: sitting.plannedMins, without: "No Planned Length") { [weak self] minutes in
-            self?.change(keeping: key) { try self!.core.lumenna.planMinutes(assignment: sitting.id, minutes: minutes) }
-        }
-    }
-
-    /// Records a sitting's whole time by hand — without a timer, or to replace a capped one.
-    private func logMinutes(_ sitting: PlanAssignment) {
-        view.window?.askForText(
-            "Minutes on \(sitting.title)",
-            message: "The whole of this sitting, replacing what is logged.",
-            placeholder: "45",
-            action: "Log"
-        ) { [weak self] text in
-            guard let self, let minutes = UInt32(text) else {
-                self?.view.window?.showFailure("That is not a number of minutes.")
-                return
-            }
-            do {
-                let timer = try self.core.lumenna.stopTimer(assignment: sitting.id, minutes: minutes)
-                self.reload(keeping: "sitting:\(sitting.id)", near: nil)
-                Announcer.say(timer.announcement, notices: timer.notices)
-            } catch {
-                self.view.window?.showFailure(error.sentence)
-            }
-        }
-    }
-
-    private func assign(to block: PlanBlock) {
-        guard let window = view.window, let date = plan?.date else { return }
-        let tasks = ((try? core.lumenna.listTasks(query: "").rows) ?? [])
-            .map { PickerItem(key: $0.id, title: $0.title, detail: $0.value) }
-        PickerSheet.present(on: window, title: "Assign to \(block.title)", items: tasks) { [weak self] task in
-            window.askForLength("How long is \(task.title) meant to take?", without: "Skip") { minutes in
-                self?.change(keeping: "block:\(block.id)") {
-                    try self!.core.lumenna.assign(task: task.key, block: block.series, date: date, minutes: minutes)
-                }
-            }
-        }
-    }
-
+    /// Return on a cancelled day: its Restore This Day.
     private func restore(_ block: CancelledBlock) {
-        guard let date = plan?.date else { return }
-        change(keeping: nil) { try core.lumenna.restoreOccurrence(id: block.series, date: date) }
+        guard let node = selected, let action = block.actions.first(.restoreDay) else { return }
+        perform(action, on: node)
     }
 
     /// Asks "this day, or every day?" of a repeating block — never guessed.
@@ -415,15 +333,6 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
             core: core, purpose: .add, start: start ?? "09:00", minutes: Int(min(minutes ?? 60, 720)), day: day
         ).present(on: window) { [weak self] change in
             self?.reload(keeping: nil, near: nil, saying: change)
-        }
-    }
-
-    private func delete(_ block: PlanBlock) {
-        let message = block.repeats
-            ? "Every occurrence goes, not only this day. To skip one day, cancel it instead."
-            : "It goes to the trash with its assignments."
-        view.window?.confirm("Delete \(block.title)?", message: message, action: "Delete") { [weak self] in
-            self?.change(keeping: nil) { try self!.core.lumenna.deleteBlock(id: block.series) }
         }
     }
 

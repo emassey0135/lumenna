@@ -12,26 +12,32 @@ struct SettingsView: View {
 
     private struct Hosted: View {
         @StateObject private var model: SettingsModel
+        private let core: WatchCore
 
         init(core: WatchCore) {
+            self.core = core
             _model = StateObject(wrappedValue: SettingsModel(core: core))
         }
 
         var body: some View {
             List {
                 NavigationLink("Planning") { PlanningSettings(model: model).navigationTitle("Planning") }
-                NavigationLink("Devices") { DevicesView() }
+                NavigationLink("Devices") { DevicesView(core: core) }
             }
         }
     }
 }
 
 /// The paired devices, as the phone lists them, from the synced list: the watch is not one of
-/// them and syncs with none directly, so each says only its platform and version. Rename and
-/// Unpair as the phone offers them (`DeviceAction`); pairing a new one is the phone's.
+/// them and syncs with none directly, so each says only its platform and version. Each
+/// offers its actions, the core's, when tapped; pairing a new one is the phone's.
 struct DevicesView: View {
     @EnvironmentObject private var core: WatchCore
-    @State private var asked: Asked?
+    @StateObject private var asker: WatchAsker
+
+    init(core: WatchCore) {
+        _asker = StateObject(wrappedValue: WatchAsker(core: core))
+    }
 
     var body: some View {
         let listed: DeviceList? = {
@@ -46,9 +52,7 @@ struct DevicesView: View {
             }
             ForEach(listed?.devices ?? [], id: \.nodeId) { device in
                 Button {
-                    asked = Asked(ChoicePrompt(title: device.name, choices: DeviceAction.of(thisDevice: device.thisDevice).map { action in
-                        (action.title, { run(action, on: device) })
-                    }))
+                    asker.offer(device.name, device.actions)
                 } label: {
                     VStack(alignment: .leading) {
                         Text(device.name)
@@ -62,24 +66,8 @@ struct DevicesView: View {
             }
         }
         .navigationTitle("Devices")
-        .sheet(item: $asked) { asked in
+        .sheet(item: $asker.asked) { asked in
             NavigationStack { asked.view }
-        }
-    }
-
-    private func run(_ action: DeviceAction, on device: DeviceView) {
-        let lumenna = core.lumenna
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            switch action {
-            case .rename:
-                asked = Asked(TextPrompt("Rename \(device.name)", initial: device.name) { name in
-                    core.act { try lumenna.renameDevice(device: device.nodeId, name: name) }
-                })
-            case .unpair:
-                asked = Asked(ChoicePrompt(title: "Unpair \(device.name)?", message: DeviceAction.unpairing, choices: [
-                    ("Unpair", { core.act { try lumenna.unpairDevice(device: device.nodeId) } }),
-                ]))
-            }
         }
     }
 }

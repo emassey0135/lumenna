@@ -162,7 +162,7 @@ final class LumennaWatchUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Today"].waitForExistence(timeout: 10))
         reveal(app.buttons["New Project"]).tap()
         type("Garden", into: app.textFields["New Project"])
-        reveal(app.buttons["Add"]).tap()
+        reveal(app.buttons["Save"]).tap()
         let garden = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Garden'")).firstMatch
         reveal(garden).tap()
         reveal(app.buttons["Rename"]).tap()

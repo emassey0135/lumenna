@@ -2,22 +2,28 @@ import SwiftUI
 
 /// The day as lived: its summary, then each block with the sittings in it, the free time
 /// between, where now falls, and what is cancelled for the day, as the phone's day lists
-/// them. Tapping a row offers what the phone's swipe actions do (`DayAction`, shared with
-/// it): a watch's row has room for few. A block with sittings folds, as on the phone. Going
+/// them. Tapping a row offers its actions, the core's, as the phone's swipe actions do: a
+/// watch's row has room for few. A block with sittings folds, as on the phone. Going
 /// to another day, and a new block, are buttons at the foot.
 struct DayView: View {
     @EnvironmentObject private var core: WatchCore
     /// The day shown, or nil for today, which follows midnight.
     @State private var chosen: Date?
-    @State private var asked: Asked?
+    /// A sitting's task, opened by its Edit Task Details.
+    @State private var opened: TaskOpened?
+    @StateObject private var asker: WatchAsker
     @State private var form: BlockFormModel?
     @State private var folding = Folding()
+
+    init(core: WatchCore) {
+        _asker = StateObject(wrappedValue: WatchAsker(core: core))
+    }
 
     /// A row of the day, as folding sees it.
     private enum Row {
         case block(PlanBlock)
         case sitting(PlanAssignment, in: PlanBlock)
-        case free(start: String, end: String, minutes: UInt32)
+        case free(start: String, end: String, minutes: UInt32, actions: [Action])
         case now(String)
 
         var depth: Int {
@@ -30,7 +36,7 @@ struct DayView: View {
             switch self {
             case let .block(block): "block:\(block.id)"
             case let .sitting(sitting, _): "sitting:\(sitting.id)"
-            case let .free(start, _, _): "free:\(start)"
+            case let .free(start, _, _, _): "free:\(start)"
             case .now: "now"
             }
         }
@@ -48,9 +54,7 @@ struct DayView: View {
                 }
                 ForEach(plan.cancelled, id: \.series) { block in
                     button("\(Clock.time(block.start)), \(block.title), cancelled for this day") {
-                        choices(block.title, DayAction.ofCancelled) { _ in
-                            core.act { try core.lumenna.restoreOccurrence(id: block.series, date: plan.date) }
-                        }
+                        asker.offer(block.title, block.actions)
                     }
                 }
             }
@@ -59,12 +63,17 @@ struct DayView: View {
                 Button("Previous Day") { step(-1, from: plan) }
                 if chosen != nil { Button("Today") { chosen = nil } }
                 Button("Next Day") { step(1, from: plan) }
-                Button("Go to Day") { asked = Asked(DayChoice(day: chosen ?? .now) { chosen = $0 }) }
+                Button("Go to Day") { asker.show(DayChoice(day: chosen ?? .now) { chosen = $0 }) }
             }
         }
         .navigationTitle(plan.map { Clock.spokenDay($0.date) } ?? "Day")
-        .sheet(item: $asked) { asked in
+        // One sheet for every question, and one for the block form: a third sheet on the
+        // same view kept the form from showing.
+        .sheet(item: $asker.asked) { asked in
             NavigationStack { asked.view }
+        }
+        .navigationDestination(item: $opened) { opened in
+            TaskView(id: opened.id)
         }
         .sheet(item: $form) { model in
             BlockSheet(model: model)
@@ -83,7 +92,7 @@ struct DayView: View {
             case let .block(number):
                 guard let block = plan.blocks.first(where: { $0.row == number }) else { return [] }
                 return [.block(block)] + block.assignments.map { .sitting($0, in: block) }
-            case let .free(start, end, minutes): return [.free(start: start, end: end, minutes: minutes)]
+            case let .free(start, end, minutes, actions): return [.free(start: start, end: end, minutes: minutes, actions: actions)]
             case let .now(time): return [.now(time)]
             }
         }
@@ -99,20 +108,24 @@ struct DayView: View {
                 .joined(separator: ", ")
             button(text, heading: true) {
                 let fold = Folding.action(for: row)
-                ask(ChoicePrompt(
-                    title: block.title,
-                    choices: DayAction.of(block).map { action in (action.title, { run(action, block: block, in: plan) }) }
-                        + (fold.map { fold in [(fold.title, { toggle(row.item.key, saying: fold.said) })] } ?? [])
-                ))
+                asker.offer(
+                    block.title, block.actions,
+                    extra: fold.map { fold in [(fold.title, { toggle(row.item.key, saying: fold.said) })] } ?? [],
+                    form: { _ in edit(block, on: plan.date) }
+                )
             }
         case let .sitting(sitting, _):
             button(([sitting.title] + sitting.details).joined(separator: ", ")) {
-                choices(sitting.title, DayAction.of(sitting)) { run($0, sitting: sitting) }
+                asker.offer(sitting.title, sitting.actions, form: { action in
+                    if action.kind == .editTask { later { opened = TaskOpened(id: action.target) } }
+                })
             }
             .padding(.leading, 8)
-        case let .free(start, end, minutes):
+        case let .free(start, end, minutes, actions):
             button("Free, \(Clock.length(minutes)), \(Clock.time(start)) to \(Clock.time(end))") {
-                choices("Free time", DayAction.ofFreeTime) { _ in addBlock(on: plan, at: start, minutes: minutes) }
+                asker.offer("Free time", actions, form: { action in
+                    addBlock(on: plan, at: action.other ?? start, minutes: minutes)
+                })
             }
         case let .now(time):
             Text("Now, \(Clock.time(time))").font(.headline)
@@ -125,78 +138,20 @@ struct DayView: View {
             .accessibilityAddTraits(heading ? .isHeader : [])
     }
 
-    private func choices(_ title: String, _ actions: [DayAction], run: @escaping (DayAction) -> Void) {
-        ask(ChoicePrompt(title: title, choices: actions.map { action in (action.title, { run(action) }) }))
-    }
-
     private func toggle(_ key: String, saying said: String) {
         folding.toggle(key)
         Announcer.say(said)
     }
 
-    private func run(_ action: DayAction, block: PlanBlock, in plan: Plan) {
-        let lumenna = core.lumenna
-        switch action {
-        case .assignTask: assign(to: block, on: plan.date)
-        case .edit: edit(block, on: plan.date)
-        case .cancelThisDay: core.act { try lumenna.cancelOccurrence(id: block.series, date: plan.date) }
-        case .restoreThisDay: core.act { try lumenna.restoreOccurrence(id: block.series, date: plan.date) }
-        case .deleteBlock:
-            later(ChoicePrompt(title: "Delete \(block.title)?", message: DayAction.deleting(block), choices: [
-                ("Delete", { core.act { try lumenna.deleteBlock(id: block.series) } }),
-            ]))
-        default: break
-        }
-    }
-
-    private func run(_ action: DayAction, sitting: PlanAssignment) {
-        let lumenna = core.lumenna
-        switch action {
-        case .startTimer, .resumeTimer: core.act { try lumenna.startTimer(assignment: sitting.id) }
-        case .pauseTimer: core.act { try lumenna.pauseTimer(assignment: sitting.id) }
-        case .stopTimer: core.act { try lumenna.stopTimer(assignment: sitting.id, minutes: nil) }
-        case .plannedLength:
-            later(LengthChoice(title: "Planned length of \(sitting.title)", without: "No Planned Length") { minutes in
-                core.act { try lumenna.planMinutes(assignment: sitting.id, minutes: minutes) }
-            })
-        case .logMinutes:
-            later(TextPrompt("Minutes on \(sitting.title)", message: DayAction.loggingMinutes, placeholder: "45", action: "Log") { text in
-                guard let minutes = UInt32(text) else {
-                    core.failure = "That is not a number of minutes."
-                    return
-                }
-                core.act { try lumenna.stopTimer(assignment: sitting.id, minutes: minutes) }
-            })
-        case .unassign: core.act { try lumenna.unassign(assignment: sitting.id) }
-        default: break
-        }
-    }
-
-    private func ask(_ view: some View) {
-        asked = Asked(view)
-    }
-
-    /// Asks something once the sheet in front has closed, so the two do not collide.
-    private func later(_ view: some View) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { asked = Asked(view) }
+    /// Does something once the sheet in front has closed, so the two do not collide.
+    private func later(_ run: @escaping () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: run)
     }
 
     private func step(_ days: Int, from plan: Plan?) {
         let from = plan.flatMap { try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse($0.date) } ?? .now
         let next = Calendar.current.date(byAdding: .day, value: days, to: from) ?? from
         chosen = Calendar.current.isDateInToday(next) ? nil : next
-    }
-
-    /// From the block, pick a task: the other way round from the task's Put in a Block.
-    private func assign(to block: PlanBlock, on date: String) {
-        let tasks = core.read { try core.lumenna.listTasks(query: "").rows } ?? []
-        later(ChoicePrompt(title: "Assign to \(block.title)", choices: tasks.map { task in
-            (task.title, {
-                later(LengthChoice(title: "Planned length", without: "No Planned Length") { minutes in
-                    core.act { try core.lumenna.assign(task: task.id, block: block.series, date: date, minutes: minutes) }
-                })
-            })
-        }))
     }
 
     /// Asks "this day, or every day?" of a repeating block — never guessed.
@@ -207,7 +162,7 @@ struct DayView: View {
             }
         }
         guard block.repeats else { return series() }
-        later(ChoicePrompt(title: "Change \(block.title)", message: "Which occurrences?", choices: [
+        asker.show(ChoicePrompt(title: "Change \(block.title)", message: "Which occurrences?", choices: [
             ("\(Clock.spokenDay(date)) Only", {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                     form = .occurrence(core: core, block: block, day: date, saved: saved)

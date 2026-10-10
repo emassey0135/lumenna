@@ -89,7 +89,7 @@ final class SidebarUITests: XCTestCase {
         let field = app.alerts.textFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText("Garden")
-        app.alerts.buttons["Add"].tap()
+        app.alerts.buttons["Save"].tap()
         XCTAssertTrue(place("Garden").waitForExistence(timeout: 5))
         place("Garden").tap()
         XCTAssertTrue(app.navigationBars["Garden"].waitForExistence(timeout: 5))
@@ -109,7 +109,7 @@ final class SidebarUITests: XCTestCase {
         var field = app.alerts.textFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText("calls")
-        app.alerts.buttons["Add"].tap()
+        app.alerts.buttons["Save"].tap()
         XCTAssertTrue(place("calls").waitForExistence(timeout: 5))
 
         act(place("Saved Filters"), "New Saved Filter")
