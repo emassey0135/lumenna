@@ -4,9 +4,10 @@
 // blocks in time order with their sittings beneath them, free time as rows of its own, and
 // now as a position rather than a highlight. Opening the day puts it on now, not midnight.
 //
-// On a sitting, Space starts or stops its timer and Delete takes it out of the block; on a
-// block, Enter changes it and Delete deletes it; on free time, Enter adds a block there.
-// Everything else is in the row's menu (the Menu key, Shift+F10, or Actions).
+// Each row's actions are the core's, in its menu (the Menu key, Shift+F10, a right-click, or
+// Actions). On a sitting, Space runs its timer action (start, pause or resume) and Delete
+// unassigns it; on a block, Enter changes it and Delete deletes it; on free time, Enter adds a
+// block there; on a cancelled day, Enter restores it.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
@@ -14,11 +15,11 @@ import { Button, Collection, Tree, TreeItem, TreeItemContent } from "react-aria-
 import type { Key, Selection } from "react-aria-components";
 import { blockForm, freshBlock } from "./BlockForm";
 import { core } from "./core";
-import type { DayRow, PlanAssignment, PlanBlock } from "./core";
+import type { Action, DayRow, PlanBlock } from "./core";
+import { byKind, perform, REMOVING } from "./actions";
 import { rowKey, useLanding } from "./landing";
-import { ask, askMinutes, choose, confirm, pick } from "./Prompts";
+import { ask, choose } from "./Prompts";
 import { asksForMenu, RowMenu } from "./RowMenu";
-import type { Action } from "./RowMenu";
 import { say } from "./say";
 
 interface Shown {
@@ -120,18 +121,6 @@ export function Day(props: {
     announce.current = true;
   };
 
-  const change = async (operation: Promise<string>, keep: string | undefined) => {
-    const index = Math.max(0, keys.indexOf(selected ?? ""));
-    try {
-      const said = await operation;
-      land(keep, index);
-      props.onChanged();
-      say(said);
-    } catch (error) {
-      say((error as Error).message);
-    }
-  };
-
   const today = shown?.date ?? "";
 
   const addBlock = async (start = "09:00", minutes = 60) => {
@@ -175,38 +164,6 @@ export function Day(props: {
     say(saved.said);
   };
 
-  const remove = async (block: PlanBlock) => {
-    const detail = block.repeats
-      ? "Every occurrence goes, not only this day. To skip one day, cancel it instead."
-      : "It goes, with what is assigned to it.";
-    if (await confirm(`Delete ${block.title}?`, detail, "Delete")) await change(core.deleteBlock(block.series), undefined);
-  };
-
-  // Fills a block from the task side's opposite: from the block, pick a task.
-  const assign = async (block: PlanBlock) => {
-    const tasks = await core.taskChoices();
-    const task = await pick(`Assign to ${block.title}`, "Task", tasks);
-    if (!task) return;
-    const title = tasks.find((t) => t.id === task)?.text ?? "it";
-    const minutes = await askMinutes(`How Long Is ${title} Meant to Take?`, "", true);
-    if (minutes === undefined) return;
-    await change(core.assign(task, block.series, today, minutes ?? undefined), `block:${block.id}`);
-  };
-
-  const plannedLength = async (sitting: PlanAssignment) => {
-    const current = sitting.planned_mins ? String(sitting.planned_mins) : "";
-    const minutes = await askMinutes(`Planned Length of ${sitting.title}`, current, true);
-    if (minutes === undefined) return;
-    await change(core.planMinutes(sitting.id, minutes ?? undefined), `sitting:${sitting.id}`);
-  };
-
-  // Records a sitting's whole time by hand — without a timer, or to replace a capped one.
-  const logMinutes = async (sitting: PlanAssignment) => {
-    const minutes = await askMinutes(`Minutes on ${sitting.title}`, "", false);
-    if (!minutes) return;
-    await change(core.logMinutes(sitting.id, minutes), `sitting:${sitting.id}`);
-  };
-
   const goToDay = async () => {
     const phrase = await ask("Go to Day", "Day", "A date, such as friday, or 12 October.");
     if (!phrase?.trim()) return;
@@ -218,91 +175,47 @@ export function Day(props: {
     }
   };
 
-  /** What can be done to a row, as its menu lists it. */
-  const actions = (at: DayRow | undefined): Action[] => {
-    if (!at) return [];
-    const { block, sitting, free, cancelled } = at;
-    if (block && at.kind === "block") {
-      const list: Action[] = [];
-      if (block.accepts_tasks) list.push({ id: "assign", label: "Assign a Task…", run: () => void assign(block) });
-      list.push({ id: "edit", label: "Change…", run: () => void edit(block) });
-      if (block.repeats) {
-        list.push({
-          id: "cancel-day",
-          label: "Cancel This Day",
-          run: () => void change(core.cancelOccurrence(block.series, today), at.key),
-        });
-      }
-      if (block.changed_for_this_day) {
-        list.push({
-          id: "restore-day",
-          label: "Restore This Day",
-          run: () => void change(core.restoreOccurrence(block.series, today), at.key),
-        });
-      }
-      list.push({ id: "delete", label: "Delete Block…", run: () => void remove(block) });
-      return list;
-    }
-    if (sitting) {
-      const start = { id: "timer", run: () => void change(core.startTimer(sitting.id), at.key) };
-      const stop = { id: "stop", label: "Stop Timer", run: () => void change(core.stopTimer(sitting.id), at.key) };
-      // Pause and Stop while it runs, Resume and Stop while paused, Start otherwise. Space is
-      // the first of them: start, pause, resume.
-      const timer: Action[] = sitting.running
-        ? [{ id: "timer", label: "Pause Timer", run: () => void change(core.pauseTimer(sitting.id), at.key) }, stop]
-        : sitting.status === "paused"
-          ? [{ ...start, label: "Resume Timer" }, stop]
-          : [{ ...start, label: "Start Timer" }];
-      return [
-        ...timer,
-        { id: "open", label: "Edit Task Details", run: () => props.onOpenTask(sitting.task) },
-        { id: "planned", label: "Planned Length…", run: () => void plannedLength(sitting) },
-        { id: "log", label: "Log Minutes…", run: () => void logMinutes(sitting) },
-        { id: "unassign", label: "Unassign", run: () => void change(core.unassign(sitting.id), undefined) },
-      ];
-    }
-    if (free) return [{ id: "add-here", label: "Add Block Here…", run: () => void addBlock(free.start, free.minutes) }];
-    if (cancelled) {
-      return [
-        {
-          id: "restore-day",
-          label: "Restore This Day",
-          run: () => void change(core.restoreOccurrence(cancelled.series, today), undefined),
-        },
-      ];
-    }
-    return [];
+  // Runs one of a row's actions. The forms are this client's own: a block's, a new block's in
+  // free time, and the details of a sitting's task.
+  const run = async (at: DayRow, action: Action) => {
+    const index = Math.max(0, keys.indexOf(at.key));
+    const done = await perform(action, async () => {
+      if (action.kind === "edit" && at.block) await edit(at.block);
+      else if (action.kind === "add_block" && at.free) await addBlock(action.other ?? at.free.start, at.free.minutes);
+      else if (action.kind === "edit_task") props.onOpenTask(action.target);
+    });
+    if (!done) return;
+    land(at.key, index);
+    props.onChanged();
+    say(done.said);
   };
 
   // Enter: what a row is for.
   const activate = (key: Key) => {
     const at = row(String(key));
-    if (!at) return;
-    const id = { block: "edit", sitting: "open", free: "add-here", cancelled: "restore-day" }[at.kind as string];
-    actions(at)
-      .find((action) => action.id === id)
-      ?.run();
+    const action = byKind(at?.actions, "edit", "edit_task", "add_block", "restore_day");
+    if (at && action) void run(at, action);
   };
 
   const keysDown = (event: KeyboardEvent) => {
     const at = row(rowKey(event));
     if (!at) return;
-    let action: string | undefined;
     if (asksForMenu(event)) {
       event.preventDefault();
       select(at.key);
       setMenu(true);
       return;
     }
-    if (event.key === " " && at.kind === "sitting") action = "timer";
-    else if (event.key === "Delete" && at.kind === "sitting") action = "unassign";
-    else if (event.key === "Delete" && at.kind === "block") action = "delete";
+    const action =
+      event.key === " " && at.kind === "sitting"
+        ? byKind(at.actions, "start_timer", "pause_timer", "resume_timer")
+        : event.key === "Delete"
+          ? byKind(at.actions, ...REMOVING)
+          : undefined;
     if (!action) return;
     event.preventDefault();
     event.stopPropagation();
-    actions(at)
-      .find((a) => a.id === action)
-      ?.run();
+    void run(at, action);
   };
 
   const rightClick = (event: MouseEvent) => {
@@ -337,7 +250,15 @@ export function Day(props: {
         </Button>
         <Button onPress={() => void goToDay()}>Go to Day…</Button>
         <Button onPress={() => void addBlock()}>Add Block…</Button>
-        <RowMenu actions={actions(row(selected))} isOpen={menu} onOpenChange={setMenu} />
+        <RowMenu
+          actions={row(selected)?.actions ?? []}
+          onAction={(action) => {
+            const at = row(selected);
+            if (at) void run(at, action);
+          }}
+          isOpen={menu}
+          onOpenChange={setMenu}
+        />
       </div>
       {problem && <p role="alert">{problem}</p>}
       {/* Space and Delete are caught on the way down, before the tree takes Space for selection. */}

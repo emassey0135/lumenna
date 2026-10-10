@@ -1,17 +1,20 @@
 // Tasks, with the filter above them.
 //
-// A React Aria tree, so a subtask's level and every row's position are the tree's to say. Space
-// checks a task off, Delete trashes it — or, in the trash, Space restores and Delete deletes from the trash —
-// and Enter opens its details. After a change, focus goes back to the same task if it is still
-// listed, and otherwise to whatever now holds its place.
+// A React Aria tree, so a subtask's level and every row's position are the tree's to say. Each
+// row's actions are the core's, in its menu (the Menu key, Shift+F10, a right-click, or
+// Actions). Space runs Mark Done, Mark Not Done or Restore, whichever the row has; Delete runs
+// what removes it — Move to Trash, or in the trash Delete from Trash — and Enter opens its
+// details. After a change, focus goes back to the same task if it is still listed, and
+// otherwise to whatever now holds its place.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
+import type { KeyboardEvent, MouseEvent } from "react";
 import { Button, Collection, Input, Label, TextField, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
 import { core } from "./core";
-import type { Line, Place } from "./core";
-import { confirm } from "./Prompts";
+import type { Action, Line, Place } from "./core";
+import { byKind, perform, REMOVING } from "./actions";
+import { asksForMenu, RowMenu } from "./RowMenu";
 import { rowKey, useLanding } from "./landing";
 import { say } from "./say";
 import { nest, parents } from "./tree";
@@ -58,42 +61,49 @@ export function TaskList(props: {
   const ids = useMemo(() => lines.map((line) => line.row.id), [lines]);
   const land = useLanding(tree, ids, props.onSelect);
 
-  const change = async (operation: Promise<string>, keep: string | undefined, index: number) => {
-    try {
-      const said = await operation;
-      land(keep, index);
-      props.onChanged();
-      say(said);
-    } catch (error) {
-      say((error as Error).message);
-    }
+  const [menu, setMenu] = useState(false);
+
+  // Runs one of a row's actions; Edit Details is the details beside the list.
+  const run = async (action: Action) => {
+    const index = Math.max(0, lines.findIndex((l) => l.row.id === action.target));
+    const done = await perform(action, () => {
+      props.onSelect(action.target);
+      props.onOpen();
+    });
+    if (!done) return;
+    land(action.target, index);
+    props.onChanged();
+    say(done.said);
   };
 
   const keys = (event: KeyboardEvent) => {
-    if (event.key !== " " && event.key !== "Delete") return;
     const id = rowKey(event);
-    const index = lines.findIndex((l) => l.row.id === id);
-    const line = lines[index];
+    const line = lines.find((l) => l.row.id === id);
     if (!line) return;
-    if (event.key === " ") {
+    if (asksForMenu(event)) {
       event.preventDefault();
-      event.stopPropagation();
-      if (trash) void change(core.restore(line.row.id), undefined, index);
-      else void change(core.complete(line.row.id, line.row.checked === true), line.row.id, index);
-    } else if (event.key === "Delete") {
-      event.preventDefault();
-      event.stopPropagation();
-      if (!trash) void change(core.trash(line.row.id), undefined, index);
-      else void erase(line.row.id, line.row.title, index);
+      props.onSelect(line.row.id);
+      setMenu(true);
+      return;
     }
+    const action =
+      event.key === " "
+        ? byKind(line.row.actions, "mark_done", "mark_not_done", "restore")
+        : event.key === "Delete"
+          ? byKind(line.row.actions, ...REMOVING)
+          : undefined;
+    if (!action) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void run(action);
   };
 
-  // Deleting from the trash takes the task out of every list, so it asks first; undo brings it
-  // back, and it stays in the history and in backups.
-  const erase = async (id: string, title: string, index: number) => {
-    if (await confirm(`Delete ${title} from the trash?`, "Undo can bring it back. It also stays in the history every device keeps, and in backups.", "Delete")) {
-      await change(core.erase(id), undefined, index);
-    }
+  const rightClick = (event: MouseEvent) => {
+    const id = rowKey(event);
+    if (!id) return;
+    event.preventDefault();
+    props.onSelect(id);
+    setMenu(true);
   };
 
   const choose = (selection: Selection) => {
@@ -101,7 +111,6 @@ export function TaskList(props: {
     const [chosen] = [...selection];
     props.onSelect(chosen === undefined ? undefined : String(chosen));
   };
-
 
   return (
     <>
@@ -126,8 +135,16 @@ export function TaskList(props: {
       <p className="quiet" id="readback">
         {readback}
       </p>
+      <div className="buttons">
+        <RowMenu
+          actions={lines.find((l) => l.row.id === props.selected)?.row.actions ?? []}
+          onAction={(action) => void run(action)}
+          isOpen={menu}
+          onOpenChange={setMenu}
+        />
+      </div>
       {/* Space and Delete are caught on the way down, before the tree takes Space for selection. */}
-      <div onKeyDownCapture={keys}>
+      <div onKeyDownCapture={keys} onContextMenu={rightClick}>
       <Tree
         ref={tree}
         aria-label={props.title}

@@ -11,7 +11,9 @@ import type { KeyboardEvent } from "react";
 import { Button, Input, Label, ListBox, ListBoxItem, Text, TextField } from "react-aria-components";
 import type { Selection } from "react-aria-components";
 import { core } from "./core";
-import { ask, choose, confirm } from "./Prompts";
+import type { Action } from "./core";
+import { byKind, perform } from "./actions";
+import { choose } from "./Prompts";
 import { say } from "./say";
 
 interface Device {
@@ -19,6 +21,8 @@ interface Device {
   name: string;
   thisDevice: boolean;
   text: string;
+  /** What can be done to it, as the core offers it: no Unpair on this device's own row. */
+  actions: Action[];
 }
 
 /** What this browser is called on the other devices until someone renames it. */
@@ -86,35 +90,20 @@ export function DevicesPage(props: {
     refresh();
   };
 
-  const rename = async (device: Device) => {
-    const name = await ask(`Rename ${device.name}`, "Name", "What this device is called on all of them.", device.name);
-    if (!name?.trim() || name.trim() === device.name) return;
-    try {
-      say(await core.renameDevice(device.id, name.trim()));
-    } catch (error) {
-      say((error as Error).message);
-    }
-    refresh();
-  };
-
-  const unpair = async (device: Device) => {
-    const detail =
-      "It stops syncing with your other devices, and keeps everything it already has. Unpairing is for a device you replaced; if it was lost or stolen, unpairing alone does not take your data back from it.";
-    if (!(await confirm(`Unpair ${device.name}?`, detail, "Unpair"))) return;
-    try {
-      say(await core.unpairDevice(device.id));
-      setSelected(undefined);
-    } catch (error) {
-      say((error as Error).message);
-    }
+  const run = async (action: Action) => {
+    const done = await perform(action);
+    if (!done) return;
+    if (action.kind === "unpair" && done.changed) setSelected(undefined);
+    say(done.said);
     refresh();
   };
 
   const keys = (event: KeyboardEvent) => {
     // Delete unpairs, as it removes in every other list.
-    if (event.key === "Delete" && chosen && !chosen.thisDevice) {
+    const action = event.key === "Delete" ? byKind(chosen?.actions, "unpair") : undefined;
+    if (action) {
       event.preventDefault();
-      void unpair(chosen);
+      void run(action);
     }
   };
 
@@ -154,12 +143,15 @@ export function DevicesPage(props: {
               Sync Now
             </Button>
             <Button onPress={() => setPairing(true)}>Pair a Device…</Button>
-            <Button isDisabled={!chosen} onPress={() => chosen && void rename(chosen)}>
-              Rename…
-            </Button>
-            <Button isDisabled={!chosen || chosen.thisDevice} onPress={() => chosen && void unpair(chosen)}>
-              Unpair…
-            </Button>
+            {chosen?.actions.map((action) => (
+              <Button
+                key={action.kind}
+                className={action.destructive ? "destructive" : undefined}
+                onPress={() => void run(action)}
+              >
+                {action.title}
+              </Button>
+            ))}
           </div>
         </>
       )}

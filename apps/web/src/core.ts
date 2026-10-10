@@ -9,7 +9,8 @@ export const core: Comlink.Remote<Api> = Comlink.wrap<Api>(worker);
 
 export type { DayRow, Line } from "./worker";
 export type {
-  BlockChoice,
+  Action,
+  ActionKind,
   BlockFields,
   BlockShown,
   SidebarEntry,
