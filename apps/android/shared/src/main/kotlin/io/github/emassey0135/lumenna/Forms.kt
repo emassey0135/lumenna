@@ -140,7 +140,7 @@ class BlockFormModel(private val core: Core, val purpose: BlockPurpose) {
      */
     fun shows(field: FormField): Boolean = when {
         field.key == "date" -> purpose is BlockPurpose.Add
-        oneDay && field.key in seriesOnly -> false
+        oneDay && !field.oneDay -> false
         field.repeatingOnly -> repeats
         else -> true
     }
@@ -201,8 +201,4 @@ class BlockFormModel(private val core: Core, val purpose: BlockPurpose) {
         return change != null
     }
 
-    private companion object {
-        /** What one day of a series cannot change apart from it. */
-        val seriesOnly = setOf("repeat", "until", "min_minutes", "task_filter", "colour", "notes")
-    }
 }

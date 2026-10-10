@@ -9,6 +9,8 @@ import io.github.emassey0135.lumenna.core.Action
 import io.github.emassey0135.lumenna.core.ActionKind
 import io.github.emassey0135.lumenna.core.Question
 import io.github.emassey0135.lumenna.core.Subject
+import io.github.emassey0135.lumenna.core.lengthQuestion
+import io.github.emassey0135.lumenna.core.newFilterQuestions
 
 /**
  * The phone's way of asking an action's question: a dialog each, through a screen's [Prompter].
@@ -31,7 +33,7 @@ class DialogAsker(private val core: Core, private val prompt: Prompter) : Asker 
     // A refused answer stays in its dialog, with what was typed, and the core's reason is said.
     override fun text(action: Action, question: Question.Text, answered: (String) -> Boolean) = prompt.show {
         AskText(
-            action.asks(question.title), question.label, question.yes,
+            question.said, question.label, question.yes,
             initial = question.initial,
             hint = question.hint.ifEmpty { null },
             dismiss = cancel,
@@ -39,15 +41,17 @@ class DialogAsker(private val core: Core, private val prompt: Prompter) : Asker 
     }
 
     override fun pick(action: Action, title: String, options: List<Option>, picked: (Option) -> Unit) = prompt.show {
-        Choose(action.asks(title), options, cancel) { option ->
+        Choose(action.asks(title), options, action.pickButton, cancel) { option ->
             prompt.close()
             picked(option)
         }
     }
 
     override fun length(action: Action, picked: Option, hint: String, answered: (String) -> Boolean) = prompt.show {
+        // The core's question, under what was picked.
+        val asked = lengthQuestion() as Question.Text
         AskText(
-            picked.title, "Planned length", "Done", example = "45m", hint = hint, dismiss = cancel,
+            "${asked.said}: ${picked.title}", asked.label, asked.yes, example = "45m", hint = asked.hint.ifEmpty { hint }, dismiss = cancel,
         ) { text -> if (answered(text)) prompt.close() }
     }
 
@@ -91,9 +95,14 @@ fun Core.offered(
 /** The app's own form for a new saved filter: its name, then its query. */
 fun addFilter(core: Core, prompt: Prompter) {
     prompt.show {
-        AskText("New saved filter", "Name", "Next", dismiss = { prompt.close(); core.cancelled() }) { name ->
+        // The core's two steps: its name, then its query.
+        val (named, queried) = newFilterQuestions().map { it as Question.Text }
+        AskText(named.said, named.label, named.yes, hint = named.hint.ifEmpty { null }, dismiss = { prompt.close(); core.cancelled() }) { name ->
             prompt.show {
-                AskText("Query for $name", "Query", "Save", example = "#Work & overdue", dismiss = { prompt.close(); core.cancelled() }) { query ->
+                AskText(
+                    queried.said, queried.label, queried.yes, example = "#Work & overdue", hint = queried.hint.ifEmpty { null },
+                    dismiss = { prompt.close(); core.cancelled() },
+                ) { query ->
                     if (core.change { it.addFilter(name.trim(), query.trim()) } != null) prompt.close()
                 }
             }

@@ -44,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.CollectionInfo
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.collectionInfo
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -53,6 +54,8 @@ import io.github.emassey0135.lumenna.core.ActionKind
 import io.github.emassey0135.lumenna.core.BlockFields
 import io.github.emassey0135.lumenna.core.BlockScope
 import io.github.emassey0135.lumenna.core.FieldKind
+import io.github.emassey0135.lumenna.core.Question
+import io.github.emassey0135.lumenna.core.goToDayQuestion
 import io.github.emassey0135.lumenna.core.LumennaException
 import io.github.emassey0135.lumenna.core.blockDefaults
 import io.github.emassey0135.lumenna.core.blockEdit
@@ -120,11 +123,18 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
             Icon(Icons.Filled.Add, contentDescription = "Add block")
         }
     }) {
+        val summary = plan.fold({ it.summary }, { (it as? io.github.emassey0135.lumenna.core.LumennaException)?.sentence.orEmpty() })
         Text(
-            plan.fold({ it.summary }, { (it as? io.github.emassey0135.lumenna.core.LumennaException)?.sentence.orEmpty() }),
+            summary,
             style = MaterialTheme.typography.bodyMedium,
             color = quiet(),
-            modifier = Modifier.padding(horizontal = 16.dp).semantics { heading() },
+            // The day's heading, as every app says it: "<day>. <summary>". The day is the top
+            // bar's to show, beside it.
+            modifier = Modifier.padding(horizontal = 16.dp).semantics {
+                heading()
+                contentDescription = listOfNotNull(shown?.let { Clock.spokenDay(it.date) }, summary.ifEmpty { null })
+                    .joinToString(". ")
+            },
         )
         FlowRow(
             Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -196,10 +206,14 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
                 )
             }
         }
-        DayAsk.GoTo -> AskText("Go to day", "Day", "Go", example = "next friday", hint = "A date, such as tomorrow or 12 October.", dismiss = dismiss) { text ->
-            core.attempt { core.lumenna.plan(text) }?.let {
-                asking = null
-                day = it.date
+        DayAsk.GoTo -> {
+            // The core's question, as every app asks it.
+            val q = goToDayQuestion() as Question.Text
+            AskText(q.said, q.label, q.yes, example = "next friday", hint = q.hint.ifEmpty { null }, dismiss = dismiss) { text ->
+                core.attempt { core.lumenna.plan(text) }?.let {
+                    asking = null
+                    day = it.date
+                }
             }
         }
         null -> {}

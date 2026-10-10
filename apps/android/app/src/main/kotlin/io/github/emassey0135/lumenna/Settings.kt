@@ -337,6 +337,7 @@ fun PairingScreen(core: Core, navigator: Navigator) {
             Button(modifier = Target, onClick = { session.waitToBeFound() }, enabled = !session.running) { Text(button(words.wait)) }
             session.code?.let {
                 Text("${words.myCode}: $it", fontFamily = FontFamily.Monospace)
+                OutlinedButton(modifier = Target, onClick = { session.copyCode() }) { Text(button(words.copyCode)) }
             }
             OutlinedTextField(
                 value = entered,

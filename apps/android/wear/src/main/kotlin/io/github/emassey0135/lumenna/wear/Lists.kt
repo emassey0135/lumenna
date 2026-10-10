@@ -29,6 +29,9 @@ import io.github.emassey0135.lumenna.core.ActionKind
 import io.github.emassey0135.lumenna.core.SidebarEntry
 import io.github.emassey0135.lumenna.core.Subject
 import io.github.emassey0135.lumenna.core.Place
+import io.github.emassey0135.lumenna.core.Question
+import io.github.emassey0135.lumenna.core.newFilterQuestions
+import io.github.emassey0135.lumenna.said as asked
 import io.github.emassey0135.lumenna.core.SidebarGroup
 import io.github.emassey0135.lumenna.core.SidebarKind
 import io.github.emassey0135.lumenna.core.placeQuery
@@ -127,8 +130,10 @@ private fun NewPlace(core: Core, navigator: Navigator, entry: TextEntry?, headin
     core.offered(heading.actions, navigator, entry, form = { action ->
         // A new saved filter's form: its name, then its query.
         if (action.subject == Subject.FILTER && action.kind == ActionKind.NEW) {
-            entry?.ask("New filter's name") { name ->
-                entry.ask("Query for $name") { query -> core.change { it.addFilter(name.trim(), query.trim()) } }
+            // The core's two steps: its name, then its query.
+            val (named, queried) = newFilterQuestions().map { it as Question.Text }
+            entry?.ask(named.asked) { name ->
+                entry.ask(queried.asked) { query -> core.change { it.addFilter(name.trim(), query.trim()) } }
             }
         }
     }).forEach { action ->

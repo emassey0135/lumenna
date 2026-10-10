@@ -12,6 +12,8 @@ import io.github.emassey0135.lumenna.core.Action
 import io.github.emassey0135.lumenna.core.ActionKind
 import io.github.emassey0135.lumenna.core.Change
 import io.github.emassey0135.lumenna.core.Question
+import io.github.emassey0135.lumenna.core.lengthQuestion
+import io.github.emassey0135.lumenna.said
 
 /**
  * The watch's way of asking an action's question, which the core words: a list to choose from
@@ -25,11 +27,11 @@ class WearAsker(private val navigator: Navigator, private val entry: TextEntry?)
 
     override fun text(action: Action, question: Question.Text, answered: (String) -> Boolean) {
         if (action.kind == ActionKind.PLANNED_LENGTH || action.kind == ActionKind.LOG_MINUTES) {
-            chooseLength(navigator, action.asks(question.title), if (question.optional) "None" else null) { minutes ->
+            chooseLength(navigator, question.said, if (question.optional) "None" else null) { minutes ->
                 answered(minutes?.let { "${it}m" }.orEmpty())
             }
         } else {
-            entry?.ask(action.asks(question.title)) { answered(it) }
+            entry?.ask(question.said) { answered(it) }
         }
     }
 
@@ -37,7 +39,8 @@ class WearAsker(private val navigator: Navigator, private val entry: TextEntry?)
         navigator.choose(action.asks(title), options) { picked(it) }
 
     override fun length(action: Action, picked: Option, hint: String, answered: (String) -> Boolean) =
-        chooseLength(navigator, "How long is ${picked.title} meant to take?", "No planned length") { minutes ->
+        // The core's question, under what was picked.
+        chooseLength(navigator, "${(lengthQuestion() as Question.Text).said}: ${picked.title}", "No planned length") { minutes ->
             answered(minutes?.let { "${it}m" }.orEmpty())
         }
 
