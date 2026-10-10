@@ -60,7 +60,7 @@ use lumenna_store::Store;
 pub use actions::{Action, ActionKind, Answer, Choice, Choices, Question, Subject};
 pub use durability::{DEVICE_KEYS, cloud_warning};
 pub use error::{LumennaError, Result};
-pub use form::{parse_weight, BlockDefaults, BlockFields, TaskFields, block_defaults, block_edit, block_fields, day_block_fields, new_block, label_reference, project_reference, sitting_status, task_edit, task_fields};
+pub use form::{parse_weight, priorities, BlockDefaults, BlockFields, TaskFields, block_defaults, block_edit, block_fields, day_block_fields, new_block, label_reference, project_reference, sitting_status, task_edit, task_fields};
 pub use settings::{parse_every, parse_keep};
 #[cfg(feature = "link")]
 pub use link::PhoneLink;

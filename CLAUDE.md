@@ -76,6 +76,9 @@ JSON crosses the FFI.
   `parse_weight`, the `#"Home Office"` references. `task_edit` and `block_edit` hold only
   what changed: sending an unchanged field reverts a concurrent edit elsewhere. A client
   never keeps its own copy of any of them.
+- **A setting describes itself** (`Setting::title`, `kind`, `options`, `syncs`, `hint`), and
+  the priorities are `priorities()`: a settings screen or a priority picker builds its
+  controls from them, never from a table of its own.
 - **Wording stays client-neutral.** Nothing in the surface names a `lum` command or flag;
   the CLI adds those.
 - **Identifiers are text**: a whole UUID or a prefix that names one record. A bare number is
@@ -150,7 +153,7 @@ endpoint (`Endpoint::serve`, `Lumenna::serve_commands`).
   or `pair.cancel`, and the server keeps answering everything else. One pairing at a time.
 - **`act`, `choices`, `places` and `form.*`** (the form functions: `task_fields`,
   `task_edit`, `block_fields`, `day_block_fields`, `block_edit`, `new_block`,
-  `block_defaults`) are here so a client over the pipe keeps no copy of any rule. A form
+  `block_defaults`, `priorities`) are here so a client over the pipe keeps no copy of any rule. A form
   function's answer is a `value` result: computed from what the client sent, nothing read.
 - **`complete` and `preview` have no command line**: completion is a keystroke-rate question
   and a process per keystroke is not an answer.

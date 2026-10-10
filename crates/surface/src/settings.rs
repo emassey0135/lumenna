@@ -41,7 +41,7 @@ impl Lumenna {
             ("week-start", format!("{:?}", settings.week_start).to_lowercase()),
         ]
         .into_iter()
-        .map(|(key, value)| Setting { key: key.to_owned(), value })
+        .map(|(key, value)| described(key, value))
         .chain(self.device_settings()?)
         .collect();
 
@@ -245,11 +245,11 @@ impl Lumenna {
     fn device_settings(&self) -> Result<Vec<Setting>> {
         let policy = self.backup_policy()?;
         Ok(vec![
-            Setting { key: "backup-dir".to_owned(), value: policy.directory.display().to_string() },
-            Setting { key: "backup-keep".to_owned(), value: policy.keep.to_string() },
-            Setting {
-                key: "backup-every".to_owned(),
-                value: policy.every.map_or_else(
+            described("backup-dir", policy.directory.display().to_string()),
+            described("backup-keep", policy.keep.to_string()),
+            described(
+                "backup-every",
+                policy.every.map_or_else(
                     || "off".to_owned(),
                     |every| {
                         let hours = every.as_hours();
@@ -260,12 +260,9 @@ impl Lumenna {
                         }
                     },
                 ),
-            },
+            ),
             // For a client with no clock setting of its own to follow, as a terminal has none.
-            Setting {
-                key: "clock".to_owned(),
-                value: self.device_setting("clock").unwrap_or_else(|| "24-hour".to_owned()),
-            },
+            described("clock", self.device_setting("clock").unwrap_or_else(|| "24-hour".to_owned())),
         ])
     }
 
@@ -355,4 +352,61 @@ pub fn parse_every(text: &str) -> Result<Option<jiff::SignedDuration>> {
                 "'{text}' is not an interval; say something like 24h, 7d, or off"
             ))
         })
+}
+
+/// A setting with what every settings screen says of it: its name, its control, what it
+/// can be, whether it syncs. Nine clients each had their own copy of this table.
+fn described(key: &str, value: String) -> Setting {
+    use crate::types::SettingKind as K;
+    let options = |pairs: &[(&str, &str)]| -> Vec<crate::actions::Choice> {
+        pairs
+            .iter()
+            .map(|(id, title)| crate::actions::Choice { id: (*id).to_owned(), title: (*title).to_owned(), ..Default::default() })
+            .collect()
+    };
+    let weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+    let (title, kind, options, hint) = match key {
+        "cascade-complete-subtasks" => (
+            "Completing a task completes its subtasks",
+            K::Toggle,
+            options(&[("true", "On"), ("false", "Off")]),
+            "",
+        ),
+        "verbosity" => ("Announcements", K::Choice, options(&[("full", "Full sentences"), ("terse", "Terse")]), ""),
+        "all-day-reminder-hour" => ("All-day reminders at", K::Time, Vec::new(), ""),
+        "day-start" => ("Day starts", K::Time, Vec::new(), ""),
+        "day-end" => ("Day ends", K::Time, Vec::new(), ""),
+        "week-start" => (
+            "Week starts on",
+            K::Choice,
+            weekdays
+                .iter()
+                .map(|day| crate::actions::Choice {
+                    id: (*day).to_owned(),
+                    title: format!("{}{}", day[..1].to_uppercase(), &day[1..]),
+                    ..Default::default()
+                })
+                .collect(),
+            "",
+        ),
+        "backup-every" => (
+            "Automatic backups",
+            K::Choice,
+            options(&[("12h", "Every 12 hours"), ("1d", "Every day"), ("7d", "Every week"), ("off", "Off")]),
+            "A backup holds your whole history, including every task you deleted. It stays on this device.",
+        ),
+        "backup-keep" => ("Backups kept", K::Number, Vec::new(), ""),
+        "backup-dir" => ("Backups go to", K::Folder, Vec::new(), ""),
+        "clock" => ("Clock", K::Choice, options(&[("12-hour", "12-hour"), ("24-hour", "24-hour")]), ""),
+        _ => ("", K::Choice, Vec::new(), ""),
+    };
+    Setting {
+        key: key.to_owned(),
+        value,
+        title: title.to_owned(),
+        kind,
+        options,
+        syncs: !DEVICE_KEYS.contains(&key),
+        hint: hint.to_owned(),
+    }
 }

@@ -910,6 +910,41 @@ pub struct Setting {
     pub key: String,
     /// Its value, as text.
     pub value: String,
+    /// What a settings screen calls it: "Day starts".
+    #[serde(default)]
+    pub title: String,
+    /// How its value is shaped, so a client offers the control that fits.
+    #[serde(default)]
+    pub kind: SettingKind,
+    /// The values to choose from, for a toggle or a choice: `id` is the value, `title` what
+    /// it is called. A value set elsewhere that is not among them is still the value.
+    #[serde(default, skip_serializing_if = "none")]
+    pub options: Vec<crate::actions::Choice>,
+    /// Whether it syncs to every device, or is this device's alone.
+    #[serde(default)]
+    pub syncs: bool,
+    /// What it does, for under the control. Empty for nothing to say.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub hint: String,
+}
+
+/// How a setting's value is shaped.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[serde(rename_all = "snake_case")]
+pub enum SettingKind {
+    /// On or off: `true` or `false`.
+    Toggle,
+    /// One of its `options`.
+    #[default]
+    Choice,
+    /// A time of day, `HH:MM`.
+    Time,
+    /// A whole number.
+    Number,
+    /// A folder on this device.
+    Folder,
 }
 
 // ---------------------------------------------------------------------------------------
