@@ -185,6 +185,7 @@ impl Lumenna {
                     series: series.id.to_string(),
                     title: series.title.clone(),
                     start: time_text(series.start_time),
+                    details: vec!["cancelled for this day".to_owned()],
                     actions: Vec::new(),
                 })
                 .collect();
@@ -471,6 +472,7 @@ impl Lumenna {
     ///
     /// If a year's document cannot be loaded.
     pub fn list_blocks(&self) -> Result<Rows> {
+        let today = Zoned::now().date();
         self.told(|store| {
             store.load_all_years()?;
             let snapshot = repaired(store);
@@ -482,20 +484,27 @@ impl Lumenna {
                 .iter()
                 .enumerate()
                 .map(|(index, series)| {
-                    let mut value = format!(
-                        "{} for {} minutes from {}",
-                        time_text(series.start_time),
-                        series.duration_mins,
-                        series.start_date
-                    );
-                    if let Some(rrule) = &series.rrule {
+                    // When, as a task's due date is said: in words, with the start as
+                    // `due_time` for the client's clock — "every weekday at 9:00 AM" — and
+                    // never digits a screen reader reads as numbers.
+                    let day = lumenna_core::time::day_words(series.start_date, today);
+                    let starts_later = series.start_date > today;
+                    let (when, mut value) = match &series.rrule {
                         // In words where the grammar can say it; a rule from outside is
                         // given as it is rather than approximated.
-                        match repetition_phrase(rrule, false) {
-                            Some(phrase) => value.push_str(&format!(", {phrase}")),
-                            None => value.push_str(&format!(", repeats by the rule {rrule}")),
+                        Some(rrule) => (
+                            repetition_phrase(rrule, false).unwrap_or_else(|| format!("repeats by the rule {rrule}")),
+                            vec![crate::words::duration(series.duration_mins)],
+                        ),
+                        None if matches!(day.as_str(), "today" | "tomorrow" | "yesterday") => {
+                            (day.clone(), vec![crate::words::duration(series.duration_mins)])
                         }
+                        None => (format!("on {day}"), vec![crate::words::duration(series.duration_mins)]),
+                    };
+                    if series.rrule.is_some() && starts_later {
+                        value.push(format!("from {day}"));
                     }
+                    let value = value.join(", ");
                     Row {
                         id: RowId::Occurrence(series.id, series.start_date),
                         role: Role::Block,
@@ -506,8 +515,8 @@ impl Lumenna {
                         checked: None,
                         title: series.title.clone(),
                         state: Vec::new(),
-                        due: None,
-                        due_time: None,
+                        due: Some(when),
+                        due_time: Some(series.start_time),
                         value: Some(value),
                         hint: None,
                     }
@@ -914,6 +923,8 @@ fn timeline(
                     start: clock(from),
                     end: clock(to),
                     minutes: u32::try_from(to - from).unwrap_or(u32::MAX),
+                    title: "Free".to_owned(),
+                    details: vec![crate::words::duration(u32::try_from(to - from).unwrap_or(u32::MAX))],
                     actions: Vec::new(),
                 },
             ));
@@ -939,7 +950,7 @@ fn timeline(
         });
         if !inside {
             let position = items.iter().position(|(start, _)| *start > at).unwrap_or(items.len());
-            items.insert(position, (at, PlanItem::Now { time: clock(at) }));
+            items.insert(position, (at, PlanItem::Now { time: clock(at), title: "Now".to_owned() }));
         }
     }
     items.into_iter().map(|(_, item)| item).collect()

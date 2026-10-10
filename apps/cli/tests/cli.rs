@@ -329,7 +329,8 @@ fn a_repeating_block_starts_on_a_day_it_actually_occurs() {
     let out = lum.ok(&["block", "list"]);
     assert!(out.contains("every monday"), "{out}");
     let json = lum.ok(&["block", "list", "--json"]);
-    let start = json.split("from ").nth(1).and_then(|rest| rest.get(..10)).expect("a start date");
+    // A row of the Blocks list is addressed `<series>@<its first day>`.
+    let start = json.split('@').nth(1).and_then(|rest| rest.get(..10)).expect("a start date");
     let start: jiff::civil::Date = start.parse().unwrap();
     assert_eq!(start.weekday(), jiff::civil::Weekday::Monday, "{out}");
 }

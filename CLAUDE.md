@@ -78,6 +78,22 @@ JSON crosses the FFI.
   `parse_weight`, the `#"Home Office"` references. `task_edit` and `block_edit` hold only
   what changed: sending an unchanged field reverts a concurrent edit elsewhere. A client
   never keeps its own copy of any of them.
+- **The forms' and the pairing screen's words are the core's** (`fields.rs`): `task_form()`
+  and `block_form()` give each field's label, hint, example, control and options;
+  `pairing_words(this_device, local)` every sentence and button of pairing. A mnemonic or
+  access key is the platform's to add; the words are not.
+- **Each action has a `sentence` and a `primary`.** Capitals follow the platform: Title
+  Case (`title`) on Apple, Windows, GTK and Emacs; sentence case (`sentence`, and
+  `sentence_case()` for a fixed button or question) on Android, Wear OS, the web and BTSpeak,
+  where every capital also costs a braille cell. A row shows its `primary` actions by itself
+  (the iPhone's swipe actions, a watch row's) and offers the rest a menu away; every client
+  still offers every action.
+- **Lines are joined in one order everywhere**, the clock and day words being the app's: a
+  block "<start> to <end>, <title>, <details>"; a sitting "<title>, <details>"; free time
+  "<title>, <details>, <start> to <end>"; now "<title>, <time>"; a cancelled day "<start>,
+  <title>, <details>"; a block to pick "<day>, <start> to <end>, <title>"; anything else to
+  pick "<title>, <detail>". A Blocks-list row is a task row: `due` ("every weekday") said
+  with `due_time` ("at 9:00 AM"), then `value`. An empty listing says `Rows::empty`.
 - **A setting describes itself** (`Setting::title`, `kind`, `options`, `syncs`, `hint`), and
   the priorities are `priorities()`: a settings screen or a priority picker builds its
   controls from them, never from a table of its own.
@@ -450,9 +466,11 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
 - **Focus after a change is chosen**: the same row if still listed, else whatever holds its
   position; the core's announcement is queued behind the focus change so neither cuts the
   other off. This holds on every platform.
-- **Swipe actions are the only actions.** UIKit offers them to VoiceOver, Switch Control and
-  Full Keyboard Access; custom actions are *added* to those, so both lists each twice. A
-  swipe action's title is its spoken name ("Mark Done", not "Done").
+- **A row's primary actions are its swipe actions; the rest are its custom actions**, and
+  all of them are in its long-press menu. UIKit offers swipe actions to VoiceOver, Switch
+  Control and Full Keyboard Access and *adds* custom actions to them, so an action in both
+  would be listed twice: each is in exactly one. Eight swipe actions did not fit on a phone
+  row. A swipe action's title is its spoken name ("Mark Done", not "Done").
 - **No bottom toolbars**: inside a tab bar the floating bar sits over a toolbar's buttons,
   so a tap on Undo landed on the Today tab. Rows scrolled under the glass tab bar fail
   contrast, so pushed forms set `hidesBottomBarWhenPushed`.

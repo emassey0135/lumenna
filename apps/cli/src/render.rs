@@ -315,7 +315,7 @@ fn day(plan: &Plan, clock: Clock) {
                     clock.time(end)
                 );
             }
-            PlanItem::Now { time } => println!("   now, {}", clock.time(time)),
+            PlanItem::Now { time, .. } => println!("   now, {}", clock.time(time)),
         }
     }
     // What is not happening today but could be put back, with the command that does it.

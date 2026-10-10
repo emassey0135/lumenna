@@ -156,7 +156,7 @@ impl DayView {
                     let actions = actions.clone();
                     rows.push(Row::Free { start: start.clone(), end: end.clone(), minutes: *minutes, actions });
                 }
-                PlanItem::Now { time } => rows.push(Row::Now(time.clone())),
+                PlanItem::Now { time, .. } => rows.push(Row::Now(time.clone())),
             }
         }
         rows.extend(plan.cancelled.iter().cloned().map(Row::Cancelled));

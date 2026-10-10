@@ -90,17 +90,23 @@ pub fn clock_words(time: jiff::civil::Time) -> String {
 /// reads "2026-10-10" as numbers.
 #[must_use]
 pub fn due_words(date: jiff::civil::Date, today: jiff::civil::Date) -> String {
+    format!("due {}", day_words(date, today))
+}
+
+/// A day as a person says it, as [`due_words`] does without "due": *"tomorrow"*,
+/// *"Friday"*, *"Friday 23 October"*.
+#[must_use]
+pub fn day_words(date: jiff::civil::Date, today: jiff::civil::Date) -> String {
     // Whole days from today: `until` counts in days between civil dates.
     let days = today.until(date).map_or(i32::MAX, |span| span.get_days());
-    let day = match days {
+    match days {
         0 => "today".to_owned(),
         1 => "tomorrow".to_owned(),
         -1 => "yesterday".to_owned(),
         2..=6 => weekday_name(date.weekday()).to_owned(),
         _ if date.year() == today.year() => format!("{} {}", weekday_name(date.weekday()), day_and_month(date)),
         _ => long_date(date),
-    };
-    format!("due {day}")
+    }
 }
 
 #[cfg(test)]

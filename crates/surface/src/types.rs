@@ -266,6 +266,9 @@ pub struct Rows {
     pub query: Option<Query>,
     /// The rows.
     pub rows: Vec<RowView>,
+    /// What a client says in place of the rows when there are none: "The trash is empty."
+    #[serde(default)]
+    pub empty: String,
 }
 
 impl Rows {
@@ -278,6 +281,7 @@ impl Rows {
             noun: noun.to_owned(),
             count: to_u32(rows.len()),
             query: None,
+            empty: format!("No {noun}s."),
             rows: rows
                 .iter()
                 .enumerate()
@@ -636,6 +640,9 @@ pub struct CancelledBlock {
     pub title: String,
     /// When the series has it start, `HH:MM`.
     pub start: String,
+    /// What its line says after its start and title: "cancelled for this day".
+    #[serde(default)]
+    pub details: Vec<String>,
     /// What can be done to it, in the order offered ([`crate::actions`]).
     #[serde(default, skip_serializing_if = "none")]
     pub actions: Vec<crate::actions::Action>,
@@ -661,6 +668,12 @@ pub enum PlanItem {
         end: String,
         /// How long it is.
         minutes: u32,
+        /// What its line says first: "Free".
+        #[serde(default)]
+        title: String,
+        /// What its line says after the title and before its span: "45 minutes".
+        #[serde(default)]
+        details: Vec<String>,
         /// What can be done with it.
         #[serde(default, skip_serializing_if = "none")]
         actions: Vec<crate::actions::Action>,
@@ -669,6 +682,9 @@ pub enum PlanItem {
     Now {
         /// The time, `HH:MM`.
         time: String,
+        /// What its line says before the time: "Now".
+        #[serde(default)]
+        title: String,
     },
 }
 

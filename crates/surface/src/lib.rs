@@ -28,6 +28,7 @@
 
 pub mod actions;
 mod durability;
+pub mod fields;
 #[cfg(feature = "link")]
 mod devices;
 #[cfg(any(unix, windows))]
@@ -57,6 +58,7 @@ use lumenna_core::edit;
 use lumenna_core::snapshot::Snapshot;
 use lumenna_store::Store;
 
+pub use fields::{FieldKind, FormField, PairingWords, block_form, pairing_words, sentence_case, task_form};
 pub use actions::{not_offered, Action, ActionKind, Answer, Choice, Choices, Question, Subject};
 pub use durability::{DEVICE_KEYS, cloud_warning};
 pub use error::{LumennaError, Result};

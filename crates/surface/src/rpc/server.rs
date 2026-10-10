@@ -118,6 +118,10 @@ pub const METHODS: &[&str] = &[
     "form.not_offered",
     "form.project_reference",
     "form.label_reference",
+    "form.task_form",
+    "form.block_form",
+    "form.pairing_words",
+    "form.sentence_case",
 ];
 
 /// What runs a round on the endpoint this process holds, when it holds one: a `sync` here is
@@ -635,6 +639,13 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         }
         "form.block_defaults" => Response::new(Derived::of(crate::block_defaults(text_of(params, "kind")?))),
         "form.priorities" => Response::new(Derived::of(crate::priorities())),
+        "form.task_form" => Response::new(Derived::of(crate::task_form())),
+        "form.block_form" => Response::new(Derived::of(crate::block_form())),
+        "form.pairing_words" => Response::new(Derived::of(crate::pairing_words(
+            maybe_text(params, "this_device").unwrap_or_else(|| "this device".to_owned()),
+            maybe_bool(params, "local")?.unwrap_or(true),
+        ))),
+        "form.sentence_case" => Response::new(Derived::of(crate::sentence_case(text_of(params, "text")?))),
         "form.project_reference" => Response::new(Derived::of(crate::project_reference(name()?))),
         "form.label_reference" => Response::new(Derived::of(crate::label_reference(name()?))),
         "form.not_offered" => Response::new(Derived::of(crate::not_offered(
