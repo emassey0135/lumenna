@@ -5,7 +5,7 @@
 //!
 //! Only a [`Question::Form`] is the app's own: the task details and the block form.
 
-use lumenna_surface::{Action, ActionKind, Answer, Change, Choice, Question, Subject, not_offered};
+use lumenna_surface::{Action, ActionKind, Answer, Change, Choice, Question, Subject, length_question, not_offered};
 use windows::Win32::Foundation::HWND;
 
 use super::app::App;
@@ -96,17 +96,17 @@ pub fn run(app: &App, owner: HWND, action: &Action, form: impl FnOnce()) -> Opti
             let index = prompts::choose(owner, title, message, &names, action.destructive)?;
             act(Answer::Picked { id: answers[index].id.clone(), length: None }).ok()
         }
-        Question::Text { title, label, initial, hint, yes, .. } => {
+        Question::Text { initial, .. } => {
             let mut typed = initial.clone();
             loop {
-                let text = prompts::ask(owner, title, &format!("&{label}:"), hint, &typed, yes)?;
+                let text = ask(owner, &action.question, &typed)?;
                 match act(Answer::Text { text: text.clone() }) {
                     Ok(done) => return Some(done),
                     Err(()) => typed = text,
                 }
             }
         }
-        Question::Pick { title, length } => {
+        Question::Pick { title, length, yes } => {
             let offered = match app.core.lumenna.choices(action.clone()) {
                 Ok(offered) => offered,
                 Err(error) => {
@@ -119,14 +119,16 @@ pub fn run(app: &App, owner: HWND, action: &Action, form: impl FnOnce()) -> Opti
                 return None;
             }
             let texts: Vec<String> = offered.choices.iter().map(choice_text).collect();
-            let index = prompts::pick(owner, &action.title, &format!("{title}:"), &texts)?;
+            let index = prompts::pick(owner, &action.title, &format!("{title}:"), &texts, yes)?;
             let id = offered.choices[index].id.clone();
-            let Some(hint) = length else {
+            if length.is_none() {
                 return act(Answer::Picked { id, length: None }).ok();
-            };
+            }
+            // How long it is meant to take, asked as the core words it.
+            let question = length_question();
             let mut typed = String::new();
             loop {
-                let text = prompts::ask(owner, &action.title, "&Planned length:", hint, &typed, "OK")?;
+                let text = ask(owner, &question, &typed)?;
                 match act(Answer::Picked { id: id.clone(), length: Some(text.clone()) }) {
                     Ok(done) => return Some(done),
                     Err(()) => typed = text,
@@ -134,4 +136,12 @@ pub fn run(app: &App, owner: HWND, action: &Action, form: impl FnOnce()) -> Opti
             }
         }
     }
+}
+
+/// Asks a line of text as `question` words it, starting from `typed`: its title, its field's
+/// name with an access key, what it takes, and its own button. `None` if it is not a line of
+/// text, or was cancelled. An empty answer is returned too: the core says whether it may be.
+pub fn ask(owner: HWND, question: &Question, typed: &str) -> Option<String> {
+    let Question::Text { title, label, hint, yes, .. } = question else { return None };
+    prompts::ask(owner, title, &format!("&{label}:"), hint, typed, yes)
 }

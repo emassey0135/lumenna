@@ -74,14 +74,8 @@ impl Dialog for AskText<'_> {
 
 /// Asks for a line of text. `label` names the field, with `&` before its mnemonic; `message`,
 /// if any, is read when the dialog opens; `yes` is the button that answers, a verb where
-/// there is one ("Rename"), as Windows' own dialogs name theirs. `None` if cancelled or left
-/// empty.
-pub fn ask_text(owner: HWND, title: &str, label: &str, message: &str, initial: &str, yes: &str) -> Option<String> {
-    ask(owner, title, label, message, initial, yes).filter(|answer| !answer.is_empty())
-}
-
-/// Asks for a line of text that may be left empty on purpose: `Some("")` is an answer, and
-/// only Cancel is `None`.
+/// there is one ("Rename"), as Windows' own dialogs name theirs. An empty answer is an
+/// answer, and only Cancel is `None`.
 pub fn ask(owner: HWND, title: &str, label: &str, message: &str, initial: &str, yes: &str) -> Option<String> {
     let ask = AskText { title, label, message, initial, yes, answer: RefCell::new(String::new()) };
     (dialog::run(Some(owner), &ask) == 1).then(|| ask.answer.into_inner().trim().to_owned())
@@ -91,6 +85,7 @@ struct Pick<'a> {
     title: &'a str,
     label: &'a str,
     items: &'a [String],
+    yes: &'a str,
     chosen: RefCell<Option<usize>>,
 }
 
@@ -100,7 +95,7 @@ impl Dialog for Pick<'_> {
         Template::new(self.title, 260, 196)
             .item(Class::Static, self.label, u16::MAX, 0, 7, 7, 246, 9)
             .item(Class::ListBox, "", LIST, style, 7, 17, 246, 152)
-            .item(Class::Button, "OK", IDOK.0 as u16, (BS_DEFPUSHBUTTON as u32) | WS_TABSTOP.0, 149, 175, 50, 14)
+            .item(Class::Button, self.yes, IDOK.0 as u16, (BS_DEFPUSHBUTTON as u32) | WS_TABSTOP.0, 149, 175, 50, 14)
             .item(Class::Button, "Cancel", IDCANCEL.0 as u16, (BS_PUSHBUTTON as u32) | WS_TABSTOP.0, 203, 175, 50, 14)
     }
 
@@ -130,13 +125,14 @@ impl Dialog for Pick<'_> {
     }
 }
 
-/// Offers a list and returns the position of the one chosen. `label` names the list.
-pub fn pick(owner: HWND, title: &str, label: &str, items: &[String]) -> Option<usize> {
+/// Offers a list and returns the position of the one chosen. `label` names the list, and
+/// `yes` is the button that takes the one chosen ("Move").
+pub fn pick(owner: HWND, title: &str, label: &str, items: &[String], yes: &str) -> Option<usize> {
     if items.is_empty() {
         fail(owner, &format!("{title}: there is nothing to choose from."));
         return None;
     }
-    let pick = Pick { title, label, items, chosen: RefCell::new(None) };
+    let pick = Pick { title, label, items, yes, chosen: RefCell::new(None) };
     if dialog::run(Some(owner), &pick) == 1 { pick.chosen.into_inner().filter(|i| *i < items.len()) } else { None }
 }
 

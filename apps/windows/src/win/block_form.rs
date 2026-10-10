@@ -111,6 +111,12 @@ impl Form<'_> {
         matches!(self.purpose, Purpose::Occurrence { .. })
     }
 
+    /// Whether the form has the field `key`: every one, but for one day of a repeating block
+    /// only what the core says one day can change.
+    fn shows(&self, key: &str) -> bool {
+        !self.once() || block_form().iter().any(|f| f.key == key && f.one_day)
+    }
+
     fn read(&self, hwnd: HWND) -> BlockFields {
         let text = |id| controls::text(dialog::item(hwnd, id));
         let kind = controls::send(dialog::item(hwnd, KIND), CB_GETCURSEL, 0, 0);
@@ -124,14 +130,18 @@ impl Form<'_> {
             anchored: controls::checked(dialog::item(hwnd, ANCHORED)),
             ..self.initial.clone()
         };
-        if !self.once() {
-            fields.repeat = text(REPEAT);
-            fields.until = text(UNTIL);
-            fields.min_minutes = text(SHORTEST);
-            fields.task_filter = text(FILTER);
-            fields.colour = text(COLOUR);
-            fields.notes = text(NOTES).replace("\r\n", "\n");
-        }
+        // What the form does not show keeps what it had.
+        let read = |key: &str, id: u16, field: &mut String| {
+            if self.shows(key) {
+                *field = text(id).replace("\r\n", "\n");
+            }
+        };
+        read("repeat", REPEAT, &mut fields.repeat);
+        read("until", UNTIL, &mut fields.until);
+        read("min_minutes", SHORTEST, &mut fields.min_minutes);
+        read("task_filter", FILTER, &mut fields.task_filter);
+        read("colour", COLOUR, &mut fields.colour);
+        read("notes", NOTES, &mut fields.notes);
         fields
     }
 
@@ -183,8 +193,10 @@ impl Dialog for Form<'_> {
         };
         let line = ES_AUTOHSCROLL as u32;
         let adding = matches!(self.purpose, Purpose::Add { .. });
-        let once = self.once();
-        let width = if once { 7 + COLUMN + 7 } else { RIGHT + COLUMN + 7 };
+        // The right-hand column: how it repeats and behaves, which one day alone cannot change.
+        const RIGHT_KEYS: [&str; 6] = ["repeat", "until", "min_minutes", "task_filter", "colour", "notes"];
+        let right = RIGHT_KEYS.iter().any(|key| self.shows(key));
+        let width = if right { RIGHT + COLUMN + 7 } else { 7 + COLUMN + 7 };
         let mut template = Template::new(&self.heading, width, 10);
 
         // What it is and when.
@@ -211,29 +223,35 @@ impl Dialog for Form<'_> {
         }
         let mut bottom = y;
 
-        // How it repeats and behaves: every occurrence's alone.
-        if !once {
+        if right {
             let mut y = 7;
-            template = field(template, &label("repeat", true), REPEAT, line, RIGHT, y);
-            y += 28;
-            if let Some(rule) = self.rule.as_ref().filter(|_| self.initial.repeat.is_empty()) {
-                let note = format!("It repeats by the rule {rule}, which the repetition words cannot say. Leave Repeats empty to keep it.");
-                template = template.item(Class::Static, &note, u16::MAX, SS_NOPREFIX.0, RIGHT, y, COLUMN, 26);
-                y += 30;
+            if self.shows("repeat") {
+                template = field(template, &label("repeat", true), REPEAT, line, RIGHT, y);
+                y += 28;
+                if let Some(rule) = self.rule.as_ref().filter(|_| self.initial.repeat.is_empty()) {
+                    let note = format!("It repeats by the rule {rule}, which the repetition words cannot say. Leave Repeats empty to keep it.");
+                    template = template.item(Class::Static, &note, u16::MAX, SS_NOPREFIX.0, RIGHT, y, COLUMN, 26);
+                    y += 30;
+                }
             }
-            template = field(template, &label("until", true), UNTIL, line, RIGHT, y);
-            y += 28;
-            template = field(template, &label("min_minutes", true), SHORTEST, ES_NUMBER as u32, RIGHT, y);
-            y += 28;
-            template = field(template, &label("task_filter", true), FILTER, line, RIGHT, y);
-            y += 28;
-            template = field(template, &label("colour", true), COLOUR, line, RIGHT, y);
-            y += 28;
-            let notes = (ES_MULTILINE | ES_WANTRETURN | ES_AUTOVSCROLL) as u32 | WS_VSCROLL.0;
-            template = template
-                .item(Class::Static, &label("notes", true), u16::MAX, 0, RIGHT, y, COLUMN, 9)
-                .item(Class::Edit, "", NOTES, notes | WS_BORDER.0 | WS_TABSTOP.0, RIGHT, y + 10, COLUMN, 40);
-            y += 54;
+            for (key, id, style) in [
+                ("until", UNTIL, line),
+                ("min_minutes", SHORTEST, ES_NUMBER as u32),
+                ("task_filter", FILTER, line),
+                ("colour", COLOUR, line),
+            ] {
+                if self.shows(key) {
+                    template = field(template, &label(key, true), id, style, RIGHT, y);
+                    y += 28;
+                }
+            }
+            if self.shows("notes") {
+                let notes = (ES_MULTILINE | ES_WANTRETURN | ES_AUTOVSCROLL) as u32 | WS_VSCROLL.0;
+                template = template
+                    .item(Class::Static, &label("notes", true), u16::MAX, 0, RIGHT, y, COLUMN, 9)
+                    .item(Class::Edit, "", NOTES, notes | WS_BORDER.0 | WS_TABSTOP.0, RIGHT, y + 10, COLUMN, 40);
+                y += 54;
+            }
             bottom = bottom.max(y);
         }
 
@@ -251,14 +269,18 @@ impl Dialog for Form<'_> {
         set(TITLE, &initial.title);
         set(START, &initial.start);
         set(MINUTES, &initial.minutes);
-        if !self.once() {
-            set(REPEAT, &initial.repeat);
-            set(UNTIL, &initial.until);
-            set(SHORTEST, &initial.min_minutes);
-            set(FILTER, &initial.task_filter);
-            set(COLOUR, &initial.colour);
+        for (key, id, value) in [
+            ("repeat", REPEAT, &initial.repeat),
+            ("until", UNTIL, &initial.until),
+            ("min_minutes", SHORTEST, &initial.min_minutes),
+            ("task_filter", FILTER, &initial.task_filter),
+            ("colour", COLOUR, &initial.colour),
             // A multi-line edit control breaks lines at CR LF.
-            set(NOTES, &initial.notes.replace('\n', "\r\n"));
+            ("notes", NOTES, &initial.notes.replace('\n', "\r\n")),
+        ] {
+            if self.shows(key) {
+                set(id, value);
+            }
         }
         if let Purpose::Add { date } = &self.purpose {
             set(DATE, date);
