@@ -171,6 +171,18 @@ class KeyboardTest {
     }
 
     @Test
+    fun aKeyARowHasNoActionForSaysWhyInTheCoresWords() {
+        show()
+        tab("Browse").performClick()
+        rule.waitForIdle()
+        row("Projects").performClick()
+        rule.waitForIdle()
+        press(row("Inbox"), Key.Delete)
+        shows("The Inbox keeps its name")
+        assertTrue(core.lumenna.listProjects().rows.any { it.title == "Inbox" })
+    }
+
+    @Test
     fun ctrlPageDownShowsTheNextDayAndCtrlTComesBackToNow() {
         show()
         val tomorrow = Clock.spokenDay(LocalDate.now().plusDays(1).toString())

@@ -125,6 +125,7 @@ fun Sidebar(core: Core, changes: Long, current: Destination, choose: (Destinatio
                     key = item.key,
                     heading = group,
                     selected = item.key == selected,
+                    say = core::say,
                 )
             }
         }

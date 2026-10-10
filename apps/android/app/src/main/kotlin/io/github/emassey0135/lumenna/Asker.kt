@@ -14,9 +14,15 @@ import io.github.emassey0135.lumenna.core.Subject
  * The phone's way of asking an action's question: a dialog each, through a screen's [Prompter].
  * What is asked, and in what words, is the core's (`Action.question`); Cancel is first.
  */
-class DialogAsker(private val prompt: Prompter) : Asker {
+class DialogAsker(private val core: Core, private val prompt: Prompter) : Asker {
+    // Cancelling gives up the action: the list stops waiting for a change to put focus back.
+    private val cancel = {
+        prompt.close()
+        core.cancelled()
+    }
+
     override fun confirm(action: Action, question: Question.Confirm, yes: () -> Unit) = prompt.show {
-        Confirm(question.title, question.message, question.yes, prompt::close, destructive = action.destructive) {
+        Confirm(question.title, question.message, question.yes, cancel, destructive = action.destructive) {
             prompt.close()
             yes()
         }
@@ -28,12 +34,12 @@ class DialogAsker(private val prompt: Prompter) : Asker {
             question.title, question.label, "Done",
             initial = question.initial,
             hint = question.hint.ifEmpty { null },
-            dismiss = prompt::close,
+            dismiss = cancel,
         ) { text -> if (answered(text)) prompt.close() }
     }
 
     override fun pick(action: Action, title: String, options: List<Option>, picked: (Option) -> Unit) = prompt.show {
-        Choose(title, options, prompt::close) { option ->
+        Choose(title, options, cancel) { option ->
             prompt.close()
             picked(option)
         }
@@ -41,18 +47,18 @@ class DialogAsker(private val prompt: Prompter) : Asker {
 
     override fun length(action: Action, picked: Option, hint: String, answered: (String) -> Boolean) = prompt.show {
         AskText(
-            picked.title, "Planned length", "Done", example = "45m", hint = hint, dismiss = prompt::close,
+            picked.title, "Planned length", "Done", example = "45m", hint = hint, dismiss = cancel,
         ) { text -> if (answered(text)) prompt.close() }
     }
 
     override fun choose(action: Action, question: Question.Choose, picked: (Option) -> Unit) = prompt.show {
         AlertDialog(
-            onDismissRequest = prompt::close,
+            onDismissRequest = cancel,
             title = { Text(question.title) },
             text = { Text(question.message) },
             confirmButton = {
                 Column {
-                    TextButton(modifier = Target, onClick = prompt::close) { Text("Cancel") }
+                    TextButton(modifier = Target, onClick = cancel) { Text("Cancel") }
                     question.answers.map(::option).forEach { answer ->
                         TextButton(modifier = Target, onClick = {
                             prompt.close()
@@ -76,16 +82,16 @@ fun Core.offered(
     prompt: Prompter,
     form: (Action) -> Unit = {},
     done: (io.github.emassey0135.lumenna.core.Change) -> Unit = {},
-): List<RowAction> = rowActions(actions, DialogAsker(prompt), { action ->
+): List<RowAction> = rowActions(actions, DialogAsker(this, prompt), { action ->
     if (action.subject == Subject.FILTER && action.kind == ActionKind.NEW) addFilter(this, prompt) else form(action)
 }, done)
 
 /** The app's own form for a new saved filter: its name, then its query. */
 fun addFilter(core: Core, prompt: Prompter) {
     prompt.show {
-        AskText("New Saved Filter", "Name", "Next", dismiss = prompt::close) { name ->
+        AskText("New Saved Filter", "Name", "Next", dismiss = { prompt.close(); core.cancelled() }) { name ->
             prompt.show {
-                AskText("Query for $name", "Query", "Save", example = "#Work & overdue", dismiss = prompt::close) { query ->
+                AskText("Query for $name", "Query", "Save", example = "#Work & overdue", dismiss = { prompt.close(); core.cancelled() }) { query ->
                     if (core.change { it.addFilter(name.trim(), query.trim()) } != null) prompt.close()
                 }
             }

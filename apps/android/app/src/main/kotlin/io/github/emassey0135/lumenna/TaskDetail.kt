@@ -52,7 +52,7 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task, chan
     var task by remember(screen.id) { mutableStateOf<TaskDetail?>(null) }
     var fields by remember(screen.id) { mutableStateOf<TaskFields?>(null) }
     val prompt = rememberPrompter()
-    val asker = remember(prompt) { DialogAsker(prompt) }
+    val asker = remember(prompt) { DialogAsker(core, prompt) }
 
     LaunchedEffect(screen.id, changes) {
         val shown = runCatching { core.lumenna.showTask(screen.id).task }.getOrNull()

@@ -61,7 +61,9 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import io.github.emassey0135.lumenna.core.ActionKind
 import io.github.emassey0135.lumenna.core.LumennaException
+import io.github.emassey0135.lumenna.core.notOffered
 import io.github.emassey0135.lumenna.core.Preview
 import io.github.emassey0135.lumenna.core.RowView
 import io.github.emassey0135.lumenna.core.Rows
@@ -189,6 +191,7 @@ fun TaskRows(core: Core, all: List<RowView>, actions: (RowView) -> List<RowActio
                 openLabel = "Show details",
                 focus = focus.requester(row.id),
                 key = row.id,
+                say = core::say,
             )
             HorizontalDivider()
         }
@@ -216,6 +219,8 @@ fun ListRow(
     key: String? = null,
     heading: Boolean = false,
     selected: Boolean = false,
+    say: (String) -> Unit = {},
+    thisDevice: Boolean = false,
 ) {
     var menu by remember { mutableStateOf(false) }
     val pane = LocalPane.current
@@ -242,8 +247,18 @@ fun ListRow(
                         return@onKeyEvent actions.isNotEmpty()
                     }
                     val action = command.rowAction(actions)
-                    action?.run()
-                    action != null
+                    if (action != null) {
+                        action.run()
+                        return@onKeyEvent true
+                    }
+                    // A row key with nothing to do here says why, in the core's words, rather
+                    // than nothing. What the row is comes from its own actions, which share it;
+                    // a heading's add one more of what is under it, so say nothing of it.
+                    val kind = command.kind ?: return@onKeyEvent false
+                    val subject = actions.firstNotNullOfOrNull { it.subject.takeIf { _ -> it.kind != ActionKind.NEW } }
+                        ?: return@onKeyEvent false
+                    say(notOffered(kind, subject, thisDevice))
+                    true
                 }
                 .then(
                     if (!acts) Modifier

@@ -36,6 +36,8 @@ data class Item(
     val speech: String = detail,
     /** What can be done to it: the core's. */
     val actions: List<Action> = emptyList(),
+    /** Whether it is this device, for a device's row. */
+    val thisDevice: Boolean = false,
 )
 
 /**
@@ -93,6 +95,8 @@ fun ItemListScreen(
                     openLabel = openLabel,
                     focus = focus.requester(item.key),
                     key = item.key,
+                    say = core::say,
+                    thisDevice = item.thisDevice,
                 )
                 HorizontalDivider()
             }

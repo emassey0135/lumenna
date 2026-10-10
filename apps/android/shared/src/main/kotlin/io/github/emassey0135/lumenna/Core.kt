@@ -71,6 +71,20 @@ class Core(directory: File) {
         if (held == null) held = mutableListOf()
     }
 
+    private val dropped = MutableStateFlow(0L)
+
+    /** Moves whenever an action is given up, so a list stops waiting to put focus back. */
+    val cancels: StateFlow<Long> = dropped.asStateFlow()
+
+    /**
+     * An action's question was cancelled, or had nothing to ask: no change is coming, so
+     * nothing waits for one to put focus back on the row, and what was held is said.
+     */
+    fun cancelled() {
+        release()
+        dropped.value += 1
+    }
+
     /** Says what was held. */
     fun release() {
         val texts = held ?: return

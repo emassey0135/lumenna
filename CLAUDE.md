@@ -790,7 +790,9 @@ gives the toolchain. Three modules: `app` (the phone), `wear` (Wear OS) and `sha
   TalkBack's are on Alt or Search. A screen offers a command while shown (`Offer`), the
   newest winning, and the system's shortcuts helper (Meta+/) lists what is offered now. A
   row's own commands (Ctrl+K, Delete, Shift+F10) run its action of that `ActionKind`
-  (`Command.rowAction`), so a key never does what the row's action list does not. Compose's root takes the keys while
+  (`Command.rowAction`), so a key never does what the row's action list does not; on a row
+  without one it says the core's reason (`notOffered`, the subject from the row's own
+  actions). Compose's root takes the keys while
   anything has focus; `MainActivity.dispatchKeyEvent` takes them when nothing does.
 - **Buttons take focus only out of touch mode**, which a key press leaves; the keyboard
   tests leave it first (`setInTouchMode(false)`), or no tab could be focused.

@@ -66,6 +66,9 @@ fun rememberRowFocus(core: Core, keys: List<String>, state: LazyListState): RowF
         }
         core.release()
     }
+    // An action given up brings no change: focus is not put back on its row by a later one.
+    val cancels by core.cancels.collectAsState()
+    LaunchedEffect(cancels) { focus.target = null }
     // Leaving the list says whatever was held for it.
     DisposableEffect(Unit) { onDispose { core.release() } }
     return focus
