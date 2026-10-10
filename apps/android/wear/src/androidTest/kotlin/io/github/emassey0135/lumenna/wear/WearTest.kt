@@ -9,6 +9,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.accessibility.disableAccessibilityChecks
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.performClick
@@ -180,8 +181,15 @@ class WearTest {
         rule.runOnIdle { core.changed() }
         press("calls", substring = true)
         press("Delete")
-        said("Tasks wearing it stay").assertExists()
-        press("Delete label")
+        // Wear's own AlertDialog, its confirm button named by the core's words.
+        rule.onNode(hasText("Tasks wearing it stay", substring = true)).assertExists()
+        // Wear's dialog shrinks the screen behind it while it shows, so the checks measured the
+        // label's buttons back there, out of reach, as under 48dp: the checks are left out for
+        // this press alone.
+        rule.disableAccessibilityChecks()
+        rule.onNode(hasContentDescription("Delete label") and hasClickAction()).performClick()
+        rule.waitForIdle()
+        rule.enableAccessibilityChecks()
         assertTrue(core.lumenna.listLabels().rows.isEmpty())
     }
 

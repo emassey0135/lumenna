@@ -16,14 +16,14 @@ import io.github.emassey0135.lumenna.core.lengthQuestion
 import io.github.emassey0135.lumenna.said
 
 /**
- * The watch's way of asking an action's question, which the core words: a list to choose from
- * for a confirmation, a pick or a choice of answers, and the system's input screen for a line
+ * The watch's way of asking an action's question, which the core words: Wear's AlertDialog for a
+ * confirmation, a list to choose from for a pick or a choice of answers, and the system's input screen for a line
  * of text. A length is chosen from the lengths a sitting usually takes, as typing one on a
  * watch is slow.
  */
 class WearAsker(private val navigator: Navigator, private val entry: TextEntry?) : Asker {
     override fun confirm(action: Action, question: Question.Confirm, yes: () -> Unit) =
-        navigator.choose(action.asks(question.title), listOf(Option("yes", button(question.yes))), question.message) { yes() }
+        navigator.confirm(action.asks(question.title), question.message, button(question.yes)) { yes() }
 
     override fun text(action: Action, question: Question.Text, answered: (String) -> Boolean) {
         if (action.kind == ActionKind.PLANNED_LENGTH || action.kind == ActionKind.LOG_MINUTES) {

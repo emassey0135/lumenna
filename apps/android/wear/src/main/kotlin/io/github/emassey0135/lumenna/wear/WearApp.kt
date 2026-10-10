@@ -21,7 +21,14 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import androidx.wear.compose.material3.AlertDialog
+import androidx.wear.compose.material3.AlertDialogDefaults
 import androidx.wear.compose.material3.AppScaffold
+import androidx.wear.compose.material3.Icon
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
@@ -83,7 +90,58 @@ class Navigator(private val controller: NavHostController) {
     }
 
     fun screen(route: String?): Screen = route?.let { opened[it] } ?: Screen.Places
+
+    /** The confirmation being asked, shown as Wear's own AlertDialog over the screen. */
+    var confirming by mutableStateOf<Confirming?>(null)
+        private set
+
+    /** Asks [title] before something that cannot be taken back; [yes] runs once confirmed. */
+    fun confirm(title: String, message: String, yes: String, confirmed: () -> Unit) {
+        confirming = Confirming(title, message, yes, confirmed)
+    }
+
+    fun answered() {
+        confirming = null
+    }
 }
+
+/** A question before something that cannot be taken back: the core's title, message and button. */
+data class Confirming(val title: String, val message: String, val yes: String, val confirmed: () -> Unit)
+
+/**
+ * Wear OS's own confirmation: the question, the message, then a confirm and a dismiss button.
+ * Each button is named in words, the confirm one by the core's ("Delete label"): the
+ * platform's icons alone say only "Confirm" and "Dismiss".
+ */
+@Composable
+private fun Confirmation(navigator: Navigator) {
+    val asked = navigator.confirming
+    AlertDialog(
+        visible = asked != null,
+        onDismissRequest = { navigator.answered() },
+        title = { Text(asked?.title.orEmpty()) },
+        text = asked?.message?.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
+        confirmButton = {
+            AlertDialogDefaults.ConfirmButton(onClick = {
+                navigator.answered()
+                asked?.confirmed?.invoke()
+            }) { Icon(glyph(CHECK), contentDescription = asked?.yes) }
+        },
+        dismissButton = {
+            AlertDialogDefaults.DismissButton(onClick = { navigator.answered() }) {
+                Icon(glyph(CLOSE), contentDescription = "Cancel")
+            }
+        },
+    )
+}
+
+private const val CHECK = "M9,16.17L4.83,12l-1.42,1.41L9,19 21,7l-1.41,-1.41z"
+private const val CLOSE = "M19,6.41L17.59,5 12,10.59 6.41,5 5,6.41 10.59,12 5,17.59 6.41,19 12,13.41 17.59,19 19,17.59 13.41,12z"
+
+/** One of Material's icon paths, drawn in the button's own colour. */
+private fun glyph(path: String) = ImageVector.Builder(
+    defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f,
+).addPath(pathData = addPathNodes(path), fill = SolidColor(Color.Black)).build()
 
 @Composable
 fun WearApp(core: Core, entry: TextEntry? = null) {
@@ -125,7 +183,8 @@ fun WearApp(core: Core, entry: TextEntry? = null) {
                         }
                     }
                 }
-                // What changes say, read by TalkBack as a polite live region. Not shown: on a
+                Confirmation(navigator)
+            // What changes say, read by TalkBack as a polite live region. Not shown: on a
                 // watch's screen it covered the rows beneath it, and the accessibility check found
                 // a button only a third visible.
                 Box(
