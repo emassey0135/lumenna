@@ -289,9 +289,6 @@ Both have every view and work with the phone away, each with a whole store of it
   iPhone over WatchConnectivity, which the phone passes on. Still to come, in this order:
   - **On a real watch**: TN3135 is not enforced in the simulator, nor is memory, and
     Automerge loads whole documents.
-  - **Editing a task's fields** and **adding and changing blocks**, as the phone's forms do;
-    projects, labels and filters managed as Browse does; settings.
-  - **Completion in quick add**, offered after the line is entered, as BTSpeak does.
   - **Syncing out of reach**: queued for when the phone is next reachable
     (`transferUserInfo`, which needs the exchange to carry changes without a reply), and
     background refresh (`WKApplicationRefreshBackgroundTask`).

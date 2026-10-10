@@ -1,8 +1,10 @@
 import SwiftUI
 
-/// The pieces both Apple apps' forms are built from. Each exists because the stock version
-/// failed the accessibility audit or VoiceOver on one platform or the other, and where the
-/// platforms need different answers the difference is here, once, rather than in every form.
+/// The pieces the Apple apps' forms are built from: the iPhone's, the Mac's and the watch's.
+/// Each exists because the stock version failed the accessibility audit or VoiceOver on one
+/// platform or another, and where the platforms need different answers the difference is
+/// here, once, rather than in every form. The watch takes the iPhone's answer wherever its
+/// SwiftUI behaves as the iPhone's does.
 
 // MARK: - Colours
 
@@ -11,6 +13,11 @@ extension Color {
     static let quietLabel = Color(uiColor: .quietLabel)
     static let lumennaTint = Color(uiColor: .lumennaTint)
     static let warningLabel = Color(uiColor: .warningLabel)
+    #elseif os(watchOS)
+    // A watch is always dark: a light grey, blue and red, each well over contrast on black.
+    static let quietLabel = Color(white: 0.75)
+    static let lumennaTint = Color(red: 0.45, green: 0.72, blue: 1.0)
+    static let warningLabel = Color(red: 1.0, green: 0.5, blue: 0.5)
     #else
     static let quietLabel = Color(nsColor: .quietLabel)
     static let lumennaTint = Color(nsColor: .lumennaTint)
@@ -29,7 +36,7 @@ enum FormParts {
 
     /// A section's title, which VoiceOver can move between with its heading commands.
     static func heading(_ text: String) -> some View {
-        #if os(iOS)
+        #if os(iOS) || os(watchOS)
         caption(text).accessibilityAddTraits(.isHeader)
         #else
         Text(text).accessibilityAddTraits(.isHeader)
@@ -54,6 +61,8 @@ func example(_ text: String) -> Text {
 ///   instead lost the field's role and read an empty field's placeholder as its value.
 /// - **macOS**: inside `LabeledContent` the control takes the label as its name by itself;
 ///   labelling it as well made it "Title, Title". Outside one, a form's field had no name.
+/// - **watchOS**: as iOS, with the name always above the field: a watch is too narrow for
+///   both on one line.
 struct Named<Control: View>: View {
     let name: String
     @ViewBuilder var control: Control
@@ -86,6 +95,11 @@ struct Named<Control: View>: View {
                 stacked
             }
         }
+        #elseif os(watchOS)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(name).font(.footnote).foregroundStyle(Color.quietLabel).accessibilityHidden(true)
+            control.accessibilityLabel(name)
+        }
         #else
         LabeledContent {
             control.labelsHidden()
@@ -103,6 +117,8 @@ func namedField(_ name: String, text: Binding<String>, example placeholder: Stri
         // An empty title, so the name is the label once rather than twice.
         TextField("", text: text, prompt: placeholder.isEmpty ? nil : example(placeholder), axis: axis)
             .multilineTextAlignment(.trailing)
+        #elseif os(watchOS)
+        TextField("", text: text, prompt: placeholder.isEmpty ? nil : example(placeholder), axis: axis)
         #else
         TextField(name, text: text, prompt: placeholder.isEmpty ? nil : Text(placeholder), axis: axis)
         #endif
@@ -121,7 +137,7 @@ struct Labelled<Control: View>: View {
     }
 
     var body: some View {
-        #if os(iOS)
+        #if os(iOS) || os(watchOS)
         control
         #else
         Named(name) { control }
@@ -147,13 +163,13 @@ struct ChoiceSection<Value: Hashable>: View {
 
     var body: some View {
         Section {
-            #if os(iOS)
+            #if os(iOS) || os(watchOS)
             picker.pickerStyle(.inline).labelsHidden()
             #else
             Named(name) { picker }
             #endif
         } header: {
-            #if os(iOS)
+            #if os(iOS) || os(watchOS)
             FormParts.heading(name)
             #endif
         } footer: {

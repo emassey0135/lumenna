@@ -1,19 +1,20 @@
 import SwiftUI
 #if os(iOS)
 import UIKit
-#else
+#elseif os(macOS)
 import AppKit
 #endif
 
-/// The settings core keeps, as both Apple apps edit them. Getting files in and out is
+/// The settings core keeps, as the Apple apps edit them. Getting files in and out is
 /// each platform's own — a share sheet and a document picker on iOS, save and open panels on
-/// macOS — in an extension beside each app; everything else is here.
+/// macOS — in an extension beside each app; everything else is here. A watch has nowhere to
+/// save a file or pick one, so backups and exports are the phone's.
 final class SettingsModel: NSObject, ObservableObject {
     let core: Core
     #if os(iOS)
     /// The screen showing these, for presenting a share sheet or a picker.
     weak var host: UIViewController?
-    #else
+    #elseif os(macOS)
     /// The window showing these, for its panels and sheets.
     weak var window: NSWindow?
     #endif
@@ -149,6 +150,7 @@ struct PlanningSettings: View {
     }
 }
 
+#if !os(watchOS)
 struct BackupSettings: View {
     @ObservedObject var model: SettingsModel
 
@@ -204,3 +206,4 @@ struct ExportSettings: View {
         .modifier(SettingsPage(model: model))
     }
 }
+#endif

@@ -555,15 +555,27 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   app (`WatchLink`) answers on the operations' own connection, so its own sync carries what
   the watch wrote to every other device. The watch is not in the device list: trust is the
   system's pairing of watch and phone.
-- **What the phone and watch word alike is shared**: `Shared/Clock.swift`, `RowSpeech.swift`
-  and `Words.swift`. The watch has its own core (`WatchCore`), since `Shared/Core.swift`
-  starts Iroh.
+- **The phone's forms are the watch's** (`Shared/Forms`: task, block, planning settings),
+  with its own answers beside the others' in `FormParts.swift`: the iPhone's wherever its
+  SwiftUI behaves the same, else the name always above the field and Save in the form. So
+  `WatchCore` is the forms' `Core` (a typealias), posting `Core.changed`, and the watch has
+  an `Announcer`; every change posted goes to the phone, unless it came from there
+  (`Core.fromPhone`). Backups and exports stay on the phone: a watch cannot save or pick a
+  file. `Shared/Clock.swift`, `RowSpeech.swift` and `Words.swift` are shared too; the
+  watch's core is its own, since `Shared/Core.swift` starts Iroh. The generated bindings are
+  in the app's own module, so a watch type named like a core record clashes with it.
+- **A row offers its actions when tapped** where the phone has more swipe actions than a
+  watch row holds (a block, a sitting, free time); a project, label or filter's are buttons
+  at the foot of its list. Completion is offered after the line is entered, beside the
+  field, as BTSpeak offers it: the system's input screen takes no suggestions.
+- **A text field is named explicitly** (`accessibilityLabel`): with text in it, its title
+  gives way to the text.
 - **A row owns its speech**: the title as its name and the rest as its value, set inside the
   `NavigationLink`; set on the link, watchOS made the whole line the name.
 - **UI tests launch with `LUMENNA_NO_SYNC`**: a simulated watch is paired with a simulated
   phone, whose store otherwise arrives. A watch list holds only the rows on screen, so tests
-  scroll by the Digital Crown, a little at a time, to what they look for; a swipe moved past
-  it. A text field opens the system's input screen: type into its text view, then Done. A
+  scroll to what they look for: by the Digital Crown, a little at a time, in a list, where a
+  swipe moved past it; by swipes in a form, where the Crown goes to the control in focus. A text field opens the system's input screen: type into its text view, then Done. A
   place's row is named with what is in it ("Inbox, no tasks").
 - **watchOS 27 and later**, the first without 32-bit watches, so the core is built for
   `aarch64-apple-watchos` on stable and `arm64_32` (tier 3, nightly) never.

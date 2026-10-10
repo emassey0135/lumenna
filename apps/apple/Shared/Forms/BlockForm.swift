@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// The block editor: a new block, or a change to one — every occurrence, or one day,
-/// as the person already chose. The model and the form both Apple apps share; each shows it
-/// its own way, iOS as a navigation sheet and macOS as a window sheet.
+/// as the person already chose. The model and the form the Apple apps share; each shows it
+/// its own way, iOS as a navigation sheet, macOS as a window sheet, watchOS as a sheet.
 final class BlockFormModel: ObservableObject {
     enum Purpose {
         case add
@@ -205,7 +205,7 @@ struct BlockForm: View {
             if !model.isOneDay {
                 Section {
                     namedField("Repeats", text: $model.fields.repeat, example: "every weekday")
-                        #if os(iOS)
+                        #if os(iOS) || os(watchOS)
                         .textInputAutocapitalization(.never)
                         #endif
                 } footer: {
@@ -245,6 +245,9 @@ struct BlockForm: View {
                 Button("Save") { model.save() }
                     .keyboardShortcut(.defaultAction)
             }
+            #elseif os(watchOS)
+            // A watch's sheet has its own close button, and no bar button for Save.
+            Button("Save") { model.save() }
             #endif
         }
         #if os(macOS)
@@ -258,7 +261,7 @@ struct BlockForm: View {
     /// How long it lasts: a stepper in fives on the phone, where typing a number is the slow
     /// way; minutes to type, with a stepper beside them, on the Mac.
     @ViewBuilder private var lasts: some View {
-        #if os(iOS)
+        #if os(iOS) || os(watchOS)
         Stepper(value: $model.minutes, in: 5...720, step: 5) {
             Text("Lasts \(Clock.length(UInt32(model.minutes)))")
         }

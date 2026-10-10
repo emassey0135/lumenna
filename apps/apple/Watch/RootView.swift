@@ -6,6 +6,7 @@ struct RootView: View {
     @EnvironmentObject private var core: WatchCore
     @EnvironmentObject private var phone: PhoneSync
     @State private var adding = false
+    @State private var asked: Asked?
 
     var body: some View {
         NavigationStack {
@@ -17,6 +18,7 @@ struct RootView: View {
                 Section {
                     Button("Undo") { core.act { try core.lumenna.undo() } }
                     Button("Redo") { core.act { try core.lumenna.redo() } }
+                    NavigationLink("Settings") { SettingsView() }
                 }
                 Section("iPhone") {
                     Button("Sync with iPhone") { phone.syncNow() }
@@ -29,6 +31,9 @@ struct RootView: View {
             }
             .sheet(isPresented: $adding) {
                 QuickAddView(prefix: "")
+            }
+            .sheet(item: $asked) { asked in
+                NavigationStack { asked.view }
             }
             .alert("Could not do that", isPresented: failed) {
                 Button("OK") { core.failure = nil }
@@ -56,10 +61,35 @@ struct RootView: View {
             }
             // Depth is said where it changes, as every app says it, never by indentation.
             .accessibilityValue(entry.depth == previous?.depth ?? 0 ? "" : "level \(entry.depth + 1)")
-        case .group:
+        case let .group(group):
             Text(entry.text)
                 .font(.headline)
                 .accessibilityAddTraits(.isHeader)
+            // What Browse adds under each heading.
+            switch group {
+            case .projects:
+                Button("New Project") {
+                    asked = Asked(TextPrompt("New Project", placeholder: "Name", action: "Add") { name in
+                        core.act { try core.lumenna.addProject(name: name, parent: nil) }
+                    })
+                }
+            case .labels:
+                Button("New Label") {
+                    asked = Asked(TextPrompt("New Label", placeholder: "Name", action: "Add") { name in
+                        core.act { try core.lumenna.addLabel(name: name) }
+                    })
+                }
+            case .filters:
+                Button("New Filter") {
+                    asked = Asked(TextPrompt("New Filter", placeholder: "Name", action: "Next") { name in
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            asked = Asked(TextPrompt("Query for \(name)", placeholder: "#Work & overdue", syntax: .filter) { query in
+                                core.act { try core.lumenna.addFilter(name: name, query: query) }
+                            })
+                        }
+                    })
+                }
+            }
         }
     }
 }
