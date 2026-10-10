@@ -658,6 +658,17 @@
       (should (equal (funcall annotate "Work") "")))
     (lumenna-test--goto "Project: Reports")))
 
+(ert-deftest lumenna-a-task-in-an-archived-project-keeps-it-on-the-project-list ()
+  (lumenna-test--with-store
+    (lumenna-write "project.add" :name "Old")
+    (lumenna-write "task.add" :text "dusty #Old")
+    (lumenna-write "project.archive" :name "Old")
+    (let (offered)
+      (cl-letf (((symbol-function 'completing-read)
+                 (lambda (_prompt collection &rest _) (setq offered (mapcar #'car collection)) "Old")))
+        (should (equal (lumenna--read-project "Project: " "Old") "Old")))
+      (should (equal offered '("Inbox" "Old"))))))
+
 (ert-deftest lumenna-the-pairing-code-is-copied-only-when-asked ()
   (let ((kill-ring nil) (kill-ring-yank-pointer nil) (interprogram-cut-function nil)
         (lumenna--pairing 'waiting) (lumenna--shown-code nil)
