@@ -250,4 +250,19 @@ class WearTest {
             rule.onAllNodes(hasText(copied, substring = true)).fetchSemanticsNodes().isEmpty(),
         )
     }
+
+    /** What a form's line says beneath its name. */
+    private fun valueOf(name: String): String =
+        shown(name).fetchSemanticsNode().config.getOrNull(SemanticsProperties.Text).orEmpty()
+            .map { it.text }.filter { it != name }.joinToString()
+
+    @Test
+    fun aNewBlockStartsWhenTheCoreSaysAndFollowsTheDay() {
+        press("Today")
+        press("Add block")
+        assertEquals(core.lumenna.newBlockStart(null), valueOf("Starts at"))
+        answers += "in 3 days"
+        press("Day")
+        assertEquals(core.lumenna.newBlockStart("in 3 days"), valueOf("Starts at"))
+    }
 }

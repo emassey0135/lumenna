@@ -92,8 +92,11 @@ fun newFields(at: String, minutes: UInt): BlockFields {
 
 /** What the block form is for. */
 sealed interface BlockPurpose {
-    /** A new block, on [date] at [at] for [minutes]. */
-    data class Add(val date: String? = null, val at: String = "09:00", val minutes: UInt = 60u) : BlockPurpose
+    /**
+     * A new block, on [date] at [at] for [minutes]. With no [at] it starts when the core says a
+     * new block on that day does (`newBlockStart`); free time gives its own.
+     */
+    data class Add(val date: String? = null, val at: String? = null, val minutes: UInt = 60u) : BlockPurpose
 
     /** Every occurrence of a series. */
     data class Series(val id: String) : BlockPurpose
