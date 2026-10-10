@@ -17,6 +17,7 @@ import io.github.emassey0135.lumenna.core.dayBlockFields
 import io.github.emassey0135.lumenna.core.newBlock
 import io.github.emassey0135.lumenna.core.taskEdit
 import io.github.emassey0135.lumenna.core.taskForm
+import io.github.emassey0135.lumenna.core.unsayableRepeatNote
 
 // The task and block forms as the phone and the watch both edit them: each field and how
 // saving sends only what changed. What each field is called, takes and shows as an example is
@@ -122,9 +123,6 @@ class BlockFormModel(private val core: Core, val purpose: BlockPurpose) {
 
     val oneDay get() = purpose is BlockPurpose.Occurrence
 
-    /** A rule the date grammar cannot say, shown beside an empty Repeats field, and kept. */
-    val rule: String? = shown?.rrule?.takeIf { shown.repetition == null }
-
     /** Whether it can have a last day: a block that repeats, or one being added to repeat. */
     val repeats get() = shown?.repeats == true || (purpose is BlockPurpose.Add && fields.repeat.isNotBlank())
 
@@ -145,19 +143,12 @@ class BlockFormModel(private val core: Core, val purpose: BlockPurpose) {
         else -> true
     }
 
-    /**
-     * What [field] says beneath it: the core's words; but for a repetition the words cannot
-     * say, that the field is empty because of it, and an empty one keeps it (`blockEdit`),
-     * where the core's "Empty for once" would mislead.
-     */
-    fun help(field: FormField): String? {
-        val rule = rule
-        return if (field.key == "repeat" && rule != null) {
-            "It repeats by the rule $rule, which cannot be said in words. Left empty, it keeps repeating so."
-        } else {
-            field.help
-        }
-    }
+    /** The core's note for a repetition its words cannot say, which an empty field keeps. */
+    private val unsayable: String? = shown?.let { unsayableRepeatNote(it) }
+
+    /** What [field] says beneath it: the core's words, and for Repeats its note on a rule. */
+    fun help(field: FormField): String? =
+        if (field.key == "repeat" && unsayable != null) unsayable else field.help
 
     /** A kind brings its own flags with it, which can then be set apart from it. */
     fun kind(new: String) {
