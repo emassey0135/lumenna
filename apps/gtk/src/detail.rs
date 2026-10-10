@@ -15,7 +15,7 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::{gdk, glib};
 use lumenna_desktop::speech;
-use lumenna_surface::{TaskDetail, TaskFields, task_edit, task_fields};
+use lumenna_surface::{FormField, TaskDetail, TaskFields, task_edit, task_fields};
 
 use lumenna_surface::actions::{Action, ActionKind};
 
@@ -53,24 +53,32 @@ fn label(text: &str, field: &impl IsA<gtk::Widget>) -> gtk::Label {
 }
 
 fn describe(widget: &impl IsA<gtk::Accessible>, description: &str) {
-    widget.update_property(&[gtk::accessible::Property::Description(description)]);
+    if !description.is_empty() {
+        widget.update_property(&[gtk::accessible::Property::Description(description)]);
+    }
+}
+
+/// The task form's field `key` as the core words it, its label marked at `mnemonic` — the
+/// one thing about it that is this app's.
+fn field(form: &[FormField], key: &str, mnemonic: char) -> (String, String) {
+    let field = form.iter().find(|f| f.key == key);
+    let label = field.map_or(key, |f| f.label.as_str());
+    (lumenna_desktop::devices::marked(label, mnemonic, '_'), field.map(|f| f.hint.clone()).unwrap_or_default())
 }
 
 impl Detail {
     pub fn new() -> Rc<Self> {
+        let form = lumenna_surface::task_form();
+        let words = |key: &str, mnemonic: char| field(&form, key, mnemonic);
         let title = gtk::Entry::new();
         let due = gtk::Entry::new();
-        describe(&due, "A date, such as tomorrow or next Friday. Empty for none. A new date keeps how it repeats.");
         let repeat = gtk::Entry::new();
-        describe(&repeat, "Such as every Monday, or every! 2 weeks to count from when it is done. Empty for no repetition.");
         let titles: Vec<String> = lumenna_surface::priorities().into_iter().map(|p| p.title).collect();
         let priority = gtk::DropDown::from_strings(&titles.iter().map(String::as_str).collect::<Vec<_>>());
         let estimate = gtk::Entry::new();
-        describe(&estimate, "Such as 45m or 1h30m. Empty for none.");
         let projects = gtk::StringList::new(&[]);
         let project = gtk::DropDown::builder().model(&projects).build();
         let labels = gtk::Entry::new();
-        describe(&labels, "Names separated by commas. A new name becomes a label.");
         // Tab leaves the notes rather than being typed into them, or a keyboard user could
         // not get out.
         let notes = gtk::TextView::builder().accepts_tab(false).wrap_mode(gtk::WrapMode::WordChar).build();
@@ -95,28 +103,33 @@ impl Detail {
         // In reading order, which is also Tab's.
         let grid = gtk::Grid::builder().row_spacing(4).column_spacing(12).column_homogeneous(true).build();
         let mut row = 0;
-        let mut full = |grid: &gtk::Grid, text: &str, field: &gtk::Widget| {
-            grid.attach(&label(text, field), 0, row, 2, 1);
+        // A field's name above it, its hint as its description.
+        let named = |field: &gtk::Widget, (text, hint): &(String, String)| {
+            describe(field, hint);
+            label(text, field)
+        };
+        let mut full = |grid: &gtk::Grid, words: (String, String), field: &gtk::Widget| {
+            grid.attach(&named(field, &words), 0, row, 2, 1);
             grid.attach(field, 0, row + 1, 2, 1);
             row += 2;
         };
-        full(&grid, "T_itle", title.upcast_ref());
-        let pair = |grid: &gtk::Grid, row: i32, left: (&str, &gtk::Widget), right: (&str, &gtk::Widget)| {
-            grid.attach(&label(left.0, left.1), 0, row, 1, 1);
+        full(&grid, words("title", 'i'), title.upcast_ref());
+        let pair = |grid: &gtk::Grid, row: i32, left: ((String, String), &gtk::Widget), right: ((String, String), &gtk::Widget)| {
+            grid.attach(&named(left.1, &left.0), 0, row, 1, 1);
             grid.attach(left.1, 0, row + 1, 1, 1);
-            grid.attach(&label(right.0, right.1), 1, row, 1, 1);
+            grid.attach(&named(right.1, &right.0), 1, row, 1, 1);
             grid.attach(right.1, 1, row + 1, 1, 1);
         };
-        pair(&grid, 2, ("D_ue", due.upcast_ref()), ("Re_peats", repeat.upcast_ref()));
-        pair(&grid, 4, ("Pri_ority", priority.upcast_ref()), ("Esti_mate", estimate.upcast_ref()));
-        pair(&grid, 6, ("Pro_ject", project.upcast_ref()), ("_Labels", labels.upcast_ref()));
+        pair(&grid, 2, (words("due", 'u'), due.upcast_ref()), (words("repeat", 'p'), repeat.upcast_ref()));
+        pair(&grid, 4, (words("priority", 'o'), priority.upcast_ref()), (words("estimate", 'm'), estimate.upcast_ref()));
+        pair(&grid, 6, (words("project", 'j'), project.upcast_ref()), (words("labels", 'L'), labels.upcast_ref()));
         let notes_scroll = gtk::ScrolledWindow::builder()
             .child(&notes)
             .min_content_height(96)
             .hscrollbar_policy(gtk::PolicyType::Never)
             .has_frame(true)
             .build();
-        grid.attach(&label("_Notes", &notes), 0, 8, 2, 1);
+        grid.attach(&named(notes.upcast_ref(), &words("notes", 'N')), 0, 8, 2, 1);
         grid.attach(&notes_scroll, 0, 9, 2, 1);
         let waits_label = label("_Waits for", &waits.view);
         grid.attach(&waits_label, 0, 10, 2, 1);
@@ -290,8 +303,9 @@ impl Detail {
             for (button, kinds) in &self.buttons {
                 let action = actions::find(&task.actions, kinds);
                 button.set_sensitive(action.is_some());
-                if let Some(action) = action.filter(|a| a.kind == ActionKind::MarkNotDone || a.kind == ActionKind::MarkDone) {
-                    button.set_label(&action.title);
+                if let Some(action) = action {
+                    let asks = !matches!(action.question, lumenna_surface::Question::Immediate);
+                    button.set_label(&if asks { format!("{}…", action.title) } else { action.title.clone() });
                 }
             }
         }

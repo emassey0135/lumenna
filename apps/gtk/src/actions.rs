@@ -142,9 +142,9 @@ async fn answer(app: &App, from: &Asking, action: &Action, typed: Option<String>
         Question::Confirm { title, message, yes } => {
             prompts::confirm(window, title, message, yes).await.then_some(Answer::Yes)
         }
-        Question::Text { title, label, initial, hint, .. } => {
+        Question::Text { title, label, initial, hint, yes, .. } => {
             let start = typed.as_deref().unwrap_or(initial);
-            let text = prompts::ask(window, title, &format!("{label}:"), hint, start).await?;
+            let text = prompts::ask(window, title, &format!("{label}:"), hint, start, yes).await?;
             Some(Answer::Text { text })
         }
         Question::Pick { title, length } => {
@@ -162,10 +162,10 @@ async fn answer(app: &App, from: &Asking, action: &Action, typed: Option<String>
             }
             let options: Vec<(String, u32)> =
                 choices.choices.iter().map(|choice| (speech::choice(choice, &app.clock), choice.depth)).collect();
-            let index = prompts::pick(window, title, "_Choices:", &options).await?;
+            let index = prompts::pick(window, title, "C_hoices:", &options, &action.title).await?;
             let id = choices.choices.get(index)?.id.clone();
             let length = match length {
-                Some(hint) => Some(prompts::ask(window, &action.title, "_Length:", hint, "").await?),
+                Some(hint) => Some(prompts::ask(window, &action.title, "_Length:", hint, "", &action.title).await?),
                 None => None,
             };
             Some(Answer::Picked { id, length })
@@ -260,11 +260,11 @@ fn finish(app: &App, change: &Change) {
 
 /// A new saved filter: its name, then its query.
 async fn new_filter(app: &Rc<App>) {
-    let Some(name) = prompts::ask(&app.window, "New Saved Filter", "_Name:", "", "").await else { return };
+    let Some(name) = prompts::ask(&app.window, "New Saved Filter", "_Name:", "", "", "Next").await else { return };
     let hint = lumenna_surface::actions::QUERY;
     let mut query = String::new();
     loop {
-        let Some(typed) = prompts::ask(&app.window, &format!("Query for {name}"), "_Query:", hint, &query).await else {
+        let Some(typed) = prompts::ask(&app.window, &format!("Query for {name}"), "_Query:", hint, &query, "Add").await else {
             return;
         };
         match app.core.lumenna.add_filter(&name, &typed) {

@@ -30,8 +30,8 @@ enum Row {
     Summary(String),
     Block(PlanBlock),
     Sitting(PlanAssignment),
-    Free { start: String, end: String, minutes: u32, actions: Vec<Action> },
-    Now(String),
+    Free { start: String, end: String, title: String, details: Vec<String>, actions: Vec<Action> },
+    Now { title: String, time: String },
     Cancelled(CancelledBlock),
 }
 
@@ -43,7 +43,7 @@ impl Row {
             Self::Block(block) => format!("block:{}", block.id),
             Self::Sitting(sitting) => format!("sitting:{}", sitting.id),
             Self::Free { start, .. } => format!("free:{start}"),
-            Self::Now(_) => "now".to_owned(),
+            Self::Now { .. } => "now".to_owned(),
             Self::Cancelled(block) => format!("cancelled:{}", block.series),
         }
     }
@@ -53,8 +53,8 @@ impl Row {
             Self::Summary(text) => text.clone(),
             Self::Block(block) => speech::block(block, clock),
             Self::Sitting(sitting) => speech::sitting(sitting),
-            Self::Free { start, end, minutes, .. } => speech::free(start, end, *minutes, clock),
-            Self::Now(time) => speech::now(time, clock),
+            Self::Free { start, end, title, details, .. } => speech::free_time(title, details, start, end, clock),
+            Self::Now { title, time } => format!("{title}, {}", clock.time(time)),
             Self::Cancelled(block) => speech::cancelled(block, clock),
         }
     }
@@ -66,7 +66,7 @@ impl Row {
             Self::Sitting(sitting) => &sitting.actions,
             Self::Free { actions, .. } => actions,
             Self::Cancelled(block) => &block.actions,
-            Self::Summary(_) | Self::Now(_) => &[],
+            Self::Summary(_) | Self::Now { .. } => &[],
         }
     }
 }
@@ -203,15 +203,16 @@ impl DayView {
                         rows.extend(block.assignments.iter().cloned().map(Row::Sitting));
                     }
                 }
-                PlanItem::Free { start, end, minutes, actions } => {
+                PlanItem::Free { start, end, title, details, actions, .. } => {
                     rows.push(Row::Free {
                         start: start.clone(),
                         end: end.clone(),
-                        minutes: *minutes,
+                        title: title.clone(),
+                        details: details.clone(),
                         actions: actions.clone(),
                     });
                 }
-                PlanItem::Now { time, .. } => rows.push(Row::Now(time.clone())),
+                PlanItem::Now { time, title } => rows.push(Row::Now { title: title.clone(), time: time.clone() }),
             }
         }
         rows.extend(plan.cancelled.iter().cloned().map(Row::Cancelled));
@@ -252,7 +253,7 @@ impl DayView {
         *self.day.borrow_mut() = None;
         self.list(app);
         let index = self.rows.borrow().iter().position(|row| match row {
-            Row::Now(_) => true,
+            Row::Now { .. } => true,
             Row::Block(block) => block.when == "now",
             _ => false,
         });
@@ -287,7 +288,7 @@ impl DayView {
     pub fn ask_for_day(self: &Rc<Self>, app: &Rc<App>) {
         let (day, app) = (Rc::clone(self), Rc::clone(app));
         spawn(async move {
-            let Some(phrase) = prompts::ask(&app.window, "Go to Day", "_Day:", "A date, such as friday, or 12 october.", "").await else {
+            let Some(phrase) = prompts::ask(&app.window, "Go to Day", "_Day:", "A date, such as friday, or 12 october.", "", "Go").await else {
                 return;
             };
             match app.core.lumenna.plan(Some(phrase)) {

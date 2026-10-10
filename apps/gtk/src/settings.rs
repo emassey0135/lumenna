@@ -264,6 +264,15 @@ fn value(app: &App, key: &str) -> String {
     setting(app, key).value
 }
 
+/// A setting's value as its field shows it: a time of day in this desktop's clock.
+fn shown(app: &App, key: &str) -> String {
+    let setting = setting(app, key);
+    match setting.kind {
+        SettingKind::Time if !setting.value.is_empty() => speech::Clock::time(&app.clock, &setting.value),
+        _ => setting.value,
+    }
+}
+
 /// A setting's control, by its kind, with its name above it — `mnemonic` marked in it, the
 /// one thing about it that is this app's — and its hint as its description. A folder is
 /// not here: it is a row with a button of its own.
@@ -319,16 +328,21 @@ fn set(app: &App, status: &Status, key: &str, to: &str) -> bool {
 /// A text field for a setting, written when it is left or Enter is pressed in it — if it
 /// changed, and put back if what was typed does not read.
 fn setting_entry(app: &Rc<App>, status: &Status, key: &'static str, description: &str) -> gtk::Entry {
-    let entry = gtk::Entry::builder().text(value(app, key)).build();
+    let entry = gtk::Entry::builder().text(shown(app, key)).build();
     describe(&entry, description);
     let commit = {
         let (app, status) = (Rc::downgrade(app), status.clone());
         move |entry: &gtk::Entry| {
             let Some(app) = app.upgrade() else { return };
             let typed = entry.text().trim().to_owned();
-            let was = value(&app, key);
-            if typed != was && !set(&app, &status, key, &typed) {
-                entry.set_text(&was);
+            let was = shown(&app, key);
+            if typed != was {
+                if set(&app, &status, key, &typed) {
+                    // As read: "8am" becomes the clock's "8:00 AM".
+                    entry.set_text(&shown(&app, key));
+                } else {
+                    entry.set_text(&was);
+                }
             }
         }
     };
@@ -630,7 +644,7 @@ fn backups(app: &Rc<App>) -> gtk::Widget {
     page.add(&row);
     let buttons = gtk::Box::builder().spacing(6).margin_top(6).build();
     let back_up = gtk::Button::with_mnemonic("_Back Up Now");
-    let restore = gtk::Button::with_mnemonic("_Restore From a Backup…");
+    let restore = gtk::Button::with_mnemonic("_Restore from a Backup…");
     buttons.append(&back_up);
     buttons.append(&restore);
     page.add(&buttons);
@@ -674,7 +688,7 @@ fn backups(app: &Rc<App>) -> gtk::Widget {
             let Some(app) = app.upgrade() else { return };
             let (status, window) = (status.clone(), window_of(button, &app));
             spawn(async move {
-                if let Some(said) = import(&app, &window, "Restore From a Backup", &[("Lumenna backups", "*.lumbak")]).await {
+                if let Some(said) = import(&app, &window, "Restore from a Backup", &[("Lumenna backups", "*.lumbak")]).await {
                     status.say(&said);
                 }
             });

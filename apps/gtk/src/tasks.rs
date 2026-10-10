@@ -152,7 +152,12 @@ impl TaskList {
                 if !self.trash {
                     said.extend(listing.query.as_ref().map(|q| q.description.clone()));
                 }
-                said.push(listing.announcement.clone());
+                // An empty list says what is empty, in place of a count of nothing.
+                said.push(if listing.rows.is_empty() && !listing.empty.is_empty() {
+                    listing.empty.clone()
+                } else {
+                    listing.announcement.clone()
+                });
                 said.extend(listing.notices.iter().cloned());
                 self.readback.set_label(&speech::sentence(&said.join(". ")));
                 let items = listing
