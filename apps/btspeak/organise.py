@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import actions
 from rows import Tree, describe
-from session import Command, Session, ask, live_menu, row_item, screen
+from session import Command, Session, ask, empty_then, live_menu, row_item, screen
 import tasks
 
 
@@ -32,7 +32,7 @@ def project_tasks(session: Session, name: str, row=None) -> str:
     """A project's tasks; a task added there lands there, and its main menu can add a
     project inside it, when the project offers that."""
     inside = [
-        Command(action["title"], lambda _, action=action: actions.act(session, action, row), key="p")
+        Command(actions.named(action), lambda _, action=action: actions.act(session, action, row), key="p")
         for action in actions.of_kind(row, "new_inside")
     ]
     reference = project_reference(session, name)
@@ -61,7 +61,7 @@ def projects(session: Session) -> str:
                 Command("Add a task to it", lambda row: tasks.add_task(session, prefix=project_reference(session, row["title"]) + " "), key="t"),
             ]),
             app=[
-                Command("New Project", lambda _: actions.add_from_heading(session, "Projects"), key="a"),
+                *actions.heading_command(session, "Projects"),
                 *tasks.undo_commands(session),
             ],
             app_title="Projects menu",
@@ -87,6 +87,7 @@ def labels(session: Session) -> str:
     def build():
         listing = session.call("label.list")
         state["heading"] = f"Labels, {listing.get('announcement', '')}"
+        state["empty"] = listing.get("empty", "")
         return [row_item(row, describe(row), navigation_title=row["title"]) for row in listing.get("rows", [])]
 
     def tasks_of(row):
@@ -101,10 +102,10 @@ def labels(session: Session) -> str:
                 Command("Add a task wearing it", lambda row: tasks.add_task(session, prefix=label_reference(session, row["title"]) + " "), key="t"),
             ]),
             app=[
-                Command("New Label", lambda _: actions.add_from_heading(session, "Labels"), key="a"),
+                *actions.heading_command(session, "Labels"),
                 *tasks.undo_commands(session),
             ],
-            empty="No labels yet. Press a to add one.",
+            empty=empty_then(state, "Press a to add one."),
             app_title="Labels menu",
         )
     return ""
@@ -137,7 +138,7 @@ def saved_filters(session: Session) -> str:
             main=lambda row: tasks.task_list(session, row["query"], row["name"]),
             context=lambda rows: actions.commands(session, rows),
             app=[
-                Command("New Saved Filter", lambda _: actions.add_from_heading(session, "Filters"), key="a"),
+                *actions.heading_command(session, "Filters"),
                 Command("Search or filter now", lambda _: tasks.query_tasks(session), key="/"),
                 *tasks.undo_commands(session),
             ],

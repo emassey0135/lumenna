@@ -73,6 +73,7 @@ class InputField:
         self.required = required
         self.default_text = default_text
         self.validate = validate
+        self.format_hint = format_hint
         self.choices = choices or []
 
 
@@ -91,6 +92,7 @@ class Script:
         self.shown: list = []
         self.offered: list[list[str]] = []
         self.prompts: list[str] = []
+        self.forms: list[list] = []
 
     def take(self, kind: str, asked: str):
         if not self.steps:
@@ -234,6 +236,7 @@ def request_input(prompt, default_text="", **_ignored):
 def request_form(fields, **_ignored):
     """`("form", {key: value})` fills those fields and leaves the rest as offered; None
     cancels the form."""
+    script.forms.append(list(fields))
     (answers,) = script.take("form", [f.key for f in fields])
     if answers is None:
         return None

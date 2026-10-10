@@ -44,7 +44,7 @@ CONTRACT = 1
 #: Methods this app calls that a server from before them would not answer. Asked for at the
 #: start, so an old `lum` is a sentence then rather than a failure halfway through a pairing.
 NEEDS = ("pair", "pair.confirm", "block.show", "act", "choices", "places", "form.task_edit", "form.not_offered",
-         "form.project_reference")
+         "form.project_reference", "form.task_form", "form.block_form", "form.pairing_words", "form.sentence_case")
 
 
 def run(client) -> int:
@@ -109,7 +109,7 @@ def main_menu(session: Session) -> None:
             name = place_name(entry)
             if entry.get("depth", 0) == 0 and name in PLACES:
                 key, opens = PLACES[name]
-                places.append(item(title=entry["text"], shortcut=key, action=lambda opens=opens: opens(session)))
+                places.append(item(title=session.sentence(entry["text"]), shortcut=key, action=lambda opens=opens: opens(session)))
         # The task list sits beside adding a task, as it always has here.
         at = next((i + 1 for i, it in enumerate(places) if it.shortcut == "k"), len(places))
         places.insert(at, item(title="Add a task", shortcut="a", action=lambda: tasks.add_task(session)))

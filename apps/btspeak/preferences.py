@@ -176,11 +176,18 @@ def sync_now(session: Session) -> str:
     return ". ".join(lines)
 
 
-def ask_code(own: str = "") -> str | None:
+def pairing_words(session: Session, name: str = "this device") -> dict:
+    """Pairing's sentences and buttons, the core's (`form.pairing_words`): on this network
+    the device finds the other by itself, through Avahi."""
+    return session.words("form.pairing_words", this_device=name, local=True)
+
+
+def ask_code(session: Session, own: str = "") -> str | None:
     """The other device's code: typed, or, left empty, the clipboard's, where a code sent from
     the other device usually arrives. This device's own code, copied while it waits, is never
     the other's. None if cancelled; empty if there is no code to be had."""
-    text = dialogs.request_input("The other device's pairing code. Left empty, the clipboard's is used", default_text="")
+    words = pairing_words(session)
+    text = dialogs.request_input(f"{words['their_code']}. {words['empty_means']}", default_text="")
     if text is None:
         return None
     text = text.strip()
@@ -199,22 +206,20 @@ def pair(session: Session) -> str:
     other device while this one waits, then the words. This shows each as it arrives and
     answers with `pair.confirm`, so the menu stays responsive the whole time.
     """
+    words = pairing_words(session)
     how = choose(
-        {
-            "wait": "Wait for the other device: on this network it finds this one, or give it a code",
-            "code": "Type the code the other device shows",
-        },
-        "Pair a device",
+        {"wait": session.sentence(words["wait"]), "code": session.sentence(words["join"])},
+        f"{session.sentence(words['title'])}. {words['intro']}",
     )
     if how is None:
         return ""
     params = {}
     if how == "code":
-        code = ask_code()
+        code = ask_code(session)
         if code is None:
             return ""
         if not code:
-            return "Type or paste the code the other device shows."
+            return words["need_code"]
         params["code"] = code
     return run_pairing(session, params)
 
@@ -226,8 +231,9 @@ def run_pairing(session: Session, params: dict) -> str:
     while not client.pairing.empty():
         client.pairing.get_nowait()
     pending = client.begin("pair", **params)
+    words = pairing_words(session)
     shown = {
-        "status": "Connecting to the other device" if params else "Starting",
+        "status": words["connecting"] if params else words["opening"],
         "code": "",
         "cancel": False,
         "instead": None,
@@ -243,22 +249,22 @@ def run_pairing(session: Session, params: dict) -> str:
         menu.close()
 
     def code_instead(menu) -> None:
-        code = ask_code(own=shown["code"])
+        code = ask_code(session, own=shown["code"])
         if code:
             shown["instead"] = code
             menu.close()
         elif code is not None:
-            dialogs.show_message("Type or paste the code the other device shows.")
+            dialogs.show_message(words["need_code"])
 
     while True:
         items = [
             dialogs.DynamicMenuItem(title=lambda: shown["status"], action=read_code),
-            *([] if params else [dialogs.DynamicMenuItem(title="Type the other device's code instead", action=code_instead)]),
-            dialogs.DynamicMenuItem(title="Cancel the pairing", action=cancel),
+            *([] if params else [dialogs.DynamicMenuItem(title=session.sentence(words["join"]), action=code_instead)]),
+            dialogs.DynamicMenuItem(title="Cancel", action=cancel),
         ]
         choice = dialogs.dynamic_menu(
             items,
-            title="Pairing",
+            title=session.sentence(words["title"]),
             exit_condition=lambda: pending.done() or not client.pairing.empty(),
             refresh_interval=REFRESH,
         )
@@ -280,6 +286,7 @@ def run_pairing(session: Session, params: dict) -> str:
                         pending.result(timeout=60)
                     except LumennaError:
                         pass  # The wait, given up.
+                    dialogs.show_message(words["switching"], wait=False)
                     return run_pairing(session, {"code": shown["instead"]})
                 break
             continue
@@ -287,15 +294,12 @@ def run_pairing(session: Session, params: dict) -> str:
             shown["code"] = event["code"]
             # Copied, as every app does: the Blazie clipboard is the desktop's too.
             clipboard.copy(event["code"], False)
-            shown["status"] = (
-                f"Waiting to pair, as {event.get('name', 'this device')}. On the other device, "
-                "pair too while on this network, or type this code there; it is copied. Enter "
-                f"reads the code a character at a time: {event['code']}"
-            )
+            named = pairing_words(session, event.get("name") or "this device")
+            # Enter on the line shows the code alone, to read a character at a time.
+            shown["status"] = f"{named['waiting']} {named['copied']} {named['my_code']}: {event['code']}"
         elif event.get("words"):
-            words = ", ".join(event["words"])
             matched = dialogs.request_confirmation(
-                f"The words are: {words}. Do the same three words show on the other device?",
+                f"{session.sentence(words['match_title'])} {words['match_message']} {', '.join(event['words'])}",
                 default=False,
             )
             client.call("pair.confirm", match=matched)

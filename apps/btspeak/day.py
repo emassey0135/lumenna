@@ -15,28 +15,20 @@ import actions
 from actions import spoken_day
 from client import LumennaError
 from rows import Tree, clock, describe
-from session import Command, Flag, Session, ask, choose, live_menu, row_item, screen
+from session import Command, Flag, Session, ask, choose, empty_then, live_menu, row_item, screen
 import tasks
 
-
-KINDS = {"work": "Work, takes tasks", "break": "Break", "event": "Event"}
 
 #: A block form's yes-or-no fields, as a choice.
 YES_NO = {"yes": "Yes", "no": "No"}
 
-#: The block's settings a kind brings with it.
-FLAGS = (("accepts_tasks", "Takes tasks"), ("counts_capacity", "Counts toward hours for work"), ("anchored", "Anchored, so it never moves"))
+#: The fields one day of a repeating block can change: its time, length, title, kind and
+#: flags (`form.day_block_fields`), in the block form's order.
+ONE_DAY = ("title", "start", "minutes", "kind", "accepts_tasks", "counts_capacity", "anchored")
 
-
-def length(minutes: int) -> str:
-    """`1 hour 30 minutes`, as the phone and the command line say it."""
-    hours, rest = divmod(int(minutes), 60)
-    parts = []
-    if hours:
-        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
-    if rest or not hours:
-        parts.append(f"{rest} minute{'s' if rest != 1 else ''}")
-    return " ".join(parts)
+#: The fields a new block is asked for; the rest start as its kind's own or empty, and are
+#: changed by editing it.
+NEW = ("title", "date", "start", "minutes", "kind", "repeat")
 
 
 # ---------------------------------------------------------------------------------------
@@ -134,20 +126,21 @@ def plan_rows(plan: dict) -> list[dict]:
                     "title": sitting["title"], "state": state, "actions": sitting.get("actions", []),
                 })
         elif item["item"] == "free":
+            # "<title>, <details>, <start> to <end>", in every app's order.
             rows.append({
                 "id": f"free@{item['start']}", "role": "free", "depth": 0, "free": item,
-                "title": f"Free, {length(item['minutes'])}",
+                "title": ", ".join([item["title"], *item.get("details", [])]),
                 "value": f"{clock(item['start'])} to {clock(item['end'])}",
                 "actions": item.get("actions", []),
             })
         elif item["item"] == "now":
-            rows.append({"id": "now", "role": "now", "depth": 0, "title": f"Now, {clock(item['time'])}"})
+            rows.append({"id": "now", "role": "now", "depth": 0, "title": f"{item['title']}, {clock(item['time'])}"})
     for cancelled in plan.get("cancelled", []):
         rows.append({
             "id": f"cancelled@{cancelled['series']}", "role": "cancelled", "depth": 0,
             "cancelled": cancelled,
             "title": f"{clock(cancelled['start'])}, {cancelled['title']}",
-            "state": ["cancelled for this day"], "actions": cancelled.get("actions", []),
+            "state": list(cancelled.get("details", [])), "actions": cancelled.get("actions", []),
         })
     return rows
 
@@ -179,6 +172,7 @@ def blocks(session: Session) -> str:
     def build():
         listing = session.call("block.list")
         state["heading"] = f"Blocks, {listing.get('announcement', '')}"
+        state["empty"] = listing.get("empty", "")
         return [row_item(row, describe(row)) for row in listing.get("rows", [])]
 
     with screen("lumenna-day"):
@@ -187,7 +181,7 @@ def blocks(session: Session) -> str:
             main=lambda row: actions.run_kind(session, row, "edit"),
             context=lambda rows: actions.commands(session, rows),
             app=[Command("Add a block", lambda _: add_block(session), key="a"), *tasks.undo_commands(session)],
-            empty="No blocks yet. Press a to add one.",
+            empty=empty_then(state, "Press a to add one."),
             app_title="Blocks menu",
         )
     return ""
@@ -205,14 +199,32 @@ def value(session: Session, method: str, **params):
     return session.call(method, **params).get("value")
 
 
-def flag_fields(fields: dict) -> list:
-    return [
-        dialogs.InputField(
-            key=key, prompt=name, field_type="choice", choices=YES_NO,
-            default_text="yes" if fields[key] else "no",
-        )
-        for key, name in FLAGS
-    ]
+def block_form(session: Session) -> dict:
+    """The block form's fields as the core words them (`form.block_form`), by key, in order."""
+    return {field["key"]: field for field in session.words("form.block_form")}
+
+
+def toggles(session: Session) -> list[str]:
+    """The block's settings a kind brings with it: the form's on-or-off fields."""
+    return [key for key, field in block_form(session).items() if field["kind"] == "toggle"]
+
+
+def block_fields(session: Session, before: dict, keys, repeats: bool = True) -> list:
+    """The block form's fields among `keys`, in the core's order and words, starting from
+    `before`; an on-or-off one as a choice of yes or no, and one shown only while the
+    block repeats left out of one that does not."""
+    fields = []
+    for key, field in block_form(session).items():
+        if key not in keys or (field.get("repeating_only") and not repeats):
+            continue
+        if field["kind"] == "toggle":
+            fields.append(dialogs.InputField(
+                key=key, prompt=field["label"], field_type="choice", choices=YES_NO,
+                default_text="yes" if before.get(key) else "no",
+            ))
+        else:
+            fields.append(tasks.form_field(field, str(before.get(key, ""))))
+    return fields
 
 
 def with_kind(session: Session, before: dict, after: dict) -> dict:
@@ -220,7 +232,7 @@ def with_kind(session: Session, before: dict, after: dict) -> dict:
     a form's check boxes go back to a new kind's own."""
     if after["kind"] != before["kind"]:
         defaults = value(session, "form.block_defaults", kind=after["kind"]) or {}
-        for key, _ in FLAGS:
+        for key in toggles(session):
             if after[key] == before[key] and key in defaults:
                 after[key] = defaults[key]
     return after
@@ -237,27 +249,8 @@ def answered(before: dict, answers: dict) -> dict:
 
 def add_block(session: Session, date: str = "today", at: str = "9am", minutes: int = 60) -> str:
     """One block, once or repeating."""
-    answers = dialogs.request_form(
-        [
-            dialogs.InputField(key="title", prompt="Name", required=True),
-            dialogs.InputField(
-                key="start", prompt="Starts at", default_text=at,
-                format_hint="a time such as 9am or 14:30",
-            ),
-            dialogs.InputField(
-                key="minutes", prompt="Minutes", default_text=str(minutes),
-                format_hint="a whole number of minutes",
-            ),
-            dialogs.InputField(
-                key="kind", prompt="Kind", field_type="choice", choices=KINDS, default_text="work"
-            ),
-            dialogs.InputField(key="date", prompt="Starting on", default_text=date),
-            dialogs.InputField(
-                key="repeat", prompt="Repeats",
-                format_hint="such as every weekday, or empty for a block that happens once",
-            ),
-        ]
-    )
+    start = {"title": "", "date": date, "start": at, "minutes": str(minutes), "kind": "work", "repeat": ""}
+    answers = dialogs.request_form(block_fields(session, start, NEW, repeats=False))
     if answers is None:
         return ""
     try:
@@ -266,7 +259,7 @@ def add_block(session: Session, date: str = "today", at: str = "9am", minutes: i
             "title": answers["title"], "start": answers["start"], "minutes": answers["minutes"],
             "kind": answers["kind"], "repeat": answers["repeat"],
             "until": "", "min_minutes": "", "task_filter": "", "colour": "", "notes": "",
-            **{key: bool(defaults.get(key)) for key, _ in FLAGS},
+            **{key: bool(defaults.get(key)) for key in toggles(session)},
         }
         block = value(session, "form.new_block", fields=fields, date=answers["date"])
     except LumennaError as error:
@@ -297,14 +290,7 @@ def edit_block(session: Session, block: dict) -> str:
         before = value(session, "form.day_block_fields", block=block)
     except LumennaError as error:
         return error.message
-    fields = [
-        dialogs.InputField(key="title", prompt="Name", default_text=before["title"], required=True),
-        dialogs.InputField(key="start", prompt="Starts at", default_text=before["start"]),
-        dialogs.InputField(key="minutes", prompt="Minutes", default_text=before["minutes"], format_hint="a whole number of minutes"),
-        dialogs.InputField(key="kind", prompt="Kind", field_type="choice", choices=KINDS, default_text=before["kind"]),
-        *flag_fields(before),
-    ]
-    return save_block(session, block["series"], before, fields, {"date": date})
+    return save_block(session, block["series"], before, block_fields(session, before, ONE_DAY), {"date": date})
 
 
 def edit_series(session: Session, series: str) -> str:
@@ -314,32 +300,8 @@ def edit_series(session: Session, series: str) -> str:
         before = value(session, "form.block_fields", block=shown)
     except LumennaError as error:
         return error.message
-    fields = [
-        dialogs.InputField(key="title", prompt="Name", default_text=before["title"], required=True),
-        dialogs.InputField(key="start", prompt="Starts at", default_text=before["start"]),
-        dialogs.InputField(key="minutes", prompt="Minutes", default_text=before["minutes"], format_hint="a whole number of minutes"),
-        dialogs.InputField(key="kind", prompt="Kind", field_type="choice", choices=KINDS, default_text=before["kind"]),
-        *flag_fields(before),
-        dialogs.InputField(
-            key="repeat", prompt="Repeats", default_text=before["repeat"],
-            format_hint="such as every weekday; empty makes it happen once",
-        ),
-        dialogs.InputField(key="notes", prompt="Notes", default_text=before["notes"]),
-        dialogs.InputField(
-            key="min_minutes", prompt="Shortest length", default_text=before["min_minutes"],
-            format_hint="minutes it may be shortened to; empty for the kind's own",
-        ),
-        dialogs.InputField(
-            key="task_filter", prompt="Tasks from", default_text=before["task_filter"],
-            format_hint="a filter such as #Work; empty for any",
-        ),
-    ]
-    if shown.get("repeats"):
-        fields.append(dialogs.InputField(
-            key="until", prompt="Until", default_text=before["until"],
-            format_hint="its last day; empty to repeat for good",
-        ))
-    fields.append(dialogs.InputField(key="colour", prompt="Colour", default_text=before["colour"]))
+    every = [key for key in block_form(session) if key != "date"]
+    fields = block_fields(session, before, every, repeats=bool(shown.get("repeats")))
     return save_block(session, series, before, fields, {"all": True})
 
 

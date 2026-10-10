@@ -82,6 +82,12 @@ def choice_line(choice: dict) -> str:
     return ", ".join(part for part in (choice["title"], choice.get("detail")) if part)
 
 
+def named(action: dict) -> str:
+    """What an action is called here: its sentence-case name, as the device's own menus
+    word things and as braille wants, a capital costing a cell."""
+    return action.get("sentence") or action["title"]
+
+
 def prompt(*parts: str) -> str:
     return ". ".join(part for part in parts if part)
 
@@ -97,7 +103,7 @@ def act(session: Session, action: dict, row=None) -> str:
     if ask == "form":
         form = FORMS.get((action["subject"], action["kind"]))
         if form is None:
-            return f"{action['title']} has no form in this app yet"
+            return f"{named(action)} has no form in this app yet"
         return form(session, action, row)
     if ask == "immediate":
         answer = {"answer": "yes"}
@@ -117,14 +123,14 @@ def act(session: Session, action: dict, row=None) -> str:
             return answer
     elif ask == "choose":
         picked = choose(
-            {a["id"]: a["title"] for a in question.get("answers", [])},
+            {a["id"]: session.sentence(a["title"]) for a in question.get("answers", [])},
             prompt(question.get("title", ""), question.get("message", "")),
         )
         if picked is None:
             return ""
         answer = {"answer": "picked", "id": picked}
     else:
-        return f"This app cannot ask that question yet; update it to {action['title']}"
+        return f"This app cannot ask that question yet; update it to {named(action)}"
     return session.write("act", action=action, answer=answer)
 
 
@@ -157,7 +163,7 @@ def ask_pick(session: Session, action: dict, question: dict):
     if action["kind"] == "put_in_block":
         # The core offers this week's; a block further off is asked for by its day.
         options[ANOTHER_DAY] = "Another day"
-    picked = choose(options, question.get("title", action["title"]))
+    picked = choose(options, question.get("title") or named(action))
     if picked is None:
         return ""
     if picked == ANOTHER_DAY:
@@ -199,7 +205,7 @@ def run_kind(session: Session, row, *kinds: str) -> str:
     if not matching:
         return ""
     if len(matching) > 1:
-        index = choose({i: a["title"] for i, a in enumerate(matching)}, "Which?")
+        index = choose({i: named(a) for i, a in enumerate(matching)}, "Which?")
         if index is None:
             return ""
         return act(session, matching[index], row)
@@ -256,7 +262,7 @@ def commands(session: Session, rows, before=(), after=()) -> list[Command]:
     for kind, nth in _slots(rows):
         key = KEYS.get(kind, "") if nth == 0 else ""
         made.append(Command(
-            lambda row, kind=kind, nth=nth: _nth(row, kind, nth)["title"],
+            lambda row, kind=kind, nth=nth: named(_nth(row, kind, nth)),
             lambda row, kind=kind, nth=nth: act(session, _nth(row, kind, nth), row),
             key=key,
             applies=lambda row, kind=kind, nth=nth: _nth(row, kind, nth) is not None,
@@ -281,3 +287,12 @@ def add_from_heading(session: Session, group: str) -> str:
     """Adds a project, label or saved filter as its heading in the places offers."""
     action = heading_action(session, group)
     return act(session, action) if action else ""
+
+
+def heading_command(session: Session, group: str, key: str = "a") -> list[Command]:
+    """The command adding a project, label or saved filter, under the core's name for it
+    ("New project"), as a screen's main menu offers it; none if the heading offers none."""
+    action = heading_action(session, group)
+    if action is None:
+        return []
+    return [Command(named(action), lambda _: add_from_heading(session, group), key=key)]

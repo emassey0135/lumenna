@@ -13,8 +13,8 @@ from BTSpeak import dialogs
 import actions
 import options
 from client import LumennaError
-from rows import Tree
-from session import Command, Session, choose, live_menu, screen, spoken
+from rows import Tree, clock
+from session import Command, Session, choose, empty_then, live_menu, screen, spoken
 
 
 # ---------------------------------------------------------------------------------------
@@ -59,6 +59,7 @@ def task_list(
             hint = f", did you mean {suggestion}?" if suggestion else ""
             said.append(f"no {unresolved['kind']} called {unresolved['name']}{hint}")
         state["heading"] = ", ".join(part for part in said if part)
+        state["empty"] = result.get("empty", "")
         return Tree(result.get("rows", [])).items()
 
     with screen("lumenna-tasks"):
@@ -72,7 +73,7 @@ def task_list(
                 *(more or []),
                 *undo_commands(session),
             ],
-            empty="No tasks here. Press a to add one.",
+            empty=empty_then(state, "Press a to add one."),
             app_title=f"{title} menu",
         )
     return ""
@@ -94,9 +95,10 @@ def task_commands(session: Session, rows) -> list[Command]:
 def show(session: Session, row: dict) -> str:
     """A task's details, as lines to pan through."""
     try:
-        return task_details(session.call("task.show", id=row["id"]), priorities(session))
+        task = session.call("task.show", id=row["id"])
     except LumennaError as error:
         return error.message
+    return task_details(task, priorities(session), {f["key"]: f["label"] for f in session.words("form.task_form")})
 
 
 def trash(session: Session) -> str:
@@ -107,6 +109,7 @@ def trash(session: Session) -> str:
     def build():
         result = session.call("task.list", query="deleted")
         state["heading"] = f"Trash, {result.get('announcement', '')}"
+        state["empty"] = result.get("empty", "")
         return Tree(result.get("rows", [])).items()
 
     with screen("lumenna-tasks"):
@@ -115,7 +118,7 @@ def trash(session: Session) -> str:
             main=lambda row: actions.run_kind(session, row, "restore"),
             context=lambda rows: actions.commands(session, rows),
             app=undo_commands(session),
-            empty="The trash is empty.",
+            empty=empty_then(state),
             app_title="Trash menu",
         )
     return ""
@@ -131,36 +134,42 @@ def priorities(session: Session) -> dict:
     return {c["id"]: c["title"] for c in session.call("form.priorities").get("value", [])}
 
 
-def task_details(task: dict, named: dict | None = None) -> str:
-    """Everything about one task, as lines to pan through.
+def task_details(task: dict, named: dict | None = None, labels: dict | None = None) -> str:
+    """Everything about one task, as lines to pan through, each named as the task form
+    names its field (`labels`, from `form.task_form`).
 
     A detail view is where the near-universal states are worth having, so this shows the full
     set rather than the notable ones a list line carries. `named` words the priority.
     """
+    labels = labels or {}
+
+    def line(key: str, value: str) -> str:
+        return f"{labels.get(key, key.capitalize())}: {value}"
+
     lines = [task["title"]]
     if task.get("project"):
-        lines.append(f"project: {task['project']}")
+        lines.append(line("project", task["project"]))
     if task.get("priority", 4) != 4:
-        lines.append((named or {}).get(str(task["priority"]), f"priority: {task['priority']}"))
+        lines.append((named or {}).get(str(task["priority"]), line("priority", str(task["priority"]))))
     if task.get("due"):
         due = task["due"]
         if task.get("due_time"):
-            due = f"{due} at {task['due_time']}"
-        lines.append(f"due: {due}")
+            due = f"{due} at {clock(task['due_time'])}"
+        lines.append(line("due", due))
     if task.get("repetition"):
-        lines.append(f"repeats: {task['repetition']}")
+        lines.append(line("repeat", task["repetition"]))
     elif task.get("recurrence"):
-        lines.append(f"repeats by the rule {task['recurrence']}")
+        lines.append(line("repeat", f"by the rule {task['recurrence']}"))
     if task.get("estimate_mins"):
-        lines.append(f"estimate: {task['estimate_mins']} minutes")
+        lines.append(line("estimate", f"{task['estimate_mins']} minutes"))
     if task.get("labels"):
-        lines.append("labels: " + ", ".join(task["labels"]))
+        lines.append(line("labels", ", ".join(task["labels"])))
     for dependency in task.get("depends", []):
-        lines.append(f"waits for: {dependency['title']}")
+        lines.append(f"Waits for: {dependency['title']}")
     if task.get("state"):
-        lines.append("state: " + ", ".join(task["state"]))
+        lines.append("State: " + ", ".join(task["state"]))
     if task.get("notes"):
-        lines.append(f"notes: {task['notes']}")
+        lines.append(line("notes", task["notes"]))
     dialogs.view_lines(lines, wrap=True)
     return ""
 
@@ -174,43 +183,16 @@ def edit_task(session: Session, task: dict) -> str:
     except LumennaError as error:
         return error.message
     projects = [row["title"] for row in session.call("project.list").get("rows", [])]
-    fields = [
-        dialogs.InputField(key="title", prompt="Title", default_text=before["title"], required=True),
-        dialogs.InputField(
-            key="due", prompt="Due", default_text=before["due"],
-            format_hint="a date such as tomorrow, next friday or 2026-12-01, empty for none",
-        ),
-        dialogs.InputField(
-            key="repeat", prompt="Repeats", default_text=before["repeat"],
-            format_hint="such as every monday or every! 2 weeks, empty for no repetition",
-        ),
-        dialogs.InputField(
-            key="priority", prompt="Priority", field_type="choice", choices=priorities(session),
-            default_text=str(before["priority"]),
-        ),
-        dialogs.InputField(
-            key="estimate", prompt="Estimate", default_text=before["estimate"],
-            format_hint="such as 45m or 1h30m, empty for none",
-        ),
-    ]
-    if before["project"] in projects:
-        # A project this device does not know, perhaps not synced yet, is not offered: the
-        # field stays as it was, so it is left where it is.
-        fields.append(
-            dialogs.InputField(
-                key="project", prompt="Project", field_type="choice", choices=projects,
-                default_text=before["project"],
-            )
-        )
-    fields += [
-        dialogs.InputField(
-            key="labels", prompt="Labels", default_text=before["labels"],
-            format_hint="names separated by commas; a new name becomes a label",
-        ),
-        dialogs.InputField(
-            key="notes", prompt="Notes", field_type="multiline", default_text=before["notes"],
-        ),
-    ]
+    fields = []
+    for field in session.words("form.task_form"):
+        key = field["key"]
+        if key == "project":
+            # Chosen from the projects this device knows; one it does not, perhaps not synced
+            # yet, is not offered, so the field stays as it was and it is left where it is.
+            if before["project"] in projects:
+                fields.append(form_field(field, str(before[key]), choices=projects))
+            continue
+        fields.append(form_field(field, str(before[key])))
     answers = dialogs.request_form(fields)
     if answers is None:
         return ""
@@ -224,6 +206,25 @@ def edit_task(session: Session, task: dict) -> str:
     if not edit:
         return "Nothing changed"
     return session.write("task.edit", id=task["id"], **{k: v for k, v in edit.items() if v is not None})
+
+
+def form_field(field: dict, value: str, choices=None) -> dialogs.InputField:
+    """One of the core's form fields (`form.task_form`, `form.block_form`) as the device's
+    form takes it: a choice where it has options, else a line, or several lines where it
+    may run to them; named, and hinted, in the core's words. A title is one line here,
+    though it may hold several: the device edits a multi-line field as a document."""
+    options = choices or {o["id"]: o["title"] for o in field.get("options", [])}
+    kind = field["kind"]
+    if options:
+        return dialogs.InputField(
+            key=field["key"], prompt=field["label"], field_type="choice", choices=options, default_text=value,
+        )
+    multiline = kind == "lines" and field["key"] != "title"
+    return dialogs.InputField(
+        key=field["key"], prompt=field["label"], default_text=value,
+        field_type="multiline" if multiline else "text", required=field["key"] == "title",
+        format_hint=field.get("hint", ""),
+    )
 
 
 def open_task_form(session: Session, action: dict, row=None) -> str:

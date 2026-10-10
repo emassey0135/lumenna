@@ -19,7 +19,7 @@ Press H-Chord on any Lumenna screen for help about that screen. Press Z-Chord to
 - Today, shortcut t: the day's blocks, free time and now. See [Lumenna Day](help:lumenna-day).
 - Tasks, shortcut k: every open task. See [Lumenna Tasks](help:lumenna-tasks).
 - Add a task, shortcut a: type it the way you would say it, such as "call the bank tomorrow at 3pm p1 #Home".
-- Projects, Labels, Saved Filters: see [Lumenna Projects, Labels and Filters](help:lumenna-organise).
+- Projects, Labels, Saved filters: see [Lumenna Projects, Labels and Filters](help:lumenna-organise).
 - Blocks, shortcut b: every block, including ones on no day near today.
 - Trash, shortcut x: deleted tasks, to restore or delete from the trash.
 - Undo, shortcut u, and Redo, shortcut y: the last change made on this device, wherever it was made.
