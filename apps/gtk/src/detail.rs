@@ -23,7 +23,6 @@ use crate::actions;
 use crate::tree::{Item, Tree};
 use crate::window::App;
 
-const PRIORITIES: [&str; 4] = ["Priority 1, highest", "Priority 2", "Priority 3", "Priority 4, none"];
 
 pub struct Detail {
     /// The pane: the placeholder or the form, whichever is showing.
@@ -64,7 +63,8 @@ impl Detail {
         describe(&due, "A date, such as tomorrow or next Friday. Empty for none. A new date keeps how it repeats.");
         let repeat = gtk::Entry::new();
         describe(&repeat, "Such as every Monday, or every! 2 weeks to count from when it is done. Empty for no repetition.");
-        let priority = gtk::DropDown::from_strings(&PRIORITIES);
+        let titles: Vec<String> = lumenna_surface::priorities().into_iter().map(|p| p.title).collect();
+        let priority = gtk::DropDown::from_strings(&titles.iter().map(String::as_str).collect::<Vec<_>>());
         let estimate = gtk::Entry::new();
         describe(&estimate, "Such as 45m or 1h30m. Empty for none.");
         let projects = gtk::StringList::new(&[]);
@@ -269,7 +269,8 @@ impl Detail {
             self.title.set_text(&fields.title);
             self.due.set_text(&fields.due);
             self.repeat.set_text(&fields.repeat);
-            self.priority.set_selected(u32::from(fields.priority.clamp(1, 4) - 1));
+            let position = lumenna_surface::priorities().iter().position(|p| p.id == fields.priority.to_string());
+            self.priority.set_selected(position.unwrap_or(0) as u32);
             self.estimate.set_text(&fields.estimate);
             self.select_project(&fields.project);
             self.labels.set_text(&fields.labels);
@@ -314,7 +315,10 @@ impl Detail {
             title: self.title.text().to_string(),
             due: self.due.text().to_string(),
             repeat: self.repeat.text().to_string(),
-            priority: u8::try_from(self.priority.selected() + 1).unwrap_or(4).clamp(1, 4),
+            priority: lumenna_surface::priorities()
+                .get(self.priority.selected() as usize)
+                .and_then(|p| p.id.parse().ok())
+                .unwrap_or(4),
             estimate: self.estimate.text().to_string(),
             project: self.projects.string(self.project.selected()).map(|s| s.to_string()).unwrap_or_default(),
             labels: self.labels.text().to_string(),

@@ -12,17 +12,13 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use lumenna_desktop::{devices, profile, speech};
-use lumenna_surface::actions::ActionKind;
-use lumenna_surface::{DeviceView, ExportFormat, Imported};
+use lumenna_surface::actions::{ActionKind, Subject};
+use lumenna_surface::{DeviceView, ExportFormat, Imported, Setting, SettingKind};
 
 use crate::core::sentence;
 use crate::window::{App, spawn};
 use crate::tree::{Item, Tree};
 use crate::{pairing, prompts};
-
-const VERBOSITIES: [(&str, &str); 2] = [("Full sentences", "full"), ("Terse", "terse")];
-const WEEKDAYS: [&str; 7] = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
-const FREQUENCIES: [(&str, &str); 4] = [("Every 12 hours", "12h"), ("Every day", "1d"), ("Every week", "7d"), ("Off", "off")];
 
 /// The pages opened directly, by their place in the window (Planning is 1, Backups 3).
 #[derive(Clone, Copy)]
@@ -246,12 +242,58 @@ impl Status {
     }
 }
 
-fn values(app: &App) -> Vec<(String, String)> {
-    app.core.lumenna.settings(None).map(|s| s.settings.into_iter().map(|s| (s.key, s.value)).collect()).unwrap_or_default()
+/// A setting as the core describes it: its name, its control, what it can be.
+fn setting(app: &App, key: &str) -> Setting {
+    app.core
+        .lumenna
+        .settings(Some(key.to_owned()))
+        .ok()
+        .and_then(|listing| listing.settings.into_iter().find(|s| s.key == key))
+        .unwrap_or_else(|| Setting {
+            key: key.to_owned(),
+            value: String::new(),
+            title: key.to_owned(),
+            kind: SettingKind::default(),
+            options: Vec::new(),
+            syncs: false,
+            hint: String::new(),
+        })
 }
 
 fn value(app: &App, key: &str) -> String {
-    values(app).into_iter().find(|(k, _)| k == key).map(|(_, v)| v).unwrap_or_default()
+    setting(app, key).value
+}
+
+/// A setting's control, by its kind, with its name above it — `mnemonic` marked in it, the
+/// one thing about it that is this app's — and its hint as its description. A folder is
+/// not here: it is a row with a button of its own.
+fn setting_field(app: &Rc<App>, page: &PageBox, status: &Status, key: &'static str, mnemonic: char) {
+    let shown = setting(app, key);
+    let label = devices::marked(&shown.title, mnemonic, '_');
+    match shown.kind {
+        SettingKind::Toggle => {
+            let check = prompts::check(&label);
+            check.set_active(shown.value == "true");
+            describe(&check, &shown.hint);
+            page.add(&check);
+            let (app, status) = (Rc::downgrade(app), status.clone());
+            check.connect_toggled(move |check| {
+                if let Some(app) = app.upgrade() {
+                    set(&app, &status, key, if check.is_active() { "true" } else { "false" });
+                }
+            });
+        }
+        SettingKind::Choice => page.field(&label, &setting_choice(app, status, &shown)),
+        SettingKind::Time | SettingKind::Number | SettingKind::Folder => {
+            page.field(&label, &setting_entry(app, status, key, &shown.hint));
+        }
+    }
+}
+
+fn describe(widget: &impl IsA<gtk::Accessible>, hint: &str) {
+    if !hint.is_empty() {
+        widget.update_property(&[gtk::accessible::Property::Description(hint)]);
+    }
 }
 
 /// The window a page is in, for the dialogs it opens.
@@ -278,9 +320,7 @@ fn set(app: &App, status: &Status, key: &str, to: &str) -> bool {
 /// changed, and put back if what was typed does not read.
 fn setting_entry(app: &Rc<App>, status: &Status, key: &'static str, description: &str) -> gtk::Entry {
     let entry = gtk::Entry::builder().text(value(app, key)).build();
-    if !description.is_empty() {
-        entry.update_property(&[gtk::accessible::Property::Description(description)]);
-    }
+    describe(&entry, description);
     let commit = {
         let (app, status) = (Rc::downgrade(app), status.clone());
         move |entry: &gtk::Entry| {
@@ -303,16 +343,18 @@ fn setting_entry(app: &Rc<App>, status: &Status, key: &'static str, description:
     entry
 }
 
-/// A drop-down of `choices` for a setting: labels shown, values written.
-fn setting_choice(app: &Rc<App>, status: &Status, key: &'static str, choices: Vec<(String, String)>) -> gtk::DropDown {
-    let current = value(app, key);
-    let mut choices = choices;
+/// A drop-down of a setting's options: their names shown, their values written.
+fn setting_choice(app: &Rc<App>, status: &Status, shown: &Setting) -> gtk::DropDown {
+    let key = shown.key.clone();
+    let current = shown.value.clone();
+    let mut choices: Vec<(String, String)> = shown.options.iter().map(|o| (o.title.clone(), o.id.clone())).collect();
     // A value set elsewhere — `lum config set backup-every 3d` — is shown as it is.
     if !current.is_empty() && !choices.iter().any(|(_, v)| *v == current) {
-        choices.push((format!("Every {current}"), current.clone()));
+        choices.push((current.clone(), current.clone()));
     }
     let labels: Vec<&str> = choices.iter().map(|(l, _)| l.as_str()).collect();
     let dropdown = gtk::DropDown::from_strings(&labels);
+    describe(&dropdown, &shown.hint);
     if let Some(position) = choices.iter().position(|(_, v)| *v == current) {
         dropdown.set_selected(position as u32);
     }
@@ -320,9 +362,9 @@ fn setting_choice(app: &Rc<App>, status: &Status, key: &'static str, choices: Ve
     dropdown.connect_selected_notify(move |dropdown| {
         let Some(app) = app.upgrade() else { return };
         if let Some((_, to)) = choices.get(dropdown.selected() as usize)
-            && *to != value(&app, key)
+            && *to != value(&app, &key)
         {
-            set(&app, &status, key, to);
+            set(&app, &status, &key, to);
         }
     });
     dropdown
@@ -404,30 +446,15 @@ fn quoted(path: &Path) -> String {
 
 fn planning(app: &Rc<App>) -> gtk::Widget {
     let page = PageBox::new();
-    let cascade = prompts::check("_Completing a task completes its subtasks");
-    cascade.set_active(value(app, "cascade-complete-subtasks") == "true");
-    page.add(&cascade);
-    let (widget, status) = {
-        // The status line is needed by the fields, and goes last.
-        let status = Status(page.status.clone());
-        let time = "A time, such as 8:00 or 8am.";
-        page.field("Day _starts", &setting_entry(app, &status, "day-start", time));
-        page.field("Day _ends", &setting_entry(app, &status, "day-end", time));
-        page.field("_All-day reminders at", &setting_entry(app, &status, "all-day-reminder-hour", time));
-        let verbosities = VERBOSITIES.iter().map(|(l, v)| ((*l).to_owned(), (*v).to_owned())).collect();
-        page.field("Announce_ments", &setting_choice(app, &status, "verbosity", verbosities));
-        let days = WEEKDAYS.iter().map(|d| (speech::sentence(d), (*d).to_owned())).collect();
-        page.field("_Week starts on", &setting_choice(app, &status, "week-start", days));
-        page.footer("These sync to all your devices.");
-        page.finish()
-    };
-    let app = Rc::downgrade(app);
-    cascade.connect_toggled(move |check| {
-        if let Some(app) = app.upgrade() {
-            set(&app, &status, "cascade-complete-subtasks", if check.is_active() { "true" } else { "false" });
-        }
-    });
-    widget
+    let status = Status(page.status.clone());
+    setting_field(app, &page, &status, "cascade-complete-subtasks", 'C');
+    setting_field(app, &page, &status, "day-start", 's');
+    setting_field(app, &page, &status, "day-end", 'e');
+    setting_field(app, &page, &status, "all-day-reminder-hour", 'A');
+    setting_field(app, &page, &status, "verbosity", 'm');
+    setting_field(app, &page, &status, "week-start", 'W');
+    page.footer("These sync to all your devices.");
+    page.finish().0
 }
 
 // ---------------------------------------------------------------------------------------
@@ -478,7 +505,10 @@ impl Devices {
     /// this page. A device the core offers no such action for (Unpair on this one) has none.
     fn act(&self, app: &Rc<App>, kinds: &[ActionKind]) {
         let Some(device) = self.chosen() else { return };
-        let Some(action) = crate::actions::find(&device.actions, kinds) else { return };
+        let Some(action) = crate::actions::find(&device.actions, kinds) else {
+            let why = lumenna_surface::actions::not_offered(kinds[0], Subject::Device, device.this_device);
+            return self.status.say(&why);
+        };
         let status = self.status.clone();
         let from = crate::actions::Asking {
             window: window_of(&self.list.view, app),
@@ -561,7 +591,7 @@ fn devices_page(app: &Rc<App>) -> gtk::Widget {
                 return glib::Propagation::Proceed;
             }
             if let (Some(app), Some(devices)) = (app.upgrade(), devices.upgrade()) {
-                devices.act(&app, crate::actions::DELETE);
+                devices.act(&app, &[ActionKind::Unpair]);
             }
             glib::Propagation::Stop
         });
@@ -587,15 +617,14 @@ pub fn devices_heard(app: &App, said: Option<&str>) {
 fn backups(app: &Rc<App>) -> gtk::Widget {
     let page = PageBox::new();
     let status = Status(page.status.clone());
-    let frequencies = FREQUENCIES.iter().map(|(l, v)| ((*l).to_owned(), (*v).to_owned())).collect();
-    page.field("_Automatic backups", &setting_choice(app, &status, "backup-every", frequencies));
-    page.field("_Keep this many backups", &setting_entry(app, &status, "backup-keep", ""));
+    setting_field(app, &page, &status, "backup-every", 'A');
+    setting_field(app, &page, &status, "backup-keep", 'k');
     let folder = gtk::Entry::builder().text(value(app, "backup-dir")).editable(false).hexpand(true).build();
     let choose = gtk::Button::with_mnemonic("C_hoose…");
     let row = gtk::Box::builder().spacing(6).build();
     row.append(&folder);
     row.append(&choose);
-    let label = gtk::Label::builder().label("Backups go _to").use_underline(true).xalign(0.0).margin_top(6).build();
+    let label = gtk::Label::builder().label(devices::marked(&setting(app, "backup-dir").title, 't', '_')).use_underline(true).xalign(0.0).margin_top(6).build();
     label.set_mnemonic_widget(Some(&folder));
     page.add(&label);
     page.add(&row);
@@ -606,7 +635,7 @@ fn backups(app: &Rc<App>) -> gtk::Widget {
     buttons.append(&restore);
     page.add(&buttons);
     page.footer(
-        "A backup holds your whole history, including every task you deleted, so the store can be rebuilt from it. It stays on this device, as these settings do.",
+        "These settings are this device's alone, and do not sync.",
     );
     let (widget, status) = page.finish();
     {
