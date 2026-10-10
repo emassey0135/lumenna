@@ -20,7 +20,35 @@ use lumenna_surface::{BlockFields, BlockScope, Change, Lumenna, block_defaults, 
 use crate::core::sentence;
 use crate::prompts;
 
-const KINDS: [(&str, &str); 3] = [("work", "Work"), ("break", "Break"), ("event", "Event")];
+/// Each field's mnemonic, none used twice in the form nor by its buttons (Save, Add Block).
+fn mnemonic(key: &str) -> char {
+    match key {
+        "title" => 'm',
+        "date" => 'D',
+        "start" => 'a',
+        "minutes" => 'L',
+        "kind" => 'K',
+        "accepts_tasks" => 'T',
+        "counts_capacity" => 'h',
+        "anchored" => 'w',
+        "repeat" => 'R',
+        "until" => 'U',
+        "min_minutes" => 'e',
+        "task_filter" => 'f',
+        "colour" => 'C',
+        "notes" => 'N',
+        _ => '\0',
+    }
+}
+
+/// The kinds of block, value and name, as the core's form offers them.
+fn kinds() -> Vec<(String, String)> {
+    lumenna_surface::block_form()
+        .into_iter()
+        .find(|f| f.key == "kind")
+        .map(|f| f.options.into_iter().map(|o| (o.id, o.title)).collect())
+        .unwrap_or_default()
+}
 
 /// What the form is for.
 pub enum Purpose {
@@ -73,7 +101,7 @@ impl Form {
             title: text(&self.title),
             start: text(&self.start),
             minutes: text(&self.minutes),
-            kind: KINDS.get(self.kind.selected() as usize).map_or("work", |k| k.0).to_owned(),
+            kind: kinds().get(self.kind.selected() as usize).map_or("work", |k| k.0.as_str()).to_owned(),
             accepts_tasks: self.accepts_tasks.is_active(),
             counts_capacity: self.counts_capacity.is_active(),
             anchored: self.anchored.is_active(),
@@ -143,14 +171,22 @@ pub async fn run(
     let adding = matches!(purpose, Purpose::Add { .. });
     let once = matches!(purpose, Purpose::Occurrence { .. });
     let entry = |text: &str| gtk::Entry::builder().text(text).activates_default(true).build();
+    let kinds = kinds();
+    // The core's words for every field; the mnemonics are this app's, none used twice.
+    let fields = lumenna_surface::block_form();
+    let words = |key: &str| fields.iter().find(|f| f.key == key);
+    let marked = |key: &str| {
+        let label = words(key).map_or(key, |f| f.label.as_str());
+        lumenna_desktop::devices::marked(label, mnemonic(key), '_')
+    };
     let form = Rc::new(Form {
         title: entry(&initial.title),
         start: entry(&initial.start),
         minutes: entry(&initial.minutes),
-        kind: gtk::DropDown::from_strings(&KINDS.map(|k| k.1)),
-        accepts_tasks: prompts::check("Tasks can _go here"),
-        counts_capacity: prompts::check("Counts toward the _hours for work"),
-        anchored: prompts::check("_Fixed in time, never moved when the day slips"),
+        kind: gtk::DropDown::from_strings(&kinds.iter().map(|(_, title)| title.as_str()).collect::<Vec<_>>()),
+        accepts_tasks: prompts::check(&marked("accepts_tasks")),
+        counts_capacity: prompts::check(&marked("counts_capacity")),
+        anchored: prompts::check(&marked("anchored")),
         repeat: entry(&initial.repeat),
         until: entry(&initial.until),
         min_minutes: entry(&initial.min_minutes),
@@ -159,7 +195,7 @@ pub async fn run(
         notes: gtk::TextView::builder().accepts_tab(false).wrap_mode(gtk::WrapMode::WordChar).build(),
         date: entry(""),
     });
-    form.kind.set_selected(KINDS.iter().position(|(k, _)| *k == initial.kind).unwrap_or(0) as u32);
+    form.kind.set_selected(kinds.iter().position(|(k, _)| *k == initial.kind).unwrap_or(0) as u32);
     form.accepts_tasks.set_active(initial.accepts_tasks);
     form.counts_capacity.set_active(initial.counts_capacity);
     form.anchored.set_active(initial.anchored);
@@ -171,9 +207,10 @@ pub async fn run(
     // A new kind brings its own flags, as saving will.
     {
         let weak = Rc::downgrade(&form);
+        let kinds = kinds.clone();
         form.kind.connect_selected_notify(move |dropdown| {
             let Some(form) = weak.upgrade() else { return };
-            let word = KINDS.get(dropdown.selected() as usize).map_or("work", |k| k.0);
+            let word = kinds.get(dropdown.selected() as usize).map_or("work", |k| k.0.as_str());
             if let Some(defaults) = block_defaults(word.to_owned()) {
                 form.accepts_tasks.set_active(defaults.accepts_tasks);
                 form.counts_capacity.set_active(defaults.counts_capacity);
@@ -190,26 +227,65 @@ pub async fn run(
         .margin_start(12)
         .margin_end(12)
         .build();
-    let field = |text: &str, widget: &gtk::Widget, description: &str| {
-        let label = gtk::Label::builder().label(text).use_underline(true).xalign(0.0).margin_top(6).build();
+    let field = |key: &str, widget: &gtk::Widget| {
+        let label = gtk::Label::builder().label(marked(key)).use_underline(true).xalign(0.0).margin_top(6).build();
         label.set_mnemonic_widget(Some(widget));
-        if !description.is_empty() {
-            widget.update_property(&[gtk::accessible::Property::Description(description)]);
+        if let Some(hint) = words(key).map(|f| f.hint.as_str()).filter(|hint| !hint.is_empty()) {
+            widget.update_property(&[gtk::accessible::Property::Description(hint)]);
         }
         body.append(&label);
         body.append(widget);
+        label
     };
-    field("_Title", form.title.upcast_ref(), "");
-    field("Starts _at", form.start.upcast_ref(), "Such as 9am, or 14:30.");
-    field("_Minutes", form.minutes.upcast_ref(), "");
-    field("_Kind", form.kind.upcast_ref(), "Changing it sets the three choices after it to the kind's own.");
-    for check in [&form.accepts_tasks, &form.counts_capacity, &form.anchored] {
-        check.set_margin_top(4);
-        body.append(check);
-    }
-    if !once {
-        field("_Repeats", form.repeat.upcast_ref(), "Such as every weekday. Empty for once.");
-        if let Some(rule) = rule.filter(|_| initial.repeat.is_empty()) {
+    let notes = gtk::ScrolledWindow::builder()
+        .child(&form.notes)
+        .min_content_height(64)
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .has_frame(true)
+        .build();
+    // In the core's order. One day's change has no repetition or what goes with it; only a new
+    // block asks its day.
+    let mut until = None;
+    for described in &fields {
+        let key = described.key.as_str();
+        let widget: gtk::Widget = match key {
+            "title" => form.title.clone().upcast(),
+            "date" if adding => form.date.clone().upcast(),
+            "start" => form.start.clone().upcast(),
+            "minutes" => form.minutes.clone().upcast(),
+            "kind" => form.kind.clone().upcast(),
+            "accepts_tasks" | "counts_capacity" | "anchored" => {
+                let check = match key {
+                    "accepts_tasks" => &form.accepts_tasks,
+                    "counts_capacity" => &form.counts_capacity,
+                    _ => &form.anchored,
+                };
+                check.set_margin_top(4);
+                body.append(check);
+                continue;
+            }
+            _ if once => continue,
+            "repeat" => form.repeat.clone().upcast(),
+            "until" => form.until.clone().upcast(),
+            "min_minutes" => form.min_minutes.clone().upcast(),
+            "task_filter" => form.task_filter.clone().upcast(),
+            "colour" => form.colour.clone().upcast(),
+            "notes" => {
+                let label = gtk::Label::builder().label(marked("notes")).use_underline(true).xalign(0.0).margin_top(6).build();
+                label.set_mnemonic_widget(Some(&form.notes));
+                body.append(&label);
+                body.append(&notes);
+                continue;
+            }
+            _ => continue,
+        };
+        let label = field(key, &widget);
+        if key == "until" {
+            until = Some((label, widget));
+        }
+        if key == "repeat"
+            && let Some(rule) = rule.as_ref().filter(|_| initial.repeat.is_empty())
+        {
             let note = format!(
                 "It repeats by the rule {rule}, which the repetition words cannot say. Leave Repeats empty to keep it."
             );
@@ -217,31 +293,17 @@ pub async fn run(
             form.repeat.update_relation(&[gtk::accessible::Relation::DescribedBy(&[note.upcast_ref()])]);
             body.append(&note);
         }
-        field(
-            "Repeats _until",
-            form.until.upcast_ref(),
-            "The last day it happens, such as 31 december. Empty for good.",
-        );
-        field(
-            "Shortest l_ength, in minutes",
-            form.min_minutes.upcast_ref(),
-            "How short it may become when the day slips. Empty for its kind's own.",
-        );
-        field("Ta_sk filter", form.task_filter.upcast_ref(), "Which tasks it is offered, such as #Work. Empty for all.");
-        field("_Colour", form.colour.upcast_ref(), "A colour name, such as teal. Empty for none.");
-        let notes = gtk::ScrolledWindow::builder()
-            .child(&form.notes)
-            .min_content_height(64)
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .has_frame(true)
-            .build();
-        let label = gtk::Label::builder().label("_Notes").use_underline(true).xalign(0.0).margin_top(6).build();
-        label.set_mnemonic_widget(Some(&form.notes));
-        body.append(&label);
-        body.append(&notes);
     }
-    if adding {
-        field("Starts _on", form.date.upcast_ref(), "");
+    // Until is there only while it repeats: by words typed, or by a rule they cannot say.
+    if let Some((label, widget)) = until {
+        let by_rule = rule.is_some() && initial.repeat.is_empty();
+        let show = move |repeat: &gtk::Entry| {
+            let repeats = by_rule || !repeat.text().trim().is_empty();
+            label.set_visible(repeats);
+            widget.set_visible(repeats);
+        };
+        show(&form.repeat);
+        form.repeat.connect_changed(show);
     }
     let ok = gtk::Button::with_mnemonic(if adding { "Add _Block" } else { "Sa_ve" });
     ok.add_css_class("suggested-action");

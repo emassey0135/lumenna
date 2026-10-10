@@ -718,6 +718,10 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   action of a fixed set of kinds (`actions::SPACE`, `DELETE`, `ENTER`); the Task menu's
   commands run the in-hand task's action of their kind, so Mark Done toggles. A settings
   page runs them through `run_from`, over its own window and status line.
+- **A dialog's buttons are GNOME's order**: Cancel first and the default, the answer last
+  and a verb (`Question::Text.yes`, a pick's action title, a form's Save), never OK. A
+  yes-or-no question puts the safe answer where Cancel would be (`prompts::yes_or_no`).
+  `GtkAlertDialog` cannot style a destructive button; that would take libadwaita.
 - **Orca does not say a tree item's checked state**, so a done task says "completed" in its
   text.
 - **Focus into a row waits for the row's widget**, which does not exist until GTK lays the

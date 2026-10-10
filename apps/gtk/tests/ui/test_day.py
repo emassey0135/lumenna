@@ -74,7 +74,7 @@ class DayTest(unittest.TestCase):
     def test_the_block_form_sends_a_flag_set_apart_from_the_kind(self):
         self.edit_block()
         self.session.press(*["Tab"] * 6)
-        self.assertEqual(self.session.focus(), "[check box] 'Fixed in time, never moved when the day slips'")
+        self.assertEqual(self.session.focus(), "[check box] 'Anchored, never moved when the day slips'")
         self.session.press("space", "Alt+v", wait=1)
         self.assertEqual(self.session.said(), ["Changed block All day"])
         self.assertIn("anchored", self.session.focus())
@@ -83,7 +83,7 @@ class DayTest(unittest.TestCase):
     def test_a_new_kind_brings_its_own_flags(self):
         self.edit_block()
         self.session.press("Tab", "Tab", "Tab", "space", "Down", "Return", "Tab")
-        self.assertEqual(self.session.focus(), "[check box] 'Tasks can go here'", "a break takes no tasks")
+        self.assertEqual(self.session.focus(), "[check box] 'Takes tasks'", "a break takes no tasks")
         self.session.press("Alt+v", wait=1)
         shown = self.session.lum("block", "show", self.block)
         self.assertIn("kind: break", shown)
@@ -100,7 +100,7 @@ class DayTest(unittest.TestCase):
         self.session.press("Return")
         self.session.wait_for_window("Change All day, This Day Only")
         self.session.press(*["Tab"] * 6)
-        self.assertEqual(self.session.focus(), "[check box] 'Fixed in time, never moved when the day slips'")
+        self.assertEqual(self.session.focus(), "[check box] 'Anchored, never moved when the day slips'")
         self.session.press("Tab")
         self.assertEqual(self.session.focus(), "[button] 'Cancel'", "no repetition, filter, colour or notes")
         self.session.press("Shift+Tab", "space", "Alt+v", wait=1)

@@ -18,12 +18,15 @@ use futures_util::StreamExt;
 use gtk::prelude::*;
 use gtk::{gdk, glib};
 use lumenna_desktop::speech;
-use lumenna_surface::{Lumenna, LumennaError, PairedWith, PairingPrompt, Reach};
+use lumenna_surface::{Lumenna, LumennaError, PairedWith, PairingPrompt, PairingWords, Reach};
 
 use crate::core::sentence;
 use crate::prompts;
 
-const INTRO: &str = "On the same network, start pairing on both devices and they find each other: choose Wait for the Other Device here, and pair on the other one too. On different networks, one shows a code and the other enters it.";
+/// The pairing screen's words, the core's: how the device calls itself is the one thing here.
+fn words() -> PairingWords {
+    lumenna_surface::pairing_words("this computer".to_owned(), true)
+}
 
 /// What the pairing thread has to say to the dialog.
 enum Message {
@@ -115,7 +118,8 @@ impl Dialog {
         // While waiting, a code can still be entered: it gives the wait up and joins instead.
         self.with_code.set_sensitive(code.is_none());
         self.waiting.set(code.is_none());
-        self.say(if code.is_none() { "Opening a pairing session." } else { "Connecting to the other device." });
+        let words = words();
+        self.say(if code.is_none() { &words.opening } else { &words.connecting });
         let cancelled = Arc::new(AtomicBool::new(false));
         *self.cancelled.borrow_mut() = Some(Arc::clone(&cancelled));
         let (sender, mut receiver) = mpsc::unbounded();
@@ -147,16 +151,15 @@ impl Dialog {
                 self.my_code.set_visible(true);
                 self.my_code.grab_focus();
                 self.my_code.clipboard().set_text(&code);
-                self.say(
-                    "Waiting for the other device. On this network it finds this computer by itself. On another network, enter this code there, or run lum pair followed by it. The code is copied. Waiting up to ten minutes.",
-                );
+                let words = words();
+                self.say(&format!("{} {}", words.waiting, words.copied));
                 true
             }
             Message::Words(words, answer) => {
-                let detail = format!("{}. Say yes only if the other device shows the same three words.", words.join(", "));
-                let chosen =
-                    prompts::choose(&self.window, "Do These Words Match?", &detail, &["Yes, They Match", "No, They Differ"]).await;
-                let _ = answer.send(chosen == Some(0));
+                let said = self::words();
+                let detail = format!("{} {}.", said.match_message, words.join(", "));
+                let matched = prompts::yes_or_no(&self.window, &said.match_title, &detail, &said.match_no, &said.match_yes).await;
+                let _ = answer.send(matched);
                 true
             }
             Message::Done(Ok(paired)) => {
@@ -197,7 +200,7 @@ impl Dialog {
             }
         }
         if code.is_empty() {
-            prompts::tell(&self.window, "Type or paste the code the other device shows.").await;
+            prompts::tell(&self.window, &words().need_code).await;
             prompts::focus_on(&self.their_code);
             return;
         }
@@ -208,7 +211,7 @@ impl Dialog {
                 if let Some(cancelled) = self.cancelled.borrow().as_ref() {
                     cancelled.store(true, Ordering::Relaxed);
                 }
-                self.say("Joining with the code.");
+                self.say(&words().switching);
             }
             return;
         }
@@ -218,20 +221,21 @@ impl Dialog {
 
 /// Runs the pairing dialog, and returns what was said of the device paired, if one was.
 pub async fn run(parent: &gtk::Window, lumenna: Arc<Lumenna>) -> Option<String> {
-    let intro = gtk::Label::builder().label(INTRO).wrap(true).xalign(0.0).build();
-    let wait = gtk::Button::with_mnemonic("_Wait for the Other Device");
+    let words = words();
+    let marked = |text: &str, key: char| lumenna_desktop::devices::marked(text, key, '_');
+    let intro = gtk::Label::builder().label(&words.intro).wrap(true).xalign(0.0).build();
+    let wait = gtk::Button::with_mnemonic(&marked(&words.wait, 'W'));
     let my_code = gtk::Entry::builder().editable(false).visible(false).build();
-    let my_code_label = gtk::Label::builder().label("This device's _code").use_underline(true).xalign(0.0).visible(false).build();
+    let my_code_label = gtk::Label::builder().label(marked(&words.my_code, 'c')).use_underline(true).xalign(0.0).visible(false).build();
     my_code_label.set_mnemonic_widget(Some(&my_code));
     let their_code = gtk::Entry::builder().activates_default(false).build();
-    let their_label = gtk::Label::builder().label("Code from the _other device").use_underline(true).xalign(0.0).build();
+    let their_label = gtk::Label::builder().label(marked(&words.their_code, 'o')).use_underline(true).xalign(0.0).build();
     their_label.set_mnemonic_widget(Some(&their_code));
     // Shown, and read with the field as its description: a placeholder would go as soon as
     // anything was typed.
-    let empty = "Left empty, the code on the clipboard is used.";
-    let clipboard = gtk::Label::builder().label(empty).wrap(true).xalign(0.0).build();
-    their_code.update_property(&[gtk::accessible::Property::Description(empty)]);
-    let with_code = gtk::Button::with_mnemonic("_Pair With This Code");
+    let clipboard = gtk::Label::builder().label(&words.empty_means).wrap(true).xalign(0.0).build();
+    their_code.update_property(&[gtk::accessible::Property::Description(&words.empty_means)]);
+    let with_code = gtk::Button::with_mnemonic(&marked(&words.join, 'P'));
     let status = gtk::Label::builder().wrap(true).xalign(0.0).build();
     let cancel = gtk::Button::with_mnemonic("_Cancel");
     let body = gtk::Box::builder()
@@ -260,7 +264,7 @@ pub async fn run(parent: &gtk::Window, lumenna: Arc<Lumenna>) -> Option<String> 
     wait.set_halign(gtk::Align::Start);
     with_code.set_halign(gtk::Align::Start);
     let window = gtk::Window::builder()
-        .title("Pair a Device")
+        .title(&words.title)
         .modal(true)
         .transient_for(parent)
         .destroy_with_parent(true)

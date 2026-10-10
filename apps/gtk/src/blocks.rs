@@ -88,7 +88,8 @@ impl BlockList {
         let near = self.tree.selected().or(Some(0));
         match app.core.lumenna.list_blocks() {
             Ok(listing) => {
-                self.count.set_label(&speech::sentence(&listing.announcement));
+                let said = if listing.rows.is_empty() && !listing.empty.is_empty() { &listing.empty } else { &listing.announcement };
+                self.count.set_label(&speech::sentence(said));
                 let items = listing
                     .rows
                     .iter()

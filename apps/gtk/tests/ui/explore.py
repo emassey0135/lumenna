@@ -2,10 +2,10 @@
 
     ./headless.sh python3 explore.py Down Down F6 space
 
-`type:text` types text. Seeded with a small store: two projects, a task with subtasks.
+`type:text` types text; `wait:2` waits two seconds, as a dialog takes to show. Seeded with a small store: two projects, a task with subtasks.
 """
 import sys
-from harness import Session
+from harness import Session, pump
 
 SEED = [
     ("project", "add", "Work"),
@@ -32,6 +32,8 @@ try:
     for key in sys.argv[1:]:
         if key.startswith("type:"):
             session.type(key[5:])
+        elif key.startswith("wait:"):
+            pump(float(key[5:]))
         else:
             session.press(key)
         print(f"{key}: {session.focus()}  said={session.said()}  speech={session.speech()}")

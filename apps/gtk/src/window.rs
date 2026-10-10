@@ -626,7 +626,7 @@ impl App {
             spawn(async move {
                 let window = app.window.clone().upcast::<gtk::Window>();
                 let types = [("Lumenna backups", "*.lumbak")];
-                if let Some(said) = crate::settings::import(&app, &window, "Restore From a Backup", &types).await {
+                if let Some(said) = crate::settings::import(&app, &window, "Restore from a Backup", &types).await {
                     app.say(&said);
                 }
             });
@@ -813,7 +813,7 @@ fn menu_bar() -> gio::Menu {
                 item("_Sync Now", "win.sync-now"),
                 item("_Devices and Pairing…", "win.devices"),
                 item("Back _Up Now", "win.back-up"),
-                item("_Restore From a Backup…", "win.restore-backup"),
+                item("_Restore from a Backup…", "win.restore-backup"),
                 item("_Export and Import…", "win.export-import"),
             ]),
             section(vec![item("Se_ttings…", "win.settings")]),
@@ -856,7 +856,7 @@ fn menu_bar() -> gio::Menu {
             ]),
             section(vec![
                 shown("Move to T_rash", "win.trash-task", "Delete"),
-                item("Rest_ore From Trash", "win.restore-task"),
+                item("Rest_ore from Trash", "win.restore-task"),
                 item("_Delete from Trash…", "win.erase-task"),
             ]),
         ]),

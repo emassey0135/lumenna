@@ -27,10 +27,16 @@ pub async fn tell(parent: &impl IsA<gtk::Window>, message: &str) {
 
 /// Asks whether to go ahead with something worth asking about first. Cancel is the default.
 pub async fn confirm(parent: &impl IsA<gtk::Window>, heading: &str, detail: &str, action: &str) -> bool {
+    yes_or_no(parent, heading, detail, "Cancel", action).await
+}
+
+/// Asks a question answered yes or no, `no` first and the default, as GNOME puts the safe
+/// answer: on the left, and what Escape and Enter give.
+pub async fn yes_or_no(parent: &impl IsA<gtk::Window>, heading: &str, detail: &str, no: &str, yes: &str) -> bool {
     let dialog = gtk::AlertDialog::builder()
         .message(heading)
         .detail(detail)
-        .buttons(["Cancel", action])
+        .buttons([no, yes])
         .cancel_button(0)
         .default_button(0)
         .modal(true)
@@ -38,22 +44,21 @@ pub async fn confirm(parent: &impl IsA<gtk::Window>, heading: &str, detail: &str
     dialog.choose_future(Some(parent)).await == Ok(1)
 }
 
-/// Asks which of `options` to go ahead with, or none: a button each, then Cancel, which is
-/// the default.
+/// Asks which of `options` to go ahead with, or none: Cancel first, as GNOME orders a
+/// dialog's buttons, and the default; then a button each.
 pub async fn choose(parent: &impl IsA<gtk::Window>, heading: &str, detail: &str, options: &[&str]) -> Option<usize> {
-    let mut buttons: Vec<&str> = options.to_vec();
-    buttons.push("Cancel");
-    let cancel = i32::try_from(options.len()).unwrap_or(i32::MAX);
+    let mut buttons = vec!["Cancel"];
+    buttons.extend_from_slice(options);
     let dialog = gtk::AlertDialog::builder()
         .message(heading)
         .detail(detail)
         .buttons(buttons)
-        .cancel_button(cancel)
-        .default_button(cancel)
+        .cancel_button(0)
+        .default_button(0)
         .modal(true)
         .build();
     let chosen = dialog.choose_future(Some(parent)).await.ok()?;
-    usize::try_from(chosen).ok().filter(|&index| index < options.len())
+    usize::try_from(chosen).ok().and_then(|index| index.checked_sub(1))
 }
 
 /// Opens a modal window holding `content` above Cancel and OK, which answers with what
@@ -74,7 +79,7 @@ fn open<T: 'static>(
         .default_width(420)
         .build();
     let cancel = gtk::Button::with_mnemonic("_Cancel");
-    let ok = gtk::Button::with_mnemonic(confirm_label);
+    let ok = gtk::Button::with_mnemonic(&with_mnemonic(confirm_label));
     ok.add_css_class("suggested-action");
     let buttons = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(8).halign(gtk::Align::End).build();
     buttons.append(&cancel);
@@ -141,6 +146,16 @@ fn open<T: 'static>(
     receiver
 }
 
+/// A button's words with its first letter as its mnemonic, unless that is Cancel's C: Enter
+/// answers anyway, as the default.
+fn with_mnemonic(text: &str) -> String {
+    let escaped = text.replace('_', "__");
+    match text.chars().next() {
+        Some(first) if !first.eq_ignore_ascii_case(&'c') => format!("_{escaped}"),
+        _ => escaped,
+    }
+}
+
 /// Makes `widget` the focus of the window it is in. Not `grab_focus`: a window just presented
 /// may not be mapped yet, and a popover menu closing in the main window — the usual way here —
 /// moves focus around as it goes, so focus grabbed now was found lost.
@@ -200,7 +215,8 @@ fn label_for(text: &str, field: &impl IsA<gtk::Widget>) -> gtk::Label {
 }
 
 /// Asks for one line of text. `message` says what is wanted, beneath the field.
-pub async fn ask(parent: &impl IsA<gtk::Window>, title: &str, label: &str, message: &str, initial: &str) -> Option<String> {
+/// `yes` is the button that answers, a verb as GNOME has it ("Rename", "Add"), not OK.
+pub async fn ask(parent: &impl IsA<gtk::Window>, title: &str, label: &str, message: &str, initial: &str, yes: &str) -> Option<String> {
     let entry = gtk::Entry::builder().text(initial).activates_default(true).build();
     let content = gtk::Box::new(gtk::Orientation::Vertical, 6);
     content.append(&label_for(label, &entry));
@@ -211,7 +227,7 @@ pub async fn ask(parent: &impl IsA<gtk::Window>, title: &str, label: &str, messa
         content.append(&note);
     }
     let field = entry.clone();
-    let answer = open(parent, title, content.upcast_ref(), move || Some(field.text().to_string()), "_OK");
+    let answer = open(parent, title, content.upcast_ref(), move || Some(field.text().to_string()), yes);
     focus_on(&entry);
     answer.await.ok().flatten()
 }
@@ -221,7 +237,7 @@ pub async fn ask(parent: &impl IsA<gtk::Window>, title: &str, label: &str, messa
 ///
 /// The list is the app's tree, as every list is, so it reads and moves as they do: the arrows
 /// move between the options, Tab goes on to the buttons, and a project tree nests.
-pub async fn pick(parent: &impl IsA<gtk::Window>, title: &str, label: &str, options: &[(String, u32)]) -> Option<usize> {
+pub async fn pick(parent: &impl IsA<gtk::Window>, title: &str, label: &str, options: &[(String, u32)], yes: &str) -> Option<usize> {
     let name = label.replace('_', "");
     let list = Tree::new(name.trim_end_matches(':'));
     list.widget.set_min_content_height(240);
@@ -237,7 +253,7 @@ pub async fn pick(parent: &impl IsA<gtk::Window>, title: &str, label: &str, opti
     content.append(&label_for(label, &list.view));
     content.append(&list.widget);
     let chosen = Rc::clone(&list);
-    let answer = open(parent, title, content.upcast_ref(), move || chosen.selected(), "_OK");
+    let answer = open(parent, title, content.upcast_ref(), move || chosen.selected(), yes);
     // Enter on a row is OK, as in any list chooser.
     let view = list.view.downgrade();
     list.connect_activate(move |_| {

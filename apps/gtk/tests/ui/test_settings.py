@@ -91,7 +91,7 @@ class SettingsTest(unittest.TestCase):
         self.session.type("notacode")
         self.session.press("Return", wait=4)
         said = self.session.said()
-        self.assertEqual(said[0], "Joining with the code.")
+        self.assertEqual(said[0], "Stopping the wait, then connecting with this code.")
         self.assertIn("'notacode' is not a pairing code", said[-1])
 
     def test_escape_closes_settings(self):
