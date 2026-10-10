@@ -172,12 +172,31 @@ class Menus(unittest.TestCase):
 
     # -- the day ----------------------------------------------------------------------
 
+    def test_a_new_block_starts_when_the_core_says_and_again_for_a_day_changed_to(self):
+        self.call("config.set", key="day-start", value="07:30")
+        offered = self.call("form.new_block_start", date="today")["value"]
+        script = self.run_script(
+            [("app", "Add a block"), ("form", {"title": "Run", "date": "tomorrow"}), ("back",)],
+            lambda: day.day_plan(self.session),
+        )
+        fields = {f.key: f for f in script.forms[0]}
+        self.assertEqual(fields["start"].default_text, offered)
+        # The day changed and the start was left as offered: tomorrow's, when the day starts.
+        self.assertEqual(self.call("block.list")["rows"][0]["due_time"], "07:30")
+        script = self.run_script(
+            [("app", "Add a block"), ("form", {"title": "Swim", "date": "tomorrow", "start": "18:00"}), ("back",)],
+            lambda: day.day_plan(self.session),
+        )
+        times = sorted(row["due_time"] for row in self.call("block.list")["rows"])
+        self.assertEqual(times, ["07:30", "18:00"])
+
     def test_a_day_adds_a_block_assigns_a_task_and_times_it(self):
         self.call("task.add", text="write the chapter")
         script = self.run_script(
             [
                 ("app", "Add a block"),
-                ("form", {"title": "Deep work", "start": "9am", "minutes": "90"}),
+                # Ending at midnight, so it is never over while the test runs.
+                ("form", {"title": "Deep work", "start": "11pm", "minutes": "60"}),
                 ("key", "Deep work", "i"),
                 ("choose", "write the chapter"),
                 ("input", ""),

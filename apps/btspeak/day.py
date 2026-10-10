@@ -247,13 +247,21 @@ def answered(before: dict, answers: dict) -> dict:
     return after
 
 
-def add_block(session: Session, date: str = "today", at: str = "9am", minutes: int = 60) -> str:
-    """One block, once or repeating."""
-    start = {"title": "", "date": date, "start": at, "minutes": str(minutes), "kind": "work", "repeat": ""}
+def add_block(session: Session, date: str = "today", at: str | None = None, minutes: int = 60) -> str:
+    """One block, once or repeating. Without `at` it starts when the core says for its day
+    (`form.new_block_start`): today the next whole hour, another day when the day starts."""
+    try:
+        offered = at or value(session, "form.new_block_start", date=date)
+    except LumennaError as error:
+        return error.message
+    start = {"title": "", "date": date, "start": offered, "minutes": str(minutes), "kind": "work", "repeat": ""}
     answers = dialogs.request_form(block_fields(session, start, NEW, repeats=False))
     if answers is None:
         return ""
     try:
+        # The day changed and the start was left as offered: it starts when that day's would.
+        if at is None and answers["date"] != date and answers["start"] == offered:
+            answers = {**answers, "start": value(session, "form.new_block_start", date=answers["date"])}
         defaults = value(session, "form.block_defaults", kind=answers["kind"]) or {}
         fields = {
             "title": answers["title"], "start": answers["start"], "minutes": answers["minutes"],
@@ -328,7 +336,7 @@ def free_time_form(session: Session, action: dict, row=None) -> str:
     """A block added in free time: its day and start from the free time, its length up to
     the free time's end, at most twelve hours."""
     free = (row or {}).get("free") or {}
-    return add_block(session, date=action["target"], at=action.get("other") or "9am", minutes=min(free.get("minutes", 60), 720))
+    return add_block(session, date=action["target"], at=action.get("other"), minutes=min(free.get("minutes", 60), 720))
 
 
 actions.FORMS[("block", "edit")] = lambda session, action, row: edit_block(session, row["block"])
