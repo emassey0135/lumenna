@@ -86,6 +86,8 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(self.session.focus(), "[text] \"This device's code\"")
         self.session.said()
         self.session.press("Tab")
+        self.assertEqual(self.session.focus(), "[button] 'Copy Code'")
+        self.session.press("Tab")
         self.assertEqual(self.session.focus(), "[text] 'Code from the other device'")
         self.assertEqual(self.session.focused().get_description(), "Left empty, the code on the clipboard is used.")
         self.session.type("notacode")

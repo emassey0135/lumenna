@@ -243,11 +243,14 @@ pub async fn run(
         .hscrollbar_policy(gtk::PolicyType::Never)
         .has_frame(true)
         .build();
-    // In the core's order. One day's change has no repetition or what goes with it; only a new
-    // block asks its day.
+    // In the core's order. One day's change holds only what one day can change (`one_day`);
+    // only a new block asks its day.
     let mut until = None;
     for described in &fields {
         let key = described.key.as_str();
+        if once && !described.one_day {
+            continue;
+        }
         let widget: gtk::Widget = match key {
             "title" => form.title.clone().upcast(),
             "date" if adding => form.date.clone().upcast(),
@@ -264,7 +267,6 @@ pub async fn run(
                 body.append(check);
                 continue;
             }
-            _ if once => continue,
             "repeat" => form.repeat.clone().upcast(),
             "until" => form.until.clone().upcast(),
             "min_minutes" => form.min_minutes.clone().upcast(),

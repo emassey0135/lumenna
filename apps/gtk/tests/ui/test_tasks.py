@@ -65,6 +65,20 @@ class TaskListTest(unittest.TestCase):
         self.assertEqual(self.session.focus(), "[tree item] 'Write the report, priority 1' level 1 2 of 2 expanded")
         self.assertEqual(self.session.said(), ["Completed Buy milk", "Undid: Completed Buy milk"])
 
+    def test_mark_done_from_the_details_keeps_the_task_and_toggles_it(self):
+        self.session.press("Return")
+        self.session.press("Control+k", wait=1)
+        self.assertEqual(self.session.said(), ["Completed Buy milk"])
+        self.assertEqual(self.session.focus(), "[text] 'Title'")
+        self.assertEqual(Atspi.Text.get_text(self.session.focused(), 0, -1), "Buy milk")
+        self.assertTrue(self.session.find("button", "Mark Not Done"))
+        self.session.press("Control+k", wait=1)
+        said = self.session.said()
+        self.assertEqual(len(said), 1, said)
+        self.assertIn("Buy milk", said[0])
+        self.assertIn("Write the report", self.session.lum("task", "list"))
+        self.assertIn("Buy milk", self.session.lum("task", "list"))
+
     def test_enter_opens_the_details_and_escape_comes_back(self):
         self.session.press("Return")
         self.assertEqual(self.session.focus(), "[text] 'Title'")

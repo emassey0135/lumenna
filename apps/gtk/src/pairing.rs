@@ -78,6 +78,7 @@ struct Dialog {
     wait: gtk::Button,
     my_code_label: gtk::Label,
     my_code: gtk::Entry,
+    copy_code: gtk::Button,
     their_code: gtk::Entry,
     with_code: gtk::Button,
     cancel: gtk::Button,
@@ -149,6 +150,7 @@ impl Dialog {
                 self.my_code.set_text(&code);
                 self.my_code_label.set_visible(true);
                 self.my_code.set_visible(true);
+                self.copy_code.set_visible(true);
                 self.my_code.grab_focus();
                 self.my_code.clipboard().set_text(&code);
                 let words = words();
@@ -159,6 +161,8 @@ impl Dialog {
                 let said = self::words();
                 let detail = format!("{} {}.", said.match_message, words.join(", "));
                 let matched = prompts::yes_or_no(&self.window, &said.match_title, &detail, &said.match_no, &said.match_yes).await;
+                // What happens meanwhile, while the other device hears the answer.
+                self.say(if matched { &said.finishing } else { &said.refusing });
                 let _ = answer.send(matched);
                 true
             }
@@ -177,6 +181,7 @@ impl Dialog {
                 }
                 self.my_code_label.set_visible(false);
                 self.my_code.set_visible(false);
+                self.copy_code.set_visible(false);
                 self.wait.set_sensitive(true);
                 self.with_code.set_sensitive(true);
                 self.wait.grab_focus();
@@ -228,6 +233,7 @@ pub async fn run(parent: &gtk::Window, lumenna: Arc<Lumenna>) -> Option<String> 
     let my_code = gtk::Entry::builder().editable(false).visible(false).build();
     let my_code_label = gtk::Label::builder().label(marked(&words.my_code, 'c')).use_underline(true).xalign(0.0).visible(false).build();
     my_code_label.set_mnemonic_widget(Some(&my_code));
+    let copy_code = gtk::Button::builder().label(&words.copy_code).visible(false).halign(gtk::Align::Start).build();
     let their_code = gtk::Entry::builder().activates_default(false).build();
     let their_label = gtk::Label::builder().label(marked(&words.their_code, 'o')).use_underline(true).xalign(0.0).build();
     their_label.set_mnemonic_widget(Some(&their_code));
@@ -251,6 +257,7 @@ pub async fn run(parent: &gtk::Window, lumenna: Arc<Lumenna>) -> Option<String> 
         wait.upcast_ref(),
         my_code_label.upcast_ref(),
         my_code.upcast_ref(),
+        copy_code.upcast_ref(),
         their_label.upcast_ref(),
         their_code.upcast_ref(),
         clipboard.upcast_ref(),
@@ -276,7 +283,8 @@ pub async fn run(parent: &gtk::Window, lumenna: Arc<Lumenna>) -> Option<String> 
         window: window.clone(),
         wait: wait.clone(),
         my_code_label,
-        my_code,
+        my_code: my_code.clone(),
+        copy_code: copy_code.clone(),
         their_code: their_code.clone(),
         with_code: with_code.clone(),
         cancel: cancel.clone(),
@@ -291,6 +299,13 @@ pub async fn run(parent: &gtk::Window, lumenna: Arc<Lumenna>) -> Option<String> 
     {
         let dialog = Rc::clone(&dialog);
         wait.connect_clicked(move |_| dialog.start(None));
+    }
+    {
+        let dialog = Rc::clone(&dialog);
+        copy_code.connect_clicked(move |_| {
+            dialog.my_code.clipboard().set_text(&dialog.my_code.text());
+            dialog.say(&self::words().copied);
+        });
     }
     {
         let dialog = Rc::clone(&dialog);

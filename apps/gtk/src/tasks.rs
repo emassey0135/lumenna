@@ -95,7 +95,7 @@ impl TaskList {
         self.tree.connect_selected(move |_| {
             if let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) {
                 let id = list.selected().filter(|_| !list.trash).map(|row| row.id);
-                app.detail.show(&app, id.as_deref());
+                app.detail.follow(&app, id.as_deref());
             }
         });
         let weak = Rc::downgrade(self);

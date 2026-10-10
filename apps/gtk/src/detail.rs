@@ -251,6 +251,16 @@ impl Detail {
         self.shown.borrow().is_some() && self.title.grab_focus()
     }
 
+    /// Follows the selection in the list beside it — unless focus is here, where the person
+    /// is working on the task shown: a change made here moves the list's selection off a
+    /// task that leaves it (Mark Done), and the details must not follow, or a second Ctrl+K
+    /// would complete a task nobody chose.
+    pub fn follow(&self, app: &App, id: Option<&str>) {
+        if !self.has_focus() {
+            self.show(app, id);
+        }
+    }
+
     /// Shows a task, or none. The same task stays as it is, so typing not yet saved is kept
     /// when the list reloads around a change made here.
     pub fn show(&self, app: &App, id: Option<&str>) {
