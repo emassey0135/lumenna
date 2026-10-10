@@ -53,7 +53,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: GTK 4 (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
       - name: Clang for ring (Windows arm64)
         # ring's C needs clang on ARM64 Windows; Visual Studio ships one.
         if: runner.os == 'Windows' && runner.arch == 'ARM64'
@@ -77,7 +77,7 @@ jobs:
     container: archlinux:latest
     steps:
       - name: GTK, a headless GNOME session, AT-SPI and Rust
-        run: pacman -Syu --noconfirm --needed base-devel git rust gtk4 mutter dbus at-spi2-core python-gobject gsettings-desktop-schemas ttf-dejavu
+        run: pacman -Syu --noconfirm --needed base-devel git rust gtk4 mutter dbus at-spi2-core python-gobject gsettings-desktop-schemas ttf-dejavu libadwaita
       - uses: actions/checkout@v5
       - uses: Swatinem/rust-cache@v2
       - name: UI tests

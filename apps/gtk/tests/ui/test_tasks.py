@@ -79,6 +79,19 @@ class TaskListTest(unittest.TestCase):
         self.assertIn("Write the report", self.session.lum("task", "list"))
         self.assertIn("Buy milk", self.session.lum("task", "list"))
 
+    def test_alt_enter_opens_the_details_as_gnome_opens_properties(self):
+        self.session.press("Alt+Return")
+        self.assertEqual(self.session.focus(), "[text] 'Title'")
+
+    def test_f1_lists_every_key_by_group(self):
+        self.session.press("F1")
+        self.session.wait_for_window("Keyboard Shortcuts")
+        self.assertEqual(self.session.focus(), "[tree item] 'File' level 1 1 of 7 expanded")
+        self.session.press("Down")
+        self.assertEqual(self.session.focus(), "[tree item] 'New Task, Ctrl+N' level 2 1 of 6")
+        self.session.press("Escape")
+        self.assertIn("Lumenna", self.session.active_window())
+
     def test_enter_opens_the_details_and_escape_comes_back(self):
         self.session.press("Return")
         self.assertEqual(self.session.focus(), "[text] 'Title'")
@@ -155,10 +168,9 @@ class TaskListTest(unittest.TestCase):
         self.session.press("Control+4", wait=1.5)
         self.assertIn("Buy milk", self.session.focus())
         self.session.press("Delete")
-        self.session.wait_for_window("")
+        self.session.wait_for_alert()
         self.assertEqual(self.session.focus(), "[button] 'Cancel'", "Cancel is the default")
-        self.session.press("Shift+Tab")
-        self.assertEqual(self.session.focus(), "[button] 'Delete'")
+        self.session.tab_to("Delete")
         self.session.press("Return", wait=1)
         said = self.session.said()
         self.assertEqual(len(said), 1, said)

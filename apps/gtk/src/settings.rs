@@ -130,7 +130,7 @@ pub fn show(app: &Rc<App>, page: Page) {
     body.append(&switcher);
     body.append(&stack);
     let window = gtk::Window::builder()
-        .title("Settings")
+        .title("Preferences")
         .transient_for(&app.window)
         .destroy_with_parent(true)
         .default_width(560)

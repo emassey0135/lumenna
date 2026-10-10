@@ -152,9 +152,8 @@ impl Dialog {
                 self.my_code.set_visible(true);
                 self.copy_code.set_visible(true);
                 self.my_code.grab_focus();
-                self.my_code.clipboard().set_text(&code);
                 let words = words();
-                self.say(&format!("{} {}", words.waiting, words.copied));
+                self.say(&words.waiting);
                 true
             }
             Message::Words(words, answer) => {
@@ -197,7 +196,7 @@ impl Dialog {
         let mut code = self.their_code.text().trim().to_owned();
         if code.is_empty() {
             let pasted = self.their_code.clipboard().read_text_future().await.ok().flatten();
-            // Not this device's own code, which waiting put on the clipboard.
+            // Not this device's own code, which Copy Code may have put on the clipboard.
             let own = self.my_code.text();
             if let Some(pasted) = pasted.map(|p| p.trim().to_owned()).filter(|p| !p.is_empty() && *p != own) {
                 self.their_code.set_text(&pasted);

@@ -9,56 +9,96 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use futures_channel::oneshot;
+use adw::prelude::{AdwDialogExt, AlertDialogExt, AlertDialogExtManual};
 use gtk::prelude::*;
 use gtk::{gdk, glib};
 
 use crate::tree::{Item, Tree};
 
-/// Says something went wrong, with an OK button.
-pub fn fail(parent: &impl IsA<gtk::Window>, message: &str) {
-    gtk::AlertDialog::builder().message(message).modal(true).build().show(Some(parent));
+/// One of an alert's answers: its id is its position, so the caller gets back an index.
+fn alert(heading: &str, detail: &str) -> adw::AlertDialog {
+    let dialog = adw::AlertDialog::new(Some(heading), (!detail.is_empty()).then_some(detail));
+    dialog.set_body_use_markup(false);
+    dialog
 }
 
-/// Says something went wrong, and waits for OK.
-pub async fn tell(parent: &impl IsA<gtk::Window>, message: &str) {
-    let dialog = gtk::AlertDialog::builder().message(message).buttons(["OK"]).modal(true).build();
-    let _ = dialog.choose_future(Some(parent)).await;
+
+
+/// An answer's words as a response's label: an underscore in them is the words', not a
+/// mnemonic.
+fn response_label(text: &str) -> String {
+    text.replace('_', "__")
 }
 
-/// Asks whether to go ahead with something worth asking about first. Cancel is the default.
-pub async fn confirm(parent: &impl IsA<gtk::Window>, heading: &str, detail: &str, action: &str) -> bool {
-    yes_or_no(parent, heading, detail, "Cancel", action).await
+/// Says something went wrong, with a Close button.
+pub fn fail(parent: &impl IsA<gtk::Widget>, message: &str) {
+    let dialog = alert(message, "");
+    dialog.add_response("close", "_Close");
+    dialog.set_default_response(Some("close"));
+    dialog.set_close_response("close");
+    dialog.present(Some(parent));
+}
+
+/// Says something went wrong, and waits for Close.
+pub async fn tell(parent: &impl IsA<gtk::Widget>, message: &str) {
+    let dialog = alert(message, "");
+    dialog.add_response("close", "_Close");
+    dialog.set_default_response(Some("close"));
+    dialog.set_close_response("close");
+    dialog.choose_future(Some(parent)).await;
+}
+
+/// Asks whether to go ahead with something worth asking about first. Cancel is the default;
+/// a `destructive` answer is drawn as one, as GNOME marks what cannot be put right.
+pub async fn confirm(parent: &impl IsA<gtk::Widget>, heading: &str, detail: &str, action: &str, destructive: bool) -> bool {
+    let appearance = if destructive { adw::ResponseAppearance::Destructive } else { adw::ResponseAppearance::Suggested };
+    answer(parent, heading, detail, "_Cancel", action, appearance).await
 }
 
 /// Asks a question answered yes or no, `no` first and the default, as GNOME puts the safe
 /// answer: on the left, and what Escape and Enter give.
-pub async fn yes_or_no(parent: &impl IsA<gtk::Window>, heading: &str, detail: &str, no: &str, yes: &str) -> bool {
-    let dialog = gtk::AlertDialog::builder()
-        .message(heading)
-        .detail(detail)
-        .buttons([no, yes])
-        .cancel_button(0)
-        .default_button(0)
-        .modal(true)
-        .build();
-    dialog.choose_future(Some(parent)).await == Ok(1)
+pub async fn yes_or_no(parent: &impl IsA<gtk::Widget>, heading: &str, detail: &str, no: &str, yes: &str) -> bool {
+    answer(parent, heading, detail, &response_label(no), yes, adw::ResponseAppearance::Suggested).await
+}
+
+async fn answer(
+    parent: &impl IsA<gtk::Widget>,
+    heading: &str,
+    detail: &str,
+    no: &str,
+    yes: &str,
+    appearance: adw::ResponseAppearance,
+) -> bool {
+    let dialog = alert(heading, detail);
+    dialog.add_response("no", no);
+    dialog.add_response("yes", &response_label(yes));
+    dialog.set_response_appearance("yes", appearance);
+    dialog.set_default_response(Some("no"));
+    dialog.set_close_response("no");
+    dialog.choose_future(Some(parent)).await == "yes"
 }
 
 /// Asks which of `options` to go ahead with, or none: Cancel first, as GNOME orders a
-/// dialog's buttons, and the default; then a button each.
-pub async fn choose(parent: &impl IsA<gtk::Window>, heading: &str, detail: &str, options: &[&str]) -> Option<usize> {
-    let mut buttons = vec!["Cancel"];
-    buttons.extend_from_slice(options);
-    let dialog = gtk::AlertDialog::builder()
-        .message(heading)
-        .detail(detail)
-        .buttons(buttons)
-        .cancel_button(0)
-        .default_button(0)
-        .modal(true)
-        .build();
-    let chosen = dialog.choose_future(Some(parent)).await.ok()?;
-    usize::try_from(chosen).ok().and_then(|index| index.checked_sub(1))
+/// dialog's buttons, and the default; then a button each, drawn as `destructive` ones if so.
+pub async fn choose(
+    parent: &impl IsA<gtk::Widget>,
+    heading: &str,
+    detail: &str,
+    options: &[&str],
+    destructive: bool,
+) -> Option<usize> {
+    let dialog = alert(heading, detail);
+    dialog.add_response("cancel", "_Cancel");
+    for (index, option) in options.iter().enumerate() {
+        let id = index.to_string();
+        dialog.add_response(&id, &response_label(option));
+        if destructive {
+            dialog.set_response_appearance(&id, adw::ResponseAppearance::Destructive);
+        }
+    }
+    dialog.set_default_response(Some("cancel"));
+    dialog.set_close_response("cancel");
+    dialog.choose_future(Some(parent)).await.parse().ok()
 }
 
 /// Opens a modal window holding `content` above Cancel and OK, which answers with what

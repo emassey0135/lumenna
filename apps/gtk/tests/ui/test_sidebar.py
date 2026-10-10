@@ -35,7 +35,7 @@ class SidebarTest(unittest.TestCase):
         self.assertIn("[menu item]", self.session.focus())
         self.session.press("Return")
         self.session.wait_for_window("New Project")
-        self.assertEqual(self.session.focus(), "[text] 'Name:'")
+        self.assertEqual(self.session.focus(), "[text] 'Name'")
         self.session.type("Home")
         self.session.press("Return", wait=1)
         self.assertEqual(self.session.said(), ["Added project Home"])
@@ -48,7 +48,7 @@ class SidebarTest(unittest.TestCase):
         self.session.wait_for_window("New Project")
         self.session.press("Return")
         # The refusal is said in an alert.
-        self.session.wait_for_window("")
+        self.session.wait_for_alert()
         self.assertTrue(self.session.lum("project", "list").startswith("2 projects"))
 
     def test_renaming_a_project_keeps_it_shown(self):
@@ -72,7 +72,7 @@ class SidebarTest(unittest.TestCase):
         self.session.press("Control+a")
         self.session.type("1,5")
         self.session.press("Return")
-        self.session.wait_for_window("")
+        self.session.wait_for_alert()
         self.session.press("Return")
         self.session.wait_for_window("Weight of Work")
         self.session.press("Control+a")
@@ -85,15 +85,17 @@ class SidebarTest(unittest.TestCase):
     def test_delete_on_a_label_asks_first_and_cancel_is_the_default(self):
         self.go_to("calls")
         self.session.press("Delete")
-        self.session.wait_for_window("")
+        self.session.wait_for_alert()
         self.session.press("Return")
         self.assertIn("calls", self.session.lum("label", "list"))
 
     def test_delete_on_a_label_deletes_it_when_confirmed(self):
         self.go_to("calls")
         self.session.press("Delete")
-        self.session.wait_for_window("")
-        self.session.press("Tab", "Return", wait=1)
+        self.session.wait_for_alert()
+        self.assertEqual(self.session.focus(), "[button] 'Cancel'", "Cancel is the default")
+        self.session.tab_to("Delete Label")
+        self.session.press("Return", wait=1)
         self.assertNotIn("calls", self.session.lum("label", "list"))
         self.assertEqual(self.session.said(), ["Deleted label calls; tasks that wore it are unchanged"])
 
