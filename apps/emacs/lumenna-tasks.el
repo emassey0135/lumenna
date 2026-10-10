@@ -139,6 +139,11 @@ NOW, the task's project, is the default.  Only an offered project is taken,
 and typing finds one.  A project's level in the tree is its annotation, as
 an outline says it, never indentation alone."
   (let* ((options (append (lumenna--value "form.project_options") nil))
+         ;; An archived project is offered to no task, but the one this task is in stays
+         ;; on its list, or the field would lose it.
+         (options (if (or (null now) (seq-find (lambda (o) (equal (plist-get o :id) now)) options))
+                      options
+                    (append options (list (list :id now :title now :depth 0)))))
          (lines (lumenna--unique (mapcar (lambda (o) (cons (plist-get o :title) o)) options)))
          (completion-extra-properties
           (list :annotation-function
