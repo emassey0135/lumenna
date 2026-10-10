@@ -29,7 +29,7 @@ use crate::clock::Locale;
 use crate::core::{Core, Event, sentence};
 use crate::detail::Detail;
 use crate::sidebar::Sidebar;
-use lumenna_surface::actions::{Action, ActionKind};
+use lumenna_surface::actions::{Action, ActionKind, Subject};
 use crate::blocks::BlockList;
 use crate::day::DayView;
 use crate::tasks::TaskList;
@@ -702,8 +702,13 @@ impl App {
         let task_command = |name: &str, kinds: &'static [ActionKind]| {
             simple_with(self, name, move |app| {
                 let actions = app.task_actions_in_hand();
-                if let Some(action) = crate::actions::find(&actions, kinds) {
-                    crate::actions::run(app, action.clone(), None);
+                match crate::actions::find(&actions, kinds) {
+                    Some(action) => crate::actions::run(app, action.clone(), None),
+                    // A task in hand that does not offer it says why; with none, nothing to say.
+                    None if !actions.is_empty() => {
+                        app.say(&lumenna_surface::actions::not_offered(kinds[0], Subject::Task, false));
+                    }
+                    None => {}
                 }
             });
         };

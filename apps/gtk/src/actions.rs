@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::gio;
-use lumenna_desktop::speech::{self, Clock};
+use lumenna_desktop::speech::{self, Clock as _};
 use lumenna_surface::actions::{Action, ActionKind, Answer, Question, Subject};
 use lumenna_surface::places::Place;
 use lumenna_surface::{Change, block_fields, day_block_fields};
@@ -161,7 +161,7 @@ async fn answer(app: &App, from: &Asking, action: &Action, typed: Option<String>
                 return None;
             }
             let options: Vec<(String, u32)> =
-                choices.choices.iter().map(|choice| (choice_text(choice, &app.clock), choice.depth)).collect();
+                choices.choices.iter().map(|choice| (speech::choice(choice, &app.clock), choice.depth)).collect();
             let index = prompts::pick(window, title, "_Choices:", &options).await?;
             let id = choices.choices.get(index)?.id.clone();
             let length = match length {
@@ -176,21 +176,6 @@ async fn answer(app: &App, from: &Asking, action: &Action, typed: Option<String>
             Some(Answer::Picked { id: answers.get(index)?.id.clone(), length: None })
         }
     }
-}
-
-/// A choice as its row reads: its title, then what tells it apart. A block is said by its day
-/// and times in this desktop's own words.
-fn choice_text(choice: &lumenna_surface::actions::Choice, clock: &dyn Clock) -> String {
-    let mut parts = Vec::new();
-    if let Some(date) = &choice.date {
-        parts.push(clock.day(date));
-    }
-    if let (Some(start), Some(end)) = (&choice.start, &choice.end) {
-        parts.push(format!("{} to {}", clock.time(start), clock.time(end)));
-    }
-    parts.push(choice.title.clone());
-    parts.extend(choice.detail.clone());
-    parts.join(", ")
 }
 
 // ---------------------------------------------------------------------------------------

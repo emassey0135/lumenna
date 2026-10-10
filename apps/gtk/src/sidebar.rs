@@ -54,10 +54,20 @@ impl Sidebar {
             // Delete here does what it does in every other list: the row's own Delete.
             if matches!(key, gdk::Key::Delete | gdk::Key::KP_Delete) && modifiers.is_empty() {
                 let entry = sidebar.entries.borrow().get(index).cloned();
-                if let Some(entry) = entry
-                    && let Some(action) = actions::find(&entry.actions, actions::DELETE)
-                {
-                    actions::run(&app, action.clone(), Some(after(&entry)));
+                let subject = match entry.as_ref().map(|entry| &entry.kind) {
+                    Some(SidebarKind::Place(Place::Project(_))) => Some(Subject::Project),
+                    Some(SidebarKind::Place(Place::Label(_))) => Some(Subject::Label),
+                    Some(SidebarKind::Place(Place::Filter { .. })) => Some(Subject::Filter),
+                    _ => None,
+                };
+                match entry.as_ref().and_then(|entry| actions::find(&entry.actions, actions::DELETE)) {
+                    Some(action) => actions::run(&app, action.clone(), entry.as_ref().map(after)),
+                    // The Inbox says why it stays; a fixed place or a heading has nothing to say.
+                    None => {
+                        if let Some(subject) = subject {
+                            app.say(&lumenna_surface::actions::not_offered(ActionKind::Delete, subject, false));
+                        }
+                    }
                 }
                 return glib::Propagation::Stop;
             }
