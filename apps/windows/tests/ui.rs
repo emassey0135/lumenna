@@ -354,7 +354,7 @@ fn the_block_form_has_every_setting_and_its_flags_follow_the_kind() {
     assert!(unnamed(&form).is_empty(), "{:#?}", unnamed(&form));
     let flag = |name: &str| form.iter().find(|l| l.contains(&format!("CheckBox '{name}'"))).cloned().unwrap_or_default();
     assert!(flag("Takes tasks").contains(" unchecked"), "a break takes no tasks: {form:#?}");
-    assert!(flag("Counts toward the hours for work").contains(" unchecked"), "{}", flag("Counts toward the hours for work"));
+    assert!(flag("Counts toward hours for work").contains(" unchecked"), "{}", flag("Counts toward hours for work"));
     // Set apart from its kind — someone who works on the train — then the flags, the first
     // day, and the right-hand column: repeats, last day, shortest length, filter, colour.
     app.post(&[

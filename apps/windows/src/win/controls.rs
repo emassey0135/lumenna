@@ -65,6 +65,14 @@ pub fn set_text(hwnd: HWND, value: &str) {
     }
 }
 
+/// Shows an example of what a single-line field takes, greyed, while it is empty: Windows'
+/// own placeholder, which UI Automation reports as the field's help text.
+pub fn cue(edit: HWND, example: &str) {
+    if !example.is_empty() {
+        let text = HSTRING::from(example);
+        send(edit, windows::Win32::UI::Controls::EM_SETCUEBANNER, 0, text.as_ptr() as isize);
+    }
+}
 
 pub fn show(hwnd: HWND, visible: bool) {
     unsafe {

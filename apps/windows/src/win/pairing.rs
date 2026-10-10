@@ -12,7 +12,7 @@ use std::sync::mpsc::{RecvTimeoutError, Sender, channel};
 use std::sync::Arc;
 use std::time::Duration;
 
-use lumenna_surface::{Lumenna, LumennaError, PairedWith, PairingPrompt, Reach};
+use lumenna_surface::{Lumenna, LumennaError, PairedWith, PairingPrompt, PairingWords, Reach, pairing_words};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -23,7 +23,7 @@ use super::controls;
 use super::core::{Poster, sentence, taken};
 use super::dialog::{self, Class, Dialog, Template};
 use super::{a11y, prompts, system};
-use crate::speech;
+use crate::{devices, speech};
 
 const WAIT: u16 = 101;
 const MY_CODE: u16 = 102;
@@ -39,13 +39,10 @@ const WM_PAIR_WORDS: u32 = WM_APP + 21;
 /// The pairing ended: a boxed `Result<PairedWith, String>`.
 const WM_PAIR_DONE: u32 = WM_APP + 22;
 
-/// What an empty code field means, said with the field and shown under it.
-const EMPTY_MEANS: &str = "Left empty, the code on the clipboard is used.";
-
-const INTRO: &str = "On the same network, start pairing on both devices and they find each other: choose Wait for the Other Device here, and pair on the other one too. On different networks, one shows a code and the other enters it.";
-
 struct Pairing {
     lumenna: Arc<Lumenna>,
+    /// Every sentence and button, the core's; the access keys are this dialog's.
+    words: PairingWords,
     /// Set when the person gives up, which ends the wait for the other device.
     cancelled: RefCell<Option<Arc<AtomicBool>>>,
     running: Cell<bool>,
@@ -74,7 +71,7 @@ impl Pairing {
         // pairing runs at a time, so while dialling there is nothing more to enter.
         self.waiting.set(code.is_none());
         controls::enable(dialog::item(hwnd, WITH_CODE), code.is_none());
-        self.say(hwnd, if code.is_none() { "Opening a pairing session." } else { "Connecting to the other device." });
+        self.say(hwnd, if code.is_none() { &self.words.opening } else { &self.words.connecting });
         let cancelled = Arc::new(AtomicBool::new(false));
         *self.cancelled.borrow_mut() = Some(Arc::clone(&cancelled));
         let window = Poster::new(hwnd);
@@ -104,7 +101,7 @@ impl Pairing {
             code = pasted;
         }
         if code.is_empty() {
-            prompts::fail(hwnd, "Type or paste the code the other device shows.");
+            prompts::fail(hwnd, &self.words.need_code);
             controls::focus(field);
             return;
         }
@@ -114,7 +111,7 @@ impl Pairing {
                 if let Some(cancelled) = self.cancelled.borrow().as_ref() {
                     cancelled.store(true, Ordering::Relaxed);
                 }
-                self.say(hwnd, "Giving up waiting, then connecting to the other device.");
+                self.say(hwnd, &self.words.switching);
             }
             return;
         }
@@ -126,15 +123,17 @@ impl Dialog for Pairing {
     fn template(&self) -> Template {
         let field = ES_AUTOHSCROLL as u32 | WS_BORDER.0 | WS_TABSTOP.0;
         let button = BS_PUSHBUTTON as u32 | WS_TABSTOP.0;
-        Template::new("Pair a Device", 280, 207)
-            .item(Class::Static, INTRO, u16::MAX, SS_NOPREFIX.0, 7, 7, 266, 36)
-            .item(Class::Button, "&Wait for the Other Device", WAIT, button, 7, 46, 120, 14)
-            .item(Class::Static, "This device's &code:", MY_CODE_LABEL, 0, 7, 66, 266, 9)
+        let words = &self.words;
+        let key = |text: &str, letter| devices::marked(text, letter, '&');
+        Template::new(&words.title, 280, 207)
+            .item(Class::Static, &words.intro, u16::MAX, SS_NOPREFIX.0, 7, 7, 266, 36)
+            .item(Class::Button, &key(&words.wait, 'W'), WAIT, button, 7, 46, 120, 14)
+            .item(Class::Static, &format!("{}:", key(&words.my_code, 'c')), MY_CODE_LABEL, 0, 7, 66, 266, 9)
             .item(Class::Edit, "", MY_CODE, field | ES_READONLY as u32, 7, 76, 266, 14)
-            .item(Class::Static, "Code from the &other device:", u16::MAX, 0, 7, 96, 266, 9)
+            .item(Class::Static, &format!("{}:", key(&words.their_code, 'o')), u16::MAX, 0, 7, 96, 266, 9)
             .item(Class::Edit, "", THEIR_CODE, field, 7, 106, 266, 14)
-            .item(Class::Static, EMPTY_MEANS, u16::MAX, SS_NOPREFIX.0, 7, 123, 266, 9)
-            .item(Class::Button, "&Pair With This Code", WITH_CODE, button, 7, 134, 120, 14)
+            .item(Class::Static, &words.empty_means, u16::MAX, SS_NOPREFIX.0, 7, 123, 266, 9)
+            .item(Class::Button, &key(&words.join, 'P'), WITH_CODE, button, 7, 134, 120, 14)
             .item(Class::Static, "", STATUS, SS_NOPREFIX.0, 7, 154, 266, 28)
             .item(Class::Button, "Cancel", IDCANCEL.0 as u16, button, 223, 186, 50, 14)
     }
@@ -142,7 +141,7 @@ impl Dialog for Pairing {
     fn init(&self, hwnd: HWND) -> bool {
         a11y::make_live(dialog::item(hwnd, STATUS));
         // Read with the field, as well as shown under it.
-        a11y::set_description(dialog::item(hwnd, THEIR_CODE), EMPTY_MEANS);
+        a11y::set_description(dialog::item(hwnd, THEIR_CODE), &self.words.empty_means);
         // This device's code shows once there is one.
         controls::show(dialog::item(hwnd, MY_CODE_LABEL), false);
         controls::show(dialog::item(hwnd, MY_CODE), false);
@@ -173,21 +172,15 @@ impl Dialog for Pairing {
                 controls::show(dialog::item(hwnd, MY_CODE), true);
                 controls::focus(dialog::item(hwnd, MY_CODE));
                 let copied = system::copy(hwnd, &code);
-                self.say(
-                    hwnd,
-                    &format!(
-                        "Waiting for the other device. On this network it finds this PC by itself. On another network, enter this code there, or run lum pair followed by it.{} Waiting up to ten minutes.",
-                        if copied { " The code is copied." } else { "" }
-                    ),
-                );
+                let waiting = &self.words.waiting;
+                self.say(hwnd, &if copied { format!("{waiting} {}", self.words.copied) } else { waiting.clone() });
             }
             WM_PAIR_WORDS => {
                 let (words, answer): (Vec<String>, Sender<bool>) = unsafe { taken(lparam) };
-                let message = format!(
-                    "{}. Say yes only if the other device shows the same three words.",
-                    words.join(", ")
-                );
-                let chosen = prompts::choose(hwnd, "Do These Words Match?", &message, &["Yes, They Match", "No, They Differ"], false);
+                let said = &self.words;
+                let message = format!("{} {}.", said.match_message, words.join(", "));
+                let answers = [said.match_yes.as_str(), said.match_no.as_str()];
+                let chosen = prompts::choose(hwnd, &said.match_title, &message, &answers, false);
                 let _ = answer.send(chosen == Some(0));
             }
             WM_PAIR_DONE => {
@@ -259,6 +252,7 @@ impl PairingPrompt for Prompt {
 pub fn run(owner: HWND, lumenna: Arc<Lumenna>) -> Option<String> {
     let pairing = Pairing {
         lumenna,
+        words: pairing_words("this PC".to_owned(), true),
         cancelled: RefCell::new(None),
         running: Cell::new(false),
         waiting: Cell::new(false),
