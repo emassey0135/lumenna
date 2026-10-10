@@ -27,6 +27,8 @@
 //! calls in; here a bare number is refused rather than mistaken for a prefix.
 
 mod durability;
+#[cfg(feature = "link")]
+mod devices;
 #[cfg(any(unix, windows))]
 pub mod endpoint;
 mod error;

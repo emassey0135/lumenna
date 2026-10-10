@@ -28,15 +28,8 @@ struct CompletionOffer: View {
         return try? core.lumenna.completeText(text: text, cursor: UInt32(text.utf8.count), syntax: syntax)
     }
 
-    /// The candidate in place of the bytes it replaces, with a space after it so the next
-    /// word can follow.
     static func insert(_ candidate: Candidate, into text: String, at offered: Completions) -> String {
-        let bytes = Array(text.utf8)
-        let start = min(Int(offered.start), bytes.count)
-        let end = min(max(Int(offered.end), start), bytes.count)
-        let before = String(decoding: bytes[..<start], as: UTF8.self)
-        let after = String(decoding: bytes[end...], as: UTF8.self)
-        return before + candidate.text + (after.hasPrefix(" ") ? "" : " ") + after
+        CompletionText.insert(candidate, into: text, start: offered.start, end: offered.end).text
     }
 }
 

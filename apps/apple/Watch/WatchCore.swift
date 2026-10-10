@@ -108,17 +108,3 @@ enum Announcer {
         say(([announcement] + notices).filter { !$0.isEmpty }.joined(separator: ". "))
     }
 }
-
-extension Error {
-    /// The sentence the core wrote, which is already phrased to be read aloud.
-    var sentence: String {
-        if let error = self as? LumennaError {
-            let message: String
-            switch error {
-            case let .Failed(text), let .SyncElsewhere(text): message = text
-            }
-            return message.prefix(1).uppercased() + message.dropFirst()
-        }
-        return localizedDescription
-    }
-}

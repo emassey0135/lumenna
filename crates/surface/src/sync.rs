@@ -36,7 +36,6 @@ use std::time::Duration;
 
 use lumenna_core::edit;
 use lumenna_core::id::NodeId;
-use lumenna_core::model::Device;
 use lumenna_store::ChangeHash;
 use lumenna_sync::invite::{Invitation, identity};
 use lumenna_sync::node::{Network, Node, PeerResult};
@@ -44,10 +43,7 @@ use lumenna_sync::{SharedStore, SyncError};
 use n0_future::time::Instant;
 
 use crate::error::{LumennaError, Result};
-use crate::tasks::record_or;
-use crate::types::{
-    Announced, Change, DeviceList, DeviceView, PairedWith, PeerSync, Reach, SyncReport, SyncStatus,
-};
+use crate::types::{PairedWith, PeerSync, Reach, SyncReport, SyncStatus};
 use crate::words::count_line;
 use crate::{Lumenna, repaired};
 
@@ -144,7 +140,7 @@ impl Lumenna {
     }
 }
 
-fn this_node(store: &SharedStore) -> Result<NodeId> {
+pub(crate) fn this_node(store: &SharedStore) -> Result<NodeId> {
     let key = lumenna_sync::node::device_key(store)?;
     Ok(NodeId::from_bytes(*key.public().as_bytes()))
 }
@@ -313,7 +309,8 @@ impl Lumenna {
     ///
     /// If the store cannot be read.
     pub fn sync_status_with(&self, running: bool) -> Result<SyncStatus> {
-        let (me, devices) = self.device_views()?;
+        let me = this_node(&self.shared())?;
+        let devices = self.device_views(Some(me))?;
         let others = devices.iter().filter(|d| !d.this_device).count();
         let announcement = match (running, others) {
             (_, 0) => "Not paired with any other device yet".to_owned(),
@@ -330,58 +327,6 @@ impl Lumenna {
             this_device: me.to_string(),
             devices,
         })
-    }
-
-    /// The paired devices, this one first.
-    ///
-    /// # Errors
-    ///
-    /// If the store cannot be read.
-    pub fn devices(&self) -> Result<DeviceList> {
-        let (_, devices) = self.device_views()?;
-        Ok(DeviceList {
-            announcement: count_line(devices.len(), "paired device"),
-            notices: Vec::new(),
-            devices,
-        })
-    }
-
-    /// Renames a device, found by name or the start of its identifier.
-    ///
-    /// # Errors
-    ///
-    /// If no device, or more than one, matches.
-    pub fn rename_device(&self, device: &str, name: &str) -> Result<Change> {
-        let found = self.find_device(device)?;
-        self.told(|store| {
-            let change = edit::rename_device(&repaired(store), found.node_id, name)?;
-            record_or(store, &change, "it already has that name")
-        })
-    }
-
-    /// Stops syncing with a device. It keeps what it already has.
-    ///
-    /// # Errors
-    ///
-    /// If no device, or more than one, matches; or it is this device.
-    pub fn unpair_device(&self, device: &str) -> Result<Change> {
-        let found = self.find_device(device)?;
-        if found.node_id == this_node(&self.shared())? {
-            return Err(LumennaError::new(
-                "this device cannot unpair itself; unpair it from one of your other devices",
-            ));
-        }
-        let change = self.told(|store| {
-            let change = edit::unpair_device(&repaired(store), found.node_id)?;
-            store.apply_recorded(&change)?;
-            Ok(Change::of(&change))
-        })?;
-        // Say plainly what unpairing does not do.
-        Ok(change.note(format!(
-            "{} keeps everything it already has. Unpairing is for a device you replaced; if it \
-             was lost or stolen, unpairing alone does not take your data back from it",
-            found.name
-        )))
     }
 }
 
@@ -500,57 +445,6 @@ impl Lumenna {
     }
 }
 
-impl Lumenna {
-    fn device_views(&self) -> Result<(NodeId, Vec<DeviceView>)> {
-        let me = this_node(&self.shared())?;
-        let (snapshot, peers) = self.with(|store| Ok((repaired(store), store.peers()?)))?;
-        let when = |millis: i64| {
-            jiff::Timestamp::from_millisecond(millis).map_or_else(|_| String::new(), |t| t.to_string())
-        };
-        let mut views: Vec<DeviceView> = snapshot
-            .devices
-            .values()
-            .map(|device| {
-                let status = peers.iter().find(|p| p.node_id == device.node_id.to_string());
-                let mut view = DeviceView {
-                    name: device.name.clone(),
-                    platform: device.platform.clone(),
-                    node_id: device.node_id.to_string(),
-                    this_device: device.node_id == me,
-                    paired_at: device.paired_at.to_string(),
-                    last_attempt: status.and_then(|s| s.last_attempt).map(when),
-                    last_success: status.and_then(|s| s.last_success).map(when),
-                    last_error: status.and_then(|s| s.last_error.clone()),
-                    schema_version: device.schema,
-                    status: Vec::new(),
-                };
-                view.status = crate::words::device_status(&view, jiff::Timestamp::now());
-                view
-            })
-            .collect();
-        views.sort_by(|a, b| b.this_device.cmp(&a.this_device).then(a.name.cmp(&b.name)));
-        Ok((me, views))
-    }
-
-    fn find_device(&self, input: &str) -> Result<Device> {
-        let snapshot = self.with(|store| Ok(repaired(store)))?;
-        let lowered = input.to_lowercase();
-        let matches: Vec<&Device> = snapshot
-            .devices
-            .values()
-            .filter(|d| {
-                d.name.to_lowercase() == lowered || d.node_id.to_string().starts_with(&lowered)
-            })
-            .collect();
-        match matches.as_slice() {
-            [one] => Ok((*one).clone()),
-            [] => Err(LumennaError::new(format!("no paired device called '{input}'"))),
-            _ => Err(LumennaError::new(format!(
-                "'{input}' matches more than one device; give more of its identifier"
-            ))),
-        }
-    }
-}
 
 /// A sync loop's handle: asks it for a round, or stops it. Dropping every handle stops it too.
 #[derive(Clone)]

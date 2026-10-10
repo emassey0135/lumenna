@@ -1,6 +1,7 @@
-import UIKit
+import Foundation
 
-/// Rows folded away under a collapsed one, on one list. Folding is how someone moving a row
+/// Rows folded away under a collapsed one, on one list, for the iPhone's lists and the
+/// watch's alike. Folding is how someone moving a row
 /// at a time skips a block or project with a lot under it, so every list with depth has it,
 /// and everything starts expanded.
 struct Folding {
@@ -39,19 +40,11 @@ struct Folding {
         return shown[index].depth != previous ? "level \(shown[index].depth + 1)" : nil
     }
 
-    /// Expand or Collapse, for a row with something under it. `changed` redraws the list
-    /// and says what happened.
-    func action<Item>(
-        for row: Shown<Item>, key: String, changed: @escaping (_ key: String, _ said: String) -> Void
-    ) -> UIContextualAction? {
+    /// The action that folds or unfolds a row, with what is said once it has: only a row
+    /// with something under it has one.
+    static func action<Item>(for row: Shown<Item>) -> (title: String, said: String)? {
         guard row.parent else { return nil }
-        let title = row.collapsed ? "Expand" : "Collapse"
-        let action = UIContextualAction(style: .normal, title: title) { _, _, finished in
-            changed(key, row.collapsed ? "Expanded" : "Collapsed")
-            finished(true)
-        }
-        action.backgroundColor = .lumennaTint
-        return action
+        return row.collapsed ? ("Expand", "Expanded") : ("Collapse", "Collapsed")
     }
 
     mutating func toggle(_ key: String) {

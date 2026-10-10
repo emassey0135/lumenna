@@ -155,19 +155,30 @@ fn device(this: bool, success: Option<&str>, error: Option<&str>, attempt: Optio
 fn a_device_says_how_syncing_with_it_last_went() {
     use lumenna_surface::words::device_status;
     let now: jiff::Timestamp = "2026-10-04T12:00:00Z".parse().unwrap();
-    assert_eq!(device_status(&device(true, None, None, None), now), ["this device"]);
-    assert_eq!(device_status(&device(false, None, None, None), now), ["not synced yet"]);
+    assert_eq!(device_status(&device(true, None, None, None), now, true), ["this device"]);
+    assert_eq!(device_status(&device(false, None, None, None), now, true), ["not synced yet"]);
     assert_eq!(
-        device_status(&device(false, Some("2026-10-04T11:55:00Z"), None, None), now),
+        device_status(&device(false, Some("2026-10-04T11:55:00Z"), None, None), now, true),
         ["last synced 5 minutes ago"]
     );
     assert_eq!(
         device_status(
             &device(false, Some("2026-10-03T12:00:00Z"), Some("timed out"), Some("2026-10-04T11:00:00Z")),
-            now
+            now,
+            true
         ),
         ["last attempt 1 hour ago failed: timed out", "last synced 1 day ago"]
     );
+}
+
+#[test]
+fn a_watch_says_only_a_devices_version_since_it_never_syncs_with_one_directly() {
+    use lumenna_surface::words::device_status;
+    let now: jiff::Timestamp = "2026-10-04T12:00:00Z".parse().unwrap();
+    assert!(device_status(&device(false, None, None, None), now, false).is_empty(), "not \"not synced yet\"");
+    let mut older = device(false, Some("2026-10-04T11:55:00Z"), None, None);
+    older.schema_version = 0;
+    assert_eq!(device_status(&older, now, false), ["runs an older version of Lumenna, so update it"]);
 }
 
 #[test]
@@ -186,7 +197,7 @@ fn a_device_on_another_version_says_so() {
     let now: jiff::Timestamp = "2026-10-04T12:00:00Z".parse().unwrap();
     let ours = lumenna_core::model::SCHEMA_VERSION;
     let older = DeviceView { schema_version: ours - 1, ..device(false, Some("2026-10-04T11:55:00Z"), None, None) };
-    assert_eq!(device_status(&older, now)[0], "runs an older version of Lumenna, so update it");
+    assert_eq!(device_status(&older, now, true)[0], "runs an older version of Lumenna, so update it");
     let newer = DeviceView { schema_version: ours + 1, ..device(false, None, None, None) };
-    assert_eq!(device_status(&newer, now), ["runs a newer version of Lumenna, so update this device", "not synced yet"]);
+    assert_eq!(device_status(&newer, now, true), ["runs a newer version of Lumenna, so update this device", "not synced yet"]);
 }
