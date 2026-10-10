@@ -229,6 +229,7 @@ def request_choice(choices, prompt="", default=None, **_ignored):
 
 def request_input(prompt, default_text="", **_ignored):
     """`("input", text)` types `text`; None cancels; `...` accepts what was offered."""
+    script.prompts.append(prompt)
     (text,) = script.take("input", prompt)
     return default_text if text is Ellipsis else text
 

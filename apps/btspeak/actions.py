@@ -89,7 +89,8 @@ def named(action: dict) -> str:
 
 
 def prompt(*parts: str) -> str:
-    return ". ".join(part for part in parts if part)
+    """Parts of a question as one prompt, each sentence ended once."""
+    return ". ".join(part.strip().rstrip(".") for part in parts if part and part.strip())
 
 
 def act(session: Session, action: dict, row=None) -> str:
@@ -134,9 +135,21 @@ def act(session: Session, action: dict, row=None) -> str:
     return session.write("act", action=action, answer=answer)
 
 
+def text_prompt(question: dict) -> str:
+    """What a text question says before its line: its title in sentence case, then its hint."""
+    return prompt(question.get("sentence") or question.get("title", ""), question.get("hint", ""))
+
+
+def ask_line(session: Session, method: str) -> str | None:
+    """The line one of the app's own questions asks for, in the core's words (`form.go_to_day`,
+    `form.length`); None if cancelled."""
+    question = session.words(method)
+    return dialogs.request_input(text_prompt(question), default_text=question.get("initial", ""))
+
+
 def ask_text(session: Session, action: dict, question: dict) -> str | None:
     """The line a text question asks for, sent as typed even when empty; None if cancelled."""
-    said = prompt(question.get("title", ""), question.get("hint", ""))
+    said = text_prompt(question)
     initial = question.get("initial", "")
     if action["kind"] == "change_query":
         import tasks  # here, since tasks imports this module
@@ -172,7 +185,7 @@ def ask_pick(session: Session, action: dict, question: dict):
             return picked[1:] if picked else ""
     length = None
     if question.get("length"):
-        length = dialogs.request_input(question["length"], default_text="")
+        length = ask_line(session, "form.length")
         if length is None:
             return ""
     return {"answer": "picked", "id": picked, "length": length}
@@ -181,7 +194,7 @@ def ask_pick(session: Session, action: dict, question: dict):
 def another_day(session: Session) -> str:
     """A work block on a day named, from what the core offers for it: its identifier, empty
     if cancelled, or a sentence to say marked with a leading NUL."""
-    when = dialogs.request_input("Which day?", default_text="next monday")
+    when = ask_line(session, "form.go_to_day")
     if not when:
         return ""
     try:

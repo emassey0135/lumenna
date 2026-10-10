@@ -17,7 +17,7 @@ from BTSpeak import clipboard, dialogs
 import actions
 import options
 from client import LumennaError
-from session import REFRESH, Command, Session, ask, choose, confirm, live_menu, row_item, screen, spoken
+from session import REFRESH, Command, Session, ask, choose, confirm, empty_then, live_menu, row_item, screen, spoken
 from tasks import undo_commands
 
 
@@ -137,6 +137,8 @@ def devices(session: Session) -> str:
             state["heading"] += (
                 ". To keep in sync in the background, run lum daemon install once from a shell"
             )
+        if not status.get("devices"):
+            state["empty"] = session.call("device.list").get("empty", "")
         return [row_item(device, device_line(device), navigation_title=device["name"]) for device in status.get("devices", [])]
 
     with screen("lumenna-settings"):
@@ -148,7 +150,7 @@ def devices(session: Session) -> str:
                 Command("Sync now", lambda _: sync_now(session), key="s"),
                 Command("Pair a device", lambda _: pair(session), key="p"),
             ],
-            empty="Not paired with any other device yet. Press p to pair one.",
+            empty=empty_then(state, "Press p to pair one."),
             app_title="Devices menu",
         )
     return ""
@@ -209,7 +211,7 @@ def pair(session: Session) -> str:
     words = pairing_words(session)
     how = choose(
         {"wait": session.sentence(words["wait"]), "code": session.sentence(words["join"])},
-        f"{session.sentence(words['title'])}. {words['intro']}",
+        f"{session.sentence(words['title'])}. {words['intro_sentence']}",
     )
     if how is None:
         return ""
@@ -303,7 +305,7 @@ def run_pairing(session: Session, params: dict) -> str:
                 default=False,
             )
             client.call("pair.confirm", match=matched)
-            shown["status"] = "Finishing" if matched else "Refusing"
+            shown["status"] = words["finishing"] if matched else words["refusing"]
 
     try:
         paired = pending.result(timeout=60)

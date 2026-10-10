@@ -351,6 +351,29 @@ class Menus(unittest.TestCase):
         script = self.run_script([("back",)], lambda: tasks.task_list(self.session))
         self.assertEqual(script.menus[0]["empty"], "No open tasks. Press a to add one.")
 
+    def test_saved_filters_and_devices_say_the_cores_words_when_empty(self):
+        script = self.run_script([("back",)], lambda: organise.saved_filters(self.session))
+        self.assertEqual(
+            script.menus[0]["empty"],
+            "No saved filters. A filter's query is kept here under a name. Press a to add one, or slash to filter now.",
+        )
+        script = self.run_script([("back",)], lambda: preferences.devices(self.session))
+        self.assertEqual(script.menus[0]["empty"], "No devices are paired yet. Pair one to sync with it. Press p to pair one.")
+
+    def test_going_to_a_day_and_a_new_filter_ask_in_the_cores_words(self):
+        script = self.run_script(
+            [("app", "Go to a day"), ("input", "tomorrow"), ("back",)],
+            lambda: day.day_plan(self.session),
+        )
+        self.assertIn("Go to day. A date, such as Friday, or 12 October", script.prompts)
+        self.assertRegex(script.titles[-1], r"^\w+ \d+ \w+ \d{4}\. ")
+        script = self.run_script(
+            [("app", "New saved filter"), ("input", "Urgent"), ("input", "p1"), ("back",)],
+            lambda: organise.saved_filters(self.session),
+        )
+        self.assertEqual([f["name"] for f in self.call("filter.list")["filters"]], ["Urgent"])
+        self.assertEqual(script.prompts[:2], ["New saved filter. Name", "New saved filter. A filter, such as p1 & due before: friday. Query"])
+
     # -- organising -------------------------------------------------------------------
 
     def test_a_project_is_made_renamed_archived_and_unarchived(self):

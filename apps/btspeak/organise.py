@@ -127,6 +127,7 @@ def saved_filters(session: Session) -> str:
     def build():
         listing = session.call("filter.list")
         state["heading"] = f"Filters, {listing.get('announcement', '')}"
+        state["empty"] = listing.get("empty", "")
         return [
             row_item({"title": saved["name"], **saved}, f"{saved['name']}, {saved['query']}", navigation_title=saved["name"])
             for saved in listing.get("filters", [])
@@ -142,7 +143,7 @@ def saved_filters(session: Session) -> str:
                 Command("Search or filter now", lambda _: tasks.query_tasks(session), key="/"),
                 *tasks.undo_commands(session),
             ],
-            empty="No saved filters yet. Press a to add one, or slash to filter now.",
+            empty=empty_then(state, "Press a to add one, or slash to filter now."),
             app_title="Filters menu",
         )
     return ""
@@ -150,10 +151,13 @@ def saved_filters(session: Session) -> str:
 
 def add_filter(session: Session, action=None, row=None) -> str:
     """The new saved filter's form: a name, then its query, completed as it is typed."""
-    name = ask("Name for the new filter")
+    naming, querying = session.words("form.new_filter")
+    name = ask(actions.prompt(actions.text_prompt(naming), naming["label"]))
     if name is None:
         return ""
-    query = tasks.assisted_input(session, f"Query for {name}", "filter", history_key="lumenna-filter")
+    query = tasks.assisted_input(
+        session, actions.prompt(actions.text_prompt(querying), querying["label"]), "filter", history_key="lumenna-filter",
+    )
     if not query:
         return ""
     return session.write("filter.add", name=name, query=query)
