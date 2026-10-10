@@ -222,6 +222,9 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
                     if action.kind != .mergeInto || wasShown { self.select(place) }
                 } else if action.kind == .delete, wasShown {
                     self.select(.tasks)
+                } else if wasShown, let place = self.place(action.subject, named: action.target), place != shown {
+                    // Changed in place, as a saved filter's query is: shown again as it now is.
+                    self.select(place)
                 }
             }
             Announcer.say(change.announcement, notices: change.notices)
