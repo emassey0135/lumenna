@@ -127,6 +127,10 @@ struct Shared {
     responder: Mutex<Option<Responder>>,
 }
 
+/// How long a lookup listens for a device not heard yet before it ends, so iroh can report
+/// it and look again on the next dial.
+const LISTEN: std::time::Duration = std::time::Duration::from_secs(3);
+
 /// Local discovery for one endpoint, as an Iroh address lookup.
 #[derive(Clone)]
 pub struct LocalLookup {
@@ -224,17 +228,28 @@ impl AddressLookup for LocalLookup {
         }
         let (now, later) = self.subscribe();
         let first: Vec<Found> = now.into_iter().filter(|found| found.id == id).collect();
+        // What is already heard, then what is heard in the next few seconds, and then the
+        // lookup ends. iroh reports a lookup only once every service has finished, and starts
+        // no other for that device while one runs: one waiting for good, as a browser's
+        // would, which hears no network, kept a failed relay lookup from ever being said, so
+        // no dial afterwards looked again and two browsers never synced.
         let stream = n0_future::stream::unfold((first, later), move |(mut first, mut later)| async move {
             if let Some(found) = first.pop() {
                 return Some((Ok(item(&found)), (first, later)));
             }
-            loop {
-                match later.recv().await {
-                    Ok(found) if found.id == id => return Some((Ok(item(&found)), (first, later))),
-                    Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
-                    Err(broadcast::error::RecvError::Closed) => return None,
+            let heard = n0_future::time::timeout(LISTEN, async {
+                loop {
+                    match later.recv().await {
+                        Ok(found) if found.id == id => return Some(found),
+                        Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
+                        Err(broadcast::error::RecvError::Closed) => return None,
+                    }
                 }
-            }
+            })
+            .await
+            .ok()
+            .flatten()?;
+            Some((Ok(item(&heard)), (first, later)))
         });
         Some(Box::pin(stream))
     }
