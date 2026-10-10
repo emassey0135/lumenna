@@ -29,7 +29,7 @@ use crate::clock::Locale;
 use crate::core::{Core, Event, sentence};
 use crate::detail::Detail;
 use crate::sidebar::Sidebar;
-use crate::task_actions::{self, Command};
+use lumenna_surface::actions::{Action, ActionKind};
 use crate::blocks::BlockList;
 use crate::day::DayView;
 use crate::tasks::TaskList;
@@ -576,11 +576,29 @@ impl App {
         }
     }
 
-    /// The task selected in the trash, for its two commands.
-    fn trashed_in_hand(&self) -> Option<String> {
-        match self.content()? {
-            Content::Tasks(list) if list.is_trash() => list.selected().map(|row| row.id),
-            _ => None,
+    /// What can be done to the task in hand — the details', the list's, a sitting's — or to
+    /// the task selected in the trash: what the Task menu's commands look among.
+    fn task_actions_in_hand(&self) -> Vec<Action> {
+        if self.detail.has_focus() {
+            return self.detail.actions();
+        }
+        match self.content() {
+            Some(Content::Tasks(list)) => list.selected().map(|row| row.actions).unwrap_or_default(),
+            Some(Content::Day(day)) => day
+                .selected_task()
+                .and_then(|id| self.core.lumenna.show_task(&id).ok())
+                .map(|shown| shown.task.actions)
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Lands on a block of `series` just made, wherever blocks are shown.
+    pub fn land_on_block(&self, series: &str) {
+        match self.content() {
+            Some(Content::Day(day)) => day.land_on_block(series),
+            Some(Content::Blocks(blocks)) => blocks.land_on(series),
+            _ => {}
         }
     }
 
@@ -613,18 +631,9 @@ impl App {
                 }
             });
         });
-        simple("new-project", |app| {
-            let app = Rc::clone(app);
-            spawn(async move { crate::sidebar::new_project(&app, None).await });
-        });
-        simple("new-label", |app| {
-            let app = Rc::clone(app);
-            spawn(async move { crate::sidebar::new_label(&app).await });
-        });
-        simple("new-filter", |app| {
-            let app = Rc::clone(app);
-            spawn(async move { crate::sidebar::new_filter(&app).await });
-        });
+        simple("new-project", |app| crate::sidebar::new_in(app, lumenna_surface::places::SidebarGroup::Projects));
+        simple("new-label", |app| crate::sidebar::new_in(app, lumenna_surface::places::SidebarGroup::Labels));
+        simple("new-filter", |app| crate::sidebar::new_in(app, lumenna_surface::places::SidebarGroup::Filters));
         simple("close-window", |app| app.window.set_visible(false));
         simple("quit", |app| app.quit());
         simple("undo", |app| {
@@ -667,22 +676,10 @@ impl App {
                 app.go(Place::Today, false);
             }
             if let Some(day) = app.day() {
-                day.add_block(app, None, None);
-            } else if app.blocks().is_some() {
+                day.add_block(app);
+            } else {
                 let app = Rc::clone(app);
-                spawn(async move {
-                    let fields = crate::block_form::new_fields("09:00", 60);
-                    let window = app.window.clone().upcast::<gtk::Window>();
-                    let purpose = crate::block_form::Purpose::Add { date: "today".to_owned() };
-                    let Some(change) = crate::block_form::run(&window, app.core.lumenna.clone(), purpose, fields, None).await else {
-                        return;
-                    };
-                    app.store_changed();
-                    if let (Some(blocks), Some(series)) = (app.blocks(), change.affected.blocks.first()) {
-                        blocks.land_on(series);
-                    }
-                    app.say_change(&change);
-                });
+                spawn(async move { crate::actions::add_block(&app, "today", "09:00", 60).await });
             }
         });
         // The day's commands go to Today first, from anywhere.
@@ -700,37 +697,25 @@ impl App {
         on_day("next-day", |app, day| day.step(app, 1));
         on_day("go-to-now", |app, day| day.go_to_now(app, true));
         on_day("go-to-day", |app, day| day.ask_for_day(app));
-        let task_command = |name: &str, command: Command| {
+        // Each runs the task in hand's action of its kind, as its row's menu would: Mark Done
+        // is Mark Not Done on a done task. A command the task does not offer does nothing.
+        let task_command = |name: &str, kinds: &'static [ActionKind]| {
             simple_with(self, name, move |app| {
-                if let Some(id) = app.task_in_hand() {
-                    task_actions::run(app, command.clone(), &id);
+                let actions = app.task_actions_in_hand();
+                if let Some(action) = crate::actions::find(&actions, kinds) {
+                    crate::actions::run(app, action.clone(), None);
                 }
             });
         };
-        task_command("mark-done", Command::MarkDone);
-        task_command("put-in-block", Command::PutInBlock);
-        task_command("move-to-project", Command::MoveToProject);
-        task_command("make-subtask", Command::MakeSubtask);
-        task_command("move-to-top", Command::MoveToTop);
-        task_command("wait-for", Command::WaitFor);
-        task_command("trash-task", Command::Trash);
-        let trashed_command = |name: &str, command: Command| {
-            simple_with(self, name, move |app| {
-                if let Some(id) = app.trashed_in_hand() {
-                    task_actions::run(app, command.clone(), &id);
-                }
-            });
-        };
-        trashed_command("restore-task", Command::Restore);
-        trashed_command("erase-task", Command::Erase);
-        let stop_waiting = gio::SimpleAction::new("stop-waiting", Some(glib::VariantTy::STRING));
-        stop_waiting.connect_activate(|_, parameter| {
-            let (Some(app), Some(other)) = (app(), parameter.and_then(|p| p.get::<String>())) else { return };
-            if let Some(id) = app.task_in_hand() {
-                task_actions::run(&app, Command::StopWaiting(other), &id);
-            }
-        });
-        self.window.add_action(&stop_waiting);
+        task_command("mark-done", &[ActionKind::MarkDone, ActionKind::MarkNotDone]);
+        task_command("put-in-block", &[ActionKind::PutInBlock]);
+        task_command("move-to-project", &[ActionKind::MoveToProject]);
+        task_command("make-subtask", &[ActionKind::MakeSubtaskOf]);
+        task_command("move-to-top", &[ActionKind::MoveToTopLevel]);
+        task_command("wait-for", &[ActionKind::WaitFor]);
+        task_command("trash-task", &[ActionKind::Delete]);
+        task_command("restore-task", &[ActionKind::Restore]);
+        task_command("erase-task", &[ActionKind::DeleteForGood]);
         simple("about", |app| {
             gtk::AboutDialog::builder()
                 .transient_for(&app.window)

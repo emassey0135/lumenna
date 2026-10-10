@@ -12,6 +12,7 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use lumenna_desktop::{devices, profile, speech};
+use lumenna_surface::actions::ActionKind;
 use lumenna_surface::{DeviceView, ExportFormat, Imported};
 
 use crate::core::sentence;
@@ -473,36 +474,18 @@ impl Devices {
         self.devices.borrow().get(index).cloned()
     }
 
-    fn change(&self, app: &App, operation: impl FnOnce(&lumenna_surface::Lumenna) -> lumenna_surface::Result<lumenna_surface::Change>) {
-        match operation(&app.core.lumenna) {
-            Ok(change) => {
-                self.load(app);
-                app.store_changed();
-                self.status.say(&speech::announcement(&change.announcement, &change.notices));
-            }
-            Err(error) => prompts::fail(&window_of(&self.list.view, app), &sentence(&error)),
-        }
-    }
-
-    async fn rename(&self, app: &App) {
+    /// Runs the chosen device's action of one of `kinds`, asked over this window and said on
+    /// this page. A device the core offers no such action for (Unpair on this one) has none.
+    fn act(&self, app: &Rc<App>, kinds: &[ActionKind]) {
         let Some(device) = self.chosen() else { return };
-        let window = window_of(&self.list.view, app);
-        let Some(name) = prompts::ask(&window, &format!("Rename {}", device.name), "_Name:", "", &device.name).await else {
-            return;
+        let Some(action) = crate::actions::find(&device.actions, kinds) else { return };
+        let status = self.status.clone();
+        let from = crate::actions::Asking {
+            window: window_of(&self.list.view, app),
+            say: Some(Rc::new(move |text: &str| status.say(text))),
         };
-        self.change(app, |l| l.rename_device(&device.node_id, &name));
-    }
-
-    async fn unpair(&self, app: &App) {
-        let Some(device) = self.chosen() else { return };
-        let window = window_of(&self.list.view, app);
-        if device.this_device {
-            return prompts::tell(&window, "This is the device you are using. Unpair it from another one.").await;
-        }
-        let message = "It stops syncing with your devices but keeps everything it already has. Unpairing is for a device you replaced; it does not take data back from a lost one.";
-        if prompts::confirm(&window, &format!("Unpair {}?", device.name), message, "Unpair").await {
-            self.change(app, |l| l.unpair_device(&device.node_id));
-        }
+        let after: crate::actions::After = Rc::new(|app, _, _| devices_heard(app, None));
+        crate::actions::run_from(app, action.clone(), Some(after), from);
     }
 }
 
@@ -562,18 +545,12 @@ fn devices_page(app: &Rc<App>) -> gtk::Widget {
             });
         });
     }
-    {
-        let (devices, app) = (Rc::clone(&devices), Rc::downgrade(app));
-        rename.connect_clicked(move |_| {
-            let (Some(app), devices) = (app.upgrade(), Rc::clone(&devices)) else { return };
-            spawn(async move { devices.rename(&app).await });
-        });
-    }
-    {
-        let (devices, app) = (Rc::clone(&devices), Rc::downgrade(app));
-        unpair.connect_clicked(move |_| {
-            let (Some(app), devices) = (app.upgrade(), Rc::clone(&devices)) else { return };
-            spawn(async move { devices.unpair(&app).await });
+    for (button, kind) in [(&rename, ActionKind::Rename), (&unpair, ActionKind::Unpair)] {
+        let (devices, app) = (Rc::downgrade(&devices), Rc::downgrade(app));
+        button.connect_clicked(move |_| {
+            if let (Some(app), Some(devices)) = (app.upgrade(), devices.upgrade()) {
+                devices.act(&app, &[kind]);
+            }
         });
     }
     // Delete in the list unpairs, as it removes in every other list.
@@ -584,7 +561,7 @@ fn devices_page(app: &Rc<App>) -> gtk::Widget {
                 return glib::Propagation::Proceed;
             }
             if let (Some(app), Some(devices)) = (app.upgrade(), devices.upgrade()) {
-                spawn(async move { devices.unpair(&app).await });
+                devices.act(&app, crate::actions::DELETE);
             }
             glib::Propagation::Stop
         });

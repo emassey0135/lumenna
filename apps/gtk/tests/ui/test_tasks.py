@@ -87,10 +87,11 @@ class TaskListTest(unittest.TestCase):
 
     def test_a_chooser_is_a_list_tab_leaves(self):
         self.session.press("Control+Shift+m")
-        self.session.wait_for_window("Move Buy milk")
-        self.assertEqual(self.session.focus(), "[tree item] 'Work' level 1 1 of 2")
+        self.session.wait_for_window("Move Buy milk to")
+        # The core's choices, nested as the projects are.
+        self.assertEqual(self.session.focus(), "[tree item] 'Work' level 1 1 of 1 expanded")
         self.session.press("Down")
-        self.assertEqual(self.session.focus(), "[tree item] 'Reports' level 1 2 of 2")
+        self.assertEqual(self.session.focus(), "[tree item] 'Reports' level 2 1 of 1")
         self.session.press("Tab")
         self.assertEqual(self.session.focus(), "[button] 'Cancel'")
         self.session.press("Shift+Tab", "Return", wait=1)

@@ -1,8 +1,9 @@
 //! Tasks, with the filter above them.
 //!
-//! A tree, so a subtask's level and every row's position are the tree's to report. Space
-//! checks a task off, Delete trashes it, Enter opens its details, and the Menu key or
-//! Shift+F10 opens everything else. After a change the selection, which is the screen
+//! A tree, so a subtask's level and every row's position are the tree's to report. A row's
+//! actions are the core's (`actions`): Space checks a task off (in the trash, restores it),
+//! Delete trashes it (in the trash, deletes it from there), Enter opens its details, and the
+//! Menu key or Shift+F10 offers the rest. After a change the selection, which is the screen
 //! reader's focus, lands on the same task if it is still listed and otherwise on whatever now
 //! holds its place.
 
@@ -16,7 +17,7 @@ use lumenna_desktop::speech;
 use lumenna_surface::RowView;
 
 use crate::core::sentence;
-use crate::task_actions::{self, Command};
+use crate::actions;
 use crate::tree::{Item, Tree};
 use crate::window::App;
 
@@ -98,11 +99,12 @@ impl TaskList {
             }
         });
         let weak = Rc::downgrade(self);
-        self.tree.connect_activate(move |_| {
-            if let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app())
-                && !list.trash && list.selected().is_some() {
-                    app.open_detail();
-                }
+        self.tree.connect_activate(move |index| {
+            let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
+            let row = list.rows.borrow().get(index).cloned();
+            if let Some(action) = row.as_ref().and_then(|row| actions::find(&row.actions, actions::ENTER)) {
+                actions::run(&app, action.clone(), None);
+            }
         });
         let weak = Rc::downgrade(self);
         self.tree.connect_key(move |key, modifiers, index| {
@@ -113,20 +115,13 @@ impl TaskList {
                 return glib::Propagation::Proceed;
             }
             let Some(row) = list.rows.borrow().get(index).cloned() else { return glib::Propagation::Proceed };
-            match key {
-                gdk::Key::space | gdk::Key::KP_Space if list.trash => {
-                    task_actions::run(&app, Command::Restore, &row.id);
-                }
-                gdk::Key::space | gdk::Key::KP_Space => {
-                    task_actions::perform(&app, Some(&row.id), |l| {
-                        if row.checked == Some(true) { l.uncomplete_task(&row.id) } else { l.complete_task(&row.id) }
-                    });
-                }
-                gdk::Key::Delete | gdk::Key::KP_Delete => {
-                    let command = if list.trash { Command::Erase } else { Command::Trash };
-                    task_actions::run(&app, command, &row.id);
-                }
+            let kinds = match key {
+                gdk::Key::space | gdk::Key::KP_Space => actions::SPACE,
+                gdk::Key::Delete | gdk::Key::KP_Delete => actions::DELETE,
                 _ => return glib::Propagation::Proceed,
+            };
+            if let Some(action) = actions::find(&row.actions, kinds) {
+                actions::run(&app, action.clone(), None);
             }
             glib::Propagation::Stop
         });
@@ -134,15 +129,8 @@ impl TaskList {
         self.tree.connect_menu(move |index, point| {
             let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
             let Some(row) = list.rows.borrow().get(index).cloned() else { return };
-            let menu = if list.trash {
-                task_actions::trash_menu()
-            } else {
-                match app.core.lumenna.show_task(&row.id) {
-                    Ok(shown) => task_actions::menu(&shown.task),
-                    Err(_) => return,
-                }
-            };
-            app.popup(&menu, list.tree.view.upcast_ref(), point, None);
+            let (menu, group) = actions::menu(&row.actions, None);
+            app.popup(&menu, list.tree.view.upcast_ref(), point, Some(&group));
         });
     }
 

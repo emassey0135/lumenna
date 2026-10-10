@@ -692,6 +692,11 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   level changes against the row shown before, as the other apps word it; position is left
   to the platform. Decided at run time; `LUMENNA_LEVEL_IN_TEXT=1` forces it for tests. CI
   runs the UI tests on Arch, so the native path is what it covers by default.
+- **A row's actions are the core's**, run by `actions.rs`: it asks each `Question` in GTK's
+  dialogs and answers only `Question::Form` itself. Space, Delete and Enter run a row's
+  action of a fixed set of kinds (`actions::SPACE`, `DELETE`, `ENTER`); the Task menu's
+  commands run the in-hand task's action of their kind, so Mark Done toggles. A settings
+  page runs them through `run_from`, over its own window and status line.
 - **Orca does not say a tree item's checked state**, so a done task says "completed" in its
   text.
 - **Focus into a row waits for the row's widget**, which does not exist until GTK lays the

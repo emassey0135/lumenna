@@ -1,18 +1,17 @@
-//! Every block series: Enter changes one, Delete deletes it.
+//! Every block series: Enter changes one, Delete deletes it; both are the row's own actions.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use gtk::prelude::*;
-use gtk::{gdk, gio, glib};
+use gtk::{gdk, glib};
 use lumenna_desktop::speech;
 use lumenna_surface::RowView;
 
-use crate::block_form::{self, Purpose};
+use crate::actions;
 use crate::core::sentence;
-use crate::prompts;
 use crate::tree::{Item, Tree};
-use crate::window::{App, spawn};
+use crate::window::App;
 
 pub struct BlockList {
     pub widget: gtk::Box,
@@ -45,8 +44,10 @@ impl BlockList {
     fn connect(self: &Rc<Self>) {
         let weak = Rc::downgrade(self);
         self.tree.connect_activate(move |index| {
-            if let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) {
-                list.edit(&app, index);
+            let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
+            let row = list.row(index);
+            if let Some(action) = row.as_ref().and_then(|row| actions::find(&row.actions, actions::ENTER)) {
+                actions::run(&app, action.clone(), None);
             }
         });
         let weak = Rc::downgrade(self);
@@ -55,7 +56,10 @@ impl BlockList {
                 return glib::Propagation::Proceed;
             };
             if matches!(key, gdk::Key::Delete | gdk::Key::KP_Delete) && modifiers.is_empty() {
-                list.delete(&app, index);
+                let row = list.row(index);
+                if let Some(action) = row.as_ref().and_then(|row| actions::find(&row.actions, actions::DELETE)) {
+                    actions::run(&app, action.clone(), None);
+                }
                 return glib::Propagation::Stop;
             }
             glib::Propagation::Proceed
@@ -63,67 +67,14 @@ impl BlockList {
         let weak = Rc::downgrade(self);
         self.tree.connect_menu(move |index, point| {
             let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
-            let menu = gio::Menu::new();
-            menu.append(Some("_Change…"), Some("row.edit"));
-            menu.append(Some("_Delete…"), Some("row.delete"));
-            let actions = gio::SimpleActionGroup::new();
-            let edit = gio::SimpleAction::new("edit", None);
-            let weak_list = Rc::downgrade(&list);
-            edit.connect_activate(move |_, _| {
-                if let (Some(list), Some(app)) = (weak_list.upgrade(), crate::window::app()) {
-                    list.edit(&app, index);
-                }
-            });
-            let delete = gio::SimpleAction::new("delete", None);
-            let weak_list = Rc::downgrade(&list);
-            delete.connect_activate(move |_, _| {
-                if let (Some(list), Some(app)) = (weak_list.upgrade(), crate::window::app()) {
-                    list.delete(&app, index);
-                }
-            });
-            actions.add_action(&edit);
-            actions.add_action(&delete);
-            app.popup(&menu, list.tree.view.upcast_ref(), point, Some(&actions));
+            let Some(row) = list.row(index).filter(|row| !row.actions.is_empty()) else { return };
+            let (menu, group) = actions::menu(&row.actions, None);
+            app.popup(&menu, list.tree.view.upcast_ref(), point, Some(&group));
         });
     }
 
     fn row(&self, index: usize) -> Option<RowView> {
         self.rows.borrow().get(index).cloned()
-    }
-
-    fn edit(self: &Rc<Self>, app: &Rc<App>, index: usize) {
-        let Some(row) = self.row(index) else { return };
-        let shown = match app.core.lumenna.show_block(&row.id) {
-            Ok(shown) => shown,
-            Err(error) => return app.fail(&sentence(&error)),
-        };
-        let rule = shown.rrule.clone().filter(|_| shown.repeats);
-        let purpose = Purpose::Series { id: shown.id.clone() };
-        let fields = lumenna_surface::block_fields(shown);
-        let (list, app) = (Rc::clone(self), Rc::clone(app));
-        spawn(async move {
-            let window = app.window.clone().upcast::<gtk::Window>();
-            if let Some(change) = block_form::run(&window, app.core.lumenna.clone(), purpose, fields, rule).await {
-                app.store_changed();
-                list.tree.select_key_or_near(Some(&row.id), list.tree.selected());
-                app.say_change(&change);
-            }
-        });
-    }
-
-    fn delete(self: &Rc<Self>, app: &Rc<App>, index: usize) {
-        let Some(row) = self.row(index) else { return };
-        let (list, app) = (Rc::clone(self), Rc::clone(app));
-        spawn(async move {
-            let heading = format!("Delete {}?", row.title);
-            if prompts::confirm(&app.window, &heading, "Every occurrence goes, with what is assigned to it.", "Delete").await {
-                let near = list.tree.selected();
-                if let Some(change) = app.perform(|lumenna| lumenna.delete_block(&row.id)) {
-                    list.tree.select_key_or_near(None, near);
-                    app.say_change(&change);
-                }
-            }
-        });
     }
 
     /// Lands on a block just made, if it is listed.

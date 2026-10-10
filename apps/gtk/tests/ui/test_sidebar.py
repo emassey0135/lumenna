@@ -65,7 +65,8 @@ class SidebarTest(unittest.TestCase):
     def test_a_weight_that_does_not_read_is_refused_and_asked_again(self):
         self.go_to("Work")
         self.session.press("Menu")
-        self.session.press(*["Down"] * 5)
+        # Rename, New Project Inside, Move Under, Move Up (it is below the Inbox), Weight.
+        self.session.press(*["Down"] * 4)
         self.session.press("Return")
         self.session.wait_for_window("Weight of Work")
         self.session.press("Control+a")

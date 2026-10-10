@@ -3,7 +3,8 @@
 //! Stock fields, each named by the label above it through the label's mnemonic, which is also
 //! the field's Alt shortcut. The mnemonics avoid the menu bar's letters (F E V T D H). What a
 //! field takes is its accessible description. Saving sends only the fields that changed (the
-//! surface's `task_edit`), and the buttons are the Task menu's own actions (`task_actions`).
+//! surface's `task_edit`), and the buttons run the task's own actions (`TaskDetail::actions`), as the Task menu
+//! does: each is there only while the task offers it.
 //!
 //! The fields follow the store while nobody is editing them: a change from another device or
 //! another process refills them, unless they hold typing not yet saved, which it would lose.
@@ -16,7 +17,9 @@ use gtk::{gdk, glib};
 use lumenna_desktop::speech;
 use lumenna_surface::{TaskDetail, TaskFields, task_edit, task_fields};
 
-use crate::task_actions::{self, Command};
+use lumenna_surface::actions::{Action, ActionKind};
+
+use crate::actions;
 use crate::tree::{Item, Tree};
 use crate::window::App;
 
@@ -38,8 +41,8 @@ pub struct Detail {
     waits_label: gtk::Label,
     stop_waiting: gtk::Button,
     state: gtk::Entry,
-    mark_done: gtk::Button,
-    move_to_top: gtk::Button,
+    /// Each button and the kinds of action it runs.
+    buttons: Vec<(gtk::Button, &'static [ActionKind])>,
     shown: RefCell<Option<TaskDetail>>,
 }
 
@@ -171,8 +174,14 @@ impl Detail {
             waits_label,
             stop_waiting,
             state,
-            mark_done,
-            move_to_top,
+            buttons: vec![
+                (add_wait.clone(), &[ActionKind::WaitFor]),
+                (mark_done.clone(), &[ActionKind::MarkDone, ActionKind::MarkNotDone]),
+                (put_in_block.clone(), &[ActionKind::PutInBlock]),
+                (make_subtask.clone(), &[ActionKind::MakeSubtaskOf]),
+                (move_to_top.clone(), &[ActionKind::MoveToTopLevel]),
+                (trash.clone(), &[ActionKind::Delete]),
+            ],
             shown: RefCell::new(None),
         });
         detail.connect(&form);
@@ -190,9 +199,10 @@ impl Detail {
         self.stop_waiting.connect_clicked(move |_| {
             let (Some(detail), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
             let Some(task) = detail.shown.borrow().clone() else { return };
-            let index = detail.waits.selected();
-            if let Some(other) = index.and_then(|i| task.depends.get(i)) {
-                task_actions::run(&app, Command::StopWaiting(other.id.clone()), &task.id);
+            let Some(other) = detail.waits.selected().and_then(|i| task.depends.get(i)) else { return };
+            let stop = task.actions.iter().find(|a| a.kind == ActionKind::StopWaiting && a.other.as_deref() == Some(&other.id));
+            if let Some(action) = stop {
+                actions::run(&app, action.clone(), None);
             }
         });
         // Escape goes back to the list, from anywhere in the form.
@@ -211,6 +221,11 @@ impl Detail {
     /// The task shown, if any.
     pub fn task_id(&self) -> Option<String> {
         self.shown.borrow().as_ref().map(|task| task.id.clone())
+    }
+
+    /// What can be done to the task shown: what the Task menu runs while focus is here.
+    pub fn actions(&self) -> Vec<Action> {
+        self.shown.borrow().as_ref().map(|task| task.actions.clone()).unwrap_or_default()
     }
 
     /// Whether focus is somewhere in the details.
@@ -269,10 +284,15 @@ impl Detail {
             self.waits.widget.set_visible(!task.depends.is_empty());
             self.stop_waiting.set_sensitive(!task.depends.is_empty());
             self.state.set_text(&speech::task_state(task));
-            let completed = task.state.iter().any(|s| s == "completed");
-            self.mark_done.set_label(if completed { "Mark Not Done" } else { "Mark Done" });
-            // Only a subtask has a top level to move to.
-            self.move_to_top.set_sensitive(task.parent.is_some());
+            // A button is there while the task offers its action, and says it as the core
+            // titles it: Mark Done is Mark Not Done on a done task.
+            for (button, kinds) in &self.buttons {
+                let action = actions::find(&task.actions, kinds);
+                button.set_sensitive(action.is_some());
+                if let Some(action) = action.filter(|a| a.kind == ActionKind::MarkNotDone || a.kind == ActionKind::MarkDone) {
+                    button.set_label(&action.title);
+                }
+            }
         }
         *self.shown.borrow_mut() = task;
     }
