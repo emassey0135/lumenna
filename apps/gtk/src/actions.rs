@@ -247,11 +247,11 @@ async fn edit_series(app: &Rc<App>, series: &str) {
         Ok(shown) => shown,
         Err(error) => return app.fail(&sentence(&error)),
     };
-    let rule = shown.rrule.clone().filter(|_| shown.repeats);
+    let unsayable = lumenna_surface::unsayable_repeat_note(shown.clone());
     let purpose = Purpose::Series { id: shown.id.clone() };
     let fields = block_fields(shown);
     let window = app.window.clone().upcast::<gtk::Window>();
-    if let Some(change) = block_form::run(&window, app.core.lumenna.clone(), purpose, fields, rule).await {
+    if let Some(change) = block_form::run(&window, app.core.lumenna.clone(), purpose, fields, unsayable).await {
         finish(app, &change);
     }
 }

@@ -154,14 +154,15 @@ impl Form {
     }
 }
 
-/// Runs the form, and returns what saving it did. `rule` is the RFC 5545 rule the block
-/// repeats by, when the repetition words cannot say it: it is said beside an empty Repeats.
+/// Runs the form, and returns what saving it did. `unsayable` is the core's note for a block
+/// repeating by a rule the repetition words cannot say (`unsayable_repeat_note`), shown
+/// beside an empty Repeats.
 pub async fn run(
     parent: &gtk::Window,
     lumenna: Arc<Lumenna>,
     purpose: Purpose,
     initial: BlockFields,
-    rule: Option<String>,
+    unsayable: Option<String>,
 ) -> Option<Change> {
     let heading = match &purpose {
         Purpose::Add { .. } => "New Block".to_owned(),
@@ -286,19 +287,19 @@ pub async fn run(
             until = Some((label, widget));
         }
         if key == "repeat"
-            && let Some(rule) = rule.as_ref().filter(|_| initial.repeat.is_empty())
+            && let Some(note) = &unsayable
         {
-            let note = format!(
-                "It repeats by the rule {rule}, which the repetition words cannot say. Leave Repeats empty to keep it."
-            );
-            let note = gtk::Label::builder().label(&note).wrap(true).xalign(0.0).build();
-            form.repeat.update_relation(&[gtk::accessible::Relation::DescribedBy(&[note.upcast_ref()])]);
-            body.append(&note);
+            // Shown, and read with the field: AT-SPI is not given a described-by relation, so
+            // it joins the hint in the description.
+            let hint = words(key).map(|f| f.hint.clone()).unwrap_or_default();
+            let description = if hint.is_empty() { note.clone() } else { format!("{note} {hint}") };
+            form.repeat.update_property(&[gtk::accessible::Property::Description(&description)]);
+            body.append(&gtk::Label::builder().label(note).wrap(true).xalign(0.0).build());
         }
     }
     // Until is there only while it repeats: by words typed, or by a rule they cannot say.
     if let Some((label, widget)) = until {
-        let by_rule = rule.is_some() && initial.repeat.is_empty();
+        let by_rule = unsayable.is_some();
         let show = move |repeat: &gtk::Entry| {
             let repeats = by_rule || !repeat.text().trim().is_empty();
             label.set_visible(repeats);
