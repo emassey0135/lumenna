@@ -164,9 +164,9 @@ impl Sidebar {
 
     /// A new saved filter: the app's own form, a name and then its query.
     fn new_filter(&self, app: &App) {
-        let Some(name) = prompts::ask_text(app.main, "New Saved Filter", "&Name:", "", "") else { return };
+        let Some(name) = prompts::ask_text(app.main, "New Saved Filter", "&Name:", "", "", "Next") else { return };
         let mut typed = String::new();
-        while let Some(query) = prompts::ask(app.main, &format!("Query of {name}"), "&Query:", QUERY, &typed) {
+        while let Some(query) = prompts::ask(app.main, &format!("Query of {name}"), "&Query:", QUERY, &typed, "Add") {
             match app.core.lumenna.add_filter(&name, &query) {
                 Ok(change) => {
                     app.store_changed();

@@ -40,7 +40,7 @@ enum Row {
     Summary(String),
     Block(PlanBlock),
     Sitting(PlanAssignment),
-    Free { start: String, end: String, minutes: u32, actions: Vec<Action> },
+    Free { start: String, minutes: u32, text: String, actions: Vec<Action> },
     Now(String),
     Cancelled(CancelledBlock),
 }
@@ -64,8 +64,8 @@ impl Row {
             Self::Summary(text) => text.clone(),
             Self::Block(block) => speech::block(block, &clock),
             Self::Sitting(sitting) => speech::sitting(sitting),
-            Self::Free { start, end, minutes, .. } => speech::free(start, end, *minutes, &clock),
-            Self::Now(time) => speech::now(time, &clock),
+            Self::Free { text, .. } => text.clone(),
+            Self::Now(text) => text.clone(),
             Self::Cancelled(block) => speech::cancelled(block, &clock),
         }
     }
@@ -152,11 +152,13 @@ impl DayView {
                         rows.extend(block.assignments.iter().cloned().map(Row::Sitting));
                     }
                 }
-                PlanItem::Free { start, end, minutes, actions } => {
+                PlanItem::Free { start, end, minutes, title, details, actions } => {
                     let actions = actions.clone();
-                    rows.push(Row::Free { start: start.clone(), end: end.clone(), minutes: *minutes, actions });
+                    let text = speech::free_time(title, details, start, end, &Locale);
+                    rows.push(Row::Free { start: start.clone(), minutes: *minutes, text, actions });
                 }
-                PlanItem::Now { time, .. } => rows.push(Row::Now(time.clone())),
+                // Its title, then the time: the order every app says it in.
+                PlanItem::Now { time, title } => rows.push(Row::Now(format!("{title}, {}", Locale.time(time)))),
             }
         }
         rows.extend(plan.cancelled.iter().cloned().map(Row::Cancelled));
@@ -219,7 +221,7 @@ impl DayView {
     }
 
     pub fn ask_for_day(&self, app: &App) {
-        let Some(phrase) = prompts::ask_text(app.main, "Go to Day", "&Day:", "A date, such as friday, or 12 october.", "") else {
+        let Some(phrase) = prompts::ask_text(app.main, "Go to Day", "&Day:", "A date, such as friday, or 12 october.", "", "Go") else {
             return;
         };
         match app.core.lumenna.plan(Some(phrase)) {

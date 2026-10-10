@@ -10,7 +10,7 @@
 
 use std::cell::RefCell;
 
-use lumenna_surface::{ActionKind, TaskDetail, TaskFields, priorities, task_edit, task_fields};
+use lumenna_surface::{ActionKind, TaskDetail, TaskFields, priorities, task_edit, task_fields, task_form};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::SystemServices::{SS_CENTER, SS_NOPREFIX};
 use windows::Win32::UI::Controls::{WC_BUTTONW, WC_COMBOBOXW, WC_EDITW, WC_LISTBOXW, WC_STATICW};
@@ -31,6 +31,7 @@ use super::app::App;
 use super::controls::{self, rect};
 use super::view::Metrics;
 use super::actions;
+use crate::devices;
 
 const TITLE: u16 = 300;
 const DUE: u16 = 301;
@@ -103,16 +104,31 @@ impl Detail {
         };
         let line = ES_AUTOHSCROLL as u32;
         let list = CBS_DROPDOWNLIST as u32 | WS_VSCROLL.0;
+        // The names and what each takes are the core's; the access keys are this pane's.
+        let form = task_form();
+        let named = |key: &str, letter: char| {
+            let found = form.iter().find(|f| f.key == key);
+            let label = found.map_or(key, |f| f.label.as_str());
+            (devices::marked(label, letter, '&'), found.map(|f| f.hint.clone()).unwrap_or_default())
+        };
         // Made in reading order, which is also Tab's.
-        let title = field("T&itle", WC_EDITW, line, TITLE, Column::Full, 1, "");
-        let due = field("D&ue", WC_EDITW, line, DUE, Column::Left, 1, "A date, such as tomorrow or next Friday. Empty for none. A new date keeps how it repeats.");
-        let repeat = field("Re&peats", WC_EDITW, line, REPEAT, Column::Right, 1, "Such as every Monday, or every! 2 weeks to count from when it is done. Empty for no repetition.");
-        let priority = field("Pri&ority", WC_COMBOBOXW, list, PRIORITY, Column::Left, 1, "");
-        let estimate = field("Esti&mate", WC_EDITW, line, ESTIMATE, Column::Right, 1, "Such as 45m or 1h30m. Empty for none.");
-        let project = field("Pro&ject", WC_COMBOBOXW, list, PROJECT, Column::Left, 1, "");
-        let labels = field("&Labels", WC_EDITW, line, LABELS, Column::Right, 1, "Names separated by commas. A new name becomes a label.");
+        let (label, hint) = named("title", 'i');
+        let title = field(&label, WC_EDITW, line, TITLE, Column::Full, 1, &hint);
+        let (label, hint) = named("due", 'u');
+        let due = field(&label, WC_EDITW, line, DUE, Column::Left, 1, &hint);
+        let (label, hint) = named("repeat", 'p');
+        let repeat = field(&label, WC_EDITW, line, REPEAT, Column::Right, 1, &hint);
+        let (label, hint) = named("priority", 'o');
+        let priority = field(&label, WC_COMBOBOXW, list, PRIORITY, Column::Left, 1, &hint);
+        let (label, hint) = named("estimate", 'm');
+        let estimate = field(&label, WC_EDITW, line, ESTIMATE, Column::Right, 1, &hint);
+        let (label, hint) = named("project", 'j');
+        let project = field(&label, WC_COMBOBOXW, list, PROJECT, Column::Left, 1, &hint);
+        let (label, hint) = named("labels", 'L');
+        let labels = field(&label, WC_EDITW, line, LABELS, Column::Right, 1, &hint);
         let multiline = (ES_MULTILINE | ES_WANTRETURN | ES_AUTOVSCROLL) as u32 | WS_VSCROLL.0;
-        let notes = field("&Notes", WC_EDITW, multiline, NOTES, Column::Full, 4, "");
+        let (label, hint) = named("notes", 'N');
+        let notes = field(&label, WC_EDITW, multiline, NOTES, Column::Full, 4, &hint);
         let waits_style = (LBS_NOTIFY | LBS_NOINTEGRALHEIGHT) as u32 | WS_VSCROLL.0;
         let waits = field("&Waits for", WC_LISTBOXW, waits_style, WAITS, Column::Full, 3, "The tasks this one waits for. It is blocked until they are done.");
         let button = |text: &str, action: Action| {
@@ -132,6 +148,12 @@ impl Detail {
             button("Move to Trash", Action::Kinds(&[ActionKind::Delete])),
         ];
 
+        // An example of what each line takes, greyed while it is empty.
+        for (key, edit) in [("title", title), ("due", due), ("repeat", repeat), ("estimate", estimate), ("labels", labels)] {
+            if let Some(field) = form.iter().find(|f| f.key == key) {
+                controls::cue(edit, &field.example);
+            }
+        }
         for choice in priorities() {
             let text = HSTRING::from(choice.title);
             controls::send(priority, CB_ADDSTRING, 0, text.as_ptr() as isize);

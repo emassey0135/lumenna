@@ -75,7 +75,8 @@ impl TaskList {
                 if !self.trash {
                     said.extend(listing.query.as_ref().map(|q| q.description.clone()));
                 }
-                said.push(listing.announcement.clone());
+                // An empty list says so in the core's words, in place of its count.
+                said.push(if listing.rows.is_empty() && !listing.empty.is_empty() { listing.empty.clone() } else { listing.announcement.clone() });
                 said.extend(listing.notices.iter().cloned());
                 controls::set_text(self.readback, &speech::sentence(&said.join(". ")));
                 let items = listing

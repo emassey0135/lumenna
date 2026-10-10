@@ -10,7 +10,7 @@
 
 use std::cell::RefCell;
 
-use lumenna_surface::{BlockFields, BlockScope, Change, Lumenna, block_defaults, block_edit, new_block};
+use lumenna_surface::{BlockFields, BlockScope, Change, Choice, FieldKind, Lumenna, block_defaults, block_edit, block_form, new_block};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -20,10 +20,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::HSTRING;
 
-use super::controls;
+use super::{a11y, controls};
 use super::core::sentence;
 use super::dialog::{self, Class, Dialog, Template};
 use super::prompts;
+use crate::devices;
 
 const TITLE: u16 = 100;
 const START: u16 = 101;
@@ -40,7 +41,29 @@ const FILTER: u16 = 111;
 const COLOUR: u16 = 112;
 const NOTES: u16 = 113;
 
-const KINDS: [(&str, &str); 3] = [("work", "Work"), ("break", "Break"), ("event", "Event")];
+/// Each field's control, by the key the core's `block_form()` names it by, with the letter
+/// that is its access key here: the words are the core's, the keys this dialog's.
+const FIELDS: [(&str, u16, char); 14] = [
+    ("title", TITLE, 'N'),
+    ("start", START, 'a'),
+    ("minutes", MINUTES, 'L'),
+    ("kind", KIND, 'K'),
+    ("accepts_tasks", TAKES_TASKS, 'T'),
+    ("counts_capacity", CAPACITY, 'C'),
+    ("anchored", ANCHORED, 'h'),
+    ("date", DATE, 'D'),
+    ("repeat", REPEAT, 'R'),
+    ("until", UNTIL, 'U'),
+    ("min_minutes", SHORTEST, 'g'),
+    ("task_filter", FILTER, 'f'),
+    ("colour", COLOUR, 'o'),
+    ("notes", NOTES, 'e'),
+];
+
+/// The kinds a block can be, as the core names them.
+fn kinds() -> Vec<Choice> {
+    block_form().into_iter().find(|f| f.key == "kind").map(|f| f.options).unwrap_or_default()
+}
 
 /// A column's width, and where the second starts, in dialog units.
 const COLUMN: i16 = 216;
@@ -95,7 +118,7 @@ impl Form<'_> {
             title: text(TITLE),
             start: text(START),
             minutes: text(MINUTES),
-            kind: usize::try_from(kind).ok().and_then(|i| KINDS.get(i)).map_or("work", |k| k.0).to_owned(),
+            kind: usize::try_from(kind).ok().and_then(|i| kinds().get(i).map(|k| k.id.clone())).unwrap_or_else(|| "work".to_owned()),
             accepts_tasks: controls::checked(dialog::item(hwnd, TAKES_TASKS)),
             counts_capacity: controls::checked(dialog::item(hwnd, CAPACITY)),
             anchored: controls::checked(dialog::item(hwnd, ANCHORED)),
@@ -150,6 +173,14 @@ impl Dialog for Form<'_> {
         let check = |template: Template, label: &str, id: u16, y: i16| {
             template.item(Class::Button, label, id, BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0, 7, y, COLUMN, 10)
         };
+        let form = block_form();
+        // A field's name as the core gives it, with this dialog's access key; a colon before a
+        // field, none on a check box.
+        let label = |key: &str, colon: bool| {
+            let name = form.iter().find(|f| f.key == key).map_or(key, |f| f.label.as_str());
+            let letter = FIELDS.iter().find(|(k, _, _)| *k == key).map_or(' ', |(_, _, l)| *l);
+            format!("{}{}", devices::marked(name, letter, '&'), if colon { ":" } else { "" })
+        };
         let line = ES_AUTOHSCROLL as u32;
         let adding = matches!(self.purpose, Purpose::Add { .. });
         let once = self.once();
@@ -158,24 +189,24 @@ impl Dialog for Form<'_> {
 
         // What it is and when.
         let mut y = 7;
-        template = field(template, "&Title:", TITLE, line, 7, y);
+        template = field(template, &label("title", true), TITLE, line, 7, y);
         y += 28;
-        template = field(template, "Starts &at, such as 9am:", START, line, 7, y);
+        template = field(template, &label("start", true), START, line, 7, y);
         y += 28;
-        template = field(template, "&Minutes:", MINUTES, ES_NUMBER as u32, 7, y);
+        template = field(template, &label("minutes", true), MINUTES, ES_NUMBER as u32, 7, y);
         y += 28;
         template = template
-            .item(Class::Static, "&Kind:", u16::MAX, 0, 7, y, COLUMN, 9)
+            .item(Class::Static, &label("kind", true), u16::MAX, 0, 7, y, COLUMN, 9)
             .item(Class::ComboBox, "", KIND, CBS_DROPDOWNLIST as u32 | WS_VSCROLL.0 | WS_TABSTOP.0, 7, y + 10, COLUMN, 60);
         y += 30;
-        template = check(template, "Takes ta&sks", TAKES_TASKS, y);
+        template = check(template, &label("accepts_tasks", false), TAKES_TASKS, y);
         y += 14;
-        template = check(template, "&Counts toward the hours for work", CAPACITY, y);
+        template = check(template, &label("counts_capacity", false), CAPACITY, y);
         y += 14;
-        template = check(template, "A&nchored: stays put when the day runs late", ANCHORED, y);
+        template = check(template, &label("anchored", false), ANCHORED, y);
         y += 18;
         if adding {
-            template = field(template, "Starts &on:", DATE, line, 7, y);
+            template = field(template, &label("date", true), DATE, line, 7, y);
             y += 28;
         }
         let mut bottom = y;
@@ -183,24 +214,24 @@ impl Dialog for Form<'_> {
         // How it repeats and behaves: every occurrence's alone.
         if !once {
             let mut y = 7;
-            template = field(template, "&Repeats, such as every weekday; empty for once:", REPEAT, line, RIGHT, y);
+            template = field(template, &label("repeat", true), REPEAT, line, RIGHT, y);
             y += 28;
             if let Some(rule) = self.rule.as_ref().filter(|_| self.initial.repeat.is_empty()) {
                 let note = format!("It repeats by the rule {rule}, which the repetition words cannot say. Leave Repeats empty to keep it.");
                 template = template.item(Class::Static, &note, u16::MAX, SS_NOPREFIX.0, RIGHT, y, COLUMN, 26);
                 y += 30;
             }
-            template = field(template, "Last &day it repeats; empty for good:", UNTIL, line, RIGHT, y);
+            template = field(template, &label("until", true), UNTIL, line, RIGHT, y);
             y += 28;
-            template = field(template, "Shortest &length when the day runs late, in minutes; empty for its kind's:", SHORTEST, ES_NUMBER as u32, RIGHT, y);
+            template = field(template, &label("min_minutes", true), SHORTEST, ES_NUMBER as u32, RIGHT, y);
             y += 28;
-            template = field(template, "Offers tasks matching this &filter, such as #Work; empty for any:", FILTER, line, RIGHT, y);
+            template = field(template, &label("task_filter", true), FILTER, line, RIGHT, y);
             y += 28;
-            template = field(template, "Colo&ur, by name; empty for none:", COLOUR, line, RIGHT, y);
+            template = field(template, &label("colour", true), COLOUR, line, RIGHT, y);
             y += 28;
             let notes = (ES_MULTILINE | ES_WANTRETURN | ES_AUTOVSCROLL) as u32 | WS_VSCROLL.0;
             template = template
-                .item(Class::Static, "Not&es:", u16::MAX, 0, RIGHT, y, COLUMN, 9)
+                .item(Class::Static, &label("notes", true), u16::MAX, 0, RIGHT, y, COLUMN, 9)
                 .item(Class::Edit, "", NOTES, notes | WS_BORDER.0 | WS_TABSTOP.0, RIGHT, y + 10, COLUMN, 40);
             y += 54;
             bottom = bottom.max(y);
@@ -233,15 +264,30 @@ impl Dialog for Form<'_> {
             set(DATE, date);
         }
         let kind = dialog::item(hwnd, KIND);
-        for (_, label) in KINDS {
-            let text = HSTRING::from(label);
+        let kinds = kinds();
+        for choice in &kinds {
+            let text = HSTRING::from(choice.title.as_str());
             controls::send(kind, CB_ADDSTRING, 0, text.as_ptr() as isize);
         }
-        let selected = KINDS.iter().position(|(k, _)| *k == initial.kind).unwrap_or(0);
+        let selected = kinds.iter().position(|k| k.id == initial.kind).unwrap_or(0);
         controls::send(kind, CB_SETCURSEL, selected, 0);
         controls::check(dialog::item(hwnd, TAKES_TASKS), initial.accepts_tasks);
         controls::check(dialog::item(hwnd, CAPACITY), initial.counts_capacity);
         controls::check(dialog::item(hwnd, ANCHORED), initial.anchored);
+        // What each takes, read with it, and an example of it, greyed while it is empty.
+        for field in block_form() {
+            let Some((_, id, _)) = FIELDS.iter().find(|(k, _, _)| *k == field.key) else { continue };
+            let control = dialog::item(hwnd, *id);
+            if control.is_invalid() {
+                continue;
+            }
+            if !field.hint.is_empty() {
+                a11y::set_description(control, &field.hint);
+            }
+            if matches!(field.kind, FieldKind::Line | FieldKind::Time | FieldKind::Date | FieldKind::Minutes) {
+                controls::cue(control, &field.example);
+            }
+        }
         false
     }
 

@@ -32,6 +32,7 @@ struct AskText<'a> {
     label: &'a str,
     message: &'a str,
     initial: &'a str,
+    yes: &'a str,
     answer: RefCell<String>,
 }
 
@@ -46,7 +47,7 @@ impl Dialog for AskText<'_> {
         template
             .item(Class::Static, self.label, u16::MAX, 0, 7, top, 246, 9)
             .item(Class::Edit, "", FIELD, (ES_AUTOHSCROLL as u32) | WS_BORDER.0 | WS_TABSTOP.0, 7, top + 10, 246, 14)
-            .item(Class::Button, "OK", IDOK.0 as u16, (BS_DEFPUSHBUTTON as u32) | WS_TABSTOP.0, 149, top + 32, 50, 14)
+            .item(Class::Button, self.yes, IDOK.0 as u16, (BS_DEFPUSHBUTTON as u32) | WS_TABSTOP.0, 149, top + 32, 50, 14)
             .item(Class::Button, "Cancel", IDCANCEL.0 as u16, (BS_PUSHBUTTON as u32) | WS_TABSTOP.0, 203, top + 32, 50, 14)
     }
 
@@ -72,15 +73,17 @@ impl Dialog for AskText<'_> {
 }
 
 /// Asks for a line of text. `label` names the field, with `&` before its mnemonic; `message`,
-/// if any, is read when the dialog opens. `None` if cancelled or left empty.
-pub fn ask_text(owner: HWND, title: &str, label: &str, message: &str, initial: &str) -> Option<String> {
-    ask(owner, title, label, message, initial).filter(|answer| !answer.is_empty())
+/// if any, is read when the dialog opens; `yes` is the button that answers, a verb where
+/// there is one ("Rename"), as Windows' own dialogs name theirs. `None` if cancelled or left
+/// empty.
+pub fn ask_text(owner: HWND, title: &str, label: &str, message: &str, initial: &str, yes: &str) -> Option<String> {
+    ask(owner, title, label, message, initial, yes).filter(|answer| !answer.is_empty())
 }
 
 /// Asks for a line of text that may be left empty on purpose: `Some("")` is an answer, and
 /// only Cancel is `None`.
-pub fn ask(owner: HWND, title: &str, label: &str, message: &str, initial: &str) -> Option<String> {
-    let ask = AskText { title, label, message, initial, answer: RefCell::new(String::new()) };
+pub fn ask(owner: HWND, title: &str, label: &str, message: &str, initial: &str, yes: &str) -> Option<String> {
+    let ask = AskText { title, label, message, initial, yes, answer: RefCell::new(String::new()) };
     (dialog::run(Some(owner), &ask) == 1).then(|| ask.answer.into_inner().trim().to_owned())
 }
 

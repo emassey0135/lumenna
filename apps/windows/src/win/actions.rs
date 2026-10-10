@@ -96,10 +96,10 @@ pub fn run(app: &App, owner: HWND, action: &Action, form: impl FnOnce()) -> Opti
             let index = prompts::choose(owner, title, message, &names, action.destructive)?;
             act(Answer::Picked { id: answers[index].id.clone(), length: None }).ok()
         }
-        Question::Text { title, label, initial, hint, .. } => {
+        Question::Text { title, label, initial, hint, yes, .. } => {
             let mut typed = initial.clone();
             loop {
-                let text = prompts::ask(owner, title, &format!("&{label}:"), hint, &typed)?;
+                let text = prompts::ask(owner, title, &format!("&{label}:"), hint, &typed, yes)?;
                 match act(Answer::Text { text: text.clone() }) {
                     Ok(done) => return Some(done),
                     Err(()) => typed = text,
@@ -126,7 +126,7 @@ pub fn run(app: &App, owner: HWND, action: &Action, form: impl FnOnce()) -> Opti
             };
             let mut typed = String::new();
             loop {
-                let text = prompts::ask(owner, &action.title, "&Planned length:", hint, &typed)?;
+                let text = prompts::ask(owner, &action.title, "&Planned length:", hint, &typed, "OK")?;
                 match act(Answer::Picked { id: id.clone(), length: Some(text.clone()) }) {
                     Ok(done) => return Some(done),
                     Err(()) => typed = text,
