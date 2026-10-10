@@ -89,12 +89,24 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(self.session.focus(), "[button] 'Copy Code'")
         self.session.press("Tab")
         self.assertEqual(self.session.focus(), "[text] 'Code from the other device'")
-        self.assertEqual(self.session.focused().get_description(), "Left empty, the code on the clipboard is used.")
+        self.assertFalse(self.session.focused().get_description(), "nothing is said of the clipboard")
         self.session.type("notacode")
         self.session.press("Return", wait=4)
         said = self.session.said()
         self.assertEqual(said[0], "Stopping the wait, then connecting with this code.")
         self.assertIn("'notacode' is not a pairing code", said[-1])
+
+    def test_an_empty_code_says_to_type_or_paste_one_and_reads_no_clipboard(self):
+        self.page(2)
+        self.session.press("Tab", "Tab", "Tab")
+        self.session.press("Return")
+        self.session.wait_for_window("Pair a Device")
+        self.session.tab_to("Pair Using This Code")
+        self.session.press("Return")
+        self.session.wait_for_window("Type or paste the code the other device shows.")
+        self.session.press("Return")
+        self.session.wait_for_window("Pair a Device")
+        self.assertEqual(self.session.focus(), "[text] 'Code from the other device'")
 
     def test_escape_closes_settings(self):
         self.session.press("Escape")
