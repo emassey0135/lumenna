@@ -86,7 +86,7 @@ fun AskText(
  * says why instead. Each choice is one TalkBack stop, said as "Deep work, 9:00 AM to 11:00 AM".
  */
 @Composable
-fun Choose(title: String, choices: List<Option>, dismiss: () -> Unit, chosen: (Option) -> Unit) {
+fun Choose(title: String, choices: List<Option>, yes: String, dismiss: () -> Unit, chosen: (Option) -> Unit) {
     var narrow by remember { mutableStateOf("") }
     val shown = choices.filter {
         narrow.isBlank() || it.title.contains(narrow, ignoreCase = true) || it.detail.contains(narrow, ignoreCase = true)
@@ -117,7 +117,8 @@ fun Choose(title: String, choices: List<Option>, dismiss: () -> Unit, chosen: (O
                         Column(
                             Modifier
                                 .fillMaxWidth()
-                                .clickable(role = Role.Button) { chosen(choice) }
+                                // TalkBack says what choosing it does: "double-tap to move".
+                                .clickable(role = Role.Button, onClickLabel = yes) { chosen(choice) }
                                 .semantics(mergeDescendants = true) {
                                     collectionItemInfo = CollectionItemInfo(index, 1, 0, 1)
                                 }

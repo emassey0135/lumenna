@@ -413,7 +413,7 @@ class LumennaTest {
         act("All day", "Assign a task", substring = true)
         button("write the chapter")
         type("Planned length", "45")
-        button("Done")
+        button("Save")
         says("write the chapter", "planned for 45 minutes")
         act("write the chapter", "Start timer")
         says("write the chapter", "in progress")
@@ -433,7 +433,7 @@ class LumennaTest {
         tab("Today")
         act("All day", "Assign a task", substring = true)
         button("write the chapter")
-        button("Done")
+        button("Save")
         for ((action, state) in listOf(
             "Start timer" to "in progress", "Pause timer" to "paused", "Resume timer" to "in progress",
             "Pause timer" to "paused", "Stop timer" to "worked",
@@ -473,7 +473,7 @@ class LumennaTest {
         rule.onAllNodes(hasText("Lunch", substring = true)).fetchSemanticsNodes().let { assertTrue("a break takes no tasks", it.isEmpty()) }
         button("Tomorrow, ${Clock.time("10:00")} to ${Clock.time("11:00")}, Chores")
         type("Planned length", "30")
-        button("Done")
+        button("Save")
         val sitting = core.lumenna.plan("tomorrow").blocks.first { it.title == "Chores" }.assignments.single()
         assertEquals("tidy the desk", sitting.title)
         assertEquals(30u, sitting.plannedMins)
@@ -534,7 +534,7 @@ class LumennaTest {
         type("Name", "Urgent")
         button("Next")
         type("Query", "p1")
-        button("Save")
+        button("Add")
         row("Urgent").assertExists()
         assertEquals("p1", core.lumenna.listFilters().filters.single().query)
     }

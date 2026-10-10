@@ -23,6 +23,9 @@ import io.github.emassey0135.lumenna.actions
 import io.github.emassey0135.lumenna.core.ActionKind
 import io.github.emassey0135.lumenna.words
 import io.github.emassey0135.lumenna.core.Plan
+import io.github.emassey0135.lumenna.core.Question
+import io.github.emassey0135.lumenna.core.goToDayQuestion
+import io.github.emassey0135.lumenna.said
 import java.time.LocalDate
 
 /**
@@ -39,8 +42,15 @@ fun DayScreen(core: Core, navigator: Navigator, changes: Long) {
     val entry = LocalTextEntry.current
     val shown = plan?.let { folded(rows(it), { row -> row.depth }, { row -> row.key }, collapsed) }.orEmpty()
     WearList {
-        item { Heading(plan?.let { Clock.spokenDay(it.date) } ?: "Day") }
-        plan?.let { item { Text(it.summary.ifEmpty { it.announcement.replaceFirstChar { c -> c.uppercase() } }) } }
+        // The day's heading, as every app says it: "<day>. <summary>".
+        item {
+            Heading(
+                plan?.let { p ->
+                    listOf(Clock.spokenDay(p.date), p.summary.ifEmpty { p.announcement.replaceFirstChar { c -> c.uppercase() } })
+                        .filter { it.isNotEmpty() }.joinToString(". ")
+                } ?: "Day",
+            )
+        }
         shown.forEachIndexed { index, shownRow ->
             item {
                 val row = shownRow.item
@@ -67,7 +77,7 @@ fun DayScreen(core: Core, navigator: Navigator, changes: Long) {
         item {
             // As the phone asks: a day as it is said, read by the core.
             Button(onClick = {
-                entry?.ask("Go to day") { text -> core.attempt { core.lumenna.plan(text) }?.let { day = it.date } }
+                entry?.ask((goToDayQuestion() as Question.Text).said) { text -> core.attempt { core.lumenna.plan(text) }?.let { day = it.date } }
             }, modifier = Modifier.fillMaxWidth(), label = { Text("Go to day") })
         }
     }

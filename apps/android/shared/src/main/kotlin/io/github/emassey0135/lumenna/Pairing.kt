@@ -42,7 +42,8 @@ class PairingSession(
     private val cancelled = AtomicBoolean(false)
 
     /** What is happening, as a polite live region says it. */
-    var status by mutableStateOf(words.intro)
+    // The intro in sentence case, its buttons named as Android's read.
+    var status by mutableStateOf(words.introSentence.ifEmpty { words.intro })
         private set
 
     /** The code this device shows while it waits. */
@@ -96,8 +97,17 @@ class PairingSession(
     /** Answers whether the words match. */
     fun answer(match: Boolean) {
         asked = null
+        say(if (match) words.finishing else words.refusing)
         reply?.invoke(match)
         reply = null
+    }
+
+    /** Copies this device's code again, saying so. */
+    fun copyCode() {
+        val shown = code ?: return
+        (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+            .setPrimaryClip(ClipData.newPlainText("Pairing code", shown))
+        say(words.copied)
     }
 
     /** Gives up, as leaving the screen does. */

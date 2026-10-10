@@ -41,6 +41,12 @@ val Action.name: String get() = sentence.ifEmpty { title }
  */
 fun Action.asks(title: String): String = if (title == this.title) name else title
 
+/** A text question's title in sentence case: the core's, which knows which words are names. */
+val Question.Text.said: String get() = sentence.ifEmpty { title }
+
+/** What answers a pick, in sentence case ("Move", "Put it there"); never "OK". */
+val Action.pickButton: String get() = (question as? Question.Pick)?.yes?.takeIf { it.isNotEmpty() }?.let(::button) ?: name
+
 /** A fixed button's words — "Delete Label", an answer to choose — in sentence case. */
 fun button(text: String): String = sentenceCase(text)
 

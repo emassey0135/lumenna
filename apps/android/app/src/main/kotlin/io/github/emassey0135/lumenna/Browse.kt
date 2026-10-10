@@ -203,7 +203,7 @@ fun FiltersScreen(core: Core, navigator: Navigator, changes: Long) {
             val filters = core.lumenna.listFilters()
             queries.clear()
             filters.filters.forEach { queries[it.name] = it.query }
-            Listing(filters.filters.map { Item(it.name, it.name, it.query, actions = it.actions) }, filters.announcement)
+            Listing(filters.filters.map { Item(it.name, it.name, it.query, actions = it.actions) }, filters.announcement, filters.empty)
         },
         addLabel = "Add filter",
         add = { core.addNew(SidebarGroup.FILTERS, prompt) },
