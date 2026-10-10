@@ -356,6 +356,9 @@ pub fn parse_every(text: &str) -> Result<Option<jiff::SignedDuration>> {
 
 /// A setting with what every settings screen says of it: its name, its control, what it
 /// can be, whether it syncs. Nine clients each had their own copy of this table.
+/// What a time setting takes.
+const TIME: &str = "A time, such as 8:00 or 8am.";
+
 fn described(key: &str, value: String) -> Setting {
     use crate::types::SettingKind as K;
     let options = |pairs: &[(&str, &str)]| -> Vec<crate::actions::Choice> {
@@ -373,9 +376,9 @@ fn described(key: &str, value: String) -> Setting {
             "",
         ),
         "verbosity" => ("Announcements", K::Choice, options(&[("full", "Full sentences"), ("terse", "Terse")]), ""),
-        "all-day-reminder-hour" => ("All-day reminders at", K::Time, Vec::new(), ""),
-        "day-start" => ("Day starts", K::Time, Vec::new(), ""),
-        "day-end" => ("Day ends", K::Time, Vec::new(), ""),
+        "all-day-reminder-hour" => ("All-day reminders at", K::Time, Vec::new(), TIME),
+        "day-start" => ("Day starts", K::Time, Vec::new(), TIME),
+        "day-end" => ("Day ends", K::Time, Vec::new(), TIME),
         "week-start" => (
             "Week starts on",
             K::Choice,

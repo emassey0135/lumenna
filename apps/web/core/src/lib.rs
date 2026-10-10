@@ -349,16 +349,7 @@ pub fn announcement_text(announcement: &str, notices: Vec<String>) -> String {
 /// apart.
 #[wasm_bindgen(js_name = choiceText)]
 pub fn choice_text(choice: Ts<Choice>) -> Result<String, JsError> {
-    let choice = choice.to_rust()?;
-    Ok(match (&choice.date, &choice.start, &choice.end) {
-        (Some(date), Some(start), Some(end)) => {
-            format!("{}, {} to {}, {}", Browser.day(date), Browser.time(start), Browser.time(end), choice.title)
-        }
-        _ => match &choice.detail {
-            Some(detail) => format!("{}, {detail}", choice.title),
-            None => choice.title,
-        },
-    })
+    Ok(lumenna_desktop::speech::choice(&choice.to_rust()?, &Browser))
 }
 
 /// A paired device, as its line in the list reads: "Kitchen Mac, macos, last synced 5 minutes

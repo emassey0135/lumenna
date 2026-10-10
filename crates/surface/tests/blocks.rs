@@ -202,3 +202,12 @@ fn a_device_on_another_version_says_so() {
     let newer = DeviceView { schema_version: ours + 1, ..device(false, None, None, None) };
     assert_eq!(device_status(&newer, now, true), ["runs a newer version of Lumenna, so update this device", "not synced yet"]);
 }
+
+#[test]
+fn a_block_ending_at_midnight_is_never_past_on_its_own_day() {
+    // Its end wraps to 00:00, which every time of day is at or after.
+    let (_directory, lumenna) = open();
+    lumenna.add_block(NewBlock { at: "23:00".to_owned(), minutes: 60, ..block("Late", "work") }).unwrap();
+    let plan = lumenna.plan(None).unwrap();
+    assert_ne!(plan.blocks[0].when, "past");
+}

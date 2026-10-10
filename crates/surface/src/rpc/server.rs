@@ -115,6 +115,7 @@ pub const METHODS: &[&str] = &[
     "form.new_block",
     "form.block_defaults",
     "form.priorities",
+    "form.not_offered",
 ];
 
 /// What runs a round on the endpoint this process holds, when it holds one: a `sync` here is
@@ -628,6 +629,11 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         }
         "form.block_defaults" => Response::new(Derived::of(crate::block_defaults(text_of(params, "kind")?))),
         "form.priorities" => Response::new(Derived::of(crate::priorities())),
+        "form.not_offered" => Response::new(Derived::of(crate::not_offered(
+            record(params, "kind")?,
+            record(params, "subject")?,
+            flag(params, "this_device"),
+        ))),
 
         other => {
             let hint = lumenna_core::suggest::nearest(other, METHODS.iter().copied())

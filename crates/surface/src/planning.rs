@@ -129,7 +129,7 @@ impl Lumenna {
 
                 let when = if day != now.date() {
                     ""
-                } else if occurrence.end_time() <= now.time() {
+                } else if occurrence.is_over_at(now.time()) {
                     "past"
                 } else if occurrence.start_time <= now.time() {
                     "now"
