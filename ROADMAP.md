@@ -295,9 +295,9 @@ Both have every view and work with the phone away, each with a whole store of it
   - **Complications** through WidgetKit, and the running timer on the watch face.
   - **Later, if it matters**: syncing far from the phone through a relay of our own that the
     watch polls over plain HTTPS, the one networking watchOS allows.
-- **Wear OS** (Compose for Wear OS): a standalone full peer, the core and Iroh through
-  `cargo-ndk`, every view; Wear OS allows sockets. Check rotary scrolling with TalkBack. The
-  hardware is here to test on.
+- **Wear OS** is built (`apps/android/wear`): a standalone full peer over the phone's shared
+  module, pairing and syncing itself. Still to come: on the real watch, rotary scrolling with
+  TalkBack and pairing over the network; tiles and complications, with the widgets.
 - **Toolchain**: unpinned.
 
 ## 6. Integrations

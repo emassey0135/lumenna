@@ -79,8 +79,6 @@ fun AskText(
     LaunchedEffect(Unit) { focus.requestFocus() }
 }
 
-/** Something offered for choosing: what identifies it, and how it reads. */
-data class Choice(val key: String, val title: String, val detail: String = "")
 
 /**
  * Choosing one of many, narrowed by typing: a task to wait for or to go under, a block to put
@@ -175,22 +173,6 @@ fun Confirm(title: String, message: String, action: String, dismiss: () -> Unit,
         dismissButton = { TextButton(modifier = Target, onClick = dismiss) { Text("Cancel") } },
     )
 }
-
-/** The open tasks, less [excluding], to choose from. */
-fun taskChoices(core: Core, excluding: Set<String> = emptySet()): List<Choice> =
-    core.attempt { core.lumenna.listTasks("") }?.rows.orEmpty()
-        .filter { it.id !in excluding }
-        .map { Choice(it.id, it.title, RowSpeech.details(it).orEmpty()) }
-
-/** The work blocks a task could go in: which ones is the core's (`workBlocks`). */
-fun blockChoices(core: Core): List<Pair<Choice, String>> =
-    core.attempt { core.lumenna.workBlocks(null, null) }?.blocks.orEmpty().map { block ->
-        Choice(
-            block.id,
-            "${Clock.spokenDay(block.date)}, ${Clock.time(block.start)}, ${block.title}",
-            "${Clock.time(block.start)} to ${Clock.time(block.end)}",
-        ) to block.date
-    }
 
 /** The one question a screen is asking, if any. */
 class Prompter {

@@ -28,7 +28,7 @@ import java.util.concurrent.TimeUnit
  */
 class SyncWorker(context: Context, parameters: WorkerParameters) : Worker(context, parameters) {
     override fun doWork(): Result {
-        val core = (applicationContext as LumennaApplication).core.getOrNull() ?: return Result.failure()
+        val core = (applicationContext as CoreHolder).core.getOrNull() ?: return Result.failure()
         return try {
             core.syncRound()
             // Anything that arrived is shown if the app is open.
@@ -45,8 +45,8 @@ class SyncWorker(context: Context, parameters: WorkerParameters) : Worker(contex
     }
 
     companion object {
-        internal const val LEAVING = "lumenna-sync-on-leaving"
-        internal const val PERIODIC = "lumenna-sync-periodic"
+        const val LEAVING = "lumenna-sync-on-leaving"
+        const val PERIODIC = "lumenna-sync-periodic"
         private val network = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
 
         /** Asks for a round every fifteen minutes, the least Android allows; once per install. */
@@ -74,4 +74,9 @@ class SyncWorker(context: Context, parameters: WorkerParameters) : Worker(contex
             WorkManager.getInstance(context).enqueueUniqueWork(LEAVING, ExistingWorkPolicy.REPLACE, request)
         }
     }
+}
+
+/** The app's one store, which its Application holds for the process: the phone's and the watch's. */
+interface CoreHolder {
+    val core: kotlin.Result<Core>
 }

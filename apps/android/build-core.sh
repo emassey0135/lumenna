@@ -37,13 +37,15 @@ cargo() {
 }
 
 cd "$ROOT"
-# Both 64-bit ABIs: arm64 for phones and watches, x86_64 for ChromeOS and the emulators on
-# Intel machines and CI. LUMENNA_ANDROID_ABIS narrows it for a quicker build of one.
-ABIS="${LUMENNA_ANDROID_ABIS:-arm64-v8a x86_64}"
+# arm64 for phones and watches, x86_64 for ChromeOS and the emulators on Intel machines and
+# CI, and 32-bit ARM for the many Wear OS watches whose Android is 32-bit; the phone's APK
+# leaves that one out (abiFilters). LUMENNA_ANDROID_ABIS narrows it for a quicker build.
+ABIS="${LUMENNA_ANDROID_ABIS:-arm64-v8a x86_64 armeabi-v7a}"
 for abi in $ABIS; do
   case "$abi" in
     arm64-v8a) triple=aarch64-linux-android ;;
     x86_64) triple=x86_64-linux-android ;;
+    armeabi-v7a) triple=armv7-linux-androideabi ;;
     *) echo "error: no Rust target for the Android ABI $abi" >&2; exit 1 ;;
   esac
   # The platform is the app's minSdk.

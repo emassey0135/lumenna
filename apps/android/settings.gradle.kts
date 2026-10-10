@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Lumenna"
-include(":app")
+include(":app", ":shared", ":wear")

@@ -71,10 +71,10 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task, chan
 
     val current = task
     val form = fields
+    // Which fields are sent is shared with the watch (`TaskField.save`): only what changed.
     val save = save@{
         val before = current ?: return@save
-        val edit = form?.let { taskEdit(before, it) }
-        if (edit == null) core.say("Nothing changed") else core.change { it.editTask(before.id, edit) }
+        form?.let { TaskField.save(core, before, it) }
     }
 
     Offer(Command.SAVE) { save() }
@@ -89,26 +89,14 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task, chan
             return@ScreenFrame
         }
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-            Field("Title", form.title, "What to do") { fields = form.copy(title = it) }
-            Field(
-                "Due", form.due, "tomorrow",
-                "A date, such as tomorrow or next Friday. Empty for none. A new date keeps how it repeats.",
-            ) { fields = form.copy(due = it) }
-            Field(
-                "Repeats", form.repeat, "every monday",
-                "Such as every Monday, or every! 2 weeks to count from when it is done. Empty for no repetition.",
-            ) { fields = form.copy(repeat = it) }
-            Field("Estimate", form.estimate, "45m", "Such as 45m or 1h30m. Empty for none.") {
-                fields = form.copy(estimate = it)
-            }
-            Field("Project", form.project, "Inbox") { fields = form.copy(project = it) }
-            Field("Labels", form.labels, "calls, errands", "Names separated by commas. A new name becomes a label.") {
-                fields = form.copy(labels = it)
+            // The fields, as the watch has them too (`TaskField`).
+            TaskField.beforePriority.forEach { field ->
+                Field(field.title, field.get(form), field.example, field.hint) { fields = field.set(form, it) }
             }
 
             Heading("Priority")
             Column(Modifier.selectableGroup()) {
-                listOf(1 to "Priority 1, highest", 2 to "Priority 2", 3 to "Priority 3", 4 to "Priority 4, none")
+                TaskField.priorities
                     .forEach { (level, name) ->
                         val chosen = form.priority.toInt() == level
                         Row(

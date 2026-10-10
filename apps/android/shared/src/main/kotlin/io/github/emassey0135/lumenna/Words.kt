@@ -101,3 +101,31 @@ object RowSpeech {
         return parts.joinToString(", ")
     }
 }
+
+/** The core counts text in UTF-8 bytes, as Rust strings do; Kotlin counts UTF-16 units. */
+object TextOffsets {
+    /** A UTF-16 offset as the byte offset the core wants. */
+    fun bytes(utf16: Int, text: String): UInt =
+        text.substring(0, utf16.coerceIn(0, text.length)).encodeToByteArray().size.toUInt()
+
+    /** A byte offset from the core as a UTF-16 offset, never splitting a character. */
+    fun utf16(bytes: UInt, text: String): Int {
+        val encoded = text.encodeToByteArray()
+        return encoded.copyOfRange(0, bytes.toInt().coerceIn(0, encoded.size)).decodeToString().length
+    }
+}
+
+/** What could finish the end of a line the core reads, and the line with one chosen. */
+object Completing {
+    /** The candidates for the end of `text`, and the span (in UTF-16 units) each would replace. */
+    fun offered(core: Core, text: String, syntax: io.github.emassey0135.lumenna.core.Syntax): Pair<List<io.github.emassey0135.lumenna.core.Candidate>, IntRange>? =
+        if (text.isBlank()) null
+        else core.attempt { core.lumenna.completeText(text, TextOffsets.bytes(text.length, text), syntax) }?.let { found ->
+            found.candidates to (TextOffsets.utf16(found.start, text) until TextOffsets.utf16(found.end, text))
+        }
+
+    /** `text` with `candidate` in place of `span`. */
+    fun insert(text: String, span: IntRange, candidate: io.github.emassey0135.lumenna.core.Candidate): String =
+        text.replaceRange(span.first, span.last + 1, candidate.text)
+}
+
