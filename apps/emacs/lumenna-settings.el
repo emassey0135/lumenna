@@ -95,8 +95,13 @@ Its platform, then the status the core words for every app."
   (lumenna--show-list
    "*Lumenna: Devices*" #'lumenna-devices-mode
    (lambda ()
-     (let ((status (lumenna-call "sync.status")))
-       (cons (string-join (cons (plist-get status :announcement) (append (plist-get status :notices) nil)) ". ")
+     (let* ((status (lumenna-call "sync.status"))
+            (none (null (append (plist-get status :devices) nil))))
+       ;; With no devices, the line under the heading says so, in the device list's words.
+       (setq-local lumenna--empty (and none (plist-get (lumenna-call "device.list") :empty)))
+       (cons (string-join (cons (if none "Devices and sync" (plist-get status :announcement))
+                                (append (plist-get status :notices) nil))
+                          ". ")
              (mapcar (lambda (device)
                        (list :key (plist-get device :node_id) :title (plist-get device :name)
                              :value (lumenna--device-value device) :device device
@@ -221,7 +226,7 @@ The code to give the other device, or the words to compare."
                                               (string-join (append (plist-get params :words) nil) ", "))
                                       (lumenna-sentence (plist-get words :match_title))))))
       (lumenna-call "pair.confirm" :match (if matched t :json-false))
-      (message (if matched "Finishing" "Refusing"))))))
+      (message "%s" (lumenna--sentence-message (plist-get words (if matched :finishing :refusing))))))))
 
 ;;;; Backups, export and import
 

@@ -22,7 +22,7 @@
 (defun lumenna--listing (method noun)
   "The heading and rows METHOD lists, the heading starting with NOUN."
   (let ((listing (lumenna-call method)))
-    (lumenna-listing (format "%s, %s" noun (plist-get listing :announcement)) listing)))
+    (lumenna-listing noun listing)))
 
 ;; Every action on a project, label or saved filter is the row's own; these
 ;; are the keys for them.  Adding one is its heading's action in `places'.
@@ -124,7 +124,8 @@ A filter is kept as typed, so \"today\" means today whenever it is opened.
   (lumenna--show-list "*Lumenna: Filters*" #'lumenna-filters-mode
                       (lambda ()
                         (let ((listing (lumenna-call "filter.list")))
-                          (cons (format "Saved filters, %s" (plist-get listing :announcement))
+                          (lumenna-listing
+                                "Saved filters" listing
                                 (mapcar (lambda (saved)
                                           (list :key (plist-get saved :name) :title (plist-get saved :name)
                                                 :value (plist-get saved :query) :query (plist-get saved :query)
@@ -138,9 +139,11 @@ A filter is kept as typed, so \"today\" means today whenever it is opened.
 
 (defun lumenna--new-filter-form (&rest _)
   "The new saved filter's form: its name, then its query, which TAB completes."
-  (let ((name (read-string "Name for the filter: ")))
+  (pcase-let* ((`(,naming ,querying) (append (lumenna-words "form.new_filter") nil))
+               (ask (lambda (q) (lumenna--prompt (lumenna--question-title q) (plist-get q :hint) (plist-get q :label))))
+               (name (read-string (funcall ask naming))))
     (lumenna-write "filter.add" :name name
-                   :query (lumenna-read-line (format "Query for %s: " name) "filter" nil 'lumenna-filter-history))))
+                   :query (lumenna-read-line (funcall ask querying) "filter" nil 'lumenna-filter-history))))
 
 (lumenna-define-form "filter" "new" #'lumenna--new-filter-form)
 
