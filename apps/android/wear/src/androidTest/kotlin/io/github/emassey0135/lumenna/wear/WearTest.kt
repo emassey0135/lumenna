@@ -162,4 +162,36 @@ class WearTest {
         press("Planning")
         shown("Completing a task completes its subtasks").assertExists()
     }
+
+    @Test
+    fun aProjectsOwnActionsAreTheCoresAndRenameAsksTheInputScreen() {
+        core.lumenna.addProject("Work", null)
+        rule.runOnIdle { core.changed() }
+        press("Work", substring = true)
+        answers += "Job"
+        press("Rename")
+        assertEquals(listOf("Rename Work"), asked)
+        assertTrue(core.lumenna.listProjects().rows.any { it.title == "Job" })
+    }
+
+    @Test
+    fun aDeleteAsksFirstInTheCoresWords() {
+        core.lumenna.addLabel("calls")
+        rule.runOnIdle { core.changed() }
+        press("calls", substring = true)
+        press("Delete")
+        said("Tasks wearing it stay").assertExists()
+        press("Delete Label")
+        assertTrue(core.lumenna.listLabels().rows.isEmpty())
+    }
+
+    @Test
+    fun aDevicesActionsAreTheCoresAndSyncNowIsTheScreens() {
+        press("Settings")
+        press("Devices and Sync")
+        shown("Sync Now").assertExists()
+        val own = core.lumenna.syncStatus().devices.firstOrNull { it.thisDevice } ?: return
+        val actions = shown(own.name).fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.CustomActions).orEmpty().map { it.label }
+        assertEquals("this watch cannot unpair itself, and a row does not sync", listOf("Rename"), actions)
+    }
 }

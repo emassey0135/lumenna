@@ -123,7 +123,7 @@ class SidebarTest {
     fun aProjectIsMadeFromItsHeadingAndShownWhenChosen() {
         act("Projects", "New Project")
         rule.onNode(hasSetTextAction() and hasText("Name")).performTextInput("Garden")
-        rule.onNode(hasText("Add") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Role)).performClick()
+        rule.onNode(hasText("Done") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Role)).performClick()
         rule.waitUntil(5_000) {
             rule.onAllNodes(SemanticsMatcher("row titled Garden") { it.config.getOrNull(RowTitle) == "Garden" })
                 .fetchSemanticsNodes().isNotEmpty()

@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import io.github.emassey0135.lumenna.core.ActionKind
 import io.github.emassey0135.lumenna.core.TaskDetail
 import io.github.emassey0135.lumenna.core.TaskFields
+import io.github.emassey0135.lumenna.core.priorities
 import io.github.emassey0135.lumenna.core.taskEdit
 import io.github.emassey0135.lumenna.core.taskFields
 
@@ -89,7 +90,7 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task, chan
 
             Heading("Priority")
             Column(Modifier.selectableGroup()) {
-                TaskField.priorities
+                priorities().map { it.id.toInt() to it.title }
                     .forEach { (level, name) ->
                         val chosen = form.priority.toInt() == level
                         Row(

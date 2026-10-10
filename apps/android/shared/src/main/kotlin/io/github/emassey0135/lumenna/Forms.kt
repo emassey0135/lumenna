@@ -48,9 +48,6 @@ enum class TaskField(
         /** The fields above the priority, as both forms order them; Notes follows it. */
         val beforePriority = listOf(TITLE, DUE, REPEATS, ESTIMATE, PROJECT, LABELS)
 
-        /** The priorities to choose among, as each is said. */
-        val priorities = listOf(1 to "Priority 1, highest", 2 to "Priority 2", 3 to "Priority 3", 4 to "Priority 4, none")
-
         /** Saves only what changed: an unchanged field sent would revert another device's edit. */
         fun save(core: Core, before: TaskDetail, fields: TaskFields) {
             val edit = taskEdit(before, fields)

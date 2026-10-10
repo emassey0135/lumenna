@@ -17,7 +17,17 @@ import io.github.emassey0135.lumenna.Clock
 import io.github.emassey0135.lumenna.Core
 import io.github.emassey0135.lumenna.PairingSession
 import io.github.emassey0135.lumenna.RowAction
+import io.github.emassey0135.lumenna.backups
+import io.github.emassey0135.lumenna.on
+import io.github.emassey0135.lumenna.planning
+import io.github.emassey0135.lumenna.said
 import io.github.emassey0135.lumenna.sentence
+import io.github.emassey0135.lumenna.set
+import io.github.emassey0135.lumenna.settings
+import io.github.emassey0135.lumenna.core.Setting
+import io.github.emassey0135.lumenna.core.SettingKind
+import androidx.wear.compose.foundation.lazy.ScalingLazyListScope
+import androidx.wear.compose.material3.RadioButton
 
 /** Settings, as the phone groups them: what syncs, the devices, backups. */
 @Composable
@@ -29,74 +39,20 @@ fun SettingsScreen(navigator: Navigator) {
     }
 }
 
-private fun settings(core: Core): Map<String, String> =
-    core.attempt { core.lumenna.settings(null).settings.associate { it.key to it.value } }.orEmpty()
-
-private val weekdays = listOf("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
-
-/** What syncs to every device, as the phone shows it; and this watch's backups. */
+/** What syncs to every device, as the phone shows it; and this watch's backups. Each setting's
+ *  name, options and what it does are the core's. */
 @Composable
 fun PlanningScreen(core: Core, changes: Long) {
-    val values = remember(changes) { settings(core) }
-    val entry = LocalTextEntry.current
-    val set = { key: String, value: String -> core.change { it.setSetting(key, value) } }
-    val time = { key: String, name: String -> entry?.ask(name) { set(key, it.trim()) } }
+    val all = remember(changes) { settings(core) }
     WearList {
         item { Heading("Planning") }
-        item {
-            SwitchButton(
-                checked = values["cascade-complete-subtasks"] == "true",
-                onCheckedChange = { set("cascade-complete-subtasks", if (it) "true" else "false") },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Completing a task completes its subtasks") },
-            )
-        }
-        item { TextFieldButton("Day starts", values["day-start"].orEmpty().let(Clock::time)) { set("day-start", it.trim()) } }
-        item { TextFieldButton("Day ends", values["day-end"].orEmpty().let(Clock::time)) { set("day-end", it.trim()) } }
-        item {
-            TextFieldButton("All-day reminders at", values["all-day-reminder-hour"].orEmpty().let(Clock::time)) {
-                set("all-day-reminder-hour", it.trim())
-            }
-        }
-        item { Heading("Announcements") }
-        listOf("Full sentences" to "full", "Terse" to "terse").forEach { (name, value) ->
-            item {
-                androidx.wear.compose.material3.RadioButton(
-                    selected = values["verbosity"] == value,
-                    onSelect = { set("verbosity", value) },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(name) },
-                )
-            }
-        }
-        item { Heading("Week starts on") }
-        weekdays.forEach { value ->
-            item {
-                androidx.wear.compose.material3.RadioButton(
-                    selected = values["week-start"] == value,
-                    onSelect = { set("week-start", value) },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(value.replaceFirstChar { it.uppercase() }) },
-                )
-            }
-        }
+        all.planning().forEach { setting(core, it) }
         item { Text("These sync to all your devices.") }
         item { Heading("Backups") }
-        val every = mapOf("12h" to "Every 12 hours", "1d" to "Every day", "7d" to "Every week", "off" to "Off")
-        every.forEach { (value, name) ->
-            item {
-                androidx.wear.compose.material3.RadioButton(
-                    selected = values["backup-every"] == value,
-                    onSelect = { set("backup-every", value) },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(name) },
-                )
-            }
-        }
+        all.backups().forEach { setting(core, it) }
         item {
             Button(onClick = { core.attempt { core.lumenna.backup(null) }?.let { core.say(sentence(it.announcement, it.notices)) } }, modifier = Modifier.fillMaxWidth(), label = { Text("Back Up Now") })
         }
-        item { Text("A backup holds your whole history, including every task you deleted. It stays on this watch.") }
     }
 }
 
@@ -165,4 +121,35 @@ private fun PairingButtons(core: Core, navigator: Navigator) {
             Button(onClick = { session.answer(false) }, modifier = Modifier.fillMaxWidth(), label = { Text("No") })
         }
     }
+}
+
+/** One setting, by the control its kind asks for. */
+private fun ScalingLazyListScope.setting(core: Core, setting: Setting) {
+    when (setting.kind) {
+        SettingKind.TOGGLE -> item {
+            SwitchButton(
+                checked = setting.on,
+                onCheckedChange = { core.set(setting, if (it) "true" else "false") },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(setting.title) },
+            )
+        }
+        SettingKind.CHOICE -> {
+            item { Heading(setting.title) }
+            setting.options.forEach { option ->
+                item {
+                    RadioButton(
+                        selected = setting.value == option.id,
+                        onSelect = { core.set(setting, option.id) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(option.title) },
+                    )
+                }
+            }
+        }
+        SettingKind.TIME, SettingKind.NUMBER, SettingKind.FOLDER -> item {
+            TextFieldButton(setting.title, setting.said) { core.set(setting, it.trim()) }
+        }
+    }
+    if (setting.hint.isNotEmpty()) item { Text(setting.hint) }
 }
