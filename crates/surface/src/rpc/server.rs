@@ -127,6 +127,7 @@ pub const METHODS: &[&str] = &[
     "form.length",
     "form.unsayable_repeat_note",
     "form.project_options",
+    "form.new_block_start",
 ];
 
 /// What runs a round on the endpoint this process holds, when it holds one: a `sync` here is
@@ -652,6 +653,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         ))),
         "form.go_to_day" => Response::new(Derived::of(crate::go_to_day_question())),
         "form.new_filter" => Response::new(Derived::of(crate::new_filter_questions())),
+        "form.new_block_start" => Response::new(Derived::of(l.new_block_start(maybe_text(params, "date"))?)),
         "form.project_options" => Response::new(Derived::of(l.project_options()?)),
         "form.unsayable_repeat_note" => Response::new(Derived::of(crate::unsayable_repeat_note(record(params, "block")?))),
         "form.length" => Response::new(Derived::of(crate::length_question())),

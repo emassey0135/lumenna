@@ -127,6 +127,31 @@ impl Lumenna {
     }
 }
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl Lumenna {
+    /// When a new block on `date` (a date phrase, today when absent) starts unless the person
+    /// says otherwise, `HH:MM`: today, the next whole hour, never before the day starts; any
+    /// other day, when the day starts. A fixed 09:00 was over before most of the day was.
+    ///
+    /// # Errors
+    ///
+    /// If `date` cannot be read.
+    pub fn new_block_start(&self, date: Option<String>) -> crate::Result<String> {
+        let now = jiff::Zoned::now();
+        let day = crate::resolve::date(date.as_deref(), &now)?;
+        let day_start = self.with(|store| Ok(crate::repaired(store).settings.day_window.0))?;
+        let start = if day == now.date() {
+            // The hour after this one, or the last hour of the day once there is no next one
+            // today.
+            let next = jiff::civil::time((now.hour() + 1).min(23), 0, 0, 0);
+            next.max(day_start)
+        } else {
+            day_start
+        };
+        Ok(crate::words::time_text(start))
+    }
+}
+
 /// The block form's fields, in order. `date` is a new block's day; an edit has none.
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]

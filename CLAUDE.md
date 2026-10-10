@@ -82,7 +82,8 @@ JSON crosses the FFI.
   and `block_form()` give each field's label, hint, example, control and options;
   `pairing_words(this_device, local)` every sentence and button of pairing;
   `go_to_day_question`, `new_filter_questions` and `length_question` (RPC `form.go_to_day`, `form.new_filter`, `form.length`) what the apps' own
-  commands ask. A field marked `one_day` is what one day of a repeating block can change.
+  commands ask. A field marked `one_day` is what one day of a repeating block can change. A new block starts at `new_block_start(date)`: the next whole hour today, when
+  the day starts on any other day.
   A pick and a text question name their button (`yes`); "OK" is never the answer. A mnemonic or
   access key is the platform's to add; the words are not.
 - **Each action has a `sentence` and a `primary`.** Capitals follow the platform: Title
