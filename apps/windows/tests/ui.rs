@@ -654,3 +654,37 @@ fn text_grows_without_a_restart_when_windows_text_size_is_raised() {
     eprintln!("Text size {was}% -> {raised}%: {}", names.iter().zip(before).zip(after.unwrap_or_else(measure)).map(|((n, b), a)| format!("{n} {b}px -> {a}px")).collect::<Vec<_>>().join(", "));
     assert!(after.is_some(), "the app did not grow its text without a restart when Text size went from {was}% to {raised}%");
 }
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn a_rows_menu_is_the_cores_and_never_offers_a_task_as_its_own_parent() {
+    let app = App::launch(|lumenna| {
+        add(lumenna, "Write report");
+        add(lumenna, "Outline");
+        let rows = lumenna.list_tasks("").unwrap().rows;
+        let report = rows.iter().find(|r| r.title == "Write report").unwrap().id.clone();
+        let outline = rows.iter().find(|r| r.title == "Outline").unwrap().id.clone();
+        lumenna.move_task(&outline, lumenna_surface::MoveTarget::Parent { id: report }).unwrap();
+    });
+    let names = |items: Vec<String>| -> Vec<String> {
+        items.iter().map(|item| item.split('\'').nth(1).unwrap_or_default().to_owned()).collect()
+    };
+    app.post(&[GO_TASKS, "home", "context"]);
+    let menu = names(app.automation.menu_items());
+    app.post(&["esc"]);
+    assert_eq!(
+        menu,
+        ["Mark Done", "Edit Details", "Put in a Block...", "Move to Project...", "Make Subtask Of...", "Wait For...", "Move to Trash"],
+        "the task's actions, as the core gives them"
+    );
+    // Its own subtask is not somewhere it can go.
+    app.post(&["cmd:164"]);
+    let offered: Vec<String> = app.front().into_iter().filter(|l| l.contains("ListItem")).collect();
+    assert!(offered.is_empty(), "Write report was offered as going under {offered:#?}");
+    assert!(app.status().contains("no task it could go under"), "{}", app.status());
+
+    // The Inbox keeps its name and place: only reordered and weighed.
+    app.post(&["cmd:145", "select:Inbox, 2 open tasks", "context"]);
+    let menu = names(app.automation.menu_items());
+    app.post(&["esc"]);
+    assert_eq!(menu, ["Weight..."], "the Inbox's menu");
+}

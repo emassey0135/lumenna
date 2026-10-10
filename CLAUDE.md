@@ -627,7 +627,10 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   make the screen reader re-read the focused row.
 - **Nothing that rebuilds a tree runs inside one of its notifications.** Space, Delete and
   double-click go through `App::defer`; `Tree::busy` marks notifications a refill sends.
-- **What can be done to a task is in one place** (`win/task_actions.rs`).
+- **A row's actions are offered and asked in one place** (`win/actions.rs`): the context
+  menus, the Task menu, the details buttons and Delete, Space and Enter all take the row's
+  core actions by kind. Only the forms are the app's: the details pane, the block form, a
+  new saved filter.
 - **IsDialogMessage runs over the whole main window**, with the panes
   `WS_EX_CONTROLPARENT`, so menu command ids are never 1 or 2 (`IDOK`, `IDCANCEL`). Field
   mnemonics avoid the menu bar's letters (F E V T D H): the dialog manager gives

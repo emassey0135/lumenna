@@ -10,7 +10,7 @@
 
 use std::cell::RefCell;
 
-use lumenna_surface::{TaskDetail, TaskFields, task_edit, task_fields};
+use lumenna_surface::{ActionKind, TaskDetail, TaskFields, task_edit, task_fields};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::SystemServices::{SS_CENTER, SS_NOPREFIX};
 use windows::Win32::UI::Controls::{WC_BUTTONW, WC_COMBOBOXW, WC_EDITW, WC_LISTBOXW, WC_STATICW};
@@ -30,7 +30,7 @@ use super::a11y;
 use super::app::App;
 use super::controls::{self, rect};
 use super::view::Metrics;
-use super::{menu, task_actions};
+use super::actions;
 
 const TITLE: u16 = 300;
 const DUE: u16 = 301;
@@ -61,12 +61,12 @@ struct Field {
     lines: i32,
 }
 
-/// What a button does: saving, or one of the task's actions as the Task menu has them.
+/// What a button does: saving, the task's action of these kinds, or stopping waiting for the
+/// task chosen in the list above it.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Action {
     Save,
-    Command(u16),
-    AddWait,
+    Kinds(&'static [ActionKind]),
     StopWaiting,
 }
 
@@ -120,17 +120,18 @@ impl Detail {
         let button = |text: &str, action: Action| {
             (controls::create(pane, WC_BUTTONW, text, BS_PUSHBUTTON as u32 | WS_TABSTOP.0, 0, 0), action)
         };
-        let wait_buttons = vec![button("Add...", Action::AddWait), button("Stop Waiting", Action::StopWaiting)];
+        let wait_buttons = vec![button("Add...", Action::Kinds(&[ActionKind::WaitFor])), button("Stop Waiting", Action::StopWaiting)];
         a11y::set_name(wait_buttons[0].0, "Add something it waits for");
         a11y::set_name(wait_buttons[1].0, "Stop waiting for the selected task");
         let state = field("State", WC_EDITW, line | ES_READONLY as u32, STATE, Column::Full, 1, "");
         let buttons = vec![
             button("&Save", Action::Save),
-            button("Mark Done", Action::Command(menu::MARK_DONE)),
-            button("Put in a Block...", Action::Command(menu::PUT_IN_BLOCK)),
-            button("Make Subtask Of...", Action::Command(menu::MAKE_SUBTASK)),
-            button("Move to Top Level", Action::Command(menu::MOVE_TO_TOP)),
-            button("Move to Trash", Action::Command(menu::TRASH_TASK)),
+            // Named again from the task's own actions whenever one is shown.
+            button("Mark Done", Action::Kinds(&[ActionKind::MarkDone, ActionKind::MarkNotDone])),
+            button("Put in a Block...", Action::Kinds(&[ActionKind::PutInBlock])),
+            button("Make Subtask Of...", Action::Kinds(&[ActionKind::MakeSubtaskOf])),
+            button("Move to Top Level", Action::Kinds(&[ActionKind::MoveToTopLevel])),
+            button("Move to Trash", Action::Kinds(&[ActionKind::Delete])),
         ];
 
         for text in PRIORITIES {
@@ -227,15 +228,17 @@ impl Detail {
             controls::send(self.waits, LB_SETCURSEL, 0, 0);
             controls::enable(self.wait_buttons[1].0, !task.depends.is_empty());
             controls::set_text(self.state, &crate::speech::task_state(task));
-            let completed = task.state.iter().any(|s| s == "completed");
-            for (button, action) in &self.buttons {
-                match action {
-                    Action::Command(menu::MARK_DONE) => {
-                        controls::set_text(*button, if completed { "Mark Not Done" } else { "Mark Done" });
+            for (button, action) in self.wait_buttons.iter().chain(&self.buttons) {
+                if let Action::Kinds(kinds) = action {
+                    let offered = actions::of_kind(&task.actions, kinds);
+                    // "Add…" beside the list it adds to says enough; the rest are named as offered.
+                    if let Some(offered) = offered.as_ref().filter(|_| !self.wait_buttons.iter().any(|(b, _)| b == button)) {
+                        controls::set_text(*button, &actions::label(offered));
                     }
-                    // Only a subtask has a top level to move to.
-                    Action::Command(menu::MOVE_TO_TOP) => controls::enable(*button, task.parent.is_some()),
-                    _ => {}
+                    // Never the button that has focus: focus would go nowhere.
+                    if offered.is_some() || controls::focused() != *button {
+                        controls::enable(*button, offered.is_some());
+                    }
                 }
             }
         }
@@ -290,19 +293,31 @@ impl Detail {
         }
         let action = self.wait_buttons.iter().chain(&self.buttons).find(|(b, _)| *b == control).map(|(_, a)| *a);
         let Some(action) = action else { return false };
-        let Some(id) = self.task_id() else { return true };
-        match action {
-            Action::Save => self.save(app),
-            Action::Command(command) => task_actions::run(app, command, &id),
-            Action::AddWait => task_actions::run(app, menu::WAIT_FOR, &id),
+        let Some(task) = self.shown.borrow().clone() else { return true };
+        let offered = match action {
+            Action::Save => return {
+                self.save(app);
+                true
+            },
+            Action::Kinds(kinds) => actions::of_kind(&task.actions, kinds),
             Action::StopWaiting => {
+                // The task chosen in the list, whose Stop Waiting names it.
                 let index = controls::send(self.waits, LB_GETCURSEL, 0, 0);
-                if let Ok(index) = u16::try_from(index) {
-                    task_actions::run(app, menu::STOP_WAITING + index, &id);
-                }
+                let other = usize::try_from(index).ok().and_then(|i| task.depends.get(i)).map(|d| d.id.clone());
+                task.actions.iter().find(|a| a.kind == ActionKind::StopWaiting && a.other == other).cloned()
             }
+        };
+        if let Some(offered) = offered
+            && let Some((change, _)) = actions::run(app, app.main, &offered, || app.open_detail())
+        {
+            app.say_change(&change);
         }
         true
+    }
+
+    /// What can be done to the task shown: for the Task menu, while focus is here.
+    pub fn actions(&self) -> Option<Vec<lumenna_surface::Action>> {
+        self.shown.borrow().as_ref().map(|task| task.actions.clone())
     }
 
     pub fn layout(&self, width: i32, height: i32, m: Metrics) {

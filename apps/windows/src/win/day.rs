@@ -12,7 +12,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use lumenna_surface::{CancelledBlock, Lumenna, block_fields, day_block_fields, Plan, PlanAssignment, PlanBlock, PlanItem, Result, RowView, Timer};
+use lumenna_surface::{Action, ActionKind, CancelledBlock, Plan, PlanAssignment, PlanBlock, PlanItem, block_fields, day_block_fields};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{NM_DBLCLK, NMHDR, NMTVKEYDOWN, TVN_KEYDOWN, TVN_SELCHANGEDW, WC_BUTTONW};
 use windows::Win32::UI::Input::KeyboardAndMouse::{VK_DELETE, VK_SPACE};
@@ -25,7 +25,7 @@ use super::controls::{self, rect};
 use super::core::sentence;
 use super::tree::{Item, Tree};
 use super::view::{Metrics, View};
-use super::{prompts, task_actions};
+use super::{actions, prompts};
 use crate::speech::{self, Clock};
 
 const PREVIOUS: u16 = 500;
@@ -40,7 +40,7 @@ enum Row {
     Summary(String),
     Block(PlanBlock),
     Sitting(PlanAssignment),
-    Free { start: String, end: String, minutes: u32 },
+    Free { start: String, end: String, minutes: u32, actions: Vec<Action> },
     Now(String),
     Cancelled(CancelledBlock),
 }
@@ -64,27 +64,23 @@ impl Row {
             Self::Summary(text) => text.clone(),
             Self::Block(block) => speech::block(block, &clock),
             Self::Sitting(sitting) => speech::sitting(sitting),
-            Self::Free { start, end, minutes } => speech::free(start, end, *minutes, &clock),
+            Self::Free { start, end, minutes, .. } => speech::free(start, end, *minutes, &clock),
             Self::Now(time) => speech::now(time, &clock),
             Self::Cancelled(block) => speech::cancelled(block, &clock),
         }
     }
-}
 
-// The row's own commands, for its context menu.
-const ASSIGN: u16 = 1;
-const EDIT: u16 = 2;
-const CANCEL_DAY: u16 = 3;
-const RESTORE_DAY: u16 = 4;
-const DELETE: u16 = 5;
-const TIMER: u16 = 6;
-const PLANNED: u16 = 7;
-const LOG: u16 = 8;
-const UNASSIGN: u16 = 9;
-const ADD_HERE: u16 = 10;
-const OPEN: u16 = 11;
-const PAUSE: u16 = 12;
-const STOP: u16 = 13;
+    /// What the core says can be done to it.
+    fn actions(&self) -> &[Action] {
+        match self {
+            Self::Block(block) => &block.actions,
+            Self::Sitting(sitting) => &sitting.actions,
+            Self::Free { actions, .. } => actions,
+            Self::Cancelled(block) => &block.actions,
+            Self::Summary(_) | Self::Now(_) => &[],
+        }
+    }
+}
 
 pub struct DayView {
     /// The day shown, as an ISO date; `None` follows today.
@@ -156,8 +152,9 @@ impl DayView {
                         rows.extend(block.assignments.iter().cloned().map(Row::Sitting));
                     }
                 }
-                PlanItem::Free { start, end, minutes, .. } => {
-                    rows.push(Row::Free { start: start.clone(), end: end.clone(), minutes: *minutes });
+                PlanItem::Free { start, end, minutes, actions } => {
+                    let actions = actions.clone();
+                    rows.push(Row::Free { start: start.clone(), end: end.clone(), minutes: *minutes, actions });
                 }
                 PlanItem::Now { time } => rows.push(Row::Now(time.clone())),
             }
@@ -292,133 +289,44 @@ impl DayView {
         }
     }
 
-    fn delete(&self, app: &App, block: &PlanBlock) {
-        let message = if block.repeats {
-            "Every occurrence goes, not only this day. To skip one day, cancel it instead."
-        } else {
-            "It goes, with what is assigned to it."
+    /// Runs one of a row's actions and says what it did. The forms are the app's own: a
+    /// block's Edit, a sitting's task, a free span's new block. Reloading keeps the selection
+    /// on the same row, or near where it was when the row has gone.
+    fn act(&self, app: &App, row: &Row, action: &Action) {
+        let form = || match (row, action.kind) {
+            (Row::Block(block), ActionKind::Edit) => self.edit(app, block),
+            (Row::Sitting(_), ActionKind::EditTask) => app.open_detail(),
+            (Row::Free { start, minutes, .. }, ActionKind::AddBlock) => self.add_block(app, Some(start), Some(*minutes)),
+            _ => {}
         };
-        if prompts::confirm(app.main, &format!("Delete {}?", block.title), message, "Delete") {
-            self.change(app, None, |lumenna| lumenna.delete_block(&block.series));
-        }
-    }
-
-    /// Runs a change, keeps the selection on `keep` or near where it was, and says it.
-    fn change(&self, app: &App, keep: Option<&str>, operation: impl FnOnce(&lumenna_surface::Lumenna) -> lumenna_surface::Result<lumenna_surface::Change>) {
-        let near = self.tree.selected();
-        if let Some(change) = app.perform(operation) {
-            self.tree.select_key_or_near(keep, near);
+        if let Some((change, _)) = actions::run(app, app.main, action, form) {
             app.say_change(&change);
         }
     }
 
-    /// Space on a sitting: starts its timer, pauses it while it runs, and resumes it when
-    /// paused. Stopping ends the sitting, so it is asked for by name, from the menu.
-    fn toggle_timer(&self, app: &App, sitting: &PlanAssignment) {
-        if sitting.running {
-            self.timed(app, sitting, |lumenna| lumenna.pause_timer(&sitting.id));
-        } else {
-            let key = format!("sitting:{}", sitting.id);
-            self.change(app, Some(&key), |lumenna| lumenna.start_timer(&sitting.id));
-        }
-    }
-
-    /// Pauses or stops a timer, and says what was logged.
-    fn timed(&self, app: &App, sitting: &PlanAssignment, operation: impl FnOnce(&Lumenna) -> Result<Timer>) {
-        let key = format!("sitting:{}", sitting.id);
-        match operation(&app.core.lumenna) {
-            Ok(timer) => {
-                app.store_changed();
-                self.tree.select_key_or_near(Some(&key), None);
-                app.say(&speech::announcement(&timer.announcement, &timer.notices));
-            }
-            Err(error) => prompts::fail(app.main, &sentence(&error)),
-        }
-    }
-
-    fn plan_length(&self, app: &App, sitting: &PlanAssignment) {
-        let current = sitting.planned_mins.map(|m| m.to_string()).unwrap_or_default();
-        let Some(text) = task_actions::ask_minutes(app, &format!("Planned Length of {}", sitting.title), &current, true) else { return };
-        let key = format!("sitting:{}", sitting.id);
-        self.change(app, Some(&key), |lumenna| lumenna.plan_minutes(&sitting.id, text));
-    }
-
-    /// Records a sitting's whole time by hand — without a timer, or to replace a capped one.
-    fn log_minutes(&self, app: &App, sitting: &PlanAssignment) {
-        let Some(Some(minutes)) = task_actions::ask_minutes(app, &format!("Minutes on {}", sitting.title), "", false) else { return };
-        match app.core.lumenna.stop_timer(&sitting.id, Some(minutes)) {
-            Ok(timer) => {
-                app.store_changed();
-                self.tree.select_key_or_near(Some(&format!("sitting:{}", sitting.id)), None);
-                app.say(&speech::announcement(&timer.announcement, &timer.notices));
-            }
-            Err(error) => prompts::fail(app.main, &sentence(&error)),
-        }
-    }
-
-    /// Fills a block from the task side's opposite: from the block, pick a task.
-    fn assign(&self, app: &App, block: &PlanBlock) {
-        let Some(date) = self.date() else { return };
-        let tasks: Vec<RowView> = app.core.lumenna.list_tasks("").map(|r| r.rows).unwrap_or_default();
-        let titles: Vec<String> = tasks.iter().map(|t| speech::row(t, false, &Locale)).collect();
-        let Some(index) = prompts::pick(app.main, &format!("Assign to {}", block.title), "&Task:", &titles) else { return };
-        let task = &tasks[index];
-        let Some(minutes) = task_actions::ask_minutes(app, &format!("How Long Is {} Meant to Take?", task.title), "", true) else { return };
-        let key = format!("block:{}", block.id);
-        self.change(app, Some(&key), |lumenna| lumenna.assign(&task.id, &block.series, Some(date), minutes));
-    }
-
-    fn act(&self, app: &App, command: u16, row: &Row) {
-        let date = self.date().unwrap_or_default();
-        match (command, row) {
-            (ASSIGN, Row::Block(block)) => self.assign(app, block),
-            (EDIT, Row::Block(block)) => self.edit(app, block),
-            (CANCEL_DAY, Row::Block(block)) => {
-                let key = row.key();
-                self.change(app, Some(&key), |lumenna| lumenna.cancel_occurrence(&block.series, &date));
-            }
-            (RESTORE_DAY, Row::Block(block)) => {
-                let key = row.key();
-                self.change(app, Some(&key), |lumenna| lumenna.restore_occurrence(&block.series, &date));
-            }
-            (RESTORE_DAY, Row::Cancelled(block)) => {
-                self.change(app, None, |lumenna| lumenna.restore_occurrence(&block.series, &date));
-            }
-            (DELETE, Row::Block(block)) => self.delete(app, block),
-            (TIMER, Row::Sitting(sitting)) => self.toggle_timer(app, sitting),
-            (PAUSE, Row::Sitting(sitting)) => self.timed(app, sitting, |lumenna| lumenna.pause_timer(&sitting.id)),
-            (STOP, Row::Sitting(sitting)) => self.timed(app, sitting, |lumenna| lumenna.stop_timer(&sitting.id, None)),
-            (PLANNED, Row::Sitting(sitting)) => self.plan_length(app, sitting),
-            (LOG, Row::Sitting(sitting)) => self.log_minutes(app, sitting),
-            (UNASSIGN, Row::Sitting(sitting)) => self.change(app, None, |lumenna| lumenna.unassign(&sitting.id)),
-            (OPEN, Row::Sitting(_)) => app.open_detail(),
-            (ADD_HERE, Row::Free { start, minutes, .. }) => self.add_block(app, Some(start), Some(*minutes)),
-            _ => {}
-        }
-    }
-
-    fn activate(&self, app: &App) {
+    /// The selected row's action of one of `kinds`, if it has one: what a key means here.
+    fn act_on_selected(&self, app: &App, kinds: &[ActionKind]) {
         let Some(row) = self.selected() else { return };
-        let command = match &row {
-            Row::Block(_) => EDIT,
-            Row::Sitting(_) => OPEN,
-            Row::Free { .. } => ADD_HERE,
-            Row::Cancelled(_) => RESTORE_DAY,
-            Row::Summary(_) | Row::Now(_) => return,
-        };
-        self.act(app, command, &row);
+        if let Some(action) = actions::of_kind(row.actions(), kinds) {
+            self.act(app, &row, &action);
+        }
     }
 
-    fn act_later(app: &App, command: u16) {
+    /// Enter or a double-click: the row's form, or a cancelled day's restoring.
+    fn activate(&self, app: &App) {
+        let kinds = [ActionKind::Edit, ActionKind::EditTask, ActionKind::AddBlock, ActionKind::RestoreDay];
+        self.act_on_selected(app, &kinds);
+    }
+
+    /// The same, after the notification being handled.
+    fn act_later(app: &App, kinds: &'static [ActionKind]) {
         app.defer(move |app| {
-            if let Some(day) = app.day()
-                && let Some(row) = day.selected() {
-                    day.act(app, command, &row);
-                }
+            if let Some(day) = app.day() {
+                day.act_on_selected(app, kinds);
+            }
         });
     }
 }
-
 
 
 impl View for DayView {
@@ -478,13 +386,18 @@ impl View for DayView {
             }
             TVN_KEYDOWN => {
                 let key = unsafe { &*(lparam.0 as *const NMTVKEYDOWN) }.wVKey;
-                let row = self.selected();
-                match (key, row) {
-                    (k, Some(Row::Sitting(_))) if k == VK_SPACE.0 => Self::act_later(app, TIMER),
-                    (k, Some(Row::Sitting(_))) if k == VK_DELETE.0 => Self::act_later(app, UNASSIGN),
-                    (k, Some(Row::Block(_))) if k == VK_DELETE.0 => Self::act_later(app, DELETE),
-                    _ => return Some(0),
+                // Space is a sitting's timer; Delete removes what the row is.
+                let kinds: &'static [ActionKind] = if key == VK_SPACE.0 {
+                    &[ActionKind::StartTimer, ActionKind::PauseTimer, ActionKind::ResumeTimer]
+                } else if key == VK_DELETE.0 {
+                    &[ActionKind::Delete, ActionKind::Unassign]
+                } else {
+                    return Some(0);
+                };
+                if self.selected().is_none_or(|row| actions::of_kind(row.actions(), kinds).is_none()) {
+                    return Some(0);
                 }
+                Self::act_later(app, kinds);
                 // Not part of an incremental search.
                 Some(1)
             }
@@ -508,51 +421,17 @@ impl View for DayView {
             self.tree.select(index);
         }
         let (Some(index), Some(row)) = (self.tree.selected(), self.selected()) else { return true };
-        let items: Vec<(u16, &str)> = match &row {
-            Row::Block(block) => {
-                let mut items = Vec::new();
-                if block.accepts_tasks {
-                    items.push((ASSIGN, "&Assign a Task..."));
-                }
-                items.push((EDIT, "&Change..."));
-                if block.repeats {
-                    items.push((CANCEL_DAY, "&Cancel This Day"));
-                }
-                if block.changed_for_this_day {
-                    items.push((RESTORE_DAY, "&Restore This Day"));
-                }
-                items.extend([(0, ""), (DELETE, "&Delete Block...")]);
-                items
-            }
-            Row::Sitting(sitting) => {
-                // Pause and Stop while it runs, Resume and Stop while paused, Start otherwise.
-                let mut items = if sitting.running {
-                    vec![(PAUSE, "P&ause Timer"), (STOP, "&Stop Timer")]
-                } else if sitting.status == "paused" {
-                    vec![(TIMER, "&Resume Timer"), (STOP, "&Stop Timer")]
-                } else {
-                    vec![(TIMER, "&Start Timer")]
-                };
-                items.extend([
-                    (OPEN, "&Edit Task Details"),
-                    (PLANNED, "&Planned Length..."),
-                    (LOG, "&Log Minutes..."),
-                    (0, ""),
-                    (UNASSIGN, "&Unassign"),
-                ]);
-                items
-            }
-            Row::Free { .. } => vec![(ADD_HERE, "&Add Block Here...")],
-            Row::Cancelled(_) => vec![(RESTORE_DAY, "&Restore This Day")],
-            Row::Summary(_) | Row::Now(_) => return true,
-        };
+        let items = actions::menu(row.actions());
+        if items.is_empty() {
+            return true;
+        }
+        let items: Vec<(u16, &str)> = items.iter().map(|(id, text)| (*id, text.as_str())).collect();
         let at = point.unwrap_or_else(|| self.tree.menu_point(index));
-        if let Some(command) = app.popup(&items, at) {
-            self.act(app, command, &row);
+        if let Some(action) = app.popup(&items, at).and_then(|command| actions::chosen(row.actions(), command)) {
+            self.act(app, &row, &action);
         }
         true
     }
-
     fn enter(&self, app: &App, focus: HWND) -> bool {
         if focus == self.tree.hwnd {
             self.activate(app);

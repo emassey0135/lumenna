@@ -2,14 +2,15 @@
 //!
 //! A tree view, so a subtask's level and every row's position are the control's to report.
 //! Space checks a task off — the tree's own checkbox, so its state is reported as a checkbox
-//! — Delete trashes it, Enter opens its details, and the Applications key or Shift+F10 opens
-//! everything else. After a change the selection, which is the screen reader's focus, lands on
-//! the same task if it is still listed and otherwise on whatever now holds its place.
+//! — or, in the trash, restores it; Delete runs the row's Delete; Enter opens its details; and
+//! the Applications key or Shift+F10 offers every action the core gives the row. After a
+//! change the selection, which is the screen reader's focus, lands on the same task if it is
+//! still listed and otherwise on whatever now holds its place.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lumenna_surface::{RowView, Syntax};
+use lumenna_surface::{Action, ActionKind, RowView, Syntax};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{
     NM_DBLCLK, NM_TVSTATEIMAGECHANGING, NMHDR, NMTREEVIEWW, NMTVKEYDOWN, NMTVSTATEIMAGECHANGING,
@@ -25,7 +26,7 @@ use super::clock::Locale;
 use super::core::sentence;
 use super::tree::{Item, Tree};
 use super::view::{Metrics, View};
-use super::{completion, menu, prompts, task_actions};
+use super::{actions, completion};
 use lumenna_surface::places::Place;
 use crate::speech;
 
@@ -96,35 +97,18 @@ impl TaskList {
         }
     }
 
-    /// Whether this is the trash, where only restoring and deleting from it apply.
-    pub fn is_trash(&self) -> bool {
-        self.trash
-    }
-
-    /// The checkbox, Space or a click: checks the task off, or back on.
-    pub fn toggle_done(&self, app: &App, id: &str, done: bool) {
-        task_actions::perform(app, Some(id), |lumenna| {
-            if done { lumenna.uncomplete_task(id) } else { lumenna.complete_task(id) }
-        });
-    }
-
-    pub fn restore_selected(&self, app: &App) {
-        if let Some(row) = self.selected().filter(|_| self.trash) {
-            task_actions::perform(app, None, |lumenna| lumenna.restore_task(&row.id));
+    /// Runs one of a row's actions and says what it did. Reloading keeps the selection on the
+    /// same task, or near where it was when the task has left the list.
+    pub fn act(&self, app: &App, action: &Action) {
+        if let Some((change, _)) = actions::run(app, app.main, action, || app.open_detail()) {
+            app.say_change(&change);
         }
     }
 
-    /// Deleting from the trash takes the task out of every list and asks first; undo brings it
-    /// back, and it stays in the history and in backups.
-    pub fn erase_selected(&self, app: &App) {
-        let Some(row) = self.selected().filter(|_| self.trash) else { return };
-        if prompts::confirm(
-            app.main,
-            &format!("Delete {} from the trash?", row.title),
-            "Undo can bring it back. It also stays in the history every device keeps, and in backups.",
-            "Delete",
-        ) {
-            task_actions::perform(app, None, |lumenna| lumenna.erase_task(&row.id));
+    /// The selected row's action of one of `kinds`, if it has one: what a key means here.
+    fn act_on_selected(&self, app: &App, kinds: &[ActionKind]) {
+        if let Some(action) = self.selected().and_then(|row| actions::of_kind(&row.actions, kinds)) {
+            self.act(app, &action);
         }
     }
 
@@ -194,10 +178,11 @@ impl View for TaskList {
                 // made after the notification returns, since it rebuilds the tree.
                 let notice = unsafe { &*(lparam.0 as *const NMTVSTATEIMAGECHANGING) };
                 let row = self.tree.index_of_handle(notice.hti).and_then(|i| self.rows.borrow().get(i).cloned());
-                if let Some(row) = row {
+                let toggle = row.and_then(|row| actions::of_kind(&row.actions, &[ActionKind::MarkDone, ActionKind::MarkNotDone]));
+                if let Some(action) = toggle {
                     app.defer(move |app| {
                         if let Some(list) = app.task_list() {
-                            list.toggle_done(app, &row.id, row.checked == Some(true));
+                            list.act(app, &action);
                         }
                     });
                 }
@@ -205,29 +190,20 @@ impl View for TaskList {
             }
             TVN_KEYDOWN => {
                 let key = unsafe { &*(lparam.0 as *const NMTVKEYDOWN) }.wVKey;
-                if key == VK_DELETE.0 {
-                    let trash = self.trash;
-                    app.defer(move |app| {
-                        if let Some(list) = app.task_list() {
-                            if trash {
-                                list.erase_selected(app);
-                            } else if let Some(row) = list.selected() {
-                                task_actions::run(app, menu::TRASH_TASK, &row.id);
-                            }
-                        }
-                    });
-                    return Some(1);
-                }
-                if key == VK_SPACE.0 && self.trash {
-                    app.defer(|app| {
-                        if let Some(list) = app.task_list() {
-                            list.restore_selected(app);
-                        }
-                    });
-                    // Not part of an incremental search.
-                    return Some(1);
-                }
-                Some(0)
+                let kinds: &'static [ActionKind] = if key == VK_DELETE.0 {
+                    &[ActionKind::Delete, ActionKind::DeleteForGood]
+                } else if key == VK_SPACE.0 && self.trash {
+                    &[ActionKind::Restore]
+                } else {
+                    return Some(0);
+                };
+                app.defer(move |app| {
+                    if let Some(list) = app.task_list() {
+                        list.act_on_selected(app, kinds);
+                    }
+                });
+                // Not part of an incremental search.
+                Some(1)
             }
             TVN_ITEMEXPANDEDW => {
                 self.tree.expansion_changed(unsafe { &*(lparam.0 as *const NMTREEVIEWW) });
@@ -253,18 +229,10 @@ impl View for TaskList {
         let Some(index) = self.tree.selected() else { return true };
         let Some(row) = self.selected() else { return true };
         let at = point.unwrap_or_else(|| self.tree.menu_point(index));
-        let items: Vec<(u16, String)> = if self.trash {
-            vec![(menu::RESTORE_TASK, "&Restore".to_owned()), (menu::ERASE_TASK, "&Delete from Trash...".to_owned())]
-        } else {
-            match app.core.lumenna.show_task(&row.id) {
-                Ok(shown) => task_actions::menu_items(&shown.task),
-                Err(_) => return true,
-            }
-        };
+        let items = actions::menu(&row.actions);
         let items: Vec<(u16, &str)> = items.iter().map(|(id, text)| (*id, text.as_str())).collect();
-        // The same commands as the menu bar's, acting on the same selection.
-        if let Some(command) = app.popup(&items, at) {
-            app.menu_command(command);
+        if let Some(action) = app.popup(&items, at).and_then(|command| actions::chosen(&row.actions, command)) {
+            self.act(app, &action);
         }
         true
     }

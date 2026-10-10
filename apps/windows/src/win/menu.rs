@@ -56,8 +56,6 @@ pub const RESTORE_TASK: u16 = 167;
 pub const ERASE_TASK: u16 = 168;
 pub const PUT_IN_BLOCK: u16 = 169;
 pub const WAIT_FOR: u16 = 170;
-/// The first of a run of commands, one per task the selected one waits for: "Stop Waiting for …".
-pub const STOP_WAITING: u16 = 900;
 
 pub const PREVIOUS_DAY: u16 = 180;
 pub const NEXT_DAY: u16 = 181;
@@ -132,6 +130,16 @@ pub const MENUS: [(&str, &[(u16, &str)]); 6] = [
     ]),
     ("&Help", &[(ABOUT, "&About Lumenna")]),
 ];
+
+/// A command's name as the menu bar has it, without its access key, shortcut or ellipsis.
+pub fn name(command: u16) -> String {
+    MENUS
+        .iter()
+        .flat_map(|(_, items)| items.iter())
+        .find(|(id, _)| *id == command)
+        .map(|(_, text)| text.split('\t').next().unwrap_or(text).replace('&', "").trim_end_matches("...").to_owned())
+        .unwrap_or_default()
+}
 
 /// Builds the menu bar.
 pub fn bar() -> HMENU {
