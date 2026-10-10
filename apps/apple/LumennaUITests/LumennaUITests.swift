@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 /// The app driven the way a VoiceOver user drives it: by accessibility label, not by position.
@@ -549,6 +550,38 @@ final class LumennaUITests: XCTestCase {
         }
     }
 
+    /// An empty code field asks for a code rather than reading the clipboard, and the
+    /// system's Paste button beside it is how a copied code gets in.
+    func testAnEmptyCodeAsksForOneAndThePasteButtonPastesIntoTheField() throws {
+        // On the clipboard already: an empty field must not take it.
+        let copied = "a code copied from somewhere else"
+        UIPasteboard.general.string = copied
+        tab("Settings")
+        reveal("Devices and Sync").tap()
+        app.buttons["Pair a device"].tap()
+        let entry = app.textViews["Code from the other device"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 5))
+
+        app.buttons["Pair Using This Code"].tap()
+        let asked = app.alerts.staticTexts["Type or paste the code the other device shows."]
+        XCTAssertTrue(asked.waitForExistence(timeout: 5), "no need_code: \(app.debugDescription)")
+        XCTAssertEqual(entry.value as? String ?? "", "", "the clipboard was read")
+        app.alerts.buttons["OK"].tap()
+        XCTAssertTrue(app.alerts.firstMatch.waitForNonExistence(timeout: 5))
+
+        // The system's Paste control, named as VoiceOver says it, beside the field.
+        let paste = app.buttons["Paste"]
+        XCTAssertTrue(paste.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(paste.isHittable)
+        XCTAssertGreaterThanOrEqual(paste.frame.height, 44)
+        XCTAssertEqual(paste.frame.midY, entry.frame.midY, accuracy: entry.frame.height, "not beside the field")
+        let pasted = NSPredicate(format: "value == %@", copied)
+        paste.tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: pasted, evaluatedWith: entry)], timeout: 5), .completed,
+                       "Paste left the field holding \(entry.value ?? "nothing")")
+        try audit(.all, "pairing, with a code pasted")
+    }
+
     /// Pairs with a device waiting in `lum pair`, whose code arrives as `PAIR_CODE`
     /// (`TEST_RUNNER_PAIR_CODE` to xcodebuild). Skipped without one.
     func testPairingByCodeBringsTheOtherDevicesTasks() throws {
@@ -560,8 +593,12 @@ final class LumennaUITests: XCTestCase {
         app.buttons["Pair a device"].tap()
         let entry = app.textViews["Code from the other device"]
         XCTAssertTrue(entry.waitForExistence(timeout: 5))
-        entry.tap()
-        entry.typeText(code)
+        // Pasted with the system's Paste button, as a code sent from the other device arrives.
+        UIPasteboard.general.string = code
+        app.buttons["Paste"].tap()
+        let pasted = NSPredicate(format: "value == %@", code)
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: pasted, evaluatedWith: entry)], timeout: 5), .completed,
+                       "Paste left \(entry.value ?? "nothing")")
         app.buttons["Pair Using This Code"].tap()
 
         let yes = app.alerts.buttons["Yes, They Match"]

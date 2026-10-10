@@ -232,6 +232,42 @@ final class LumennaMacUITests: XCTestCase {
         }
     }
 
+    /// An empty code field asks for a code rather than reading the clipboard; Command-V is
+    /// how a copied code gets in.
+    func testAnEmptyCodeAsksForOneAndReadsNothingFromTheClipboard() {
+        XCTAssertTrue(window.waitForExistence(timeout: 10))
+        let pasteboard = NSPasteboard.general
+        let saved = pasteboard.string(forType: .string)
+        defer {
+            pasteboard.clearContents()
+            if let saved { pasteboard.setString(saved, forType: .string) }
+        }
+        pasteboard.clearContents()
+        pasteboard.setString("a code copied from somewhere else", forType: .string)
+
+        app.typeKey(",", modifierFlags: .command)
+        let settings = app.windows["settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.toolbars.buttons["Devices"].click()
+        let pair = settings.buttons["Pair a Device…"]
+        XCTAssertTrue(pair.waitForExistence(timeout: 5), settings.debugDescription)
+        pair.click()
+        let entry = app.sheets.textFields["Code from the other device"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 5), app.debugDescription)
+
+        app.sheets.buttons["Pair Using This Code"].firstMatch.click()
+        let asked = app.staticTexts["Type or paste the code the other device shows."]
+        XCTAssertTrue(asked.waitForExistence(timeout: 5), "no need_code: \(app.debugDescription)")
+        XCTAssertEqual(entry.value as? String ?? "", "", "the clipboard was read")
+        // The alert's OK, in a sheet: the Touch Bar has one of the same name.
+        app.sheets.buttons["OK"].firstMatch.click()
+        XCTAssertTrue(asked.waitForNonExistence(timeout: 5))
+
+        // Command-V into the field is the way a copied code comes in.
+        enter("a pasted code", into: entry)
+        sheetButton("Cancel")
+    }
+
     // MARK: - Helpers for menus and sheets
 
     /// A row of the sidebar, by its name.

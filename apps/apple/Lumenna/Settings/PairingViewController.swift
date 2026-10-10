@@ -15,6 +15,20 @@ final class PairingViewController: UIViewController {
     private var copyCode: UIButton!
     // Wraps rather than scrolling sideways, as every entry here does: the code is long.
     private lazy var entry = LineEntry(name: words.theirCode)
+    /// The system's Paste button: it pastes into the field without the "allow paste" prompt,
+    /// because the person pressed it. Nothing here ever reads the clipboard by itself.
+    private lazy var paste = UIPasteControl(configuration: {
+        let configuration = UIPasteControl.Configuration()
+        configuration.displayMode = .iconAndLabel
+        configuration.cornerStyle = .medium
+        // The filled buttons' colours, which pass contrast; the system's own may not.
+        configuration.baseBackgroundColor = .lumennaTint
+        configuration.baseForegroundColor = .white
+        return configuration
+    }())
+    /// The field and its Paste button, side by side, or one above the other at the largest
+    /// text sizes, where side by side leaves the field too narrow to read.
+    private let entryRow = UIStackView()
     private let stack = UIStackView()
     private var prompt: Prompt?
     /// A code entered while waiting, to join with once the wait has ended.
@@ -47,8 +61,6 @@ final class PairingViewController: UIViewController {
         code.accessibilityLabel = words.myCode
         code.isHidden = true
 
-        // Also the VoiceOver hint: left empty, the clipboard's code is used.
-        entry.placeholder = words.emptyMeans
         entry.autocapitalizationType = .none
         entry.autocorrectionType = .no
         entry.spellCheckingType = .no
@@ -58,11 +70,23 @@ final class PairingViewController: UIViewController {
         copyCode = button(words.copyCode) { [weak self] in self?.copyTheCode() }
         copyCode.isHidden = true
         entry.submitted = { [weak self] in self?.pairWithEnteredCode() }
+        paste.target = entry
+        paste.setContentHuggingPriority(.required, for: .horizontal)
+        paste.setContentCompressionResistancePriority(.required, for: .horizontal)
+        // Never under the 44-point touch target, whatever the system draws it at.
+        paste.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+        paste.widthAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+        entryRow.spacing = 8
+        [entry, paste].forEach(entryRow.addArrangedSubview)
+        layOutEntryRow()
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in
+            self.layOutEntryRow()
+        }
 
         stack.axis = .vertical
         stack.spacing = 16
         stack.translatesAutoresizingMaskIntoConstraints = false
-        [status, show, code, copyCode, entry, enter].forEach(stack.addArrangedSubview)
+        [status, show, code, copyCode, entryRow, enter].forEach(stack.addArrangedSubview)
         let scroll = UIScrollView()
         scroll.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scroll)
@@ -79,6 +103,12 @@ final class PairingViewController: UIViewController {
         ])
     }
 
+    private func layOutEntryRow() {
+        let large = traitCollection.preferredContentSizeCategory.isAccessibilityCategory
+        entryRow.axis = large ? .vertical : .horizontal
+        entryRow.alignment = large ? .leading : .center
+    }
+
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         // Leaving the screen gives up, which ends the wait for the other device.
@@ -87,16 +117,11 @@ final class PairingViewController: UIViewController {
         }
     }
 
-    /// Pairs with the code typed in — or, if nothing was typed, the one on the clipboard,
-    /// which is how a code sent from the other device usually arrives.
+    /// Pairs with the code typed or pasted in. An empty field asks for one: it never reads
+    /// the clipboard, which brought up the system's paste prompt and sent whatever happened
+    /// to be copied.
     private func pairWithEnteredCode() {
-        var code = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        // This device's own code, if Copy Code copied it, is never the other device's.
-        if code.isEmpty, let pasted = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines),
-           self.code.isHidden || pasted != self.code.text {
-            code = pasted
-            entry.text = pasted
-        }
+        let code = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !code.isEmpty else {
             showFailure(words.needCode)
             return
