@@ -153,8 +153,9 @@ byte stream; `pairing` is the word comparison; `node` is the device's Iroh endpo
 `sync.rs`; the CLI adds only the terminal prompt, the daemon's socket and signals.
 
 - **Membership in `devices` is the trust boundary.** `Node` refuses, in both directions, any
-  key not listed there. The only way in is a pairing whose words were confirmed on both
-  sides (`edit::enroll_devices`).
+  key not listed there. The ways in are a pairing whose words were confirmed on both sides
+  (`edit::enroll_devices`), and the first sync over a Wear OS watch's link to its phone, which
+  only Google's pairing of the two can open (`introduce`).
 - **Pairing never uses the device key.** It runs on a key minted per pairing, so it needs no
   daemon and no IPC; device keys are exchanged only after the words are confirmed.
 - **The words** come from the connection's TLS exporter secret plus a commit-then-reveal
@@ -794,7 +795,22 @@ phone does.
 - **Rows keep full size at the screen's edges** (`edgeScale = 1f`): scaled, a button fell
   under 48dp and failed the touch-target check.
 - **A row's actions are TalkBack's custom actions and a long press**; the day's rows offer
-  theirs when tapped too. Announcements are a polite live region, seen for a moment.
+  theirs when tapped too. Announcements are a 1dp polite live region, never shown: drawn
+  over the list they hid the rows beneath, and the checks found a button a third visible.
+- **The watch's own link to its phone is preferred to Iroh while they are near**
+  (`shared/WatchLink.kt`): the Wearable Data Layer's `ChannelClient`, a stream over Bluetooth
+  or the local network. Only nodes Google reports `isNearby`: further off the Data Layer can
+  route through Google's servers, and what syncs is the store. Each app's `LinkService`
+  answers a channel the other opens, so neither need be open; each syncs over it on opening
+  and two seconds after its store last changed. Iroh stays for the two apart and for every
+  other device, and its round counts a device the link has just synced as synced
+  (`Store::note_linked`).
+- **The first link pairs the phone and the watch without words** (`lumenna_sync::introduce`,
+  `Lumenna::sync_over_link`): the Data Layer joins only a phone and its paired watch, between
+  apps with the same package and signing key. Both are enrolled, and the watch joins every
+  device's list. Each side remembers, in `local_state`, that it introduced itself, so a watch
+  unpaired since is not enrolled again: the link refuses on both sides.
+- The watch says it runs `wearos` (`PLATFORM`), in pairing and over the link.
 - **32-bit ARM too** (`armeabi-v7a`): many Wear OS watches run a 32-bit Android. The phone's
   APK leaves it out.
 - Tests (`WearTest`) run on a Wear OS emulator with the accessibility checks, as the phone's;

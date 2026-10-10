@@ -118,8 +118,8 @@ pub trait LinkStream: Send + Sync {
     fn read(&self, max: u32) -> Vec<u8>;
     /// Writes all of `bytes`; false if the stream has closed.
     fn write(&self, bytes: Vec<u8>) -> bool;
-    /// Done writing.
-    fn close(&self);
+    /// Done writing. Not `close`: UniFFI's Kotlin objects already have one.
+    fn finish(&self);
 }
 
 /// Takes the sync lock, or `None` if another process holds it.
@@ -483,7 +483,7 @@ impl Lumenna {
                     }
                 }
                 let closing = Arc::clone(&outgoing);
-                let _ = tokio::task::spawn_blocking(move || closing.close()).await;
+                let _ = tokio::task::spawn_blocking(move || closing.finish()).await;
             });
             let (mut reader, mut writer) = tokio::io::split(ours);
             let result = lumenna_sync::introduce::introduce_and_sync(&store, &me, &mut reader, &mut writer).await;

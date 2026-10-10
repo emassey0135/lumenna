@@ -157,7 +157,7 @@ fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
 private fun PairingButtons(core: Core, navigator: Navigator) {
     val context = LocalContext.current
     val entry = LocalTextEntry.current
-    val session = remember { PairingSession(core, context) { core.changed() } }
+    val session = remember { PairingSession(core, context, PLATFORM) { core.changed() } }
     DisposableEffect(Unit) { onDispose { session.cancel() } }
     androidx.compose.foundation.layout.Column {
         Heading("Pair a Device")

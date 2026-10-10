@@ -3,6 +3,7 @@ package io.github.emassey0135.lumenna.wear
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -14,6 +15,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -118,13 +121,16 @@ fun WearApp(core: Core, entry: TextEntry? = null) {
                     }
                 }
             }
-            // What changes say, read by TalkBack as a polite live region, and seen for a moment.
-            if (said.isNotEmpty()) {
-                Text(
-                    said,
-                    Modifier.align(Alignment.BottomCenter).padding(12.dp).semantics { liveRegion = LiveRegionMode.Polite },
-                )
-            }
+            // What changes say, read by TalkBack as a polite live region. Not shown: on a
+            // watch's screen it covered the rows beneath it, and the accessibility check found
+            // a button only a third visible.
+            Box(
+                Modifier.align(Alignment.Center).size(1.dp).semantics {
+                    liveRegion = LiveRegionMode.Polite
+                    // Out of the tree while there is nothing to say: an empty one is unlabelled.
+                    if (said.isEmpty()) hideFromAccessibility() else contentDescription = said
+                },
+            )
         }
     }
 }

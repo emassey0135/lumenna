@@ -2,6 +2,10 @@ package io.github.emassey0135.lumenna
 
 import android.content.Intent
 import android.os.Bundle
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
 import android.view.KeyEvent
 import android.view.KeyboardShortcutGroup
 import android.view.Menu
@@ -48,6 +52,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A change here, or one from another device, goes to the watch or phone near by, a
+        // moment after the last of a run of them.
+        core.getOrNull()?.let { opened ->
+            lifecycleScope.launch {
+                @OptIn(kotlinx.coroutines.FlowPreview::class)
+                opened.changes.drop(1).debounce(2_000).collect { WatchLink.syncNearby(this@MainActivity, opened, "android") }
+            }
+        }
         enableEdgeToEdge()
         Clock.update(this)
         handle(intent)
@@ -75,6 +87,8 @@ class MainActivity : ComponentActivity() {
             timeZoneMayHaveChanged()
             changed()
             startSyncing(this@MainActivity)
+            // The watch and the phone over their own link, while near: before Iroh's round.
+            WatchLink.syncNearby(this@MainActivity, this, "android")
             backUpIfDue()
         }
     }
