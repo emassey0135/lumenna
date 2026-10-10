@@ -335,4 +335,6 @@ fn an_empty_listing_says_what_is_empty() {
     let (_directory, lumenna) = open();
     assert_eq!(lumenna.list_tasks("deleted").unwrap().empty, "The trash is empty.");
     assert_eq!(lumenna.list_tasks("p1").unwrap().empty, "No tasks match this filter.");
+    lumenna.add_project("Home Office", None).unwrap();
+    assert_eq!(lumenna.list_tasks("#\"Home Office\"").unwrap().empty, "No open tasks in this project.");
 }

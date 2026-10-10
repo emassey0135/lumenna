@@ -161,9 +161,17 @@ impl Lumenna {
                 });
             }
             rows.notices = notices;
+            // A place's own query reads as that place: a project, a label.
+            let is = |reference: String| query.trim() == reference;
             rows.empty = match query.trim() {
                 "" => "No open tasks.".to_owned(),
                 "deleted" => "The trash is empty.".to_owned(),
+                _ if snapshot.projects.values().any(|p| p.deleted_at.is_none() && is(crate::project_reference(p.name.clone()))) => {
+                    "No open tasks in this project.".to_owned()
+                }
+                _ if snapshot.labels.values().any(|l| l.deleted_at.is_none() && is(crate::label_reference(l.name.clone()))) => {
+                    "No open task has this label.".to_owned()
+                }
                 _ => "No tasks match this filter.".to_owned(),
             };
             crate::actions::fill_rows(&mut rows, &snapshot);
