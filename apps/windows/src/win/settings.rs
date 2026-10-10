@@ -7,7 +7,7 @@
 
 use std::cell::RefCell;
 
-use lumenna_surface::{ActionKind, ExportFormat, Imported, Setting};
+use lumenna_surface::{ActionKind, ExportFormat, Imported, Setting, Subject, not_offered};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::Controls::{
@@ -551,7 +551,9 @@ impl Devices<'_> {
     /// itself, so its own row has no Unpair.
     fn act(&self, page: HWND, kind: ActionKind) {
         let Some(device) = self.chosen(page) else { return };
-        let Some(action) = actions::of_kind(&device.actions, &[kind]) else { return };
+        let Some(action) = actions::of_kind(&device.actions, &[kind]) else {
+            return say(page, &not_offered(kind, Subject::Device, device.this_device));
+        };
         if let Some((change, _)) = actions::run(self.app, sheet(page), &action, || {}) {
             self.load(page);
             say(page, &speech::announcement(&change.announcement, &change.notices));
