@@ -161,9 +161,9 @@ test("the blocks list every series, and Delete asks before deleting one", async 
 test("a task is put in a block from its own details", async ({ page }) => {
   await open(page);
   await place(page, /^Today/);
-  // Ending before midnight: the core counts a block ending at 00:00 as past all day, and the
-  // week's work blocks leave past ones out.
-  await addBlock(page, "Deep work", "10:00pm");
+  // Ending at midnight, so today's is never over yet whenever the test runs: the week's work
+  // blocks leave out those already over.
+  await addBlock(page, "Deep work", "11:00pm");
   await add(page, "Write report");
   await place(page, /^Tasks/);
   await page.getByRole("main").getByRole("row", { name: /^Write report/ }).click();

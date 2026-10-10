@@ -288,10 +288,12 @@ fn completion_offers_only_what_fits_name_first_with_the_first_highlighted() {
 fn a_task_is_put_in_a_block_from_this_weeks_work_blocks() {
     let app = App::launch(|lumenna| {
         add(lumenna, "Write report");
+        // Ending at midnight, so today's is never over yet, whenever the test runs: a block
+        // already over is not offered to put a task in.
         let every_day = NewBlock {
             title: "Deep work".to_owned(),
-            at: "9am".to_owned(),
-            minutes: 120,
+            at: "11pm".to_owned(),
+            minutes: 60,
             date: None,
             kind: "work".to_owned(),
             repeat: Some("every day".to_owned()),
