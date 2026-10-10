@@ -7,7 +7,7 @@
 
 use std::cell::RefCell;
 
-use lumenna_surface::{ExportFormat, Imported};
+use lumenna_surface::{ActionKind, ExportFormat, Imported};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::Controls::{
@@ -19,7 +19,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     BN_CLICKED, BS_AUTOCHECKBOX, BS_GROUPBOX, BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL,
     CB_RESETCONTENT, CB_SETCURSEL, CBN_SELCHANGE, CBS_DROPDOWNLIST, EN_KILLFOCUS, ES_AUTOHSCROLL, ES_MULTILINE,
     ES_NUMBER, ES_READONLY, GetParent, IDCANCEL, IDOK, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL,
-    LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_WANTKEYBOARDINPUT, PostMessageW, WM_DESTROY, WM_NOTIFY, WM_VKEYTOITEM, WS_BORDER, WS_TABSTOP,
+    LBN_SELCHANGE, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_WANTKEYBOARDINPUT, PostMessageW, WM_DESTROY, WM_NOTIFY, WM_VKEYTOITEM, WS_BORDER, WS_TABSTOP,
     WS_VSCROLL,
 };
 use windows::core::HSTRING;
@@ -27,7 +27,7 @@ use windows::core::HSTRING;
 use super::app::App;
 use super::core::{Poster, WM_SAY, WM_STORE_CHANGED, sentence, said};
 use super::dialog::{self, Class, Dialog, Template};
-use super::{a11y, controls, pairing, prompts, shortcuts, system};
+use super::{a11y, actions, controls, pairing, prompts, shortcuts, system};
 use crate::devices;
 use crate::shortcut::{Kind, Shortcut};
 use crate::speech;
@@ -513,6 +513,7 @@ impl Devices<'_> {
                 }
                 controls::send(list, LB_SETCURSEL, kept.min(status.devices.len().saturating_sub(1)), 0);
                 *self.list.borrow_mut() = status.devices;
+                self.offer(page);
             }
             Err(error) => controls::set_text(dialog::item(page, SYNC_STATUS), &sentence(&error)),
         }
@@ -523,37 +524,30 @@ impl Devices<'_> {
         self.list.borrow().get(index).cloned()
     }
 
-    fn rename(&self, page: HWND) {
+    /// The chosen device's action of `kind`, as the core offers it: a device cannot unpair
+    /// itself, so its own row has no Unpair.
+    fn act(&self, page: HWND, kind: ActionKind) {
         let Some(device) = self.chosen(page) else { return };
-        let Some(name) = prompts::ask_text(sheet(page), &format!("Rename {}", device.name), "&Name:", "", &device.name) else {
-            return;
-        };
-        self.change(page, |l| l.rename_device(&device.node_id, &name));
-    }
-
-    fn unpair(&self, page: HWND) {
-        let Some(device) = self.chosen(page) else { return };
-        if device.this_device {
-            return prompts::fail(sheet(page), "This is the device you are using. Unpair it from another one.");
-        }
-        let message = "It stops syncing with your devices but keeps everything it already has. Unpairing is for a device you replaced; it does not take data back from a lost one.";
-        if prompts::confirm(sheet(page), &format!("Unpair {}?", device.name), message, "Unpair") {
-            self.change(page, |l| l.unpair_device(&device.node_id));
+        let Some(action) = actions::of_kind(&device.actions, &[kind]) else { return };
+        if let Some((change, _)) = actions::run(self.app, sheet(page), &action, || {}) {
+            self.load(page);
+            say(page, &speech::announcement(&change.announcement, &change.notices));
         }
     }
 
-    fn change(&self, page: HWND, operation: impl FnOnce(&lumenna_surface::Lumenna) -> lumenna_surface::Result<lumenna_surface::Change>) {
-        match operation(&self.app.core.lumenna) {
-            Ok(change) => {
-                self.load(page);
-                self.app.store_changed();
-                say(page, &speech::announcement(&change.announcement, &change.notices));
+    /// Rename and Unpair as the chosen device offers them. The button with focus stays as it
+    /// is, since disabling it would send focus nowhere.
+    fn offer(&self, page: HWND) {
+        let offered = self.chosen(page).map(|device| device.actions).unwrap_or_default();
+        for (id, kind) in [(RENAME, ActionKind::Rename), (UNPAIR, ActionKind::Unpair)] {
+            let button = dialog::item(page, id);
+            let has = actions::of_kind(&offered, &[kind]).is_some();
+            if has || controls::focused() != button {
+                controls::enable(button, has);
             }
-            Err(error) => prompts::fail(sheet(page), &sentence(&error)),
         }
     }
 }
-
 impl Dialog for Devices<'_> {
     fn template(&self) -> Template {
         let list = (LBS_NOTIFY | LBS_NOINTEGRALHEIGHT | LBS_WANTKEYBOARDINPUT) as u32 | WS_VSCROLL.0 | WS_BORDER.0 | WS_TABSTOP.0;
@@ -579,6 +573,10 @@ impl Dialog for Devices<'_> {
     }
 
     fn command(&self, page: HWND, id: u16, code: u16) -> Option<isize> {
+        if id == DEVICES && u32::from(code) == LBN_SELCHANGE {
+            self.offer(page);
+            return None;
+        }
         if u32::from(code) != BN_CLICKED {
             return None;
         }
@@ -595,8 +593,8 @@ impl Dialog for Devices<'_> {
                     say(page, &said);
                 }
             }
-            RENAME => self.rename(page),
-            UNPAIR => self.unpair(page),
+            RENAME => self.act(page, ActionKind::Rename),
+            UNPAIR => self.act(page, ActionKind::Unpair),
             _ => {}
         }
         None
@@ -626,7 +624,7 @@ impl Dialog for Devices<'_> {
             }
             // Delete in the list unpairs, as it removes in every other list.
             WM_VKEYTOITEM if controls::low_word(wparam.0) == VK_DELETE.0 => {
-                self.unpair(page);
+                self.act(page, ActionKind::Unpair);
                 Some(-2)
             }
             WM_VKEYTOITEM => Some(-1),

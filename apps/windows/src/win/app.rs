@@ -15,7 +15,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::rc::Rc;
 
-use lumenna_surface::{Change, Lumenna, Result};
+use lumenna_surface::{Action, ActionKind, Change, Lumenna, Result};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     COLOR_BTNFACE, CreateFontIndirectW, DeleteObject, GetDC, GetTextMetricsW, HBRUSH, HFONT, LOGFONTW,
@@ -44,7 +44,7 @@ use super::menu;
 use super::prompts;
 use super::quick_add;
 use super::sidebar::Sidebar;
-use super::task_actions;
+use super::actions;
 use super::tasks::TaskList;
 use super::settings::{self, Page};
 use super::shortcuts;
@@ -52,7 +52,7 @@ use crate::shortcut::{self, Kind};
 use super::tray::{self, WM_SHOW_RUNNING, WM_TRAY};
 use super::view::{Metrics, View};
 use super::{a11y, core::sentence};
-use lumenna_surface::places::Place;
+use lumenna_surface::places::{Place, SidebarGroup};
 use crate::{profile, speech};
 
 /// Runs a deferred action: something a notification asked for that changes the window it
@@ -659,6 +659,42 @@ impl App {
         }
     }
 
+    /// What can be done to the task the Task menu acts on.
+    fn task_actions_in_hand(&self) -> Option<Vec<Action>> {
+        if controls::within(self.panes[2], controls::focused()) {
+            return self.detail.actions();
+        }
+        match self.content()? {
+            Content::Tasks(list) => list.selected().map(|row| row.actions),
+            Content::Day(day) => self.core.lumenna.show_task(&day.selected_task()?).ok().map(|shown| shown.task.actions),
+            Content::Blocks(_) => None,
+        }
+    }
+
+    /// A Task-menu command: the task in hand's action of that kind, as the core offers it, so
+    /// Mark Done marks a done task not done, and in the trash Restore restores.
+    fn act_on_task_in_hand(&self, command: u16, kinds: &[ActionKind]) {
+        let Some(offered) = self.task_actions_in_hand() else {
+            return self.say("No task is selected");
+        };
+        let Some(action) = actions::of_kind(&offered, kinds) else {
+            return self.say(&format!("{} does not apply to this task", menu::name(command)));
+        };
+        if let Some((change, _)) = actions::run(self, self.main, &action, || self.open_detail()) {
+            self.say_change(&change);
+        }
+    }
+
+    /// Names the Task menu's Mark Done item as the task in hand's own, Mark Not Done when it
+    /// is done, as the menu opens.
+    fn name_task_menu(&self, popup: HMENU) {
+        let kinds = [ActionKind::MarkDone, ActionKind::MarkNotDone];
+        let Some(action) = self.task_actions_in_hand().and_then(|offered| actions::of_kind(&offered, &kinds)) else { return };
+        let text = HSTRING::from(format!("&{}\tCtrl+K", action.title));
+        unsafe {
+            let _ = ModifyMenuW(popup, u32::from(menu::MARK_DONE), MF_BYCOMMAND | MF_STRING, usize::from(menu::MARK_DONE), &text);
+        }
+    }
     pub fn menu_command(&self, id: u16) {
         match id {
             1 => self.enter(),
@@ -672,9 +708,9 @@ impl App {
                     day.add_block(self, None, None);
                 }
             }
-            menu::NEW_PROJECT => self.sidebar.new_project(self, None),
-            menu::NEW_LABEL => self.sidebar.new_label(self),
-            menu::NEW_FILTER => self.sidebar.new_filter(self),
+            menu::NEW_PROJECT => self.sidebar.add(self, SidebarGroup::Projects),
+            menu::NEW_LABEL => self.sidebar.add(self, SidebarGroup::Labels),
+            menu::NEW_FILTER => self.sidebar.add(self, SidebarGroup::Filters),
             menu::SYNC_NOW => {
                 self.say("Syncing");
                 self.core.sync_now(Poster::new(self.main));
@@ -737,27 +773,7 @@ impl App {
                 }
             }
             menu::SAVE_TASK => self.detail.save(self),
-            command if task_actions::handles(command) => {
-                // The trash has its own two commands; a trashed task takes none of these.
-                if self.task_list().is_some_and(|list| list.is_trash()) {
-                    return;
-                }
-                match self.task_in_hand() {
-                    Some(id) => task_actions::run(self, command, &id),
-                    None => self.say("No task is selected"),
-                }
-            }
-            menu::RESTORE_TASK => {
-                if let Some(list) = self.task_list() {
-                    list.restore_selected(self);
-                }
-            }
-            menu::ERASE_TASK => {
-                if let Some(list) = self.task_list() {
-                    list.erase_selected(self);
-                }
-            }
-
+            command if !task_kinds(command).is_empty() => self.act_on_task_in_hand(command, task_kinds(command)),
             menu::PREVIOUS_DAY | menu::NEXT_DAY | menu::GO_TO_NOW | menu::GO_TO_DAY => {
                 if self.day().is_none() {
                     self.go(Place::Today, true);
@@ -922,6 +938,7 @@ unsafe extern "system" fn main_procedure(hwnd: HWND, message: u32, wparam: WPARA
             WM_COMMAND => app.on_command(wparam, lparam),
             WM_NOTIFY => return LRESULT(app.on_notify(lparam).unwrap_or(0)),
             WM_CONTEXTMENU => app.on_context_menu(HWND(wparam.0 as _), lparam),
+            WM_INITMENUPOPUP => app.name_task_menu(HMENU(wparam.0 as _)),
             WM_SIZE => app.layout(),
             WM_SETTINGCHANGE => app.setting_changed(),
             WM_CTLCOLORSTATIC | WM_CTLCOLORBTN | WM_CTLCOLOREDIT | WM_CTLCOLORLISTBOX => {
@@ -1020,5 +1037,21 @@ unsafe extern "system" fn pane_procedure(hwnd: HWND, message: u32, wparam: WPARA
             WM_ERASEBKGND => dark::erase(hwnd, wparam).unwrap_or_else(|| DefWindowProcW(hwnd, message, wparam, lparam)),
             _ => DefWindowProcW(hwnd, message, wparam, lparam),
         }
+    }
+}
+
+/// The kinds of action a Task-menu command means: none for any other command.
+fn task_kinds(command: u16) -> &'static [ActionKind] {
+    match command {
+        menu::MARK_DONE => &[ActionKind::MarkDone, ActionKind::MarkNotDone],
+        menu::PUT_IN_BLOCK => &[ActionKind::PutInBlock],
+        menu::MOVE_TO_PROJECT => &[ActionKind::MoveToProject],
+        menu::MAKE_SUBTASK => &[ActionKind::MakeSubtaskOf],
+        menu::MOVE_TO_TOP => &[ActionKind::MoveToTopLevel],
+        menu::WAIT_FOR => &[ActionKind::WaitFor],
+        menu::TRASH_TASK => &[ActionKind::Delete],
+        menu::RESTORE_TASK => &[ActionKind::Restore],
+        menu::ERASE_TASK => &[ActionKind::DeleteForGood],
+        _ => &[],
     }
 }

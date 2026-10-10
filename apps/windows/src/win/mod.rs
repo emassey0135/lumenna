@@ -1,6 +1,7 @@
 //! Everything that touches Win32.
 
 mod a11y;
+mod actions;
 mod app;
 mod block_form;
 mod blocks;
@@ -21,7 +22,6 @@ mod settings;
 mod shortcuts;
 mod sidebar;
 mod system;
-mod task_actions;
 mod tasks;
 mod tray;
 mod tree;

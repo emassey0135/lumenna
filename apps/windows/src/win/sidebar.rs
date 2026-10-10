@@ -3,11 +3,13 @@
 //!
 //! A tree view like every list here, so a subproject's level is the control's to report.
 //! Moving through it shows each place in the middle pane, as Explorer's folder tree does.
-//! What a project, label or filter can have done to it is in its context menu.
+//! What a project, label, filter or heading can have done to it is the core's, offered in its
+//! context menu; Delete runs a row's Delete.
 
 use std::cell::RefCell;
 
-use lumenna_surface::{Change, Direction, Lumenna, Result, parse_weight};
+use lumenna_surface::actions::{QUERY, heading};
+use lumenna_surface::{Action, ActionKind, Answer, Subject};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{
     NMHDR, NMTREEVIEWW, NMTVKEYDOWN, TVN_ITEMEXPANDEDW, TVN_KEYDOWN, TVN_SELCHANGEDW,
@@ -16,27 +18,12 @@ use windows::Win32::UI::Input::KeyboardAndMouse::VK_DELETE;
 
 use super::app::App;
 use super::controls::{self, rect};
-use super::core::sentence;
-use super::prompts;
 use super::tree::{Item, Tree};
 use super::view::Metrics;
+use super::{actions, prompts};
 use lumenna_surface::places::{self, Place, SidebarEntry, SidebarGroup, SidebarKind};
 
 const TREE: u16 = 200;
-
-const NEW: u16 = 1;
-const RENAME: u16 = 2;
-const NEW_INSIDE: u16 = 3;
-const MOVE_UNDER: u16 = 4;
-const UP: u16 = 5;
-const DOWN: u16 = 6;
-const WEIGHT: u16 = 7;
-const ARCHIVE: u16 = 8;
-const DELETE: u16 = 9;
-const MERGE: u16 = 10;
-const COLOUR: u16 = 11;
-const QUERY: u16 = 12;
-
 pub struct Sidebar {
     pub tree: Tree,
     entries: RefCell<Vec<SidebarEntry>>,
@@ -108,12 +95,9 @@ impl Sidebar {
                 // Delete here does what it does in every other list: the row's own Delete,
                 // asking first as the context menu's does. After the notification returns,
                 // since deleting rebuilds the tree.
-                if self.selected().is_some_and(|entry| deletable(&entry)) {
-                    app.defer(|app| {
-                        if let Some(entry) = app.sidebar.selected() {
-                            app.sidebar.act(app, DELETE, &entry);
-                        }
-                    });
+                let delete = self.selected().and_then(|entry| Some((actions::of_kind(&entry.actions, &[ActionKind::Delete])?, entry)));
+                if let Some((action, entry)) = delete {
+                    app.defer(move |app| app.sidebar.act(app, &entry, &action));
                 }
                 Some(1)
             }
@@ -128,209 +112,76 @@ impl Sidebar {
         let index = point.and_then(|p| self.tree.index_at(p)).or_else(|| self.tree.selected());
         let Some(index) = index else { return true };
         let Some(entry) = self.entries.borrow().get(index).cloned() else { return true };
-        let items: Vec<(u16, &str)> = match &entry.kind {
-            SidebarKind::Group(SidebarGroup::Projects) => vec![(NEW, "New &Project...")],
-            SidebarKind::Group(SidebarGroup::Labels) => vec![(NEW, "New &Label...")],
-            SidebarKind::Group(SidebarGroup::Filters) => vec![(NEW, "New Saved &Filter...")],
-            SidebarKind::Place(Place::Project(_)) => vec![
-                (RENAME, "&Rename..."),
-                (NEW_INSIDE, "&New Project Inside..."),
-                (MOVE_UNDER, "Move &Under..."),
-                (UP, "Move U&p"),
-                (DOWN, "Move &Down"),
-                (WEIGHT, "&Weight..."),
-                (ARCHIVE, if entry.archived { "Un&archive" } else { "&Archive" }),
-                (0, ""),
-                (DELETE, "D&elete...\tDelete"),
-            ],
-            SidebarKind::Place(Place::Label(_)) => vec![
-                (RENAME, "&Rename..."),
-                (MERGE, "&Merge Into..."),
-                (COLOUR, "&Colour..."),
-                (UP, "Move U&p"),
-                (DOWN, "Move &Down"),
-                (0, ""),
-                (DELETE, "D&elete...\tDelete"),
-            ],
-            SidebarKind::Place(Place::Filter { .. }) => vec![
-                (RENAME, "&Rename..."),
-                (QUERY, "Change &Query..."),
-                (UP, "Move U&p"),
-                (DOWN, "Move &Down"),
-                (0, ""),
-                (DELETE, "D&elete...\tDelete"),
-            ],
-            SidebarKind::Place(_) => return true,
-        };
+        let items = actions::menu(&entry.actions);
+        if items.is_empty() {
+            return true;
+        }
+        let items: Vec<(u16, &str)> = items.iter().map(|(id, text)| (*id, text.as_str())).collect();
         let at = point.unwrap_or_else(|| self.tree.menu_point(index));
-        if let Some(command) = app.popup(&items, at) {
-            self.act(app, command, &entry);
+        if let Some(action) = app.popup(&items, at).and_then(|command| actions::chosen(&entry.actions, command)) {
+            self.act(app, &entry, &action);
         }
         true
     }
 
-    fn act(&self, app: &App, command: u16, entry: &SidebarEntry) {
-        let owner = app.main;
-        let lumenna = &app.core.lumenna;
-        match (&entry.kind, command) {
-            (SidebarKind::Group(SidebarGroup::Projects), NEW) => self.new_project(app, None),
-            (SidebarKind::Group(SidebarGroup::Labels), NEW) => self.new_label(app),
-            (SidebarKind::Group(SidebarGroup::Filters), NEW) => self.new_filter(app),
-
-            (SidebarKind::Place(Place::Project(name)), command) => match command {
-                RENAME => {
-                    if let Some(to) = prompts::ask_text(owner, &format!("Rename {name}"), "&Name:", "", name) {
-                        self.change(app, Some(Place::Project(to.clone())), |l| l.rename_project(name, &to));
-                    }
-                }
-                NEW_INSIDE => self.new_project(app, Some(name.clone())),
-                MOVE_UNDER => {
-                    let mut choices = vec!["The top level".to_owned()];
-                    choices.extend(project_names(lumenna).into_iter().filter(|p| p != name));
-                    if let Some(index) = prompts::pick(owner, &format!("Move {name}"), "&Under:", &choices) {
-                        let parent = (index > 0).then(|| choices[index].clone());
-                        self.change(app, None, |l| l.move_project(name, parent));
-                    }
-                }
-                UP => self.change(app, None, |l| l.reorder_project(name, Direction::Up)),
-                DOWN => self.change(app, None, |l| l.reorder_project(name, Direction::Down)),
-                WEIGHT => {
-                    let message = "How much this whole area matters now, roughly 0.5 to 2. Type inherit to take the parent's again.";
-                    let mut typed = "1.0".to_owned();
-                    // Asked again until it reads, with what was typed, rather than a typo
-                    // quietly read as inherit.
-                    while let Some(text) = prompts::ask_text(owner, &format!("Weight of {name}"), "&Weight:", message, &typed) {
-                        match parse_weight(text.clone()) {
-                            Ok(weight) => {
-                                self.change(app, None, |l| l.weigh_project(name, weight));
-                                break;
-                            }
-                            Err(error) => {
-                                prompts::fail(owner, &sentence(&error));
-                                typed = text;
-                            }
-                        }
-                    }
-                }
-                ARCHIVE => self.change(app, None, |l| l.archive_project(name)),
-                DELETE => {
-                    let choice = prompts::choose(
-                        owner,
-                        &format!("Delete {name}?"),
-                        "Its tasks can go to the trash with it, or move to the Inbox.",
-                        &["Delete and Trash Its Tasks", "Delete and Keep Its Tasks"],
-                        true,
-                    );
-                    if let Some(choice) = choice {
-                        self.change(app, Some(Place::Tasks), |l| l.delete_project(name, choice == 1));
-                    }
-                }
-                _ => {}
-            },
-
-            (SidebarKind::Place(Place::Label(name)), command) => match command {
-                RENAME => {
-                    if let Some(to) = prompts::ask_text(owner, &format!("Rename {name}"), "&Name:", "", name) {
-                        self.change(app, Some(Place::Label(to.clone())), |l| l.rename_label(name, &to));
-                    }
-                }
-                MERGE => {
-                    // For when a typo made a near-duplicate: this one's tasks move to the other.
-                    let others: Vec<String> = label_names(lumenna).into_iter().filter(|l| l != name).collect();
-                    if let Some(index) = prompts::pick(owner, &format!("Merge {name}"), "&Into:", &others) {
-                        let into = others[index].clone();
-                        self.change(app, Some(Place::Label(into.clone())), |l| l.merge_labels(name, &into));
-                    }
-                }
-                COLOUR => {
-                    let message = "A colour name, such as red or teal, or none. The name always shows too.";
-                    if let Some(colour) = prompts::ask_text(owner, &format!("Colour for {name}"), "&Colour:", message, "") {
-                        let colour = (!colour.eq_ignore_ascii_case("none")).then_some(colour);
-                        self.change(app, None, |l| l.recolour_label(name, colour));
-                    }
-                }
-                UP => self.change(app, None, |l| l.reorder_label(name, Direction::Up)),
-                DOWN => self.change(app, None, |l| l.reorder_label(name, Direction::Down)),
-                DELETE
-                    if prompts::confirm(owner, &format!("Delete {name}?"), "Tasks wearing it stay; they just stop showing it.", "Delete") => {
-                        self.change(app, Some(Place::Tasks), |l| l.delete_label(name));
-                    }
-                _ => {}
-            },
-
-            (SidebarKind::Place(Place::Filter { name, query }), command) => match command {
-                RENAME => {
-                    if let Some(to) = prompts::ask_text(owner, &format!("Rename {name}"), "&Name:", "", name) {
-                        let then = Place::Filter { name: to.clone(), query: query.clone() };
-                        self.change(app, Some(then), |l| l.edit_filter(name, Some(to.clone()), None));
-                    }
-                }
-                QUERY => {
-                    if let Some(new) = prompts::ask_text(owner, &format!("Query for {name}"), "&Query:", "", query) {
-                        let then = Place::Filter { name: name.clone(), query: new.clone() };
-                        self.change(app, Some(then), |l| l.edit_filter(name, None, Some(new.clone())));
-                    }
-                }
-                UP => self.change(app, None, |l| l.reorder_filter(name, Direction::Up)),
-                DOWN => self.change(app, None, |l| l.reorder_filter(name, Direction::Down)),
-                DELETE
-                    if prompts::confirm(owner, &format!("Delete {name}?"), "The tasks it shows are not touched.", "Delete") => {
-                        self.change(app, Some(Place::Tasks), |l| l.delete_filter(name));
-                    }
-                _ => {}
-            },
-            _ => {}
+    /// Adds a project, label or saved filter, as its heading's New does: for the File menu.
+    pub fn add(&self, app: &App, group: SidebarGroup) {
+        let entry = SidebarEntry { kind: SidebarKind::Group(group), text: String::new(), depth: 0, archived: false, actions: Vec::new() };
+        if let Some(action) = heading(group).into_iter().next() {
+            self.act(app, &entry, &action);
         }
     }
 
-    /// Runs a change, says what it did, and — when it renamed or removed the place, or made
-    /// a new one — goes to `then`.
-    fn change(&self, app: &App, then: Option<Place>, operation: impl FnOnce(&Lumenna) -> Result<Change>) {
-        if let Some(change) = app.perform(operation) {
-            if let Some(place) = then.filter(|_| change.changed) {
-                app.go(place, false);
+    /// Runs one of a row's actions, says what it did, and — when it renamed or removed the
+    /// place, or made a new one — goes there, or to Tasks.
+    fn act(&self, app: &App, entry: &SidebarEntry, action: &Action) {
+        let Some((change, answer)) = actions::run(app, app.main, action, || self.new_filter(app)) else { return };
+        let query = match &entry.kind {
+            SidebarKind::Place(Place::Filter { query, .. }) => query.clone(),
+            _ => String::new(),
+        };
+        let then = match (action.subject, action.kind, answer) {
+            (_, ActionKind::Delete, _) => Some(Place::Tasks),
+            (Subject::Project, ActionKind::Rename | ActionKind::New | ActionKind::NewInside, Answer::Text { text }) => {
+                Some(Place::Project(text))
             }
-            app.say_change(&change);
+            (Subject::Label, ActionKind::Rename | ActionKind::New, Answer::Text { text }) => Some(Place::Label(text)),
+            (Subject::Label, ActionKind::MergeInto, Answer::Picked { id, .. }) => Some(Place::Label(id)),
+            (Subject::Filter, ActionKind::Rename, Answer::Text { text }) => Some(Place::Filter { name: text, query }),
+            (Subject::Filter, ActionKind::ChangeQuery, Answer::Text { text }) => {
+                Some(Place::Filter { name: action.target.clone(), query: text })
+            }
+            _ => None,
+        };
+        if let Some(place) = then.filter(|_| change.changed) {
+            app.go(place, false);
         }
+        app.say_change(&change);
     }
 
-    pub fn new_project(&self, app: &App, parent: Option<String>) {
-        let title = parent.as_ref().map_or_else(|| "New Project".to_owned(), |p| format!("New Project in {p}"));
-        if let Some(name) = prompts::ask_text(app.main, &title, "&Name:", "", "") {
-            self.change(app, Some(Place::Project(name.clone())), |l| l.add_project(&name, parent));
-        }
-    }
-
-    pub fn new_label(&self, app: &App) {
-        if let Some(name) = prompts::ask_text(app.main, "New Label", "&Name:", "", "") {
-            self.change(app, Some(Place::Label(name.clone())), |l| l.add_label(&name));
-        }
-    }
-
-    pub fn new_filter(&self, app: &App) {
+    /// A new saved filter: the app's own form, a name and then its query.
+    fn new_filter(&self, app: &App) {
         let Some(name) = prompts::ask_text(app.main, "New Saved Filter", "&Name:", "", "") else { return };
-        let message = "Such as #Work & overdue, or p1 | today.";
-        if let Some(query) = prompts::ask_text(app.main, &format!("Query for {name}"), "&Query:", message, "") {
-            let then = Place::Filter { name: name.clone(), query: query.clone() };
-            self.change(app, Some(then), |l| l.add_filter(&name, &query));
+        let mut typed = String::new();
+        while let Some(query) = prompts::ask(app.main, &format!("Query of {name}"), "&Query:", QUERY, &typed) {
+            match app.core.lumenna.add_filter(&name, &query) {
+                Ok(change) => {
+                    app.store_changed();
+                    if change.changed {
+                        app.go(Place::Filter { name: name.clone(), query }, false);
+                    }
+                    app.say_change(&change);
+                    return;
+                }
+                Err(error) => {
+                    app.fail(&super::core::sentence(&error));
+                    typed = query;
+                }
+            }
         }
     }
 }
 
 fn place_key(place: &Place) -> String {
-    SidebarEntry { kind: SidebarKind::Place(place.clone()), text: String::new(), depth: 0, archived: false }.key()
-}
-
-fn project_names(lumenna: &Lumenna) -> Vec<String> {
-    lumenna.list_projects().map(|r| r.rows.into_iter().map(|p| p.title).collect()).unwrap_or_default()
-}
-
-fn label_names(lumenna: &Lumenna) -> Vec<String> {
-    lumenna.list_labels().map(|r| r.rows.into_iter().map(|l| l.title).collect()).unwrap_or_default()
-}
-
-/// Whether a row has a Delete: projects, labels and saved filters do; the fixed places and
-/// the headings do not.
-fn deletable(entry: &SidebarEntry) -> bool {
-    matches!(entry.kind, SidebarKind::Place(Place::Project(_) | Place::Label(_) | Place::Filter { .. }))
+    SidebarEntry { kind: SidebarKind::Place(place.clone()), text: String::new(), depth: 0, archived: false, actions: Vec::new() }.key()
 }
