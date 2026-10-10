@@ -144,15 +144,4 @@ impl Core {
         out(self.lumenna.devices())
     }
 
-    /// Renames a device, found by name or the start of its identifier.
-    #[wasm_bindgen(js_name = renameDevice)]
-    pub fn rename_device(&self, device: &str, name: &str) -> Out<lumenna_surface::Change> {
-        out(self.lumenna.rename_device(device, name))
-    }
-
-    /// Stops syncing with a device. It keeps what it already has.
-    #[wasm_bindgen(js_name = unpairDevice)]
-    pub fn unpair_device(&self, device: &str) -> Out<lumenna_surface::Change> {
-        out(self.lumenna.unpair_device(device))
-    }
 }

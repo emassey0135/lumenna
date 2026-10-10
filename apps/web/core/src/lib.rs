@@ -18,10 +18,9 @@ mod manage;
 mod sync;
 
 use clock::Browser;
-use lumenna_desktop::choices;
 use lumenna_surface::places::{self, Place, SidebarEntry};
 use lumenna_desktop::speech::{self, Clock};
-use lumenna_surface::{Lumenna, LumennaError, Syntax, TaskDetail, TaskEdit, TaskFields};
+use lumenna_surface::{Action, Answer, Choice, Lumenna, LumennaError, Syntax, TaskDetail, TaskEdit, TaskFields};
 use serde::Serialize;
 use tsify::{Ts, Tsify};
 use wasm_bindgen::prelude::*;
@@ -123,42 +122,6 @@ impl Core {
         out(self.lumenna.edit_task(id, edit.to_rust()?))
     }
 
-    /// The surface's method of the same name, as `completeTask`.
-    #[wasm_bindgen(js_name = completeTask)]
-    pub fn complete_task(&self, id: &str) -> Out<lumenna_surface::Change> {
-        out(self.lumenna.complete_task(id))
-    }
-
-    /// The surface's method of the same name, as `uncompleteTask`.
-    #[wasm_bindgen(js_name = uncompleteTask)]
-    pub fn uncomplete_task(&self, id: &str) -> Out<lumenna_surface::Change> {
-        out(self.lumenna.uncomplete_task(id))
-    }
-
-    /// The surface's method of the same name, as `trashTask`.
-    #[wasm_bindgen(js_name = trashTask)]
-    pub fn trash_task(&self, id: &str) -> Out<lumenna_surface::Change> {
-        out(self.lumenna.trash_task(id))
-    }
-
-    /// The surface's method of the same name, as `restoreTask`.
-    #[wasm_bindgen(js_name = restoreTask)]
-    pub fn restore_task(&self, id: &str) -> Out<lumenna_surface::Change> {
-        out(self.lumenna.restore_task(id))
-    }
-
-    /// The surface's method of the same name, as `eraseTask`.
-    #[wasm_bindgen(js_name = eraseTask)]
-    pub fn erase_task(&self, id: &str) -> Out<lumenna_surface::Change> {
-        out(self.lumenna.erase_task(id))
-    }
-
-    /// The surface's method of the same name, as `moveTask`.
-    #[wasm_bindgen(js_name = moveTask)]
-    pub fn move_task(&self, id: &str, to: Ts<lumenna_surface::MoveTarget>) -> Out<lumenna_surface::Change> {
-        out(self.lumenna.move_task(id, to.to_rust()?))
-    }
-
     /// The surface's method of the same name, as `undo`.
     pub fn undo(&self) -> Out<lumenna_surface::Change> {
         out(self.lumenna.undo())
@@ -221,63 +184,15 @@ impl Core {
         out(self.lumenna.edit_block(id, edit.to_rust()?, scope.to_rust()?))
     }
 
-    /// The surface's method of the same name, as `cancelOccurrence`.
-    #[wasm_bindgen(js_name = cancelOccurrence)]
-    pub fn cancel_occurrence(&self, id: &str, date: &str) -> Out<lumenna_surface::Change> {
-        out(self.lumenna.cancel_occurrence(id, date))
+    /// Runs one of a record's actions with the answer to its question: what every row's
+    /// menu, key and button does.
+    pub fn act(&self, action: Ts<Action>, answer: Ts<Answer>) -> Out<lumenna_surface::Change> {
+        out(self.lumenna.act(action.to_rust()?, answer.to_rust()?))
     }
 
-    /// The surface's method of the same name, as `restoreOccurrence`.
-    #[wasm_bindgen(js_name = restoreOccurrence)]
-    pub fn restore_occurrence(&self, id: &str, date: &str) -> Out<lumenna_surface::Change> {
-        out(self.lumenna.restore_occurrence(id, date))
-    }
-
-    /// The surface's method of the same name, as `deleteBlock`.
-    #[wasm_bindgen(js_name = deleteBlock)]
-    pub fn delete_block(&self, id: &str) -> Out<lumenna_surface::Change> {
-        out(self.lumenna.delete_block(id))
-    }
-
-    /// Puts a task in a block for one sitting.
-    pub fn assign(
-        &self,
-        task: &str,
-        block: &str,
-        date: Option<String>,
-        minutes: Option<u32>,
-    ) -> Out<lumenna_surface::Change> {
-        out(self.lumenna.assign(task, block, date, minutes))
-    }
-
-    /// The surface's method of the same name, as `unassign`.
-    pub fn unassign(&self, assignment: &str) -> Out<lumenna_surface::Change> {
-        out(self.lumenna.unassign(assignment))
-    }
-
-    /// How long a sitting is meant to take, or none.
-    #[wasm_bindgen(js_name = planMinutes)]
-    pub fn plan_minutes(&self, assignment: &str, minutes: Option<u32>) -> Out<lumenna_surface::Change> {
-        out(self.lumenna.plan_minutes(assignment, minutes))
-    }
-
-    /// The surface's method of the same name, as `startTimer`.
-    #[wasm_bindgen(js_name = startTimer)]
-    pub fn start_timer(&self, assignment: &str) -> Out<lumenna_surface::Change> {
-        out(self.lumenna.start_timer(assignment))
-    }
-
-    /// Stops a sitting's timer, or with `minutes`, records its whole time by hand.
-    #[wasm_bindgen(js_name = stopTimer)]
-    pub fn stop_timer(&self, assignment: &str, minutes: Option<u32>) -> Out<lumenna_surface::Timer> {
-        out(self.lumenna.stop_timer(assignment, minutes))
-    }
-
-    /// The work blocks a task could be put in, from today for a week, each as it reads in a
-    /// chooser.
-    #[wasm_bindgen(js_name = workBlocks)]
-    pub fn work_blocks(&self) -> Out<Choices> {
-        out(Ok(Choices { blocks: choices::work_blocks(&self.lumenna, jiff::Zoned::now().date(), 7, &Browser) }))
+    /// What a pick offers for `action`, or, when nothing, why.
+    pub fn choices(&self, action: Ts<Action>) -> Out<lumenna_surface::Choices> {
+        out(self.lumenna.choices(action.to_rust()?))
     }
 }
 
@@ -416,11 +331,21 @@ pub fn announcement_text(announcement: &str, notices: Vec<String>) -> String {
     speech::sentence(&speech::announcement(announcement, &notices))
 }
 
-/// The work blocks a task could be put in, in order.
-#[derive(Serialize, serde::Deserialize, Tsify)]
-pub struct Choices {
-    /// Each block, with how it reads.
-    pub blocks: Vec<choices::BlockChoice>,
+/// Something a pick offers, as its line reads: a block as the desktop apps word one
+/// ("Tomorrow, 9:00 AM to 11:00 AM, Deep work"), anything else its title and what tells it
+/// apart.
+#[wasm_bindgen(js_name = choiceText)]
+pub fn choice_text(choice: Ts<Choice>) -> Result<String, JsError> {
+    let choice = choice.to_rust()?;
+    Ok(match (&choice.date, &choice.start, &choice.end) {
+        (Some(date), Some(start), Some(end)) => {
+            format!("{}, {} to {}, {}", Browser.day(date), Browser.time(start), Browser.time(end), choice.title)
+        }
+        _ => match &choice.detail {
+            Some(detail) => format!("{}, {detail}", choice.title),
+            None => choice.title,
+        },
+    })
 }
 
 /// A paired device, as its line in the list reads: "Kitchen Mac, macos, last synced 5 minutes

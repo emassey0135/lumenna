@@ -39,7 +39,14 @@ type Question =
       check?: (text: string) => string | undefined | Promise<string | undefined>;
       answer: (text?: string) => void;
     }
-  | { kind: "pick"; heading: string; label: string; items: { id: string; text: string }[]; answer: (id?: string) => void };
+  | { kind: "pick"; heading: string; items: Item[]; answer: (id?: string) => void };
+
+/** Something to pick: what it sends back, how it reads, and how deep in a tree it sits. */
+export interface Item {
+  id: string;
+  text: string;
+  depth?: number;
+}
 
 let open: ((question: Question) => void) | undefined;
 
@@ -74,22 +81,9 @@ export function ask(
   return put((answer) => ({ kind: "ask", heading, label, description, initial, check, answer }));
 }
 
-/** One of `items`, found by typing part of it, or undefined if cancelled. */
-export function pick(heading: string, label: string, items: { id: string; text: string }[]): Promise<string | undefined> {
-  return put((answer) => ({ kind: "pick", heading, label, items, answer }));
-}
-
-/** Minutes, or undefined if cancelled; `optional` lets an empty answer mean none (null). */
-export async function askMinutes(heading: string, initial: string, optional: boolean): Promise<number | null | undefined> {
-  const description = optional
-    ? "Minutes, or empty for no planned length."
-    : "The whole of this sitting, replacing what is logged.";
-  const text = await ask(heading, "Minutes", description, initial, (text) => {
-    if (optional && !text.trim()) return undefined;
-    return /^\s*[1-9]\d*\s*$/.test(text) ? undefined : "That is not a number of minutes.";
-  });
-  if (text === undefined) return undefined;
-  return text.trim() ? Number(text) : null;
+/** One of `items`, found by typing part of it, or undefined if cancelled. The field is named by the heading. */
+export function pick(heading: string, items: Item[]): Promise<string | undefined> {
+  return put((answer) => ({ kind: "pick", heading, items, answer }));
 }
 
 /** Where the questions are shown: rendered once, in the app. */
@@ -167,9 +161,11 @@ function Asking(props: { question: Extract<Question, { kind: "ask" }>; close: ()
         >
           <Label>{question.label}</Label>
           <Input />
-          <Text slot="description" className="quiet">
-            {question.description}
-          </Text>
+          {question.description && (
+            <Text slot="description" className="quiet">
+              {question.description}
+            </Text>
+          )}
           <FieldError>{problem}</FieldError>
         </TextField>
         <div className="buttons">
@@ -198,9 +194,12 @@ function Picking(props: { question: Extract<Question, { kind: "pick" }>; close: 
 
   return (
     <Dialog>
-      <Heading slot="title">{question.heading}</Heading>
+      <Heading slot="title" id="pick-heading">
+        {question.heading}
+      </Heading>
       <form onSubmit={submit}>
         <ComboBox
+          aria-labelledby="pick-heading"
           className="field"
           items={question.items}
           selectedKey={chosen}
@@ -213,7 +212,6 @@ function Picking(props: { question: Extract<Question, { kind: "pick" }>; close: 
           menuTrigger="focus"
           autoFocus
         >
-          <Label>{question.label}</Label>
           <Input />
           <Text slot="description" className="quiet">
             {question.items.length === 1 ? "1 to choose from." : `${question.items.length} to choose from.`} Type
@@ -221,7 +219,13 @@ function Picking(props: { question: Extract<Question, { kind: "pick" }>; close: 
           </Text>
           <FieldError>{problem}</FieldError>
           <Popover>
-            <ListBox>{(item: { id: string; text: string }) => <ListBoxItem>{item.text}</ListBoxItem>}</ListBox>
+            <ListBox>
+              {(item: Item) => (
+                <ListBoxItem textValue={item.text} style={{ paddingInlineStart: `${0.5 + (item.depth ?? 0)}em` }}>
+                  {item.text}
+                </ListBoxItem>
+              )}
+            </ListBox>
           </Popover>
         </ComboBox>
         <div className="buttons">

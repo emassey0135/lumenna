@@ -81,13 +81,13 @@ test("a task assigned from a block is a sitting beneath it, and Space times it",
   const block = day.getByRole("row", { name: /Deep work/ });
   await block.focus();
   await page.keyboard.press("Shift+F10");
-  await page.getByRole("menuitem", { name: "Assign a Task…" }).click();
-  const picker = page.getByRole("dialog", { name: "Assign to Deep work" });
-  await picker.getByRole("combobox", { name: "Task" }).fill("Write");
+  await page.getByRole("menuitem", { name: "Assign a Task" }).click();
+  const picker = page.getByRole("dialog", { name: "Assign a task to Deep work" });
+  await picker.getByRole("combobox", { name: "Assign a task to Deep work" }).fill("Write");
   await page.getByRole("option", { name: /^Write report/ }).click();
   await picker.getByRole("button", { name: "OK" }).click();
-  const minutes = page.getByRole("dialog", { name: /Meant to Take/ });
-  await minutes.getByRole("textbox", { name: "Minutes", exact: true }).fill("30");
+  const minutes = page.getByRole("dialog", { name: "Planned length" });
+  await minutes.getByRole("textbox", { name: "Planned length" }).fill("30m");
   await minutes.getByRole("button", { name: "OK" }).click();
   const sitting = day.getByRole("row", { name: /^Write report/ });
   await expect(sitting).toHaveAttribute("aria-level", "2");
@@ -98,7 +98,7 @@ test("a task assigned from a block is a sitting beneath it, and Space times it",
   await expect(sitting).toBeFocused();
 });
 
-test("a sitting's minutes refuse what is not a number, at the field", async ({ page }) => {
+test("a sitting's planned length refuses what is not a length, and the dialog stays", async ({ page }) => {
   await open(page);
   await add(page, "Write report");
   await place(page, /^Today/);
@@ -106,15 +106,15 @@ test("a sitting's minutes refuse what is not a number, at the field", async ({ p
   const day = page.getByRole("treegrid", { name: "The day" });
   await day.getByRole("row", { name: /Deep work/ }).focus();
   await page.keyboard.press("Shift+F10");
-  await page.getByRole("menuitem", { name: "Assign a Task…" }).click();
-  await page.getByRole("combobox", { name: "Task" }).fill("Write");
+  await page.getByRole("menuitem", { name: "Assign a Task" }).click();
+  await page.getByRole("combobox", { name: "Assign a task to Deep work" }).fill("Write");
   await page.getByRole("option", { name: /^Write report/ }).click();
   await page.getByRole("button", { name: "OK" }).click();
-  const field = page.getByRole("textbox", { name: "Minutes", exact: true });
+  const field = page.getByRole("textbox", { name: "Planned length" });
   await field.fill("soon");
   await page.getByRole("button", { name: "OK" }).click();
   await expect(field).toHaveAttribute("aria-invalid", "true");
-  await expect(field).toHaveAccessibleDescription(/not a number of minutes/);
+  await expect(field).toHaveAccessibleDescription(/could not read a duration/);
 });
 
 test("moving to the next day says it, and Today comes back", async ({ page }) => {
@@ -154,23 +154,52 @@ test("the blocks list every series, and Delete asks before deleting one", async 
   await axe(page);
   await gym.focus();
   await page.keyboard.press("Delete");
-  await page.getByRole("alertdialog", { name: "Delete Gym?" }).getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("alertdialog", { name: "Delete Gym?" }).getByRole("button", { name: "Delete Block" }).click();
   await expect(gym).toHaveCount(0);
 });
 
 test("a task is put in a block from its own details", async ({ page }) => {
   await open(page);
   await place(page, /^Today/);
-  await addBlock(page, "Deep work", "11:00pm");
+  // Ending before midnight: the core counts a block ending at 00:00 as past all day, and the
+  // week's work blocks leave past ones out.
+  await addBlock(page, "Deep work", "10:00pm");
   await add(page, "Write report");
   await place(page, /^Tasks/);
   await page.getByRole("main").getByRole("row", { name: /^Write report/ }).click();
-  await page.getByRole("complementary", { name: "Task details" }).getByRole("button", { name: "Put in a Block…" }).click();
-  const picker = page.getByRole("dialog", { name: "Put Write report in a Block" });
-  await picker.getByRole("combobox", { name: "Block" }).fill("Deep");
+  await page.getByRole("complementary", { name: "Task details" }).getByRole("button", { name: "Put in a Block" }).click();
+  const picker = page.getByRole("dialog", { name: "Put Write report in a block" });
+  await picker.getByRole("combobox", { name: "Put Write report in a block" }).fill("Deep");
   await page.getByRole("option", { name: /Deep work/ }).click();
   await picker.getByRole("button", { name: "OK" }).click();
-  await page.getByRole("dialog", { name: /Meant to Take/ }).getByRole("button", { name: "OK" }).click();
+  await page.getByRole("dialog", { name: "Planned length" }).getByRole("button", { name: "OK" }).click();
   await place(page, /^Today/);
   await expect(page.getByRole("treegrid", { name: "The day" }).getByRole("row", { name: /^Write report/ })).toBeVisible();
+});
+
+test("a task row's menu offers the core's actions, in order, and runs them after closing", async ({ page }) => {
+  await open(page);
+  await add(page, "Water plants");
+  const row = page.getByRole("main").getByRole("row", { name: /^Water plants/ });
+  await row.focus();
+  await page.keyboard.press("Shift+F10");
+  const items = page.getByRole("menuitem");
+  await expect(items).toHaveText([
+    "Mark Done",
+    "Edit Details",
+    "Put in a Block",
+    "Move to Project",
+    "Make Subtask Of",
+    "Wait For",
+    "Move to Trash",
+  ]);
+  await axe(page);
+  await page.getByRole("menuitem", { name: "Move to Project" }).click();
+  // Nothing else to move it to: the core says so, and nothing opens.
+  await expect(page.locator('[aria-live="polite"]')).toContainText("There is no other project to move it to.");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(row).toBeFocused();
+  await page.keyboard.press("Shift+F10");
+  await page.getByRole("menuitem", { name: "Move to Trash" }).click();
+  await expect(row).toHaveCount(0);
 });

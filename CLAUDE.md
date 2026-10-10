@@ -865,6 +865,10 @@ with `lum`.
   A refused answer stays in its dialog.
 - **A row's action runs after its menu has closed** and focus is back on the row, so a
   dialog it opens returns focus there.
+- **Every menu, key and button runs a record's own `actions`** (`RowMenu`, `perform` in
+  `actions.ts`, which asks each question its way: a confirmation or a choice of answers as an
+  `alertdialog`, a line of text with the core's refusal at the field, a pick from `choices`).
+  Space and Delete run the row's action of the matching kind. Only the forms are the web's.
 - **The sidebar's row in hand is the one focus was last on**, not the selection: its
   headings (Projects, Labels, Saved Filters) are never selected.
 - **A React Aria check box's input is visually hidden**, so Playwright's `check()` waits for

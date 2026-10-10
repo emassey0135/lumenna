@@ -1,5 +1,5 @@
-// Every block series: Enter changes one, Delete deletes it, and the
-// rest is in its menu. A series is changed whole here; one day of it is changed from the day.
+// Every block series: its actions are the core's, in its menu; Enter changes one, Delete
+// deletes it. A series is changed whole here; one day of it is changed from the day.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
@@ -7,11 +7,10 @@ import { Button, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
 import { blockForm, freshBlock } from "./BlockForm";
 import { core } from "./core";
-import type { Line } from "./core";
+import type { Action, Line } from "./core";
+import { byKind, perform, REMOVING } from "./actions";
 import { rowKey, useLanding } from "./landing";
-import { confirm } from "./Prompts";
 import { asksForMenu, RowMenu } from "./RowMenu";
-import type { Action } from "./RowMenu";
 import { say } from "./say";
 
 export function Blocks(props: { revision: number; onChanged: () => void }) {
@@ -64,22 +63,11 @@ export function Blocks(props: { revision: number; onChanged: () => void }) {
     }
   };
 
-  const remove = async (at: Line) => {
-    if (!(await confirm(`Delete ${at.row.title}?`, "Every occurrence goes, with what is assigned to it.", "Delete"))) return;
-    try {
-      changed(await core.deleteBlock(at.row.id), undefined, ids.indexOf(at.row.id));
-    } catch (error) {
-      say((error as Error).message);
-    }
+  // Runs one of a series' actions; Edit Block is the block form.
+  const run = async (at: Line, action: Action) => {
+    const done = await perform(action, () => edit(at));
+    if (done) changed(done.said, at.row.id, ids.indexOf(at.row.id));
   };
-
-  const actions = (at: Line | undefined): Action[] =>
-    at
-      ? [
-          { id: "edit", label: "Change…", run: () => void edit(at) },
-          { id: "delete", label: "Delete…", run: () => void remove(at) },
-        ]
-      : [];
 
   const keys = (event: KeyboardEvent) => {
     const at = line(rowKey(event));
@@ -89,9 +77,11 @@ export function Blocks(props: { revision: number; onChanged: () => void }) {
       setSelected(at.row.id);
       setMenu(true);
     } else if (event.key === "Delete") {
+      const action = byKind(at.row.actions, ...REMOVING);
+      if (!action) return;
       event.preventDefault();
       event.stopPropagation();
-      void remove(at);
+      void run(at, action);
     }
   };
 
@@ -117,7 +107,15 @@ export function Blocks(props: { revision: number; onChanged: () => void }) {
       </p>
       <div className="buttons">
         <Button onPress={() => void add()}>Add Block…</Button>
-        <RowMenu actions={actions(line(selected))} isOpen={menu} onOpenChange={setMenu} />
+        <RowMenu
+          actions={line(selected)?.row.actions ?? []}
+          onAction={(action) => {
+            const at = line(selected);
+            if (at) void run(at, action);
+          }}
+          isOpen={menu}
+          onOpenChange={setMenu}
+        />
       </div>
       <div onKeyDownCapture={keys} onContextMenu={rightClick}>
         <Tree
@@ -132,7 +130,8 @@ export function Blocks(props: { revision: number; onChanged: () => void }) {
           onSelectionChange={choose}
           onAction={(key: Key) => {
             const at = line(String(key));
-            if (at) void edit(at);
+            const action = byKind(at?.row.actions, "edit");
+            if (at && action) void run(at, action);
           }}
           renderEmptyState={() => <p className="quiet">No blocks yet.</p>}
         >

@@ -17,7 +17,6 @@ import init, {
   dayBlockFields,
   exportChoices,
   newBlock,
-  parseWeight,
   blockText,
   cancelledText,
   dayText,
@@ -27,6 +26,7 @@ import init, {
   sittingText,
   summaryText,
   candidateText,
+  choiceText,
   placeQuickAddPrefix,
   placeQuery,
   placeTitle,
@@ -37,11 +37,11 @@ import init, {
   trashedText,
 } from "./core/lumenna_web.js";
 import type {
-  BlockChoice,
+  Action,
+  Answer,
   BlockDefaults,
   BlockFields,
   BlockScope,
-  Direction,
   ExportChoice,
   ExportFormat,
   CancelledBlock,
@@ -156,10 +156,21 @@ const api = {
     return edit ? said(store().editTask(original.id, edit)) : undefined;
   },
 
-  complete: (id: string, done: boolean): string => said(done ? store().uncompleteTask(id) : store().completeTask(id)),
-  trash: (id: string): string => said(store().trashTask(id)),
-  restore: (id: string): string => said(store().restoreTask(id)),
-  erase: (id: string): string => said(store().eraseTask(id)),
+  /**
+   * Runs one of a record's actions with the answer to its question: what every menu, key and
+   * button does. The core decides what it does, and refuses what it must.
+   */
+  act: (action: Action, answer: Answer) => done(store().act(action, answer)),
+
+  /** What a pick offers for `action`, each as its line reads; when nothing, why. */
+  choices(action: Action) {
+    const found = store().choices(action);
+    return {
+      announcement: found.announcement,
+      choices: found.choices.map((choice) => ({ id: choice.id, text: choiceText(choice), depth: choice.depth })),
+    };
+  },
+
   undo: (): string => said(store().undo()),
   redo: (): string => said(store().redo()),
 
@@ -202,7 +213,7 @@ const api = {
    */
   day(date?: string) {
     const plan = store().plan(date);
-    const rows: DayRow[] = [{ key: "summary", text: summaryText(plan.date, plan.summary ?? ""), kind: "summary", children: [] }];
+    const rows: DayRow[] = [{ key: "summary", text: summaryText(plan.date, plan.summary ?? ""), kind: "summary", actions: [], children: [] }];
     for (const item of plan.timeline ?? []) {
       if (item.item === "block") {
         const block = plan.blocks.find((b) => b.row === item.row);
@@ -212,24 +223,26 @@ const api = {
           text: blockText(block),
           kind: "block",
           block,
+          actions: block.actions ?? [],
           children: block.assignments.map((sitting) => ({
             key: `sitting:${sitting.id}`,
             text: sittingText(sitting),
             kind: "sitting",
             sitting,
             block,
+            actions: sitting.actions ?? [],
             children: [],
           })),
         });
       } else if (item.item === "free") {
         const free = { start: item.start, end: item.end, minutes: item.minutes };
-        rows.push({ key: `free:${item.start}`, text: freeText(item.start, item.end, item.minutes), kind: "free", free, children: [] });
+        rows.push({ key: `free:${item.start}`, text: freeText(item.start, item.end, item.minutes), kind: "free", free, actions: item.actions ?? [], children: [] });
       } else {
-        rows.push({ key: "now", text: nowText(item.time), kind: "now", children: [] });
+        rows.push({ key: "now", text: nowText(item.time), kind: "now", actions: [], children: [] });
       }
     }
     for (const cancelled of plan.cancelled ?? []) {
-      rows.push({ key: `cancelled:${cancelled.series}`, text: cancelledText(cancelled), kind: "cancelled", cancelled, children: [] });
+      rows.push({ key: `cancelled:${cancelled.series}`, text: cancelledText(cancelled), kind: "cancelled", cancelled, actions: cancelled.actions ?? [], children: [] });
     }
     return { date: plan.date, title: dayText(plan.date), rows };
   },
@@ -276,43 +289,6 @@ const api = {
     return said(store().editBlock(series, edit, scope));
   },
 
-  cancelOccurrence: (series: string, date: string): string => said(store().cancelOccurrence(series, date)),
-  restoreOccurrence: (series: string, date: string): string => said(store().restoreOccurrence(series, date)),
-  deleteBlock: (id: string): string => said(store().deleteBlock(id)),
-
-  assign: (task: string, block: string, date: string | undefined, minutes: number | undefined): string =>
-    said(store().assign(task, block, date, minutes)),
-  unassign: (sitting: string): string => said(store().unassign(sitting)),
-  planMinutes: (sitting: string, minutes: number | undefined): string => said(store().planMinutes(sitting, minutes)),
-
-  /** Starts a sitting's timer, or resumes it when paused. */
-  startTimer: (sitting: string): string => said(store().startTimer(sitting)),
-
-  /** Pauses a sitting's timer, keeping the time so far. */
-  pauseTimer(sitting: string): string {
-    const timer = store().pauseTimer(sitting);
-    return announcementText(timer.announcement, timer.notices ?? []);
-  },
-
-  /** Stops a sitting's timer, which ends the sitting. */
-  stopTimer(sitting: string): string {
-    const timer = store().stopTimer(sitting, undefined);
-    return announcementText(timer.announcement, timer.notices ?? []);
-  },
-
-  /** Records a sitting's whole time by hand, replacing what is logged. */
-  logMinutes(sitting: string, minutes: number): string {
-    const timer = store().stopTimer(sitting, minutes);
-    return announcementText(timer.announcement, timer.notices ?? []);
-  },
-
-  /** The week's work blocks a task could go in, each as it reads in a chooser. */
-  workBlocks: (): BlockChoice[] => store().workBlocks().blocks,
-
-  /** Every open task, as a chooser lists them. */
-  taskChoices: (): { id: string; text: string }[] =>
-    store().listTasks("").rows.map((row) => ({ id: row.id, text: rowText(row, false) })),
-
   // -------------------------------------------------------------------------------------
   // Devices and sync. A browser reaches other devices through a relay, and pairs by code.
   // -------------------------------------------------------------------------------------
@@ -357,7 +333,7 @@ const api = {
   syncRunning: (): boolean => store().syncRunning(),
 
   /** The paired devices, this one first, each with its line. */
-  devices(): { id: string; name: string; thisDevice: boolean; text: string }[] {
+  devices(): { id: string; name: string; thisDevice: boolean; text: string; actions: Action[] }[] {
     return store()
       .devices()
       .devices.map((device) => ({
@@ -365,11 +341,9 @@ const api = {
         name: device.name,
         thisDevice: device.this_device,
         text: deviceText(device),
+        actions: device.actions ?? [],
       }));
   },
-
-  renameDevice: (id: string, name: string): string => said(store().renameDevice(id, name)),
-  unpairDevice: (id: string): string => said(store().unpairDevice(id)),
 
   /** How syncing is going, as one sentence. */
   syncStatus: (): string => {
@@ -377,44 +351,8 @@ const api = {
     return announcementText(status.announcement, status.notices ?? []);
   },
 
-  // -------------------------------------------------------------------------------------
-  // Projects, labels and saved filters. Each says what it did, and whether anything changed.
-  // -------------------------------------------------------------------------------------
-
-  addProject: (name: string, parent?: string) => done(store().addProject(name, parent)),
-  renameProject: (name: string, to: string) => done(store().renameProject(name, to)),
-  moveProject: (name: string, parent?: string) => done(store().moveProject(name, parent)),
-  reorderProject: (name: string, direction: Direction) => done(store().reorderProject(name, direction)),
-  weighProject: (name: string, weight: string) => done(store().weighProject(name, parseWeight(weight))),
-
-  /** What is wrong with a weight as typed, in the surface's words, or nothing. */
-  weightProblem(text: string): string | undefined {
-    try {
-      parseWeight(text);
-      return undefined;
-    } catch (error) {
-      return (error as Error).message;
-    }
-  },
-  archiveProject: (name: string) => done(store().archiveProject(name)),
-  deleteProject: (name: string, keepTasks: boolean) => done(store().deleteProject(name, keepTasks)),
-  addLabel: (name: string) => done(store().addLabel(name)),
-  renameLabel: (name: string, to: string) => done(store().renameLabel(name, to)),
-  mergeLabels: (from: string, into: string) => done(store().mergeLabels(from, into)),
-  recolourLabel: (name: string, colour?: string) => done(store().recolourLabel(name, colour)),
-  reorderLabel: (name: string, direction: Direction) => done(store().reorderLabel(name, direction)),
-  deleteLabel: (name: string) => done(store().deleteLabel(name)),
+  /** A saved filter, from the form its heading's New opens. */
   addFilter: (name: string, query: string) => done(store().addFilter(name, query)),
-  editFilter: (name: string, rename?: string, query?: string) => done(store().editFilter(name, rename, query)),
-  reorderFilter: (name: string, direction: Direction) => done(store().reorderFilter(name, direction)),
-  deleteFilter: (name: string) => done(store().deleteFilter(name)),
-
-  /** The labels, by name, for choosing one to merge into. */
-  labels: (): string[] => store().listLabels().rows.map((row) => row.title),
-
-  // Waiting for other tasks.
-  waitFor: (id: string, on: string): string => said(store().addDependency(id, on)),
-  stopWaiting: (id: string, on: string): string => said(store().removeDependency(id, on)),
 
   // -------------------------------------------------------------------------------------
   // Settings, backups and exports.
@@ -461,6 +399,8 @@ export interface DayRow {
   sitting?: PlanAssignment;
   free?: { start: string; end: string; minutes: number };
   cancelled?: CancelledBlock;
+  /** What can be done to it, as the core offers it. */
+  actions: Action[];
   children: DayRow[];
 }
 

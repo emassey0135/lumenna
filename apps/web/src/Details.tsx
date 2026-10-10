@@ -20,9 +20,9 @@ import {
   TextArea,
   TextField,
 } from "react-aria-components";
-import { askMinutes, confirm, pick } from "./Prompts";
+import { perform } from "./actions";
 import { core } from "./core";
-import type { TaskDetail, TaskFields } from "./core";
+import type { Action, TaskDetail, TaskFields } from "./core";
 import { say } from "./say";
 
 const PRIORITIES = [
@@ -90,8 +90,6 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
     }
 
     const set = (change: Partial<TaskFields>) => setFields({ ...fields, ...change });
-    const done = task.state.includes("completed");
-    const trashed = task.state.includes("deleted");
 
     const run = async (operation: Promise<string | undefined>, reread = true) => {
       try {
@@ -108,27 +106,13 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
       }
     };
 
-    // Puts the task into a work block of today or the next six days, asking how long
-    // the sitting is meant to take. The day reaches any other day, from the block's side.
-    // Waiting for another task: chosen from the open tasks, this one aside.
-    const waitFor = async (task: TaskDetail) => {
-      const others = (await core.taskChoices()).filter((choice) => choice.id !== task.id);
-      const on = await pick(`${task.title} Waits For`, "Task", others);
-      if (on) void run(core.waitFor(task.id, on));
-    };
-
-    const putInBlock = async (task: TaskDetail) => {
-      const blocks = await core.workBlocks();
-      if (blocks.length === 0) {
-        say("There are no work blocks this week. Add one from Today.");
-        return;
-      }
-      const block = await pick(`Put ${task.title} in a Block`, "Block", blocks);
-      const chosen = blocks.find((b) => b.id === block);
-      if (!chosen) return;
-      const minutes = await askMinutes(`How Long Is ${task.title} Meant to Take?`, "", true);
-      if (minutes === undefined) return;
-      void run(core.assign(task.id, chosen.id, chosen.date, minutes ?? undefined));
+    // One of the task's own actions, as the core offers them: this screen is its form, so
+    // Edit Details is not among them.
+    const act = async (action: Action) => {
+      const done = await perform(action);
+      if (!done) return;
+      props.onChanged();
+      say(done.said);
     };
 
     const field = (label: string, value: string, key: keyof TaskFields, description?: string) => (
@@ -197,16 +181,10 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
           ) : (
             <ul className="plain">
               {task.depends.map((other) => (
-                <li key={other.id}>
-                  {other.title}{" "}
-                  <Button aria-label={`Stop Waiting for ${other.title}`} onPress={() => void run(core.stopWaiting(task.id, other.id))}>
-                    Stop Waiting
-                  </Button>
-                </li>
+                <li key={other.id}>{other.title}</li>
               ))}
             </ul>
           )}
-          <Button onPress={() => void waitFor(task)}>Wait For…</Button>
         </section>
         <TextField className="field" value={state} isReadOnly>
           <Label>State</Label>
@@ -214,26 +192,15 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
         </TextField>
         <div className="buttons">
           <Button type="submit">Save</Button>
-          {trashed ? (
-            <>
-              <Button onPress={() => void run(core.restore(task.id))}>Restore</Button>
-              <Button
-                onPress={async () => {
-                  // Deleting from the trash asks first, though undo brings it back.
-                  const detail = "Undo can bring it back. It also stays in the history every device keeps, and in backups.";
-                  if (await confirm(`Delete ${task.title} from the trash?`, detail, "Delete")) void run(core.erase(task.id));
-                }}
-              >
-                Delete from Trash…
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button onPress={() => void run(core.complete(task.id, done))}>{done ? "Mark Not Done" : "Mark Done"}</Button>
-              <Button onPress={() => void putInBlock(task)}>Put in a Block…</Button>
-              <Button onPress={() => void run(core.trash(task.id))}>Move to Trash</Button>
-            </>
-          )}
+          {(task.actions ?? []).map((action) => (
+            <Button
+              key={`${action.kind}:${action.other ?? ""}`}
+              className={action.destructive ? "destructive" : undefined}
+              onPress={() => void act(action)}
+            >
+              {action.title}
+            </Button>
+          ))}
         </div>
       </Form>
     );

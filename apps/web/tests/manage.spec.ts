@@ -43,11 +43,11 @@ async function axe(page: Page) {
 
 test("a project is made, renamed, and deleted keeping its tasks, from the sidebar", async ({ page }) => {
   await open(page);
-  await placeMenu(page, /^Projects/, "New Project…");
+  await placeMenu(page, /^Projects/, "New Project");
   await answer(page, "New Project", "Garden");
   await expect(heading(page)).toHaveText("Garden");
   await add(page, "Plant beans");
-  await placeMenu(page, /^Garden/, "Rename…");
+  await placeMenu(page, /^Garden/, "Rename");
   await answer(page, "Rename Garden", "Allotment");
   await expect(heading(page)).toHaveText("Allotment");
   await places(page).getByRole("row", { name: /^Allotment/ }).focus();
@@ -61,17 +61,17 @@ test("a project is made, renamed, and deleted keeping its tasks, from the sideba
 
 test("a label and a saved filter are made and changed from the sidebar", async ({ page }) => {
   await open(page);
-  await placeMenu(page, /^Labels/, "New Label…");
+  await placeMenu(page, /^Labels/, "New Label");
   await answer(page, "New Label", "calls");
   await expect(heading(page)).toHaveText("calls");
-  await placeMenu(page, /^calls/, "Colour…");
-  await answer(page, "Colour for calls", "teal");
-  await placeMenu(page, /^Saved Filters/, "New Saved Filter…");
+  await placeMenu(page, /^calls/, "Colour");
+  await answer(page, "Colour of calls", "teal");
+  await placeMenu(page, /^Saved Filters/, "New Saved Filter");
   await answer(page, "New Saved Filter", "Urgent");
   await answer(page, "Query for Urgent", "p1");
   await expect(heading(page)).toHaveText("Urgent");
-  await placeMenu(page, /^Urgent/, "Change Query…");
-  await answer(page, "Query for Urgent", "p1 | today");
+  await placeMenu(page, /^Urgent/, "Change Query");
+  await answer(page, "Query of Urgent", "p1 | today");
   await expect(page.getByRole("main").getByRole("textbox", { name: "Filter" })).toHaveValue("p1 | today");
   await axe(page);
 });
@@ -82,9 +82,9 @@ test("a task waits for another, and stops", async ({ page }) => {
   await add(page, "Paint the fence");
   await page.getByRole("main").getByRole("row", { name: /^Paint the fence/ }).click();
   const details = page.getByRole("complementary", { name: "Task details" });
-  await details.getByRole("button", { name: "Wait For…" }).click();
-  const picker = page.getByRole("dialog", { name: "Paint the fence Waits For" });
-  await picker.getByRole("combobox", { name: "Task" }).fill("Buy");
+  await details.getByRole("button", { name: "Wait For" }).click();
+  const picker = page.getByRole("dialog", { name: "What does Paint the fence wait for?" });
+  await picker.getByRole("combobox", { name: "What does Paint the fence wait for?" }).fill("Buy");
   await page.getByRole("option", { name: /^Buy paint/ }).click();
   await picker.getByRole("button", { name: "OK" }).click();
   const stop = details.getByRole("button", { name: "Stop Waiting for Buy paint" });
@@ -172,11 +172,11 @@ test("space pauses a running timer, and the menu offers resume and stop", async 
   const day = page.getByRole("treegrid", { name: "The day" });
   await day.getByRole("row", { name: /Deep work/ }).focus();
   await page.keyboard.press("Shift+F10");
-  await page.getByRole("menuitem", { name: "Assign a Task…" }).click();
-  await page.getByRole("combobox", { name: "Task" }).fill("Write");
+  await page.getByRole("menuitem", { name: "Assign a Task" }).click();
+  await page.getByRole("combobox", { name: "Assign a task to Deep work" }).fill("Write");
   await page.getByRole("option", { name: /^Write report/ }).click();
   await page.getByRole("button", { name: "OK" }).click();
-  await page.getByRole("dialog", { name: /Meant to Take/ }).getByRole("button", { name: "OK" }).click();
+  await page.getByRole("dialog", { name: "Planned length" }).getByRole("button", { name: "OK" }).click();
   const sitting = day.getByRole("row", { name: /^Write report/ });
   await sitting.focus();
   await page.keyboard.press("Space");
@@ -203,9 +203,9 @@ test("ctrl+z undoes from the list, and ctrl+y redoes", async ({ page }) => {
 
 test("a weight that is not a number is refused at the field, not taken as inherit", async ({ page }) => {
   await open(page);
-  await placeMenu(page, /^Projects/, "New Project…");
+  await placeMenu(page, /^Projects/, "New Project");
   await answer(page, "New Project", "Garden");
-  await placeMenu(page, /^Garden/, "Weight…");
+  await placeMenu(page, /^Garden/, "Weight");
   const dialog = page.getByRole("dialog", { name: "Weight of Garden" });
   const field = dialog.getByRole("textbox", { name: "Weight" });
   await field.fill("1,5");
