@@ -49,7 +49,11 @@ export function Blocks(props: { revision: number; onChanged: () => void }) {
   };
 
   const add = async () => {
-    const saved = await blockForm({ kind: "add", date: "today" }, await freshBlock("09:00", 60), "New block");
+    const saved = await blockForm(
+      { kind: "add", date: "today", startFollowsDay: true },
+      await freshBlock(undefined, 60),
+      "New block",
+    );
     // A new series' row is listed under its first occurrence, so land near where it was.
     if (saved) changed(saved.said, undefined, ids.indexOf(selected ?? ""));
   };

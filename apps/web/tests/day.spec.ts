@@ -203,3 +203,21 @@ test("a task row's menu offers the core's actions, in order, and runs them after
   await page.getByRole("menuitem", { name: "Move to trash" }).click();
   await expect(row).toHaveCount(0);
 });
+
+test("a new block starts at the next whole hour today, and when the day starts on a day typed", async ({ page }) => {
+  await open(page);
+  await place(page, /^Blocks/);
+  await page.getByRole("button", { name: "Add block" }).click();
+  const form = page.getByRole("dialog", { name: "New Block" });
+  const starts = form.getByRole("textbox", { name: "Starts at" });
+  // Today: the next whole hour, never before the day starts (08:00 unless changed), at most 23:00.
+  const hour = Math.max(8, Math.min(new Date().getHours() + 1, 23));
+  await expect(starts).toHaveValue(`${String(hour).padStart(2, "0")}:00`);
+  // Another day: when the day starts.
+  await form.getByRole("textbox", { name: "Day", exact: true }).fill("tomorrow");
+  await expect(starts).toHaveValue("08:00");
+  // Once the start is the person's own, a new day leaves it.
+  await starts.fill("18:15");
+  await form.getByRole("textbox", { name: "Day", exact: true }).fill("today");
+  await expect(starts).toHaveValue("18:15");
+});
