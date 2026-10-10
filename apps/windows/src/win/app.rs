@@ -722,7 +722,7 @@ impl App {
             menu::SETTINGS => settings::show(self, Page::General),
             menu::EXPORT_IMPORT => settings::show(self, Page::Export),
             menu::RESTORE_BACKUP => {
-                if let Some(said) = settings::import(self, self.main, "Restore From a Backup", &settings::BACKUPS) {
+                if let Some(said) = settings::import(self, self.main, "Restore from a Backup", &settings::BACKUPS) {
                     self.say(&said);
                 }
             }

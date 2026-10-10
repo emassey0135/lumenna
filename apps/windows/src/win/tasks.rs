@@ -46,7 +46,7 @@ pub struct TaskList {
 impl TaskList {
     pub fn create(app: &App, pane: HWND, place: Place) -> Rc<Self> {
         let trash = place == Place::Trash;
-        let label = controls::create(pane, WC_STATICW, "Filte&r", 0, 0, 0);
+        let label = controls::create(pane, WC_STATICW, "Filte&r:", 0, 0, 0);
         let filter = controls::create(pane, WC_EDITW, &place.query(), ES_AUTOHSCROLL as u32 | WS_TABSTOP.0, WS_EX_CLIENTEDGE.0, FILTER);
         completion::attach(filter, app.core.lumenna.clone(), Syntax::Filter);
         let readback = controls::create(pane, WC_STATICW, "", SS_NOPREFIX.0, 0, 0);
