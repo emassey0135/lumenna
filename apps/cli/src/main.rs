@@ -27,6 +27,7 @@ mod profile;
 mod render;
 mod service;
 
+use lumenna_surface::ActionKind;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -500,6 +501,9 @@ pub(crate) enum LabelCommand {
     Rm {
         /// The label to delete.
         name: String,
+        /// Skip the confirmation.
+        #[arg(long)]
+        yes: bool,
     },
 }
 
@@ -536,6 +540,9 @@ pub(crate) enum FilterCommand {
     Rm {
         /// Its name.
         name: String,
+        /// Skip the confirmation.
+        #[arg(long)]
+        yes: bool,
     },
 }
 
@@ -650,6 +657,9 @@ pub(crate) enum BlockCommand {
     Rm {
         /// Its identifier.
         id: String,
+        /// Skip the confirmation.
+        #[arg(long)]
+        yes: bool,
     },
 }
 
@@ -717,6 +727,9 @@ pub(crate) enum DeviceCommand {
     Unpair {
         /// The device, by name or the start of its identifier.
         device: String,
+        /// Skip the confirmation.
+        #[arg(long)]
+        yes: bool,
     },
 }
 
@@ -815,7 +828,13 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
                 name,
                 Some(colour.clone()).filter(|c| !c.eq_ignore_ascii_case("none")),
             )?,
-            LabelCommand::Rm { name } => profile.delete_label(name)?,
+            LabelCommand::Rm { name, yes } => {
+                let asked = profile.list_labels()?.rows.into_iter().find(|r| r.title.eq_ignore_ascii_case(name.trim_start_matches('@')));
+                if !confirmed(asked.map(|r| r.actions), ActionKind::Delete, *yes, false)? {
+                    return Ok(Response::unchanged("nothing was deleted"));
+                }
+                profile.delete_label(name)?
+            }
         }),
         Command::Filter(command) => match command {
             FilterCommand::Add { name, query } => {
@@ -828,7 +847,13 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
             FilterCommand::Order { name, direction } => {
                 Response::new(profile.reorder_filter(name, (*direction).into())?)
             }
-            FilterCommand::Rm { name } => Response::new(profile.delete_filter(name)?),
+            FilterCommand::Rm { name, yes } => {
+                let asked = profile.list_filters()?.filters.into_iter().find(|f| f.name.eq_ignore_ascii_case(name));
+                if !confirmed(asked.map(|f| f.actions), ActionKind::Delete, *yes, false)? {
+                    return Ok(Response::unchanged("nothing was deleted"));
+                }
+                Response::new(profile.delete_filter(name)?)
+            }
         },
         Command::Plan { date } => {
             let date = date.join(" ");
@@ -891,8 +916,14 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
             BlockCommand::Restore { id, date } => {
                 Response::new(profile.restore_occurrence(&profile.row(id, "block")?, date)?)
             }
-            BlockCommand::Rm { id } => {
-                Response::new(profile.delete_block(&profile.row(id, "block")?)?)
+            BlockCommand::Rm { id, yes } => {
+                let id = profile.row(id, "block")?;
+                let series = id.split('@').next().unwrap_or(&id).to_owned();
+                let asked = profile.list_blocks()?.rows.into_iter().find(|r| r.id.starts_with(&series));
+                if !confirmed(asked.map(|r| r.actions), ActionKind::Delete, *yes, false)? {
+                    return Ok(Response::unchanged("nothing was deleted"));
+                }
+                Response::new(profile.delete_block(&id)?)
             }
         },
         Command::Assign { task, block, date, minutes } => Response::new(profile.assign(
@@ -951,7 +982,11 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         Command::Device(DeviceCommand::Rename { device, name }) => {
             return network::rename_device(profile, device, name);
         }
-        Command::Device(DeviceCommand::Unpair { device }) => {
+        Command::Device(DeviceCommand::Unpair { device, yes }) => {
+            let asked = profile.devices()?.devices.into_iter().find(|d| d.name.eq_ignore_ascii_case(device) || d.node_id.starts_with(device.as_str()));
+            if !confirmed(asked.map(|d| d.actions), ActionKind::Unpair, *yes, false)? {
+                return Ok(Response::unchanged("nothing was unpaired"));
+            }
             return network::unpair_device(profile, device);
         }
         Command::Undo => Response::new(profile.undo()?),
@@ -1003,17 +1038,9 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
         TaskCommand::Restore { id: input } => Response::new(profile.restore_task(&id(input)?)?),
         TaskCommand::Erase { id: input, yes } => {
             let id = id(input)?;
-            if !yes {
-                let title = profile.show_task(&id)?.task.title;
-                anstream::eprint!(
-                    "Delete '{title}' from the trash? Undo can bring it back. It also stays in \
-                     the history every device keeps, and in backups. Type yes to confirm: "
-                );
-                let mut answer = String::new();
-                std::io::stdin().read_line(&mut answer)?;
-                if answer.trim() != "yes" {
-                    return Ok(Response::unchanged("nothing was deleted"));
-                }
+            let actions = profile.show_task(&id)?.task.actions;
+            if !confirmed(Some(actions), ActionKind::DeleteForGood, *yes, true)? {
+                return Ok(Response::unchanged("nothing was deleted"));
             }
             Response::new(profile.erase_task(&id)?)
         }
@@ -1105,4 +1132,26 @@ fn listing_of(outcome: &Outcome) -> Option<Vec<(String, String)>> {
         | Outcome::SyncStatus(_)
         | Outcome::Devices(_) => None,
     }
+}
+
+/// Asks the question the core puts before the action of `kind` among `actions`, when it
+/// asks one: the same words every client asks. `--yes` answers it; without a terminal to
+/// ask at, a `strict` one is refused and any other goes ahead, as a script expects.
+fn confirmed(actions: Option<Vec<lumenna_surface::Action>>, kind: ActionKind, yes: bool, strict: bool) -> Result<bool> {
+    use std::io::IsTerminal;
+    let question = actions.into_iter().flatten().find(|a| a.kind == kind).map(|a| a.question);
+    let Some(lumenna_surface::Question::Confirm { title, message, .. }) = question else { return Ok(true) };
+    if yes {
+        return Ok(true);
+    }
+    if !std::io::stdin().is_terminal() {
+        if strict {
+            return Err(lumenna_surface::LumennaError::new(format!("{title} Nothing here can ask, so pass --yes")).into());
+        }
+        return Ok(true);
+    }
+    anstream::eprint!("{title} {message} Type yes to confirm: ");
+    let mut answer = String::new();
+    std::io::stdin().read_line(&mut answer)?;
+    Ok(answer.trim() == "yes")
 }
