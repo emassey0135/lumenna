@@ -12,7 +12,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use lumenna_surface::{Action, ActionKind, CancelledBlock, Plan, PlanAssignment, PlanBlock, PlanItem, block_fields, day_block_fields};
+use lumenna_surface::{Action, ActionKind, CancelledBlock, go_to_day_question, Plan, PlanAssignment, PlanBlock, PlanItem, block_fields, day_block_fields};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{NM_DBLCLK, NMHDR, NMTVKEYDOWN, TVN_KEYDOWN, TVN_SELCHANGEDW, WC_BUTTONW};
 use windows::Win32::UI::Input::KeyboardAndMouse::{VK_DELETE, VK_SPACE};
@@ -221,7 +221,7 @@ impl DayView {
     }
 
     pub fn ask_for_day(&self, app: &App) {
-        let Some(phrase) = prompts::ask_text(app.main, "Go to Day", "&Day:", "A date, such as friday, or 12 october.", "", "Go") else {
+        let Some(phrase) = actions::ask(app.main, &go_to_day_question(), "").filter(|p| !p.is_empty()) else {
             return;
         };
         match app.core.lumenna.plan(Some(phrase)) {

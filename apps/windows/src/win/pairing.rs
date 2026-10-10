@@ -30,6 +30,7 @@ const MY_CODE: u16 = 102;
 const MY_CODE_LABEL: u16 = 103;
 const THEIR_CODE: u16 = 104;
 const WITH_CODE: u16 = 105;
+const COPY: u16 = 106;
 const STATUS: u16 = 199;
 
 /// The code to give the other device: a boxed `String`.
@@ -58,6 +59,13 @@ impl Pairing {
         let status = dialog::item(hwnd, STATUS);
         controls::set_text(status, text);
         a11y::changed(status);
+    }
+
+    /// Shows this device's code, with its label and Copy Code, or hides them.
+    fn show_code(&self, hwnd: HWND, shown: bool) {
+        for id in [MY_CODE_LABEL, MY_CODE, COPY] {
+            controls::show(dialog::item(hwnd, id), shown);
+        }
     }
 
     fn start(&self, hwnd: HWND, code: Option<String>) {
@@ -129,7 +137,8 @@ impl Dialog for Pairing {
             .item(Class::Static, &words.intro, u16::MAX, SS_NOPREFIX.0, 7, 7, 266, 36)
             .item(Class::Button, &key(&words.wait, 'W'), WAIT, button, 7, 46, 120, 14)
             .item(Class::Static, &format!("{}:", key(&words.my_code, 'c')), MY_CODE_LABEL, 0, 7, 66, 266, 9)
-            .item(Class::Edit, "", MY_CODE, field | ES_READONLY as u32, 7, 76, 266, 14)
+            .item(Class::Edit, "", MY_CODE, field | ES_READONLY as u32, 7, 76, 196, 14)
+            .item(Class::Button, &key(&words.copy_code, 'd'), COPY, button, 207, 76, 66, 14)
             .item(Class::Static, &format!("{}:", key(&words.their_code, 'o')), u16::MAX, 0, 7, 96, 266, 9)
             .item(Class::Edit, "", THEIR_CODE, field, 7, 106, 266, 14)
             .item(Class::Static, &words.empty_means, u16::MAX, SS_NOPREFIX.0, 7, 123, 266, 9)
@@ -143,8 +152,7 @@ impl Dialog for Pairing {
         // Read with the field, as well as shown under it.
         a11y::set_description(dialog::item(hwnd, THEIR_CODE), &self.words.empty_means);
         // This device's code shows once there is one.
-        controls::show(dialog::item(hwnd, MY_CODE_LABEL), false);
-        controls::show(dialog::item(hwnd, MY_CODE), false);
+        self.show_code(hwnd, false);
         false
     }
 
@@ -152,6 +160,12 @@ impl Dialog for Pairing {
         match id {
             WAIT => self.start(hwnd, None),
             WITH_CODE => self.with_code(hwnd),
+            COPY => {
+                let code = controls::text(dialog::item(hwnd, MY_CODE));
+                if system::copy(hwnd, &code) {
+                    self.say(hwnd, &self.words.copied);
+                }
+            }
             id if i32::from(id) == IDCANCEL.0 => {
                 if let Some(cancelled) = self.cancelled.borrow().as_ref() {
                     cancelled.store(true, Ordering::Relaxed);
@@ -168,8 +182,7 @@ impl Dialog for Pairing {
             WM_PAIR_CODE => {
                 let code: String = unsafe { taken(lparam) };
                 controls::set_text(dialog::item(hwnd, MY_CODE), &code);
-                controls::show(dialog::item(hwnd, MY_CODE_LABEL), true);
-                controls::show(dialog::item(hwnd, MY_CODE), true);
+                self.show_code(hwnd, true);
                 controls::focus(dialog::item(hwnd, MY_CODE));
                 let copied = system::copy(hwnd, &code);
                 let waiting = &self.words.waiting;
@@ -181,7 +194,9 @@ impl Dialog for Pairing {
                 let message = format!("{} {}.", said.match_message, words.join(", "));
                 let answers = [said.match_yes.as_str(), said.match_no.as_str()];
                 let chosen = prompts::choose(hwnd, &said.match_title, &message, &answers, false);
-                let _ = answer.send(chosen == Some(0));
+                let matched = chosen == Some(0);
+                self.say(hwnd, if matched { &said.finishing } else { &said.refusing });
+                let _ = answer.send(matched);
             }
             WM_PAIR_DONE => {
                 let result: Result<PairedWith, String> = unsafe { taken(lparam) };
@@ -196,13 +211,11 @@ impl Dialog for Pairing {
                     }
                     // The wait was given up for a code entered meanwhile: dial it now.
                     Err(_) if then.is_some() => {
-                        controls::show(dialog::item(hwnd, MY_CODE_LABEL), false);
-                        controls::show(dialog::item(hwnd, MY_CODE), false);
+                        self.show_code(hwnd, false);
                         self.start(hwnd, then);
                     }
                     Err(message) => {
-                        controls::show(dialog::item(hwnd, MY_CODE_LABEL), false);
-                        controls::show(dialog::item(hwnd, MY_CODE), false);
+                        self.show_code(hwnd, false);
                         controls::enable(dialog::item(hwnd, WAIT), true);
                         controls::enable(dialog::item(hwnd, WITH_CODE), true);
                         controls::focus(dialog::item(hwnd, WAIT));
