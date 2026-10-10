@@ -286,3 +286,10 @@ fn a_device_cannot_unpair_itself_and_says_so_when_asked() {
     let actions = lumenna_surface::actions::device("Phone", "ab12", true);
     assert_eq!(titles(&actions), ["Rename"]);
 }
+
+#[test]
+fn an_empty_day_says_it_is_that_day_that_has_no_work_blocks() {
+    let (_directory, lumenna) = open();
+    let found = lumenna.work_block_choices(Some("2027-01-04".to_owned()), Some(1)).unwrap();
+    assert_eq!(found.announcement, "There are no work blocks on 2027-01-04.");
+}
