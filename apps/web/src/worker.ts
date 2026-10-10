@@ -309,6 +309,9 @@ const api = {
   dayFields: (block: PlanBlock): BlockFields => dayBlockFields(block),
 
   /** What a kind of block has unless set apart. */
+  /** When a new block on `date` (a phrase; today when absent) starts, `HH:MM`, unless said otherwise. */
+  newBlockStart: (date?: string): string => store().newBlockStart(date),
+
   kindDefaults: (kind: string): BlockDefaults | undefined => blockDefaults(kind) ?? undefined,
 
   /** Adds a block from its form; what was said, and the series it made. */

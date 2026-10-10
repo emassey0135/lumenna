@@ -143,9 +143,11 @@ export function Day(props: {
 
   const today = shown?.date ?? "";
 
-  const addBlock = async (start = "09:00", minutes = 60) => {
-    const fields = await freshBlock(start, Math.min(minutes, 720));
-    const saved = await blockForm({ kind: "add", date: shown?.date ?? "today" }, fields, "New block");
+  // From free time, at its start; otherwise when the core says a block on this day starts.
+  const addBlock = async (start?: string, minutes = 60) => {
+    const day = shown?.date ?? "today";
+    const fields = await freshBlock(start, Math.min(minutes, 720), day);
+    const saved = await blockForm({ kind: "add", date: day, startFollowsDay: start === undefined }, fields, "New block");
     if (!saved) return;
     land(saved.series ? `block:${saved.series}@${today}` : undefined, keys.indexOf(selected ?? ""));
     props.onChanged();

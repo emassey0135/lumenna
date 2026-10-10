@@ -7,7 +7,7 @@
 // what changed, so a concurrent edit to another field elsewhere stands. A change the core
 // refuses keeps the form open with the core's sentence in it.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
   Button,
@@ -31,7 +31,8 @@ import type { BlockFields, FormField } from "./core";
 
 /** What the form is for. */
 export type Purpose =
-  | { kind: "add"; date: string }
+  /** `startFollowsDay`: the start is the core's for the day, and follows the Day field. */
+  | { kind: "add"; date: string; startFollowsDay?: boolean }
   | { kind: "series"; id: string }
   | { kind: "occurrence"; series: string; date: string };
 
@@ -63,8 +64,13 @@ export async function blockForm(purpose: Purpose, initial: BlockFields, heading:
   });
 }
 
-/** A new block's fields: a work block at `start` for `minutes`, with a work block's flags. */
-export async function freshBlock(start: string, minutes: number): Promise<BlockFields> {
+/**
+ * A new block's fields: a work block at `start` for `minutes`, with a work block's flags. Without
+ * `start`, when the core says a block on `date` starts: today the next whole hour, another day
+ * when the day starts.
+ */
+export async function freshBlock(start: string | undefined, minutes: number, date = "today"): Promise<BlockFields> {
+  start ??= await core.newBlockStart(date);
   const defaults = await core.kindDefaults("work");
   return {
     title: "",
@@ -116,6 +122,27 @@ function Form(props: { request: Request; finish: (saved?: Saved) => void }) {
   const [problem, setProblem] = useState<string | undefined>();
   const set = (change: Partial<BlockFields>) => setFields((now: BlockFields) => ({ ...now, ...change }));
   const once = purpose.kind === "occurrence";
+
+  // The start the core offered for the day, which follows a new Day until the person changes it.
+  const offered = useRef(initial.start);
+  const latest = useRef(fields);
+  latest.current = fields;
+  const asked = useRef(0);
+  const follow = (day: string) => {
+    if (purpose.kind !== "add" || !purpose.startFollowsDay) return;
+    const ask = ++asked.current;
+    // A phrase half typed may not read yet; the start stays until one does.
+    core.newBlockStart(day).then(
+      (start) => {
+        if (ask !== asked.current) return;
+        // The updater stays pure (React may run it twice): the offer it replaces is fixed here.
+        const was = offered.current;
+        setFields((now: BlockFields) => (now.start === was ? { ...now, start } : now));
+        if (latest.current.start === was) offered.current = start;
+      },
+      () => undefined,
+    );
+  };
 
   // A new kind brings its own flags, which can then be set apart from it.
   const kind = async (to: string) => {
@@ -192,7 +219,11 @@ function Form(props: { request: Request; finish: (saved?: Saved) => void }) {
       default: {
         // The day is the form's own, not the block's: only a new block has one.
         const value = field.key === "date" ? date : String(fields[key]);
-        const change = (text: string) => (field.key === "date" ? setDate(text) : set({ [key]: text }));
+        const change = (text: string) => {
+          if (field.key !== "date") return set({ [key]: text });
+          setDate(text);
+          follow(text);
+        };
         return (
           <TextField key={field.key} className="field" value={value} onChange={change} autoFocus={first}>
             <Label>{field.label}</Label>

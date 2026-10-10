@@ -286,6 +286,13 @@ pub struct ProjectOptions {
 
 #[wasm_bindgen]
 impl Core {
+    /// When a new block on `date` (a date phrase, today when absent) starts unless the person
+    /// says otherwise, `HH:MM`: today the next whole hour, another day when the day starts.
+    #[wasm_bindgen(js_name = newBlockStart)]
+    pub fn new_block_start(&self, date: Option<String>) -> Result<String, JsError> {
+        self.lumenna.new_block_start(date).map_err(error)
+    }
+
     /// The projects the task form's Project field offers.
     #[wasm_bindgen(js_name = projectOptions)]
     pub fn project_options(&self) -> Out<ProjectOptions> {
