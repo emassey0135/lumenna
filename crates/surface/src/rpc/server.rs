@@ -116,6 +116,8 @@ pub const METHODS: &[&str] = &[
     "form.block_defaults",
     "form.priorities",
     "form.not_offered",
+    "form.project_reference",
+    "form.label_reference",
 ];
 
 /// What runs a round on the endpoint this process holds, when it holds one: a `sync` here is
@@ -613,6 +615,10 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
 
         // What a row's actions ask and do, as every client offers them.
         "act" => Response::new(l.act(record(params, "action")?, maybe_record(params, "answer")?.unwrap_or(crate::Answer::Yes))?),
+        // Put in a Block from another day: `from` and `days`, as `block.choices` takes them.
+        "choices" if params.get("from").is_some_and(|f| !f.is_null()) => {
+            Response::new(l.work_block_choices(maybe_text(params, "from"), maybe_number(params, "days")?)?)
+        }
         "choices" => Response::new(l.choices(record(params, "action")?)?),
         "places" => Response::new(l.places()),
 
@@ -629,6 +635,8 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         }
         "form.block_defaults" => Response::new(Derived::of(crate::block_defaults(text_of(params, "kind")?))),
         "form.priorities" => Response::new(Derived::of(crate::priorities())),
+        "form.project_reference" => Response::new(Derived::of(crate::project_reference(name()?))),
+        "form.label_reference" => Response::new(Derived::of(crate::label_reference(name()?))),
         "form.not_offered" => Response::new(Derived::of(crate::not_offered(
             record(params, "kind")?,
             record(params, "subject")?,
