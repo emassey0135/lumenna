@@ -122,6 +122,9 @@ pub const METHODS: &[&str] = &[
     "form.block_form",
     "form.pairing_words",
     "form.sentence_case",
+    "form.go_to_day",
+    "form.new_filter",
+    "form.length",
 ];
 
 /// What runs a round on the endpoint this process holds, when it holds one: a `sync` here is
@@ -645,6 +648,9 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
             maybe_text(params, "this_device").unwrap_or_else(|| "this device".to_owned()),
             maybe_bool(params, "local")?.unwrap_or(true),
         ))),
+        "form.go_to_day" => Response::new(Derived::of(crate::go_to_day_question())),
+        "form.new_filter" => Response::new(Derived::of(crate::new_filter_questions())),
+        "form.length" => Response::new(Derived::of(crate::length_question())),
         "form.sentence_case" => Response::new(Derived::of(crate::sentence_case(text_of(params, "text")?))),
         "form.project_reference" => Response::new(Derived::of(crate::project_reference(name()?))),
         "form.label_reference" => Response::new(Derived::of(crate::label_reference(name()?))),
