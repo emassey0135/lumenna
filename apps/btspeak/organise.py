@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import actions
 from rows import Tree, describe
-from session import Command, Session, ask, empty_then, live_menu, row_item, screen
+from session import Command, Session, ask, empty_then, heading, live_menu, row_item, screen
 import tasks
 
 
@@ -46,7 +46,7 @@ def projects(session: Session) -> str:
 
     def build():
         listing = session.call("project.list")
-        state["heading"] = f"Projects, {listing.get('announcement', '')}"
+        state["heading"] = heading("Projects", listing)
         return Tree(listing.get("rows", [])).items()
 
     def tasks_of(row):
@@ -86,7 +86,7 @@ def labels(session: Session) -> str:
 
     def build():
         listing = session.call("label.list")
-        state["heading"] = f"Labels, {listing.get('announcement', '')}"
+        state["heading"] = heading("Labels", listing)
         state["empty"] = listing.get("empty", "")
         return [row_item(row, describe(row), navigation_title=row["title"]) for row in listing.get("rows", [])]
 
@@ -126,7 +126,7 @@ def saved_filters(session: Session) -> str:
 
     def build():
         listing = session.call("filter.list")
-        state["heading"] = f"Filters, {listing.get('announcement', '')}"
+        state["heading"] = heading("Filters", listing, listing.get("filters", []))
         state["empty"] = listing.get("empty", "")
         return [
             row_item({"title": saved["name"], **saved}, f"{saved['name']}, {saved['query']}", navigation_title=saved["name"])

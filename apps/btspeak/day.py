@@ -15,7 +15,7 @@ import actions
 from actions import spoken_day
 from client import LumennaError
 from rows import Tree, clock, describe
-from session import Command, Flag, Session, choose, empty_then, live_menu, row_item, screen
+from session import Command, Flag, Session, choose, empty_then, heading, live_menu, row_item, screen
 import tasks
 
 
@@ -168,7 +168,7 @@ def blocks(session: Session) -> str:
 
     def build():
         listing = session.call("block.list")
-        state["heading"] = f"Blocks, {listing.get('announcement', '')}"
+        state["heading"] = heading("Blocks", listing)
         state["empty"] = listing.get("empty", "")
         return [row_item(row, describe(row)) for row in listing.get("rows", [])]
 
@@ -206,12 +206,15 @@ def toggles(session: Session) -> list[str]:
     return [key for key, field in block_form(session).items() if field["kind"] == "toggle"]
 
 
-def block_fields(session: Session, before: dict, keys, repeats: bool = True) -> list:
+def block_fields(session: Session, before: dict, keys, repeats: bool = True, hints=None) -> list:
     """The block form's fields among `keys`, in the core's order and words, starting from
     `before`; an on-or-off one as a choice of yes or no, and one shown only while the
-    block repeats left out of one that does not."""
+    block repeats left out of one that does not. `hints` says something else under a
+    field than its own hint: Repeats' note for a rule its words cannot say."""
     fields = []
     for key, field in block_form(session).items():
+        if (hints or {}).get(key):
+            field = {**field, "hint": hints[key]}
         if key not in keys or (field.get("repeating_only") and not repeats):
             continue
         if field["kind"] == "toggle":
@@ -300,7 +303,9 @@ def edit_series(session: Session, series: str) -> str:
     except LumennaError as error:
         return error.message
     every = [key for key in block_form(session) if key != "date"]
-    fields = block_fields(session, before, every, repeats=bool(shown.get("repeats")))
+    # A rule the words cannot say leaves Repeats empty; the core's note says why.
+    note = value(session, "form.unsayable_repeat_note", block=shown)
+    fields = block_fields(session, before, every, repeats=bool(shown.get("repeats")), hints={"repeat": note})
     return save_block(session, series, before, fields, {"all": True})
 
 

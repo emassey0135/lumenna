@@ -14,7 +14,7 @@ import actions
 import options
 from client import LumennaError
 from rows import Tree, clock
-from session import Command, Session, choose, empty_then, live_menu, screen, spoken
+from session import Command, Session, choose, empty_then, heading as list_heading, live_menu, screen, spoken
 
 
 # ---------------------------------------------------------------------------------------
@@ -53,7 +53,7 @@ def task_list(
             # A mis-parsed filter shows wrong results silently, and wrong results are
             # invisible. So the query is read back before its results are.
             heading = f"{title}: {readback}"
-        said = [heading, result.get("announcement", "")]
+        said = [list_heading(heading, result)]
         for unresolved in (result.get("query") or {}).get("unresolved", []):
             suggestion = unresolved.get("suggestion")
             hint = f", did you mean {suggestion}?" if suggestion else ""
@@ -108,7 +108,7 @@ def trash(session: Session) -> str:
 
     def build():
         result = session.call("task.list", query="deleted")
-        state["heading"] = f"Trash, {result.get('announcement', '')}"
+        state["heading"] = list_heading("Trash", result)
         state["empty"] = result.get("empty", "")
         return Tree(result.get("rows", [])).items()
 

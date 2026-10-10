@@ -289,6 +289,15 @@ def ask(prompt: str, default: str = "") -> str | None:
     return text.strip()
 
 
+def heading(title: str, listing: dict, rows=None) -> str:
+    """A list's heading: its title, then the listing's count, unless the list is empty and
+    the core has a sentence for that, which the empty list says instead — once."""
+    rows = listing.get("rows", []) if rows is None else rows
+    if not rows and listing.get("empty"):
+        return title
+    return ", ".join(part for part in (title, listing.get("announcement", "")) if part)
+
+
 def empty_then(state: dict, then: str = ""):
     """What an empty list says: the listing's own words, which `build` keeps in
     `state["empty"]`, then what this screen adds, such as the key that adds one."""

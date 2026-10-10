@@ -347,6 +347,34 @@ class Menus(unittest.TestCase):
              "Anchored, never moved when the day slips"],
         )
 
+    def test_a_rule_the_words_cannot_say_is_noted_at_repeats(self):
+        self.call("block.add", title="Board", at="6pm", minutes=60, repeat="every day", date="today")
+        real = self.session.call
+
+        def call(method, **params):
+            result = real(method, **params)
+            if method == "block.show":
+                # As a rule from an import or another app would arrive: no words for it.
+                result = {**result, "rrule": "FREQ=MONTHLY;BYDAY=2TU"}
+                result.pop("repetition", None)
+            return result
+
+        self.session.call = call
+        script = self.run_script([("menu", "Board"), ("form", None), ("back",)], lambda: day.blocks(self.session))
+        repeat = next(f for f in script.forms[0] if f.key == "repeat")
+        self.assertEqual(
+            repeat.format_hint,
+            "It repeats by the rule FREQ=MONTHLY;BYDAY=2TU, which the repetition words cannot say. "
+            "Leave Repeats empty to keep it.",
+        )
+
+    def test_an_empty_list_leaves_its_count_out_of_its_heading(self):
+        script = self.run_script([("back",)], lambda: organise.labels(self.session))
+        self.assertEqual(script.titles[0], "Labels")
+        script = self.run_script([("back",)], lambda: preferences.devices(self.session))
+        self.assertEqual(script.menus[0]["empty"], "Press p to pair one.")
+        self.assertTrue(script.titles[0].startswith("Not paired"), script.titles)
+
     def test_an_empty_task_list_says_the_cores_words_then_the_key_that_adds(self):
         script = self.run_script([("back",)], lambda: tasks.task_list(self.session))
         self.assertEqual(script.menus[0]["empty"], "No open tasks. Press a to add one.")
@@ -357,8 +385,6 @@ class Menus(unittest.TestCase):
             script.menus[0]["empty"],
             "No saved filters. A filter's query is kept here under a name. Press a to add one, or slash to filter now.",
         )
-        script = self.run_script([("back",)], lambda: preferences.devices(self.session))
-        self.assertEqual(script.menus[0]["empty"], "No devices are paired yet. Pair one to sync with it. Press p to pair one.")
 
     def test_going_to_a_day_and_a_new_filter_ask_in_the_cores_words(self):
         script = self.run_script(
