@@ -225,6 +225,10 @@ byte stream; `pairing` is the word comparison; `node` is the device's Iroh endpo
   Linux uses Avahi over D-Bus when it runs: beside Avahi, `mdns-sd` heard nothing, not even
   itself. `mdns-sd` covers Windows and Linux without Avahi. Iroh's own mDNS is not used: no
   standard browser can see it (no PTR record, every TTL zero).
+- **A local lookup ends** (`LISTEN`, three seconds): iroh reports a device's lookup only
+  once every service has finished, and starts no other while one runs. Ours waiting for
+  good, as it did in a browser, which hears no network, kept a failed relay lookup from
+  ever being said, and no dial after it looked again: two browsers paired and never synced.
 - **Bonjour reports an instance once per interface**, and a gone device's record can
   linger. So an instance is resolved once, on its own thread, and lost only when gone from
   every interface; dials to heard pairing sessions give up after three seconds.
