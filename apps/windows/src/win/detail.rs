@@ -10,15 +10,15 @@
 
 use std::cell::RefCell;
 
-use lumenna_surface::{ActionKind, TaskDetail, TaskFields, priorities, task_edit, task_fields, task_form};
+use lumenna_surface::{ActionKind, Choice, TaskDetail, TaskFields, priorities, task_edit, task_fields, task_form};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::SystemServices::{SS_CENTER, SS_NOPREFIX};
 use windows::Win32::UI::Controls::{WC_BUTTONW, WC_COMBOBOXW, WC_EDITW, WC_LISTBOXW, WC_STATICW};
 use windows::Win32::UI::Input::KeyboardAndMouse::{VK_ESCAPE, VK_TAB};
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    BN_CLICKED, BS_PUSHBUTTON, CB_ADDSTRING, CB_FINDSTRINGEXACT, CB_GETCURSEL, CB_GETLBTEXT,
-    CB_GETLBTEXTLEN, CB_RESETCONTENT, CB_SETCURSEL, CBS_DROPDOWNLIST, DLGC_WANTALLKEYS,
+    BN_CLICKED, BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL,
+    CB_RESETCONTENT, CB_SETCURSEL, CBS_DROPDOWNLIST, DLGC_WANTALLKEYS,
     DLGC_WANTMESSAGE, DLGC_WANTTAB, ES_AUTOHSCROLL, ES_AUTOVSCROLL, ES_MULTILINE, ES_READONLY,
     ES_WANTRETURN, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBS_NOINTEGRALHEIGHT,
     LBS_NOTIFY, MSG, WM_GETDLGCODE, WM_KEYDOWN, WM_NCDESTROY, WS_EX_CLIENTEDGE, WS_TABSTOP,
@@ -87,6 +87,8 @@ pub struct Detail {
     /// Save, Mark Done and the rest, in rows of three.
     buttons: Vec<(HWND, Action)>,
     shown: RefCell<Option<TaskDetail>>,
+    /// What the Project list offers, as the core gives it.
+    projects: RefCell<Vec<Choice>>,
 }
 
 impl Detail {
@@ -178,6 +180,7 @@ impl Detail {
             state,
             buttons,
             shown: RefCell::new(None),
+            projects: RefCell::new(Vec::new()),
         };
         detail.fill(None);
         detail
@@ -207,13 +210,7 @@ impl Detail {
 
     /// Reads the task again, and refills the fields with it.
     fn load(&self, app: &App, id: &str) {
-        let projects: Vec<String> =
-            app.core.lumenna.list_projects().map(|r| r.rows.into_iter().map(|p| p.title).collect()).unwrap_or_default();
-        controls::send(self.project, CB_RESETCONTENT, 0, 0);
-        for name in &projects {
-            let text = HSTRING::from(name.as_str());
-            controls::send(self.project, CB_ADDSTRING, 0, text.as_ptr() as isize);
-        }
+        *self.projects.borrow_mut() = app.core.lumenna.project_options().unwrap_or_default();
         match app.core.lumenna.show_task(id) {
             Ok(shown) => self.fill(Some(shown.task)),
             Err(_) => self.fill(None),
@@ -238,7 +235,7 @@ impl Detail {
             let position = priorities().iter().position(|p| p.id == fields.priority.to_string());
             controls::send(self.priority, CB_SETCURSEL, position.unwrap_or(usize::MAX), 0);
             controls::set_text(self.estimate, &fields.estimate);
-            select_text(self.project, &fields.project);
+            self.fill_projects(&fields.project);
             controls::set_text(self.labels, &fields.labels);
             // An edit control's lines end in CR LF.
             controls::set_text(self.notes, &fields.notes.replace("\r\n", "\n").replace('\n', "\r\n"));
@@ -267,6 +264,30 @@ impl Detail {
         *self.shown.borrow_mut() = task;
     }
 
+    /// The projects to choose from, in tree order, the task's own chosen. A subproject says
+    /// its level, which a drop-down list has no other way to; typing its first letters still
+    /// finds it. An archived project the task is in is listed too, so it is not lost.
+    fn fill_projects(&self, current: &str) {
+        let mut projects = self.projects.borrow_mut();
+        if !current.is_empty() && !projects.iter().any(|p| p.id == current) {
+            projects.push(Choice { id: current.to_owned(), title: current.to_owned(), ..Choice::default() });
+        }
+        controls::send(self.project, CB_RESETCONTENT, 0, 0);
+        for project in projects.iter() {
+            let text = if project.depth > 0 { format!("{}, level {}", project.title, project.depth + 1) } else { project.title.clone() };
+            let text = HSTRING::from(text);
+            controls::send(self.project, CB_ADDSTRING, 0, text.as_ptr() as isize);
+        }
+        let position = projects.iter().position(|p| p.id == current);
+        controls::send(self.project, CB_SETCURSEL, position.unwrap_or(usize::MAX), 0);
+    }
+
+    /// The project chosen, by name; none chosen is empty.
+    fn chosen_project(&self) -> String {
+        let index = usize::try_from(controls::send(self.project, CB_GETCURSEL, 0, 0)).ok();
+        index.and_then(|i| self.projects.borrow().get(i).map(|p| p.id.clone())).unwrap_or_default()
+    }
+
     /// The fields as they are now.
     fn read(&self) -> TaskFields {
         // The priority chosen, as the core numbers it; nothing chosen reads as none.
@@ -278,7 +299,7 @@ impl Detail {
             repeat: controls::text(self.repeat),
             priority,
             estimate: controls::text(self.estimate),
-            project: selected_text(self.project),
+            project: self.chosen_project(),
             labels: controls::text(self.labels),
             notes: controls::text(self.notes).replace("\r\n", "\n"),
         }
@@ -382,28 +403,6 @@ fn row_of_buttons(buttons: &[(HWND, Action)], x: i32, y: i32, width: i32, m: Met
     for (index, (button, _)) in buttons.iter().enumerate() {
         controls::place(*button, rect(x + index as i32 * (each + m.px(6)), y, each, m.button));
     }
-}
-
-/// Selects the item with this text in a drop-down list, adding it if missing.
-fn select_text(combo: HWND, text: &str) {
-    let wide = HSTRING::from(text);
-    let mut index = controls::send(combo, CB_FINDSTRINGEXACT, usize::MAX, wide.as_ptr() as isize);
-    if index < 0 && !text.is_empty() {
-        index = controls::send(combo, CB_ADDSTRING, 0, wide.as_ptr() as isize);
-    }
-    controls::send(combo, CB_SETCURSEL, index.max(-1) as usize, 0);
-}
-
-/// The selected item's text in a drop-down list.
-fn selected_text(combo: HWND) -> String {
-    let index = controls::send(combo, CB_GETCURSEL, 0, 0);
-    if index < 0 {
-        return String::new();
-    }
-    let length = controls::send(combo, CB_GETLBTEXTLEN, index as usize, 0);
-    let mut buffer = vec![0u16; usize::try_from(length).unwrap_or(0) + 1];
-    let copied = controls::send(combo, CB_GETLBTEXT, index as usize, buffer.as_mut_ptr() as isize);
-    String::from_utf16_lossy(&buffer[..usize::try_from(copied).unwrap_or(0)])
 }
 
 /// A multi-line field keeps Enter for new lines but gives Tab and Escape back to the window:

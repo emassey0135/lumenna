@@ -14,6 +14,7 @@ mod day;
 mod detail;
 mod dialog;
 mod font;
+mod help;
 mod menu;
 mod prompts;
 mod quick_add;

@@ -95,7 +95,7 @@ impl Pairing {
 
     /// Pairs with the code typed in — or, if nothing was typed, the one on the clipboard,
     /// which is how a code sent from the other device usually arrives. Not this device's own
-    /// code, which waiting copied there: that would pair it with itself.
+    /// code, which Copy Code may have put there: that would pair it with itself.
     fn with_code(&self, hwnd: HWND) {
         let field = dialog::item(hwnd, THEIR_CODE);
         let mut code = controls::text(field).trim().to_owned();
@@ -184,9 +184,8 @@ impl Dialog for Pairing {
                 controls::set_text(dialog::item(hwnd, MY_CODE), &code);
                 self.show_code(hwnd, true);
                 controls::focus(dialog::item(hwnd, MY_CODE));
-                let copied = system::copy(hwnd, &code);
-                let waiting = &self.words.waiting;
-                self.say(hwnd, &if copied { format!("{waiting} {}", self.words.copied) } else { waiting.clone() });
+                // Copied only when asked for, with Copy Code: the clipboard is the person's.
+                self.say(hwnd, &self.words.waiting);
             }
             WM_PAIR_WORDS => {
                 let (words, answer): (Vec<String>, Sender<bool>) = unsafe { taken(lparam) };

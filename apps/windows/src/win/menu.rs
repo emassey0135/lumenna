@@ -9,10 +9,10 @@
 //! control in focus answers them itself: Space and Delete on a list, and the edit commands
 //! in a text field. Taking them as accelerators would take them from the controls.
 
-use windows::Win32::UI::Input::KeyboardAndMouse::{VK_F5, VK_F6, VK_NEXT, VK_OEM_COMMA, VK_PRIOR};
+use windows::Win32::UI::Input::KeyboardAndMouse::{VK_F1, VK_F5, VK_F6, VK_NEXT, VK_OEM_COMMA, VK_PRIOR, VK_RETURN};
 use windows::Win32::UI::WindowsAndMessaging::{
     ACCEL, ACCEL_VIRT_FLAGS, AppendMenuW, CreateAcceleratorTableW, CreateMenu, CreatePopupMenu,
-    FCONTROL, FSHIFT, FVIRTKEY, HACCEL, HMENU, MF_POPUP, MF_SEPARATOR, MF_STRING,
+    FALT, FCONTROL, FSHIFT, FVIRTKEY, HACCEL, HMENU, MF_POPUP, MF_SEPARATOR, MF_STRING,
 };
 use windows::core::HSTRING;
 
@@ -29,6 +29,8 @@ pub const EXIT: u16 = 108;
 pub const EXPORT_IMPORT: u16 = 109;
 pub const SETTINGS: u16 = 111;
 pub const RESTORE_BACKUP: u16 = 112;
+/// The selected row's own form: a task's details, a block's form.
+pub const PROPERTIES: u16 = 113;
 
 pub const UNDO: u16 = 120;
 pub const REDO: u16 = 121;
@@ -64,6 +66,7 @@ pub const GO_TO_DAY: u16 = 183;
 
 pub const SHOW_WINDOW: u16 = 200;
 pub const ABOUT: u16 = 201;
+pub const KEYBOARD_HELP: u16 = 202;
 
 /// The menu bar: each menu's title, and its items as `(command, text)`, where command 0 is a
 /// separator. A table, so a test can check it: no item twice, no mnemonic letter twice.
@@ -80,6 +83,7 @@ pub const MENUS: [(&str, &[(u16, &str)]); 6] = [
         (RESTORE_BACKUP, "&Restore from a Backup..."),
         (EXPORT_IMPORT, "&Export and Import..."),
         (0, ""),
+        (PROPERTIES, "Propert&ies\tAlt+Enter"),
         (SETTINGS, "Se&ttings...\tCtrl+,"),
         (0, ""),
         (CLOSE_WINDOW, "&Close Window\tCtrl+W"),
@@ -128,7 +132,7 @@ pub const MENUS: [(&str, &[(u16, &str)]); 6] = [
         (0, ""),
         (NEW_BLOCK, "&Add Block...\tCtrl+Shift+N"),
     ]),
-    ("&Help", &[(ABOUT, "&About Lumenna")]),
+    ("&Help", &[(KEYBOARD_HELP, "&Keyboard Shortcuts\tF1"), (ABOUT, "&About Lumenna")]),
 ];
 
 /// Builds the menu bar.
@@ -171,6 +175,9 @@ pub fn accelerators() -> HACCEL {
         key(control, letter('Q'), EXIT),
         key(control, letter('Z'), UNDO),
         key(control, letter('Y'), REDO),
+        key(control | FSHIFT, letter('Z'), REDO),
+        key(FVIRTKEY | FALT, VK_RETURN.0, PROPERTIES),
+        key(FVIRTKEY, VK_F1.0, KEYBOARD_HELP),
         key(control, letter('F'), FILTER),
         key(control, letter('1'), GO_TODAY),
         key(control, letter('2'), GO_TASKS),
