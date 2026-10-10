@@ -38,27 +38,21 @@ final class DevicesViewController: ItemListViewController {
     override func actions(for item: Item) -> [ItemAction] {
         guard item.key != "sync-now" else { return [] }
         let lumenna = core.lumenna
-        var actions = [
-            ItemAction(title: "Rename") { [weak self] item in
-                self?.askForText("Rename \(item.title)", initial: item.title) { name in
-                    self?.perform(on: item) { try lumenna.renameDevice(device: item.key, name: name) }
-                }
-            },
-        ]
-        // This device cannot unpair itself, so that is not offered on its own row.
-        guard !thisDevice.contains(item.key) else { return actions }
-        actions.append(
-            ItemAction(title: "Unpair", destructive: true) { [weak self] item in
-                self?.confirm(
-                    "Unpair \(item.title)?",
-                    message: "It stops syncing with your devices but keeps everything it already has. Unpairing is for a device you replaced; it does not take data back from a lost one.",
-                    action: "Unpair"
-                ) {
-                    self?.perform(on: item) { try lumenna.unpairDevice(device: item.key) }
+        // Which apply is shared with the watch (`DeviceAction`).
+        return DeviceAction.of(thisDevice: thisDevice.contains(item.key)).map { action in
+            ItemAction(title: action.title, destructive: action.destructive) { [weak self] item in
+                switch action {
+                case .rename:
+                    self?.askForText("Rename \(item.title)", initial: item.title) { name in
+                        self?.perform(on: item) { try lumenna.renameDevice(device: item.key, name: name) }
+                    }
+                case .unpair:
+                    self?.confirm("Unpair \(item.title)?", message: DeviceAction.unpairing, action: "Unpair") {
+                        self?.perform(on: item) { try lumenna.unpairDevice(device: item.key) }
+                    }
                 }
             }
-        )
-        return actions
+        }
     }
 
     private func syncNow() {

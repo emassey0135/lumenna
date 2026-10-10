@@ -295,59 +295,44 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
 
     // MARK: - Actions
 
-    /// What can be done to a row: its swipe actions, which VoiceOver lists as actions.
+    /// What can be done to a row: its swipe actions, which VoiceOver lists as actions. Which
+    /// apply is shared with the watch (`DayAction`); running them is this screen's.
     private func actions(for row: Row) -> [(String, Bool, () -> Void)] {
-        switch row {
-        case let .block(block):
-            var actions: [(String, Bool, () -> Void)] = []
-            if block.acceptsTasks {
-                actions.append(("Assign Task", false, { [weak self] in self?.assign(to: block) }))
-            }
-            actions.append(("Edit", false, { [weak self] in self?.edit(block) }))
-            if block.repeats {
-                actions.append(("Cancel This Day", false, { [weak self] in
-                    self?.change(focusing: row) { try self!.core.lumenna.cancelOccurrence(id: block.series, date: self!.plan!.date) }
-                }))
-            }
-            if block.changedForThisDay {
-                actions.append(("Restore This Day", false, { [weak self] in
-                    self?.change(focusing: row) { try self!.core.lumenna.restoreOccurrence(id: block.series, date: self!.plan!.date) }
-                }))
-            }
-            actions.append(("Delete Block", true, { [weak self] in self?.delete(block) }))
-            return actions
-        case let .sitting(sitting, _):
-            // Start, pause and stop: a paused sitting is still in progress, and stopping
-            // either a running or a paused one ends it.
-            var timer: [(String, Bool, () -> Void)] = []
-            let start = { [weak self] in
-                guard let self else { return }
-                self.change(focusing: row) { try self.core.lumenna.startTimer(assignment: sitting.id) }
-            }
-            if sitting.running {
-                timer.append(("Pause Timer", false, { [weak self] in self?.pauseTimer(sitting, row: row) }))
-            } else {
-                timer.append((sitting.status == "paused" ? "Resume Timer" : "Start Timer", false, start))
-            }
-            if sitting.running || sitting.status == "paused" {
-                timer.append(("Stop Timer", false, { [weak self] in self?.stopTimer(sitting, row: row) }))
-            }
-            return timer + [
-                ("Planned Length", false, { [weak self] in self?.planLength(sitting, row: row) }),
-                ("Log Minutes", false, { [weak self] in self?.logMinutes(sitting, row: row) }),
-                ("Unassign", true, { [weak self] in
-                    self?.change(focusing: row) { try self!.core.lumenna.unassign(assignment: sitting.id) }
-                }),
-            ]
-        case let .free(start, _, minutes):
-            return [("Add Block Here", false, { [weak self] in self?.addBlock(at: start, minutes: minutes) })]
-        case let .cancelled(block):
-            return [("Restore This Day", false, { [weak self] in
-                guard let self, let date = self.plan?.date else { return }
-                self.change(focusing: row) { try self.core.lumenna.restoreOccurrence(id: block.series, date: date) }
-            })]
-        case .now:
-            return []
+        let listed: [DayAction] = switch row {
+        case let .block(block): DayAction.of(block)
+        case let .sitting(sitting, _): DayAction.of(sitting)
+        case .free: DayAction.ofFreeTime
+        case .cancelled: DayAction.ofCancelled
+        case .now: []
+        }
+        return listed.map { action in (action.title, action.destructive, { [weak self] in self?.run(action, on: row) }) }
+    }
+
+    private func run(_ action: DayAction, on row: Row) {
+        let lumenna = core.lumenna
+        switch (action, row) {
+        case let (.assignTask, .block(block)): assign(to: block)
+        case let (.edit, .block(block)): edit(block)
+        case let (.cancelThisDay, .block(block)):
+            guard let date = plan?.date else { return }
+            change(focusing: row) { try lumenna.cancelOccurrence(id: block.series, date: date) }
+        case let (.restoreThisDay, .block(block)):
+            guard let date = plan?.date else { return }
+            change(focusing: row) { try lumenna.restoreOccurrence(id: block.series, date: date) }
+        case let (.restoreThisDay, .cancelled(block)):
+            guard let date = plan?.date else { return }
+            change(focusing: row) { try lumenna.restoreOccurrence(id: block.series, date: date) }
+        case let (.deleteBlock, .block(block)): delete(block)
+        case let (.startTimer, .sitting(sitting, _)), let (.resumeTimer, .sitting(sitting, _)):
+            change(focusing: row) { try lumenna.startTimer(assignment: sitting.id) }
+        case let (.pauseTimer, .sitting(sitting, _)): pauseTimer(sitting, row: row)
+        case let (.stopTimer, .sitting(sitting, _)): stopTimer(sitting, row: row)
+        case let (.plannedLength, .sitting(sitting, _)): planLength(sitting, row: row)
+        case let (.logMinutes, .sitting(sitting, _)): logMinutes(sitting, row: row)
+        case let (.unassign, .sitting(sitting, _)):
+            change(focusing: row) { try lumenna.unassign(assignment: sitting.id) }
+        case let (.addBlockHere, .free(start, _, minutes)): addBlock(at: start, minutes: minutes)
+        default: break
         }
     }
 
@@ -415,7 +400,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     private func logMinutes(_ sitting: PlanAssignment, row: Row) {
         askForText(
             "Minutes on \(sitting.title)",
-            message: "The whole of this sitting, replacing what is logged.",
+            message: DayAction.loggingMinutes,
             placeholder: "45",
             action: "Log"
         ) { [weak self] text in
@@ -506,9 +491,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     }
 
     private func delete(_ block: PlanBlock) {
-        let message = block.repeats
-            ? "Every occurrence goes, not only this day. To skip one day, cancel it instead."
-            : "It goes to the trash with its assignments."
+        let message = DayAction.deleting(block)
         confirm("Delete \(block.title)?", message: message, action: "Delete") { [weak self] in
             self?.change(focusing: .block(block)) { try self!.core.lumenna.deleteBlock(id: block.series) }
         }

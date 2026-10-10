@@ -80,13 +80,7 @@ final class CompletionBar: UIInputView {
     /// carries on.
     private func insert(_ candidate: Candidate) {
         guard let field, let text = Self.text(of: field), let current else { return }
-        let bytes = Array(text.utf8)
-        let start = min(Int(current.start), bytes.count)
-        let end = min(max(Int(current.end), start), bytes.count)
-        let before = String(decoding: bytes[..<start], as: UTF8.self)
-        let after = String(decoding: bytes[end...], as: UTF8.self)
-        let inserted = candidate.text + (after.hasPrefix(" ") ? "" : " ")
-        let replaced = before + inserted + after
+        let (replaced, cursor) = CompletionText.insert(candidate, into: text, start: current.start, end: current.end)
         switch field {
         case let field as UITextField:
             field.text = replaced
@@ -96,7 +90,7 @@ final class CompletionBar: UIInputView {
             return
         }
         if let position = field.position(
-            from: field.beginningOfDocument, offset: (before + inserted).utf16.count
+            from: field.beginningOfDocument, offset: cursor
         ) {
             field.selectedTextRange = field.textRange(from: position, to: position)
         }

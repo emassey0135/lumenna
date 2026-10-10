@@ -129,12 +129,17 @@ targets:
     platform: watchOS
     sources:
       - path: Watch
-      # What the phone and the watch word alike: times, row speech, text offsets.
+      # What the phone and the watch word and decide alike: times, row speech, text
+      # offsets and errors, folding, and which actions a row offers.
       - path: Shared/Clock.swift
         group: Shared
       - path: Shared/RowSpeech.swift
         group: Shared
       - path: Shared/Words.swift
+        group: Shared
+      - path: Shared/Folding.swift
+        group: Shared
+      - path: Shared/Actions.swift
         group: Shared
       # The task, block and settings forms the iPhone and the Mac use, with the watch's
       # differences beside theirs (FormParts.swift).

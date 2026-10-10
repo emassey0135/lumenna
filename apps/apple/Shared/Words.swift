@@ -14,3 +14,32 @@ enum TextOffsets {
         return String(decoding: prefix, as: UTF8.self).utf16.count
     }
 }
+
+/// Putting a completion the core offered in place of what it completes.
+enum CompletionText {
+    /// `text` with `candidate` in place of the bytes from `start` to `end` (the core counts
+    /// UTF-8 bytes), and a space after it so the next word can follow.
+    static func insert(_ candidate: Candidate, into text: String, start: UInt32, end: UInt32) -> (text: String, cursor: Int) {
+        let bytes = Array(text.utf8)
+        let from = min(Int(start), bytes.count)
+        let to = min(max(Int(end), from), bytes.count)
+        let before = String(decoding: bytes[..<from], as: UTF8.self)
+        let after = String(decoding: bytes[to...], as: UTF8.self)
+        let inserted = candidate.text + (after.hasPrefix(" ") ? "" : " ")
+        return (before + inserted + after, (before + inserted).utf16.count)
+    }
+}
+
+extension Error {
+    /// The sentence the core wrote, which is already phrased to be read aloud.
+    var sentence: String {
+        if let error = self as? LumennaError {
+            let message: String
+            switch error {
+            case let .Failed(text), let .SyncElsewhere(text): message = text
+            }
+            return message.prefix(1).uppercased() + message.dropFirst()
+        }
+        return localizedDescription
+    }
+}

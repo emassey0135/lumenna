@@ -148,8 +148,14 @@ final class LumennaWatchUITests: XCTestCase {
     func testSettingsShowWhatSyncsAndPassAnAudit() throws {
         XCTAssertTrue(app.buttons["Today"].waitForExistence(timeout: 10))
         reveal(app.buttons["Settings"]).tap()
+        XCTAssertTrue(app.buttons["Planning"].waitForExistence(timeout: 5))
+        app.buttons["Planning"].tap()
         XCTAssertTrue(app.switches["Completing a task completes its subtasks"].waitForExistence(timeout: 5))
-        try audit("settings")
+        try audit("planning settings")
+        back()
+        app.buttons["Devices"].tap()
+        XCTAssertTrue(app.staticTexts["No paired devices"].waitForExistence(timeout: 5), "the synced list, empty in a fresh store")
+        try audit("devices")
     }
 
     func testAProjectIsMadeFromItsHeadingAndRenamed() throws {
@@ -164,5 +170,26 @@ final class LumennaWatchUITests: XCTestCase {
         app.buttons["Save"].tap()
         let yard = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Yard'")).firstMatch
         XCTAssertTrue(reveal(yard).exists, "renamed, and back among the places")
+    }
+
+    func testAHeadingFoldsWhatIsUnderItAndSaysWhichItIs() throws {
+        XCTAssertTrue(app.buttons["Today"].waitForExistence(timeout: 10))
+        let projects = reveal(app.buttons["Projects"])
+        XCTAssertEqual(projects.value as? String, "expanded")
+        projects.tap()
+        XCTAssertEqual(app.buttons["Projects"].value as? String, "collapsed")
+        XCTAssertFalse(app.buttons["New Project"].exists, "what was under it is folded away")
+        app.buttons["Projects"].tap()
+        XCTAssertTrue(reveal(app.buttons["New Project"]).exists)
+    }
+
+    func testTheDayGoesToAChosenDayAndBack() throws {
+        XCTAssertTrue(app.buttons["Today"].waitForExistence(timeout: 10))
+        app.buttons["Today"].tap()
+        reveal(app.buttons["Go to Day"]).tap()
+        XCTAssertTrue(app.buttons["Go"].waitForExistence(timeout: 5))
+        try audit("go to day")
+        reveal(app.buttons["Go"]).tap()
+        XCTAssertTrue(app.navigationBars["Today"].waitForExistence(timeout: 5), "today chosen is today")
     }
 }

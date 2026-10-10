@@ -12,6 +12,7 @@ struct TaskListView: View {
     @State private var erasing: RowView?
     @State private var filter = ""
     @State private var asked: Asked?
+    @State private var folding = Folding()
 
     var body: some View {
         let listing = rows
@@ -32,8 +33,10 @@ struct TaskListView: View {
             if let listing, listing.rows.isEmpty {
                 Text(listing.announcement.prefix(1).uppercased() + listing.announcement.dropFirst())
             }
-            ForEach(Array((listing?.rows ?? []).enumerated()), id: \.element.id) { index, row in
-                taskRow(row, after: index == 0 ? nil : listing?.rows[index - 1].depth)
+            // Folded as on the phone, the level said against the row shown before.
+            let shown = folding.shown(listing?.rows ?? [], depth: { Int($0.depth) }, key: \.id)
+            ForEach(Array(shown.enumerated()), id: \.element.item.id) { index, row in
+                taskRow(row, after: index == 0 ? nil : shown[index - 1].item.depth)
             }
             PlaceActions(place: place, asked: $asked, left: { dismiss() })
         }
@@ -61,8 +64,9 @@ struct TaskListView: View {
         }
     }
 
-    private func taskRow(_ row: RowView, after previous: UInt32?) -> some View {
-        NavigationLink(value: TaskOpened(id: row.id)) {
+    private func taskRow(_ shown: Folding.Shown<RowView>, after previous: UInt32?) -> some View {
+        let row = shown.item
+        return NavigationLink(value: TaskOpened(id: row.id)) {
             // The row owns what VoiceOver says: the title as its name, then what the core
             // says of it as its value, as on the phone.
             VStack(alignment: .leading) {
@@ -73,7 +77,7 @@ struct TaskListView: View {
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(RowSpeech.label(row))
-            .accessibilityValue(RowSpeech.value(row, previousDepth: previous))
+            .accessibilityValue(RowSpeech.value(row, previousDepth: previous, fold: shown.state))
         }
         .swipeActions(edge: .leading) {
             if !trash {
@@ -86,6 +90,12 @@ struct TaskListView: View {
                 Button("Delete from Trash", role: .destructive) { erasing = row }
             } else {
                 Button("Delete", role: .destructive) { core.act { try core.lumenna.trashTask(id: row.id) } }
+            }
+            if let fold = Folding.action(for: shown) {
+                Button(fold.title) {
+                    folding.toggle(row.id)
+                    Announcer.say(fold.said)
+                }
             }
         }
     }
@@ -135,29 +145,34 @@ private struct PlaceActions: View {
     private var lumenna: Lumenna { core.lumenna }
 
     private func project(_ name: String) -> some View {
-        let archived = (core.read { try lumenna.listProjects().rows } ?? [])
-            .first { $0.title == name }?.state.contains("archived") == true
+        let projects = core.read { try lumenna.listProjects().rows } ?? []
+        let archived = projects.first { $0.title == name }?.state.contains("archived") == true
         return Section {
-            prompt("Rename") { TextPrompt("Rename \(name)", initial: name) { renamed in leave { try lumenna.renameProject(name: name, to: renamed) } } }
-            Button("Move Up") { core.act { try lumenna.reorderProject(name: name, direction: .up) } }
-            Button("Move Down") { core.act { try lumenna.reorderProject(name: name, direction: .down) } }
-            prompt("Move Under") {
-                let others = (core.read { try lumenna.listProjects().rows } ?? []).map(\.title).filter { $0 != name }
-                ChoicePrompt(title: "Move \(name) under", choices: [("Top Level", { core.act { try lumenna.moveProject(name: name, parent: nil) } })]
-                    + others.map { other in (other, { core.act { try lumenna.moveProject(name: name, parent: other) } }) })
-            }
-            prompt("Add Project Inside") {
-                TextPrompt("New Project in \(name)", placeholder: "Name", action: "Add") { added in
-                    core.act { try lumenna.addProject(name: added, parent: name) }
+            ForEach(PlaceAction.ofProject(archived: archived), id: \.self) { action in
+                Button(action.title, role: action.destructive ? .destructive : nil) {
+                    switch action {
+                    case .rename:
+                        asked = Asked(TextPrompt("Rename \(name)", initial: name) { renamed in leave { try lumenna.renameProject(name: name, to: renamed) } })
+                    case .moveUp: core.act { try lumenna.reorderProject(name: name, direction: .up) }
+                    case .moveDown: core.act { try lumenna.reorderProject(name: name, direction: .down) }
+                    case .moveUnder:
+                        let others = projects.map(\.title).filter { $0 != name }
+                        asked = Asked(ChoicePrompt(title: "Move \(name) under", choices: [("Top Level", { core.act { try lumenna.moveProject(name: name, parent: nil) } })]
+                            + others.map { other in (other, { core.act { try lumenna.moveProject(name: name, parent: other) } }) }))
+                    case .addProjectInside:
+                        asked = Asked(TextPrompt("New Project in \(name)", placeholder: "Name", action: "Add") { added in
+                            core.act { try lumenna.addProject(name: added, parent: name) }
+                        })
+                    case .weight: asked = Asked(WeightPrompt(name: name))
+                    case .archive, .unarchive: core.act { try lumenna.archiveProject(name: name) }
+                    case .delete:
+                        asked = Asked(ChoicePrompt(title: "Delete \(name)?", message: PlaceAction.deletingProject, choices: [
+                            (PlaceAction.deleteAndTrash, { leave { try lumenna.deleteProject(name: name, keepTasks: false) } }),
+                            (PlaceAction.deleteAndKeep, { leave { try lumenna.deleteProject(name: name, keepTasks: true) } }),
+                        ]))
+                    case .mergeInto, .colour, .changeQuery: break
+                    }
                 }
-            }
-            prompt("Weight") { WeightPrompt(name: name) }
-            Button(archived ? "Unarchive" : "Archive") { core.act { try lumenna.archiveProject(name: name) } }
-            prompt("Delete", role: .destructive) {
-                ChoicePrompt(title: "Delete \(name)?", message: "Its tasks can go to the trash with it, or move to the Inbox.", choices: [
-                    ("Delete and Trash Its Tasks", { leave { try lumenna.deleteProject(name: name, keepTasks: false) } }),
-                    ("Delete and Keep Its Tasks", { leave { try lumenna.deleteProject(name: name, keepTasks: true) } }),
-                ])
             }
         } header: {
             FormParts.heading("Project")
@@ -166,25 +181,30 @@ private struct PlaceActions: View {
 
     private func label(_ name: String) -> some View {
         Section {
-            prompt("Rename") { TextPrompt("Rename \(name)", initial: name) { renamed in leave { try lumenna.renameLabel(name: name, to: renamed) } } }
-            Button("Move Up") { core.act { try lumenna.reorderLabel(name: name, direction: .up) } }
-            Button("Move Down") { core.act { try lumenna.reorderLabel(name: name, direction: .down) } }
-            prompt("Merge Into") {
-                // For when a typo made a near-duplicate: this one's tasks move to the other.
-                let others = (core.read { try lumenna.listLabels().rows } ?? []).map(\.title).filter { $0 != name }
-                ChoicePrompt(title: "Merge \(name) into", choices: others.map { other in
-                    (other, { leave { try lumenna.mergeLabels(from: name, into: other) } })
-                })
-            }
-            prompt("Colour") {
-                TextPrompt("Colour for \(name)", message: "A colour name, such as red or teal, or none. The name always shows too.", placeholder: "teal") { colour in
-                    core.act { try lumenna.recolourLabel(name: name, colour: colour.lowercased() == "none" ? nil : colour) }
+            ForEach(PlaceAction.ofLabel, id: \.self) { action in
+                Button(action.title, role: action.destructive ? .destructive : nil) {
+                    switch action {
+                    case .rename:
+                        asked = Asked(TextPrompt("Rename \(name)", initial: name) { renamed in leave { try lumenna.renameLabel(name: name, to: renamed) } })
+                    case .moveUp: core.act { try lumenna.reorderLabel(name: name, direction: .up) }
+                    case .moveDown: core.act { try lumenna.reorderLabel(name: name, direction: .down) }
+                    case .mergeInto:
+                        // For when a typo made a near-duplicate: this one's tasks move to the other.
+                        let others = (core.read { try lumenna.listLabels().rows } ?? []).map(\.title).filter { $0 != name }
+                        asked = Asked(ChoicePrompt(title: "Merge \(name) into", choices: others.map { other in
+                            (other, { leave { try lumenna.mergeLabels(from: name, into: other) } })
+                        }))
+                    case .colour:
+                        asked = Asked(TextPrompt("Colour for \(name)", message: PlaceAction.colourHelp, placeholder: "teal") { colour in
+                            core.act { try lumenna.recolourLabel(name: name, colour: colour.lowercased() == "none" ? nil : colour) }
+                        })
+                    case .delete:
+                        asked = Asked(ChoicePrompt(title: "Delete \(name)?", message: PlaceAction.deletingLabel, choices: [
+                            ("Delete", { leave { try lumenna.deleteLabel(name: name) } }),
+                        ]))
+                    default: break
+                    }
                 }
-            }
-            prompt("Delete", role: .destructive) {
-                ChoicePrompt(title: "Delete \(name)?", message: "Tasks wearing it stay; they just stop showing it.", choices: [
-                    ("Delete", { leave { try lumenna.deleteLabel(name: name) } }),
-                ])
             }
         } header: {
             FormParts.heading("Label")
@@ -193,22 +213,25 @@ private struct PlaceActions: View {
 
     private func filter(_ name: String, query: String) -> some View {
         Section {
-            prompt("Rename") { TextPrompt("Rename \(name)", initial: name) { renamed in leave { try lumenna.editFilter(name: name, rename: renamed, query: nil) } } }
-            prompt("Change Query") {
-                TextPrompt("Query for \(name)", initial: query, syntax: .filter) { changed in
-                    leave { try lumenna.editFilter(name: name, rename: nil, query: changed) }
+            ForEach(PlaceAction.ofFilter, id: \.self) { action in
+                Button(action.title, role: action.destructive ? .destructive : nil) {
+                    switch action {
+                    case .rename:
+                        asked = Asked(TextPrompt("Rename \(name)", initial: name) { renamed in leave { try lumenna.editFilter(name: name, rename: renamed, query: nil) } })
+                    case .changeQuery:
+                        asked = Asked(TextPrompt("Query for \(name)", initial: query, syntax: .filter) { changed in
+                            leave { try lumenna.editFilter(name: name, rename: nil, query: changed) }
+                        })
+                    case .moveUp: core.act { try lumenna.reorderFilter(name: name, direction: .up) }
+                    case .moveDown: core.act { try lumenna.reorderFilter(name: name, direction: .down) }
+                    case .delete: leave { try lumenna.deleteFilter(name: name) }
+                    default: break
+                    }
                 }
             }
-            Button("Move Up") { core.act { try lumenna.reorderFilter(name: name, direction: .up) } }
-            Button("Move Down") { core.act { try lumenna.reorderFilter(name: name, direction: .down) } }
-            Button("Delete", role: .destructive) { leave { try lumenna.deleteFilter(name: name) } }
         } header: {
             FormParts.heading("Saved filter")
         }
-    }
-
-    private func prompt(_ title: String, role: ButtonRole? = nil, @ViewBuilder _ view: @escaping () -> some View) -> some View {
-        Button(title, role: role) { asked = Asked(view()) }
     }
 
     /// A change after which this list stands for something gone or renamed: back to the places.
@@ -228,7 +251,7 @@ private struct WeightPrompt: View {
 
     var body: some View {
         List {
-            Text((problem.map { "\($0) " } ?? "") + "How much this whole area matters now, roughly 0.5 to 2. Type inherit to take the parent's again.")
+            Text((problem.map { "\($0) " } ?? "") + PlaceAction.weightHelp)
                 .font(.footnote)
             TextField("Weight", text: $typed, prompt: example("1.0"))
             Button("Save") {

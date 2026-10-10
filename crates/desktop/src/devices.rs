@@ -83,7 +83,7 @@ mod tests {
             schema_version: 1,
             status: Vec::new(),
         };
-        view.status = lumenna_surface::words::device_status(&view, now());
+        view.status = lumenna_surface::words::device_status(&view, now(), true);
         view
     }
 

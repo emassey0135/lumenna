@@ -564,6 +564,13 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   file. `Shared/Clock.swift`, `RowSpeech.swift` and `Words.swift` are shared too; the
   watch's core is its own, since `Shared/Core.swift` starts Iroh. The generated bindings are
   in the app's own module, so a watch type named like a core record clashes with it.
+- **Which actions a row offers is decided once, in `Shared/Actions.swift`** (`DayAction`,
+  `PlaceAction`, `DeviceAction`): which apply when, their spoken names, and what their
+  questions ask. The iPhone and the watch only present and run them. Folding is
+  `Shared/Folding.swift`, its UIKit swipe action an iOS extension.
+- **The device list builds without Iroh** (`crates/surface/src/devices.rs`): the watch is in
+  no list and syncs with no device directly, so nothing is "this device" and a device's
+  status says only its version (`device_status(…, direct: false)`).
 - **A row offers its actions when tapped** where the phone has more swipe actions than a
   watch row holds (a block, a sitting, free time); a project, label or filter's are buttons
   at the foot of its list. Completion is offered after the line is entered, beside the

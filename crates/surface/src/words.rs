@@ -92,9 +92,10 @@ pub fn sitting_details(sitting: &crate::types::PlanAssignment) -> Vec<String> {
 
 /// How syncing with a device is going, in words rather than an icon: "this device";
 /// "last synced 5 minutes ago"; or, when the last attempt failed, when and why, then when
-/// it last worked.
+/// it last worked. Not `direct` — on a watch, which syncs through its phone — only what is
+/// true of the device itself, its version.
 #[must_use]
-pub fn device_status(device: &crate::types::DeviceView, now: jiff::Timestamp) -> Vec<String> {
+pub fn device_status(device: &crate::types::DeviceView, now: jiff::Timestamp, direct: bool) -> Vec<String> {
     if device.this_device {
         return vec!["this device".to_owned()];
     }
@@ -105,6 +106,10 @@ pub fn device_status(device: &crate::types::DeviceView, now: jiff::Timestamp) ->
         parts.push("runs an older version of Lumenna, so update it".to_owned());
     } else if device.schema_version > ours {
         parts.push("runs a newer version of Lumenna, so update this device".to_owned());
+    }
+    // A watch syncs through its phone, never with the others: it has no attempts to say.
+    if !direct {
+        return parts;
     }
     if let Some(error) = &device.last_error {
         parts.push(match &device.last_attempt {
