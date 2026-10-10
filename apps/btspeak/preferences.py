@@ -14,34 +14,26 @@ from pathlib import Path
 
 from BTSpeak import clipboard, dialogs
 
+import actions
 import options
 from client import LumennaError
 from session import REFRESH, Command, Session, ask, choose, confirm, live_menu, row_item, screen, spoken
 from tasks import undo_commands
 
 
-WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+#: What this app shows of the device settings: `clock` is for clients with no clock of their
+#: own, and this device has its Time Format.
+NOT_HERE = {"clock"}
 
-#: Each setting's name in words, and the values to choose from when there are only a few.
-SETTINGS = {
-    "cascade-complete-subtasks": (
-        "Completing a task completes its subtasks", {"true": "Yes", "false": "No"},
-    ),
-    "day-start": ("Day starts", None),
-    "day-end": ("Day ends", None),
-    "all-day-reminder-hour": ("All-day reminders at", None),
-    "verbosity": ("Announcements", {"full": "Full sentences", "terse": "Terse"}),
-    "week-start": ("Week starts on", {day: day.capitalize() for day in WEEKDAYS}),
-    "backup-every": (
-        "Automatic backups",
-        {"12h": "Every 12 hours", "1d": "Every day", "7d": "Every week", "off": "Off"},
-    ),
-    "backup-keep": ("Backups kept", None),
-    "backup-dir": ("Backups go to", None),
-}
 
-PLANNING = ["cascade-complete-subtasks", "day-start", "day-end", "all-day-reminder-hour", "verbosity", "week-start"]
-BACKUPS = ["backup-every", "backup-keep", "backup-dir"]
+def planning(setting: dict) -> bool:
+    """Whether a setting is on the Planning page: those that sync to every device."""
+    return bool(setting.get("syncs"))
+
+
+def on_this_device(setting: dict) -> bool:
+    """Whether a setting is on the Backups page: this device's own."""
+    return not setting.get("syncs") and setting["key"] not in NOT_HERE
 
 
 def read_back_title() -> str:
@@ -58,7 +50,7 @@ def toggle_read_back() -> str:
 def settings(session: Session) -> str:
     """A short list of pages, as on the phone, and this app's own preference."""
     items = [
-        dialogs.DynamicMenuItem(title="Planning", shortcut="p", action=lambda: setting_page(session, "Planning", PLANNING)),
+        dialogs.DynamicMenuItem(title="Planning", shortcut="p", action=lambda: setting_page(session, "Planning", planning)),
         dialogs.DynamicMenuItem(title="Devices and sync", shortcut="d", action=lambda: devices(session)),
         dialogs.DynamicMenuItem(title="Backups, on this device only", shortcut="b", action=lambda: backups(session)),
         dialogs.DynamicMenuItem(title="Export and import", shortcut="e", action=lambda: export_import(session)),
@@ -73,51 +65,51 @@ def current_settings(session: Session) -> dict:
     return {s["key"]: s["value"] for s in session.call("config.get").get("settings", [])}
 
 
-def setting_items(session: Session, keys: list[str]) -> list:
-    values = current_settings(session)
+def setting_items(session: Session, which) -> list:
+    """The settings `which` keeps, one row each, said as the core names them."""
     items = []
-    for key in keys:
-        if key not in values:
+    for setting in session.call("config.get").get("settings", []):
+        if not which(setting):
             continue
-        name, options = SETTINGS.get(key, (key, None))
-        shown = options.get(values[key], values[key]) if options else values[key]
+        named = {o["id"]: o["title"] for o in setting.get("options", [])}
         items.append(
             row_item(
-                {"key": key, "value": values[key], "title": name},
-                f"{name}, {shown}",
-                action=(lambda key=key: change_setting(session, key, values[key])),
+                setting,
+                f"{setting['title']}, {named.get(setting['value'], setting['value'])}",
+                action=(lambda setting=setting: change_setting(session, setting)),
             )
         )
     return items
 
 
-def setting_page(session: Session, title: str, keys: list[str]) -> str:
+def setting_page(session: Session, title: str, which) -> str:
     """Settings, one per row: Enter changes one."""
     with screen("lumenna-settings"):
         live_menu(
-            session, lambda: setting_items(session, keys), title,
+            session, lambda: setting_items(session, which), title,
             app=undo_commands(session), app_title=f"{title} menu",
         )
     return ""
 
 
-#: Settings that are a time of day, which core reads as typed: `9am`, `14:30`.
-TIMES = {"day-start", "day-end", "all-day-reminder-hour"}
+#: What a line of text takes, for a setting typed rather than chosen, by its kind.
+TAKES = {"time": "a time such as 9am or 14:30", "number": "a whole number"}
 
 
-def change_setting(session: Session, key: str, value: str) -> str:
-    name, options = SETTINGS.get(key, (key, None))
+def change_setting(session: Session, setting: dict) -> str:
+    """A choice where the setting has options; else a line of text, which the core reads and
+    checks. The device has a date dialog but no time one, so a time is typed as said."""
+    value = setting["value"]
+    options = {o["id"]: o["title"] for o in setting.get("options", [])}
+    said = ". ".join(part for part in (setting["title"], setting.get("hint", "")) if part)
     if options:
-        chosen = choose(options, name, default=value)
-    elif key in TIMES:
-        # The device has a date dialog but no time one, and core reads times as typed, so
-        # this is a line of text that says what it takes.
-        chosen = dialogs.request_input(f"{name}, a time such as 9am or 14:30", default_text=value)
+        chosen = choose(options, said, default=value)
     else:
-        chosen = dialogs.request_input(name, default_text=value)
+        takes = TAKES.get(setting.get("kind", ""))
+        chosen = dialogs.request_input(f"{said}, {takes}" if takes else said, default_text=value)
     if chosen is None or chosen == value:
         return ""
-    return session.write("config.set", key=key, value=chosen)
+    return session.write("config.set", key=setting["key"], value=chosen)
 
 
 # ---------------------------------------------------------------------------------------
@@ -150,16 +142,8 @@ def devices(session: Session) -> str:
     with screen("lumenna-settings"):
         live_menu(
             session, build, lambda: state["heading"],
-            main=lambda device: rename_device(session, device),
-            context=[
-                Command("Rename", lambda device: rename_device(session, device), key="r"),
-                Command(
-                    "Stop syncing with it",
-                    lambda device: unpair_device(session, device),
-                    applies=lambda device: not device.get("this_device"),
-                    deletes=True,
-                ),
-            ],
+            main=lambda device: actions.run_kind(session, device, "rename"),
+            context=lambda rows: actions.commands(session, rows),
             app=[
                 Command("Sync now", lambda _: sync_now(session), key="s"),
                 Command("Pair a device", lambda _: pair(session), key="p"),
@@ -190,22 +174,6 @@ def sync_now(session: Session) -> str:
         else:
             lines.append(f"{peer['name']}: synced, nothing new from it")
     return ". ".join(lines)
-
-
-def rename_device(session: Session, device: dict) -> str:
-    name = ask(f"New name for {device['name']}", device["name"])
-    if not name or name == device["name"]:
-        return ""
-    return session.write("device.rename", device=device["node_id"], name=name)
-
-
-def unpair_device(session: Session, device: dict) -> str:
-    if not confirm(
-        f"Stop syncing with {device['name']}? It keeps what it already has: this is for a "
-        "device you replaced, not one that was stolen."
-    ):
-        return ""
-    return session.write("device.unpair", device=device["node_id"])
 
 
 def ask_code(own: str = "") -> str | None:
@@ -352,7 +320,7 @@ def backups(session: Session) -> str:
     with screen("lumenna-settings"):
         live_menu(
             session,
-            lambda: setting_items(session, BACKUPS),
+            lambda: setting_items(session, on_this_device),
             "Backups. A backup holds your whole history, including every task you deleted, so the "
             "store can be rebuilt from it. It stays on this device",
             app=[

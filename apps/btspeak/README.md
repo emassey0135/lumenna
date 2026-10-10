@@ -71,6 +71,7 @@ subtasks. That is all core's, so that every client behaves alike and none can dr
 | `connect.py` | Socket, or a spawned `lum rpc`. |
 | `rows.py` | Rows to menu items: level markers, folding, and composing a line from components. |
 | `session.py` | What every menu shares: the client, live rebuilding, and how a reply is said. |
+| `actions.py` | Each row's actions, the core's, as its context menu, letters and delete keys; their questions asked with the device's dialogs and done through `act`. |
 | `menus.py` | The contract check and the main menu. |
 | `tasks.py` | Task lists, what can be done to one task, quick add, and the trash. |
 | `day.py` | The planner — blocks, sittings, free time and now — and the block series. |
@@ -78,8 +79,11 @@ subtasks. That is all core's, so that every client behaves alike and none can dr
 | `preferences.py` | Settings, devices, sync and pairing, backups, export and import. |
 
 The menus are laid out as the phone's are — the day, tasks, projects, labels, filters, the
-trash, settings — so the two can be described in one breath. Enter on a row offers
-everything that can be done to it; the device's delete keys delete; left and right fold.
+trash, settings — so the two can be described in one breath. A row's context menu offers
+what the core says can be done to it, in its order and under its names; a letter does the
+action of its kind (`actions.KEYS`), so it does nothing a row does not offer; the device's
+delete keys delete; left and right fold. The main menu lists the core's places; settings
+and priorities are worded as the core describes them.
 
 No third-party Python. The client is one stdlib file; a dependency to build
 `{"jsonrpc": "2.0", …}` would be more surface than it saves. `dialogs` comes from the device.

@@ -13,17 +13,19 @@ The day as it is lived, opening on now: blocks in time order with the tasks assi
 
 On a block:
 
-- Edit, e: its name, times and kind, and for every occurrence its notes, shortest length, the filter its tasks come from, its last day and its colour.
-- Assign a task, i, to a block that takes tasks. Cancel this day, x, for a repeating block. Put this day back as the series has it, o, for a day changed on its own. Delete the block, also Control-D.
-- Let it take tasks, or Stop it taking tasks. Anchor it, so it never moves, or Let it move. Count it toward hours for work, or Stop counting it. Each asks, of a repeating block, whether for that day or every occurrence.
+- Assign a Task, i, to a block that takes tasks.
+- Edit Block, e: its name, times and kind, whether it takes tasks, counts toward hours for work or is anchored, and for every occurrence its repetition, notes, shortest length, the filter its tasks come from, its last day and its colour. Changing the kind brings that kind's own settings, unless you changed them too.
+- Cancel This Day, x, for a repeating block. Restore This Day, o, for a day changed on its own. Delete Block, also Control-D.
 
 On a task in a block, one sitting of it:
 
-- Start the timer, Pause the timer, or Resume the timer, s. Pausing keeps the time so far.
-- Stop the timer, ending the sitting, t: whether it is running or paused.
-- Planned length, l: how long this sitting is meant to take. Leave it empty for none.
-- Log minutes by hand, m: the whole of the sitting, replacing what was logged.
-- The task itself. Take it out of the block, also Control-D.
+- Start Timer, Pause Timer, or Resume Timer, s. Pausing keeps the time so far.
+- Stop Timer, t, ending the sitting: whether it is running or paused.
+- Planned Length, l: how long this sitting is meant to take, such as 45m. Leave it empty for none.
+- Log Minutes, m: the whole of the sitting, replacing what was logged.
+- Edit Task Details, e. Unassign, also Control-D.
+
+On free time, Add Block Here, a. On a cancelled day, Restore This Day, o.
 
 ## The day's main menu, M-Chord
 

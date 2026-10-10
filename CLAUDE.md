@@ -71,6 +71,8 @@ JSON crosses the FFI.
   `ActionKind` is generic across subjects so a key means one thing on every row (Delete is
   `Delete`), with `Subject` saying what it is done to. Only `Question::Form` is the
   client's: the task and block forms. Never decide in a client which actions a row has.
+  A key pressed on a row without that action says `not_offered(kind, subject, …)`.
+  What a picker's row says is `desktop::speech::choice` for Windows, GTK and the web.
 - **What every client's forms share is here too**, as free functions in `form.rs`:
   `task_fields`/`task_edit`, the block form's `block_fields`/`block_edit`/`new_block`,
   `parse_weight`, the `#"Home Office"` references. `task_edit` and `block_edit` hold only
@@ -153,7 +155,7 @@ endpoint (`Endpoint::serve`, `Lumenna::serve_commands`).
   or `pair.cancel`, and the server keeps answering everything else. One pairing at a time.
 - **`act`, `choices`, `places` and `form.*`** (the form functions: `task_fields`,
   `task_edit`, `block_fields`, `day_block_fields`, `block_edit`, `new_block`,
-  `block_defaults`, `priorities`) are here so a client over the pipe keeps no copy of any rule. A form
+  `block_defaults`, `priorities`, `not_offered`) are here so a client over the pipe keeps no copy of any rule. A form
   function's answer is a `value` result: computed from what the client sent, nothing read.
 - **`complete` and `preview` have no command line**: completion is a keystroke-rate question
   and a process per keystroke is not an answer.
@@ -369,6 +371,10 @@ library is only on a BTSpeak (`/BTSpeak/Python/BTSpeak/`); elsewhere the tests r
 
 - **A client and almost nothing else.** No date parsing, no computed states. `rows.py` is
   the only file that decides anything, and only about folding.
+- **A row's context menu is its `actions`** (`actions.py`): the rows' actions merged into
+  one list of commands that keeps each row's order, each offered where its row has it, a
+  letter per kind (`KEYS`), the delete keys for `Delete`/`Unassign`/`Unpair`. Questions are
+  the device's dialogs; forms (task, block, new filter) register in `actions.FORMS`.
 - **Speech and braille come from one string** with the stock library
   (`DynamicMenuDialog.draw()`), so components are flattened at the last step. A subclass is
   the fallback if they must diverge.

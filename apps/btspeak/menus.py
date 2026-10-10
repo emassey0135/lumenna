@@ -29,7 +29,7 @@ from __future__ import annotations
 from BTSpeak import dialogs
 
 from client import Disconnected
-from session import Session
+from session import Session, live_menu
 import day
 import organise
 import preferences
@@ -77,23 +77,46 @@ def run(client) -> int:
     return 0
 
 
+#: Each of the core's places by name: the letter that opens it, and the screen it opens.
+PLACES = {
+    "Today": ("t", day.day_plan),
+    "Tasks": ("k", tasks.task_list),
+    "Projects": ("p", organise.projects),
+    "Labels": ("l", organise.labels),
+    "Filters": ("f", organise.saved_filters),
+    "Blocks": ("b", day.blocks),
+    "Trash": ("x", tasks.trash),
+}
+
+
+def place_name(entry: dict) -> str:
+    """What a top-level place is: its name, or its heading's group."""
+    kind = entry.get("kind", {})
+    place = kind.get("Place") if isinstance(kind, dict) else None
+    return kind.get("Group") if isinstance(kind, dict) and "Group" in kind else (place if isinstance(place, str) else "")
+
+
 def main_menu(session: Session) -> None:
-    """Everything else, one level down."""
+    """The core's places, as every app's sidebar lists them, one level down — each project,
+    label and filter is in its own list — then what this app adds: adding a task, undo and
+    redo, syncing, settings."""
     item = dialogs.DynamicMenuItem
-    dialogs.dynamic_menu(
-        [
-            item(title="Today", shortcut="t", action=lambda: day.day_plan(session)),
-            item(title="Tasks", shortcut="k", action=lambda: tasks.task_list(session)),
-            item(title="Add a task", shortcut="a", action=lambda: tasks.add_task(session)),
-            item(title="Filters and search", shortcut="f", action=lambda: organise.saved_filters(session)),
-            item(title="Projects", shortcut="p", action=lambda: organise.projects(session)),
-            item(title="Labels", shortcut="l", action=lambda: organise.labels(session)),
-            item(title="Blocks", shortcut="b", action=lambda: day.blocks(session)),
-            item(title="Trash", shortcut="x", action=lambda: tasks.trash(session)),
+
+    def build():
+        places = []
+        for entry in session.call("places").get("entries", []):
+            name = place_name(entry)
+            if entry.get("depth", 0) == 0 and name in PLACES:
+                key, opens = PLACES[name]
+                places.append(item(title=entry["text"], shortcut=key, action=lambda opens=opens: opens(session)))
+        # The task list sits beside adding a task, as it always has here.
+        at = next((i + 1 for i, it in enumerate(places) if it.shortcut == "k"), len(places))
+        places.insert(at, item(title="Add a task", shortcut="a", action=lambda: tasks.add_task(session)))
+        return places + [
             item(title="Undo", shortcut="u", action=lambda: session.write("undo")),
             item(title="Redo", shortcut="y", action=lambda: session.write("redo")),
             item(title="Sync now", shortcut="n", action=lambda: preferences.sync_now(session)),
             item(title="Settings", shortcut="s", action=lambda: preferences.settings(session)),
-        ],
-        title="Lumenna",
-    )
+        ]
+
+    live_menu(session, build, "Lumenna")

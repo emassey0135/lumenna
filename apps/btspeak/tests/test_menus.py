@@ -107,10 +107,10 @@ class Menus(unittest.TestCase):
         self.call("task.add", text="buy paint")
         self.run_script(
             [
-                ("context", "paint", "Wait for another task"),
+                ("context", "paint", "Wait For"),
                 ("choose", "buy paint"),
                 ("key", "buy paint", "s"),
-                ("choose", "paint"),
+                ("choose", "paint, Inbox"),
                 ("back",),
             ],
             lambda: tasks.task_list(self.session),
@@ -149,12 +149,12 @@ class Menus(unittest.TestCase):
         script = self.run_script(
             [
                 ("app", "Add a block"),
-                ("form", {"title": "Deep work", "at": "9am", "minutes": "90"}),
+                ("form", {"title": "Deep work", "start": "9am", "minutes": "90"}),
                 ("key", "Deep work", "i"),
                 ("choose", "write the chapter"),
                 ("input", ""),
                 ("key", "write the chapter", "s"),
-                ("context", "write the chapter", "Log minutes"),
+                ("context", "write the chapter", "Log Minutes"),
                 ("input", "25"),
                 ("back",),
             ],
@@ -225,10 +225,10 @@ class Menus(unittest.TestCase):
                 ("choose", "draft"),
                 ("input", ""),
                 ("key", "draft", "s"),
-                ("context", "draft", "Pause the timer"),
-                ("context", "draft", "Resume the timer"),
-                ("context", "draft", "Pause the timer"),
-                ("context", "draft", "Stop the timer, ending the sitting"),
+                ("context", "draft", "Pause Timer"),
+                ("context", "draft", "Resume Timer"),
+                ("context", "draft", "Pause Timer"),
+                ("context", "draft", "Stop Timer"),
                 ("back",),
             ],
             lambda: day.day_plan(self.session),
@@ -241,7 +241,8 @@ class Menus(unittest.TestCase):
         self.call("block.add", title="Train", at="00:00", minutes=1439, date="today", kind="break")
         self.run_script(
             [
-                ("context", "Train", "Let it take tasks"),
+                ("context", "Train", "Edit Block"),
+                ("form", {"accepts_tasks": "yes"}),
                 ("key", "Train", "i"),
                 ("choose", "read"),
                 ("input", ""),
@@ -315,7 +316,7 @@ class Menus(unittest.TestCase):
     def test_a_project_is_made_renamed_archived_and_unarchived(self):
         self.run_script(
             [
-                ("app", "Add a project"),
+                ("app", "New Project"),
                 ("input", "Wrok"),
                 ("key", "Wrok", "r"),
                 ("input", "Work"),
@@ -333,7 +334,7 @@ class Menus(unittest.TestCase):
         self.run_script(
             [
                 ("menu", "Work"),
-                ("app", "Add a project inside Work"),
+                ("app", "New Project Inside"),
                 ("input", "Errands"),
                 ("back",),
                 ("back",),
@@ -364,7 +365,7 @@ class Menus(unittest.TestCase):
         self.call("task.add", text="urgent thing p1")
         self.run_script(
             [
-                ("app", "Add a filter"),
+                ("app", "New Saved Filter"),
                 ("input", "Urgent"),
                 ("input", "p1"),
                 ("key", "Urgent", "q"),
@@ -399,33 +400,81 @@ class Menus(unittest.TestCase):
         self.call("task.add", text="labelled")
         script = self.run_script([("back",)], lambda: tasks.task_list(self.session))
         menu = btspeak_stub._Menu([])
-        menu.menu = [type("Row", (), {"row": {"id": "x", "title": "labelled", "depth": 0}})()]
+        row = self.call("task.list")["rows"][0]
+        menu.menu = [type("Row", (), {"row": row})()]
         labels = [command.get_label(menu) for command in script.menus[-1]["context"] if command.applies(menu)]
-        self.assertIn("Complete, c", labels)
-        self.assertIn("Edit, e", labels)
-        self.assertNotIn("Move it to the top level, t", labels, "only for a subtask")
+        # The core's actions, in its order and under its names, then this app's Details.
+        self.assertEqual(
+            labels,
+            ["Mark Done, c", "Edit Details, e", "Put in a Block, b", "Move to Project, m",
+             "Make Subtask Of, s", "Wait For, w", "Move to Trash", "Details"],
+        )
+        self.assertNotIn("Move to Top Level, t", labels, "only for a subtask")
 
     def test_an_empty_list_says_so_and_still_adds_from_its_main_menu(self):
         script = self.run_script(
-            [("app", "Add a label"), ("input", "calls"), ("back",)],
+            [("app", "New Label"), ("input", "calls"), ("back",)],
             lambda: organise.labels(self.session),
         )
         self.assertIn("No labels yet", script.menus[0]["empty"])
         self.assertEqual([r["title"] for r in self.call("label.list")["rows"]], ["calls"])
+
+    def test_a_weight_typed_wrong_is_refused_in_the_cores_words(self):
+        self.call("project.add", name="Work")
+        script = self.run_script(
+            [("key", "Work", "w"), ("input", "1,5"), ("key", "Work", "w"), ("input", "1.5"), ("back",)],
+            lambda: organise.projects(self.session),
+        )
+        self.assertTrue(any("is not a weight" in said for said in script.said), script.said)
+        work = next(r for r in self.call("project.list")["rows"] if r["title"] == "Work")
+        self.assertIn("1.5", work["value"])
+
+    def test_the_inbox_offers_only_what_the_core_gives_it(self):
+        script = self.run_script([("back",)], lambda: organise.projects(self.session))
+        menu = btspeak_stub._Menu([])
+        inbox = self.call("project.list")["rows"][0]
+        menu.menu = [type("Row", (), {"row": inbox})()]
+        labels = [c.get_label(menu) for c in script.menus[-1]["context"] if c.applies(menu)]
+        self.assertEqual(labels, ["Show its tasks", "Add a task to it, t", "Weight, w"])
+
+    def test_a_pick_with_nothing_to_offer_says_why(self):
+        self.call("task.add", text="alone")
+        script = self.run_script([("key", "alone", "w"), ("back",)], lambda: tasks.task_list(self.session))
+        self.assertIn("There is no task it could wait for.", script.said)
+
+    def test_the_main_menu_lists_the_cores_places(self):
+        script = self.run_script([("menu", "Saved Filters"), ("back",), ("back",)], lambda: menus.main_menu(self.session))
+        self.assertTrue(script.titles[1].startswith("Filters"), script.titles)
+
+    def test_a_priority_is_chosen_by_the_cores_words(self):
+        self.call("task.add", text="file taxes")
+        self.run_script(
+            [("context", "file taxes", "Edit Details"), ("form", {"priority": "1"}), ("back",)],
+            lambda: tasks.task_list(self.session),
+        )
+        self.assertEqual(self.task("file taxes")["priority"], 1)
+
+    def test_a_backup_setting_offers_the_cores_options(self):
+        script = self.run_script(
+            [("menu", "Automatic backups, Every day"), ("choose", "Every week"), ("back",)],
+            lambda: preferences.setting_page(self.session, "Backups", preferences.on_this_device),
+        )
+        self.assertEqual(script.offered[0], ["Every 12 hours", "Every day", "Every week", "Off"])
+        self.assertEqual(self.call("config.get", key="backup-every")["settings"][0]["value"], "7d")
 
     # -- settings and data --------------------------------------------------------------
 
     def test_a_setting_with_few_values_is_a_choice(self):
         self.run_script(
             [("menu", "Announcements"), ("choose", "Terse"), ("back",)],
-            lambda: preferences.setting_page(self.session, "Planning", preferences.PLANNING),
+            lambda: preferences.setting_page(self.session, "Planning", preferences.planning),
         )
         self.assertEqual(self.call("config.get", key="verbosity")["settings"][0]["value"], "terse")
 
     def test_a_time_setting_shows_and_takes_hours_and_minutes(self):
         self.run_script(
             [("menu", "Day starts, 08:00"), ("input", "9:30am"), ("back",)],
-            lambda: preferences.setting_page(self.session, "Planning", preferences.PLANNING),
+            lambda: preferences.setting_page(self.session, "Planning", preferences.planning),
         )
         self.assertEqual(self.call("config.get", key="day-start")["settings"][0]["value"], "09:30")
 
@@ -474,14 +523,6 @@ class Menus(unittest.TestCase):
         finally:
             other.close()
             shutil.rmtree(other_profile, ignore_errors=True)
-
-
-class WeightTest(unittest.TestCase):
-    def test_a_weight_is_a_number_above_zero_or_inherit_and_nothing_else(self):
-        self.assertEqual(organise.parse_weight(" 1.5 "), 1.5)
-        self.assertEqual(organise.parse_weight("Inherit"), "inherit")
-        for typo in ["1,5", "0", "-1", "nan", "inf", "heavy", ""]:
-            self.assertIsNone(organise.parse_weight(typo), typo)
 
 
 if __name__ == "__main__":
