@@ -41,9 +41,9 @@ final class PairingSheet: NSViewController {
         code.isSelectable = true
         code.setAccessibilityLabel(words.myCode)
         code.isHidden = true
-        entry.placeholderString = words.emptyMeans
+        // Pasted with Command-V, or typed. An empty field never reads the clipboard: nobody
+        // could tell it would, and it sent whatever happened to be copied.
         entry.setAccessibilityLabel(words.theirCode)
-        entry.setAccessibilityHelp(words.emptyMeans)
 
         wait = NSButton(title: words.wait, target: self, action: #selector(waitForOther))
         enter = NSButton(title: words.join, target: self, action: #selector(pairWithCode))
@@ -73,16 +73,9 @@ final class PairingSheet: NSViewController {
         Announcer.say(words.copied)
     }
 
-    /// Pairs with the code typed in — or, if nothing was typed, the one on the clipboard,
-    /// which is how a code sent from the other device usually arrives.
+    /// Pairs with the code typed or pasted in.
     @objc private func pairWithCode() {
-        var given = entry.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        // This Mac's own code, if Copy Code copied it, is never the other device's.
-        if given.isEmpty, let pasted = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           code.isHidden || pasted != code.stringValue {
-            given = pasted
-            entry.stringValue = pasted
-        }
+        let given = entry.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !given.isEmpty else {
             view.window?.showFailure(words.needCode)
             return

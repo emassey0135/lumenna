@@ -69,6 +69,23 @@ final class VoiceOverUITests: XCTestCase {
         XCTAssertTrue(landed, "VoiceOver stays on the row now in the completed one's place; it said \(heard), now \(now)")
     }
 
+    func testThePairingCodeFieldIsFollowedByAPasteButton() throws {
+        let settings = app.tabBars.buttons["Settings"]
+        if settings.exists { settings.tap() } else { app.typeKey(",", modifierFlags: .command) }
+        let devices = app.cells.containing(NSPredicate(format: "label CONTAINS 'Devices and Sync'")).firstMatch
+        XCTAssertTrue(devices.waitForExistence(timeout: 5))
+        devices.tap()
+        let pair = app.buttons["Pair a device"]
+        XCTAssertTrue(pair.waitForExistence(timeout: 10))
+        pair.tap()
+        XCTAssertTrue(app.textViews["Code from the other device"].waitForExistence(timeout: 5))
+        try voiceOver.enable()
+        try move(to: "Code from the other device")
+        let said = try voiceOver.moveForward().utterance
+        XCTAssertTrue(said.contains("Paste"), "after the field VoiceOver said \"\(said)\"")
+        XCTAssertTrue(said.contains("Button"), said)
+    }
+
     func testTheDayIsReadAsAHeadingThenItsButtons() throws {
         try voiceOver.enable()
         try move(to: "Heading")
