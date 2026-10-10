@@ -100,6 +100,7 @@ impl Lumenna {
                     row.state.push("archived".to_owned());
                 }
             }
+            crate::actions::fill_rows(&mut rows, &snapshot);
             Ok(rows)
         })
     }
@@ -287,7 +288,9 @@ impl Lumenna {
                     }
                 })
                 .collect();
-            Ok(Rows::new(&rows, "label"))
+            let mut rows = Rows::new(&rows, "label");
+            crate::actions::fill_rows(&mut rows, &snapshot);
+            Ok(rows)
         })
     }
 
@@ -402,6 +405,7 @@ impl Lumenna {
                         id: saved.id.to_string(),
                         name: saved.name.clone(),
                         query: saved.query.clone(),
+                        actions: crate::actions::filter(&snapshot, saved),
                     })
                     .collect(),
             })
@@ -642,7 +646,7 @@ fn moved<I: Ord + Copy>(
 /// order. A list sorted by order alone puts a subproject wherever its key falls, which in a
 /// list that shows depth reads as a child of whatever is above it. A project whose parent is
 /// gone is at the top.
-fn in_tree_order(snapshot: &Snapshot) -> Vec<(&Project, u32)> {
+pub(crate) fn in_tree_order(snapshot: &Snapshot) -> Vec<(&Project, u32)> {
     let live: Vec<&Project> = snapshot.projects.values().filter(|p| p.deleted_at.is_none()).collect();
     let ids: BTreeSet<ProjectId> = live.iter().map(|p| p.id).collect();
     let mut children: BTreeMap<Option<ProjectId>, Vec<&Project>> = BTreeMap::new();

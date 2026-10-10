@@ -148,6 +148,7 @@ fn device(this: bool, success: Option<&str>, error: Option<&str>, attempt: Optio
         last_error: error.map(str::to_owned),
         schema_version: lumenna_core::model::SCHEMA_VERSION,
         status: Vec::new(),
+        actions: Vec::new(),
     }
 }
 

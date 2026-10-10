@@ -265,7 +265,7 @@ impl DayView {
                         rows.extend(block.assignments.iter().cloned().map(Row::Sitting));
                     }
                 }
-                PlanItem::Free { start, end, minutes } => {
+                PlanItem::Free { start, end, minutes, .. } => {
                     rows.push(Row::Free { start: start.clone(), end: end.clone(), minutes: *minutes });
                 }
                 PlanItem::Now { time } => rows.push(Row::Now(time.clone())),

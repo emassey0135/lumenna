@@ -99,6 +99,9 @@ fn text(response: &Response, clock: Clock) {
         | Outcome::Completions(_)
         | Outcome::Preview(_)
         | Outcome::WorkBlocks(_)
+        | Outcome::Choices(_)
+        | Outcome::Places(_)
+        | Outcome::Value(_)
         | Outcome::Server(_)
         | Outcome::Backup(_)
         | Outcome::Restore(_)
@@ -304,7 +307,7 @@ fn day(plan: &Plan, clock: Clock) {
                     block_line(block);
                 }
             }
-            PlanItem::Free { start, end, minutes } => {
+            PlanItem::Free { start, end, minutes, .. } => {
                 println!(
                     "   free, {} from {} to {}",
                     lumenna_surface::words::duration(*minutes),

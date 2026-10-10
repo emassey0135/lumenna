@@ -12,7 +12,7 @@ use crate::{
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use super::api::{self, Response};
+use super::api::{self, Derived, Response};
 
 /// How often to look for changes another process wrote.
 ///
@@ -104,6 +104,16 @@ pub const METHODS: &[&str] = &[
     "import",
     "complete",
     "preview",
+    "act",
+    "choices",
+    "places",
+    "form.task_fields",
+    "form.task_edit",
+    "form.block_fields",
+    "form.day_block_fields",
+    "form.block_edit",
+    "form.new_block",
+    "form.block_defaults",
 ];
 
 /// What runs a round on the endpoint this process holds, when it holds one: a `sync` here is
@@ -599,6 +609,24 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         }
         "preview" => Response::new(l.preview_task(&text_of(params, "text")?)?),
 
+        // What a row's actions ask and do, as every client offers them.
+        "act" => Response::new(l.act(record(params, "action")?, maybe_record(params, "answer")?.unwrap_or(crate::Answer::Yes))?),
+        "choices" => Response::new(l.choices(record(params, "action")?)?),
+        "places" => Response::new(l.places()),
+
+        // The forms' rules, for a client that cannot call them in-process.
+        "form.task_fields" => Response::new(Derived::of(crate::task_fields(record(params, "task")?))),
+        "form.task_edit" => Response::new(Derived::of(crate::task_edit(record(params, "task")?, record(params, "fields")?))),
+        "form.block_fields" => Response::new(Derived::of(crate::block_fields(record(params, "block")?))),
+        "form.day_block_fields" => Response::new(Derived::of(crate::day_block_fields(record(params, "block")?))),
+        "form.block_edit" => {
+            Response::new(Derived::of(crate::block_edit(record(params, "before")?, record(params, "after")?)?))
+        }
+        "form.new_block" => {
+            Response::new(Derived::of(crate::new_block(record(params, "fields")?, maybe_text(params, "date"))?))
+        }
+        "form.block_defaults" => Response::new(Derived::of(crate::block_defaults(text_of(params, "kind")?))),
+
         other => {
             let hint = lumenna_core::suggest::nearest(other, METHODS.iter().copied())
                 .map_or_else(String::new, |near| format!(" — did you mean '{near}'?"));
@@ -610,6 +638,20 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
 // ---------------------------------------------------------------------------------------
 // Parameters
 // ---------------------------------------------------------------------------------------
+
+/// A parameter holding one of the surface's records, as the surface serialises it.
+fn record<T: serde::de::DeserializeOwned>(params: &Value, key: &str) -> std::result::Result<T, RpcError> {
+    maybe_record(params, key)?.ok_or_else(|| invalid(format!("'{key}' is required")))
+}
+
+fn maybe_record<T: serde::de::DeserializeOwned>(params: &Value, key: &str) -> std::result::Result<Option<T>, RpcError> {
+    match params.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => serde_json::from_value(value.clone())
+            .map(Some)
+            .map_err(|e| invalid(format!("'{key}' does not read: {e}"))),
+    }
+}
 
 fn text_of(params: &Value, key: &str) -> std::result::Result<String, RpcError> {
     params

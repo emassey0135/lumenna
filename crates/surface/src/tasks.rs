@@ -161,6 +161,7 @@ impl Lumenna {
                 });
             }
             rows.notices = notices;
+            crate::actions::fill_rows(&mut rows, &snapshot);
             Ok(rows)
         })
     }
@@ -179,7 +180,9 @@ impl Lumenna {
             let snapshot = repaired(store);
             let expr = Expr::Predicate(Predicate::Search(text.to_owned()));
             let cx = Context::new(&snapshot, &now);
-            Ok(Rows::new(&snapshot.task_rows(&expr, &cx), "task"))
+            let mut rows = Rows::new(&snapshot.task_rows(&expr, &cx), "task");
+            crate::actions::fill_rows(&mut rows, &snapshot);
+            Ok(rows)
         })
     }
 

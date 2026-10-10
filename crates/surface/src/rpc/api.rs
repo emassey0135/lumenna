@@ -10,7 +10,7 @@
 //! records, is a breaking change, and [`VERSION`] says which shape a reader is looking at.
 
 use crate::{
-    Announced, BackupDone, BlockShown, Change, Completions, DeviceList, Exported, Filters, ImportDone,
+    Announced, BackupDone, Choices, BlockShown, Change, Completions, DeviceList, Exported, Filters, ImportDone,
     Imported, PairedWith, Plan, Preview, RestoreDone, Rows, SettingList, SyncReport, SyncStatus,
     TaskShown, Timer, WorkBlocks, announced,
 };
@@ -122,6 +122,12 @@ pub enum Outcome {
     SyncStatus(SyncStatus),
     /// The paired devices.
     Devices(DeviceList),
+    /// What a picker offers.
+    Choices(Choices),
+    /// The sidebar's places.
+    Places(crate::places::Places),
+    /// What a form function worked out.
+    Value(Derived),
 }
 
 macro_rules! outcomes {
@@ -172,6 +178,9 @@ outcomes!(
     Synced(SyncReport),
     SyncStatus(SyncStatus),
     Devices(DeviceList),
+    Choices(Choices),
+    Places(crate::places::Places),
+    Value(Derived),
 );
 
 impl From<Imported> for Outcome {
@@ -210,3 +219,26 @@ pub struct ServerInfo {
 }
 
 announced!(ServerInfo);
+
+/// What one of the surface's free functions worked out from records a client already holds
+/// — a form's fields, what saving them sends — for a client that cannot call it in-process.
+/// Nothing was read or written, so there is nothing to announce.
+#[derive(Debug, Serialize)]
+pub struct Derived {
+    /// Empty: nothing happened.
+    pub announcement: String,
+    /// Anything worth saying.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub notices: Vec<String>,
+    /// What the function returned; `null` for nothing.
+    pub value: serde_json::Value,
+}
+
+announced!(Derived);
+
+impl Derived {
+    /// What `value` serialises to.
+    pub fn of(value: impl Serialize) -> Self {
+        Self { announcement: String::new(), notices: Vec::new(), value: serde_json::to_value(value).unwrap_or_default() }
+    }
+}

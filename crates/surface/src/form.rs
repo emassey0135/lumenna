@@ -339,6 +339,7 @@ mod tests {
             estimate_mins: Some(45),
             state: vec!["ready".to_owned()],
             created_at: "2026-10-01T09:00:00Z".to_owned(),
+            actions: Vec::new(),
         }
     }
 
@@ -354,6 +355,7 @@ mod tests {
             capped: false,
             running: false,
             details: Vec::new(),
+            actions: Vec::new(),
         }
     }
 
@@ -538,6 +540,7 @@ mod tests {
             colour: Some("teal".to_owned()),
             notes: "Phone off.".to_owned(),
             details: Vec::new(),
+            actions: Vec::new(),
         });
         assert_eq!((day.start.as_str(), day.minutes.as_str()), ("10:00", "60"));
         assert!(!day.counts_capacity);

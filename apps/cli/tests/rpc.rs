@@ -449,3 +449,43 @@ fn hints_that_name_a_lum_command_stay_at_the_terminal() {
     let status = rpc.talk(&[r#"{"jsonrpc":"2.0","id":4,"method":"sync.status"}"#]);
     assert!(!status.contains("`lum"), "{status}");
 }
+
+#[test]
+fn a_rows_action_is_sent_back_as_it_came_and_does_what_it_names() {
+    // A client offers what the core listed and returns it with the answer; it decides
+    // nothing about which actions a row has.
+    let rpc = Rpc::new();
+    rpc.cli(&["task", "add", "water plants"]);
+    let out = rpc.talk(&[r#"{"jsonrpc":"2.0","id":1,"method":"task.list","params":{}}"#]);
+    let reply: serde_json::Value = serde_json::from_str(out.lines().next().unwrap()).unwrap();
+    let action = reply["result"]["rows"][0]["actions"][0].clone();
+    assert_eq!(action["title"], "Mark Done", "{out}");
+    let request = serde_json::json!({"jsonrpc": "2.0", "id": 2, "method": "act", "params": {"action": action, "answer": {"answer": "yes"}}});
+    let out = rpc.talk(&[&request.to_string()]);
+    assert!(out.contains(r#""changed":true"#), "{out}");
+    let out = rpc.talk(&[r#"{"jsonrpc":"2.0","id":3,"method":"task.list","params":{}}"#]);
+    assert!(out.contains(r#""count":0"#), "{out}");
+}
+
+#[test]
+fn what_saving_a_form_sends_is_the_cores_to_work_out_for_a_client_over_the_pipe() {
+    let rpc = Rpc::new();
+    rpc.cli(&["task", "add", "water plants"]);
+    let out = rpc.talk(&[r#"{"jsonrpc":"2.0","id":1,"method":"task.list","params":{}}"#]);
+    let reply: serde_json::Value = serde_json::from_str(out.lines().next().unwrap()).unwrap();
+    let id = reply["result"]["rows"][0]["id"].as_str().unwrap().to_owned();
+    let out = rpc.talk(&[&format!(r#"{{"jsonrpc":"2.0","id":2,"method":"task.show","params":{{"id":"{id}"}}}}"#)]);
+    let reply: serde_json::Value = serde_json::from_str(out.lines().next().unwrap()).unwrap();
+    let task = reply["result"].clone();
+    let request = serde_json::json!({"jsonrpc": "2.0", "id": 3, "method": "form.task_fields", "params": {"task": task}});
+    let out = rpc.talk(&[&request.to_string()]);
+    let reply: serde_json::Value = serde_json::from_str(out.lines().next().unwrap()).unwrap();
+    let mut fields = reply["result"]["value"].clone();
+    assert_eq!(fields["title"], "water plants", "{out}");
+    fields["priority"] = serde_json::json!(1);
+    let request = serde_json::json!({"jsonrpc": "2.0", "id": 4, "method": "form.task_edit", "params": {"task": task, "fields": fields}});
+    let out = rpc.talk(&[&request.to_string()]);
+    let reply: serde_json::Value = serde_json::from_str(out.lines().next().unwrap()).unwrap();
+    assert_eq!(reply["result"]["value"]["priority"], 1, "{out}");
+    assert!(reply["result"]["value"]["title"].is_null(), "only what changed: {out}");
+}
