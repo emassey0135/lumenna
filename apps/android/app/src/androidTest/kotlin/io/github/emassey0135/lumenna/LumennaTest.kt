@@ -17,6 +17,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performCustomAccessibilityActionWithLabel
 import androidx.compose.ui.test.performTextClearance
@@ -359,6 +360,68 @@ class LumennaTest {
         type("Labels", "calls, @errands")
         press("Save")
         assertEquals(listOf("calls", "errands"), core.lumenna.listTasks("").rows.single().let { core.lumenna.showTask(it.id).task.labels })
+    }
+
+    @Test
+    fun aTasksTitleIsOneLineAndEnterSavesIt() {
+        seed { it.addTask("draft report") }
+        tab("Tasks")
+        row("draft report").performClick()
+        rule.waitForIdle()
+        field("Title").assert(SemanticsMatcher.keyIsDefined(SemanticsActions.OnImeAction))
+        replace("Title", "draft the report")
+        field("Title").performImeAction()
+        rule.waitForIdle()
+        assertEquals(listOf("draft the report"), titles())
+    }
+
+    @Test
+    fun aTasksProjectIsChosenFromTheProjectsEachSayingItsLevel() {
+        seed {
+            it.addProject("Work", null)
+            it.addProject("Reports", "Work")
+            it.addTask("draft report")
+        }
+        tab("Tasks")
+        row("draft report").performClick()
+        rule.waitForIdle()
+        // Typing narrows the list to the projects that fit; one under another says its level.
+        replace("Project", "rep")
+        rule.onNode(hasContentDescription("Reports, level 2")).performClick()
+        rule.waitForIdle()
+        press("Save")
+        val task = core.lumenna.showTask(core.lumenna.listTasks("").rows.single().id).task
+        assertEquals("Reports", task.project)
+    }
+
+    @Test
+    fun aTaskInAnArchivedProjectKeepsItAmongTheChoices() {
+        seed {
+            it.addProject("Old", null)
+            it.addTask("draft report #Old")
+            it.archiveProject("Old")
+        }
+        tab("Tasks")
+        type("Filter", "#Old")
+        row("draft report").performClick()
+        rule.waitForIdle()
+        field("Project").performClick()
+        rule.waitForIdle()
+        rule.onNode(hasContentDescription("Old")).assertExists()
+    }
+
+    @Test
+    fun aProjectTypedThatIsNoProjectIsNotKept() {
+        seed { it.addTask("draft report") }
+        val before = core.lumenna.showTask(core.lumenna.listTasks("").rows.single().id).task.project
+        tab("Tasks")
+        row("draft report").performClick()
+        rule.waitForIdle()
+        replace("Project", "Nowhere")
+        rule.onNode(hasText("No project matches")).assertExists()
+        field("Project").performImeAction()
+        press("Save")
+        assertEquals(before, core.lumenna.showTask(core.lumenna.listTasks("").rows.single().id).task.project)
     }
 
     @Test

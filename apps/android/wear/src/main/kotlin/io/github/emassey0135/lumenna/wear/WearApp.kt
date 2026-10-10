@@ -45,7 +45,15 @@ sealed interface Screen {
     data class Tasks(val place: Place) : Screen
     data object Day : Screen
     data object Blocks : Screen
-    data class Task(val id: String) : Screen
+    data class Task(val id: String) : Screen {
+        /**
+         * The task as its form opened and the fields being edited, kept with the screen: a
+         * list chosen from (the project) is a screen of its own, and the form's composition
+         * does not outlive going to it.
+         */
+        val shown = mutableStateOf<io.github.emassey0135.lumenna.core.TaskDetail?>(null)
+        val fields = mutableStateOf<io.github.emassey0135.lumenna.core.TaskFields?>(null)
+    }
     data class AddTask(val prefix: String) : Screen
     data class BlockForm(val purpose: BlockPurpose) : Screen
     data object Settings : Screen
@@ -173,7 +181,7 @@ fun WearApp(core: Core, entry: TextEntry? = null) {
                             is Screen.Tasks -> TasksScreen(core, navigator, screen.place, changes)
                             Screen.Day -> DayScreen(core, navigator, changes)
                             Screen.Blocks -> BlocksScreen(core, navigator, changes)
-                            is Screen.Task -> TaskScreen(core, navigator, screen.id, changes)
+                            is Screen.Task -> TaskScreen(core, navigator, screen, changes)
                             is Screen.AddTask -> AddTaskScreen(core, navigator, screen.prefix)
                             is Screen.BlockForm -> BlockFormScreen(core, navigator, screen.purpose)
                             Screen.Settings -> SettingsScreen(navigator)

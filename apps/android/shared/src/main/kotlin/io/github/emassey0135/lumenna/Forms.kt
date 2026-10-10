@@ -30,6 +30,16 @@ val taskFormFields: List<FormField> by lazy { taskForm() }
 /** The block form's fields, in the core's order. */
 val blockFormFields: List<FormField> by lazy { blockForm() }
 
+/**
+ * The projects the task form's Project field offers (`projectOptions`): every one not
+ * archived, in tree order, each with its depth — and the task's own, [current], when it is
+ * archived, so the field does not lose it. A choice is read by its key, never its text.
+ */
+fun Core.projectChoices(current: String): List<Option> {
+    val offered = attempt { lumenna.projectOptions() }?.map(::option).orEmpty()
+    return if (current.isEmpty() || offered.any { it.key == current }) offered else offered + Option(current, current)
+}
+
 /** What a field says beneath it, or nothing. */
 val FormField.help: String? get() = hint.ifEmpty { null }
 
@@ -48,7 +58,7 @@ enum class TaskField(
     NOTES("notes", { it.notes }, { f, v -> f.copy(notes = v) });
 
     companion object {
-        /** The text field a form field is, or null for the priority, which is a choice. */
+        /** Where a form field's text lives, or null for the priority, whose value is a number. */
         fun of(field: FormField): TaskField? = entries.firstOrNull { it.key == field.key }
 
         /** Saves only what changed: an unchanged field sent would revert another device's edit. */

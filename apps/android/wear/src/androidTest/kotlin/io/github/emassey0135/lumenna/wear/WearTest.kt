@@ -140,6 +140,22 @@ class WearTest {
     }
 
     @Test
+    fun aTasksProjectIsChosenFromAListOfTheProjectsEachSayingItsLevel() {
+        core.lumenna.addProject("Work", null)
+        core.lumenna.addProject("Reports", "Work")
+        core.lumenna.addTask("water plants")
+        core.changed()
+        press("Tasks")
+        press("water plants")
+        press("Project")
+        assertTrue("a list to choose from, not the input screen", asked.isEmpty())
+        said("level 2").assertExists()
+        press("Reports")
+        press("Save")
+        assertEquals("Reports", core.lumenna.showTask(core.lumenna.listTasks("").rows.single().id).task.project)
+    }
+
+    @Test
     fun aTasksActionsAreItsCustomActions() {
         core.lumenna.addTask("water plants")
         core.changed()

@@ -25,6 +25,7 @@ import io.github.emassey0135.lumenna.RowAction
 import io.github.emassey0135.lumenna.RowSpeech
 import io.github.emassey0135.lumenna.folded
 import io.github.emassey0135.lumenna.levelChange
+import io.github.emassey0135.lumenna.detailOf
 import io.github.emassey0135.lumenna.core.ActionKind
 import io.github.emassey0135.lumenna.core.SidebarEntry
 import io.github.emassey0135.lumenna.core.Subject
@@ -243,13 +244,15 @@ fun ChooseScreen(screen: Screen.Choose) {
         item { Heading(screen.title) }
         screen.message?.let { message -> item { Text(message) } }
         if (screen.choices.isEmpty()) item { Text("Nothing to choose from") }
-        screen.choices.forEach { choice ->
+        screen.choices.forEachIndexed { index, choice ->
             item {
+                // In a tree, the level where it changes beside the detail, as a tree's rows say it.
+                val detail = detailOf(screen.choices, index)
                 Button(
                     onClick = { screen.chosen(choice) },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(choice.title) },
-                    secondaryLabel = choice.detail.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
+                    secondaryLabel = detail.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
                 )
             }
         }
