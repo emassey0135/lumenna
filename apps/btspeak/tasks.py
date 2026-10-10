@@ -187,10 +187,12 @@ def edit_task(session: Session, task: dict) -> str:
     for field in session.words("form.task_form"):
         key = field["key"]
         if key == "project":
-            # Chosen from the projects this device knows; one it does not, perhaps not synced
-            # yet, is not offered, so the field stays as it was and it is left where it is.
-            if before["project"] in projects:
-                fields.append(form_field(field, str(before[key]), choices=projects))
+            # Chosen from the projects the core offers, by id. An archived one is offered to no
+            # task, but the one this task is in stays on its list, or the field would lose it.
+            choices = dict(projects)
+            if before["project"] and before["project"] not in choices:
+                choices[before["project"]] = before["project"]
+            fields.append(form_field(field, str(before[key]), choices=choices))
             continue
         fields.append(form_field(field, str(before[key])))
     answers = dialogs.request_form(fields)

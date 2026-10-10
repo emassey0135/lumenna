@@ -116,6 +116,18 @@ class Menus(unittest.TestCase):
         self.assertEqual(fields["title"].field_type, "text")
         self.assertEqual(self.task("file the summary")["project"], "Reports")
 
+    def test_a_task_in_an_archived_project_keeps_it_on_the_project_list(self):
+        self.call("project.add", name="Old")
+        self.call("task.add", text="dusty #Old")
+        self.call("project.archive", name="Old")
+        script = self.run_script(
+            [("context", "dusty", "Edit"), ("form", {"priority": "1"}), ("back",)],
+            lambda: tasks.task_list(self.session),
+        )
+        fields = {f.key: f for f in script.forms[0]}
+        self.assertEqual(list(fields["project"].choices), ["Inbox", "Old"])
+        self.assertEqual(self.task("dusty")["project"], "Old")
+
     def test_a_task_can_wait_for_another_and_become_a_subtask(self):
         self.call("task.add", text="paint")
         self.call("task.add", text="buy paint")
