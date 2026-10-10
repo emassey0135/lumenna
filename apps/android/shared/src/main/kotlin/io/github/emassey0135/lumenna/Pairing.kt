@@ -71,17 +71,14 @@ class PairingSession(
     fun waitToBeFound() = start(null)
 
     /**
-     * Joins with `entered`, or with the code on the clipboard when it is empty — never this
-     * device's own, which Copy Code put there. Entering a code while waiting gives up the wait,
-     * then joins.
+     * Joins with `entered`; an empty one says the core's need for a code. The clipboard is never
+     * read for it: on Android 12 and later that shows a "pasted from your clipboard" notice,
+     * nobody could find out the empty field did it, and it sent whatever was copied. The
+     * field's own paste stays, as in any field. Entering a code while waiting gives up the
+     * wait, then joins.
      */
     fun join(entered: String): String {
-        var given = entered.trim()
-        if (given.isEmpty()) {
-            given = (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-                .primaryClip?.getItemAt(0)?.text?.toString()?.trim().orEmpty()
-            if (given == code) given = ""
-        }
+        val given = entered.trim()
         when {
             given.isEmpty() -> say(words.needCode)
             running -> {

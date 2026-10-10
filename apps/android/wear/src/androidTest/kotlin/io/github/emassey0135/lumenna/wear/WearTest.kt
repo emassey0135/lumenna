@@ -229,4 +229,25 @@ class WearTest {
         assertEquals(listOf("Mark done", "Move to trash"), actions.take(2))
         assertTrue("every action is still offered", "Move to project" in actions)
     }
+
+    @Test
+    fun anEmptyCodeSaysACodeIsNeededAndNeverReadsTheClipboard() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val copied = "lumenna-not-a-code"
+        rule.runOnIdle {
+            (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                .setPrimaryClip(android.content.ClipData.newPlainText("test", copied))
+        }
+        press("Settings")
+        press("Devices and sync")
+        val words = io.github.emassey0135.lumenna.core.pairingWords("this watch", true)
+        answers += ""
+        press(words.theirCode)
+        assertEquals(listOf(words.theirCode), asked)
+        said(words.needCode).assertExists()
+        assertTrue(
+            "what was copied is not taken up",
+            rule.onAllNodes(hasText(copied, substring = true)).fetchSemanticsNodes().isEmpty(),
+        )
+    }
 }
