@@ -30,8 +30,7 @@ case "$PLATFORM" in
   iphonesimulator) TARGETS=aarch64-apple-ios-sim ;;
   iphoneos) TARGETS=aarch64-apple-ios ;;
   watchsimulator) TARGETS=aarch64-apple-watchos-sim ;;
-  # A 64-bit watch (Series 9 and later, Ultra 2 and later). Older ones are arm64_32, which
-  # Rust has only as a tier 3 target, built with -Z build-std on nightly.
+  # Every watch watchOS 27 runs on is 64-bit, so arm64_32 (a tier 3 Rust target) is not built.
   watchos) TARGETS=aarch64-apple-watchos ;;
   # Named rather than left to the host build, so the Mac app's library is built against
   # its deployment target and kept apart from the one uniffi-bindgen reads.
@@ -57,7 +56,7 @@ cargo() {
   env -i HOME="$HOME" USER="${USER:-}" \
     PATH="$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin" \
     DEVELOPER_DIR="$DEVELOPER" IPHONEOS_DEPLOYMENT_TARGET=17.0 MACOSX_DEPLOYMENT_TARGET=14.0 \
-    WATCHOS_DEPLOYMENT_TARGET=11.0 \
+    WATCHOS_DEPLOYMENT_TARGET=27.0 \
     cargo "$@"
 }
 
