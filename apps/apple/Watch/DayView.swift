@@ -64,7 +64,9 @@ struct DayView: View {
                 Button("Previous Day") { step(-1, from: plan) }
                 if chosen != nil { Button("Today") { chosen = nil } }
                 Button("Next Day") { step(1, from: plan) }
-                Button("Go to Day") { asker.show(DayChoice(day: chosen ?? .now) { chosen = $0 }) }
+                Button("Go to Day") {
+                    asker.show(DayChoice(day: chosen ?? .now, read: { try core.lumenna.plan(date: $0).date }) { chosen = $0 })
+                }
             }
         }
         .navigationTitle(plan.map { Clock.spokenDay($0.date) } ?? "Day")
@@ -194,20 +196,53 @@ struct DayView: View {
     }
 }
 
-/// A day to go to, chosen as the phone chooses one: a date picker, then Go.
+/// A day to go to, chosen as the phone chooses one: a day said or typed in the core's words
+/// ("next friday", "12 October") from the system's input screen, or a date picker, then Go.
 private struct DayChoice: View {
     @Environment(\.dismiss) private var dismiss
     @State var day: Date
+    /// The core's reading of a day named: its ISO date.
+    let read: (String) throws -> String
     let chosen: (Date?) -> Void
+    @State private var typed = ""
+    @State private var problem: String?
+    private let question = TextQuestion.goToDay
 
     var body: some View {
         List {
-            DatePicker(TextQuestion.goToDay.label, selection: $day, displayedComponents: .date)
-            Button(TextQuestion.goToDay.yes) {
-                dismiss()
-                chosen(Calendar.current.isDateInToday(day) ? nil : day)
+            Section {
+                TextField(question.label, text: $typed)
+                    .textInputAutocapitalization(.never)
+                    // Named explicitly: with text in it, a field's title gives way to the text.
+                    .accessibilityLabel(question.label)
+                    .accessibilityHint(question.hint)
+                    .onSubmit { goTo(typed) }
+                if let problem {
+                    Text(problem).foregroundStyle(Color.warningLabel)
+                }
+            } footer: {
+                FormParts.caption(question.hint)
+            }
+            Section {
+                DatePicker(question.label, selection: $day, displayedComponents: .date)
+                Button(question.yes) { goTo(typed) }
             }
         }
-        .navigationTitle(TextQuestion.goToDay.title)
+        .navigationTitle(question.title)
+    }
+
+    /// The day typed if there is one, else the picker's. A day the core cannot read stays
+    /// here, saying why.
+    private func goTo(_ text: String) {
+        let named = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            let iso = try read(named.isEmpty ? Clock.isoDay(day) : named)
+            guard let date = try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse(iso) else { return }
+            dismiss()
+            chosen(Calendar.current.isDateInToday(date) ? nil : date)
+        } catch {
+            problem = error.sentence
+            Announcer.say(error.sentence)
+        }
     }
 }

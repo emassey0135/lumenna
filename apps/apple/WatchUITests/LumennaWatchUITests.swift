@@ -57,13 +57,19 @@ final class LumennaWatchUITests: XCTestCase {
     private func reveal(_ element: XCUIElement, form: Bool = false, upward: Bool = false) -> XCUIElement {
         for _ in 0..<30 where !(element.exists && element.isHittable) {
             switch (form, upward) {
-            case (true, false): app.swipeUp(velocity: .slow)
-            case (true, true): app.swipeDown(velocity: .slow)
+            // A short drag held at its end, which cannot fling: a swipe, even a slow one, could
+            // carry the form two screens on and past what was looked for.
+            case (true, let up): drag(by: up ? 90 : -90)
             case (false, _): XCUIDevice.shared.rotateDigitalCrown(delta: upward ? -0.15 : 0.15)
             }
         }
         XCTAssertTrue(element.exists, "never scrolled to \(element)")
         return element
+    }
+
+    private func drag(by distance: CGFloat) {
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: distance < 0 ? 0.75 : 0.35))
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: distance)), withVelocity: .slow, thenHoldForDuration: 0.2)
     }
 
     func testThePlacesAreListedAndPassAnAudit() throws {
@@ -194,5 +200,41 @@ final class LumennaWatchUITests: XCTestCase {
         try audit("go to day")
         reveal(app.buttons["Go"]).tap()
         XCTAssertTrue(app.navigationBars["Today"].waitForExistence(timeout: 5), "today chosen is today")
+    }
+
+    func testTheDayGoesToADayTypedInWords() throws {
+        XCTAssertTrue(app.buttons["Today"].waitForExistence(timeout: 10))
+        app.buttons["Today"].tap()
+        reveal(app.buttons["Go to Day"]).tap()
+        let field = app.textFields["Day"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5), app.debugDescription)
+        type("someday soon", into: field)
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] 'someday soon'")).firstMatch.waitForExistence(timeout: 5),
+                      "a day it cannot read, said: \(app.debugDescription)")
+        type("12 October", into: field, clearing: "someday soon".count)
+        XCTAssertTrue(app.navigationBars.matching(NSPredicate(format: "identifier CONTAINS %@ OR identifier CONTAINS %@", "12 October", "October 12")).firstMatch.waitForExistence(timeout: 5)
+            || app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@", "12 October", "October 12")).firstMatch.exists,
+                      app.debugDescription)
+    }
+
+    func testATasksProjectIsChosenFromTheProjects() throws {
+        XCTAssertTrue(app.buttons["Today"].waitForExistence(timeout: 10))
+        reveal(app.buttons["New Project"]).tap()
+        type("Garden", into: app.textFields["New Project"])
+        reveal(app.buttons["Add"]).tap()
+        reveal(app.buttons["New Task"].firstMatch, upward: true)
+        add("water plants")
+        app.buttons["Tasks"].tap()
+        app.buttons["water plants"].tap()
+        let project = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Project'")).firstMatch
+        reveal(project, form: true).tap()
+        let garden = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Garden'")).firstMatch
+        XCTAssertTrue(garden.waitForExistence(timeout: 5), app.debugDescription)
+        try audit("the projects to choose from")
+        reveal(garden).tap()
+        reveal(app.buttons["Save"], form: true).tap()
+        XCTAssertTrue(reveal(project, form: true, upward: true).exists)
+        let said = "\(project.label) \(project.value as? String ?? "")"
+        XCTAssertTrue(said.contains("Garden"), said)
     }
 }

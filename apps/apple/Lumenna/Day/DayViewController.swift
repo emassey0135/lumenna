@@ -470,11 +470,16 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
 
     private func chooseDay() {
         let current = plan.flatMap { try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse($0.date) } ?? .now
-        let picker = DayPickerViewController(showing: current) { [weak self] day in
-            guard let self else { return }
-            self.day = Calendar.current.isDateInToday(day) ? nil : Clock.isoDay(day)
-            self.reload {
-                UIAccessibility.post(notification: .screenChanged, argument: self.summary)
+        let picker = DayPickerViewController(showing: current) { [weak self] named in
+            guard let self else { return {} }
+            // The core reads the day, typed or picked; the day it found is the one kept, so
+            // the previous and next days step from it.
+            let found = try self.core.lumenna.plan(date: named).date
+            return {
+                self.day = found == Clock.isoDay(.now) ? nil : found
+                self.reload {
+                    UIAccessibility.post(notification: .screenChanged, argument: self.summary)
+                }
             }
         }
         present(UINavigationController(rootViewController: picker), animated: true)

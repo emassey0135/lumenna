@@ -24,7 +24,8 @@ final class TaskDetailModel: NSObject, ObservableObject {
     @Published var project = ""
     @Published var notes = ""
     @Published var labels = ""
-    @Published private(set) var projects: [String] = []
+    /// What the Project field offers, the core's, in tree order.
+    @Published private(set) var projects: [Choice] = []
     @Published var failure: String?
 
     init(core: Core, id: String) {
@@ -56,7 +57,12 @@ final class TaskDetailModel: NSObject, ObservableObject {
             project = fields.project
             notes = fields.notes
             labels = fields.labels
-            projects = ((try? core.lumenna.listProjects().rows) ?? []).map(\.title)
+            var options = (try? core.lumenna.projectOptions()) ?? []
+            // An archived project is not offered, but a task still in one shows it.
+            if !fields.project.isEmpty, !options.contains(where: { $0.id == fields.project }) {
+                options.insert(Choice(id: fields.project, title: fields.project, depth: 0, detail: nil, date: nil, start: nil, end: nil), at: 0)
+            }
+            projects = options
         } catch {
             task = nil
         }
@@ -140,7 +146,7 @@ struct TaskDetailView: View {
         Form {
             // Each field's name, hint and example are the core's, as in every app.
             Section {
-                namedField(words["title"], text: $model.title, axis: .vertical)
+                title
                 namedField(words["due"], text: $model.due).modifier(Lowercase())
                 namedField(words["repeat"], text: $model.repetition).modifier(Lowercase())
                 namedField(words["estimate"], text: $model.estimate).modifier(Lowercase())
@@ -205,18 +211,94 @@ struct TaskDetailView: View {
         #endif
     }
 
-    /// The project: a pop-up of the projects on the Mac, where one is a click away; a name on
-    /// the phone, where an inline list of every project would bury the form.
+    /// The title: one line, and Return saves. On the phone it wraps, so a large text size
+    /// shows all of it, but a Return there saves rather than starting a line.
+    @ViewBuilder private var title: some View {
+        #if os(iOS)
+        namedField(words["title"], text: Binding(get: { model.title }, set: { typed in
+            guard typed.contains(where: \.isNewline) else { model.title = typed; return }
+            // Return saves rather than starting a line, and a line pasted with breaks in it
+            // is joined into one. The field shows the break for a moment, so the title is set
+            // again a turn later for it to be taken back out.
+            let returned = typed.filter { !$0.isNewline } == model.title
+            model.title = typed
+            DispatchQueue.main.async {
+                model.title = typed.split(whereSeparator: \.isNewline).joined(separator: " ")
+                if returned { model.save() }
+            }
+        }), axis: .vertical)
+        #elseif os(macOS)
+        namedField(words["title"], text: $model.title).onSubmit { model.save() }
+        #else
+        // A watch's line comes from the system's input screen, which has no Return.
+        namedField(words["title"], text: $model.title)
+        #endif
+    }
+
+    /// The project, chosen from the projects (`projectOptions`), the chosen one read by its
+    /// id: on the Mac a pop-up, which finds one by typing; on the phone and the watch a list
+    /// of its own, since an inline list of every project would bury the form.
     @ViewBuilder private var project: some View {
         #if os(iOS) || os(watchOS)
-        namedField(words["project"], text: $model.project)
+        NavigationLink {
+            ProjectChoices(name: words["project"].label, choices: model.projects, selection: $model.project)
+        } label: {
+            // The system's own value grey is under contrast; this one reads.
+            LabeledContent {
+                Text(model.projects.first { $0.id == model.project }?.title ?? model.project).foregroundStyle(Color.quietLabel)
+            } label: {
+                Text(words["project"].label)
+            }
+        }
         #else
         Named(words["project"].label) {
             Picker(words["project"].label, selection: $model.project) {
-                ForEach(model.projects, id: \.self) { Text($0).tag($0) }
+                ForEach(Array(model.projects.enumerated()), id: \.element.id) { index, choice in
+                    Text(choice.title)
+                        .accessibilityLabel(ProjectChoices.spoken(model.projects, index))
+                        .tag(choice.id)
+                }
             }
         }
         #endif
+    }
+}
+
+/// The projects to choose from, in tree order. A project's depth is said in words where it
+/// changes, as every list here says it, and indented for sight where the list draws it.
+struct ProjectChoices: View {
+    @Environment(\.dismiss) private var dismiss
+    let name: String
+    let choices: [Choice]
+    @Binding var selection: String
+
+    var body: some View {
+        List {
+            ForEach(Array(choices.enumerated()), id: \.element.id) { index, choice in
+                Button {
+                    selection = choice.id
+                    dismiss()
+                } label: {
+                    HStack {
+                        Text(choice.title).padding(.leading, CGFloat(choice.depth) * 16)
+                        Spacer()
+                        if choice.id == selection {
+                            Image(systemName: "checkmark").foregroundStyle(Color.lumennaTint).accessibilityHidden(true)
+                        }
+                    }
+                }
+                .accessibilityLabel(Self.spoken(choices, index))
+                .accessibilityAddTraits(choice.id == selection ? .isSelected : [])
+            }
+        }
+        .navigationTitle(name)
+    }
+
+    /// A project's name, then its level where that differs from the one before it.
+    static func spoken(_ choices: [Choice], _ index: Int) -> String {
+        let choice = choices[index]
+        let previous = index > 0 ? choices[index - 1].depth : 0
+        return choice.depth != previous ? "\(choice.title), level \(choice.depth + 1)" : choice.title
     }
 }
 

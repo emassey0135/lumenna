@@ -201,6 +201,48 @@ final class LumennaUITests: XCTestCase {
         XCTAssertTrue(row("draft the essay").waitForExistence(timeout: 5))
     }
 
+    func testATasksTitleIsOneLineAndReturnSavesIt() {
+        add("draft")
+        row("draft").tap()
+        let title = app.textFields["Title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        title.doubleTap()
+        // Return saves rather than starting a second line.
+        title.typeText("draft the essay\n")
+        XCTAssertEqual(title.value as? String, "draft the essay")
+        goBack()
+        XCTAssertTrue(row("draft the essay").waitForExistence(timeout: 5))
+    }
+
+    func testATasksProjectIsChosenFromTheProjects() throws {
+        try XCTSkipIf(pad, "the iPad makes projects from its sidebar (SidebarUITests)")
+        tab("Browse")
+        cell(containing: "Projects").tap()
+        app.buttons["Add project"].tap()
+        answer("Work", with: "Add")
+        XCTAssertTrue(cell(containing: "Work").waitForExistence(timeout: 5))
+        tab("Tasks")
+        add("draft")
+        row("draft").tap()
+        let project = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Project'")).firstMatch
+        XCTAssertTrue(project.waitForExistence(timeout: 5), "no Project in:\n\(app.debugDescription)")
+        project.tap()
+        // The projects, in a list of their own: the Inbox and Work.
+        let work = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Work'")).firstMatch
+        XCTAssertTrue(work.waitForExistence(timeout: 5), "no Work in:\n\(app.debugDescription)")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Inbox'")).firstMatch.exists)
+        try audit(.all, "project list")
+        work.tap()
+        XCTAssertTrue(project.waitForExistence(timeout: 5))
+        app.buttons["Save"].tap()
+        // Saved: the task's page, opened again, has it in Work.
+        goBack()
+        row("draft").tap()
+        XCTAssertTrue(project.waitForExistence(timeout: 5))
+        let said = "\(project.label) \(project.value as? String ?? "")"
+        XCTAssertTrue(said.contains("Work"), said)
+    }
+
     /// Runs the audit and fails once with every issue it found, each with the element it
     /// objects to. Left to itself the audit stops at the first, which hides the rest.
     /// `namedRows` is for forms built from `NamedRow`, whose visible field names are hidden
@@ -261,6 +303,24 @@ final class LumennaUITests: XCTestCase {
     }
 
     // MARK: - The day
+
+    func testGoToDayTakesATypedDayAndSaysOneItCannotRead() throws {
+        tab("Today")
+        app.buttons["Go to Day"].tap()
+        let field = app.textViews["Day"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "no Day field in:\n\(app.debugDescription)")
+        // Contrast and touch targets only: the system's own inline calendar fails the Dynamic
+        // Type and text checks by itself, its day numbers fixed in size.
+        try audit([.contrast, .hitRegion], "go to day")
+        field.tap()
+        field.typeText("someday soon\n")
+        // Not a day: the sheet stays, saying why.
+        XCTAssertTrue(field.exists)
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] 'someday soon'")).firstMatch.waitForExistence(timeout: 5))
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20) + "12 October\n")
+        XCTAssertTrue(app.navigationBars.matching(NSPredicate(format: "identifier CONTAINS %@ OR identifier CONTAINS %@", "12 October", "October 12")).firstMatch.waitForExistence(timeout: 5),
+                      "the day typed, shown:\n\(app.debugDescription)")
+    }
 
     func testTheDaySaysWhatItHoldsAndShowsFreeTime() throws {
         tab("Today")
