@@ -17,6 +17,7 @@ import { blockForm, freshBlock } from "./BlockForm";
 import { core } from "./core";
 import type { Action, DayRow, PlanBlock } from "./core";
 import { askText, byKind, perform, REMOVING } from "./actions";
+import { useCommand } from "./commands";
 import { rowKey, useLanding } from "./landing";
 import { choose } from "./Prompts";
 import { asksForMenu, RowMenu } from "./RowMenu";
@@ -61,6 +62,8 @@ export function Day(props: {
   const landed = useRef(false);
   // Whether to say the summary once the day being moved to is showing.
   const announce = useRef(false);
+  // Whether to put focus on now once today is showing (Go to Now).
+  const toNow = useRef(false);
 
   // Today moves on with the clock: the now row, and which block is now.
   useEffect(() => {
@@ -103,6 +106,23 @@ export function Day(props: {
       select((now ?? flat[0])?.key);
     } else if (selected === undefined || !keys.includes(selected)) {
       select(flat[0]?.key);
+    }
+    if (toNow.current && date === undefined) {
+      toNow.current = false;
+      const now = flat.find((r) => r.kind === "now" || (r.kind === "block" && r.block?.when === "now"));
+      const at = now ?? flat[0];
+      if (at) {
+        select(at.key);
+        // Once the tree has drawn the row, which may take it a frame or two.
+        let tries = 0;
+        const focus = () => {
+          const found = tree.current?.querySelector<HTMLElement>(`[role="row"][data-key="${CSS.escape(at.key)}"]`);
+          if (found) found.focus();
+          else if (tries++ < 30) requestAnimationFrame(focus);
+        };
+        requestAnimationFrame(focus);
+      }
+      return;
     }
     if (announce.current) {
       announce.current = false;
@@ -174,6 +194,27 @@ export function Day(props: {
       say((error as Error).message);
     }
   };
+
+  // The Day menu's commands, while the day is shown.
+  useCommand("previous-day", () => {
+    if (!shown) return false;
+    go(step(shown.date, -1));
+  });
+  useCommand("next-day", () => {
+    if (!shown) return false;
+    go(step(shown.date, 1));
+  });
+  useCommand("go-to-day", () => void goToDay());
+  useCommand("go-to-now", () => {
+    toNow.current = true;
+    if (date === undefined && shown) {
+      // Today is showing already: land on now at once.
+      setShown({ ...shown });
+    } else {
+      setDate(undefined);
+    }
+  });
+  useCommand("new-block", () => void addBlock());
 
   // Runs one of a row's actions. The forms are this client's own: a block's, a new block's in
   // free time, and the details of a sitting's task.

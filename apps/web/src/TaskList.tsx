@@ -12,8 +12,9 @@ import type { KeyboardEvent, MouseEvent } from "react";
 import { Button, Collection, Input, Label, TextField, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
 import { core } from "./core";
-import type { Action, Line, Place } from "./core";
+import type { Action, ActionKind, Line, Place } from "./core";
 import { byKind, perform, REMOVING } from "./actions";
+import { useCommand } from "./commands";
 import { asksForMenu, RowMenu } from "./RowMenu";
 import { rowKey, useLanding } from "./landing";
 import { say } from "./say";
@@ -37,6 +38,7 @@ export function TaskList(props: {
   const [empty, setEmpty] = useState("");
   const [collapsed, setCollapsed] = useState<Set<Key>>(new Set());
   const tree = useRef<HTMLDivElement>(null);
+  const filterField = useRef<HTMLInputElement>(null);
 
   useEffect(() => setFilter(props.query), [props.query]);
 
@@ -77,6 +79,25 @@ export function TaskList(props: {
     props.onChanged();
     say(done.said);
   };
+
+  // Filter Tasks: the filter, all of it selected so typing replaces it. Not in the trash.
+  useCommand("filter", () => {
+    if (trash || !filterField.current) return false;
+    filterField.current.focus();
+    filterField.current.select();
+  });
+
+  // The Task menu's commands, on the task in hand here, so focus lands as a row's own action
+  // does; before the details' copy of them.
+  const onSelected = (...kinds: ActionKind[]) => () => {
+    const line = lines.find((l) => l.row.id === props.selected);
+    const action = line && byKind(line.row.actions, ...kinds);
+    if (!action) return false;
+    void run(action);
+  };
+  useCommand("mark-done", onSelected("mark_done", "mark_not_done"), 1);
+  useCommand("put-in-block", onSelected("put_in_block"), 1);
+  useCommand("move-to-project", onSelected("move_to_project"), 1);
 
   const keys = (event: KeyboardEvent) => {
     const id = rowKey(event);
@@ -131,7 +152,7 @@ export function TaskList(props: {
           }}
         >
           <Label>Filter</Label>
-          <Input placeholder="#Work & overdue, or search: words" />
+          <Input ref={filterField} placeholder="#Work & overdue, or search: words" />
         </TextField>
       )}
       <p className="quiet" id="readback">

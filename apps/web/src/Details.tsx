@@ -20,9 +20,10 @@ import {
   TextArea,
   TextField,
 } from "react-aria-components";
-import { perform } from "./actions";
+import { byKind, perform } from "./actions";
+import { useCommand } from "./commands";
 import { core } from "./core";
-import type { Action, Choice, FormField, TaskDetail, TaskFields } from "./core";
+import type { Action, ActionKind, Choice, FormField, TaskDetail, TaskFields } from "./core";
 import { say } from "./say";
 
 export interface DetailsHandle {
@@ -79,6 +80,22 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
         current = false;
       };
     }, [props.id, props.revision]);
+
+    // The Task menu's commands on the task shown, wherever it was chosen: a list's own come
+    // first (TaskList), so focus lands as its row's action does.
+    const onTask = (...kinds: ActionKind[]) => () => {
+      // Only once the form is shown: `act` is defined below the early return.
+      const action = task && fields && byKind(task.actions, ...kinds);
+      if (!action) return false;
+      void act(action);
+    };
+    useCommand("mark-done", onTask("mark_done", "mark_not_done"));
+    useCommand("put-in-block", onTask("put_in_block"));
+    useCommand("move-to-project", onTask("move_to_project"));
+    useCommand("save-task", () => {
+      if (!task || !fields) return false;
+      void run(core.save(task, fields));
+    });
 
     if (!task || !fields) {
       return <p className="quiet">{(props.id && failure) || "No task selected"}</p>;
