@@ -148,6 +148,49 @@ struct Labelled<Control: View>: View {
     }
 }
 
+/// A date or time picker, named as `Named` names a field. Left to SwiftUI, the iPhone drew
+/// its title as text beside a picker VoiceOver read unnamed ("Time Picker"), and the watch
+/// showed and said no name at all ("Hour, 9, Minute, 00, AM"). The title is empty where the
+/// picker carries the name, so the name is said once; on the watch the name is the text above.
+struct NamedDatePicker: View {
+    let name: String
+    @Binding var selection: Date
+    let components: DatePickerComponents
+    /// Said after the name, on the picker itself.
+    let hint: String
+
+    init(_ name: String, selection: Binding<Date>, displayedComponents components: DatePickerComponents, hint: String = "") {
+        self.name = name
+        _selection = selection
+        self.components = components
+        self.hint = hint
+    }
+
+    var body: some View {
+        #if os(watchOS)
+        // The name shown and read above the picker, which is left its own parts' names: a
+        // label on it went to each part, so Month, Day and Year were all read as the name.
+        VStack(alignment: .leading, spacing: 4) {
+            Text(name).font(.footnote).foregroundStyle(Color.quietLabel)
+            DatePicker("", selection: $selection, displayedComponents: components)
+                .labelsHidden()
+                .modifier(FieldHint(hint))
+        }
+        #else
+        Named(name) {
+            #if os(macOS)
+            DatePicker(name, selection: $selection, displayedComponents: components)
+                .modifier(FieldHint(hint))
+            #else
+            DatePicker("", selection: $selection, displayedComponents: components)
+                .labelsHidden()
+                .modifier(FieldHint(hint))
+            #endif
+        }
+        #endif
+    }
+}
+
 /// A choice among a few, as its own section: on iOS a row per choice with the chosen one
 /// checked, since a pop-up's value is clipped at large text sizes; on macOS the pop-up menu,
 /// as Mac forms have it.

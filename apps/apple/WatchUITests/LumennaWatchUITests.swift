@@ -145,6 +145,11 @@ final class LumennaWatchUITests: XCTestCase {
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         try audit("the block form")
+        // Each picker's name above it, and its parts still named for what each sets.
+        for (picker, part) in [("Day", "Month"), ("Starts at", "Hour")] {
+            let row = app.cells.containing(.staticText, identifier: picker).containing(NSPredicate(format: "label BEGINSWITH %@", part)).firstMatch
+            XCTAssertTrue(row.exists || reveal(row, form: true).exists, "no \(picker) picker: \(app.debugDescription)")
+        }
         type("Deep work", into: name)
         reveal(app.buttons["Save"], form: true).tap()
         let block = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Deep work'")).firstMatch
@@ -196,7 +201,12 @@ final class LumennaWatchUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Today"].waitForExistence(timeout: 10))
         app.buttons["Today"].tap()
         reveal(app.buttons["Go to Day"]).tap()
-        XCTAssertTrue(app.buttons["Go"].waitForExistence(timeout: 5))
+        // Its field first; the picker and Go are further down, a watch list holding only
+        // the rows on screen.
+        XCTAssertTrue(app.textFields["Day"].waitForExistence(timeout: 5))
+        // The picker's name above it, and its parts still named for what each sets.
+        let picker = app.cells.containing(.staticText, identifier: "Day").containing(NSPredicate(format: "label BEGINSWITH 'Month'")).firstMatch
+        XCTAssertTrue(picker.exists || reveal(picker).exists, "the day's picker is unnamed: \(app.debugDescription)")
         try audit("go to day")
         reveal(app.buttons["Go"]).tap()
         XCTAssertTrue(app.navigationBars["Today"].waitForExistence(timeout: 5), "today chosen is today")

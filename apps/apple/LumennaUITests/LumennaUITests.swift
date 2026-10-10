@@ -246,7 +246,7 @@ final class LumennaUITests: XCTestCase {
 
     /// Runs the audit and fails once with every issue it found, each with the element it
     /// objects to. Left to itself the audit stops at the first, which hides the rest.
-    /// `namedRows` is for forms built from `NamedRow`, whose visible field names are hidden
+    /// `namedRows` is for forms built from `NamedRow` or `NamedDatePicker`, whose visible field names are hidden
     /// from VoiceOver on purpose — the field carries the name — and which the audit reports
     /// as possibly inaccessible text. Only that finding, only on those screens.
     private func audit(
@@ -496,7 +496,9 @@ final class LumennaUITests: XCTestCase {
         for page in ["Planning", "Backups", "Export and Import"] {
             reveal(page).tap()
             XCTAssertTrue(app.navigationBars[page].waitForExistence(timeout: 5))
-            try audit(.all, page)
+            // Planning's times are `NamedDatePicker`s, whose visible names are hidden as a
+            // `NamedRow`'s are: the picker carries the name.
+            try audit(.all, page, namedRows: page == "Planning")
             goBack()
         }
 
@@ -658,8 +660,7 @@ final class LumennaUITests: XCTestCase {
         name.tap()
         name.typeText(title)
         if let start {
-            // The form's only time picker; the picker itself reaches XCUITest unnamed.
-            let picker = app.datePickers.buttons["Time Picker"].firstMatch
+            let picker = app.datePickers["Starts at"].firstMatch
             XCTAssertTrue(picker.waitForExistence(timeout: 5), app.debugDescription)
             picker.tap()
             let wheels = app.pickerWheels
@@ -669,7 +670,8 @@ final class LumennaUITests: XCTestCase {
             // Hour, minute and AM/PM, as the simulator's US English clock has them.
             wheels.element(boundBy: 2).adjust(toPickerWheelValue: start.period)
             let set = "\(start.hour):\(start.minute) \(start.period)"
-            let chosen = app.datePickers.descendants(matching: .any)["Time Picker"].firstMatch
+            // The time shown is on the control inside the named picker.
+            let chosen = picker.descendants(matching: .any).firstMatch
             // The clock puts a narrow no-break space before AM and PM.
             let shown = (chosen.value as? String)?.replacingOccurrences(of: "\u{202F}", with: " ")
             XCTAssertEqual(shown, set, "the start was not set")

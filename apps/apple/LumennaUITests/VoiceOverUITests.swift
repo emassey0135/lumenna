@@ -86,6 +86,25 @@ final class VoiceOverUITests: XCTestCase {
         XCTAssertTrue(said.contains("Button"), said)
     }
 
+    /// SwiftUI's picker reached VoiceOver unnamed, its title a separate stop before it.
+    func testTheBlockFormsStartIsReadAsStartsAt() throws {
+        let today = app.tabBars.buttons["Today"]
+        if today.exists { today.tap() } else { app.typeKey("1", modifierFlags: .command) }
+        app.buttons["Add block"].tap()
+        XCTAssertTrue(app.textFields["Name"].waitForExistence(timeout: 5))
+        try voiceOver.enable()
+        var heard: [String] = []
+        var said = try voiceOver.currentSpeech().utterance
+        for _ in 0..<12 where !said.contains("Lasts") {
+            heard.append(said)
+            said = try voiceOver.moveForward().utterance
+        }
+        let start = heard.first { $0.contains("PM") || $0.contains("AM") }
+        XCTAssertNotNil(start, "no time was read: \(heard)")
+        XCTAssertTrue(start?.hasPrefix("Starts at") == true, "the time picker is read as \"\(start ?? "")\"; heard \(heard)")
+        XCTAssertEqual(heard.filter { $0.contains("Starts at") }.count, 1, "said more than once: \(heard)")
+    }
+
     func testTheDayIsReadAsAHeadingThenItsButtons() throws {
         try voiceOver.enable()
         try move(to: "Heading")
