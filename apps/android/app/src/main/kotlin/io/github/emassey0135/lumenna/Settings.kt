@@ -341,7 +341,6 @@ fun PairingScreen(core: Core, navigator: Navigator) {
                 value = entered,
                 onValueChange = { entered = it },
                 label = { Text(words.theirCode) },
-                supportingText = { Text(words.emptyMeans) },
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
                 modifier = Modifier.fillMaxWidth(),
             )

@@ -642,6 +642,34 @@ class LumennaTest {
     }
 
     @Test
+    fun anEmptyCodeFieldSaysACodeIsNeededAndNeverReadsTheClipboard() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val copied = "lumenna-not-a-code"
+        rule.runOnIdle {
+            (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                .setPrimaryClip(android.content.ClipData.newPlainText("test", copied))
+        }
+        tab("Settings")
+        row("Devices and sync").performClick()
+        rule.waitForIdle()
+        press("Pair a device")
+        val words = io.github.emassey0135.lumenna.core.pairingWords("this phone", true)
+        // Nothing explains an empty field any more: it means nothing but a code still needed.
+        assertTrue("the field says nothing about the clipboard", words.emptyMeans.isEmpty())
+        button(io.github.emassey0135.lumenna.button(words.join))
+        shows(words.needCode)
+        rule.onNode(hasSetTextAction() and hasText(words.theirCode)).assert(
+            SemanticsMatcher("left empty") { node ->
+                node.config.getOrNull(SemanticsProperties.EditableText)?.text.isNullOrEmpty()
+            },
+        )
+        assertTrue(
+            "what was copied is not taken up",
+            rule.onAllNodes(hasText(copied, substring = true)).fetchSemanticsNodes().isEmpty(),
+        )
+    }
+
+    @Test
     fun anEmptyTrashSaysSoInTheCoresWords() {
         tab("Browse")
         row("Trash").performClick()
