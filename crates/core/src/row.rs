@@ -259,7 +259,7 @@ impl Snapshot {
                     .count();
                 let running = date == now.date()
                     && occurrence.start_time <= now.time()
-                    && now.time() < occurrence.end_time();
+                    && !occurrence.is_over_at(now.time());
                 Row {
                     id: RowId::Occurrence(occurrence.series_id, occurrence.date),
                     role: Role::Block,

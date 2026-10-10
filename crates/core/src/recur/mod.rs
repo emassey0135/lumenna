@@ -344,6 +344,15 @@ impl Occurrence {
     pub fn end_time(&self) -> civil::Time {
         self.start_time + jiff::SignedDuration::from_mins(i64::from(self.duration_mins))
     }
+
+    /// Whether it has ended by `time` on its own day. Compared in minutes since midnight,
+    /// because [`end_time`](Self::end_time) wraps: a block ending at midnight ends at 00:00,
+    /// and would otherwise read as over all day.
+    #[must_use]
+    pub fn is_over_at(&self, time: civil::Time) -> bool {
+        let minutes = |t: civil::Time| i64::from(t.hour()) * 60 + i64::from(t.minute());
+        minutes(self.start_time) + i64::from(self.duration_mins) <= minutes(time)
+    }
 }
 
 /// Expands a block series across a date range, applying its exceptions.

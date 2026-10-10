@@ -632,6 +632,28 @@ pub fn device(name: &str, node_id: &str, this_device: bool) -> Vec<Action> {
     actions
 }
 
+/// Why a row does not offer `kind`, for a key or a menu command pressed on it anyway:
+/// silence would leave a screen-reader user guessing. `this_device` is a device row's own.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+#[must_use]
+pub fn not_offered(kind: ActionKind, subject: Subject, this_device: bool) -> String {
+    match (subject, kind) {
+        (Subject::Device, ActionKind::Unpair) if this_device => {
+            "This is the device you are using; unpair it from one of your other devices.".to_owned()
+        }
+        (Subject::Project, ActionKind::Rename | ActionKind::Delete | ActionKind::Archive | ActionKind::MoveUnder) => {
+            "The Inbox keeps its name and its place; only its order and weight change.".to_owned()
+        }
+        (Subject::Project | Subject::Label | Subject::Filter, ActionKind::MoveUp) => "It is already first.".to_owned(),
+        (Subject::Project | Subject::Label | Subject::Filter, ActionKind::MoveDown) => "It is already last.".to_owned(),
+        (Subject::Block, ActionKind::AssignTask) => "This block does not take tasks.".to_owned(),
+        (Subject::Block, ActionKind::CancelDay) => {
+            "It happens only once; to remove it, delete it.".to_owned()
+        }
+        _ => "That does not apply here.".to_owned(),
+    }
+}
+
 /// Gives every row of a listing its actions, by what it is.
 pub(crate) fn fill_rows(rows: &mut Rows, snapshot: &Snapshot) {
     let facts = snapshot.facts();

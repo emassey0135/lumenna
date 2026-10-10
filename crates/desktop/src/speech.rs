@@ -20,6 +20,21 @@ pub trait Clock {
     fn day(&self, iso: &str) -> String;
 }
 
+/// One thing a picker offers: a block as "Tomorrow, 9:00 AM to 11:00 AM, Deep work", in
+/// this device's clock; anything else as its title, then what tells it apart (a task's
+/// project). Depth is left to the list, which says a level as its platform does.
+pub fn choice(choice: &lumenna_surface::Choice, clock: &dyn Clock) -> String {
+    match (&choice.date, &choice.start, &choice.end) {
+        (Some(date), Some(start), Some(end)) => {
+            format!("{}, {} to {}, {}", clock.day(date), clock.time(start), clock.time(end), choice.title)
+        }
+        _ => match &choice.detail {
+            Some(detail) => format!("{}, {detail}", choice.title),
+            None => choice.title.clone(),
+        },
+    }
+}
+
 /// One row of a listing: the title, then when it is due, its value and notable states.
 ///
 /// `ready` is true of almost every task, and saying it everywhere buries the states that

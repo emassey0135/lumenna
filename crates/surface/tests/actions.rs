@@ -279,3 +279,10 @@ fn every_setting_says_its_name_its_control_and_whether_it_syncs() {
     assert!(!every.syncs, "backups are this device's alone");
     assert!(every.options.iter().any(|o| o.id == every.value), "{} is offered", every.value);
 }
+
+#[test]
+fn a_device_cannot_unpair_itself_and_says_so_when_asked() {
+    assert!(lumenna_surface::not_offered(ActionKind::Unpair, Subject::Device, true).starts_with("This is the device you are using"));
+    let actions = lumenna_surface::actions::device("Phone", "ab12", true);
+    assert_eq!(titles(&actions), ["Rename"]);
+}
