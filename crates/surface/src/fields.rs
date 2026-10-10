@@ -7,6 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::Lumenna;
 use crate::actions::Choice;
 
 /// How a form field's value is shaped, so a client offers the control that fits.
@@ -80,7 +81,8 @@ fn field(key: &str, label: &str, kind: FieldKind, hint: &str, example: &str) -> 
 pub fn task_form() -> Vec<FormField> {
     use FieldKind as K;
     vec![
-        field("title", "Title", K::Lines, "", "What to do"),
+        // One line: a title is short, and Enter saves.
+        field("title", "Title", K::Line, "", "What to do"),
         field(
             "due",
             "Due",
@@ -97,10 +99,32 @@ pub fn task_form() -> Vec<FormField> {
         ),
         FormField { options: crate::form::priorities(), ..field("priority", "Priority", K::Choice, "", "") },
         field("estimate", "Estimate", K::Line, "How long it should take, such as 45m or 1h30m. Empty for none.", "45m"),
-        field("project", "Project", K::Line, "", "Inbox"),
+        // A list, filled from `Lumenna::project_options`: a task only ever moves to a project
+        // that exists, so a list cannot hold a typo, and typing still finds one.
+        field("project", "Project", K::Choice, "", ""),
         field("labels", "Labels", K::Line, "Names separated by commas. A new name becomes a label.", "calls, errands"),
         field("notes", "Notes", K::Lines, "", ""),
     ]
+}
+
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl Lumenna {
+    /// The projects the task form's Project field offers, in tree order: every one not
+    /// archived, `id` its name as `task_edit` takes it.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn project_options(&self) -> crate::Result<Vec<Choice>> {
+        self.with(|store| {
+            let snapshot = crate::repaired(store);
+            Ok(crate::organise::in_tree_order(&snapshot)
+                .into_iter()
+                .filter(|(project, _)| !project.archived)
+                .map(|(project, depth)| Choice { id: project.name.clone(), title: project.name.clone(), depth, ..Choice::default() })
+                .collect())
+        })
+    }
 }
 
 /// The block form's fields, in order. `date` is a new block's day; an edit has none.

@@ -338,3 +338,18 @@ fn an_empty_listing_says_what_is_empty() {
     lumenna.add_project("Home Office", None).unwrap();
     assert_eq!(lumenna.list_tasks("#\"Home Office\"").unwrap().empty, "No open tasks in this project.");
 }
+
+#[test]
+fn the_project_field_offers_every_project_not_archived_in_tree_order() {
+    let (_directory, lumenna) = open();
+    lumenna.add_project("Work", None).unwrap();
+    lumenna.add_project("Reports", Some("Work".to_owned())).unwrap();
+    lumenna.add_project("Old", None).unwrap();
+    lumenna.archive_project("Old").unwrap();
+    let names: Vec<(String, u32)> = lumenna.project_options().unwrap().into_iter().map(|c| (c.title, c.depth)).collect();
+    assert!(names.contains(&("Reports".to_owned(), 1)));
+    assert!(!names.iter().any(|(n, _)| n == "Old"));
+    let form = lumenna_surface::task_form();
+    assert_eq!(form.iter().find(|f| f.key == "project").unwrap().kind, lumenna_surface::FieldKind::Choice);
+    assert_eq!(form.iter().find(|f| f.key == "title").unwrap().kind, lumenna_surface::FieldKind::Line);
+}
