@@ -648,13 +648,32 @@ final class LumennaUITests: XCTestCase {
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count) + text)
     }
 
-    private func addBlock(_ title: String, repeating: String? = nil) {
+    /// Adds a block today. `start` (11, 00, PM) overrides the form's default of 09:00, for a
+    /// test that needs the block not yet over whenever it runs.
+    private func addBlock(_ title: String, repeating: String? = nil, start: (hour: String, minute: String, period: String)? = nil) {
         tab("Today")
         app.buttons["Add block"].tap()
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
         name.typeText(title)
+        if let start {
+            // The form's only time picker; the picker itself reaches XCUITest unnamed.
+            let picker = app.datePickers.buttons["Time Picker"].firstMatch
+            XCTAssertTrue(picker.waitForExistence(timeout: 5), app.debugDescription)
+            picker.tap()
+            let wheels = app.pickerWheels
+            XCTAssertTrue(wheels.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+            wheels.element(boundBy: 0).adjust(toPickerWheelValue: start.hour)
+            wheels.element(boundBy: 1).adjust(toPickerWheelValue: start.minute)
+            // Hour, minute and AM/PM, as the simulator's US English clock has them.
+            wheels.element(boundBy: 2).adjust(toPickerWheelValue: start.period)
+            let set = "\(start.hour):\(start.minute) \(start.period)"
+            let chosen = app.datePickers.descendants(matching: .any)["Time Picker"].firstMatch
+            // The clock puts a narrow no-break space before AM and PM.
+            let shown = (chosen.value as? String)?.replacingOccurrences(of: "\u{202F}", with: " ")
+            XCTAssertEqual(shown, set, "the start was not set")
+        }
         if let repeating {
             let repeats = app.textFields["Repeats"]
             repeats.tap()
@@ -756,7 +775,9 @@ final class LumennaUITests: XCTestCase {
 
     func testATaskIsPutInABlockFromItsOwnPage() {
         add("draft")
-        addBlock("Focus")
+        // 11 PM for the default hour: Put in a Block leaves out blocks already over, and one
+        // ending at midnight is never over on its own day.
+        addBlock("Focus", start: (hour: "11", minute: "00", period: "PM"))
         tab("Tasks")
         row("draft").tap()
         // Far down the form, and SwiftUI makes rows only once they are on screen.
