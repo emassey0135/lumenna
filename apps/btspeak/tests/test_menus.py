@@ -437,6 +437,17 @@ class Menus(unittest.TestCase):
         labels = [c.get_label(menu) for c in script.menus[-1]["context"] if c.applies(menu)]
         self.assertEqual(labels, ["Show its tasks", "Add a task to it, t", "Weight, w"])
 
+    def test_a_letter_a_row_does_not_offer_says_why_in_the_cores_words(self):
+        self.call("project.add", name="Work")
+        script = self.run_script([("key", "Inbox", "r"), ("back",)], lambda: organise.projects(self.session))
+        self.assertIn("The Inbox keeps its name and its place; only its order and weight change.", script.said)
+
+    def test_a_project_with_a_space_opens_its_tasks_by_the_cores_reference(self):
+        self.call("project.add", name="Home Office")
+        self.call("task.add", text='file receipts #"Home Office"')
+        script = self.run_script([("menu", "Home Office"), ("back",), ("back",)], lambda: organise.projects(self.session))
+        self.assertTrue(any("1 task" in title for title in script.titles[1:]), script.titles)
+
     def test_a_pick_with_nothing_to_offer_says_why(self):
         self.call("task.add", text="alone")
         script = self.run_script([("key", "alone", "w"), ("back",)], lambda: tasks.task_list(self.session))

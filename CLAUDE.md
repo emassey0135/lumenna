@@ -373,7 +373,8 @@ library is only on a BTSpeak (`/BTSpeak/Python/BTSpeak/`); elsewhere the tests r
   the only file that decides anything, and only about folding.
 - **A row's context menu is its `actions`** (`actions.py`): the rows' actions merged into
   one list of commands that keeps each row's order, each offered where its row has it, a
-  letter per kind (`KEYS`), the delete keys for `Delete`/`Unassign`/`Unpair`. Questions are
+  letter per kind (`KEYS`), the delete keys for `Delete`/`Unassign`/`Unpair`; a letter the
+  row does not offer says `form.not_offered`'s sentence. Questions are
   the device's dialogs; forms (task, block, new filter) register in `actions.FORMS`.
 - **Speech and braille come from one string** with the stock library
   (`DynamicMenuDialog.draw()`), so components are flattened at the last step. A subclass is
@@ -407,7 +408,8 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
 - **A list's keys are defined once** (`lumenna-define-keys`), which binds them, builds the
   menu, and lists them for `?` in an ordinary buffer. A row's key runs the row's action of
   that kind (`lumenna-define-action`, `lumenna-act-kind`), its question asked in the
-  minibuffer and answered through `act`; `.` offers them all by title. Sounds key on the
+  minibuffer and answered through `act`; `.` offers them all by title, and a key the row
+  does not offer refuses with `form.not_offered`'s sentence. Sounds key on the
   action's `subject/kind`. Not transient: Emacsvox reads a
   transient by asking whether its command was called interactively, and Emacs 31's
   transient wraps each command, so moving through one was silent.

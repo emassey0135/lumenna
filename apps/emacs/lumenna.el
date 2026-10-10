@@ -196,6 +196,14 @@ EVENT is the RPC method, or for an action `SUBJECT/KIND'.  Returns RESULT."
   (lumenna-say result)
   result)
 
+(defun lumenna-project-reference (name)
+  "Project NAME as a filter or quick-add line names it: `#Work', `#\"Home Office\"'."
+  (lumenna--value "form.project_reference" :name name))
+
+(defun lumenna-label-reference (name)
+  "Label NAME as a filter or quick-add line names it: `@calls', `@\"deep work\"'."
+  (lumenna--value "form.label_reference" :name name))
+
 (defun lumenna--value (method &rest params)
   "The value the form function METHOD computes from PARAMS."
   (plist-get (apply #'lumenna-call method params) :value))
@@ -485,6 +493,17 @@ when nothing was sent."
   (let ((titles (mapcar (lambda (a) (cons (plist-get a :title) a)) actions)))
     (cdr (assoc (completing-read prompt titles nil t) titles))))
 
+(defun lumenna--not-offered (kind actions row)
+  "Why ROW, offering ACTIONS, does not offer KIND.
+The core's sentence, then what the row does offer."
+  (if (null actions)
+      "Nothing to do here"
+    (let ((why (plist-get (lumenna-call "form.not_offered" :kind kind
+                                        :subject (plist-get (car actions) :subject)
+                                        :this_device (and (lumenna--true (plist-get (plist-get row :device) :this_device)) t))
+                          :value)))
+      (format "%s This offers %s" why (lumenna--titles actions)))))
+
 (defun lumenna-act-kind (kinds)
   "Do the action of one of KINDS that point's row offers.
 Where it offers several (one Stop Waiting per task waited for), choose one."
@@ -492,8 +511,7 @@ Where it offers several (one Stop Waiting per task waited for), choose one."
          (row (lumenna--row-here))
          (matching (seq-filter (lambda (a) (member (plist-get a :kind) kinds)) actions)))
     (cond ((null matching)
-           (user-error (if actions (format "Not offered here; this offers %s" (lumenna--titles actions))
-                         "Nothing to do here")))
+           (user-error "%s" (lumenna--not-offered (car kinds) actions row)))
           ((null (cdr matching)) (lumenna-act (car matching) row))
           (t (lumenna-act (lumenna--choose-action "Which? " matching) row)))))
 

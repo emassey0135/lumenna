@@ -1,8 +1,8 @@
 """Projects, labels and saved filters: opened, and also made, renamed, reordered and
 removed — each by the row's own actions, as the core offers them.
 
-A name is written after its sigil the way the filter and quick-add languages read it: quoted
-when it has a space in it.
+A name is written the way the filter and quick-add languages read it, as the core writes it
+(`form.project_reference`, `form.label_reference`).
 """
 
 from __future__ import annotations
@@ -13,8 +13,14 @@ from session import Command, Session, ask, live_menu, row_item, screen
 import tasks
 
 
-def sigil(mark: str, name: str) -> str:
-    return f'{mark}"{name}"' if " " in name else f"{mark}{name}"
+def project_reference(session: Session, name: str) -> str:
+    """A project as the filter and quick-add languages name it: `#Work`, `#"Home Office"`."""
+    return session.call("form.project_reference", name=name).get("value", "")
+
+
+def label_reference(session: Session, name: str) -> str:
+    """A label as the filter and quick-add languages name it: `@calls`, `@"deep work"`."""
+    return session.call("form.label_reference", name=name).get("value", "")
 
 
 # ---------------------------------------------------------------------------------------
@@ -29,7 +35,8 @@ def project_tasks(session: Session, name: str, row=None) -> str:
         Command(action["title"], lambda _, action=action: actions.act(session, action, row), key="p")
         for action in actions.of_kind(row, "new_inside")
     ]
-    return tasks.task_list(session, sigil("#", name), name, prefix=sigil("#", name) + " ", more=inside)
+    reference = project_reference(session, name)
+    return tasks.task_list(session, reference, name, prefix=reference + " ", more=inside)
 
 
 def projects(session: Session) -> str:
@@ -51,7 +58,7 @@ def projects(session: Session) -> str:
             main=tasks_of,
             context=lambda rows: actions.commands(session, rows, before=[
                 Command("Show its tasks", tasks_of),
-                Command("Add a task to it", lambda row: tasks.add_task(session, prefix=sigil("#", row["title"]) + " "), key="t"),
+                Command("Add a task to it", lambda row: tasks.add_task(session, prefix=project_reference(session, row["title"]) + " "), key="t"),
             ]),
             app=[
                 Command("New Project", lambda _: actions.add_from_heading(session, "Projects"), key="a"),
@@ -68,7 +75,8 @@ def projects(session: Session) -> str:
 
 
 def label_tasks(session: Session, name: str) -> str:
-    return tasks.task_list(session, sigil("@", name), name, prefix=sigil("@", name) + " ")
+    reference = label_reference(session, name)
+    return tasks.task_list(session, reference, name, prefix=reference + " ")
 
 
 def labels(session: Session) -> str:
@@ -90,7 +98,7 @@ def labels(session: Session) -> str:
             main=tasks_of,
             context=lambda rows: actions.commands(session, rows, before=[
                 Command("Show the tasks wearing it", tasks_of),
-                Command("Add a task wearing it", lambda row: tasks.add_task(session, prefix=sigil("@", row["title"]) + " "), key="t"),
+                Command("Add a task wearing it", lambda row: tasks.add_task(session, prefix=label_reference(session, row["title"]) + " "), key="t"),
             ]),
             app=[
                 Command("New Label", lambda _: actions.add_from_heading(session, "Labels"), key="a"),

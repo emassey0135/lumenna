@@ -100,13 +100,27 @@
     (lumenna-projects)
     (lumenna-test--goto "Inbox")
     ;; The Inbox keeps its name: the core offers no Rename, so the key refuses.
-    (should-error (lumenna-act-rename) :type 'user-error)
+    (let ((refusal (should-error (lumenna-act-rename) :type 'user-error)))
+      (should (equal (cadr refusal)
+                     "The Inbox keeps its name and its place; only its order and weight change. This offers Weight")))
     (let (offered)
       (cl-letf (((symbol-function 'completing-read)
                  (lambda (_prompt choices &rest _) (setq offered (mapcar #'car choices)) (car offered)))
                 ((symbol-function 'read-string) (lambda (&rest _) "1")))
         (lumenna-act-at-point))
       (should (equal offered '("Weight"))))))
+
+(ert-deftest lumenna-a-project-with-a-space-is-quoted-by-the-core-in-its-list ()
+  (lumenna-test--with-store
+    (lumenna-write "project.add" :name "Home Office")
+    (lumenna-write "task.add" :text "file the receipts #\"Home Office\"")
+    (lumenna-projects)
+    (lumenna-test--goto "Home Office")
+    (lumenna-activate)
+    (should (equal lumenna--prefix "#\"Home Office\" "))
+    (should (equal (lumenna-test--titles "#\"Home Office\"") '("file the receipts")))
+    (goto-char (point-min))
+    (should (search-forward "file the receipts" nil t))))
 
 (ert-deftest lumenna-a-pick-with-nothing-to-offer-says-the-cores-sentence ()
   (lumenna-test--with-store

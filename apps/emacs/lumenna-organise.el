@@ -15,11 +15,6 @@
 
 (declare-function lumenna-tasks "lumenna-tasks")
 
-(defun lumenna--sigil (mark name)
-  "NAME after MARK, as the filter and quick-add languages read it.
-Quoted when it has a space in it."
-  (if (string-match-p " " name) (format "%c\"%s\"" mark name) (format "%c%s" mark name)))
-
 (defun lumenna--name ()
   "The name of the project, label or filter at point."
   (plist-get (lumenna-row) :title))
@@ -64,7 +59,8 @@ RET shows a project's tasks.
 
 (defun lumenna-open-project (name)
   "Show the tasks of project NAME; a task added there starts in it."
-  (lumenna-tasks (lumenna--sigil ?# name) name (concat (lumenna--sigil ?# name) " ")))
+  (let ((reference (lumenna-project-reference name)))
+    (lumenna-tasks reference name (concat reference " "))))
 
 ;;;###autoload
 (defun lumenna-projects ()
@@ -81,7 +77,7 @@ RET shows a project's tasks.
 (defun lumenna-project-add-task ()
   "Add a task to the project at point."
   (interactive)
-  (lumenna-add (concat (lumenna--sigil ?# (lumenna--name)) " ")))
+  (lumenna-add (concat (lumenna-project-reference (lumenna--name)) " ")))
 
 ;;;; Labels
 
@@ -93,7 +89,8 @@ RET shows a project's tasks.
 
 (defun lumenna-open-label (name)
   "Show the tasks wearing label NAME; a task added there wears it."
-  (lumenna-tasks (lumenna--sigil ?@ name) name (concat (lumenna--sigil ?@ name) " ")))
+  (let ((reference (lumenna-label-reference name)))
+    (lumenna-tasks reference name (concat reference " "))))
 
 ;;;###autoload
 (defun lumenna-labels ()
@@ -110,7 +107,7 @@ RET shows a project's tasks.
 (defun lumenna-label-add-task ()
   "Add a task wearing the label at point."
   (interactive)
-  (lumenna-add (concat (lumenna--sigil ?@ (lumenna--name)) " ")))
+  (lumenna-add (concat (lumenna-label-reference (lumenna--name)) " ")))
 
 ;;;; Saved filters
 
