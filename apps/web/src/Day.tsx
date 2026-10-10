@@ -249,8 +249,8 @@ export function Day(props: {
         <Button isDisabled={!shown} onPress={() => shown && go(step(shown.date, 1))}>
           Next day
         </Button>
-        <Button onPress={() => void goToDay()}>Go to day…</Button>
-        <Button onPress={() => void addBlock()}>Add block…</Button>
+        <Button onPress={() => void goToDay()}>Go to day</Button>
+        <Button onPress={() => void addBlock()}>Add block</Button>
         <RowMenu
           actions={row(selected)?.actions ?? []}
           onAction={(action) => {

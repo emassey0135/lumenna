@@ -40,11 +40,14 @@ import init, {
   taskFields,
   taskStateText,
   trashedText,
+  keyboardShortcuts,
 } from "./core/lumenna_web.js";
 import type {
   Action,
   Answer,
+  Choice,
   FormField,
+  ShortcutGroup,
   PairingWords,
   Setting,
   BlockDefaults,
@@ -177,8 +180,11 @@ const api = {
   /** Fixed text — a button, a question with no one's name in it — in sentence case. */
   sentence: (text: string): string => sentenceCase(text),
 
-  /** The projects, by name, for the details form's choice. */
-  projects: (): string[] => store().listProjects().rows.map((row) => row.title),
+  /** The projects the details form's Project field offers, in tree order, each with its depth. */
+  projectOptions: (): Choice[] => store().projectOptions().options,
+
+  /** The keyboard commands the desktop apps share, grouped as their menus are, in sentence case. */
+  keyboardShortcuts: (): ShortcutGroup[] => keyboardShortcuts().groups,
 
   /**
    * Saves a form's fields over the task it started from — only what changed, so a concurrent

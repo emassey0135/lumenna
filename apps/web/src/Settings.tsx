@@ -231,7 +231,7 @@ function Backups(props: { onChanged: () => void }) {
         >
           Download a backup
         </Button>
-        <ReadFile label="Restore from a backup…" accept=".lumbak" onChanged={props.onChanged} />
+        <ReadFile label="Restore from a backup" accept=".lumbak" onChanged={props.onChanged} />
       </div>
       <p className="quiet">Restoring merges: it adds what this browser lacks, and never takes back a later change.</p>
     </>
@@ -264,7 +264,7 @@ function Exports(props: { onChanged: () => void }) {
             {choice.label}
           </Button>
         ))}
-        <ReadFile label="Import a JSON export or a backup…" accept=".json,.lumbak" onChanged={props.onChanged} />
+        <ReadFile label="Import a JSON export or a backup" accept=".json,.lumbak" onChanged={props.onChanged} />
       </div>
     </>
   );

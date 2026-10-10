@@ -330,3 +330,22 @@ h3 {
   border-bottom-color: CanvasText;
   font-weight: 600;
 }
+
+/* The keyboard shortcuts: a key and its command to a row. */
+table.keys {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: var(--gap);
+}
+
+table.keys th,
+table.keys td {
+  text-align: start;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+table.keys td:first-child {
+  white-space: nowrap;
+  font-weight: bold;
+}

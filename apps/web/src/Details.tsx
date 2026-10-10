@@ -22,7 +22,7 @@ import {
 } from "react-aria-components";
 import { perform } from "./actions";
 import { core } from "./core";
-import type { Action, FormField, TaskDetail, TaskFields } from "./core";
+import type { Action, Choice, FormField, TaskDetail, TaskFields } from "./core";
 import { say } from "./say";
 
 export interface DetailsHandle {
@@ -40,7 +40,7 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
     const [original, setOriginal] = useState<TaskFields | undefined>();
     const [fields, setFields] = useState<TaskFields | undefined>();
     const [state, setState] = useState("");
-    const [projects, setProjects] = useState<string[]>([]);
+    const [projects, setProjects] = useState<Choice[]>([]);
     const [form, setForm] = useState<FormField[]>([]);
     const [failure, setFailure] = useState<string | undefined>();
     const title = useRef<HTMLInputElement>(null);
@@ -58,7 +58,7 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
       const editing = task?.id === props.id && fields && original && !same(fields, original);
       if (editing) return;
       let current = true;
-      void Promise.all([core.task(props.id), core.projects(), core.taskForm()]).then(
+      void Promise.all([core.task(props.id), core.projectOptions(), core.taskForm()]).then(
         ([shown, projects, form]) => {
           if (!current) return;
           setFailure(undefined);
@@ -110,8 +110,10 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
       say(done.said);
     };
 
-    // Each field as the core describes it. The title is one line here, so Enter saves; the
-    // project is chosen from the projects there are.
+    // Each field as the core describes it. The title is one line, so Enter saves; the project
+    // is a choice of the projects the core offers, found by typing its name. An option has no
+    // level of its own in ARIA, so one under another says its level in its name, after the
+    // title, as the desktop apps' rows do; it is indented to be seen.
     const control = (field: FormField) => {
       const key = field.key as keyof TaskFields;
       const help = field.hint && (
@@ -119,11 +121,22 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
           {field.hint}
         </Text>
       );
-      if (field.kind === "choice" || key === "project") {
-        const items =
+      if (field.kind === "choice") {
+        const items: { id: string | number; title: string; depth: number }[] =
           key === "project"
-            ? projects.map((name) => ({ id: name, title: name }))
-            : (field.options ?? []).map((option) => ({ id: key === "priority" ? Number(option.id) : option.id, title: option.title }));
+            ? [
+                ...projects.map((option) => ({ id: option.id, title: option.title, depth: option.depth ?? 0 })),
+                // An archived project is offered to no task, but the one this task is in stays
+                // its value until another is chosen.
+                ...(projects.some((option) => option.id === fields.project)
+                  ? []
+                  : [{ id: fields.project, title: fields.project, depth: 0 }]),
+              ]
+            : (field.options ?? []).map((option) => ({
+                id: key === "priority" ? Number(option.id) : option.id,
+                title: option.title,
+                depth: 0,
+              }));
         return (
           <Select
             key={field.key}
@@ -137,12 +150,23 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
             </Button>
             {help}
             <Popover>
-              <ListBox items={items}>{(item) => <ListBoxItem id={item.id}>{item.title}</ListBoxItem>}</ListBox>
+              <ListBox items={items}>
+                {(item) => (
+                  <ListBoxItem
+                    id={item.id}
+                    textValue={item.title}
+                    aria-label={item.depth > 0 ? `${item.title}, level ${item.depth + 1}` : undefined}
+                    style={item.depth > 0 ? { paddingInlineStart: `${item.depth * 1.25 + 0.5}em` } : undefined}
+                  >
+                    {item.title}
+                  </ListBoxItem>
+                )}
+              </ListBox>
             </Popover>
           </Select>
         );
       }
-      const multiline = field.kind === "lines" && key !== "title";
+      const multiline = field.kind === "lines";
       return (
         <TextField key={field.key} className="field" value={String(fields[key])} onChange={(text) => set({ [key]: text })}>
           <Label>{field.label}</Label>

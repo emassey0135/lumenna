@@ -108,7 +108,7 @@ export function Blocks(props: { revision: number; onChanged: () => void }) {
         {readback}
       </p>
       <div className="buttons">
-        <Button onPress={() => void add()}>Add block…</Button>
+        <Button onPress={() => void add()}>Add block</Button>
         <RowMenu
           actions={line(selected)?.row.actions ?? []}
           onAction={(action) => {

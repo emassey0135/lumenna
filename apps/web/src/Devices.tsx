@@ -156,7 +156,7 @@ export function DevicesPage(props: {
               Sync now
             </Button>
             <Button isDisabled={!words} onPress={() => setPairing(true)}>
-              {words?.title ?? "Pair a device"}…
+              {words?.title ?? "Pair a device"}
             </Button>
             {chosen?.actions.map((action) => (
               <Button
