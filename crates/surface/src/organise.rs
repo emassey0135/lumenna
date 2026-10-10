@@ -408,6 +408,7 @@ impl Lumenna {
                         actions: crate::actions::filter(&snapshot, saved),
                     })
                     .collect(),
+                empty: "No saved filters. A filter's query is kept here under a name.".to_owned(),
             })
         })
     }

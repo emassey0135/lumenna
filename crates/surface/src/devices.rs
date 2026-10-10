@@ -12,6 +12,9 @@ use lumenna_core::model::Device;
 use crate::error::{LumennaError, Result};
 use crate::tasks::record_or;
 use crate::types::{Announced, Change, DeviceList, DeviceView};
+
+/// What the device list says with nothing paired yet.
+pub(crate) const NO_DEVICES: &str = "No devices are paired yet. Pair one to sync with it.";
 use crate::words::count_line;
 use crate::{Lumenna, repaired};
 
@@ -28,6 +31,7 @@ impl Lumenna {
             announcement: count_line(devices.len(), "paired device"),
             notices: Vec::new(),
             devices,
+            empty: NO_DEVICES.to_owned(),
         })
     }
 

@@ -883,6 +883,9 @@ pub struct Filters {
     pub count: u32,
     /// Them, in order.
     pub filters: Vec<FilterView>,
+    /// What a client says in place of them when there are none.
+    #[serde(default)]
+    pub empty: String,
 }
 
 /// One saved filter. Stored as text, never as a resolved date range.
@@ -1641,6 +1644,9 @@ pub struct DeviceList {
     pub notices: Vec<String>,
     /// This one first, then by name.
     pub devices: Vec<DeviceView>,
+    /// What a client says in place of them when there are none.
+    #[serde(default)]
+    pub empty: String,
 }
 
 /// Which networks syncing may use.

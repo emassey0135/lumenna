@@ -560,7 +560,7 @@ class Menus(unittest.TestCase):
             # device would arrive.
             btspeak_stub._clipboard[0] = code
             script = play([
-                ("choose", "Pair with this code"),
+                ("choose", "Pair using this code"),
                 ("input", ""),
                 ("wait",),
                 ("confirm", True),
@@ -570,7 +570,7 @@ class Menus(unittest.TestCase):
             self.assertTrue(script.finished(), script.steps)
             self.assertIn("Paired with laptop", said)
             self.assertTrue(any(asked.startswith("Pair a device.") for asked in script.prompts), script.prompts)
-            self.assertEqual(script.offered[0], ["Wait for the other device", "Pair with this code"])
+            self.assertEqual(script.offered[0], ["Wait for the other device", "Pair using this code"])
             self.assertEqual(waiting.result(timeout=60)["result"], "paired")
             self.assertIn("from the other device", self.titles())
         finally:

@@ -203,6 +203,10 @@ pub enum Question {
         optional: bool,
         /// The button that answers: "Rename", "Add", "Save". Cancel is the client's.
         yes: String,
+        /// The title in sentence case, for a platform whose convention it is: names in it keep
+        /// their capitals.
+        #[serde(default)]
+        sentence: String,
     },
     /// One of what [`Lumenna::choices`] offers for this action.
     Pick {
@@ -212,6 +216,9 @@ pub enum Question {
         /// [`Answer::Picked::length`], optional.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         length: Option<String>,
+        /// The button that answers: "Move", "Assign", "Merge". Cancel is the client's.
+        #[serde(default)]
+        yes: String,
     },
     /// One of a few answers, each its own button, answered [`Answer::Picked`] by its `id`.
     Choose {
@@ -366,6 +373,7 @@ fn text(title: impl Into<String>, label: &str, initial: impl Into<String>, hint:
         "Save"
     };
     Question::Text {
+        sentence: title.clone(),
         title,
         label: label.to_owned(),
         initial: initial.into(),
@@ -379,8 +387,8 @@ fn confirm(title: impl Into<String>, message: &str, yes: &str) -> Question {
     Question::Confirm { title: title.into(), message: message.to_owned(), yes: yes.to_owned() }
 }
 
-fn pick(title: impl Into<String>) -> Question {
-    Question::Pick { title: title.into(), length: None }
+fn pick(title: impl Into<String>, yes: &str) -> Question {
+    Question::Pick { title: title.into(), length: None, yes: yes.to_owned() }
 }
 
 fn minutes_text(minutes: u32) -> String {
@@ -414,13 +422,14 @@ pub(crate) fn task(snapshot: &Snapshot, task: &Task, done: bool, shown: bool) ->
     actions.push(a(K::PutInBlock, "Put in a Block").asking(Question::Pick {
         title: format!("Put {} in a block", task.title),
         length: Some(LENGTH.to_owned()),
+        yes: "Put It There".to_owned(),
     }));
-    actions.push(a(K::MoveToProject, "Move to Project").asking(pick(format!("Move {} to", task.title))));
-    actions.push(a(K::MakeSubtaskOf, "Make Subtask Of").asking(pick(format!("Make {} a subtask of", task.title))));
+    actions.push(a(K::MoveToProject, "Move to Project").asking(pick(format!("Move {} to", task.title), "Move")));
+    actions.push(a(K::MakeSubtaskOf, "Make Subtask Of").asking(pick(format!("Make {} a subtask of", task.title), "Move")));
     if task.parent_id.is_some() {
         actions.push(a(K::MoveToTopLevel, "Move to Top Level"));
     }
-    actions.push(a(K::WaitFor, "Wait For").asking(pick(format!("What does {} wait for?", task.title))));
+    actions.push(a(K::WaitFor, "Wait For").asking(pick(format!("What does {} wait for?", task.title), "Wait For It")));
     for on in &task.depends {
         let title = snapshot.tasks.get(on).map_or("a task not loaded here", |t| t.title.as_str());
         let mut stop = a(K::StopWaiting, &format!("Stop Waiting for {title}")).with(on.to_string());
@@ -442,6 +451,7 @@ pub fn block(block: &PlanBlock) -> Vec<Action> {
         actions.push(a(K::AssignTask, "Assign a Task").asking(Question::Pick {
             title: format!("Assign a task to {}", block.title),
             length: Some(LENGTH.to_owned()),
+            yes: "Assign".to_owned(),
         }));
     }
     actions.push(a(K::Edit, "Edit Block"));
@@ -571,7 +581,7 @@ pub(crate) fn project(snapshot: &Snapshot, project: &Project) -> Vec<Action> {
     }
     actions.push(a(K::Rename, "Rename").asking(text(format!("Rename {name}"), "Name", name.clone(), "", false)));
     actions.push(a(K::NewInside, "New Project Inside").asking(text(format!("New project inside {name}"), "Name", "", "", false)));
-    actions.push(a(K::MoveUnder, "Move Under").asking(pick(format!("Move {name} under"))));
+    actions.push(a(K::MoveUnder, "Move Under").asking(pick(format!("Move {name} under"), "Move")));
     if project.parent_id.is_some() {
         actions.push(a(K::MoveToTopLevel, "Move to Top Level"));
     }
@@ -599,7 +609,7 @@ pub(crate) fn label(snapshot: &Snapshot, label: &Label) -> Vec<Action> {
     let ids: Vec<_> = live.iter().map(|l| l.id).collect();
     let mut actions = vec![
         a(K::Rename, "Rename").asking(text(format!("Rename {name}"), "Name", name.clone(), "", false)),
-        a(K::MergeInto, "Merge Into").asking(pick(format!("Merge {name} into"))),
+        a(K::MergeInto, "Merge Into").asking(pick(format!("Merge {name} into"), "Merge")),
         a(K::Colour, "Colour").asking(text(
             format!("Colour of {name}"),
             "Colour",
@@ -650,11 +660,58 @@ pub fn heading(group: crate::places::SidebarGroup) -> Vec<Action> {
     use crate::places::SidebarGroup as G;
     vec![match group {
         G::Projects => action(ActionKind::New, Subject::Project, "New Project", "")
-            .asking(text("New Project", "Name", "", "", false)),
+            .asking(sentenced(text("New Project", "Name", "", "", false))),
         G::Labels => action(ActionKind::New, Subject::Label, "New Label", "")
-            .asking(text("New Label", "Name", "", "", false)),
+            .asking(sentenced(text("New Label", "Name", "", "", false))),
         G::Filters => action(ActionKind::New, Subject::Filter, "New Saved Filter", "").asking(Question::Form),
     }]
+}
+
+/// A question whose title holds no one's own words, in sentence case as well.
+fn sentenced(mut question: Question) -> Question {
+    if let Question::Text { title, sentence, .. } = &mut question {
+        *sentence = crate::fields::sentence_case(title.clone());
+    }
+    question
+}
+
+/// What Go to Day asks, in every client that has it.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+#[must_use]
+pub fn go_to_day_question() -> Question {
+    let Question::Text { title, label, initial, hint, optional, sentence, .. } =
+        sentenced(text("Go to Day", "Day", "", "A date, such as Friday, or 12 October.", false))
+    else {
+        unreachable!()
+    };
+    Question::Text { title, label, initial, hint, optional, yes: "Go".to_owned(), sentence }
+}
+
+/// What a new saved filter asks, in two steps: its name, then its query.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+#[must_use]
+pub fn new_filter_questions() -> Vec<Question> {
+    let step = |label: &str, hint: &str, yes: &str| {
+        let Question::Text { title, initial, optional, sentence, .. } =
+            sentenced(text("New Saved Filter", label, "", hint, false))
+        else {
+            unreachable!()
+        };
+        Question::Text { title, label: label.to_owned(), initial, hint: hint.to_owned(), optional, yes: yes.to_owned(), sentence }
+    };
+    vec![step("Name", "", "Next"), step("Query", QUERY, "Add")]
+}
+
+/// What a pick with a [`Question::Pick::length`] asks once something is picked.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+#[must_use]
+pub fn length_question() -> Question {
+    let Question::Text { title, label, initial, hint, optional, sentence, .. } =
+        sentenced(text("Planned Length", "Planned length", "", LENGTH, true))
+    else {
+        unreachable!()
+    };
+    Question::Text { title, label, initial, hint, optional, yes: "Save".to_owned(), sentence }
 }
 
 /// A paired device's. A device cannot unpair itself, so that is not offered on its own row.
