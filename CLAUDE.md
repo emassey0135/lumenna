@@ -565,7 +565,8 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   scroll by the Digital Crown, a little at a time, to what they look for; a swipe moved past
   it. A text field opens the system's input screen: type into its text view, then Done. A
   place's row is named with what is in it ("Inbox, no tasks").
-- Built for 64-bit watches only (`aarch64-apple-watchos`, on stable).
+- **watchOS 27 and later**, the first without 32-bit watches, so the core is built for
+  `aarch64-apple-watchos` on stable and `arm64_32` (tier 3, nightly) never.
 
 ## The Windows app
 
@@ -828,4 +829,4 @@ bundled SQLite runs past a gigabyte, and the incremental cache did not pay for i
 There, `cargo clippy --all-targets` and `cargo test` do not share artifacts, so running both
 back to back can run out of space; `cargo clean` between them.
 
-The toolchain is not pinned; only older Apple Watches (`arm64_32`) would need nightly.
+The toolchain is not pinned.

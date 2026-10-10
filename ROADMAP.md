@@ -296,14 +296,12 @@ Both have every view and work with the phone away, each with a whole store of it
     (`transferUserInfo`, which needs the exchange to carry changes without a reply), and
     background refresh (`WKApplicationRefreshBackgroundTask`).
   - **Complications** through WidgetKit, and the running timer on the watch face.
-  - **Older watches** (`arm64_32`: Series 8 and earlier, SE 2), a tier 3 Rust target needing
-    `-Z build-std` on a pinned nightly.
   - **Later, if it matters**: syncing far from the phone through a relay of our own that the
     watch polls over plain HTTPS, the one networking watchOS allows.
 - **Wear OS** (Compose for Wear OS): a standalone full peer, the core and Iroh through
   `cargo-ndk`, every view; Wear OS allows sockets. Check rotary scrolling with TalkBack. The
   hardware is here to test on.
-- **Toolchain**: unpinned. Only older Apple Watches would need nightly.
+- **Toolchain**: unpinned.
 
 ## 6. Integrations
 

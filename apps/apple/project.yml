@@ -10,7 +10,9 @@ options:
   deploymentTarget:
     iOS: "17.0"
     macOS: "14.0"
-    watchOS: "11.0"
+    # The first watchOS without the 32-bit watches (Ultra 1, SE 2): every watch it runs on is
+    # 64-bit, as the core is built (build-core.sh).
+    watchOS: "27.0"
   createIntermediateGroups: true
   developmentLanguage: en
 
@@ -160,9 +162,6 @@ targets:
         "RUST_LIB_DIR[sdk=watchsimulator*]": $(SRCROOT)/../../target/aarch64-apple-watchos-sim/$(RUST_PROFILE)
         "RUST_LIB_DIR[sdk=watchos*]": $(SRCROOT)/../../target/aarch64-apple-watchos/$(RUST_PROFILE)
         OTHER_LDFLAGS: $(RUST_LIB_DIR)/liblumenna_ffi.a
-        # The core is built for 64-bit watches only (Series 9 and later, Ultra 2 and later):
-        # the older arm64_32 is a tier 3 Rust target, needing nightly (build-core.sh).
-        "ARCHS[sdk=watchos*]": arm64
         "EXCLUDED_ARCHS[sdk=watchsimulator*]": x86_64
       configs:
         Debug:
