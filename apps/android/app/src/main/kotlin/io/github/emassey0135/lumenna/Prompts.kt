@@ -125,8 +125,10 @@ fun Choose(title: String, choices: List<Option>, yes: String, dismiss: () -> Uni
                                 .padding(start = (16 * choice.depth).dp, top = 12.dp, bottom = 12.dp),
                         ) {
                             Text(choice.title, style = MaterialTheme.typography.bodyLarge)
-                            if (choice.detail.isNotEmpty()) {
-                                Text(choice.detail, style = MaterialTheme.typography.bodyMedium, color = quiet())
+                            // The level where it changes, as a tree's rows say it: the indent says nothing aloud.
+                            val detail = detailOf(shown, index)
+                            if (detail.isNotEmpty()) {
+                                Text(detail, style = MaterialTheme.typography.bodyMedium, color = quiet())
                             }
                         }
                     }

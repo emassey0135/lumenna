@@ -72,7 +72,7 @@ class PairingSession(
 
     /**
      * Joins with `entered`, or with the code on the clipboard when it is empty — never this
-     * device's own, copied while it waits. Entering a code while waiting gives up the wait,
+     * device's own, which Copy Code put there. Entering a code while waiting gives up the wait,
      * then joins.
      */
     fun join(entered: String): String {
@@ -102,7 +102,7 @@ class PairingSession(
         reply = null
     }
 
-    /** Copies this device's code again, saying so. */
+    /** Copies this device's code, as the person asked, saying so. */
     fun copyCode() {
         val shown = code ?: return
         (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
@@ -128,10 +128,9 @@ class PairingSession(
         val prompt = object : PairingPrompt {
             override fun showCode(code: String) {
                 main.post {
+                    // Copied only when the person asks (Copy Code): the clipboard is theirs.
                     this@PairingSession.code = code
-                    (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-                        .setPrimaryClip(ClipData.newPlainText("Pairing code", code))
-                    say("${words.waiting} ${words.copied}")
+                    say(words.waiting)
                 }
             }
 

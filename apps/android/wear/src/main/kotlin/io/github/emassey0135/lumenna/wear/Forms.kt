@@ -25,6 +25,7 @@ import io.github.emassey0135.lumenna.blockFormFields
 import io.github.emassey0135.lumenna.flag
 import io.github.emassey0135.lumenna.help
 import io.github.emassey0135.lumenna.name
+import io.github.emassey0135.lumenna.projectChoices
 import io.github.emassey0135.lumenna.taskFormFields
 import io.github.emassey0135.lumenna.text
 import io.github.emassey0135.lumenna.withFlag
@@ -107,9 +108,10 @@ fun AddTaskScreen(core: Core, navigator: Navigator, prefix: String) {
  * changed, then what can be done to it.
  */
 @Composable
-fun TaskScreen(core: Core, navigator: Navigator, id: String, changes: Long) {
-    var task by remember(id) { mutableStateOf<TaskDetail?>(null) }
-    var fields by remember(id) { mutableStateOf<TaskFields?>(null) }
+fun TaskScreen(core: Core, navigator: Navigator, screen: Screen.Task, changes: Long) {
+    val id = screen.id
+    var task by screen.shown
+    var fields by screen.fields
     LaunchedEffect(id, changes) {
         val shown = runCatching { core.lumenna.showTask(id).task }.getOrNull()
         // Another device's change follows unless this one is part way through editing.
@@ -128,9 +130,23 @@ fun TaskScreen(core: Core, navigator: Navigator, id: String, changes: Long) {
         }
         item { Heading(current.title) }
         // The core's fields, in its order, as the phone has them: the priority a choice among
-        // the core's options, the rest lines from the system's input screen.
+        // the core's options, the project one of the projects, the rest lines from the
+        // system's input screen.
         taskFormFields.forEach { field ->
             val text = TaskField.of(field)
+            if (field.key == "project") {
+                // A list to choose from, as the watch's other picks are: the projects in tree
+                // order (`projectOptions`), each saying its level where it changes.
+                item {
+                    Button(
+                        onClick = { navigator.choose(field.label, core.projectChoices(current.project.orEmpty())) { fields = form.copy(project = it.key) } },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(field.label) },
+                        secondaryLabel = { Text(form.project) },
+                    )
+                }
+                return@forEach
+            }
             if (text != null) {
                 item { TextFieldButton(field.label, text.get(form), field.example) { fields = text.set(form, it) } }
                 return@forEach

@@ -1,7 +1,5 @@
 package io.github.emassey0135.lumenna
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
 import android.net.wifi.WifiManager
