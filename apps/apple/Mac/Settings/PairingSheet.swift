@@ -66,7 +66,7 @@ final class PairingSheet: NSViewController {
 
     @objc private func waitForOther() { start(code: nil) }
 
-    /// Copies this Mac's code again, as when it was shown.
+    /// Copies this Mac's code, which only Copy Code does.
     @objc private func copyTheCode() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(code.stringValue, forType: .string)
@@ -77,7 +77,7 @@ final class PairingSheet: NSViewController {
     /// which is how a code sent from the other device usually arrives.
     @objc private func pairWithCode() {
         var given = entry.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        // This Mac's own code, copied while it waits, is never the other device's.
+        // This Mac's own code, if Copy Code copied it, is never the other device's.
         if given.isEmpty, let pasted = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
            code.isHidden || pasted != code.stringValue {
             given = pasted
@@ -144,15 +144,13 @@ final class PairingSheet: NSViewController {
         }
     }
 
-    /// Shows this Mac's code, to read out, copy or send to the other device.
+    /// Shows this Mac's code, to read out, or copy with Copy Code.
     fileprivate func show(code text: String) {
         code.stringValue = text
         code.isHidden = false
         copyCode.isHidden = false
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        // Copied only when asked, by Copy Code: the clipboard is the person's.
         say(words.waiting)
-        Announcer.say(words.copied)
     }
 
     /// Asks whether the words match. The pairing thread waits for the answer.

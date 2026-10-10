@@ -91,7 +91,7 @@ final class PairingViewController: UIViewController {
     /// which is how a code sent from the other device usually arrives.
     private func pairWithEnteredCode() {
         var code = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        // This device's own code, copied while it waits, is never the other device's.
+        // This device's own code, if Copy Code copied it, is never the other device's.
         if code.isEmpty, let pasted = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines),
            self.code.isHidden || pasted != self.code.text {
             code = pasted
@@ -114,7 +114,7 @@ final class PairingViewController: UIViewController {
         start(code: code)
     }
 
-    /// Copies this device's code again, as when it was shown.
+    /// Copies this device's code, which only Copy Code does.
     private func copyTheCode() {
         UIPasteboard.general.string = code.text
         Announcer.say(words.copied)
@@ -164,15 +164,14 @@ final class PairingViewController: UIViewController {
         }
     }
 
-    /// Shows this device's code, to read out, copy or send to the other device.
+    /// Shows this device's code, to read out, or copy with Copy Code.
     fileprivate func show(code text: String) {
         status.text = words.waiting
         code.text = text
         code.isHidden = false
         copyCode.isHidden = false
-        UIPasteboard.general.string = text
+        // Copied only when asked, by Copy Code: the clipboard is the person's.
         UIAccessibility.post(notification: .layoutChanged, argument: status)
-        Announcer.say(words.copied)
     }
 
     /// Asks whether the words match. The pairing thread waits for the answer.

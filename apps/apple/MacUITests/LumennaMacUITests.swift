@@ -289,6 +289,54 @@ final class LumennaMacUITests: XCTestCase {
         (parent ?? window).staticTexts.matching(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", words, words)).firstMatch
     }
 
+    func testATasksTitleSavesOnReturnAndItsProjectIsChosenFromItsProjects() {
+        menu(sidebarRow("Projects"), "New Project…")
+        answer("Work", with: "Add")
+        XCTAssertTrue(sidebarRow("Work").waitForExistence(timeout: 5))
+        menu(sidebarRow("Work"), "New Project Inside…")
+        answer("Reports", with: "Add")
+        place("Tasks")
+        addTask("draft")
+        window.outlines["Tasks"].staticTexts["draft"].click()
+        let title = window.textFields["Title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5), app.debugDescription)
+        enter("draft the essay", into: title)
+        // Return saves: a title is one line.
+        title.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(window.outlines["Tasks"].staticTexts["draft the essay"].waitForExistence(timeout: 5), "saved by Return")
+
+        let project = window.popUpButtons["Project"]
+        XCTAssertTrue(project.waitForExistence(timeout: 5), app.debugDescription)
+        project.click()
+        // The projects in tree order, a level said where it changes.
+        let reports = app.menuItems.matching(NSPredicate(format: "title BEGINSWITH 'Reports' OR label BEGINSWITH 'Reports'")).firstMatch
+        XCTAssertTrue(reports.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertEqual(reports.title, "Reports, level 2", "VoiceOver's name for it")
+        reports.click()
+        app.typeKey("s", modifierFlags: .command)
+        XCTAssertEqual(project.value as? String, "Reports")
+        window.outlines["Tasks"].staticTexts["draft the essay"].click()
+        XCTAssertTrue(project.waitForExistence(timeout: 5))
+        XCTAssertEqual(project.value as? String, "Reports", "kept once saved")
+    }
+
+    func testGoToDayTakesATypedDayAndAsksAgainForOneItCannotRead() {
+        XCTAssertTrue(window.outlines["The day"].waitForExistence(timeout: 5))
+        app.typeKey("j", modifierFlags: .command)
+        let field = app.sheets.textFields["Day"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5), app.debugDescription)
+        enter("someday soon", into: field)
+        app.sheets.buttons["Go"].click()
+        // Asked again, saying why, with what was typed still there.
+        XCTAssertTrue(app.sheets.textFields["Day"].waitForValue("someday soon"), app.debugDescription)
+        XCTAssertTrue(app.sheets.staticTexts.containing(NSPredicate(format: "value CONTAINS[c] 'someday soon'")).firstMatch.exists)
+        enter("12 October", into: app.sheets.textFields["Day"])
+        app.sheets.buttons["Go"].click()
+        XCTAssertTrue(app.sheets.firstMatch.waitForNonExistence(timeout: 5))
+        let title = window.title
+        XCTAssertTrue(title.contains("12 October") || title.contains("October 12"), title)
+    }
+
     // MARK: - Organising, from the sidebar
 
     func testAProjectIsMadeRenamedArchivedAndDeletedFromTheSidebar() {

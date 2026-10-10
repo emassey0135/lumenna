@@ -354,7 +354,11 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
     }
 
     private func show(_ date: Date) {
-        day = Calendar.current.isDateInToday(date) ? nil : Clock.isoDay(date)
+        showDay(iso: Clock.isoDay(date))
+    }
+
+    private func showDay(iso: String) {
+        day = iso == Clock.isoDay(.now) ? nil : iso
         reload()
         // A new day is a new screen's worth: say it, and start at its top.
         if outline.numberOfRows > 0 { outline.selectRowIndexes([0], byExtendingSelection: false) }
@@ -381,24 +385,48 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         if announcing { Announcer.say(summary.stringValue) }
     }
 
-    @objc func goToDay(_ sender: Any?) {
+    @objc func goToDay(_ sender: Any?) { askDay(typed: "", problem: nil) }
+
+    /// The core's question, answered by typing a day ("next friday", "12 October") or with
+    /// the system's calendar. A day the core cannot read asks again, saying why, with what was
+    /// typed still there.
+    private func askDay(typed: String, problem: String?) {
         guard let window = view.window else { return }
-        let alert = NSAlert()
-        // The core's question, asked with the system's calendar rather than typed.
         let question = TextQuestion.goToDay
+        let alert = NSAlert()
         alert.messageText = question.title
+        alert.informativeText = [problem, question.hint].compactMap { $0 }.joined(separator: "\n\n")
+        let field = NSTextField(string: typed)
+        field.placeholderString = question.label
+        field.setAccessibilityLabel(question.label)
+        field.setAccessibilityHelp(question.hint)
         let picker = NSDatePicker()
         picker.datePickerStyle = .clockAndCalendar
         picker.datePickerElements = .yearMonthDay
         picker.dateValue = shownDate
         picker.sizeToFit()
         picker.setAccessibilityLabel(question.label)
-        alert.accessoryView = picker
+        let stack = NSStackView(views: [field, picker])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        field.widthAnchor.constraint(equalToConstant: max(picker.frame.width, 240)).isActive = true
+        stack.frame = NSRect(x: 0, y: 0, width: max(picker.frame.width, 240), height: picker.frame.height + 32)
+        alert.accessoryView = stack
         alert.addButton(withTitle: question.yes)
         alert.addButton(withTitle: "Cancel")
-        alert.window.initialFirstResponder = picker
+        alert.window.initialFirstResponder = field
         alert.beginSheetModal(for: window) { [weak self] response in
-            if response == .alertFirstButtonReturn { self?.show(picker.dateValue) }
+            guard let self, response == .alertFirstButtonReturn else { return }
+            let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            let named = text.isEmpty ? Clock.isoDay(picker.dateValue) : text
+            do {
+                // The core reads the day; the one it found is kept, so the days step from it.
+                let found = try self.core.lumenna.plan(date: named).date
+                self.showDay(iso: found)
+            } catch {
+                DispatchQueue.main.async { self.askDay(typed: text, problem: error.sentence) }
+            }
         }
     }
+
 }
