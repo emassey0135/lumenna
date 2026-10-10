@@ -190,19 +190,10 @@ impl Dialog {
         }
     }
 
-    /// Pairs with the code typed in — or, if nothing was typed, the one on the clipboard,
-    /// which is how a code sent from the other device usually arrives.
+    /// Pairs with the code typed or pasted in. The clipboard is never read unasked: nobody
+    /// could tell it was, and it would send whatever happened to be copied.
     async fn with_code(self: &Rc<Self>) {
-        let mut code = self.their_code.text().trim().to_owned();
-        if code.is_empty() {
-            let pasted = self.their_code.clipboard().read_text_future().await.ok().flatten();
-            // Not this device's own code, which Copy Code may have put on the clipboard.
-            let own = self.my_code.text();
-            if let Some(pasted) = pasted.map(|p| p.trim().to_owned()).filter(|p| !p.is_empty() && *p != own) {
-                self.their_code.set_text(&pasted);
-                code = pasted;
-            }
-        }
+        let code = self.their_code.text().trim().to_owned();
         if code.is_empty() {
             prompts::tell(&self.window, &words().need_code).await;
             prompts::focus_on(&self.their_code);
@@ -236,10 +227,6 @@ pub async fn run(parent: &gtk::Window, lumenna: Arc<Lumenna>) -> Option<String> 
     let their_code = gtk::Entry::builder().activates_default(false).build();
     let their_label = gtk::Label::builder().label(marked(&words.their_code, 'o')).use_underline(true).xalign(0.0).build();
     their_label.set_mnemonic_widget(Some(&their_code));
-    // Shown, and read with the field as its description: a placeholder would go as soon as
-    // anything was typed.
-    let clipboard = gtk::Label::builder().label(&words.empty_means).wrap(true).xalign(0.0).build();
-    their_code.update_property(&[gtk::accessible::Property::Description(&words.empty_means)]);
     let with_code = gtk::Button::with_mnemonic(&marked(&words.join, 'P'));
     let status = gtk::Label::builder().wrap(true).xalign(0.0).build();
     let cancel = gtk::Button::with_mnemonic("_Cancel");
@@ -259,7 +246,6 @@ pub async fn run(parent: &gtk::Window, lumenna: Arc<Lumenna>) -> Option<String> 
         copy_code.upcast_ref(),
         their_label.upcast_ref(),
         their_code.upcast_ref(),
-        clipboard.upcast_ref(),
         with_code.upcast_ref(),
         status.upcast_ref(),
     ] {
