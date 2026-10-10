@@ -22,15 +22,8 @@ import {
 } from "react-aria-components";
 import { perform } from "./actions";
 import { core } from "./core";
-import type { Action, TaskDetail, TaskFields } from "./core";
+import type { Action, Choice, TaskDetail, TaskFields } from "./core";
 import { say } from "./say";
-
-const PRIORITIES = [
-  { id: 1, name: "Priority 1, highest" },
-  { id: 2, name: "Priority 2" },
-  { id: 3, name: "Priority 3" },
-  { id: 4, name: "Priority 4, none" },
-];
 
 export interface DetailsHandle {
   /** Puts focus on the first field. */
@@ -48,6 +41,7 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
     const [fields, setFields] = useState<TaskFields | undefined>();
     const [state, setState] = useState("");
     const [projects, setProjects] = useState<string[]>([]);
+    const [priorities, setPriorities] = useState<Choice[]>([]);
     const [failure, setFailure] = useState<string | undefined>();
     const title = useRef<HTMLInputElement>(null);
 
@@ -64,8 +58,8 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
       const editing = task?.id === props.id && fields && original && !same(fields, original);
       if (editing) return;
       let current = true;
-      void Promise.all([core.task(props.id), core.projects()]).then(
-        ([shown, projects]) => {
+      void Promise.all([core.task(props.id), core.projects(), core.priorities()]).then(
+        ([shown, projects, priorities]) => {
           if (!current) return;
           setFailure(undefined);
           setTask(shown.task);
@@ -73,6 +67,7 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
           setFields(shown.fields);
           setState(shown.state);
           setProjects(projects);
+          setPriorities(priorities);
         },
         (error: Error) => {
           if (!current) return;
@@ -151,7 +146,9 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
               <SelectValue />
             </Button>
             <Popover>
-              <ListBox items={PRIORITIES}>{(item) => <ListBoxItem id={item.id}>{item.name}</ListBoxItem>}</ListBox>
+              <ListBox items={priorities.map((p) => ({ id: Number(p.id), name: p.title }))}>
+                {(item) => <ListBoxItem id={item.id}>{item.name}</ListBoxItem>}
+              </ListBox>
             </Popover>
           </Select>
           {field("Estimate", fields.estimate, "estimate", "Such as 45m or 1h30m. Empty for none.")}

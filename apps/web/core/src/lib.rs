@@ -254,6 +254,19 @@ pub fn task_fields(task: Ts<TaskDetail>) -> Out<TaskFields> {
     out(Ok(lumenna_surface::task_fields(task.to_rust()?)))
 }
 
+/// The priorities a task can have, as the details form offers them.
+#[derive(Serialize, serde::Deserialize, Tsify)]
+pub struct Priorities {
+    /// Each one, highest first: `id` is the number.
+    pub choices: Vec<Choice>,
+}
+
+/// The priorities a task can have, in the core's words.
+#[wasm_bindgen]
+pub fn priorities() -> Out<Priorities> {
+    js(&Priorities { choices: lumenna_surface::priorities() })
+}
+
 /// What saving `fields` over `task` sends, or nothing if no field changed — only what
 /// changed, so a concurrent edit on another device is not reverted.
 #[wasm_bindgen(js_name = taskEdit)]

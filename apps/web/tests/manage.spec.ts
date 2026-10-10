@@ -99,6 +99,12 @@ test("a planning setting applies when its field is left, and says so", async ({ 
   const settings = page.getByRole("dialog", { name: "Settings" });
   await expect(settings.getByRole("tab", { name: "Planning" })).toHaveAttribute("aria-selected", "true");
   await axe(page);
+  // Each setting as the core describes it: its name, its control, what it can be.
+  await expect(settings.getByRole("checkbox", { name: "Completing a task completes its subtasks" })).toBeVisible();
+  await expect(settings.getByRole("button", { name: /Announcements/ })).toContainText("Full sentences");
+  await expect(settings.getByRole("button", { name: /Week starts on/ })).toBeVisible();
+  // A device's own settings are not a browser's.
+  await expect(settings.getByText("Backups go to")).toHaveCount(0);
   await settings.getByRole("textbox", { name: "Day ends" }).fill("21:30");
   await settings.getByRole("textbox", { name: "Day ends" }).press("Tab");
   await expect(page.locator('[aria-live="polite"]')).toContainText("21:30");

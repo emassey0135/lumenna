@@ -1,6 +1,11 @@
 // Settings, as the desktop apps have them: Planning, Devices, Backups, and Export and Import —
 // each a tab. A setting applies as it is made (a text field when it is left), and says so.
 //
+// Each setting describes itself (`Setting`): its name, its control, what it can be and what
+// it does. Planning lists those that sync; the rest are a device's own — where its backups go,
+// how often, its clock — which a browser does not have: it backs up by download and words
+// times as its locale does.
+//
 // A browser has no folder to back up into and nothing running to do it on a schedule, so a
 // backup here is a download, asked for; restoring and importing read a file the person chooses.
 
@@ -27,24 +32,8 @@ import {
 } from "react-aria-components";
 import { core } from "./core";
 import { DevicesPage } from "./Devices";
-import type { ExportChoice } from "./core";
+import type { ExportChoice, Setting } from "./core";
 import { say } from "./say";
-
-const VERBOSITIES = [
-  { id: "full", name: "Full sentences" },
-  { id: "terse", name: "Terse" },
-];
-
-const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"].map((day) => ({
-  id: day,
-  name: day[0].toUpperCase() + day.slice(1),
-}));
-
-const TIMES = [
-  { key: "day-start", label: "Day starts" },
-  { key: "day-end", label: "Day ends" },
-  { key: "all-day-reminder-hour", label: "All-day reminders at" },
-];
 
 /** Offers `data` as a file to save, called `name`. */
 function download(name: string, data: BlobPart, type: string) {
@@ -99,14 +88,16 @@ export function Settings(props: {
 }
 
 function Planning(props: { revision: number }) {
-  const [known, setKnown] = useState<Record<string, string>>({});
-  const [times, setTimes] = useState<Record<string, string>>({});
+  const [settings, setSettings] = useState<Setting[]>([]);
+  // What is typed in a text field and not yet applied, by key.
+  const [typed, setTyped] = useState<Record<string, string>>({});
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    void core.settings().then((settings) => {
-      setKnown(settings);
-      setTimes(Object.fromEntries(TIMES.map(({ key }) => [key, settings[key] ?? ""])));
+    void core.settings().then((all) => {
+      const shown = all.filter((setting) => setting.syncs);
+      setSettings(shown);
+      setTyped(Object.fromEntries(shown.map((setting) => [setting.key, setting.value])));
     });
   }, [props.revision, reload]);
 
@@ -119,55 +110,72 @@ function Planning(props: { revision: number }) {
     setReload((r) => r + 1);
   };
 
+  const control = (setting: Setting) => {
+    const { key, title, value, hint } = setting;
+    const options = setting.options ?? [];
+    if (setting.kind === "toggle") {
+      const on = options[0]?.id ?? "true";
+      const off = options[1]?.id ?? "false";
+      return (
+        <div key={key}>
+          <Checkbox className="check" isSelected={value === on} onChange={(checked) => void set(key, checked ? on : off)}>
+            <span className="box" aria-hidden="true" />
+            {title}
+          </Checkbox>
+          {hint && <p className="quiet">{hint}</p>}
+        </div>
+      );
+    }
+    if (setting.kind === "choice") {
+      // A value set elsewhere that is not among the options is still the value.
+      const items = options.some((o) => o.id === value) ? options : [...options, { id: value, title: value, depth: 0 }];
+      return (
+        <Select key={key} className="field" value={value} onChange={(chosen) => void set(key, String(chosen))}>
+          <Label>{title}</Label>
+          <Button>
+            <SelectValue />
+          </Button>
+          {hint && (
+            <Text slot="description" className="quiet">
+              {hint}
+            </Text>
+          )}
+          <Popover>
+            <ListBox items={items}>{(item) => <ListBoxItem id={item.id}>{item.title}</ListBoxItem>}</ListBox>
+          </Popover>
+        </Select>
+      );
+    }
+    const changed = () => (typed[key] ?? "") !== value;
+    const description = hint || (setting.kind === "time" ? "A time, such as 8:00 or 22:30." : "");
+    return (
+      <TextField
+        key={key}
+        className="field"
+        value={typed[key] ?? ""}
+        onChange={(text) => setTyped((now) => ({ ...now, [key]: text }))}
+        // Applied when the field is left, as the desktop apps' are.
+        onBlur={() => {
+          if (changed()) void set(key, typed[key] ?? "");
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && changed()) void set(key, typed[key] ?? "");
+        }}
+      >
+        <Label>{title}</Label>
+        <Input />
+        {description && (
+          <Text slot="description" className="quiet">
+            {description}
+          </Text>
+        )}
+      </TextField>
+    );
+  };
+
   return (
     <>
-      <Checkbox
-        className="check"
-        isSelected={known["cascade-complete-subtasks"] === "true"}
-        onChange={(on) => void set("cascade-complete-subtasks", on ? "true" : "false")}
-      >
-        <span className="box" aria-hidden="true" />
-        Completing a task completes its subtasks
-      </Checkbox>
-      {TIMES.map(({ key, label }) => (
-        <TextField
-          key={key}
-          className="field"
-          value={times[key] ?? ""}
-          onChange={(value) => setTimes((now) => ({ ...now, [key]: value }))}
-          // Applied when the field is left, as the desktop apps' are.
-          onBlur={() => {
-            if ((times[key] ?? "") !== (known[key] ?? "")) void set(key, times[key] ?? "");
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && (times[key] ?? "") !== (known[key] ?? "")) void set(key, times[key] ?? "");
-          }}
-        >
-          <Label>{label}</Label>
-          <Input />
-          <Text slot="description" className="quiet">
-            A time, such as 8:00 or 22:30.
-          </Text>
-        </TextField>
-      ))}
-      <Select className="field" value={known.verbosity ?? "full"} onChange={(key) => void set("verbosity", String(key))}>
-        <Label>Announcements</Label>
-        <Button>
-          <SelectValue />
-        </Button>
-        <Popover>
-          <ListBox items={VERBOSITIES}>{(item) => <ListBoxItem id={item.id}>{item.name}</ListBoxItem>}</ListBox>
-        </Popover>
-      </Select>
-      <Select className="field" value={known["week-start"] ?? "monday"} onChange={(key) => void set("week-start", String(key))}>
-        <Label>Week starts on</Label>
-        <Button>
-          <SelectValue />
-        </Button>
-        <Popover>
-          <ListBox items={WEEKDAYS}>{(item) => <ListBoxItem id={item.id}>{item.name}</ListBoxItem>}</ListBox>
-        </Popover>
-      </Select>
+      {settings.map(control)}
       <p className="quiet">These sync to all your devices.</p>
     </>
   );

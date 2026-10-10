@@ -28,6 +28,7 @@ import init, {
   candidateText,
   choiceText,
   placeQuickAddPrefix,
+  priorities,
   placeQuery,
   placeTitle,
   rowText,
@@ -39,6 +40,8 @@ import init, {
 import type {
   Action,
   Answer,
+  Choice,
+  Setting,
   BlockDefaults,
   BlockFields,
   BlockScope,
@@ -143,6 +146,9 @@ const api = {
     const task = store().showTask(id);
     return { task, fields: taskFields(task), state: taskStateText(task) };
   },
+
+  /** The priorities a task can have, as the details form offers them. */
+  priorities: (): Choice[] => priorities().choices,
 
   /** The projects, by name, for the details form's choice. */
   projects: (): string[] => store().listProjects().rows.map((row) => row.title),
@@ -358,10 +364,8 @@ const api = {
   // Settings, backups and exports.
   // -------------------------------------------------------------------------------------
 
-  /** Every setting, by key. */
-  settings(): Record<string, string> {
-    return Object.fromEntries(store().settings(undefined).settings.map((setting) => [setting.key, setting.value]));
-  },
+  /** Every setting, each with its name, its control and what it can be. */
+  settings: (): Setting[] => store().settings(undefined).settings,
 
   setSetting: (key: string, value: string): string => said(store().setSetting(key, value)),
 
