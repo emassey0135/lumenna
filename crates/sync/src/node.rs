@@ -58,6 +58,8 @@ pub(crate) async fn bind(
     // Standard DNS-SD, so every platform's mDNS hears it; a network that forbids multicast
     // leaves it hearing nothing rather than refusing everything else.
     let local = LocalLookup::start(endpoint.id(), service, advertise);
+    // A browser hears no local network, so asking it only delays every first lookup.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     if let Ok(lookup) = endpoint.address_lookup() {
         lookup.add(local.clone());
     }
