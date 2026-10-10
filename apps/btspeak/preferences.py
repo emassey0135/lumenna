@@ -185,8 +185,8 @@ def pairing_words(session: Session, name: str = "this device") -> dict:
 
 def ask_code(session: Session, own: str = "") -> str | None:
     """The other device's code: typed, or, left empty, the clipboard's, where a code sent from
-    the other device usually arrives. This device's own code, copied while it waits, is never
-    the other's. None if cancelled; empty if there is no code to be had."""
+    the other device usually arrives. This device's own code, if it was copied, is never the
+    other's. None if cancelled; empty if there is no code to be had."""
     words = pairing_words(session)
     text = dialogs.request_input(f"{words['their_code']}. {words['empty_means']}", default_text="")
     if text is None:
@@ -245,6 +245,12 @@ def run_pairing(session: Session, params: dict) -> str:
             dialogs.view_lines([shown["code"]])
         return ""
 
+    def copy_code() -> str:
+        # Only when asked: the Blazie clipboard is the desktop's too, and the person's own.
+        clipboard.copy(shown["code"], False)
+        dialogs.show_message(words["copied"])
+        return ""
+
     def cancel(menu) -> None:
         shown["cancel"] = True
         menu.close()
@@ -260,6 +266,7 @@ def run_pairing(session: Session, params: dict) -> str:
     while True:
         items = [
             dialogs.DynamicMenuItem(title=lambda: shown["status"], action=read_code),
+            *([dialogs.DynamicMenuItem(title=session.sentence(words["copy_code"]), action=copy_code)] if shown["code"] else []),
             *([] if params else [dialogs.DynamicMenuItem(title=session.sentence(words["join"]), action=code_instead)]),
             dialogs.DynamicMenuItem(title="Cancel", action=cancel),
         ]
@@ -293,11 +300,9 @@ def run_pairing(session: Session, params: dict) -> str:
             continue
         if event.get("code"):
             shown["code"] = event["code"]
-            # Copied, as every app does: the Blazie clipboard is the desktop's too.
-            clipboard.copy(event["code"], False)
             named = pairing_words(session, event.get("name") or "this device")
             # Enter on the line shows the code alone, to read a character at a time.
-            shown["status"] = f"{named['waiting']} {named['copied']} {named['my_code']}: {event['code']}"
+            shown["status"] = f"{named['waiting']} {named['my_code']}: {event['code']}"
         elif event.get("words"):
             matched = dialogs.request_confirmation(
                 f"{session.sentence(words['match_title'])} {words['match_message']} {', '.join(event['words'])}",

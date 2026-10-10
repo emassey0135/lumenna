@@ -102,6 +102,20 @@ class Menus(unittest.TestCase):
         self.assertEqual(shown["repetition"], "every monday")
         self.assertEqual((shown["priority"], shown["project"], shown["labels"]), (1, "Home", ["garden"]))
 
+    def test_the_edit_form_offers_the_projects_with_their_level_and_a_one_line_title(self):
+        self.call("project.add", name="Work")
+        self.call("project.add", name="Reports", parent="Work")
+        self.call("task.add", text="file the summary")
+        script = self.run_script(
+            [("context", "file the summary", "Edit"), ("form", {"project": "Reports"}), ("back",)],
+            lambda: tasks.task_list(self.session),
+        )
+        fields = {f.key: f for f in script.forms[0]}
+        self.assertEqual(fields["project"].field_type, "choice")
+        self.assertEqual(list(fields["project"].choices.values()), ["Inbox", "Work", "Reports, level 2"])
+        self.assertEqual(fields["title"].field_type, "text")
+        self.assertEqual(self.task("file the summary")["project"], "Reports")
+
     def test_a_task_can_wait_for_another_and_become_a_subtask(self):
         self.call("task.add", text="paint")
         self.call("task.add", text="buy paint")
@@ -591,6 +605,21 @@ class Menus(unittest.TestCase):
         said = play([("file", str(written[0]))])
         self.assertTrue(preferences.import_file(self.session))
         self.assertTrue(said.finished())
+
+    def test_the_pairing_code_is_copied_only_when_asked(self):
+        btspeak_stub._clipboard[0] = "the person's own"
+        # Waiting shows the code, and leaves the clipboard alone.
+        script = play([("choose", "Wait for the other device"), ("wait",), ("back",)])
+        preferences.pair(self.session)
+        self.assertTrue(script.finished(), script.steps)
+        self.assertEqual(btspeak_stub._clipboard[0], "the person's own")
+        self.assertFalse(any("copied" in said for said in script.said), script.said)
+        # Copy code puts it there.
+        script = play([("choose", "Wait for the other device"), ("wait",), ("menu", "Copy code"), ("back",)])
+        preferences.pair(self.session)
+        self.assertTrue(script.finished(), script.steps)
+        self.assertIn("The code is copied, so it can be pasted on the other device.", script.said)
+        self.assertNotEqual(btspeak_stub._clipboard[0], "the person's own")
 
     def test_pairing_by_a_code_from_the_clipboard_compares_the_words_and_syncs(self):
         other_profile = Path(tempfile.mkdtemp())
