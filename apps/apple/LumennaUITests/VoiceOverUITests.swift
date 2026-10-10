@@ -71,9 +71,17 @@ final class VoiceOverUITests: XCTestCase {
 
     func testThePairingCodeFieldIsFollowedByAPasteButton() throws {
         let settings = app.tabBars.buttons["Settings"]
-        if settings.exists { settings.tap() } else { app.typeKey(",", modifierFlags: .command) }
+        if settings.exists {
+            settings.tap()
+        } else {
+            // The iPad's sidebar, shown first where it starts hidden. Not ⌘,: on the 11-inch
+            // iPad in portrait the first ⌘, after launch went to the system's Settings app.
+            let place = app.cells.matching(NSPredicate(format: "label == 'Settings'")).firstMatch
+            if !(place.waitForExistence(timeout: 2) && place.isHittable) { app.buttons["Show Sidebar"].firstMatch.tap() }
+            place.tap()
+        }
         let devices = app.cells.containing(NSPredicate(format: "label CONTAINS 'Devices and Sync'")).firstMatch
-        XCTAssertTrue(devices.waitForExistence(timeout: 5))
+        XCTAssertTrue(devices.waitForExistence(timeout: 5), app.debugDescription)
         devices.tap()
         let pair = app.buttons["Pair a device"]
         XCTAssertTrue(pair.waitForExistence(timeout: 10))
