@@ -143,6 +143,15 @@ pub fn block_form() -> Vec<FormField> {
     ]
 }
 
+/// What the block form says under Repeats when the block repeats by a rule the repetition
+/// words cannot say, so the field starts empty and saving leaves the rule alone.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+#[must_use]
+pub fn unsayable_repeat_note(block: crate::BlockShown) -> Option<String> {
+    let rule = block.rrule.filter(|_| block.repetition.is_none())?;
+    Some(format!("It repeats by the rule {rule}, which the repetition words cannot say. Leave Repeats empty to keep it."))
+}
+
 /// What the pairing screen says, every sentence and button of it. Only what names the
 /// device is the client's: how it calls itself where it finds the other by itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
