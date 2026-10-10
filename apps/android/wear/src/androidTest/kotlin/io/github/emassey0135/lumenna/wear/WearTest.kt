@@ -98,15 +98,15 @@ class WearTest {
     fun aHeadingFoldsWhatIsUnderItAndSaysWhichItIs() {
         press("Projects")
         assertEquals("collapsed", stateOf("Projects"))
-        assertTrue("what was under it is folded away", rule.onAllNodes(hasText("New Project")).fetchSemanticsNodes().isEmpty())
+        assertTrue("what was under it is folded away", rule.onAllNodes(hasText("New project")).fetchSemanticsNodes().isEmpty())
         press("Projects")
-        shown("New Project").assertExists()
+        shown("New project").assertExists()
     }
 
     @Test
     fun quickAddAsksForTheLineReadsItBackAndAddsTheTask() {
         answers += "call the bank tomorrow p1"
-        press("New Task")
+        press("New task")
         assertEquals("the system's input screen is asked straight away", listOf("New task"), asked)
         said("priority 1").assertExists()
         press("Add")
@@ -118,7 +118,7 @@ class WearTest {
     @Test
     fun quickAddOffersWhatFinishesTheLastWord() {
         answers += "call the bank #In"
-        press("New Task")
+        press("New task")
         val offered = rule.onNode(hasContentDescription("Complete with project Inbox"))
         runCatching { rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasContentDescription("Complete with project Inbox")) }
         offered.performClick()
@@ -143,7 +143,7 @@ class WearTest {
         core.lumenna.addTask("water plants")
         core.changed()
         press("Tasks")
-        shown("water plants").performCustomAccessibilityActionWithLabel("Mark Done")
+        shown("water plants").performCustomAccessibilityActionWithLabel("Mark done")
         rule.waitForIdle()
         assertTrue(core.lumenna.listTasks("").rows.isEmpty())
     }
@@ -152,7 +152,7 @@ class WearTest {
     fun theDayGoesToADaySaidAsAPersonSaysIt() {
         press("Today")
         answers += "tomorrow"
-        press("Go to Day")
+        press("Go to day")
         said("Tomorrow").assertExists()
     }
 
@@ -181,17 +181,28 @@ class WearTest {
         press("calls", substring = true)
         press("Delete")
         said("Tasks wearing it stay").assertExists()
-        press("Delete Label")
+        press("Delete label")
         assertTrue(core.lumenna.listLabels().rows.isEmpty())
     }
 
     @Test
     fun aDevicesActionsAreTheCoresAndSyncNowIsTheScreens() {
         press("Settings")
-        press("Devices and Sync")
-        shown("Sync Now").assertExists()
+        press("Devices and sync")
+        shown("Sync now").assertExists()
         val own = core.lumenna.syncStatus().devices.firstOrNull { it.thisDevice } ?: return
         val actions = shown(own.name).fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.CustomActions).orEmpty().map { it.label }
         assertEquals("this watch cannot unpair itself, and a row does not sync", listOf("Rename"), actions)
+    }
+
+    @Test
+    fun aRowShowsItsPrimaryActionsFirst() {
+        core.lumenna.addTask("water plants")
+        core.changed()
+        press("Tasks")
+        val actions = shown("water plants").fetchSemanticsNode().config
+            .getOrNull(androidx.compose.ui.semantics.SemanticsActions.CustomActions).orEmpty().map { it.label }
+        assertEquals(listOf("Mark done", "Move to trash"), actions.take(2))
+        assertTrue("every action is still offered", "Move to project" in actions)
     }
 }

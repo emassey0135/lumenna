@@ -6,6 +6,7 @@ import io.github.emassey0135.lumenna.core.Answer
 import io.github.emassey0135.lumenna.core.Change
 import io.github.emassey0135.lumenna.core.Choice
 import io.github.emassey0135.lumenna.core.Question
+import io.github.emassey0135.lumenna.core.sentenceCase
 
 // Running a row's actions, for the phone and the watch alike. Which actions a row has, their
 // names, what each asks and what a pick offers are the core's (`Action`, `Lumenna.choices`);
@@ -15,23 +16,35 @@ import io.github.emassey0135.lumenna.core.Question
 /** Something offered for choosing, as a chooser shows it. */
 data class Option(val key: String, val title: String, val detail: String = "", val depth: Int = 0)
 
-/** How a choice the core offers reads: a block by its day and times, in this device's clock. */
+/**
+ * How a choice the core offers reads, in every app's order: a block "<day>, <start> to <end>,
+ * <title>" in this device's clock, as one line; anything else "<title>, <detail>".
+ */
 fun option(choice: Choice): Option {
     val date = choice.date
     val start = choice.start
     return if (date != null && start != null) {
-        Option(
-            choice.id,
-            "${Clock.spokenDay(date)}, ${Clock.time(start)}, ${choice.title}",
-            choice.end?.let { "${Clock.time(start)} to ${Clock.time(it)}" }.orEmpty(),
-            choice.depth.toInt(),
-        )
+        val span = choice.end?.let { "${Clock.time(start)} to ${Clock.time(it)}" } ?: Clock.time(start)
+        Option(choice.id, "${Clock.spokenDay(date)}, $span, ${choice.title}", "", choice.depth.toInt())
     } else {
         Option(choice.id, choice.title, choice.detail.orEmpty(), choice.depth.toInt())
     }
 }
 
-/** How an app asks an action's question. Cancel is always the app's own, and first. */
+/** An action's name in this platform's capitals: sentence case, as Material and Wear OS write. */
+val Action.name: String get() = sentence.ifEmpty { title }
+
+/**
+ * A question's title in sentence case where it is the action's own name ("New project");
+ * one that names something ("Rename Home Office") keeps it as the core wrote it, since only
+ * the core knows which words are a name.
+ */
+fun Action.asks(title: String): String = if (title == this.title) name else title
+
+/** A fixed button's words — "Delete Label", an answer to choose — in sentence case. */
+fun button(text: String): String = sentenceCase(text)
+
+/** How an app asks an action's question. Cancel is always the app's own, placed as its platform places it. */
 interface Asker {
     /** Whether to go ahead; [yes] goes ahead. */
     fun confirm(action: Action, question: Question.Confirm, yes: () -> Unit)
@@ -85,7 +98,7 @@ fun Core.rowActions(
     form: (Action) -> Unit = {},
     done: (Change) -> Unit = {},
 ): List<RowAction> = actions.map { action ->
-    RowAction(action.title, action.kind, action.destructive, action.subject) { perform(action, asker, form, done) }
+    RowAction(action.name, action.kind, action.destructive, action.subject, action.primary) { perform(action, asker, form, done) }
 }
 
 /** The first of [actions] of one of [kinds]: a key's action on the row in hand. */

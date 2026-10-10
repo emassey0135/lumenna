@@ -35,7 +35,6 @@ import androidx.compose.ui.unit.dp
 import io.github.emassey0135.lumenna.core.ActionKind
 import io.github.emassey0135.lumenna.core.TaskDetail
 import io.github.emassey0135.lumenna.core.TaskFields
-import io.github.emassey0135.lumenna.core.priorities
 import io.github.emassey0135.lumenna.core.taskEdit
 import io.github.emassey0135.lumenna.core.taskFields
 
@@ -83,41 +82,37 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task, chan
             return@ScreenFrame
         }
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-            // The fields, as the watch has them too (`TaskField`).
-            TaskField.beforePriority.forEach { field ->
-                Field(field.title, field.get(form), field.example, field.hint) { fields = field.set(form, it) }
-            }
-
-            Heading("Priority")
-            Column(Modifier.selectableGroup()) {
-                priorities().map { it.id.toInt() to it.title }
-                    .forEach { (level, name) ->
-                        val chosen = form.priority.toInt() == level
+            // The core's fields, in its order, as the watch has them too: the priority a choice
+            // among the core's options, the rest lines of text.
+            taskFormFields.forEach { field ->
+                val text = TaskField.of(field)
+                if (text != null) {
+                    // Prose is corrected as it is typed; a date, a duration or a name is not.
+                    val prose = text == TaskField.TITLE || text == TaskField.NOTES
+                    Field(field.label, text.get(form), field.example, field.help, prose, lines = if (text == TaskField.NOTES) 3 else 1) {
+                        fields = text.set(form, it)
+                    }
+                    return@forEach
+                }
+                Heading(field.label)
+                Column(Modifier.selectableGroup()) {
+                    field.options.forEach { option ->
+                        val level = option.id.toUByte()
+                        val chosen = form.priority == level
                         Row(
                             Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = 48.dp)
-                                .selectable(chosen, role = Role.RadioButton) {
-                                    fields = form.copy(priority = level.toUByte())
-                                }
+                                .selectable(chosen, role = Role.RadioButton) { fields = form.copy(priority = level) }
                                 .padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             RadioButton(selected = chosen, onClick = null)
-                            Text(name, Modifier.padding(start = 12.dp))
+                            Text(option.title, Modifier.padding(start = 12.dp))
                         }
                     }
+                }
             }
-
-            Heading("Notes")
-            OutlinedTextField(
-                value = form.notes,
-                onValueChange = { fields = form.copy(notes = it) },
-                label = { Text("Notes") },
-                placeholder = { Text("Anything else") },
-                minLines = 3,
-                modifier = Modifier.fillMaxWidth(),
-            )
 
             if (current.depends.isNotEmpty()) {
                 Heading("Waits for")
@@ -136,7 +131,7 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task, chan
                 TextButton(modifier = Target, onClick = {
                     core.perform(action, asker, form = {}) { if (action.kind == ActionKind.DELETE) navigator.back() }
                 }) {
-                    Text(action.title, color = if (action.destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
+                    Text(action.name, color = if (action.destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
                 }
             }
         }
@@ -146,14 +141,18 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task, chan
 
 /** A labelled field; [hint] beneath it says what it takes, to TalkBack and on screen. */
 @Composable
-private fun Field(label: String, value: String, example: String, hint: String? = null, changed: (String) -> Unit) {
+private fun Field(label: String, value: String, example: String, hint: String? = null, prose: Boolean = false, lines: Int = 1, changed: (String) -> Unit) {
     OutlinedTextField(
         value = value,
         onValueChange = changed,
         label = { Text(label) },
-        placeholder = { Text(example) },
+        placeholder = example.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
         supportingText = hint?.let { { Text(it) } },
-        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = label == "Title"),
+        minLines = lines,
+        keyboardOptions = KeyboardOptions(
+            capitalization = KeyboardCapitalization.None,
+            autoCorrectEnabled = prose,
+        ),
         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
     )
 }

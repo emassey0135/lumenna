@@ -78,12 +78,14 @@ fun Sidebar(core: Core, changes: Long, current: Destination, choose: (Destinatio
             is SidebarKind.Group -> when (kind.v1) {
                 SidebarGroup.PROJECTS -> "Projects"
                 SidebarGroup.LABELS -> "Labels"
-                SidebarGroup.FILTERS -> "Saved Filters"
+                SidebarGroup.FILTERS -> "Saved filters"
             }
             is SidebarKind.Place -> placeTitle(kind.v1)
         }
         // The core's line is the title, then what is in it: shown beneath it here.
-        Item(key(entry.kind), title, entry.text.removePrefix(title).removePrefix(", "), entry.depth.toInt())
+        // A heading is in sentence case here, where the core's line has it in title case.
+        val rest = if (entry.text.startsWith(title, ignoreCase = true)) entry.text.drop(title.length) else entry.text
+        Item(key(entry.kind), title, rest.removePrefix(", "), entry.depth.toInt())
     } + Item("settings", "Settings")
     val folding = rememberFolding()
     val folds = folded(all, { it.depth }, { it.key }, folding.value)

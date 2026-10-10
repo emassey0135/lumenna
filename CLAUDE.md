@@ -845,7 +845,10 @@ gives the toolchain. Three modules: `app` (the phone), `wear` (Wear OS) and `sha
 - **`run-instrumented-tests.sh`** runs the instrumented tests from APKs already built, with
   `am instrument`, which exits 0 whatever happened, so its summary decides. CI builds once
   and runs it on each emulator. It never uninstalls, unlike `connectedAndroidTest`, but
-  never point it at a device whose own data matters.
+  never point it at a device whose own data matters. It first sets the device up as a
+  person's would be (provisioned, screen kept on) and waits for the same ordinary activity to
+  stay in front: on CI's fresh watch, something took the foreground part way through the
+  tests once a run, and that test found "No compose hierarchies".
 - **The store is in no-backup storage** and `allowBackup` is off: Google's backup would copy
   a store that reaches other devices by pairing.
 - **Background sync is WorkManager** (`SyncWorker`): a round on leaving (expedited on
@@ -863,6 +866,9 @@ phone does.
 - **No text field on a watch**: every line comes from the system's input screen
   (`RemoteInput`, through `TextEntry`), which replaces a whole line; quick add changes or adds
   to it, with completions for its last word beneath. Tests provide their own `TextEntry`.
+- **`AppScaffold` shows the time** at the top of every screen, as Wear OS asks; each list's
+  `ScreenScaffold` moves it aside as it scrolls. A row's primary actions come first in its
+  custom actions and its long-press list.
 - **Rows keep full size at the screen's edges** (`edgeScale = 1f`): scaled, a button fell
   under 48dp and failed the touch-target check.
 - **A row's actions are TalkBack's custom actions and a long press**; the day's rows offer

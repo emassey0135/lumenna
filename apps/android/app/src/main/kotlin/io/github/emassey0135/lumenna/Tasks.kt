@@ -152,8 +152,10 @@ private fun readback(listing: Result<Rows>): String = listing.fold(
         val unresolved = rows.query?.unresolved.orEmpty().map { name ->
             "no ${name.kind} called ${name.name}" + (name.suggestion?.let { ", did you mean $it?" } ?: "")
         }
-        (listOfNotNull(rows.query?.description?.takeIf { it.isNotBlank() }, rows.announcement) + unresolved)
-            .joinToString(". ").replaceFirstChar { it.uppercase() }
+        // An empty listing says what is empty, in the core's words: "The trash is empty."
+        val found = if (rows.rows.isEmpty() && rows.empty.isNotEmpty()) rows.empty else rows.announcement
+        (listOfNotNull(rows.query?.description?.takeIf { it.isNotBlank() }, found) + unresolved)
+            .joinToString(". ") { it.trimEnd('.') }.replaceFirstChar { it.uppercase() }
     },
     onFailure = { (it as? LumennaException)?.sentence ?: it.message.orEmpty() },
 )
@@ -346,7 +348,7 @@ fun QuickAddScreen(core: Core, navigator: Navigator, screen: Screen.QuickAdd) {
         }
     }
 
-    ScreenFrame("New Task", core, navigator, actions = {
+    ScreenFrame("New task", core, navigator, actions = {
         IconButton(onClick = { add() }) { Icon(Icons.Filled.Check, contentDescription = "Add") }
     }) {
         CompletingField(

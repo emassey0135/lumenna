@@ -40,6 +40,9 @@ data class Item(
     val thisDevice: Boolean = false,
 )
 
+/** What a list loads: its items, what is said of them above, and what it says with none. */
+data class Listing(val items: List<Item>, val said: String = "", val empty: String = "")
+
 /**
  * A list of things with what can be done to each: a heading's worth of count above, one
  * TalkBack stop per item, its actions custom actions and a long press.
@@ -49,7 +52,7 @@ fun ItemListScreen(
     title: String,
     core: Core,
     navigator: Navigator,
-    load: () -> Pair<List<Item>, String>,
+    load: () -> Listing,
     changes: Long,
     addLabel: String? = null,
     add: () -> Unit = {},
@@ -58,8 +61,10 @@ fun ItemListScreen(
     actions: (Item) -> List<RowAction> = { emptyList() },
     header: (@Composable () -> Unit)? = null,
 ) {
-    val loaded = remember(changes) { core.attempt(load) ?: (emptyList<Item>() to "") }
-    val (all, count) = loaded
+    val loaded = remember(changes) { core.attempt(load) ?: Listing(emptyList()) }
+    val all = loaded.items
+    // An empty list says what is empty, in the core's words, in place of its count.
+    val count = if (all.isEmpty() && loaded.empty.isNotEmpty()) loaded.empty else loaded.said
     val folding = rememberFolding()
     val folds = folded(all, { it.depth }, { it.key }, folding.value)
     val items = folds.map { it.item }
@@ -118,7 +123,7 @@ fun BrowseScreen(core: Core, navigator: Navigator, changes: Long) {
                 Item("filters", "Saved filters", count(l.listFilters().count, "filter")),
                 Item("blocks", "Blocks", count(l.listBlocks().count, "block")),
                 Item("trash", "Trash", count(l.listTasks("deleted").count, "task")),
-            ) to ""
+            ).let { Listing(it) }
         },
         open = { item ->
             navigator.push(
@@ -149,7 +154,7 @@ fun ProjectsScreen(core: Core, navigator: Navigator, changes: Long) {
                     row.depth.toInt(), RowSpeech.value(row, row.depth), row.actions,
                 )
             }
-            items to rows.announcement
+            Listing(items, rows.announcement, rows.empty)
         },
         addLabel = "Add project",
         add = { core.addNew(SidebarGroup.PROJECTS, prompt) },
@@ -173,7 +178,7 @@ fun LabelsScreen(core: Core, navigator: Navigator, changes: Long) {
             val rows = core.lumenna.listLabels()
             rows.rows.map {
                 Item(it.title, it.title, (listOfNotNull(it.value) + it.state).joinToString(", "), actions = it.actions)
-            } to rows.announcement
+            }.let { Listing(it, rows.announcement, rows.empty) }
         },
         addLabel = "Add label",
         add = { core.addNew(SidebarGroup.LABELS, prompt) },
@@ -193,12 +198,12 @@ fun FiltersScreen(core: Core, navigator: Navigator, changes: Long) {
     val prompt = rememberPrompter()
     val queries = remember(changes) { mutableMapOf<String, String>() }
     ItemListScreen(
-        "Saved Filters", core, navigator, changes = changes,
+        "Saved filters", core, navigator, changes = changes,
         load = {
             val filters = core.lumenna.listFilters()
             queries.clear()
             filters.filters.forEach { queries[it.name] = it.query }
-            filters.filters.map { Item(it.name, it.name, it.query, actions = it.actions) } to filters.announcement
+            Listing(filters.filters.map { Item(it.name, it.name, it.query, actions = it.actions) }, filters.announcement)
         },
         addLabel = "Add filter",
         add = { core.addNew(SidebarGroup.FILTERS, prompt) },
@@ -217,7 +222,13 @@ fun BlocksScreen(core: Core, navigator: Navigator, changes: Long) {
         "Blocks", core, navigator, changes = changes,
         load = {
             val rows = core.lumenna.listBlocks()
-            rows.rows.map { Item(it.id, it.title, it.value.orEmpty(), actions = it.actions) } to rows.announcement
+            // Said as a task row is: when, in this device's clock ("every weekday at 9:00 AM"),
+            // then how long.
+            Listing(
+                rows.rows.map { Item(it.id, it.title, RowSpeech.details(it).orEmpty(), actions = it.actions) },
+                rows.announcement,
+                rows.empty,
+            )
         },
         addLabel = "Add block",
         add = { navigator.push(Screen.BlockForm(BlockPurpose.Add())) },

@@ -99,7 +99,7 @@ class SidebarTest {
 
     @Test
     fun theSidebarListsEveryPlaceAndSaysWhichIsShown() {
-        for (title in listOf("Today", "Tasks", "Projects", "Inbox", "Labels", "Saved Filters", "Blocks", "Trash", "Settings")) {
+        for (title in listOf("Today", "Tasks", "Projects", "Inbox", "Labels", "Saved filters", "Blocks", "Trash", "Settings")) {
             place(title).assertExists()
         }
         place("Today").assertIsSelected()
@@ -121,9 +121,9 @@ class SidebarTest {
 
     @Test
     fun aProjectIsMadeFromItsHeadingAndShownWhenChosen() {
-        act("Projects", "New Project")
+        act("Projects", "New project")
         rule.onNode(hasSetTextAction() and hasText("Name")).performTextInput("Garden")
-        rule.onNode(hasText("Done") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Role)).performClick()
+        rule.onNode(hasText("Add") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Role)).performClick()
         rule.waitUntil(5_000) {
             rule.onAllNodes(SemanticsMatcher("row titled Garden") { it.config.getOrNull(RowTitle) == "Garden" })
                 .fetchSemanticsNodes().isNotEmpty()
@@ -139,6 +139,6 @@ class SidebarTest {
         rule.runOnIdle { core.changed() }
         rule.waitForIdle()
         val actions = place("calls").fetchSemanticsNode().config.getOrNull(SemanticsActions.CustomActions).orEmpty().map { it.label }
-        assertTrue(actions.toString(), listOf("Rename", "Merge Into", "Colour", "Delete").all { it in actions })
+        assertTrue(actions.toString(), listOf("Rename", "Merge into", "Colour", "Delete").all { it in actions })
     }
 }

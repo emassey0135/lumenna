@@ -32,9 +32,54 @@ wait_for() {
 }
 
 wait_for "the device" timeout 60 adb wait-for-device
+booted() { [ "$(adb shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')" = 1 ]; }
+wait_for "the boot to complete" booted
 # Booted is not ready: the package manager answers a little later, and an install sent
 # before it broke off ("Broken pipe"). Then each install is tried a few times.
 wait_for "the package manager" timeout 30 adb shell pm path android
+
+# The device as a person's would be: past its setup screens, awake, and with nothing over the
+# home screen. A fresh Wear OS emulator opens on its setup wizard, and on CI the emulator
+# action's own screen-timeout setting was sent while adb had lost the device ("device not
+# found"), so the screen kept its default. Either way something took the foreground part way
+# through the watch's tests, once a run, and the test running then found "No compose
+# hierarchies".
+adb shell settings put global device_provisioned 1
+adb shell settings put secure user_setup_complete 1
+adb shell settings put system screen_off_timeout 2147483647
+adb shell svc power stayon true
+adb shell input keyevent KEYCODE_WAKEUP
+adb shell wm dismiss-keyguard > /dev/null 2>&1 || true
+# What is in front, as the activity manager says it.
+# Read whole, then searched: under pipefail, a grep that stops early fails the pipe.
+in_front() {
+  local all
+  all=$(adb shell dumpsys activity activities 2> /dev/null | tr -d '\r') || return 1
+  grep -m1 -E 'topResumedActivity|mResumedActivity' <<< "$all"
+}
+# Settled is the same ordinary activity in front for three looks in a row, two seconds apart:
+# not the setup wizard, not a "not responding" dialog, which a just-booted emulator shows.
+settled() {
+  local first now windows
+  first=$(in_front) || return 1
+  if grep -qi -E 'setupwizard|provision' <<< "$first"; then
+    adb shell am force-stop "$(sed -E 's/.* ([a-z0-9_.]+)\/.*/\1/' <<< "$first")" > /dev/null 2>&1 || true
+    adb shell am start -a android.intent.action.MAIN -c android.intent.category.HOME > /dev/null 2>&1 || true
+    return 1
+  fi
+  windows=$(adb shell dumpsys window 2> /dev/null) || return 1
+  if grep -q -E 'mCurrentFocus=.*(Not Responding|Application Error)' <<< "$windows"; then
+    adb shell input keyevent KEYCODE_BACK > /dev/null 2>&1 || true
+    return 1
+  fi
+  for _ in 1 2; do
+    sleep 2
+    now=$(in_front) || return 1
+    [ "$now" = "$first" ] || return 1
+  done
+}
+adb shell am start -a android.intent.action.MAIN -c android.intent.category.HOME > /dev/null 2>&1 || true
+wait_for "the home screen to settle" settled
 install() {
   for attempt in 1 2 3; do
     echo "Installing $1"
@@ -70,5 +115,8 @@ if ! grep -q '^OK (' <<< "$result"; then
   # What crashed, if anything did: the summary only says "Process crashed".
   echo "--- crash log"
   adb logcat -d -b crash | tail -60 || true
+  # What came to the front, and what stopped answering: what took a test's screen away.
+  echo "--- activities resumed, and anything not responding"
+  adb logcat -d -b events | grep -E 'wm_set_resumed_activity|am_anr|wm_on_paused_called' | tail -40 || true
   exit 1
 fi

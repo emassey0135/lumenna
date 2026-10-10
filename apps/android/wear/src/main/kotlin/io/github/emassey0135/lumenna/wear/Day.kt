@@ -60,15 +60,15 @@ fun DayScreen(core: Core, navigator: Navigator, changes: Long) {
                 )
             }
         }
-        item { Button(onClick = { navigator.open(Screen.BlockForm(BlockPurpose.Add(date = plan?.date))) }, modifier = Modifier.fillMaxWidth(), label = { Text("Add Block") }) }
-        item { Button(onClick = { day = step(plan, -1) }, modifier = Modifier.fillMaxWidth(), label = { Text("Previous Day") }) }
+        item { Button(onClick = { navigator.open(Screen.BlockForm(BlockPurpose.Add(date = plan?.date))) }, modifier = Modifier.fillMaxWidth(), label = { Text("Add block") }) }
+        item { Button(onClick = { day = step(plan, -1) }, modifier = Modifier.fillMaxWidth(), label = { Text("Previous day") }) }
         if (day != null) item { Button(onClick = { day = null }, modifier = Modifier.fillMaxWidth(), label = { Text("Today") }) }
-        item { Button(onClick = { day = step(plan, 1) }, modifier = Modifier.fillMaxWidth(), label = { Text("Next Day") }) }
+        item { Button(onClick = { day = step(plan, 1) }, modifier = Modifier.fillMaxWidth(), label = { Text("Next day") }) }
         item {
             // As the phone asks: a day as it is said, read by the core.
             Button(onClick = {
                 entry?.ask("Go to day") { text -> core.attempt { core.lumenna.plan(text) }?.let { day = it.date } }
-            }, modifier = Modifier.fillMaxWidth(), label = { Text("Go to Day") })
+            }, modifier = Modifier.fillMaxWidth(), label = { Text("Go to day") })
         }
     }
 }
@@ -92,7 +92,7 @@ private fun actions(core: Core, navigator: Navigator, entry: TextEntry?, plan: P
                 // Never guessed: one day, or every day, of a repeating block.
                 if (!block.repeats) navigator.open(Screen.BlockForm(BlockPurpose.Series(block.series)))
                 else navigator.choose("Change ${block.title}", listOf(
-                    Option("day", "${Clock.spokenDay(date)} Only"), Option("all", "Every Occurrence"),
+                    Option("day", "${Clock.spokenDay(date)} only"), Option("all", "Every occurrence"),
                 ), "Which occurrences?") { which ->
                     navigator.open(Screen.BlockForm(
                         if (which.key == "day") BlockPurpose.Occurrence(block, date) else BlockPurpose.Series(block.series),

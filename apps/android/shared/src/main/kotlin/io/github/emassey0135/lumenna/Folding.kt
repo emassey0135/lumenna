@@ -69,5 +69,7 @@ data class RowAction(
     val destructive: Boolean = false,
     /** What the core's action is done to, so a key with nothing to do here can say why. */
     val subject: io.github.emassey0135.lumenna.core.Subject? = null,
+    /** Whether a row shows it by itself, before the rest (`Action.primary`). */
+    val primary: Boolean = false,
     val run: () -> Unit,
 )
