@@ -14,7 +14,7 @@ use windows::Win32::UI::Controls::{
     HKM_GETHOTKEY, HKM_SETHOTKEY, HOTKEYF_ALT, HOTKEYF_CONTROL, HOTKEYF_SHIFT, NMHDR, PSN_APPLY, PSN_KILLACTIVE,
     PSN_RESET,
 };
-use windows::Win32::UI::Input::KeyboardAndMouse::VK_DELETE;
+use windows::Win32::UI::Input::KeyboardAndMouse::{VK_DELETE, VK_F2};
 use windows::Win32::UI::WindowsAndMessaging::{
     BN_CLICKED, BS_AUTOCHECKBOX, BS_GROUPBOX, BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL,
     CB_RESETCONTENT, CB_SETCURSEL, CBN_SELCHANGE, CBS_DROPDOWNLIST, EN_KILLFOCUS, ES_AUTOHSCROLL, ES_MULTILINE,
@@ -591,7 +591,7 @@ impl Dialog for Devices<'_> {
 
     fn init(&self, page: HWND) -> bool {
         a11y::make_live(dialog::item(page, STATUS));
-        a11y::set_description(dialog::item(page, DEVICES), "Delete unpairs the selected device.");
+        a11y::set_description(dialog::item(page, DEVICES), "Delete unpairs the selected device, and F2 renames it.");
         self.load(page);
         self.app.devices_page.set(Some(page));
         false
@@ -648,6 +648,11 @@ impl Dialog for Devices<'_> {
                 None
             }
             // Delete in the list unpairs, as it removes in every other list.
+            // F2 renames, as in Explorer.
+            WM_VKEYTOITEM if controls::low_word(wparam.0) == VK_F2.0 => {
+                self.act(page, ActionKind::Rename);
+                Some(-2)
+            }
             WM_VKEYTOITEM if controls::low_word(wparam.0) == VK_DELETE.0 => {
                 self.act(page, ActionKind::Unpair);
                 Some(-2)
@@ -720,7 +725,7 @@ impl Dialog for Backups<'_> {
             .item(Class::Edit, "", FOLDER, READ_ONLY, 7, 47, 182, 14)
             .item(Class::Button, "C&hoose...", CHOOSE, BUTTON, 193, 47, 52, 14)
             .item(Class::Button, "&Back Up Now", BACK_UP, BUTTON, 7, 67, 70, 14)
-            .item(Class::Button, "&Restore From a Backup...", RESTORE, BUTTON, 81, 67, 100, 14)
+            .item(Class::Button, "&Restore from a Backup...", RESTORE, BUTTON, 81, 67, 100, 14)
             .item(Class::Static, &footer, u16::MAX, SS_NOPREFIX.0, 7, 88, 238, 36)
     }
 
@@ -754,7 +759,7 @@ impl Dialog for Backups<'_> {
                 Err(error) => prompts::fail(sheet(page), &sentence(&error)),
             },
             (RESTORE, BN_CLICKED) => {
-                if let Some(said) = import(self.app, sheet(page), "Restore From a Backup", &BACKUPS) {
+                if let Some(said) = import(self.app, sheet(page), "Restore from a Backup", &BACKUPS) {
                     say(page, &said);
                 }
             }

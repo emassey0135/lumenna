@@ -109,7 +109,8 @@ impl Detail {
         let named = |key: &str, letter: char| {
             let found = form.iter().find(|f| f.key == key);
             let label = found.map_or(key, |f| f.label.as_str());
-            (devices::marked(label, letter, '&'), found.map(|f| f.hint.clone()).unwrap_or_default())
+            // A colon after, as every Windows label has.
+            (format!("{}:", devices::marked(label, letter, '&')), found.map(|f| f.hint.clone()).unwrap_or_default())
         };
         // Made in reading order, which is also Tab's.
         let (label, hint) = named("title", 'i');
@@ -130,14 +131,14 @@ impl Detail {
         let (label, hint) = named("notes", 'N');
         let notes = field(&label, WC_EDITW, multiline, NOTES, Column::Full, 4, &hint);
         let waits_style = (LBS_NOTIFY | LBS_NOINTEGRALHEIGHT) as u32 | WS_VSCROLL.0;
-        let waits = field("&Waits for", WC_LISTBOXW, waits_style, WAITS, Column::Full, 3, "The tasks this one waits for. It is blocked until they are done.");
+        let waits = field("&Waits for:", WC_LISTBOXW, waits_style, WAITS, Column::Full, 3, "The tasks this one waits for. It is blocked until they are done.");
         let button = |text: &str, action: Action| {
             (controls::create(pane, WC_BUTTONW, text, BS_PUSHBUTTON as u32 | WS_TABSTOP.0, 0, 0), action)
         };
         let wait_buttons = vec![button("Add...", Action::Kinds(&[ActionKind::WaitFor])), button("Stop Waiting", Action::StopWaiting)];
         a11y::set_name(wait_buttons[0].0, "Add something it waits for");
         a11y::set_name(wait_buttons[1].0, "Stop waiting for the selected task");
-        let state = field("State", WC_EDITW, line | ES_READONLY as u32, STATE, Column::Full, 1, "");
+        let state = field("State:", WC_EDITW, line | ES_READONLY as u32, STATE, Column::Full, 1, "");
         let buttons = vec![
             button("&Save", Action::Save),
             // Named again from the task's own actions whenever one is shown.

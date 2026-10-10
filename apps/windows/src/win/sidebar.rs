@@ -14,7 +14,7 @@ use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{
     NMHDR, NMTREEVIEWW, NMTVKEYDOWN, TVN_ITEMEXPANDEDW, TVN_KEYDOWN, TVN_SELCHANGEDW,
 };
-use windows::Win32::UI::Input::KeyboardAndMouse::VK_DELETE;
+use windows::Win32::UI::Input::KeyboardAndMouse::{VK_DELETE, VK_F2};
 
 use super::app::App;
 use super::controls::{self, rect};
@@ -91,15 +91,21 @@ impl Sidebar {
                 self.tree.expansion_changed(unsafe { &*(lparam.0 as *const NMTREEVIEWW) });
                 Some(0)
             }
-            TVN_KEYDOWN if unsafe { &*(lparam.0 as *const NMTVKEYDOWN) }.wVKey == VK_DELETE.0 => {
-                // Delete here does what it does in every other list: the row's own Delete,
-                // asking first as the context menu's does. After the notification returns,
-                // since deleting rebuilds the tree.
-                // Where there is none, as for the Inbox, the core says why.
+            TVN_KEYDOWN => {
+                // Delete and F2 do what they do in Explorer: the row's own Delete, asking first
+                // as the context menu's does, and its Rename. After the notification returns,
+                // since either rebuilds the tree. Where there is none, as for the Inbox, the
+                // core says why.
+                let key = unsafe { &*(lparam.0 as *const NMTVKEYDOWN) }.wVKey;
+                let kind = match key {
+                    k if k == VK_DELETE.0 => ActionKind::Delete,
+                    k if k == VK_F2.0 => ActionKind::Rename,
+                    _ => return Some(0),
+                };
                 if let Some(entry) = self.selected() {
-                    match actions::of_kind(&entry.actions, &[ActionKind::Delete]) {
+                    match actions::of_kind(&entry.actions, &[kind]) {
                         Some(action) => app.defer(move |app| app.sidebar.act(app, &entry, &action)),
-                        None => actions::say_not_offered(app, &entry.actions, ActionKind::Delete),
+                        None => actions::say_not_offered(app, &entry.actions, kind),
                     }
                 }
                 Some(1)

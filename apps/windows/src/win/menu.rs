@@ -77,7 +77,7 @@ pub const MENUS: [(&str, &[(u16, &str)]); 6] = [
         (0, ""),
         (SYNC_NOW, "&Sync Now\tF5"),
         (BACK_UP, "Back &Up Now"),
-        (RESTORE_BACKUP, "&Restore From a Backup..."),
+        (RESTORE_BACKUP, "&Restore from a Backup..."),
         (EXPORT_IMPORT, "&Export and Import..."),
         (0, ""),
         (SETTINGS, "Se&ttings...\tCtrl+,"),
@@ -117,7 +117,7 @@ pub const MENUS: [(&str, &[(u16, &str)]); 6] = [
         (WAIT_FOR, "&Wait For..."),
         (0, ""),
         (TRASH_TASK, "Move to T&rash\tDelete"),
-        (RESTORE_TASK, "Rest&ore From Trash"),
+        (RESTORE_TASK, "Rest&ore from Trash"),
         (ERASE_TASK, "&Delete from Trash..."),
     ]),
     ("&Day", &[

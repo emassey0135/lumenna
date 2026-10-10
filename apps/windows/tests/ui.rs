@@ -163,7 +163,7 @@ fn space_checks_a_task_off_and_focus_moves_to_the_one_that_took_its_place() {
 fn f6_goes_round_the_panes() {
     let app = App::launch(|lumenna| add(lumenna, "Buy milk"));
     app.post(&[GO_TASKS, "f6"]);
-    assert!(app.focus().starts_with("Edit 'Title'"), "the details: {}", app.focus());
+    assert!(app.focus().starts_with("Edit 'Title:'"), "the details: {}", app.focus());
     app.post(&["f6"]);
     assert!(app.focus().starts_with("Tree 'Places'"), "the places: {}", app.focus());
     app.post(&["f6"]);
@@ -233,7 +233,9 @@ fn delete_in_the_sidebar_asks_before_deleting_a_project() {
     assert!(app.focus().contains("TreeItem 'Garden"), "{}", app.focus());
     app.post(&["delete"]);
     let dialog = app.front();
-    assert!(dialog.iter().any(|l| l.contains("Window 'Delete Garden?'")), "{dialog:#?}");
+    // The question once, as the main instruction, under a title bar naming the app.
+    assert!(dialog.iter().any(|l| l.contains("Window 'Lumenna'")), "{dialog:#?}");
+    assert_eq!(dialog.iter().filter(|l| l.contains("Delete Garden?")).count(), 1, "{dialog:#?}");
     assert!(dialog.iter().any(|l| l.contains("Button 'Cancel'") && l.contains("FOCUSED")), "Cancel is the default: {dialog:#?}");
     app.post(&["esc"]);
     let projects = app.store().list_projects().unwrap();
@@ -633,9 +635,9 @@ fn text_grows_without_a_restart_when_windows_text_size_is_raised() {
         };
         [
             height(app.automation.named(app.window, "Write report"), "row for the task"),
-            height(app.automation.focusable(app.window, "Title"), "Title field"),
+            height(app.automation.focusable(app.window, "Title:"), "Title field"),
             // The first thing named Title is its label.
-            height(app.automation.named(app.window, "Title"), "Title label"),
+            height(app.automation.named(app.window, "Title:"), "Title label"),
         ]
     };
     let before = measure();
@@ -691,4 +693,9 @@ fn a_rows_menu_is_the_cores_and_never_offers_a_task_as_its_own_parent() {
     app.post(&["delete"]);
     let why = lumenna_surface::not_offered(lumenna_surface::ActionKind::Delete, lumenna_surface::Subject::Project, false);
     assert_eq!(app.status(), lumenna_desktop::speech::sentence(&why));
+    // F2 is Rename, as in Explorer; the Inbox keeps its name.
+    app.post(&["f2"]);
+    let why = lumenna_surface::not_offered(lumenna_surface::ActionKind::Rename, lumenna_surface::Subject::Project, false);
+    assert_eq!(app.status(), lumenna_desktop::speech::sentence(&why));
 }
+

@@ -145,6 +145,9 @@ pub fn pick(owner: HWND, title: &str, label: &str, items: &[String]) -> Option<u
 /// A task dialog's buttons say what each does — "Delete and Keep Its Tasks" — so the choice
 /// is read as a sentence rather than as Yes or No to a question.
 pub fn choose(owner: HWND, title: &str, message: &str, actions: &[&str], warning: bool) -> Option<usize> {
+    // The question is the main instruction; the title bar names the app, as Windows' own
+    // task dialogs do, so a screen reader does not read the question twice.
+    let caption = HSTRING::from("Lumenna");
     let title = HSTRING::from(title);
     let message = HSTRING::from(message);
     let texts: Vec<HSTRING> = actions.iter().map(|a| HSTRING::from(*a)).collect();
@@ -158,7 +161,7 @@ pub fn choose(owner: HWND, title: &str, message: &str, actions: &[&str], warning
         hwndParent: owner,
         dwFlags: TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW,
         dwCommonButtons: TDCBF_CANCEL_BUTTON,
-        pszWindowTitle: PCWSTR(title.as_ptr()),
+        pszWindowTitle: PCWSTR(caption.as_ptr()),
         pszMainInstruction: PCWSTR(title.as_ptr()),
         pszContent: PCWSTR(message.as_ptr()),
         cButtons: buttons.len() as u32,
