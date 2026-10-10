@@ -8,14 +8,14 @@
 //! What saving sends is the surface's (`new_block`, `block_edit`): only what changed, so a
 //! concurrent edit to another field elsewhere stands.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 
 use lumenna_surface::{BlockFields, BlockScope, Change, Choice, FieldKind, Lumenna, block_defaults, block_edit, block_form, new_block};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::WindowsAndMessaging::{
     BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL, CB_SETCURSEL,
-    CBN_SELCHANGE, CBS_DROPDOWNLIST, ES_AUTOHSCROLL, ES_AUTOVSCROLL, ES_MULTILINE, ES_NUMBER,
+    CBN_SELCHANGE, CBS_DROPDOWNLIST, EN_CHANGE, ES_AUTOHSCROLL, ES_AUTOVSCROLL, ES_MULTILINE, ES_NUMBER,
     ES_WANTRETURN, IDCANCEL, IDOK, WS_BORDER, WS_TABSTOP, WS_VSCROLL,
 };
 use windows::core::HSTRING;
@@ -71,8 +71,9 @@ const RIGHT: i16 = 7 + COLUMN + 14;
 
 /// What the form is for.
 pub enum Purpose {
-    /// A new block, starting on this date phrase.
-    Add { date: String },
+    /// A new block, starting on this date phrase. While `follow` holds, Starts at is the
+    /// core's `new_block_start` for whatever Day says, until the person changes it.
+    Add { date: String, follow: bool },
     /// Every occurrence of a series.
     Series { id: String },
     /// One day of a repeating series alone.
@@ -105,6 +106,10 @@ struct Form<'a> {
     note: Option<String>,
     heading: String,
     result: RefCell<Option<Change>>,
+    /// Whether Starts at still follows Day: a new block's, until the person changes it.
+    follow: Cell<bool>,
+    /// Set while the form writes Starts at itself, so that is not taken as the person's.
+    writing: Cell<bool>,
 }
 
 impl Form<'_> {
@@ -162,6 +167,25 @@ impl Form<'_> {
             }),
         };
         saved.map_err(|error| sentence(&error))
+    }
+
+    /// Writes Starts at, as the form's own write rather than the person's.
+    fn set_start(&self, hwnd: HWND, start: &str) {
+        self.writing.set(true);
+        controls::set_text(dialog::item(hwnd, START), start);
+        self.writing.set(false);
+    }
+
+    /// Starts at as the core has it for the day Day says, while it still follows Day. A day
+    /// half typed, which the core cannot read yet, leaves it as it is.
+    fn follow_day(&self, hwnd: HWND) {
+        if !self.follow.get() {
+            return;
+        }
+        let date = controls::text(dialog::item(hwnd, DATE));
+        if let Ok(start) = self.lumenna.new_block_start(Some(date)) {
+            self.set_start(hwnd, &start);
+        }
     }
 
     /// Sets the three flags to `kind`'s own.
@@ -267,7 +291,7 @@ impl Dialog for Form<'_> {
         let set = |id, text: &str| controls::set_text(dialog::item(hwnd, id), text);
         let initial = &self.initial;
         set(TITLE, &initial.title);
-        set(START, &initial.start);
+        self.set_start(hwnd, &initial.start);
         set(MINUTES, &initial.minutes);
         for (key, id, value) in [
             ("repeat", REPEAT, &initial.repeat),
@@ -282,7 +306,8 @@ impl Dialog for Form<'_> {
                 set(id, value);
             }
         }
-        if let Purpose::Add { date } = &self.purpose {
+        if let Purpose::Add { date, .. } = &self.purpose {
+            // Starts at is already the core's for this day; setting Day asks again, for the same.
             set(DATE, date);
         }
         let kind = dialog::item(hwnd, KIND);
@@ -332,6 +357,17 @@ impl Dialog for Form<'_> {
                 Self::follow_kind(hwnd, &self.read(hwnd).kind);
                 None
             }
+            // A start the person chose stays theirs whatever day they then choose.
+            id if id == i32::from(START) && u32::from(code) == EN_CHANGE => {
+                if !self.writing.get() {
+                    self.follow.set(false);
+                }
+                None
+            }
+            id if id == i32::from(DATE) && u32::from(code) == EN_CHANGE => {
+                self.follow_day(hwnd);
+                None
+            }
             _ => None,
         }
     }
@@ -345,7 +381,17 @@ pub fn run(owner: HWND, lumenna: &Lumenna, purpose: Purpose, initial: BlockField
         Purpose::Series { .. } => format!("Change {}, Every Occurrence", initial.title),
         Purpose::Occurrence { .. } => format!("Change {}, This Day Only", initial.title),
     };
-    let form = Form { lumenna, purpose, initial, note, heading, result: RefCell::new(None) };
+    let follow = matches!(purpose, Purpose::Add { follow: true, .. });
+    let form = Form {
+        lumenna,
+        purpose,
+        initial,
+        note,
+        heading,
+        result: RefCell::new(None),
+        follow: Cell::new(follow),
+        writing: Cell::new(false),
+    };
     dialog::run(Some(owner), &form);
     form.result.into_inner()
 }

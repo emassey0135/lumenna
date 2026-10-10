@@ -389,6 +389,31 @@ fn the_block_form_has_every_setting_and_its_flags_follow_the_kind() {
 
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn a_new_blocks_start_is_the_cores_and_follows_its_day_until_the_start_is_changed() {
+    // The day starts at midnight, so another day's start (00:00) is never today's, which is
+    // the next whole hour, whatever time the test runs.
+    let app = App::launch(|store| {
+        store.set_setting("day-start", "00:00").unwrap();
+    });
+    let store = app.store();
+    let before = store.new_block_start(None).unwrap();
+    app.post(&["cmd:101", "focus:Starts at:"]);
+    let after = store.new_block_start(None).unwrap();
+    let today = app.focus();
+    assert!(today.contains(&format!("value='{before}'")) || today.contains(&format!("value='{after}'")), "{today}");
+    assert!(!today.contains("value='00:00'"), "{today}");
+    // Another day asks the core again.
+    app.post(&["focus:Day:", "text:tomorrow", "focus:Starts at:"]);
+    assert!(app.focus().contains("value='00:00'"), "{}", app.focus());
+    // A start the person typed stays, whatever day follows.
+    app.post(&["text:7pm", "focus:Day:", "text:today", "focus:Starts at:"]);
+    assert!(app.focus().contains("value='7pm'"), "{}", app.focus());
+    app.post(&["esc"]);
+    assert!(store.list_blocks().unwrap().rows.is_empty());
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn the_pairing_dialog_asks_for_a_code_when_the_field_is_empty() {
     let app = App::launch(|_| {});
     app.post(&[SETTINGS, "select:Devices", "invoke:Pair a Device..."]);
