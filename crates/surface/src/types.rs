@@ -64,7 +64,7 @@ macro_rules! announced {
 announced!(
     Change, Rows, TaskShown, Plan, Filters, SettingList, Timer, Completions, Preview,
     BackupDone, BackupFile, RestoreDone, Exported, ImportDone, PairedWith, SyncReport, SyncStatus,
-    DeviceList, BlockShown, WorkBlocks,
+    DeviceList, BlockShown, WorkBlocks, LinkSynced,
 );
 
 fn none<T>(list: &[T]) -> bool {
@@ -1443,6 +1443,28 @@ pub struct PairedWith {
     pub platform: String,
     /// Its device key.
     pub node_id: String,
+}
+
+/// What syncing over a watch's own link to its phone did: pairing the two the first time,
+/// then reconciling the documents.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+pub struct LinkSynced {
+    /// Who, and whether this paired them.
+    pub announcement: String,
+    /// Anything else worth saying.
+    #[serde(default, skip_serializing_if = "none")]
+    pub notices: Vec<String>,
+    /// What the other device is called.
+    pub name: String,
+    /// Its device key.
+    pub node_id: String,
+    /// Whether this was the first time, which paired the two and took the watch into every
+    /// device's list: worth saying. A sync over the link otherwise is not.
+    pub paired: bool,
+    /// Whether anything came across, so the app redraws.
+    pub changed: bool,
 }
 
 /// How one device went in a sync round.

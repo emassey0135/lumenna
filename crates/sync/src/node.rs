@@ -172,17 +172,26 @@ impl Node {
     /// Syncs with every paired device that answers, each with its own time limit, and records
     /// how each went for `lum sync status`.
     pub async fn sync_all(&self) -> Vec<PeerResult> {
-        let peers: Vec<(NodeId, String)> = match lock(&self.store) {
-            Ok(store) => store
-                .snapshot()
-                .0
-                .devices
-                .values()
-                .filter(|d| d.node_id != self.id())
-                .map(|d| (d.node_id, d.name.clone()))
-                .collect(),
-            Err(_) => Vec::new(),
+        // A device the direct link (a watch's to its phone) synced, with nothing changed here
+        // since, has nothing to be sent: it counts as synced without a connection.
+        let (peers, linked): (Vec<Peer>, Vec<Peer>) = match lock(&self.store) {
+            Ok(mut store) => {
+                let devices: Vec<Peer> = store
+                    .snapshot()
+                    .0
+                    .devices
+                    .values()
+                    .filter(|d| d.node_id != self.id())
+                    .map(|d| (d.node_id, d.name.clone()))
+                    .collect();
+                devices.into_iter().partition(|(id, _)| !store.linked_and_unchanged(&id.to_string()))
+            }
+            Err(_) => (Vec::new(), Vec::new()),
         };
+        let mut results: Vec<PeerResult> = linked
+            .into_iter()
+            .map(|(node_id, name)| PeerResult { node_id, name, outcome: Ok(Summary::default()) })
+            .collect();
         let mut tasks = Vec::new();
         for (node_id, name) in peers {
             let node = self.clone();
@@ -199,7 +208,6 @@ impl Node {
                 PeerResult { node_id, name, outcome }
             }));
         }
-        let mut results = Vec::new();
         for task in tasks {
             if let Ok(result) = task.await {
                 results.push(result);
@@ -290,3 +298,6 @@ pub(crate) async fn finish(send: &mut SendStream, recv: &mut RecvStream) -> Resu
     let _ = n0_future::time::timeout(Duration::from_secs(5), send.stopped()).await;
     Ok(())
 }
+
+/// A paired device, by its key and what it is called.
+type Peer = (NodeId, String);
