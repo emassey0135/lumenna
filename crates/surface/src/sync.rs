@@ -43,7 +43,9 @@ use lumenna_sync::{SharedStore, SyncError};
 use n0_future::time::Instant;
 
 use crate::error::{LumennaError, Result};
-use crate::types::{LinkSynced, PairedWith, PeerSync, Reach, SyncReport, SyncStatus};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use crate::types::LinkSynced;
+use crate::types::{PairedWith, PeerSync, Reach, SyncReport, SyncStatus};
 use crate::words::count_line;
 use crate::{Lumenna, repaired};
 
