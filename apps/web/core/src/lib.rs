@@ -21,7 +21,7 @@ use clock::Browser;
 use lumenna_surface::places::{self, Place, SidebarEntry};
 use lumenna_desktop::speech::{self, Clock};
 use lumenna_surface::{
-    Action, Answer, Choice, FormField, Lumenna, LumennaError, PairingWords, Syntax, TaskDetail, TaskEdit, TaskFields,
+    Action, Answer, Choice, FormField, Lumenna, LumennaError, PairingWords, Question, Syntax, TaskDetail, TaskEdit, TaskFields,
 };
 use serde::Serialize;
 use tsify::{Ts, Tsify};
@@ -281,6 +281,28 @@ pub fn block_form() -> Out<Form> {
 #[wasm_bindgen(js_name = pairingWords)]
 pub fn pairing_words() -> Out<PairingWords> {
     js(&lumenna_surface::pairing_words("this browser".to_owned(), false))
+}
+
+/// The questions the web asks of its own accord, in the core's words: Go to Day, a new saved
+/// filter's two steps, and a sitting's length once a pick that has one is answered.
+#[derive(Serialize, serde::Deserialize, Tsify)]
+pub struct OwnQuestions {
+    /// Which day to go to.
+    pub go_to_day: Question,
+    /// A new saved filter's name, then its query.
+    pub new_filter: Vec<Question>,
+    /// How long a sitting is meant to take.
+    pub length: Question,
+}
+
+/// The questions the web asks of its own accord.
+#[wasm_bindgen(js_name = ownQuestions)]
+pub fn own_questions() -> Out<OwnQuestions> {
+    js(&OwnQuestions {
+        go_to_day: lumenna_surface::go_to_day_question(),
+        new_filter: lumenna_surface::new_filter_questions(),
+        length: lumenna_surface::length_question(),
+    })
 }
 
 /// Fixed text — a button, a question — in sentence case, the web's: never a name.

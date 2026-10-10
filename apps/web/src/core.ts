@@ -19,6 +19,7 @@ export type {
   ExportChoice,
   FormField,
   PairingWords,
+  Question,
   Place,
   PlanAssignment,
   PlanBlock,

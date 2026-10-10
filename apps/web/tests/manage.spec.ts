@@ -67,8 +67,12 @@ test("a label and a saved filter are made and changed from the sidebar", async (
   await placeMenu(page, /^calls/, "Colour");
   await answer(page, "Colour of calls", "teal");
   await placeMenu(page, /^Saved filters/, "New saved filter");
-  await answer(page, "New saved filter", "Urgent", "Next");
-  await answer(page, "Query for Urgent", "p1", "Add");
+  // Two steps under one title: its name, then its query.
+  const step = page.getByRole("dialog", { name: "New saved filter" });
+  await step.getByRole("textbox", { name: "Name" }).fill("Urgent");
+  await step.getByRole("button", { name: "Next" }).click();
+  await step.getByRole("textbox", { name: "Query" }).fill("p1");
+  await step.getByRole("button", { name: "Add", exact: true }).click();
   await expect(heading(page)).toHaveText("Urgent");
   await placeMenu(page, /^Urgent/, "Change query");
   await answer(page, "Query of Urgent", "p1 | today");
@@ -86,7 +90,7 @@ test("a task waits for another, and stops", async ({ page }) => {
   const picker = page.getByRole("dialog", { name: "What does Paint the fence wait for?" });
   await picker.getByRole("combobox", { name: "What does Paint the fence wait for?" }).fill("Buy");
   await page.getByRole("option", { name: /^Buy paint/ }).click();
-  await picker.getByRole("button", { name: "Choose" }).click();
+  await picker.getByRole("button", { name: "Wait for it" }).click();
   const stop = details.getByRole("button", { name: "Stop waiting for Buy paint" });
   await expect(stop).toBeVisible();
   await stop.click();
@@ -181,7 +185,7 @@ test("space pauses a running timer, and the menu offers resume and stop", async 
   await page.getByRole("menuitem", { name: "Assign a task" }).click();
   await page.getByRole("combobox", { name: "Assign a task to Deep work" }).fill("Write");
   await page.getByRole("option", { name: /^Write report/ }).click();
-  await page.getByRole("button", { name: "Choose" }).click();
+  await page.getByRole("button", { name: "Assign" }).click();
   await page.getByRole("dialog", { name: "Planned length" }).getByRole("button", { name: "Save" }).click();
   const sitting = day.getByRole("row", { name: /^Write report/ });
   await sitting.focus();

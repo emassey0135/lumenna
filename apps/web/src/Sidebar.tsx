@@ -12,10 +12,9 @@ import { Button, Collection, Tree, TreeItem, TreeItemContent } from "react-aria-
 import type { Key, Selection } from "react-aria-components";
 import { core } from "./core";
 import type { Action, SidebarEntry, Place } from "./core";
-import { byKind, perform } from "./actions";
+import { askText, byKind, perform } from "./actions";
 import type { Done } from "./actions";
 import { rowKey } from "./landing";
-import { ask } from "./Prompts";
 import { asksForMenu, RowMenu } from "./RowMenu";
 import { say } from "./say";
 import { nest, parents } from "./tree";
@@ -68,18 +67,19 @@ export function Sidebar(props: {
   const made = useRef<Place | undefined>(undefined);
 
   // A saved filter's form: its name, then its query. The core refuses what it must.
-  const newFilter = async (action: Action): Promise<Done | undefined> => {
-    const name = await ask(action.sentence ?? action.title, "Name", "", "", undefined, "Next");
+  const newFilter = async (): Promise<Done | undefined> => {
+    const [naming, querying] = (await core.ownQuestions()).new_filter;
+    const name = await askText(naming);
     if (name === undefined) return undefined;
     let done: Done | undefined;
-    const query = await ask(`Query for ${name.trim()}`, "Query", "Such as #Work & overdue, or p1 | today.", "", async (query) => {
+    const query = await askText(querying, async (query) => {
       try {
         done = await core.addFilter(name.trim(), query);
         return undefined;
       } catch (error) {
         return (error as Error).message;
       }
-    }, "Add");
+    });
     if (query === undefined || !done) return undefined;
     made.current = { Filter: { name: name.trim(), query } };
     return done;
@@ -110,7 +110,7 @@ export function Sidebar(props: {
   /** Runs one of a row's actions, says what it did, and goes where it leads. */
   const run = async (at: SidebarEntry, action: Action) => {
     made.current = undefined;
-    const done = await perform(action, (asked) => newFilter(asked));
+    const done = await perform(action, () => newFilter());
     if (!done) return;
     props.onChanged();
     const then = done.changed ? (made.current ?? where(at, action, done.answer)) : undefined;

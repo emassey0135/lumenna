@@ -16,9 +16,9 @@ import type { Key, Selection } from "react-aria-components";
 import { blockForm, freshBlock } from "./BlockForm";
 import { core } from "./core";
 import type { Action, DayRow, PlanBlock } from "./core";
-import { byKind, perform, REMOVING } from "./actions";
+import { askText, byKind, perform, REMOVING } from "./actions";
 import { rowKey, useLanding } from "./landing";
-import { ask, choose } from "./Prompts";
+import { choose } from "./Prompts";
 import { asksForMenu, RowMenu } from "./RowMenu";
 import { say } from "./say";
 
@@ -165,7 +165,7 @@ export function Day(props: {
   };
 
   const goToDay = async () => {
-    const phrase = await ask("Go to day", "Day", "A date, such as friday, or 12 October.", "", undefined, "Go");
+    const phrase = await askText((await core.ownQuestions()).go_to_day);
     if (!phrase?.trim()) return;
     try {
       const day = await core.day(phrase);

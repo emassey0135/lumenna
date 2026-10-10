@@ -62,6 +62,7 @@ export function DevicesPage(props: {
   onPaired: () => void;
 }) {
   const [devices, setDevices] = useState<Device[]>([]);
+  const [empty, setEmpty] = useState("");
   const [selected, setSelected] = useState<string | undefined>();
   const [pairing, setPairing] = useState(false);
   const [reload, setReload] = useState(0);
@@ -75,7 +76,13 @@ export function DevicesPage(props: {
   // Read again whenever the store changes, a sync round's outcome included, so a device's
   // status is current without Sync Now.
   useEffect(() => {
-    void core.devices().then(setDevices, (error: Error) => say(error.message));
+    void core.devices().then(
+      (found) => {
+        setDevices(found.list);
+        setEmpty(found.empty);
+      },
+      (error: Error) => say(error.message),
+    );
     // How syncing is going, in the surface's words, given whether this browser's loop runs.
     void core.syncStatus().then(setStatus, (error: Error) => setStatus(error.message));
   }, [props.revision, props.syncing, reload]);
@@ -136,7 +143,7 @@ export function DevicesPage(props: {
               onSelectionChange={(keys: Selection) => {
                 if (keys !== "all") setSelected([...keys].map(String)[0]);
               }}
-              renderEmptyState={() => <p className="quiet">No devices yet.</p>}
+              renderEmptyState={() => <p className="quiet">{empty}</p>}
             >
               {(device) => <ListBoxItem textValue={device.text}>{device.text}</ListBoxItem>}
             </ListBox>
@@ -203,7 +210,9 @@ function Pairing(props: { words: PairingWords; onDone: (paired: boolean) => void
         }),
         Comlink.proxy(async (three: string[]) => {
           const detail = `${words.match_message} ${three.join(", ")}.`;
-          return (await choose(words.match_title, detail, [words.match_yes, words.match_no])) === 0;
+          const match = (await choose(words.match_title, detail, [words.match_yes, words.match_no])) === 0;
+          say(match ? words.finishing : words.refusing);
+          return match;
         }),
       );
       say(said);
@@ -253,7 +262,7 @@ function Pairing(props: { words: PairingWords; onDone: (paired: boolean) => void
                 )
               }
             >
-              Copy code
+              {words.copy_code}
             </Button>
           </div>
         </>

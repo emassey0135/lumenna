@@ -85,7 +85,7 @@ test("a task assigned from a block is a sitting beneath it, and Space times it",
   const picker = page.getByRole("dialog", { name: "Assign a task to Deep work" });
   await picker.getByRole("combobox", { name: "Assign a task to Deep work" }).fill("Write");
   await page.getByRole("option", { name: /^Write report/ }).click();
-  await picker.getByRole("button", { name: "Choose" }).click();
+  await picker.getByRole("button", { name: "Assign" }).click();
   const minutes = page.getByRole("dialog", { name: "Planned length" });
   await minutes.getByRole("textbox", { name: "Planned length" }).fill("30m");
   await minutes.getByRole("button", { name: "Save" }).click();
@@ -109,7 +109,7 @@ test("a sitting's planned length refuses what is not a length, and the dialog st
   await page.getByRole("menuitem", { name: "Assign a task" }).click();
   await page.getByRole("combobox", { name: "Assign a task to Deep work" }).fill("Write");
   await page.getByRole("option", { name: /^Write report/ }).click();
-  await page.getByRole("button", { name: "Choose" }).click();
+  await page.getByRole("button", { name: "Assign" }).click();
   const field = page.getByRole("textbox", { name: "Planned length" });
   await field.fill("soon");
   await page.getByRole("button", { name: "Save" }).click();
@@ -171,7 +171,7 @@ test("a task is put in a block from its own details", async ({ page }) => {
   const picker = page.getByRole("dialog", { name: "Put Write report in a block" });
   await picker.getByRole("combobox", { name: "Put Write report in a block" }).fill("Deep");
   await page.getByRole("option", { name: /Deep work/ }).click();
-  await picker.getByRole("button", { name: "Choose" }).click();
+  await picker.getByRole("button", { name: "Put it there" }).click();
   await page.getByRole("dialog", { name: "Planned length" }).getByRole("button", { name: "Save" }).click();
   await place(page, /^Today/);
   await expect(page.getByRole("treegrid", { name: "The day" }).getByRole("row", { name: /^Write report/ })).toBeVisible();
