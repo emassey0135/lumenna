@@ -17,7 +17,7 @@ from BTSpeak import clipboard, dialogs
 import actions
 import options
 from client import LumennaError
-from session import REFRESH, Command, Session, ask, choose, confirm, empty_then, live_menu, row_item, screen, spoken
+from session import REFRESH, Command, Session, ask, choose, confirm, live_menu, row_item, screen, spoken
 from tasks import undo_commands
 
 
@@ -137,8 +137,6 @@ def devices(session: Session) -> str:
             state["heading"] += (
                 ". To keep in sync in the background, run lum daemon install once from a shell"
             )
-        if not status.get("devices"):
-            state["empty"] = session.call("device.list").get("empty", "")
         return [row_item(device, device_line(device), navigation_title=device["name"]) for device in status.get("devices", [])]
 
     with screen("lumenna-settings"):
@@ -150,7 +148,8 @@ def devices(session: Session) -> str:
                 Command("Sync now", lambda _: sync_now(session), key="s"),
                 Command("Pair a device", lambda _: pair(session), key="p"),
             ],
-            empty=empty_then(state, "Press p to pair one."),
+            # The status line already says nothing is paired; the empty list adds only the key.
+            empty="Press p to pair one.",
             app_title="Devices menu",
         )
     return ""
