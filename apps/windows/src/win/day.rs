@@ -12,7 +12,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use lumenna_surface::{Action, ActionKind, CancelledBlock, go_to_day_question, Plan, PlanAssignment, PlanBlock, PlanItem, block_fields, day_block_fields};
+use lumenna_surface::{Action, ActionKind, CancelledBlock, go_to_day_question, unsayable_repeat_note, Plan, PlanAssignment, PlanBlock, PlanItem, block_fields, day_block_fields};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{NM_DBLCLK, NMHDR, NMTVKEYDOWN, TVN_KEYDOWN, TVN_SELCHANGEDW, WC_BUTTONW};
 use windows::Win32::UI::Input::KeyboardAndMouse::{VK_DELETE, VK_SPACE};
@@ -255,7 +255,7 @@ impl DayView {
         let Some(date) = self.date() else { return };
         // One day alone: its time, length, title, kind and flags, as this day has them.
         let mut fields = day_block_fields(block.clone());
-        let mut rule = None;
+        let mut note = None;
         let purpose = if block.repeats {
             let day = Locale.day(&date);
             let choice = prompts::choose(
@@ -277,14 +277,14 @@ impl DayView {
             // The series as it is, not as this day shows it.
             match app.core.lumenna.show_block(id) {
                 Ok(shown) => {
-                    rule = shown.rrule.clone().filter(|_| shown.repeats);
+                    note = unsayable_repeat_note(shown.clone());
                     fields = block_fields(shown);
                 }
                 Err(error) => return prompts::fail(app.main, &sentence(&error)),
             }
         }
         let key = format!("block:{}", block.id);
-        if let Some(change) = block_form::run(app.main, &app.core.lumenna, purpose, fields, rule) {
+        if let Some(change) = block_form::run(app.main, &app.core.lumenna, purpose, fields, note) {
             app.store_changed();
             self.tree.select_key_or_near(Some(&key), self.tree.selected());
             app.say_change(&change);

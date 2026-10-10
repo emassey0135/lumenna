@@ -99,9 +99,10 @@ struct Form<'a> {
     lumenna: &'a Lumenna,
     purpose: Purpose,
     initial: BlockFields,
-    /// The RFC 5545 rule it repeats by, when the repetition words cannot say it: Repeats starts
-    /// empty, the rule is said beside it, and it is left alone unless something is typed there.
-    rule: Option<String>,
+    /// The core's note for a block repeating by a rule the repetition words cannot say:
+    /// Repeats starts empty, the note is shown under it, and the rule is left alone unless
+    /// something is typed there.
+    note: Option<String>,
     heading: String,
     result: RefCell<Option<Change>>,
 }
@@ -228,9 +229,8 @@ impl Dialog for Form<'_> {
             if self.shows("repeat") {
                 template = field(template, &label("repeat", true), REPEAT, line, RIGHT, y);
                 y += 28;
-                if let Some(rule) = self.rule.as_ref().filter(|_| self.initial.repeat.is_empty()) {
-                    let note = format!("It repeats by the rule {rule}, which the repetition words cannot say. Leave Repeats empty to keep it.");
-                    template = template.item(Class::Static, &note, u16::MAX, SS_NOPREFIX.0, RIGHT, y, COLUMN, 26);
+                if let Some(note) = &self.note {
+                    template = template.item(Class::Static, note, u16::MAX, SS_NOPREFIX.0, RIGHT, y, COLUMN, 26);
                     y += 30;
                 }
             }
@@ -338,14 +338,14 @@ impl Dialog for Form<'_> {
 }
 
 /// Runs the form, and returns what saving it did; `None` if it was cancelled or nothing
-/// changed. `rule` is the rule a series repeats by when the repetition words cannot say it.
-pub fn run(owner: HWND, lumenna: &Lumenna, purpose: Purpose, initial: BlockFields, rule: Option<String>) -> Option<Change> {
+/// changed. `note` is the core's `unsayable_repeat_note` for the block being changed.
+pub fn run(owner: HWND, lumenna: &Lumenna, purpose: Purpose, initial: BlockFields, note: Option<String>) -> Option<Change> {
     let heading = match &purpose {
         Purpose::Add { .. } => "New Block".to_owned(),
         Purpose::Series { .. } => format!("Change {}, Every Occurrence", initial.title),
         Purpose::Occurrence { .. } => format!("Change {}, This Day Only", initial.title),
     };
-    let form = Form { lumenna, purpose, initial, rule, heading, result: RefCell::new(None) };
+    let form = Form { lumenna, purpose, initial, note, heading, result: RefCell::new(None) };
     dialog::run(Some(owner), &form);
     form.result.into_inner()
 }
