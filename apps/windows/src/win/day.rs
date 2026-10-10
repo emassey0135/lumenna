@@ -234,10 +234,17 @@ impl DayView {
         }
     }
 
+    /// A new block on the day shown: at `start` when it fills free time, which keeps its own
+    /// start, else when the core says a new block on that day starts.
     pub fn add_block(&self, app: &App, start: Option<&str>, minutes: Option<u32>) {
         let date = self.date().unwrap_or_else(|| "today".to_owned());
-        let fields = block_form::fresh(start.unwrap_or("09:00"), minutes.unwrap_or(60).min(720));
-        if let Some(change) = block_form::run(app.main, &app.core.lumenna, Purpose::Add { date }, fields, None) {
+        let follow = start.is_none();
+        let start = match start {
+            Some(start) => start.to_owned(),
+            None => app.core.lumenna.new_block_start(Some(date.clone())).unwrap_or_default(),
+        };
+        let fields = block_form::fresh(&start, minutes.unwrap_or(60).min(720));
+        if let Some(change) = block_form::run(app.main, &app.core.lumenna, Purpose::Add { date, follow }, fields, None) {
             app.store_changed();
             if let Some(series) = change.affected.blocks.first() {
                 let key = self.rows.borrow().iter().find_map(|row| match row {
