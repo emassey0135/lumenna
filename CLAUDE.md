@@ -80,7 +80,10 @@ JSON crosses the FFI.
   never keeps its own copy of any of them.
 - **The forms' and the pairing screen's words are the core's** (`fields.rs`): `task_form()`
   and `block_form()` give each field's label, hint, example, control and options;
-  `pairing_words(this_device, local)` every sentence and button of pairing. A mnemonic or
+  `pairing_words(this_device, local)` every sentence and button of pairing;
+  `go_to_day_question`, `new_filter_questions` and `length_question` what the apps' own
+  commands ask. A field marked `one_day` is what one day of a repeating block can change.
+  A pick and a text question name their button (`yes`); "OK" is never the answer. A mnemonic or
   access key is the platform's to add; the words are not.
 - **Each action has a `sentence` and a `primary`.** Capitals follow the platform: Title
   Case (`title`) on Apple, Windows, GTK and Emacs; sentence case (`sentence`, and
@@ -92,7 +95,7 @@ JSON crosses the FFI.
   block "<start> to <end>, <title>, <details>"; a sitting "<title>, <details>"; free time
   "<title>, <details>, <start> to <end>"; now "<title>, <time>"; a cancelled day "<start>,
   <title>, <details>"; a block to pick "<day>, <start> to <end>, <title>"; anything else to
-  pick "<title>, <detail>". A Blocks-list row is a task row: `due` ("every weekday") said
+  pick "<title>, <detail>"; the day's heading "<day>. <summary>". A Blocks-list row is a task row: `due` ("every weekday") said
   with `due_time` ("at 9:00 AM"), then `value`. An empty listing says `Rows::empty`.
 - **A setting describes itself** (`Setting::title`, `kind`, `options`, `syncs`, `hint`), and
   the priorities are `priorities()`: a settings screen or a priority picker builds its
@@ -518,11 +521,13 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
 - **⌘F never reaches the app in the iPad simulator**: no responder is asked about it, where
   ⌘3 is. Filter Tasks stays on ⌘F in the Edit menu, and its test skips on iPad.
 - **Three layers of iOS tests.** `LumennaTests` (unit tests hosted in the app) asks each
-  list for its swipe actions (`leadingSwipeActions(at:)`, `trailingSwipeActions(at:)`)
-  and runs them: the list VoiceOver offers as a row's actions, with no gesture to land, so
-  they block in CI. `VoiceOverUITests` turns VoiceOver on (`XCUIVoiceOverService`, iOS 27)
-  and checks what it says, acting through the keyboard commands, which act on VoiceOver's
-  row; its output carries a hint's first word only ("Actions"). The rest of the UI tests
+  list for its swipe actions, custom actions and menu (`RowActions`) and runs them: what
+  VoiceOver offers as a row's actions, with no gesture to land, so they block in CI.
+  `VoiceOverUITests` turns VoiceOver on (`XCUIVoiceOverService`, iOS 27) and checks what it
+  says, acting through the keyboard commands, which act on VoiceOver's row; its output
+  carries a hint's first word only ("Actions"). VO-Command-Down Arrow steps the actions
+  rotor, so a test reads a row's actions as VoiceOver lists them; what it says last after a
+  change is the announcement, so a test of focus listens while it waits. The rest of the UI tests
   drive the app by gestures, and report rather than block.
 - **iPad UI tests run in portrait**: in landscape XCUITest's coordinates come out rotated, so
   part-swipes and taps land on the wrong row, and screenshots come out half black. A hidden

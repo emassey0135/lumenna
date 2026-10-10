@@ -30,7 +30,7 @@ test("the devices page says this browser is not paired, and refuses a code that 
   await expect(pairing.getByRole("heading", { name: "Pair a device" })).toBeVisible();
   await expect(pairing.getByRole("textbox", { name: "Name for this browser" })).toBeFocused();
   await pairing.getByRole("textbox", { name: "Code from the other device" }).fill("not-a-code");
-  await pairing.getByRole("button", { name: "Pair with this code" }).click();
+  await pairing.getByRole("button", { name: "Pair using this code" }).click();
   await expect(pairing.getByRole("alert")).toContainText("is not a pairing code");
   await pairing.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog.getByRole("button", { name: "Sync now" })).toBeVisible();
@@ -45,7 +45,7 @@ test("an empty code field takes the code on the clipboard, and says so", async (
   const field = pairing.getByRole("textbox", { name: "Code from the other device" });
   await expect(field).toHaveAccessibleDescription("Left empty, the code on the clipboard is used.");
   await page.evaluate(() => navigator.clipboard.writeText("not-a-code"));
-  await pairing.getByRole("button", { name: "Pair with this code" }).click();
+  await pairing.getByRole("button", { name: "Pair using this code" }).click();
   await expect(field).toHaveValue("not-a-code");
   await expect(pairing.getByRole("alert")).toContainText("is not a pairing code");
 });
@@ -60,7 +60,7 @@ test("a code entered while waiting gives up the wait, then tries the code", asyn
   await expect(pairing.getByRole("textbox", { name: "This device's code" })).toBeVisible({ timeout: 60_000 });
   // One pairing runs at a time; the code field stays open while waiting all the same.
   await pairing.getByRole("textbox", { name: "Code from the other device" }).fill("not-a-code");
-  await pairing.getByRole("button", { name: "Pair with this code" }).click();
+  await pairing.getByRole("button", { name: "Pair using this code" }).click();
   await expect(pairing.getByRole("alert")).toContainText("is not a pairing code", { timeout: 30_000 });
   await expect(pairing.getByRole("button", { name: "Wait for the other device" })).toBeEnabled();
 });
@@ -86,7 +86,7 @@ test("two browsers pair by code over a relay, and a task added in one arrives in
 
   await start(b, "Browser B");
   await b.getByRole("textbox", { name: "Code from the other device" }).fill(await code.inputValue());
-  await b.getByRole("button", { name: "Pair with this code" }).click();
+  await b.getByRole("button", { name: "Pair using this code" }).click();
 
   // Both show the same three words, and only a yes on both pairs them.
   const words = (page: Page) => page.getByRole("alertdialog", { name: "Do these words match?" });

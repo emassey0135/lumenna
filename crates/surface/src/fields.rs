@@ -55,6 +55,10 @@ pub struct FormField {
     /// For a block: shown only while it repeats.
     #[serde(default)]
     pub repeating_only: bool,
+    /// For a block: whether one day of a repeating block can be changed apart from the rest
+    /// (`day_block_fields`); the others belong to the series.
+    #[serde(default)]
+    pub one_day: bool,
 }
 
 fn field(key: &str, label: &str, kind: FieldKind, hint: &str, example: &str) -> FormField {
@@ -66,6 +70,7 @@ fn field(key: &str, label: &str, kind: FieldKind, hint: &str, example: &str) -> 
         kind,
         options: Vec::new(),
         repeating_only: false,
+        one_day: false,
     }
 }
 
@@ -108,18 +113,21 @@ pub fn block_form() -> Vec<FormField> {
         .map(|(id, title)| Choice { id: id.to_owned(), title: title.to_owned(), ..Choice::default() })
         .collect();
     let repeating = |f: FormField| FormField { repeating_only: true, ..f };
+    // What `day_block_fields` holds, and an occurrence's edit can change.
+    let day = |f: FormField| FormField { one_day: true, ..f };
     vec![
-        field("title", "Name", K::Line, "", "Deep work"),
+        day(field("title", "Name", K::Line, "", "Deep work")),
         field("date", "Day", K::Date, "The day it happens, or the first day it repeats.", "today"),
-        field("start", "Starts at", K::Time, "A time, such as 9am or 14:30.", "9am"),
-        field("minutes", "Lasts, in minutes", K::Minutes, "", "60"),
+        day(field("start", "Starts at", K::Time, "A time, such as 9am or 14:30.", "9am")),
+        day(field("minutes", "Lasts, in minutes", K::Minutes, "", "60")),
         FormField {
             options: kinds,
+            one_day: true,
             ..field("kind", "Kind", K::Choice, "Changing it sets the three choices after it to the kind's own.", "")
         },
-        field("accepts_tasks", "Takes tasks", K::Toggle, "", ""),
-        field("counts_capacity", "Counts toward hours for work", K::Toggle, "", ""),
-        field("anchored", "Anchored, never moved when the day slips", K::Toggle, "", ""),
+        day(field("accepts_tasks", "Takes tasks", K::Toggle, "", "")),
+        day(field("counts_capacity", "Counts toward hours for work", K::Toggle, "", "")),
+        day(field("anchored", "Anchored, never moved when the day slips", K::Toggle, "", "")),
         field("repeat", "Repeats", K::Line, "Such as every weekday. Empty for once.", "every weekday"),
         repeating(field("until", "Until", K::Line, "The last day it happens. Empty for no end.", "31 January")),
         field(
@@ -175,6 +183,14 @@ pub struct PairingWords {
     pub match_yes: String,
     /// The answer that they differ.
     pub match_no: String,
+    /// Said once the words are confirmed, while the devices finish pairing.
+    pub finishing: String,
+    /// Said once the words are refused, while the other device is told.
+    pub refusing: String,
+    /// The button that copies this device's code.
+    pub copy_code: String,
+    /// [`intro`](Self::intro) in sentence case, its buttons named as they read there.
+    pub intro_sentence: String,
 }
 
 /// The pairing screen's words. `this_device` is how the device calls itself ("this Mac",
@@ -202,7 +218,7 @@ pub fn pairing_words(this_device: String, local: bool) -> PairingWords {
         title: "Pair a Device".to_owned(),
         intro: intro.to_owned(),
         wait: "Wait for the Other Device".to_owned(),
-        join: "Pair With This Code".to_owned(),
+        join: "Pair Using This Code".to_owned(),
         my_code: "This device's code".to_owned(),
         their_code: "Code from the other device".to_owned(),
         empty_means: "Left empty, the code on the clipboard is used.".to_owned(),
@@ -216,6 +232,10 @@ pub fn pairing_words(this_device: String, local: bool) -> PairingWords {
         match_message: "The other device shows three words too. Pair only if they are the same, in the same order:".to_owned(),
         match_yes: "Yes, They Match".to_owned(),
         match_no: "No, They Differ".to_owned(),
+        finishing: "The words match. Finishing pairing.".to_owned(),
+        refusing: "The words differ, so the devices are not paired.".to_owned(),
+        copy_code: "Copy Code".to_owned(),
+        intro_sentence: intro.replace("Wait for the Other Device", "Wait for the other device"),
     }
 }
 
@@ -225,9 +245,14 @@ pub fn pairing_words(this_device: String, local: bool) -> PairingWords {
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn sentence_case(text: String) -> String {
+    // An acronym keeps its capitals: "JSON" is a name, not a word.
+    let lower = |word: &str| {
+        let letters: Vec<char> = word.chars().filter(|c| c.is_alphabetic()).collect();
+        if letters.len() > 1 && letters.iter().all(|c| c.is_uppercase()) { word.to_owned() } else { word.to_lowercase() }
+    };
     let mut words = text.split(' ');
     let first = words.next().unwrap_or_default().to_owned();
-    std::iter::once(first).chain(words.map(str::to_lowercase)).collect::<Vec<_>>().join(" ")
+    std::iter::once(first).chain(words.map(lower)).collect::<Vec<_>>().join(" ")
 }
 
 #[cfg(test)]
@@ -251,5 +276,6 @@ mod tests {
     #[test]
     fn sentence_case_keeps_the_first_capital_only() {
         assert_eq!(sentence_case("Delete and Keep Its Tasks".to_owned()), "Delete and keep its tasks");
+        assert_eq!(sentence_case("Export JSON, Complete".to_owned()), "Export JSON, complete");
     }
 }
