@@ -22,9 +22,9 @@ import androidx.compose.ui.semantics.CollectionInfo
 import androidx.compose.ui.semantics.collectionInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import io.github.emassey0135.lumenna.core.Direction
+import io.github.emassey0135.lumenna.core.Action
+import io.github.emassey0135.lumenna.core.SidebarGroup
 import io.github.emassey0135.lumenna.core.labelReference
-import io.github.emassey0135.lumenna.core.parseWeight
 import io.github.emassey0135.lumenna.core.projectReference
 
 /** One line of a list of things: what identifies it, how it reads, and how deep it sits. */
@@ -34,6 +34,8 @@ data class Item(
     val detail: String = "",
     val depth: Int = 0,
     val speech: String = detail,
+    /** What can be done to it: the core's. */
+    val actions: List<Action> = emptyList(),
 )
 
 /**
@@ -52,6 +54,7 @@ fun ItemListScreen(
     open: ((Item) -> Unit)?,
     openLabel: String = "Open",
     actions: (Item) -> List<RowAction> = { emptyList() },
+    header: (@Composable () -> Unit)? = null,
 ) {
     val loaded = remember(changes) { core.attempt(load) ?: (emptyList<Item>() to "") }
     val (all, count) = loaded
@@ -65,6 +68,7 @@ fun ItemListScreen(
             IconButton(onClick = add) { Icon(Icons.Filled.Add, contentDescription = addLabel) }
         }
     }) {
+        header?.invoke()
         if (count.isNotEmpty()) {
             Text(
                 count.replaceFirstChar { it.uppercase() },
@@ -130,33 +134,27 @@ fun BrowseScreen(core: Core, navigator: Navigator, changes: Long) {
 @Composable
 fun ProjectsScreen(core: Core, navigator: Navigator, changes: Long) {
     val prompt = rememberPrompter()
-    val archived = remember { mutableSetOf<String>() }
-    val all = remember(changes) { mutableListOf<Item>() }
     ItemListScreen(
         "Projects", core, navigator, changes = changes,
         load = {
             val rows = core.lumenna.listProjects()
-            archived.clear()
-            archived += rows.rows.filter { "archived" in it.state }.map { it.title }
             // The level is added as shown, against the row before it once folded.
             val items = rows.rows.map { row ->
                 Item(
                     row.title, row.title, (listOfNotNull(row.value) + row.state).joinToString(", "),
-                    row.depth.toInt(), RowSpeech.value(row, row.depth),
+                    row.depth.toInt(), RowSpeech.value(row, row.depth), row.actions,
                 )
             }
-            all.clear()
-            all += items
             items to rows.announcement
         },
         addLabel = "Add project",
-        add = { addProject(core, prompt) },
+        add = { core.addNew(SidebarGroup.PROJECTS, prompt) },
         open = { item ->
             val reference = projectReference(item.title)
             navigator.push(Screen.Tasks(item.title, reference, "$reference "))
         },
         openLabel = "Show its tasks",
-        actions = { item -> projectActions(core, prompt, item.key, item.key in archived) { all.map { it.key } } },
+        actions = { item -> core.offered(item.actions, prompt) },
     )
     prompt.Host()
 }
@@ -165,24 +163,22 @@ fun ProjectsScreen(core: Core, navigator: Navigator, changes: Long) {
 @Composable
 fun LabelsScreen(core: Core, navigator: Navigator, changes: Long) {
     val prompt = rememberPrompter()
-    val all = remember(changes) { mutableListOf<Item>() }
     ItemListScreen(
         "Labels", core, navigator, changes = changes,
         load = {
             val rows = core.lumenna.listLabels()
-            val items = rows.rows.map { Item(it.title, it.title, (listOfNotNull(it.value) + it.state).joinToString(", ")) }
-            all.clear()
-            all += items
-            items to rows.announcement
+            rows.rows.map {
+                Item(it.title, it.title, (listOfNotNull(it.value) + it.state).joinToString(", "), actions = it.actions)
+            } to rows.announcement
         },
         addLabel = "Add label",
-        add = { addLabel(core, prompt) },
+        add = { core.addNew(SidebarGroup.LABELS, prompt) },
         open = { item ->
             val reference = labelReference(item.title)
             navigator.push(Screen.Tasks(item.title, reference, "$reference "))
         },
         openLabel = "Show the tasks wearing it",
-        actions = { item -> labelActions(core, prompt, item.key) { all.map { it.key } } },
+        actions = { item -> core.offered(item.actions, prompt) },
     )
     prompt.Host()
 }
@@ -198,13 +194,13 @@ fun FiltersScreen(core: Core, navigator: Navigator, changes: Long) {
             val filters = core.lumenna.listFilters()
             queries.clear()
             filters.filters.forEach { queries[it.name] = it.query }
-            filters.filters.map { Item(it.name, it.name, it.query) } to filters.announcement
+            filters.filters.map { Item(it.name, it.name, it.query, actions = it.actions) } to filters.announcement
         },
         addLabel = "Add filter",
-        add = { addFilter(core, prompt) },
+        add = { core.addNew(SidebarGroup.FILTERS, prompt) },
         open = { item -> navigator.push(Screen.Tasks(item.title, queries[item.key].orEmpty())) },
         openLabel = "Show its tasks",
-        actions = { item -> filterActions(core, prompt, item.key, queries[item.key].orEmpty()) },
+        actions = { item -> core.offered(item.actions, prompt) },
     )
     prompt.Host()
 }
@@ -217,31 +213,14 @@ fun BlocksScreen(core: Core, navigator: Navigator, changes: Long) {
         "Blocks", core, navigator, changes = changes,
         load = {
             val rows = core.lumenna.listBlocks()
-            rows.rows.map { Item(it.id, it.title, it.value.orEmpty()) } to rows.announcement
+            rows.rows.map { Item(it.id, it.title, it.value.orEmpty(), actions = it.actions) } to rows.announcement
         },
         addLabel = "Add block",
         add = { navigator.push(Screen.BlockForm(BlockPurpose.Add())) },
         open = { item -> navigator.push(Screen.BlockForm(BlockPurpose.Series(item.key))) },
         openLabel = "Edit every occurrence",
         actions = { item ->
-            listOf(
-                RowAction("Edit") { navigator.push(Screen.BlockForm(BlockPurpose.Series(item.key))) },
-                RowAction("Delete") {
-                    val repeats = core.attempt { core.lumenna.showBlock(item.key).repeats } ?: false
-                    prompt.show {
-                        Confirm(
-                            "Delete ${item.title}?",
-                            if (repeats) "Every occurrence goes. To skip one day, cancel it from the day instead."
-                            else "It goes with its assignments.",
-                            "Delete",
-                            prompt::close,
-                        ) {
-                            prompt.close()
-                            core.change { it.deleteBlock(item.key) }
-                        }
-                    }
-                },
-            )
+            core.offered(item.actions, prompt, form = { navigator.push(Screen.BlockForm(BlockPurpose.Series(it.target))) })
         },
     )
     prompt.Host()

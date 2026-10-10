@@ -2,194 +2,104 @@ package io.github.emassey0135.lumenna
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import io.github.emassey0135.lumenna.core.Direction
-import io.github.emassey0135.lumenna.core.parseWeight
+import io.github.emassey0135.lumenna.core.Action
+import io.github.emassey0135.lumenna.core.ActionKind
+import io.github.emassey0135.lumenna.core.Question
+import io.github.emassey0135.lumenna.core.Subject
 
-// What can be done to a project, a label or a saved filter, wherever one is listed: Browse's
-// screens, and the sidebar of a wide window. Once, so the two never offer different things.
-
-/** A project's, as the watch offers them too (`PlaceAction.ofProject`). `others` are the
- *  projects it can go under. */
-fun projectActions(core: Core, prompt: Prompter, name: String, archived: Boolean, others: () -> List<String>): List<RowAction> =
-    PlaceAction.ofProject(archived).mapNotNull { action ->
-        val run: (() -> Unit)? = when (action) {
-            PlaceAction.RENAME -> { {
-                prompt.show {
-                    AskText("Rename $name", "Name", "Rename", initial = name, dismiss = prompt::close) { renamed ->
-                        prompt.close()
-                        core.change { it.renameProject(name, renamed.trim()) }
-                    }
-                }
-            } }
-            PlaceAction.MOVE_UP -> { { core.change { it.reorderProject(name, Direction.UP) } } }
-            PlaceAction.MOVE_DOWN -> { { core.change { it.reorderProject(name, Direction.DOWN) } } }
-            PlaceAction.MOVE_UNDER -> { {
-                prompt.show {
-                    val choices = listOf(Choice("", "Top Level")) + others().filter { it != name }.map { Choice(it, it) }
-                    Choose("Move $name under", choices, "", prompt::close) { parent ->
-                        prompt.close()
-                        core.change { it.moveProject(name, parent.key.ifEmpty { null }) }
-                    }
-                }
-            } }
-            PlaceAction.ADD_PROJECT_INSIDE -> { { addProject(core, prompt, inside = name) } }
-            PlaceAction.WEIGHT -> { {
-                prompt.show {
-                    AskText(
-                        "Weight of $name", "Weight", "Set", example = "1.0",
-                        hint = PlaceAction.WEIGHT_HELP,
-                        dismiss = prompt::close,
-                    ) { text ->
-                        // A typo must not quietly become "inherit": the core reads it, and a
-                        // refusal is said and leaves the question open with what was typed.
-                        val weight = core.attempt { parseWeight(text) } ?: return@AskText
-                        prompt.close()
-                        core.change { it.weighProject(name, weight) }
-                    }
-                }
-            } }
-            PlaceAction.ARCHIVE, PlaceAction.UNARCHIVE -> { { core.change { it.archiveProject(name) } } }
-            PlaceAction.DELETE -> { {
-                prompt.show {
-                    AlertDialog(
-                        onDismissRequest = prompt::close,
-                        title = { Text("Delete $name?") },
-                        text = { Text(PlaceAction.DELETING_PROJECT) },
-                        confirmButton = {
-                            Column {
-                                TextButton(modifier = Target, onClick = {
-                                    prompt.close()
-                                    core.change { it.deleteProject(name, false) }
-                                }) { Text(PlaceAction.DELETE_AND_TRASH) }
-                                TextButton(modifier = Target, onClick = {
-                                    prompt.close()
-                                    core.change { it.deleteProject(name, true) }
-                                }) { Text(PlaceAction.DELETE_AND_KEEP) }
-                                TextButton(modifier = Target, onClick = prompt::close) { Text("Cancel") }
-                            }
-                        },
-                    )
-                }
-            } }
-            else -> null
+/**
+ * The phone's way of asking an action's question: a dialog each, through a screen's [Prompter].
+ * What is asked, and in what words, is the core's (`Action.question`); Cancel is first.
+ */
+class DialogAsker(private val prompt: Prompter) : Asker {
+    override fun confirm(action: Action, question: Question.Confirm, yes: () -> Unit) = prompt.show {
+        Confirm(question.title, question.message, question.yes, prompt::close, destructive = action.destructive) {
+            prompt.close()
+            yes()
         }
-        run?.let { RowAction(action.title, it) }
     }
 
-/** Asks for a new project's name, at the top level or `inside` another. */
-fun addProject(core: Core, prompt: Prompter, inside: String? = null) {
-    prompt.show {
-        AskText(inside?.let { "New Project in $it" } ?: "New Project", "Name", "Add", dismiss = prompt::close) { name ->
+    // A refused answer stays in its dialog, with what was typed, and the core's reason is said.
+    override fun text(action: Action, question: Question.Text, answered: (String) -> Boolean) = prompt.show {
+        AskText(
+            question.title, question.label, "Done",
+            initial = question.initial,
+            hint = question.hint.ifEmpty { null },
+            dismiss = prompt::close,
+        ) { text -> if (answered(text)) prompt.close() }
+    }
+
+    override fun pick(action: Action, title: String, options: List<Option>, picked: (Option) -> Unit) = prompt.show {
+        Choose(title, options, prompt::close) { option ->
             prompt.close()
-            core.change { it.addProject(name.trim(), inside) }
+            picked(option)
         }
+    }
+
+    override fun length(action: Action, picked: Option, hint: String, answered: (String) -> Boolean) = prompt.show {
+        AskText(
+            picked.title, "Planned length", "Done", example = "45m", hint = hint, dismiss = prompt::close,
+        ) { text -> if (answered(text)) prompt.close() }
+    }
+
+    override fun choose(action: Action, question: Question.Choose, picked: (Option) -> Unit) = prompt.show {
+        AlertDialog(
+            onDismissRequest = prompt::close,
+            title = { Text(question.title) },
+            text = { Text(question.message) },
+            confirmButton = {
+                Column {
+                    TextButton(modifier = Target, onClick = prompt::close) { Text("Cancel") }
+                    question.answers.map(::option).forEach { answer ->
+                        TextButton(modifier = Target, onClick = {
+                            prompt.close()
+                            picked(answer)
+                        }) {
+                            Text(answer.title, color = if (action.destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
+                        }
+                    }
+                }
+            },
+        )
     }
 }
 
-/** A label's, as the watch offers them too (`PlaceAction.ofLabel`). `others` are the
- *  labels it can merge into. */
-fun labelActions(core: Core, prompt: Prompter, name: String, others: () -> List<String>): List<RowAction> =
-    PlaceAction.ofLabel.mapNotNull { action ->
-        val run: (() -> Unit)? = when (action) {
-            PlaceAction.RENAME -> { {
-                prompt.show {
-                    AskText("Rename $name", "Name", "Rename", initial = name, dismiss = prompt::close) { renamed ->
-                        prompt.close()
-                        core.change { it.renameLabel(name, renamed.trim()) }
-                    }
-                }
-            } }
-            PlaceAction.MOVE_UP -> { { core.change { it.reorderLabel(name, Direction.UP) } } }
-            PlaceAction.MOVE_DOWN -> { { core.change { it.reorderLabel(name, Direction.DOWN) } } }
-            PlaceAction.MERGE_INTO -> { {
-                prompt.show {
-                    Choose("Merge $name into", others().filter { it != name }.map { Choice(it, it) }, "There are no other labels.", prompt::close) { into ->
-                        prompt.close()
-                        core.change { it.mergeLabels(name, into.key) }
-                    }
-                }
-            } }
-            PlaceAction.COLOUR -> { {
-                prompt.show {
-                    AskText(
-                        "Colour of $name", "Colour", "Set", example = "teal",
-                        hint = PlaceAction.COLOUR_HELP, dismiss = prompt::close,
-                    ) { colour ->
-                        prompt.close()
-                        core.change { it.recolourLabel(name, colour.trim().ifEmpty { null }) }
-                    }
-                }
-            } }
-            PlaceAction.DELETE -> { {
-                prompt.show {
-                    Confirm("Delete $name?", PlaceAction.DELETING_LABEL, "Delete", prompt::close) {
-                        prompt.close()
-                        core.change { it.deleteLabel(name) }
-                    }
-                }
-            } }
-            else -> null
-        }
-        run?.let { RowAction(action.title, it) }
-    }
+/**
+ * A row's actions as the core gives them, asked through [prompt]. [form] opens the app's own
+ * forms, which only a screen knows how to reach; the new saved filter's form is here.
+ */
+fun Core.offered(
+    actions: List<Action>,
+    prompt: Prompter,
+    form: (Action) -> Unit = {},
+    done: (io.github.emassey0135.lumenna.core.Change) -> Unit = {},
+): List<RowAction> = rowActions(actions, DialogAsker(prompt), { action ->
+    if (action.subject == Subject.FILTER && action.kind == ActionKind.NEW) addFilter(this, prompt) else form(action)
+}, done)
 
-/** Asks for a new label's name. */
-fun addLabel(core: Core, prompt: Prompter) {
-    prompt.show {
-        AskText("New Label", "Name", "Add", dismiss = prompt::close) { name ->
-            prompt.close()
-            core.change { it.addLabel(name.trim()) }
-        }
-    }
-}
-
-/** A saved filter's, as the watch offers them too (`PlaceAction.ofFilter`). */
-fun filterActions(core: Core, prompt: Prompter, name: String, query: String): List<RowAction> =
-    PlaceAction.ofFilter.mapNotNull { action ->
-        val run: (() -> Unit)? = when (action) {
-            PlaceAction.RENAME -> { {
-                prompt.show {
-                    AskText("Rename $name", "Name", "Rename", initial = name, dismiss = prompt::close) { renamed ->
-                        prompt.close()
-                        core.change { it.editFilter(name, renamed.trim(), null) }
-                    }
-                }
-            } }
-            PlaceAction.CHANGE_QUERY -> { {
-                prompt.show {
-                    AskText("Query for $name", "Query", "Save", initial = query, dismiss = prompt::close) { changed ->
-                        prompt.close()
-                        core.change { it.editFilter(name, null, changed.trim()) }
-                    }
-                }
-            } }
-            PlaceAction.MOVE_UP -> { { core.change { it.reorderFilter(name, Direction.UP) } } }
-            PlaceAction.MOVE_DOWN -> { { core.change { it.reorderFilter(name, Direction.DOWN) } } }
-            PlaceAction.DELETE -> { {
-                prompt.show {
-                    Confirm("Delete $name?", PlaceAction.DELETING_FILTER, "Delete", prompt::close) {
-                        prompt.close()
-                        core.change { it.deleteFilter(name) }
-                    }
-                }
-            } }
-            else -> null
-        }
-        run?.let { RowAction(action.title, it) }
-    }
-
-/** Asks for a new saved filter's name, then its query. */
+/** The app's own form for a new saved filter: its name, then its query. */
 fun addFilter(core: Core, prompt: Prompter) {
     prompt.show {
-        AskText("New Filter", "Name", "Next", dismiss = prompt::close) { name ->
+        AskText("New Saved Filter", "Name", "Next", dismiss = prompt::close) { name ->
             prompt.show {
                 AskText("Query for $name", "Query", "Save", example = "#Work & overdue", dismiss = prompt::close) { query ->
-                    prompt.close()
-                    core.change { it.addFilter(name.trim(), query.trim()) }
+                    if (core.change { it.addFilter(name.trim(), query.trim()) } != null) prompt.close()
                 }
             }
         }
     }
+}
+
+/**
+ * Adds a project, label or saved filter as its heading's own action does (`Lumenna.places`):
+ * for a list's Add button, which is that heading's action in another place.
+ */
+fun Core.addNew(group: io.github.emassey0135.lumenna.core.SidebarGroup, prompt: Prompter) {
+    val heading = attempt { lumenna.places() }?.entries?.firstOrNull {
+        (it.kind as? io.github.emassey0135.lumenna.core.SidebarKind.Group)?.v1 == group
+    }
+    heading?.actions?.let { offered(it, prompt) }?.firstOrNull()?.run?.invoke()
 }

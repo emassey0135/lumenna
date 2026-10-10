@@ -49,6 +49,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import io.github.emassey0135.lumenna.core.ActionKind
 import io.github.emassey0135.lumenna.core.BlockFields
 import io.github.emassey0135.lumenna.core.BlockScope
 import io.github.emassey0135.lumenna.core.LumennaException
@@ -65,12 +66,7 @@ import io.github.emassey0135.lumenna.core.PlanItem
 
 /** What the day screen is asking. */
 private sealed interface DayAsk {
-    data class Assign(val block: PlanBlock) : DayAsk
-    data class AssignLength(val block: PlanBlock, val task: Choice) : DayAsk
-    data class Plan(val sitting: PlanAssignment) : DayAsk
-    data class Log(val sitting: PlanAssignment) : DayAsk
     data class Which(val block: PlanBlock) : DayAsk
-    data class Delete(val block: PlanBlock) : DayAsk
     data object GoTo : DayAsk
 }
 
@@ -86,6 +82,7 @@ private sealed interface DayAsk {
 fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Long) {
     var day by rememberSaveable(screen) { mutableStateOf(screen.date) }
     var asking by remember { mutableStateOf<DayAsk?>(null) }
+    val prompt = rememberPrompter()
     val plan: Result<Plan> = remember(day, changes) { runCatching { core.lumenna.plan(day) } }
     val shown = plan.getOrNull()
     val folding = rememberFolding()
@@ -150,7 +147,7 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
                     speech = speech.joinToString(", "),
                     index = index,
                     depth = row.depth,
-                    actions = focus.actions(row.key, index, actions(core, navigator, shown, row, edit) { asking = it }) +
+                    actions = focus.actions(row.key, index, actions(core, navigator, prompt, row, edit)) +
                         listOfNotNull(foldAction(core, folds[index], row.key, folding)),
                     focus = focus.requester(row.key),
                     key = row.key,
@@ -168,32 +165,6 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
 
     val dismiss = { asking = null }
     when (val question = asking) {
-        is DayAsk.Assign -> Choose("Assign to ${question.block.title}", taskChoices(core), "There are no open tasks.", dismiss) {
-            asking = DayAsk.AssignLength(question.block, it)
-        }
-        is DayAsk.AssignLength -> AskLength(core, "How long is ${question.task.title} meant to take?", null, "no planned length", dismiss) { minutes ->
-            asking = null
-            core.change { it.assign(question.task.key, question.block.series, shown?.date, minutes) }
-        }
-        is DayAsk.Plan -> AskLength(core, "Planned length of ${question.sitting.title}", question.sitting.plannedMins, "no planned length", dismiss) { minutes ->
-            asking = null
-            core.change { it.planMinutes(question.sitting.id, minutes) }
-        }
-        is DayAsk.Log -> AskText(
-            "Minutes on ${question.sitting.title}", "Minutes", "Log", example = "45",
-            hint = "The whole of this sitting, replacing what is logged.", number = true, dismiss = dismiss,
-        ) { text ->
-            val minutes = text.trim().toUIntOrNull()
-            if (minutes == null) {
-                core.say("That is not a number of minutes.")
-            } else {
-                asking = null
-                core.attempt { core.lumenna.stopTimer(question.sitting.id, minutes) }?.let {
-                    core.changed()
-                    core.report(sentence(it.announcement, it.notices))
-                }
-            }
-        }
         is DayAsk.Which -> {
             val block = question.block
             val date = shown?.date ?: Clock.today()
@@ -223,15 +194,6 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
                 )
             }
         }
-        is DayAsk.Delete -> Confirm(
-            "Delete ${question.block.title}?",
-            DayAction.deleting(question.block),
-            "Delete",
-            dismiss,
-        ) {
-            asking = null
-            core.change { it.deleteBlock(question.block.series) }
-        }
         DayAsk.GoTo -> AskText("Go to Day", "Day", "Go", example = "next friday", hint = "A date, such as tomorrow or 12 October.", dismiss = dismiss) { text ->
             core.attempt { core.lumenna.plan(text) }?.let {
                 asking = null
@@ -240,67 +202,30 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
         }
         null -> {}
     }
+    prompt.Host()
 }
 
-/** What can be done to a day row, as custom actions and on a long press. Which apply is
- *  shared with the watch (`DayAction`); running them is this screen's. */
+/**
+ * What can be done to a day row, as custom actions and on a long press: the core's, in its
+ * order. Only its forms are this screen's to open: a block's, the task a sitting is for, and a
+ * new block in free time.
+ */
 private fun actions(
     core: Core,
     navigator: Navigator,
-    plan: Plan?,
+    prompt: Prompter,
     row: DayRow,
     edit: (PlanBlock) -> Unit,
-    ask: (DayAsk) -> Unit,
-): List<RowAction> {
-    val date = plan?.date
-    val timed = { operation: () -> io.github.emassey0135.lumenna.core.Timer ->
-        core.attempt(operation)?.let {
-            core.changed()
-            core.report(sentence(it.announcement, it.notices))
+): List<RowAction> = core.offered(row.actions, prompt, form = { action ->
+    when (action.kind) {
+        ActionKind.EDIT -> if (row is DayRow.Block) edit(row.block)
+        ActionKind.EDIT_TASK -> navigator.push(Screen.Task(action.target))
+        ActionKind.ADD_BLOCK -> if (row is DayRow.Free) {
+            navigator.push(Screen.BlockForm(BlockPurpose.Add(date = action.target, at = action.other ?: row.start, minutes = row.minutes)))
         }
+        else -> {}
     }
-    val listed = when (row) {
-        is DayRow.Block -> DayAction.of(row.block)
-        is DayRow.Sitting -> DayAction.of(row.sitting)
-        is DayRow.Free -> DayAction.ofFreeTime
-        is DayRow.Cancelled -> if (date == null) emptyList() else DayAction.ofCancelled
-        is DayRow.Now -> emptyList()
-    }
-    return listed.mapNotNull { action ->
-        val run: (() -> Unit)? = when (row) {
-            is DayRow.Block -> {
-                val block = row.block
-                when (action) {
-                    DayAction.ASSIGN_TASK -> { { ask(DayAsk.Assign(block)) } }
-                    DayAction.EDIT -> { { edit(block) } }
-                    DayAction.CANCEL_THIS_DAY -> date?.let { { core.change { it.cancelOccurrence(block.series, date) } } }
-                    DayAction.RESTORE_THIS_DAY -> date?.let { { core.change { it.restoreOccurrence(block.series, date) } } }
-                    DayAction.DELETE_BLOCK -> { { ask(DayAsk.Delete(block)) } }
-                    else -> null
-                }
-            }
-            is DayRow.Sitting -> {
-                val sitting = row.sitting
-                when (action) {
-                    DayAction.START_TIMER, DayAction.RESUME_TIMER -> { { core.change { it.startTimer(sitting.id) } } }
-                    DayAction.PAUSE_TIMER -> { { timed { core.lumenna.pauseTimer(sitting.id) } } }
-                    DayAction.STOP_TIMER -> { { timed { core.lumenna.stopTimer(sitting.id, null) } } }
-                    DayAction.PLANNED_LENGTH -> { { ask(DayAsk.Plan(sitting)) } }
-                    DayAction.LOG_MINUTES -> { { ask(DayAsk.Log(sitting)) } }
-                    DayAction.SHOW_THE_TASK -> { { navigator.push(Screen.Task(sitting.task)) } }
-                    DayAction.UNASSIGN -> { { core.change { it.unassign(sitting.id) } } }
-                    else -> null
-                }
-            }
-            is DayRow.Free -> { {
-                navigator.push(Screen.BlockForm(BlockPurpose.Add(date = date, at = row.start, minutes = row.minutes)))
-            } }
-            is DayRow.Cancelled -> date?.let { { core.change { it.restoreOccurrence(row.block.series, date) } } }
-            is DayRow.Now -> null
-        }
-        run?.let { RowAction(action.title, it) }
-    }
-}
+})
 
 /**
  * A block, added or changed. Times and days are typed as they are said —

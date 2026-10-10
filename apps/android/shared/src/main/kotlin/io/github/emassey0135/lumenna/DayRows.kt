@@ -1,5 +1,6 @@
 package io.github.emassey0135.lumenna
 
+import io.github.emassey0135.lumenna.core.Action
 import io.github.emassey0135.lumenna.core.BlockFields
 import io.github.emassey0135.lumenna.core.CancelledBlock
 import io.github.emassey0135.lumenna.core.Plan
@@ -24,7 +25,7 @@ sealed interface DayRow {
         override val depth get() = 1
     }
 
-    data class Free(val start: String, val end: String, val minutes: UInt) : DayRow {
+    data class Free(val start: String, val end: String, val minutes: UInt, val actions: List<Action>) : DayRow {
         override val key get() = "free:$start"
     }
 
@@ -37,12 +38,22 @@ sealed interface DayRow {
     }
 }
 
+/** What can be done to a day row: the core's, for each. */
+val DayRow.actions: List<Action>
+    get() = when (this) {
+        is DayRow.Block -> block.actions
+        is DayRow.Sitting -> sitting.actions
+        is DayRow.Free -> actions
+        is DayRow.Cancelled -> block.actions
+        is DayRow.Now -> emptyList()
+    }
+
 fun rows(plan: Plan): List<DayRow> = plan.timeline.flatMap { item ->
     when (item) {
         is PlanItem.Block -> plan.blocks.firstOrNull { it.row == item.row }?.let { block ->
             listOf(DayRow.Block(block)) + block.assignments.map { DayRow.Sitting(it, block) }
         }.orEmpty()
-        is PlanItem.Free -> listOf(DayRow.Free(item.start, item.end, item.minutes))
+        is PlanItem.Free -> listOf(DayRow.Free(item.start, item.end, item.minutes, item.actions))
         is PlanItem.Now -> listOf(DayRow.Now(item.time))
     }
 } + plan.cancelled.map { DayRow.Cancelled(it) }

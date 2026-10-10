@@ -12,10 +12,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.SwitchButton
 import androidx.wear.compose.material3.Text
-import io.github.emassey0135.lumenna.Choice
+import io.github.emassey0135.lumenna.Option
 import io.github.emassey0135.lumenna.Clock
 import io.github.emassey0135.lumenna.Core
-import io.github.emassey0135.lumenna.DeviceAction
 import io.github.emassey0135.lumenna.PairingSession
 import io.github.emassey0135.lumenna.RowAction
 import io.github.emassey0135.lumenna.sentence
@@ -103,7 +102,7 @@ fun PlanningScreen(core: Core, changes: Long) {
 
 /**
  * The paired devices, how syncing with each last went, Sync Now, and pairing another — a
- * Wear OS watch is a peer of its own. Each device's actions are the phone's (`DeviceAction`).
+ * Wear OS watch is a peer of its own. Each device's actions are the core's.
  */
 @Composable
 fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
@@ -124,19 +123,9 @@ fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
         item { Button(onClick = { syncNow() }, modifier = Modifier.fillMaxWidth(), label = { Text("Sync Now") }) }
         status?.devices.orEmpty().forEach { device ->
             item {
-                val actions = DeviceAction.of(thisDevice = device.thisDevice).map { action ->
-                    when (action) {
-                        DeviceAction.SYNC_NOW -> RowAction(action.title) { syncNow() }
-                        DeviceAction.RENAME -> RowAction(action.title) {
-                            entry?.ask("Rename ${device.name}") { name -> core.change { it.renameDevice(device.nodeId, name.trim()) } }
-                        }
-                        DeviceAction.STOP_SYNCING -> RowAction(action.title) {
-                            navigator.choose("Stop syncing with ${device.name}?", listOf(Choice("stop", "Stop Syncing")), DeviceAction.STOPPING) {
-                                core.change { it.unpairDevice(device.nodeId) }
-                            }
-                        }
-                    }
-                }
+                // The core's: Rename, and Unpair on every row but this watch's own. Sync Now is
+                // with every device at once, so it is the screen's button above.
+                val actions = core.offered(device.actions, navigator, entry)
                 RowButton(
                     device.name,
                     detail = (listOf(device.platform) + device.status).joinToString(", "),

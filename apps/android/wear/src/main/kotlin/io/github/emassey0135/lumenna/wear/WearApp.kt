@@ -26,7 +26,7 @@ import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import io.github.emassey0135.lumenna.BlockPurpose
-import io.github.emassey0135.lumenna.Choice
+import io.github.emassey0135.lumenna.Option
 import io.github.emassey0135.lumenna.Core
 import io.github.emassey0135.lumenna.core.Place
 import kotlinx.coroutines.delay
@@ -44,7 +44,7 @@ sealed interface Screen {
     data object Planning : Screen
     data object Devices : Screen
     /** A list to choose one from: an action, a project, a task, a length. */
-    data class Choose(val title: String, val message: String?, val choices: List<Choice>, val chosen: (Choice) -> Unit) : Screen
+    data class Choose(val title: String, val message: String?, val choices: List<Option>, val chosen: (Option) -> Unit) : Screen
 }
 
 /**
@@ -67,7 +67,7 @@ class Navigator(private val controller: NavHostController) {
     }
 
     /** Offers `choices`; `chosen` runs once the list has closed. */
-    fun choose(title: String, choices: List<Choice>, message: String? = null, chosen: (Choice) -> Unit) {
+    fun choose(title: String, choices: List<Option>, message: String? = null, chosen: (Option) -> Unit) {
         open(Screen.Choose(title, message, choices) { choice ->
             back()
             chosen(choice)
@@ -76,7 +76,7 @@ class Navigator(private val controller: NavHostController) {
 
     /** Offers a row's actions as a list, for a long press. */
     fun actions(title: String, actions: List<io.github.emassey0135.lumenna.RowAction>) {
-        choose(title, actions.mapIndexed { index, action -> Choice(index.toString(), action.name) }) { chosen ->
+        choose(title, actions.mapIndexed { index, action -> Option(index.toString(), action.name) }) { chosen ->
             actions[chosen.key.toInt()].run()
         }
     }

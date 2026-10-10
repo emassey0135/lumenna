@@ -35,7 +35,7 @@ class RowFocus internal constructor(private val core: Core) {
 
     /** The row's actions, each noting the row before it runs, so focus can come back to it. */
     fun actions(key: String, index: Int, actions: List<RowAction>): List<RowAction> = actions.map { action ->
-        RowAction(action.name) {
+        action.copy {
             target = key to index
             core.hold()
             action.run()
