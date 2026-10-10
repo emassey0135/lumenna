@@ -80,7 +80,7 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks, chang
     var filter by rememberSaveable(screen, stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(screen.query))
     }
-    var erasing by remember { mutableStateOf<RowView?>(null) }
+    val prompt = rememberPrompter()
     // A filter part-typed is often not one yet; its error is the readback, not an alert.
     val listing: Result<Rows> = remember(filter.text, changes) {
         runCatching { core.lumenna.listTasks(filter.text) }
@@ -136,39 +136,12 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks, chang
         TaskRows(
             core,
             rows,
-            actions = { row ->
-                if (screen.trash) {
-                    listOf(
-                        RowAction("Restore") { core.change { it.restoreTask(row.id) } },
-                        RowAction("Delete from Trash") { erasing = row },
-                    )
-                } else {
-                    listOf(
-                        RowAction(if (row.checked == true) "Mark Not Done" else "Mark Done") {
-                            core.change { if (row.checked == true) it.uncompleteTask(row.id) else it.completeTask(row.id) }
-                        },
-                        RowAction("Delete") { core.change { it.trashTask(row.id) } },
-                    )
-                }
-            },
+            // The core's, in its order: in the trash, Restore and Delete from Trash.
+            actions = { row -> core.offered(row.actions, prompt, form = { navigator.push(Screen.Task(it.target)) }) },
             open = if (screen.trash) null else { row -> navigator.push(Screen.Task(row.id)) },
         )
     }
-
-    erasing?.let { row ->
-        AlertDialog(
-            onDismissRequest = { erasing = null },
-            title = { Text("Delete ${row.title} from the trash?") },
-            text = { Text("Undo can bring it back. It also stays in the history every device keeps, and in backups.") },
-            confirmButton = {
-                TextButton(modifier = Target, onClick = {
-                    erasing = null
-                    core.change { it.eraseTask(row.id) }
-                }) { Text("Delete") }
-            },
-            dismissButton = { TextButton(modifier = Target, onClick = { erasing = null }) { Text("Cancel") } },
-        )
-    }
+    prompt.Host()
 }
 
 /** How the filter was understood, and what it found — or why it is not one yet. */
@@ -260,7 +233,7 @@ fun ListRow(
                         .then(if (acts) Modifier else Modifier.focusable()),
                 )
                 .onFocusChanged { if (it.isFocused && focus != null) pane?.row = focus }
-                // A row command runs this row's action of that name; a key the row has no
+                // A row command runs this row's action of that kind; a key the row has no
                 // action for goes on to the list, which may move focus with it.
                 .onKeyEvent { key ->
                     val command = Command.of(key.nativeKeyEvent) ?: return@onKeyEvent false
@@ -268,7 +241,7 @@ fun ListRow(
                         if (actions.isNotEmpty()) menu = true
                         return@onKeyEvent actions.isNotEmpty()
                     }
-                    val action = command.rowActions.firstNotNullOfOrNull { name -> actions.firstOrNull { it.name == name } }
+                    val action = command.rowAction(actions)
                     action?.run()
                     action != null
                 }
@@ -324,7 +297,9 @@ fun ListRow(
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             actions.forEach { action ->
-                DropdownMenuItem(text = { Text(action.name) }, onClick = {
+                DropdownMenuItem(text = {
+                    Text(action.name, color = if (action.destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
+                }, onClick = {
                     menu = false
                     action.run()
                 })

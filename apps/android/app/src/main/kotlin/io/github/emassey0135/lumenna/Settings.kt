@@ -292,36 +292,17 @@ fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
             status.devices.map { device ->
                 // How syncing with it is going, as the core words it for every app.
                 val detail = (listOf(device.platform) + device.status).joinToString(", ")
-                Item(device.nodeId, device.name, detail)
+                Item(device.nodeId, device.name, detail, actions = device.actions)
             } to status.announcement
         },
         addLabel = "Pair a device",
         add = { navigator.push(Screen.Pairing) },
         open = null,
-        actions = { item ->
-            // Which apply is shared with the watch (`DeviceAction`): this device cannot unpair
-            // itself, so that is not offered on its own row.
-            DeviceAction.of(thisDevice = item.detail.contains("this device")).map { action ->
-                when (action) {
-                    DeviceAction.SYNC_NOW -> RowAction(action.title) { syncNow(core) }
-                    DeviceAction.RENAME -> RowAction(action.title) {
-                        prompt.show {
-                            AskText("Rename ${item.title}", "Name", "Rename", initial = item.title, dismiss = prompt::close) { name ->
-                                prompt.close()
-                                core.change { it.renameDevice(item.key, name.trim()) }
-                            }
-                        }
-                    }
-                    DeviceAction.STOP_SYNCING -> RowAction(action.title) {
-                        prompt.show {
-                            Confirm("Stop syncing with ${item.title}?", DeviceAction.STOPPING, "Stop Syncing", prompt::close) {
-                                prompt.close()
-                                core.change { it.unpairDevice(item.key) }
-                            }
-                        }
-                    }
-                }
-            }
+        // The core's: Rename, and Unpair on every row but this device's own.
+        actions = { item -> core.offered(item.actions, prompt) },
+        // Syncing is with every device at once, so it is the screen's, not a row's.
+        header = {
+            OutlinedButton(modifier = Target.padding(horizontal = 16.dp), onClick = { syncNow(core) }) { Text("Sync Now") }
         },
     )
     prompt.Host()

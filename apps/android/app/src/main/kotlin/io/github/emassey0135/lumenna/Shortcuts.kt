@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
+import io.github.emassey0135.lumenna.core.ActionKind
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /** A key with the modifiers it needs, and no others. */
@@ -54,7 +55,7 @@ enum class Command(val title: String, val place: Place, vararg val keys: Keys) {
     GO_TO_NOW("Go to now", Place.DAY, ctrl(KeyEvent.KEYCODE_T)),
     GO_TO_DAY("Go to day", Place.DAY, ctrl(KeyEvent.KEYCODE_G)),
 
-    // A row's own: each runs the focused row's action of that name (`ListRow`), so a key does
+    // A row's own: each runs the focused row's action of that kind (`ListRow`), so a key does
     // exactly what the row's action list offers, and nothing a row does not.
     MARK_DONE("Mark done or not done", Place.ROW, ctrl(KeyEvent.KEYCODE_K)),
     DELETE("Delete", Place.ROW, Keys(KeyEvent.KEYCODE_FORWARD_DEL)),
@@ -73,15 +74,17 @@ enum class Command(val title: String, val place: Place, vararg val keys: Keys) {
     }
 }
 
-/** The row actions a row command runs, by name, as `RowAction` names them. */
-val Command.rowActions: List<String>
-    get() = when (this) {
-        Command.MARK_DONE -> listOf("Mark Done", "Mark Not Done")
-        Command.DELETE -> listOf("Delete", "Delete Block", "Delete from Trash")
-        Command.EXPAND -> listOf("Expand")
-        Command.COLLAPSE -> listOf("Collapse")
-        else -> emptyList()
-    }
+/**
+ * The row's action a row command runs: by the core's kind, so Delete is Delete on whatever
+ * row is in hand; folding, which is the app's, by name.
+ */
+fun Command.rowAction(actions: List<RowAction>): RowAction? = when (this) {
+    Command.MARK_DONE -> actions.ofKind(ActionKind.MARK_DONE, ActionKind.MARK_NOT_DONE)
+    Command.DELETE -> actions.ofKind(ActionKind.DELETE, ActionKind.DELETE_FOR_GOOD)
+    Command.EXPAND -> actions.firstOrNull { it.kind == null && it.name == "Expand" }
+    Command.COLLAPSE -> actions.firstOrNull { it.kind == null && it.name == "Collapse" }
+    else -> null
+}
 
 /**
  * What each command does now. A screen offers a command while it is shown ([Offer]); the most

@@ -32,19 +32,11 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
-import io.github.emassey0135.lumenna.core.MoveTarget
+import io.github.emassey0135.lumenna.core.ActionKind
 import io.github.emassey0135.lumenna.core.TaskDetail
 import io.github.emassey0135.lumenna.core.TaskFields
 import io.github.emassey0135.lumenna.core.taskEdit
 import io.github.emassey0135.lumenna.core.taskFields
-
-/** What the detail screen is asking, if anything. */
-private sealed interface Asking {
-    data object Block : Asking
-    data class Length(val block: String, val date: String) : Asking
-    data object WaitFor : Asking
-    data object Parent : Asking
-}
 
 /**
  * One task, its fields edited and saved together.
@@ -58,7 +50,8 @@ private sealed interface Asking {
 fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task, changes: Long) {
     var task by remember(screen.id) { mutableStateOf<TaskDetail?>(null) }
     var fields by remember(screen.id) { mutableStateOf<TaskFields?>(null) }
-    var asking by remember { mutableStateOf<Asking?>(null) }
+    val prompt = rememberPrompter()
+    val asker = remember(prompt) { DialogAsker(prompt) }
 
     LaunchedEffect(screen.id, changes) {
         val shown = runCatching { core.lumenna.showTask(screen.id).task }.getOrNull()
@@ -125,13 +118,10 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task, chan
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            Heading("Waits for")
-            current.depends.forEach { other ->
-                TextButton(modifier = Target, onClick = { core.change { it.removeDependency(current.id, other.id) } }) {
-                    Text("Stop Waiting for ${other.title}")
-                }
+            if (current.depends.isNotEmpty()) {
+                Heading("Waits for")
+                current.depends.forEach { other -> Text(other.title, Modifier.padding(vertical = 4.dp)) }
             }
-            TextButton(modifier = Target, onClick = { asking = Asking.WaitFor }) { Text("Add Something It Waits For…") }
 
             Heading("About")
             if (current.repetition == null && current.recurrence != null) {
@@ -139,51 +129,18 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task, chan
             }
             Text("State: ${current.state.joinToString(", ")}")
 
+            // The core's, in its order: this screen is the task's form, so no Edit Details.
             Heading("Actions")
-            val done = "completed" in current.state
-            TextButton(modifier = Target, onClick = {
-                core.change { if (done) it.uncompleteTask(current.id) else it.completeTask(current.id) }
-            }) { Text(if (done) "Mark Not Done" else "Mark Done") }
-            TextButton(modifier = Target, onClick = { asking = Asking.Block }) { Text("Put in a Block…") }
-            TextButton(modifier = Target, onClick = { asking = Asking.Parent }) { Text("Make Subtask Of…") }
-            if (current.parent != null) {
-                TextButton(modifier = Target, onClick = { core.change { it.moveTask(current.id, MoveTarget.Top) } }) {
-                    Text("Move to Top Level")
+            current.actions.forEach { action ->
+                TextButton(modifier = Target, onClick = {
+                    core.perform(action, asker, form = {}) { if (action.kind == ActionKind.DELETE) navigator.back() }
+                }) {
+                    Text(action.title, color = if (action.destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
                 }
             }
-            TextButton(modifier = Target, onClick = { core.change { it.trashTask(current.id) }?.let { navigator.back() } }) {
-                Text("Move to Trash", color = MaterialTheme.colorScheme.error)
-            }
         }
     }
-
-    val dismiss = { asking = null }
-    when (val question = asking) {
-        Asking.Block -> {
-            val blocks = remember { blockChoices(core) }
-            Choose("Put ${current?.title} in a Block", blocks.map { it.first }, "There are no work blocks this week. Add one from Today.", dismiss) { block ->
-                asking = Asking.Length(block.key, blocks.first { it.first.key == block.key }.second)
-            }
-        }
-        is Asking.Length -> AskLength(core, "How long is this sitting meant to take?", null, "no planned length", dismiss) { minutes ->
-            asking = null
-            current?.let { task -> core.change { it.assign(task.id, question.block, question.date, minutes) } }
-        }
-        Asking.WaitFor -> current?.let { task ->
-            val excluded = task.depends.map { it.id }.toSet() + task.id
-            Choose("Waits For", taskChoices(core, excluded), "There are no other open tasks.", dismiss) { other ->
-                asking = null
-                core.change { it.addDependency(task.id, other.key) }
-            }
-        }
-        Asking.Parent -> current?.let { task ->
-            Choose("Make Subtask Of", taskChoices(core, setOf(task.id)), "There are no other open tasks.", dismiss) { parent ->
-                asking = null
-                core.change { it.moveTask(task.id, MoveTarget.Parent(parent.key)) }
-            }
-        }
-        null -> {}
-    }
+    prompt.Host()
 }
 
 /** A labelled field; [hint] beneath it says what it takes, to TalkBack and on screen. */

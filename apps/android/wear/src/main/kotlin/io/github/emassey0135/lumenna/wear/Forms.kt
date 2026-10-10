@@ -16,14 +16,13 @@ import androidx.wear.compose.material3.SwitchButton
 import androidx.wear.compose.material3.Text
 import io.github.emassey0135.lumenna.BlockFormModel
 import io.github.emassey0135.lumenna.BlockPurpose
-import io.github.emassey0135.lumenna.Choice
+import io.github.emassey0135.lumenna.Option
 import io.github.emassey0135.lumenna.Clock
 import io.github.emassey0135.lumenna.Completing
 import io.github.emassey0135.lumenna.Core
 import io.github.emassey0135.lumenna.TaskField
-import io.github.emassey0135.lumenna.blockChoices
-import io.github.emassey0135.lumenna.taskChoices
-import io.github.emassey0135.lumenna.core.MoveTarget
+import io.github.emassey0135.lumenna.perform
+import io.github.emassey0135.lumenna.core.ActionKind
 import io.github.emassey0135.lumenna.core.Syntax
 import io.github.emassey0135.lumenna.core.TaskDetail
 import io.github.emassey0135.lumenna.core.TaskFields
@@ -136,59 +135,34 @@ fun TaskScreen(core: Core, navigator: Navigator, id: String, changes: Long) {
         item { TextFieldButton(TaskField.NOTES.title, form.notes, TaskField.NOTES.example) { fields = form.copy(notes = it) } }
         item { Button(onClick = { TaskField.save(core, current, form) }, modifier = Modifier.fillMaxWidth(), label = { Text("Save") }) }
 
-        item { Heading("Waits for") }
-        current.depends.forEach { other ->
-            item {
-                Button(onClick = { core.change { it.removeDependency(current.id, other.id) } }, modifier = Modifier.fillMaxWidth(), label = { Text("Stop Waiting for ${other.title}") })
-            }
-        }
-        item {
-            Button(onClick = {
-                val excluded = current.depends.map { it.id }.toSet() + current.id
-                navigator.choose("Waits For", taskChoices(core, excluded)) { other -> core.change { it.addDependency(current.id, other.key) } }
-            }, modifier = Modifier.fillMaxWidth(), label = { Text("Add Something It Waits For") })
+        if (current.depends.isNotEmpty()) {
+            item { Heading("Waits for") }
+            current.depends.forEach { other -> item { Text(other.title) } }
         }
 
         item { Heading("About") }
         if (current.repetition == null && current.recurrence != null) item { Text("Repeats by the rule ${current.recurrence}") }
         item { Text("State: ${current.state.joinToString(", ")}") }
 
+        // The core's, in its order: this screen is the task's form, so no Edit Details.
         item { Heading("Actions") }
-        val done = "completed" in current.state
-        item {
-            Button(onClick = { core.change { if (done) it.uncompleteTask(current.id) else it.completeTask(current.id) } }, modifier = Modifier.fillMaxWidth(), label = { Text(if (done) "Mark Not Done" else "Mark Done") })
-        }
-        item {
-            Button(onClick = {
-                val blocks = blockChoices(core)
-                navigator.choose("Put ${current.title} in a Block", blocks.map { it.first }, if (blocks.isEmpty()) "There are no work blocks this week. Add one from Today." else null) { block ->
-                    val date = blocks.first { it.first.key == block.key }.second
-                    chooseLength(navigator, "How long is this sitting meant to take?", "No Planned Length") { minutes ->
-                        core.change { it.assign(current.id, block.key, date, minutes) }
+        current.actions.forEach { action ->
+            item {
+                val entry = LocalTextEntry.current
+                Button(onClick = {
+                    core.perform(action, WearAsker(navigator, entry), form = {}) {
+                        if (action.kind == ActionKind.DELETE) navigator.back()
                     }
-                }
-            }, modifier = Modifier.fillMaxWidth(), label = { Text("Put in a Block") })
-        }
-        item {
-            Button(onClick = {
-                navigator.choose("Make Subtask Of", taskChoices(core, setOf(current.id))) { parent ->
-                    core.change { it.moveTask(current.id, MoveTarget.Parent(parent.key)) }
-                }
-            }, modifier = Modifier.fillMaxWidth(), label = { Text("Make Subtask Of") })
-        }
-        if (current.parent != null) {
-            item { Button(onClick = { core.change { it.moveTask(current.id, MoveTarget.Top) } }, modifier = Modifier.fillMaxWidth(), label = { Text("Move to Top Level") }) }
-        }
-        item {
-            Button(onClick = { core.change { it.trashTask(current.id) }?.let { navigator.back() } }, modifier = Modifier.fillMaxWidth(), label = { Text("Move to Trash") })
+                }, modifier = Modifier.fillMaxWidth(), label = { Text(action.title) })
+            }
         }
     }
 }
 
-/** A length in minutes, from the lengths a sitting usually takes, or none. */
-fun chooseLength(navigator: Navigator, title: String, without: String, chosen: (UInt?) -> Unit) {
-    val lengths = listOf(15, 25, 30, 45, 60, 90, 120).map { Choice(it.toString(), Clock.length(it.toUInt())) }
-    navigator.choose(title, lengths + Choice("", without)) { choice -> chosen(choice.key.toUIntOrNull()) }
+/** A length in minutes, from the lengths a sitting usually takes, or, given [without], none. */
+fun chooseLength(navigator: Navigator, title: String, without: String?, chosen: (UInt?) -> Unit) {
+    val lengths = listOf(15, 25, 30, 45, 60, 90, 120).map { Option(it.toString(), Clock.length(it.toUInt())) }
+    navigator.choose(title, lengths + listOfNotNull(without?.let { Option("", it) })) { choice -> chosen(choice.key.toUIntOrNull()) }
 }
 
 /** A block, added or changed, in the form the phone has (`BlockFormModel`). */

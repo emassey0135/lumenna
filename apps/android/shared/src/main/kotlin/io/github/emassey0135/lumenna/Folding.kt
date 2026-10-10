@@ -59,5 +59,13 @@ fun foldAction(core: Core, row: Shown<*>, key: String, folding: MutableState<Set
     }
 }
 
-/** Something to do to a row: its name, as TalkBack and the long-press menu both say it. */
-data class RowAction(val name: String, val run: () -> Unit)
+/**
+ * Something to do to a row: its name, as TalkBack and the long-press menu both say it. [kind]
+ * is the core's, for a key to find the row's action of that kind; folding has none.
+ */
+data class RowAction(
+    val name: String,
+    val kind: io.github.emassey0135.lumenna.core.ActionKind? = null,
+    val destructive: Boolean = false,
+    val run: () -> Unit,
+)

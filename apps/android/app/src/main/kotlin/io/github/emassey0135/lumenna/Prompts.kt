@@ -82,10 +82,11 @@ fun AskText(
 
 /**
  * Choosing one of many, narrowed by typing: a task to wait for or to go under, a block to put
- * a task in. Each choice is one TalkBack stop, said as "Deep work, 9:00 AM to 11:00 AM".
+ * a task in. What is offered is the core's, and never empty: when there is nothing, the core
+ * says why instead. Each choice is one TalkBack stop, said as "Deep work, 9:00 AM to 11:00 AM".
  */
 @Composable
-fun Choose(title: String, choices: List<Choice>, empty: String, dismiss: () -> Unit, chosen: (Choice) -> Unit) {
+fun Choose(title: String, choices: List<Option>, dismiss: () -> Unit, chosen: (Option) -> Unit) {
     var narrow by remember { mutableStateOf("") }
     val shown = choices.filter {
         narrow.isBlank() || it.title.contains(narrow, ignoreCase = true) || it.detail.contains(narrow, ignoreCase = true)
@@ -105,7 +106,7 @@ fun Choose(title: String, choices: List<Choice>, empty: String, dismiss: () -> U
                     )
                 }
                 if (shown.isEmpty()) {
-                    Text(if (choices.isEmpty()) empty else "Nothing matches", Modifier.padding(vertical = 12.dp))
+                    Text("Nothing matches", Modifier.padding(vertical = 12.dp))
                 }
                 LazyColumn(
                     Modifier
@@ -120,7 +121,7 @@ fun Choose(title: String, choices: List<Choice>, empty: String, dismiss: () -> U
                                 .semantics(mergeDescendants = true) {
                                     collectionItemInfo = CollectionItemInfo(index, 1, 0, 1)
                                 }
-                                .padding(vertical = 12.dp),
+                                .padding(start = (16 * choice.depth).dp, top = 12.dp, bottom = 12.dp),
                         ) {
                             Text(choice.title, style = MaterialTheme.typography.bodyLarge)
                             if (choice.detail.isNotEmpty()) {
@@ -136,40 +137,25 @@ fun Choose(title: String, choices: List<Choice>, empty: String, dismiss: () -> U
     )
 }
 
-/**
- * How long a sitting is meant to take: a number of minutes, or none. Hands back null
- * for none, and does nothing for an answer that is not a number, saying so.
- */
-@Composable
-fun AskLength(core: Core, title: String, current: UInt?, without: String, dismiss: () -> Unit, done: (UInt?) -> Unit) {
-    AskText(
-        title = title,
-        label = "Minutes",
-        action = "Done",
-        initial = current?.toString().orEmpty(),
-        example = "45",
-        hint = "Empty for $without.",
-        number = true,
-        dismiss = dismiss,
-    ) { text ->
-        val trimmed = text.trim()
-        val minutes = trimmed.toUIntOrNull()
-        when {
-            trimmed.isEmpty() -> done(null)
-            minutes != null && minutes > 0u -> done(minutes)
-            else -> core.say("That is not a number of minutes.")
-        }
-    }
-}
-
 /** A yes-or-no question before something that cannot be taken back. */
 @Composable
-fun Confirm(title: String, message: String, action: String, dismiss: () -> Unit, confirmed: () -> Unit) {
+fun Confirm(
+    title: String,
+    message: String,
+    action: String,
+    dismiss: () -> Unit,
+    destructive: Boolean = false,
+    confirmed: () -> Unit,
+) {
     AlertDialog(
         onDismissRequest = dismiss,
         title = { Text(title) },
         text = { Text(message) },
-        confirmButton = { TextButton(modifier = Target, onClick = confirmed) { Text(action) } },
+        confirmButton = {
+            TextButton(modifier = Target, onClick = confirmed) {
+                Text(action, color = if (destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
+            }
+        },
         dismissButton = { TextButton(modifier = Target, onClick = dismiss) { Text("Cancel") } },
     )
 }

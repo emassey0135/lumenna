@@ -65,15 +65,13 @@ private fun key(destination: Destination): String = when (destination) {
  * project tree, labels, saved filters, blocks, the trash (`Lumenna.places`), then Settings.
  *
  * Headings and projects with subprojects fold, saying "expanded" or "collapsed", with Expand
- * and Collapse among their actions; a project's, label's or filter's actions are the ones
- * Browse offers (`PlaceActions.kt`). The place shown is said as selected.
+ * and Collapse among their actions; a heading's and a place's actions are the core's, as
+ * Browse offers them. The place shown is said as selected.
  */
 @Composable
 fun Sidebar(core: Core, changes: Long, current: Destination, choose: (Destination) -> Unit, modifier: Modifier = Modifier) {
     val prompt = rememberPrompter()
     val entries = remember(changes) { core.attempt { core.lumenna.places().entries }.orEmpty() }
-    val projects = entries.mapNotNull { ((it.kind as? SidebarKind.Place)?.v1 as? Place.Project)?.v1 }
-    val labels = entries.mapNotNull { ((it.kind as? SidebarKind.Place)?.v1 as? Place.Label)?.v1 }
     val byKey = entries.associateBy { key(it.kind) }
     val all = entries.map { entry ->
         val title = when (val kind = entry.kind) {
@@ -94,22 +92,8 @@ fun Sidebar(core: Core, changes: Long, current: Destination, choose: (Destinatio
     val focus = rememberRowFocus(core, items.map { it.key }, state)
     val selected = key(current)
 
-    fun actions(item: Item): List<RowAction> {
-        val entry = byKey[item.key] ?: return emptyList()
-        return when (val kind = entry.kind) {
-            is SidebarKind.Group -> when (kind.v1) {
-                SidebarGroup.PROJECTS -> listOf(RowAction("New Project") { addProject(core, prompt) })
-                SidebarGroup.LABELS -> listOf(RowAction("New Label") { addLabel(core, prompt) })
-                SidebarGroup.FILTERS -> listOf(RowAction("New Saved Filter") { addFilter(core, prompt) })
-            }
-            is SidebarKind.Place -> when (val place = kind.v1) {
-                is Place.Project -> projectActions(core, prompt, place.v1, entry.archived) { projects }
-                is Place.Label -> labelActions(core, prompt, place.v1) { labels }
-                is Place.Filter -> filterActions(core, prompt, place.name, place.query)
-                else -> emptyList()
-            }
-        }
-    }
+    // The core's, for headings (New Project, New Label, New Saved Filter) and places alike.
+    fun actions(item: Item): List<RowAction> = core.offered(byKey[item.key]?.actions.orEmpty(), prompt)
 
     Column(modifier.semantics { paneTitle = "Places" }) {
         Text(
