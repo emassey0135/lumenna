@@ -635,6 +635,41 @@
       (lumenna-test--answering ("typed456")
         (should (equal (lumenna--read-code) "typed456"))))))
 
+(ert-deftest lumenna-a-tasks-project-is-chosen-from-the-projects-with-their-level ()
+  (lumenna-test--with-store
+    (lumenna-write "project.add" :name "Work")
+    (lumenna-write "project.add" :name "Reports" :parent "Work")
+    (lumenna-write "task.add" :text "file the summary")
+    (lumenna-tasks)
+    (lumenna-test--goto "file the summary")
+    (lumenna-activate)
+    (lumenna-test--goto "Project:")
+    (let (offered annotate required)
+      (cl-letf (((symbol-function 'completing-read)
+                 (lambda (_prompt collection _predicate require-match &rest _)
+                   (setq offered (mapcar #'car collection)
+                         required require-match
+                         annotate (plist-get completion-extra-properties :annotation-function))
+                   "Reports")))
+        (lumenna-activate))
+      (should (equal offered '("Inbox" "Work" "Reports")))
+      (should (eq required t))
+      (should (equal (funcall annotate "Reports") "  level 2"))
+      (should (equal (funcall annotate "Work") "")))
+    (lumenna-test--goto "Project: Reports")))
+
+(ert-deftest lumenna-the-pairing-code-is-copied-only-when-asked ()
+  (let ((kill-ring nil) (kill-ring-yank-pointer nil) (interprogram-cut-function nil)
+        (lumenna--pairing 'waiting) (lumenna--shown-code nil)
+        (lumenna--words (make-hash-table :test #'equal)))
+    (cl-letf (((symbol-function 'lumenna--pairing-words)
+               (lambda (&optional _) '(:waiting "Waiting." :my_code "This device's code"
+                                       :copied "The code is copied."))))
+      (lumenna-pairing-notified '(:code "abc123" :name "here"))
+      (should (null kill-ring))
+      (lumenna-pair-copy-code)
+      (should (equal (car kill-ring) "abc123")))))
+
 (ert-deftest lumenna-a-running-daemon-is-used-over-its-socket ()
   (skip-unless (not (eq system-type 'windows-nt)))
   (lumenna-test--with-store

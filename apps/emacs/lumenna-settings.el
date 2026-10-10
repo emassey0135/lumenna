@@ -136,7 +136,7 @@ Its platform, then the status the core words for every app."
   "A code given while waiting, to join with once the wait has ended.")
 
 (defvar lumenna--shown-code nil
-  "The code this device shows while it waits, copied to the kill ring.")
+  "The code this device shows while it waits; copied only when asked.")
 
 (defun lumenna--pairing-words (&optional name)
   "Pairing's sentences and buttons, the core's (`form.pairing_words').
@@ -151,8 +151,8 @@ pairing says; Emacs runs where finding each other works."
 (defun lumenna--read-code ()
   "The other device's code: typed, or, left empty, the latest kill.
 That is where a code sent from the other device usually arrives, by way of
-the system clipboard.  This device's own code, copied while it waits, is
-never the other's."
+the system clipboard.  This device's own code, if it was copied, is never
+the other's."
   (let* ((words (lumenna--pairing-words))
          (typed (string-trim (read-string (lumenna--prompt (plist-get words :empty_means)
                                                            (plist-get words :their_code))))))
@@ -203,6 +203,15 @@ Both show three words; say yes only if they are the same on both."
                  (message "%s" (plist-get err :message))))
    :timeout 700))
 
+(defun lumenna-pair-copy-code ()
+  "Copy the code this device shows while it waits, to paste on the other device.
+Only when asked: the clipboard is the person's own."
+  (interactive)
+  (unless (and (eq lumenna--pairing 'waiting) lumenna--shown-code)
+    (user-error "No code is shown; this device is not waiting to be found"))
+  (kill-new lumenna--shown-code)
+  (message "%s" (lumenna--sentence-message (plist-get (lumenna--pairing-words) :copied))))
+
 (defun lumenna-pair-cancel ()
   "Give up the pairing under way."
   (interactive)
@@ -215,10 +224,8 @@ The code to give the other device, or the words to compare."
   (cond
    ((plist-get params :code)
     (setq lumenna--shown-code (plist-get params :code))
-    (kill-new lumenna--shown-code)
     (let ((words (lumenna--pairing-words (plist-get params :name))))
-      (message "%s %s %s: %s" (plist-get words :waiting) (plist-get words :copied)
-               (plist-get words :my_code) (plist-get params :code))))
+      (message "%s %s: %s" (plist-get words :waiting) (plist-get words :my_code) (plist-get params :code))))
    ((plist-get params :words)
     (let* ((words (lumenna--pairing-words))
            (matched (yes-or-no-p
@@ -285,6 +292,7 @@ The code to give the other device, or the words to compare."
   ("Syncing"
    ("s" "Sync now" lumenna-sync-now)
    ("P" "Pair a device" lumenna-pair)
+   ("w" "Copy code" lumenna-pair-copy-code)
    ("c" "Cancel a pairing" lumenna-pair-cancel)))
 
 (provide 'lumenna-settings)

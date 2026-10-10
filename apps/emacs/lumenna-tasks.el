@@ -123,7 +123,7 @@ name."
                    (cdr (assoc (completing-read (lumenna--with-default prompt (car (rassoc now choices)))
                                                 choices nil t nil nil (car (rassoc now choices)))
                                choices))))
-      ('project (completing-read (lumenna--with-default prompt now) (lumenna--project-names) nil t nil nil now))
+      ('project (lumenna--read-project prompt now))
       ('labels (string-join
                 (completing-read-multiple
                  prompt
@@ -133,9 +133,23 @@ name."
                 ", "))
       (_ (lumenna-read-field form prompt now)))))
 
-(defun lumenna--project-names ()
-  "Every project's name."
-  (mapcar (lambda (row) (plist-get row :title)) (append (plist-get (lumenna-call "project.list") :rows) nil)))
+(defun lumenna--read-project (prompt now)
+  "Read a project, asking PROMPT: one the core offers (`form.project_options').
+NOW, the task's project, is the default.  Only an offered project is taken,
+and typing finds one.  A project's level in the tree is its annotation, as
+an outline says it, never indentation alone."
+  (let* ((options (append (lumenna--value "form.project_options") nil))
+         (lines (lumenna--unique (mapcar (lambda (o) (cons (plist-get o :title) o)) options)))
+         (completion-extra-properties
+          (list :annotation-function
+                (lambda (line)
+                  (let ((depth (or (plist-get (cdr (assoc line lines)) :depth) 0)))
+                    (if (> depth 0) (format "  level %d" (1+ depth)) "")))))
+         (default (car (seq-find (lambda (l) (equal (plist-get (cdr l) :id) now)) lines)))
+         (picked (completing-read (lumenna--with-default prompt default) lines nil t nil nil default)))
+    (if-let* ((option (cdr (assoc picked lines))))
+        (plist-get option :id)
+      now)))
 
 (defvar-local lumenna--notes-task nil "The task whose notes this buffer edits, as shown.")
 (defvar-local lumenna--notes-fields nil "The task's form fields, as they were when editing began.")
