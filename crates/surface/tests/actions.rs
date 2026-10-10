@@ -293,3 +293,46 @@ fn an_empty_day_says_it_is_that_day_that_has_no_work_blocks() {
     let found = lumenna.work_block_choices(Some("2027-01-04".to_owned()), Some(1)).unwrap();
     assert_eq!(found.announcement, "There are no work blocks on 2027-01-04.");
 }
+
+#[test]
+fn a_rows_primary_actions_are_few_and_every_action_says_itself_in_sentence_case() {
+    let (_directory, lumenna) = open();
+    add(&lumenna, "water plants");
+    let actions = task_actions(&lumenna, "water plants");
+    let primary: Vec<&str> = actions.iter().filter(|a| a.primary).map(|a| a.title.as_str()).collect();
+    assert_eq!(primary, ["Mark Done", "Move to Trash"]);
+    assert_eq!(find(&actions, "Put in a Block").sentence, "Put in a block");
+}
+
+#[test]
+fn a_text_questions_button_says_what_answering_does() {
+    let (_directory, lumenna) = open();
+    lumenna.add_label("calls").unwrap();
+    let rows = lumenna.list_labels().unwrap().rows;
+    let Question::Text { yes, .. } = find(&rows[0].actions, "Rename").question else { panic!() };
+    assert_eq!(yes, "Rename");
+    let heading = lumenna.places().entries.into_iter().find(|e| e.text == "Labels").unwrap();
+    let Question::Text { yes, .. } = &heading.actions[0].question else { panic!() };
+    assert_eq!(yes, "Add");
+}
+
+#[test]
+fn a_blocks_list_row_says_when_as_a_task_says_due_with_the_start_for_the_clients_clock() {
+    let (_directory, lumenna) = open();
+    day_block(&lumenna, "Deep work", Some("every day"));
+    day_block(&lumenna, "Dentist", None);
+    let rows = lumenna.list_blocks().unwrap().rows;
+    let deep = rows.iter().find(|r| r.title == "Deep work").unwrap();
+    assert_eq!(deep.due.as_deref(), Some("every day"));
+    assert_eq!(deep.due_time.as_deref(), Some("00:00"));
+    assert_eq!(deep.value.as_deref(), Some("23 hours 59 minutes"));
+    let dentist = rows.iter().find(|r| r.title == "Dentist").unwrap();
+    assert_eq!(dentist.due.as_deref(), Some("today"));
+}
+
+#[test]
+fn an_empty_listing_says_what_is_empty() {
+    let (_directory, lumenna) = open();
+    assert_eq!(lumenna.list_tasks("deleted").unwrap().empty, "The trash is empty.");
+    assert_eq!(lumenna.list_tasks("p1").unwrap().empty, "No tasks match this filter.");
+}

@@ -155,9 +155,17 @@ pub struct Action {
     /// A second record, where it takes one: the task Stop Waiting is about, free time's start.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub other: Option<String>,
+    /// The same in sentence case ("Move to trash"), for a platform whose convention it is
+    /// and for braille. Names in it keep their own capitals.
+    #[serde(default)]
+    pub sentence: String,
     /// Whether it removes something, so is shown as such.
     #[serde(default)]
     pub destructive: bool,
+    /// Whether it is one of the two or three a row shows by itself — the iPhone's swipe
+    /// actions, a watch row's — with the rest a menu away. Everything is still offered.
+    #[serde(default)]
+    pub primary: bool,
     /// What it asks before it runs.
     pub question: Question,
 }
@@ -193,6 +201,8 @@ pub enum Question {
         hint: String,
         /// Whether an empty answer means "none" rather than going unanswered.
         optional: bool,
+        /// The button that answers: "Rename", "Add", "Save". Cancel is the client's.
+        yes: String,
     },
     /// One of what [`Lumenna::choices`] offers for this action.
     Pick {
@@ -302,10 +312,13 @@ pub const WEIGHT: &str =
 pub const QUERY: &str = "A filter, such as p1 & due before: friday.";
 
 fn action(kind: ActionKind, subject: Subject, title: impl Into<String>, target: impl Into<String>) -> Action {
+    let title = title.into();
     Action {
         kind,
         subject,
-        title: title.into(),
+        sentence: crate::fields::sentence_case(title.clone()),
+        primary: is_primary(kind, subject),
+        title,
         target: target.into(),
         other: None,
         destructive: matches!(kind, ActionKind::Delete | ActionKind::DeleteForGood | ActionKind::Unassign | ActionKind::Unpair),
@@ -314,6 +327,17 @@ fn action(kind: ActionKind, subject: Subject, title: impl Into<String>, target: 
         } else {
             Question::Immediate
         },
+    }
+}
+
+/// The two or three a row shows by itself: what is done to it most, and what removes it.
+const fn is_primary(kind: ActionKind, subject: Subject) -> bool {
+    use ActionKind as K;
+    match kind {
+        K::MarkDone | K::MarkNotDone | K::Restore | K::DeleteForGood | K::Delete | K::AssignTask | K::StartTimer
+        | K::PauseTimer | K::ResumeTimer | K::StopTimer | K::AddBlock | K::RestoreDay | K::New | K::Unpair => true,
+        K::Rename => matches!(subject, Subject::Project | Subject::Label | Subject::Filter | Subject::Device),
+        _ => false,
     }
 }
 
@@ -330,7 +354,25 @@ impl Action {
 }
 
 fn text(title: impl Into<String>, label: &str, initial: impl Into<String>, hint: &str, optional: bool) -> Question {
-    Question::Text { title: title.into(), label: label.to_owned(), initial: initial.into(), hint: hint.to_owned(), optional }
+    let title = title.into();
+    // The button says what answering does: the verb that starts the title, else Save.
+    let yes = if title.starts_with("Rename") {
+        "Rename"
+    } else if title.starts_with("New") {
+        "Add"
+    } else if label == "Minutes" {
+        "Log"
+    } else {
+        "Save"
+    };
+    Question::Text {
+        title,
+        label: label.to_owned(),
+        initial: initial.into(),
+        hint: hint.to_owned(),
+        optional,
+        yes: yes.to_owned(),
+    }
 }
 
 fn confirm(title: impl Into<String>, message: &str, yes: &str) -> Question {
@@ -381,7 +423,9 @@ pub(crate) fn task(snapshot: &Snapshot, task: &Task, done: bool, shown: bool) ->
     actions.push(a(K::WaitFor, "Wait For").asking(pick(format!("What does {} wait for?", task.title))));
     for on in &task.depends {
         let title = snapshot.tasks.get(on).map_or("a task not loaded here", |t| t.title.as_str());
-        actions.push(a(K::StopWaiting, &format!("Stop Waiting for {title}")).with(on.to_string()));
+        let mut stop = a(K::StopWaiting, &format!("Stop Waiting for {title}")).with(on.to_string());
+        stop.sentence = format!("Stop waiting for {title}");
+        actions.push(stop);
     }
     actions.push(a(K::Delete, "Move to Trash"));
     actions

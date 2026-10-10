@@ -161,6 +161,11 @@ impl Lumenna {
                 });
             }
             rows.notices = notices;
+            rows.empty = match query.trim() {
+                "" => "No open tasks.".to_owned(),
+                "deleted" => "The trash is empty.".to_owned(),
+                _ => "No tasks match this filter.".to_owned(),
+            };
             crate::actions::fill_rows(&mut rows, &snapshot);
             Ok(rows)
         })
@@ -181,6 +186,7 @@ impl Lumenna {
             let expr = Expr::Predicate(Predicate::Search(text.to_owned()));
             let cx = Context::new(&snapshot, &now);
             let mut rows = Rows::new(&snapshot.task_rows(&expr, &cx), "task");
+            rows.empty = format!("No task has {text} in it.");
             crate::actions::fill_rows(&mut rows, &snapshot);
             Ok(rows)
         })

@@ -108,6 +108,15 @@ pub fn free(start: &str, end: &str, minutes: u32, clock: &dyn Clock) -> String {
     format!("Free, {}, {} to {}", duration(minutes), clock.time(start), clock.time(end))
 }
 
+/// Free time from its item, in the order every app says it: its title, its details, then
+/// its span in this device's clock.
+pub fn free_time(title: &str, details: &[String], start: &str, end: &str, clock: &dyn Clock) -> String {
+    let mut parts = vec![title.to_owned()];
+    parts.extend(details.iter().cloned());
+    parts.push(format!("{} to {}", clock.time(start), clock.time(end)));
+    join(parts)
+}
+
 /// Where the present falls: a position, not a highlight.
 pub fn now(time: &str, clock: &dyn Clock) -> String {
     format!("Now, {}", clock.time(time))
@@ -115,7 +124,9 @@ pub fn now(time: &str, clock: &dyn Clock) -> String {
 
 /// A repeating block cancelled for this day alone.
 pub fn cancelled(block: &CancelledBlock, clock: &dyn Clock) -> String {
-    format!("{}, {}, cancelled for this day", clock.time(&block.start), block.title)
+    let mut parts = vec![clock.time(&block.start), block.title.clone()];
+    parts.extend(block.details.iter().cloned());
+    join(parts)
 }
 
 /// The day's first row: what a glance at a timeline gives a sighted user.
