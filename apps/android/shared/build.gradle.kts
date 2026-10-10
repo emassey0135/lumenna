@@ -74,6 +74,8 @@ dependencies {
     implementation(bom)
     implementation(libs.compose.runtime.saveable)
     implementation(libs.work.runtime)
+    // The watch's own link to its phone (WatchLink), preferred to Iroh while they are near.
+    api(libs.play.wearable)
     // UniFFI's Kotlin bindings call the core through JNA; the apps reach the core's types too.
     api("${libs.jna.get()}@aar")
 }

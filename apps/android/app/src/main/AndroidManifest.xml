@@ -45,5 +45,15 @@
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
         </service>
+        <!-- The watch's own link to the phone (WatchLink): the system starts this when the
+             other side opens a channel, so neither app need be in front. -->
+        <service
+            android:name=".PhoneLinkService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.CHANNEL_EVENT" />
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/lumenna/sync" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

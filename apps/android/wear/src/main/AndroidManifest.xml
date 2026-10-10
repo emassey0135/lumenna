@@ -30,5 +30,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- The watch's own link to the phone (WatchLink): the system starts this when the
+             other side opens a channel, so neither app need be in front. -->
+        <service
+            android:name=".WatchLinkService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.CHANNEL_EVENT" />
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/lumenna/sync" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

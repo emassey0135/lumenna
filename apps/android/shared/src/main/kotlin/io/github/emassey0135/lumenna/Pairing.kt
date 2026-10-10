@@ -23,7 +23,13 @@ import kotlin.concurrent.thread
  * a code; the words to compare; and giving up a wait to join with a code instead. The screen
  * shows [status], [code] and [asked], and calls [waitToBeFound], [join], [answer] and [cancel].
  */
-class PairingSession(private val core: Core, context: Context, private val paired: () -> Unit) {
+class PairingSession(
+    private val core: Core,
+    context: Context,
+    /** What this device runs, as other devices list it: `android`, or `wearos` for a watch. */
+    private val platform: String = "android",
+    private val paired: () -> Unit,
+) {
     private val context = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
     private val cancelled = AtomicBoolean(false)
@@ -138,7 +144,7 @@ class PairingSession(private val core: Core, context: Context, private val paire
         thread(name = "lumenna-pairing") {
             // Local discovery hears multicast only while the app holds this lock.
             val lock = wifi.createMulticastLock("lumenna-pairing").apply { setReferenceCounted(false); acquire() }
-            val result = runCatching { core.lumenna.pair(given, Reach.INTERNET, deviceName(context), "android", prompt) }
+            val result = runCatching { core.lumenna.pair(given, Reach.INTERNET, deviceName(context), platform, prompt) }
             lock.release()
             main.post {
                 running = false
