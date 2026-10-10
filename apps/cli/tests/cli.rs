@@ -1095,3 +1095,24 @@ fn time_settings_read_without_seconds_and_take_what_they_show() {
     assert_eq!(lum.ok(&["config", "get", "day-start"]).trim(), "07:30");
     assert!(lum.fails(&["config", "set", "day-start", "7:30am please"]).contains("please"));
 }
+
+#[test]
+fn erasing_without_a_terminal_to_ask_at_needs_yes_and_says_the_cores_question() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "old idea"]);
+    lum.ok(&["task", "list"]);
+    lum.ok(&["task", "rm", "1"]);
+    lum.ok(&["task", "list", "deleted"]);
+    let refused = lum.fails(&["task", "erase", "1"]);
+    assert!(refused.contains("Delete old idea from the trash?"), "{refused}");
+    lum.ok(&["task", "erase", "1", "--yes"]);
+}
+
+#[test]
+fn a_script_deletes_a_label_without_being_asked() {
+    // Only a terminal is asked; a confirmation nobody can answer would hang a script.
+    let lum = Lum::new();
+    lum.ok(&["label", "add", "calls"]);
+    let out = lum.ok(&["label", "rm", "calls"]);
+    assert!(out.contains("calls"), "{out}");
+}
