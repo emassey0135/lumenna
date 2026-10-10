@@ -47,9 +47,10 @@ enum BackgroundSync {
             core.stopSyncing()
             end()
         }
+        // The round and the stop both run on the sync queue; the background task ends once
+        // they have, without the main thread waiting on either.
         core.syncNow { _ in
-            core.stopSyncing(waiting: true)
-            end()
+            core.stopSyncing(then: end)
         }
         schedule()
     }

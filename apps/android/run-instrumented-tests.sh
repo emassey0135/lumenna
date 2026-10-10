@@ -48,6 +48,11 @@ adb shell settings put global device_provisioned 1
 adb shell settings put secure user_setup_complete 1
 adb shell settings put system screen_off_timeout 2147483647
 adb shell svc power stayon true
+# Unplugged, as a watch on a wrist is: a Wear OS emulator counts as charging, and its system
+# brought its charging screen to the front each time a test's activity paused, over the next
+# test's ("ChargingComposeActivity" in the log, then "No compose hierarchies"). stayon above
+# needs a source to stay on for; "true" keeps the screen on whatever powers it.
+adb shell dumpsys battery unplug > /dev/null 2>&1 || true
 adb shell input keyevent KEYCODE_WAKEUP
 adb shell wm dismiss-keyguard > /dev/null 2>&1 || true
 # What is in front, as the activity manager says it.
