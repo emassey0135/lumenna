@@ -94,15 +94,27 @@ final class Core {
     }
 
     /// Stops syncing, letting go of the endpoint — before returning, when `waiting`, as the
-    /// app must when it quits.
-    func stopSyncing(waiting: Bool = false) {
+    /// app must when it quits. `then` runs on the main thread once it has stopped.
+    ///
+    /// Never wait from the main thread while the app runs: the sync queue may be opening the
+    /// endpoint or dialling a device that does not answer, and the app froze until it was
+    /// done (seen as the iPad's UI tests hanging after the app was sent away and back).
+    func stopSyncing(waiting: Bool = false, then done: (() -> Void)? = nil) {
         let stop = { [weak self] in
             self?.commands?.stop()
             self?.commands = nil
             self?.sync?.stop()
             self?.sync = nil
         }
-        if waiting { syncQueue.sync(execute: stop) } else { syncQueue.async(execute: stop) }
+        if waiting {
+            syncQueue.sync(execute: stop)
+            done?()
+        } else {
+            syncQueue.async {
+                stop()
+                if let done { DispatchQueue.main.async(execute: done) }
+            }
+        }
     }
 
     /// Syncs with every paired device now, off the main thread: on this app's own endpoint
