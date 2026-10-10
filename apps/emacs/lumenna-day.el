@@ -264,11 +264,14 @@ A repeating one asks: this day only, or every one."
     (lumenna-edit-series (plist-get block :series))))
 
 (defun lumenna-add-block (&optional date start)
-  "Add a block, once or repeating, starting on DATE at START."
+  "Add a block, once or repeating, starting on DATE at START.
+Without START it is the core's for the day typed (`form.new_block_start'):
+today the next whole hour, another day when the day starts."
   (interactive)
   (let* ((title (lumenna--read-block-text 'title))
          (date (lumenna--read-block-text 'date (or date "today")))
-         (start (lumenna--read-block-text 'start (or start "9am")))
+         (start (lumenna--read-block-text
+                 'start (or start (lumenna--value "form.new_block_start" :date date))))
          (minutes (lumenna--read-block-text 'minutes "60"))
          (fields (lumenna--with-kind (list :title title :start start :minutes minutes) (lumenna--read-kind)))
          (fields (plist-put fields :repeat (lumenna--read-block-text 'repeat))))
