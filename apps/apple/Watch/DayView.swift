@@ -180,7 +180,7 @@ struct DayView: View {
     private func addBlock(on plan: Plan?, at start: String? = nil, minutes: UInt32? = nil) {
         let day = plan.flatMap { try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse($0.date) } ?? .now
         let model = BlockFormModel(
-            core: core, purpose: .add, start: start ?? "09:00", minutes: Int(min(minutes ?? 60, 720)), day: day, saved: saved
+            core: core, purpose: .add, start: start, minutes: Int(min(minutes ?? 60, 720)), day: day, saved: saved
         )
         if start == nil {
             form = model

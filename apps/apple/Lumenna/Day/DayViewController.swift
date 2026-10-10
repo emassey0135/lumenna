@@ -398,7 +398,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         let model = BlockFormModel(
             core: core,
             purpose: .add,
-            start: start ?? "09:00",
+            start: start,
             minutes: Int(min(minutes ?? 60, 720)),
             day: day
         ) { [weak self] change in
