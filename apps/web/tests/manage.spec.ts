@@ -270,7 +270,7 @@ test("question mark lists the keys the web binds, grouped as the menus are", asy
   await expect(edit.getByRole("columnheader")).toHaveText(["Key", "Command"]);
   // Every shared command, with the key the web uses where the browser keeps the shared one.
   const file = dialog.getByRole("table", { name: "File" });
-  await expect(file.getByRole("row", { name: /New task/ }).getByRole("cell").first()).toHaveText(/Shift\+N$/);
+  await expect(file.getByRole("row", { name: /New task/ }).getByRole("cell").first()).toHaveText(/Shift\+Q$/);
   await expect(dialog.getByRole("cell", { name: "Quit" })).toHaveCount(0);
   await expect(dialog.getByRole("table", { name: "Task" }).getByRole("row")).toHaveCount(5);
   await expect(dialog.getByRole("cell", { name: "?" })).toBeVisible();
@@ -287,6 +287,8 @@ test("question mark lists the keys the web binds, grouped as the menus are", asy
 });
 
 test("every shared command works on the web's key", async ({ page }) => {
+  // Not a Mac, whatever this machine is, so the keys are live in fields as well.
+  await page.addInitScript(() => Object.defineProperty(navigator, "platform", { get: () => "Linux x86_64" }));
   await open(page);
   const main = page.getByRole("main");
   const live = page.locator('[aria-live="polite"]');
@@ -295,7 +297,7 @@ test("every shared command works on the web's key", async ({ page }) => {
   await places(page).getByRole("row", { name: /^Tasks/ }).focus();
 
   // File
-  await page.keyboard.press("Alt+Shift+KeyN");
+  await page.keyboard.press("Alt+Shift+KeyQ");
   await expect(page.getByRole("combobox", { name: "Task" })).toBeFocused();
   await page.keyboard.press("Escape");
   await page.keyboard.press("Alt+Shift+KeyE");
@@ -303,7 +305,7 @@ test("every shared command works on the web's key", async ({ page }) => {
   await page.keyboard.press("Escape");
   await page.keyboard.press("Alt+Shift+KeyY");
   await expect(live).toContainText("Syncing");
-  await page.keyboard.press("Alt+Shift+KeyL");
+  await page.keyboard.press("Alt+Shift+KeyC");
   await expect(heading(page)).toHaveText(/Today|day/);
   await expect(page.getByRole("dialog", { name: "New block" })).toBeVisible();
   await page.getByRole("dialog", { name: "New block" }).getByRole("button", { name: "Cancel" }).click();
@@ -346,15 +348,15 @@ test("every shared command works on the web's key", async ({ page }) => {
   await page.keyboard.press("Alt+Shift+Digit2");
 
   // Task, on the task in hand; with none, it says so.
-  await page.keyboard.press("Alt+Shift+KeyM");
+  await page.keyboard.press("Alt+Shift+KeyP");
   await expect(live).toContainText("No task is selected.");
   await main.getByRole("row", { name: /^Water the plants/ }).click();
-  await page.keyboard.press("Alt+Shift+KeyM");
+  await page.keyboard.press("Alt+Shift+KeyP");
   await expect(live).toContainText("There is no other project to move it to.");
   await page.keyboard.press("Alt+Shift+KeyW");
   await expect(live).toContainText(/block/i);
   await details.getByRole("textbox", { name: "Title" }).fill("Water the ferns");
-  await page.keyboard.press("Alt+Shift+KeyS");
+  await page.keyboard.press("Alt+Shift+KeyV");
   await expect(main.getByRole("row", { name: /^Water the ferns/ })).toBeVisible();
   await main.getByRole("row", { name: /^Water the ferns/ }).focus();
   await page.keyboard.press("Alt+Shift+KeyK");
@@ -375,4 +377,41 @@ test("every shared command works on the web's key", async ({ page }) => {
   await page.keyboard.press("Alt+Shift+KeyG");
   await expect(page.getByRole("dialog", { name: /day/i })).toBeVisible();
   await page.keyboard.press("Escape");
+});
+
+test("on a Mac, Option+Shift types its symbol in a field, but Save changes still saves there", async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(navigator, "platform", { get: () => "MacIntel" }));
+  await open(page);
+  await add(page, "Water the plants");
+  const main = page.getByRole("main");
+  const details = page.getByRole("complementary", { name: "Task details" });
+  // Whatever keeps a key from typing calls preventDefault on it: record each that does.
+  await page.evaluate(() => {
+    const taken: string[] = ((window as unknown as { taken: string[] }).taken = []);
+    const prevent = Event.prototype.preventDefault;
+    Event.prototype.preventDefault = function (this: Event) {
+      if (this instanceof KeyboardEvent) taken.push(this.code);
+      return prevent.call(this);
+    };
+  });
+  const filter = main.getByRole("textbox", { name: "Filter" });
+  await filter.focus();
+  await page.keyboard.press("Alt+Shift+KeyQ");
+  await page.keyboard.press("Alt+Shift+Digit3");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(heading(page)).toHaveText("Tasks");
+  expect(await page.evaluate(() => (window as unknown as { taken: string[] }).taken)).toEqual([]);
+  // Out of a field, the same key is the command.
+  await main.getByRole("row", { name: /^Water the plants/ }).click();
+  await page.keyboard.press("Alt+Shift+KeyQ");
+  await expect(page.getByRole("combobox", { name: "Task" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  // In the title, Save changes saves.
+  const title = details.getByRole("textbox", { name: "Title" });
+  await title.fill("Water the ferns");
+  await page.keyboard.press("Alt+Shift+KeyV");
+  await expect(main.getByRole("row", { name: /^Water the ferns/ })).toBeVisible();
+  // The help says Option, as a Mac does.
+  await page.getByRole("button", { name: "Keyboard shortcuts" }).click();
+  await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" }).getByRole("cell", { name: "Option+Shift+Q" })).toBeVisible();
 });

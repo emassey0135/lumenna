@@ -15,12 +15,15 @@ import type { ShortcutGroup } from "./core";
 
 /**
  * The key the web uses for each shared command, by the table's id, where it differs from the
- * shared one. Letters Chrome and Edge take with Alt+Shift are never used: A (inactive dialogs),
- * B (bookmarks bar), I (feedback), T (toolbar).
+ * shared one, the same on every platform. Letters a browser or ChromeOS takes with Alt+Shift are
+ * never used: A (inactive dialogs), B (bookmarks bar), I (feedback), L (the shelf's launcher),
+ * M (Files), N (notifications), S (the status area), T (the toolbar).
  */
 export const WEB: Record<string, string[]> = {
-  "new-task": ["Alt+Shift+N"],
-  "new-block": ["Alt+Shift+L"],
+  // Q for quick add, which it opens.
+  "new-task": ["Alt+Shift+Q"],
+  // C for the calendar a block sits on.
+  "new-block": ["Alt+Shift+C"],
   "sync-now": ["Alt+Shift+Y"],
   settings: ["Alt+Shift+E"],
   // The tab is Lumenna's window: closing it is the browser's own key. Nothing else to bind.
@@ -33,9 +36,11 @@ export const WEB: Record<string, string[]> = {
   "next-pane": ["Alt+Shift+Period"],
   "previous-pane": ["Alt+Shift+Comma"],
   "mark-done": ["Alt+Shift+K"],
-  "save-task": ["Alt+Shift+S"],
+  // V, the last letter of "save" left free.
+  "save-task": ["Alt+Shift+V"],
   "put-in-block": ["Alt+Shift+W"],
-  "move-to-project": ["Alt+Shift+M"],
+  // P for project.
+  "move-to-project": ["Alt+Shift+P"],
   "previous-day": ["Alt+Shift+Page Up"],
   "next-day": ["Alt+Shift+Page Down"],
   "go-to-now": ["Alt+Shift+O"],
@@ -94,11 +99,23 @@ export function matches(key: string, event: KeyboardEvent): boolean {
   return event.key === name.replace(/ /g, "");
 }
 
-/** The shared command `event` is the web's key for, if any. */
+/** Whether `event` happened where text is typed. */
+function inText(event: KeyboardEvent): boolean {
+  return Boolean((event.target as HTMLElement | null)?.closest("input, textarea, [contenteditable='true']"));
+}
+
+/**
+ * The shared command `event` is the web's key for, if any. On a Mac, Option+Shift with a letter,
+ * a digit, a comma or a full stop types a symbol, so in a text field those are left to type —
+ * all but Save Changes, which belongs in a field. Elsewhere Alt+Shift+letter types nothing.
+ */
 export function commandFor(event: KeyboardEvent): string | undefined {
   for (const [id, keys] of Object.entries(WEB)) {
     if (id === "close-window" || id === "keyboard-help") continue;
-    if (keys.some((key) => matches(key, event))) return id;
+    if (!keys.some((key) => matches(key, event))) continue;
+    const types = event.altKey && /^(Key|Digit)|^(Comma|Period)$/.test(event.code);
+    if (mac && types && id !== "save-task" && inText(event)) return undefined;
+    return id;
   }
   return undefined;
 }
