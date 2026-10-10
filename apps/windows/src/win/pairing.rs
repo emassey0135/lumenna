@@ -93,21 +93,11 @@ impl Pairing {
         });
     }
 
-    /// Pairs with the code typed in — or, if nothing was typed, the one on the clipboard,
-    /// which is how a code sent from the other device usually arrives. Not this device's own
-    /// code, which Copy Code may have put there: that would pair it with itself.
+    /// Pairs with the code typed or pasted in. An empty field is never read as the clipboard:
+    /// nobody could tell it would be, and it would send whatever happened to be copied.
     fn with_code(&self, hwnd: HWND) {
         let field = dialog::item(hwnd, THEIR_CODE);
-        let mut code = controls::text(field).trim().to_owned();
-        let mine = controls::text(dialog::item(hwnd, MY_CODE)).trim().to_owned();
-        if code.is_empty()
-            && let Some(pasted) = system::pasted(hwnd)
-                .map(|p| p.trim().to_owned())
-                .filter(|p| !p.is_empty() && *p != mine)
-        {
-            controls::set_text(field, &pasted);
-            code = pasted;
-        }
+        let code = controls::text(field).trim().to_owned();
         if code.is_empty() {
             prompts::fail(hwnd, &self.words.need_code);
             controls::focus(field);
@@ -133,7 +123,7 @@ impl Dialog for Pairing {
         let button = BS_PUSHBUTTON as u32 | WS_TABSTOP.0;
         let words = &self.words;
         let key = |text: &str, letter| devices::marked(text, letter, '&');
-        Template::new(&words.title, 280, 207)
+        Template::new(&words.title, 280, 197)
             .item(Class::Static, &words.intro, u16::MAX, SS_NOPREFIX.0, 7, 7, 266, 36)
             .item(Class::Button, &key(&words.wait, 'W'), WAIT, button, 7, 46, 120, 14)
             .item(Class::Static, &format!("{}:", key(&words.my_code, 'c')), MY_CODE_LABEL, 0, 7, 66, 266, 9)
@@ -141,16 +131,13 @@ impl Dialog for Pairing {
             .item(Class::Button, &key(&words.copy_code, 'd'), COPY, button, 207, 76, 66, 14)
             .item(Class::Static, &format!("{}:", key(&words.their_code, 'o')), u16::MAX, 0, 7, 96, 266, 9)
             .item(Class::Edit, "", THEIR_CODE, field, 7, 106, 266, 14)
-            .item(Class::Static, &words.empty_means, u16::MAX, SS_NOPREFIX.0, 7, 123, 266, 9)
-            .item(Class::Button, &key(&words.join, 'P'), WITH_CODE, button, 7, 134, 120, 14)
-            .item(Class::Static, "", STATUS, SS_NOPREFIX.0, 7, 154, 266, 28)
-            .item(Class::Button, "Cancel", IDCANCEL.0 as u16, button, 223, 186, 50, 14)
+            .item(Class::Button, &key(&words.join, 'P'), WITH_CODE, button, 7, 124, 120, 14)
+            .item(Class::Static, "", STATUS, SS_NOPREFIX.0, 7, 144, 266, 28)
+            .item(Class::Button, "Cancel", IDCANCEL.0 as u16, button, 223, 176, 50, 14)
     }
 
     fn init(&self, hwnd: HWND) -> bool {
         a11y::make_live(dialog::item(hwnd, STATUS));
-        // Read with the field, as well as shown under it.
-        a11y::set_description(dialog::item(hwnd, THEIR_CODE), &self.words.empty_means);
         // This device's code shows once there is one.
         self.show_code(hwnd, false);
         false

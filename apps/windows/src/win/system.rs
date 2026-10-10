@@ -3,9 +3,9 @@
 
 use std::path::{Path, PathBuf};
 
-use windows::Win32::Foundation::{HANDLE, HGLOBAL, HWND};
+use windows::Win32::Foundation::{HANDLE, HWND};
 use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance, CoTaskMemFree};
-use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard, SetClipboardData};
+use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData};
 use windows::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock};
 use windows::Win32::System::Ole::CF_UNICODETEXT;
 use windows::Win32::System::Registry::{
@@ -109,26 +109,6 @@ pub fn copy(owner: HWND, text: &str) -> bool {
         });
         let _ = CloseClipboard();
         copied
-    }
-}
-
-/// The text on the clipboard, if there is any.
-pub fn pasted(owner: HWND) -> Option<String> {
-    unsafe {
-        OpenClipboard(Some(owner)).ok()?;
-        let text = GetClipboardData(u32::from(CF_UNICODETEXT.0)).ok().and_then(|handle| {
-            let memory = HGLOBAL(handle.0);
-            let source = GlobalLock(memory).cast::<u16>();
-            if source.is_null() {
-                return None;
-            }
-            let length = (0..).take_while(|i| *source.add(*i) != 0).count();
-            let text = String::from_utf16_lossy(std::slice::from_raw_parts(source, length));
-            let _ = GlobalUnlock(memory);
-            Some(text)
-        });
-        let _ = CloseClipboard();
-        text
     }
 }
 
