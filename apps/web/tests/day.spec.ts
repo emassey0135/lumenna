@@ -11,7 +11,7 @@ async function open(page: Page) {
 }
 
 async function add(page: Page, line: string) {
-  await page.getByRole("button", { name: "New Task" }).click();
+  await page.getByRole("button", { name: "New task" }).click();
   await page.getByRole("combobox", { name: "Task" }).fill(line);
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeHidden();
@@ -22,12 +22,12 @@ async function place(page: Page, name: RegExp) {
 }
 
 async function addBlock(page: Page, title: string, at: string, repeat = "") {
-  await page.getByRole("button", { name: "Add Block…" }).click();
+  await page.getByRole("button", { name: "Add block…" }).click();
   const form = page.getByRole("dialog", { name: "New Block" });
-  await expect(form.getByRole("textbox", { name: "Title", exact: true })).toBeFocused();
-  await form.getByRole("textbox", { name: "Title", exact: true }).fill(title);
+  await expect(form.getByRole("textbox", { name: "Name", exact: true })).toBeFocused();
+  await form.getByRole("textbox", { name: "Name", exact: true }).fill(title);
   await form.getByRole("textbox", { name: "Starts at" }).fill(at);
-  await form.getByRole("textbox", { name: "Minutes", exact: true }).fill("60");
+  await form.getByRole("textbox", { name: "Lasts, in minutes", exact: true }).fill("60");
   if (repeat) await form.getByRole("textbox", { name: "Repeats", exact: true }).fill(repeat);
   await form.getByRole("button", { name: "Add", exact: true }).click();
   await expect(form).toBeHidden();
@@ -81,14 +81,14 @@ test("a task assigned from a block is a sitting beneath it, and Space times it",
   const block = day.getByRole("row", { name: /Deep work/ });
   await block.focus();
   await page.keyboard.press("Shift+F10");
-  await page.getByRole("menuitem", { name: "Assign a Task" }).click();
+  await page.getByRole("menuitem", { name: "Assign a task" }).click();
   const picker = page.getByRole("dialog", { name: "Assign a task to Deep work" });
   await picker.getByRole("combobox", { name: "Assign a task to Deep work" }).fill("Write");
   await page.getByRole("option", { name: /^Write report/ }).click();
-  await picker.getByRole("button", { name: "OK" }).click();
+  await picker.getByRole("button", { name: "Choose" }).click();
   const minutes = page.getByRole("dialog", { name: "Planned length" });
   await minutes.getByRole("textbox", { name: "Planned length" }).fill("30m");
-  await minutes.getByRole("button", { name: "OK" }).click();
+  await minutes.getByRole("button", { name: "Save" }).click();
   const sitting = day.getByRole("row", { name: /^Write report/ });
   await expect(sitting).toHaveAttribute("aria-level", "2");
   await expect(block).toHaveAccessibleName(/1 task assigned/);
@@ -106,13 +106,13 @@ test("a sitting's planned length refuses what is not a length, and the dialog st
   const day = page.getByRole("treegrid", { name: "The day" });
   await day.getByRole("row", { name: /Deep work/ }).focus();
   await page.keyboard.press("Shift+F10");
-  await page.getByRole("menuitem", { name: "Assign a Task" }).click();
+  await page.getByRole("menuitem", { name: "Assign a task" }).click();
   await page.getByRole("combobox", { name: "Assign a task to Deep work" }).fill("Write");
   await page.getByRole("option", { name: /^Write report/ }).click();
-  await page.getByRole("button", { name: "OK" }).click();
+  await page.getByRole("button", { name: "Choose" }).click();
   const field = page.getByRole("textbox", { name: "Planned length" });
   await field.fill("soon");
-  await page.getByRole("button", { name: "OK" }).click();
+  await page.getByRole("button", { name: "Save" }).click();
   await expect(field).toHaveAttribute("aria-invalid", "true");
   await expect(field).toHaveAccessibleDescription(/could not read a duration/);
 });
@@ -120,7 +120,7 @@ test("a sitting's planned length refuses what is not a length, and the dialog st
 test("moving to the next day says it, and Today comes back", async ({ page }) => {
   await open(page);
   await place(page, /^Today/);
-  await page.getByRole("button", { name: "Next Day" }).click();
+  await page.getByRole("button", { name: "Next day" }).click();
   await expect(page.getByRole("main").getByRole("heading", { level: 2 })).toHaveText("Tomorrow");
   await expect(page.locator('[aria-live="polite"]')).toContainText("Tomorrow");
   await page.getByRole("button", { name: "Today", exact: true }).click();
@@ -137,9 +137,9 @@ test("a repeating block asks which occurrences a change is for", async ({ page }
   const which = page.getByRole("alertdialog", { name: "Change Standup" });
   await expect(which.getByRole("button", { name: "Cancel" })).toBeFocused();
   await which.getByRole("button", { name: "Today Only" }).click();
-  const form = page.getByRole("dialog", { name: "Change Standup, This Day Only" });
+  const form = page.getByRole("dialog", { name: "Change Standup, this day only" });
   await expect(form.getByRole("textbox", { name: "Repeats", exact: true })).toHaveCount(0);
-  await form.getByRole("textbox", { name: "Minutes", exact: true }).fill("15");
+  await form.getByRole("textbox", { name: "Lasts, in minutes", exact: true }).fill("15");
   await form.getByRole("button", { name: "Save" }).click();
   await expect(day.getByRole("row", { name: /Standup, 15 minutes.*changed for this day/ })).toBeVisible();
 });
@@ -154,7 +154,7 @@ test("the blocks list every series, and Delete asks before deleting one", async 
   await axe(page);
   await gym.focus();
   await page.keyboard.press("Delete");
-  await page.getByRole("alertdialog", { name: "Delete Gym?" }).getByRole("button", { name: "Delete Block" }).click();
+  await page.getByRole("alertdialog", { name: "Delete Gym?" }).getByRole("button", { name: "Delete block" }).click();
   await expect(gym).toHaveCount(0);
 });
 
@@ -167,12 +167,12 @@ test("a task is put in a block from its own details", async ({ page }) => {
   await add(page, "Write report");
   await place(page, /^Tasks/);
   await page.getByRole("main").getByRole("row", { name: /^Write report/ }).click();
-  await page.getByRole("complementary", { name: "Task details" }).getByRole("button", { name: "Put in a Block" }).click();
+  await page.getByRole("complementary", { name: "Task details" }).getByRole("button", { name: "Put in a block" }).click();
   const picker = page.getByRole("dialog", { name: "Put Write report in a block" });
   await picker.getByRole("combobox", { name: "Put Write report in a block" }).fill("Deep");
   await page.getByRole("option", { name: /Deep work/ }).click();
-  await picker.getByRole("button", { name: "OK" }).click();
-  await page.getByRole("dialog", { name: "Planned length" }).getByRole("button", { name: "OK" }).click();
+  await picker.getByRole("button", { name: "Choose" }).click();
+  await page.getByRole("dialog", { name: "Planned length" }).getByRole("button", { name: "Save" }).click();
   await place(page, /^Today/);
   await expect(page.getByRole("treegrid", { name: "The day" }).getByRole("row", { name: /^Write report/ })).toBeVisible();
 });
@@ -185,21 +185,21 @@ test("a task row's menu offers the core's actions, in order, and runs them after
   await page.keyboard.press("Shift+F10");
   const items = page.getByRole("menuitem");
   await expect(items).toHaveText([
-    "Mark Done",
-    "Edit Details",
-    "Put in a Block",
-    "Move to Project",
-    "Make Subtask Of",
-    "Wait For",
-    "Move to Trash",
+    "Mark done",
+    "Edit details",
+    "Put in a block",
+    "Move to project",
+    "Make subtask of",
+    "Wait for",
+    "Move to trash",
   ]);
   await axe(page);
-  await page.getByRole("menuitem", { name: "Move to Project" }).click();
+  await page.getByRole("menuitem", { name: "Move to project" }).click();
   // Nothing else to move it to: the core says so, and nothing opens.
   await expect(page.locator('[aria-live="polite"]')).toContainText("There is no other project to move it to.");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(row).toBeFocused();
   await page.keyboard.press("Shift+F10");
-  await page.getByRole("menuitem", { name: "Move to Trash" }).click();
+  await page.getByRole("menuitem", { name: "Move to trash" }).click();
   await expect(row).toHaveCount(0);
 });

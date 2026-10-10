@@ -11,7 +11,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
-import { Button, Collection, Tree, TreeItem, TreeItemContent } from "react-aria-components";
+import { Button, Collection, Toolbar, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
 import { blockForm, freshBlock } from "./BlockForm";
 import { core } from "./core";
@@ -125,7 +125,7 @@ export function Day(props: {
 
   const addBlock = async (start = "09:00", minutes = 60) => {
     const fields = await freshBlock(start, Math.min(minutes, 720));
-    const saved = await blockForm({ kind: "add", date: shown?.date ?? "today" }, fields, "New Block");
+    const saved = await blockForm({ kind: "add", date: shown?.date ?? "today" }, fields, "New block");
     if (!saved) return;
     land(saved.series ? `block:${saved.series}@${today}` : undefined, keys.indexOf(selected ?? ""));
     props.onChanged();
@@ -137,13 +137,13 @@ export function Day(props: {
     let heading = `Change ${block.title}`;
     let purpose: Parameters<typeof blockForm>[0] = { kind: "series", id: block.series };
     if (block.repeats) {
-      const which = await choose(heading, "Which occurrences?", [`${shown?.title ?? "This Day"} Only`, "Every Occurrence"]);
+      const which = await choose(heading, "Which occurrences?", [`${shown?.title ?? "This day"} only`, "Every occurrence"]);
       if (which === undefined) return;
       if (which === 0) {
         purpose = { kind: "occurrence", series: block.series, date: today };
-        heading = `Change ${block.title}, This Day Only`;
+        heading = `Change ${block.title}, this day only`;
       } else {
-        heading = `Change ${block.title}, Every Occurrence`;
+        heading = `Change ${block.title}, every occurrence`;
       }
     }
     // One day alone starts from that day's block; every occurrence, from the series as it is
@@ -165,7 +165,7 @@ export function Day(props: {
   };
 
   const goToDay = async () => {
-    const phrase = await ask("Go to Day", "Day", "A date, such as friday, or 12 October.");
+    const phrase = await ask("Go to day", "Day", "A date, such as friday, or 12 October.", "", undefined, "Go");
     if (!phrase?.trim()) return;
     try {
       const day = await core.day(phrase);
@@ -240,16 +240,17 @@ export function Day(props: {
   return (
     <>
       <h2>{shown?.title ?? "Today"}</h2>
-      <div className="buttons" role="toolbar" aria-label="Day">
+      {/* A toolbar is one Tab stop, its buttons a press of the arrows apart (ARIA's toolbar pattern). */}
+      <Toolbar className="buttons" aria-label="Day">
         <Button isDisabled={!shown} onPress={() => shown && go(step(shown.date, -1))}>
-          Previous Day
+          Previous day
         </Button>
         <Button onPress={() => go(undefined)}>Today</Button>
         <Button isDisabled={!shown} onPress={() => shown && go(step(shown.date, 1))}>
-          Next Day
+          Next day
         </Button>
-        <Button onPress={() => void goToDay()}>Go to Day…</Button>
-        <Button onPress={() => void addBlock()}>Add Block…</Button>
+        <Button onPress={() => void goToDay()}>Go to day…</Button>
+        <Button onPress={() => void addBlock()}>Add block…</Button>
         <RowMenu
           actions={row(selected)?.actions ?? []}
           onAction={(action) => {
@@ -259,7 +260,7 @@ export function Day(props: {
           isOpen={menu}
           onOpenChange={setMenu}
         />
-      </div>
+      </Toolbar>
       {problem && <p role="alert">{problem}</p>}
       {/* Space and Delete are caught on the way down, before the tree takes Space for selection. */}
       <div onKeyDownCapture={keysDown} onContextMenu={rightClick}>

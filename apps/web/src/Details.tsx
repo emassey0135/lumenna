@@ -22,7 +22,7 @@ import {
 } from "react-aria-components";
 import { perform } from "./actions";
 import { core } from "./core";
-import type { Action, Choice, TaskDetail, TaskFields } from "./core";
+import type { Action, FormField, TaskDetail, TaskFields } from "./core";
 import { say } from "./say";
 
 export interface DetailsHandle {
@@ -41,7 +41,7 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
     const [fields, setFields] = useState<TaskFields | undefined>();
     const [state, setState] = useState("");
     const [projects, setProjects] = useState<string[]>([]);
-    const [priorities, setPriorities] = useState<Choice[]>([]);
+    const [form, setForm] = useState<FormField[]>([]);
     const [failure, setFailure] = useState<string | undefined>();
     const title = useRef<HTMLInputElement>(null);
 
@@ -58,8 +58,8 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
       const editing = task?.id === props.id && fields && original && !same(fields, original);
       if (editing) return;
       let current = true;
-      void Promise.all([core.task(props.id), core.projects(), core.priorities()]).then(
-        ([shown, projects, priorities]) => {
+      void Promise.all([core.task(props.id), core.projects(), core.taskForm()]).then(
+        ([shown, projects, form]) => {
           if (!current) return;
           setFailure(undefined);
           setTask(shown.task);
@@ -67,7 +67,7 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
           setFields(shown.fields);
           setState(shown.state);
           setProjects(projects);
-          setPriorities(priorities);
+          setForm(form);
         },
         (error: Error) => {
           if (!current) return;
@@ -110,17 +110,60 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
       say(done.said);
     };
 
-    const field = (label: string, value: string, key: keyof TaskFields, description?: string) => (
-      <TextField className="field" value={value} onChange={(text) => set({ [key]: text })}>
-        <Label>{label}</Label>
-        <Input ref={key === "title" ? title : undefined} />
-        {description && (
-          <Text slot="description" className="quiet">
-            {description}
-          </Text>
-        )}
-      </TextField>
-    );
+    // Each field as the core describes it. The title is one line here, so Enter saves; the
+    // project is chosen from the projects there are.
+    const control = (field: FormField) => {
+      const key = field.key as keyof TaskFields;
+      const help = field.hint && (
+        <Text slot="description" className="quiet">
+          {field.hint}
+        </Text>
+      );
+      if (field.kind === "choice" || key === "project") {
+        const items =
+          key === "project"
+            ? projects.map((name) => ({ id: name, title: name }))
+            : (field.options ?? []).map((option) => ({ id: key === "priority" ? Number(option.id) : option.id, title: option.title }));
+        return (
+          <Select
+            key={field.key}
+            className="field"
+            value={fields[key]}
+            onChange={(chosen) => set({ [key]: key === "priority" ? Number(chosen) : String(chosen) })}
+          >
+            <Label>{field.label}</Label>
+            <Button>
+              <SelectValue />
+            </Button>
+            {help}
+            <Popover>
+              <ListBox items={items}>{(item) => <ListBoxItem id={item.id}>{item.title}</ListBoxItem>}</ListBox>
+            </Popover>
+          </Select>
+        );
+      }
+      const multiline = field.kind === "lines" && key !== "title";
+      return (
+        <TextField key={field.key} className="field" value={String(fields[key])} onChange={(text) => set({ [key]: text })}>
+          <Label>{field.label}</Label>
+          {multiline ? (
+            <TextArea rows={4} placeholder={field.example || undefined} />
+          ) : (
+            <Input ref={key === "title" ? title : undefined} placeholder={field.example || undefined} />
+          )}
+          {help}
+        </TextField>
+      );
+    };
+
+    // Several lines take the width; the rest go two to a row.
+    const groups: FormField[][] = [];
+    for (const field of form) {
+      const wide = field.kind === "lines";
+      const last = groups[groups.length - 1];
+      if (!wide && last && last[0].kind !== "lines") last.push(field);
+      else groups.push([field]);
+    }
 
     return (
       <Form
@@ -130,49 +173,17 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
           void run(core.save(task, fields));
         }}
       >
-        {field("Title", fields.title, "title")}
-        <div className="pair">
-          {field("Due", fields.due, "due", "A date, such as tomorrow or next Friday. Empty for none.")}
-          {field("Repeats", fields.repeat, "repeat", "Such as every Monday. Empty for no repetition.")}
-        </div>
-        <div className="pair">
-          <Select
-            className="field"
-            value={fields.priority}
-            onChange={(key) => set({ priority: Number(key) })}
-          >
-            <Label>Priority</Label>
-            <Button>
-              <SelectValue />
-            </Button>
-            <Popover>
-              <ListBox items={priorities.map((p) => ({ id: Number(p.id), name: p.title }))}>
-                {(item) => <ListBoxItem id={item.id}>{item.name}</ListBoxItem>}
-              </ListBox>
-            </Popover>
-          </Select>
-          {field("Estimate", fields.estimate, "estimate", "Such as 45m or 1h30m. Empty for none.")}
-        </div>
-        <div className="pair">
-          <Select className="field" value={fields.project} onChange={(key) => set({ project: String(key) })}>
-            <Label>Project</Label>
-            <Button>
-              <SelectValue />
-            </Button>
-            <Popover>
-              <ListBox items={projects.map((name) => ({ id: name, name }))}>
-                {(item) => <ListBoxItem id={item.id}>{item.name}</ListBoxItem>}
-              </ListBox>
-            </Popover>
-          </Select>
-          {field("Labels", fields.labels, "labels", "Names separated by commas.")}
-        </div>
-        <TextField className="field" value={fields.notes} onChange={(notes) => set({ notes })}>
-          <Label>Notes</Label>
-          <TextArea rows={4} />
-        </TextField>
+        {groups.map((group) =>
+          group.length === 1 && group[0].kind === "lines" ? (
+            control(group[0])
+          ) : (
+            <div key={group[0].key} className="pair">
+              {group.map(control)}
+            </div>
+          ),
+        )}
         <section aria-labelledby="waits-for">
-          <h3 id="waits-for">Waits For</h3>
+          <h3 id="waits-for">Waits for</h3>
           {task.depends.length === 0 ? (
             <p className="quiet">Nothing.</p>
           ) : (
@@ -195,7 +206,7 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
               className={action.destructive ? "destructive" : undefined}
               onPress={() => void act(action)}
             >
-              {action.title}
+              {action.sentence ?? action.title}
             </Button>
           ))}
         </div>

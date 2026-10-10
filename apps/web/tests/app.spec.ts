@@ -11,7 +11,7 @@ async function open(page: Page) {
 }
 
 async function add(page: Page, line: string) {
-  await page.getByRole("button", { name: "New Task" }).click();
+  await page.getByRole("button", { name: "New task" }).click();
   const field = page.getByRole("combobox", { name: "Task" });
   await expect(field).toBeFocused();
   await field.fill(line);
@@ -28,7 +28,7 @@ test("the store opens in the browser and the places are a tree", async ({ page }
 
 test("quick add reads back what it will add, and adds it", async ({ page }) => {
   await open(page);
-  await page.getByRole("button", { name: "New Task" }).click();
+  await page.getByRole("button", { name: "New task" }).click();
   await page.getByRole("combobox", { name: "Task" }).fill("Call Sam tomorrow p1");
   await expect(page.getByRole("status").or(page.locator("output"))).toContainText("Call Sam");
   await expect(page.locator("output")).toContainText("priority 1");
@@ -58,7 +58,7 @@ test("space checks a task off and focus moves to the one that took its place", a
 
 test("completion offers what fits at the cursor, and puts it in that span", async ({ page }) => {
   await open(page);
-  await page.getByRole("button", { name: "New Task" }).click();
+  await page.getByRole("button", { name: "New task" }).click();
   const field = page.getByRole("combobox", { name: "Task" });
   await field.fill("Call #Inb tomorrow");
   // The cursor after "#Inb", mid-line.

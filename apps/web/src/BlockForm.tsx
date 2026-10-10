@@ -27,13 +27,7 @@ import {
   TextField,
 } from "react-aria-components";
 import { core } from "./core";
-import type { BlockFields } from "./core";
-
-const KINDS = [
-  { id: "work", name: "Work" },
-  { id: "break", name: "Break" },
-  { id: "event", name: "Event" },
-];
+import type { BlockFields, FormField } from "./core";
 
 /** What the form is for. */
 export type Purpose =
@@ -53,15 +47,18 @@ interface Request {
   /** The rule a series repeats by, when the repetition words cannot say it. */
   rule?: string;
   heading: string;
+  /** The form's fields, in the core's words and order. */
+  form: FormField[];
   answer: (saved?: Saved) => void;
 }
 
 let open: ((request: Request) => void) | undefined;
 
 /** Runs the form; undefined if it was cancelled. */
-export function blockForm(purpose: Purpose, initial: BlockFields, heading: string, rule?: string): Promise<Saved | undefined> {
+export async function blockForm(purpose: Purpose, initial: BlockFields, heading: string, rule?: string): Promise<Saved | undefined> {
+  const form = await core.blockForm();
   return new Promise((answer) => {
-    if (open) open({ purpose, initial, rule, heading, answer });
+    if (open) open({ purpose, initial, rule, heading, form, answer });
     else answer(undefined);
   });
 }
@@ -109,8 +106,14 @@ export function BlockForms() {
   );
 }
 
+/** What one day of a repeating block can change: the rest belongs to the series. */
+const ONE_DAY = ["title", "start", "minutes", "kind", "accepts_tasks", "counts_capacity", "anchored"];
+
+/** Where the second column starts: how it repeats and behaves, after what it is and when. */
+const SECOND_COLUMN = "repeat";
+
 function Form(props: { request: Request; finish: (saved?: Saved) => void }) {
-  const { purpose, initial, heading, rule } = props.request;
+  const { purpose, initial, heading, rule, form } = props.request;
   const [fields, setFields] = useState(initial);
   const [date, setDate] = useState(purpose.kind === "add" ? purpose.date : "");
   const [problem, setProblem] = useState<string | undefined>();
@@ -139,75 +142,88 @@ function Form(props: { request: Request; finish: (saved?: Saved) => void }) {
     }
   };
 
-  const field = (label: string, key: keyof BlockFields, description?: string, autoFocus = false) => (
-    <TextField className="field" value={String(fields[key])} onChange={(text) => set({ [key]: text })} autoFocus={autoFocus}>
-      <Label>{label}</Label>
-      <Input />
-      {description && (
-        <Text slot="description" className="quiet">
-          {description}
-        </Text>
-      )}
-    </TextField>
-  );
+  const description = (field: FormField) => {
+    // A rule the repetition words cannot say is kept while the field stays empty.
+    if (field.key === "repeat" && rule && !initial.repeat) {
+      return `${field.hint} It repeats by the rule ${rule}, which the repetition words cannot say; leave this empty to keep it.`;
+    }
+    return field.hint;
+  };
 
-  const flag = (label: string, key: "accepts_tasks" | "counts_capacity" | "anchored") => (
-    <Checkbox className="check" isSelected={fields[key]} onChange={(on) => set({ [key]: on })}>
-      <span className="box" aria-hidden="true" />
-      {label}
-    </Checkbox>
+  const control = (field: FormField, first: boolean) => {
+    const key = field.key as keyof BlockFields;
+    const hint = description(field);
+    const help = hint && (
+      <Text slot="description" className="quiet">
+        {hint}
+      </Text>
+    );
+    switch (field.kind) {
+      case "toggle":
+        return (
+          <Checkbox key={field.key} className="check" isSelected={Boolean(fields[key])} onChange={(on) => set({ [key]: on })}>
+            <span className="box" aria-hidden="true" />
+            {field.label}
+          </Checkbox>
+        );
+      case "choice":
+        return (
+          <Select
+            key={field.key}
+            className="field"
+            value={String(fields[key])}
+            onChange={(chosen) => (field.key === "kind" ? void kind(String(chosen)) : set({ [key]: String(chosen) }))}
+          >
+            <Label>{field.label}</Label>
+            <Button>
+              <SelectValue />
+            </Button>
+            {help}
+            <Popover>
+              <ListBox items={field.options ?? []}>{(item) => <ListBoxItem id={item.id}>{item.title}</ListBoxItem>}</ListBox>
+            </Popover>
+          </Select>
+        );
+      case "lines":
+        return (
+          <TextField key={field.key} className="field" value={String(fields[key])} onChange={(text) => set({ [key]: text })}>
+            <Label>{field.label}</Label>
+            <TextArea rows={3} placeholder={field.example || undefined} />
+            {help}
+          </TextField>
+        );
+      default: {
+        // The day is the form's own, not the block's: only a new block has one.
+        const value = field.key === "date" ? date : String(fields[key]);
+        const change = (text: string) => (field.key === "date" ? setDate(text) : set({ [key]: text }));
+        return (
+          <TextField key={field.key} className="field" value={value} onChange={change} autoFocus={first}>
+            <Label>{field.label}</Label>
+            <Input placeholder={field.example || undefined} />
+            {help}
+          </TextField>
+        );
+      }
+    }
+  };
+
+  const shown = form.filter(
+    (field) =>
+      (field.key !== "date" || purpose.kind === "add") &&
+      (!once || ONE_DAY.includes(field.key)) &&
+      (!field.repeating_only || fields.repeat.trim() !== "" || (rule !== undefined && !initial.repeat)),
   );
+  const split = shown.findIndex((field) => field.key === SECOND_COLUMN);
+  const columns = split < 0 ? [shown] : [shown.slice(0, split), shown.slice(split)];
 
   return (
     <Dialog className={once ? undefined : "wide"}>
       <Heading slot="title">{heading}</Heading>
       <form onSubmit={save}>
         <div className={once ? undefined : "columns"}>
-          <div>
-            {field("Title", "title", undefined, true)}
-            {field("Starts at", "start", "Such as 9am, or 14:30.")}
-            {field("Minutes", "minutes")}
-            <Select className="field" value={fields.kind} onChange={(key) => void kind(String(key))}>
-              <Label>Kind</Label>
-              <Button>
-                <SelectValue />
-              </Button>
-              <Popover>
-                <ListBox items={KINDS}>{(item) => <ListBoxItem id={item.id}>{item.name}</ListBoxItem>}</ListBox>
-              </Popover>
-            </Select>
-            {flag("Takes tasks", "accepts_tasks")}
-            {flag("Counts toward the hours for work", "counts_capacity")}
-            {flag("Anchored: stays put when the day runs late", "anchored")}
-            {purpose.kind === "add" && (
-              <TextField className="field" value={date} onChange={setDate}>
-                <Label>Starts on</Label>
-                <Input />
-                <Text slot="description" className="quiet">
-                  A date, such as today or next Monday.
-                </Text>
-              </TextField>
-            )}
-          </div>
-          {!once && (
-            <div>
-              {field(
-                "Repeats",
-                "repeat",
-                rule && !initial.repeat
-                  ? `Such as every weekday. It repeats by the rule ${rule}, which the repetition words cannot say; leave this empty to keep it.`
-                  : "Such as every weekday. Empty for once.",
-              )}
-              {field("Last day it repeats", "until", "A date. Empty to repeat for good.")}
-              {field("Shortest length when the day runs late, in minutes", "min_minutes", "Empty for its kind's own.")}
-              {field("Offers tasks matching this filter", "task_filter", "Such as #Work. Empty for any.")}
-              {field("Colour", "colour", "By name, such as teal. Empty for none.")}
-              <TextField className="field" value={fields.notes} onChange={(notes) => set({ notes })}>
-                <Label>Notes</Label>
-                <TextArea rows={3} />
-              </TextField>
-            </div>
-          )}
+          {columns.map((column, index) => (
+            <div key={index}>{column.map((field) => control(field, field === shown[0]))}</div>
+          ))}
         </div>
         {problem && (
           <p role="alert" className="problem">

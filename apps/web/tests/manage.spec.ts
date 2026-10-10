@@ -12,7 +12,7 @@ async function open(page: Page) {
 }
 
 async function add(page: Page, line: string) {
-  await page.getByRole("button", { name: "New Task" }).click();
+  await page.getByRole("button", { name: "New task" }).click();
   await page.getByRole("combobox", { name: "Task" }).fill(line);
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeHidden();
@@ -28,11 +28,11 @@ async function placeMenu(page: Page, row: RegExp, item: string) {
   await page.getByRole("menuitem", { name: item }).click();
 }
 
-/** Answers an ask dialog called `title`. */
-async function answer(page: Page, title: string | RegExp, text: string) {
+/** Answers an ask dialog called `title`, by its button that says what answering does. */
+async function answer(page: Page, title: string | RegExp, text: string, button = "Save") {
   const dialog = page.getByRole("dialog", { name: title });
   await dialog.getByRole("textbox").first().fill(text);
-  await dialog.getByRole("button", { name: "OK" }).click();
+  await dialog.getByRole("button", { name: button, exact: true }).click();
   await expect(dialog).toBeHidden();
 }
 
@@ -43,34 +43,34 @@ async function axe(page: Page) {
 
 test("a project is made, renamed, and deleted keeping its tasks, from the sidebar", async ({ page }) => {
   await open(page);
-  await placeMenu(page, /^Projects/, "New Project");
-  await answer(page, "New Project", "Garden");
+  await placeMenu(page, /^Projects/, "New project");
+  await answer(page, "New project", "Garden", "Add");
   await expect(heading(page)).toHaveText("Garden");
   await add(page, "Plant beans");
   await placeMenu(page, /^Garden/, "Rename");
-  await answer(page, "Rename Garden", "Allotment");
+  await answer(page, "Rename Garden", "Allotment", "Rename");
   await expect(heading(page)).toHaveText("Allotment");
   await places(page).getByRole("row", { name: /^Allotment/ }).focus();
   await page.keyboard.press("Delete");
   const question = page.getByRole("alertdialog", { name: "Delete Allotment?" });
   await expect(question.getByRole("button", { name: "Cancel" })).toBeFocused();
-  await question.getByRole("button", { name: "Delete and Keep Its Tasks" }).click();
+  await question.getByRole("button", { name: "Delete and keep its tasks" }).click();
   await expect(places(page).getByRole("row", { name: /^Allotment/ })).toHaveCount(0);
   await expect(places(page).getByRole("row", { name: /^Inbox, 1 open task/ })).toBeVisible();
 });
 
 test("a label and a saved filter are made and changed from the sidebar", async ({ page }) => {
   await open(page);
-  await placeMenu(page, /^Labels/, "New Label");
-  await answer(page, "New Label", "calls");
+  await placeMenu(page, /^Labels/, "New label");
+  await answer(page, "New label", "calls", "Add");
   await expect(heading(page)).toHaveText("calls");
   await placeMenu(page, /^calls/, "Colour");
   await answer(page, "Colour of calls", "teal");
-  await placeMenu(page, /^Saved Filters/, "New Saved Filter");
-  await answer(page, "New Saved Filter", "Urgent");
-  await answer(page, "Query for Urgent", "p1");
+  await placeMenu(page, /^Saved filters/, "New saved filter");
+  await answer(page, "New saved filter", "Urgent", "Next");
+  await answer(page, "Query for Urgent", "p1", "Add");
   await expect(heading(page)).toHaveText("Urgent");
-  await placeMenu(page, /^Urgent/, "Change Query");
+  await placeMenu(page, /^Urgent/, "Change query");
   await answer(page, "Query of Urgent", "p1 | today");
   await expect(page.getByRole("main").getByRole("textbox", { name: "Filter" })).toHaveValue("p1 | today");
   await axe(page);
@@ -82,12 +82,12 @@ test("a task waits for another, and stops", async ({ page }) => {
   await add(page, "Paint the fence");
   await page.getByRole("main").getByRole("row", { name: /^Paint the fence/ }).click();
   const details = page.getByRole("complementary", { name: "Task details" });
-  await details.getByRole("button", { name: "Wait For" }).click();
+  await details.getByRole("button", { name: "Wait for" }).click();
   const picker = page.getByRole("dialog", { name: "What does Paint the fence wait for?" });
   await picker.getByRole("combobox", { name: "What does Paint the fence wait for?" }).fill("Buy");
   await page.getByRole("option", { name: /^Buy paint/ }).click();
-  await picker.getByRole("button", { name: "OK" }).click();
-  const stop = details.getByRole("button", { name: "Stop Waiting for Buy paint" });
+  await picker.getByRole("button", { name: "Choose" }).click();
+  const stop = details.getByRole("button", { name: "Stop waiting for Buy paint" });
   await expect(stop).toBeVisible();
   await stop.click();
   await expect(details.getByText("Nothing.")).toBeVisible();
@@ -141,9 +141,9 @@ test("a backup downloads, and restores into another browser", async ({ browser }
 test("a block's flags follow its kind, and its settings are kept", async ({ page }) => {
   await open(page);
   await places(page).getByRole("row", { name: /^Blocks/ }).click();
-  await page.getByRole("button", { name: "Add Block…" }).click();
+  await page.getByRole("button", { name: "Add block…" }).click();
   const form = page.getByRole("dialog", { name: "New Block" });
-  await form.getByRole("textbox", { name: "Title", exact: true }).fill("Commute");
+  await form.getByRole("textbox", { name: "Name", exact: true }).fill("Commute");
   await form.getByRole("button", { name: /Kind/ }).click();
   await page.getByRole("option", { name: "Break" }).click();
   const takes = form.getByRole("checkbox", { name: "Takes tasks" });
@@ -152,7 +152,7 @@ test("a block's flags follow its kind, and its settings are kept", async ({ page
   await takes.focus();
   await page.keyboard.press("Space");
   await expect(takes).toBeChecked();
-  await form.getByRole("textbox", { name: "Offers tasks matching this filter" }).fill("#Inbox");
+  await form.getByRole("textbox", { name: "Tasks from" }).fill("#Inbox");
   await form.getByRole("textbox", { name: "Colour" }).fill("teal");
   await axe(page);
   await form.getByRole("button", { name: "Add", exact: true }).click();
@@ -161,7 +161,7 @@ test("a block's flags follow its kind, and its settings are kept", async ({ page
   await page.keyboard.press("Enter");
   const change = page.getByRole("dialog", { name: /^Change Commute/ });
   await expect(change.getByRole("checkbox", { name: "Takes tasks" })).toBeChecked();
-  await expect(change.getByRole("textbox", { name: "Offers tasks matching this filter" })).toHaveValue("#Inbox");
+  await expect(change.getByRole("textbox", { name: "Tasks from" })).toHaveValue("#Inbox");
   await expect(change.getByRole("textbox", { name: "Colour" })).toHaveValue("teal");
 });
 
@@ -169,20 +169,20 @@ test("space pauses a running timer, and the menu offers resume and stop", async 
   await open(page);
   await add(page, "Write report");
   await places(page).getByRole("row", { name: /^Today/ }).click();
-  await page.getByRole("button", { name: "Add Block…" }).click();
+  await page.getByRole("button", { name: "Add block…" }).click();
   const form = page.getByRole("dialog", { name: "New Block" });
-  await form.getByRole("textbox", { name: "Title", exact: true }).fill("Deep work");
+  await form.getByRole("textbox", { name: "Name", exact: true }).fill("Deep work");
   await form.getByRole("textbox", { name: "Starts at" }).fill("11:30pm");
-  await form.getByRole("textbox", { name: "Minutes", exact: true }).fill("25");
+  await form.getByRole("textbox", { name: "Lasts, in minutes", exact: true }).fill("25");
   await form.getByRole("button", { name: "Add", exact: true }).click();
   const day = page.getByRole("treegrid", { name: "The day" });
   await day.getByRole("row", { name: /Deep work/ }).focus();
   await page.keyboard.press("Shift+F10");
-  await page.getByRole("menuitem", { name: "Assign a Task" }).click();
+  await page.getByRole("menuitem", { name: "Assign a task" }).click();
   await page.getByRole("combobox", { name: "Assign a task to Deep work" }).fill("Write");
   await page.getByRole("option", { name: /^Write report/ }).click();
-  await page.getByRole("button", { name: "OK" }).click();
-  await page.getByRole("dialog", { name: "Planned length" }).getByRole("button", { name: "OK" }).click();
+  await page.getByRole("button", { name: "Choose" }).click();
+  await page.getByRole("dialog", { name: "Planned length" }).getByRole("button", { name: "Save" }).click();
   const sitting = day.getByRole("row", { name: /^Write report/ });
   await sitting.focus();
   await page.keyboard.press("Space");
@@ -190,9 +190,9 @@ test("space pauses a running timer, and the menu offers resume and stop", async 
   await page.keyboard.press("Space");
   await expect(sitting).toHaveAccessibleName(/paused/);
   await page.keyboard.press("Shift+F10");
-  await expect(page.getByRole("menuitem", { name: "Resume Timer" })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "Stop Timer" })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "Pause Timer" })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "Resume timer" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Stop timer" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Pause timer" })).toHaveCount(0);
 });
 
 test("ctrl+z undoes from the list, and ctrl+y redoes", async ({ page }) => {
@@ -209,17 +209,17 @@ test("ctrl+z undoes from the list, and ctrl+y redoes", async ({ page }) => {
 
 test("a weight that is not a number is refused at the field, not taken as inherit", async ({ page }) => {
   await open(page);
-  await placeMenu(page, /^Projects/, "New Project");
-  await answer(page, "New Project", "Garden");
+  await placeMenu(page, /^Projects/, "New project");
+  await answer(page, "New project", "Garden", "Add");
   await placeMenu(page, /^Garden/, "Weight");
   const dialog = page.getByRole("dialog", { name: "Weight of Garden" });
   const field = dialog.getByRole("textbox", { name: "Weight" });
   await field.fill("1,5");
-  await dialog.getByRole("button", { name: "OK" }).click();
+  await dialog.getByRole("button", { name: "Save" }).click();
   await expect(field).toHaveAttribute("aria-invalid", "true");
   await expect(field).toHaveAccessibleDescription(/is not a weight/);
   await field.fill("1.5");
-  await dialog.getByRole("button", { name: "OK" }).click();
+  await dialog.getByRole("button", { name: "Save" }).click();
   await expect(dialog).toBeHidden();
   await expect(page.locator('[aria-live="polite"]')).toContainText("Garden");
 });

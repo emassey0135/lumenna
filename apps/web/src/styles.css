@@ -7,6 +7,8 @@
   line-height: 1.4;
   --gap: 0.75rem;
   --line: color-mix(in srgb, CanvasText 25%, Canvas);
+  /* A control's edge, which is what tells a field from the page: 3:1 at least (WCAG 1.4.11). */
+  --edge: color-mix(in srgb, CanvasText 60%, Canvas);
   --quiet: color-mix(in srgb, CanvasText 72%, Canvas);
   --focus: Highlight;
 }
@@ -101,7 +103,10 @@ h2 {
   border: none;
   background: none;
   color: inherit;
-  width: 1.5rem;
+  /* 24 pixels at least, the smallest target WCAG 2.5.8 allows. */
+  flex: none;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
   padding: 0;
 }
 
@@ -141,7 +146,7 @@ textarea,
   color: inherit;
   background: Field;
   color: FieldText;
-  border: 1px solid var(--line);
+  border: 1px solid var(--edge);
   border-radius: 4px;
   padding: 0.35rem 0.5rem;
 }
@@ -164,11 +169,16 @@ textarea,
   min-width: var(--trigger-width);
 }
 
-.react-aria-ListBoxItem {
+/* What a list or a menu offers: 24 pixels high at least (WCAG 2.5.8), the one in hand marked. */
+.react-aria-ListBoxItem,
+.react-aria-MenuItem {
   padding: 0.3rem 0.5rem;
+  min-height: 1.75rem;
+  cursor: default;
 }
 
-.react-aria-ListBoxItem[data-focused] {
+.react-aria-ListBoxItem[data-focused],
+.react-aria-MenuItem[data-focused] {
   background: Highlight;
   color: HighlightText;
 }
@@ -283,7 +293,7 @@ h3 {
 }
 
 /* What removes something, set apart as the core marks it (`destructive`). The name says it too:
-   "Delete Block", "Move to Trash". */
+   "Delete block", "Move to trash". */
 .destructive {
   color: light-dark(#a40000, #ff8a80);
 }
@@ -297,4 +307,26 @@ h3 {
   .destructive {
     color: inherit;
   }
+}
+
+/* Settings' pages: tabs in a row, as the arrows that move between them go, each a target of
+   24 pixels at least (WCAG 2.5.8), the page shown marked by more than colour. */
+.react-aria-TabList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: var(--gap);
+}
+
+.react-aria-Tab {
+  padding: 0.5rem 0.75rem;
+  min-height: 2.5rem;
+  cursor: default;
+  border-bottom: 3px solid transparent;
+}
+
+.react-aria-Tab[data-selected] {
+  border-bottom-color: CanvasText;
+  font-weight: 600;
 }

@@ -28,7 +28,10 @@ import init, {
   candidateText,
   choiceText,
   placeQuickAddPrefix,
-  priorities,
+  taskForm,
+  blockForm,
+  pairingWords,
+  sentenceCase,
   placeQuery,
   placeTitle,
   rowText,
@@ -40,7 +43,8 @@ import init, {
 import type {
   Action,
   Answer,
-  Choice,
+  FormField,
+  PairingWords,
   Setting,
   BlockDefaults,
   BlockFields,
@@ -125,7 +129,11 @@ const api = {
   outsideVersion: (): number => store().outsideVersion(),
 
   /** The places, as the sidebar lists them. */
-  sidebar: (): SidebarEntry[] => store().sidebar().entries,
+  sidebar: (): SidebarEntry[] =>
+    // A heading is fixed text, so in the web's sentence case; a place's line names it.
+    store()
+      .sidebar()
+      .entries.map((entry) => ("Group" in entry.kind ? { ...entry, text: sentenceCase(entry.text) } : entry)),
 
   place: (place: Place) => ({
     title: placeTitle(place),
@@ -138,7 +146,7 @@ const api = {
     const listing = store().listTasks(query);
     const lines: Line[] = listing.rows.map((row) => ({ row, text: trash ? trashedText(row) : rowText(row, false) }));
     const parts = [listing.query && !trash ? listing.query.description : undefined, listing.announcement, ...(listing.notices ?? [])];
-    return { lines, readback: announcementText(parts.filter((p): p is string => !!p).join(". "), []) };
+    return { lines, readback: announcementText(parts.filter((p): p is string => !!p).join(". "), []), empty: listing.empty };
   },
 
   /** One task, as its details form starts from it. */
@@ -147,8 +155,23 @@ const api = {
     return { task, fields: taskFields(task), state: taskStateText(task) };
   },
 
-  /** The priorities a task can have, as the details form offers them. */
-  priorities: (): Choice[] => priorities().choices,
+  /** The task form's fields, in order, in the core's words. */
+  taskForm: (): FormField[] => taskForm().fields,
+
+  /** The block form's fields, in order, in the core's words. */
+  blockForm: (): FormField[] => blockForm().fields,
+
+  /** Every sentence and button of pairing, buttons and questions in the web's sentence case. */
+  pairingWords(): PairingWords {
+    const words = pairingWords();
+    for (const key of ["title", "wait", "join", "match_title", "match_yes", "match_no"] as const) {
+      words[key] = sentenceCase(words[key]);
+    }
+    return words;
+  },
+
+  /** Fixed text — a button, a question with no one's name in it — in sentence case. */
+  sentence: (text: string): string => sentenceCase(text),
 
   /** The projects, by name, for the details form's choice. */
   projects: (): string[] => store().listProjects().rows.map((row) => row.title),
@@ -242,9 +265,9 @@ const api = {
         });
       } else if (item.item === "free") {
         const free = { start: item.start, end: item.end, minutes: item.minutes };
-        rows.push({ key: `free:${item.start}`, text: freeText(item.start, item.end, item.minutes), kind: "free", free, actions: item.actions ?? [], children: [] });
+        rows.push({ key: `free:${item.start}`, text: freeText(item.title ?? "", item.details ?? [], item.start, item.end), kind: "free", free, actions: item.actions ?? [], children: [] });
       } else {
-        rows.push({ key: "now", text: nowText(item.time), kind: "now", actions: [], children: [] });
+        rows.push({ key: "now", text: nowText(item.title ?? "", item.time), kind: "now", actions: [], children: [] });
       }
     }
     for (const cancelled of plan.cancelled ?? []) {
@@ -260,7 +283,7 @@ const api = {
   blocks() {
     const listing = store().listBlocks();
     const lines: Line[] = listing.rows.map((row) => ({ row, text: rowText(row, false) }));
-    return { lines, readback: announcementText(listing.announcement, listing.notices ?? []) };
+    return { lines, readback: announcementText(listing.announcement, listing.notices ?? []), empty: listing.empty };
   },
 
   /**

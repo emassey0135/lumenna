@@ -133,7 +133,7 @@ export function App() {
     <div className="app">
       <header>
         <h1>Lumenna</h1>
-        <Button onPress={() => setAdding(true)}>New Task</Button>
+        <Button onPress={() => setAdding(true)}>New task</Button>
         <Button onPress={() => void undo(false)}>Undo</Button>
         <Button onPress={() => void undo(true)}>Redo</Button>
         <Button onPress={() => setSettingsOpen(true)}>Settings…</Button>
