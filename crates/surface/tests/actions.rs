@@ -263,3 +263,19 @@ fn the_sidebars_headings_add_and_its_places_carry_their_own_actions() {
     assert_eq!(titles(&urgent.actions), ["Rename", "Change Query", "Delete"]);
     assert_eq!(urgent.actions[0].subject, Subject::Filter);
 }
+
+#[test]
+fn every_setting_says_its_name_its_control_and_whether_it_syncs() {
+    let (_directory, lumenna) = open();
+    let settings = lumenna.settings(None).unwrap().settings;
+    for setting in &settings {
+        assert!(!setting.title.is_empty(), "{} has no name", setting.key);
+    }
+    let week = settings.iter().find(|s| s.key == "week-start").unwrap();
+    assert_eq!(week.options.len(), 7);
+    assert_eq!(week.options[0].title, "Monday");
+    assert!(week.syncs);
+    let every = settings.iter().find(|s| s.key == "backup-every").unwrap();
+    assert!(!every.syncs, "backups are this device's alone");
+    assert!(every.options.iter().any(|o| o.id == every.value), "{} is offered", every.value);
+}

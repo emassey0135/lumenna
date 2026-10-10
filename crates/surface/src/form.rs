@@ -298,6 +298,16 @@ fn whole_minutes(text: &str, what: &str) -> Result<u32> {
     text.trim().parse().map_err(|_| LumennaError::new(format!("{what} has to be a whole number of minutes")))
 }
 
+/// The priorities a task can have, as a form offers them: `id` is the number.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+#[must_use]
+pub fn priorities() -> Vec<crate::actions::Choice> {
+    [(1, "Priority 1, highest"), (2, "Priority 2"), (3, "Priority 3"), (4, "Priority 4, none")]
+        .into_iter()
+        .map(|(id, title): (u8, &str)| crate::actions::Choice { id: id.to_string(), title: title.to_owned(), ..Default::default() })
+        .collect()
+}
+
 /// A project's weight as typed: a number above zero, such as `1.5`, or `inherit` to take its
 /// parent's again. Anything else is refused rather than read as `inherit`, so a typo — `1,5`
 /// — says so instead of quietly undoing a weight.
