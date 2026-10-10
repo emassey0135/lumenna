@@ -1053,7 +1053,20 @@ impl Lumenna {
     /// The work blocks a task could go in this week, but for those already over: which
     /// they are is the planner's own question.
     fn open_work_blocks(&self) -> Result<Choices> {
-        let blocks = self.work_blocks(None, Some(7))?;
+        self.work_block_choices(None, Some(7))
+    }
+}
+
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl Lumenna {
+    /// What Put in a Block offers from another day: `days` days of work blocks from `from`
+    /// (a date phrase), but for those already over. [`Lumenna::choices`] offers this week's.
+    ///
+    /// # Errors
+    ///
+    /// If `from` is not a date.
+    pub fn work_block_choices(&self, from: Option<String>, days: Option<u32>) -> Result<Choices> {
+        let blocks = self.work_blocks(from, days)?;
         let open: Vec<Choice> = blocks
             .blocks
             .into_iter()

@@ -155,7 +155,7 @@ endpoint (`Endpoint::serve`, `Lumenna::serve_commands`).
   or `pair.cancel`, and the server keeps answering everything else. One pairing at a time.
 - **`act`, `choices`, `places` and `form.*`** (the form functions: `task_fields`,
   `task_edit`, `block_fields`, `day_block_fields`, `block_edit`, `new_block`,
-  `block_defaults`, `priorities`, `not_offered`) are here so a client over the pipe keeps no copy of any rule. A form
+  `block_defaults`, `priorities`, `not_offered`, `project_reference`, `label_reference`; `choices` with `from` is Put in a Block on another day) are here so a client over the pipe keeps no copy of any rule. A form
   function's answer is a `value` result: computed from what the client sent, nothing read.
 - **`complete` and `preview` have no command line**: completion is a keystroke-rate question
   and a process per keystroke is not an answer.
