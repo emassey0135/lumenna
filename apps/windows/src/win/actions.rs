@@ -5,14 +5,14 @@
 //!
 //! Only a [`Question::Form`] is the app's own: the task details and the block form.
 
-use lumenna_surface::{Action, ActionKind, Answer, Change, Choice, Question, Subject};
+use lumenna_surface::{Action, ActionKind, Answer, Change, Choice, Question, Subject, not_offered};
 use windows::Win32::Foundation::HWND;
 
 use super::app::App;
 use super::clock::Locale;
 use super::core::sentence;
 use super::prompts;
-use crate::speech::{self, Clock};
+use crate::speech;
 
 /// A context menu's commands are this plus the action's position, clear of the menu bar's.
 const FIRST: u16 = 1000;
@@ -50,21 +50,21 @@ pub fn of_kind(actions: &[Action], kinds: &[ActionKind]) -> Option<Action> {
     actions.iter().find(|action| kinds.contains(&action.kind)).cloned()
 }
 
-/// How a choice reads in a list: a block by its day and time, a task with its project.
+/// How a choice reads in a list: the core's words, then its level, which a list box has no
+/// other way to say.
 fn choice_text(choice: &Choice) -> String {
-    if let (Some(date), Some(start), Some(end)) = (&choice.date, &choice.start, &choice.end) {
-        return format!("{}, {} to {}, {}", Locale.day(date), Locale.time(start), Locale.time(end), choice.title);
-    }
-    let mut text = choice.title.clone();
-    if let Some(detail) = &choice.detail {
-        text = format!("{text}, {detail}");
-    }
-    if choice.depth > 0 {
-        text = format!("{text}, level {}", choice.depth + 1);
-    }
-    text
+    let text = speech::choice(choice, &Locale);
+    if choice.depth > 0 { format!("{text}, level {}", choice.depth + 1) } else { text }
 }
 
+/// Says why a row has no action of `kind`, as the core words it: for a key or a menu-bar
+/// command that means nothing on this row. A row with no actions at all, such as a heading,
+/// stays quiet.
+pub fn say_not_offered(app: &App, offered: &[Action], kind: ActionKind) {
+    if let Some(subject) = offered.first().map(|action| action.subject) {
+        app.say(&speech::sentence(&not_offered(kind, subject, false)));
+    }
+}
 /// Asks `action`'s question, in dialogs owned by `owner`, and runs it. A form is opened by
 /// `form` instead. Returns what it did and the answer given; `None` when it was cancelled,
 /// refused (and said why), or a form.

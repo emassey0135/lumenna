@@ -131,16 +131,6 @@ pub const MENUS: [(&str, &[(u16, &str)]); 6] = [
     ("&Help", &[(ABOUT, "&About Lumenna")]),
 ];
 
-/// A command's name as the menu bar has it, without its access key, shortcut or ellipsis.
-pub fn name(command: u16) -> String {
-    MENUS
-        .iter()
-        .flat_map(|(_, items)| items.iter())
-        .find(|(id, _)| *id == command)
-        .map(|(_, text)| text.split('\t').next().unwrap_or(text).replace('&', "").trim_end_matches("...").to_owned())
-        .unwrap_or_default()
-}
-
 /// Builds the menu bar.
 pub fn bar() -> HMENU {
     unsafe {

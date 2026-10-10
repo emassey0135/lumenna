@@ -95,9 +95,12 @@ impl Sidebar {
                 // Delete here does what it does in every other list: the row's own Delete,
                 // asking first as the context menu's does. After the notification returns,
                 // since deleting rebuilds the tree.
-                let delete = self.selected().and_then(|entry| Some((actions::of_kind(&entry.actions, &[ActionKind::Delete])?, entry)));
-                if let Some((action, entry)) = delete {
-                    app.defer(move |app| app.sidebar.act(app, &entry, &action));
+                // Where there is none, as for the Inbox, the core says why.
+                if let Some(entry) = self.selected() {
+                    match actions::of_kind(&entry.actions, &[ActionKind::Delete]) {
+                        Some(action) => app.defer(move |app| app.sidebar.act(app, &entry, &action)),
+                        None => actions::say_not_offered(app, &entry.actions, ActionKind::Delete),
+                    }
                 }
                 Some(1)
             }

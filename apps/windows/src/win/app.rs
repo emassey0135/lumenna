@@ -673,12 +673,12 @@ impl App {
 
     /// A Task-menu command: the task in hand's action of that kind, as the core offers it, so
     /// Mark Done marks a done task not done, and in the trash Restore restores.
-    fn act_on_task_in_hand(&self, command: u16, kinds: &[ActionKind]) {
+    fn act_on_task_in_hand(&self, kinds: &[ActionKind]) {
         let Some(offered) = self.task_actions_in_hand() else {
             return self.say("No task is selected");
         };
         let Some(action) = actions::of_kind(&offered, kinds) else {
-            return self.say(&format!("{} does not apply to this task", menu::name(command)));
+            return actions::say_not_offered(self, &offered, kinds[0]);
         };
         if let Some((change, _)) = actions::run(self, self.main, &action, || self.open_detail()) {
             self.say_change(&change);
@@ -773,7 +773,7 @@ impl App {
                 }
             }
             menu::SAVE_TASK => self.detail.save(self),
-            command if !task_kinds(command).is_empty() => self.act_on_task_in_hand(command, task_kinds(command)),
+            command if !task_kinds(command).is_empty() => self.act_on_task_in_hand(task_kinds(command)),
             menu::PREVIOUS_DAY | menu::NEXT_DAY | menu::GO_TO_NOW | menu::GO_TO_DAY => {
                 if self.day().is_none() {
                     self.go(Place::Today, true);

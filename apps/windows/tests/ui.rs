@@ -687,4 +687,8 @@ fn a_rows_menu_is_the_cores_and_never_offers_a_task_as_its_own_parent() {
     let menu = names(app.automation.menu_items());
     app.post(&["esc"]);
     assert_eq!(menu, ["Weight..."], "the Inbox's menu");
+    // Delete there says why not, in the core's words.
+    app.post(&["delete"]);
+    let why = lumenna_surface::not_offered(lumenna_surface::ActionKind::Delete, lumenna_surface::Subject::Project, false);
+    assert_eq!(app.status(), lumenna_desktop::speech::sentence(&why));
 }

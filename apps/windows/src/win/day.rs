@@ -394,7 +394,13 @@ impl View for DayView {
                 } else {
                     return Some(0);
                 };
-                if self.selected().is_none_or(|row| actions::of_kind(row.actions(), kinds).is_none()) {
+                let Some(row) = self.selected() else { return Some(0) };
+                if actions::of_kind(row.actions(), kinds).is_none() {
+                    // Delete on free time or a cancelled day: the core says why not.
+                    if key == VK_DELETE.0 {
+                        actions::say_not_offered(app, row.actions(), ActionKind::Delete);
+                        return Some(1);
+                    }
                     return Some(0);
                 }
                 Self::act_later(app, kinds);
