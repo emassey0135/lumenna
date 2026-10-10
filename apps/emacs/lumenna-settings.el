@@ -64,9 +64,10 @@ core reads and checks it."
          (now (plist-get setting :value))
          (options (mapcar (lambda (o) (cons (plist-get o :title) (plist-get o :id)))
                           (append (plist-get setting :options) nil)))
-         (prompt (lumenna--prompt (plist-get setting :title) (plist-get setting :hint)))
+         (prompt (lumenna--prompt (plist-get setting :hint) (plist-get setting :title)))
          (value (cond (options
-                       (cdr (assoc (completing-read prompt options nil t nil nil (car (rassoc now options)))
+                       (cdr (assoc (completing-read (lumenna--with-default prompt (car (rassoc now options)))
+                                                    options nil t nil nil (car (rassoc now options)))
                                    options)))
                       ((equal (plist-get setting :kind) "folder")
                        (expand-file-name (read-directory-name prompt now)))
@@ -132,17 +133,29 @@ Its platform, then the status the core words for every app."
 (defvar lumenna--shown-code nil
   "The code this device shows while it waits, copied to the kill ring.")
 
+(defun lumenna--pairing-words (&optional name)
+  "Pairing's sentences and buttons, the core's (`form.pairing_words').
+NAME is how this device is found by the other on its network, from what the
+pairing says; Emacs runs where finding each other works."
+  (lumenna-words "form.pairing_words" :this_device (or name "this computer") :local t))
+
+(defun lumenna--sentence-message (text)
+  "TEXT, one of the core's sentences, as an Emacs message has it: no final stop."
+  (string-remove-suffix "." text))
+
 (defun lumenna--read-code ()
   "The other device's code: typed, or, left empty, the latest kill.
 That is where a code sent from the other device usually arrives, by way of
 the system clipboard.  This device's own code, copied while it waits, is
 never the other's."
-  (let ((typed (string-trim (read-string "The other device's code, or empty for the clipboard's: "))))
+  (let* ((words (lumenna--pairing-words))
+         (typed (string-trim (read-string (lumenna--prompt (plist-get words :empty_means)
+                                                           (plist-get words :their_code))))))
     (if (not (string-empty-p typed))
         typed
       (let ((killed (ignore-errors (string-trim (current-kill 0 t)))))
         (if (or (null killed) (string-empty-p killed) (equal killed lumenna--shown-code))
-            (user-error "Type or paste the code the other device shows")
+            (user-error "%s" (lumenna--sentence-message (plist-get words :need_code)))
           killed)))))
 
 ;;;###autoload
@@ -157,7 +170,7 @@ Both show three words; say yes only if they are the same on both."
    ;; join with the code once it has ended.
    ((and code (eq lumenna--pairing 'waiting))
     (setq lumenna--next-code code)
-    (message "Stopping the wait, then connecting with this code")
+    (message "%s" (lumenna--sentence-message (plist-get (lumenna--pairing-words) :switching)))
     (lumenna-call "pair.cancel"))
    (lumenna--pairing (user-error "A pairing is already under way; M-x lumenna-pair-cancel ends it"))
    (t (lumenna--start-pairing code))))
@@ -166,7 +179,8 @@ Both show three words; say yes only if they are the same on both."
   "Pair by CODE, or wait to be found when it is nil."
   (setq lumenna--pairing (if code 'joining 'waiting)
         lumenna--shown-code nil)
-  (message (if code "Connecting to the other device" "Waiting for the other device"))
+  (message "%s" (lumenna--sentence-message
+                 (plist-get (lumenna--pairing-words) (if code :connecting :opening))))
   (jsonrpc-async-request
    (lumenna--connection) 'pair
    (lumenna--params (list :code (and code (replace-regexp-in-string "[[:space:]]" "" code))
@@ -197,12 +211,15 @@ The code to give the other device, or the words to compare."
    ((plist-get params :code)
     (setq lumenna--shown-code (plist-get params :code))
     (kill-new lumenna--shown-code)
-    (message "Waiting to pair, as %s. On the other device, pair too while on this network, or give it this code, which is copied: %s"
-             (plist-get params :name) (plist-get params :code)))
+    (let ((words (lumenna--pairing-words (plist-get params :name))))
+      (message "%s %s %s: %s" (plist-get words :waiting) (plist-get words :copied)
+               (plist-get words :my_code) (plist-get params :code))))
    ((plist-get params :words)
-    (let ((matched (yes-or-no-p
-                    (format "The words are: %s. Do the same three words show on the other device? "
-                            (string-join (append (plist-get params :words) nil) ", ")))))
+    (let* ((words (lumenna--pairing-words))
+           (matched (yes-or-no-p
+                     (lumenna--prompt (format "%s %s" (plist-get words :match_message)
+                                              (string-join (append (plist-get params :words) nil) ", "))
+                                      (lumenna-sentence (plist-get words :match_title))))))
       (lumenna-call "pair.confirm" :match (if matched t :json-false))
       (message (if matched "Finishing" "Refusing"))))))
 
