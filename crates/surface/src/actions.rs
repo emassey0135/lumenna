@@ -1080,6 +1080,11 @@ impl Lumenna {
                 ..Choice::default()
             })
             .collect();
-        Ok(choices(open, "work block", "There are no work blocks this week. Add one from Today."))
+        let none = match (blocks.days, blocks.from == jiff::Zoned::now().date().to_string()) {
+            (7, true) => "There are no work blocks this week. Add one from Today.".to_owned(),
+            (1, _) => format!("There are no work blocks on {}.", blocks.from),
+            (days, _) => format!("There are no work blocks in the {days} days from {}.", blocks.from),
+        };
+        Ok(choices(open, "work block", &none))
     }
 }
