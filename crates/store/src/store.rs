@@ -41,6 +41,10 @@ pub struct Store {
     /// a compaction — so that the next refresh still reports them. A watcher that only ever
     /// hears about changes from `refresh` would otherwise never be told.
     unreported: bool,
+    /// The heads each device was last synced at over a direct link — a watch's Bluetooth to
+    /// its phone — so the Iroh round can skip it while nothing has changed since. Memory
+    /// only: a restart costs one round that finds nothing to send.
+    linked: BTreeMap<String, Vec<ChangeHash>>,
 }
 
 impl Store {
@@ -70,6 +74,7 @@ impl Store {
             db,
             docs: Documents::new(),
             unreported: false,
+            linked: BTreeMap::new(),
         };
         // `core` and `devices` are small and needed on every device; years are not loaded
         // until asked for.
@@ -735,6 +740,38 @@ impl Store {
     #[must_use]
     pub fn version(&mut self) -> Vec<automerge::ChangeHash> {
         self.docs.iter_mut().flat_map(|doc| doc.heads()).collect()
+    }
+
+    /// Whether this device has set the local flag `key`: state of its own, never synced.
+    ///
+    /// # Errors
+    ///
+    /// If the read fails.
+    pub fn local_flag(&self, key: &str) -> Result<bool> {
+        Ok(self.db.local_value(key)?.is_some())
+    }
+
+    /// Sets the local flag `key`.
+    ///
+    /// # Errors
+    ///
+    /// If the write fails.
+    pub fn set_local_flag(&mut self, key: &str) -> Result<()> {
+        self.db.local_value_or_insert(key, b"1")?;
+        Ok(())
+    }
+
+    /// Notes that `node_id` was just synced over a direct link, at the heads the store has now.
+    pub fn note_linked(&mut self, node_id: &str) {
+        let heads = self.version();
+        self.linked.insert(node_id.to_owned(), heads);
+    }
+
+    /// Whether `node_id` was synced over a direct link and nothing has changed here since:
+    /// an Iroh round would have nothing to send it.
+    pub fn linked_and_unchanged(&mut self, node_id: &str) -> bool {
+        let heads = self.version();
+        self.linked.get(node_id) == Some(&heads)
     }
 
     /// A number that moves when another connection commits to the store, and for nothing

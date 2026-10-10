@@ -43,7 +43,7 @@ use lumenna_sync::{SharedStore, SyncError};
 use n0_future::time::Instant;
 
 use crate::error::{LumennaError, Result};
-use crate::types::{PairedWith, PeerSync, Reach, SyncReport, SyncStatus};
+use crate::types::{LinkSynced, PairedWith, PeerSync, Reach, SyncReport, SyncStatus};
 use crate::words::count_line;
 use crate::{Lumenna, repaired};
 
@@ -106,6 +106,20 @@ fn runtime() -> Result<tokio::runtime::Runtime> {
         .enable_all()
         .build()
         .map_err(|e| LumennaError::new(format!("could not start the network runtime: {e}")))
+}
+
+/// A byte stream the app provides to another of this person's devices that the platform
+/// already trusts: a Wear OS watch's Data Layer channel to its phone. Blocking calls, made off
+/// the app's main thread.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg_attr(feature = "uniffi", uniffi::export(with_foreign))]
+pub trait LinkStream: Send + Sync {
+    /// Up to `max` bytes, waiting for some; empty once the stream has ended.
+    fn read(&self, max: u32) -> Vec<u8>;
+    /// Writes all of `bytes`; false if the stream has closed.
+    fn write(&self, bytes: Vec<u8>) -> bool;
+    /// Done writing.
+    fn close(&self);
 }
 
 /// Takes the sync lock, or `None` if another process holds it.
@@ -419,6 +433,81 @@ impl Lumenna {
         changed: F,
     ) -> Result<(SyncLoop, impl Future<Output = ()> + use<F>)> {
         keep_in_sync(self.shared(), reach, changed).await
+    }
+}
+
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl Lumenna {
+    /// Syncs over `stream`, a link to the paired phone or watch that the platform already
+    /// trusts (`lumenna_sync::introduce`): the first time, pairs the two without words, which
+    /// takes the watch into every device's list; after that, syncs them if both are still
+    /// paired. Blocks until done; call it off the main thread, on both sides.
+    ///
+    /// # Errors
+    ///
+    /// If the link fails, or the other device was unpaired since it was introduced.
+    pub fn sync_over_link(&self, stream: Arc<dyn LinkStream>, device_name: &str, platform: &str) -> Result<LinkSynced> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let store = self.shared();
+        let me = identity(&store, device_name, platform)?;
+        let introduced = runtime()?.block_on(async move {
+            let (ours, theirs) = tokio::io::duplex(1 << 16);
+            let (mut theirs_read, mut theirs_write) = tokio::io::split(theirs);
+            // What arrives over the link, into the session's side.
+            let incoming = Arc::clone(&stream);
+            tokio::spawn(async move {
+                loop {
+                    let reading = Arc::clone(&incoming);
+                    let Ok(bytes) = tokio::task::spawn_blocking(move || reading.read(1 << 14)).await else { break };
+                    if bytes.is_empty() || theirs_write.write_all(&bytes).await.is_err() {
+                        break;
+                    }
+                }
+                let _ = theirs_write.shutdown().await;
+            });
+            // What the session writes, out over the link, then closed once it is done.
+            let outgoing = Arc::clone(&stream);
+            let sending = tokio::spawn(async move {
+                let mut buffer = vec![0u8; 1 << 14];
+                loop {
+                    match theirs_read.read(&mut buffer).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            let writing = Arc::clone(&outgoing);
+                            let bytes = buffer[..n].to_vec();
+                            if !tokio::task::spawn_blocking(move || writing.write(bytes)).await.unwrap_or(false) {
+                                break;
+                            }
+                        }
+                    }
+                }
+                let closing = Arc::clone(&outgoing);
+                let _ = tokio::task::spawn_blocking(move || closing.close()).await;
+            });
+            let (mut reader, mut writer) = tokio::io::split(ours);
+            let result = lumenna_sync::introduce::introduce_and_sync(&store, &me, &mut reader, &mut writer).await;
+            let _ = writer.shutdown().await;
+            drop(writer);
+            let _ = sending.await;
+            result
+        })?;
+        let changed = !introduced.summary.changed.is_empty();
+        if changed || introduced.enrolled {
+            self.merged();
+        }
+        Ok(LinkSynced {
+            announcement: if introduced.enrolled {
+                format!("Paired with {} through the watch's own link, and with every device it syncs with", introduced.peer.name)
+            } else {
+                format!("Synced with {}", introduced.peer.name)
+            },
+            notices: Vec::new(),
+            name: introduced.peer.name,
+            node_id: introduced.peer.node_id,
+            paired: introduced.enrolled,
+            changed,
+        })
     }
 }
 

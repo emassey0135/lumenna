@@ -11,6 +11,8 @@
 //! - [`pairing`] — confirming a new device by comparing words, and the handshake behind it.
 //! - [`node`] — this device on the network: dialling and answering its paired devices.
 //! - [`invite`] — the short-lived endpoint a pairing runs on.
+//! - [`introduce`] — pairing and syncing over a link the platform already trusts: a Wear OS
+//!   watch's to its phone.
 //!
 //! **Membership in the `devices` document is the trust boundary**. A peer that is not
 //! listed there is refused on the sync protocol, however it was found. The only way into the
@@ -22,6 +24,8 @@ mod error;
 pub mod exchange;
 #[cfg(feature = "network")]
 mod framing;
+#[cfg(feature = "network")]
+pub mod introduce;
 #[cfg(feature = "network")]
 pub mod invite;
 #[cfg(feature = "network")]
