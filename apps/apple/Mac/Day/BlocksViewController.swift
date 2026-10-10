@@ -66,7 +66,7 @@ final class BlocksViewController: NSViewController, NSTableViewDataSource, NSTab
         do {
             let listing = try core.lumenna.listBlocks()
             rows = listing.rows
-            count.stringValue = listing.announcement
+            count.stringValue = listing.rows.isEmpty && !listing.empty.isEmpty ? listing.empty : listing.announcement
         } catch {
             count.stringValue = error.sentence
         }
@@ -79,9 +79,12 @@ final class BlocksViewController: NSViewController, NSTableViewDataSource, NSTab
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let cell = TwoLineCell()
-        cell.show(title: rows[row].title, detail: rows[row].value)
+        // Said as a task row is: when, in this Mac's clock ("every weekday at 9:00 AM"), then
+        // how long.
+        let detail = RowSpeech.details(rows[row])
+        cell.show(title: rows[row].title, detail: detail)
         cell.setAccessibilityLabel(rows[row].title)
-        cell.setAccessibilityValueDescription(rows[row].value ?? "")
+        cell.setAccessibilityValueDescription(detail ?? "")
         return cell
     }
 

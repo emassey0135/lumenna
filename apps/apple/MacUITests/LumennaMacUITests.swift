@@ -112,6 +112,9 @@ final class LumennaMacUITests: XCTestCase {
     private func audit(_ screen: String, in front: XCUIElement? = nil) throws {
         var issues: [String] = []
         let voiceOverPanels = windows(ownedBy: "VoiceOver")
+        // Siri's remote view service (CampoUIServices) puts an unnamed window and group of its
+        // own beside a text field in focus, in its process, not the app's.
+        let siriPanels = windows(ownedBy: "CampoRemoteService", onScreenOnly: false)
         // The audit covers every window, and the system dims a window that is not in front —
         // one behind a sheet, or behind Settings. What is dimmed is not what anyone reads, so
         // only the window in front is judged: a sheet when one is open.
@@ -139,6 +142,9 @@ final class LumennaMacUITests: XCTestCase {
             // SwiftUI's pop-up menus answer VoiceOver's press but not the audit's question
             // about it; only that finding, only on pop-ups.
             if issue.element?.elementType == .popUpButton, issue.compactDescription == "Action is missing" { return true }
+            // Only that service's window and what fills it, only for having no description.
+            if issue.compactDescription == "Element has no description", let frame = issue.element?.frame,
+               siriPanels.contains(where: { $0.insetBy(dx: -1, dy: -1).contains(frame) }) { return true }
             let element = issue.element.map { "\($0.elementType.rawValue) '\($0.label)' '\($0.value ?? "")' \($0.frame)" }
             issues.append("\(issue.compactDescription) — \(issue.detailedDescription) [\(element ?? "unnamed element")]")
             return true
@@ -148,8 +154,8 @@ final class LumennaMacUITests: XCTestCase {
 
     /// The frames of another process's windows on screen, in the top-left coordinates
     /// XCUITest's frames use.
-    private func windows(ownedBy owner: String) -> [CGRect] {
-        let listed = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+    private func windows(ownedBy owner: String, onScreenOnly: Bool = true) -> [CGRect] {
+        let listed = CGWindowListCopyWindowInfo(onScreenOnly ? [.optionOnScreenOnly] : [.optionAll], kCGNullWindowID) as? [[String: Any]] ?? []
         return listed.compactMap { window in
             guard window[kCGWindowOwnerName as String] as? String == owner,
                   let bounds = window[kCGWindowBounds as String] as CFTypeRef? else { return nil }
@@ -263,12 +269,13 @@ final class LumennaMacUITests: XCTestCase {
         }
     }
 
-    /// Chooses from a picker sheet by narrowing it to `text`.
-    private func pick(_ text: String) {
+    /// Chooses from a picker sheet by narrowing it to `text`, and its button, named for what it
+    /// does.
+    private func pick(_ text: String, with button: String) {
         let narrow = app.sheets.searchFields.firstMatch
         XCTAssertTrue(narrow.waitForExistence(timeout: 5), "no list to choose from")
         enter(text, into: narrow)
-        app.sheets.buttons["Choose"].click()
+        app.sheets.buttons[button].click()
     }
 
     /// Presses a button in whatever sheet is showing.
@@ -286,11 +293,11 @@ final class LumennaMacUITests: XCTestCase {
 
     func testAProjectIsMadeRenamedArchivedAndDeletedFromTheSidebar() {
         menu(sidebarRow("Projects"), "New Project…")
-        answer("Wrok", with: "Save")
+        answer("Wrok", with: "Add")
         XCTAssertTrue(sidebarRow("Wrok").waitForExistence(timeout: 5))
 
         menu(sidebarRow("Wrok"), "Rename…")
-        answer("Work", with: "Save")
+        answer("Work", with: "Rename")
         XCTAssertTrue(sidebarRow("Work").waitForExistence(timeout: 5))
         // Undo reaches the store from anywhere, the sidebar included.
         sidebarRow("Work").click()
@@ -308,13 +315,13 @@ final class LumennaMacUITests: XCTestCase {
 
     func testALabelIsMadeColouredAndMergedIntoAnother() {
         menu(sidebarRow("Labels"), "New Label…")
-        answer("calls", with: "Save")
+        answer("calls", with: "Add")
         menu(sidebarRow("Labels"), "New Label…")
-        answer("cals", with: "Save")
+        answer("cals", with: "Add")
         menu(sidebarRow("calls"), "Colour…")
         answer("teal", with: "Save")
         menu(sidebarRow("cals"), "Merge Into…")
-        pick("calls")
+        pick("calls", with: "Merge")
         XCTAssertTrue(sidebarRow("cals").waitForNonExistence(timeout: 5))
         XCTAssertTrue(sidebarRow("calls").exists)
     }
@@ -322,7 +329,7 @@ final class LumennaMacUITests: XCTestCase {
     func testASavedFilterIsMadeRequeriedAndDeleted() {
         menu(sidebarRow("Saved Filters"), "New Saved Filter…")
         answer("Urgent", with: "Next", then: true)
-        answer("p1", with: "Save")
+        answer("p1", with: "Add")
         XCTAssertTrue(sidebarRow("Urgent").waitForExistence(timeout: 5))
         XCTAssertEqual(window.textFields["Filter"].value as? String, "p1", "it opens with its query")
         menu(sidebarRow("Urgent"), "Change Query…")
@@ -403,7 +410,7 @@ final class LumennaMacUITests: XCTestCase {
         let day = window.outlines["The day"]
         XCTAssertTrue(text(containing: "takes tasks", in: day).waitForExistence(timeout: 5))
         menu(text(containing: "Train", in: day), "Assign a Task…")
-        pick("read")
+        pick("read", with: "Assign")
         let minutes = app.sheets.textFields["Planned length"]
         XCTAssertTrue(minutes.waitForExistence(timeout: 5))
         enter("30m", into: minutes)
@@ -443,7 +450,7 @@ final class LumennaMacUITests: XCTestCase {
         addBlock("Run", repeating: "every day")
         let day = window.outlines["The day"]
         menu(text(containing: "Run", in: day), "Assign a Task…")
-        pick("write")
+        pick("write", with: "Assign")
         let minutes = app.sheets.textFields["Planned length"]
         XCTAssertTrue(minutes.waitForExistence(timeout: 5))
         enter("45m", into: minutes)

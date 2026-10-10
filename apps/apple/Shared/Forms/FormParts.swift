@@ -32,6 +32,9 @@ enum FormParts {
         Text(text)
             .font(.footnote)
             .foregroundStyle(Color.quietLabel)
+            // Wraps as it grows, never truncated: a line that fits now is one a larger text
+            // size would clip.
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     /// A section's title, which VoiceOver can move between with its heading commands.
@@ -221,5 +224,51 @@ struct FailureAlert: ViewModifier {
             } message: { failure in
                 Text(failure)
             }
+    }
+}
+
+// MARK: - The forms' words
+
+/// A form's fields as the core words them (`taskForm()`, `blockForm()`): each field's name,
+/// what it takes and an example, the same in every app. The controls are the platform's.
+struct FormWords {
+    private let fields: [String: FormField]
+
+    init(_ fields: [FormField]) {
+        self.fields = Dictionary(fields.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    static let task = FormWords(taskForm())
+    static let block = FormWords(blockForm())
+
+    /// The field `key`; one the core does not describe reads as its key, so a mistake shows.
+    subscript(_ key: String) -> FormField {
+        fields[key] ?? FormField(key: key, label: key, hint: "", example: "", kind: .line, options: [], repeatingOnly: false, oneDay: false)
+    }
+}
+
+/// A text field for one of the core's form fields: its name, its example as the placeholder,
+/// and what it takes as its hint.
+func namedField(_ field: FormField, text: Binding<String>, axis: Axis = .horizontal) -> some View {
+    namedField(field.label, text: text, example: field.example, axis: axis).modifier(FieldHint(field.hint))
+}
+
+/// What a field takes, said by VoiceOver after a pause on iOS and the watch, and shown as a
+/// tooltip on macOS. Nothing for a field with nothing to say.
+struct FieldHint: ViewModifier {
+    let text: String
+
+    init(_ text: String) { self.text = text }
+
+    func body(content: Content) -> some View {
+        if text.isEmpty {
+            content
+        } else {
+            #if os(iOS) || os(watchOS)
+            content.accessibilityHint(text)
+            #else
+            content.help(text)
+            #endif
+        }
     }
 }

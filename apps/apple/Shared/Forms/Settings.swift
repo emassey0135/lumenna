@@ -269,7 +269,7 @@ struct ExportSettings: View {
                 Button("Export a Calendar File of Your Blocks…") { model.export(.ics) }
                 Button("Import or Restore…") { model.importFile() }
             } header: {
-                FormParts.heading("Export and import")
+                FormParts.heading("Export and Import")
             } footer: {
                 FormParts.caption("An export is what you have now, with nothing from the trash. Importing a JSON export or restoring a backup adds what this device lacks and removes nothing.")
             }

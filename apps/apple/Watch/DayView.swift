@@ -23,8 +23,8 @@ struct DayView: View {
     private enum Row {
         case block(PlanBlock)
         case sitting(PlanAssignment, in: PlanBlock)
-        case free(start: String, end: String, minutes: UInt32, actions: [Action])
-        case now(String)
+        case free(start: String, end: String, minutes: UInt32, title: String, details: [String], actions: [Action])
+        case now(time: String, title: String)
 
         var depth: Int {
             if case .sitting = self { return 1 }
@@ -36,7 +36,7 @@ struct DayView: View {
             switch self {
             case let .block(block): "block:\(block.id)"
             case let .sitting(sitting, _): "sitting:\(sitting.id)"
-            case let .free(start, _, _, _): "free:\(start)"
+            case let .free(start, _, _, _, _, _): "free:\(start)"
             case .now: "now"
             }
         }
@@ -47,13 +47,14 @@ struct DayView: View {
         let shown = plan.map { folding.shown(rows($0), depth: \.depth, key: \.key) } ?? []
         List {
             if let plan {
-                Text(plan.summary.isEmpty ? plan.announcement : plan.summary)
+                // The day's heading, as every app says it: "<day>. <summary>".
+                Text(plan.summary.isEmpty ? plan.announcement : "\(Clock.spokenDay(plan.date)). \(plan.summary)")
                     .font(.footnote)
                 ForEach(Array(shown.enumerated()), id: \.element.item.key) { _, row in
                     rowView(row, in: plan)
                 }
                 ForEach(plan.cancelled, id: \.series) { block in
-                    button("\(Clock.time(block.start)), \(block.title), cancelled for this day") {
+                    button(([Clock.time(block.start), block.title] + block.details).joined(separator: ", ")) {
                         asker.offer(block.title, block.actions)
                     }
                 }
@@ -92,8 +93,9 @@ struct DayView: View {
             case let .block(number):
                 guard let block = plan.blocks.first(where: { $0.row == number }) else { return [] }
                 return [.block(block)] + block.assignments.map { .sitting($0, in: block) }
-            case let .free(start, end, minutes, actions): return [.free(start: start, end: end, minutes: minutes, actions: actions)]
-            case let .now(time): return [.now(time)]
+            case let .free(start, end, minutes, title, details, actions):
+                return [.free(start: start, end: end, minutes: minutes, title: title, details: details, actions: actions)]
+            case let .now(time, title): return [.now(time: time, title: title)]
             }
         }
     }
@@ -121,14 +123,15 @@ struct DayView: View {
                 })
             }
             .padding(.leading, 8)
-        case let .free(start, end, minutes, actions):
-            button("Free, \(Clock.length(minutes)), \(Clock.time(start)) to \(Clock.time(end))") {
-                asker.offer("Free time", actions, form: { action in
+        case let .free(start, end, minutes, title, details, actions):
+            // "<title>, <details>, <start> to <end>", the core's words in every app's order.
+            button(([title] + details + ["\(Clock.time(start)) to \(Clock.time(end))"]).joined(separator: ", ")) {
+                asker.offer(title, actions, form: { action in
                     addBlock(on: plan, at: action.other ?? start, minutes: minutes)
                 })
             }
-        case let .now(time):
-            Text("Now, \(Clock.time(time))").font(.headline)
+        case let .now(time, title):
+            Text("\(title), \(Clock.time(time))").font(.headline)
         }
     }
 
@@ -199,12 +202,12 @@ private struct DayChoice: View {
 
     var body: some View {
         List {
-            DatePicker("Day", selection: $day, displayedComponents: .date)
-            Button("Go") {
+            DatePicker(TextQuestion.goToDay.label, selection: $day, displayedComponents: .date)
+            Button(TextQuestion.goToDay.yes) {
                 dismiss()
                 chosen(Calendar.current.isDateInToday(day) ? nil : day)
             }
         }
-        .navigationTitle("Go to Day")
+        .navigationTitle(TextQuestion.goToDay.title)
     }
 }

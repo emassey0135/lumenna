@@ -16,7 +16,7 @@ final class BrowseViewController: ItemListViewController {
         return ([
             Item(key: "projects", title: "Projects", detail: count(projects, "project")),
             Item(key: "labels", title: "Labels", detail: count(labels, "label")),
-            Item(key: "filters", title: "Saved filters", detail: count(filters, "filter")),
+            Item(key: "filters", title: "Saved Filters", detail: count(filters, "filter")),
             Item(key: "blocks", title: "Blocks", detail: count(blocks, "block")),
             Item(key: "trash", title: "Trash", detail: count(trash, "task")),
         ], "")
@@ -59,6 +59,7 @@ final class ProjectsViewController: ItemListViewController {
 
     override func load() throws -> (items: [Item], count: String) {
         let rows = try core.lumenna.listProjects()
+        empty = rows.empty
         // The level is added as shown, against the item before it once folded.
         let items = rows.rows.map { row -> Item in
             Item(
@@ -100,6 +101,7 @@ final class LabelsViewController: ItemListViewController {
 
     override func load() throws -> (items: [Item], count: String) {
         let rows = try core.lumenna.listLabels()
+        empty = rows.empty
         return (rows.rows.map { Item(key: $0.title, title: $0.title, detail: $0.value, actions: $0.actions) }, rows.announcement)
     }
 
@@ -134,6 +136,7 @@ final class FiltersViewController: ItemListViewController {
 
     override func load() throws -> (items: [Item], count: String) {
         let filters = try core.lumenna.listFilters()
+        empty = filters.empty
         queries = Dictionary(uniqueKeysWithValues: filters.filters.map { ($0.name, $0.query) })
         return (filters.filters.map { Item(key: $0.name, title: $0.name, detail: $0.query, actions: $0.actions) }, filters.announcement)
     }
@@ -162,7 +165,10 @@ final class BlocksViewController: ItemListViewController {
 
     override func load() throws -> (items: [Item], count: String) {
         let rows = try core.lumenna.listBlocks()
-        return (rows.rows.map { Item(key: $0.id, title: $0.title, detail: $0.value, actions: $0.actions) }, rows.announcement)
+        empty = rows.empty
+        // Said as a task row is: when, in this device's clock ("every weekday at 9:00 AM"),
+        // then how long.
+        return (rows.rows.map { Item(key: $0.id, title: $0.title, detail: RowSpeech.details($0), actions: $0.actions) }, rows.announcement)
     }
 
     override var addTitle: String? { "Add block" }

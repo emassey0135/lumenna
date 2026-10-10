@@ -112,18 +112,13 @@ final class BlockFormModel: ObservableObject {
         }
     }
 
-    /// What the repetition field means, which differs between adding and changing.
+    /// What the repetition field means: the core's hint, unless the block repeats by a rule
+    /// the field cannot show, which is said with what leaving it empty does.
     var repetitionHelp: String {
-        if isAdding {
-            return "Such as \u{201C}every weekday\u{201D}. Empty for a block that happens once."
-        }
-        if let rule {
+        if !isAdding, let rule {
             return "It repeats by the rule \(rule), which this cannot show in words. Empty keeps it; \u{201C}none\u{201D} makes it happen once."
         }
-        if initial.repeat.isEmpty {
-            return "It happens once now. Such as \u{201C}every weekday\u{201D} to make it repeat."
-        }
-        return "Empty makes it happen once."
+        return FormWords.block["repeat"].hint
     }
 
     /// Whether it can have a last day: a block that repeats, or one being added to repeat.
@@ -183,15 +178,22 @@ final class BlockFormModel: ObservableObject {
 
 struct BlockForm: View {
     @ObservedObject var model: BlockFormModel
+    /// Each field's name, hint, example and options, the core's, as in every app.
+    private let words = FormWords.block
 
     var body: some View {
         Form {
             Section {
-                namedField("Name", text: $model.fields.title, example: "Deep work")
+                namedField(words["title"], text: $model.fields.title)
                 if model.isAdding {
-                    Labelled("Day") { DatePicker("Day", selection: $model.day, displayedComponents: .date) }
+                    Labelled(words["date"].label) {
+                        DatePicker(words["date"].label, selection: $model.day, displayedComponents: .date)
+                            .modifier(FieldHint(words["date"].hint))
+                    }
                 }
-                Labelled("Starts") { DatePicker("Starts", selection: $model.start, displayedComponents: .hourAndMinute) }
+                Labelled(words["start"].label) {
+                    DatePicker(words["start"].label, selection: $model.start, displayedComponents: .hourAndMinute)
+                }
                 lasts
             } header: {
                 #if os(macOS)
@@ -199,12 +201,15 @@ struct BlockForm: View {
                 FormParts.heading(model.heading)
                 #endif
             }
-            ChoiceSection("Kind", selection: $model.kind, choices: [
-                ("Work, takes tasks", "work"), ("Break", "break"), ("Event", "event"),
-            ])
-            if !model.isOneDay {
+            ChoiceSection(
+                words["kind"].label,
+                selection: $model.kind,
+                choices: words["kind"].options.map { ($0.title, $0.id) },
+                footer: words["kind"].hint
+            )
+            if shows("repeat") {
                 Section {
-                    namedField("Repeats", text: $model.fields.repeat, example: "every weekday")
+                    namedField(words["repeat"].label, text: $model.fields.repeat, example: words["repeat"].example)
                         #if os(iOS) || os(watchOS)
                         .textInputAutocapitalization(.never)
                         #endif
@@ -213,27 +218,30 @@ struct BlockForm: View {
                 }
             }
             Section {
-                Labelled("Takes tasks") { Toggle("Takes tasks", isOn: $model.fields.acceptsTasks) }
-                Labelled("Counts toward hours for work") { Toggle("Counts toward hours for work", isOn: $model.fields.countsCapacity) }
-                Labelled("Anchored, never moved when the day slips") { Toggle("Anchored, never moved when the day slips", isOn: $model.fields.anchored) }
-            } header: {
-                FormParts.heading("What it does")
-            } footer: {
-                FormParts.caption("The kind sets these; change any of them to set it apart.")
+                toggle("accepts_tasks", $model.fields.acceptsTasks)
+                toggle("counts_capacity", $model.fields.countsCapacity)
+                toggle("anchored", $model.fields.anchored)
             }
-            if !model.isOneDay {
+            if more.contains(where: shows) {
                 Section {
-                    if model.asksUntil {
-                        namedField("Until", text: $model.fields.until, example: "31 January")
+                    if model.asksUntil, shows("until") {
+                        namedField(words["until"], text: $model.fields.until)
                     }
-                    namedField("Shortest length, in minutes", text: $model.fields.minMinutes, example: "30")
-                    namedField("Tasks from", text: $model.fields.taskFilter, example: "#Work")
-                    namedField("Colour", text: $model.fields.colour, example: "teal")
-                    namedField("Notes", text: $model.fields.notes, example: "Anything else", axis: .vertical)
+                    if shows("min_minutes") { namedField(words["min_minutes"], text: $model.fields.minMinutes) }
+                    if shows("task_filter") { namedField(words["task_filter"], text: $model.fields.taskFilter) }
+                    if shows("colour") { namedField(words["colour"], text: $model.fields.colour) }
+                    if shows("notes") { namedField(words["notes"], text: $model.fields.notes, axis: .vertical) }
                 } header: {
                     FormParts.heading("More")
                 } footer: {
-                    FormParts.caption("Until is its last day. The shortest length is how far a slipping day may shorten it; empty for the kind's own. Tasks from is a filter for which tasks it is meant for.")
+                    // What the fields take, seen as well as heard: the core's sentences, in
+                    // the fields' order.
+                    FormParts.caption(
+                        ["until", "min_minutes", "task_filter"]
+                            .filter { ($0 != "until" || model.asksUntil) && shows($0) }
+                            .map { words[$0].hint }
+                            .joined(separator: " ")
+                    )
                 }
                 .autocorrectionDisabled()
             }
@@ -258,17 +266,33 @@ struct BlockForm: View {
         .modifier(FailureAlert(failure: $model.failure))
     }
 
+    /// The fields under More.
+    private let more = ["until", "min_minutes", "task_filter", "colour", "notes"]
+
+    /// Whether the field `key` is shown: every field for a series or a new block; for one day
+    /// of a repeating block, only those the core marks as one day's own.
+    private func shows(_ key: String) -> Bool {
+        !model.isOneDay || words[key].oneDay
+    }
+
+    /// A toggle for one of the core's on-or-off fields, by its key.
+    private func toggle(_ key: String, _ isOn: Binding<Bool>) -> some View {
+        Labelled(words[key].label) { Toggle(words[key].label, isOn: isOn) }
+    }
+
     /// How long it lasts: a stepper in fives on the phone, where typing a number is the slow
     /// way; minutes to type, with a stepper beside them, on the Mac.
     @ViewBuilder private var lasts: some View {
         #if os(iOS) || os(watchOS)
+        // The stepper says what it stands for, the length in words, rather than the core's
+        // name for a field of minutes to type.
         Stepper(value: $model.minutes, in: 5...720, step: 5) {
             Text("Lasts \(Clock.length(UInt32(model.minutes)))")
         }
         #else
-        Named("Lasts, in minutes") {
+        Named(words["minutes"].label) {
             HStack {
-                TextField("Lasts, in minutes", value: $model.minutes, format: .number)
+                TextField(words["minutes"].label, value: $model.minutes, format: .number)
                     .frame(width: 70)
                 LengthStepper(minutes: $model.minutes)
                 Text(Clock.length(UInt32(max(model.minutes, 0)))).foregroundStyle(Color.quietLabel)

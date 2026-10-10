@@ -89,7 +89,7 @@ final class SidebarUITests: XCTestCase {
         let field = app.alerts.textFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText("Garden")
-        app.alerts.buttons["Save"].tap()
+        app.alerts.buttons["Add"].tap()
         XCTAssertTrue(place("Garden").waitForExistence(timeout: 5))
         place("Garden").tap()
         XCTAssertTrue(app.navigationBars["Garden"].waitForExistence(timeout: 5))
@@ -109,7 +109,7 @@ final class SidebarUITests: XCTestCase {
         var field = app.alerts.textFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText("calls")
-        app.alerts.buttons["Save"].tap()
+        app.alerts.buttons["Add"].tap()
         XCTAssertTrue(place("calls").waitForExistence(timeout: 5))
 
         act(place("Saved Filters"), "New Saved Filter")
@@ -120,7 +120,7 @@ final class SidebarUITests: XCTestCase {
         field = app.alerts.textFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText("p1")
-        app.alerts.buttons["Save"].tap()
+        app.alerts.buttons["Add"].tap()
         XCTAssertTrue(place("Urgent").waitForExistence(timeout: 5))
         try audit()
         // A label's own actions are offered on it, as in Browse on the iPhone.

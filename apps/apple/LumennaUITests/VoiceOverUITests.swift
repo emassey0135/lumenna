@@ -58,8 +58,15 @@ final class VoiceOverUITests: XCTestCase {
         try voiceOver.enable()
         try move(to: "call the bank")
         app.typeKey("k", modifierFlags: .command)
-        XCTAssertTrue(waitUntil { (try? self.voiceOver.currentSpeech().utterance)?.contains("water the plants") == true },
-                      "VoiceOver stays on the row now in the completed one's place")
+        // Everything said meanwhile: the row focus lands on, then the core's announcement.
+        var heard: [String] = []
+        let landed = waitUntil {
+            let said = (try? self.voiceOver.currentSpeech().utterance) ?? ""
+            if heard.last != said { heard.append(said) }
+            return said.contains("water the plants")
+        }
+        let now = (try? voiceOver.currentSpeech().utterance) ?? ""
+        XCTAssertTrue(landed, "VoiceOver stays on the row now in the completed one's place; it said \(heard), now \(now)")
     }
 
     func testTheDayIsReadAsAHeadingThenItsButtons() throws {
@@ -68,6 +75,64 @@ final class VoiceOverUITests: XCTestCase {
         try move(to: "Add block Button")
         try move(to: "Previous Day Button")
         try move(to: "Go to Day Button")
+    }
+
+
+    /// Every action VoiceOver offers on the row it is on, in its order, read by stepping its
+    /// actions rotor (VO-Command-Down Arrow) until it comes round to the first again.
+    private func actionsOffered() -> [String] {
+        var offered: [String] = []
+        for _ in 0..<30 {
+            app.typeKey(.downArrow, modifierFlags: [.control, .option, .command])
+            let said = waitForSpeech(after: offered.last)
+            if offered.contains(said) { break }
+            offered.append(said)
+        }
+        return offered
+    }
+
+    /// What VoiceOver says once it says something other than `previous`.
+    private func waitForSpeech(after previous: String?) -> String {
+        var said = ""
+        _ = waitUntil {
+            said = (try? self.voiceOver.currentSpeech().utterance) ?? ""
+            return !said.isEmpty && said != previous
+        }
+        return said
+    }
+
+    func testATaskOffersVoiceOverEachOfItsActionsOnceTheSwipedOnesAmongThem() throws {
+        add("call the bank tomorrow")
+        try voiceOver.enable()
+        try move(to: "call the bank")
+        let offered = actionsOffered()
+        let actions = ["Mark Done", "Edit Details", "Put in a Block", "Move to Project", "Make Subtask Of", "Wait For", "Move to Trash"]
+        for action in actions {
+            XCTAssertEqual(offered.filter { $0 == action }.count, 1, "\(action) once among \(offered)")
+        }
+        print("VoiceOver offers a task: \(offered)")
+        let others = offered.filter { !actions.contains($0) }
+        XCTAssertTrue(others.allSatisfy { $0.localizedCaseInsensitiveContains("activate") || $0.localizedCaseInsensitiveContains("context menu") },
+                      "nothing else but VoiceOver's own: \(offered)")
+    }
+
+    func testABlockOffersVoiceOverEachOfItsActionsOnceItsMenuOnlyActionsAmongThem() throws {
+        app.buttons["Add block"].tap()
+        let name = app.textFields["Name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        name.tap()
+        name.typeText("Deep work")
+        let repeats = app.textFields["Repeats"]
+        repeats.tap()
+        repeats.typeText("every day")
+        app.buttons["Save"].tap()
+        try voiceOver.enable()
+        try move(to: "Deep work", within: 30)
+        let offered = actionsOffered()
+        print("VoiceOver offers a block: \(offered)")
+        for action in ["Assign a Task", "Edit Block", "Cancel This Day", "Delete Block"] {
+            XCTAssertEqual(offered.filter { $0 == action }.count, 1, "\(action) once among \(offered)")
+        }
     }
 
     /// Whether `condition` comes true within five seconds, asked four times a second.

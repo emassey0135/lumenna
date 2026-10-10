@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// A place's tasks, each row as the phone says it: the title, then what the core says of it.
-/// Its first action (Mark Done) and those that take it out of the list are its swipe actions,
-/// the core's, which VoiceOver offers as the row's actions; every one is on the task's own
-/// screen. Tasks can be filtered, with the filter read
+/// Its primary actions, the core's, are its swipe actions — Mark Done from the leading edge,
+/// the rest from the trailing — which VoiceOver offers as the row's actions; every one is on
+/// the task's own screen. Tasks can be filtered, with the filter read
 /// back; a project, label or filter's own actions are at the foot, as Browse offers them.
 struct TaskListView: View {
     @EnvironmentObject private var core: WatchCore
@@ -36,7 +36,8 @@ struct TaskListView: View {
                 Button("New Task") { adding = true }
             }
             if let listing, listing.rows.isEmpty {
-                Text(listing.announcement.prefix(1).uppercased() + listing.announcement.dropFirst())
+                // What is empty, in the core's words: "The trash is empty."
+                Text(listing.empty.isEmpty ? listing.announcement : listing.empty)
             }
             // Folded as on the phone, the level said against the row shown before.
             let shown = folding.shown(listing?.rows ?? [], depth: { Int($0.depth) }, key: \.id)
@@ -73,12 +74,12 @@ struct TaskListView: View {
             .accessibilityValue(RowSpeech.value(row, previousDepth: previous, fold: shown.state))
         }
         .swipeActions(edge: .leading) {
-            ForEach(row.actions.filter { [.markDone, .markNotDone].contains($0.kind) }, id: \.self) { action in
+            ForEach(leading(row.actions), id: \.self) { action in
                 Button(action.title) { asker.run(action) }
             }
         }
         .swipeActions(edge: .trailing) {
-            ForEach(row.actions.filter { [.delete, .restore, .deleteForGood].contains($0.kind) }, id: \.self) { action in
+            ForEach(row.actions.filter { $0.primary && !leading(row.actions).contains($0) }, id: \.self) { action in
                 Button(action.title, role: action.destructive ? .destructive : nil) { asker.run(action) }
             }
             if let fold = Folding.action(for: shown) {
@@ -88,6 +89,11 @@ struct TaskListView: View {
                 }
             }
         }
+    }
+
+    /// What swipes from the leading edge: Mark Done or Mark Not Done, when primary.
+    private func leading(_ actions: [Action]) -> [Action] {
+        actions.filter { $0.primary && [.markDone, .markNotDone].contains($0.kind) }
     }
 
     private var trash: Bool { place == .trash }
@@ -141,7 +147,7 @@ private struct PlaceActions: View {
         switch place {
         case .project: "Project"
         case .label: "Label"
-        default: "Saved filter"
+        default: "Saved Filter"
         }
     }
 }
@@ -164,7 +170,7 @@ struct BlockListView: View {
         }()
         List {
             if let listing, listing.rows.isEmpty {
-                Text("No blocks")
+                Text(listing.empty)
             }
             ForEach(listing?.rows ?? [], id: \.id) { row in
                 Button {
@@ -175,16 +181,18 @@ struct BlockListView: View {
                 } label: {
                     VStack(alignment: .leading) {
                         Text(row.title)
-                        if let value = row.value {
-                            Text(value).font(.footnote).foregroundStyle(Color.quietLabel)
+                        // Said as a task row is: when, in this watch's clock, then how long.
+                        if let detail = RowSpeech.details(row) {
+                            Text(detail).font(.footnote).foregroundStyle(Color.quietLabel)
                         }
                     }
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(row.title)
-                    .accessibilityValue(row.value ?? "")
+                    .accessibilityValue(RowSpeech.details(row) ?? "")
                 }
                 .swipeActions(edge: .trailing) {
-                    ForEach(row.actions.filter { !$0.isForm }, id: \.self) { action in
+                    // The primary ones; Edit Block is the row's tap.
+                    ForEach(row.actions.filter { $0.primary && !$0.isForm }, id: \.self) { action in
                         Button(action.title, role: action.destructive ? .destructive : nil) { asker.run(action) }
                     }
                 }

@@ -40,7 +40,7 @@ final class DayPickerViewController: UIViewController {
     init(showing day: Date, chosen: @escaping (Date) -> Void) {
         self.chosen = chosen
         super.init(nibName: nil, bundle: nil)
-        title = "Go to Day"
+        title = TextQuestion.goToDay.title
         picker.date = day
     }
 
@@ -53,6 +53,7 @@ final class DayPickerViewController: UIViewController {
         picker.datePickerMode = .date
         picker.preferredDatePickerStyle = .inline
         picker.tintColor = .lumennaTint
+        picker.accessibilityLabel = TextQuestion.goToDay.label
         picker.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(picker)
         NSLayoutConstraint.activate([
@@ -63,7 +64,7 @@ final class DayPickerViewController: UIViewController {
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             systemItem: .cancel, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) }
         )
-        let go = UIBarButtonItem(title: "Go", primaryAction: UIAction { [weak self] _ in
+        let go = UIBarButtonItem(title: TextQuestion.goToDay.yes, primaryAction: UIAction { [weak self] _ in
             guard let self else { return }
             let day = self.picker.date
             let chosen = self.chosen

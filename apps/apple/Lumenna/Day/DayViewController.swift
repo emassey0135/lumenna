@@ -9,8 +9,8 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     private enum Row: Hashable {
         case block(PlanBlock)
         case sitting(PlanAssignment, in: PlanBlock)
-        case free(start: String, end: String, minutes: UInt32, actions: [Action])
-        case now(String)
+        case free(start: String, end: String, minutes: UInt32, title: String, details: [String], actions: [Action])
+        case now(time: String, title: String)
         /// A repeating block cancelled for this day alone, so the day can be put back.
         case cancelled(CancelledBlock)
     }
@@ -175,16 +175,17 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             let plan = try core.lumenna.plan(date: day)
             self.plan = plan
             title = Clock.spokenDay(plan.date)
-            summary.text = plan.summary
+            // The day's heading, as every app says it: "<day>. <summary>".
+            summary.text = "\(Clock.spokenDay(plan.date)). \(plan.summary)"
             listed = plan.timeline.flatMap { item -> [Row] in
                 switch item {
                 case let .block(row):
                     guard let block = plan.blocks.first(where: { $0.row == row }) else { return [] }
                     return [.block(block)] + block.assignments.map { .sitting($0, in: block) }
-                case let .free(start, end, minutes, actions):
-                    return [.free(start: start, end: end, minutes: minutes, actions: actions)]
-                case let .now(time):
-                    return [.now(time)]
+                case let .free(start, end, minutes, title, details, actions):
+                    return [.free(start: start, end: end, minutes: minutes, title: title, details: details, actions: actions)]
+                case let .now(time, title):
+                    return [.now(time: time, title: title)]
                 }
             } + plan.cancelled.map { .cancelled($0) }
         } catch {
@@ -211,7 +212,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         switch row {
         case let .block(block): "block:\(block.id)"
         case let .sitting(sitting, _): "sitting:\(sitting.id)"
-        case let .free(start, _, _, _): "free:\(start)"
+        case let .free(start, _, _, _, _, _): "free:\(start)"
         case .now: "now"
         case let .cancelled(block): "cancelled:\(block.series)"
         }
@@ -258,15 +259,16 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             content.image = UIImage(systemName: sitting.running ? "timer" : sitting.status == "paused" ? "pause.circle" : "circle.dashed")
             content.directionalLayoutMargins.leading += 24
             cell.accessories = [.disclosureIndicator(displayed: .always)]
-        case let .free(start, end, minutes, _):
-            label = "Free, \(Clock.length(minutes))"
+        case let .free(start, end, _, title, details, _):
+            // "<title>, <details>, <start> to <end>", the core's words in every app's order.
+            label = ([title] + details).joined(separator: ", ")
             value = ["\(Clock.time(start)) to \(Clock.time(end))"]
             content.text = label
             content.secondaryText = value[0]
             content.textProperties.color = .quietLabel
             cell.accessories = []
-        case let .now(time):
-            label = "Now, \(Clock.time(time))"
+        case let .now(time, title):
+            label = "\(title), \(Clock.time(time))"
             content.text = label
             content.textProperties.font = .preferredFont(forTextStyle: .headline)
             content.image = UIImage(systemName: "arrowtriangle.right.fill")
@@ -274,9 +276,9 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             cell.accessories = []
         case let .cancelled(block):
             label = "\(Clock.time(block.start)), \(block.title)"
-            value = ["cancelled for this day"]
+            value = block.details
             content.text = label
-            content.secondaryText = value[0]
+            content.secondaryText = value.joined(separator: ", ")
             content.textProperties.color = .quietLabel
             content.image = UIImage(systemName: "xmark.circle")
             cell.accessories = [.disclosureIndicator(displayed: .always)]
@@ -297,6 +299,8 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             if case .now = row { return .staticText }
             return .button
         }()
+        // Only what is not swiped, which UIKit adds to the swipe actions.
+        cell.accessibilityCustomActions = rowActions(for: row).customActions
     }
 
     // MARK: - Actions
@@ -307,7 +311,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         switch row {
         case let .block(block): block.actions
         case let .sitting(sitting, _): sitting.actions
-        case let .free(_, _, _, actions): actions
+        case let .free(_, _, _, _, _, actions): actions
         case let .cancelled(block): block.actions
         case .now: []
         }
@@ -325,7 +329,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     private func form(_ action: Action, on row: Row) {
         switch (action.kind, row) {
         case let (.edit, .block(block)): edit(block)
-        case let (.addBlock, .free(start, _, minutes, _)): addBlock(at: action.other ?? start, minutes: minutes)
+        case let (.addBlock, .free(start, _, minutes, _, _, _)): addBlock(at: action.other ?? start, minutes: minutes)
         case (.editTask, _): showBeside(TaskDetailViewController(core: core, id: action.target))
         default: break
         }
@@ -442,10 +446,10 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         case let .block(block): edit(block)
         case let .sitting(sitting, _):
             showBeside(TaskDetailViewController(core: core, id: sitting.task))
-        case let .free(start, _, minutes, _): addBlock(at: start, minutes: minutes)
+        case let .free(start, _, minutes, _, _, _): addBlock(at: start, minutes: minutes)
         case let .cancelled(block):
             collectionView.deselectItem(at: path, animated: true)
-            choose("\(block.title) is cancelled for this day", actions: actions(for: row).map { action in
+            choose(([Clock.time(block.start), block.title] + block.details).joined(separator: ", "), actions: actions(for: row).map { action in
                 (action.title, { [weak self] in self?.perform(action, on: row) })
             })
         case .now: collectionView.deselectItem(at: path, animated: true)
@@ -488,20 +492,38 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     @objc func newBlock() { addBlock() }
 }
 
-// The swipe actions, apart from the layout that asks for them, so a test can ask too.
+// The row's actions, apart from the layout that asks for them, so a test can ask too.
 extension DayViewController {
-    /// What a trailing swipe on the row at `path` offers: VoiceOver's actions for the row too.
+    /// The row's actions as the day offers them (`RowActions`), with Expand or Collapse.
+    private func rowActions(for row: Row) -> RowActions {
+        let fold = rows.firstIndex(of: row).flatMap { index in
+            index < shown.count
+                ? folding.action(for: shown[index], key: foldKey(row)) { [weak self] key, said in self?.fold(key, saying: said) }
+                : nil
+        }
+        return RowActions(actions: actions(for: row), fold: fold) { [weak self] action in self?.perform(action, on: row) }
+    }
+
+    /// What a trailing swipe on the row at `path` offers: the primary actions, then Expand or
+    /// Collapse.
     func trailingSwipeActions(at path: IndexPath) -> UISwipeActionsConfiguration? {
-        guard let row = self.dataSource.itemIdentifier(for: path) else { return nil }
-        var actions = self.actions(for: row).map { action in
-            swipeAction(action) { [weak self] in self?.perform(action, on: row) }
-        }
-        if let index = self.rows.firstIndex(of: row),
-           let fold = self.folding.action(for: self.shown[index], key: self.foldKey(row), changed: { [weak self] key, said in
-               self?.fold(key, saying: said)
-           }) {
-            actions.append(fold)
-        }
-        return actions.isEmpty ? nil : UISwipeActionsConfiguration(actions: actions)
+        dataSource.itemIdentifier(for: path).flatMap { rowActions(for: $0).trailingSwipe() }
+    }
+
+    /// The cell's other actions, for VoiceOver, Switch Control and Full Keyboard Access.
+    func customActions(at path: IndexPath) -> [UIAccessibilityCustomAction] {
+        dataSource.itemIdentifier(for: path).map { rowActions(for: $0).customActions } ?? []
+    }
+
+    /// What a long press on the row at `path` offers: every action.
+    func menu(at path: IndexPath) -> UIMenu? {
+        dataSource.itemIdentifier(for: path).flatMap { rowActions(for: $0).menu }
+    }
+
+    func collectionView(
+        _ collectionView: UICollectionView, contextMenuConfigurationForItemsAt paths: [IndexPath], point: CGPoint
+    ) -> UIContextMenuConfiguration? {
+        guard paths.count == 1, let row = dataSource.itemIdentifier(for: paths[0]) else { return nil }
+        return rowActions(for: row).contextMenu
     }
 }

@@ -11,8 +11,7 @@ struct Item: Hashable {
     var spoken: String?
     /// A heading over the items under it, as the sidebar's Projects and Labels are.
     var heading = false
-    /// What can be done to it, as the core says: its swipe actions, which UIKit also offers
-    /// to VoiceOver, Switch Control and Full Keyboard Access as its actions.
+    /// What can be done to it, as the core says, offered as `RowActions` offers them.
     var actions: [Action] = []
 }
 
@@ -45,7 +44,10 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
 
     /// The items, and a line saying how many there are. Thrown errors are shown.
     func load() throws -> (items: [Item], count: String) { ([], "") }
-    /// What a trailing swipe offers: the item's own actions, from the core.
+    /// What to say in place of the count when nothing is listed, the core's (`Rows.empty`),
+    /// set by `load`; empty leaves the count.
+    var empty = ""
+    /// What can be done to an item: its own actions, from the core.
     func actions(for item: Item) -> [Action] { item.actions }
     /// Opens the app's own form an action asks for (`Question.form`).
     func form(_ action: Action, on item: Item) {}
@@ -87,7 +89,7 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
         view.addSubview(collectionView)
 
         let sidebar = isSidebar
-        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, Item> { cell, _, item in
+        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, Item> { [weak self] cell, _, item in
             var content = sidebar
                 ? (item.heading ? UIListContentConfiguration.sidebarHeader() : .sidebarSubtitleCell())
                 : UIListContentConfiguration.subtitleCell()
@@ -106,6 +108,8 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
             cell.accessibilityLabel = item.title
             cell.accessibilityValue = item.spoken ?? item.detail
             cell.accessibilityTraits = item.heading ? [.header, .button] : .button
+            // Only what is not swiped, which UIKit adds to the swipe actions.
+            cell.accessibilityCustomActions = self?.rowActions(for: item).customActions
         }
         let headerRegistration = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
             elementKind: UICollectionView.elementKindSectionHeader
@@ -169,6 +173,8 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
             header.text = error.sentence
         }
         refold()
+        // With nothing listed, what is empty, in the core's words, in place of a count.
+        if items.isEmpty, !empty.isEmpty { header.text = empty }
         var snapshot = NSDiffableDataSourceSnapshot<Int, Item>()
         snapshot.appendSections([0])
         snapshot.appendItems(items)
@@ -282,20 +288,36 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
     }
 }
 
-// The swipe actions, apart from the layout that asks for them, so a test can ask too.
+// The row's actions, apart from the layout that asks for them, so a test can ask too.
 extension ItemListViewController {
-    /// What a trailing swipe on the row at `path` offers: VoiceOver's actions for the row too.
+    /// The item's actions as the list offers them (`RowActions`), with Expand or Collapse.
+    func rowActions(for item: Item) -> RowActions {
+        let fold = shown.first(where: { $0.item.key == item.key }).flatMap { row in
+            folding.action(for: row, key: item.key) { [weak self] key, said in self?.fold(key, saying: said) }
+        }
+        return RowActions(actions: actions(for: item), fold: fold) { [weak self] action in self?.perform(action, on: item) }
+    }
+
+    /// What a trailing swipe on the row at `path` offers: the primary actions, then Expand or
+    /// Collapse.
     func trailingSwipeActions(at path: IndexPath) -> UISwipeActionsConfiguration? {
-        guard let item = self.dataSource.itemIdentifier(for: path) else { return nil }
-        var actions = self.actions(for: item).map { action in
-            swipeAction(action) { [weak self] in self?.perform(action, on: item) }
-        }
-        if let row = self.shown.first(where: { $0.item.key == item.key }),
-           let fold = self.folding.action(for: row, key: item.key, changed: { [weak self] key, said in
-               self?.fold(key, saying: said)
-           }) {
-            actions.append(fold)
-        }
-        return actions.isEmpty ? nil : UISwipeActionsConfiguration(actions: actions)
+        dataSource.itemIdentifier(for: path).flatMap { rowActions(for: $0).trailingSwipe() }
+    }
+
+    /// The cell's other actions, for VoiceOver, Switch Control and Full Keyboard Access.
+    func customActions(at path: IndexPath) -> [UIAccessibilityCustomAction] {
+        dataSource.itemIdentifier(for: path).map { rowActions(for: $0).customActions } ?? []
+    }
+
+    /// What a long press on the row at `path` offers: every action.
+    func menu(at path: IndexPath) -> UIMenu? {
+        dataSource.itemIdentifier(for: path).flatMap { rowActions(for: $0).menu }
+    }
+
+    func collectionView(
+        _ collectionView: UICollectionView, contextMenuConfigurationForItemsAt paths: [IndexPath], point: CGPoint
+    ) -> UIContextMenuConfiguration? {
+        guard paths.count == 1, let item = dataSource.itemIdentifier(for: paths[0]) else { return nil }
+        return rowActions(for: item).contextMenu
     }
 }
