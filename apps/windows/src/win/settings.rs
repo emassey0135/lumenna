@@ -7,7 +7,7 @@
 
 use std::cell::RefCell;
 
-use lumenna_surface::{ActionKind, ExportFormat, Imported};
+use lumenna_surface::{ActionKind, ExportFormat, Imported, Setting};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::Controls::{
@@ -107,12 +107,39 @@ fn sheet(page: HWND) -> HWND {
     unsafe { GetParent(page).unwrap_or(page) }
 }
 
-fn values(app: &App) -> Vec<(String, String)> {
-    app.core.lumenna.settings(None).map(|s| s.settings.into_iter().map(|s| (s.key, s.value)).collect()).unwrap_or_default()
+/// Every setting, as the core describes it: its name, its value and what it can be.
+fn values(app: &App) -> Vec<Setting> {
+    app.core.lumenna.settings(None).map(|s| s.settings).unwrap_or_default()
 }
 
-fn value(known: &[(String, String)], key: &str) -> String {
-    known.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone()).unwrap_or_default()
+fn value(known: &[Setting], key: &str) -> String {
+    known.iter().find(|s| s.key == key).map(|s| s.value.clone()).unwrap_or_default()
+}
+
+/// A setting's name as a control's label: the core's title, with `letter` as its access key
+/// and, before a field, a colon.
+fn titled(known: &[Setting], key: &str, letter: char, colon: bool) -> String {
+    let title = known.iter().find(|s| s.key == key).map_or(key, |s| s.title.as_str());
+    format!("{}{}", devices::marked(title, letter, '&'), if colon { ":" } else { "" })
+}
+
+/// Fills a drop-down list with a setting's options, the value selected. A value set
+/// elsewhere that is not among them is listed as itself, since it is still the value.
+fn fill_options(combo: HWND, known: &[Setting], key: &str) {
+    let Some(setting) = known.iter().find(|s| s.key == key) else { return };
+    let mut names: Vec<&str> = setting.options.iter().map(|o| o.title.as_str()).collect();
+    let mut position = setting.options.iter().position(|o| o.id == setting.value);
+    if position.is_none() && !setting.value.is_empty() {
+        names.push(&setting.value);
+        position = Some(names.len() - 1);
+    }
+    fill_combo(combo, &names, position);
+}
+
+/// The value chosen in a setting's drop-down list, if it is one of its options.
+fn chosen_option(combo: HWND, known: &[Setting], key: &str) -> Option<String> {
+    let setting = known.iter().find(|s| s.key == key)?;
+    setting.options.get(selected(combo)?).map(|o| o.id.clone())
 }
 
 /// Changes a setting and says so; on a failure says why and returns false.
@@ -379,13 +406,12 @@ const ALL_DAY: u16 = 203;
 const VERBOSITY: u16 = 204;
 const WEEK_START: u16 = 205;
 
-const VERBOSITIES: [(&str, &str); 2] = [("Full sentences", "full"), ("Terse", "terse")];
-const WEEKDAYS: [&str; 7] = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 const TIMES: [(u16, &str); 3] = [(DAY_START, "day-start"), (DAY_END, "day-end"), (ALL_DAY, "all-day-reminder-hour")];
+const CHOICES: [(u16, &str); 2] = [(VERBOSITY, "verbosity"), (WEEK_START, "week-start")];
 
 struct Planning<'a> {
     app: &'a App,
-    known: RefCell<Vec<(String, String)>>,
+    known: RefCell<Vec<Setting>>,
 }
 
 impl Planning<'_> {
@@ -395,13 +421,9 @@ impl Planning<'_> {
         for (id, key) in TIMES {
             controls::set_text(dialog::item(page, id), &value(&known, key));
         }
-        let verbosity = value(&known, "verbosity");
-        let labels: Vec<&str> = VERBOSITIES.iter().map(|(l, _)| *l).collect();
-        fill_combo(dialog::item(page, VERBOSITY), &labels, VERBOSITIES.iter().position(|(_, v)| *v == verbosity));
-        let week = value(&known, "week-start");
-        let days: Vec<String> = WEEKDAYS.iter().map(|d| speech::sentence(d)).collect();
-        let days: Vec<&str> = days.iter().map(String::as_str).collect();
-        fill_combo(dialog::item(page, WEEK_START), &days, WEEKDAYS.iter().position(|d| *d == week));
+        for (id, key) in CHOICES {
+            fill_options(dialog::item(page, id), &known, key);
+        }
         *self.known.borrow_mut() = known;
     }
 
@@ -421,26 +443,31 @@ impl Planning<'_> {
 
 impl Dialog for Planning<'_> {
     fn template(&self) -> Template {
-        
+        // The names are the core's; where each goes, and its access key, are this page's.
+        let known = values(self.app);
+        let name = |key, letter, colon| titled(&known, key, letter, colon);
         page("Planning")
-            .item(Class::Button, "&Completing a task completes its subtasks", CASCADE, BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0, 7, 7, 238, 10)
-            .item(Class::Static, "Day &starts:", u16::MAX, 0, 7, 24, 110, 9)
+            .item(Class::Button, &name("cascade-complete-subtasks", 'C', false), CASCADE, BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0, 7, 7, 238, 10)
+            .item(Class::Static, &name("day-start", 's', true), u16::MAX, 0, 7, 24, 110, 9)
             .item(Class::Edit, "", DAY_START, FIELD, 7, 34, 110, 14)
-            .item(Class::Static, "Day &ends:", u16::MAX, 0, 128, 24, 110, 9)
+            .item(Class::Static, &name("day-end", 'e', true), u16::MAX, 0, 128, 24, 110, 9)
             .item(Class::Edit, "", DAY_END, FIELD, 128, 34, 110, 14)
-            .item(Class::Static, "&All-day reminders at:", u16::MAX, 0, 7, 54, 110, 9)
+            .item(Class::Static, &name("all-day-reminder-hour", 'A', true), u16::MAX, 0, 7, 54, 110, 9)
             .item(Class::Edit, "", ALL_DAY, FIELD, 7, 64, 110, 14)
-            .item(Class::Static, "Announce&ments:", u16::MAX, 0, 7, 84, 110, 9)
+            .item(Class::Static, &name("verbosity", 'm', true), u16::MAX, 0, 7, 84, 110, 9)
             .item(Class::ComboBox, "", VERBOSITY, LIST, 7, 94, 110, 60)
-            .item(Class::Static, "&Week starts on:", u16::MAX, 0, 128, 84, 110, 9)
+            .item(Class::Static, &name("week-start", 'W', true), u16::MAX, 0, 128, 84, 110, 9)
             .item(Class::ComboBox, "", WEEK_START, LIST, 128, 94, 110, 120)
             .item(Class::Static, "These sync to all your devices.", u16::MAX, SS_NOPREFIX.0, 7, 116, 238, 9)
     }
 
     fn init(&self, page: HWND) -> bool {
         a11y::make_live(dialog::item(page, STATUS));
-        for (id, _) in TIMES {
-            a11y::set_description(dialog::item(page, id), "A time, such as 8:00 or 8am.");
+        let known = values(self.app);
+        for (id, key) in TIMES.iter().chain(&CHOICES) {
+            if let Some(hint) = known.iter().find(|s| s.key == *key).map(|s| &s.hint).filter(|h| !h.is_empty()) {
+                a11y::set_description(dialog::item(page, *id), hint);
+            }
         }
         self.load(page);
         false
@@ -454,15 +481,11 @@ impl Dialog for Planning<'_> {
                 set(self.app, page, "cascade-complete-subtasks", if on { "true" } else { "false" });
                 self.load(page);
             }
-            (VERBOSITY, CBN_SELCHANGE) => {
-                if let Some(index) = selected(dialog::item(page, VERBOSITY)) {
-                    set(self.app, page, "verbosity", VERBOSITIES[index].1);
-                }
-                self.load(page);
-            }
-            (WEEK_START, CBN_SELCHANGE) => {
-                if let Some(index) = selected(dialog::item(page, WEEK_START)) {
-                    set(self.app, page, "week-start", WEEKDAYS[index]);
+            (id, CBN_SELCHANGE) if CHOICES.iter().any(|(c, _)| *c == id) => {
+                let key = CHOICES.iter().find(|(c, _)| *c == id).map_or("", |(_, k)| *k);
+                let chosen = chosen_option(dialog::item(page, id), &self.known.borrow(), key);
+                if let Some(chosen) = chosen {
+                    set(self.app, page, key, &chosen);
                 }
                 self.load(page);
             }
@@ -655,26 +678,15 @@ const CHOOSE: u16 = 403;
 const BACK_UP: u16 = 404;
 const RESTORE: u16 = 405;
 
-const FREQUENCIES: [(&str, &str); 4] = [("Every 12 hours", "12h"), ("Every day", "1d"), ("Every week", "7d"), ("Off", "off")];
-
 struct Backups<'a> {
     app: &'a App,
-    known: RefCell<Vec<(String, String)>>,
+    known: RefCell<Vec<Setting>>,
 }
 
 impl Backups<'_> {
     fn load(&self, page: HWND) {
         let known = values(self.app);
-        let every = value(&known, "backup-every");
-        let mut labels: Vec<String> = FREQUENCIES.iter().map(|(l, _)| (*l).to_owned()).collect();
-        let mut position = FREQUENCIES.iter().position(|(_, v)| *v == every);
-        // A frequency set elsewhere — `lum config set backup-every 3d` — is shown as it is.
-        if position.is_none() && !every.is_empty() {
-            labels.push(format!("Every {every}"));
-            position = Some(labels.len() - 1);
-        }
-        let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
-        fill_combo(dialog::item(page, EVERY), &labels, position);
+        fill_options(dialog::item(page, EVERY), &known, "backup-every");
         controls::set_text(dialog::item(page, KEEP), &value(&known, "backup-keep"));
         controls::set_text(dialog::item(page, FOLDER), &value(&known, "backup-dir"));
         *self.known.borrow_mut() = known;
@@ -693,19 +705,21 @@ impl Backups<'_> {
 
 impl Dialog for Backups<'_> {
     fn template(&self) -> Template {
-        let footer = "A backup holds your whole history, including every task you deleted, so the store can be rebuilt from it. It stays on this device, as these settings do.";
-        
+        // The names and what backups are are the core's; where each goes is this page's.
+        let known = values(self.app);
+        let name = |key, letter| titled(&known, key, letter, true);
+        let footer = known.iter().find(|s| s.key == "backup-every").map(|s| s.hint.clone()).unwrap_or_default();
         page("Backups")
-            .item(Class::Static, "&Automatic backups:", u16::MAX, 0, 7, 7, 120, 9)
+            .item(Class::Static, &name("backup-every", 'A'), u16::MAX, 0, 7, 7, 120, 9)
             .item(Class::ComboBox, "", EVERY, LIST, 7, 17, 120, 70)
-            .item(Class::Static, "&Keep this many backups:", u16::MAX, 0, 134, 7, 111, 9)
+            .item(Class::Static, &name("backup-keep", 'k'), u16::MAX, 0, 134, 7, 111, 9)
             .item(Class::Edit, "", KEEP, FIELD | ES_NUMBER as u32, 134, 17, 60, 14)
-            .item(Class::Static, "Backups go &to:", u16::MAX, 0, 7, 37, 238, 9)
+            .item(Class::Static, &name("backup-dir", 't'), u16::MAX, 0, 7, 37, 238, 9)
             .item(Class::Edit, "", FOLDER, READ_ONLY, 7, 47, 182, 14)
             .item(Class::Button, "C&hoose...", CHOOSE, BUTTON, 193, 47, 52, 14)
             .item(Class::Button, "&Back Up Now", BACK_UP, BUTTON, 7, 67, 70, 14)
             .item(Class::Button, "&Restore From a Backup...", RESTORE, BUTTON, 81, 67, 100, 14)
-            .item(Class::Static, footer, u16::MAX, SS_NOPREFIX.0, 7, 88, 238, 36)
+            .item(Class::Static, &footer, u16::MAX, SS_NOPREFIX.0, 7, 88, 238, 36)
     }
 
     fn init(&self, page: HWND) -> bool {
@@ -718,8 +732,9 @@ impl Dialog for Backups<'_> {
         let code = u32::from(code);
         match (id, code) {
             (EVERY, CBN_SELCHANGE) => {
-                if let Some(index) = selected(dialog::item(page, EVERY)).filter(|i| *i < FREQUENCIES.len()) {
-                    set(self.app, page, "backup-every", FREQUENCIES[index].1);
+                let chosen = chosen_option(dialog::item(page, EVERY), &self.known.borrow(), "backup-every");
+                if let Some(chosen) = chosen {
+                    set(self.app, page, "backup-every", &chosen);
                 }
                 self.load(page);
             }
