@@ -15,16 +15,12 @@ import actions
 from actions import spoken_day
 from client import LumennaError
 from rows import Tree, clock, describe
-from session import Command, Flag, Session, ask, choose, empty_then, live_menu, row_item, screen
+from session import Command, Flag, Session, choose, empty_then, live_menu, row_item, screen
 import tasks
 
 
 #: A block form's yes-or-no fields, as a choice.
 YES_NO = {"yes": "Yes", "no": "No"}
-
-#: The fields one day of a repeating block can change: its time, length, title, kind and
-#: flags (`form.day_block_fields`), in the block form's order.
-ONE_DAY = ("title", "start", "minutes", "kind", "accepts_tasks", "counts_capacity", "anchored")
 
 #: The fields a new block is asked for; the rest start as its kind's own or empty, and are
 #: changed by editing it.
@@ -59,7 +55,8 @@ def day_plan(session: Session) -> str:
         return turn((datetime.date.fromisoformat(current) + datetime.timedelta(days=days)).isoformat())
 
     def go_to() -> str:
-        day = ask("Go to which day?", "tomorrow")
+        day = actions.ask_line(session, "form.go_to_day")
+        day = day.strip() if day else ""
         return turn(day) if day else ""
 
     def build():
@@ -70,7 +67,7 @@ def day_plan(session: Session) -> str:
             shown["date"] = shown["plan"].get("date", "")
             return error.message
         shown["plan"] = plan
-        shown["heading"] = f"{spoken_day(plan['date'])}, {plan.get('summary') or plan.get('announcement', '')}"
+        shown["heading"] = f"{spoken_day(plan['date'])}. {plan.get('summary') or plan.get('announcement', '')}"
         return Tree(plan_rows(plan)).items()
 
     def date() -> str:
@@ -290,7 +287,9 @@ def edit_block(session: Session, block: dict) -> str:
         before = value(session, "form.day_block_fields", block=block)
     except LumennaError as error:
         return error.message
-    return save_block(session, block["series"], before, block_fields(session, before, ONE_DAY), {"date": date})
+    # Only what one day of a repeating block can change, as the form marks it.
+    one_day = [key for key, field in block_form(session).items() if field.get("one_day")]
+    return save_block(session, block["series"], before, block_fields(session, before, one_day), {"date": date})
 
 
 def edit_series(session: Session, series: str) -> str:
