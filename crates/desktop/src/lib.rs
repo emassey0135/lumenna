@@ -10,6 +10,7 @@
 
 pub mod choices;
 pub mod devices;
+pub mod keys;
 pub mod outline;
 pub mod profile;
 pub mod speech;
