@@ -194,20 +194,27 @@ async fn form(app: &Rc<App>, action: Action) {
         (Subject::Block, ActionKind::Edit) => edit_day_block(app, &action.target).await,
         (Subject::Series, ActionKind::Edit) => edit_series(app, &action.target).await,
         (Subject::FreeTime, ActionKind::AddBlock) => {
-            let start = action.other.clone().unwrap_or_else(|| "09:00".to_owned());
-            add_block(app, &action.target, &start, 60).await;
+            add_block(app, &action.target, action.other.as_deref(), 60).await;
         }
         (Subject::Filter, ActionKind::New) => new_filter(app).await,
         _ => {}
     }
 }
 
-/// A new block from `start` on `date`, `minutes` long: the block form, then the day lands
-/// on it.
-pub async fn add_block(app: &Rc<App>, date: &str, start: &str, minutes: u32) {
+/// A new block on `date`, `minutes` long: the block form, then the day lands on it. It starts
+/// at `start` (free time's own), else when the core says a new block on that day starts.
+pub async fn add_block(app: &Rc<App>, date: &str, start: Option<&str>, minutes: u32) {
     let window = app.window.clone().upcast::<gtk::Window>();
-    let fields = block_form::new_fields(start, minutes);
-    let purpose = Purpose::Add { date: date.to_owned() };
+    let start_follows_day = start.is_none();
+    let start = match start {
+        Some(start) => start.to_owned(),
+        None => match app.core.lumenna.new_block_start(Some(date.to_owned())) {
+            Ok(start) => start,
+            Err(error) => return app.fail(&sentence(&error)),
+        },
+    };
+    let fields = block_form::new_fields(&start, minutes);
+    let purpose = Purpose::Add { date: date.to_owned(), start_follows_day };
     let Some(change) = block_form::run(&window, app.core.lumenna.clone(), purpose, fields, None).await else { return };
     app.store_changed();
     if let Some(series) = change.affected.blocks.first() {

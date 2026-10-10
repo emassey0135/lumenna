@@ -3,7 +3,7 @@
 import json
 import unittest
 
-from harness import Session
+from harness import Atspi, Session
 
 # A block over the whole day is happening now whenever the tests run.
 SEED = [
@@ -105,6 +105,22 @@ class DayTest(unittest.TestCase):
         self.session.press("Shift+Tab", "space", "Alt+v", wait=1)
         self.assertIn("changed for this day", self.session.focus())
         self.assertIn("anchored: no", self.session.lum("block", "show", self.block), "every other day as it was")
+
+    def starts_at(self):
+        return Atspi.Text.get_text(self.session.find("text", "Starts at"), 0, -1)
+
+    def test_a_new_blocks_start_follows_its_day_until_it_is_changed(self):
+        # Today's start depends on the hour; another day's is when the day starts, 8:00.
+        self.session.press("Control+Shift+n")
+        self.session.wait_for_window("New Block")
+        self.session.press("Alt+d", "Control+a")
+        self.session.type("tomorrow")
+        self.assertEqual(self.starts_at(), "08:00")
+        self.session.press("Alt+a", "Control+a")
+        self.session.type("10:15")
+        self.session.press("Alt+d", "Control+a")
+        self.session.type("in 3 days")
+        self.assertEqual(self.starts_at(), "10:15", "a start the person chose stays")
 
     def test_delete_on_a_sitting_takes_it_out_of_the_block(self):
         self.session.press("Down", "Delete")

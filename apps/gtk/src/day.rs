@@ -312,7 +312,7 @@ impl DayView {
     pub fn add_block(&self, app: &Rc<App>) {
         let date = self.date().unwrap_or_else(|| "today".to_owned());
         let app = Rc::clone(app);
-        spawn(async move { actions::add_block(&app, &date, "09:00", 60).await });
+        spawn(async move { actions::add_block(&app, &date, None, 60).await });
     }
 
     /// Lands on a block of `series` shown on the day, as after adding one.
