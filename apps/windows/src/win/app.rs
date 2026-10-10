@@ -39,6 +39,7 @@ use super::core::{Core, Poster, WM_SAY, WM_STORE_CHANGED, said};
 use super::dark;
 use super::day::DayView;
 use super::font;
+use super::help;
 use super::detail::Detail;
 use super::menu;
 use super::prompts;
@@ -773,6 +774,15 @@ impl App {
                 }
             }
             menu::SAVE_TASK => self.detail.save(self),
+            menu::PROPERTIES => {
+                // The details are already the task's own form.
+                if !controls::within(self.panes[2], controls::focused())
+                    && !self.content().is_some_and(|content| content.view().properties(self))
+                {
+                    self.say("No task or block is selected");
+                }
+            }
+            menu::KEYBOARD_HELP => help::show(self.main),
             command if !task_kinds(command).is_empty() => self.act_on_task_in_hand(task_kinds(command)),
             menu::PREVIOUS_DAY | menu::NEXT_DAY | menu::GO_TO_NOW | menu::GO_TO_DAY => {
                 if self.day().is_none() {

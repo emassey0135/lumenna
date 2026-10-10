@@ -440,6 +440,13 @@ impl View for DayView {
         }
         true
     }
+    fn properties(&self, app: &App) -> bool {
+        let Some(row) = self.selected() else { return false };
+        let Some(action) = actions::of_kind(row.actions(), &[ActionKind::Edit, ActionKind::EditTask]) else { return false };
+        self.act(app, &row, &action);
+        true
+    }
+
     fn enter(&self, app: &App, focus: HWND) -> bool {
         if focus == self.tree.hwnd {
             self.activate(app);

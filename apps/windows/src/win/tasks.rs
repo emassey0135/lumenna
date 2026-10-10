@@ -252,6 +252,14 @@ impl View for TaskList {
         false
     }
 
+    fn properties(&self, app: &App) -> bool {
+        if self.trash || self.selected().is_none() {
+            return false;
+        }
+        app.open_detail();
+        true
+    }
+
     fn escape(&self, _app: &App, focus: HWND) -> bool {
         if focus == self.filter {
             controls::focus(self.tree.hwnd);

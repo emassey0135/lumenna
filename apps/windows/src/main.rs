@@ -20,7 +20,7 @@ mod shortcut;
 
 // Wording and the tree are shared with the GTK app.
 #[cfg_attr(not(windows), allow(unused_imports))]
-use lumenna_desktop::{devices, outline, profile, speech};
+use lumenna_desktop::{devices, keys, outline, profile, speech};
 #[cfg(windows)]
 mod win;
 

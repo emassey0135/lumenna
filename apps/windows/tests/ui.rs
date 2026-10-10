@@ -539,7 +539,9 @@ fn every_dialog_fits_the_screen_at_the_largest_text_size_with_nothing_overlappin
     }
     app.post(&["select:Devices", "invoke:Pair a Device..."]);
     fits_and_nothing_overlaps(&app, "Pair a Device");
-    app.post(&["esc", "esc"]);
+    app.post(&["esc", "esc", "f1"]);
+    fits_and_nothing_overlaps(&app, "Keyboard Shortcuts");
+    app.post(&["esc"]);
 }
 
 /// Windows' own Text size, as the Settings app sets it: its slider and its Apply button, so
@@ -699,3 +701,18 @@ fn a_rows_menu_is_the_cores_and_never_offers_a_task_as_its_own_parent() {
     assert_eq!(app.status(), lumenna_desktop::speech::sentence(&why));
 }
 
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn f1_lists_every_key_and_alt_enter_opens_the_tasks_details() {
+    let app = App::launch(|lumenna| add(lumenna, "Write report"));
+    app.post(&["f1"]);
+    let help = app.front();
+    let text = help.iter().find(|l| l.trim_start().starts_with("Edit 'Shortcuts:'")).cloned().unwrap_or_default();
+    assert!(text.contains("New Task: Ctrl+N") && text.contains("Exit: Ctrl+Q") && text.contains("Rename: F2"), "{help:#?}");
+    assert!(app.focus().starts_with("Edit 'Shortcuts:'"), "focus starts in the list: {}", app.focus());
+    app.post(&["esc"]);
+    // Alt+Enter, as the menu command it stands for: the selected task's details.
+    app.post(&[GO_TASKS, "home", "cmd:113"]);
+    assert!(app.focus().starts_with("Edit 'Title:'"), "{}", app.focus());
+}

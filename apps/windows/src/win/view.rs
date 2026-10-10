@@ -65,6 +65,11 @@ pub trait View {
         false
     }
 
+    /// Alt+Enter, Properties: the selected row's own form. Returns whether there was one.
+    fn properties(&self, _app: &App) -> bool {
+        false
+    }
+
     /// Escape, with focus in the view.
     fn escape(&self, _app: &App, _focus: HWND) -> bool {
         false

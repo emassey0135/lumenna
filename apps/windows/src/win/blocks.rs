@@ -142,6 +142,12 @@ impl View for BlockList {
         true
     }
 
+    fn properties(&self, app: &App) -> bool {
+        let Some(action) = self.selected().and_then(|row| actions::of_kind(&row.actions, &[ActionKind::Edit])) else { return false };
+        self.act(app, &action);
+        true
+    }
+
     fn enter(&self, app: &App, focus: HWND) -> bool {
         if focus == self.tree.hwnd {
             if let Some(action) = self.selected().and_then(|row| actions::of_kind(&row.actions, &[ActionKind::Edit])) {
