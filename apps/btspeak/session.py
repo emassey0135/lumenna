@@ -85,15 +85,17 @@ class Command:
     `key` is a lowercase letter that does the same from the list, as the device's own apps
     have them; the menus say it after the label. A capital letter, Dot 7 with the letter, still
     moves to the next row starting with it. `applies` says which rows a context command is for;
-    `deletes` makes it what the delete keys do — Control-D and the D chord.
+    `deletes` makes it what the delete keys do — Control-D and the D chord. `by_key`, when
+    given, is what the letter does instead of `run`: asking which, where a row has several.
     """
 
-    def __init__(self, label, run, key: str = "", applies=None, deletes: bool = False) -> None:
+    def __init__(self, label, run, key: str = "", applies=None, deletes: bool = False, by_key=None) -> None:
         self.label = label
         self.run = run
         self.key = key
         self.applies = applies or (lambda row: True)
         self.deletes = deletes
+        self.by_key = by_key or run
 
     def label_for(self, row) -> str:
         return self.label(row) if callable(self.label) else self.label
@@ -120,7 +122,8 @@ def live_menu(
 
     `build()` returns the rows (`row_item`s), or a string to say instead of opening at all.
     `main(row)` is what Enter does on a row; `context` and `app` are `Command`s for the two
-    menus. `title` is a string or a function of nothing, read on each rebuild. `moved`, when
+    menus, and `context` may be a function of the rows giving them, for commands that are the
+    rows' own actions (`actions.commands`). `title` is a string or a function of nothing, read on each rebuild. `moved`, when
     given, is another reason to rebuild — the day changing under the planner — and is cleared
     here. Losing your place in a list when it refreshes is the sort of thing that makes a UI
     unusable without sight, so the selection is kept by position.
@@ -132,7 +135,8 @@ def live_menu(
             if items:
                 dialogs.show_message(items)
             return
-        wire(items, main, context, app)
+        here = context([row_of(item) for item in items if row_of(item) is not None]) if callable(context) else context
+        wire(items, main, here, app)
         heading = title() if callable(title) else title
         choice = dialogs.dynamic_menu(
             items,
@@ -140,10 +144,10 @@ def live_menu(
             exit_condition=lambda: session.restless() or bool(moved and moved()),
             refresh_interval=REFRESH,
             default=min(selection, max(len(items) - 1, 0)),
-            context_menu=context_commands(context),
+            context_menu=context_commands(here),
             app_menu=app_commands(app),
             app_menu_title=app_title or f"{heading.split(',')[0]} menu",
-            global_keys=keys(context, app),
+            global_keys=keys(here, app),
             empty_message=empty,
         )
         nudged = bool(moved and moved(clear=True))
@@ -217,7 +221,7 @@ def keys(context, app):
         row = row_of(item)
         for command in context:
             if command.key == key and row is not None and command.applies(row):
-                return command.run(row)
+                return command.by_key(row)
         for command in app:
             if command.key == key:
                 return command.run(None)

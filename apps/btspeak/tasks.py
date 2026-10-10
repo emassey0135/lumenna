@@ -10,10 +10,11 @@ from __future__ import annotations
 
 from BTSpeak import dialogs
 
+import actions
 import options
 from client import LumennaError
-from rows import Tree, clock, describe
-from session import Command, Session, ask, choose, confirm, live_menu, screen, spoken
+from rows import Tree
+from session import Command, Session, choose, live_menu, screen, spoken
 
 
 # ---------------------------------------------------------------------------------------
@@ -64,7 +65,7 @@ def task_list(
         live_menu(
             session, build, lambda: state["heading"],
             main=lambda row: show(session, row),
-            context=task_commands(session),
+            context=lambda rows: task_commands(session, rows),
             app=[
                 Command("Add a task", lambda _: add_task(session, prefix), key="a"),
                 Command("Search or filter", lambda _: query_tasks(session), key="/"),
@@ -85,58 +86,15 @@ def query_tasks(session: Session) -> str:
     return task_list(session, query, "Query")
 
 
-def task_commands(session: Session) -> list[Command]:
-    """What can be done to a task, on its context menu and by its keys."""
-    def detail(row):
-        return session.call("task.show", id=row["id"])
-
-    def done(row):
-        return row.get("checked") is True
-
-    def stop_waiting(row):
-        depends = detail(row).get("depends", [])
-        if not depends:
-            return "It waits for nothing"
-        other = choose({d["id"]: d["title"] for d in depends}, "Stop waiting for")
-        return session.write("task.depend.rm", id=row["id"], on=other) if other else ""
-
-    def wait_for(row):
-        task = detail(row)
-        waiting = {row["id"]} | {d["id"] for d in task.get("depends", [])}
-        other = pick_task(session, "Wait for", excluding=waiting)
-        return session.write("task.depend.add", id=row["id"], on=other) if other else ""
-
-    def subtask(row):
-        parent = pick_task(session, "Make it a subtask of", excluding={row["id"]})
-        return session.write("task.move", id=row["id"], parent=parent) if parent else ""
-
-    return [
-        Command(
-            lambda row: "Mark not done" if done(row) else "Complete",
-            lambda row: session.write("task.undone" if done(row) else "task.done", id=row["id"]),
-            key="c",
-        ),
-        Command("Edit", lambda row: edit_task(session, detail(row)), key="e"),
-        Command("Details", lambda row: show(session, row)),
-        Command("Put it in a block", lambda row: assign_task(session, row["id"]), key="b"),
-        Command("Move to a project", lambda row: move_to_project(session, row["id"]), key="m"),
-        Command("Make it a subtask of another task", subtask, key="s"),
-        Command(
-            "Move it to the top level",
-            lambda row: session.write("task.move", id=row["id"], top=True),
-            key="t",
-            applies=lambda row: row.get("depth", 0) > 0,
-        ),
-        Command("Wait for another task", wait_for, key="w"),
-        Command("Stop waiting for another task", stop_waiting, key="n"),
-        Command("Delete", lambda row: session.write("task.rm", id=row["id"]), deletes=True),
-    ]
+def task_commands(session: Session, rows) -> list[Command]:
+    """What can be done to a task: the core's actions for it, then its details."""
+    return actions.commands(session, rows, after=[Command("Details", lambda row: show(session, row))])
 
 
 def show(session: Session, row: dict) -> str:
     """A task's details, as lines to pan through."""
     try:
-        return task_details(session.call("task.show", id=row["id"]))
+        return task_details(session.call("task.show", id=row["id"]), priorities(session))
     except LumennaError as error:
         return error.message
 
@@ -151,15 +109,11 @@ def trash(session: Session) -> str:
         state["heading"] = f"Trash, {result.get('announcement', '')}"
         return Tree(result.get("rows", [])).items()
 
-    restore = lambda row: session.write("task.restore", id=row["id"])  # noqa: E731
     with screen("lumenna-tasks"):
         live_menu(
             session, build, lambda: state["heading"],
-            main=restore,
-            context=[
-                Command("Restore", restore, key="r"),
-                Command("Delete from trash", lambda row: erase(session, row), deletes=True),
-            ],
+            main=lambda row: actions.run_kind(session, row, "restore"),
+            context=lambda rows: actions.commands(session, rows),
             app=undo_commands(session),
             empty="The trash is empty.",
             app_title="Trash menu",
@@ -167,32 +121,27 @@ def trash(session: Session) -> str:
     return ""
 
 
-def erase(session: Session, row: dict) -> str:
-    """Deletes a task from the trash, asking first."""
-    if not confirm(
-        f"Delete {row['title']} from the trash? Undo can bring it back. "
-        "It also stays in the history every device keeps, and in backups."
-    ):
-        return ""
-    return session.write("task.erase", id=row["id"], confirm=True)
-
-
 # ---------------------------------------------------------------------------------------
 # One task
 # ---------------------------------------------------------------------------------------
 
 
-def task_details(task: dict) -> str:
+def priorities(session: Session) -> dict:
+    """The priorities as the core words them, by number."""
+    return {c["id"]: c["title"] for c in session.call("form.priorities").get("value", [])}
+
+
+def task_details(task: dict, named: dict | None = None) -> str:
     """Everything about one task, as lines to pan through.
 
     A detail view is where the near-universal states are worth having, so this shows the full
-    set rather than the notable ones a list line carries.
+    set rather than the notable ones a list line carries. `named` words the priority.
     """
     lines = [task["title"]]
     if task.get("project"):
         lines.append(f"project: {task['project']}")
     if task.get("priority", 4) != 4:
-        lines.append(f"priority: {task['priority']}")
+        lines.append((named or {}).get(str(task["priority"]), f"priority: {task['priority']}"))
     if task.get("due"):
         due = task["due"]
         if task.get("due_time"):
@@ -216,146 +165,79 @@ def task_details(task: dict) -> str:
     return ""
 
 
-PRIORITIES = {
-    "1": "Priority 1, highest",
-    "2": "Priority 2",
-    "3": "Priority 3",
-    "4": "Priority 4, none",
-}
-
-
 def edit_task(session: Session, task: dict) -> str:
-    """One form over every field `task.edit` takes, sending only what changed — so that a
-    concurrent edit to another field on another device is not overwritten with what this form
-    happened to show."""
-    due = " ".join(part for part in (task.get("due"), task.get("due_time")) if part)
-    estimate = f"{task['estimate_mins']}m" if task.get("estimate_mins") else ""
-    labels = ", ".join(task.get("labels", []))
+    """The task form: its fields as the core says a form starts from them, sending what the
+    core says changed — so a concurrent edit to another field on another device is not
+    overwritten with what this form happened to show."""
+    try:
+        before = session.call("form.task_fields", task=task)["value"]
+    except LumennaError as error:
+        return error.message
     projects = [row["title"] for row in session.call("project.list").get("rows", [])]
-    current = {
-        "title": task["title"],
-        "due": due,
-        "repeat": task.get("repetition") or "",
-        "priority": str(task.get("priority", 4)),
-        "estimate": estimate,
-        "project": task.get("project") or "",
-        "labels": labels,
-        "notes": task.get("notes", ""),
-    }
-
     fields = [
-        dialogs.InputField(key="title", prompt="Title", default_text=current["title"], required=True),
+        dialogs.InputField(key="title", prompt="Title", default_text=before["title"], required=True),
         dialogs.InputField(
-            key="due", prompt="Due", default_text=due,
+            key="due", prompt="Due", default_text=before["due"],
             format_hint="a date such as tomorrow, next friday or 2026-12-01, empty for none",
         ),
         dialogs.InputField(
-            key="repeat", prompt="Repeats", default_text=current["repeat"],
+            key="repeat", prompt="Repeats", default_text=before["repeat"],
             format_hint="such as every monday or every! 2 weeks, empty for no repetition",
         ),
         dialogs.InputField(
-            key="priority", prompt="Priority", field_type="choice", choices=PRIORITIES,
-            default_text=current["priority"],
+            key="priority", prompt="Priority", field_type="choice", choices=priorities(session),
+            default_text=str(before["priority"]),
         ),
         dialogs.InputField(
-            key="estimate", prompt="Estimate", default_text=estimate,
+            key="estimate", prompt="Estimate", default_text=before["estimate"],
             format_hint="such as 45m or 1h30m, empty for none",
         ),
     ]
-    if current["project"] not in projects:
-        # A project this device does not know, perhaps not synced yet: leave it where it is.
-        del current["project"]
-    else:
+    if before["project"] in projects:
+        # A project this device does not know, perhaps not synced yet, is not offered: the
+        # field stays as it was, so it is left where it is.
         fields.append(
             dialogs.InputField(
                 key="project", prompt="Project", field_type="choice", choices=projects,
-                default_text=current["project"],
+                default_text=before["project"],
             )
         )
     fields += [
         dialogs.InputField(
-            key="labels", prompt="Labels", default_text=labels,
+            key="labels", prompt="Labels", default_text=before["labels"],
             format_hint="names separated by commas; a new name becomes a label",
         ),
         dialogs.InputField(
-            key="notes", prompt="Notes", field_type="multiline", default_text=current["notes"],
+            key="notes", prompt="Notes", field_type="multiline", default_text=before["notes"],
         ),
     ]
     answers = dialogs.request_form(fields)
     if answers is None:
         return ""
-
-    changes = {}
-    for key, before in current.items():
-        after = answers.get(key, before)
-        after = after.strip() if isinstance(after, str) and key != "notes" else after
-        if after == (before.strip() if key != "notes" else before):
-            continue
-        if key == "priority":
-            changes[key] = int(after)
-        elif key in ("due", "repeat", "estimate"):
-            changes[key] = after or "none"
-        elif key == "labels":
-            changes[key] = [name.strip() for name in after.split(",") if name.strip()]
-        else:
-            changes[key] = after
-    if not changes:
-        return "Nothing changed"
-    return session.write("task.edit", id=task["id"], **changes)
-
-
-def move_to_project(session: Session, identifier: str) -> str:
-    """Puts a task in another project; its subtasks follow."""
-    names = [row["title"] for row in session.call("project.list").get("rows", [])]
-    choice = choose({name: name for name in names}, "Move to")
-    return session.write("task.move", id=identifier, project=choice) if choice else ""
-
-
-def pick_task(session: Session, prompt: str, excluding: set = frozenset()) -> str | None:
-    """One open task, by identifier; None if there is none or the person cancelled."""
-    rows = [row for row in session.call("task.list").get("rows", []) if row["id"] not in excluding]
-    if not rows:
-        dialogs.show_message("There are no other open tasks")
-        return None
-    return choose({row["id"]: describe(row) for row in rows}, prompt)
-
-
-ANOTHER_DAY = "\0another day"
-
-
-def assign_task(session: Session, identifier: str) -> str:
-    """Puts a task into a work block: one of the coming week's, which the core chooses
-    as it does for every app (`block.choices`), or one on a day named."""
-    import day  # here, since day imports this module
-
+    after = dict(before)
+    after.update({key: value for key, value in answers.items() if key in before})
+    after["priority"] = int(after["priority"])
     try:
-        week = session.call("block.choices")
+        edit = session.call("form.task_edit", task=task, fields=after)["value"]
     except LumennaError as error:
         return error.message
-    blocks = week.get("blocks", [])
-    options = {
-        b["id"]: f"{day.spoken_day(b['date'])}, {clock(b['start'])} to {clock(b['end'])}, {b['title']}" for b in blocks
-    }
-    options[ANOTHER_DAY] = "Another day"
-    chosen = choose(options, "Put it in")
-    if chosen is None:
-        return ""
-    if chosen == ANOTHER_DAY:
-        when = ask("Which day?", "next monday")
-        if when is None:
-            return ""
-        try:
-            other = session.call("block.choices", **{"from": when, "days": 1})
-        except LumennaError as error:
-            return error.message
-        blocks = other.get("blocks", [])
-        if not blocks:
-            return f"{day.spoken_day(other.get('from', ''))} has no work blocks to put it in"
-        chosen = choose({b["id"]: f"{b['title']}, {clock(b['start'])} to {clock(b['end'])}" for b in blocks}, "Put it in")
-        if chosen is None:
-            return ""
-    block = next(b for b in blocks if b["id"] == chosen)
-    return day.assign_to(session, identifier, block, block["date"])
+    if not edit:
+        return "Nothing changed"
+    return session.write("task.edit", id=task["id"], **{k: v for k, v in edit.items() if v is not None})
+
+
+def open_task_form(session: Session, action: dict, row=None) -> str:
+    """The task form, wherever an action asks for it: a task's Edit Details, a sitting's
+    Edit Task Details."""
+    try:
+        task = session.call("task.show", id=action["target"])
+    except LumennaError as error:
+        return error.message
+    return edit_task(session, task)
+
+
+actions.FORMS[("task", "edit")] = open_task_form
+actions.FORMS[("task", "edit_task")] = open_task_form
 
 
 # ---------------------------------------------------------------------------------------
