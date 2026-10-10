@@ -95,6 +95,9 @@ EVENT is the RPC method, or for an action SUBJECT/KIND, as \"task/mark_done\".
 (defvar lumenna--connection nil
   "The open `jsonrpc-process-connection', or nil.")
 
+(defvar lumenna--words (make-hash-table :test #'equal)
+  "The core's fixed words, by the form function and parameters that gave them.")
+
 (defun lumenna-profile-directory ()
   "The profile directory, by the rule `lum' itself uses."
   (or lumenna-profile
@@ -156,6 +159,7 @@ The daemon's socket if it answers, else a `lum rpc' of its own."
 (defun lumenna-disconnect ()
   "Close the connection to Lumenna, if one is open."
   (interactive)
+  (clrhash lumenna--words)
   (when lumenna--connection
     (ignore-errors (jsonrpc-shutdown lumenna--connection))
     (setq lumenna--connection nil)))
@@ -207,6 +211,42 @@ EVENT is the RPC method, or for an action `SUBJECT/KIND'.  Returns RESULT."
 (defun lumenna--value (method &rest params)
   "The value the form function METHOD computes from PARAMS."
   (plist-get (apply #'lumenna-call method params) :value))
+
+(defun lumenna-words (method &rest params)
+  "What the form function METHOD says for PARAMS, asked once.
+The forms' fields (`form.task_form', `form.block_form'), pairing's sentences
+\(`form.pairing_words'), a fixed text in sentence case: the core's words,
+which never change while it runs."
+  (let ((key (cons method params)))
+    (or (gethash key lumenna--words)
+        (puthash key (apply #'lumenna--value method params) lumenna--words))))
+
+(defun lumenna-sentence (text)
+  "Fixed TEXT, a button or a dialog's title, in sentence case, as a prompt is.
+The core's: \"Do These Words Match?\" asked in the minibuffer."
+  (lumenna-words "form.sentence_case" :text text))
+
+(defun lumenna-form (form)
+  "FORM's fields, \"task\" or \"block\", as the core words them: label, hint, options."
+  (append (lumenna-words (format "form.%s_form" form)) nil))
+
+(defun lumenna-form-field (form key)
+  "The field KEY, a symbol, of FORM, \"task\" or \"block\"."
+  (seq-find (lambda (field) (equal (plist-get field :key) (symbol-name key))) (lumenna-form form)))
+
+(defun lumenna-field-prompt (field &rest more)
+  "A prompt for FIELD: its hint, then MORE, then its label.
+The answer follows the label, as a form's field follows its name."
+  (apply #'lumenna--prompt (plist-get field :hint) (append more (list (plist-get field :label)))))
+
+(defun lumenna--with-default (prompt default)
+  "PROMPT, which ends \": \", saying DEFAULT as Emacs's prompts do: \"(default 2)\"."
+  ;; `format-prompt' reads its prompt as a format; the core's words are text.
+  (format-prompt (string-replace "%" "%%" (string-remove-suffix ": " prompt)) default))
+
+(defun lumenna-field-options (field)
+  "FIELD's options, as (TITLE . ID) for `completing-read'."
+  (mapcar (lambda (o) (cons (plist-get o :title) (plist-get o :id))) (append (plist-get field :options) nil)))
 
 (defun lumenna-say (result)
   "Say RESULT's announcement and notices."
@@ -277,6 +317,16 @@ the states that mean something."
 (defvar-local lumenna--source nil
   "A function of no arguments returning (HEADING . ROWS) for this buffer.")
 
+(defvar-local lumenna--empty nil
+  "What this list says when it has nothing in it: the listing's own `empty'.
+Its source sets it, from what the core returned.")
+
+(defun lumenna-listing (heading listing)
+  "HEADING and LISTING's rows, as a buffer's source returns them.
+What an empty one says is kept for the buffer, as the core words it."
+  (setq-local lumenna--empty (plist-get listing :empty))
+  (cons heading (append (plist-get listing :rows) nil)))
+
 (defvar-local lumenna--describe #'lumenna-describe
   "A function turning one row into its line.")
 
@@ -319,6 +369,12 @@ If it is gone, point stays on the line that took its place."
         (add-text-properties start (point) '(face lumenna-heading lumenna-level 1))
         (insert "\n"))
       (mapc #'lumenna--insert-row (cdr listing))
+      (when (and (null (cdr listing)) lumenna--empty (not (string-empty-p lumenna--empty)))
+        ;; No row: only what the list says, at the level under the heading.
+        (let ((start (point)))
+          (insert lumenna--empty)
+          (add-text-properties start (point) '(face lumenna-quiet lumenna-level 2))
+          (insert "\n")))
       (goto-char (point-min))
       (if-let* ((found (and id (lumenna--find id))))
           (goto-char found)
@@ -423,8 +479,14 @@ A block's day and times, else its title and detail."
     (string-join (delq nil (list (plist-get choice :title) (plist-get choice :detail))) ", ")))
 
 (defun lumenna--prompt (&rest parts)
-  "PARTS that are not empty, as one minibuffer prompt."
-  (concat (string-join (seq-remove (lambda (p) (or (null p) (string-empty-p p))) parts) ". ") ": "))
+  "PARTS that are not empty, as one minibuffer prompt, ending as Emacs's do.
+A part ending in a full stop is followed by the next directly; the prompt
+ends \": \", or \"? \" when its last part is a question."
+  (let ((text (string-join
+               (mapcar (lambda (p) (string-remove-suffix "." (string-trim-right p)))
+                       (seq-remove (lambda (p) (or (null p) (string-blank-p p))) parts))
+               ". ")))
+    (if (string-suffix-p "?" text) (concat text " ") (concat (string-remove-suffix ":" text) ": "))))
 
 (defun lumenna--ask-text (action question)
   "Read the line ACTION's text QUESTION asks for; sent as typed, even empty."
@@ -446,14 +508,14 @@ When nothing is offered, the core's sentence says why."
              (picked (cdr (assoc (completing-read (lumenna--prompt (plist-get question :title)) lines nil t)
                                  lines)))
              (length (when-let* ((asked (plist-get question :length)))
-                       (read-string (concat asked " ")))))
+                       (read-string (lumenna--prompt asked)))))
         (list :answer "picked" :id (plist-get picked :id) :length length)))))
 
 (defun lumenna--ask-choose (question)
   "One of QUESTION's answers, by its title."
   (let* ((answers (mapcar (lambda (a) (cons (plist-get a :title) (plist-get a :id)))
                           (append (plist-get question :answers) nil)))
-         (title (completing-read (lumenna--prompt (plist-get question :title) (plist-get question :message))
+         (title (completing-read (lumenna--prompt (plist-get question :message) (plist-get question :title))
                                  answers nil t)))
     (list :answer "picked" :id (cdr (assoc title answers)))))
 
@@ -472,7 +534,8 @@ when nothing was sent."
                (funcall open action row)
                nil))
             ("confirm"
-             (if (yes-or-no-p (format "%s %s " (plist-get question :title) (plist-get question :message)))
+             ;; What going ahead does, then the question, which the answer follows.
+             (if (yes-or-no-p (lumenna--prompt (plist-get question :message) (plist-get question :title)))
                  (list :answer "yes")
                (message "Nothing done")
                nil))
@@ -513,7 +576,7 @@ Where it offers several (one Stop Waiting per task waited for), choose one."
     (cond ((null matching)
            (user-error "%s" (lumenna--not-offered (car kinds) actions row)))
           ((null (cdr matching)) (lumenna-act (car matching) row))
-          (t (lumenna-act (lumenna--choose-action "Which? " matching) row)))))
+          (t (lumenna-act (lumenna--choose-action "Which one: " matching) row)))))
 
 (defun lumenna-act-at-point ()
   "Choose one of the actions offered on this line, by name, and do it."
@@ -597,6 +660,24 @@ A key is listed once, under the nearest mode that binds it, as it acts."
       (setq owner (get owner 'derived-mode-parent)))
     (nreverse groups)))
 
+(defconst lumenna--minor-words
+  '("a" "an" "the" "and" "or" "nor" "but" "as" "at" "by" "for" "from" "in" "into" "of" "on" "to" "under" "with")
+  "Words a title leaves in lower case, unless they start it.")
+
+(defun lumenna--title-case (text)
+  "TEXT in Title Case, as Emacs's menus have their items.
+A word with a capital already, a key or a name, is left as it is."
+  (let ((first t) (case-fold-search nil))
+    (mapconcat (lambda (word)
+                 (prog1 (if (and (not first) (member word lumenna--minor-words))
+                            word
+                          (if (or (string-empty-p word) (string-match-p "[[:upper:]]" word))
+                              word
+                            (concat (upcase (substring word 0 1)) (substring word 1))))
+                   (setq first nil)))
+               (split-string text " ")
+               " ")))
+
 (defun lumenna--menu (owner)
   "A menu of OWNER's keys, grouped as its help groups them.
 Where two keys run one command, the menu lists it once; the menu shows
@@ -604,11 +685,11 @@ whichever key it is reached by."
   (cons "Lumenna"
         (mapcar (lambda (group)
                   (let (seen)
-                    (cons (car group)
+                    (cons (lumenna--title-case (car group))
                           (delq nil (mapcar (lambda (binding)
                                               (unless (memq (nth 2 binding) seen)
                                                 (push (nth 2 binding) seen)
-                                                (vector (nth 1 binding) (nth 2 binding))))
+                                                (vector (lumenna--title-case (nth 1 binding)) (nth 2 binding))))
                                             (cdr group))))))
                 (lumenna--key-groups owner))))
 

@@ -22,8 +22,7 @@
 (defun lumenna--listing (method noun)
   "The heading and rows METHOD lists, the heading starting with NOUN."
   (let ((listing (lumenna-call method)))
-    (cons (format "%s, %s" noun (plist-get listing :announcement))
-          (append (plist-get listing :rows) nil))))
+    (lumenna-listing (format "%s, %s" noun (plist-get listing :announcement)) listing)))
 
 ;; Every action on a project, label or saved filter is the row's own; these
 ;; are the keys for them.  Adding one is its heading's action in `places'.

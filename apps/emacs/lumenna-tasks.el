@@ -38,11 +38,11 @@ The heading starts with TITLE."
                                        (if-let* ((near (plist-get name :suggestion)))
                                            (format ", did you mean %s?" near) "")))
                              (append (plist-get (plist-get result :query) :unresolved) nil))))
-    (cons (string-join (delq nil (append (list (if understood (format "%s: %s" title understood) title)
-                                               (plist-get result :announcement))
-                                         unresolved))
-                       ", ")
-          (append (plist-get result :rows) nil))))
+    (lumenna-listing (string-join (delq nil (append (list (if understood (format "%s: %s" title understood) title)
+                                                          (plist-get result :announcement))
+                                                    unresolved))
+                                  ", ")
+                     result)))
 
 ;;;###autoload
 (defun lumenna-tasks (&optional query title prefix)
@@ -78,10 +78,14 @@ PREFIX starts a task added here."
 
 ;;;; Changing one field
 
-(defconst lumenna--fields
-  '(("Title" . title) ("Due" . due) ("Repeats" . repeat) ("Priority" . priority)
-    ("Estimate" . estimate) ("Project" . project) ("Labels" . labels) ("Notes" . notes))
-  "The task form's fields, as they are named.")
+(defun lumenna--fields ()
+  "The task form's fields, (LABEL . KEY) as the core names them, in its order."
+  (mapcar (lambda (field) (cons (plist-get field :label) (intern (plist-get field :key))))
+          (lumenna-form "task")))
+
+(defun lumenna--field-label (key)
+  "The task form's name for its field KEY, a symbol."
+  (plist-get (lumenna-form-field "task" key) :label))
 
 (defun lumenna--task-form (task)
   "TASK's fields as the core says a form starts from them (`form.task_fields')."
@@ -101,7 +105,8 @@ What changed is the core's to say (`form.task_edit')."
   (let* ((task (lumenna--task))
          (field (or field
                     (get-text-property (line-beginning-position) 'lumenna-field)
-                    (cdr (assoc (completing-read "Change: " lumenna--fields nil t) lumenna--fields))))
+                    (let ((fields (lumenna--fields)))
+                      (cdr (assoc (completing-read "Change: " fields nil t) fields)))))
          (fields (lumenna--task-form task)))
     (if (eq field 'notes)
         (lumenna--edit-notes task fields)
@@ -112,24 +117,25 @@ What changed is the core's to say (`form.task_edit')."
 (defun lumenna--read-field (field now)
   "Read a new value for FIELD, which is NOW, as the task form holds it.
 Dates and repetitions are phrases read by the core, as quick add reads them;
-empty clears a field."
-  (pcase field
-    ('title (read-string "Title: " now))
-    ('due (read-string "Due, such as tomorrow or next friday, empty for none: " now))
-    ('repeat (read-string "Repeats, such as every monday, empty for none: " now))
-    ('priority (let ((choices (mapcar (lambda (c) (cons (plist-get c :title) (string-to-number (plist-get c :id))))
-                                      (append (lumenna--value "form.priorities") nil))))
-                 (cdr (assoc (completing-read "Priority: " choices nil t nil nil (car (rassoc now choices)))
-                             choices))))
-    ('estimate (read-string "Estimate, such as 45m or 1h30m, empty for none: " now))
-    ('project (completing-read "Project: " (lumenna--project-names) nil t nil nil now))
-    ('labels (string-join
-              (completing-read-multiple
-               "Labels, separated by commas; a new name becomes a label: "
-               (mapcar (lambda (row) (plist-get row :title))
-                       (append (plist-get (lumenna-call "label.list") :rows) nil))
-               nil nil now)
-              ", "))))
+empty clears a field.  Each is asked in the form's words: its hint, then its
+name."
+  (let* ((form (lumenna-form-field "task" field))
+         (prompt (lumenna-field-prompt form)))
+    (pcase field
+      ('priority (let ((choices (mapcar (lambda (c) (cons (car c) (string-to-number (cdr c))))
+                                        (lumenna-field-options form))))
+                   (cdr (assoc (completing-read (lumenna--with-default prompt (car (rassoc now choices)))
+                                                choices nil t nil nil (car (rassoc now choices)))
+                               choices))))
+      ('project (completing-read (lumenna--with-default prompt now) (lumenna--project-names) nil t nil nil now))
+      ('labels (string-join
+                (completing-read-multiple
+                 prompt
+                 (mapcar (lambda (row) (plist-get row :title))
+                         (append (plist-get (lumenna-call "label.list") :rows) nil))
+                 nil nil now)
+                ", "))
+      (_ (read-string prompt now)))))
 
 (defun lumenna--project-names ()
   "Every project's name."
@@ -139,14 +145,15 @@ empty clears a field."
 (defvar-local lumenna--notes-fields nil "The task's form fields, as they were when editing began.")
 
 (defvar-keymap lumenna-notes-mode-map
-  :doc "Keys while editing a task's notes."
+  :doc "Keys while editing a task's notes.
+C-c and a control character are a major mode's to bind, so editing notes is
+a major mode of its own, as `log-edit-mode' is for a commit message."
   "C-c C-c" #'lumenna-notes-save
   "C-c C-k" #'lumenna-notes-cancel)
 
-(define-minor-mode lumenna-notes-mode
+(define-derived-mode lumenna-notes-mode text-mode "Lumenna Notes"
   "Editing a task's notes.
-\\<lumenna-notes-mode-map>\\[lumenna-notes-save] saves them; \\[lumenna-notes-cancel] leaves them as they were."
-  :lighter " Notes")
+\\<lumenna-notes-mode-map>\\[lumenna-notes-save] saves them; \\[lumenna-notes-cancel] leaves them as they were.")
 
 (defun lumenna--edit-notes (task fields)
   "Edit TASK's notes, from its form FIELDS, in a buffer of their own.
@@ -156,8 +163,7 @@ As a commit message is edited."
     (erase-buffer)
     (insert (or (plist-get task :notes) ""))
     (goto-char (point-min))
-    (text-mode)
-    (lumenna-notes-mode 1)
+    (lumenna-notes-mode)
     (setq lumenna--notes-task task lumenna--notes-fields fields)
     (message "Notes for %s.  C-c C-c saves, C-c C-k cancels" (plist-get task :title))))
 
@@ -198,24 +204,24 @@ The other keys are the task's own actions, wherever point is.
   (let* ((form (lumenna--task-form task))
          (shown (lambda (key) (let ((value (plist-get form key)))
                                 (if (string-empty-p value) "none" value))))
+         (label #'lumenna--field-label)
          (fields
-          `(("Title" title ,(plist-get form :title))
-            ("Due" due ,(funcall shown :due))
+          `((,(funcall label 'title) title ,(plist-get form :title))
+            (,(funcall label 'due) due ,(funcall shown :due))
             ;; A rule the words cannot say leaves the field empty; say the rule.
-            ("Repeats" repeat ,(cond ((not (string-empty-p (plist-get form :repeat))) (plist-get form :repeat))
+            (,(funcall label 'repeat) repeat ,(cond ((not (string-empty-p (plist-get form :repeat))) (plist-get form :repeat))
                                      ((plist-get task :recurrence) (format "by the rule %s" (plist-get task :recurrence)))
                                      (t "no")))
-            ("Priority" priority ,(let ((id (format "%s" (plist-get form :priority))))
-                                    (or (seq-some (lambda (c) (and (equal (plist-get c :id) id) (plist-get c :title)))
-                                                  (lumenna--value "form.priorities"))
-                                        id)))
-            ("Estimate" estimate ,(funcall shown :estimate))
-            ("Project" project ,(funcall shown :project))
-            ("Labels" labels ,(funcall shown :labels))
+            (,(funcall label 'priority) priority
+             ,(let ((id (format "%s" (plist-get form :priority))))
+                (or (car (rassoc id (lumenna-field-options (lumenna-form-field "task" 'priority)))) id)))
+            (,(funcall label 'estimate) estimate ,(funcall shown :estimate))
+            (,(funcall label 'project) project ,(funcall shown :project))
+            (,(funcall label 'labels) labels ,(funcall shown :labels))
             ("Waits for" nil ,(let ((d (append (plist-get task :depends) nil)))
                                 (if d (string-join (mapcar (lambda (x) (plist-get x :title)) d) ", ") "nothing")))
             ("State" nil ,(string-join (append (plist-get task :state) nil) ", "))
-            ("Notes" notes ,(funcall shown :notes)))))
+            (,(funcall label 'notes) notes ,(funcall shown :notes)))))
     (mapcar (lambda (field)
               (list :key (car field) :title (car field) :field (nth 1 field) :value (nth 2 field)))
             fields)))

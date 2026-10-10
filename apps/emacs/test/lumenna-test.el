@@ -319,6 +319,61 @@
     (goto-char (point-min))
     (should-not (search-forward "Dentist" nil t))))
 
+;;;; The core's words
+
+(ert-deftest lumenna-free-time-now-and-a-cancelled-day-are-said-in-the-cores-order ()
+  (lumenna-test--with-store
+    (lumenna-write "block.add" :title "Run" :at "7am" :minutes 30 :date "today" :repeat "every day")
+    (let* ((display-time-24hr-format t)
+           (series (car (split-string (plist-get (aref (plist-get (lumenna-call "block.list") :rows) 0) :id) "@")))
+           (_ (lumenna-call "block.cancel" :id series :date "tomorrow"))
+           (rows (lumenna--day-rows (lumenna-call "plan" :date "tomorrow")))
+           (line (lambda (role) (lumenna-describe (seq-find (lambda (r) (equal (plist-get r :role) role)) rows)))))
+      (should (equal (funcall line "cancelled") "07:00, Run, cancelled for this day"))
+      (should (string-match-p "\\`Free, [0-9]+ hours?\\( [0-9]+ minutes?\\)?, [0-9:]+ to [0-9:]+\\'" (funcall line "free")))
+      (should (string-match-p "\\`Now, [0-9][0-9]:[0-9][0-9]\\'"
+                              (funcall (lambda () (lumenna-describe (seq-find (lambda (r) (equal (plist-get r :role) "now"))
+                                                                             (lumenna--day-rows (lumenna-call "plan")))))))))))
+
+(ert-deftest lumenna-an-empty-list-says-the-cores-words-under-its-heading ()
+  (lumenna-test--with-store
+    (lumenna-blocks)
+    (goto-char (point-min))
+    (forward-line 1)
+    (should (equal (lumenna-test--line) "No blocks."))
+    (should-error (lumenna-row) :type 'user-error)))
+
+(ert-deftest lumenna-the-block-form-asks-in-the-cores-words-the-name-last ()
+  (lumenna-test--with-store
+    (let (asked (answers (list "Run" "today" "7am" "30" "Work" "")))
+      (cl-letf (((symbol-function 'read-string) (lambda (prompt &rest _) (push prompt asked) (pop answers)))
+                ((symbol-function 'completing-read) (lambda (prompt &rest _) (push prompt asked) (pop answers))))
+        (lumenna-add-block))
+      (should (equal (reverse asked)
+                     `("Name: " "The day it happens, or the first day it repeats. Day: "
+                       "A time, such as 9am or 14:30. Starts at: " "Lasts, in minutes: "
+                       ,(format-message "Changing it sets the three choices after it to the kind's own. Kind (default Work): ")
+                       "Such as every weekday. Empty for once. Repeats: "))))
+    (should (equal (plist-get (aref (plist-get (lumenna-call "block.list") :rows) 0) :title) "Run"))))
+
+(ert-deftest lumenna-a-destructive-question-says-what-it-does-then-asks-it ()
+  (lumenna-test--with-store
+    (lumenna-write "label.add" :name "calls")
+    (lumenna-labels)
+    (lumenna-test--goto "calls")
+    (let (asked)
+      (cl-letf (((symbol-function 'yes-or-no-p) (lambda (prompt) (setq asked prompt) nil)))
+        (lumenna-act-delete))
+      (should (equal asked "Tasks wearing it stay; they just stop showing it. Delete calls? ")))))
+
+(ert-deftest lumenna-menus-are-in-title-case-and-the-help-as-written ()
+  (should (equal (lumenna--title-case "Fold or unfold what sits under this line")
+                 "Fold or Unfold What Sits under This Line"))
+  (should (equal (lumenna--title-case "Mark Done, or Mark Not Done") "Mark Done, or Mark Not Done"))
+  (let ((menu (lumenna--menu 'lumenna-day-mode)))
+    (should (assoc "The Day" (cdr menu)))
+    (should (seq-find (lambda (item) (equal (aref item 0) "Add a Block")) (cdr (assoc "The Day" (cdr menu)))))))
+
 ;;;; Organising
 
 (ert-deftest lumenna-a-project-is-made-renamed-archived-and-shows-its-tasks ()
@@ -517,16 +572,18 @@
     (should (derived-mode-p 'lumenna-devices-mode))))
 
 (ert-deftest lumenna-an-empty-code-is-the-clipboards-but-never-this-devices-own ()
-  (let ((kill-ring nil) (kill-ring-yank-pointer nil) (interprogram-paste-function nil)
-        (lumenna--shown-code nil))
-    (kill-new "theirs123")
-    (lumenna-test--answering ("")
-      (should (equal (lumenna--read-code) "theirs123")))
-    (setq lumenna--shown-code "theirs123")
-    (lumenna-test--answering ("")
-      (should-error (lumenna--read-code) :type 'user-error))
-    (lumenna-test--answering ("typed456")
-      (should (equal (lumenna--read-code) "typed456")))))
+  (lumenna-test--with-store
+    (let ((kill-ring nil) (kill-ring-yank-pointer nil) (interprogram-paste-function nil)
+          (lumenna--shown-code nil))
+      (kill-new "theirs123")
+      (lumenna-test--answering ("")
+        (should (equal (lumenna--read-code) "theirs123")))
+      (setq lumenna--shown-code "theirs123")
+      (lumenna-test--answering ("")
+        (should (equal (cadr (should-error (lumenna--read-code) :type 'user-error))
+                       "Type or paste the code the other device shows")))
+      (lumenna-test--answering ("typed456")
+        (should (equal (lumenna--read-code) "typed456"))))))
 
 (ert-deftest lumenna-a-running-daemon-is-used-over-its-socket ()
   (skip-unless (not (eq system-type 'windows-nt)))
