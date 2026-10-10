@@ -633,7 +633,7 @@ class Menus(unittest.TestCase):
         self.assertIn("The code is copied, so it can be pasted on the other device.", script.said)
         self.assertNotEqual(btspeak_stub._clipboard[0], "the person's own")
 
-    def test_pairing_by_a_code_from_the_clipboard_compares_the_words_and_syncs(self):
+    def test_pairing_by_a_typed_code_compares_the_words_and_syncs(self):
         other_profile = Path(tempfile.mkdtemp())
         other = connect(other_profile)
         try:
@@ -646,12 +646,11 @@ class Menus(unittest.TestCase):
                 other.call("pair.confirm", match=bool(event.get("words")))
 
             threading.Thread(target=confirm_there, daemon=True).start()
-            # Left empty, the code comes from the clipboard, as one sent from the other
-            # device would arrive.
-            btspeak_stub._clipboard[0] = code
+            # Something else on the clipboard is never taken for the code.
+            btspeak_stub._clipboard[0] = "not the code"
             script = play([
                 ("choose", "Pair using this code"),
-                ("input", ""),
+                ("input", code),
                 ("wait",),
                 ("confirm", True),
                 ("wait",),

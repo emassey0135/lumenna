@@ -183,21 +183,14 @@ def pairing_words(session: Session, name: str = "this device") -> dict:
     return session.words("form.pairing_words", this_device=name, local=True)
 
 
-def ask_code(session: Session, own: str = "") -> str | None:
-    """The other device's code: typed, or, left empty, the clipboard's, where a code sent from
-    the other device usually arrives. This device's own code, if it was copied, is never the
-    other's. None if cancelled; empty if there is no code to be had."""
+def ask_code(session: Session) -> str | None:
+    """The other device's code, as typed or pasted into the field. Nothing is taken from the
+    clipboard unasked, as in every other client. None if cancelled; empty if none was given."""
     words = pairing_words(session)
-    text = dialogs.request_input(f"{words['their_code']}. {words['empty_means']}", default_text="")
+    text = dialogs.request_input(words["their_code"], default_text="")
     if text is None:
         return None
-    text = text.strip()
-    if not text:
-        _, pasted = clipboard.paste(False, 200, multiline=False)
-        text = pasted.strip()
-        if text == own:
-            text = ""
-    return text.replace(" ", "")
+    return text.strip().replace(" ", "")
 
 
 def pair(session: Session) -> str:
@@ -256,7 +249,7 @@ def run_pairing(session: Session, params: dict) -> str:
         menu.close()
 
     def code_instead(menu) -> None:
-        code = ask_code(session, own=shown["code"])
+        code = ask_code(session)
         if code:
             shown["instead"] = code
             menu.close()
