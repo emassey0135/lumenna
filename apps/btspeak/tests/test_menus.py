@@ -7,6 +7,8 @@ server answers, with parameters it reads, and says something back.
 
 from __future__ import annotations
 
+import datetime
+
 import os
 import shutil
 import sys
@@ -193,7 +195,9 @@ class Menus(unittest.TestCase):
 
     def test_a_sitting_is_given_a_length_when_assigned_and_can_change_it(self):
         self.call("task.add", text="draft")
-        self.call("block.add", title="Focus", at="9am", minutes=120, date="today")
+        # Ending at midnight, so it is never over yet today, whenever the test runs: a block
+        # already over is not offered to put a task in.
+        self.call("block.add", title="Focus", at="11pm", minutes=60, date="today")
         script = self.run_script(
             [
                 ("key", "draft", "b"),
@@ -338,12 +342,15 @@ class Menus(unittest.TestCase):
         self.assertEqual(self.call("block.list")["rows"], [])
 
     def test_the_day_says_free_time_now_and_a_cancelled_day_in_the_cores_order(self):
-        added = self.call("block.add", title="Run", at="7am", minutes=30, repeat="every day", date="today")
+        # Two hours from now, so the present is never inside it: inside a block, the block is
+        # where now is, and there is no Now row.
+        at = (datetime.datetime.now() + datetime.timedelta(hours=2)).strftime("%H:%M")
+        added = self.call("block.add", title="Run", at=at, minutes=30, repeat="every day", date="today")
         series = self.call("block.list")["rows"][0]["id"].split("@")[0]
         self.call("block.cancel", id=series, date="tomorrow")
         tomorrow = day.plan_rows(self.call("plan", date="tomorrow"))
         cancelled = next(row for row in tomorrow if row["role"] == "cancelled")
-        self.assertEqual(day.describe(cancelled), "07:00, Run, cancelled for this day")
+        self.assertEqual(day.describe(cancelled), f"{at}, Run, cancelled for this day")
         free = next(row for row in tomorrow if row["role"] == "free")
         self.assertRegex(day.describe(free), r"^Free, \d+ hours?( \d+ minutes?)?, \d\d:\d\d to \d\d:\d\d$")
         now = next(row for row in day.plan_rows(self.call("plan")) if row["role"] == "now")
