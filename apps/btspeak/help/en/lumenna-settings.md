@@ -12,7 +12,7 @@ On the Settings page, r turns this on or off. When it is on, a task you type is 
 
 Your paired devices and how syncing with each last went. Enter renames one. Its context menu has Rename, r, and, for every device but this one, Unpair, which leaves that device with what it already has; Control-D does the same.
 
-The main menu, M-Chord, has Sync now, s, and Pair a device, p. To pair, start pairing on both devices. Choose Wait for the other device on both: on the same network they find each other. Otherwise choose Pair using this code on one, and type the code the other shows; left empty, the code on the clipboard is used. While waiting, Pair using this code gives up the wait and joins with a code instead. Both show three words: say yes only if they match.
+The main menu, M-Chord, has Sync now, s, and Pair a device, p. To pair, start pairing on both devices. Choose Wait for the other device on both: on the same network they find each other. Otherwise choose Pair using this code on one, and type the code the other shows; left empty, the code on the clipboard is used. While waiting, Copy code puts this device's code on the clipboard, to paste on the other device, and Pair using this code gives up the wait and joins with a code instead. Both show three words: say yes only if they match.
 
 To keep in sync while Lumenna is not open, run "lum daemon install" once from a shell.
 

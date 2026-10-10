@@ -182,7 +182,7 @@ def edit_task(session: Session, task: dict) -> str:
         before = session.call("form.task_fields", task=task)["value"]
     except LumennaError as error:
         return error.message
-    projects = [row["title"] for row in session.call("project.list").get("rows", [])]
+    projects = project_choices(session)
     fields = []
     for field in session.words("form.task_form"):
         key = field["key"]
@@ -208,18 +208,27 @@ def edit_task(session: Session, task: dict) -> str:
     return session.write("task.edit", id=task["id"], **{k: v for k, v in edit.items() if v is not None})
 
 
+def project_choices(session: Session) -> dict:
+    """The projects the task form offers (`form.project_options`), in tree order, as the
+    device's list takes them: name to what is said, with the level where a project sits
+    under another, since a list says nothing of indentation."""
+    return {
+        option["id"]: option["title"] if not option.get("depth") else f"{option['title']}, level {option['depth'] + 1}"
+        for option in session.call("form.project_options").get("value", [])
+    }
+
+
 def form_field(field: dict, value: str, choices=None) -> dialogs.InputField:
     """One of the core's form fields (`form.task_form`, `form.block_form`) as the device's
     form takes it: a choice where it has options, else a line, or several lines where it
-    may run to them; named, and hinted, in the core's words. A title is one line here,
-    though it may hold several: the device edits a multi-line field as a document."""
+    may run to them; named, and hinted, in the core's words."""
     options = choices or {o["id"]: o["title"] for o in field.get("options", [])}
     kind = field["kind"]
     if options:
         return dialogs.InputField(
             key=field["key"], prompt=field["label"], field_type="choice", choices=options, default_text=value,
         )
-    multiline = kind == "lines" and field["key"] != "title"
+    multiline = kind == "lines"
     return dialogs.InputField(
         key=field["key"], prompt=field["label"], default_text=value,
         field_type="multiline" if multiline else "text", required=field["key"] == "title",
