@@ -186,14 +186,11 @@ struct BlockForm: View {
             Section {
                 namedField(words["title"], text: $model.fields.title)
                 if model.isAdding {
-                    Labelled(words["date"].label) {
-                        DatePicker(words["date"].label, selection: $model.day, displayedComponents: .date)
-                            .modifier(FieldHint(words["date"].hint))
-                    }
+                    NamedDatePicker(
+                        words["date"].label, selection: $model.day, displayedComponents: .date, hint: words["date"].hint
+                    )
                 }
-                Labelled(words["start"].label) {
-                    DatePicker(words["start"].label, selection: $model.start, displayedComponents: .hourAndMinute)
-                }
+                NamedDatePicker(words["start"].label, selection: $model.start, displayedComponents: .hourAndMinute)
                 lasts
             } header: {
                 #if os(macOS)

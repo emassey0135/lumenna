@@ -138,9 +138,7 @@ struct SettingControl: View {
                 ))
             }
         case .time:
-            Labelled(setting.title) {
-                DatePicker(setting.title, selection: model.time(setting.key), displayedComponents: .hourAndMinute)
-            }
+            NamedDatePicker(setting.title, selection: model.time(setting.key), displayedComponents: .hourAndMinute)
         case .number:
             Stepper(value: Binding(
                 get: { Int(model.values[setting.key] ?? "") ?? 1 },

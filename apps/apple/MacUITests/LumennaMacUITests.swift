@@ -97,6 +97,10 @@ final class LumennaMacUITests: XCTestCase {
         app.typeKey("n", modifierFlags: [.command, .shift])
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
+        // Its day and start are pickers named for what they set.
+        for picker in ["Day", "Starts at"] {
+            XCTAssertTrue(app.datePickers[picker].exists, "no \(picker) picker: \(app.debugDescription)")
+        }
         enter("Deep work", into: name)
         app.buttons["Save"].click()
         let day = window.outlines["The day"]

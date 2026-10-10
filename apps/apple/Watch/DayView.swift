@@ -224,7 +224,7 @@ private struct DayChoice: View {
                 FormParts.caption(question.hint)
             }
             Section {
-                DatePicker(question.label, selection: $day, displayedComponents: .date)
+                NamedDatePicker(question.label, selection: $day, displayedComponents: .date)
                 Button(question.yes) { goTo(typed) }
             }
         }
