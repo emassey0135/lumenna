@@ -249,6 +249,22 @@ final class LumennaUITests: XCTestCase {
     /// `namedRows` is for forms built from `NamedRow` or `NamedDatePicker`, whose visible field names are hidden
     /// from VoiceOver on purpose — the field carries the name — and which the audit reports
     /// as possibly inaccessible text. Only that finding, only on those screens.
+    /// Whether a scroll view's edge cuts through `frame`, part inside and part outside, or it
+    /// has scrolled under a navigation bar, which blurs it.
+    private func cutByAScrollEdge(_ frame: CGRect) -> Bool {
+        let scrolling = app.collectionViews.allElementsBoundByIndex + app.scrollViews.allElementsBoundByIndex
+            + app.tables.allElementsBoundByIndex
+        let cut = scrolling.contains { view in
+            let visible = view.frame.intersection(frame)
+            return !visible.isNull && visible.height > 0 && visible.height < frame.height - 1
+        }
+        let underABar = app.navigationBars.allElementsBoundByIndex.contains { bar in
+            let under = bar.frame.intersection(frame)
+            return !under.isNull && under.height > 0
+        }
+        return cut || underABar
+    }
+
     private func audit(
         _ types: XCUIAccessibilityAuditType = .all, _ screen: String = "", namedRows: Bool = false
     ) throws {
@@ -257,6 +273,13 @@ final class LumennaUITests: XCTestCase {
             // The keyboard's predictive-text cells are the system's, not this app's, and
             // nothing here can label them.
             if issue.detailedDescription.contains("TUIPredictionViewCell") {
+                return true
+            }
+            // Text a scrolling form's edge cuts through, half drawn, or scrolled under the bar:
+            // the audit measures it against whatever lies outside the form — on iPad the dimmed
+            // page around a sheet — or the bar's blur. Only contrast, only an element cut that
+            // way: the same text shown whole is judged elsewhere (the settings pages' captions).
+            if issue.auditType == .contrast, let element = issue.element, self.cutByAScrollEdge(element.frame) {
                 return true
             }
             // SwiftUI text is reported as only *partly* scaling — captions, and once even a
@@ -351,8 +374,18 @@ final class LumennaUITests: XCTestCase {
         app.buttons["Break"].tap()
         let takes = app.switches["Takes tasks"]
         if !takes.isHittable { app.swipeUp() }
+        // Still for a moment first: a tap while the form still glides after the swipe only
+        // stops it, and on a runner the break was saved taking no tasks.
+        var last = CGRect.null
+        for _ in 0..<20 where takes.frame != last {
+            last = takes.frame
+            usleep(150_000)
+        }
         XCTAssertEqual(takes.value as? String, "0", "a break takes no tasks until set apart")
         takes.switches.firstMatch.tap()
+        let on = NSPredicate(format: "value == '1'")
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: on, evaluatedWith: takes)], timeout: 3), .completed,
+                       "Takes tasks was not turned on")
         app.buttons["Save"].tap()
 
         let block = app.cells.containing(NSPredicate(format: "value CONTAINS 'takes tasks'")).firstMatch
@@ -650,6 +683,33 @@ final class LumennaUITests: XCTestCase {
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count) + text)
     }
 
+    /// Sets the block form's Starts at through its wheels, and closes them.
+    private func setStart(_ start: (hour: String, minute: String, period: String)) {
+        let picker = app.datePickers["Starts at"].firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 5), app.debugDescription)
+        picker.tap()
+        let wheels = app.pickerWheels
+        XCTAssertTrue(wheels.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+        wheels.element(boundBy: 0).adjust(toPickerWheelValue: start.hour)
+        wheels.element(boundBy: 1).adjust(toPickerWheelValue: start.minute)
+        // Hour, minute and AM/PM, as the simulator's US English clock has them.
+        wheels.element(boundBy: 2).adjust(toPickerWheelValue: start.period)
+        let set = "\(start.hour):\(start.minute) \(start.period)"
+        // The time shown is on the control inside the named picker.
+        let chosen = picker.descendants(matching: .any).firstMatch
+        // The clock puts a narrow no-break space before AM and PM.
+        let shown = (chosen.value as? String)?.replacingOccurrences(of: "\u{202F}", with: " ")
+        XCTAssertEqual(shown, set, "the start was not set")
+        // The wheels are in a popover, which the first tap outside only closes: on iPad
+        // that tap was Save's, and the form stayed. Closed first, as a person would.
+        // Its dismiss region lies over everything, so the tap goes on the form's own title bar:
+        // away from the popover, and inside the sheet, where a tap outside it on iPad closed
+        // the whole form.
+        let outside = app.descendants(matching: .any)["PopoverDismissRegion"].firstMatch
+        if outside.exists { app.navigationBars["New Block"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
+        XCTAssertTrue(wheels.firstMatch.waitForNonExistence(timeout: 5), "the time's popover stayed open")
+    }
+
     /// Adds a block today. `start` (11, 00, PM) overrides the form's default of 09:00, for a
     /// test that needs the block not yet over whenever it runs.
     private func addBlock(_ title: String, repeating: String? = nil, start: (hour: String, minute: String, period: String)? = nil) {
@@ -659,23 +719,7 @@ final class LumennaUITests: XCTestCase {
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
         name.typeText(title)
-        if let start {
-            let picker = app.datePickers["Starts at"].firstMatch
-            XCTAssertTrue(picker.waitForExistence(timeout: 5), app.debugDescription)
-            picker.tap()
-            let wheels = app.pickerWheels
-            XCTAssertTrue(wheels.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
-            wheels.element(boundBy: 0).adjust(toPickerWheelValue: start.hour)
-            wheels.element(boundBy: 1).adjust(toPickerWheelValue: start.minute)
-            // Hour, minute and AM/PM, as the simulator's US English clock has them.
-            wheels.element(boundBy: 2).adjust(toPickerWheelValue: start.period)
-            let set = "\(start.hour):\(start.minute) \(start.period)"
-            // The time shown is on the control inside the named picker.
-            let chosen = picker.descendants(matching: .any).firstMatch
-            // The clock puts a narrow no-break space before AM and PM.
-            let shown = (chosen.value as? String)?.replacingOccurrences(of: "\u{202F}", with: " ")
-            XCTAssertEqual(shown, set, "the start was not set")
-        }
+        if let start { setStart(start) }
         if let repeating {
             let repeats = app.textFields["Repeats"]
             repeats.tap()
