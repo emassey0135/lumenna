@@ -142,12 +142,8 @@ async fn answer(app: &App, from: &Asking, action: &Action, typed: Option<String>
         Question::Confirm { title, message, yes } => {
             prompts::confirm(window, title, message, yes).await.then_some(Answer::Yes)
         }
-        Question::Text { title, label, initial, hint, yes, .. } => {
-            let start = typed.as_deref().unwrap_or(initial);
-            let text = prompts::ask(window, title, &format!("{label}:"), hint, start, yes).await?;
-            Some(Answer::Text { text })
-        }
-        Question::Pick { title, length } => {
+        Question::Text { .. } => Some(Answer::Text { text: ask_text(window, &action.question, typed.as_deref()).await? }),
+        Question::Pick { title, length, yes } => {
             let choices = match app.core.lumenna.choices(action.clone()) {
                 Ok(choices) => choices,
                 Err(error) => {
@@ -162,10 +158,10 @@ async fn answer(app: &App, from: &Asking, action: &Action, typed: Option<String>
             }
             let options: Vec<(String, u32)> =
                 choices.choices.iter().map(|choice| (speech::choice(choice, &app.clock), choice.depth)).collect();
-            let index = prompts::pick(window, title, "C_hoices:", &options, &action.title).await?;
+            let index = prompts::pick(window, title, "C_hoices:", &options, yes).await?;
             let id = choices.choices.get(index)?.id.clone();
             let length = match length {
-                Some(hint) => Some(prompts::ask(window, &action.title, "_Length:", hint, "", &action.title).await?),
+                Some(_) => Some(ask_text(window, &lumenna_surface::length_question(), None).await?),
                 None => None,
             };
             Some(Answer::Picked { id, length })
@@ -176,6 +172,13 @@ async fn answer(app: &App, from: &Asking, action: &Action, typed: Option<String>
             Some(Answer::Picked { id: answers.get(index)?.id.clone(), length: None })
         }
     }
+}
+
+/// Asks a line of text as the core words the question, starting from `typed` if given:
+/// what was typed before, when the answer was refused.
+pub async fn ask_text(window: &gtk::Window, question: &Question, typed: Option<&str>) -> Option<String> {
+    let Question::Text { title, label, initial, hint, yes, .. } = question else { return None };
+    prompts::ask(window, title, &format!("{label}:"), hint, typed.unwrap_or(initial), yes).await
 }
 
 // ---------------------------------------------------------------------------------------
@@ -258,15 +261,15 @@ fn finish(app: &App, change: &Change) {
     app.say_change(change);
 }
 
-/// A new saved filter: its name, then its query.
+/// A new saved filter: its name, then its query, as the core asks them.
 async fn new_filter(app: &Rc<App>) {
-    let Some(name) = prompts::ask(&app.window, "New Saved Filter", "_Name:", "", "", "Next").await else { return };
-    let hint = lumenna_surface::actions::QUERY;
+    let window: gtk::Window = app.window.clone().upcast();
+    let questions = lumenna_surface::new_filter_questions();
+    let [name_question, query_question] = questions.as_slice() else { return };
+    let Some(name) = ask_text(&window, name_question, None).await else { return };
     let mut query = String::new();
     loop {
-        let Some(typed) = prompts::ask(&app.window, &format!("Query for {name}"), "_Query:", hint, &query, "Add").await else {
-            return;
-        };
+        let Some(typed) = ask_text(&window, query_question, Some(&query)).await else { return };
         match app.core.lumenna.add_filter(&name, &typed) {
             Ok(change) => {
                 app.store_changed();

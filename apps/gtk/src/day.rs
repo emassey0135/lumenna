@@ -22,7 +22,7 @@ use lumenna_surface::{CancelledBlock, Plan, PlanAssignment, PlanBlock, PlanItem}
 use crate::core::sentence;
 use crate::tree::{Item, Tree};
 use crate::window::{App, spawn};
-use crate::{actions, prompts};
+use crate::actions;
 
 /// One row of the day.
 #[derive(Clone)]
@@ -120,7 +120,7 @@ impl DayView {
         let weak = Rc::downgrade(self);
         self.tree.connect_selected(move |_| {
             if let (Some(day), Some(app)) = (weak.upgrade(), crate::window::app()) {
-                app.detail.show(&app, day.selected_task().as_deref());
+                app.detail.follow(&app, day.selected_task().as_deref());
             }
         });
         let weak = Rc::downgrade(self);
@@ -288,7 +288,8 @@ impl DayView {
     pub fn ask_for_day(self: &Rc<Self>, app: &Rc<App>) {
         let (day, app) = (Rc::clone(self), Rc::clone(app));
         spawn(async move {
-            let Some(phrase) = prompts::ask(&app.window, "Go to Day", "_Day:", "A date, such as friday, or 12 october.", "", "Go").await else {
+            let window: gtk::Window = app.window.clone().upcast();
+            let Some(phrase) = actions::ask_text(&window, &lumenna_surface::go_to_day_question(), None).await else {
                 return;
             };
             match app.core.lumenna.plan(Some(phrase)) {
