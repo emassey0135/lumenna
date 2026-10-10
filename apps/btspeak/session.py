@@ -87,15 +87,18 @@ class Command:
     moves to the next row starting with it. `applies` says which rows a context command is for;
     `deletes` makes it what the delete keys do — Control-D and the D chord. `by_key`, when
     given, is what the letter does instead of `run`: asking which, where a row has several.
+    `refuse(row)`, when given, says why the letter does nothing on a row it does not apply to.
     """
 
-    def __init__(self, label, run, key: str = "", applies=None, deletes: bool = False, by_key=None) -> None:
+    def __init__(self, label, run, key: str = "", applies=None, deletes: bool = False, by_key=None,
+                 refuse=None) -> None:
         self.label = label
         self.run = run
         self.key = key
         self.applies = applies or (lambda row: True)
         self.deletes = deletes
         self.by_key = by_key or run
+        self.refuse = refuse
 
     def label_for(self, row) -> str:
         return self.label(row) if callable(self.label) else self.label
@@ -214,7 +217,8 @@ def selected_row(dialog):
 
 def keys(context, app):
     """The letters, each running the first command it names that applies here: one for the
-    row under the cursor first, then one for the screen."""
+    row under the cursor first, then one for the screen. A letter that does neither says why,
+    rather than leave the person guessing."""
     letters = {command.key for command in [*context, *app] if command.key}
 
     def run(key, item):
@@ -225,6 +229,9 @@ def keys(context, app):
         for command in app:
             if command.key == key:
                 return command.run(None)
+        for command in context:
+            if command.key == key and command.refuse is not None:
+                return command.refuse(row)
         return ""
 
     return {key: (lambda item, key=key: run(key, item)) for key in letters}

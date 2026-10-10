@@ -173,19 +173,19 @@ def ask_pick(session: Session, action: dict, question: dict):
 
 
 def another_day(session: Session) -> str:
-    """A work block on a day named: its identifier, empty if cancelled, or a sentence to say
-    marked with a leading NUL."""
+    """A work block on a day named, from what the core offers for it: its identifier, empty
+    if cancelled, or a sentence to say marked with a leading NUL."""
     when = dialogs.request_input("Which day?", default_text="next monday")
     if not when:
         return ""
     try:
-        other = session.call("block.choices", **{"from": when, "days": 1})
+        offered = session.call("choices", **{"from": when, "days": 1})
     except LumennaError as error:
         return "\0" + error.message
-    blocks = other.get("blocks", [])
-    if not blocks:
-        return f"\0{spoken_day(other.get('from', ''))} has no work blocks to put it in"
-    return choose({b["id"]: f"{b['title']}, {clock(b['start'])} to {clock(b['end'])}" for b in blocks}, "Put it in") or ""
+    choices = offered.get("choices", [])
+    if not choices:
+        return "\0" + offered.get("announcement", "")
+    return choose({c["id"]: choice_line(c) for c in choices}, "Put it in") or ""
 
 
 def of_kind(row, *kinds: str) -> list[dict]:
@@ -204,6 +204,20 @@ def run_kind(session: Session, row, *kinds: str) -> str:
             return ""
         return act(session, matching[index], row)
     return act(session, matching[0], row)
+
+
+def not_offered(session: Session, kind: str, row, subject=None) -> str:
+    """Why `row` does not offer `kind`, in the core's words."""
+    own = (row or {}).get("actions", [])
+    subject = own[0]["subject"] if own else subject
+    if subject is None:
+        return "Nothing to do here"
+    try:
+        return session.call(
+            "form.not_offered", kind=kind, subject=subject, this_device=bool((row or {}).get("this_device")),
+        ).get("value", "")
+    except LumennaError as error:
+        return error.message
 
 
 def _slots(rows) -> list[tuple[str, int]]:
@@ -234,6 +248,11 @@ def commands(session: Session, rows, before=(), after=()) -> list[Command]:
     """The rows' actions as context commands, between this screen's own `before` (Show its
     tasks) and `after`: each offered on the rows that have it, under the row's own title."""
     made = []
+    # What each kind is done to on this screen, for a row with no actions of its own.
+    subjects = {}
+    for row in rows:
+        for action in row.get("actions", []):
+            subjects.setdefault(action["kind"], action["subject"])
     for kind, nth in _slots(rows):
         key = KEYS.get(kind, "") if nth == 0 else ""
         made.append(Command(
@@ -244,6 +263,7 @@ def commands(session: Session, rows, before=(), after=()) -> list[Command]:
             deletes=kind in DELETES and nth == 0,
             # A letter with several of its kind on the row asks which.
             by_key=(lambda row, kind=kind: run_kind(session, row, kind)) if key else None,
+            refuse=(lambda row, kind=kind: not_offered(session, kind, row, subjects.get(kind))) if key else None,
         ))
     return [*before, *made, *after]
 
