@@ -353,3 +353,14 @@ fn the_project_field_offers_every_project_not_archived_in_tree_order() {
     assert_eq!(form.iter().find(|f| f.key == "project").unwrap().kind, lumenna_surface::FieldKind::Choice);
     assert_eq!(form.iter().find(|f| f.key == "title").unwrap().kind, lumenna_surface::FieldKind::Line);
 }
+
+#[test]
+fn a_new_block_starts_at_the_next_hour_today_and_when_the_day_starts_on_another_day() {
+    let (_directory, lumenna) = open();
+    assert_eq!(lumenna.new_block_start(Some("tomorrow".to_owned())).unwrap(), "08:00");
+    let today = lumenna.new_block_start(None).unwrap();
+    let hour: i8 = today[..2].parse().unwrap();
+    let now = jiff::Zoned::now().hour();
+    assert!(hour == (now + 1).min(23) || (hour == 8 && now + 1 < 8), "{today} at {now}");
+    assert!(today.ends_with(":00"));
+}
