@@ -388,6 +388,20 @@
                        "Such as every weekday. Empty for once. Repeats: "))))
     (should (equal (plist-get (aref (plist-get (lumenna-call "block.list") :rows) 0) :title) "Run"))))
 
+(ert-deftest lumenna-a-new-block-starts-when-the-core-says-for-the-day-typed ()
+  (lumenna-test--with-store
+    (lumenna-write "config.set" :key "day-start" :value "07:30")
+    (let (initials (answers (list "Run" "tomorrow" nil "30" "Work" "")))
+      (cl-letf (((symbol-function 'read-from-minibuffer)
+                 (lambda (_prompt initial &rest _)
+                   (push initial initials)
+                   (let ((answer (pop answers))) (or answer initial))))
+                ((symbol-function 'completing-read) (lambda (&rest _) (pop answers))))
+        (lumenna-add-block))
+      ;; Another day starts when the day does; the start field begins there.
+      (should (equal (nth 2 (reverse initials)) "07:30")))
+    (should (equal (plist-get (aref (plist-get (lumenna-call "block.list") :rows) 0) :due_time) "07:30"))))
+
 (ert-deftest lumenna-a-rule-the-words-cannot-say-is-noted-at-repeats ()
   (lumenna-test--with-store
     (lumenna-write "block.add" :title "Board" :at "6pm" :minutes 60 :date "today" :repeat "every day")
