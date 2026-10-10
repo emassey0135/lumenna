@@ -22,7 +22,7 @@ async function place(page: Page, name: RegExp) {
 }
 
 async function addBlock(page: Page, title: string, at: string, repeat = "") {
-  await page.getByRole("button", { name: "Add block…" }).click();
+  await page.getByRole("button", { name: "Add block" }).click();
   const form = page.getByRole("dialog", { name: "New Block" });
   await expect(form.getByRole("textbox", { name: "Name", exact: true })).toBeFocused();
   await form.getByRole("textbox", { name: "Name", exact: true }).fill(title);

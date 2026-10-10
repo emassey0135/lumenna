@@ -11,6 +11,7 @@ import { Blocks } from "./Blocks";
 import { core } from "./core";
 import type { Place } from "./core";
 import { Day } from "./Day";
+import { KeyboardShortcuts, asksForKeys } from "./Keys";
 import { Details } from "./Details";
 import type { DetailsHandle } from "./Details";
 import { QuickAdd } from "./QuickAdd";
@@ -32,6 +33,7 @@ export function App() {
   const [selected, setSelected] = useState<string | undefined>();
   const [adding, setAdding] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [keysOpen, setKeysOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const details = useRef<DetailsHandle>(null);
 
@@ -117,6 +119,20 @@ export function App() {
     return () => window.removeEventListener("keydown", keys);
   }, [ready]);
 
+  // "?" opens the keyboard shortcuts from anywhere but a field or a dialog. Taken before a
+  // list sees it, where it would find a row by typing.
+  useEffect(() => {
+    if (!ready) return;
+    const keys = (event: KeyboardEvent) => {
+      if (!asksForKeys(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setKeysOpen(true);
+    };
+    window.addEventListener("keydown", keys, true);
+    return () => window.removeEventListener("keydown", keys, true);
+  }, [ready]);
+
   if (failure) {
     return (
       <main className="app">
@@ -136,7 +152,8 @@ export function App() {
         <Button onPress={() => setAdding(true)}>New task</Button>
         <Button onPress={() => void undo(false)}>Undo</Button>
         <Button onPress={() => void undo(true)}>Redo</Button>
-        <Button onPress={() => setSettingsOpen(true)}>Settings…</Button>
+        <Button onPress={() => setSettingsOpen(true)}>Settings</Button>
+        <Button onPress={() => setKeysOpen(true)}>Keyboard shortcuts</Button>
         {/* In the banner, so landmark navigation does not skip it. */}
         {notice && (
           <p className="notice" role="note">
@@ -187,6 +204,7 @@ export function App() {
           void startSyncing();
         }}
       />
+      <KeyboardShortcuts isOpen={keysOpen} onClose={() => setKeysOpen(false)} />
       <Prompts />
       <BlockForms />
       <QuickAdd

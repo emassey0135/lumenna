@@ -99,7 +99,7 @@ test("a task waits for another, and stops", async ({ page }) => {
 
 test("a planning setting applies when its field is left, and says so", async ({ page }) => {
   await open(page);
-  await page.getByRole("button", { name: "Settings…" }).click();
+  await page.getByRole("button", { name: "Settings" }).click();
   const settings = page.getByRole("dialog", { name: "Settings" });
   await expect(settings.getByRole("tab", { name: "Planning" })).toHaveAttribute("aria-selected", "true");
   await axe(page);
@@ -113,7 +113,7 @@ test("a planning setting applies when its field is left, and says so", async ({ 
   await settings.getByRole("textbox", { name: "Day ends" }).press("Tab");
   await expect(page.locator('[aria-live="polite"]')).toContainText("21:30");
   await settings.getByRole("button", { name: "Close" }).click();
-  await page.getByRole("button", { name: "Settings…" }).click();
+  await page.getByRole("button", { name: "Settings" }).click();
   await expect(page.getByRole("textbox", { name: "Day ends" })).toHaveValue("21:30");
 });
 
@@ -121,7 +121,7 @@ test("a backup downloads, and restores into another browser", async ({ browser }
   const here = await (await browser.newContext()).newPage();
   await open(here);
   await add(here, "Remember this");
-  await here.getByRole("button", { name: "Settings…" }).click();
+  await here.getByRole("button", { name: "Settings" }).click();
   await here.getByRole("tab", { name: "Backups" }).click();
   const downloading = here.waitForEvent("download");
   await here.getByRole("button", { name: "Download a Backup" }).click();
@@ -131,10 +131,10 @@ test("a backup downloads, and restores into another browser", async ({ browser }
 
   const there = await (await browser.newContext()).newPage();
   await open(there);
-  await there.getByRole("button", { name: "Settings…" }).click();
+  await there.getByRole("button", { name: "Settings" }).click();
   await there.getByRole("tab", { name: "Backups" }).click();
   const choosing = there.waitForEvent("filechooser");
-  await there.getByRole("button", { name: "Restore from a Backup…" }).click();
+  await there.getByRole("button", { name: "Restore from a Backup" }).click();
   await (await choosing).setFiles(path);
   // A restore merges every document in the worker, which takes a while beside other tests.
   await expect(there.locator('[aria-live="polite"]')).toContainText("Restored", { timeout: 20_000 });
@@ -145,7 +145,7 @@ test("a backup downloads, and restores into another browser", async ({ browser }
 test("a block's flags follow its kind, and its settings are kept", async ({ page }) => {
   await open(page);
   await places(page).getByRole("row", { name: /^Blocks/ }).click();
-  await page.getByRole("button", { name: "Add block…" }).click();
+  await page.getByRole("button", { name: "Add block" }).click();
   const form = page.getByRole("dialog", { name: "New Block" });
   await form.getByRole("textbox", { name: "Name", exact: true }).fill("Commute");
   await form.getByRole("button", { name: /Kind/ }).click();
@@ -173,7 +173,7 @@ test("space pauses a running timer, and the menu offers resume and stop", async 
   await open(page);
   await add(page, "Write report");
   await places(page).getByRole("row", { name: /^Today/ }).click();
-  await page.getByRole("button", { name: "Add block…" }).click();
+  await page.getByRole("button", { name: "Add block" }).click();
   const form = page.getByRole("dialog", { name: "New Block" });
   await form.getByRole("textbox", { name: "Name", exact: true }).fill("Deep work");
   await form.getByRole("textbox", { name: "Starts at" }).fill("11:30pm");
@@ -226,4 +226,56 @@ test("a weight that is not a number is refused at the field, not taken as inheri
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(dialog).toBeHidden();
   await expect(page.locator('[aria-live="polite"]')).toContainText("Garden");
+});
+
+test("a task's project is chosen from the projects, each saying its level, and Enter in the title saves", async ({ page }) => {
+  await open(page);
+  await placeMenu(page, /^Projects/, "New project");
+  await answer(page, "New project", "Work", "Add");
+  await placeMenu(page, /^Work/, "New project inside");
+  await answer(page, "New project inside Work", "Reports", "Add");
+  await places(page).getByRole("row", { name: /^Inbox/ }).click();
+  await add(page, "File the summary");
+  await page.getByRole("main").getByRole("row", { name: /^File the summary/ }).click();
+  const details = page.getByRole("complementary", { name: "Task details" });
+  await details.getByRole("button", { name: /Project/ }).click();
+  const names = await page.getByRole("option").evaluateAll((options) =>
+    options.map((option) => option.getAttribute("aria-label") ?? option.textContent),
+  );
+  expect(names).toEqual(["Inbox", "Work", "Reports, level 2"]);
+  // Typing finds a project by its name.
+  await page.keyboard.type("Rep");
+  await page.keyboard.press("Enter");
+  await expect(details.getByRole("button", { name: /Project/ })).toContainText("Reports");
+  const title = details.getByRole("textbox", { name: "Title" });
+  await title.fill("File the whole summary");
+  await title.press("Enter");
+  // Saved, it has left the Inbox for Reports, under its new title.
+  await expect(page.getByRole("main").getByRole("row", { name: /^File the summary/ })).toHaveCount(0);
+  await places(page).getByRole("row", { name: /^Reports/ }).click();
+  await expect(page.getByRole("main").getByRole("row", { name: /^File the whole summary/ })).toBeVisible();
+});
+
+test("question mark lists the keys the web binds, grouped as the menus are", async ({ page }) => {
+  await open(page);
+  await places(page).getByRole("row", { name: /^Inbox/ }).focus();
+  await page.keyboard.press("Shift+Slash");
+  const dialog = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("heading", { level: 3 })).toHaveText(["Edit", "In a list", "In a dialog", "Help"]);
+  const edit = dialog.getByRole("table", { name: "Edit" });
+  await expect(edit.getByRole("row", { name: /Undo/ })).toBeVisible();
+  await expect(edit.getByRole("columnheader")).toHaveText(["Key", "Command"]);
+  await expect(dialog.getByRole("cell", { name: "New task" })).toHaveCount(0);
+  await expect(dialog.getByRole("cell", { name: "?" })).toBeVisible();
+  await axe(page);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  // In a field, "?" is typed.
+  await page.getByRole("button", { name: "Keyboard shortcuts" }).click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "New task" }).click();
+  await page.keyboard.press("Shift+Slash");
+  await expect(page.getByRole("combobox", { name: "Task" })).toHaveValue("?");
 });
