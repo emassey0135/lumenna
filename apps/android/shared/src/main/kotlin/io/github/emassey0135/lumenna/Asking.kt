@@ -65,6 +65,7 @@ fun Core.perform(action: Action, asker: Asker, form: (Action) -> Unit, done: (Ch
             // When there is nothing to pick, the core says why, and that is all.
             if (offered.choices.isEmpty()) {
                 say(sentence(offered.announcement, offered.notices))
+                cancelled()
                 return
             }
             asker.pick(action, question.title, offered.choices.map(::option)) { picked ->
@@ -84,7 +85,7 @@ fun Core.rowActions(
     form: (Action) -> Unit = {},
     done: (Change) -> Unit = {},
 ): List<RowAction> = actions.map { action ->
-    RowAction(action.title, action.kind, action.destructive) { perform(action, asker, form, done) }
+    RowAction(action.title, action.kind, action.destructive, action.subject) { perform(action, asker, form, done) }
 }
 
 /** The first of [actions] of one of [kinds]: a key's action on the row in hand. */

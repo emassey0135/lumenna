@@ -67,5 +67,7 @@ data class RowAction(
     val name: String,
     val kind: io.github.emassey0135.lumenna.core.ActionKind? = null,
     val destructive: Boolean = false,
+    /** What the core's action is done to, so a key with nothing to do here can say why. */
+    val subject: io.github.emassey0135.lumenna.core.Subject? = null,
     val run: () -> Unit,
 )

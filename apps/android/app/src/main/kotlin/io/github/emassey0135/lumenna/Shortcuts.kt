@@ -86,6 +86,14 @@ fun Command.rowAction(actions: List<RowAction>): RowAction? = when (this) {
     else -> null
 }
 
+/** The kind of action a row command asks for, to say why a row without one does nothing. */
+val Command.kind: ActionKind?
+    get() = when (this) {
+        Command.MARK_DONE -> ActionKind.MARK_DONE
+        Command.DELETE -> ActionKind.DELETE
+        else -> null
+    }
+
 /**
  * What each command does now. A screen offers a command while it is shown ([Offer]); the most
  * recently shown wins, so the pane in front answers before the one behind it.

@@ -274,7 +274,7 @@ fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
             status.devices.map { device ->
                 // How syncing with it is going, as the core words it for every app.
                 val detail = (listOf(device.platform) + device.status).joinToString(", ")
-                Item(device.nodeId, device.name, detail, actions = device.actions)
+                Item(device.nodeId, device.name, detail, actions = device.actions, thisDevice = device.thisDevice)
             } to status.announcement
         },
         addLabel = "Pair a device",

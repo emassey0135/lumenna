@@ -151,6 +151,7 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
                         listOfNotNull(foldAction(core, folds[index], row.key, folding)),
                     focus = focus.requester(row.key),
                     key = row.key,
+                    say = core::say,
                     open = when (row) {
                         is DayRow.Block -> ({ edit(row.block) })
                         is DayRow.Sitting -> ({ navigator.push(Screen.Task(row.sitting.task)) })
