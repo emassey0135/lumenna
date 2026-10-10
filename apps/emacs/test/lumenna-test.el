@@ -388,6 +388,24 @@
                        "Such as every weekday. Empty for once. Repeats: "))))
     (should (equal (plist-get (aref (plist-get (lumenna-call "block.list") :rows) 0) :title) "Run"))))
 
+(ert-deftest lumenna-a-rule-the-words-cannot-say-is-noted-at-repeats ()
+  (lumenna-test--with-store
+    (lumenna-write "block.add" :title "Board" :at "6pm" :minutes 60 :date "today" :repeat "every day")
+    (lumenna-blocks)
+    (lumenna-test--goto "Board")
+    (let ((real (symbol-function 'lumenna-call)) asked)
+      (cl-letf (((symbol-function 'lumenna-call)
+                 (lambda (method &rest params)
+                   (let ((result (apply real method params)))
+                     ;; As a rule from an import or another app arrives: no words for it.
+                     (if (equal method "block.show")
+                         (plist-put (plist-put (copy-sequence result) :rrule "FREQ=MONTHLY;BYDAY=2TU") :repetition nil)
+                       result))))
+                ((symbol-function 'completing-read) (lambda (&rest _) "Repeats"))
+                ((symbol-function 'read-from-minibuffer) (lambda (prompt &rest _) (setq asked prompt) "")))
+        (lumenna-act-edit))
+      (should (equal asked "It repeats by the rule FREQ=MONTHLY;BYDAY=2TU, which the repetition words cannot say. Leave Repeats empty to keep it. Repeats: ")))))
+
 (ert-deftest lumenna-a-destructive-question-says-what-it-does-then-asks-it ()
   (lumenna-test--with-store
     (lumenna-write "label.add" :name "calls")
