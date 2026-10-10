@@ -621,14 +621,10 @@
     (lumenna-activate)
     (should (derived-mode-p 'lumenna-devices-mode))))
 
-(ert-deftest lumenna-an-empty-code-is-the-clipboards-but-never-this-devices-own ()
+(ert-deftest lumenna-an-empty-code-is-refused-and-the-kill-ring-is-never-read ()
   (lumenna-test--with-store
-    (let ((kill-ring nil) (kill-ring-yank-pointer nil) (interprogram-paste-function nil)
-          (lumenna--shown-code nil))
+    (let ((kill-ring nil) (kill-ring-yank-pointer nil) (interprogram-paste-function nil))
       (kill-new "theirs123")
-      (lumenna-test--answering ("")
-        (should (equal (lumenna--read-code) "theirs123")))
-      (setq lumenna--shown-code "theirs123")
       (lumenna-test--answering ("")
         (should (equal (cadr (should-error (lumenna--read-code) :type 'user-error))
                        "Type or paste the code the other device shows")))

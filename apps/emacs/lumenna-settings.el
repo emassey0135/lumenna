@@ -149,19 +149,14 @@ pairing says; Emacs runs where finding each other works."
   (string-remove-suffix "." text))
 
 (defun lumenna--read-code ()
-  "The other device's code: typed, or, left empty, the latest kill.
-That is where a code sent from the other device usually arrives, by way of
-the system clipboard.  This device's own code, if it was copied, is never
-the other's."
+  "The other device's code, as typed or yanked into the minibuffer.
+An empty answer is refused rather than filled from the kill ring: nothing
+is taken that the person did not put there, as in every other client."
   (let* ((words (lumenna--pairing-words))
-         (typed (string-trim (read-string (lumenna--prompt (plist-get words :empty_means)
-                                                           (plist-get words :their_code))))))
-    (if (not (string-empty-p typed))
-        typed
-      (let ((killed (ignore-errors (string-trim (current-kill 0 t)))))
-        (if (or (null killed) (string-empty-p killed) (equal killed lumenna--shown-code))
-            (user-error "%s" (lumenna--sentence-message (plist-get words :need_code)))
-          killed)))))
+         (typed (string-trim (read-string (lumenna--prompt "" (plist-get words :their_code))))))
+    (if (string-empty-p typed)
+        (user-error "%s" (lumenna--sentence-message (plist-get words :need_code)))
+      typed)))
 
 ;;;###autoload
 (defun lumenna-pair (&optional code)
