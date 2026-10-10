@@ -78,6 +78,9 @@ test("the details save only what changed", async ({ page }) => {
   await page.getByRole("main").getByRole("row", { name: /^Write report/ }).click();
   const details = page.getByRole("complementary", { name: "Task details" });
   const title = details.getByRole("textbox", { name: "Title" });
+  await details.getByRole("button", { name: /Priority/ }).click();
+  await expect(page.getByRole("option")).toHaveText(["Priority 1, highest", "Priority 2", "Priority 3", "Priority 4, none"]);
+  await page.keyboard.press("Escape");
   await title.fill("Write the report");
   await details.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("main").getByRole("row", { name: /^Write the report/ })).toBeVisible();

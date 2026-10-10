@@ -11,6 +11,8 @@ export type { DayRow, Line } from "./worker";
 export type {
   Action,
   ActionKind,
+  Choice,
+  Setting,
   BlockFields,
   BlockShown,
   SidebarEntry,
