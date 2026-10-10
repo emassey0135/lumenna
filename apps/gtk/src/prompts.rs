@@ -216,18 +216,19 @@ pub async fn ask(parent: &impl IsA<gtk::Window>, title: &str, label: &str, messa
     answer.await.ok().flatten()
 }
 
-/// Asks for one of `options`, from a list. Enter or a double click on one chooses it.
+/// Asks for one of `options`, each a line and how deep it sits, from a list. Enter or a double
+/// click on one chooses it.
 ///
 /// The list is the app's tree, as every list is, so it reads and moves as they do: the arrows
-/// move between the options, and Tab goes on to the buttons.
-pub async fn pick(parent: &impl IsA<gtk::Window>, title: &str, label: &str, options: &[String]) -> Option<usize> {
+/// move between the options, Tab goes on to the buttons, and a project tree nests.
+pub async fn pick(parent: &impl IsA<gtk::Window>, title: &str, label: &str, options: &[(String, u32)]) -> Option<usize> {
     let name = label.replace('_', "");
     let list = Tree::new(name.trim_end_matches(':'));
     list.widget.set_min_content_height(240);
     let items = options
         .iter()
         .enumerate()
-        .map(|(index, option)| Item { key: index.to_string(), text: option.clone(), depth: 0 })
+        .map(|(index, (text, depth))| Item { key: index.to_string(), text: text.clone(), depth: *depth })
         .collect();
     if list.set(items) {
         list.select_key_or_near(None, Some(0));

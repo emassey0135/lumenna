@@ -37,6 +37,14 @@ class DayTest(unittest.TestCase):
         self.session.press("Down")
         self.assertEqual(self.session.focus(), "[tree item] 'Write the report, planned for 45 minutes' level 2 1 of 1")
 
+    def test_mark_done_on_a_sitting_toggles_its_task(self):
+        self.session.press("Down")
+        self.session.press("Control+k", wait=1)
+        self.assertEqual(self.session.said(), ["Completed Write the report"])
+        self.session.press("Control+k", wait=1)
+        self.assertEqual(len(self.session.said()), 1)
+        self.assertIn("Write the report", self.session.lum("task", "list"))
+
     def test_space_on_a_sitting_starts_pauses_and_resumes_its_timer(self):
         self.session.press("Down", "space")
         self.assertEqual(self.session.said(), ["Started timer"])

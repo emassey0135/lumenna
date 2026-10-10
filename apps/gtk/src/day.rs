@@ -5,7 +5,8 @@
 //! now as a position rather than a highlight. Opening the day puts focus on now, not on
 //! midnight.
 //!
-//! On a sitting, Space starts, pauses or resumes its timer and Delete takes it out of the
+//! A row's actions are the core's (`actions`), and the keys mean what they mean on every row:
+//! on a sitting, Space starts, pauses or resumes its timer and Delete takes it out of the
 //! block; on a block, Enter changes it and Delete deletes it; on free time, Enter adds a block
 //! there. Everything else is in the row's context menu.
 
@@ -13,15 +14,15 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use gtk::prelude::*;
-use gtk::{gdk, gio, glib};
+use gtk::{gdk, glib};
 use lumenna_desktop::speech::{self, Clock};
-use lumenna_surface::{CancelledBlock, Change, Lumenna, Plan, PlanAssignment, PlanBlock, PlanItem, Result, RowView};
+use lumenna_surface::actions::Action;
+use lumenna_surface::{CancelledBlock, Plan, PlanAssignment, PlanBlock, PlanItem};
 
-use crate::block_form::{self, Purpose};
 use crate::core::sentence;
 use crate::tree::{Item, Tree};
 use crate::window::{App, spawn};
-use crate::{prompts, task_actions};
+use crate::{actions, prompts};
 
 /// One row of the day.
 #[derive(Clone)]
@@ -29,7 +30,7 @@ enum Row {
     Summary(String),
     Block(PlanBlock),
     Sitting(PlanAssignment),
-    Free { start: String, end: String, minutes: u32 },
+    Free { start: String, end: String, minutes: u32, actions: Vec<Action> },
     Now(String),
     Cancelled(CancelledBlock),
 }
@@ -52,46 +53,20 @@ impl Row {
             Self::Summary(text) => text.clone(),
             Self::Block(block) => speech::block(block, clock),
             Self::Sitting(sitting) => speech::sitting(sitting),
-            Self::Free { start, end, minutes } => speech::free(start, end, *minutes, clock),
+            Self::Free { start, end, minutes, .. } => speech::free(start, end, *minutes, clock),
             Self::Now(time) => speech::now(time, clock),
             Self::Cancelled(block) => speech::cancelled(block, clock),
         }
     }
-}
 
-/// What can be done to a row of the day.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Command {
-    Assign,
-    Edit,
-    CancelDay,
-    RestoreDay,
-    Delete,
-    /// Starts the timer, pauses it or resumes it: what Space does.
-    Timer,
-    Stop,
-    Planned,
-    Log,
-    Unassign,
-    AddHere,
-    Open,
-}
-
-impl Command {
-    fn name(self) -> &'static str {
+    /// What can be done to it: the core's, on the record it shows.
+    fn actions(&self) -> &[Action] {
         match self {
-            Self::Assign => "assign",
-            Self::Edit => "edit",
-            Self::CancelDay => "cancel-day",
-            Self::RestoreDay => "restore-day",
-            Self::Delete => "delete",
-            Self::Timer => "timer",
-            Self::Stop => "stop",
-            Self::Planned => "planned",
-            Self::Log => "log",
-            Self::Unassign => "unassign",
-            Self::AddHere => "add-here",
-            Self::Open => "open",
+            Self::Block(block) => &block.actions,
+            Self::Sitting(sitting) => &sitting.actions,
+            Self::Free { actions, .. } => actions,
+            Self::Cancelled(block) => &block.actions,
+            Self::Summary(_) | Self::Now(_) => &[],
         }
     }
 }
@@ -149,9 +124,11 @@ impl DayView {
             }
         });
         let weak = Rc::downgrade(self);
-        self.tree.connect_activate(move |_| {
-            if let (Some(day), Some(app)) = (weak.upgrade(), crate::window::app()) {
-                day.activate(&app);
+        self.tree.connect_activate(move |index| {
+            let (Some(day), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
+            let row = day.rows.borrow().get(index).cloned();
+            if let Some(action) = row.as_ref().and_then(|row| actions::find(row.actions(), actions::ENTER)) {
+                actions::run(&app, action.clone(), None);
             }
         });
         let weak = Rc::downgrade(self);
@@ -163,67 +140,28 @@ impl DayView {
                 return glib::Propagation::Proceed;
             }
             let Some(row) = day.rows.borrow().get(index).cloned() else { return glib::Propagation::Proceed };
-            let command = match (key, &row) {
-                (gdk::Key::space | gdk::Key::KP_Space, Row::Sitting(_)) => Command::Timer,
-                (gdk::Key::Delete | gdk::Key::KP_Delete, Row::Sitting(_)) => Command::Unassign,
-                (gdk::Key::Delete | gdk::Key::KP_Delete, Row::Block(_)) => Command::Delete,
+            let kinds = match key {
+                gdk::Key::space | gdk::Key::KP_Space => actions::SPACE,
+                gdk::Key::Delete | gdk::Key::KP_Delete => actions::DELETE,
                 _ => return glib::Propagation::Proceed,
             };
-            day.act(&app, command, row);
-            glib::Propagation::Stop
+            match actions::find(row.actions(), kinds) {
+                Some(action) => {
+                    actions::run(&app, action.clone(), None);
+                    glib::Propagation::Stop
+                }
+                None => glib::Propagation::Proceed,
+            }
         });
         let weak = Rc::downgrade(self);
         self.tree.connect_menu(move |index, point| {
             let (Some(day), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
             let Some(row) = day.rows.borrow().get(index).cloned() else { return };
-            let items: Vec<(Command, &str)> = match &row {
-                Row::Block(block) => {
-                    let mut items = Vec::new();
-                    if block.accepts_tasks {
-                        items.push((Command::Assign, "_Assign a Task…"));
-                    }
-                    items.push((Command::Edit, "_Change…"));
-                    if block.repeats {
-                        items.push((Command::CancelDay, "C_ancel This Day"));
-                    }
-                    if block.changed_for_this_day {
-                        items.push((Command::RestoreDay, "_Restore This Day"));
-                    }
-                    items.push((Command::Delete, "_Delete Block…"));
-                    items
-                }
-                Row::Sitting(sitting) => {
-                    let mut items = vec![(Command::Timer, timer_label(sitting))];
-                    if sitting.running || sitting.status == "paused" {
-                        items.push((Command::Stop, "S_top Timer"));
-                    }
-                    items.extend([
-                    (Command::Open, "_Edit Task Details"),
-                    (Command::Planned, "_Planned Length…"),
-                    (Command::Log, "_Log Minutes…"),
-                    (Command::Unassign, "_Unassign"),
-                    ]);
-                    items
-                }
-                Row::Free { .. } => vec![(Command::AddHere, "_Add Block Here…")],
-                Row::Cancelled(_) => vec![(Command::RestoreDay, "_Restore This Day")],
-                Row::Summary(_) | Row::Now(_) => return,
-            };
-            let menu = gio::Menu::new();
-            let actions = gio::SimpleActionGroup::new();
-            for (command, label) in items {
-                menu.append(Some(label), Some(&format!("row.{}", command.name())));
-                let action = gio::SimpleAction::new(command.name(), None);
-                let weak = Rc::downgrade(&day);
-                let row = row.clone();
-                action.connect_activate(move |_, _| {
-                    if let (Some(day), Some(app)) = (weak.upgrade(), crate::window::app()) {
-                        day.act(&app, command, row.clone());
-                    }
-                });
-                actions.add_action(&action);
+            if row.actions().is_empty() {
+                return;
             }
-            app.popup(&menu, day.tree.view.upcast_ref(), point, Some(&actions));
+            let (menu, group) = actions::menu(row.actions(), None);
+            app.popup(&menu, day.tree.view.upcast_ref(), point, Some(&group));
         });
     }
 
@@ -265,8 +203,13 @@ impl DayView {
                         rows.extend(block.assignments.iter().cloned().map(Row::Sitting));
                     }
                 }
-                PlanItem::Free { start, end, minutes, .. } => {
-                    rows.push(Row::Free { start: start.clone(), end: end.clone(), minutes: *minutes });
+                PlanItem::Free { start, end, minutes, actions } => {
+                    rows.push(Row::Free {
+                        start: start.clone(),
+                        end: end.clone(),
+                        minutes: *minutes,
+                        actions: actions.clone(),
+                    });
                 }
                 PlanItem::Now { time } => rows.push(Row::Now(time.clone())),
             }
@@ -358,212 +301,20 @@ impl DayView {
         });
     }
 
-    pub fn add_block(self: &Rc<Self>, app: &Rc<App>, start: Option<&str>, minutes: Option<u32>) {
+    /// A new block on the day shown, from the menu or the Add Block button.
+    pub fn add_block(&self, app: &Rc<App>) {
         let date = self.date().unwrap_or_else(|| "today".to_owned());
-        let fields = block_form::new_fields(start.unwrap_or("09:00"), minutes.unwrap_or(60).min(720));
-        let (day, app) = (Rc::clone(self), Rc::clone(app));
-        spawn(async move {
-            let lumenna = app.core.lumenna.clone();
-            let window = app.window.clone().upcast::<gtk::Window>();
-            let Some(change) = block_form::run(&window, lumenna, Purpose::Add { date }, fields, None).await else { return };
-            app.store_changed();
-            if let Some(series) = change.affected.blocks.first() {
-                let key = day.rows.borrow().iter().find_map(|row| match row {
-                    Row::Block(block) if &block.series == series => Some(row.key()),
-                    _ => None,
-                });
-                day.tree.focus();
-                day.tree.select_key_or_near(key.as_deref(), None);
-            }
-            app.say_change(&change);
+        let app = Rc::clone(app);
+        spawn(async move { actions::add_block(&app, &date, "09:00", 60).await });
+    }
+
+    /// Lands on a block of `series` shown on the day, as after adding one.
+    pub fn land_on_block(&self, series: &str) {
+        let key = self.rows.borrow().iter().find_map(|row| match row {
+            Row::Block(block) if block.series == series => Some(row.key()),
+            _ => None,
         });
-    }
-
-    /// Changes a block — asking "this day, or every day?" of a repeating one, never guessing
-    /// which occurrences a change means.
-    fn edit(self: &Rc<Self>, app: &Rc<App>, block: PlanBlock) {
-        let Some(date) = self.date() else { return };
-        let (day, app) = (Rc::clone(self), Rc::clone(app));
-        spawn(async move {
-            // One day starts from that day; every occurrence, from the series.
-            let mut fields = lumenna_surface::day_block_fields(block.clone());
-            let mut rule = None;
-            let purpose = if block.repeats {
-                let on = format!("{} Only", app.clock.day(&date));
-                let heading = format!("Change {}", block.title);
-                match prompts::choose(&app.window, &heading, "Which occurrences?", &[&on, "Every Occurrence"]).await {
-                    Some(0) => Purpose::Occurrence { series: block.series.clone(), date },
-                    Some(_) => Purpose::Series { id: block.series.clone() },
-                    None => return,
-                }
-            } else {
-                Purpose::Series { id: block.series.clone() }
-            };
-            if let Purpose::Series { id } = &purpose {
-                // The series as it is, not as this day shows it.
-                match app.core.lumenna.show_block(id) {
-                    Ok(shown) => {
-                        rule = shown.rrule.clone().filter(|_| shown.repeats);
-                        fields = lumenna_surface::block_fields(shown);
-                    }
-                    Err(error) => return app.fail(&sentence(&error)),
-                }
-            }
-            let key = format!("block:{}", block.id);
-            let window = app.window.clone().upcast::<gtk::Window>();
-            if let Some(change) = block_form::run(&window, app.core.lumenna.clone(), purpose, fields, rule).await {
-                app.store_changed();
-                day.tree.select_key_or_near(Some(&key), day.tree.selected());
-                app.say_change(&change);
-            }
-        });
-    }
-
-    fn delete(self: &Rc<Self>, app: &Rc<App>, block: PlanBlock) {
-        let (day, app) = (Rc::clone(self), Rc::clone(app));
-        spawn(async move {
-            let message = if block.repeats {
-                "Every occurrence goes, not only this day. To skip one day, cancel it instead."
-            } else {
-                "It goes, with what is assigned to it."
-            };
-            if prompts::confirm(&app.window, &format!("Delete {}?", block.title), message, "Delete").await {
-                day.change(&app, None, |lumenna| lumenna.delete_block(&block.series));
-            }
-        });
-    }
-
-    /// Runs a change, keeps the selection on `keep` or near where it was, and says it.
-    fn change(&self, app: &App, keep: Option<&str>, operation: impl FnOnce(&Lumenna) -> Result<Change>) {
-        let near = self.tree.selected();
-        if let Some(change) = app.perform(operation) {
-            self.tree.select_key_or_near(keep, near);
-            app.say_change(&change);
-        }
-    }
-
-    /// Space on a sitting: starts its timer, pauses it while it runs, resumes it while paused
-    /// Stopping, which ends the sitting, is in its menu.
-    fn toggle_timer(&self, app: &App, sitting: &PlanAssignment) {
-        let key = format!("sitting:{}", sitting.id);
-        if sitting.running {
-            self.timer(app, &key, app.core.lumenna.pause_timer(&sitting.id));
-        } else {
-            // Starting a paused sitting resumes it.
-            self.change(app, Some(&key), |lumenna| lumenna.start_timer(&sitting.id));
-        }
-    }
-
-    fn stop_timer(&self, app: &App, sitting: &PlanAssignment) {
-        let key = format!("sitting:{}", sitting.id);
-        self.timer(app, &key, app.core.lumenna.stop_timer(&sitting.id, None));
-    }
-
-    /// Says what pausing or stopping a timer did, from the sitting it was on.
-    fn timer(&self, app: &App, key: &str, result: lumenna_surface::Result<lumenna_surface::Timer>) {
-        match result {
-            Ok(timer) => {
-                app.store_changed();
-                self.tree.select_key_or_near(Some(key), None);
-                app.say(&speech::announcement(&timer.announcement, &timer.notices));
-            }
-            Err(error) => app.fail(&sentence(&error)),
-        }
-    }
-
-    fn plan_length(self: &Rc<Self>, app: &Rc<App>, sitting: PlanAssignment) {
-        let (day, app) = (Rc::clone(self), Rc::clone(app));
-        spawn(async move {
-            let current = sitting.planned_mins.map(|m| m.to_string()).unwrap_or_default();
-            let title = format!("Planned Length of {}", sitting.title);
-            let Some(minutes) = task_actions::ask_minutes(&app, &title, &current, true).await else { return };
-            let key = format!("sitting:{}", sitting.id);
-            day.change(&app, Some(&key), |lumenna| lumenna.plan_minutes(&sitting.id, minutes));
-        });
-    }
-
-    /// Records a sitting's whole time by hand — without a timer, or to replace a capped one.
-    fn log_minutes(self: &Rc<Self>, app: &Rc<App>, sitting: PlanAssignment) {
-        let (day, app) = (Rc::clone(self), Rc::clone(app));
-        spawn(async move {
-            let title = format!("Minutes on {}", sitting.title);
-            let Some(Some(minutes)) = task_actions::ask_minutes(&app, &title, "", false).await else { return };
-            match app.core.lumenna.stop_timer(&sitting.id, Some(minutes)) {
-                Ok(timer) => {
-                    app.store_changed();
-                    day.tree.select_key_or_near(Some(&format!("sitting:{}", sitting.id)), None);
-                    app.say(&speech::announcement(&timer.announcement, &timer.notices));
-                }
-                Err(error) => app.fail(&sentence(&error)),
-            }
-        });
-    }
-
-    /// Fills a block from the task side's opposite: from the block, pick a task.
-    fn assign(self: &Rc<Self>, app: &Rc<App>, block: PlanBlock) {
-        let Some(date) = self.date() else { return };
-        let (day, app) = (Rc::clone(self), Rc::clone(app));
-        spawn(async move {
-            let tasks: Vec<RowView> = app.core.lumenna.list_tasks("").map(|r| r.rows).unwrap_or_default();
-            let titles: Vec<String> = tasks.iter().map(|t| speech::row(t, false, &app.clock)).collect();
-            let heading = format!("Assign to {}", block.title);
-            let Some(index) = prompts::pick(&app.window, &heading, "_Task:", &titles).await else { return };
-            let task = &tasks[index];
-            let title = format!("How Long Is {} Meant to Take?", task.title);
-            let Some(minutes) = task_actions::ask_minutes(&app, &title, "", true).await else { return };
-            let key = format!("block:{}", block.id);
-            day.change(&app, Some(&key), |lumenna| lumenna.assign(&task.id, &block.series, Some(date), minutes));
-        });
-    }
-
-    fn act(self: &Rc<Self>, app: &Rc<App>, command: Command, row: Row) {
-        let date = self.date().unwrap_or_default();
-        match (command, row) {
-            (Command::Assign, Row::Block(block)) => self.assign(app, block),
-            (Command::Edit, Row::Block(block)) => self.edit(app, block),
-            (Command::CancelDay, row @ Row::Block(_)) => {
-                let Row::Block(block) = &row else { return };
-                self.change(app, Some(&row.key()), |lumenna| lumenna.cancel_occurrence(&block.series, &date));
-            }
-            (Command::RestoreDay, row @ Row::Block(_)) => {
-                let Row::Block(block) = &row else { return };
-                self.change(app, Some(&row.key()), |lumenna| lumenna.restore_occurrence(&block.series, &date));
-            }
-            (Command::RestoreDay, Row::Cancelled(block)) => {
-                self.change(app, None, |lumenna| lumenna.restore_occurrence(&block.series, &date));
-            }
-            (Command::Delete, Row::Block(block)) => self.delete(app, block),
-            (Command::Timer, Row::Sitting(sitting)) => self.toggle_timer(app, &sitting),
-            (Command::Stop, Row::Sitting(sitting)) => self.stop_timer(app, &sitting),
-            (Command::Planned, Row::Sitting(sitting)) => self.plan_length(app, sitting),
-            (Command::Log, Row::Sitting(sitting)) => self.log_minutes(app, sitting),
-            (Command::Unassign, Row::Sitting(sitting)) => self.change(app, None, |lumenna| lumenna.unassign(&sitting.id)),
-            (Command::Open, Row::Sitting(_)) => app.open_detail(),
-            (Command::AddHere, Row::Free { start, minutes, .. }) => self.add_block(app, Some(&start), Some(minutes)),
-            _ => {}
-        }
-    }
-
-    fn activate(self: &Rc<Self>, app: &Rc<App>) {
-        let Some(row) = self.selected() else { return };
-        let command = match &row {
-            Row::Block(_) => Command::Edit,
-            Row::Sitting(_) => Command::Open,
-            Row::Free { .. } => Command::AddHere,
-            Row::Cancelled(_) => Command::RestoreDay,
-            Row::Summary(_) | Row::Now(_) => return,
-        };
-        self.act(app, command, row);
-    }
-}
-
-/// What Space does to a sitting's timer, as its menu says it.
-fn timer_label(sitting: &PlanAssignment) -> &'static str {
-    if sitting.running {
-        "_Pause Timer"
-    } else if sitting.status == "paused" {
-        "_Resume Timer"
-    } else {
-        "_Start Timer"
+        self.tree.focus();
+        self.tree.select_key_or_near(key.as_deref(), None);
     }
 }

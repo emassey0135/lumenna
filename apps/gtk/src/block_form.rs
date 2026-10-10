@@ -220,7 +220,7 @@ pub async fn run(
         field(
             "Repeats _until",
             form.until.upcast_ref(),
-            "The last day it happens, such as 31 december. Empty for for good.",
+            "The last day it happens, such as 31 december. Empty for good.",
         );
         field(
             "Shortest l_ength, in minutes",
