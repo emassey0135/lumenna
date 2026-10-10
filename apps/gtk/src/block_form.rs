@@ -8,7 +8,7 @@
 //!
 //! The three flags start from the kind, and go back to the new kind's when it is changed.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -52,8 +52,10 @@ fn kinds() -> Vec<(String, String)> {
 
 /// What the form is for.
 pub enum Purpose {
-    /// A new block, starting on this date phrase.
-    Add { date: String },
+    /// A new block, starting on this date phrase. `start_follows_day`: Starts at was the
+    /// core's for the day (`new_block_start`), so it is asked again when the day changes,
+    /// until the person changes it themselves; free time's own start does not follow.
+    Add { date: String, start_follows_day: bool },
     /// Every occurrence of a series.
     Series { id: String },
     /// One day of a repeating series alone.
@@ -154,6 +156,35 @@ impl Form {
     }
 }
 
+/// Asks the core again when a new block starts each time its day changes, until the person
+/// changes Starts at: a day still being typed, or one that does not read, leaves it alone.
+fn follow_day(form: &Rc<Form>, lumenna: Arc<Lumenna>) {
+    let touched = Rc::new(Cell::new(false));
+    let setting = Rc::new(Cell::new(false));
+    {
+        let (touched, setting) = (touched.clone(), setting.clone());
+        form.start.connect_changed(move |_| {
+            if !setting.get() {
+                touched.set(true);
+            }
+        });
+    }
+    let weak = Rc::downgrade(form);
+    form.date.connect_changed(move |date| {
+        let Some(form) = weak.upgrade() else { return };
+        if touched.get() {
+            return;
+        }
+        let phrase = date.text().trim().to_owned();
+        let Ok(start) = lumenna.new_block_start((!phrase.is_empty()).then_some(phrase)) else { return };
+        if form.start.text() != start {
+            setting.set(true);
+            form.start.set_text(&start);
+            setting.set(false);
+        }
+    });
+}
+
 /// Runs the form, and returns what saving it did. `unsayable` is the core's note for a block
 /// repeating by a rule the repetition words cannot say (`unsayable_repeat_note`), shown
 /// beside an empty Repeats.
@@ -202,8 +233,11 @@ pub async fn run(
     form.anchored.set_active(initial.anchored);
     form.notes.buffer().set_text(&initial.notes);
     prompts::leaves_on_tab(&form.notes);
-    if let Purpose::Add { date } = &purpose {
+    if let Purpose::Add { date, start_follows_day } = &purpose {
         form.date.set_text(date);
+        if *start_follows_day {
+            follow_day(&form, lumenna.clone());
+        }
     }
     // A new kind brings its own flags, as saving will.
     {

@@ -679,7 +679,7 @@ impl App {
                 day.add_block(app);
             } else {
                 let app = Rc::clone(app);
-                spawn(async move { crate::actions::add_block(&app, "today", "09:00", 60).await });
+                spawn(async move { crate::actions::add_block(&app, "today", None, 60).await });
             }
         });
         // The day's commands go to Today first, from anywhere.
