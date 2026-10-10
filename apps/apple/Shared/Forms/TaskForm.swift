@@ -12,8 +12,7 @@ protocol TaskFormHost: AnyObject {
     func trashed()
 }
 
-/// One task as stored, and its fields as edited — the model both
-/// Apple apps' task forms share.
+/// One task as stored, and its fields as edited — the model the Apple apps' task forms share.
 final class TaskDetailModel: NSObject, ObservableObject {
     let core: Core
     let id: String
@@ -182,7 +181,7 @@ struct TaskDetailView: View {
                 ("Priority 1, highest", UInt8(1)), ("Priority 2", 2), ("Priority 3", 3), ("Priority 4, none", 4),
             ])
             Section {
-                #if os(iOS)
+                #if os(iOS) || os(watchOS)
                 TextField("Notes", text: $model.notes, prompt: example("Anything else"), axis: .vertical)
                     .lineLimit(3...)
                     .accessibilityLabel("Notes")
@@ -213,8 +212,9 @@ struct TaskDetailView: View {
                 FormParts.heading("About")
             }
             Section {
-                #if os(macOS)
-                // On the phone Save is in the navigation bar; here ⌘S reaches it too.
+                #if os(macOS) || os(watchOS)
+                // On the phone Save is in the navigation bar; on the Mac ⌘S reaches it too,
+                // and a watch has no bar button for it.
                 Button("Save") { model.save() }
                 #endif
                 Button(task.state.contains("completed") ? "Mark Not Done" : "Mark Done") { model.toggleDone() }
@@ -235,7 +235,7 @@ struct TaskDetailView: View {
     /// The project: a pop-up of the projects on the Mac, where one is a click away; a name on
     /// the phone, where an inline list of every project would bury the form.
     @ViewBuilder private var project: some View {
-        #if os(iOS)
+        #if os(iOS) || os(watchOS)
         namedField("Project", text: $model.project, example: "Inbox")
         #else
         Named("Project") {
@@ -254,7 +254,7 @@ private struct Hint: ViewModifier {
     init(_ text: String) { self.text = text }
 
     func body(content: Content) -> some View {
-        #if os(iOS)
+        #if os(iOS) || os(watchOS)
         content.textInputAutocapitalization(.never).accessibilityHint(text)
         #else
         content.help(text)

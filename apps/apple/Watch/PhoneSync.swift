@@ -9,7 +9,6 @@ import WatchConnectivity
 /// the watch, while its app is open, to start one. It runs when the app opens, after each
 /// change made here, when the phone comes into reach, when the phone says it changed, and
 /// when asked.
-@MainActor
 final class PhoneSync: NSObject, ObservableObject {
     /// How the last attempt went, said in the settings row.
     @Published private(set) var status = "Not synced with the iPhone yet"
@@ -50,9 +49,9 @@ final class PhoneSync: NSObject, ObservableObject {
 
     private func send(_ message: Data, over session: WCSession) {
         session.sendMessageData(message, replyHandler: { reply in
-            Task { @MainActor in self.take(reply, over: session) }
+            DispatchQueue.main.async { self.take(reply, over: session) }
         }, errorHandler: { error in
-            Task { @MainActor in self.finish("Could not sync with the iPhone. \(error.localizedDescription)") }
+            DispatchQueue.main.async { self.finish("Could not sync with the iPhone. \(error.localizedDescription)") }
         })
     }
 
@@ -63,7 +62,9 @@ final class PhoneSync: NSObject, ObservableObject {
                 send(next, over: session)
                 return
             }
-            if core.link.tookIn() { core.changed() }
+            if core.link.tookIn() {
+                NotificationCenter.default.post(name: Core.changed, object: nil, userInfo: [Core.fromPhone: true])
+            }
             finish("Synced with the iPhone at \(Date.now.formatted(date: .omitted, time: .shortened))")
         } catch {
             finish("Could not sync with the iPhone. \(error.sentence)")
@@ -81,19 +82,19 @@ final class PhoneSync: NSObject, ObservableObject {
 }
 
 extension PhoneSync: WCSessionDelegate {
-    nonisolated func session(
+    func session(
         _ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?
     ) {
-        Task { @MainActor in self.syncNow() }
+        DispatchQueue.main.async { self.syncNow() }
     }
 
-    nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
+    func sessionReachabilityDidChange(_ session: WCSession) {
         guard session.isReachable else { return }
-        Task { @MainActor in self.syncNow() }
+        DispatchQueue.main.async { self.syncNow() }
     }
 
     /// The phone's store changed: what it says is only that, and the watch asks for the rest.
-    nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
-        Task { @MainActor in self.syncNow() }
+    func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        DispatchQueue.main.async { self.syncNow() }
     }
 }

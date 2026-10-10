@@ -27,7 +27,6 @@ struct LumennaWatchApp: App {
 }
 
 /// The store, opened once for the app's life.
-@MainActor
 private final class Opened: ObservableObject {
     let core: WatchCore?
     let reason: String

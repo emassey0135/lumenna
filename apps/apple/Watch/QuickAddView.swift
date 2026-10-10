@@ -15,22 +15,24 @@ struct QuickAddView: View {
 
     var body: some View {
         let readback = preview
-        ScrollView {
-            VStack(alignment: .leading) {
-                TextField("Task", text: $text)
-                if let readback {
-                    // What will be saved, before anything is: a misheard date is caught here.
-                    Text(readback.announcement.prefix(1).uppercased() + readback.announcement.dropFirst())
-                        .font(.footnote)
-                    ForEach(readback.notices, id: \.self) { notice in
-                        Text(notice).font(.footnote).foregroundStyle(.secondary)
-                    }
+        List {
+            // Named explicitly: with text in it, a field's title gives way to the text.
+            TextField("Task", text: $text)
+                .accessibilityLabel("Task")
+            // After the line is entered, what could finish its last word, beside it.
+            CompletionOffer(text: $text, syntax: .quickAdd)
+            if let readback {
+                // What will be saved, before anything is: a misheard date is caught here.
+                Text(readback.announcement.prefix(1).uppercased() + readback.announcement.dropFirst())
+                    .font(.footnote)
+                ForEach(readback.notices, id: \.self) { notice in
+                    Text(notice).font(.footnote).foregroundStyle(Color.quietLabel)
                 }
-                Button("Add") {
-                    if core.act({ try core.lumenna.addTask(text: line) }) { dismiss() }
-                }
-                .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
             }
+            Button("Add") {
+                if core.act({ try core.lumenna.addTask(text: line) }) { dismiss() }
+            }
+            .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
         }
         .navigationTitle("New Task")
     }
