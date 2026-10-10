@@ -48,7 +48,7 @@ struct DevicesView: View {
             Text("This watch syncs through your iPhone. Pair a new device from the iPhone.")
                 .font(.footnote)
             if let listed, listed.devices.isEmpty {
-                Text("No paired devices")
+                Text(listed.empty)
             }
             ForEach(listed?.devices ?? [], id: \.nodeId) { device in
                 Button {

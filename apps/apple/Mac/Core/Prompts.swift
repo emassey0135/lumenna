@@ -26,7 +26,8 @@ extension NSWindow {
         alert.informativeText = message
         let field = NSTextField(string: initial)
         field.placeholderString = placeholder
-        field.setAccessibilityLabel(title)
+        // Named by what it holds where there is a placeholder to say it.
+        field.setAccessibilityLabel(placeholder.isEmpty ? title : placeholder)
         field.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
         alert.accessoryView = field
         alert.addButton(withTitle: action)
@@ -62,7 +63,9 @@ extension NSWindow {
         guard actions.count <= 3 else {
             PickerSheet.present(
                 on: self, title: title,
-                items: actions.enumerated().map { PickerItem(key: String($0.offset), title: $0.element.0) }
+                items: actions.enumerated().map { PickerItem(key: String($0.offset), title: $0.element.0) },
+                // Each item is what it does, so the button only goes ahead with it.
+                yes: "Go Ahead"
             ) { item in actions[Int(item.key)!].1() }
             return
         }
@@ -146,7 +149,7 @@ extension NSWindow: ActionAsking {
         }
     }
 
-    func askText(title: String, label: String, initial: String, hint: String, problem: String?, then: @escaping (String) -> Void) {
+    func askText(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, then: @escaping (String) -> Void) {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = [problem, hint.isEmpty ? nil : hint].compactMap { $0 }.joined(separator: "\n\n")
@@ -155,7 +158,7 @@ extension NSWindow: ActionAsking {
         field.setAccessibilityLabel(label)
         field.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
         alert.accessoryView = field
-        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: yes)
         alert.addButton(withTitle: "Cancel")
         alert.window.initialFirstResponder = field
         alert.beginSheetModal(for: self) { response in
@@ -164,9 +167,9 @@ extension NSWindow: ActionAsking {
         }
     }
 
-    func askPick(title: String, choices: [Choice], then: @escaping (Choice) -> Void) {
+    func askPick(title: String, choices: [Choice], yes: String, then: @escaping (Choice) -> Void) {
         let items = choices.map { PickerItem(key: $0.id, title: $0.shownTitle, detail: $0.shownDetail, depth: Int($0.depth)) }
-        PickerSheet.present(on: self, title: title, items: items) { item in
+        PickerSheet.present(on: self, title: title, items: items, yes: yes) { item in
             if let choice = choices.first(where: { $0.id == item.key }) { then(choice) }
         }
     }

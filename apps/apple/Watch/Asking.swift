@@ -26,12 +26,13 @@ final class WatchAsker: ObservableObject, ActionAsking {
         show(ChoicePrompt(title: title, message: message, cancel: true, choices: [(yes, then)]))
     }
 
-    func askText(title: String, label: String, initial: String, hint: String, problem: String?, then: @escaping (String) -> Void) {
+    func askText(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, then: @escaping (String) -> Void) {
         let message = [problem, hint.isEmpty ? nil : hint].compactMap { $0 }.joined(separator: " ")
-        show(TextPrompt(title, message: message.isEmpty ? nil : message, initial: initial, placeholder: label, allowsEmpty: true, done: then))
+        show(TextPrompt(title, message: message.isEmpty ? nil : message, initial: initial, placeholder: label, action: yes, allowsEmpty: true, done: then))
     }
 
-    func askPick(title: String, choices: [Choice], then: @escaping (Choice) -> Void) {
+    // A watch's pick is a list of buttons, each answering by itself: no button names the answer.
+    func askPick(title: String, choices: [Choice], yes: String, then: @escaping (Choice) -> Void) {
         show(PickPrompt(title: title, choices: choices, chosen: then))
     }
 
@@ -41,7 +42,8 @@ final class WatchAsker: ObservableObject, ActionAsking {
 
     /// From the lengths a sitting usually takes, or none: quicker on a watch than typing.
     func askLength(hint: String, then: @escaping (String) -> Void) {
-        show(LengthChoice(title: "Planned length", without: "No Planned Length") { minutes in
+        let title = if case let .text(title, _, _, _, _, _, _) = lengthQuestion() { title } else { "Planned Length" }
+        show(LengthChoice(title: title, without: "No Planned Length") { minutes in
             then(minutes.map { "\($0)m" } ?? "")
         })
     }
@@ -66,9 +68,13 @@ final class WatchAsker: ObservableObject, ActionAsking {
         }
     }
 
-    /// A row's actions offered when it is tapped, with any of the row's own after them.
+    /// A row's actions offered when it is tapped, with any of the row's own after them: the
+    /// row's primary ones first, as the phone swipes them, then the rest in the core's order,
+    /// and whatever removes something last, never the first thing under a finger.
     func offer(_ title: String, _ actions: [Action], extra: [(String, () -> Void)] = [], form: @escaping (Action) -> Void = { _ in }) {
-        show(ChoicePrompt(title: title, choices: actions.map { action in
+        let kept = actions.filter { !$0.destructive }
+        let ordered = kept.filter(\.primary) + kept.filter { !$0.primary } + actions.filter(\.destructive)
+        show(ChoicePrompt(title: title, choices: ordered.map { action in
             (action.title, { [weak self] in self?.run(action, form: form) })
         } + extra))
     }

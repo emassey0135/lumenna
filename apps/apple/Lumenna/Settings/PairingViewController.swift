@@ -7,10 +7,14 @@ import UIKit
 /// and only if the person says they match on both does anything get paired.
 final class PairingViewController: UIViewController {
     private let core: Core
+    /// Every sentence and button, the core's. Another device finds this one on the network by
+    /// itself: the system's responder advertises it.
+    private let words = pairingWords(thisDevice: "this \(UIDevice.current.model)", local: true)
     private let status = UILabel()
     private let code = UITextView()
+    private var copyCode: UIButton!
     // Wraps rather than scrolling sideways, as every entry here does: the code is long.
-    private let entry = LineEntry(name: "Code from the other device")
+    private lazy var entry = LineEntry(name: words.theirCode)
     private let stack = UIStackView()
     private var prompt: Prompt?
     /// A code entered while waiting, to join with once the wait has ended.
@@ -19,7 +23,7 @@ final class PairingViewController: UIViewController {
     init(core: Core) {
         self.core = core
         super.init(nibName: nil, bundle: nil)
-        title = "Pair a Device"
+        title = words.title
     }
 
     @available(*, unavailable)
@@ -32,7 +36,7 @@ final class PairingViewController: UIViewController {
         status.font = .preferredFont(forTextStyle: .body)
         status.adjustsFontForContentSizeCategory = true
         status.numberOfLines = 0
-        status.text = "On the same network, start pairing on both devices and they find each other: run lum pair, or choose Wait for the Other Device. On different networks, one shows a code and the other enters it."
+        status.text = words.intro
 
         code.isEditable = false
         code.isScrollEnabled = false
@@ -40,23 +44,25 @@ final class PairingViewController: UIViewController {
         code.adjustsFontForContentSizeCategory = true
         code.backgroundColor = .secondarySystemBackground
         code.layer.cornerRadius = 8
-        code.accessibilityLabel = "Pairing code"
+        code.accessibilityLabel = words.myCode
         code.isHidden = true
 
         // Also the VoiceOver hint: left empty, the clipboard's code is used.
-        entry.placeholder = "the code the other device shows; left empty, the one on the clipboard is used"
+        entry.placeholder = words.emptyMeans
         entry.autocapitalizationType = .none
         entry.autocorrectionType = .no
         entry.spellCheckingType = .no
 
-        let show = button("Wait for the Other Device") { [weak self] in self?.start(code: nil) }
-        let enter = button("Pair With This Code") { [weak self] in self?.pairWithEnteredCode() }
+        let show = button(words.wait) { [weak self] in self?.start(code: nil) }
+        let enter = button(words.join) { [weak self] in self?.pairWithEnteredCode() }
+        copyCode = button(words.copyCode) { [weak self] in self?.copyTheCode() }
+        copyCode.isHidden = true
         entry.submitted = { [weak self] in self?.pairWithEnteredCode() }
 
         stack.axis = .vertical
         stack.spacing = 16
         stack.translatesAutoresizingMaskIntoConstraints = false
-        [status, show, code, entry, enter].forEach(stack.addArrangedSubview)
+        [status, show, code, copyCode, entry, enter].forEach(stack.addArrangedSubview)
         let scroll = UIScrollView()
         scroll.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scroll)
@@ -92,7 +98,7 @@ final class PairingViewController: UIViewController {
             entry.text = pasted
         }
         guard !code.isEmpty else {
-            showFailure("Type or paste the code the other device shows.")
+            showFailure(words.needCode)
             return
         }
         entry.resignFirstResponder()
@@ -100,12 +106,18 @@ final class PairingViewController: UIViewController {
         // other way: give up the wait, and join with the code once it has ended.
         if let waiting = prompt {
             nextCode = code
-            status.text = "Stopping the wait, then connecting with this code."
+            status.text = words.switching
             Announcer.say(status.text ?? "")
             waiting.cancel()
             return
         }
         start(code: code)
+    }
+
+    /// Copies this device's code again, as when it was shown.
+    private func copyTheCode() {
+        UIPasteboard.general.string = code.text
+        Announcer.say(words.copied)
     }
 
     private func button(_ title: String, action: @escaping () -> Void) -> UIButton {
@@ -118,7 +130,7 @@ final class PairingViewController: UIViewController {
         guard prompt == nil else { return }
         let prompt = Prompt(screen: self)
         self.prompt = prompt
-        status.text = given == nil ? "Opening a pairing session." : "Connecting to the other device."
+        status.text = given == nil ? words.opening : words.connecting
         Announcer.say(status.text ?? "")
         let lumenna = core.lumenna
         let name = UIDevice.current.name
@@ -135,6 +147,7 @@ final class PairingViewController: UIViewController {
         if let next = nextCode {
             nextCode = nil
             code.isHidden = true
+            copyCode.isHidden = true
             start(code: next)
             return
         }
@@ -146,29 +159,38 @@ final class PairingViewController: UIViewController {
         case let .failure(error):
             status.text = error.sentence
             code.isHidden = true
+            copyCode.isHidden = true
             UIAccessibility.post(notification: .layoutChanged, argument: status)
         }
     }
 
     /// Shows this device's code, to read out, copy or send to the other device.
     fileprivate func show(code text: String) {
-        status.text = "Waiting for the other device. On this network it finds this one by itself. On another network, enter this code there, or run lum pair followed by it. Waiting up to ten minutes."
+        status.text = words.waiting
         code.text = text
         code.isHidden = false
+        copyCode.isHidden = false
         UIPasteboard.general.string = text
         UIAccessibility.post(notification: .layoutChanged, argument: status)
-        Announcer.say("The code is copied, so it can be pasted on the other device.")
+        Announcer.say(words.copied)
     }
 
     /// Asks whether the words match. The pairing thread waits for the answer.
     fileprivate func ask(_ words: [String], answer: @escaping (Bool) -> Void) {
+        let said = self.words
         let alert = UIAlertController(
-            title: "Do these words match?",
-            message: "\(words.joined(separator: ", ")). Say yes only if the other device shows the same three words.",
+            title: said.matchTitle,
+            message: "\(said.matchMessage) \(words.joined(separator: ", "))",
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "No", style: .cancel) { _ in answer(false) })
-        alert.addAction(UIAlertAction(title: "Yes, They Match", style: .default) { _ in answer(true) })
+        // What happens next is said while the devices finish, in the core's words.
+        let answered = { [weak self] (yes: Bool) in
+            self?.status.text = yes ? said.finishing : said.refusing
+            Announcer.say(self?.status.text ?? "")
+            answer(yes)
+        }
+        alert.addAction(UIAlertAction(title: said.matchNo, style: .cancel) { _ in answered(false) })
+        alert.addAction(UIAlertAction(title: said.matchYes, style: .default) { _ in answered(true) })
         present(alert, animated: true)
     }
 }

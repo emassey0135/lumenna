@@ -7,6 +7,9 @@ import AppKit
 /// and only if the person says they match on both does anything get paired.
 final class PairingSheet: NSViewController {
     private let core: Core
+    /// Every sentence and button, the core's.
+    private static let words = pairingWords(thisDevice: "this Mac", local: true)
+    private var words: PairingWords { Self.words }
     private let status = NSTextField(wrappingLabelWithString: "")
     private let code = NSTextField(wrappingLabelWithString: "")
     private let entry = NSTextField()
@@ -15,11 +18,12 @@ final class PairingSheet: NSViewController {
     private var nextCode: String?
     private var wait: NSButton!
     private var enter: NSButton!
+    private var copyCode: NSButton!
 
     private init(core: Core) {
         self.core = core
         super.init(nibName: nil, bundle: nil)
-        title = "Pair a Device"
+        title = Self.words.title
     }
 
     @available(*, unavailable)
@@ -27,26 +31,28 @@ final class PairingSheet: NSViewController {
 
     static func present(on window: NSWindow, core: Core) {
         let sheet = NSWindow(contentViewController: PairingSheet(core: core))
-        sheet.title = "Pair a Device"
+        sheet.title = words.title
         window.beginSheet(sheet)
     }
 
     override func loadView() {
-        status.stringValue = "On the same network, start pairing on both devices and they find each other: choose Wait for the Other Device here, and pair on the other one too. On different networks, one shows a code and the other enters it."
+        status.stringValue = words.intro
         code.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         code.isSelectable = true
-        code.setAccessibilityLabel("Pairing code")
+        code.setAccessibilityLabel(words.myCode)
         code.isHidden = true
-        entry.placeholderString = "the code the other device shows, or empty for the one on the clipboard"
-        entry.setAccessibilityLabel("Code from the other device")
-        entry.setAccessibilityHelp("Left empty, the code on the clipboard is used.")
+        entry.placeholderString = words.emptyMeans
+        entry.setAccessibilityLabel(words.theirCode)
+        entry.setAccessibilityHelp(words.emptyMeans)
 
-        wait = NSButton(title: "Wait for the Other Device", target: self, action: #selector(waitForOther))
-        enter = NSButton(title: "Pair With This Code", target: self, action: #selector(pairWithCode))
+        wait = NSButton(title: words.wait, target: self, action: #selector(waitForOther))
+        enter = NSButton(title: words.join, target: self, action: #selector(pairWithCode))
+        copyCode = NSButton(title: words.copyCode, target: self, action: #selector(copyTheCode))
+        copyCode.isHidden = true
         let close = NSButton(title: "Cancel", target: self, action: #selector(cancel))
         close.keyEquivalent = "\u{1b}"
 
-        let stack = NSStackView(views: [status, wait, code, entry, enter, NSStackView(views: [NSView(), close])])
+        let stack = NSStackView(views: [status, wait, code, copyCode, entry, enter, NSStackView(views: [NSView(), close])])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 12
@@ -60,6 +66,13 @@ final class PairingSheet: NSViewController {
 
     @objc private func waitForOther() { start(code: nil) }
 
+    /// Copies this Mac's code again, as when it was shown.
+    @objc private func copyTheCode() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(code.stringValue, forType: .string)
+        Announcer.say(words.copied)
+    }
+
     /// Pairs with the code typed in — or, if nothing was typed, the one on the clipboard,
     /// which is how a code sent from the other device usually arrives.
     @objc private func pairWithCode() {
@@ -71,7 +84,7 @@ final class PairingSheet: NSViewController {
             entry.stringValue = pasted
         }
         guard !given.isEmpty else {
-            view.window?.showFailure("Type or paste the code the other device shows.")
+            view.window?.showFailure(words.needCode)
             return
         }
         // A code entered while this Mac waits to be found means the person chose the other
@@ -79,7 +92,7 @@ final class PairingSheet: NSViewController {
         if let waiting = prompt {
             nextCode = given
             enter.isEnabled = false
-            say("Stopping the wait, then connecting with this code.")
+            say(words.switching)
             waiting.cancel()
             return
         }
@@ -92,7 +105,7 @@ final class PairingSheet: NSViewController {
         self.prompt = prompt
         wait.isEnabled = false
         enter.isEnabled = given == nil
-        say(given == nil ? "Opening a pairing session." : "Connecting to the other device.")
+        say(given == nil ? words.opening : words.connecting)
         let lumenna = core.lumenna
         let name = Host.current().localizedName ?? "Mac"
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -115,6 +128,7 @@ final class PairingSheet: NSViewController {
         if let next = nextCode {
             nextCode = nil
             code.isHidden = true
+            copyCode.isHidden = true
             start(code: next)
             return
         }
@@ -125,6 +139,7 @@ final class PairingSheet: NSViewController {
             Announcer.say(paired.announcement, notices: paired.notices)
         case let .failure(error):
             code.isHidden = true
+            copyCode.isHidden = true
             say(error.sentence)
         }
     }
@@ -133,9 +148,11 @@ final class PairingSheet: NSViewController {
     fileprivate func show(code text: String) {
         code.stringValue = text
         code.isHidden = false
+        copyCode.isHidden = false
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-        say("Waiting for the other device. On this network it finds this Mac by itself. On another network, enter this code there, or run lum pair followed by it. The code is copied. Waiting up to ten minutes.")
+        say(words.waiting)
+        Announcer.say(words.copied)
     }
 
     /// Asks whether the words match. The pairing thread waits for the answer.
@@ -145,11 +162,18 @@ final class PairingSheet: NSViewController {
             return
         }
         let alert = NSAlert()
-        alert.messageText = "Do these words match?"
-        alert.informativeText = "\(words.joined(separator: ", ")). Say yes only if the other device shows the same three words."
-        alert.addButton(withTitle: "No")
-        alert.addButton(withTitle: "Yes, They Match")
-        alert.beginSheetModal(for: window) { response in answer(response == .alertSecondButtonReturn) }
+        let said = self.words
+        alert.messageText = said.matchTitle
+        alert.informativeText = "\(said.matchMessage) \(words.joined(separator: ", "))"
+        // No is first, so the default: a stray Return never pairs.
+        alert.addButton(withTitle: said.matchNo)
+        alert.addButton(withTitle: said.matchYes)
+        alert.beginSheetModal(for: window) { [weak self] response in
+            let yes = response == .alertSecondButtonReturn
+            // What happens next is said while the devices finish, in the core's words.
+            self?.say(yes ? said.finishing : said.refusing)
+            answer(yes)
+        }
     }
 
     @objc private func cancel() {

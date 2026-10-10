@@ -109,8 +109,12 @@ struct RootView: View {
 
     /// New Saved Filter, the app's own form: a name, then a query.
     private func newFilter() {
-        asker.show(TextPrompt("New Saved Filter", placeholder: "Name", action: "Next") { name in
-            asker.show(TextPrompt("Query for \(name)", placeholder: "#Work & overdue", syntax: .filter) { query in
+        // The core's two questions: the name, then the query.
+        let steps = TextQuestion.newFilter
+        guard steps.count == 2 else { return }
+        let (named, queried) = (steps[0], steps[1])
+        asker.show(TextPrompt(named.title, placeholder: named.label, action: named.yes) { name in
+            asker.show(TextPrompt(queried.title, message: queried.hint, placeholder: queried.label, action: queried.yes, syntax: .filter) { query in
                 core.act { try core.lumenna.addFilter(name: name, query: query) }
             })
         })

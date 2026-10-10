@@ -15,17 +15,21 @@ extension UIViewController {
         alert.addTextField { field in
             field.placeholder = placeholder
             field.text = initial
-            field.accessibilityLabel = title
+            // Named by what it holds where there is a placeholder to say it.
+            field.accessibilityLabel = placeholder.isEmpty ? title : placeholder
             field.autocapitalizationType = .sentences
             field.clearButtonMode = .whileEditing
         }
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: action, style: .default) { [weak alert] _ in
+        let answer = UIAlertAction(title: action, style: .default) { [weak alert] _ in
             let text = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespaces) ?? ""
             if !text.isEmpty {
                 done(text)
             }
-        })
+        }
+        alert.addAction(answer)
+        // Return answers, as in the system's own text alerts.
+        alert.preferredAction = answer
         present(alert, animated: true)
     }
 
@@ -99,7 +103,7 @@ final class PhoneAsker: ActionAsking {
         front?.present(alert, animated: true)
     }
 
-    func askText(title: String, label: String, initial: String, hint: String, problem: String?, then: @escaping (String) -> Void) {
+    func askText(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, then: @escaping (String) -> Void) {
         let message = [problem, hint.isEmpty ? nil : hint].compactMap { $0 }.joined(separator: "\n\n")
         let alert = UIAlertController(title: title, message: message.isEmpty ? nil : message, preferredStyle: .alert)
         alert.addTextField { field in
@@ -110,13 +114,16 @@ final class PhoneAsker: ActionAsking {
             field.clearButtonMode = .whileEditing
         }
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Save", style: .default) { [weak alert] _ in
+        let answer = UIAlertAction(title: yes, style: .default) { [weak alert] _ in
             then(alert?.textFields?.first?.text ?? "")
-        })
+        }
+        alert.addAction(answer)
+        // Return answers, as in the system's own text alerts; what it does is never destructive.
+        alert.preferredAction = answer
         front?.present(alert, animated: true)
     }
 
-    func askPick(title: String, choices: [Choice], then: @escaping (Choice) -> Void) {
+    func askPick(title: String, choices: [Choice], yes: String, then: @escaping (Choice) -> Void) {
         guard let front else { return }
         ChoicePicker.present(from: front, core: core, title: title, choices: choices, chosen: then)
     }
@@ -127,7 +134,7 @@ final class PhoneAsker: ActionAsking {
     }
 
     func askLength(hint: String, then: @escaping (String) -> Void) {
-        askText(title: "Planned Length", label: "Planned length", initial: "", hint: hint, problem: nil, then: then)
+        askText(title: "Planned Length", label: "Planned length", initial: "", hint: hint, problem: nil, yes: "Save", then: then)
     }
 
     func tell(title: String, _ sentence: String) {
@@ -147,17 +154,6 @@ extension UIViewController {
         done: @escaping (Change, Answer) -> Void
     ) {
         ActionRun.run(action, on: core.lumenna, asking: PhoneAsker(core: core, from: self), form: form, done: done)
-    }
-
-    /// A swipe action for one of the core's actions: its spoken name, shown as destructive
-    /// when it removes something.
-    func swipeAction(_ action: Action, run: @escaping () -> Void) -> UIContextualAction {
-        let swipe = UIContextualAction(style: action.destructive ? .destructive : .normal, title: action.title) { _, _, finished in
-            run()
-            finished(true)
-        }
-        if action.kind == .markDone || action.kind == .markNotDone { swipe.backgroundColor = .systemGreen }
-        return swipe
     }
 }
 

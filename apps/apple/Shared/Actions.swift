@@ -11,10 +11,12 @@ protocol ActionAsking: AnyObject {
     func askConfirm(title: String, message: String, yes: String, destructive: Bool, then: @escaping () -> Void)
     /// A line of text. `problem` is the core's sentence when it refused what was typed, which
     /// comes back as `initial`, so a refused answer stays in its dialog. Whatever is typed is
-    /// handed on, empty included: the core refuses what it must.
-    func askText(title: String, label: String, initial: String, hint: String, problem: String?, then: @escaping (String) -> Void)
-    /// One of `choices`, in their order.
-    func askPick(title: String, choices: [Choice], then: @escaping (Choice) -> Void)
+    /// handed on, empty included: the core refuses what it must. `yes` is the button that
+    /// answers, the core's ("Rename", "Add", "Save", "Log").
+    func askText(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, then: @escaping (String) -> Void)
+    /// One of `choices`, in their order. `yes` is the button that answers, the core's
+    /// ("Move", "Assign", "Merge").
+    func askPick(title: String, choices: [Choice], yes: String, then: @escaping (Choice) -> Void)
     /// One of a few answers, each its own button.
     func askChoose(title: String, message: String, answers: [Choice], then: @escaping (Choice) -> Void)
     /// How long a sitting is meant to take, once one is picked: `hint` is the core's question.
@@ -27,9 +29,10 @@ protocol ActionAsking: AnyObject {
 }
 
 extension ActionAsking {
-    /// A length asked as a line of text, where the app has no better way.
+    /// A length asked as a line of text, where the app has no better way: the core's question.
     func askLength(hint: String, then: @escaping (String) -> Void) {
-        askText(title: "Planned Length", label: "Planned length", initial: "", hint: hint, problem: nil, then: then)
+        guard case let .text(title, label, initial, hint, _, yes, _) = lengthQuestion() else { return }
+        askText(title: title, label: label, initial: initial, hint: hint, problem: nil, yes: yes, then: then)
     }
 }
 
@@ -72,9 +75,9 @@ enum ActionRun {
             answer(.yes)
         case let .confirm(title, message, yes):
             asker.askConfirm(title: title, message: message, yes: yes, destructive: action.destructive) { answer(.yes) }
-        case let .text(title, label, initial, hint, _):
-            askText(action, on: lumenna, asking: asker, title: title, label: label, typed: initial, hint: hint, problem: nil, done: done)
-        case let .pick(title, length):
+        case let .text(title, label, initial, hint, _, yes, _):
+            askText(action, on: lumenna, asking: asker, title: title, label: label, typed: initial, hint: hint, yes: yes, problem: nil, done: done)
+        case let .pick(title, length, yes):
             let offered: Choices
             do {
                 offered = try lumenna.choices(action: action)
@@ -86,7 +89,7 @@ enum ActionRun {
                 asker.tell(title: title, offered.announcement)
                 return
             }
-            asker.askPick(title: title, choices: offered.choices) { choice in
+            asker.askPick(title: title, choices: offered.choices, yes: yes) { choice in
                 guard let length else {
                     answer(.picked(id: choice.id, length: nil))
                     return
@@ -103,15 +106,15 @@ enum ActionRun {
     /// Asks for the line, and again with what was typed and why when the core refuses it.
     private static func askText(
         _ action: Action, on lumenna: Lumenna, asking asker: ActionAsking,
-        title: String, label: String, typed: String, hint: String, problem: String?,
+        title: String, label: String, typed: String, hint: String, yes: String, problem: String?,
         done: @escaping (Change, Answer) -> Void
     ) {
-        asker.askText(title: title, label: label, initial: typed, hint: hint, problem: problem) { text in
+        asker.askText(title: title, label: label, initial: typed, hint: hint, problem: problem, yes: yes) { text in
             let answer = Answer.text(text: text)
             do {
                 done(try lumenna.act(action: action, answer: answer), answer)
             } catch {
-                askText(action, on: lumenna, asking: asker, title: title, label: label, typed: text, hint: hint, problem: error.sentence, done: done)
+                askText(action, on: lumenna, asking: asker, title: title, label: label, typed: text, hint: hint, yes: yes, problem: error.sentence, done: done)
             }
         }
     }
@@ -132,15 +135,40 @@ enum ActionRun {
 }
 
 extension Choice {
-    /// How it reads in a chooser: a block with its day and start, as the app says times.
+    /// How it reads in a chooser, in the order every app says it: a block as
+    /// "<day>, <start> to <end>, <title>", in this device's words for days and times.
     var shownTitle: String {
         guard let date, let start else { return title }
-        return "\(Clock.spokenDay(date)), \(Clock.time(start)), \(title)"
+        guard let end else { return "\(Clock.spokenDay(date)), \(Clock.time(start)), \(title)" }
+        return "\(Clock.spokenDay(date)), \(Clock.time(start)) to \(Clock.time(end)), \(title)"
     }
 
-    /// What else tells it apart, beneath the title: a task's project, a block's hours.
+    /// What else tells it apart, said after the title: a task's project. A block's hours are
+    /// in its title already.
     var shownDetail: String? {
-        if let start, let end { return "\(Clock.time(start)) to \(Clock.time(end))" }
-        return detail
+        date != nil && start != nil ? nil : detail
     }
+}
+
+/// A line of text the core asks, its parts by name: the apps' own commands (Go to Day, a new
+/// saved filter's two steps, a sitting's length) ask what `goToDayQuestion()`,
+/// `newFilterQuestions()` and `lengthQuestion()` say.
+struct TextQuestion {
+    let title: String
+    let label: String
+    let hint: String
+    /// The button that answers.
+    let yes: String
+
+    init?(_ question: Question) {
+        guard case let .text(title, label, _, hint, _, yes, _) = question else { return nil }
+        self.title = title
+        self.label = label
+        self.hint = hint
+        self.yes = yes
+    }
+
+    static var goToDay: TextQuestion { TextQuestion(goToDayQuestion())! }
+    /// The name, then the query.
+    static var newFilter: [TextQuestion] { newFilterQuestions().compactMap(TextQuestion.init) }
 }

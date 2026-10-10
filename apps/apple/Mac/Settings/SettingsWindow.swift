@@ -143,7 +143,7 @@ struct GeneralSettings: View {
                     }
                 }
             } header: {
-                FormParts.heading("Shortcuts from anywhere")
+                FormParts.heading("Shortcuts from Anywhere")
             } footer: {
                 Text("These work in any app, so they take their keys from whatever app is in front. Control-Command, because Control-Option is VoiceOver's.")
                     .font(.footnote).foregroundStyle(Color.quietLabel)

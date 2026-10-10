@@ -154,7 +154,7 @@ final class LumennaWatchUITests: XCTestCase {
         try audit("planning settings")
         back()
         app.buttons["Devices"].tap()
-        XCTAssertTrue(app.staticTexts["No paired devices"].waitForExistence(timeout: 5), "the synced list, empty in a fresh store")
+        XCTAssertTrue(app.staticTexts["No devices are paired yet. Pair one to sync with it."].waitForExistence(timeout: 5), "the synced list, empty in a fresh store")
         try audit("devices")
     }
 
@@ -162,12 +162,15 @@ final class LumennaWatchUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Today"].waitForExistence(timeout: 10))
         reveal(app.buttons["New Project"]).tap()
         type("Garden", into: app.textFields["New Project"])
-        reveal(app.buttons["Save"]).tap()
+        reveal(app.buttons["Add"]).tap()
         let garden = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Garden'")).firstMatch
         reveal(garden).tap()
         reveal(app.buttons["Rename"]).tap()
         type("Yard", into: app.textFields["Rename Garden"], clearing: "Garden".count)
-        app.buttons["Save"].tap()
+        // The question's own button, which answers it, over the action that asked it.
+        let answer = app.buttons.matching(NSPredicate(format: "label == 'Rename'")).allElementsBoundByIndex.last { $0.isHittable }
+        XCTAssertNotNil(answer, "the question answers with Rename")
+        answer?.tap()
         let yard = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Yard'")).firstMatch
         XCTAssertTrue(reveal(yard).exists, "renamed, and back among the places")
     }

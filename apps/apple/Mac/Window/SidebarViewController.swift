@@ -256,10 +256,14 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
 
     /// New Saved Filter, the app's own form: a name, then a query.
     private func newFilter() {
-        window?.askForText("New Saved Filter", placeholder: "Name", action: "Next") { [weak self] name in
+        // The core's two questions: the name, then the query.
+        let steps = TextQuestion.newFilter
+        guard steps.count == 2 else { return }
+        let (named, queried) = (steps[0], steps[1])
+        window?.askForText(named.title, message: named.hint, placeholder: named.label, action: named.yes) { [weak self] name in
             // A sheet cannot open while the last is still closing.
             DispatchQueue.main.async {
-                self?.window?.askForText("Query for \(name)", placeholder: "#Work & overdue", action: "Save") { query in
+                self?.window?.askForText(queried.title, message: queried.hint, placeholder: queried.label, action: queried.yes) { query in
                     guard let self else { return }
                     do {
                         let change = try self.core.lumenna.addFilter(name: name, query: query)

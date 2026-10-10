@@ -168,9 +168,9 @@ final class TaskListViewController: UIViewController {
         cell.accessibilityValue = RowSpeech.value(row, previousDepth: previous, fold: fold)
         cell.accessibilityHint = mode == .trash ? nil : "Shows details"
         cell.accessibilityTraits = .button
-        // No custom actions here: UIKit already offers the swipe actions to VoiceOver, Switch
-        // Control and Full Keyboard Access, and actions set on the cell are added to those
-        // rather than replacing them, so each would be listed twice.
+        // Only what is not swiped: UIKit offers the swipe actions to VoiceOver, Switch Control
+        // and Full Keyboard Access already, and adds these to them.
+        cell.accessibilityCustomActions = rowActions(for: row).customActions
     }
 
     /// What a row looks like: the title, then the due date and notable states beneath it.
@@ -218,7 +218,8 @@ final class TaskListViewController: UIViewController {
         do {
             let listing = try core.lumenna.listTasks(query: query)
             listed = listing.rows
-            var said = [listing.announcement] + listing.notices
+            // With nothing listed, what is empty, in the core's words: "The trash is empty."
+            var said = [listing.rows.isEmpty && !listing.empty.isEmpty ? listing.empty : listing.announcement] + listing.notices
             if let understood = listing.query?.description {
                 said.insert(understood, at: 0)
             }
@@ -417,30 +418,44 @@ extension TaskListViewController: UICollectionViewDelegate {
         guard mode == .tasks, let row = row(at: path) else { return }
         open(row)
     }
+
+    func collectionView(
+        _ collectionView: UICollectionView, contextMenuConfigurationForItemsAt paths: [IndexPath], point: CGPoint
+    ) -> UIContextMenuConfiguration? {
+        guard paths.count == 1, let row = row(at: paths[0]) else { return nil }
+        return rowActions(for: row).contextMenu
+    }
 }
 
-// The swipe actions, apart from the layout that asks for them, so a test can ask too.
+// The row's actions, apart from the layout that asks for them, so a test can ask too.
 extension TaskListViewController {
-    /// What a leading swipe on the row at `path` offers: Mark Done or Mark Not Done, the
-    /// row's first action. VoiceOver lists it first among the row's actions.
-    func leadingSwipeActions(at path: IndexPath) -> UISwipeActionsConfiguration? {
-        guard let row = self.row(at: path), let done = row.actions.first, [.markDone, .markNotDone].contains(done.kind) else { return nil }
-        return UISwipeActionsConfiguration(actions: [swipeAction(done) { [weak self] in self?.perform(done, on: row) }])
+    /// The row's actions, the core's, as the list offers them (`RowActions`).
+    func rowActions(for row: RowView) -> RowActions {
+        let fold = shown.first(where: { $0.item.id == row.id }).flatMap { shown in
+            folding.action(for: shown, key: row.id) { [weak self] key, said in self?.fold(key, saying: said) }
+        }
+        return RowActions(actions: row.actions, doneLeads: true, fold: fold) { [weak self] action in
+            self?.perform(action, on: row)
+        }
     }
 
-    /// What a trailing swipe on the row at `path` offers: the rest of the row's actions, in
-    /// the core's order, then Expand or Collapse.
+    /// What a leading swipe on the row at `path` offers: Mark Done or Mark Not Done.
+    func leadingSwipeActions(at path: IndexPath) -> UISwipeActionsConfiguration? {
+        row(at: path).flatMap { rowActions(for: $0).leadingSwipe() }
+    }
+
+    /// What a trailing swipe offers: the row's other primary actions, then Expand or Collapse.
     func trailingSwipeActions(at path: IndexPath) -> UISwipeActionsConfiguration? {
-        guard let row = self.row(at: path) else { return nil }
-        let leading = leadingSwipeActions(at: path) == nil ? 0 : 1
-        var actions = row.actions.dropFirst(leading).map { action in
-            swipeAction(action) { [weak self] in self?.perform(action, on: row) }
-        }
-        if let fold = self.shown.first(where: { $0.item.id == row.id }).flatMap({ shown in
-            self.folding.action(for: shown, key: row.id) { [weak self] key, said in self?.fold(key, saying: said) }
-        }) {
-            actions.append(fold)
-        }
-        return actions.isEmpty ? nil : UISwipeActionsConfiguration(actions: actions)
+        row(at: path).flatMap { rowActions(for: $0).trailingSwipe() }
+    }
+
+    /// The cell's other actions, for VoiceOver, Switch Control and Full Keyboard Access.
+    func customActions(at path: IndexPath) -> [UIAccessibilityCustomAction] {
+        row(at: path).map { rowActions(for: $0).customActions } ?? []
+    }
+
+    /// What a long press on the row at `path` offers: every action.
+    func menu(at path: IndexPath) -> UIMenu? {
+        row(at: path).flatMap { rowActions(for: $0).menu }
     }
 }

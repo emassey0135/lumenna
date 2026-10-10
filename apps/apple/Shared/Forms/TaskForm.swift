@@ -126,6 +126,7 @@ final class TaskDetailModel: NSObject, ObservableObject {
 
 struct TaskDetailView: View {
     @ObservedObject var model: TaskDetailModel
+    private let words = FormWords.task
 
     var body: some View {
         if let task = model.task {
@@ -137,36 +138,33 @@ struct TaskDetailView: View {
 
     private func form(_ task: TaskDetail) -> some View {
         Form {
+            // Each field's name, hint and example are the core's, as in every app.
             Section {
-                namedField("Title", text: $model.title, example: "What to do", axis: .vertical)
-                namedField("Due", text: $model.due, example: "tomorrow")
-                    .modifier(Hint("A date, such as tomorrow or next Friday. Empty for none. A new date keeps how it repeats."))
-                namedField("Repeats", text: $model.repetition, example: "every monday")
-                    .modifier(Hint("Such as every Monday, or every! 2 weeks to count from when it is done. Empty for no repetition."))
-                namedField("Estimate", text: $model.estimate, example: "45m")
-                    .modifier(Hint("Such as 45m or 1h30m. Empty for none."))
+                namedField(words["title"], text: $model.title, axis: .vertical)
+                namedField(words["due"], text: $model.due).modifier(Lowercase())
+                namedField(words["repeat"], text: $model.repetition).modifier(Lowercase())
+                namedField(words["estimate"], text: $model.estimate).modifier(Lowercase())
                 project
-                namedField("Labels", text: $model.labels, example: "calls, errands")
-                    .modifier(Hint("Names separated by commas. A new name becomes a label."))
+                namedField(words["labels"], text: $model.labels).modifier(Lowercase())
             }
             // The priorities and their names are the core's.
-            ChoiceSection("Priority", selection: $model.priority, choices: priorities().compactMap { choice in
+            ChoiceSection(words["priority"].label, selection: $model.priority, choices: words["priority"].options.compactMap { choice in
                 UInt8(choice.id).map { (choice.title, $0) }
             })
             Section {
                 #if os(iOS) || os(watchOS)
-                TextField("Notes", text: $model.notes, prompt: example("Anything else"), axis: .vertical)
+                TextField(words["notes"].label, text: $model.notes, prompt: words["notes"].example.isEmpty ? nil : example(words["notes"].example), axis: .vertical)
                     .lineLimit(3...)
-                    .accessibilityLabel("Notes")
+                    .accessibilityLabel(words["notes"].label)
                 #else
                 // A growing text field on the Mac draws its own name beside it, in a grey under
                 // contrast; the editor does not.
                 TextEditor(text: $model.notes)
                     .frame(minHeight: 80)
-                    .accessibilityLabel("Notes")
+                    .accessibilityLabel(words["notes"].label)
                 #endif
             } header: {
-                FormParts.heading("Notes")
+                FormParts.heading(words["notes"].label)
             }
             Section {
                 if task.repetition == nil, let rule = task.recurrence {
@@ -211,10 +209,10 @@ struct TaskDetailView: View {
     /// the phone, where an inline list of every project would bury the form.
     @ViewBuilder private var project: some View {
         #if os(iOS) || os(watchOS)
-        namedField("Project", text: $model.project, example: "Inbox")
+        namedField(words["project"], text: $model.project)
         #else
-        Named("Project") {
-            Picker("Project", selection: $model.project) {
+        Named(words["project"].label) {
+            Picker(words["project"].label, selection: $model.project) {
                 ForEach(model.projects, id: \.self) { Text($0).tag($0) }
             }
         }
@@ -222,17 +220,13 @@ struct TaskDetailView: View {
     }
 }
 
-/// What a field takes, said by VoiceOver after a pause on iOS and shown as a tooltip on macOS.
-private struct Hint: ViewModifier {
-    let text: String
-
-    init(_ text: String) { self.text = text }
-
+/// A field the core reads, where a capital the keyboard adds by itself is never wanted.
+private struct Lowercase: ViewModifier {
     func body(content: Content) -> some View {
         #if os(iOS) || os(watchOS)
-        content.textInputAutocapitalization(.never).accessibilityHint(text)
+        content.textInputAutocapitalization(.never)
         #else
-        content.help(text)
+        content
         #endif
     }
 }

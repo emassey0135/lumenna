@@ -91,7 +91,7 @@ enum HotKeys {
         var name: String {
             switch self {
             case .summon: "Show Lumenna"
-            case .quickAdd: "Quick add a task"
+            case .quickAdd: "Quick Add a Task"
             }
         }
 

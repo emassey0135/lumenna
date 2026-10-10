@@ -5,8 +5,8 @@ final class DayNode {
     enum Kind {
         case block(PlanBlock)
         case sitting(PlanAssignment, in: PlanBlock)
-        case free(start: String, end: String, minutes: UInt32, actions: [Action])
-        case now(String)
+        case free(start: String, end: String, minutes: UInt32, title: String, details: [String], actions: [Action])
+        case now(time: String, title: String)
         /// A repeating block cancelled for this day alone, so the day can be put back.
         case cancelled(CancelledBlock)
     }
@@ -21,7 +21,7 @@ final class DayNode {
         switch kind {
         case let .block(block): "block:\(block.id)"
         case let .sitting(sitting, _): "sitting:\(sitting.id)"
-        case let .free(start, _, _, _): "free:\(start)"
+        case let .free(start, _, _, _, _, _): "free:\(start)"
         case .now: "now"
         case let .cancelled(block): "cancelled:\(block.series)"
         }
@@ -137,10 +137,10 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
                     let node = DayNode(.block(block))
                     node.children = block.assignments.map { DayNode(.sitting($0, in: block)) }
                     nodes.append(node)
-                case let .free(start, end, minutes, actions):
-                    nodes.append(DayNode(.free(start: start, end: end, minutes: minutes, actions: actions)))
-                case let .now(time):
-                    nodes.append(DayNode(.now(time)))
+                case let .free(start, end, minutes, title, details, actions):
+                    nodes.append(DayNode(.free(start: start, end: end, minutes: minutes, title: title, details: details, actions: actions)))
+                case let .now(time, title):
+                    nodes.append(DayNode(.now(time: time, title: title)))
                 }
             }
             nodes += plan.cancelled.map { DayNode(.cancelled($0)) }
@@ -197,15 +197,16 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         case let .sitting(sitting, _):
             label = sitting.title
             value = sitting.details
-        case let .free(start, end, minutes, _):
-            label = "Free, \(Clock.length(minutes))"
+        case let .free(start, end, _, title, details, _):
+            // "<title>, <details>, <start> to <end>", the core's words in every app's order.
+            label = ([title] + details).joined(separator: ", ")
             value = ["\(Clock.time(start)) to \(Clock.time(end))"]
-        case let .now(time):
-            label = "Now, \(Clock.time(time))"
+        case let .now(time, title):
+            label = "\(title), \(Clock.time(time))"
             cell.title.font = .preferredFont(forTextStyle: .headline)
         case let .cancelled(block):
             label = "\(Clock.time(block.start)), \(block.title)"
-            value = ["cancelled for this day"]
+            value = block.details
         }
         cell.show(title: label, detail: value.joined(separator: ", "))
         cell.setAccessibilityLabel(label)
@@ -224,7 +225,7 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         switch node.kind {
         case let .block(block): edit(block)
         case .sitting: main?.nextPane(nil)
-        case let .free(start, _, minutes, _): addBlock(at: start, minutes: minutes)
+        case let .free(start, _, minutes, _, _, _): addBlock(at: start, minutes: minutes)
         case let .cancelled(block): restore(block)
         case .now: break
         }
@@ -266,7 +267,7 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         switch node.kind {
         case let .block(block): block.actions
         case let .sitting(sitting, _): sitting.actions
-        case let .free(_, _, _, actions): actions
+        case let .free(_, _, _, _, _, actions): actions
         case let .cancelled(block): block.actions
         case .now: []
         }
@@ -288,7 +289,7 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
     private func form(_ action: Action, on node: DayNode) {
         switch (action.kind, node.kind) {
         case let (.edit, .block(block)): edit(block)
-        case let (.addBlock, .free(start, _, minutes, _)): addBlock(at: action.other ?? start, minutes: minutes)
+        case let (.addBlock, .free(start, _, minutes, _, _, _)): addBlock(at: action.other ?? start, minutes: minutes)
         case (.editTask, _): main?.showTask(action.target); main?.nextPane(nil)
         default: break
         }
@@ -383,15 +384,17 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
     @objc func goToDay(_ sender: Any?) {
         guard let window = view.window else { return }
         let alert = NSAlert()
-        alert.messageText = "Go to Day"
+        // The core's question, asked with the system's calendar rather than typed.
+        let question = TextQuestion.goToDay
+        alert.messageText = question.title
         let picker = NSDatePicker()
         picker.datePickerStyle = .clockAndCalendar
         picker.datePickerElements = .yearMonthDay
         picker.dateValue = shownDate
         picker.sizeToFit()
-        picker.setAccessibilityLabel("Day")
+        picker.setAccessibilityLabel(question.label)
         alert.accessoryView = picker
-        alert.addButton(withTitle: "Go")
+        alert.addButton(withTitle: question.yes)
         alert.addButton(withTitle: "Cancel")
         alert.window.initialFirstResponder = picker
         alert.beginSheetModal(for: window) { [weak self] response in

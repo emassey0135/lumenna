@@ -135,7 +135,8 @@ final class TaskListViewController: NSViewController, NSOutlineViewDataSource, N
             let listing = try core.lumenna.listTasks(query: filter.stringValue)
             rows = listing.rows
             nodes = TaskNode.tree(listing.rows)
-            var said = [listing.announcement] + listing.notices
+            // With nothing listed, what is empty, in the core's words: "The trash is empty."
+            var said = [listing.rows.isEmpty && !listing.empty.isEmpty ? listing.empty : listing.announcement] + listing.notices
             if let understood = listing.query?.description, mode == .tasks {
                 said.insert(understood, at: 0)
             }

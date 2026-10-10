@@ -10,7 +10,7 @@ struct PickerItem {
 }
 
 /// Choosing one of many — a task to wait for, a project to move under, a block to put a task
-/// in — as a sheet: a field to narrow the list, the list, and Choose.
+/// in — as a sheet: a field to narrow the list, the list, and the button that answers.
 ///
 /// A table rather than a menu, because the list can be long; the field narrows it as typed
 /// and the arrow keys move through the list without leaving the field, as Spotlight's do.
@@ -19,12 +19,15 @@ final class PickerSheet: NSViewController, NSTableViewDataSource, NSTableViewDel
     private let items: [PickerItem]
     private var shown: [PickerItem]
     private let chosen: (PickerItem) -> Void
+    /// The default button, named for what it does: the core's ("Move", "Assign").
+    private let yes: String
     private let table = NSTableView()
     private let search = NSSearchField()
     private let count = NSTextField(labelWithString: "")
 
-    private init(title: String, items: [PickerItem], chosen: @escaping (PickerItem) -> Void) {
+    private init(title: String, items: [PickerItem], yes: String, chosen: @escaping (PickerItem) -> Void) {
         titleText = title
+        self.yes = yes
         self.items = items
         shown = items
         self.chosen = chosen
@@ -35,12 +38,12 @@ final class PickerSheet: NSViewController, NSTableViewDataSource, NSTableViewDel
     required init?(coder: NSCoder) { fatalError("not used") }
 
     /// Shows the sheet on `window`. An empty list says so instead.
-    static func present(on window: NSWindow, title: String, items: [PickerItem], chosen: @escaping (PickerItem) -> Void) {
+    static func present(on window: NSWindow, title: String, items: [PickerItem], yes: String, chosen: @escaping (PickerItem) -> Void) {
         guard !items.isEmpty else {
             window.showFailure("There is nothing to choose from.", title: title)
             return
         }
-        let sheet = PickerSheet(title: title, items: items, chosen: chosen)
+        let sheet = PickerSheet(title: title, items: items, yes: yes, chosen: chosen)
         let host = NSWindow(contentViewController: sheet)
         host.title = title
         window.beginSheet(host)
@@ -75,7 +78,7 @@ final class PickerSheet: NSViewController, NSTableViewDataSource, NSTableViewDel
 
         let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancel))
         cancel.keyEquivalent = "\u{1b}"
-        let choose = NSButton(title: "Choose", target: self, action: #selector(choose))
+        let choose = NSButton(title: yes, target: self, action: #selector(choose))
         choose.keyEquivalent = "\r"
         let buttons = NSStackView(views: [NSView(), cancel, choose])
         buttons.distribution = .fill

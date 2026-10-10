@@ -82,6 +82,14 @@ final class LumennaUITests: XCTestCase {
         if leading { row.swipeRight() } else { row.swipeLeft() }
     }
 
+    /// Opens a row's long-press menu, which holds every one of its actions, and chooses one.
+    private func choose(_ action: String, fromMenuOf row: XCUIElement) {
+        row.press(forDuration: 1.2)
+        let item = app.buttons[action].firstMatch
+        XCTAssertTrue(item.waitForExistence(timeout: 5), "the menu offers \(action)")
+        item.tap()
+    }
+
     /// Presses an alert's button. On iPad the first tap on an alert whose text field has had
     /// nothing typed into it only ends editing, and the button needs a second; the alert going
     /// is what says it was pressed.
@@ -150,6 +158,18 @@ final class LumennaUITests: XCTestCase {
             print("UNDOTREE\n\(app.debugDescription)")
             XCTFail("the task did not come back")
         }
+    }
+
+    func testATasksLongPressMenuHoldsEveryActionItHasAndRunsThem() {
+        add("water the plants")
+        let task = row("water the plants")
+        XCTAssertTrue(task.waitForExistence(timeout: 5))
+        task.press(forDuration: 1.2)
+        for action in ["Mark Done", "Edit Details", "Put in a Block", "Move to Project", "Make Subtask Of", "Wait For", "Move to Trash"] {
+            XCTAssertTrue(app.buttons[action].firstMatch.waitForExistence(timeout: 5), "the menu offers \(action)")
+        }
+        app.buttons["Mark Done"].firstMatch.tap()
+        XCTAssertTrue(task.waitForNonExistence(timeout: 5), "done from the menu, so no longer listed")
     }
 
     func testAFilterSaysHowItWasUnderstood() {
@@ -252,7 +272,7 @@ final class LumennaUITests: XCTestCase {
         name.typeText("Deep work")
         app.buttons["Save"].tap()
 
-        let summary = app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH '1 block'"))
+        let summary = app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Today. 1 block'"))
         XCTAssertTrue(summary.firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(cell(containing: "Deep work").exists)
         XCTAssertTrue(cell(containing: "Free,").exists, "free time is a row")
@@ -341,7 +361,7 @@ final class LumennaUITests: XCTestCase {
         tab("Browse")
         cell(containing: "Projects").tap()
         app.buttons["Add project"].tap()
-        answer("Work", with: "Save")
+        answer("Work", with: "Add")
         XCTAssertTrue(cell(containing: "Work").waitForExistence(timeout: 5))
         try audit()
 
@@ -368,14 +388,14 @@ final class LumennaUITests: XCTestCase {
         tab("Browse")
         cell(containing: "Labels").tap()
         app.buttons["Add label"].tap()
-        answer("calls", with: "Save")
+        answer("calls", with: "Add")
         XCTAssertTrue(cell(containing: "calls").waitForExistence(timeout: 5))
         goBack()
 
-        cell(containing: "Saved filters").tap()
+        cell(containing: "Saved Filters").tap()
         app.buttons["Add filter"].tap()
         answer("Urgent", with: "Next")
-        answer("p1", with: "Save")
+        answer("p1", with: "Add")
         XCTAssertTrue(cell(containing: "Urgent").waitForExistence(timeout: 5))
         try audit()
     }
@@ -482,7 +502,7 @@ final class LumennaUITests: XCTestCase {
         XCTAssertTrue(entry.waitForExistence(timeout: 5))
         entry.tap()
         entry.typeText(code)
-        app.buttons["Pair With This Code"].tap()
+        app.buttons["Pair Using This Code"].tap()
 
         let yes = app.alerts.buttons["Yes, They Match"]
         XCTAssertTrue(yes.waitForExistence(timeout: 90), "the words never came")
@@ -561,8 +581,8 @@ final class LumennaUITests: XCTestCase {
 
     func testACancelledDayIsListedAndCanBePutBack() throws {
         addBlock("Run", repeating: "every day")
-        reveal(actionsOf: cell(containing: "Run"))
-        app.buttons["Cancel This Day"].tap()
+        // Not one of the block's swipe actions, which are its primary ones: in its menu.
+        choose("Cancel This Day", fromMenuOf: cell(containing: "Run"))
         let cancelled = app.cells.containing(NSPredicate(format: "value == 'cancelled for this day'")).firstMatch
         XCTAssertTrue(cancelled.waitForExistence(timeout: 5))
         try audit()
@@ -613,8 +633,7 @@ final class LumennaUITests: XCTestCase {
 
         let planned = app.cells.containing(NSPredicate(format: "value CONTAINS 'planned for 45 minutes'")).firstMatch
         XCTAssertTrue(planned.waitForExistence(timeout: 5))
-        reveal(actionsOf: planned)
-        app.buttons["Planned Length"].tap()
+        choose("Planned Length", fromMenuOf: planned)
         // Emptied, for no planned length.
         let length = app.alerts.textFields["Planned length"]
         XCTAssertTrue(length.waitForExistence(timeout: 5))
@@ -629,7 +648,7 @@ final class LumennaUITests: XCTestCase {
         tab("Browse")
         cell(containing: "Projects").tap()
         app.buttons["Add project"].tap()
-        answer("Work", with: "Save")
+        answer("Work", with: "Add")
         let work = app.cells.matching(NSPredicate(format: "label == 'Work'")).firstMatch
         XCTAssertTrue(work.waitForExistence(timeout: 5))
         app.navigationBars.buttons["Undo"].tap()
