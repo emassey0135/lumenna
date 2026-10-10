@@ -11,7 +11,8 @@ import { Blocks } from "./Blocks";
 import { core } from "./core";
 import type { Place } from "./core";
 import { Day } from "./Day";
-import { KeyboardShortcuts, asksForKeys } from "./Keys";
+import { KeyboardShortcuts, asksForKeys, commandFor } from "./Keys";
+import { defer, focusIn, movePane, runCommand, useCommand } from "./commands";
 import { Details } from "./Details";
 import type { DetailsHandle } from "./Details";
 import { QuickAdd } from "./QuickAdd";
@@ -132,6 +133,78 @@ export function App() {
     window.addEventListener("keydown", keys, true);
     return () => window.removeEventListener("keydown", keys, true);
   }, [ready]);
+
+  // The shared commands, on the web's keys (Keys.tsx), from anywhere but a dialog, whose keys
+  // are its own. The screen shown answers first; what it cannot, the window does here.
+  useEffect(() => {
+    if (!ready) return;
+    const keys = (event: KeyboardEvent) => {
+      const id = commandFor(event);
+      if (!id) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[role='dialog'], [role='alertdialog']")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      runCommand(id);
+    };
+    window.addEventListener("keydown", keys, true);
+    return () => window.removeEventListener("keydown", keys, true);
+  }, [ready]);
+
+  // Goes to a place, focus on its list once it has drawn.
+  const focusMain = useRef(false);
+  const goTo = (to: Place) => {
+    if (to === place) {
+      focusIn(".app > main", false);
+      return;
+    }
+    focusMain.current = true;
+    setPlace(to);
+  };
+  useEffect(() => {
+    if (!focusMain.current) return;
+    focusMain.current = false;
+    focusIn(".app > main", false);
+  }, [shown]);
+  // Goes to `to` first, where the screen there runs command `id`.
+  const thenRun = (to: Place, id: string) => {
+    focusMain.current = false;
+    defer(id);
+    setPlace(to);
+  };
+
+  useCommand("new-task", () => setAdding(true), -1);
+  useCommand("new-block", () => thenRun("Today", "new-block"), -1);
+  useCommand("settings", () => setSettingsOpen(true), -1);
+  useCommand(
+    "sync-now",
+    () =>
+      void (async () => {
+        say("Syncing");
+        try {
+          say(await core.syncNow());
+          changed();
+        } catch (error) {
+          say((error as Error).message);
+        }
+      })(),
+    -1,
+  );
+  useCommand("filter", () => thenRun("Tasks", "filter"), -1);
+  useCommand("go-today", () => goTo("Today"), -1);
+  useCommand("go-tasks", () => goTo("Tasks"), -1);
+  useCommand("go-blocks", () => goTo("Blocks"), -1);
+  useCommand("go-trash", () => goTo("Trash"), -1);
+  useCommand("next-pane", () => movePane(1), -1);
+  useCommand("previous-pane", () => movePane(-1), -1);
+  for (const id of ["previous-day", "next-day", "go-to-now", "go-to-day"]) {
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- a fixed list, called in the same order every time
+    useCommand(id, () => thenRun("Today", id), -1);
+  }
+  for (const id of ["mark-done", "save-task", "put-in-block", "move-to-project"]) {
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- a fixed list, called in the same order every time
+    useCommand(id, () => say("No task is selected."), -1);
+  }
 
   if (failure) {
     return (

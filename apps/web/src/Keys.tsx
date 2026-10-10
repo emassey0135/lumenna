@@ -1,19 +1,53 @@
-// The keyboard shortcuts dialog: every key the web binds, grouped as the desktop apps' menus
-// and lists are.
+// The keyboard shortcuts: every key the web binds, in one table, which both the bindings and
+// the dialog listing them read, so the help cannot miss one.
 //
 // The commands and their names are the desktop apps' shared table (`lumenna_desktop::keys`),
-// so a command is called what it is called everywhere. The web lists only those it binds
-// (`BOUND`): a browser keeps many of the rest for itself (Ctrl+N, Ctrl+W, Ctrl+T, Ctrl+1 to
-// 4, Ctrl+Page Up and Down). What only the web has is `OWN`. A binding added anywhere in the
-// app is added here, so the help cannot miss it.
+// so a command is called what it is called everywhere, and the web has every one of them. A
+// browser keeps many of the shared keys for itself, and a page cannot have them: Ctrl+N, Ctrl+W,
+// Ctrl+T, Ctrl+1 to 4, Ctrl+Page Up and Down, F5, F6, Ctrl+F, Ctrl+K, Ctrl+B, Ctrl+S. Those
+// commands are on Alt+Shift and a letter here, the same letter where it is free, which no
+// browser and no screen reader takes (`WEB`). What only the web has is `OWN`.
 
 import { useEffect, useState } from "react";
 import { Button, Dialog, Heading, Modal } from "react-aria-components";
 import { core } from "./core";
 import type { ShortcutGroup } from "./core";
 
-/** The shared commands the web binds, by the table's id. */
-const BOUND = new Set(["undo", "redo", "open", "toggle", "delete", "actions"]);
+/**
+ * The key the web uses for each shared command, by the table's id, where it differs from the
+ * shared one. Letters Chrome and Edge take with Alt+Shift are never used: A (inactive dialogs),
+ * B (bookmarks bar), I (feedback), T (toolbar).
+ */
+export const WEB: Record<string, string[]> = {
+  "new-task": ["Alt+Shift+N"],
+  "new-block": ["Alt+Shift+L"],
+  "sync-now": ["Alt+Shift+Y"],
+  settings: ["Alt+Shift+E"],
+  // The tab is Lumenna's window: closing it is the browser's own key. Nothing else to bind.
+  "close-window": ["Ctrl+W"],
+  filter: ["Alt+Shift+F"],
+  "go-today": ["Alt+Shift+1"],
+  "go-tasks": ["Alt+Shift+2"],
+  "go-blocks": ["Alt+Shift+3"],
+  "go-trash": ["Alt+Shift+4"],
+  "next-pane": ["Alt+Shift+Period"],
+  "previous-pane": ["Alt+Shift+Comma"],
+  "mark-done": ["Alt+Shift+K"],
+  "save-task": ["Alt+Shift+S"],
+  "put-in-block": ["Alt+Shift+W"],
+  "move-to-project": ["Alt+Shift+M"],
+  "previous-day": ["Alt+Shift+Page Up"],
+  "next-day": ["Alt+Shift+Page Down"],
+  "go-to-now": ["Alt+Shift+O"],
+  "go-to-day": ["Alt+Shift+G"],
+  "keyboard-help": ["?"],
+};
+
+/**
+ * Shared commands a page cannot have at all: Quit would be the browser's, every tab of it, not
+ * Lumenna's.
+ */
+const NOT_ON_THE_WEB = new Set(["quit"]);
 
 /** The web's own keys: a group of the table's, or one of its own, and what goes in it. */
 const OWN: ShortcutGroup[] = [
@@ -33,31 +67,59 @@ const OWN: ShortcutGroup[] = [
       { id: "close-dialog", title: "Close the dialog", keys: ["Escape"] },
     ],
   },
-  {
-    id: "help",
-    title: "",
-    shortcuts: [{ id: "keyboard-help", title: "Keyboard shortcuts", keys: ["?"] }],
-  },
 ];
 
-/** A Mac's browser takes Command where others take Ctrl; the app answers either. */
+/** A Mac's browser takes Command where others take Ctrl, and calls Alt Option. */
 const mac = /Mac|iPhone|iPad/.test(navigator.platform);
 
 function spoken(key: string): string {
-  return mac ? key.replace(/\bCtrl\+/g, "Command+") : key;
+  return mac ? key.replace(/\bCtrl\+/g, "Command+").replace(/\bAlt\+/g, "Option+") : key;
 }
 
 /**
- * The groups the dialog lists: the shared table's, in its order, holding only what the web
- * binds — the web's own keys added to the group they belong to, and a group of the web's own
- * placed before Help. The web's own replaces a shared one of the same id (Help's F1, which a
- * browser keeps).
+ * Whether `event` is `key`, written as the table writes it ("Alt+Shift+Page Up"). Letters and
+ * digits are matched by the physical key, since Option+Shift+K on a Mac types a symbol.
+ */
+export function matches(key: string, event: KeyboardEvent): boolean {
+  const parts = key.split("+");
+  const name = parts.pop() ?? "";
+  const want = new Set(parts);
+  const ctrl = mac ? event.metaKey : event.ctrlKey;
+  if (want.has("Ctrl") !== ctrl || want.has("Alt") !== event.altKey || want.has("Shift") !== event.shiftKey) {
+    return false;
+  }
+  if (/^[A-Z]$/.test(name)) return event.code === `Key${name}`;
+  if (/^[0-9]$/.test(name)) return event.code === `Digit${name}`;
+  if (name === "Comma" || name === "Period") return event.code === name;
+  return event.key === name.replace(/ /g, "");
+}
+
+/** The shared command `event` is the web's key for, if any. */
+export function commandFor(event: KeyboardEvent): string | undefined {
+  for (const [id, keys] of Object.entries(WEB)) {
+    if (id === "close-window" || id === "keyboard-help") continue;
+    if (keys.some((key) => matches(key, event))) return id;
+  }
+  return undefined;
+}
+
+/**
+ * The groups the dialog lists: the shared table's, in its order, each command with the key the
+ * web uses for it, and the web's own keys added to the group they belong to, a group of the
+ * web's own placed before Help.
  */
 export function listed(shared: ShortcutGroup[]): ShortcutGroup[] {
   const groups = shared.map((group) => {
     const own = OWN.find((o) => o.id === group.id)?.shortcuts ?? [];
-    const ids = new Set(own.map((s) => s.id));
-    return { ...group, shortcuts: [...group.shortcuts.filter((s) => BOUND.has(s.id) && !ids.has(s.id)), ...own] };
+    return {
+      ...group,
+      shortcuts: [
+        ...group.shortcuts
+          .filter((s) => !NOT_ON_THE_WEB.has(s.id))
+          .map((s) => ({ ...s, keys: WEB[s.id] ?? s.keys })),
+        ...own,
+      ],
+    };
   });
   const help = groups.findIndex((group) => group.id === "help");
   const added = OWN.filter((own) => !shared.some((group) => group.id === own.id));

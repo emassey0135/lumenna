@@ -9,6 +9,7 @@ import { blockForm, freshBlock } from "./BlockForm";
 import { core } from "./core";
 import type { Action, Line } from "./core";
 import { byKind, perform, REMOVING } from "./actions";
+import { useCommand } from "./commands";
 import { rowKey, useLanding } from "./landing";
 import { asksForMenu, RowMenu } from "./RowMenu";
 import { say } from "./say";
@@ -52,6 +53,8 @@ export function Blocks(props: { revision: number; onChanged: () => void }) {
     // A new series' row is listed under its first occurrence, so land near where it was.
     if (saved) changed(saved.said, undefined, ids.indexOf(selected ?? ""));
   };
+  useCommand("new-block", () => void add());
+
 
   const edit = async (at: Line) => {
     try {

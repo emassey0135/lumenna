@@ -276,9 +276,6 @@ function Pairing(props: { words: PairingWords; onDone: (paired: boolean) => void
       <TextField className="field" value={theirs} onChange={setTheirs} isDisabled={running && !waiting}>
         <Label>{words.their_code}</Label>
         <Input />
-        <Text slot="description" className="quiet">
-          {words.empty_means}
-        </Text>
       </TextField>
       {problem && (
         <p role="alert" className="problem">
@@ -290,17 +287,9 @@ function Pairing(props: { words: PairingWords; onDone: (paired: boolean) => void
         <Button
           isDisabled={running && !waiting}
           onPress={async () => {
-            let code = theirs.trim();
-            if (!code) {
-              // The clipboard, which is how a code sent from the other device usually arrives —
-              // but not this tab's own, which Copy Code put there: that would pair it with
-              // itself. A browser may ask first, or refuse; then a code has to be typed.
-              const pasted = (await navigator.clipboard?.readText?.().catch(() => "")) ?? "";
-              if (pasted.trim() && pasted.trim() !== mine) {
-                code = pasted.trim();
-                setTheirs(code);
-              }
-            }
+            // Typed or pasted: the clipboard is never read unasked, which a browser would have to
+            // prompt for, and which would send whatever happened to be copied.
+            const code = theirs.trim();
             if (!code) {
               setProblem(words.need_code);
               return;

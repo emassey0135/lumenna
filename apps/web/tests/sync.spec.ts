@@ -36,18 +36,18 @@ test("the devices page says this browser is not paired, and refuses a code that 
   await expect(dialog.getByRole("button", { name: "Sync now" })).toBeVisible();
 });
 
-test("an empty code field takes the code on the clipboard, and says so", async ({ browser }) => {
+test("an empty code field asks for the code, and never reads the clipboard", async ({ browser }) => {
   const context = await browser.newContext({ permissions: ["clipboard-read", "clipboard-write"] });
   const page = await context.newPage();
   await open(page);
   const pairing = await devices(page);
   await pairing.getByRole("button", { name: "Pair a device" }).click();
   const field = pairing.getByRole("textbox", { name: "Code from the other device" });
-  await expect(field).toHaveAccessibleDescription("Left empty, the code on the clipboard is used.");
+  await expect(field).toHaveAccessibleDescription("");
   await page.evaluate(() => navigator.clipboard.writeText("not-a-code"));
   await pairing.getByRole("button", { name: "Pair using this code" }).click();
-  await expect(field).toHaveValue("not-a-code");
-  await expect(pairing.getByRole("alert")).toContainText("is not a pairing code");
+  await expect(field).toHaveValue("");
+  await expect(pairing.getByRole("alert")).toHaveText("Type or paste the code the other device shows.");
 });
 
 test("a code entered while waiting gives up the wait, then tries the code", async ({ page }) => {
