@@ -654,8 +654,6 @@ class LumennaTest {
         rule.waitForIdle()
         press("Pair a device")
         val words = io.github.emassey0135.lumenna.core.pairingWords("this phone", true)
-        // Nothing explains an empty field any more: it means nothing but a code still needed.
-        assertTrue("the field says nothing about the clipboard", words.emptyMeans.isEmpty())
         button(io.github.emassey0135.lumenna.button(words.join))
         shows(words.needCode)
         rule.onNode(hasSetTextAction() and hasText(words.theirCode)).assert(

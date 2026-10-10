@@ -194,10 +194,6 @@ pub struct PairingWords {
     pub my_code: String,
     /// The field for the other device's code.
     pub their_code: String,
-    /// No longer said, and empty: an empty code field no longer reads the clipboard, which
-    /// prompted on iOS, Android, macOS and the web and acted on whatever was there. Kept until
-    /// no client reads it.
-    pub empty_means: String,
     /// Said once a session opens to wait.
     pub opening: String,
     /// Said once it dials the other device.
@@ -256,7 +252,6 @@ pub fn pairing_words(this_device: String, local: bool) -> PairingWords {
         join: "Pair Using This Code".to_owned(),
         my_code: "This device's code".to_owned(),
         their_code: "Code from the other device".to_owned(),
-        empty_means: String::new(),
         opening: "Opening a pairing session.".to_owned(),
         connecting: "Connecting to the other device.".to_owned(),
         switching: "Stopping the wait, then connecting with this code.".to_owned(),
