@@ -140,9 +140,9 @@ work on?" in a block, behind adding tasks to a block, and for filling free time.
   today lowered, never excluded.
 - **Reasons are required and are the accessible label**: "Suggested because overdue by two
   days, priority 1, and its 30-minute estimate fits your remaining 35 minutes."
-- `task_filter` is stored and validated but evaluated nowhere. Today, "Assign a task" from a
-  block offers every task, and the block chooser (`work_blocks`) offers every block that
-  takes tasks; it should offer only blocks whose filter admits the task.
+- `task_filter` already limits what "Assign a Task" offers from a block (`Lumenna::choices`).
+  The other way round, "Put in a Block" (`work_blocks`) still offers every block that takes
+  tasks; it should offer only blocks whose filter admits the task.
 
 ### Carrying unfinished work forward
 
@@ -257,6 +257,8 @@ The core's `complete` works everywhere; what is missing is how each app offers i
     only ends editing (Skip when assigning a task). Try it on a real iPad; VoiceOver, which
     activates rather than taps, is not affected.
   - ⌘F never reaches the app in the simulator; try it on a real iPad too.
+  - On the 11-inch iPad simulator in portrait, the first ⌘, after launch opens the system's
+    Settings app instead of ours (the menu bar does replace that item); try a real iPad.
   - In CI the iPad suite takes over half an hour on the runner and times out where it
     passes locally, so its job reports without blocking: make it fit the runner (fewer
     simulator round trips, or splitting it across jobs), then make it block again.
@@ -268,11 +270,14 @@ The core's `complete` works everywhere; what is missing is how each app offers i
   portal (an X11 key grab for Xfce and older GNOME); no tray on GNOME without the
   AppIndicator extension; "expanded" said twice on first focus of a row with subtasks.
 - **Emacs**: priority faces, mapped to voices.
-- **The web client**: making a task a subtask or moving it to the top level (the export
-  exists; nothing calls it).
-- **Every app**: icons of their own (GTK and Windows have none); a key for "go to now" on
-  the web (Ctrl+T on Windows, GTK and Android, Cmd+T on the Mac, iPad and iPhone, `t` on
-  BTSpeak).
+- **Every app**: icons of their own (GTK and Windows have none).
+- **iOS UI tests that fail only when the simulator delivers a key out of order**: ⌘K (the K
+  arriving before the ⌘, so VoiceOver's focus test sees nothing done) and ⌘F on CI. They
+  are in the full suites, which only report.
+- **Braille apart from speech**: rows could show the core's braille short forms ("ovd")
+  while speech says the word. On the web through `aria-braillelabel`, which JAWS and NVDA
+  read; on Windows only through JAWS scripts or an NVDA add-on, since UI Automation gives a
+  control one name, so only if braille users there ask.
 - **Screen readers not yet tried by a person**: JAWS, Narrator, ChromeVox, Emacspeak and
   speechd-el. NVDA (Windows and the web), Orca, VoiceOver on the Mac and iPhone, TalkBack,
   Emacsvox and the BTSpeak have been. The braille short forms for states and roles are
@@ -310,8 +315,12 @@ Each is a thin adapter over the command surface.
   `AppShortcutsProvider` for Siri phrases with no setup. Add (in the quick-add grammar),
   complete, query by filter, today's plan, assign, start and stop. Hands-free capture is an
   accessibility feature. Check for an assistant-schema domain for tasks when building.
+- **A URL scheme** beside them, `lumenna://add?text=…` (one task per line, in the quick-add
+  grammar), so a Drafts action, or any app's x-callback-url, sends text in as tasks.
 - **Android App Functions** (`androidx.appfunctions`, for Gemini) with AppSearch for
-  retrieval; not the old App Actions.
+  retrieval; not the old App Actions. The same verbs as App Intents: add, what is next,
+  start and stop a sitting's timer, complete. Through Gemini they reach the phone, the watch,
+  the car and audio glasses alike.
 - **A "Today" shortcut** on the iOS and Android icons, beside New Task.
 - **Widgets**: WidgetKit (iOS, macOS) and Glance (Android): today's blocks and what is due.
 - **PowerShell module** wrapping `lum --json`; the same language as Windows hooks.
@@ -344,8 +353,14 @@ Each is a thin adapter over the command surface.
 - **Calendar import**, read-only first (so the planner knows about real meetings), through
   `ExternalRef` (EventKit, CalDAV, ICS URL), which exists in the model only; `lum calendar
   add|list|rm`. Read-only must be enforced on edit. Two-way sync is a separate project.
-- **Imports from other systems**: Todoist (whose API priority 4 is P1), then Jira, Linear
-  and GitHub, which `ExternalRef` was shaped for.
+  Importing an `.ics` file first, which Google Calendar exports and which needs no API.
+  Google Calendar's API is open to any project, but its scopes are sensitive: an app used by
+  the public needs Google's OAuth verification (no paid audit), and an unverified one is
+  limited to 100 people and warns them. PKCE serves a desktop app that cannot keep a secret.
+- **Imports from other systems**: Todoist first, through its public API and a personal API
+  token the person copies from Todoist's settings, so nothing needs registering (check the
+  current API version when building; its priority 4 is P1). Then Jira, Linear and GitHub,
+  which `ExternalRef` was shaped for.
 
 ## 7. Before others use it
 
@@ -483,6 +498,10 @@ What the web client gains from it:
 - **The web takes no automatic backups**; it asks for downloads. Revisit if a browser path
   appears; a backup must live outside the live store.
 
+- **An Outlook add-in** for turning an email into a task, only if email import is wanted.
+  Office add-ins are web pages Office loads from a URL and cannot reach the local socket, so
+  it would need a localhost endpoint in the desktop apps.
+
 ## Open questions
 
 - **Rotating `account_key`** after a device is stolen (above).
@@ -511,3 +530,8 @@ What the web client gains from it:
 - **An email or random identifier for accounts; a QR code for recovery.**
 - **Comparison operators in filters.**
 - **A TUI** for `lum`.
+- **A projected view for display glasses**: Gemini, through App Functions, serves glasses
+  as it serves the phone; what glasses add to an app like this is speech.
+- **Scripts for braille display keys**: the apps' keyboard commands already reach them
+  through each screen reader's keystroke emulation, and a key that is hard to send from a
+  braille keyboard is fixed in the app, for everyone.
