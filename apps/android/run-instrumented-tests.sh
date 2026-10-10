@@ -7,7 +7,9 @@
 # this at a device whose own Lumenna data matters.
 set -euo pipefail
 
-apks=${APKS:-app/build/outputs/apk}
+# $APP is the module: app, the phone's, or wear, the watch's.
+app=${APP:-app}
+apks=${APKS:-$app/build/outputs/apk}
 out=${1:-test-output}
 package=io.github.emassey0135.lumenna
 device_output=/sdcard/Android/media/$package/additional_test_output
@@ -42,8 +44,8 @@ install() {
   done
   return 1
 }
-install "$apks/debug/app-debug.apk"
-install "$apks/androidTest/debug/app-debug-androidTest.apk"
+install "$apks/debug/$app-debug.apk"
+install "$apks/androidTest/debug/$app-debug-androidTest.apk"
 # Nor is shared storage, where the tests' screenshots go: "Transport endpoint is not
 # connected" until it is mounted. The tests make their folder themselves: on CI's fresh
 # emulator `/sdcard/Android` is not there yet and the shell may not make it ("Permission
@@ -57,7 +59,7 @@ adb shell rm -rf "$device_output/*" || true
 only=()
 [ -n "${TESTS:-}" ] && only=(-e class "$TESTS")
 echo "Running the tests"
-result=$(adb shell am instrument -w "${only[@]}" -e additionalTestOutputDir "$device_output" \
+result=$(adb shell am instrument -w ${only[@]+"${only[@]}"} -e additionalTestOutputDir "$device_output" \
   "$package.test/androidx.test.runner.AndroidJUnitRunner" 2>&1 | tr -d '\r') || true
 echo "$result"
 

@@ -58,3 +58,6 @@ fun foldAction(core: Core, row: Shown<*>, key: String, folding: MutableState<Set
         }
     }
 }
+
+/** Something to do to a row: its name, as TalkBack and the long-press menu both say it. */
+data class RowAction(val name: String, val run: () -> Unit)

@@ -67,8 +67,6 @@ import io.github.emassey0135.lumenna.core.RowView
 import io.github.emassey0135.lumenna.core.Rows
 import io.github.emassey0135.lumenna.core.Syntax
 
-/** Something to do to a row: its name, as TalkBack and the long-press menu both say it. */
-data class RowAction(val name: String, val run: () -> Unit)
 
 /**
  * Tasks, with a filter field above them, or the trash.

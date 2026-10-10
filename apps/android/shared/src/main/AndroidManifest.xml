@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the phone and the watch apps share: the core and what decides nothing about how it
+     looks. Each app declares its own permissions and components. -->
+<manifest />

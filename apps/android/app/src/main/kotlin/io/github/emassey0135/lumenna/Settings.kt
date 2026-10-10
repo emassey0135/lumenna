@@ -280,9 +280,6 @@ fun ExportScreen(core: Core, navigator: Navigator) {
 }
 
 /** This phone's name, as the other devices will list it. */
-private fun deviceName(context: Context): String =
-    android.provider.Settings.Global.getString(context.contentResolver, android.provider.Settings.Global.DEVICE_NAME)
-        ?: Build.MODEL
 
 /** The paired devices, how syncing with each last went, and pairing another. */
 @Composable
@@ -302,32 +299,29 @@ fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
         add = { navigator.push(Screen.Pairing) },
         open = null,
         actions = { item ->
-            // This device cannot unpair itself, so that is not offered on its own row.
-            val self = item.detail.contains("this device")
-            listOfNotNull(
-                RowAction("Sync Now") { syncNow(core) },
-                RowAction("Rename") {
-                    prompt.show {
-                        AskText("Rename ${item.title}", "Name", "Rename", initial = item.title, dismiss = prompt::close) { name ->
-                            prompt.close()
-                            core.change { it.renameDevice(item.key, name.trim()) }
+            // Which apply is shared with the watch (`DeviceAction`): this device cannot unpair
+            // itself, so that is not offered on its own row.
+            DeviceAction.of(thisDevice = item.detail.contains("this device")).map { action ->
+                when (action) {
+                    DeviceAction.SYNC_NOW -> RowAction(action.title) { syncNow(core) }
+                    DeviceAction.RENAME -> RowAction(action.title) {
+                        prompt.show {
+                            AskText("Rename ${item.title}", "Name", "Rename", initial = item.title, dismiss = prompt::close) { name ->
+                                prompt.close()
+                                core.change { it.renameDevice(item.key, name.trim()) }
+                            }
                         }
                     }
-                },
-                if (self) null else RowAction("Stop Syncing With It") {
-                    prompt.show {
-                        Confirm(
-                            "Stop syncing with ${item.title}?",
-                            "It keeps what it already has: this is for a device you replaced, not one that was stolen.",
-                            "Stop Syncing",
-                            prompt::close,
-                        ) {
-                            prompt.close()
-                            core.change { it.unpairDevice(item.key) }
+                    DeviceAction.STOP_SYNCING -> RowAction(action.title) {
+                        prompt.show {
+                            Confirm("Stop syncing with ${item.title}?", DeviceAction.STOPPING, "Stop Syncing", prompt::close) {
+                                prompt.close()
+                                core.change { it.unpairDevice(item.key) }
+                            }
                         }
                     }
-                },
-            )
+                }
+            }
         },
     )
     prompt.Host()
@@ -341,97 +335,18 @@ fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
 @Composable
 fun PairingScreen(core: Core, navigator: Navigator) {
     val context = LocalContext.current
-    var status by remember {
-        mutableStateOf(
-            "On the same network, start pairing on both devices and they find each other. " +
-                "On different networks, one shows a code and the other enters it.",
-        )
-    }
-    var code by remember { mutableStateOf<String?>(null) }
+    // What pairing does is shared with the watch (`PairingSession`); this shows it.
+    val session = remember { PairingSession(core, context) { navigator.back() } }
     var entered by remember { mutableStateOf("") }
-    var asked by remember { mutableStateOf<Pair<List<String>, (Boolean) -> Unit>?>(null) }
-    val cancelled = remember { AtomicBoolean(false) }
-    var running by remember { mutableStateOf(false) }
-    // A code entered while this phone waits to be found: joined with once the wait has ended.
-    var nextCode by remember { mutableStateOf<String?>(null) }
-    var waiting by remember { mutableStateOf(false) }
 
     // Leaving the screen gives up, which ends the wait for the other device.
-    DisposableEffect(Unit) { onDispose { cancelled.set(true) } }
-
-    fun start(given: String?) {
-        if (running) return
-        running = true
-        waiting = given == null
-        cancelled.set(false)
-        status = if (given == null) "Opening a pairing session." else "Connecting to the other device."
-        core.say(status)
-        val main = android.os.Handler(android.os.Looper.getMainLooper())
-        // The pairing thread calls these and waits; the screen answers on the main thread.
-        val showCode: (String) -> Unit = { shown ->
-            code = shown
-            (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-                .setPrimaryClip(ClipData.newPlainText("Pairing code", shown))
-            status = "Waiting for the other device. On this network it finds this one by itself. On another " +
-                "network, enter this code there. Waiting up to ten minutes. The code is copied, so it can be pasted."
-            core.say(status)
-        }
-        val prompt = object : PairingPrompt {
-            override fun showCode(code: String) {
-                main.post { showCode(code) }
-            }
-
-            override fun confirm(words: List<String>): Boolean {
-                val answered = CountDownLatch(1)
-                var matched = false
-                main.post {
-                    asked = words to { yes: Boolean ->
-                        matched = yes
-                        answered.countDown()
-                    }
-                }
-                answered.await()
-                return matched
-            }
-
-            override fun isCancelled(): Boolean = cancelled.get()
-        }
-        val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        thread(name = "lumenna-pairing") {
-            // Local discovery hears multicast only while the app holds this lock.
-            val lock = wifi.createMulticastLock("lumenna-pairing").apply { setReferenceCounted(false); acquire() }
-            val result = runCatching { core.lumenna.pair(given, Reach.INTERNET, deviceName(context), "android", prompt) }
-            lock.release()
-            main.post {
-                running = false
-                asked = null
-                nextCode?.let { next ->
-                    nextCode = null
-                    code = null
-                    start(next)
-                    return@post
-                }
-                result.fold(
-                    { paired: PairedWith ->
-                        core.changed()
-                        core.say(sentence(paired.announcement, paired.notices))
-                        navigator.back()
-                    },
-                    { error ->
-                        code = null
-                        status = (error as? LumennaException)?.sentence ?: error.message.orEmpty()
-                        core.say(status)
-                    },
-                )
-            }
-        }
-    }
+    DisposableEffect(Unit) { onDispose { session.cancel() } }
 
     ScreenFrame("Pair a Device", core, navigator) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(status, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-            Button(modifier = Target, onClick = { start(null) }, enabled = !running) { Text("Wait for the Other Device") }
-            code?.let {
+            Text(session.status, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+            Button(modifier = Target, onClick = { session.waitToBeFound() }, enabled = !session.running) { Text("Wait for the Other Device") }
+            session.code?.let {
                 Text("Pairing code: $it", fontFamily = FontFamily.Monospace)
             }
             OutlinedTextField(
@@ -442,38 +357,21 @@ fun PairingScreen(core: Core, navigator: Navigator) {
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
                 modifier = Modifier.fillMaxWidth(),
             )
-            Button(modifier = Target, onClick = {
-                var given = entered.trim()
-                if (given.isEmpty()) {
-                    given = (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-                        .primaryClip?.getItemAt(0)?.text?.toString()?.trim().orEmpty()
-                    // This phone's own code, copied while it waits, is never the other device's.
-                    if (given == code) given = ""
-                    entered = given
-                }
-                when {
-                    given.isEmpty() -> core.say("Type or paste the code the other device shows.")
-                    // Entering a code while waiting means choosing the other way: give up the
-                    // wait, and join with the code once it has ended.
-                    running -> {
-                        nextCode = given
-                        status = "Stopping the wait, then connecting with this code."
-                        core.say(status)
-                        cancelled.set(true)
-                    }
-                    else -> start(given)
-                }
-            }, enabled = nextCode == null && (!running || waiting)) { Text("Pair With This Code") }
+            Button(
+                modifier = Target,
+                onClick = { entered = session.join(entered) },
+                enabled = session.nextCode == null && (!session.running || session.waiting),
+            ) { Text("Pair With This Code") }
         }
     }
 
-    asked?.let { (shown, reply) ->
+    session.asked?.let { shown ->
         AlertDialog(
             onDismissRequest = {},
             title = { Text("Do these words match?") },
-            text = { Text("${shown.joinToString(", ")}. Say yes only if the other device shows the same three words.") },
-            confirmButton = { TextButton(modifier = Target, onClick = { asked = null; reply(true) }) { Text("Yes, They Match") } },
-            dismissButton = { TextButton(modifier = Target, onClick = { asked = null; reply(false) }) { Text("No") } },
+            text = { Text(PairingSession.matchQuestion(shown)) },
+            confirmButton = { TextButton(modifier = Target, onClick = { session.answer(true) }) { Text("Yes, They Match") } },
+            dismissButton = { TextButton(modifier = Target, onClick = { session.answer(false) }) { Text("No") } },
         )
     }
 }

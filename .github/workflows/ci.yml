@@ -372,13 +372,14 @@ jobs:
           retention-days: 14
 
   android-build:
-    name: Android app and its tests, both ABIs
+    name: Android and Wear OS apps and their tests
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android, x86_64-linux-android
+          # 32-bit ARM too: many Wear OS watches run a 32-bit Android.
+          targets: aarch64-linux-android, x86_64-linux-android, armv7-linux-androideabi
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-java@v5
         with:
@@ -400,7 +401,7 @@ jobs:
         # APK badly.
         env:
           LUMENNA_CORE_PROFILE: release
-        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
+        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest :wear:assembleDebug :wear:assembleDebugAndroidTest
       - name: Ready for 16 KB pages
         # Every native library must load at 16 KB boundaries, and sit 16 KB aligned in the
         # APK, or a 16 KB-page device refuses it. An x86_64 emulator emulates 16 KB pages,
@@ -419,7 +420,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: android-apks
-          path: apps/android/app/build/outputs/apk
+          # Both apps', under apps/android, as each module builds them.
+          path: |
+            apps/android/app/build/outputs/apk
+            apps/android/wear/build/outputs/apk
           retention-days: 1
 
   android:
@@ -435,6 +439,8 @@ jobs:
           # real density, so the touch targets are checked as they are. The system images
           # stopped having a desktop of their own at API 34; this is the large screen alone.
           - { name: "desktop screen and keyboard, every test", profile: desktop_medium, keyboard: true }
+          # The Wear OS app, on a round watch.
+          - { name: "Wear OS watch, every test", profile: wearos_large_round, keyboard: false, app: wear, target: android-wear-signed }
           # The smoke set, which blocks: adding and completing, folding, focus after a
           # change, a keyboard command, and the large-text screens, each under Google's
           # accessibility checks.
@@ -454,7 +460,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: android-apks
-          path: apps/android/app/build/outputs/apk
+          path: apps/android
       - name: KVM for the emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -469,7 +475,7 @@ jobs:
           # "System has crashed". Guest rendering, ANGLE, GLDMA off and three-button
           # navigation changed nothing; on a Mac, 37 runs. The app still targets 37.
           api-level: "36"
-          target: google_apis
+          target: ${{ matrix.target || 'google_apis' }}
           arch: x86_64
           profile: ${{ matrix.profile }}
           enable-hw-keyboard: ${{ matrix.keyboard }}
@@ -478,7 +484,7 @@ jobs:
           # but not enough space". The RAM stays the profile's own.
           disk-size: 6000M
           working-directory: apps/android
-          script: TESTS="${{ matrix.tests }}" ./run-instrumented-tests.sh test-output
+          script: APP="${{ matrix.app || 'app' }}" TESTS="${{ matrix.tests }}" ./run-instrumented-tests.sh test-output
       - name: Screenshots at the largest font
         if: success() || failure()
         uses: actions/upload-artifact@v4

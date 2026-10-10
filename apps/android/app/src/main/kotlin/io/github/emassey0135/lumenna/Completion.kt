@@ -26,19 +26,6 @@ import androidx.compose.ui.unit.dp
 import io.github.emassey0135.lumenna.core.Candidate
 import io.github.emassey0135.lumenna.core.Syntax
 
-/** The core counts text in UTF-8 bytes, as Rust strings do; Kotlin counts UTF-16 units. */
-object TextOffsets {
-    /** A UTF-16 offset as the byte offset the core wants. */
-    fun bytes(utf16: Int, text: String): UInt =
-        text.substring(0, utf16.coerceIn(0, text.length)).encodeToByteArray().size.toUInt()
-
-    /** A byte offset from the core as a UTF-16 offset, never splitting a character. */
-    fun utf16(bytes: UInt, text: String): Int {
-        val encoded = text.encodeToByteArray()
-        return encoded.copyOfRange(0, bytes.toInt().coerceIn(0, encoded.size)).decodeToString().length
-    }
-}
-
 /**
  * A line in the quick-add or filter language, with what could go at the cursor offered as
  * buttons beneath it — one TalkBack swipe past the field, and named as the core names

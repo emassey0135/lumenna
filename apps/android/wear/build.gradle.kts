@@ -3,21 +3,25 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// The Wear OS app: Compose for Wear OS over the same core and shared code as the phone
+// (`:shared`). A standalone full peer, running Iroh itself: unlike watchOS, Wear OS allows
+// sockets, so it syncs with every paired device as the phone does.
 android {
-    namespace = "io.github.emassey0135.lumenna"
+    namespace = "io.github.emassey0135.lumenna.wear"
     compileSdk = 37
 
     defaultConfig {
+        // The phone app's identifier, as a watch app of the same app has it.
         applicationId = "io.github.emassey0135.lumenna"
-        minSdk = 28
+        // Wear OS 3, the oldest any current watch runs.
+        minSdk = 30
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // A phone's ABIs: the core is built for 32-bit ARM too, for watches (build-core.sh), and
-        // JNA ships its library for six more; without the filter the APK carried each, though
-        // nothing could run the app there.
-        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        // A watch's ABIs: many Wear OS watches run a 32-bit Android, and the emulator x86_64
+        // on Intel machines and CI.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
 
     buildTypes {
@@ -37,25 +41,22 @@ android {
 }
 
 dependencies {
+    implementation(project(":shared"))
     val bom = platform(libs.compose.bom)
     implementation(bom)
     implementation(libs.compose.ui)
-    implementation(libs.compose.material3)
-    implementation(libs.compose.material.icons)
-    implementation(libs.compose.ui.tooling.preview)
+    implementation(libs.wear.compose.material3)
+    implementation(libs.wear.compose.foundation)
+    implementation(libs.wear.compose.navigation)
+    implementation(libs.wear.input)
     implementation(libs.activity.compose)
     implementation(libs.work.runtime)
-    // The core, its bindings and what the watch app shares (`:shared`).
-    implementation(project(":shared"))
 
     androidTestImplementation(bom)
     androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.compose.ui.test.junit4.accessibility)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.junit)
-    // Compose's test library brings Espresso 3.5, which calls an InputManager method Android
-    // 17 no longer has; every test failed before reaching the app.
     androidTestImplementation(libs.espresso.core)
-    androidTestImplementation(libs.work.testing)
     debugImplementation(libs.compose.ui.test.manifest)
 }

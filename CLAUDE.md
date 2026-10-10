@@ -34,7 +34,8 @@ crates/desktop/ what the Windows, GTK and web apps decide alike: row wording, fl
 apps/cli/       `lum`, and `lum rpc` for clients that cannot link Rust.
 apps/btspeak/   the BTSpeak app, in Python, over `lum rpc`.
 apps/emacs/     the Emacs client, in Elisp, over `lum rpc` or the profile's socket.
-apps/android/   Jetpack Compose over the generated Kotlin bindings.
+apps/android/   Jetpack Compose over the generated Kotlin bindings: the phone (app/), Wear OS
+                (wear/), and what they share (shared/).
 apps/apple/     the iOS and macOS apps over the generated Swift bindings, Shared/ between them.
 apps/windows/   the Win32 app, linking the surface directly.
 apps/gtk/       the Linux app, GTK 4, linking the surface directly.
@@ -712,7 +713,15 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 ## The Android app
 
 `apps/android/`: Kotlin and Jetpack Compose over UniFFI's Kotlin bindings (JNA). Its README
-gives the toolchain.
+gives the toolchain. Three modules: `app` (the phone), `wear` (Wear OS) and `shared`.
+
+- **`shared` holds the core and what decides nothing about looks**: the core's build and
+  bindings, `Core`, `Words` (clock, row speech, text offsets, completion), folding, the
+  day's rows, `Actions.kt` (which actions a day row, a project, label or filter, and a
+  device offer, and their questions), the task and block forms' fields and saving
+  (`TaskField`, `BlockFormModel`), pairing (`PairingSession`) and `SyncWorker` (through
+  `CoreHolder`, which each app's Application is). A screen in either app shows and runs
+  these; neither decides them.
 
 - **Gradle builds the core itself**: `buildCore<Variant>` runs `build-core.sh`. Only
   `liblumenna_ffi.so` is copied; `cargo ndk -o` would also copy Iroh's shared libraries,
@@ -772,6 +781,25 @@ gives the toolchain.
   15 minutes. Discovery hears multicast only under a `MulticastLock`, held while syncing or
   pairing; it is not exclusive and `mdns-sd` binds 5353 with `SO_REUSEPORT`, so other apps'
   mDNS is unaffected. The emulator's NAT passes no multicast.
+
+## The Wear OS app
+
+`apps/android/wear/`: Compose for Wear OS over `shared`, the phone's application identifier,
+standalone. A full peer: Wear OS allows sockets, so it runs Iroh and pairs and syncs as the
+phone does.
+
+- **No text field on a watch**: every line comes from the system's input screen
+  (`RemoteInput`, through `TextEntry`), which replaces a whole line; quick add changes or adds
+  to it, with completions for its last word beneath. Tests provide their own `TextEntry`.
+- **Rows keep full size at the screen's edges** (`edgeScale = 1f`): scaled, a button fell
+  under 48dp and failed the touch-target check.
+- **A row's actions are TalkBack's custom actions and a long press**; the day's rows offer
+  theirs when tapped too. Announcements are a polite live region, seen for a moment.
+- **32-bit ARM too** (`armeabi-v7a`): many Wear OS watches run a 32-bit Android. The phone's
+  APK leaves it out.
+- Tests (`WearTest`) run on a Wear OS emulator with the accessibility checks, as the phone's;
+  `APP=wear ./run-instrumented-tests.sh`. A fresh Wear emulator opens on its setup screen:
+  `settings put global device_provisioned 1` and `secure user_setup_complete 1`.
 
 ## The web client
 
