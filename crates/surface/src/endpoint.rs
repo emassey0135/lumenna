@@ -230,6 +230,8 @@ mod overlapped {
 
         /// Waits for a client to connect to this server end, asking `keep_waiting` every
         /// `step` whether to go on: true once one has, false if the wait was given up.
+        // Only the RPC server listens; a build without it never calls this.
+        #[cfg_attr(not(feature = "rpc"), allow(dead_code))]
         pub(crate) fn accept(&self, step: Duration, keep_waiting: &dyn Fn() -> bool) -> io::Result<bool> {
             match self.run(Some(step), keep_waiting, |handle, overlapped| unsafe { ConnectNamedPipe(handle, overlapped) })? {
                 Ended::Done(_) => Ok(true),
