@@ -15,12 +15,14 @@ on:
   push:
   pull_request:
 
-# A newer push to a pull request replaces its run. On master every push gets a whole run:
-# several sessions push there often, and cancelling would leave the slowest jobs, the Apple
-# apps' above all, never finishing.
+# A newer push replaces the run still going for the one before it, on master as on a pull
+# request: with several sessions pushing, a run per commit piled up and failure mail with
+# it. A commit followed soon by another is tested only as part of the newer one, and a
+# stretch of pushes closer together than the slowest jobs (the Apple apps') finishes them
+# only once it ends.
 concurrency:
-  group: ci-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || 'pr' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
