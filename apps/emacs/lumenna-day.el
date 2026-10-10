@@ -81,7 +81,8 @@ a cancelled day back.  [ and ] move between days.
   "The heading and rows of the day this buffer shows."
   (let ((plan (if lumenna--day (lumenna-call "plan" :date lumenna--day) (lumenna-call "plan"))))
     (setq lumenna--date (plist-get plan :date))
-    (cons (format "%s, %s" (lumenna--spoken-day lumenna--date)
+    ;; "<day>. <summary>", each its own sentence.
+    (cons (format "%s. %s" (lumenna--spoken-day lumenna--date)
                   (let ((summary (plist-get plan :summary)))
                     (if (string-empty-p summary) (plist-get plan :announcement) summary)))
           (lumenna--day-rows plan))))
@@ -130,8 +131,9 @@ a cancelled day back.  [ and ] move between days.
 
 (defun lumenna-day-go-to (day)
   "Show DAY: any date phrase, such as \"next friday\" or \"2026-12-01\"."
-  (interactive (list (read-string (format-prompt "Go to day" "tomorrow") nil nil "tomorrow")))
-  (lumenna--day-turn day))
+  (interactive (list (lumenna-ask-line "form.go_to_day")))
+  (when (string-blank-p day) (user-error "No day given"))
+  (lumenna--day-turn (string-trim day)))
 
 ;; Every action on a block, a sitting, free time or a cancelled day is the
 ;; row's own; these are the keys for them.
@@ -181,8 +183,9 @@ start."
                         (cons (plist-get field :label) (intern (plist-get field :key)))))
                     (lumenna-form "block"))))
 
-(defconst lumenna--day-fields '(title start minutes kind accepts_tasks counts_capacity anchored)
-  "The fields one day of a repeating block can change (`form.day_block_fields').")
+(defun lumenna--one-day-field-p (key)
+  "Whether one day of a repeating block can change field KEY, as the form marks it."
+  (lumenna--true (plist-get (lumenna-form-field "block" key) :one_day)))
 
 (defun lumenna--read-kind (&optional current)
   "A block's kind, chosen by the core's name for it, starting from CURRENT."
@@ -203,10 +206,11 @@ As a form's check boxes go back to them when the kind changes."
 (defun lumenna--read-block-text (field &optional now)
   "Read FIELD, a symbol, of the block form, starting from NOW, in its words.
 Its hint, then its name; the filter a block takes its tasks from completes."
-  (let ((prompt (lumenna-field-prompt (lumenna-form-field "block" field))))
+  (let* ((form (lumenna-form-field "block" field))
+         (prompt (lumenna-field-prompt form)))
     (if (eq field 'task_filter)
-        (lumenna-read-line prompt "filter" now)
-      (read-string prompt now))))
+        (lumenna-read-line prompt "filter" now nil (plist-get form :example))
+      (lumenna-read-field form prompt now))))
 
 (defun lumenna--read-block-field (field fields)
   "FIELDS with FIELD changed, read in the minibuffer."
@@ -247,7 +251,7 @@ A repeating one asks: this day only, or every one."
            (equal (completing-read "Change which days: " '("This day only" "Every occurrence") nil t)
                   "This day only"))
       (lumenna--edit-block (plist-get block :series) (lumenna--value "form.day_block_fields" :block block)
-                           (seq-filter (lambda (f) (memq (cdr f) lumenna--day-fields)) (lumenna--block-fields))
+                           (seq-filter (lambda (f) (lumenna--one-day-field-p (cdr f))) (lumenna--block-fields))
                            (list :date date))
     (lumenna-edit-series (plist-get block :series))))
 
@@ -286,7 +290,7 @@ A repeating one asks: this day only, or every one."
   (lumenna--show-list "*Lumenna: Blocks*" #'lumenna-blocks-mode
                       (lambda ()
                         (let ((listing (lumenna-call "block.list")))
-                          (lumenna-listing (format "Blocks, %s" (plist-get listing :announcement)) listing)))))
+                          (lumenna-listing "Blocks" listing)))))
 
 ;;;; Menus
 

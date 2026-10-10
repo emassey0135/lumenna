@@ -236,6 +236,7 @@ The core's: \"Do These Words Match?\" asked in the minibuffer."
 
 (defun lumenna-field-prompt (field &rest more)
   "A prompt for FIELD: its hint, then MORE, then its label.
+\\<minibuffer-local-map>\\[next-history-element] offers its example, through `lumenna-read-field'.
 The answer follows the label, as a form's field follows its name."
   (apply #'lumenna--prompt (plist-get field :hint) (append more (list (plist-get field :label)))))
 
@@ -243,6 +244,14 @@ The answer follows the label, as a form's field follows its name."
   "PROMPT, which ends \": \", saying DEFAULT as Emacs's prompts do: \"(default 2)\"."
   ;; `format-prompt' reads its prompt as a format; the core's words are text.
   (format-prompt (string-replace "%" "%%" (string-remove-suffix ": " prompt)) default))
+
+(defun lumenna-read-field (field prompt &optional initial)
+  "Read FIELD's text, asking PROMPT, starting from INITIAL.
+The field's example, as another app shows it in an empty field, is the
+minibuffer's future history: \\<minibuffer-local-map>\\[next-history-element] brings it in.  Empty is
+an answer, never the example."
+  (let ((example (plist-get field :example)))
+    (read-from-minibuffer prompt initial nil nil nil (and example (not (string-empty-p example)) example))))
 
 (defun lumenna-field-options (field)
   "FIELD's options, as (TITLE . ID) for `completing-read'."
@@ -321,11 +330,19 @@ the states that mean something."
   "What this list says when it has nothing in it: the listing's own `empty'.
 Its source sets it, from what the core returned.")
 
-(defun lumenna-listing (heading listing)
-  "HEADING and LISTING's rows, as a buffer's source returns them.
-What an empty one says is kept for the buffer, as the core words it."
-  (setq-local lumenna--empty (plist-get listing :empty))
-  (cons heading (append (plist-get listing :rows) nil)))
+(defun lumenna-listing (title listing &optional rows after)
+  "A heading and ROWS, as a buffer's source returns them.
+ROWS are LISTING's `:rows' unless given.  The heading is TITLE, then
+LISTING's announcement, then the strings AFTER.  An empty list leaves its
+count out of the heading, since the line under it says it is empty, in the
+core's words, kept for the buffer."
+  (let ((rows (append (or rows (plist-get listing :rows)) nil)))
+    (setq-local lumenna--empty (plist-get listing :empty))
+    (cons (string-join (delq nil (append (list title (and (or rows (null lumenna--empty))
+                                                         (plist-get listing :announcement)))
+                                         after))
+                       ", ")
+          rows)))
 
 (defvar-local lumenna--describe #'lumenna-describe
   "A function turning one row into its line.")
@@ -488,9 +505,23 @@ ends \": \", or \"? \" when its last part is a question."
                ". ")))
     (if (string-suffix-p "?" text) (concat text " ") (concat (string-remove-suffix ":" text) ": "))))
 
+(defun lumenna--question-title (question)
+  "QUESTION's title as a prompt starts with it: in sentence case, as prompts are.
+A menu's item is Title Case; what the minibuffer asks is a sentence."
+  (or (plist-get question :sentence) (plist-get question :title)))
+
+(defun lumenna-ask-line (method &optional history)
+  "The line one of the client's own questions asks for, in the core's words.
+METHOD gives the question: `form.go_to_day', `form.length'.  HISTORY is the
+history variable."
+  (let ((question (lumenna-words method)))
+    (read-from-minibuffer (lumenna--prompt (lumenna--question-title question) (plist-get question :hint)
+                                           (plist-get question :label))
+                          (plist-get question :initial) nil nil history)))
+
 (defun lumenna--ask-text (action question)
   "Read the line ACTION's text QUESTION asks for; sent as typed, even empty."
-  (let ((prompt (lumenna--prompt (plist-get question :title) (plist-get question :hint)
+  (let ((prompt (lumenna--prompt (lumenna--question-title question) (plist-get question :hint)
                                  (plist-get question :label)))
         (initial (plist-get question :initial)))
     (if (equal (plist-get action :kind) "change_query")
@@ -507,8 +538,8 @@ When nothing is offered, the core's sentence says why."
       (let* ((lines (lumenna--unique (mapcar (lambda (c) (cons (lumenna--choice-line c) c)) choices)))
              (picked (cdr (assoc (completing-read (lumenna--prompt (plist-get question :title)) lines nil t)
                                  lines)))
-             (length (when-let* ((asked (plist-get question :length)))
-                       (read-string (lumenna--prompt asked)))))
+             (length (when (plist-get question :length)
+                       (lumenna-ask-line "form.length"))))
         (list :answer "picked" :id (plist-get picked :id) :length length)))))
 
 (defun lumenna--ask-choose (question)
@@ -828,15 +859,16 @@ priority and labels, or a filter's meaning and how many tasks it matches."
 (defvar lumenna-add-history nil "Quick-add lines typed before.")
 (defvar lumenna-filter-history nil "Filters typed before.")
 
-(defun lumenna-read-line (prompt syntax &optional initial history)
+(defun lumenna-read-line (prompt syntax &optional initial history example)
   "Read a line in SYNTAX, \"quick-add\" or \"filter\", asking PROMPT.
 The core completes it and reads it back.  INITIAL starts the line; HISTORY
-is the history variable."
+is the history variable; EXAMPLE is what \\<minibuffer-local-map>\\[next-history-element] brings in."
   (minibuffer-with-setup-hook
       (lambda ()
         (setq lumenna--syntax syntax)
         (add-hook 'completion-at-point-functions (lumenna--completion syntax) nil t))
-    (read-from-minibuffer prompt initial lumenna-minibuffer-map nil history)))
+    (read-from-minibuffer prompt initial lumenna-minibuffer-map nil history
+                          (and example (not (string-empty-p example)) example))))
 
 ;;;###autoload
 (defun lumenna-add (&optional prefix)

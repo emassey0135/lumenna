@@ -38,11 +38,7 @@ The heading starts with TITLE."
                                        (if-let* ((near (plist-get name :suggestion)))
                                            (format ", did you mean %s?" near) "")))
                              (append (plist-get (plist-get result :query) :unresolved) nil))))
-    (lumenna-listing (string-join (delq nil (append (list (if understood (format "%s: %s" title understood) title)
-                                                          (plist-get result :announcement))
-                                                    unresolved))
-                                  ", ")
-                     result)))
+    (lumenna-listing (if understood (format "%s: %s" title understood) title) result nil unresolved)))
 
 ;;;###autoload
 (defun lumenna-tasks (&optional query title prefix)
@@ -135,7 +131,7 @@ name."
                          (append (plist-get (lumenna-call "label.list") :rows) nil))
                  nil nil now)
                 ", "))
-      (_ (read-string prompt now)))))
+      (_ (lumenna-read-field form prompt now)))))
 
 (defun lumenna--project-names ()
   "Every project's name."

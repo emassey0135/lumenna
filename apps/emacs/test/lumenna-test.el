@@ -249,7 +249,7 @@
                  (lambda (_prompt choices &rest _)
                    (setq offered (mapcar #'car choices))
                    (car offered)))
-                ((symbol-function 'read-string) (lambda (&rest _) "30")))
+                ((symbol-function 'read-from-minibuffer) (lambda (&rest _) "30")))
         (lumenna-act-put-in-block))
       (should (equal (length offered) 1))
       (should (string-match-p ", 9:00 AM to 10:30 AM, Focus\\'" (car offered))))
@@ -335,20 +335,52 @@
                               (funcall (lambda () (lumenna-describe (seq-find (lambda (r) (equal (plist-get r :role) "now"))
                                                                              (lumenna--day-rows (lumenna-call "plan")))))))))))
 
-(ert-deftest lumenna-an-empty-list-says-the-cores-words-under-its-heading ()
+(ert-deftest lumenna-an-empty-list-says-the-cores-words-under-a-heading-without-its-count ()
   (lumenna-test--with-store
     (lumenna-blocks)
     (goto-char (point-min))
+    (should (equal (lumenna-test--line) "Blocks"))
     (forward-line 1)
     (should (equal (lumenna-test--line) "No blocks."))
-    (should-error (lumenna-row) :type 'user-error)))
+    (should-error (lumenna-row) :type 'user-error)
+    (lumenna-filters)
+    (should (equal (buffer-string) "Saved filters\nNo saved filters. A filter's query is kept here under a name.\n"))
+    (lumenna-devices)
+    (should (equal (buffer-string) "Devices and sync\nNo devices are paired yet. Pair one to sync with it.\n"))
+    (lumenna-write "label.add" :name "calls")
+    (lumenna-labels)
+    (goto-char (point-min))
+    (should (equal (lumenna-test--line) "Labels, 1 label"))))
+
+(ert-deftest lumenna-going-to-a-day-and-a-new-filter-ask-the-cores-questions ()
+  (lumenna-test--with-store
+    (lumenna-write "block.add" :title "Dentist" :at "2pm" :minutes 60 :kind "event" :date "tomorrow")
+    (lumenna-today)
+    (let (asked (answers (list "tomorrow" "Urgent" "p1")))
+      (cl-letf (((symbol-function 'read-from-minibuffer) (lambda (prompt &rest _) (push prompt asked) (pop answers)))
+                ((symbol-function 'read-string) (lambda (prompt &rest _) (push prompt asked) (pop answers))))
+        (call-interactively #'lumenna-day-go-to)
+        (goto-char (point-min))
+        (should (string-match-p "\\`[A-Z][a-z]+ [0-9]+ [A-Z][a-z]+ [0-9]+\\. 1 block" (lumenna-test--line)))
+        (should (search-forward "Dentist" nil t))
+        (lumenna-filters)
+        (lumenna-filter-add))
+      (should (equal (reverse asked)
+                     '("Go to day. A date, such as Friday, or 12 October. Day: "
+                       "New saved filter. Name: "
+                       "New saved filter. A filter, such as p1 & due before: friday. Query: "))))
+    (should (equal (plist-get (aref (plist-get (lumenna-call "filter.list") :filters) 0) :name) "Urgent"))))
 
 (ert-deftest lumenna-the-block-form-asks-in-the-cores-words-the-name-last ()
   (lumenna-test--with-store
-    (let (asked (answers (list "Run" "today" "7am" "30" "Work" "")))
-      (cl-letf (((symbol-function 'read-string) (lambda (prompt &rest _) (push prompt asked) (pop answers)))
+    (let (asked examples (answers (list "Run" "today" "7am" "30" "Work" "")))
+      (cl-letf (((symbol-function 'read-from-minibuffer)
+                 (lambda (prompt _initial &optional _map _read _history example)
+                   (push prompt asked) (push example examples) (pop answers)))
                 ((symbol-function 'completing-read) (lambda (prompt &rest _) (push prompt asked) (pop answers))))
         (lumenna-add-block))
+      ;; Each example is the field's, a M-n away; the kind is a choice.
+      (should (equal (reverse examples) '("Deep work" "today" "9am" "60" "every weekday")))
       (should (equal (reverse asked)
                      `("Name: " "The day it happens, or the first day it repeats. Day: "
                        "A time, such as 9am or 14:30. Starts at: " "Lasts, in minutes: "
