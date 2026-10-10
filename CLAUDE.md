@@ -495,9 +495,8 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
   Settings), the place chosen, and what was opened from it (`showBeside`, which pushes on
   iPhone and in a narrow window). The sidebar is an `ItemListViewController`, so headings
   and project trees fold with Expand and Collapse actions and say which they are; a
-  project's, label's or filter's actions are the ones Browse offers (`PlaceActions.swift`,
-  once for both). A screen chosen by a command acts a turn later: it is not in the window
-  until then.
+  project's, label's or filter's actions are its own, the core's, as in Browse. A screen
+  chosen by a command acts a turn later: it is not in the window until then.
 - **⌘F never reaches the app in the iPad simulator**: no responder is asked about it, where
   ⌘3 is. Filter Tasks stays on ⌘F in the Edit menu, and its test skips on iPad.
 - **Three layers of iOS tests.** `LumennaTests` (unit tests hosted in the app) asks each
@@ -593,9 +592,13 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   file. `Shared/Clock.swift`, `RowSpeech.swift` and `Words.swift` are shared too; the
   watch's core is its own, since `Shared/Core.swift` starts Iroh. The generated bindings are
   in the app's own module, so a watch type named like a core record clashes with it.
-- **Which actions a row offers is decided once, in `Shared/Actions.swift`** (`DayAction`,
-  `PlaceAction`, `DeviceAction`): which apply when, their spoken names, and what their
-  questions ask. The iPhone and the watch only present and run them. Folding is
+- **A row's actions are the core's, run once for every Apple app** (`Shared/Actions.swift`,
+  `ActionRun`): it asks an action's question through the app's `ActionAsking` (alerts and a
+  `ChoicePicker` on iOS, sheets on the Mac, a `WatchAsker`'s sheets on the watch), sends the
+  answer to `act`, and hands back the change; a pick offers `choices`. Keys and menu
+  commands run the row's action of that kind, and say `notOffered` when it has none; on the
+  Mac a menu item that asks ends in "…". Settings screens and the priority picker are built
+  from the core's descriptions (`Setting.kind`, `priorities()`). Folding is
   `Shared/Folding.swift`, its UIKit swipe action an iOS extension.
 - **The device list builds without Iroh** (`crates/surface/src/devices.rs`): the watch is in
   no list and syncs with no device directly, so nothing is "this device" and a device's

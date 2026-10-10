@@ -21,13 +21,19 @@ struct QuickAddView: View {
                 .accessibilityLabel("Task")
             // After the line is entered, what could finish its last word, beside it.
             CompletionOffer(text: $text, syntax: .quickAdd)
-            if let readback {
+            switch readback {
+            case let .success(readback):
                 // What will be saved, before anything is: a misheard date is caught here.
                 Text(readback.announcement.prefix(1).uppercased() + readback.announcement.dropFirst())
                     .font(.footnote)
                 ForEach(readback.notices, id: \.self) { notice in
                     Text(notice).font(.footnote).foregroundStyle(Color.quietLabel)
                 }
+            case let .failure(error):
+                // Why the line cannot be read yet, in the core's words, as the phone says it.
+                Text(error.sentence).font(.footnote).foregroundStyle(Color.warningLabel)
+            case nil:
+                EmptyView()
             }
             Button("Add") {
                 if core.act({ try core.lumenna.addTask(text: line) }) { dismiss() }
@@ -39,8 +45,8 @@ struct QuickAddView: View {
 
     private var line: String { text }
 
-    private var preview: Preview? {
+    private var preview: Result<Preview, Error>? {
         guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-        return try? core.lumenna.previewTask(text: line)
+        return Result { try core.lumenna.previewTask(text: line) }
     }
 }

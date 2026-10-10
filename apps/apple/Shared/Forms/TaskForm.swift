@@ -1,13 +1,10 @@
 import SwiftUI
 
-/// What only the platform can do for the task form: choose a task or a block in its own way,
-/// and leave once the task has gone to the trash.
+/// What only the platform can do for the task form: ask the questions of the task's actions
+/// in its own way, and leave once the task has gone to the trash.
 protocol TaskFormHost: AnyObject {
-    /// Offers the open tasks, less `excluding`, and hands back the one chosen.
-    func chooseTask(_ title: String, excluding: Set<String>, chosen: @escaping (String) -> Void)
-    /// Offers the work blocks a task could go in and asks how long the sitting is meant to
-    /// take; hands back the block's identifier, its day, and the minutes or none.
-    func chooseBlock(for task: TaskDetail, chosen: @escaping (_ block: String, _ date: String, _ minutes: UInt32?) -> Void)
+    /// Who asks an action's question.
+    var asker: ActionAsking { get }
     /// The task went to the trash.
     func trashed()
 }
@@ -104,51 +101,26 @@ final class TaskDetailModel: NSObject, ObservableObject {
         }
     }
 
-    func toggleDone() {
-        let done = task?.state.contains("completed") == true
-        change { done ? try $0.uncompleteTask(id: self.id) : try $0.completeTask(id: self.id) }
-    }
-
-    /// Chooses a task for this one to wait for.
-    func addDependency() {
-        guard let task else { return }
-        host?.chooseTask("Waits For", excluding: Set(task.depends.map(\.id) + [id])) { [weak self] other in
-            self?.change { try $0.addDependency(id: task.id, on: other) }
-        }
-    }
-
-    func removeDependency(_ other: Dependency) {
-        change { try $0.removeDependency(id: self.id, on: other.id) }
-    }
-
-    /// Puts this task under another, joining that one's project.
-    func makeSubtask() {
-        host?.chooseTask("Make Subtask Of", excluding: [id]) { [weak self] parent in
-            self?.change { try $0.moveTask(id: self!.id, to: .parent(id: parent)) }
-        }
-    }
-
-    func moveToTop() {
-        change { try $0.moveTask(id: self.id, to: .top) }
-    }
-
-    /// Puts this task into a block, for a sitting of the length chosen.
-    func assign() {
-        guard let task else { return }
-        host?.chooseBlock(for: task) { [weak self] block, date, minutes in
-            self?.change { try $0.assign(task: task.id, block: block, date: date, minutes: minutes) }
-        }
-    }
-
-    func trash() {
-        do {
-            let change = try core.lumenna.trashTask(id: id)
+    /// Runs one of the task's actions, the core's: after Move to Trash the form leaves.
+    func run(_ action: Action) {
+        guard let host else { return }
+        ActionRun.run(action, on: core.lumenna, asking: host.asker, form: { _ in }) { [weak self] change, _ in
+            guard let self else { return }
+            self.load()
             NotificationCenter.default.post(name: Core.changed, object: nil)
             Announcer.say(change.announcement, notices: change.notices)
-            host?.trashed()
-        } catch {
-            failure = error.sentence
+            if action.kind == .delete, change.changed { self.host?.trashed() }
         }
+    }
+
+    /// Mark Done or Mark Not Done, as a key asks.
+    func toggleDone() {
+        if let action = task?.actions.first(.markDone, .markNotDone) { run(action) }
+    }
+
+    /// Move to Trash, as a key asks.
+    func trash() {
+        if let action = task?.actions.first(.delete) { run(action) }
     }
 }
 
@@ -177,9 +149,10 @@ struct TaskDetailView: View {
                 namedField("Labels", text: $model.labels, example: "calls, errands")
                     .modifier(Hint("Names separated by commas. A new name becomes a label."))
             }
-            ChoiceSection("Priority", selection: $model.priority, choices: [
-                ("Priority 1, highest", UInt8(1)), ("Priority 2", 2), ("Priority 3", 3), ("Priority 4, none", 4),
-            ])
+            // The priorities and their names are the core's.
+            ChoiceSection("Priority", selection: $model.priority, choices: priorities().compactMap { choice in
+                UInt8(choice.id).map { (choice.title, $0) }
+            })
             Section {
                 #if os(iOS) || os(watchOS)
                 TextField("Notes", text: $model.notes, prompt: example("Anything else"), axis: .vertical)
@@ -196,14 +169,6 @@ struct TaskDetailView: View {
                 FormParts.heading("Notes")
             }
             Section {
-                ForEach(task.depends, id: \.id) { other in
-                    Button("Stop Waiting for \(other.title)") { model.removeDependency(other) }
-                }
-                Button("Add Something It Waits For…") { model.addDependency() }
-            } header: {
-                FormParts.heading("Waits for")
-            }
-            Section {
                 if task.repetition == nil, let rule = task.recurrence {
                     LabeledContent("Repeats by the rule", value: rule)
                 }
@@ -217,19 +182,29 @@ struct TaskDetailView: View {
                 // and a watch has no bar button for it.
                 Button("Save") { model.save() }
                 #endif
-                Button(task.state.contains("completed") ? "Mark Not Done" : "Mark Done") { model.toggleDone() }
-                Button("Put in a Block…") { model.assign() }
-                Button("Make Subtask Of…") { model.makeSubtask() }
-                if task.parent != nil {
-                    Button("Move to Top Level") { model.moveToTop() }
+                // What can be done to it, the core's, in its order.
+                ForEach(task.actions, id: \.self) { action in
+                    if action.destructive {
+                        WarningButton(Self.title(action)) { model.run(action) }
+                    } else {
+                        Button(Self.title(action)) { model.run(action) }
+                    }
                 }
-                WarningButton("Move to Trash") { model.trash() }
             }
         }
         #if os(macOS)
         .formStyle(.grouped)
         #endif
         .modifier(FailureAlert(failure: $model.failure))
+    }
+
+    /// An action's name on its button: on the Mac, one that asks something ends in "…".
+    private static func title(_ action: Action) -> String {
+        #if os(macOS)
+        action.asks ? action.title + "…" : action.title
+        #else
+        action.title
+        #endif
     }
 
     /// The project: a pop-up of the projects on the Mac, where one is a click away; a name on
@@ -259,31 +234,5 @@ private struct Hint: ViewModifier {
         #else
         content.help(text)
         #endif
-    }
-}
-
-/// A work block a task could be put in: what identifies it to the core, its day, and how it
-/// reads in a list.
-struct BlockChoice {
-    let id: String
-    let date: String
-    let title: String
-    let detail: String
-}
-
-extension Core {
-    /// The work blocks a task could go in from the task itself. Which ones — the work
-    /// blocks of the coming week — is the core's (`workBlocks`), as for every app; how each
-    /// reads is this one's. The planner reaches any other day.
-    func workBlocksThisWeek() -> [BlockChoice] {
-        let blocks = (try? lumenna.workBlocks(from: nil, days: nil).blocks) ?? []
-        return blocks.map { block in
-            BlockChoice(
-                id: block.id,
-                date: block.date,
-                title: "\(Clock.spokenDay(block.date)), \(Clock.time(block.start)), \(block.title)",
-                detail: "\(Clock.time(block.start)) to \(Clock.time(block.end))"
-            )
-        }
     }
 }

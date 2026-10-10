@@ -1,110 +1,26 @@
 import AppKit
 
-/// What can be done to one task, in one place: the list's context menu, the Task menu in the
-/// menu bar, and the detail pane's buttons all offer these, so none can drift from the others.
+/// Running a task's actions, the core's, in one place: the list's context menu, its keys, and
+/// the Task menu in the menu bar all go through here, so none can drift from the others.
 struct TaskActions {
     let core: Core
     let window: NSWindow
     /// The list to keep focus in after a change, when there is one.
     weak var list: TaskListViewController?
+    /// Edit Details, the app's own form: the detail pane.
+    var openDetail: () -> Void = {}
 
-    /// Runs a change, through the list when there is one so focus lands predictably.
-    func perform(_ id: String?, _ operation: @escaping () throws -> Change) {
-        if let list {
-            list.perform(focusing: id, operation)
-            return
-        }
-        do {
-            let change = try operation()
-            Announcer.say(change.announcement, notices: change.notices)
-        } catch {
-            window.showFailure(error.sentence)
-        }
-    }
-
-    /// The menu for a task, read fresh so it matches what the task is now.
-    func menu(for row: RowView) -> [(String, () -> Void)] {
-        guard let task = try? core.lumenna.showTask(id: row.id).task else { return [] }
-        let done = task.state.contains("completed")
-        var actions: [(String, () -> Void)] = [
-            (done ? "Mark Not Done" : "Mark Done", { toggleDone(task) }),
-            ("Put in a Block…", { assign(task) }),
-            ("Move to Project…", { moveToProject(task) }),
-            ("Make Subtask Of…", { makeSubtask(task) }),
-        ]
-        if task.parent != nil {
-            actions.append(("Move to Top Level", { perform(task.id) { try core.lumenna.moveTask(id: task.id, to: .top) } }))
-        }
-        actions.append(("Wait For…", { waitFor(task) }))
-        for other in task.depends {
-            actions.append(("Stop Waiting for \(other.title)", {
-                perform(task.id) { try core.lumenna.removeDependency(id: task.id, on: other.id) }
-            }))
-        }
-        actions.append(("-", {}))
-        actions.append(("Move to Trash", { perform(nil) { try core.lumenna.trashTask(id: task.id) } }))
-        return actions
-    }
-
-    func toggleDone(_ task: TaskDetail) {
-        let done = task.state.contains("completed")
-        perform(task.id) {
-            done ? try core.lumenna.uncompleteTask(id: task.id) : try core.lumenna.completeTask(id: task.id)
-        }
-    }
-
-    /// Open tasks other than these, to choose among.
-    private func otherTasks(excluding: Set<String>) -> [PickerItem] {
-        ((try? core.lumenna.listTasks(query: "").rows) ?? [])
-            .filter { !excluding.contains($0.id) }
-            .map { PickerItem(key: $0.id, title: $0.title, detail: $0.value) }
-    }
-
-    func makeSubtask(_ task: TaskDetail) {
-        PickerSheet.present(on: window, title: "Make Subtask Of", items: otherTasks(excluding: [task.id])) { parent in
-            perform(task.id) { try core.lumenna.moveTask(id: task.id, to: .parent(id: parent.key)) }
-        }
-    }
-
-    func waitFor(_ task: TaskDetail) {
-        let waiting = Set(task.depends.map(\.id) + [task.id])
-        PickerSheet.present(on: window, title: "Waits For", items: otherTasks(excluding: waiting)) { other in
-            perform(task.id) { try core.lumenna.addDependency(id: task.id, on: other.key) }
-        }
-    }
-
-    func moveToProject(_ task: TaskDetail) {
-        let projects = ((try? core.lumenna.listProjects().rows) ?? [])
-            .filter { $0.title != task.project }
-            .map { PickerItem(key: $0.title, title: $0.title, detail: $0.value) }
-        PickerSheet.present(on: window, title: "Move to Project", items: projects) { project in
-            perform(task.id) { try core.lumenna.moveTask(id: task.id, to: .project(name: project.key)) }
-        }
-    }
-
-    /// Puts a task into a work block on today or the next six days, asking how long
-    /// the sitting is meant to take; the planner reaches any other day.
-    func assign(_ task: TaskDetail) {
-        Self.chooseBlock(core: core, window: window, for: task) { block, date, minutes in
-            perform(task.id) { try core.lumenna.assign(task: task.id, block: block, date: date, minutes: minutes) }
-        }
-    }
-
-    /// The work blocks of the coming week to choose among, then the sitting's length.
-    static func chooseBlock(
-        core: Core, window: NSWindow, for task: TaskDetail,
-        chosen: @escaping (_ block: String, _ date: String, _ minutes: UInt32?) -> Void
-    ) {
-        let blocks = core.workBlocksThisWeek()
-        let items = blocks.map { PickerItem(key: $0.id, title: $0.title, detail: $0.detail) }
-        let dates = Dictionary(uniqueKeysWithValues: blocks.map { ($0.id, $0.date) })
-        guard !items.isEmpty else {
-            window.showFailure("There are no work blocks this week. Add one from Today.", title: "Put in a Block")
-            return
-        }
-        PickerSheet.present(on: window, title: "Put \(task.title) in a Block", items: items) { block in
-            window.askForLength("How long is this sitting meant to take?", without: "Skip") { minutes in
-                chosen(block.key, dates[block.key] ?? "", minutes)
+    /// Runs `action` on the task `id`, through the list when there is one so focus lands
+    /// predictably: on the task, or — when it left the list — on what holds its place.
+    func perform(_ action: Action, on id: String) {
+        let leaves = [.delete, .restore, .deleteForGood].contains(action.kind)
+        let list = self.list
+        window.run(action, core: core, form: { _ in openDetail() }) { change, _ in
+            if let list {
+                list.acted(change, focusing: leaves ? nil : id)
+            } else {
+                NotificationCenter.default.post(name: Core.changed, object: nil)
+                Announcer.say(change.announcement, notices: change.notices)
             }
         }
     }

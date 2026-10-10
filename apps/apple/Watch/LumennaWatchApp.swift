@@ -9,7 +9,7 @@ struct LumennaWatchApp: App {
         WindowGroup {
             Group {
                 if let core = opened.core {
-                    RootView()
+                    RootView(core: core)
                         .environmentObject(core)
                         .environmentObject(core.phone)
                 } else {

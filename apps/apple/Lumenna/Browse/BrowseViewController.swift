@@ -39,18 +39,26 @@ final class BrowseViewController: ItemListViewController {
     }
 }
 
+extension ItemListViewController {
+    /// Adds a project, label or saved filter as the sidebar's heading over them does: its
+    /// New action, the core's, so the add button asks what every app asks.
+    func addFromHeading(_ group: SidebarGroup, key: @escaping (String) -> String) {
+        let heading = core.lumenna.places().entries.first { $0.kind == .group(group) }
+        guard let action = heading?.actions.first(.new) else { return }
+        run(action, core: core, form: { [weak self] _ in self?.addFilter(key: key) }) { [weak self] change, answer in
+            self?.reload(focusing: ActionRun.name(after: action, answer: answer).map(key), saying: change)
+        }
+    }
+}
+
 /// The project tree, with weights.
 final class ProjectsViewController: ItemListViewController {
-    /// Which projects are archived, by name, so the action can say which way it goes.
-    private var archived: Set<String> = []
-
     init(core: Core) {
         super.init(core: core, title: "Projects")
     }
 
     override func load() throws -> (items: [Item], count: String) {
         let rows = try core.lumenna.listProjects()
-        archived = Set(rows.rows.filter { $0.state.contains("archived") }.map(\.title))
         // The level is added as shown, against the item before it once folded.
         let items = rows.rows.map { row -> Item in
             Item(
@@ -58,7 +66,8 @@ final class ProjectsViewController: ItemListViewController {
                 title: row.title,
                 detail: ([RowSpeech.details(row)].compactMap { $0 } + row.state).joined(separator: ", "),
                 depth: row.depth,
-                spoken: RowSpeech.value(row, previousDepth: row.depth)
+                spoken: RowSpeech.value(row, previousDepth: row.depth),
+                actions: row.actions
             )
         }
         return (items, rows.announcement)
@@ -67,7 +76,7 @@ final class ProjectsViewController: ItemListViewController {
     override var addTitle: String? { "Add project" }
 
     override func add() {
-        addProject(key: { $0 })
+        addFromHeading(.projects) { $0 }
     }
 
     override func open(_ item: Item) {
@@ -81,10 +90,6 @@ final class ProjectsViewController: ItemListViewController {
             animated: true
         )
     }
-
-    override func actions(for item: Item) -> [ItemAction] {
-        projectActions(item.key, archived: archived.contains(item.key), others: { [weak self] in self?.items.map(\.key) ?? [] }, key: { $0 })
-    }
 }
 
 /// Labels: a first-class axis, with their own list.
@@ -95,13 +100,13 @@ final class LabelsViewController: ItemListViewController {
 
     override func load() throws -> (items: [Item], count: String) {
         let rows = try core.lumenna.listLabels()
-        return (rows.rows.map { Item(key: $0.title, title: $0.title, detail: $0.value) }, rows.announcement)
+        return (rows.rows.map { Item(key: $0.title, title: $0.title, detail: $0.value, actions: $0.actions) }, rows.announcement)
     }
 
     override var addTitle: String? { "Add label" }
 
     override func add() {
-        addLabel(key: { $0 })
+        addFromHeading(.labels) { $0 }
     }
 
     override func open(_ item: Item) {
@@ -114,10 +119,6 @@ final class LabelsViewController: ItemListViewController {
             ),
             animated: true
         )
-    }
-
-    override func actions(for item: Item) -> [ItemAction] {
-        labelActions(item.key, others: { [weak self] in self?.items.map(\.key) ?? [] }, key: { $0 })
     }
 }
 
@@ -134,13 +135,13 @@ final class FiltersViewController: ItemListViewController {
     override func load() throws -> (items: [Item], count: String) {
         let filters = try core.lumenna.listFilters()
         queries = Dictionary(uniqueKeysWithValues: filters.filters.map { ($0.name, $0.query) })
-        return (filters.filters.map { Item(key: $0.name, title: $0.name, detail: $0.query) }, filters.announcement)
+        return (filters.filters.map { Item(key: $0.name, title: $0.name, detail: $0.query, actions: $0.actions) }, filters.announcement)
     }
 
     override var addTitle: String? { "Add filter" }
 
     override func add() {
-        addFilter(key: { $0 })
+        addFromHeading(.filters) { $0 }
     }
 
     override func open(_ item: Item) {
@@ -148,10 +149,6 @@ final class FiltersViewController: ItemListViewController {
             TaskListViewController(core: core, title: item.title, query: queries[item.key] ?? ""),
             animated: true
         )
-    }
-
-    override func actions(for item: Item) -> [ItemAction] {
-        filterActions(item.key, query: queries[item.key] ?? "", key: { $0 })
     }
 }
 
@@ -165,7 +162,7 @@ final class BlocksViewController: ItemListViewController {
 
     override func load() throws -> (items: [Item], count: String) {
         let rows = try core.lumenna.listBlocks()
-        return (rows.rows.map { Item(key: $0.id, title: $0.title, detail: $0.value) }, rows.announcement)
+        return (rows.rows.map { Item(key: $0.id, title: $0.title, detail: $0.value, actions: $0.actions) }, rows.announcement)
     }
 
     override var addTitle: String? { "Add block" }
@@ -180,11 +177,9 @@ final class BlocksViewController: ItemListViewController {
         edit(item)
     }
 
-    override func actions(for item: Item) -> [ItemAction] {
-        [
-            ItemAction(title: "Edit") { [weak self] item in self?.edit(item) },
-            ItemAction(title: "Delete", destructive: true) { [weak self] item in self?.delete(item) },
-        ]
+    /// Edit Block is the block form, for every occurrence.
+    override func form(_ action: Action, on item: Item) {
+        edit(item)
     }
 
     private func edit(_ item: Item) {
@@ -194,17 +189,6 @@ final class BlocksViewController: ItemListViewController {
             })
         } catch {
             showFailure(error.sentence)
-        }
-    }
-
-    private func delete(_ item: Item) {
-        let repeats = (try? core.lumenna.showBlock(id: item.key).repeats) ?? false
-        let message = repeats
-            ? "Every occurrence goes. To skip one day, cancel it from the day instead."
-            : "It goes to the trash with its assignments."
-        confirm("Delete \(item.title)?", message: message, action: "Delete") { [weak self] in
-            guard let self else { return }
-            self.perform(on: item) { try self.core.lumenna.deleteBlock(id: item.key) }
         }
     }
 }

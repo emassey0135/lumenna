@@ -200,7 +200,9 @@ final class TaskListViewController: NSViewController, NSOutlineViewDataSource, N
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let node = item as? TaskNode else { return nil }
         let cell = TaskCell()
-        cell.show(node.row, trash: mode == .trash) { [weak self] in self?.toggleDone(node.row) }
+        cell.show(node.row, trash: mode == .trash) { [weak self] in
+            if let done = node.row.actions.first(.markDone, .markNotDone) { self?.perform(done, on: node.row) }
+        }
         return cell
     }
 
@@ -214,58 +216,40 @@ final class TaskListViewController: NSViewController, NSOutlineViewDataSource, N
         main?.nextPane(nil)
     }
 
-    /// Keys on the outline itself: Space completes, Delete trashes — or, in the trash,
-    /// restores and deletes from the trash — as the menus say.
+    /// Keys on the outline itself, each the row's own action of that kind: Space marks it
+    /// done or not, or restores it from the trash; Delete trashes it, or deletes it from the
+    /// trash.
     private func key(_ key: TaskOutline.Key) -> Bool {
         guard let row = selectedNode?.row else { return false }
-        switch (key, mode) {
-        case (.space, .tasks): toggleDone(row)
-        case (.delete, .tasks): trash(row)
-        case (.space, .trash): restore(row)
-        case (.delete, .trash): erase(row)
-        case (.returnKey, _): openDetail()
+        let action: Action? = switch key {
+        case .space: row.actions.first(.markDone, .markNotDone, .restore)
+        case .delete: row.actions.first(.delete, .deleteForGood)
+        case .returnKey: nil
+        }
+        if key == .returnKey {
+            openDetail()
+        } else if let action {
+            perform(action, on: row)
+        } else {
+            // Why not, in the core's words: silence would leave the key a guess.
+            Announcer.say(notOffered(kind: key == .space ? .markDone : .delete, subject: .task, thisDevice: false))
         }
         return true
     }
 
     // MARK: - Doing things
 
-    func perform(focusing id: String?, _ operation: () throws -> Change) {
-        let index = outline.selectedRow
-        do {
-            let change = try operation()
-            reload(focusing: id, near: index, saying: change)
-        } catch {
-            view.window?.showFailure(error.sentence)
-        }
+    /// After an action: reloads with the selection on `id`, or near where it was, and says
+    /// what happened.
+    func acted(_ change: Change, focusing id: String?) {
+        reload(focusing: id, near: outline.selectedRow, saying: change)
     }
 
-    func toggleDone(_ row: RowView) {
-        perform(focusing: row.id) {
-            row.checked == true
-                ? try core.lumenna.uncompleteTask(id: row.id)
-                : try core.lumenna.completeTask(id: row.id)
-        }
-    }
-
-    func trash(_ row: RowView) {
-        perform(focusing: nil) { try core.lumenna.trashTask(id: row.id) }
-    }
-
-    func restore(_ row: RowView) {
-        perform(focusing: nil) { try core.lumenna.restoreTask(id: row.id) }
-    }
-
-    /// Deletes a task from the trash, asking first.
-    func erase(_ row: RowView) {
-        view.window?.confirm(
-            "Delete \(row.title) from the trash?",
-            message: "Undo can bring it back. It also stays in the history every device keeps, and in backups.",
-            action: "Delete"
-        ) { [weak self] in
-            guard let self else { return }
-            self.perform(focusing: nil) { try self.core.lumenna.eraseTask(id: row.id) }
-        }
+    /// Runs a row's action, the core's.
+    func perform(_ action: Action, on row: RowView) {
+        guard let window = view.window else { return }
+        TaskActions(core: core, window: window, list: self, openDetail: { [weak self] in self?.openDetail() })
+            .perform(action, on: row.id)
     }
 
     func addTask() {
@@ -285,17 +269,11 @@ final class TaskListViewController: NSViewController, NSOutlineViewDataSource, N
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let clicked = outline.clickedRow >= 0 ? outline.clickedRow : outline.selectedRow
-        guard let node = outline.item(atRow: clicked) as? TaskNode, let window = view.window else { return }
+        guard let node = outline.item(atRow: clicked) as? TaskNode else { return }
         if outline.selectedRow != clicked {
             outline.selectRowIndexes([clicked], byExtendingSelection: false)
         }
-        let actions = mode == .trash
-            ? [("Restore", { [weak self] in self?.restore(node.row) }),
-               ("Delete from Trash…", { [weak self] in self?.erase(node.row) })]
-            : TaskActions(core: core, window: window, list: self).menu(for: node.row)
-        for (title, action) in actions {
-            if title == "-" { menu.addItem(.separator()) } else { menu.addItem(ClosureMenuItem(title: title, action: action)) }
-        }
+        menu.add(node.row.actions) { [weak self] action in self?.perform(action, on: node.row) }
     }
 }
 

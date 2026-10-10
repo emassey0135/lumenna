@@ -2,36 +2,35 @@ import AppKit
 
 // Somewhere to go in the main window is the core's `Place`, which every sidebar shares.
 
-/// One row of the sidebar.
+/// One row of the sidebar: one of the core's entries (`Lumenna.places`).
 final class SidebarNode {
-    enum Kind {
-        case place(Place)
-        /// "Projects", "Labels", "Saved Filters": a group heading, not somewhere to go.
-        case group(String)
-
-    }
-
-    let kind: Kind
+    let entry: SidebarEntry
     let title: String
     let detail: String?
     var children: [SidebarNode] = []
-    /// For a project: its row, which carries depth, state and the counts.
-    let row: RowView?
 
-    init(_ kind: Kind, title: String, detail: String? = nil, row: RowView? = nil) {
-        self.kind = kind
+    init(_ entry: SidebarEntry) {
+        self.entry = entry
+        let title: String = switch entry.kind {
+        case let .group(group): switch group {
+            case .projects: "Projects"
+            case .labels: "Labels"
+            case .filters: "Saved Filters"
+            }
+        case let .place(place): placeTitle(place: place)
+        }
         self.title = title
-        self.detail = detail
-        self.row = row
+        // The core's line is the title, then what is in it.
+        detail = entry.text.hasPrefix(title + ", ") ? String(entry.text.dropFirst(title.count + 2)) : nil
     }
 
     var place: Place? {
-        if case let .place(place) = kind { return place }
+        if case let .place(place) = entry.kind { return place }
         return nil
     }
 
     var isGroup: Bool {
-        if case .group = kind { return true }
+        if case .group = entry.kind { return true }
         return false
     }
 }
@@ -39,17 +38,16 @@ final class SidebarNode {
 /// The places: Today, Tasks, the project tree, labels, saved filters, blocks, the trash.
 ///
 /// A source list, as Mail's mailboxes are, because that is the outline VoiceOver and the
-/// keyboard know best on a Mac. Projects nest as they do in the store; what a project, label
-/// or filter can have done to it is in its context menu, which VoiceOver opens with VO-Shift-M.
+/// keyboard know best on a Mac. The places are the core's (`Lumenna.places`), as every
+/// sidebar has them; projects nest as they do in the store. What a project, label or filter
+/// can have done to it is its actions, the core's, in its context menu, which VoiceOver
+/// opens with VO-Shift-M; a heading's is its New.
 final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
     private let core: Core
     private let chose: (Place) -> Void
     let outline = NSOutlineView()
     private var roots: [SidebarNode] = []
     private var selected: Place = .today
-    private var archived: Set<String> = []
-    private var labels: [String] = []
-    private var projects: [String] = []
 
     init(core: Core, chose: @escaping (Place) -> Void) {
         self.core = core
@@ -89,51 +87,19 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     // MARK: - Building
 
     @objc func reload() {
-        var places = [
-            SidebarNode(.place(.today), title: "Today"),
-            SidebarNode(.place(.tasks), title: "Tasks"),
-        ]
-        let projectsGroup = SidebarNode(.group("Projects"), title: "Projects")
-        if let rows = try? core.lumenna.listProjects().rows {
-            projectsGroup.children = Self.tree(rows.map { row in
-                SidebarNode(
-                    .place(.project(row.title)), title: row.title,
-                    detail: ([row.value].compactMap { $0 } + row.state).joined(separator: ", "), row: row
-                )
-            })
-            archived = Set(rows.filter { $0.state.contains("archived") }.map(\.title))
-            projects = rows.map(\.title)
-        }
-        let labelsGroup = SidebarNode(.group("Labels"), title: "Labels")
-        if let rows = try? core.lumenna.listLabels().rows {
-            labelsGroup.children = rows.map { SidebarNode(.place(.label($0.title)), title: $0.title, detail: $0.value) }
-            labels = rows.map(\.title)
-        }
-        let filtersGroup = SidebarNode(.group("Saved Filters"), title: "Saved Filters")
-        if let filters = try? core.lumenna.listFilters().filters {
-            filtersGroup.children = filters.map {
-                SidebarNode(.place(.filter(name: $0.name, query: $0.query)), title: $0.name, detail: $0.query)
-            }
-        }
-        let trash = (try? core.lumenna.listTasks(query: "deleted").count).map { $0 == 1 ? "1 task" : "\($0) tasks" }
-        places += [
-            projectsGroup, labelsGroup, filtersGroup,
-            SidebarNode(.place(.blocks), title: "Blocks"),
-            SidebarNode(.place(.trash), title: "Trash", detail: trash),
-        ]
-        roots = places
+        roots = Self.tree(core.lumenna.places().entries.map(SidebarNode.init))
         outline.reloadData()
         expandAll(roots)
         reselect()
     }
 
-    /// The flat, depth-first project rows the core sends, as a tree.
+    /// The flat, depth-first entries the core sends, as a tree: an entry's parent is the
+    /// nearest shallower one above it.
     private static func tree(_ nodes: [SidebarNode]) -> [SidebarNode] {
         var top: [SidebarNode] = []
         var chain: [SidebarNode] = []
         for node in nodes {
-            let depth = Int(node.row?.depth ?? 0)
-            while chain.count > depth { chain.removeLast() }
+            while let last = chain.last, last.entry.depth >= node.entry.depth { chain.removeLast() }
             if let parent = chain.last { parent.children.append(node) } else { top.append(node) }
             chain.append(node)
         }
@@ -237,173 +203,71 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         menu.removeAllItems()
         let row = outline.clickedRow >= 0 ? outline.clickedRow : outline.selectedRow
         guard let node = outline.item(atRow: row) as? SidebarNode else { return }
-        for (title, action) in actions(for: node) {
-            if title == "-" {
-                menu.addItem(.separator())
-            } else {
-                menu.addItem(ClosureMenuItem(title: title, action: action))
-            }
-        }
+        menu.add(node.entry.actions) { [weak self] action in self?.perform(action) }
     }
 
     private var window: NSWindow? { view.window }
 
-    func actions(for node: SidebarNode) -> [(String, () -> Void)] {
-        let lumenna = core.lumenna
-        switch node.kind {
-        case let .group(name):
-            switch name {
-            case "Projects": return [("New Project…", { [weak self] in self?.newProject(inside: nil) })]
-            case "Labels": return [("New Label…", { [weak self] in self?.newLabel() })]
-            default: return [("New Saved Filter…", { [weak self] in self?.newFilter() })]
+    /// Runs one of a place's actions, the core's. When it renamed the place shown, or made a
+    /// new one, it goes there; when it removed the place shown, to Tasks.
+    private func perform(_ action: Action) {
+        guard let window else { return }
+        let shown = selected
+        window.run(action, core: core, form: { [weak self] _ in self?.newFilter() }) { [weak self] change, answer in
+            guard let self else { return }
+            self.reload()
+            if change.changed {
+                let wasShown = placeTitle(place: shown) == action.target
+                if let name = ActionRun.name(after: action, answer: answer), let place = self.place(action.subject, named: name) {
+                    if action.kind != .mergeInto || wasShown { self.select(place) }
+                } else if action.kind == .delete, wasShown {
+                    self.select(.tasks)
+                }
             }
-        case .place(.project(let name)):
-            return [
-                ("Rename…", { [weak self] in
-                    self?.window?.askForText("Rename \(name)", initial: name) { to in
-                        self?.change(then: .project(to)) { try lumenna.renameProject(name: name, to: to) }
-                    }
-                }),
-                ("New Project Inside…", { [weak self] in self?.newProject(inside: name) }),
-                ("Move Under…", { [weak self] in self?.moveProject(name) }),
-                ("Move Up", { [weak self] in self?.change { try lumenna.reorderProject(name: name, direction: .up) } }),
-                ("Move Down", { [weak self] in self?.change { try lumenna.reorderProject(name: name, direction: .down) } }),
-                ("Weight…", { [weak self] in self?.askWeight(of: name) }),
-                (archived.contains(name) ? "Unarchive" : "Archive", { [weak self] in
-                    self?.change { try lumenna.archiveProject(name: name) }
-                }),
-                ("-", {}),
-                ("Delete…", { [weak self] in
-                    self?.window?.choose(
-                        "Delete \(name)?", message: "Its tasks can go to the trash with it, or move to the Inbox.",
-                        actions: [
-                            ("Delete and Trash Its Tasks", { self?.change(then: .tasks) { try lumenna.deleteProject(name: name, keepTasks: false) } }),
-                            ("Delete and Keep Its Tasks", { self?.change(then: .tasks) { try lumenna.deleteProject(name: name, keepTasks: true) } }),
-                        ]
-                    )
-                }),
-            ]
-        case .place(.label(let name)):
-            return [
-                ("Rename…", { [weak self] in
-                    self?.window?.askForText("Rename \(name)", initial: name) { to in
-                        self?.change(then: .label(to)) { try lumenna.renameLabel(name: name, to: to) }
-                    }
-                }),
-                ("Merge Into…", { [weak self] in
-                    guard let self, let window = self.window else { return }
-                    // For when a typo made a near-duplicate: this one's tasks move to the other.
-                    let others = self.labels.filter { $0 != name }.map { PickerItem(key: $0, title: $0) }
-                    PickerSheet.present(on: window, title: "Merge \(name) Into", items: others) { other in
-                        self.change(then: .label(other.key)) { try lumenna.mergeLabels(from: name, into: other.key) }
-                    }
-                }),
-                ("Colour…", { [weak self] in
-                    self?.window?.askForText(
-                        "Colour for \(name)",
-                        message: "A colour name, such as red or teal, or none. The name always shows too.",
-                        placeholder: "teal"
-                    ) { colour in
-                        self?.change { try lumenna.recolourLabel(name: name, colour: colour.lowercased() == "none" ? nil : colour) }
-                    }
-                }),
-                ("Move Up", { [weak self] in self?.change { try lumenna.reorderLabel(name: name, direction: .up) } }),
-                ("Move Down", { [weak self] in self?.change { try lumenna.reorderLabel(name: name, direction: .down) } }),
-                ("-", {}),
-                ("Delete…", { [weak self] in
-                    self?.window?.confirm("Delete \(name)?", message: "Tasks wearing it stay; they just stop showing it.", action: "Delete") {
-                        self?.change(then: .tasks) { try lumenna.deleteLabel(name: name) }
-                    }
-                }),
-            ]
-        case .place(.filter(let name, let query)):
-            return [
-                ("Rename…", { [weak self] in
-                    self?.window?.askForText("Rename \(name)", initial: name) { to in
-                        self?.change(then: .filter(name: to, query: query)) { try lumenna.editFilter(name: name, rename: to, query: nil) }
-                    }
-                }),
-                ("Change Query…", { [weak self] in
-                    self?.window?.askForText("Query for \(name)", initial: query) { new in
-                        self?.change(then: .filter(name: name, query: new)) { try lumenna.editFilter(name: name, rename: nil, query: new) }
-                    }
-                }),
-                ("Move Up", { [weak self] in self?.change { try lumenna.reorderFilter(name: name, direction: .up) } }),
-                ("Move Down", { [weak self] in self?.change { try lumenna.reorderFilter(name: name, direction: .down) } }),
-                ("-", {}),
-                ("Delete…", { [weak self] in
-                    self?.window?.confirm("Delete \(name)?", message: "The tasks it shows are not touched.", action: "Delete") {
-                        self?.change(then: .tasks) { try lumenna.deleteFilter(name: name) }
-                    }
-                }),
-            ]
-        default:
-            return []
-        }
-    }
-
-    /// Runs a change, says what it did, and — when it renamed or removed the place shown —
-    /// goes to `then`.
-    private func change(then place: Place? = nil, _ operation: () throws -> Change) {
-        do {
-            let change = try operation()
-            reload()
-            if let place, change.changed { select(place) }
             Announcer.say(change.announcement, notices: change.notices)
-        } catch {
-            window?.showFailure(error.sentence)
         }
     }
 
-    @objc func newProject(inside parent: String?) {
-        window?.askForText(parent.map { "New Project in \($0)" } ?? "New Project", placeholder: "Name", action: "Add") { [weak self] name in
-            self?.change(then: .project(name)) { try self!.core.lumenna.addProject(name: name, parent: parent) }
+    /// The place of `subject`'s kind called `name`, once the sidebar holds it again.
+    private func place(_ subject: Subject, named name: String, in nodes: [SidebarNode]? = nil) -> Place? {
+        for node in nodes ?? roots {
+            switch (subject, node.place) {
+            case (.project, .project(name)?), (.label, .label(name)?): return node.place
+            case let (.filter, .filter(filter, _)?) where filter == name: return node.place
+            default: if let found = place(subject, named: name, in: node.children) { return found }
+            }
         }
+        return nil
     }
 
-    @objc func newLabel() {
-        window?.askForText("New Label", placeholder: "Name", action: "Add") { [weak self] name in
-            self?.change(then: .label(name)) { try self!.core.lumenna.addLabel(name: name) }
-        }
+    /// The heading's New, from the File menu.
+    private func runNew(under group: SidebarGroup) {
+        guard let heading = roots.first(where: { $0.entry.kind == .group(group) }),
+              let action = heading.entry.actions.first(.new) else { return }
+        perform(action)
     }
 
-    @objc func newFilter() {
+    @objc func newProject() { runNew(under: .projects) }
+    @objc func newLabel() { runNew(under: .labels) }
+    @objc func newSavedFilter() { runNew(under: .filters) }
+
+    /// New Saved Filter, the app's own form: a name, then a query.
+    private func newFilter() {
         window?.askForText("New Saved Filter", placeholder: "Name", action: "Next") { [weak self] name in
             // A sheet cannot open while the last is still closing.
             DispatchQueue.main.async {
                 self?.window?.askForText("Query for \(name)", placeholder: "#Work & overdue", action: "Save") { query in
-                    self?.change(then: .filter(name: name, query: query)) { try self!.core.lumenna.addFilter(name: name, query: query) }
+                    guard let self else { return }
+                    do {
+                        let change = try self.core.lumenna.addFilter(name: name, query: query)
+                        self.reload()
+                        self.select(.filter(name: name, query: query))
+                        Announcer.say(change.announcement, notices: change.notices)
+                    } catch {
+                        self.window?.showFailure(error.sentence)
+                    }
                 }
             }
-        }
-    }
-
-    /// Asks a project's weight, and again with what was typed when it is not one: a typo
-    /// must not quietly become "inherit" (the core reads it, `parseWeight`).
-    private func askWeight(of name: String, typed: String = "", problem: String? = nil) {
-        let help = "How much this whole area matters now, roughly 0.5 to 2. Type inherit to take the parent's again."
-        window?.askForText(
-            "Weight of \(name)",
-            message: problem.map { "\($0)\n\n\(help)" } ?? help,
-            initial: typed,
-            placeholder: "1.0"
-        ) { [weak self] text in
-            guard let self else { return }
-            do {
-                let weight = try parseWeight(text: text)
-                change { try self.core.lumenna.weighProject(name: name, weight: weight) }
-            } catch {
-                askWeight(of: name, typed: text, problem: error.sentence)
-            }
-        }
-    }
-
-    private func moveProject(_ name: String) {
-        guard let window else { return }
-        let choices = [PickerItem(key: "", title: "The top level")]
-            + projects.filter { $0 != name }.map { PickerItem(key: $0, title: $0) }
-        PickerSheet.present(on: window, title: "Move \(name) Under", items: choices) { [weak self] choice in
-            self?.change { try self!.core.lumenna.moveProject(name: name, parent: choice.key.isEmpty ? nil : choice.key) }
         }
     }
 }

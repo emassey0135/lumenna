@@ -1,140 +1,146 @@
 import Foundation
 
-/// What can be done to a row, in the order offered, as the iPhone, iPad and watch all offer
-/// it: which actions apply when, their spoken names, and the words their questions ask. Each
-/// app turns these into swipe actions, menus or buttons and runs them; none decides which
-/// apply by itself, so the apps cannot drift apart on it.
+/// What can be done to a row is the core's: every record listed carries its `actions`, in
+/// the order offered, under their spoken names, each with the question it asks. The Apple
+/// apps offer them as swipe actions, menus and buttons; running one is `ActionRun`, here
+/// once for the iPhone, the iPad, the Mac and the watch. Only the asking is each app's.
 
-/// What can be done to a row of the day.
-enum DayAction: Hashable {
-    case assignTask, edit, cancelThisDay, restoreThisDay, deleteBlock
-    case startTimer, resumeTimer, pauseTimer, stopTimer, plannedLength, logMinutes, unassign
-    case addBlockHere
-
-    /// Its spoken name: "Delete Block", not "Delete".
-    var title: String {
-        switch self {
-        case .assignTask: "Assign Task"
-        case .edit: "Edit"
-        case .cancelThisDay: "Cancel This Day"
-        case .restoreThisDay: "Restore This Day"
-        case .deleteBlock: "Delete Block"
-        case .startTimer: "Start Timer"
-        case .resumeTimer: "Resume Timer"
-        case .pauseTimer: "Pause Timer"
-        case .stopTimer: "Stop Timer"
-        case .plannedLength: "Planned Length"
-        case .logMinutes: "Log Minutes"
-        case .unassign: "Unassign"
-        case .addBlockHere: "Add Block Here"
-        }
-    }
-
-    /// Whether it is hard to take back, so shown as such.
-    var destructive: Bool {
-        self == .deleteBlock || self == .unassign
-    }
-
-    /// A block's: tasks go in one that takes them, a repeating one can skip a day, a day
-    /// changed from the series can go back to it.
-    static func of(_ block: PlanBlock) -> [DayAction] {
-        var actions: [DayAction] = []
-        if block.acceptsTasks { actions.append(.assignTask) }
-        actions.append(.edit)
-        if block.repeats { actions.append(.cancelThisDay) }
-        if block.changedForThisDay { actions.append(.restoreThisDay) }
-        actions.append(.deleteBlock)
-        return actions
-    }
-
-    /// A sitting's: start, pause and stop — a paused sitting is still in progress, and
-    /// stopping either a running or a paused one ends it — then its length and its time.
-    static func of(_ sitting: PlanAssignment) -> [DayAction] {
-        var actions: [DayAction] = [sitting.running ? .pauseTimer : (sitting.status == "paused" ? .resumeTimer : .startTimer)]
-        if sitting.running || sitting.status == "paused" { actions.append(.stopTimer) }
-        return actions + [.plannedLength, .logMinutes, .unassign]
-    }
-
-    /// Free time's.
-    static let ofFreeTime: [DayAction] = [.addBlockHere]
-    /// A day cancelled from a repeating block's.
-    static let ofCancelled: [DayAction] = [.restoreThisDay]
-
-    /// What deleting a block asks, which differs for one that repeats.
-    static func deleting(_ block: PlanBlock) -> String {
-        block.repeats
-            ? "Every occurrence goes, not only this day. To skip one day, cancel it instead."
-            : "It goes to the trash with its assignments."
-    }
-
-    /// What logging minutes asks.
-    static let loggingMinutes = "The whole of this sitting, replacing what is logged."
+/// How an app asks an action's questions, its own way.
+protocol ActionAsking: AnyObject {
+    /// Whether to go ahead. Cancel is the app's, first, and the default.
+    func askConfirm(title: String, message: String, yes: String, destructive: Bool, then: @escaping () -> Void)
+    /// A line of text. `problem` is the core's sentence when it refused what was typed, which
+    /// comes back as `initial`, so a refused answer stays in its dialog. Whatever is typed is
+    /// handed on, empty included: the core refuses what it must.
+    func askText(title: String, label: String, initial: String, hint: String, problem: String?, then: @escaping (String) -> Void)
+    /// One of `choices`, in their order.
+    func askPick(title: String, choices: [Choice], then: @escaping (Choice) -> Void)
+    /// One of a few answers, each its own button.
+    func askChoose(title: String, message: String, answers: [Choice], then: @escaping (Choice) -> Void)
+    /// How long a sitting is meant to take, once one is picked: `hint` is the core's question.
+    /// Empty is none.
+    func askLength(hint: String, then: @escaping (String) -> Void)
+    /// Says why a pick offers nothing, in the core's words: `title` is the pick's.
+    func tell(title: String, _ sentence: String)
+    /// Says why something could not be done, in the core's words.
+    func fail(_ sentence: String)
 }
 
-/// What can be done to a project, a label or a saved filter, wherever one is listed.
-enum PlaceAction: Hashable {
-    case rename, moveUp, moveDown, moveUnder, addProjectInside, weight, archive, unarchive
-    case mergeInto, colour, changeQuery, delete
-
-    var title: String {
-        switch self {
-        case .rename: "Rename"
-        case .moveUp: "Move Up"
-        case .moveDown: "Move Down"
-        case .moveUnder: "Move Under"
-        case .addProjectInside: "Add Project Inside"
-        case .weight: "Weight"
-        case .archive: "Archive"
-        case .unarchive: "Unarchive"
-        case .mergeInto: "Merge Into"
-        case .colour: "Colour"
-        case .changeQuery: "Change Query"
-        case .delete: "Delete"
-        }
+extension ActionAsking {
+    /// A length asked as a line of text, where the app has no better way.
+    func askLength(hint: String, then: @escaping (String) -> Void) {
+        askText(title: "Planned Length", label: "Planned length", initial: "", hint: hint, problem: nil, then: then)
     }
-
-    var destructive: Bool { self == .delete }
-
-    /// A project's: rename, reorder, nest, weigh, archive, delete.
-    static func ofProject(archived: Bool) -> [PlaceAction] {
-        [.rename, .moveUp, .moveDown, .moveUnder, .addProjectInside, .weight, archived ? .unarchive : .archive, .delete]
-    }
-
-    /// A label's: rename, reorder, merge, colour, delete.
-    static let ofLabel: [PlaceAction] = [.rename, .moveUp, .moveDown, .mergeInto, .colour, .delete]
-    /// A saved filter's: rename, change its query, reorder, delete.
-    static let ofFilter: [PlaceAction] = [.rename, .changeQuery, .moveUp, .moveDown, .delete]
-
-    /// What deleting a project asks, offering both answers.
-    static let deletingProject = "Its tasks can go to the trash with it, or move to the Inbox."
-    static let deleteAndTrash = "Delete and Trash Its Tasks"
-    static let deleteAndKeep = "Delete and Keep Its Tasks"
-    /// What deleting a label asks.
-    static let deletingLabel = "Tasks wearing it stay; they just stop showing it."
-    /// What a label's colour takes.
-    static let colourHelp = "A colour name, such as red or teal, or none. The name always shows too."
-    /// What a project's weight takes.
-    static let weightHelp = "How much this whole area matters now, roughly 0.5 to 2. Type inherit to take the parent's again."
 }
 
-/// What can be done to a paired device.
-enum DeviceAction: Hashable {
-    case rename, unpair
+extension Action {
+    /// Whether it asks something before it runs: a menu item for it ends in "…" on the Mac.
+    var asks: Bool { question != .immediate }
 
-    var title: String {
-        switch self {
-        case .rename: "Rename"
-        case .unpair: "Unpair"
+    /// Whether it opens one of the app's own forms rather than running in the core.
+    var isForm: Bool { question == .form }
+}
+
+extension Array where Element == Action {
+    /// The first of these kinds: what a key or a menu command does to the row in hand.
+    func first(_ kinds: ActionKind...) -> Action? {
+        first { kinds.contains($0.kind) }
+    }
+}
+
+/// Runs one action: asks its question, hands the answer to the core, and gives what changed
+/// to `done` with the answer, for the app to keep focus where it belongs and say it.
+enum ActionRun {
+    static func run(
+        _ action: Action,
+        on lumenna: Lumenna,
+        asking asker: ActionAsking,
+        form: (Action) -> Void,
+        done: @escaping (Change, Answer) -> Void
+    ) {
+        let answer = { (answer: Answer) in
+            do {
+                done(try lumenna.act(action: action, answer: answer), answer)
+            } catch {
+                asker.fail(error.sentence)
+            }
+        }
+        switch action.question {
+        case .form:
+            form(action)
+        case .immediate:
+            answer(.yes)
+        case let .confirm(title, message, yes):
+            asker.askConfirm(title: title, message: message, yes: yes, destructive: action.destructive) { answer(.yes) }
+        case let .text(title, label, initial, hint, _):
+            askText(action, on: lumenna, asking: asker, title: title, label: label, typed: initial, hint: hint, problem: nil, done: done)
+        case let .pick(title, length):
+            let offered: Choices
+            do {
+                offered = try lumenna.choices(action: action)
+            } catch {
+                asker.fail(error.sentence)
+                return
+            }
+            guard !offered.choices.isEmpty else {
+                asker.tell(title: title, offered.announcement)
+                return
+            }
+            asker.askPick(title: title, choices: offered.choices) { choice in
+                guard let length else {
+                    answer(.picked(id: choice.id, length: nil))
+                    return
+                }
+                asker.askLength(hint: length) { typed in answer(.picked(id: choice.id, length: typed)) }
+            }
+        case let .choose(title, message, answers):
+            asker.askChoose(title: title, message: message, answers: answers) { choice in
+                answer(.picked(id: choice.id, length: nil))
+            }
         }
     }
 
-    var destructive: Bool { self == .unpair }
-
-    /// A device cannot unpair itself, so that is not offered on its own row.
-    static func of(thisDevice: Bool) -> [DeviceAction] {
-        thisDevice ? [.rename] : [.rename, .unpair]
+    /// Asks for the line, and again with what was typed and why when the core refuses it.
+    private static func askText(
+        _ action: Action, on lumenna: Lumenna, asking asker: ActionAsking,
+        title: String, label: String, typed: String, hint: String, problem: String?,
+        done: @escaping (Change, Answer) -> Void
+    ) {
+        asker.askText(title: title, label: label, initial: typed, hint: hint, problem: problem) { text in
+            let answer = Answer.text(text: text)
+            do {
+                done(try lumenna.act(action: action, answer: answer), answer)
+            } catch {
+                askText(action, on: lumenna, asking: asker, title: title, label: label, typed: text, hint: hint, problem: error.sentence, done: done)
+            }
+        }
     }
 
-    /// What unpairing asks: what it does, and what it does not.
-    static let unpairing = "It stops syncing with your devices but keeps everything it already has. Unpairing is for a device you replaced; it does not take data back from a lost one."
+    /// The name a change leaves its record under, when it names one: what a rename typed,
+    /// what a new place is called, the label merged into. The app finds the row by it.
+    static func name(after action: Action, answer: Answer) -> String? {
+        switch (action.kind, answer) {
+        case let (.rename, .text(text)), let (.newInside, .text(text)), let (.new, .text(text)):
+            let name = text.trimmingCharacters(in: .whitespaces)
+            return name.isEmpty ? nil : name
+        case let (.mergeInto, .picked(id, _)):
+            return id
+        default:
+            return nil
+        }
+    }
+}
+
+extension Choice {
+    /// How it reads in a chooser: a block with its day and start, as the app says times.
+    var shownTitle: String {
+        guard let date, let start else { return title }
+        return "\(Clock.spokenDay(date)), \(Clock.time(start)), \(title)"
+    }
+
+    /// What else tells it apart, beneath the title: a task's project, a block's hours.
+    var shownDetail: String? {
+        if let start, let end { return "\(Clock.time(start)) to \(Clock.time(end))" }
+        return detail
+    }
 }

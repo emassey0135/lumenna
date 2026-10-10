@@ -41,25 +41,7 @@ final class TaskDetailViewController: UIHostingController<TaskDetailView>, TaskF
 
     // MARK: - TaskFormHost
 
-    func chooseTask(_ title: String, excluding: Set<String>, chosen: @escaping (String) -> Void) {
-        TaskPicker.present(from: self, core: core, title: title, excluding: excluding) { item in chosen(item.key) }
-    }
-
-    /// The coming week's work blocks, as the Mac offers them; the planner reaches any other day.
-    func chooseBlock(for task: TaskDetail, chosen: @escaping (String, String, UInt32?) -> Void) {
-        let blocks = core.workBlocksThisWeek()
-        guard !blocks.isEmpty else {
-            showFailure("There are no work blocks this week. Add one from Today.")
-            return
-        }
-        let items = blocks.map { Item(key: $0.id, title: $0.title, detail: $0.detail) }
-        let dates = Dictionary(uniqueKeysWithValues: blocks.map { ($0.id, $0.date) })
-        ListPicker.present(from: self, core: core, title: "Put in a Block", choices: items) { [weak self] block in
-            self?.askForLength("How long is this sitting meant to take?", without: "Skip") { minutes in
-                chosen(block.key, dates[block.key] ?? "", minutes)
-            }
-        }
-    }
+    var asker: ActionAsking { PhoneAsker(core: core, from: self) }
 
     func trashed() {
         closeBeside()

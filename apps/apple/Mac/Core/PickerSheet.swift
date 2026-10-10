@@ -5,6 +5,8 @@ struct PickerItem {
     var key: String
     var title: String
     var detail: String?
+    /// How deep it sits in a tree, shown as indentation, as the Mac's outlines show it.
+    var depth = 0
 }
 
 /// Choosing one of many — a task to wait for, a project to move under, a block to put a task
@@ -146,6 +148,7 @@ final class PickerSheet: NSViewController, NSTableViewDataSource, NSTableViewDel
         let item = shown[row]
         let cell = TwoLineCell()
         cell.show(title: item.title, detail: item.detail)
+        cell.indent = CGFloat(item.depth) * 16
         return cell
     }
 
@@ -189,8 +192,9 @@ final class TwoLineCell: NSTableCellView {
         stack.spacing = 1
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
+        leading = stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+            leading,
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
             stack.topAnchor.constraint(equalTo: topAnchor, constant: 3),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -3),
@@ -202,6 +206,12 @@ final class TwoLineCell: NSTableCellView {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     private var warning = false
+    private var leading: NSLayoutConstraint!
+
+    /// Indentation for a row's depth, for sight: VoiceOver is not told it.
+    var indent: CGFloat = 0 {
+        didSet { leading.constant = 2 + indent }
+    }
 
     func show(title text: String, detail more: String?, warning: Bool = false) {
         title.stringValue = text

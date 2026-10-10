@@ -6,8 +6,12 @@ struct RootView: View {
     @EnvironmentObject private var core: WatchCore
     @EnvironmentObject private var phone: PhoneSync
     @State private var adding = false
-    @State private var asked: Asked?
+    @StateObject private var asker: WatchAsker
     @State private var folding = Folding()
+
+    init(core: WatchCore) {
+        _asker = StateObject(wrappedValue: WatchAsker(core: core))
+    }
 
     var body: some View {
         NavigationStack {
@@ -35,7 +39,7 @@ struct RootView: View {
             .sheet(isPresented: $adding) {
                 QuickAddView(prefix: "")
             }
-            .sheet(item: $asked) { asked in
+            .sheet(item: $asker.asked) { asked in
                 NavigationStack { asked.view }
             }
             .alert("Could not do that", isPresented: failed) {
@@ -48,7 +52,7 @@ struct RootView: View {
 
     private var entries: [SidebarEntry] {
         _ = core.generation
-        return core.lumenna.places().entries.filter { !$0.archived }
+        return core.lumenna.places().entries
     }
 
     private var failed: Binding<Bool> {
@@ -85,7 +89,7 @@ struct RootView: View {
                     Button(fold.title) { toggle(entry, saying: fold.said) }
                 }
             }
-        case let .group(group):
+        case .group:
             // A heading folds what is under it when pressed.
             Button {
                 if let fold = Folding.action(for: shown) { toggle(entry, saying: fold.said) }
@@ -95,50 +99,34 @@ struct RootView: View {
             .accessibilityAddTraits(.isHeader)
             .accessibilityValue(value)
             if !shown.collapsed {
-                newPlace(group)
+                // What Browse adds under each heading: its New, the core's.
+                ForEach(entry.actions, id: \.self) { action in
+                    Button(action.title) { asker.run(action, form: { _ in newFilter() }) }
+                }
             }
         }
     }
 
-    /// What Browse adds under each heading.
-    @ViewBuilder
-    private func newPlace(_ group: SidebarGroup) -> some View {
-        switch group {
-        case .projects:
-            Button("New Project") {
-                asked = Asked(TextPrompt("New Project", placeholder: "Name", action: "Add") { name in
-                    core.act { try core.lumenna.addProject(name: name, parent: nil) }
-                })
-            }
-        case .labels:
-            Button("New Label") {
-                asked = Asked(TextPrompt("New Label", placeholder: "Name", action: "Add") { name in
-                    core.act { try core.lumenna.addLabel(name: name) }
-                })
-            }
-        case .filters:
-            Button("New Filter") {
-                asked = Asked(TextPrompt("New Filter", placeholder: "Name", action: "Next") { name in
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                        asked = Asked(TextPrompt("Query for \(name)", placeholder: "#Work & overdue", syntax: .filter) { query in
-                            core.act { try core.lumenna.addFilter(name: name, query: query) }
-                        })
-                    }
-                })
-            }
-        }
+    /// New Saved Filter, the app's own form: a name, then a query.
+    private func newFilter() {
+        asker.show(TextPrompt("New Saved Filter", placeholder: "Name", action: "Next") { name in
+            asker.show(TextPrompt("Query for \(name)", placeholder: "#Work & overdue", syntax: .filter) { query in
+                core.act { try core.lumenna.addFilter(name: name, query: query) }
+            })
+        })
     }
 }
 
 /// What a place opens to: the day for Today, the block list for Blocks, else its tasks.
 struct PlaceView: View {
+    @EnvironmentObject private var core: WatchCore
     let place: Place
 
     var body: some View {
         switch place {
-        case .today: DayView()
-        case .blocks: BlockListView()
-        default: TaskListView(place: place)
+        case .today: DayView(core: core)
+        case .blocks: BlockListView(core: core)
+        default: TaskListView(place: place, core: core)
         }
     }
 }

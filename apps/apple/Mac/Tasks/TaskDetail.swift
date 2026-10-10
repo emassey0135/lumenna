@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// One task's details, editable, in the right-hand pane: the shared form
-/// (`Shared/Forms/TaskForm.swift`), with the Mac's own sheets for choosing.
+/// (`Shared/Forms/TaskForm.swift`), with the Mac's own sheets for its actions' questions.
 final class TaskDetailViewController: HostedForm<TaskDetailView>, TaskFormHost {
     private let model: TaskDetailModel
     private let core: Core
@@ -28,18 +28,8 @@ final class TaskDetailViewController: HostedForm<TaskDetailView>, TaskFormHost {
 
     // MARK: - TaskFormHost
 
-    func chooseTask(_ title: String, excluding: Set<String>, chosen: @escaping (String) -> Void) {
-        guard let window = view.window else { return }
-        let items = ((try? core.lumenna.listTasks(query: "").rows) ?? [])
-            .filter { !excluding.contains($0.id) }
-            .map { PickerItem(key: $0.id, title: $0.title, detail: RowSpeech.details($0)) }
-        PickerSheet.present(on: window, title: title, items: items) { chosen($0.key) }
-    }
-
-    func chooseBlock(for task: TaskDetail, chosen: @escaping (String, String, UInt32?) -> Void) {
-        guard let window = view.window else { return }
-        TaskActions.chooseBlock(core: core, window: window, for: task, chosen: chosen)
-    }
+    /// The task's actions ask their questions as sheets on this window.
+    var asker: ActionAsking { view.window ?? NSApp.mainWindow ?? NSWindow() }
 
     func trashed() {
         // The list moves to whatever now holds the task's place, and this pane follows it.

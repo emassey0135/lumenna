@@ -73,41 +73,91 @@ extension UIViewController {
     }
 }
 
-extension UIViewController {
-    /// Asks how long a sitting is meant to take. `done` gets the minutes, or `nil`
-    /// for none — what `without` names: "Skip" when assigning, "No Planned Length" when
-    /// changing one. Cancel calls nothing.
-    func askForLength(
-        _ title: String,
-        current: UInt32? = nil,
-        without: String,
-        done: @escaping (UInt32?) -> Void
-    ) {
-        let alert = UIAlertController(
-            title: title, message: "In minutes. It is the plan; what you log is kept apart.",
-            preferredStyle: .alert
-        )
+/// How the iPhone and iPad ask an action's questions (`ActionRun`): the system's alerts and
+/// action sheets, and a sheet listing the choices.
+final class PhoneAsker: ActionAsking {
+    private let core: Core
+    private weak var presenter: UIViewController?
+
+    init(core: Core, from presenter: UIViewController) {
+        self.core = core
+        self.presenter = presenter
+    }
+
+    /// What questions are asked over: whatever is in front, so an answer asked after a sheet
+    /// closes is not asked of a screen already covered.
+    private var front: UIViewController? {
+        var shown = presenter
+        while let next = shown?.presentedViewController, !next.isBeingDismissed { shown = next }
+        return shown
+    }
+
+    func askConfirm(title: String, message: String, yes: String, destructive: Bool, then: @escaping () -> Void) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: yes, style: destructive ? .destructive : .default) { _ in then() })
+        front?.present(alert, animated: true)
+    }
+
+    func askText(title: String, label: String, initial: String, hint: String, problem: String?, then: @escaping (String) -> Void) {
+        let message = [problem, hint.isEmpty ? nil : hint].compactMap { $0 }.joined(separator: "\n\n")
+        let alert = UIAlertController(title: title, message: message.isEmpty ? nil : message, preferredStyle: .alert)
         alert.addTextField { field in
-            field.placeholder = "45"
-            field.text = current.map(String.init) ?? ""
-            field.keyboardType = .numberPad
-            field.accessibilityLabel = "Minutes"
+            field.text = initial
+            field.placeholder = label
+            field.accessibilityLabel = label
+            field.autocapitalizationType = .sentences
+            field.clearButtonMode = .whileEditing
         }
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: without, style: .default) { _ in done(nil) })
-        alert.addAction(UIAlertAction(title: "Set", style: .default) { [weak self, weak alert] _ in
-            let text = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespaces) ?? ""
-            guard let minutes = UInt32(text), minutes > 0 else {
-                if text.isEmpty {
-                    done(nil)
-                } else {
-                    self?.showFailure("That is not a number of minutes.")
-                }
-                return
-            }
-            done(minutes)
+        alert.addAction(UIAlertAction(title: "Save", style: .default) { [weak alert] _ in
+            then(alert?.textFields?.first?.text ?? "")
         })
-        present(alert, animated: true)
+        front?.present(alert, animated: true)
+    }
+
+    func askPick(title: String, choices: [Choice], then: @escaping (Choice) -> Void) {
+        guard let front else { return }
+        ChoicePicker.present(from: front, core: core, title: title, choices: choices, chosen: then)
+    }
+
+    func askChoose(title: String, message: String, answers: [Choice], then: @escaping (Choice) -> Void) {
+        guard let front else { return }
+        front.choose(title, message: message, actions: answers.map { answer in (answer.title, { then(answer) }) })
+    }
+
+    func askLength(hint: String, then: @escaping (String) -> Void) {
+        askText(title: "Planned Length", label: "Planned length", initial: "", hint: hint, problem: nil, then: then)
+    }
+
+    func tell(title: String, _ sentence: String) {
+        front?.showFailure(sentence, title: title)
+    }
+
+    func fail(_ sentence: String) {
+        front?.showFailure(sentence)
+    }
+}
+
+extension UIViewController {
+    /// Runs one of the core's actions, asking its question over this screen. A form opens
+    /// through `form`; what changed goes to `done`.
+    func run(
+        _ action: Action, core: Core, form: (Action) -> Void = { _ in },
+        done: @escaping (Change, Answer) -> Void
+    ) {
+        ActionRun.run(action, on: core.lumenna, asking: PhoneAsker(core: core, from: self), form: form, done: done)
+    }
+
+    /// A swipe action for one of the core's actions: its spoken name, shown as destructive
+    /// when it removes something.
+    func swipeAction(_ action: Action, run: @escaping () -> Void) -> UIContextualAction {
+        let swipe = UIContextualAction(style: action.destructive ? .destructive : .normal, title: action.title) { _, _, finished in
+            run()
+            finished(true)
+        }
+        if action.kind == .markDone || action.kind == .markNotDone { swipe.backgroundColor = .systemGreen }
+        return swipe
     }
 }
 

@@ -47,11 +47,14 @@ final class SwipeActionTests: XCTestCase {
 
     private func path(_ item: Int) -> IndexPath { IndexPath(item: item, section: 0) }
 
-    func testATaskOffersMarkDoneOneWayAndDeleteTheOtherAndMarkDoneCompletesIt() throws {
+    /// A task's actions after Mark Done, as the core gives them.
+    private let taskActions = ["Edit Details", "Put in a Block", "Move to Project", "Make Subtask Of", "Wait For", "Move to Trash"]
+
+    func testATaskOffersMarkDoneOneWayAndTheCoresOtherActionsTheOtherAndMarkDoneCompletesIt() throws {
         _ = try core.lumenna.addTask(text: "water the plants")
         let tasks = shown(TaskListViewController(core: core))
         XCTAssertEqual(titles(tasks.leadingSwipeActions(at: path(0))), ["Mark Done"])
-        XCTAssertEqual(titles(tasks.trailingSwipeActions(at: path(0))), ["Delete"])
+        XCTAssertEqual(titles(tasks.trailingSwipeActions(at: path(0))), taskActions)
         run("Mark Done", in: tasks.leadingSwipeActions(at: path(0)))
         XCTAssertTrue(try core.lumenna.listTasks(query: "").rows.isEmpty, "completed, so no longer listed")
     }
@@ -64,11 +67,11 @@ final class SwipeActionTests: XCTestCase {
         let outline = try XCTUnwrap(rows.first { $0.title == "outline" })
         _ = try core.lumenna.moveTask(id: outline.id, to: .parent(id: essay.id))
         let tasks = shown(TaskListViewController(core: core))
-        XCTAssertEqual(titles(tasks.trailingSwipeActions(at: path(0))), ["Delete", "Collapse"])
+        XCTAssertEqual(titles(tasks.trailingSwipeActions(at: path(0))), taskActions + ["Collapse"])
         run("Collapse", in: tasks.trailingSwipeActions(at: path(0)))
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
         XCTAssertEqual(list(in: tasks).numberOfItems(inSection: 0), 1, "the subtask is folded away")
-        XCTAssertEqual(titles(tasks.trailingSwipeActions(at: path(0))), ["Delete", "Expand"])
+        XCTAssertEqual(titles(tasks.trailingSwipeActions(at: path(0))), taskActions + ["Expand"])
     }
 
     func testATrashedTaskOffersRestoreAndDeleteFromTrash() throws {
@@ -90,8 +93,8 @@ final class SwipeActionTests: XCTestCase {
         let calls = try XCTUnwrap(rows.firstIndex(of: "label:calls"))
         XCTAssertEqual(
             titles(sidebar.trailingSwipeActions(at: path(calls))),
-            ["Rename", "Move Up", "Move Down", "Merge Into", "Colour", "Delete"],
-            "a label's actions, as Browse offers them"
+            ["Rename", "Merge Into", "Colour", "Delete"],
+            "a label's actions, the core's, as Browse offers them: alone, it moves neither up nor down"
         )
     }
 
@@ -106,8 +109,30 @@ final class SwipeActionTests: XCTestCase {
         let list = list(in: day)
         let offered = (0..<list.numberOfItems(inSection: 0)).map { titles(day.trailingSwipeActions(at: path($0))) }
         XCTAssertTrue(
-            offered.contains { $0.starts(with: ["Assign Task", "Edit"]) && $0.contains("Delete Block") },
+            offered.contains { $0.starts(with: ["Assign a Task", "Edit Block"]) && $0.contains("Delete Block") },
             "\(offered)"
         )
+    }
+
+    func testMarkingDoneFromTheKeyboardIsTheRowsOwnAction() throws {
+        _ = try core.lumenna.addTask(text: "water the plants")
+        let tasks = shown(TaskListViewController(core: core))
+        let list = list(in: tasks)
+        list.selectItem(at: path(0), animated: false, scrollPosition: [])
+        XCTAssertTrue(tasks.canPerformAction(#selector(TaskListViewController.moveToTrash), withSender: nil))
+        tasks.toggleDone()
+        XCTAssertTrue(try core.lumenna.listTasks(query: "").rows.isEmpty, "completed, so no longer listed")
+    }
+
+    func testMoveUnderOffersWhatTheCoreOffersNotTheListAsFolded() throws {
+        _ = try core.lumenna.addProject(name: "Work", parent: nil)
+        _ = try core.lumenna.addProject(name: "Reports", parent: "Work")
+        _ = try core.lumenna.addProject(name: "Home", parent: nil)
+        let projects = shown(ProjectsViewController(core: core))
+        let work = try XCTUnwrap(projects.items.first { $0.key == "Work" })
+        // Folding Work away hides Reports from the list, and must not change what is offered.
+        projects.toggleFold("Work")
+        let move = try XCTUnwrap(work.actions.first { $0.kind == .moveUnder })
+        XCTAssertEqual(try core.lumenna.choices(action: move).choices.map(\.title), ["Home"])
     }
 }
