@@ -8,7 +8,7 @@
 // refused answer to a line of text stays in its dialog, with the core's sentence at the field.
 
 import { core } from "./core";
-import type { Action, ActionKind } from "./core";
+import type { Action, ActionKind, Question } from "./core";
 import { ask, choose, confirm, pick } from "./Prompts";
 import { say } from "./say";
 
@@ -21,6 +21,19 @@ export interface Done {
 }
 
 /**
+ * Asks one of the core's text questions the web's way: its sentence-case title, its field, and
+ * its button. `check` says what is wrong with an answer, shown at the field.
+ */
+export async function askText(
+  question: Question,
+  check?: (text: string) => string | undefined | Promise<string | undefined>,
+): Promise<string | undefined> {
+  if (question.ask !== "text") return undefined;
+  const yes = await core.sentence(question.yes);
+  return ask(question.sentence || question.title, question.label, question.hint, question.initial, check, yes);
+}
+
+/**
  * Asks `action`'s question and runs it; undefined when it was cancelled, offered nothing, or was
  * refused, which has been said already. A form's question is `form`'s, the client's own screen.
  */
@@ -29,9 +42,6 @@ export async function perform(
   form?: (action: Action) => Promise<Done | undefined | void> | void,
 ): Promise<Done | undefined> {
   const q = action.question;
-  // A question titled as its action is fixed text, in the web's sentence case as the action
-  // is; any other names something, whose capitals are its own.
-  const heading = (title: string) => (title === action.title ? (action.sentence ?? title) : title);
   try {
     switch (q.ask) {
       case "immediate":
@@ -39,18 +49,18 @@ export async function perform(
       case "form":
         return (await form?.(action)) || undefined;
       case "confirm":
-        if (!(await confirm(heading(q.title), q.message, await core.sentence(q.yes)))) return undefined;
+        if (!(await confirm(q.title, q.message, await core.sentence(q.yes)))) return undefined;
         return await core.act(action, { answer: "yes" });
       case "text": {
         let done: Done | undefined;
-        const text = await ask(heading(q.title), q.label, q.hint, q.initial, async (text) => {
+        const text = await askText(q, async (text) => {
           try {
             done = await core.act(action, { answer: "text", text });
             return undefined;
           } catch (error) {
             return (error as Error).message;
           }
-        }, await core.sentence(q.yes));
+        });
         if (text === undefined || !done) return undefined;
         return { ...done, answer: text.trim() };
       }
@@ -60,12 +70,12 @@ export async function perform(
           say(offered.announcement);
           return undefined;
         }
-        const id = await pick(heading(q.title), offered.choices);
+        const id = await pick(q.title, offered.choices, await core.sentence(q.yes ?? ""));
         if (id === undefined) return undefined;
         if (q.length === undefined) return { ...(await core.act(action, { answer: "picked", id })), answer: id };
         // The second question, asked once one is picked: how long the sitting is meant to take.
         let done: Done | undefined;
-        const length = await ask("Planned length", "Planned length", q.length, "", async (text) => {
+        const length = await askText((await core.ownQuestions()).length, async (text) => {
           try {
             done = await core.act(action, { answer: "picked", id, length: text });
             return undefined;
@@ -78,7 +88,7 @@ export async function perform(
       }
       case "choose": {
         const answers = await Promise.all(q.answers.map((answer) => core.sentence(answer.title)));
-        const index = await choose(heading(q.title), q.message, answers);
+        const index = await choose(q.title, q.message, answers);
         const chosen = index === undefined ? undefined : q.answers[index];
         if (!chosen) return undefined;
         return { ...(await core.act(action, { answer: "picked", id: chosen.id })), answer: chosen.id };

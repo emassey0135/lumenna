@@ -103,8 +103,8 @@ pub fn new_block(fields: Ts<BlockFields>, date: Option<String>) -> Out<NewBlock>
 pub struct ExportChoice {
     /// What it writes.
     pub format: ExportFormat,
-    /// What its button says, as the desktop apps word it — without their "...", since a
-    /// download asks nothing more.
+    /// What its button says, as the desktop apps word it, in the web's sentence case — without
+    /// their "...", since a download asks nothing more.
     pub label: String,
     /// The file it is offered as, dated today: "Lumenna 2026-10-05.json".
     pub name: String,
@@ -125,7 +125,7 @@ pub fn export_choices() -> Out<ExportChoices> {
         .iter()
         .map(|export| ExportChoice {
             format: export.format,
-            label: export.label.trim_end_matches("...").to_owned(),
+            label: lumenna_surface::sentence_case(export.label.trim_end_matches("...").to_owned()),
             name: lumenna_desktop::devices::export_name(export.format, today),
         })
         .collect();

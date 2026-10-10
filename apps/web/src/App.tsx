@@ -55,7 +55,7 @@ export function App() {
   // What arrives is in the store already: everything showing it reads it again.
   const startSyncing = async () => {
     try {
-      const devices = await core.devices();
+      const devices = (await core.devices()).list;
       if (!devices.some((device) => !device.thisDevice)) return;
       await core.startSync(Comlink.proxy(() => setRevision((r) => r + 1)));
       setSyncing(true);

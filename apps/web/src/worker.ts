@@ -32,6 +32,7 @@ import init, {
   blockForm,
   pairingWords,
   sentenceCase,
+  ownQuestions,
   placeQuery,
   placeTitle,
   rowText,
@@ -164,11 +165,14 @@ const api = {
   /** Every sentence and button of pairing, buttons and questions in the web's sentence case. */
   pairingWords(): PairingWords {
     const words = pairingWords();
-    for (const key of ["title", "wait", "join", "match_title", "match_yes", "match_no"] as const) {
+    for (const key of ["title", "wait", "join", "match_title", "match_yes", "match_no", "copy_code"] as const) {
       words[key] = sentenceCase(words[key]);
     }
-    return words;
+    return { ...words, intro: words.intro_sentence };
   },
+
+  /** The questions the web asks of its own accord: Go to Day, a new filter's steps, a length. */
+  ownQuestions: () => ownQuestions(),
 
   /** Fixed text — a button, a question with no one's name in it — in sentence case. */
   sentence: (text: string): string => sentenceCase(text),
@@ -362,16 +366,16 @@ const api = {
   syncRunning: (): boolean => store().syncRunning(),
 
   /** The paired devices, this one first, each with its line. */
-  devices(): { id: string; name: string; thisDevice: boolean; text: string; actions: Action[] }[] {
-    return store()
-      .devices()
-      .devices.map((device) => ({
+  devices(): { list: { id: string; name: string; thisDevice: boolean; text: string; actions: Action[] }[]; empty: string } {
+    const found = store().devices();
+    const list = found.devices.map((device) => ({
         id: device.node_id,
         name: device.name,
         thisDevice: device.this_device,
         text: deviceText(device),
         actions: device.actions ?? [],
       }));
+    return { list, empty: found.empty ?? "" };
   },
 
   /** How syncing is going, as one sentence. */

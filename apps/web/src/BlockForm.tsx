@@ -106,9 +106,6 @@ export function BlockForms() {
   );
 }
 
-/** What one day of a repeating block can change: the rest belongs to the series. */
-const ONE_DAY = ["title", "start", "minutes", "kind", "accepts_tasks", "counts_capacity", "anchored"];
-
 /** Where the second column starts: how it repeats and behaves, after what it is and when. */
 const SECOND_COLUMN = "repeat";
 
@@ -210,7 +207,7 @@ function Form(props: { request: Request; finish: (saved?: Saved) => void }) {
   const shown = form.filter(
     (field) =>
       (field.key !== "date" || purpose.kind === "add") &&
-      (!once || ONE_DAY.includes(field.key)) &&
+      (!once || field.one_day) &&
       (!field.repeating_only || fields.repeat.trim() !== "" || (rule !== undefined && !initial.repeat)),
   );
   const split = shown.findIndex((field) => field.key === SECOND_COLUMN);

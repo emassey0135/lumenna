@@ -41,7 +41,7 @@ type Question =
       yes: string;
       answer: (text?: string) => void;
     }
-  | { kind: "pick"; heading: string; items: Item[]; answer: (id?: string) => void };
+  | { kind: "pick"; heading: string; items: Item[]; yes: string; answer: (id?: string) => void };
 
 /** Something to pick: what it sends back, how it reads, and how deep in a tree it sits. */
 export interface Item {
@@ -85,8 +85,8 @@ export function ask(
 }
 
 /** One of `items`, found by typing part of it, or undefined if cancelled. The field is named by the heading. */
-export function pick(heading: string, items: Item[]): Promise<string | undefined> {
-  return put((answer) => ({ kind: "pick", heading, items, answer }));
+export function pick(heading: string, items: Item[], yes: string): Promise<string | undefined> {
+  return put((answer) => ({ kind: "pick", heading, items, yes, answer }));
 }
 
 /** Where the questions are shown: rendered once, in the app. */
@@ -236,7 +236,7 @@ function Picking(props: { question: Extract<Question, { kind: "pick" }>; close: 
         </ComboBox>
         <div className="buttons">
           <Button onPress={props.cancel}>Cancel</Button>
-          <Button type="submit">Choose</Button>
+          <Button type="submit">{question.yes}</Button>
         </div>
       </form>
     </Dialog>
