@@ -11,7 +11,7 @@ import type { KeyboardEvent } from "react";
 import { Button, Input, Label, ListBox, ListBoxItem, Text, TextField } from "react-aria-components";
 import type { Selection } from "react-aria-components";
 import { core } from "./core";
-import type { Action } from "./core";
+import type { Action, PairingWords } from "./core";
 import { byKind, perform } from "./actions";
 import { choose } from "./Prompts";
 import { say } from "./say";
@@ -66,6 +66,11 @@ export function DevicesPage(props: {
   const [pairing, setPairing] = useState(false);
   const [reload, setReload] = useState(0);
   const [status, setStatus] = useState("");
+  const [words, setWords] = useState<PairingWords | undefined>();
+
+  useEffect(() => {
+    void core.pairingWords().then(setWords);
+  }, []);
 
   // Read again whenever the store changes, a sync round's outcome included, so a device's
   // status is current without Sync Now.
@@ -109,8 +114,9 @@ export function DevicesPage(props: {
 
   return (
     <>
-      {pairing ? (
+      {pairing && words ? (
         <Pairing
+          words={words}
           onDone={(paired) => {
             setPairing(false);
             refresh();
@@ -140,16 +146,18 @@ export function DevicesPage(props: {
           </p>
           <div className="buttons">
             <Button isDisabled={others === 0 || !props.syncing} onPress={() => void syncNow()}>
-              Sync Now
+              Sync now
             </Button>
-            <Button onPress={() => setPairing(true)}>Pair a Device…</Button>
+            <Button isDisabled={!words} onPress={() => setPairing(true)}>
+              {words?.title ?? "Pair a device"}…
+            </Button>
             {chosen?.actions.map((action) => (
               <Button
                 key={action.kind}
                 className={action.destructive ? "destructive" : undefined}
                 onPress={() => void run(action)}
               >
-                {action.title}
+                {action.sentence ?? action.title}
               </Button>
             ))}
           </div>
@@ -159,7 +167,8 @@ export function DevicesPage(props: {
   );
 }
 
-function Pairing(props: { onDone: (paired: boolean) => void }) {
+function Pairing(props: { words: PairingWords; onDone: (paired: boolean) => void }) {
+  const { words } = props;
   const [name, setName] = useState(browserName);
   const [theirs, setTheirs] = useState("");
   const [mine, setMine] = useState<string | undefined>();
@@ -183,20 +192,18 @@ function Pairing(props: { onDone: (paired: boolean) => void }) {
     setProblem(undefined);
     setRunning(true);
     setWaiting(dial === undefined);
-    say(dial ? "Connecting to the other device." : "Opening a pairing session.");
+    say(dial ? words.connecting : words.opening);
     try {
       const said = await core.pair(
         dial,
         name.trim() || browserName(),
         Comlink.proxy((shown: string) => {
           setMine(shown);
-          say(
-            "Waiting for the other device. Enter this browser's code there, or run lum pair followed by it. Waiting up to ten minutes.",
-          );
+          say(words.waiting);
         }),
-        Comlink.proxy(async (words: string[]) => {
-          const detail = `${words.join(", ")}. Say yes only if the other device shows the same three words.`;
-          return (await choose("Do These Words Match?", detail, ["Yes, They Match", "No, They Differ"])) === 0;
+        Comlink.proxy(async (three: string[]) => {
+          const detail = `${words.match_message} ${three.join(", ")}.`;
+          return (await choose(words.match_title, detail, [words.match_yes, words.match_no])) === 0;
         }),
       );
       say(said);
@@ -222,12 +229,8 @@ function Pairing(props: { onDone: (paired: boolean) => void }) {
 
   return (
     <>
-      <h3>Pair a Device</h3>
-      <p>
-        A browser pairs by code. Either wait here and enter this browser&apos;s code on the other device — in its
-        Devices settings, or with lum pair followed by the code — or enter the code the other device shows while it
-        waits.
-      </p>
+      <h3>{words.title}</h3>
+      <p>{words.intro}</p>
       <TextField className="field" value={name} onChange={setName} isDisabled={running} autoFocus>
         <Label>Name for this browser</Label>
         <Input />
@@ -238,34 +241,34 @@ function Pairing(props: { onDone: (paired: boolean) => void }) {
       {mine ? (
         <>
           <TextField className="field" value={mine} isReadOnly>
-            <Label>This browser&apos;s code</Label>
+            <Label>{words.my_code}</Label>
             <Input ref={code} />
           </TextField>
           <div className="buttons">
             <Button
               onPress={() =>
                 void navigator.clipboard.writeText(mine).then(
-                  () => say("Code copied"),
+                  () => say(words.copied),
                   () => say("Could not copy the code; select it and copy it instead."),
                 )
               }
             >
-              Copy Code
+              Copy code
             </Button>
           </div>
         </>
       ) : (
         <div className="buttons">
           <Button isDisabled={running} onPress={() => void start(undefined)}>
-            Wait for the Other Device
+            {words.wait}
           </Button>
         </div>
       )}
       <TextField className="field" value={theirs} onChange={setTheirs} isDisabled={running && !waiting}>
-        <Label>Code from the other device</Label>
+        <Label>{words.their_code}</Label>
         <Input />
         <Text slot="description" className="quiet">
-          Left empty, the code on the clipboard is used.
+          {words.empty_means}
         </Text>
       </TextField>
       {problem && (
@@ -274,6 +277,7 @@ function Pairing(props: { onDone: (paired: boolean) => void }) {
         </p>
       )}
       <div className="buttons">
+        <Button onPress={cancel}>Cancel</Button>
         <Button
           isDisabled={running && !waiting}
           onPress={async () => {
@@ -289,22 +293,21 @@ function Pairing(props: { onDone: (paired: boolean) => void }) {
               }
             }
             if (!code) {
-              setProblem("Type or paste the code the other device shows.");
+              setProblem(words.need_code);
               return;
             }
             // One pairing at a time: a code entered while waiting gives up the wait first.
             if (running) {
               then.current = code;
               void core.cancelPairing();
-              say("Giving up waiting, then connecting to the other device.");
+              say(words.switching);
               return;
             }
             void start(code);
           }}
         >
-          Pair With This Code
+          {words.join}
         </Button>
-        <Button onPress={cancel}>Cancel</Button>
       </div>
     </>
   );

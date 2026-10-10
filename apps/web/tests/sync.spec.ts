@@ -22,18 +22,18 @@ test("the devices page says this browser is not paired, and refuses a code that 
   await open(page);
   const dialog = await devices(page);
   await expect(dialog.getByText(/^Not paired with any other device yet/)).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Sync Now" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Sync now" })).toBeDisabled();
   const results = await new AxeBuilder({ page }).analyze();
   expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(", ")}`)).toEqual([]);
-  await dialog.getByRole("button", { name: "Pair a Device…" }).click();
+  await dialog.getByRole("button", { name: "Pair a device…" }).click();
   const pairing = dialog;
-  await expect(pairing.getByRole("heading", { name: "Pair a Device" })).toBeVisible();
+  await expect(pairing.getByRole("heading", { name: "Pair a device" })).toBeVisible();
   await expect(pairing.getByRole("textbox", { name: "Name for this browser" })).toBeFocused();
   await pairing.getByRole("textbox", { name: "Code from the other device" }).fill("not-a-code");
-  await pairing.getByRole("button", { name: "Pair With This Code" }).click();
+  await pairing.getByRole("button", { name: "Pair with this code" }).click();
   await expect(pairing.getByRole("alert")).toContainText("is not a pairing code");
   await pairing.getByRole("button", { name: "Cancel" }).click();
-  await expect(dialog.getByRole("button", { name: "Sync Now" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Sync now" })).toBeVisible();
 });
 
 test("an empty code field takes the code on the clipboard, and says so", async ({ browser }) => {
@@ -41,11 +41,11 @@ test("an empty code field takes the code on the clipboard, and says so", async (
   const page = await context.newPage();
   await open(page);
   const pairing = await devices(page);
-  await pairing.getByRole("button", { name: "Pair a Device…" }).click();
+  await pairing.getByRole("button", { name: "Pair a device…" }).click();
   const field = pairing.getByRole("textbox", { name: "Code from the other device" });
   await expect(field).toHaveAccessibleDescription("Left empty, the code on the clipboard is used.");
   await page.evaluate(() => navigator.clipboard.writeText("not-a-code"));
-  await pairing.getByRole("button", { name: "Pair With This Code" }).click();
+  await pairing.getByRole("button", { name: "Pair with this code" }).click();
   await expect(field).toHaveValue("not-a-code");
   await expect(pairing.getByRole("alert")).toContainText("is not a pairing code");
 });
@@ -55,14 +55,14 @@ test("a code entered while waiting gives up the wait, then tries the code", asyn
   test.setTimeout(120_000);
   await open(page);
   const pairing = await devices(page);
-  await pairing.getByRole("button", { name: "Pair a Device…" }).click();
-  await pairing.getByRole("button", { name: "Wait for the Other Device" }).click();
-  await expect(pairing.getByRole("textbox", { name: "This browser's code" })).toBeVisible({ timeout: 60_000 });
+  await pairing.getByRole("button", { name: "Pair a device…" }).click();
+  await pairing.getByRole("button", { name: "Wait for the other device" }).click();
+  await expect(pairing.getByRole("textbox", { name: "This device's code" })).toBeVisible({ timeout: 60_000 });
   // One pairing runs at a time; the code field stays open while waiting all the same.
   await pairing.getByRole("textbox", { name: "Code from the other device" }).fill("not-a-code");
-  await pairing.getByRole("button", { name: "Pair With This Code" }).click();
+  await pairing.getByRole("button", { name: "Pair with this code" }).click();
   await expect(pairing.getByRole("alert")).toContainText("is not a pairing code", { timeout: 30_000 });
-  await expect(pairing.getByRole("button", { name: "Wait for the Other Device" })).toBeEnabled();
+  await expect(pairing.getByRole("button", { name: "Wait for the other device" })).toBeEnabled();
 });
 
 test("two browsers pair by code over a relay, and a task added in one arrives in the other", async ({ browser }) => {
@@ -74,28 +74,28 @@ test("two browsers pair by code over a relay, and a task added in one arrives in
   await open(b);
 
   const start = async (page: Page, name: string) => {
-    await (await devices(page)).getByRole("button", { name: "Pair a Device…" }).click();
+    await (await devices(page)).getByRole("button", { name: "Pair a device…" }).click();
     await page.getByRole("textbox", { name: "Name for this browser" }).fill(name);
   };
 
   await start(a, "Browser A");
-  await a.getByRole("button", { name: "Wait for the Other Device" }).click();
-  const code = a.getByRole("textbox", { name: "This browser's code" });
+  await a.getByRole("button", { name: "Wait for the other device" }).click();
+  const code = a.getByRole("textbox", { name: "This device's code" });
   await expect(code).toBeVisible({ timeout: 60_000 });
   await expect(code).toBeFocused();
 
   await start(b, "Browser B");
   await b.getByRole("textbox", { name: "Code from the other device" }).fill(await code.inputValue());
-  await b.getByRole("button", { name: "Pair With This Code" }).click();
+  await b.getByRole("button", { name: "Pair with this code" }).click();
 
   // Both show the same three words, and only a yes on both pairs them.
-  const words = (page: Page) => page.getByRole("alertdialog", { name: "Do These Words Match?" });
+  const words = (page: Page) => page.getByRole("alertdialog", { name: "Do these words match?" });
   await expect(words(a)).toBeVisible({ timeout: 120_000 });
   await expect(words(b)).toBeVisible({ timeout: 120_000 });
   const said = async (page: Page) => (await words(page).locator("p").textContent()) ?? "";
   expect(await said(a)).toEqual(await said(b));
-  await words(a).getByRole("button", { name: "Yes, They Match" }).click();
-  await words(b).getByRole("button", { name: "Yes, They Match" }).click();
+  await words(a).getByRole("button", { name: "Yes, they match" }).click();
+  await words(b).getByRole("button", { name: "Yes, they match" }).click();
 
   await expect(a.getByRole("option", { name: /^Browser B/ })).toBeVisible({ timeout: 120_000 });
   await expect(b.getByRole("option", { name: /^Browser A/ })).toBeVisible({ timeout: 120_000 });
@@ -103,7 +103,7 @@ test("two browsers pair by code over a relay, and a task added in one arrives in
   await b.getByRole("button", { name: "Close" }).click();
 
   // Syncing runs while each page is open: a task added in one arrives in the other.
-  await b.getByRole("button", { name: "New Task" }).click();
+  await b.getByRole("button", { name: "New task" }).click();
   await b.getByRole("combobox", { name: "Task" }).fill("Sent from the other browser");
   await b.getByRole("button", { name: "Add", exact: true }).click();
   await expect(a.getByRole("main").getByRole("row", { name: /^Sent from the other browser/ })).toBeVisible({
@@ -123,9 +123,9 @@ test("a browser and lum pair by code, and lum's sync brings its task to the brow
   const env = { ...process.env, LUMENNA_PROFILE: join(home, "profile"), LUMENNA_BACKUP_DIR: join(home, "backups") };
 
   await open(page);
-  await (await devices(page)).getByRole("button", { name: "Pair a Device…" }).click();
-  await page.getByRole("button", { name: "Wait for the Other Device" }).click();
-  const code = page.getByRole("textbox", { name: "This browser's code" });
+  await (await devices(page)).getByRole("button", { name: "Pair a device…" }).click();
+  await page.getByRole("button", { name: "Wait for the other device" }).click();
+  const code = page.getByRole("textbox", { name: "This device's code" });
   await expect(code).toBeVisible({ timeout: 60_000 });
 
   const pairing = spawn(lum!, ["pair", await code.inputValue()], { env });
@@ -133,13 +133,13 @@ test("a browser and lum pair by code, and lum's sync brings its task to the brow
   pairing.stderr.on("data", (chunk: Buffer) => (heard += chunk.toString()));
   const exited = new Promise<number | null>((resolve) => pairing.on("exit", resolve));
 
-  const words = page.getByRole("alertdialog", { name: "Do These Words Match?" });
+  const words = page.getByRole("alertdialog", { name: "Do these words match?" });
   await expect(words).toBeVisible({ timeout: 120_000 });
   await expect.poll(() => heard, { timeout: 60_000 }).toContain("Type yes or no");
   const theirs = /The words are: (.*)\./.exec(heard)?.[1];
   expect(await words.locator("p").textContent()).toContain(theirs);
   pairing.stdin.write("yes\n");
-  await words.getByRole("button", { name: "Yes, They Match" }).click();
+  await words.getByRole("button", { name: "Yes, they match" }).click();
   expect(await exited).toBe(0);
   const list = page.getByRole("tabpanel", { name: "Devices" });
   await expect(list.getByRole("option").nth(1)).toBeVisible({ timeout: 60_000 });

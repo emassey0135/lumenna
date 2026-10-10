@@ -30,8 +30,8 @@ export function RowMenu(props: {
           }}
         >
           {(item) => (
-            <MenuItem id={item.id} textValue={item.action.title} className={item.action.destructive ? "destructive" : undefined}>
-              {item.action.title}
+            <MenuItem id={item.id} textValue={item.action.sentence ?? item.action.title} className={item.action.destructive ? "destructive" : undefined}>
+              {item.action.sentence ?? item.action.title}
             </MenuItem>
           )}
         </Menu>

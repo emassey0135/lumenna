@@ -16,6 +16,7 @@ import { say } from "./say";
 export function Blocks(props: { revision: number; onChanged: () => void }) {
   const [lines, setLines] = useState<Line[]>([]);
   const [readback, setReadback] = useState("");
+  const [empty, setEmpty] = useState("");
   const [selected, setSelected] = useState<string | undefined>();
   const [menu, setMenu] = useState(false);
   const tree = useRef<HTMLDivElement>(null);
@@ -27,6 +28,7 @@ export function Blocks(props: { revision: number; onChanged: () => void }) {
         if (!current) return;
         setLines(found.lines);
         setReadback(found.readback);
+        setEmpty(found.empty ?? "");
       },
       (error: Error) => current && setReadback(error.message),
     );
@@ -46,7 +48,7 @@ export function Blocks(props: { revision: number; onChanged: () => void }) {
   };
 
   const add = async () => {
-    const saved = await blockForm({ kind: "add", date: "today" }, await freshBlock("09:00", 60), "New Block");
+    const saved = await blockForm({ kind: "add", date: "today" }, await freshBlock("09:00", 60), "New block");
     // A new series' row is listed under its first occurrence, so land near where it was.
     if (saved) changed(saved.said, undefined, ids.indexOf(selected ?? ""));
   };
@@ -55,7 +57,7 @@ export function Blocks(props: { revision: number; onChanged: () => void }) {
     try {
       const { fields, rule } = await core.seriesFields(at.row.id);
       // A rule is given exactly when the series repeats.
-      const heading = rule ? `Change ${fields.title}, Every Occurrence` : `Change ${fields.title}`;
+      const heading = rule ? `Change ${fields.title}, every occurrence` : `Change ${fields.title}`;
       const saved = await blockForm({ kind: "series", id: at.row.id }, fields, heading, rule);
       if (saved) changed(saved.said, at.row.id, ids.indexOf(at.row.id));
     } catch (error) {
@@ -106,7 +108,7 @@ export function Blocks(props: { revision: number; onChanged: () => void }) {
         {readback}
       </p>
       <div className="buttons">
-        <Button onPress={() => void add()}>Add Block…</Button>
+        <Button onPress={() => void add()}>Add block…</Button>
         <RowMenu
           actions={line(selected)?.row.actions ?? []}
           onAction={(action) => {
@@ -133,7 +135,7 @@ export function Blocks(props: { revision: number; onChanged: () => void }) {
             const action = byKind(at?.row.actions, "edit");
             if (at && action) void run(at, action);
           }}
-          renderEmptyState={() => <p className="quiet">No blocks yet.</p>}
+          renderEmptyState={() => <p className="quiet">{empty}</p>}
         >
           {(item) => (
             <TreeItem id={item.id} textValue={item.line.text}>

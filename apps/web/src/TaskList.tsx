@@ -34,6 +34,7 @@ export function TaskList(props: {
   const [filter, setFilter] = useState(props.query);
   const [lines, setLines] = useState<Line[]>([]);
   const [readback, setReadback] = useState("");
+  const [empty, setEmpty] = useState("");
   const [collapsed, setCollapsed] = useState<Set<Key>>(new Set());
   const tree = useRef<HTMLDivElement>(null);
 
@@ -46,6 +47,7 @@ export function TaskList(props: {
         if (!current) return;
         setLines(found.lines);
         setReadback(found.readback);
+        setEmpty(found.empty ?? "");
       },
       // A filter still being typed may not read yet: the rows stay, and the readback says why.
       (error: Error) => current && setReadback(error.message),
@@ -158,7 +160,7 @@ export function TaskList(props: {
         expandedKeys={expanded}
         onExpandedChange={(keys) => setCollapsed(new Set(parents(nodes).filter((id) => !keys.has(id))))}
         onAction={() => props.onOpen()}
-        renderEmptyState={() => <p className="quiet">Nothing here.</p>}
+        renderEmptyState={() => <p className="quiet">{empty}</p>}
       >
         {function item(node: Node<Line>) {
           return (

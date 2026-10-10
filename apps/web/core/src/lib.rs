@@ -20,7 +20,9 @@ mod sync;
 use clock::Browser;
 use lumenna_surface::places::{self, Place, SidebarEntry};
 use lumenna_desktop::speech::{self, Clock};
-use lumenna_surface::{Action, Answer, Choice, Lumenna, LumennaError, Syntax, TaskDetail, TaskEdit, TaskFields};
+use lumenna_surface::{
+    Action, Answer, Choice, FormField, Lumenna, LumennaError, PairingWords, Syntax, TaskDetail, TaskEdit, TaskFields,
+};
 use serde::Serialize;
 use tsify::{Ts, Tsify};
 use wasm_bindgen::prelude::*;
@@ -212,16 +214,17 @@ pub fn sitting_text(sitting: Ts<lumenna_surface::PlanAssignment>) -> Result<Stri
     Ok(speech::sitting(&sitting.to_rust()?))
 }
 
-/// Free time, which a timeline shows by empty space and a list has to say.
+/// Free time, which a timeline shows by empty space and a list has to say: its title and
+/// details as the core words them, then its span in this browser's times.
 #[wasm_bindgen(js_name = freeText)]
-pub fn free_text(start: &str, end: &str, minutes: u32) -> String {
-    speech::free(start, end, minutes, &Browser)
+pub fn free_text(title: &str, details: Vec<String>, start: &str, end: &str) -> String {
+    speech::free_time(title, &details, start, end, &Browser)
 }
 
-/// Where the present falls.
+/// Where the present falls: the core's title for it, then the time in this browser's clock.
 #[wasm_bindgen(js_name = nowText)]
-pub fn now_text(time: &str) -> String {
-    speech::now(time, &Browser)
+pub fn now_text(title: &str, time: &str) -> String {
+    format!("{title}, {}", Browser.time(time))
 }
 
 /// A repeating block cancelled for this day alone.
@@ -254,17 +257,36 @@ pub fn task_fields(task: Ts<TaskDetail>) -> Out<TaskFields> {
     out(Ok(lumenna_surface::task_fields(task.to_rust()?)))
 }
 
-/// The priorities a task can have, as the details form offers them.
+/// A form's fields, in order: each one's name, what it takes, an example, its control.
 #[derive(Serialize, serde::Deserialize, Tsify)]
-pub struct Priorities {
-    /// Each one, highest first: `id` is the number.
-    pub choices: Vec<Choice>,
+pub struct Form {
+    /// Each field, as the form shows them.
+    pub fields: Vec<FormField>,
 }
 
-/// The priorities a task can have, in the core's words.
-#[wasm_bindgen]
-pub fn priorities() -> Out<Priorities> {
-    js(&Priorities { choices: lumenna_surface::priorities() })
+/// The task form's fields, in the core's words: the priorities among its options.
+#[wasm_bindgen(js_name = taskForm)]
+pub fn task_form() -> Out<Form> {
+    js(&Form { fields: lumenna_surface::task_form() })
+}
+
+/// The block form's fields, in the core's words.
+#[wasm_bindgen(js_name = blockForm)]
+pub fn block_form() -> Out<Form> {
+    js(&Form { fields: lumenna_surface::block_form() })
+}
+
+/// Every sentence and button of pairing. A browser calls itself "this browser", and cannot
+/// be found on a network by itself: it pairs by code.
+#[wasm_bindgen(js_name = pairingWords)]
+pub fn pairing_words() -> Out<PairingWords> {
+    js(&lumenna_surface::pairing_words("this browser".to_owned(), false))
+}
+
+/// Fixed text — a button, a question — in sentence case, the web's: never a name.
+#[wasm_bindgen(js_name = sentenceCase)]
+pub fn sentence_case(text: String) -> String {
+    lumenna_surface::sentence_case(text)
 }
 
 /// What saving `fields` over `task` sends, or nothing if no field changed — only what

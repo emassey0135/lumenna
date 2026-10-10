@@ -17,6 +17,8 @@ export type {
   BlockShown,
   SidebarEntry,
   ExportChoice,
+  FormField,
+  PairingWords,
   Place,
   PlanAssignment,
   PlanBlock,

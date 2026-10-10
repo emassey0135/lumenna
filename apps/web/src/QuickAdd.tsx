@@ -96,7 +96,7 @@ export function QuickAdd(props: { prefix: string; isOpen: boolean; onClose: () =
   return (
     <Modal isDismissable isOpen={props.isOpen} onOpenChange={(open) => !open && props.onClose()}>
       <Dialog>
-        <Heading slot="title">New Task</Heading>
+        <Heading slot="title">New task</Heading>
         <form
           onSubmit={(event) => {
             event.preventDefault();

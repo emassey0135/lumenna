@@ -29,6 +29,9 @@ export async function perform(
   form?: (action: Action) => Promise<Done | undefined | void> | void,
 ): Promise<Done | undefined> {
   const q = action.question;
+  // A question titled as its action is fixed text, in the web's sentence case as the action
+  // is; any other names something, whose capitals are its own.
+  const heading = (title: string) => (title === action.title ? (action.sentence ?? title) : title);
   try {
     switch (q.ask) {
       case "immediate":
@@ -36,18 +39,18 @@ export async function perform(
       case "form":
         return (await form?.(action)) || undefined;
       case "confirm":
-        if (!(await confirm(q.title, q.message, q.yes))) return undefined;
+        if (!(await confirm(heading(q.title), q.message, await core.sentence(q.yes)))) return undefined;
         return await core.act(action, { answer: "yes" });
       case "text": {
         let done: Done | undefined;
-        const text = await ask(q.title, q.label, q.hint, q.initial, async (text) => {
+        const text = await ask(heading(q.title), q.label, q.hint, q.initial, async (text) => {
           try {
             done = await core.act(action, { answer: "text", text });
             return undefined;
           } catch (error) {
             return (error as Error).message;
           }
-        });
+        }, await core.sentence(q.yes));
         if (text === undefined || !done) return undefined;
         return { ...done, answer: text.trim() };
       }
@@ -57,7 +60,7 @@ export async function perform(
           say(offered.announcement);
           return undefined;
         }
-        const id = await pick(q.title, offered.choices);
+        const id = await pick(heading(q.title), offered.choices);
         if (id === undefined) return undefined;
         if (q.length === undefined) return { ...(await core.act(action, { answer: "picked", id })), answer: id };
         // The second question, asked once one is picked: how long the sitting is meant to take.
@@ -74,7 +77,8 @@ export async function perform(
         return { ...done, answer: id };
       }
       case "choose": {
-        const index = await choose(q.title, q.message, q.answers.map((answer) => answer.title));
+        const answers = await Promise.all(q.answers.map((answer) => core.sentence(answer.title)));
+        const index = await choose(heading(q.title), q.message, answers);
         const chosen = index === undefined ? undefined : q.answers[index];
         if (!chosen) return undefined;
         return { ...(await core.act(action, { answer: "picked", id: chosen.id })), answer: chosen.id };

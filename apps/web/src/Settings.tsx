@@ -64,7 +64,7 @@ export function Settings(props: {
             <Tab id="planning">Planning</Tab>
             <Tab id="devices">Devices</Tab>
             <Tab id="backups">Backups</Tab>
-            <Tab id="export">Export and Import</Tab>
+            <Tab id="export">Export and import</Tab>
           </TabList>
           <TabPanel id="planning">
             <Planning revision={props.revision} />
@@ -229,9 +229,9 @@ function Backups(props: { onChanged: () => void }) {
             }
           }}
         >
-          Download a Backup
+          Download a backup
         </Button>
-        <ReadFile label="Restore from a Backup…" accept=".lumbak" onChanged={props.onChanged} />
+        <ReadFile label="Restore from a backup…" accept=".lumbak" onChanged={props.onChanged} />
       </div>
       <p className="quiet">Restoring merges: it adds what this browser lacks, and never takes back a later change.</p>
     </>
@@ -264,7 +264,7 @@ function Exports(props: { onChanged: () => void }) {
             {choice.label}
           </Button>
         ))}
-        <ReadFile label="Import a JSON Export or a Backup…" accept=".json,.lumbak" onChanged={props.onChanged} />
+        <ReadFile label="Import a JSON export or a backup…" accept=".json,.lumbak" onChanged={props.onChanged} />
       </div>
     </>
   );

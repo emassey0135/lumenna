@@ -68,8 +68,8 @@ export function Sidebar(props: {
   const made = useRef<Place | undefined>(undefined);
 
   // A saved filter's form: its name, then its query. The core refuses what it must.
-  const newFilter = async (): Promise<Done | undefined> => {
-    const name = await ask("New Saved Filter", "Name", "");
+  const newFilter = async (action: Action): Promise<Done | undefined> => {
+    const name = await ask(action.sentence ?? action.title, "Name", "", "", undefined, "Next");
     if (name === undefined) return undefined;
     let done: Done | undefined;
     const query = await ask(`Query for ${name.trim()}`, "Query", "Such as #Work & overdue, or p1 | today.", "", async (query) => {
@@ -79,7 +79,7 @@ export function Sidebar(props: {
       } catch (error) {
         return (error as Error).message;
       }
-    });
+    }, "Add");
     if (query === undefined || !done) return undefined;
     made.current = { Filter: { name: name.trim(), query } };
     return done;
@@ -110,7 +110,7 @@ export function Sidebar(props: {
   /** Runs one of a row's actions, says what it did, and goes where it leads. */
   const run = async (at: SidebarEntry, action: Action) => {
     made.current = undefined;
-    const done = await perform(action, () => newFilter());
+    const done = await perform(action, (asked) => newFilter(asked));
     if (!done) return;
     props.onChanged();
     const then = done.changed ? (made.current ?? where(at, action, done.answer)) : undefined;
@@ -194,7 +194,7 @@ export function Sidebar(props: {
           }}
           isOpen={menu}
           onOpenChange={setMenu}
-          label="Place Actions"
+          label="Place actions"
         />
       </div>
     </>

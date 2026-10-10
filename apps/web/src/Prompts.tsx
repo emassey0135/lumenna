@@ -37,6 +37,8 @@ type Question =
       description: string;
       initial: string;
       check?: (text: string) => string | undefined | Promise<string | undefined>;
+      /** The button that answers: what answering does. */
+      yes: string;
       answer: (text?: string) => void;
     }
   | { kind: "pick"; heading: string; items: Item[]; answer: (id?: string) => void };
@@ -77,8 +79,9 @@ export function ask(
   description: string,
   initial = "",
   check?: (text: string) => string | undefined | Promise<string | undefined>,
+  yes = "Save",
 ): Promise<string | undefined> {
-  return put((answer) => ({ kind: "ask", heading, label, description, initial, check, answer }));
+  return put((answer) => ({ kind: "ask", heading, label, description, initial, check, yes, answer }));
 }
 
 /** One of `items`, found by typing part of it, or undefined if cancelled. The field is named by the heading. */
@@ -109,7 +112,11 @@ export function Prompts() {
         <Dialog role="alertdialog" aria-describedby="prompt-detail">
           <Heading slot="title">{question.heading}</Heading>
           <p id="prompt-detail">{question.detail}</p>
+          {/* Cancel first, as in every other dialog here, and focused. */}
           <div className="buttons">
+            <Button autoFocus onPress={cancel}>
+              Cancel
+            </Button>
             {question.options.map((option, index) => (
               <Button
                 key={option}
@@ -121,9 +128,6 @@ export function Prompts() {
                 {option}
               </Button>
             ))}
-            <Button autoFocus onPress={cancel}>
-              Cancel
-            </Button>
           </div>
         </Dialog>
       )}
@@ -170,7 +174,7 @@ function Asking(props: { question: Extract<Question, { kind: "ask" }>; close: ()
         </TextField>
         <div className="buttons">
           <Button onPress={props.cancel}>Cancel</Button>
-          <Button type="submit">OK</Button>
+          <Button type="submit">{question.yes}</Button>
         </div>
       </form>
     </Dialog>
@@ -193,7 +197,9 @@ function Picking(props: { question: Extract<Question, { kind: "pick" }>; close: 
   };
 
   return (
-    <Dialog>
+    // Named by its heading outright: a heading given an id of its own is no longer the slot's,
+    // and React Aria then found the dialog without a title.
+    <Dialog aria-labelledby="pick-heading">
       <Heading slot="title" id="pick-heading">
         {question.heading}
       </Heading>
@@ -230,7 +236,7 @@ function Picking(props: { question: Extract<Question, { kind: "pick" }>; close: 
         </ComboBox>
         <div className="buttons">
           <Button onPress={props.cancel}>Cancel</Button>
-          <Button type="submit">OK</Button>
+          <Button type="submit">Choose</Button>
         </div>
       </form>
     </Dialog>
