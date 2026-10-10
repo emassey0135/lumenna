@@ -5,48 +5,50 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.github.emassey0135.lumenna.core.BlockFields
 import io.github.emassey0135.lumenna.core.BlockScope
+import io.github.emassey0135.lumenna.core.FormField
 import io.github.emassey0135.lumenna.core.LumennaException
 import io.github.emassey0135.lumenna.core.TaskDetail
 import io.github.emassey0135.lumenna.core.TaskFields
 import io.github.emassey0135.lumenna.core.blockDefaults
+import io.github.emassey0135.lumenna.core.blockForm
 import io.github.emassey0135.lumenna.core.blockEdit
 import io.github.emassey0135.lumenna.core.blockFields
 import io.github.emassey0135.lumenna.core.dayBlockFields
 import io.github.emassey0135.lumenna.core.newBlock
 import io.github.emassey0135.lumenna.core.taskEdit
+import io.github.emassey0135.lumenna.core.taskForm
 
-// The task and block forms as the phone and the watch both edit them: each field, what it
-// takes, and how saving sends only what changed. Each app lays them out its own way, the
-// phone with text fields, the watch through the system's input screen.
+// The task and block forms as the phone and the watch both edit them: each field and how
+// saving sends only what changed. What each field is called, takes and shows as an example is
+// the core's (`taskForm`, `blockForm`), as for every app. Each app lays them out its own way,
+// the phone with text fields, the watch through the system's input screen.
 
-/** A field of the task form: its name, an example, what it takes, and where it lives. */
+/** The task form's fields, in the core's order: the priority among them, as a choice. */
+val taskFormFields: List<FormField> by lazy { taskForm() }
+
+/** The block form's fields, in the core's order. */
+val blockFormFields: List<FormField> by lazy { blockForm() }
+
+/** What a field says beneath it, or nothing. */
+val FormField.help: String? get() = hint.ifEmpty { null }
+
+/** A text field of the task form, by the core's key: where its value lives in [TaskFields]. */
 enum class TaskField(
-    val title: String,
-    val example: String,
-    val hint: String?,
+    val key: String,
     val get: (TaskFields) -> String,
     val set: (TaskFields, String) -> TaskFields,
 ) {
-    TITLE("Title", "What to do", null, { it.title }, { f, v -> f.copy(title = v) }),
-    DUE(
-        "Due", "tomorrow", "A date, such as tomorrow or next Friday. Empty for none. A new date keeps how it repeats.",
-        { it.due }, { f, v -> f.copy(due = v) },
-    ),
-    REPEATS(
-        "Repeats", "every monday", "Such as every Monday, or every! 2 weeks to count from when it is done. Empty for no repetition.",
-        { it.repeat }, { f, v -> f.copy(repeat = v) },
-    ),
-    ESTIMATE("Estimate", "45m", "Such as 45m or 1h30m. Empty for none.", { it.estimate }, { f, v -> f.copy(estimate = v) }),
-    PROJECT("Project", "Inbox", null, { it.project }, { f, v -> f.copy(project = v) }),
-    LABELS(
-        "Labels", "calls, errands", "Names separated by commas. A new name becomes a label.",
-        { it.labels }, { f, v -> f.copy(labels = v) },
-    ),
-    NOTES("Notes", "Anything else", null, { it.notes }, { f, v -> f.copy(notes = v) });
+    TITLE("title", { it.title }, { f, v -> f.copy(title = v) }),
+    DUE("due", { it.due }, { f, v -> f.copy(due = v) }),
+    REPEATS("repeat", { it.repeat }, { f, v -> f.copy(repeat = v) }),
+    ESTIMATE("estimate", { it.estimate }, { f, v -> f.copy(estimate = v) }),
+    PROJECT("project", { it.project }, { f, v -> f.copy(project = v) }),
+    LABELS("labels", { it.labels }, { f, v -> f.copy(labels = v) }),
+    NOTES("notes", { it.notes }, { f, v -> f.copy(notes = v) });
 
     companion object {
-        /** The fields above the priority, as both forms order them; Notes follows it. */
-        val beforePriority = listOf(TITLE, DUE, REPEATS, ESTIMATE, PROJECT, LABELS)
+        /** The text field a form field is, or null for the priority, which is a choice. */
+        fun of(field: FormField): TaskField? = entries.firstOrNull { it.key == field.key }
 
         /** Saves only what changed: an unchanged field sent would revert another device's edit. */
         fun save(core: Core, before: TaskDetail, fields: TaskFields) {
@@ -54,6 +56,50 @@ enum class TaskField(
             if (edit == null) core.say("Nothing changed") else core.change { it.editTask(before.id, edit) }
         }
     }
+}
+
+/** A block form field's text, by the core's key; a toggle or the kind reads empty here. */
+fun BlockFields.text(key: String): String = when (key) {
+    "title" -> title
+    "start" -> start
+    "minutes" -> minutes
+    "repeat" -> repeat
+    "until" -> until
+    "min_minutes" -> minMinutes
+    "task_filter" -> taskFilter
+    "colour" -> colour
+    "notes" -> notes
+    else -> ""
+}
+
+/** These fields with [key]'s text set to [value]. */
+fun BlockFields.withText(key: String, value: String): BlockFields = when (key) {
+    "title" -> copy(title = value)
+    "start" -> copy(start = value)
+    "minutes" -> copy(minutes = value)
+    "repeat" -> copy(repeat = value)
+    "until" -> copy(until = value)
+    "min_minutes" -> copy(minMinutes = value)
+    "task_filter" -> copy(taskFilter = value)
+    "colour" -> copy(colour = value)
+    "notes" -> copy(notes = value)
+    else -> this
+}
+
+/** A block form toggle, by the core's key. */
+fun BlockFields.flag(key: String): Boolean = when (key) {
+    "accepts_tasks" -> acceptsTasks
+    "counts_capacity" -> countsCapacity
+    "anchored" -> anchored
+    else -> false
+}
+
+/** These fields with [key]'s toggle set to [on]. */
+fun BlockFields.withFlag(key: String, on: Boolean): BlockFields = when (key) {
+    "accepts_tasks" -> copy(acceptsTasks = on)
+    "counts_capacity" -> copy(countsCapacity = on)
+    "anchored" -> copy(anchored = on)
+    else -> this
 }
 
 /**
@@ -83,19 +129,35 @@ class BlockFormModel(private val core: Core, val purpose: BlockPurpose) {
     val repeats get() = shown?.repeats == true || (purpose is BlockPurpose.Add && fields.repeat.isNotBlank())
 
     val title = when (purpose) {
-        is BlockPurpose.Add -> "New Block"
-        is BlockPurpose.Series -> "Every Occurrence"
-        is BlockPurpose.Occurrence -> "${Clock.spokenDay(purpose.date)} Only"
+        is BlockPurpose.Add -> "New block"
+        is BlockPurpose.Series -> "Every occurrence"
+        is BlockPurpose.Occurrence -> "${Clock.spokenDay(purpose.date)} only"
     }
 
-    /** What the Repeats field means, which differs between adding and changing. */
-    val repeatsHelp
-        get() = when {
-            purpose is BlockPurpose.Add -> "Such as every weekday. Empty for a block that happens once."
-            rule != null -> "It repeats by the rule $rule, which this cannot show in words. Empty keeps it; none makes it happen once."
-            initial.repeat.isEmpty() -> "It happens once now. Such as every weekday to make it repeat."
-            else -> "Empty makes it happen once."
+    /**
+     * Whether the form shows [field]: a new block's day only when adding; a last day only
+     * while it repeats; and one day of a series changes only its time, length, kind and flags.
+     */
+    fun shows(field: FormField): Boolean = when {
+        field.key == "date" -> purpose is BlockPurpose.Add
+        oneDay && field.key in seriesOnly -> false
+        field.repeatingOnly -> repeats
+        else -> true
+    }
+
+    /**
+     * What [field] says beneath it: the core's words; but for a repetition the words cannot
+     * say, that the field is empty because of it, and an empty one keeps it (`blockEdit`),
+     * where the core's "Empty for once" would mislead.
+     */
+    fun help(field: FormField): String? {
+        val rule = rule
+        return if (field.key == "repeat" && rule != null) {
+            "It repeats by the rule $rule, which cannot be said in words. Left empty, it keeps repeating so."
+        } else {
+            field.help
         }
+    }
 
     /** A kind brings its own flags with it, which can then be set apart from it. */
     fun kind(new: String) {
@@ -139,9 +201,8 @@ class BlockFormModel(private val core: Core, val purpose: BlockPurpose) {
         return change != null
     }
 
-    companion object {
-        /** The kinds, as each is said. */
-        val kinds = listOf("work" to "Work, takes tasks", "break" to "Break", "event" to "Event")
-        const val FLAGS_HELP = "The kind sets these; change any of them to set it apart."
+    private companion object {
+        /** What one day of a series cannot change apart from it. */
+        val seriesOnly = setOf("repeat", "until", "min_minutes", "task_filter", "colour", "notes")
     }
 }

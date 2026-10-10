@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import io.github.emassey0135.lumenna.core.ActionKind
 import io.github.emassey0135.lumenna.core.BlockFields
 import io.github.emassey0135.lumenna.core.BlockScope
+import io.github.emassey0135.lumenna.core.FieldKind
 import io.github.emassey0135.lumenna.core.LumennaException
 import io.github.emassey0135.lumenna.core.blockDefaults
 import io.github.emassey0135.lumenna.core.blockEdit
@@ -129,10 +130,10 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
             Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            OutlinedButton(modifier = Target, onClick = { step(-1) }) { Text("Previous Day") }
+            OutlinedButton(modifier = Target, onClick = { step(-1) }) { Text("Previous day") }
             OutlinedButton(modifier = Target, onClick = { day = null }) { Text("Now") }
-            OutlinedButton(modifier = Target, onClick = { step(1) }) { Text("Next Day") }
-            OutlinedButton(modifier = Target, onClick = { asking = DayAsk.GoTo }) { Text("Go to Day") }
+            OutlinedButton(modifier = Target, onClick = { step(1) }) { Text("Next day") }
+            OutlinedButton(modifier = Target, onClick = { asking = DayAsk.GoTo }) { Text("Go to day") }
         }
         LazyColumn(
             Modifier.fillMaxSize().semantics { collectionInfo = CollectionInfo(list.size, 1) },
@@ -176,7 +177,7 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
                     title = { Text("Change ${block.title}") },
                     text = { Text("Which occurrences?") },
                     confirmButton = {
-                        Column {
+                        Column(horizontalAlignment = Alignment.End) {
                             TextButton(modifier = Target, onClick = {
                                 asking = null
                                 navigator.push(
@@ -184,18 +185,18 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
                                         BlockPurpose.Occurrence(block, date),
                                     ),
                                 )
-                            }) { Text("${Clock.spokenDay(date)} Only") }
+                            }) { Text("${Clock.spokenDay(date)} only") }
                             TextButton(modifier = Target, onClick = {
                                 asking = null
                                 navigator.push(Screen.BlockForm(BlockPurpose.Series(block.series)))
-                            }) { Text("Every Occurrence") }
+                            }) { Text("Every occurrence") }
                             TextButton(modifier = Target, onClick = dismiss) { Text("Cancel") }
                         }
                     },
                 )
             }
         }
-        DayAsk.GoTo -> AskText("Go to Day", "Day", "Go", example = "next friday", hint = "A date, such as tomorrow or 12 October.", dismiss = dismiss) { text ->
+        DayAsk.GoTo -> AskText("Go to day", "Day", "Go", example = "next friday", hint = "A date, such as tomorrow or 12 October.", dismiss = dismiss) { text ->
             core.attempt { core.lumenna.plan(text) }?.let {
                 asking = null
                 day = it.date
@@ -243,8 +244,6 @@ fun BlockFormScreen(core: Core, navigator: Navigator, purpose: BlockPurpose) {
     val model = remember(purpose) { BlockFormModel(core, purpose) }
     var fields by model::fields
     var day by model::day
-    val oneDay = model.oneDay
-    val repeats = model.repeats
     val title = model.title
     val kind = model::kind
     val save = { if (model.save()) navigator.back() }
@@ -253,65 +252,48 @@ fun BlockFormScreen(core: Core, navigator: Navigator, purpose: BlockPurpose) {
     ScreenFrame(title, core, navigator, actions = {
         IconButton(onClick = { save() }) { Icon(Icons.Filled.Check, contentDescription = "Save") }
     }) {
+        // The core's fields, in its order (`blockForm`): the kind a choice among its options,
+        // the flags switches, the rest lines of text the core reads.
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-            BlockField("Name", fields.title, "Deep work") { fields = fields.copy(title = it) }
-            if (purpose is BlockPurpose.Add) {
-                BlockField("Day", day, "tomorrow", "A date, such as tomorrow or next Monday.") { day = it }
-            }
-            BlockField("Starts", fields.start, "9am", "Such as 9am or 14:30.") { fields = fields.copy(start = it) }
-            BlockField(
-                "Lasts, in minutes", fields.minutes, "60",
-                fields.minutes.trim().toUIntOrNull()?.let { "Lasts ${Clock.length(it)}." },
-                number = true,
-            ) { fields = fields.copy(minutes = it) }
-
-            Heading("Kind")
-            Column(Modifier.selectableGroup()) {
-                BlockFormModel.kinds.forEach { (value, name) ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp)
-                            .selectable(fields.kind == value, role = Role.RadioButton) { kind(value) }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(selected = fields.kind == value, onClick = null)
-                        Text(name, Modifier.padding(start = 12.dp))
+            blockFormFields.filter(model::shows).forEach { field ->
+                when (field.kind) {
+                    FieldKind.CHOICE -> {
+                        Heading(field.label)
+                        Column(Modifier.selectableGroup()) {
+                            field.options.forEach { option ->
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 48.dp)
+                                        .selectable(fields.kind == option.id, role = Role.RadioButton) { kind(option.id) }
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    RadioButton(selected = fields.kind == option.id, onClick = null)
+                                    Text(option.title, Modifier.padding(start = 12.dp))
+                                }
+                            }
+                        }
+                        field.help?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = quiet()) }
+                    }
+                    FieldKind.TOGGLE -> Flag(field.label, fields.flag(field.key)) { fields = fields.withFlag(field.key, it) }
+                    else -> {
+                        val minutes = field.kind == FieldKind.MINUTES
+                        // A new block's day is the model's; the length is read back as it is typed.
+                        val value = if (field.key == "date") day else fields.text(field.key)
+                        val help = if (field.key == "minutes") {
+                            fields.minutes.trim().toUIntOrNull()?.let { "Lasts ${Clock.length(it)}." } ?: model.help(field)
+                        } else {
+                            model.help(field)
+                        }
+                        BlockField(
+                            field.label, value, field.example, help,
+                            number = minutes,
+                            prose = field.key == "title" || field.key == "notes",
+                            lines = if (field.kind == FieldKind.LINES) 3 else 1,
+                        ) { if (field.key == "date") day = it else fields = fields.withText(field.key, it) }
                     }
                 }
-            }
-
-            if (!oneDay) {
-                BlockField("Repeats", fields.repeat, "every weekday", model.repeatsHelp) { fields = fields.copy(repeat = it) }
-            }
-
-            Heading("What it does")
-            Flag("Takes tasks", fields.acceptsTasks) { fields = fields.copy(acceptsTasks = it) }
-            Flag("Counts toward hours for work", fields.countsCapacity) { fields = fields.copy(countsCapacity = it) }
-            Flag("Anchored, never moved when the day slips", fields.anchored) { fields = fields.copy(anchored = it) }
-            Text(
-                BlockFormModel.FLAGS_HELP,
-                style = MaterialTheme.typography.bodySmall,
-                color = quiet(),
-            )
-
-            if (!oneDay) {
-                Heading("More")
-                if (repeats) {
-                    BlockField("Until", fields.until, "31 January", "Its last day. Empty to repeat for good.") {
-                        fields = fields.copy(until = it)
-                    }
-                }
-                BlockField(
-                    "Shortest length, in minutes", fields.minMinutes, "30",
-                    "How far a slipping day may shorten it. Empty for the kind's own.", number = true,
-                ) { fields = fields.copy(minMinutes = it) }
-                BlockField("Tasks from", fields.taskFilter, "#Work", "A filter for which tasks it is meant for.") {
-                    fields = fields.copy(taskFilter = it)
-                }
-                BlockField("Colour", fields.colour, "teal") { fields = fields.copy(colour = it) }
-                BlockField("Notes", fields.notes, "Anything else") { fields = fields.copy(notes = it) }
             }
         }
     }
@@ -340,18 +322,21 @@ private fun BlockField(
     example: String,
     hint: String? = null,
     number: Boolean = false,
+    prose: Boolean = false,
+    lines: Int = 1,
     changed: (String) -> Unit,
 ) {
     OutlinedTextField(
         value = value,
         onValueChange = changed,
         label = { Text(label) },
-        placeholder = { Text(example) },
+        placeholder = example.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
         supportingText = hint?.let { { Text(it) } },
+        minLines = lines,
         keyboardOptions = KeyboardOptions(
-            capitalization = if (label == "Name") KeyboardCapitalization.Sentences else KeyboardCapitalization.None,
+            capitalization = if (prose) KeyboardCapitalization.Sentences else KeyboardCapitalization.None,
             keyboardType = if (number) KeyboardType.Number else KeyboardType.Text,
-            autoCorrectEnabled = label == "Name",
+            autoCorrectEnabled = prose,
         ),
         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
     )

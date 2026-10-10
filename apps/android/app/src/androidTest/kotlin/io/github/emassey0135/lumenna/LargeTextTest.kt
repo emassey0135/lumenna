@@ -133,7 +133,7 @@ class LargeTextTest {
         back()
         tab("Settings")
         keep("8-settings")
-        for ((page, name) in listOf("Planning" to "9-planning", "Devices and Sync" to "10-devices", "Backups" to "11-backups", "Export and Import" to "12-export")) {
+        for ((page, name) in listOf("Planning" to "9-planning", "Devices and sync" to "10-devices", "Backups" to "11-backups", "Export and import" to "12-export")) {
             row(page)
             keep(name)
             back()

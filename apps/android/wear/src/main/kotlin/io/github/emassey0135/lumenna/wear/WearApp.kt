@@ -21,6 +21,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
@@ -101,36 +102,40 @@ fun WearApp(core: Core, entry: TextEntry? = null) {
             said = ""
         }
     }
+    // AppScaffold shows the time at the top of every screen, as Wear OS asks of an app; each
+    // screen's ScreenScaffold (`WearList`) moves it out of the way as its list scrolls.
     CompositionLocalProvider(LocalTextEntry provides (entry ?: rememberSystemTextEntry())) {
-        Box(Modifier.fillMaxSize()) {
-            SwipeDismissableNavHost(navController = controller, startDestination = "places") {
-                composable("places") { PlacesScreen(core, navigator, changes) }
-                composable("screen/{n}") { backStack ->
-                    when (val screen = navigator.screen("screen/${backStack.arguments?.getString("n")}")) {
-                        Screen.Places -> PlacesScreen(core, navigator, changes)
-                        is Screen.Tasks -> TasksScreen(core, navigator, screen.place, changes)
-                        Screen.Day -> DayScreen(core, navigator, changes)
-                        Screen.Blocks -> BlocksScreen(core, navigator, changes)
-                        is Screen.Task -> TaskScreen(core, navigator, screen.id, changes)
-                        is Screen.AddTask -> AddTaskScreen(core, navigator, screen.prefix)
-                        is Screen.BlockForm -> BlockFormScreen(core, navigator, screen.purpose)
-                        Screen.Settings -> SettingsScreen(navigator)
-                        Screen.Planning -> PlanningScreen(core, changes)
-                        Screen.Devices -> DevicesScreen(core, navigator, changes)
-                        is Screen.Choose -> ChooseScreen(screen)
+        AppScaffold {
+            Box(Modifier.fillMaxSize()) {
+                SwipeDismissableNavHost(navController = controller, startDestination = "places") {
+                    composable("places") { PlacesScreen(core, navigator, changes) }
+                    composable("screen/{n}") { backStack ->
+                        when (val screen = navigator.screen("screen/${backStack.arguments?.getString("n")}")) {
+                            Screen.Places -> PlacesScreen(core, navigator, changes)
+                            is Screen.Tasks -> TasksScreen(core, navigator, screen.place, changes)
+                            Screen.Day -> DayScreen(core, navigator, changes)
+                            Screen.Blocks -> BlocksScreen(core, navigator, changes)
+                            is Screen.Task -> TaskScreen(core, navigator, screen.id, changes)
+                            is Screen.AddTask -> AddTaskScreen(core, navigator, screen.prefix)
+                            is Screen.BlockForm -> BlockFormScreen(core, navigator, screen.purpose)
+                            Screen.Settings -> SettingsScreen(navigator)
+                            Screen.Planning -> PlanningScreen(core, changes)
+                            Screen.Devices -> DevicesScreen(core, navigator, changes)
+                            is Screen.Choose -> ChooseScreen(screen)
+                        }
                     }
                 }
+                // What changes say, read by TalkBack as a polite live region. Not shown: on a
+                // watch's screen it covered the rows beneath it, and the accessibility check found
+                // a button only a third visible.
+                Box(
+                    Modifier.align(Alignment.Center).size(1.dp).semantics {
+                        liveRegion = LiveRegionMode.Polite
+                        // Out of the tree while there is nothing to say: an empty one is unlabelled.
+                        if (said.isEmpty()) hideFromAccessibility() else contentDescription = said
+                    },
+                )
             }
-            // What changes say, read by TalkBack as a polite live region. Not shown: on a
-            // watch's screen it covered the rows beneath it, and the accessibility check found
-            // a button only a third visible.
-            Box(
-                Modifier.align(Alignment.Center).size(1.dp).semantics {
-                    liveRegion = LiveRegionMode.Polite
-                    // Out of the tree while there is nothing to say: an empty one is unlabelled.
-                    if (said.isEmpty()) hideFromAccessibility() else contentDescription = said
-                },
-            )
         }
     }
 }

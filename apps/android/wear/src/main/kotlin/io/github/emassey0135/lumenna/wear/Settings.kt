@@ -18,6 +18,7 @@ import io.github.emassey0135.lumenna.Core
 import io.github.emassey0135.lumenna.PairingSession
 import io.github.emassey0135.lumenna.RowAction
 import io.github.emassey0135.lumenna.backups
+import io.github.emassey0135.lumenna.button
 import io.github.emassey0135.lumenna.on
 import io.github.emassey0135.lumenna.planning
 import io.github.emassey0135.lumenna.said
@@ -35,7 +36,7 @@ fun SettingsScreen(navigator: Navigator) {
     WearList {
         item { Heading("Settings") }
         item { Button(onClick = { navigator.open(Screen.Planning) }, modifier = Modifier.fillMaxWidth(), label = { Text("Planning") }) }
-        item { Button(onClick = { navigator.open(Screen.Devices) }, modifier = Modifier.fillMaxWidth(), label = { Text("Devices and Sync") }) }
+        item { Button(onClick = { navigator.open(Screen.Devices) }, modifier = Modifier.fillMaxWidth(), label = { Text("Devices and sync") }) }
     }
 }
 
@@ -51,7 +52,7 @@ fun PlanningScreen(core: Core, changes: Long) {
         item { Heading("Backups") }
         all.backups().forEach { setting(core, it) }
         item {
-            Button(onClick = { core.attempt { core.lumenna.backup(null) }?.let { core.say(sentence(it.announcement, it.notices)) } }, modifier = Modifier.fillMaxWidth(), label = { Text("Back Up Now") })
+            Button(onClick = { core.attempt { core.lumenna.backup(null) }?.let { core.say(sentence(it.announcement, it.notices)) } }, modifier = Modifier.fillMaxWidth(), label = { Text("Back up now") })
         }
     }
 }
@@ -74,9 +75,9 @@ fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
         }
     }
     WearList {
-        item { Heading("Devices and Sync") }
+        item { Heading("Devices and sync") }
         status?.let { item { Text(it.announcement) } }
-        item { Button(onClick = { syncNow() }, modifier = Modifier.fillMaxWidth(), label = { Text("Sync Now") }) }
+        item { Button(onClick = { syncNow() }, modifier = Modifier.fillMaxWidth(), label = { Text("Sync now") }) }
         status?.devices.orEmpty().forEach { device ->
             item {
                 // The core's: Rename, and Unpair on every row but this watch's own. Sync Now is
@@ -101,24 +102,23 @@ fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
 @Composable
 private fun PairingButtons(core: Core, navigator: Navigator) {
     val context = LocalContext.current
-    val entry = LocalTextEntry.current
-    val session = remember { PairingSession(core, context, PLATFORM) { core.changed() } }
+    val session = remember { PairingSession(core, context, PLATFORM, "this watch") { core.changed() } }
+    // Every sentence and button is the core's (`pairingWords`), buttons in sentence case. The
+    // code is asked for as a field is, by the system's input screen, and joined with once given.
+    val words = session.words
     DisposableEffect(Unit) { onDispose { session.cancel() } }
     androidx.compose.foundation.layout.Column {
-        Heading("Pair a Device")
+        Heading(button(words.title))
         Text(session.status, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-        session.code?.let { Text("Pairing code: $it") }
-        Button(onClick = { session.waitToBeFound() }, enabled = !session.running, modifier = Modifier.fillMaxWidth(), label = { Text("Wait for the Other Device") })
-        Button(
-            onClick = { entry?.ask("Code from the other device") { session.join(it) } },
-            enabled = session.nextCode == null && (!session.running || session.waiting),
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Pair With a Code") },
-        )
-        session.asked?.let { words ->
-            Text("Do these words match? ${PairingSession.matchQuestion(words)}", Modifier.semantics { liveRegion = LiveRegionMode.Assertive })
-            Button(onClick = { session.answer(true) }, modifier = Modifier.fillMaxWidth(), label = { Text("Yes, They Match") })
-            Button(onClick = { session.answer(false) }, modifier = Modifier.fillMaxWidth(), label = { Text("No") })
+        session.code?.let { Text("${words.myCode}: $it") }
+        Button(onClick = { session.waitToBeFound() }, enabled = !session.running, modifier = Modifier.fillMaxWidth(), label = { Text(button(words.wait)) })
+        if (session.nextCode == null && (!session.running || session.waiting)) {
+            TextFieldButton(words.theirCode, "") { session.join(it) }
+        }
+        session.asked?.let { shown ->
+            Text("${button(words.matchTitle)} ${session.matchMessage(shown)}", Modifier.semantics { liveRegion = LiveRegionMode.Assertive })
+            Button(onClick = { session.answer(true) }, modifier = Modifier.fillMaxWidth(), label = { Text(button(words.matchYes)) })
+            Button(onClick = { session.answer(false) }, modifier = Modifier.fillMaxWidth(), label = { Text(button(words.matchNo)) })
         }
     }
 }

@@ -15,7 +15,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.RadioButton
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -65,11 +69,11 @@ fun SettingsScreen(core: Core, navigator: Navigator, changes: Long) {
         "Settings", core, navigator, changes = changes,
         load = {
             listOf(
-                Item("devices", "Devices and Sync", core.lumenna.syncStatus().announcement),
+                Item("devices", "Devices and sync", core.lumenna.syncStatus().announcement),
                 Item("planning", "Planning", "The day, the week, completing subtasks, announcements"),
                 Item("backups", "Backups", "On this device only"),
-                Item("export", "Export and Import", "JSON, Markdown, org, calendar"),
-            ) to ""
+                Item("export", "Export and import", "JSON, Markdown, org, calendar"),
+            ).let { Listing(it) }
         },
         open = { item ->
             navigator.push(
@@ -100,16 +104,35 @@ private fun SettingRow(name: String, value: String, hint: String, change: () -> 
     }
 }
 
-/** A choice among a few, asked as a list of buttons. */
+/**
+ * A choice among a few: Material's simple dialog, the current one selected, and choosing one
+ * sets it and closes. As a list of plain buttons, nothing said which was set.
+ */
 @Composable
-private fun ChooseOne(title: String, choices: List<Pair<String, String>>, dismiss: () -> Unit, chosen: (String) -> Unit) {
+private fun ChooseOne(
+    title: String,
+    choices: List<Pair<String, String>>,
+    current: String,
+    dismiss: () -> Unit,
+    chosen: (String) -> Unit,
+) {
     AlertDialog(
         onDismissRequest = dismiss,
         title = { Text(title) },
         text = {
-            Column {
+            Column(Modifier.selectableGroup()) {
                 choices.forEach { (name, value) ->
-                    TextButton(modifier = Target.fillMaxWidth(), onClick = { chosen(value) }) { Text(name) }
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .selectable(value == current, role = Role.RadioButton) { chosen(value) }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = value == current, onClick = null)
+                        Text(name, Modifier.padding(start = 12.dp))
+                    }
                 }
             }
         },
@@ -139,7 +162,7 @@ private fun SettingControl(core: Core, prompt: Prompter, setting: Setting) {
         }
         SettingKind.CHOICE -> SettingRow(setting.title, setting.said, setting.hint) {
             prompt.show {
-                ChooseOne(setting.title, setting.options.map { it.title to it.id }, prompt::close) {
+                ChooseOne(setting.title, setting.options.map { it.title to it.id }, setting.value, prompt::close) {
                     prompt.close()
                     core.set(setting, it)
                 }
@@ -194,9 +217,9 @@ fun BackupsScreen(core: Core, navigator: Navigator, changes: Long) {
             Button(
                 modifier = Target.padding(16.dp),
                 onClick = { core.attempt { core.lumenna.backup(null) }?.let { core.say(sentence(it.announcement, it.notices)) } },
-            ) { Text("Back Up Now") }
+            ) { Text("Back up now") }
             Text(
-                "These settings are this device's own. Restore a backup from Export and Import.",
+                "These settings are this device's own. Restore a backup from Export and import.",
                 style = MaterialTheme.typography.bodySmall,
                 color = quiet(),
                 modifier = Modifier.padding(horizontal = 16.dp),
@@ -244,13 +267,13 @@ fun ExportScreen(core: Core, navigator: Navigator) {
         pending = format
         save.launch("Lumenna ${Clock.today()}.$extension")
     }
-    ScreenFrame("Export and Import", core, navigator) {
+    ScreenFrame("Export and import", core, navigator) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(modifier = Target, onClick = { export(ExportFormat.JSON, "json") }) { Text("Export JSON, Complete, Can Be Imported…") }
-            OutlinedButton(modifier = Target, onClick = { export(ExportFormat.MARKDOWN, "md") }) { Text("Export a Markdown Checklist…") }
-            OutlinedButton(modifier = Target, onClick = { export(ExportFormat.ORG, "org") }) { Text("Export an Org Outline…") }
-            OutlinedButton(modifier = Target, onClick = { export(ExportFormat.ICS, "ics") }) { Text("Export a Calendar File of Your Blocks…") }
-            OutlinedButton(modifier = Target, onClick = { open.launch(arrayOf("*/*")) }) { Text("Import or Restore…") }
+            OutlinedButton(modifier = Target, onClick = { export(ExportFormat.JSON, "json") }) { Text("Export JSON, complete, can be imported…") }
+            OutlinedButton(modifier = Target, onClick = { export(ExportFormat.MARKDOWN, "md") }) { Text("Export a Markdown checklist…") }
+            OutlinedButton(modifier = Target, onClick = { export(ExportFormat.ORG, "org") }) { Text("Export an org outline…") }
+            OutlinedButton(modifier = Target, onClick = { export(ExportFormat.ICS, "ics") }) { Text("Export a calendar file of your blocks…") }
+            OutlinedButton(modifier = Target, onClick = { open.launch(arrayOf("*/*")) }) { Text("Import or restore…") }
             Text(
                 "An export is what you have now, with nothing from the trash. Importing a JSON export or restoring a " +
                     "backup adds what this device lacks and removes nothing.",
@@ -268,14 +291,14 @@ fun ExportScreen(core: Core, navigator: Navigator) {
 fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
     val prompt = rememberPrompter()
     ItemListScreen(
-        "Devices and Sync", core, navigator, changes = changes,
+        "Devices and sync", core, navigator, changes = changes,
         load = {
             val status = core.lumenna.syncStatus()
             status.devices.map { device ->
                 // How syncing with it is going, as the core words it for every app.
                 val detail = (listOf(device.platform) + device.status).joinToString(", ")
                 Item(device.nodeId, device.name, detail, actions = device.actions, thisDevice = device.thisDevice)
-            } to status.announcement
+            }.let { Listing(it, status.announcement) }
         },
         addLabel = "Pair a device",
         add = { navigator.push(Screen.Pairing) },
@@ -284,7 +307,7 @@ fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
         actions = { item -> core.offered(item.actions, prompt) },
         // Syncing is with every device at once, so it is the screen's, not a row's.
         header = {
-            OutlinedButton(modifier = Target.padding(horizontal = 16.dp), onClick = { syncNow(core) }) { Text("Sync Now") }
+            OutlinedButton(modifier = Target.padding(horizontal = 16.dp), onClick = { syncNow(core) }) { Text("Sync now") }
         },
     )
     prompt.Host()
@@ -305,18 +328,21 @@ fun PairingScreen(core: Core, navigator: Navigator) {
     // Leaving the screen gives up, which ends the wait for the other device.
     DisposableEffect(Unit) { onDispose { session.cancel() } }
 
-    ScreenFrame("Pair a Device", core, navigator) {
+    // Every sentence and button is the core's (`pairingWords`); the buttons in sentence case,
+    // as Material writes them.
+    val words = session.words
+    ScreenFrame(button(words.title), core, navigator) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(session.status, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-            Button(modifier = Target, onClick = { session.waitToBeFound() }, enabled = !session.running) { Text("Wait for the Other Device") }
+            Button(modifier = Target, onClick = { session.waitToBeFound() }, enabled = !session.running) { Text(button(words.wait)) }
             session.code?.let {
-                Text("Pairing code: $it", fontFamily = FontFamily.Monospace)
+                Text("${words.myCode}: $it", fontFamily = FontFamily.Monospace)
             }
             OutlinedTextField(
                 value = entered,
                 onValueChange = { entered = it },
-                label = { Text("Code from the other device") },
-                supportingText = { Text("Left empty, the code on the clipboard is used.") },
+                label = { Text(words.theirCode) },
+                supportingText = { Text(words.emptyMeans) },
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -324,17 +350,17 @@ fun PairingScreen(core: Core, navigator: Navigator) {
                 modifier = Target,
                 onClick = { entered = session.join(entered) },
                 enabled = session.nextCode == null && (!session.running || session.waiting),
-            ) { Text("Pair With This Code") }
+            ) { Text(button(words.join)) }
         }
     }
 
     session.asked?.let { shown ->
         AlertDialog(
             onDismissRequest = {},
-            title = { Text("Do these words match?") },
-            text = { Text(PairingSession.matchQuestion(shown)) },
-            confirmButton = { TextButton(modifier = Target, onClick = { session.answer(true) }) { Text("Yes, They Match") } },
-            dismissButton = { TextButton(modifier = Target, onClick = { session.answer(false) }) { Text("No") } },
+            title = { Text(button(words.matchTitle)) },
+            text = { Text(session.matchMessage(shown)) },
+            confirmButton = { TextButton(modifier = Target, onClick = { session.answer(true) }) { Text(button(words.matchYes)) } },
+            dismissButton = { TextButton(modifier = Target, onClick = { session.answer(false) }) { Text(button(words.matchNo)) } },
         )
     }
 }

@@ -21,12 +21,20 @@ import io.github.emassey0135.lumenna.Clock
 import io.github.emassey0135.lumenna.Completing
 import io.github.emassey0135.lumenna.Core
 import io.github.emassey0135.lumenna.TaskField
+import io.github.emassey0135.lumenna.blockFormFields
+import io.github.emassey0135.lumenna.flag
+import io.github.emassey0135.lumenna.help
+import io.github.emassey0135.lumenna.name
+import io.github.emassey0135.lumenna.taskFormFields
+import io.github.emassey0135.lumenna.text
+import io.github.emassey0135.lumenna.withFlag
+import io.github.emassey0135.lumenna.withText
+import io.github.emassey0135.lumenna.core.FieldKind
 import io.github.emassey0135.lumenna.perform
 import io.github.emassey0135.lumenna.core.ActionKind
 import io.github.emassey0135.lumenna.core.Syntax
 import io.github.emassey0135.lumenna.core.TaskDetail
 import io.github.emassey0135.lumenna.core.TaskFields
-import io.github.emassey0135.lumenna.core.priorities
 import io.github.emassey0135.lumenna.core.taskEdit
 import io.github.emassey0135.lumenna.core.taskFields
 
@@ -59,11 +67,11 @@ fun AddTaskScreen(core: Core, navigator: Navigator, prefix: String) {
     val readback = remember(line) { if (line.isBlank()) null else core.attempt { core.lumenna.previewTask(line) } }
     val offered = remember(line) { Completing.offered(core, line, Syntax.QUICK_ADD) }
     WearList {
-        item { Heading("New Task") }
+        item { Heading("New task") }
         item { TextFieldButton("Task", line, "call the bank tomorrow") { line = it } }
         if (line.isNotBlank()) {
             item {
-                Button(onClick = { entry?.ask("Add to the line") { more -> line = "${line.trimEnd()} ${more.trim()}" } }, modifier = Modifier.fillMaxWidth(), label = { Text("Add to the Line") })
+                Button(onClick = { entry?.ask("Add to the line") { more -> line = "${line.trimEnd()} ${more.trim()}" } }, modifier = Modifier.fillMaxWidth(), label = { Text("Add to the line") })
             }
         }
         offered?.let { (candidates, span) ->
@@ -119,21 +127,26 @@ fun TaskScreen(core: Core, navigator: Navigator, id: String, changes: Long) {
             return@WearList
         }
         item { Heading(current.title) }
-        TaskField.beforePriority.forEach { field ->
-            item { TextFieldButton(field.title, field.get(form), field.example) { fields = field.set(form, it) } }
-        }
-        item { Heading("Priority") }
-        priorities().map { it.id.toInt() to it.title }.forEach { (level, name) ->
-            item {
-                RadioButton(
-                    selected = form.priority.toInt() == level,
-                    onSelect = { fields = form.copy(priority = level.toUByte()) },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(name) },
-                )
+        // The core's fields, in its order, as the phone has them: the priority a choice among
+        // the core's options, the rest lines from the system's input screen.
+        taskFormFields.forEach { field ->
+            val text = TaskField.of(field)
+            if (text != null) {
+                item { TextFieldButton(field.label, text.get(form), field.example) { fields = text.set(form, it) } }
+                return@forEach
+            }
+            item { Heading(field.label) }
+            field.options.forEach { option ->
+                item {
+                    RadioButton(
+                        selected = form.priority == option.id.toUByte(),
+                        onSelect = { fields = form.copy(priority = option.id.toUByte()) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(option.title) },
+                    )
+                }
             }
         }
-        item { TextFieldButton(TaskField.NOTES.title, form.notes, TaskField.NOTES.example) { fields = form.copy(notes = it) } }
         item { Button(onClick = { TaskField.save(core, current, form) }, modifier = Modifier.fillMaxWidth(), label = { Text("Save") }) }
 
         if (current.depends.isNotEmpty()) {
@@ -154,7 +167,7 @@ fun TaskScreen(core: Core, navigator: Navigator, id: String, changes: Long) {
                     core.perform(action, WearAsker(navigator, entry), form = {}) {
                         if (action.kind == ActionKind.DELETE) navigator.back()
                     }
-                }, modifier = Modifier.fillMaxWidth(), label = { Text(action.title) })
+                }, modifier = Modifier.fillMaxWidth(), label = { Text(action.name) })
             }
         }
     }
@@ -173,40 +186,41 @@ fun BlockFormScreen(core: Core, navigator: Navigator, purpose: BlockPurpose) {
     val fields = model.fields
     WearList {
         item { Heading(model.title) }
-        item { TextFieldButton("Name", fields.title, "Deep work") { model.fields = model.fields.copy(title = it) } }
-        if (purpose is BlockPurpose.Add) {
-            item { TextFieldButton("Day", model.day, "tomorrow") { model.day = it } }
-        }
-        item { TextFieldButton("Starts", fields.start, "9am") { model.fields = model.fields.copy(start = it) } }
-        item {
-            TextFieldButton(
-                "Lasts, in minutes",
-                fields.minutes.trim().toUIntOrNull()?.let { "${fields.minutes}, ${Clock.length(it)}" } ?: fields.minutes,
-                "60",
-            ) { model.fields = model.fields.copy(minutes = it.trim()) }
-        }
-        item { Heading("Kind") }
-        BlockFormModel.kinds.forEach { (value, name) ->
-            item {
-                RadioButton(selected = fields.kind == value, onSelect = { model.kind(value) }, modifier = Modifier.fillMaxWidth(), label = { Text(name) })
+        // The core's fields, in its order (`blockForm`), as the phone has them.
+        blockFormFields.filter(model::shows).forEach { field ->
+            when (field.kind) {
+                FieldKind.CHOICE -> {
+                    item { Heading(field.label) }
+                    field.options.forEach { option ->
+                        item {
+                            RadioButton(
+                                selected = fields.kind == option.id,
+                                onSelect = { model.kind(option.id) },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text(option.title) },
+                            )
+                        }
+                    }
+                    field.help?.let { item { Text(it) } }
+                }
+                FieldKind.TOGGLE -> item {
+                    Flag(field.label, fields.flag(field.key)) { model.fields = model.fields.withFlag(field.key, it) }
+                }
+                else -> {
+                    item {
+                        // A new block's day is the model's; the length is said in words beside it.
+                        val value = when (field.key) {
+                            "date" -> model.day
+                            "minutes" -> fields.minutes.trim().toUIntOrNull()?.let { "${fields.minutes}, ${Clock.length(it)}" } ?: fields.minutes
+                            else -> fields.text(field.key)
+                        }
+                        TextFieldButton(field.label, value, field.example) {
+                            if (field.key == "date") model.day = it else model.fields = model.fields.withText(field.key, if (field.key == "minutes") it.trim() else it)
+                        }
+                    }
+                    if (field.key == "repeat") model.help(field)?.let { item { Text(it) } }
+                }
             }
-        }
-        if (!model.oneDay) {
-            item { TextFieldButton("Repeats", fields.repeat, "every weekday") { model.fields = model.fields.copy(repeat = it) } }
-            item { Text(model.repeatsHelp) }
-        }
-        item { Heading("What it does") }
-        item { Flag("Takes tasks", fields.acceptsTasks) { model.fields = model.fields.copy(acceptsTasks = it) } }
-        item { Flag("Counts toward hours for work", fields.countsCapacity) { model.fields = model.fields.copy(countsCapacity = it) } }
-        item { Flag("Anchored, never moved when the day slips", fields.anchored) { model.fields = model.fields.copy(anchored = it) } }
-        item { Text(BlockFormModel.FLAGS_HELP) }
-        if (!model.oneDay) {
-            item { Heading("More") }
-            if (model.repeats) item { TextFieldButton("Until", fields.until, "31 January") { model.fields = model.fields.copy(until = it) } }
-            item { TextFieldButton("Shortest length, in minutes", fields.minMinutes, "30") { model.fields = model.fields.copy(minMinutes = it) } }
-            item { TextFieldButton("Tasks from", fields.taskFilter, "#Work") { model.fields = model.fields.copy(taskFilter = it) } }
-            item { TextFieldButton("Colour", fields.colour, "teal") { model.fields = model.fields.copy(colour = it) } }
-            item { TextFieldButton("Notes", fields.notes, "Anything else") { model.fields = model.fields.copy(notes = it) } }
         }
         item { Button(onClick = { if (model.save()) navigator.back() }, modifier = Modifier.fillMaxWidth(), label = { Text("Save") }) }
     }

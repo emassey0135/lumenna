@@ -12,7 +12,7 @@ import io.github.emassey0135.lumenna.core.Subject
 
 /**
  * The phone's way of asking an action's question: a dialog each, through a screen's [Prompter].
- * What is asked, and in what words, is the core's (`Action.question`); Cancel is first.
+ * What is asked, and in what words, is the core's (`Action.question`); Cancel is the app's.
  */
 class DialogAsker(private val core: Core, private val prompt: Prompter) : Asker {
     // Cancelling gives up the action: the list stops waiting for a change to put focus back.
@@ -22,7 +22,7 @@ class DialogAsker(private val core: Core, private val prompt: Prompter) : Asker 
     }
 
     override fun confirm(action: Action, question: Question.Confirm, yes: () -> Unit) = prompt.show {
-        Confirm(question.title, question.message, question.yes, cancel, destructive = action.destructive) {
+        Confirm(action.asks(question.title), question.message, button(question.yes), cancel, destructive = action.destructive) {
             prompt.close()
             yes()
         }
@@ -31,7 +31,7 @@ class DialogAsker(private val core: Core, private val prompt: Prompter) : Asker 
     // A refused answer stays in its dialog, with what was typed, and the core's reason is said.
     override fun text(action: Action, question: Question.Text, answered: (String) -> Boolean) = prompt.show {
         AskText(
-            question.title, question.label, "Done",
+            action.asks(question.title), question.label, question.yes,
             initial = question.initial,
             hint = question.hint.ifEmpty { null },
             dismiss = cancel,
@@ -39,7 +39,7 @@ class DialogAsker(private val core: Core, private val prompt: Prompter) : Asker 
     }
 
     override fun pick(action: Action, title: String, options: List<Option>, picked: (Option) -> Unit) = prompt.show {
-        Choose(title, options, cancel) { option ->
+        Choose(action.asks(title), options, cancel) { option ->
             prompt.close()
             picked(option)
         }
@@ -54,12 +54,13 @@ class DialogAsker(private val core: Core, private val prompt: Prompter) : Asker 
     override fun choose(action: Action, question: Question.Choose, picked: (Option) -> Unit) = prompt.show {
         AlertDialog(
             onDismissRequest = cancel,
-            title = { Text(question.title) },
+            title = { Text(action.asks(question.title)) },
             text = { Text(question.message) },
             confirmButton = {
-                Column {
-                    TextButton(modifier = Target, onClick = cancel) { Text("Cancel") }
-                    question.answers.map(::option).forEach { answer ->
+                // Stacked, as Material stacks buttons too long for a row: the answers, then
+                // Cancel at the foot, as the day's "which occurrences" question has it.
+                Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
+                    question.answers.map(::option).map { it.copy(title = button(it.title)) }.forEach { answer ->
                         TextButton(modifier = Target, onClick = {
                             prompt.close()
                             picked(answer)
@@ -67,6 +68,7 @@ class DialogAsker(private val core: Core, private val prompt: Prompter) : Asker 
                             Text(answer.title, color = if (action.destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
                         }
                     }
+                    TextButton(modifier = Target, onClick = cancel) { Text("Cancel") }
                 }
             },
         )
@@ -89,7 +91,7 @@ fun Core.offered(
 /** The app's own form for a new saved filter: its name, then its query. */
 fun addFilter(core: Core, prompt: Prompter) {
     prompt.show {
-        AskText("New Saved Filter", "Name", "Next", dismiss = { prompt.close(); core.cancelled() }) { name ->
+        AskText("New saved filter", "Name", "Next", dismiss = { prompt.close(); core.cancelled() }) { name ->
             prompt.show {
                 AskText("Query for $name", "Query", "Save", example = "#Work & overdue", dismiss = { prompt.close(); core.cancelled() }) { query ->
                     if (core.change { it.addFilter(name.trim(), query.trim()) } != null) prompt.close()

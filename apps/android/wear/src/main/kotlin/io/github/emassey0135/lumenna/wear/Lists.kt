@@ -35,6 +35,8 @@ import io.github.emassey0135.lumenna.core.placeQuery
 import io.github.emassey0135.lumenna.core.placeQuickAddPrefix
 import io.github.emassey0135.lumenna.core.placeTitle
 import io.github.emassey0135.lumenna.sentence
+import io.github.emassey0135.lumenna.name
+import io.github.emassey0135.lumenna.button
 
 /**
  * A screen's list: Wear's scaling list, which the rotary crown scrolls, with rows kept at
@@ -73,7 +75,7 @@ fun PlacesScreen(core: Core, navigator: Navigator, changes: Long) {
     val shown = folded(entries, { it.depth.toInt() }, { key(it.kind) }, collapsed)
     val entry = LocalTextEntry.current
     WearList {
-        item { Button(onClick = { navigator.open(Screen.AddTask("")) }, modifier = Modifier.fillMaxWidth(), label = { Text("New Task") }) }
+        item { Button(onClick = { navigator.open(Screen.AddTask("")) }, modifier = Modifier.fillMaxWidth(), label = { Text("New task") }) }
         shown.forEachIndexed { index, row ->
             item {
                 val place = row.item
@@ -98,7 +100,8 @@ fun PlacesScreen(core: Core, navigator: Navigator, changes: Long) {
                             heading()
                             if (state != null) stateDescription = state
                         },
-                        label = { Text(place.text) },
+                        // A heading's line is the core's in title case; Wear OS writes sentence case.
+                        label = { Text(button(place.text)) },
                     )
                 }
             }
@@ -149,10 +152,10 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place, changes: Long) {
         item { Heading(placeTitle(place)) }
         if (!trash) {
             item {
-                Button(onClick = { navigator.open(Screen.AddTask(placeQuickAddPrefix(place))) }, modifier = Modifier.fillMaxWidth(), label = { Text("New Task") })
+                Button(onClick = { navigator.open(Screen.AddTask(placeQuickAddPrefix(place))) }, modifier = Modifier.fillMaxWidth(), label = { Text("New task") })
             }
         }
-        if (listing != null && listing.rows.isEmpty()) item { Text(listing.announcement.replaceFirstChar { it.uppercase() }) }
+        if (listing != null && listing.rows.isEmpty()) item { Text(listing.empty.ifEmpty { listing.announcement.replaceFirstChar { it.uppercase() } }) }
         shown.forEachIndexed { index, row ->
             item {
                 val task = row.item
@@ -198,7 +201,7 @@ private fun ScalingLazyListScope.placeActions(core: Core, navigator: Navigator, 
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text(action.title) },
+                label = { Text(action.name) },
             )
         }
     }
@@ -212,14 +215,15 @@ fun BlocksScreen(core: Core, navigator: Navigator, changes: Long) {
     val listing = remember(changes) { core.attempt { core.lumenna.listBlocks() } }
     WearList {
         item { Heading("Blocks") }
-        if (listing != null && listing.rows.isEmpty()) item { Text("No blocks") }
+        if (listing != null && listing.rows.isEmpty()) item { Text(listing.empty) }
         listing?.rows.orEmpty().forEach { row ->
             item {
                 val entry = LocalTextEntry.current
                 val actions = core.offered(row.actions, navigator, entry, form = {
                     navigator.open(Screen.BlockForm(io.github.emassey0135.lumenna.BlockPurpose.Series(it.target)))
                 })
-                RowButton(row.title, detail = row.value, actions = actions, onLongClick = { navigator.actions(row.title, actions) }) {
+                // Said as a task row is: when, in this watch's clock, then how long.
+                RowButton(row.title, detail = RowSpeech.details(row), actions = actions, onLongClick = { navigator.actions(row.title, actions) }) {
                     navigator.open(Screen.BlockForm(io.github.emassey0135.lumenna.BlockPurpose.Series(row.id)))
                 }
             }

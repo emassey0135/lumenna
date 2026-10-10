@@ -28,6 +28,6 @@ class NewTaskTest {
         rule.waitUntil(5_000) {
             rule.onAllNodes(hasSetTextAction() and hasText("Task")).fetchSemanticsNodes().isNotEmpty()
         }
-        rule.onNode(hasText("New Task")).assertExists()
+        rule.onNode(hasText("New task")).assertExists()
     }
 }

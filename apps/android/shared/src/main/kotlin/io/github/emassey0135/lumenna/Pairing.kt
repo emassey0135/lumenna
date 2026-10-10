@@ -13,6 +13,8 @@ import androidx.compose.runtime.setValue
 import io.github.emassey0135.lumenna.core.LumennaException
 import io.github.emassey0135.lumenna.core.PairedWith
 import io.github.emassey0135.lumenna.core.PairingPrompt
+import io.github.emassey0135.lumenna.core.PairingWords
+import io.github.emassey0135.lumenna.core.pairingWords
 import io.github.emassey0135.lumenna.core.Reach
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
@@ -28,17 +30,19 @@ class PairingSession(
     context: Context,
     /** What this device runs, as other devices list it: `android`, or `wearos` for a watch. */
     private val platform: String = "android",
+    /** How the device calls itself where the other finds it by itself: "this phone". */
+    thisDevice: String = selfName(context),
     private val paired: () -> Unit,
 ) {
+    /** Every sentence and button of pairing, the core's, as every app says them. */
+    val words: PairingWords = pairingWords(thisDevice, true)
+
     private val context = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
     private val cancelled = AtomicBoolean(false)
 
     /** What is happening, as a polite live region says it. */
-    var status by mutableStateOf(
-        "On the same network, start pairing on both devices and they find each other. " +
-            "On different networks, one shows a code and the other enters it.",
-    )
+    var status by mutableStateOf(words.intro)
         private set
 
     /** The code this device shows while it waits. */
@@ -78,10 +82,10 @@ class PairingSession(
             if (given == code) given = ""
         }
         when {
-            given.isEmpty() -> say("Type or paste the code the other device shows.")
+            given.isEmpty() -> say(words.needCode)
             running -> {
                 nextCode = given
-                say("Stopping the wait, then connecting with this code.")
+                say(words.switching)
                 cancelled.set(true)
             }
             else -> start(given)
@@ -109,7 +113,7 @@ class PairingSession(
         running = true
         waiting = given == null
         cancelled.set(false)
-        say(if (given == null) "Opening a pairing session." else "Connecting to the other device.")
+        say(if (given == null) words.opening else words.connecting)
         // The pairing thread calls these and waits; the screen answers on the main thread.
         val prompt = object : PairingPrompt {
             override fun showCode(code: String) {
@@ -117,10 +121,7 @@ class PairingSession(
                     this@PairingSession.code = code
                     (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
                         .setPrimaryClip(ClipData.newPlainText("Pairing code", code))
-                    say(
-                        "Waiting for the other device. On this network it finds this one by itself. On another " +
-                            "network, enter this code there. Waiting up to ten minutes. The code is copied, so it can be pasted.",
-                    )
+                    say("${words.waiting} ${words.copied}")
                 }
             }
 
@@ -171,13 +172,19 @@ class PairingSession(
     }
 
     companion object {
+        /** How this device calls itself: "this computer" on a Googlebook, "this tablet", "this phone". */
+        fun selfName(context: Context): String = when {
+            context.packageManager.hasSystemFeature("android.hardware.type.pc") -> "this computer"
+            context.resources.configuration.smallestScreenWidthDp >= 600 -> "this tablet"
+            else -> "this phone"
+        }
+
         /** What the device is called, as its settings name it. */
         fun deviceName(context: Context): String =
             android.provider.Settings.Global.getString(context.contentResolver, android.provider.Settings.Global.DEVICE_NAME)
                 ?: Build.MODEL
-
-        /** What comparing the words asks. */
-        fun matchQuestion(words: List<String>) =
-            "${words.joinToString(", ")}. Say yes only if the other device shows the same three words."
     }
+
+    /** What comparing the words says beneath its question: the core's sentence, then the words. */
+    fun matchMessage(shown: List<String>) = "${words.matchMessage} ${shown.joinToString(", ")}."
 }
