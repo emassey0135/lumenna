@@ -1,6 +1,7 @@
 package io.github.emassey0135.lumenna
 
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -249,13 +250,34 @@ class LumennaTest {
         rule.waitForIdle()
         act("Home", "Weight")
         type("Weight", "1,5")
-        button("Set")
+        button("Done")
         shows("is not a weight")
         val home = { core.lumenna.listProjects().rows.first { it.title == "Home" }.value.orEmpty() }
         assertFalse("a typo is not taken as inherit", "weight" in home())
         replace("Weight", "1.5")
-        button("Set")
+        button("Done")
         rule.waitUntil(5_000) { "weight 1.5" in home() }
+    }
+
+    private fun actionsOf(title: String): List<String> =
+        row(title).fetchSemanticsNode().config.getOrNull(SemanticsActions.CustomActions).orEmpty().map { it.label }
+
+    @Test
+    fun aTaskRowOffersTheCoresActionsInTheCoresOrder() {
+        seed { it.addTask("write report") }
+        tab("Tasks")
+        val offered = core.lumenna.listTasks("").rows.single().actions.map { it.title }
+        assertEquals(offered, actionsOf("write report"))
+        assertEquals("Move to Trash", offered.last())
+    }
+
+    @Test
+    fun aPickWithNothingToOfferSaysWhyAndAsksNothing() {
+        seed { it.addTask("write report") }
+        tab("Tasks")
+        act("write report", "Put in a Block")
+        shows("There are no work blocks this week")
+        assertTrue("no chooser opened", rule.onAllNodes(hasText("Cancel")).fetchSemanticsNodes().isEmpty())
     }
 
     @Test
@@ -265,7 +287,7 @@ class LumennaTest {
             it.addTask("lose")
         }
         tab("Tasks")
-        act("lose", "Delete")
+        act("lose", "Move to Trash")
         gone("lose")
         row("keep").assertIsFocused()
     }
@@ -387,15 +409,15 @@ class LumennaTest {
             it.addBlock(NewBlock(title = "All day", at = "00:00", minutes = 1439u, date = "today", kind = "work", repeat = null))
         }
         tab("Today")
-        act("All day", "Assign Task", substring = true)
+        act("All day", "Assign a Task", substring = true)
         button("write the chapter")
-        type("Minutes", "45")
+        type("Planned length", "45")
         button("Done")
         says("write the chapter", "planned for 45 minutes")
         act("write the chapter", "Start Timer")
         says("write the chapter", "in progress")
         act("write the chapter", "Planned Length")
-        replace("Minutes", "")
+        replace("Planned length", "")
         button("Done")
         says("write the chapter", "in progress")
         assertEquals(null, core.lumenna.plan(null).blocks.single().assignments.single().plannedMins)
@@ -408,7 +430,7 @@ class LumennaTest {
             it.addBlock(NewBlock(title = "All day", at = "00:00", minutes = 1439u, date = "today", kind = "work", repeat = null))
         }
         tab("Today")
-        act("All day", "Assign Task", substring = true)
+        act("All day", "Assign a Task", substring = true)
         button("write the chapter")
         button("Done")
         for ((action, state) in listOf(
@@ -446,10 +468,10 @@ class LumennaTest {
         tab("Tasks")
         row("tidy the desk").performClick()
         rule.waitForIdle()
-        button("Put in a Block…")
+        button("Put in a Block")
         rule.onAllNodes(hasText("Lunch", substring = true)).fetchSemanticsNodes().let { assertTrue("a break takes no tasks", it.isEmpty()) }
         button("Tomorrow, ${Clock.time("10:00")}, Chores")
-        type("Minutes", "30")
+        type("Planned length", "30")
         button("Done")
         val sitting = core.lumenna.plan("tomorrow").blocks.first { it.title == "Chores" }.assignments.single()
         assertEquals("tidy the desk", sitting.title)
@@ -485,7 +507,7 @@ class LumennaTest {
         rule.waitForIdle()
         press("Add project")
         type("Name", "Work")
-        button("Add")
+        button("Done")
         row("Work").performClick()
         rule.waitForIdle()
         press("Add task")
@@ -502,7 +524,7 @@ class LumennaTest {
         rule.waitForIdle()
         press("Add label")
         type("Name", "calls")
-        button("Add")
+        button("Done")
         row("calls").assertExists()
         press("Back")
         row("Saved filters").performClick()
@@ -522,9 +544,9 @@ class LumennaTest {
         tab("Browse")
         row("Blocks").performClick()
         rule.waitForIdle()
-        act("Review", "Delete")
+        act("Review", "Delete Block")
         shows("Delete Review?")
-        button("Delete")
+        button("Delete Block")
         gone("Review")
         assertEquals(0u, core.lumenna.listBlocks().count)
     }
@@ -550,5 +572,8 @@ class LumennaTest {
         rule.waitForIdle()
         rule.onNodeWithText("Devices and Sync").assertExists()
         rule.onNodeWithContentDescription("Pair a device").assertExists()
+        // This device's own row cannot unpair it: the core says which row is this device's.
+        val own = core.lumenna.syncStatus().devices.firstOrNull { it.thisDevice }
+        if (own != null) assertEquals(listOf("Rename"), actionsOf(own.name))
     }
 }

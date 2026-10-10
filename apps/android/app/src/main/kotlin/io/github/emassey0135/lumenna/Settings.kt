@@ -44,6 +44,8 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import io.github.emassey0135.lumenna.core.ExportFormat
 import io.github.emassey0135.lumenna.core.Imported
+import io.github.emassey0135.lumenna.core.Setting
+import io.github.emassey0135.lumenna.core.SettingKind
 import io.github.emassey0135.lumenna.core.LumennaException
 import io.github.emassey0135.lumenna.core.PairedWith
 import io.github.emassey0135.lumenna.core.PairingPrompt
@@ -82,18 +84,9 @@ fun SettingsScreen(core: Core, navigator: Navigator, changes: Long) {
     )
 }
 
-/** Every setting, by key. */
-private fun settings(core: Core): Map<String, String> =
-    core.attempt { core.lumenna.settings(null).settings.associate { it.key to it.value } }.orEmpty()
-
-/** Changes a setting, saying what happened. */
-private fun set(core: Core, key: String, value: String) {
-    core.change { it.setSetting(key, value) }
-}
-
-/** A setting's name and its value, opening whatever changes it. */
+/** A setting's name and its value, opening whatever changes it; what it does beneath. */
 @Composable
-private fun SettingRow(name: String, value: String, change: () -> Unit) {
+private fun SettingRow(name: String, value: String, hint: String, change: () -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -103,6 +96,7 @@ private fun SettingRow(name: String, value: String, change: () -> Unit) {
     ) {
         Text(name, style = MaterialTheme.typography.bodyLarge)
         Text(value, style = MaterialTheme.typography.bodyMedium, color = quiet())
+        if (hint.isNotEmpty()) Text(hint, style = MaterialTheme.typography.bodySmall, color = quiet())
     }
 }
 
@@ -124,55 +118,60 @@ private fun ChooseOne(title: String, choices: List<Pair<String, String>>, dismis
     )
 }
 
-private val weekdays = listOf("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
-
-/** What syncs to every device: the day, the week, subtasks, how much is said. */
+/**
+ * One setting, by the control its kind asks for: a switch, a choice among its options, a time
+ * or a number typed. Its name, options and what it does are the core's.
+ */
 @Composable
-fun PlanningScreen(core: Core, navigator: Navigator, changes: Long) {
-    val values = remember(changes) { settings(core) }
-    val prompt = rememberPrompter()
-    fun time(key: String, name: String) {
-        prompt.show {
-            AskText(name, "Time", "Set", initial = values[key].orEmpty(), example = "9am", hint = "Such as 8am or 21:30.", dismiss = prompt::close) {
-                prompt.close()
-                set(core, key, it.trim())
-            }
-        }
-    }
-    ScreenFrame("Planning", core, navigator) {
-        Column(Modifier.verticalScroll(rememberScrollState())) {
-            val cascade = values["cascade-complete-subtasks"] == "true"
+private fun SettingControl(core: Core, prompt: Prompter, setting: Setting) {
+    when (setting.kind) {
+        SettingKind.TOGGLE -> Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .toggleable(cascade, role = Role.Switch) { set(core, "cascade-complete-subtasks", if (it) "true" else "false") }
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .toggleable(setting.on, role = Role.Switch) { core.set(setting, if (it) "true" else "false") },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Completing a task completes its subtasks", Modifier.weight(1f))
-                Switch(checked = cascade, onCheckedChange = null)
+                Text(setting.title, Modifier.weight(1f))
+                Switch(checked = setting.on, onCheckedChange = null)
             }
-            SettingRow("Day starts", values["day-start"].orEmpty().let(Clock::time)) { time("day-start", "Day starts") }
-            SettingRow("Day ends", values["day-end"].orEmpty().let(Clock::time)) { time("day-end", "Day ends") }
-            SettingRow("All-day reminders at", values["all-day-reminder-hour"].orEmpty().let(Clock::time)) {
-                time("all-day-reminder-hour", "All-day reminders at")
-            }
-            SettingRow("Announcements", if (values["verbosity"] == "terse") "Terse" else "Full sentences") {
-                prompt.show {
-                    ChooseOne("Announcements", listOf("Full sentences" to "full", "Terse" to "terse"), prompt::close) {
-                        prompt.close()
-                        set(core, "verbosity", it)
-                    }
+            if (setting.hint.isNotEmpty()) Text(setting.hint, style = MaterialTheme.typography.bodySmall, color = quiet())
+        }
+        SettingKind.CHOICE -> SettingRow(setting.title, setting.said, setting.hint) {
+            prompt.show {
+                ChooseOne(setting.title, setting.options.map { it.title to it.id }, prompt::close) {
+                    prompt.close()
+                    core.set(setting, it)
                 }
             }
-            SettingRow("Week starts on", values["week-start"].orEmpty().replaceFirstChar { it.uppercase() }) {
-                prompt.show {
-                    ChooseOne("Week starts on", weekdays.map { it.replaceFirstChar { c -> c.uppercase() } to it }, prompt::close) {
-                        prompt.close()
-                        set(core, "week-start", it)
-                    }
+        }
+        SettingKind.TIME, SettingKind.NUMBER, SettingKind.FOLDER -> SettingRow(setting.title, setting.said, setting.hint) {
+            val time = setting.kind == SettingKind.TIME
+            prompt.show {
+                AskText(
+                    setting.title, if (time) "Time" else setting.title, "Set",
+                    initial = setting.value,
+                    example = if (time) "9am" else "",
+                    hint = if (time) "Such as 8am or 21:30." else null,
+                    number = setting.kind == SettingKind.NUMBER,
+                    dismiss = prompt::close,
+                ) {
+                    // A refused value stays in its dialog, and the core says why.
+                    if (core.set(setting, it.trim()) != null) prompt.close()
                 }
             }
+        }
+    }
+}
+
+/** What syncs to every device: the core's settings that sync, in its order. */
+@Composable
+fun PlanningScreen(core: Core, navigator: Navigator, changes: Long) {
+    val shown = remember(changes) { settings(core).planning() }
+    val prompt = rememberPrompter()
+    ScreenFrame("Planning", core, navigator) {
+        Column(Modifier.verticalScroll(rememberScrollState())) {
+            shown.forEach { SettingControl(core, prompt, it) }
             Text(
                 "These sync to all your devices.",
                 style = MaterialTheme.typography.bodySmall,
@@ -187,34 +186,17 @@ fun PlanningScreen(core: Core, navigator: Navigator, changes: Long) {
 /** Backups, which are this device's alone. */
 @Composable
 fun BackupsScreen(core: Core, navigator: Navigator, changes: Long) {
-    val values = remember(changes) { settings(core) }
+    val shown = remember(changes) { settings(core).backups() }
     val prompt = rememberPrompter()
-    val every = mapOf("12h" to "Every 12 hours", "1d" to "Every day", "7d" to "Every week", "off" to "Off")
     ScreenFrame("Backups", core, navigator) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
-            SettingRow("Automatic backups", every[values["backup-every"]] ?: values["backup-every"].orEmpty()) {
-                prompt.show {
-                    ChooseOne("Automatic backups", every.map { (value, name) -> name to value }, prompt::close) {
-                        prompt.close()
-                        set(core, "backup-every", it)
-                    }
-                }
-            }
-            SettingRow("Backups kept", values["backup-keep"].orEmpty()) {
-                prompt.show {
-                    AskText("Backups kept", "How many", "Set", initial = values["backup-keep"].orEmpty(), number = true, hint = "The oldest beyond this are removed.", dismiss = prompt::close) {
-                        prompt.close()
-                        set(core, "backup-keep", it.trim())
-                    }
-                }
-            }
+            shown.forEach { SettingControl(core, prompt, it) }
             Button(
                 modifier = Target.padding(16.dp),
                 onClick = { core.attempt { core.lumenna.backup(null) }?.let { core.say(sentence(it.announcement, it.notices)) } },
             ) { Text("Back Up Now") }
             Text(
-                "A backup holds your whole history, including every task you deleted, so the store can be rebuilt " +
-                    "from it. It stays on this device, as these settings do. Restore one from Export and Import.",
+                "These settings are this device's own. Restore a backup from Export and Import.",
                 style = MaterialTheme.typography.bodySmall,
                 color = quiet(),
                 modifier = Modifier.padding(horizontal = 16.dp),

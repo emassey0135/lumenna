@@ -26,6 +26,7 @@ import io.github.emassey0135.lumenna.core.ActionKind
 import io.github.emassey0135.lumenna.core.Syntax
 import io.github.emassey0135.lumenna.core.TaskDetail
 import io.github.emassey0135.lumenna.core.TaskFields
+import io.github.emassey0135.lumenna.core.priorities
 import io.github.emassey0135.lumenna.core.taskEdit
 import io.github.emassey0135.lumenna.core.taskFields
 
@@ -122,7 +123,7 @@ fun TaskScreen(core: Core, navigator: Navigator, id: String, changes: Long) {
             item { TextFieldButton(field.title, field.get(form), field.example) { fields = field.set(form, it) } }
         }
         item { Heading("Priority") }
-        TaskField.priorities.forEach { (level, name) ->
+        priorities().map { it.id.toInt() to it.title }.forEach { (level, name) ->
             item {
                 RadioButton(
                     selected = form.priority.toInt() == level,

@@ -753,11 +753,15 @@ gives the toolchain. Three modules: `app` (the phone), `wear` (Wear OS) and `sha
 
 - **`shared` holds the core and what decides nothing about looks**: the core's build and
   bindings, `Core`, `Words` (clock, row speech, text offsets, completion), folding, the
-  day's rows, `Actions.kt` (which actions a day row, a project, label or filter, and a
-  device offer, and their questions), the task and block forms' fields and saving
+  day's rows, `Asking.kt` (running the core's actions through an `Asker`, the dialogs on
+  the phone and lists and the input screen on the watch), the settings as each page lists
+  them (`SettingRows.kt`), the task and block forms' fields and saving
   (`TaskField`, `BlockFormModel`), pairing (`PairingSession`) and `SyncWorker` (through
   `CoreHolder`, which each app's Application is). A screen in either app shows and runs
   these; neither decides them.
+  A shared file must not be named like one of the phone's in the same package: both
+  compile to one `…Kt` class, and the dex keeps only one (a shared `Settings.kt` hid the
+  phone's `SettingsScreen`).
 
 - **Gradle builds the core itself**: `buildCore<Variant>` runs `build-core.sh`. Only
   `liblumenna_ffi.so` is copied; `cargo ndk -o` would also copy Iroh's shared libraries,
@@ -785,15 +789,15 @@ gives the toolchain. Three modules: `app` (the phone), `wear` (Wear OS) and `sha
 - **Keyboard commands are the Windows and GTK apps' keys** (`Shortcuts.kt`), on Ctrl:
   TalkBack's are on Alt or Search. A screen offers a command while shown (`Offer`), the
   newest winning, and the system's shortcuts helper (Meta+/) lists what is offered now. A
-  row's own commands (Ctrl+K, Delete, Shift+F10) run its action of that name, so a key
-  never does what the row's action list does not. Compose's root takes the keys while
+  row's own commands (Ctrl+K, Delete, Shift+F10) run its action of that `ActionKind`
+  (`Command.rowAction`), so a key never does what the row's action list does not. Compose's root takes the keys while
   anything has focus; `MainActivity.dispatchKeyEvent` takes them when nothing does.
 - **Buttons take focus only out of touch mode**, which a key press leaves; the keyboard
   tests leave it first (`setInTouchMode(false)`), or no tab could be focused.
 - **A wide window has the desktop apps' sidebar** (`Sidebar.kt`, from `Lumenna.places`,
   plus Settings) from 840dp, with a stack of its own for the place chosen; headings and
-  project trees fold with Expand and Collapse actions, and a project's, label's or filter's
-  actions are Browse's (`PlaceActions.kt`, once for both). Between 600 and 840dp the tabs
+  project trees fold with Expand and Collapse actions, and a heading's or place's actions
+  are the core's, run as Browse runs them (`Asker.kt`). Between 600 and 840dp the tabs
   are a rail. `LumennaTest` and `NewTaskTest` show the app at a phone's width (`PhoneWidth`),
   so they run on the desktop-sized emulator too; `SidebarTest` and `KeyboardTest` are the
   wide window's.
