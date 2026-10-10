@@ -140,7 +140,7 @@ async fn answer(app: &App, from: &Asking, action: &Action, typed: Option<String>
         Question::Immediate => Some(Answer::Yes),
         Question::Form => None,
         Question::Confirm { title, message, yes } => {
-            prompts::confirm(window, title, message, yes).await.then_some(Answer::Yes)
+            prompts::confirm(window, title, message, yes, action.destructive).await.then_some(Answer::Yes)
         }
         Question::Text { .. } => Some(Answer::Text { text: ask_text(window, &action.question, typed.as_deref()).await? }),
         Question::Pick { title, length, yes } => {
@@ -158,7 +158,7 @@ async fn answer(app: &App, from: &Asking, action: &Action, typed: Option<String>
             }
             let options: Vec<(String, u32)> =
                 choices.choices.iter().map(|choice| (speech::choice(choice, &app.clock), choice.depth)).collect();
-            let index = prompts::pick(window, title, "C_hoices:", &options, yes).await?;
+            let index = prompts::pick(window, title, "C_hoices", &options, yes).await?;
             let id = choices.choices.get(index)?.id.clone();
             let length = match length {
                 Some(_) => Some(ask_text(window, &lumenna_surface::length_question(), None).await?),
@@ -168,7 +168,7 @@ async fn answer(app: &App, from: &Asking, action: &Action, typed: Option<String>
         }
         Question::Choose { title, message, answers } => {
             let titles: Vec<&str> = answers.iter().map(|choice| choice.title.as_str()).collect();
-            let index = prompts::choose(window, title, message, &titles).await?;
+            let index = prompts::choose(window, title, message, &titles, action.destructive).await?;
             Some(Answer::Picked { id: answers.get(index)?.id.clone(), length: None })
         }
     }
@@ -178,7 +178,7 @@ async fn answer(app: &App, from: &Asking, action: &Action, typed: Option<String>
 /// what was typed before, when the answer was refused.
 pub async fn ask_text(window: &gtk::Window, question: &Question, typed: Option<&str>) -> Option<String> {
     let Question::Text { title, label, initial, hint, yes, .. } = question else { return None };
-    prompts::ask(window, title, &format!("{label}:"), hint, typed.unwrap_or(initial), yes).await
+    prompts::ask(window, title, label, hint, typed.unwrap_or(initial), yes).await
 }
 
 // ---------------------------------------------------------------------------------------
@@ -227,7 +227,7 @@ async fn edit_day_block(app: &Rc<App>, id: &str) {
     }
     let on = format!("{} Only", app.clock.day(date));
     let heading = format!("Change {}", block.title);
-    match prompts::choose(&app.window, &heading, "Which occurrences?", &[&on, "Every Occurrence"]).await {
+    match prompts::choose(&app.window, &heading, "Which occurrences?", &[&on, "Every Occurrence"], false).await {
         Some(0) => {
             let window = app.window.clone().upcast::<gtk::Window>();
             let purpose = Purpose::Occurrence { series: series.to_owned(), date: date.to_owned() };

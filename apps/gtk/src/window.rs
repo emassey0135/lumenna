@@ -712,6 +712,18 @@ impl App {
                 }
             });
         };
+        // The selected row's details or form: a task's details, a block's form.
+        simple("open-selected", |app| {
+            let actions = match app.content() {
+                Some(Content::Tasks(list)) => list.selected().map(|row| row.actions).unwrap_or_default(),
+                Some(Content::Day(day)) => day.selected_actions(),
+                Some(Content::Blocks(blocks)) => blocks.selected_actions(),
+                None => Vec::new(),
+            };
+            if let Some(action) = crate::actions::find(&actions, &[ActionKind::Edit, ActionKind::EditTask]) {
+                crate::actions::run(app, action.clone(), None);
+            }
+        });
         task_command("mark-done", &[ActionKind::MarkDone, ActionKind::MarkNotDone]);
         task_command("put-in-block", &[ActionKind::PutInBlock]);
         task_command("move-to-project", &[ActionKind::MoveToProject]);
@@ -721,19 +733,20 @@ impl App {
         task_command("trash-task", &[ActionKind::Delete]);
         task_command("restore-task", &[ActionKind::Restore]);
         task_command("erase-task", &[ActionKind::DeleteForGood]);
+        simple("keyboard-help", crate::help::show);
         simple("about", |app| {
-            gtk::AboutDialog::builder()
-                .transient_for(&app.window)
-                .modal(true)
-                .program_name("Lumenna")
+            let about = adw::AboutDialog::builder()
+                .application_name("Lumenna")
                 .comments("Tasks, and the time blocks you work through them in.")
                 .version(env!("CARGO_PKG_VERSION"))
                 .license_type(gtk::License::Agpl30)
                 .website("https://github.com/emassey0135/lumenna")
-                .build()
-                .present();
-        });
-    }
+                .developer_name("Elijah Massey")
+                .build();
+            // Its own title is "About", so Orca never heard whose; focus starts on the version.
+            adw::prelude::AdwDialogExt::set_title(&about, "About Lumenna");
+            adw::prelude::AdwDialogExt::present(&about, Some(&app.window));
+        });    }
 }
 
 /// Adds a window action that runs `run` with the app.
@@ -772,6 +785,9 @@ const ACCELERATORS: &[(&str, &[&str])] = &[
     ("win.go-to-now", &["<Control>t"]),
     ("win.go-to-day", &["<Control>g"]),
     ("win.new-block", &["<Control><Shift>n"]),
+    // Properties, as Files has it: both keys.
+    ("win.open-selected", &["<Alt>Return", "<Control>i"]),
+    ("win.keyboard-help", &["F1", "<Control>question"]),
 ];
 
 /// The menu bar. Mnemonics are GTK's underscores.
@@ -814,9 +830,9 @@ fn menu_bar() -> gio::Menu {
                 item("_Devices and Pairing…", "win.devices"),
                 item("Back _Up Now", "win.back-up"),
                 item("_Restore from a Backup…", "win.restore-backup"),
-                item("_Export and Import…", "win.export-import"),
+                item("E_xport and Import…", "win.export-import"),
             ]),
-            section(vec![item("Se_ttings…", "win.settings")]),
+            section(vec![item("Pr_eferences…", "win.settings")]),
             section(vec![item("_Close Window", "win.close-window"), item("_Quit", "win.quit")]),
         ]),
     );
@@ -825,6 +841,9 @@ fn menu_bar() -> gio::Menu {
         &submenu(vec![
             section(vec![item("_Undo", "win.undo"), item("_Redo", "win.redo")]),
             section(vec![item("_Filter Tasks", "win.filter")]),
+            // GNOME's name for what is held about the selected thing: a task's details, a
+            // block's form.
+            section(vec![item("_Properties", "win.open-selected")]),
         ]),
     );
     bar.append_submenu(
@@ -873,6 +892,9 @@ fn menu_bar() -> gio::Menu {
             section(vec![item("_Add Block…", "win.new-block")]),
         ]),
     );
-    bar.append_submenu(Some("_Help"), &submenu(vec![section(vec![item("_About Lumenna", "win.about")])]));
+    bar.append_submenu(
+        Some("_Help"),
+        &submenu(vec![section(vec![item("_Keyboard Shortcuts", "win.keyboard-help"), item("_About Lumenna", "win.about")])]),
+    );
     bar
 }

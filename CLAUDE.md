@@ -730,7 +730,17 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 - **A dialog's buttons are GNOME's order**: Cancel first and the default, the answer last
   and a verb (`Question::Text.yes`, a pick's action title, a form's Save), never OK. A
   yes-or-no question puts the safe answer where Cancel would be (`prompts::yes_or_no`).
-  `GtkAlertDialog` cannot style a destructive button; that would take libadwaita.
+  Alerts are `AdwAlertDialog`, a destructive answer drawn as one. It lays its answers side by
+  side or stacked as they fit, and Tab follows the layout, so tests `tab_to` a button by name.
+  Its message is a nameless Tab stop ("scroll pane") that libadwaita makes focusable once
+  shown; making it unfocusable lost focus altogether, so it stays.
+- **libadwaita 1.5 is the floor** (Ubuntu 24.04; Debian 13 has 1.7), for `AdwAlertDialog` and
+  `AdwAboutDialog`. Tried and not adopted, by what Orca said: `AdwShortcutsDialog` (1.8) read
+  its items by title alone, never their keys, so the keyboard help (`help.rs`, from
+  `lumenna_desktop::keys`) is a tree of ours; `AdwPreferencesDialog` dropped each entry row's
+  hint, opened a page only on Space, and did not say which page opened; a toast is announced
+  as "A toast appeared: …" beside the status line. `AdwApplicationWindow` does not show a menu
+  bar, which is how commands are found here.
 - **Orca does not say a tree item's checked state**, so a done task says "completed" in its
   text.
 - **Focus into a row waits for the row's widget**, which does not exist until GTK lays the

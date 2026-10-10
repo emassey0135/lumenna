@@ -22,6 +22,7 @@ futures-channel = "0.3"
 futures-util = { version = "0.3", default-features = false }
 ashpd = { version = "0.13", default-features = false, features = ["async-io", "global_shortcuts", "gtk4"] }
 ksni = { version = "0.3", default-features = false, features = ["async-io"] }
+adw = { version = "0.9", package = "libadwaita", features = ["v1_5"] }
 
 [lints]
 workspace = true

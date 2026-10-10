@@ -73,6 +73,11 @@ impl BlockList {
         });
     }
 
+    /// What can be done to the selected row.
+    pub fn selected_actions(&self) -> Vec<lumenna_surface::Action> {
+        self.tree.selected().and_then(|index| self.row(index)).map(|row| row.actions).unwrap_or_default()
+    }
+
     fn row(&self, index: usize) -> Option<RowView> {
         self.rows.borrow().get(index).cloned()
     }

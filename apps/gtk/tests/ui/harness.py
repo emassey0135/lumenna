@@ -239,6 +239,27 @@ class Session:
             pump(0.1)
         raise AssertionError(f"{name!r} never came to the front; {self.active_window()!r} is")
 
+    def wait_for_alert(self, seconds=10):
+        """Waits for an alert to come to the front: a window named by its heading, which is
+        whatever the core said, so it is known by not being the main window."""
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            name = self.active_window()
+            if name is not None and not name.endswith("Lumenna") and self.focused() is not None:
+                pump(0.2)
+                return name
+            pump(0.1)
+        raise AssertionError(f"no alert came to the front; {self.active_window()!r} is")
+
+    def tab_to(self, name, most=8):
+        """Tabs until a button named `name` has focus. An alert lays its answers out side by
+        side or stacked, as they fit, and Tab follows the layout."""
+        for _ in range(most):
+            if self.focus() == f"[button] {name!r}":
+                return
+            self.press("Tab")
+        raise AssertionError(f"Tab never reached {name!r}; {self.focus()} has focus")
+
     def focus(self):
         """What has focus, described."""
         return describe(self.focused())

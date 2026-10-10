@@ -175,6 +175,11 @@ impl DayView {
         self.rows.borrow().get(index).cloned()
     }
 
+    /// What can be done to the selected row.
+    pub fn selected_actions(&self) -> Vec<Action> {
+        self.selected().map(|row| row.actions().to_vec()).unwrap_or_default()
+    }
+
     /// The task a selected sitting is for: what the Task menu acts on from the day.
     pub fn selected_task(&self) -> Option<String> {
         match self.selected()? {

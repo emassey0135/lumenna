@@ -19,6 +19,7 @@ mod completion;
 mod core;
 mod day;
 mod detail;
+mod help;
 mod pairing;
 mod prompts;
 mod quick_add;
@@ -61,6 +62,12 @@ fn main() -> glib::ExitCode {
         return glib::ExitCode::FAILURE;
     };
     let application = gtk::Application::builder().application_id(application_id(&directory)).build();
+    // libadwaita for its alert dialogs and the like, which need it set up once GTK is.
+    application.connect_startup(|_| {
+        if let Err(error) = adw::init() {
+            eprintln!("libadwaita did not start: {error}");
+        }
+    });
     let (background, shortcuts) = (arguments.background, !arguments.no_shortcuts);
     application.connect_activate(move |application| window::activate(application, &directory, background, shortcuts));
     // GTK is given no arguments: they were ours, and were read above.

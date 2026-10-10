@@ -34,6 +34,8 @@ pub struct Detail {
     estimate: gtk::Entry,
     project: gtk::DropDown,
     projects: gtk::StringList,
+    /// How deep each of `projects` sits, for indenting it in the open list.
+    depths: Rc<RefCell<Vec<(String, u32)>>>,
     labels: gtk::Entry,
     notes: gtk::TextView,
     waits: Rc<Tree>,
@@ -43,6 +45,32 @@ pub struct Detail {
     /// Each button and the kinds of action it runs.
     buttons: Vec<(gtk::Button, &'static [ActionKind])>,
     shown: RefCell<Option<TaskDetail>>,
+}
+
+/// The open project list's rows: each name, indented as deep as it sits in the tree. Indent
+/// alone: the names are unique, and a row's name is what is read.
+fn project_rows(depths: &Rc<RefCell<Vec<(String, u32)>>>) -> gtk::SignalListItemFactory {
+    let factory = gtk::SignalListItemFactory::new();
+    factory.connect_setup(|_, item| {
+        if let Some(item) = item.downcast_ref::<gtk::ListItem>() {
+            item.set_child(Some(&gtk::Label::builder().xalign(0.0).build()));
+        }
+    });
+    let depths = Rc::clone(depths);
+    factory.connect_bind(move |_, item| {
+        let Some(item) = item.downcast_ref::<gtk::ListItem>() else { return };
+        let (Some(label), Some(text)) =
+            (item.child().and_downcast::<gtk::Label>(), item.item().and_downcast::<gtk::StringObject>())
+        else {
+            return;
+        };
+        let name = text.string();
+        // Found by name: a search filters the list, so positions no longer match.
+        let depth = depths.borrow().iter().find(|(n, _)| *n == name).map_or(0, |(_, d)| *d);
+        label.set_label(&name);
+        label.set_margin_start(i32::try_from(depth * 16).unwrap_or(0));
+    });
+    factory
 }
 
 /// A label for `field`, whose mnemonic names it and reaches it.
@@ -77,7 +105,15 @@ impl Detail {
         let priority = gtk::DropDown::from_strings(&titles.iter().map(String::as_str).collect::<Vec<_>>());
         let estimate = gtk::Entry::new();
         let projects = gtk::StringList::new(&[]);
-        let project = gtk::DropDown::builder().model(&projects).build();
+        // Chosen from the projects there are, so a typo cannot make one; typing finds one.
+        let project = gtk::DropDown::builder()
+            .model(&projects)
+            .enable_search(true)
+            .search_match_mode(gtk::StringFilterMatchMode::Substring)
+            .expression(gtk::PropertyExpression::new(gtk::StringObject::static_type(), None::<gtk::Expression>, "string"))
+            .build();
+        let depths = Rc::new(RefCell::new(Vec::new()));
+        project.set_list_factory(Some(&project_rows(&depths)));
         let labels = gtk::Entry::new();
         // Tab leaves the notes rather than being typed into them, or a keyboard user could
         // not get out.
@@ -181,6 +217,7 @@ impl Detail {
             estimate,
             project,
             projects,
+            depths,
             labels,
             notes,
             waits,
@@ -275,10 +312,10 @@ impl Detail {
 
     /// Reads the task again, and refills the fields with it.
     fn load(&self, app: &App, id: &str) {
-        let projects: Vec<String> =
-            app.core.lumenna.list_projects().map(|r| r.rows.into_iter().map(|p| p.title).collect()).unwrap_or_default();
-        let names: Vec<&str> = projects.iter().map(String::as_str).collect();
+        let options = app.core.lumenna.project_options().unwrap_or_default();
+        let names: Vec<&str> = options.iter().map(|o| o.id.as_str()).collect();
         self.projects.splice(0, self.projects.n_items(), &names);
+        *self.depths.borrow_mut() = options.iter().map(|o| (o.id.clone(), o.depth)).collect();
         match app.core.lumenna.show_task(id) {
             Ok(shown) => self.fill(Some(shown.task)),
             Err(_) => self.fill(None),

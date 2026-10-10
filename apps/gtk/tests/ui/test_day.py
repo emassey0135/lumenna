@@ -93,10 +93,9 @@ class DayTest(unittest.TestCase):
         self.session.lum("block", "edit", self.block, "--repeat", "every day")
         self.session.press("Shift", wait=1.5)
         self.session.press("Return")
-        self.session.wait_for_window("")
-        # Cancel is the default; "Today Only" is two before it.
-        self.session.press("Shift+Tab", "Shift+Tab")
-        self.assertEqual(self.session.focus(), "[button] 'Today Only'")
+        self.session.wait_for_alert()
+        self.assertEqual(self.session.focus(), "[button] 'Cancel'", "Cancel is the default")
+        self.session.tab_to("Today Only")
         self.session.press("Return")
         self.session.wait_for_window("Change All day, This Day Only")
         self.session.press(*["Tab"] * 6)
