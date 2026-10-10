@@ -95,7 +95,7 @@
                  (lambda (content &rest keys) (push (cons content keys) submitted)))
                 ((symbol-function 'emacspeak-auditory-icon)
                  (lambda (icon) (push icon icons))))
-        (lumenna-task-toggle-done))
+        (lumenna-act-done))
       (should (= (length submitted) 1))
       (pcase-let ((`(,content . ,keys) (car submitted)))
         (should (string-match-p "buy milk" content))

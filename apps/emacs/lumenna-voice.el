@@ -35,18 +35,20 @@
   (voice-setup-add-map lumenna-voice-map))
 
 (defconst lumenna-voice-sounds
-  '(("task.done" . task-done)
-    ("task.rm" . delete-object)
-    ("task.erase" . delete-object)
-    ("block.rm" . delete-object)
-    ("unassign" . delete-object)
-    ("start" . open-object)
-    ("stop" . close-object))
-  "The sound each kind of change plays, by its RPC method.")
+  '(("task/mark_done" . task-done)
+    ("task/delete" . delete-object)
+    ("task/delete_for_good" . delete-object)
+    ("block/delete" . delete-object)
+    ("series/delete" . delete-object)
+    ("sitting/unassign" . delete-object)
+    ("sitting/start_timer" . open-object)
+    ("sitting/resume_timer" . open-object)
+    ("sitting/stop_timer" . close-object))
+  "The sound each kind of change plays, by the action that made it: SUBJECT/KIND.")
 
-(defun lumenna-voice--sound (method _result)
-  "Play METHOD's sound in Emacspeak, if there is one and Emacsvox is not doing it."
-  (when-let* ((icon (cdr (assoc method lumenna-voice-sounds))))
+(defun lumenna-voice--sound (event _result)
+  "Play EVENT's sound in Emacspeak, if there is one and Emacsvox is not doing it."
+  (when-let* ((icon (cdr (assoc event lumenna-voice-sounds))))
     (when (and (fboundp 'emacspeak-auditory-icon) (not (featurep 'lumenna-emacsvox)))
       (funcall 'emacspeak-auditory-icon icon))))
 

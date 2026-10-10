@@ -13,7 +13,6 @@
 
 (require 'lumenna)
 
-(declare-function lumenna-assign-task "lumenna-day")
 
 ;;;; Lists
 
@@ -25,7 +24,7 @@
 RET shows a task; ? shows every command.
 
 \\{lumenna-tasks-mode-map}"
-  (setq-local lumenna--activate #'lumenna-task-show))
+  (setq-local lumenna--activate (lambda (row) (lumenna-task-show (plist-get row :id)))))
 
 (defun lumenna--task-listing (query title)
   "The heading and rows for QUERY, said back as it was understood.
@@ -61,139 +60,83 @@ PREFIX starts a task added here."
   (interactive)
   (lumenna-add lumenna--prefix))
 
-(defun lumenna--task-id ()
-  "The task at point: in a list, or the one a detail or day buffer is about."
-  (or (and (derived-mode-p 'lumenna-task-mode) lumenna--task)
-      (let ((row (lumenna-row)))
-        (or (plist-get row :task) (plist-get row :id)))))
+;; A task's actions are the row's own (`lumenna-act-kind'); these are the keys.
+(lumenna-define-action lumenna-act-put-in-block ("put_in_block")
+  "Put the task at point in a work block, for a sitting.")
+(lumenna-define-action lumenna-act-move-to-project ("move_to_project")
+  "Move the task at point to another project; its subtasks follow.")
+(lumenna-define-action lumenna-act-make-subtask ("make_subtask_of")
+  "Put the task at point under another.")
+(lumenna-define-action lumenna-act-wait-for ("wait_for")
+  "Say the task at point cannot start until another is done.")
+(lumenna-define-action lumenna-act-stop-waiting ("stop_waiting")
+  "Stop the task at point waiting for one it waits for.")
 
 (defun lumenna--task (&optional id)
-  "Everything about task ID, or the one at point."
-  (lumenna-call "task.show" :id (or id (lumenna--task-id))))
-
-(defun lumenna-task-toggle-done ()
-  "Complete the task at point, or mark a finished one not done."
-  (interactive)
-  (let* ((task (lumenna--task))
-         (done (member "completed" (append (plist-get task :state) nil))))
-    (lumenna-write (if done "task.undone" "task.done") :id (plist-get task :id))))
-
-(defun lumenna-task-delete ()
-  "Move the task at point to the trash; Lumenna's trash keeps it to restore."
-  (interactive)
-  (lumenna-write "task.rm" :id (lumenna--task-id))
-  (when (derived-mode-p 'lumenna-task-mode) (quit-window)))
-
-(defun lumenna--choose-task (prompt &optional excluding)
-  "An open task chosen by title with completion, asking PROMPT.
-Tasks whose ids are in EXCLUDING are not offered."
-  (let* ((rows (seq-remove (lambda (row) (member (plist-get row :id) excluding))
-                           (append (plist-get (lumenna-call "task.list") :rows) nil)))
-         (choices (mapcar (lambda (row) (cons (lumenna-describe row) (plist-get row :id))) rows)))
-    (unless choices (user-error "There are no other open tasks"))
-    (cdr (assoc (completing-read prompt choices nil t) choices))))
-
-(defun lumenna-task-make-subtask ()
-  "Put the task at point under another, joining that one's project."
-  (interactive)
-  (let* ((id (lumenna--task-id))
-         (parent (lumenna--choose-task "Make it a subtask of: " (list id))))
-    (lumenna-write "task.move" :id id :parent parent)))
-
-(defun lumenna-task-move-to-top ()
-  "Take the task at point out from under its parent."
-  (interactive)
-  (lumenna-write "task.move" :id (lumenna--task-id) :top t))
-
-(defun lumenna--project-names ()
-  "Every project's name."
-  (mapcar (lambda (row) (plist-get row :title)) (append (plist-get (lumenna-call "project.list") :rows) nil)))
-
-(defun lumenna-task-move-to-project ()
-  "Put the task at point in another project; its subtasks follow."
-  (interactive)
-  (let ((id (lumenna--task-id)))
-    (lumenna-write "task.move" :id id
-                   :project (completing-read "Move to project: " (lumenna--project-names) nil t))))
-
-(defun lumenna-task-wait-for ()
-  "Say the task at point cannot start until another is done."
-  (interactive)
-  (let* ((task (lumenna--task))
-         (waiting (cons (plist-get task :id)
-                        (mapcar (lambda (d) (plist-get d :id)) (append (plist-get task :depends) nil)))))
-    (lumenna-write "task.depend.add" :id (plist-get task :id)
-                   :on (lumenna--choose-task "Wait for: " waiting))))
-
-(defun lumenna-task-stop-waiting ()
-  "Stop the task at point waiting for one of the tasks it waits for."
-  (interactive)
-  (let* ((task (lumenna--task))
-         (depends (mapcar (lambda (d) (cons (plist-get d :title) (plist-get d :id)))
-                          (append (plist-get task :depends) nil))))
-    (unless depends (user-error "It waits for nothing"))
-    (lumenna-write "task.depend.rm" :id (plist-get task :id)
-                   :on (cdr (assoc (completing-read "Stop waiting for: " depends nil t) depends)))))
-
-(defun lumenna-task-assign ()
-  "Put the task at point in a block, for a sitting."
-  (interactive)
-  (lumenna-assign-task (lumenna--task-id)))
+  "Everything about task ID, or the one this detail buffer shows."
+  (lumenna-call "task.show" :id (or id lumenna--task)))
 
 ;;;; Changing one field
 
 (defconst lumenna--fields
   '(("Title" . title) ("Due" . due) ("Repeats" . repeat) ("Priority" . priority)
     ("Estimate" . estimate) ("Project" . project) ("Labels" . labels) ("Notes" . notes))
-  "The fields of a task that can be changed, as they are named.")
+  "The task form's fields, as they are named.")
+
+(defun lumenna--task-form (task)
+  "TASK's fields as the core says a form starts from them (`form.task_fields')."
+  (plist-get (lumenna-call "form.task_fields" :task task) :value))
+
+(defun lumenna--save-task (task fields)
+  "Save FIELDS over TASK, sending only what changed.
+What changed is the core's to say (`form.task_edit')."
+  (let ((edit (plist-get (lumenna-call "form.task_edit" :task task :fields fields) :value)))
+    (if edit
+        (apply #'lumenna-write "task.edit" :id (plist-get task :id) edit)
+      (message "Nothing changed"))))
 
 (defun lumenna-task-edit (&optional field)
-  "Change one FIELD of the task at point, asked for if not given."
+  "Change one FIELD of this task, asked for if not given."
   (interactive)
   (let* ((task (lumenna--task))
          (field (or field
-                    (and (derived-mode-p 'lumenna-task-mode)
-                         (get-text-property (line-beginning-position) 'lumenna-field))
-                    (cdr (assoc (completing-read "Change: " lumenna--fields nil t) lumenna--fields)))))
+                    (get-text-property (line-beginning-position) 'lumenna-field)
+                    (cdr (assoc (completing-read "Change: " lumenna--fields nil t) lumenna--fields))))
+         (fields (lumenna--task-form task)))
     (if (eq field 'notes)
-        (lumenna--edit-notes task)
-      (let ((value (lumenna--read-field field task)))
-        (lumenna-write "task.edit" :id (plist-get task :id) (intern (format ":%s" field)) value)))))
+        (lumenna--edit-notes task fields)
+      (let ((key (intern (format ":%s" field))))
+        (lumenna--save-task task (plist-put (copy-sequence fields) key
+                                            (lumenna--read-field field (plist-get fields key))))))))
 
-(defun lumenna--due-text (task)
-  "TASK's due date as a phrase the core reads back: `2026-10-09 14:00'."
-  (string-join (delq nil (list (plist-get task :due) (plist-get task :due_time))) " "))
-
-(defun lumenna--read-field (field task)
-  "Read a new value for FIELD of TASK, the way that field is best typed.
+(defun lumenna--read-field (field now)
+  "Read a new value for FIELD, which is NOW, as the task form holds it.
 Dates and repetitions are phrases read by the core, as quick add reads them;
 empty clears a field."
   (pcase field
-    ('title (let ((title (read-string "Title: " (plist-get task :title))))
-              (if (string-blank-p title) (user-error "A task needs a title") title)))
-    ('due (let ((due (read-string "Due, such as tomorrow or next friday, empty for none: "
-                                  (lumenna--due-text task))))
-            (if (string-blank-p due) "none" due)))
-    ('repeat (let ((repeat (read-string "Repeats, such as every monday, empty for none: "
-                                        (or (plist-get task :repetition) ""))))
-               (if (string-blank-p repeat) "none" repeat)))
-    ('priority (let ((choices '(("1, highest" . 1) ("2" . 2) ("3" . 3) ("4, none" . 4))))
-                 (cdr (assoc (completing-read "Priority: " choices nil t nil nil
-                                              (car (rassoc (plist-get task :priority) choices)))
+    ('title (read-string "Title: " now))
+    ('due (read-string "Due, such as tomorrow or next friday, empty for none: " now))
+    ('repeat (read-string "Repeats, such as every monday, empty for none: " now))
+    ('priority (let ((choices (mapcar (lambda (c) (cons (plist-get c :title) (string-to-number (plist-get c :id))))
+                                      (append (lumenna--value "form.priorities") nil))))
+                 (cdr (assoc (completing-read "Priority: " choices nil t nil nil (car (rassoc now choices)))
                              choices))))
-    ('estimate (let ((estimate (read-string "Estimate, such as 45m or 1h30m, empty for none: "
-                                            (if-let* ((minutes (plist-get task :estimate_mins)))
-                                                (format "%sm" minutes) ""))))
-                 (if (string-blank-p estimate) "none" estimate)))
-    ('project (completing-read "Project: " (lumenna--project-names) nil t nil nil (plist-get task :project)))
-    ('labels (vconcat
+    ('estimate (read-string "Estimate, such as 45m or 1h30m, empty for none: " now))
+    ('project (completing-read "Project: " (lumenna--project-names) nil t nil nil now))
+    ('labels (string-join
               (completing-read-multiple
                "Labels, separated by commas; a new name becomes a label: "
                (mapcar (lambda (row) (plist-get row :title))
                        (append (plist-get (lumenna-call "label.list") :rows) nil))
-               nil nil (string-join (append (plist-get task :labels) nil) ","))))))
+               nil nil now)
+              ", "))))
 
-(defvar-local lumenna--notes-task nil "The task whose notes this buffer edits.")
+(defun lumenna--project-names ()
+  "Every project's name."
+  (mapcar (lambda (row) (plist-get row :title)) (append (plist-get (lumenna-call "project.list") :rows) nil)))
+
+(defvar-local lumenna--notes-task nil "The task whose notes this buffer edits, as shown.")
+(defvar-local lumenna--notes-fields nil "The task's form fields, as they were when editing began.")
 
 (defvar-keymap lumenna-notes-mode-map
   :doc "Keys while editing a task's notes."
@@ -205,8 +148,9 @@ empty clears a field."
 \\<lumenna-notes-mode-map>\\[lumenna-notes-save] saves them; \\[lumenna-notes-cancel] leaves them as they were."
   :lighter " Notes")
 
-(defun lumenna--edit-notes (task)
-  "Edit TASK's notes in a buffer of their own, as a commit message is edited."
+(defun lumenna--edit-notes (task fields)
+  "Edit TASK's notes, from its form FIELDS, in a buffer of their own.
+As a commit message is edited."
   (let ((buffer (get-buffer-create (format "*Lumenna notes: %s*" (plist-get task :title)))))
     (pop-to-buffer buffer)
     (erase-buffer)
@@ -214,15 +158,17 @@ empty clears a field."
     (goto-char (point-min))
     (text-mode)
     (lumenna-notes-mode 1)
-    (setq lumenna--notes-task (plist-get task :id))
+    (setq lumenna--notes-task task lumenna--notes-fields fields)
     (message "Notes for %s.  C-c C-c saves, C-c C-k cancels" (plist-get task :title))))
 
 (defun lumenna-notes-save ()
   "Save these notes to their task."
   (interactive)
-  (let ((id lumenna--notes-task) (notes (buffer-substring-no-properties (point-min) (point-max))))
+  (let ((task lumenna--notes-task)
+        (fields (plist-put (copy-sequence lumenna--notes-fields) :notes
+                           (buffer-substring-no-properties (point-min) (point-max)))))
     (quit-window t)
-    (lumenna-write "task.edit" :id id :notes notes)))
+    (lumenna--save-task task fields)))
 
 (defun lumenna-notes-cancel ()
   "Leave the notes as they were."
@@ -235,10 +181,12 @@ empty clears a field."
 (defvar-local lumenna--task nil "The task this detail buffer shows.")
 
 (define-derived-mode lumenna-task-mode lumenna-list-mode "Lumenna Task"
-  "One task, a field per line.  RET or e on a field changes it.
+  "One task, a field per line: its form.  RET or e on a field changes it.
+The other keys are the task's own actions, wherever point is.
 
 \\{lumenna-task-mode-map}"
   (setq-local lumenna--describe #'lumenna--describe-field)
+  (setq-local lumenna--actions-function (lambda () (plist-get (lumenna--task) :actions)))
   (setq-local lumenna--activate (lambda (row) (lumenna-task-edit (plist-get row :field)))))
 
 (defun lumenna--describe-field (row)
@@ -246,37 +194,52 @@ empty clears a field."
   (format "%s: %s" (plist-get row :title) (plist-get row :value)))
 
 (defun lumenna--task-fields (task)
-  "TASK's details as rows, one field each: what can be changed, then what is known."
-  (let* ((repeats (or (plist-get task :repetition)
-                      (and (plist-get task :recurrence) (format "by the rule %s" (plist-get task :recurrence)))))
+  "TASK's details as rows, one field each: its form, then what is known."
+  (let* ((form (lumenna--task-form task))
+         (shown (lambda (key) (let ((value (plist-get form key)))
+                                (if (string-empty-p value) "none" value))))
          (fields
-          `(("Title" title ,(plist-get task :title))
-            ("Due" due ,(let ((due (lumenna--due-text task))) (if (string-empty-p due) "none" due)))
-            ("Repeats" repeat ,(or repeats "no"))
-            ("Priority" priority ,(format "%s" (plist-get task :priority)))
-            ("Estimate" estimate ,(if-let* ((m (plist-get task :estimate_mins))) (format "%s minutes" m) "none"))
-            ("Project" project ,(or (plist-get task :project) "none"))
-            ("Labels" labels ,(let ((labels (append (plist-get task :labels) nil)))
-                                (if labels (string-join labels ", ") "none")))
+          `(("Title" title ,(plist-get form :title))
+            ("Due" due ,(funcall shown :due))
+            ;; A rule the words cannot say leaves the field empty; say the rule.
+            ("Repeats" repeat ,(cond ((not (string-empty-p (plist-get form :repeat))) (plist-get form :repeat))
+                                     ((plist-get task :recurrence) (format "by the rule %s" (plist-get task :recurrence)))
+                                     (t "no")))
+            ("Priority" priority ,(let ((id (format "%s" (plist-get form :priority))))
+                                    (or (seq-some (lambda (c) (and (equal (plist-get c :id) id) (plist-get c :title)))
+                                                  (lumenna--value "form.priorities"))
+                                        id)))
+            ("Estimate" estimate ,(funcall shown :estimate))
+            ("Project" project ,(funcall shown :project))
+            ("Labels" labels ,(funcall shown :labels))
             ("Waits for" nil ,(let ((d (append (plist-get task :depends) nil)))
                                 (if d (string-join (mapcar (lambda (x) (plist-get x :title)) d) ", ") "nothing")))
             ("State" nil ,(string-join (append (plist-get task :state) nil) ", "))
-            ("Notes" notes ,(let ((notes (plist-get task :notes)))
-                              (if (string-empty-p notes) "none" notes))))))
+            ("Notes" notes ,(funcall shown :notes)))))
     (mapcar (lambda (field)
               (list :key (car field) :title (car field) :field (nth 1 field) :value (nth 2 field)))
             fields)))
 
-(defun lumenna-task-show (row)
-  "Show the task in ROW, a field per line."
-  (let ((id (or (plist-get row :task) (plist-get row :id))))
-    (lumenna--show-list
-     (format "*Lumenna task: %s*" (plist-get (lumenna--task id) :title))
-     #'lumenna-task-mode
-     (lambda ()
-       (let ((task (lumenna--task id)))
-         (cons (format "Task: %s" (plist-get task :title)) (lumenna--task-fields task))))
-     'lumenna--task id)))
+(defun lumenna-task-show (id)
+  "Show task ID, a field per line."
+  (lumenna--show-list
+   (format "*Lumenna task: %s*" (plist-get (lumenna--task id) :title))
+   #'lumenna-task-mode
+   (lambda ()
+     (let ((task (lumenna--task id)))
+       (cons (format "Task: %s" (plist-get task :title)) (lumenna--task-fields task))))
+   'lumenna--task id))
+
+;; The task form, wherever an action asks for it: a task's Edit Details, a
+;; sitting's Edit Task Details.
+(lumenna-define-form "task" "edit" (lambda (action _row) (lumenna-task-show (plist-get action :target))))
+(lumenna-define-form "task" "edit_task" (lambda (action _row) (lumenna-task-show (plist-get action :target))))
+
+;; A task moved to the trash from its own buffer leaves it.
+(add-hook 'lumenna-changed-functions
+          (lambda (event _result)
+            (when (and (equal event "task/delete") (derived-mode-p 'lumenna-task-mode))
+              (quit-window))))
 
 ;; Field rows carry the field as a text property too, so e finds it.
 (add-hook 'lumenna-row-inserted-functions
@@ -287,10 +250,11 @@ empty clears a field."
 ;;;; The trash
 
 (define-derived-mode lumenna-trash-mode lumenna-list-mode "Lumenna Trash"
-  "Deleted tasks.  RET or r restores one; d deletes it from the trash, asking first.
+  "Deleted tasks.
+RET or r restores one; d deletes it from the trash, asking first.
 
 \\{lumenna-trash-mode-map}"
-  (setq-local lumenna--activate (lambda (row) (lumenna-write "task.restore" :id (plist-get row :id)))))
+  (setq-local lumenna--activate (lambda (_row) (lumenna-act-restore))))
 
 ;;;###autoload
 (defun lumenna-trash ()
@@ -299,52 +263,37 @@ empty clears a field."
   (lumenna--show-list "*Lumenna: Trash*" #'lumenna-trash-mode
                       (lambda () (lumenna--task-listing "deleted" "Trash"))))
 
-(defun lumenna-trash-restore ()
-  "Take the task at point out of the trash."
-  (interactive)
-  (lumenna-write "task.restore" :id (plist-get (lumenna-row) :id)))
-
-(defun lumenna-trash-erase ()
-  "Delete the task at point from the trash, asking first.
-Undo can bring it back, and it stays in the history every device keeps
-and in backups."
-  (interactive)
-  (let ((row (lumenna-row)))
-    (when (yes-or-no-p (format "Undo can bring it back.  It also stays in the history every device keeps, and in backups.  Delete %s from the trash? "
-                               (plist-get row :title)))
-      (lumenna-write "task.erase" :id (plist-get row :id) :confirm t))))
-
 ;;;; Menus
 
 (lumenna-define-keys lumenna-tasks-mode
   ("The task at point"
    ("RET" "Details" lumenna-activate)
-   ("c" "Complete, or mark not done" lumenna-task-toggle-done)
-   ("e" "Change a field" lumenna-task-edit)
-   ("b" "Put it in a block" lumenna-task-assign)
-   ("m" "Move to a project" lumenna-task-move-to-project)
-   ("s" "Make it a subtask of another" lumenna-task-make-subtask)
-   ("t" "Move it to the top level" lumenna-task-move-to-top)
-   ("w" "Wait for another task" lumenna-task-wait-for)
-   ("W" "Stop waiting for another" lumenna-task-stop-waiting)
-   ("d" "Delete, to the trash" lumenna-task-delete)))
+   ("c" "Mark Done, or Mark Not Done" lumenna-act-done)
+   ("e" "Edit Details" lumenna-act-edit)
+   ("b" "Put in a Block" lumenna-act-put-in-block)
+   ("m" "Move to Project" lumenna-act-move-to-project)
+   ("s" "Make Subtask Of" lumenna-act-make-subtask)
+   ("t" "Move to Top Level" lumenna-act-move-to-top)
+   ("w" "Wait For" lumenna-act-wait-for)
+   ("W" "Stop Waiting" lumenna-act-stop-waiting)
+   ("d" "Move to Trash" lumenna-act-delete)))
 
 (lumenna-define-keys lumenna-task-mode
   ("This task"
    ("e" "Change the field at point, or choose one" lumenna-task-edit)
-   ("c" "Complete, or mark not done" lumenna-task-toggle-done)
-   ("b" "Put it in a block" lumenna-task-assign)
-   ("m" "Move to a project" lumenna-task-move-to-project)
-   ("s" "Make it a subtask of another" lumenna-task-make-subtask)
-   ("t" "Move it to the top level" lumenna-task-move-to-top)
-   ("w" "Wait for another task" lumenna-task-wait-for)
-   ("W" "Stop waiting for another" lumenna-task-stop-waiting)
-   ("d" "Delete, to the trash" lumenna-task-delete)))
+   ("c" "Mark Done, or Mark Not Done" lumenna-act-done)
+   ("b" "Put in a Block" lumenna-act-put-in-block)
+   ("m" "Move to Project" lumenna-act-move-to-project)
+   ("s" "Make Subtask Of" lumenna-act-make-subtask)
+   ("t" "Move to Top Level" lumenna-act-move-to-top)
+   ("w" "Wait For" lumenna-act-wait-for)
+   ("W" "Stop Waiting" lumenna-act-stop-waiting)
+   ("d" "Move to Trash" lumenna-act-delete)))
 
 (lumenna-define-keys lumenna-trash-mode
   ("The task at point"
-   ("r" "Restore" lumenna-trash-restore)
-   ("d" "Delete from trash" lumenna-trash-erase)))
+   ("r" "Restore" lumenna-act-restore)
+   ("d" "Delete from Trash" lumenna-act-delete)))
 
 (provide 'lumenna-tasks)
 

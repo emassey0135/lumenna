@@ -63,7 +63,8 @@ is nil."
 `lumenna-emacsvox' uses this to attach semantic facts to the line.")
 
 (defvar lumenna-changed-functions nil
-  "Called with the RPC METHOD and its RESULT after a change succeeds.
+  "Called with the EVENT and its RESULT after a change succeeds.
+EVENT is the RPC method, or for an action SUBJECT/KIND, as \"task/mark_done\".
 `lumenna-voice' and `lumenna-emacsvox' use this for sounds.")
 
 ;;;; Faces
@@ -185,11 +186,19 @@ A refusal is a `user-error' carrying the core's own sentence."
 (defun lumenna-write (method &rest params)
   "Call METHOD with PARAMS, which changes the store; redraw, and say it.
 Returns the result."
-  (let ((result (apply #'lumenna-call method params)))
-    (lumenna-refresh-all)
-    (run-hook-with-args 'lumenna-changed-functions method result)
-    (lumenna-say result)
-    result))
+  (lumenna--wrote method (apply #'lumenna-call method params)))
+
+(defun lumenna--wrote (event result)
+  "Redraw after a change, run the change hooks with EVENT, and say RESULT.
+EVENT is the RPC method, or for an action `SUBJECT/KIND'.  Returns RESULT."
+  (lumenna-refresh-all)
+  (run-hook-with-args 'lumenna-changed-functions event result)
+  (lumenna-say result)
+  result)
+
+(defun lumenna--value (method &rest params)
+  "The value the form function METHOD computes from PARAMS."
+  (plist-get (apply #'lumenna-call method params) :value))
 
 (defun lumenna-say (result)
   "Say RESULT's announcement and notices."
@@ -350,6 +359,178 @@ If it is gone, point stays on the line that took its place."
   (interactive)
   (lumenna-write "redo"))
 
+;;;; Actions: what can be done to a row, as the core offers it
+
+;; Which actions a row has, what each is called and what it asks are the
+;; core's: every listed record carries its `:actions'.  This asks each
+;; question in the minibuffer and hands the answer back through `act'.  A key
+;; runs "the action of this kind on the row at point", so it does nothing the
+;; row does not offer, and `.' offers them all by name.
+
+(defvar-local lumenna--actions-function nil
+  "A function of no arguments giving the actions here, or nil for the row's own.
+One task's buffer offers the task's, whatever field point is on.")
+
+(defvar lumenna--forms nil
+  "How each form the core leaves to a client opens.
+An alist from (SUBJECT . KIND), as an action names them, to a function of
+the action and the row it came from.")
+
+(defun lumenna-define-form (subject kind function)
+  "Open FUNCTION's form for an action of SUBJECT and KIND that asks for one.
+FUNCTION is called with the action and the row it was offered on."
+  (setf (alist-get (cons subject kind) lumenna--forms nil nil #'equal) function))
+
+(defun lumenna-actions ()
+  "The actions offered on what point is on, in the core's order."
+  (append (if lumenna--actions-function
+              (funcall lumenna--actions-function)
+            (plist-get (lumenna-row) :actions))
+          nil))
+
+(defun lumenna--row-here ()
+  "The row on this line, or nil."
+  (get-text-property (line-beginning-position) 'lumenna-row))
+
+(defun lumenna--spoken-day (iso)
+  "ISO as a person says it: `Sunday 4 October 2026'."
+  (let ((time (encode-time (append '(0 0 12) (reverse (mapcar #'string-to-number (split-string iso "-")))))))
+    (format-time-string "%A %-d %B %Y" time)))
+
+(defun lumenna--unique (lines)
+  "LINES, an alist keyed by text, with each repeated key told apart by a number."
+  (let ((seen (make-hash-table :test #'equal)))
+    (mapcar (lambda (line)
+              (let ((count (puthash (car line) (1+ (gethash (car line) seen 0)) seen)))
+                (if (= count 1) line (cons (format "%s (%d)" (car line) count) (cdr line)))))
+            lines)))
+
+(defun lumenna--choice-line (choice)
+  "CHOICE as a line to choose by.
+A block's day and times, else its title and detail."
+  (if-let* ((date (plist-get choice :date)))
+      (format "%s, %s to %s, %s" (lumenna--spoken-day date)
+              (lumenna-time (plist-get choice :start)) (lumenna-time (plist-get choice :end))
+              (plist-get choice :title))
+    (string-join (delq nil (list (plist-get choice :title) (plist-get choice :detail))) ", ")))
+
+(defun lumenna--prompt (&rest parts)
+  "PARTS that are not empty, as one minibuffer prompt."
+  (concat (string-join (seq-remove (lambda (p) (or (null p) (string-empty-p p))) parts) ". ") ": "))
+
+(defun lumenna--ask-text (action question)
+  "Read the line ACTION's text QUESTION asks for; sent as typed, even empty."
+  (let ((prompt (lumenna--prompt (plist-get question :title) (plist-get question :hint)
+                                 (plist-get question :label)))
+        (initial (plist-get question :initial)))
+    (if (equal (plist-get action :kind) "change_query")
+        (lumenna-read-line prompt "filter" initial 'lumenna-filter-history)
+      (read-string prompt initial))))
+
+(defun lumenna--ask-pick (action question)
+  "Pick one of what the core offers for ACTION, asking QUESTION; nil if nothing is.
+When nothing is offered, the core's sentence says why."
+  (let* ((offered (lumenna-call "choices" :action action))
+         (choices (append (plist-get offered :choices) nil)))
+    (if (null choices)
+        (progn (lumenna-say offered) nil)
+      (let* ((lines (lumenna--unique (mapcar (lambda (c) (cons (lumenna--choice-line c) c)) choices)))
+             (picked (cdr (assoc (completing-read (lumenna--prompt (plist-get question :title)) lines nil t)
+                                 lines)))
+             (length (when-let* ((asked (plist-get question :length)))
+                       (read-string (concat asked " ")))))
+        (list :answer "picked" :id (plist-get picked :id) :length length)))))
+
+(defun lumenna--ask-choose (question)
+  "One of QUESTION's answers, by its title."
+  (let* ((answers (mapcar (lambda (a) (cons (plist-get a :title) (plist-get a :id)))
+                          (append (plist-get question :answers) nil)))
+         (title (completing-read (lumenna--prompt (plist-get question :title) (plist-get question :message))
+                                 answers nil t)))
+    (list :answer "picked" :id (cdr (assoc title answers)))))
+
+(defun lumenna-act (action &optional row)
+  "Ask ACTION's question, then do it; ROW is the row it was offered on.
+A form is this client's own and opens instead.  Returns the change, or nil
+when nothing was sent."
+  (let* ((question (plist-get action :question))
+         (answer
+          (pcase (plist-get question :ask)
+            ("immediate" (list :answer "yes"))
+            ("form"
+             (let ((open (alist-get (cons (plist-get action :subject) (plist-get action :kind))
+                                    lumenna--forms nil nil #'equal)))
+               (unless open (user-error "%s has no form in this client yet" (plist-get action :title)))
+               (funcall open action row)
+               nil))
+            ("confirm"
+             (if (yes-or-no-p (format "%s %s " (plist-get question :title) (plist-get question :message)))
+                 (list :answer "yes")
+               (message "Nothing done")
+               nil))
+            ("text" (list :answer "text" :text (lumenna--ask-text action question)))
+            ("pick" (lumenna--ask-pick action question))
+            ("choose" (lumenna--ask-choose question))
+            (other (user-error "This client cannot ask a question of kind %s; update it" other)))))
+    (when answer
+      (lumenna--wrote (format "%s/%s" (plist-get action :subject) (plist-get action :kind))
+                      (lumenna-call "act" :action action :answer answer)))))
+
+(defun lumenna--titles (actions)
+  "ACTIONS' titles, as one phrase."
+  (string-join (mapcar (lambda (a) (plist-get a :title)) actions) ", "))
+
+(defun lumenna--choose-action (prompt actions)
+  "One of ACTIONS, chosen by its title, asking PROMPT."
+  (let ((titles (mapcar (lambda (a) (cons (plist-get a :title) a)) actions)))
+    (cdr (assoc (completing-read prompt titles nil t) titles))))
+
+(defun lumenna-act-kind (kinds)
+  "Do the action of one of KINDS that point's row offers.
+Where it offers several (one Stop Waiting per task waited for), choose one."
+  (let* ((actions (lumenna-actions))
+         (row (lumenna--row-here))
+         (matching (seq-filter (lambda (a) (member (plist-get a :kind) kinds)) actions)))
+    (cond ((null matching)
+           (user-error (if actions (format "Not offered here; this offers %s" (lumenna--titles actions))
+                         "Nothing to do here")))
+          ((null (cdr matching)) (lumenna-act (car matching) row))
+          (t (lumenna-act (lumenna--choose-action "Which? " matching) row)))))
+
+(defun lumenna-act-at-point ()
+  "Choose one of the actions offered on this line, by name, and do it."
+  (interactive)
+  (let ((actions (lumenna-actions)))
+    (unless actions (user-error "Nothing to do here"))
+    (lumenna-act (lumenna--choose-action "Do: " actions) (lumenna--row-here))))
+
+(defmacro lumenna-define-action (name kinds doc)
+  "Define NAME, a command doing the row's action of one of KINDS.
+DOC is its documentation."
+  (declare (indent 2) (doc-string 3))
+  `(defun ,name ()
+     ,doc
+     (interactive)
+     (lumenna-act-kind ',kinds)))
+
+(lumenna-define-action lumenna-act-done ("mark_done" "mark_not_done")
+  "Mark the task at point done, or not done if it is.")
+(lumenna-define-action lumenna-act-edit ("edit" "edit_task")
+  "Open the form of what is at point: a task's details, a block's fields.")
+(lumenna-define-action lumenna-act-delete ("delete" "delete_for_good" "unassign" "unpair")
+  "Delete what is at point, as it offers.
+To the trash, from the trash, out of a block, or a device unpaired.")
+(lumenna-define-action lumenna-act-restore ("restore" "restore_day")
+  "Bring back what is at point: a task from the trash, a day of a block.")
+(lumenna-define-action lumenna-act-rename ("rename")
+  "Rename what is at point.")
+(lumenna-define-action lumenna-act-move-up ("move_up")
+  "Move what is at point one place up among its siblings.")
+(lumenna-define-action lumenna-act-move-down ("move_down")
+  "Move what is at point one place down among its siblings.")
+(lumenna-define-action lumenna-act-move-to-top ("move_to_top_level")
+  "Take what is at point out from under its parent.")
+
 (defun lumenna--outline-level ()
   "The outline level of the line at point: the item's depth, below the heading."
   (or (get-text-property (line-beginning-position) 'lumenna-level) 1))
@@ -442,6 +623,7 @@ Subtasks sit under their task as an outline, so TAB folds them.
    ("n" "Next line" next-line)
    ("p" "Previous line" previous-line)
    ("RET" "Do the main thing for this line" lumenna-activate)
+   ("." "This line's actions, by name" lumenna-act-at-point)
    ("TAB" "Fold or unfold what sits under this line" lumenna-toggle)
    ("g" "Read the list again" lumenna-refresh)
    ("u" "Undo" lumenna-undo)
@@ -586,28 +768,72 @@ the line, as a project's list does with its own name."
 
 ;;;; The places, and the menu of everything
 
-(defconst lumenna--places
-  '(("Today" . lumenna-today) ("Tasks" . lumenna-tasks) ("Projects" . lumenna-projects)
-    ("Labels" . lumenna-labels) ("Saved filters" . lumenna-filters) ("Blocks" . lumenna-blocks)
-    ("Trash" . lumenna-trash) ("Settings" . lumenna-settings))
-  "Lumenna's places, as the main buffer lists them.")
-
 (define-derived-mode lumenna-home-mode lumenna-list-mode "Lumenna"
-  "Lumenna's places: RET opens one.
+  "Lumenna's places, as every app's sidebar has them: RET opens one.
+Under each heading are its projects, labels or saved filters, each with
+its own actions; a heading's adds another.
 
-\\{lumenna-home-mode-map}")
+\\{lumenna-home-mode-map}"
+  (setq-local lumenna--activate #'lumenna--open-place))
+
+(declare-function lumenna-tasks "lumenna-tasks" (&optional query title prefix))
+(declare-function lumenna-open-project "lumenna-organise" (name))
+(declare-function lumenna-open-label "lumenna-organise" (name))
+
+(defconst lumenna--place-commands
+  '(("Today" . lumenna-today) ("Tasks" . lumenna-tasks) ("Blocks" . lumenna-blocks)
+    ("Trash" . lumenna-trash) ("Settings" . lumenna-settings))
+  "The command opening each of the core's places by name.
+And Settings, which is this client's.")
+
+(defun lumenna--place-rows ()
+  "The core's places (`places'), then Settings, as rows."
+  (let ((places (lumenna-call "places")))
+    (cons "Lumenna"
+          (append
+           (mapcar (lambda (entry)
+                     (list :key (format "%S" (plist-get entry :kind)) :title (plist-get entry :text)
+                           :depth (plist-get entry :depth) :place (plist-get entry :kind)
+                           :actions (plist-get entry :actions)
+                           :role (if (plist-get (plist-get entry :kind) :Group) "heading" "place")
+                           :state (and (lumenna--true (plist-get entry :archived)) ["archived"])))
+                   (append (plist-get places :entries) nil))
+           (list (list :key "Settings" :title "Settings" :place '(:Place "Settings")))))))
+
+(defun lumenna--open-place (row)
+  "Open the place ROW names; on a heading, fold what is under it."
+  (let* ((kind (plist-get row :place))
+         (place (plist-get kind :Place)))
+    (cond ((plist-get kind :Group) (lumenna-toggle))
+          ((stringp place)
+           (call-interactively (or (cdr (assoc place lumenna--place-commands))
+                                   (user-error "This client cannot open %s yet" place))))
+          ((plist-get place :Project) (lumenna-open-project (plist-get place :Project)))
+          ((plist-get place :Label) (lumenna-open-label (plist-get place :Label)))
+          ((plist-get place :Filter)
+           (let ((filter (plist-get place :Filter)))
+             (lumenna-tasks (plist-get filter :query) (plist-get filter :name)))))))
+
+(defun lumenna-heading-action (group)
+  "The action the places' GROUP heading offers: \"Projects\", \"Labels\", \"Filters\"."
+  (let ((entry (seq-find (lambda (e) (equal (plist-get (plist-get e :kind) :Group) group))
+                         (append (plist-get (lumenna-call "places") :entries) nil))))
+    (or (car (append (plist-get entry :actions) nil))
+        (user-error "Nothing adds one here"))))
 
 ;;;###autoload
 (defun lumenna ()
   "Open Lumenna: its places, one per line.  RET opens one; ? shows every command."
   (interactive)
-  (lumenna--show-list
-   "*Lumenna*" #'lumenna-home-mode
-   (lambda ()
-     (cons "Lumenna"
-           (mapcar (lambda (place) (list :key (car place) :title (car place) :command (cdr place)))
-                   lumenna--places)))
-   'lumenna--activate (lambda (row) (call-interactively (plist-get row :command)))))
+  (lumenna--show-list "*Lumenna*" #'lumenna-home-mode #'lumenna--place-rows))
+
+(lumenna-define-keys lumenna-home-mode
+  ("The place at point"
+   ("RET" "Open it, or fold a heading" lumenna-activate)
+   ("r" "Rename" lumenna-act-rename)
+   ("M-p" "Move Up" lumenna-act-move-up)
+   ("M-n" "Move Down" lumenna-act-move-down)
+   ("d" "Delete" lumenna-act-delete)))
 
 ;;;; Keys, listed
 

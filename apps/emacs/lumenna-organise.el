@@ -30,6 +30,29 @@ Quoted when it has a space in it."
     (cons (format "%s, %s" noun (plist-get listing :announcement))
           (append (plist-get listing :rows) nil))))
 
+;; Every action on a project, label or saved filter is the row's own; these
+;; are the keys for them.  Adding one is its heading's action in `places'.
+(lumenna-define-action lumenna-act-new-inside ("new_inside")
+  "Add a project inside the one at point.")
+(lumenna-define-action lumenna-act-move-under ("move_under")
+  "Move the project at point under another.")
+(lumenna-define-action lumenna-act-weight ("weight")
+  "Set how much the project at point matters now.
+Not a second priority: priority is how much one task matters; weight is how
+much a whole area does.")
+(lumenna-define-action lumenna-act-archive ("archive" "unarchive")
+  "Archive the project at point, or unarchive an archived one.")
+(lumenna-define-action lumenna-act-merge ("merge_into")
+  "Fold the label at point into another, for a near-duplicate a typo made.")
+(lumenna-define-action lumenna-act-colour ("colour")
+  "Give the label at point a colour, or none.  The name always shows too.")
+(lumenna-define-action lumenna-act-change-query ("change_query")
+  "Change the query of the saved filter at point.")
+
+(defun lumenna--add-from-heading (group)
+  "Do what the places' GROUP heading offers: add a project, label or filter."
+  (lumenna-act (lumenna-heading-action group)))
+
 ;;;; Projects
 
 (define-derived-mode lumenna-projects-mode lumenna-list-mode "Lumenna Projects"
@@ -37,9 +60,11 @@ Quoted when it has a space in it."
 RET shows a project's tasks.
 
 \\{lumenna-projects-mode-map}"
-  (setq-local lumenna--activate
-              (lambda (row) (let ((name (plist-get row :title)))
-                              (lumenna-tasks (lumenna--sigil ?# name) name (concat (lumenna--sigil ?# name) " "))))))
+  (setq-local lumenna--activate (lambda (row) (lumenna-open-project (plist-get row :title)))))
+
+(defun lumenna-open-project (name)
+  "Show the tasks of project NAME; a task added there starts in it."
+  (lumenna-tasks (lumenna--sigil ?# name) name (concat (lumenna--sigil ?# name) " ")))
 
 ;;;###autoload
 (defun lumenna-projects ()
@@ -48,80 +73,15 @@ RET shows a project's tasks.
   (lumenna--show-list "*Lumenna: Projects*" #'lumenna-projects-mode
                       (lambda () (lumenna--listing "project.list" "Projects"))))
 
-(defun lumenna-project-add (name &optional parent)
-  "Add a project called NAME, inside PARENT if given."
-  (interactive (list (read-string "New project: ")))
-  (when (string-blank-p name) (user-error "A project needs a name"))
-  (lumenna-write "project.add" :name name :parent parent))
-
-(defun lumenna-project-add-inside ()
-  "Add a project inside the one at point."
+(defun lumenna-project-add ()
+  "Add a project, as the Projects heading offers."
   (interactive)
-  (let ((parent (lumenna--name)))
-    (lumenna-project-add (read-string (format "New project in %s: " parent)) parent)))
+  (lumenna--add-from-heading "Projects"))
 
 (defun lumenna-project-add-task ()
   "Add a task to the project at point."
   (interactive)
   (lumenna-add (concat (lumenna--sigil ?# (lumenna--name)) " ")))
-
-(defun lumenna-project-rename ()
-  "Rename the project at point."
-  (interactive)
-  (let ((name (lumenna--name)))
-    (lumenna-write "project.rename" :name name :to (read-string (format "Rename %s to: " name) name))))
-
-(defun lumenna-project-move ()
-  "Move the project at point under another, or to the top level."
-  (interactive)
-  (let* ((name (lumenna--name))
-         (others (remove name (mapcar (lambda (row) (plist-get row :title))
-                                      (append (plist-get (lumenna-call "project.list") :rows) nil))))
-         (choice (completing-read (format "Move %s under: " name) (cons "The top level" others) nil t)))
-    (lumenna-write "project.move" :name name :parent (unless (equal choice "The top level") choice))))
-
-(defun lumenna-project-up ()
-  "Move the project at point one place up among its siblings."
-  (interactive)
-  (lumenna-write "project.order" :name (lumenna--name) :direction "up"))
-
-(defun lumenna-project-down ()
-  "Move the project at point one place down among its siblings."
-  (interactive)
-  (lumenna-write "project.order" :name (lumenna--name) :direction "down"))
-
-(defun lumenna-project-weigh ()
-  "Set how much the project at point matters now, roughly 0.5 to 2, or inherit.
-Not a second priority: priority is how much one task matters; weight is how
-much a whole area does."
-  (interactive)
-  (let* ((name (lumenna--name))
-         (text (string-trim (read-string (format "Weight of %s, or inherit: " name) "1.0"))))
-    (lumenna-write "project.weight" :name name :value (lumenna--weight text))))
-
-(defun lumenna--weight (text)
-  "TEXT as the core reads a weight: a number above zero, or \"inherit\".
-Anything else is refused rather than read as far as it goes, since
-`string-to-number' takes \"1,5\" for 1."
-  (cond ((string-equal-ignore-case text "inherit") "inherit")
-        ((and (string-match-p
-               "\\`\\(?:[0-9]+\\.?[0-9]*\\|\\.[0-9]+\\)\\(?:[eE][-+]?[0-9]+\\)?\\'" text)
-              (> (string-to-number text) 0))
-         (string-to-number text))
-        (t (user-error "'%s' is not a weight; use a number above zero, such as 1.5, or inherit" text))))
-
-(defun lumenna-project-archive ()
-  "Archive the project at point, or unarchive an archived one."
-  (interactive)
-  (lumenna-write "project.archive" :name (lumenna--name)))
-
-(defun lumenna-project-delete ()
-  "Delete the project at point, asking where its tasks go."
-  (interactive)
-  (let* ((name (lumenna--name))
-         (choice (completing-read (format "Delete %s, and its tasks go: " name)
-                                  '("To the trash with it" "To the Inbox") nil t)))
-    (lumenna-write "project.rm" :name name :keep_tasks (equal choice "To the Inbox"))))
 
 ;;;; Labels
 
@@ -129,9 +89,11 @@ Anything else is refused rather than read as far as it goes, since
   "Labels, each with how many open tasks wear it.  RET shows those tasks.
 
 \\{lumenna-labels-mode-map}"
-  (setq-local lumenna--activate
-              (lambda (row) (let ((name (plist-get row :title)))
-                              (lumenna-tasks (lumenna--sigil ?@ name) name (concat (lumenna--sigil ?@ name) " "))))))
+  (setq-local lumenna--activate (lambda (row) (lumenna-open-label (plist-get row :title)))))
+
+(defun lumenna-open-label (name)
+  "Show the tasks wearing label NAME; a task added there wears it."
+  (lumenna-tasks (lumenna--sigil ?@ name) name (concat (lumenna--sigil ?@ name) " ")))
 
 ;;;###autoload
 (defun lumenna-labels ()
@@ -140,54 +102,15 @@ Anything else is refused rather than read as far as it goes, since
   (lumenna--show-list "*Lumenna: Labels*" #'lumenna-labels-mode
                       (lambda () (lumenna--listing "label.list" "Labels"))))
 
-(defun lumenna-label-add (name)
-  "Add a label called NAME."
-  (interactive (list (read-string "New label: ")))
-  (when (string-blank-p name) (user-error "A label needs a name"))
-  (lumenna-write "label.add" :name (string-remove-prefix "@" name)))
+(defun lumenna-label-add ()
+  "Add a label, as the Labels heading offers."
+  (interactive)
+  (lumenna--add-from-heading "Labels"))
 
 (defun lumenna-label-add-task ()
   "Add a task wearing the label at point."
   (interactive)
   (lumenna-add (concat (lumenna--sigil ?@ (lumenna--name)) " ")))
-
-(defun lumenna-label-rename ()
-  "Rename the label at point; every task wearing it follows."
-  (interactive)
-  (let ((name (lumenna--name)))
-    (lumenna-write "label.rename" :name name :to (read-string (format "Rename %s to: " name) name))))
-
-(defun lumenna-label-merge ()
-  "Fold the label at point into another, for a near-duplicate a typo made."
-  (interactive)
-  (let* ((name (lumenna--name))
-         (others (remove name (mapcar (lambda (row) (plist-get row :title))
-                                      (append (plist-get (lumenna-call "label.list") :rows) nil)))))
-    (lumenna-write "label.merge" :from name :into (completing-read (format "Merge %s into: " name) others nil t))))
-
-(defun lumenna-label-colour ()
-  "Give the label at point a colour, or none.  The name always shows too."
-  (interactive)
-  (let ((name (lumenna--name)))
-    (lumenna-write "label.colour" :name name
-                   :colour (read-string (format "Colour for %s, such as teal, or none: " name)))))
-
-(defun lumenna-label-up ()
-  "Move the label at point one place up."
-  (interactive)
-  (lumenna-write "label.order" :name (lumenna--name) :direction "up"))
-
-(defun lumenna-label-down ()
-  "Move the label at point one place down."
-  (interactive)
-  (lumenna-write "label.order" :name (lumenna--name) :direction "down"))
-
-(defun lumenna-label-delete ()
-  "Delete the label at point, asking first.  Tasks wearing it stay."
-  (interactive)
-  (let ((name (lumenna--name)))
-    (when (yes-or-no-p (format "Tasks wearing %s stay, and stop showing it.  Delete the label? " name))
-      (lumenna-write "label.rm" :name name))))
 
 ;;;; Saved filters
 
@@ -208,81 +131,61 @@ A filter is kept as typed, so \"today\" means today whenever it is opened.
                           (cons (format "Saved filters, %s" (plist-get listing :announcement))
                                 (mapcar (lambda (saved)
                                           (list :key (plist-get saved :name) :title (plist-get saved :name)
-                                                :value (plist-get saved :query) :query (plist-get saved :query)))
+                                                :value (plist-get saved :query) :query (plist-get saved :query)
+                                                :actions (plist-get saved :actions)))
                                         (append (plist-get listing :filters) nil)))))))
 
 (defun lumenna-filter-add ()
-  "Save a filter under a name."
+  "Save a filter under a name, as the Saved Filters heading offers."
   (interactive)
+  (lumenna--add-from-heading "Filters"))
+
+(defun lumenna--new-filter-form (&rest _)
+  "The new saved filter's form: its name, then its query, which TAB completes."
   (let ((name (read-string "Name for the filter: ")))
-    (when (string-blank-p name) (user-error "A filter needs a name"))
     (lumenna-write "filter.add" :name name
                    :query (lumenna-read-line (format "Query for %s: " name) "filter" nil 'lumenna-filter-history))))
 
-(defun lumenna-filter-rename ()
-  "Rename the filter at point."
-  (interactive)
-  (let ((name (lumenna--name)))
-    (lumenna-write "filter.edit" :name name :rename (read-string (format "Rename %s to: " name) name))))
-
-(defun lumenna-filter-requery ()
-  "Change the query of the filter at point."
-  (interactive)
-  (let ((row (lumenna-row)))
-    (lumenna-write "filter.edit" :name (plist-get row :title)
-                   :query (lumenna-read-line "Query: " "filter" (plist-get row :query) 'lumenna-filter-history))))
-
-(defun lumenna-filter-up ()
-  "Move the filter at point one place up."
-  (interactive)
-  (lumenna-write "filter.order" :name (lumenna--name) :direction "up"))
-
-(defun lumenna-filter-down ()
-  "Move the filter at point one place down."
-  (interactive)
-  (lumenna-write "filter.order" :name (lumenna--name) :direction "down"))
-
-(defun lumenna-filter-delete ()
-  "Delete the filter at point, asking first.  The tasks it shows are not touched."
-  (interactive)
-  (let ((name (lumenna--name)))
-    (when (yes-or-no-p (format "The tasks %s shows are not touched.  Delete the filter? " name))
-      (lumenna-write "filter.rm" :name name))))
+(lumenna-define-form "filter" "new" #'lumenna--new-filter-form)
 
 ;;;; Menus
 
 (lumenna-define-keys lumenna-projects-mode
   ("The project at point"
    ("RET" "Show its tasks" lumenna-activate)
+   ("a" "New Project" lumenna-project-add)
    ("t" "Add a task to it" lumenna-project-add-task)
-   ("N" "Add a project inside it" lumenna-project-add-inside)
-   ("r" "Rename" lumenna-project-rename)
-   ("m" "Move it under another" lumenna-project-move)
-   ("M-p" "Move up" lumenna-project-up)
-   ("M-n" "Move down" lumenna-project-down)
-   ("w" "Weight" lumenna-project-weigh)
-   ("A" "Archive or unarchive" lumenna-project-archive)
-   ("d" "Delete" lumenna-project-delete)))
+   ("N" "New Project Inside" lumenna-act-new-inside)
+   ("r" "Rename" lumenna-act-rename)
+   ("m" "Move Under" lumenna-act-move-under)
+   ("T" "Move to Top Level" lumenna-act-move-to-top)
+   ("M-p" "Move Up" lumenna-act-move-up)
+   ("M-n" "Move Down" lumenna-act-move-down)
+   ("w" "Weight" lumenna-act-weight)
+   ("A" "Archive or Unarchive" lumenna-act-archive)
+   ("d" "Delete" lumenna-act-delete)))
 
 (lumenna-define-keys lumenna-labels-mode
   ("The label at point"
    ("RET" "Show the tasks wearing it" lumenna-activate)
+   ("a" "New Label" lumenna-label-add)
    ("t" "Add a task wearing it" lumenna-label-add-task)
-   ("r" "Rename" lumenna-label-rename)
-   ("m" "Merge it into another" lumenna-label-merge)
-   ("C" "Colour" lumenna-label-colour)
-   ("M-p" "Move up" lumenna-label-up)
-   ("M-n" "Move down" lumenna-label-down)
-   ("d" "Delete" lumenna-label-delete)))
+   ("r" "Rename" lumenna-act-rename)
+   ("m" "Merge Into" lumenna-act-merge)
+   ("C" "Colour" lumenna-act-colour)
+   ("M-p" "Move Up" lumenna-act-move-up)
+   ("M-n" "Move Down" lumenna-act-move-down)
+   ("d" "Delete" lumenna-act-delete)))
 
 (lumenna-define-keys lumenna-filters-mode
   ("The filter at point"
    ("RET" "Show its tasks" lumenna-activate)
-   ("r" "Rename" lumenna-filter-rename)
-   ("e" "Change the query" lumenna-filter-requery)
-   ("M-p" "Move up" lumenna-filter-up)
-   ("M-n" "Move down" lumenna-filter-down)
-   ("d" "Delete" lumenna-filter-delete)))
+   ("a" "New Saved Filter" lumenna-filter-add)
+   ("r" "Rename" lumenna-act-rename)
+   ("e" "Change Query" lumenna-act-change-query)
+   ("M-p" "Move Up" lumenna-act-move-up)
+   ("M-n" "Move Down" lumenna-act-move-down)
+   ("d" "Delete" lumenna-act-delete)))
 
 (provide 'lumenna-organise)
 

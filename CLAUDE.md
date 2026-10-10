@@ -399,7 +399,10 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
 - **Depth is an outline level**: `outline-level` reads the `lumenna-level` text property,
   so folding and Emacspeak's level announcements come from outline mode.
 - **A list's keys are defined once** (`lumenna-define-keys`), which binds them, builds the
-  menu, and lists them for `?` in an ordinary buffer. Not transient: Emacsvox reads a
+  menu, and lists them for `?` in an ordinary buffer. A row's key runs the row's action of
+  that kind (`lumenna-define-action`, `lumenna-act-kind`), its question asked in the
+  minibuffer and answered through `act`; `.` offers them all by title. Sounds key on the
+  action's `subject/kind`. Not transient: Emacsvox reads a
   transient by asking whether its command was called interactively, and Emacs 31's
   transient wraps each command, so moving through one was silent.
 - **Booleans come back as `:json-false`**, which is non-nil: test them with `lumenna--true`.
