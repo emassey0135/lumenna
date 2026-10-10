@@ -47,14 +47,16 @@
   "What Lumenna's facts mean, registered with Emacsvox and owned by Lumenna.")
 
 (defconst lumenna-emacsvox-events
-  '(("task.done" lumenna-task lumenna-task-completed task-done)
-    ("task.rm" lumenna-task lumenna-deleted delete-object)
-    ("task.erase" lumenna-task lumenna-deleted delete-object)
-    ("block.rm" lumenna-block lumenna-deleted delete-object)
-    ("unassign" lumenna-sitting lumenna-deleted delete-object)
-    ("start" lumenna-sitting lumenna-timer-started open-object)
-    ("stop" lumenna-sitting lumenna-timer-stopped close-object))
-  "Each change, by RPC method: the role it is about, its event, and its cue.")
+  '(("task/mark_done" lumenna-task lumenna-task-completed task-done)
+    ("task/delete" lumenna-task lumenna-deleted delete-object)
+    ("task/delete_for_good" lumenna-task lumenna-deleted delete-object)
+    ("block/delete" lumenna-block lumenna-deleted delete-object)
+    ("series/delete" lumenna-block lumenna-deleted delete-object)
+    ("sitting/unassign" lumenna-sitting lumenna-deleted delete-object)
+    ("sitting/start_timer" lumenna-sitting lumenna-timer-started open-object)
+    ("sitting/resume_timer" lumenna-sitting lumenna-timer-started open-object)
+    ("sitting/stop_timer" lumenna-sitting lumenna-timer-stopped close-object))
+  "Each change, by the action that made it (SUBJECT/KIND): its role, event and cue.")
 
 (defun lumenna-emacsvox--register ()
   "Register Lumenna's semantics and its rules, once."
@@ -109,11 +111,11 @@ Emacsvox then presents the line as that object."
 (defvar lumenna-emacsvox--event nil
   "The facts of the change about to be announced, set just before it is.")
 
-(defun lumenna-emacsvox--changed (method _result)
-  "Remember METHOD's event, for the announcement that follows it."
+(defun lumenna-emacsvox--changed (event _result)
+  "Remember EVENT's facts, for the announcement that follows it."
   (setq lumenna-emacsvox--event
-        (when-let* ((event (assoc method lumenna-emacsvox-events)))
-          (list :role (nth 1 event) :event (nth 2 event)))))
+        (when-let* ((known (assoc event lumenna-emacsvox-events)))
+          (list :role (nth 1 known) :event (nth 2 known)))))
 
 (defun lumenna-emacsvox-announce (announcement notices)
   "Say ANNOUNCEMENT and NOTICES on Emacsvox's notification lane.

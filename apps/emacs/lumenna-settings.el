@@ -14,23 +14,10 @@
 
 ;;;; Settings
 
-(defconst lumenna--setting-names
-  '(("cascade-complete-subtasks" "Completing a task completes its subtasks" ("true" . "Yes") ("false" . "No"))
-    ("day-start" "Day starts")
-    ("day-end" "Day ends")
-    ("all-day-reminder-hour" "All-day reminders at")
-    ("verbosity" "Announcements" ("full" . "Full sentences") ("terse" . "Terse"))
-    ("week-start" "Week starts on" ("monday" . "Monday") ("tuesday" . "Tuesday") ("wednesday" . "Wednesday")
-     ("thursday" . "Thursday") ("friday" . "Friday") ("saturday" . "Saturday") ("sunday" . "Sunday"))
-    ("backup-every" "Automatic backups" ("12h" . "Every 12 hours") ("1d" . "Every day") ("7d" . "Every week") ("off" . "Off"))
-    ("backup-keep" "Backups kept")
-    ("backup-dir" "Backups go to"))
-  "Each setting's name in words, and the values to choose from when there are few.")
-
 (define-derived-mode lumenna-settings-mode lumenna-list-mode "Lumenna Settings"
   "Settings, one per line.  RET changes one.
-The first line opens Devices and sync.  The next six sync to every device;
-the backup settings are this device's alone.
+The first line opens Devices and sync.  Those that sync to every device
+come first, then this device's own.
 
 \\{lumenna-settings-mode-map}"
   (setq-local lumenna--activate #'lumenna--change-setting))
@@ -47,15 +34,18 @@ the backup settings are this device's alone.
            (cons (list :key 'devices :title "Devices and sync"
                        :value (plist-get (lumenna-call "sync.status") :announcement))
                  (mapcar (lambda (setting)
-                           (let* ((key (plist-get setting :key))
-                                  (named (assoc key lumenna--setting-names))
-                                  (value (plist-get setting :value)))
-                             (list :key key :title (or (nth 1 named) key) :raw value
-                                   :value (or (cdr (assoc value (nthcdr 2 named))) value))))
+                           (let* ((value (plist-get setting :value))
+                                  (option (seq-find (lambda (o) (equal (plist-get o :id) value))
+                                                    (append (plist-get setting :options) nil))))
+                             (list :key (plist-get setting :key) :title (plist-get setting :title)
+                                   :setting setting
+                                   :value (if option (plist-get option :title) value))))
                          ;; `clock' is for clients with no clock of their own; Emacs
-                         ;; follows `display-time-24hr-format'.
-                         (seq-remove (lambda (setting) (equal (plist-get setting :key) "clock"))
-                                     (append (plist-get (lumenna-call "config.get") :settings) nil))))))))
+                         ;; follows `display-time-24hr-format'.  Shared ones first.
+                         (let ((settings (seq-remove (lambda (setting) (equal (plist-get setting :key) "clock"))
+                                                     (append (plist-get (lumenna-call "config.get") :settings) nil))))
+                           (append (seq-filter (lambda (x) (lumenna--true (plist-get x :syncs))) settings)
+                                   (seq-remove (lambda (x) (lumenna--true (plist-get x :syncs))) settings)))))))))
 
 (defun lumenna--change-setting (row)
   "Change the setting in ROW: a choice where it has few values, else typed.
@@ -66,16 +56,23 @@ The Devices and sync line opens its own buffer."
     (lumenna--change-setting-value row)))
 
 (defun lumenna--change-setting-value (row)
-  "Ask for and set a new value for the setting in ROW."
-  (let* ((key (plist-get row :key))
-         (choices (mapcar (lambda (pair) (cons (cdr pair) (car pair))) (nthcdr 2 (assoc key lumenna--setting-names))))
-         (value (if choices
-                    (cdr (assoc (completing-read (format "%s: " (plist-get row :title)) choices nil t
-                                                 nil nil (car (rassoc (plist-get row :raw) choices)))
-                                choices))
-                  (read-string (format "%s: " (plist-get row :title)) (plist-get row :raw)))))
-    (unless (equal value (plist-get row :raw))
-      (lumenna-write "config.set" :key key :value value))))
+  "Ask for and set a new value for the setting in ROW.
+As the setting describes itself: a toggle or a choice is chosen from its
+options; a folder is read as a file name; anything else is typed, and the
+core reads and checks it."
+  (let* ((setting (plist-get row :setting))
+         (now (plist-get setting :value))
+         (options (mapcar (lambda (o) (cons (plist-get o :title) (plist-get o :id)))
+                          (append (plist-get setting :options) nil)))
+         (prompt (lumenna--prompt (plist-get setting :title) (plist-get setting :hint)))
+         (value (cond (options
+                       (cdr (assoc (completing-read prompt options nil t nil nil (car (rassoc now options)))
+                                   options)))
+                      ((equal (plist-get setting :kind) "folder")
+                       (expand-file-name (read-directory-name prompt now)))
+                      (t (read-string prompt now)))))
+    (unless (equal value now)
+      (lumenna-write "config.set" :key (plist-get setting :key) :value value))))
 
 ;;;; Devices and syncing
 
@@ -83,7 +80,7 @@ The Devices and sync line opens its own buffer."
   "Paired devices and how syncing with each last went.  RET renames one.
 
 \\{lumenna-devices-mode-map}"
-  (setq-local lumenna--activate (lambda (_row) (lumenna-device-rename))))
+  (setq-local lumenna--activate (lambda (_row) (lumenna-act-rename))))
 
 (defun lumenna--device-value (device)
   "How syncing with DEVICE last went, in words, never a glyph.
@@ -101,24 +98,9 @@ Its platform, then the status the core words for every app."
        (cons (string-join (cons (plist-get status :announcement) (append (plist-get status :notices) nil)) ". ")
              (mapcar (lambda (device)
                        (list :key (plist-get device :node_id) :title (plist-get device :name)
-                             :value (lumenna--device-value device) :device device))
+                             :value (lumenna--device-value device) :device device
+                             :actions (plist-get device :actions)))
                      (append (plist-get status :devices) nil)))))))
-
-(defun lumenna-device-rename ()
-  "Rename the device at point."
-  (interactive)
-  (let ((device (plist-get (lumenna-row) :device)))
-    (lumenna-write "device.rename" :device (plist-get device :node_id)
-                   :name (read-string (format "Rename %s to: " (plist-get device :name)) (plist-get device :name)))))
-
-(defun lumenna-device-unpair ()
-  "Stop syncing with the device at point.  It keeps what it already has."
-  (interactive)
-  (let ((device (plist-get (lumenna-row) :device)))
-    (when (lumenna--true (plist-get device :this_device)) (user-error "That is this device"))
-    (when (yes-or-no-p (format "%s keeps what it already has: this is for a device you replaced, not one that was stolen.  Stop syncing with it? "
-                               (plist-get device :name)))
-      (lumenna-write "device.unpair" :device (plist-get device :node_id)))))
 
 ;;;###autoload
 (defun lumenna-sync-now ()
@@ -276,8 +258,8 @@ The code to give the other device, or the words to compare."
 
 (lumenna-define-keys lumenna-devices-mode
   ("The device at point"
-   ("r" "Rename" lumenna-device-rename)
-   ("d" "Stop syncing with it" lumenna-device-unpair))
+   ("r" "Rename" lumenna-act-rename)
+   ("d" "Unpair" lumenna-act-delete))
   ("Syncing"
    ("s" "Sync now" lumenna-sync-now)
    ("P" "Pair a device" lumenna-pair)
