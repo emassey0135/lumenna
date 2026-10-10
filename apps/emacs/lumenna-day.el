@@ -203,11 +203,17 @@ As a form's check boxes go back to them when the kind changes."
     (dolist (flag '(:accepts_tasks :counts_capacity :anchored) fields)
       (setq fields (plist-put fields flag (plist-get defaults flag))))))
 
+(defvar lumenna--repeat-note nil
+  "What Repeats says instead of its hint, for a rule its words cannot say.
+Bound while a series' form is asked (`form.unsayable_repeat_note').")
+
 (defun lumenna--read-block-text (field &optional now)
   "Read FIELD, a symbol, of the block form, starting from NOW, in its words.
 Its hint, then its name; the filter a block takes its tasks from completes."
   (let* ((form (lumenna-form-field "block" field))
-         (prompt (lumenna-field-prompt form)))
+         (prompt (if (and (eq field 'repeat) (stringp lumenna--repeat-note))
+                     (lumenna--prompt lumenna--repeat-note (plist-get form :label))
+                   (lumenna-field-prompt form))))
     (if (eq field 'task_filter)
         (lumenna-read-line prompt "filter" now nil (plist-get form :example))
       (lumenna-read-field form prompt now))))
@@ -242,7 +248,9 @@ Only what changed is sent; SCOPE is the plist saying which occurrences."
                                 (and (not repeats)
                                      (lumenna--true (plist-get (lumenna-form-field "block" (cdr f)) :repeating_only))))
                               (lumenna--block-fields))))
-    (lumenna--edit-block series (lumenna--value "form.block_fields" :block shown) choices '(:all t))))
+    ;; A rule the words cannot say leaves Repeats empty; the core's note says why.
+    (let ((lumenna--repeat-note (lumenna--value "form.unsayable_repeat_note" :block shown)))
+      (lumenna--edit-block series (lumenna--value "form.block_fields" :block shown) choices '(:all t)))))
 
 (defun lumenna--edit-day-block (block date)
   "Change BLOCK, from the plan for DATE.
