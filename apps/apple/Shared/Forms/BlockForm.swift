@@ -30,16 +30,30 @@ final class BlockFormModel: ObservableObject {
 
     /// Every field but the start and length, as the core shapes them.
     @Published var fields: BlockFields
-    @Published var start: Date
+    @Published var start: Date {
+        didSet { if !followingDay { startFollowsDay = false } }
+    }
     @Published var minutes: Int
-    @Published var day: Date
+    @Published var day: Date {
+        didSet {
+            guard startFollowsDay, !Calendar.current.isDate(day, inSameDayAs: oldValue) else { return }
+            followingDay = true
+            start = Self.date(Self.defaultStart(core: core, day: day))
+            followingDay = false
+        }
+    }
+    /// Whether the start is still the core's default for the day chosen, so choosing another
+    /// day asks again: not once the person has set it, nor when it came from free time.
+    private var startFollowsDay = false
+    /// Set while the start follows the day, which is not the person setting it.
+    private var followingDay = false
     @Published var failure: String?
 
     init(
         core: Core,
         purpose: Purpose,
         fields: BlockFields? = nil,
-        start: String = "09:00",
+        start: String? = nil,
         minutes: Int = 60,
         day: Date = .now,
         rule: String? = nil,
@@ -52,8 +66,11 @@ final class BlockFormModel: ObservableObject {
         self.repeats = repeats
         self.saved = saved
         let defaults = blockDefaults(kind: "work")
+        // A new block with no start of its own starts when the core says: the next hour
+        // today, when the day starts on another. "Add Block Here" brings its free time's.
+        startFollowsDay = fields == nil && start == nil
         let fields = fields ?? BlockFields(
-            title: "", start: start, minutes: String(minutes), kind: "work",
+            title: "", start: start ?? Self.defaultStart(core: core, day: day), minutes: String(minutes), kind: "work",
             acceptsTasks: defaults?.acceptsTasks ?? true, countsCapacity: defaults?.countsCapacity ?? true,
             anchored: defaults?.anchored ?? false, repeat: "", until: "", minMinutes: "", taskFilter: "",
             colour: "", notes: ""
@@ -126,10 +143,17 @@ final class BlockFormModel: ObservableObject {
         !isOneDay && (repeats || (isAdding && !fields.repeat.trimmingCharacters(in: .whitespaces).isEmpty))
     }
 
+    /// When a new block on `day` starts unless the person says otherwise, the core's answer.
+    private static func defaultStart(core: Core, day: Date) -> String {
+        // An ISO day always reads; were it ever refused, the hour after this one.
+        (try? core.lumenna.newBlockStart(date: Clock.isoDay(day)))
+            ?? clock(Calendar.current.date(byAdding: .hour, value: 1, to: .now) ?? .now)
+    }
+
     private static func date(_ clock: String) -> Date {
         let parts = clock.split(separator: ":").compactMap { Int($0) }
         return Calendar.current.date(
-            bySettingHour: parts.first ?? 9, minute: parts.count > 1 ? parts[1] : 0, second: 0, of: .now
+            bySettingHour: parts.first ?? 0, minute: parts.count > 1 ? parts[1] : 0, second: 0, of: .now
         ) ?? .now
     }
 

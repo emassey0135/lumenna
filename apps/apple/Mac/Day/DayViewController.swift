@@ -331,7 +331,7 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         guard let window = view.window else { return }
         let day = plan.flatMap { try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse($0.date) } ?? .now
         BlockFormModel(
-            core: core, purpose: .add, start: start ?? "09:00", minutes: Int(min(minutes ?? 60, 720)), day: day
+            core: core, purpose: .add, start: start, minutes: Int(min(minutes ?? 60, 720)), day: day
         ).present(on: window) { [weak self] change in
             self?.reload(keeping: nil, near: nil, saying: change)
         }

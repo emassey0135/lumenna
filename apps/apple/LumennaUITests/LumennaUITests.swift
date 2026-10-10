@@ -346,6 +346,61 @@ final class LumennaUITests: XCTestCase {
                       "the day typed, shown:\n\(app.debugDescription)")
     }
 
+    /// The start a new block today opens at: the next whole hour, never before the day starts
+    /// (8 AM in a new store) and never past 11 PM, as the device's clock shows it.
+    private func nextHour(after now: Date) -> String {
+        let hour = max(8, min(Calendar.current.component(.hour, from: now) + 1, 23))
+        let time = Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: now) ?? now
+        return time.formatted(date: .omitted, time: .shortened).replacingOccurrences(of: "\u{202F}", with: " ")
+    }
+
+    func testANewBlockStartsAtTheNextHour() {
+        tab("Today")
+        let before = Date.now
+        app.buttons["Add block"].tap()
+        let picker = app.datePickers["Starts at"].firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        let shown = (picker.descendants(matching: .any).firstMatch.value as? String)?
+            .replacingOccurrences(of: "\u{202F}", with: " ") ?? ""
+        // Either side of the hour, should it turn while the form opens.
+        XCTAssertTrue([nextHour(after: before), nextHour(after: .now)].contains(shown), "starts at \(shown)")
+    }
+
+    func testAnotherDayAsksTheStartAgainUntilTheStartIsSet() {
+        tab("Today")
+        app.buttons["Add block"].tap()
+        let day = app.datePickers["Day"].firstMatch
+        XCTAssertTrue(day.waitForExistence(timeout: 5))
+        let start = app.datePickers["Starts at"].firstMatch
+        func shown() -> String {
+            (start.descendants(matching: .any).firstMatch.value as? String)?.replacingOccurrences(of: "\u{202F}", with: " ") ?? ""
+        }
+        // Another day of this month, so the calendar shows it without paging: the 1st, or the
+        // 2nd when today is the 1st.
+        let calendar = Calendar.current
+        var parts = calendar.dateComponents([.year, .month, .day], from: .now)
+        parts.day = parts.day == 1 ? 2 : 1
+        let other = calendar.date(from: parts) ?? .now
+        day.tap()
+        let choice = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", other.formatted(.dateTime.month(.wide).day()))).firstMatch
+        XCTAssertTrue(choice.waitForExistence(timeout: 5), app.debugDescription)
+        choice.tap()
+        app.navigationBars["New Block"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(choice.waitForNonExistence(timeout: 5), "the calendar stayed open")
+        // Another day starts when the day starts: 8 AM in a new store.
+        XCTAssertEqual(shown(), "8:00 AM", "another day's start")
+
+        // Set by the person, it stays whatever day is chosen.
+        setStart((hour: "3", minute: "00", period: "PM"))
+        day.tap()
+        let today = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", Date.now.formatted(.dateTime.month(.wide).day()))).firstMatch
+        XCTAssertTrue(today.waitForExistence(timeout: 5))
+        today.tap()
+        app.navigationBars["New Block"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(today.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(shown(), "3:00 PM", "the start the person set")
+    }
+
     func testTheDaySaysWhatItHoldsAndShowsFreeTime() throws {
         tab("Today")
         app.buttons["Add block"].tap()
@@ -371,6 +426,8 @@ final class LumennaUITests: XCTestCase {
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
         name.typeText("Train")
+        // Its own start, not the form's next hour: the same whenever the test runs.
+        setStart((hour: "11", minute: "00", period: "PM"))
         app.buttons["Break"].tap()
         let takes = app.switches["Takes tasks"]
         if !takes.isHittable { app.swipeUp() }
@@ -428,6 +485,8 @@ final class LumennaUITests: XCTestCase {
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
         name.typeText("Writing")
+        // Its own start, not the form's next hour: the same whenever the test runs.
+        setStart((hour: "11", minute: "00", period: "PM"))
         app.buttons["Save"].tap()
 
         let block = cell(containing: "Writing")
@@ -710,8 +769,8 @@ final class LumennaUITests: XCTestCase {
         XCTAssertTrue(wheels.firstMatch.waitForNonExistence(timeout: 5), "the time's popover stayed open")
     }
 
-    /// Adds a block today. `start` (11, 00, PM) overrides the form's default of 09:00, for a
-    /// test that needs the block not yet over whenever it runs.
+    /// Adds a block today, starting where the form starts it (the next hour) unless `start`
+    /// (11, 00, PM) says, for a test that needs the same block whenever it runs.
     private func addBlock(_ title: String, repeating: String? = nil, start: (hour: String, minute: String, period: String)? = nil) {
         tab("Today")
         app.buttons["Add block"].tap()
