@@ -10,7 +10,7 @@
 
 use std::cell::RefCell;
 
-use lumenna_surface::{ActionKind, TaskDetail, TaskFields, task_edit, task_fields};
+use lumenna_surface::{ActionKind, TaskDetail, TaskFields, priorities, task_edit, task_fields};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::SystemServices::{SS_CENTER, SS_NOPREFIX};
 use windows::Win32::UI::Controls::{WC_BUTTONW, WC_COMBOBOXW, WC_EDITW, WC_LISTBOXW, WC_STATICW};
@@ -42,8 +42,6 @@ const LABELS: u16 = 306;
 const NOTES: u16 = 307;
 const WAITS: u16 = 308;
 const STATE: u16 = 309;
-
-const PRIORITIES: [&str; 4] = ["Priority 1, highest", "Priority 2", "Priority 3", "Priority 4, none"];
 
 /// Where a field sits: across the pane, or in one of its two columns.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -134,8 +132,8 @@ impl Detail {
             button("Move to Trash", Action::Kinds(&[ActionKind::Delete])),
         ];
 
-        for text in PRIORITIES {
-            let text = HSTRING::from(text);
+        for choice in priorities() {
+            let text = HSTRING::from(choice.title);
             controls::send(priority, CB_ADDSTRING, 0, text.as_ptr() as isize);
         }
         unsafe {
@@ -214,7 +212,8 @@ impl Detail {
             controls::set_text(self.title, &fields.title);
             controls::set_text(self.due, &fields.due);
             controls::set_text(self.repeat, &fields.repeat);
-            controls::send(self.priority, CB_SETCURSEL, usize::from(fields.priority.clamp(1, 4) - 1), 0);
+            let position = priorities().iter().position(|p| p.id == fields.priority.to_string());
+            controls::send(self.priority, CB_SETCURSEL, position.unwrap_or(usize::MAX), 0);
             controls::set_text(self.estimate, &fields.estimate);
             select_text(self.project, &fields.project);
             controls::set_text(self.labels, &fields.labels);
@@ -247,12 +246,14 @@ impl Detail {
 
     /// The fields as they are now.
     fn read(&self) -> TaskFields {
-        let priority = controls::send(self.priority, CB_GETCURSEL, 0, 0);
+        // The priority chosen, as the core numbers it; nothing chosen reads as none.
+        let chosen = usize::try_from(controls::send(self.priority, CB_GETCURSEL, 0, 0)).ok();
+        let priority = chosen.and_then(|i| priorities().get(i).and_then(|p| p.id.parse().ok())).unwrap_or(4);
         TaskFields {
             title: controls::text(self.title),
             due: controls::text(self.due),
             repeat: controls::text(self.repeat),
-            priority: u8::try_from(priority + 1).unwrap_or(4).clamp(1, 4),
+            priority,
             estimate: controls::text(self.estimate),
             project: selected_text(self.project),
             labels: controls::text(self.labels),
