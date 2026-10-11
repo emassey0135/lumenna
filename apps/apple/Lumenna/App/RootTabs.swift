@@ -73,6 +73,13 @@ final class RootTabs: UITabBarController, CommandActions {
     @objc func redoChange() { redoInStore(core) }
     @objc func syncNow() { syncAndSay(core) }
 
+    // The day's own actions from anywhere else: today's, on the day.
+    @objc func planTheDay() { select(0) { $0.day.runDay(.planDay) } }
+    @objc func replanFromNow() { select(0) { $0.day.runDay(.replan) } }
+    @objc func whatNow() { select(0) { $0.day.runDay(.whatNow) } }
+    @objc func endTheDay() { select(0) { $0.day.runDay(.endDay) } }
+    @objc func clearTheDay() { select(0) { $0.day.runDay(.clearDay) } }
+
     /// The overrun warning's Replan: today, with Replan from Now over it.
     @objc func openReplan() {
         select(0) { $0.day.openReplan() }

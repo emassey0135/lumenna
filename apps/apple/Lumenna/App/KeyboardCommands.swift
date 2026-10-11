@@ -25,6 +25,12 @@ import UIKit
     @objc optional func nextDay()
     @objc optional func goToNow()
     @objc optional func goToDay()
+    /// The day's own actions (`Plan.actions`), each the shown day's action of its kind.
+    @objc optional func planTheDay()
+    @objc optional func replanFromNow()
+    @objc optional func whatNow()
+    @objc optional func endTheDay()
+    @objc optional func clearTheDay()
     /// A reminder's notification, chosen: its task, or its block on `day`.
     @objc optional func openReminded(kind: String, target: String, day: String)
     /// The overrun warning's Replan: today, with Replan from Now open over it.
@@ -98,9 +104,34 @@ enum KeyboardCommands {
         ]
     }
 
+    /// The day's own actions, the Mac's Day menu's, with its keys (`DayKeys`). Each runs the
+    /// day's action of that kind, or says why the day has none (`notOffered`): the menu bar
+    /// is built once, not for each day, so it cannot leave out what a day lacks.
+    static var dayActionItems: [UIMenuElement] {
+        [
+            command("Plan the Day", #selector(CommandActions.planTheDay), DayKeys.planDay, [.command, .alternate]),
+            command("Replan from Now", #selector(CommandActions.replanFromNow), DayKeys.replan, [.command, .alternate]),
+            item("What Should I Work On?", #selector(CommandActions.whatNow)),
+            item("End the Day", #selector(CommandActions.endTheDay)),
+            item("Clear the Rest of the Day", #selector(CommandActions.clearTheDay)),
+        ]
+    }
+
+    /// The action kind each of the day's commands runs.
+    static func dayKind(_ selector: Selector) -> ActionKind? {
+        switch selector {
+        case #selector(CommandActions.planTheDay): .planDay
+        case #selector(CommandActions.replanFromNow): .replan
+        case #selector(CommandActions.whatNow): .whatNow
+        case #selector(CommandActions.endTheDay): .endDay
+        case #selector(CommandActions.clearTheDay): .clearDay
+        default: nil
+        }
+    }
+
     /// The iPhone's: every command with a key.
     static var all: [UIKeyCommand] {
-        [newItems, syncItems, settingsItems, undoItems, filterItems, viewItems, taskItems, dayItems]
+        [newItems, syncItems, settingsItems, undoItems, filterItems, viewItems, taskItems, dayItems, dayActionItems]
             .flatMap { $0 }
             .compactMap { $0 as? UIKeyCommand }
     }
@@ -133,7 +164,10 @@ enum KeyboardCommands {
         }
         builder.insertChild(inline("go", viewItems), atStartOfMenu: .view)
         let task = UIMenu(title: "Task", identifier: UIMenu.Identifier("io.github.emassey0135.lumenna.task"), children: taskItems)
-        let day = UIMenu(title: "Day", identifier: UIMenu.Identifier("io.github.emassey0135.lumenna.day"), children: dayItems)
+        let day = UIMenu(
+            title: "Day", identifier: UIMenu.Identifier("io.github.emassey0135.lumenna.day"),
+            children: dayItems + [inline("day-actions", dayActionItems)]
+        )
         builder.insertSibling(task, afterMenu: .view)
         builder.insertSibling(day, afterMenu: task.identifier)
     }

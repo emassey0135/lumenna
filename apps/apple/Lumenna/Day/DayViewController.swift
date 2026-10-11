@@ -567,6 +567,25 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     @objc func goToNow() { showNow() }
     @objc func goToDay() { chooseDay() }
     @objc func newBlock() { addBlock() }
+    // The day's own actions, from the Day menu: the day shown's of each kind.
+    @objc func planTheDay() { runDay(.planDay) }
+    @objc func replanFromNow() { runDay(.replan) }
+    @objc func whatNow() { runDay(.whatNow) }
+    @objc func endTheDay() { runDay(.endDay) }
+    @objc func clearTheDay() { runDay(.clearDay) }
+
+    /// The day's action of `kind`, or why the day has none, in the core's words.
+    func runDay(_ kind: ActionKind) {
+        // Read again first: the day's actions change with the time, and a screen just chosen
+        // by a command has not yet appeared to read it.
+        loadViewIfNeeded()
+        reload()
+        if let action = plan?.actions.first(kind) {
+            performDay(action)
+        } else {
+            Announcer.say(notOffered(kind: kind, subject: .day, thisDevice: false))
+        }
+    }
 }
 
 // The row's actions, apart from the layout that asks for them, so a test can ask too.
