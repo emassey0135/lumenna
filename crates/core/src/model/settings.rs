@@ -33,6 +33,9 @@ pub struct Settings {
     /// Which day a week starts on.
     #[cfg_attr(feature = "serde", serde(with = "weekday"))]
     pub week_start: civil::Weekday,
+    /// How much each part of a task's urgency counts.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub urgency: crate::urgency::Coefficients,
 }
 
 impl Default for Settings {
@@ -45,6 +48,7 @@ impl Default for Settings {
             all_day_reminder_hour: civil::time(9, 0, 0, 0),
             day_window: (civil::time(8, 0, 0, 0), civil::time(22, 0, 0, 0)),
             week_start: civil::Weekday::Monday,
+            urgency: crate::urgency::Coefficients::default(),
         }
     }
 }

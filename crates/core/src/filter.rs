@@ -138,6 +138,16 @@ impl<'a> Context<'a> {
     }
 }
 
+/// The order a list's query asks for, from its `sort:` clause.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Sort {
+    /// The person's own order: no clause.
+    #[default]
+    Own,
+    /// Most urgent first among siblings, the person's order breaking ties.
+    Urgency,
+}
+
 /// A name in a query that does not match anything in the store.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Unresolved {

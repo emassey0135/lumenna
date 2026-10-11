@@ -41,6 +41,7 @@ impl Lumenna {
             ("week-start", format!("{:?}", settings.week_start).to_lowercase()),
             ("default-task-reminders", phrases(&settings.default_task_reminders)),
             ("default-block-reminders", phrases(&settings.default_block_reminders)),
+            ("urgency-weights", weights_phrase(&settings.urgency)),
         ]
         .into_iter()
         .map(|(key, value)| described(key, value))
@@ -102,6 +103,7 @@ impl Lumenna {
                 }
                 "default-task-reminders" => after.default_task_reminders = triggers(value, false)?,
                 "default-block-reminders" => after.default_block_reminders = triggers(value, true)?,
+                "urgency-weights" => after.urgency = weights(value)?,
                 other => return Err(LumennaError::new(format!("no setting called '{other}'"))),
             }
             let change = edit::update_settings(before, after);
@@ -427,6 +429,12 @@ fn described(key: &str, value: String) -> Setting {
             Vec::new(),
             "Such as 5m before start, or at end; several separated by commas. Empty for none. A block with reminders of its own takes those instead.",
         ),
+        "urgency-weights" => (
+            "How urgency is weighed",
+            K::Line,
+            Vec::new(),
+            "What each part adds to a task's urgency, which orders suggestions: due (the most, at a week overdue), priority (p1 to p4), age (the most, at a year), started, blocking, blocked, in a block today. A part left out, or the whole line empty, takes its default.",
+        ),
         "clock" => ("Clock", K::Choice, options(&[("12-hour", "12-hour"), ("24-hour", "24-hour")]), ""),
         _ => ("", K::Choice, Vec::new(), ""),
     };
@@ -453,4 +461,68 @@ fn triggers(text: &str, block: bool) -> Result<Vec<lumenna_core::model::Trigger>
         .filter(|phrase| !phrase.is_empty() && !phrase.eq_ignore_ascii_case("none"))
         .map(|phrase| crate::reminders::parse_trigger(phrase, block))
         .collect()
+}
+
+/// The urgency weights as the setting says them: "due 12, priority 6 3.9 1.8 0, age 2, …".
+fn weights_phrase(c: &lumenna_core::urgency::Coefficients) -> String {
+    let [p1, p2, p3, p4] = c.priority;
+    format!(
+        "due {}, priority {p1} {p2} {p3} {p4}, age {}, started {}, blocking {}, blocked {}, in a block today {}",
+        c.due, c.age, c.started, c.blocking, c.blocked, c.assigned_today
+    )
+}
+
+/// Reads the urgency weights' line: parts separated by commas, each a name and its number
+/// (priority four, p1 first). A part left out takes its default.
+fn weights(value: &str) -> Result<lumenna_core::urgency::Coefficients> {
+    let mut c = lumenna_core::urgency::Coefficients::default();
+    for part in value.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+        let split = part.find(|ch: char| ch == '-' || ch == '+' || ch.is_ascii_digit() || ch == '.').unwrap_or(part.len());
+        let (name, numbers) = part.split_at(split);
+        let numbers: Vec<f32> = numbers
+            .split_whitespace()
+            .map(|n| n.parse::<f32>().ok().filter(|n| n.is_finite()))
+            .collect::<Option<_>>()
+            .ok_or_else(|| LumennaError::new(format!("'{part}' needs a number after its name, such as due 12")))?;
+        let one = || match numbers.as_slice() {
+            [n] => Ok(*n),
+            _ => Err(LumennaError::new(format!("'{part}' takes one number"))),
+        };
+        match name.trim().to_lowercase().as_str() {
+            "due" => c.due = one()?,
+            "age" => c.age = one()?,
+            "started" => c.started = one()?,
+            "blocking" => c.blocking = one()?,
+            "blocked" => c.blocked = one()?,
+            "in a block today" => c.assigned_today = one()?,
+            "priority" => {
+                c.priority = <[f32; 4]>::try_from(numbers.as_slice())
+                    .map_err(|_| LumennaError::new("priority takes four numbers, p1 to p4, such as priority 6 3.9 1.8 0"))?;
+            }
+            other => {
+                return Err(LumennaError::new(format!(
+                    "'{other}' is not part of urgency: due, priority, age, started, blocking, blocked, or in a block today"
+                )));
+            }
+        }
+    }
+    Ok(c)
+}
+
+#[cfg(test)]
+mod weight_tests {
+    use super::*;
+
+    #[test]
+    fn the_weights_read_back_as_they_are_said() {
+        let said = weights_phrase(&lumenna_core::urgency::Coefficients::default());
+        assert_eq!(said, "due 12, priority 6 3.9 1.8 0, age 2, started 4, blocking 8, blocked -5, in a block today -1");
+        assert_eq!(weights(&said).unwrap(), lumenna_core::urgency::Coefficients::default());
+        assert_eq!(weights("").unwrap(), lumenna_core::urgency::Coefficients::default());
+        let changed = weights("due 20, blocked -8").unwrap();
+        assert_eq!((changed.due, changed.blocked, changed.age), (20.0, -8.0, 2.0));
+        assert!(weights("priority 1 2").is_err());
+        assert!(weights("deadline 3").is_err());
+        assert!(weights("due soon").is_err());
+    }
 }

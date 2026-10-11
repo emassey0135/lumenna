@@ -42,7 +42,7 @@ impl World {
 
     fn plan(&self, now: &str) -> lumenna_core::dayplan::DayProposal {
         let now = now.parse::<jiff::civil::DateTime>().unwrap().to_zoned(jiff::tz::TimeZone::UTC).unwrap();
-        propose_day(&self.snapshot, date(2026, 5, 6), &now, &BTreeMap::new(), &BTreeSet::new()).unwrap()
+        propose_day(&self.snapshot, date(2026, 5, 6), &now, &BTreeMap::new(), &BTreeSet::new(), &BTreeSet::new()).unwrap()
     }
 
     fn titles(&self, proposal: &lumenna_core::dayplan::DayProposal, block: SeriesId) -> Vec<String> {

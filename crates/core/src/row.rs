@@ -189,6 +189,13 @@ impl Snapshot {
     /// ancestor that *is* present, so an outline stays coherent.
     #[must_use]
     pub fn task_rows(&self, expr: &Expr, cx: &Context<'_>) -> Vec<Row> {
+        self.task_rows_sorted(expr, cx, crate::filter::Sort::Own)
+    }
+
+    /// The same rows, siblings in `sort`'s order. A subtask stays under its parent whatever
+    /// the order: urgency ranks within each level, never across it.
+    #[must_use]
+    pub fn task_rows_sorted(&self, expr: &Expr, cx: &Context<'_>, sort: crate::filter::Sort) -> Vec<Row> {
         let selected = expr.select(cx);
         let included: std::collections::BTreeSet<TaskId> =
             selected.iter().map(|task| task.id).collect();
@@ -203,6 +210,13 @@ impl Snapshot {
         }
         for group in children.values_mut() {
             group.sort_by(|a, b| a.order.cmp_with(&a.id, &b.order, &b.id));
+            if sort == crate::filter::Sort::Urgency {
+                let score = |task: &crate::model::Task| {
+                    crate::urgency::urgency(self, cx.facts(), task, cx.now, &self.settings.urgency).score
+                };
+                // Stable, so the person's order breaks ties.
+                group.sort_by(|a, b| score(b).total_cmp(&score(a)));
+            }
         }
 
         let mut rows = Vec::with_capacity(selected.len());

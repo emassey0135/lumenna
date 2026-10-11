@@ -65,8 +65,8 @@ use lumenna_store::Store;
 
 pub use fields::{unsayable_repeat_note, FieldKind, FormField, PairingWords, block_form, pairing_words, sentence_case, task_form};
 pub use history::{TaskHistory, UrgencyTerm};
-pub use dayplan::{DayPlan, ProposedSitting};
-pub use replan::{Replan, ReplanChange, TimeStyle};
+pub use dayplan::{DayPins, DayPlan, DayPlanned, ProposedSitting};
+pub use replan::{Replan, ReplanChange, ReplanPins, Replanned, TimeStyle};
 pub use reminders::{DueReminder, DueReminders, ReminderList, ReminderView};
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub use reminders::ReminderLock;

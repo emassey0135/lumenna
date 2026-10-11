@@ -646,19 +646,28 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         "choices" => Response::new(l.choices(record(params, "action")?)?),
         "places" => Response::new(l.places()),
         // Replanning the rest of today: a proposal, then the changes the person accepted.
-        "replan" => {
-            let style = time_style(params)?;
-            Response::new(l.replan(style, maybe_record(params, "keep")?.unwrap_or_default(), maybe_record(params, "skip")?.unwrap_or_default(), maybe_text(params, "now"))?)
-        }
-        "replan.apply" => Response::new(l.apply_replan(record(params, "changes")?, maybe_text(params, "now"))?),
+        "replan" => Response::new(l.replan(
+            time_style(params)?,
+            maybe_record(params, "pins")?.unwrap_or_default(),
+            maybe_text(params, "now"),
+        )?),
+        "replan.apply" => Response::new(l.apply_replan(
+            record(params, "proposal")?,
+            record(params, "accepted")?,
+            maybe_text(params, "now"),
+        )?),
         // Planning a whole day: a proposal, then the sittings the person accepted.
         "day_plan" => Response::new(l.propose_day_plan(
             maybe_text(params, "date"),
             time_style(params)?,
-            maybe_record(params, "exclude")?.unwrap_or_default(),
+            maybe_record(params, "pins")?.unwrap_or_default(),
             maybe_text(params, "now"),
         )?),
-        "day_plan.apply" => Response::new(l.apply_day_plan(record(params, "sittings")?)?),
+        "day_plan.apply" => Response::new(l.apply_day_plan(
+            record(params, "plan")?,
+            record(params, "accepted")?,
+            maybe_text(params, "now"),
+        )?),
 
         // The forms' rules, for a client that cannot call them in-process.
         "form.task_fields" => Response::new(Derived::of(crate::task_fields(record(params, "task")?))),

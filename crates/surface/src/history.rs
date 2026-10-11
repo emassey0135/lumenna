@@ -5,7 +5,7 @@ use jiff::Zoned;
 use lumenna_core::history::History;
 use lumenna_core::model::Task;
 use lumenna_core::snapshot::Snapshot;
-use lumenna_core::urgency::{Coefficients, Term, Urgency, urgency};
+use lumenna_core::urgency::{Term, Urgency, urgency};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{LumennaError, Result};
@@ -161,7 +161,7 @@ impl Lumenna {
             let id = resolve::task_id(&snapshot, id)?;
             let task = snapshot.tasks.get(&id).ok_or_else(|| LumennaError::new("that task is not here"))?;
             let facts = snapshot.facts();
-            let found = urgency(&snapshot, &facts, task, &now, &Coefficients::default());
+            let found = urgency(&snapshot, &facts, task, &now, &snapshot.settings.urgency);
             let (terms, weight) = urgency_view(&found, task, &snapshot, &now);
             Ok(TaskHistory {
                 announcement: task.title.clone(),

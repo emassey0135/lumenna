@@ -49,16 +49,51 @@ pub struct DayPlan {
     /// What is due by then and fits nowhere, by title.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unfit: Vec<String>,
+    /// What the person decided that this plan keeps to, handed back to apply it.
+    pub pins: DayPins,
+    /// The clock its sentences are in, for the plan that follows.
+    pub style: TimeStyle,
 }
 
 crate::announced!(DayPlan);
+
+/// What the person decided about a day's plan, which the next plan keeps to.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+pub struct DayPins {
+    /// Tasks not to plan that day.
+    #[serde(default)]
+    pub exclude: Vec<String>,
+    /// Sittings turned down, `<task>@<series>`: that task may still go in another block.
+    #[serde(default)]
+    pub declined: Vec<String>,
+}
+
+/// A day plan's accepted sittings made, and what is proposed now.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+pub struct DayPlanned {
+    /// What was planned, then what is proposed now, if anything.
+    pub announcement: String,
+    /// Anything else worth saying.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notices: Vec<String>,
+    /// The change made: one undo takes it back.
+    pub change: Change,
+    /// The plan for the day as it is now, the sittings turned down kept to.
+    pub next: DayPlan,
+}
+
+crate::announced!(DayPlanned);
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// What planning `date` (a date phrase; today when absent) proposes: each work block still
     /// to come given the tasks it is suggested, until their estimates fill it. Nothing changes
-    /// until [`Lumenna::apply_day_plan`]. `exclude` names tasks not to plan that day. `now` is
-    /// for tests, a local date and time.
+    /// until [`Lumenna::apply_day_plan`]. `pins` are what the person decided: tasks left out,
+    /// sittings turned down. `now` is for tests, a local date and time.
     ///
     /// # Errors
     ///
@@ -67,7 +102,7 @@ impl Lumenna {
         &self,
         date: Option<String>,
         style: TimeStyle,
-        exclude: Vec<String>,
+        pins: DayPins,
         now: Option<String>,
     ) -> Result<DayPlan> {
         let now = now_or(now.as_deref())?;
@@ -76,8 +111,14 @@ impl Lumenna {
             let snapshot = repaired(store);
             let day = resolve::date(date.as_deref(), &now)?;
             let mut excluded = BTreeSet::new();
-            for task in &exclude {
+            for task in &pins.exclude {
                 excluded.insert(resolve::task_id(&snapshot, task)?);
+            }
+            let mut declined = BTreeSet::new();
+            for pair in &pins.declined {
+                let (task, series) =
+                    pair.split_once('@').ok_or_else(|| LumennaError::new(format!("'{pair}' is not <task>@<block>")))?;
+                declined.insert((resolve::task_id(&snapshot, task)?, resolve::series_id(&snapshot, series)?));
             }
             // A filter that no longer reads admits nothing, as Put in a Block treats it.
             let mut filters = BTreeMap::new();
@@ -95,7 +136,7 @@ impl Lumenna {
                     },
                 }
             }
-            let mut proposal = propose_day(&snapshot, day, &now, &filters, &excluded)
+            let mut proposal = propose_day(&snapshot, day, &now, &filters, &excluded, &declined)
                 .map_err(|e| LumennaError::new(e.to_string()))?;
             proposal.sittings.retain(|s| !unreadable.contains(&s.block.series_id()));
             let occurrences = snapshot.day(day)?;
@@ -144,25 +185,54 @@ impl Lumenna {
                 [one] => said.push(format!("{one} is due and fits in no block.")),
                 many => said.push(format!("{} are due and fit in no block.", listed(many))),
             }
-            Ok(DayPlan { announcement: said.join(" "), notices: Vec::new(), date: day.to_string(), sittings, unfit })
+            Ok(DayPlan {
+                announcement: said.join(" "),
+                notices: Vec::new(),
+                date: day.to_string(),
+                sittings,
+                unfit,
+                pins: pins.clone(),
+                style,
+            })
         })
     }
 
-    /// Puts in the sittings of a day plan the person accepted: all, or a few. Each is checked
-    /// against the store as it is now: a task done, gone, or already in that block is refused,
-    /// so the client asks for a new plan rather than acting on a stale one. One undoable change.
+    /// Puts in the sittings of `plan` the person accepted, all or some, and plans again: the
+    /// time a sitting turned down leaves is offered to another task, and the task to another
+    /// block, so the rest are kept to (each turned down in its block) and the day planned
+    /// afresh. Each is checked against the store as it is now: a task done, gone, or already in
+    /// that block is refused, so the client asks for a new plan rather than acting on a stale
+    /// one. One undoable change. `now` is for tests.
     ///
     /// # Errors
     ///
     /// If a sitting no longer applies.
-    pub fn apply_day_plan(&self, sittings: Vec<ProposedSitting>) -> Result<Change> {
+    pub fn apply_day_plan(&self, plan: DayPlan, accepted: Vec<ProposedSitting>, now: Option<String>) -> Result<DayPlanned> {
+        let mut pins = plan.pins.clone();
+        for declined in plan.sittings.iter().filter(|s| !accepted.contains(s)) {
+            let series = declined.block.split('@').next().unwrap_or_default();
+            pins.declined.push(format!("{}@{series}", declined.task));
+        }
+        let change = self.put_in_sittings(&accepted)?;
+        let next = self.propose_day_plan(Some(plan.date.clone()), plan.style, pins, now)?;
+        let announcement = match (change.changed, next.sittings.is_empty()) {
+            (true, true) => format!("{}.", change.announcement.trim_end_matches('.')),
+            (true, false) => format!("{}. Now: {}", change.announcement.trim_end_matches('.'), next.announcement),
+            (false, _) => next.announcement.clone(),
+        };
+        Ok(DayPlanned { announcement, notices: Vec::new(), change, next })
+    }
+}
+
+impl Lumenna {
+    fn put_in_sittings(&self, sittings: &[ProposedSitting]) -> Result<Change> {
         self.told(|store| {
             store.load_all_years()?;
             let snapshot = repaired(store);
             let facts = snapshot.facts();
             let stale = |why: &str| LumennaError::new(format!("{why} since this was planned; ask for a new plan"));
             let mut edits: Vec<Edit> = Vec::new();
-            for sitting in &sittings {
+            for sitting in sittings {
                 let task_id = resolve::task_id(&snapshot, &sitting.task)?;
                 let task = snapshot.tasks.get(&task_id).ok_or_else(|| stale("a task is gone"))?;
                 if task.is_deleted() || facts.is_completed(task) {

@@ -1074,21 +1074,29 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         Command::EndDay => Response::new(profile.end_day(true)?),
         Command::ClearDay => Response::new(profile.end_day(false)?),
         Command::PlanDay { date, leave, apply } => {
-            let leave = leave.iter().map(|row| profile.row(row, "task")).collect::<std::result::Result<Vec<_>, _>>()?;
-            let proposal = profile.propose_day_plan(date.clone(), time_style(profile), leave, None)?;
+            let exclude = leave.iter().map(|row| profile.row(row, "task")).collect::<std::result::Result<Vec<_>, _>>()?;
+            let pins = lumenna_surface::DayPins { exclude, declined: Vec::new() };
+            let proposal = profile.propose_day_plan(date.clone(), time_style(profile), pins, None)?;
             match apply.as_deref() {
                 None => Response::new(proposal),
-                Some(numbers) => Response::new(profile.apply_day_plan(numbered(numbers, proposal.sittings)?)?),
+                Some(numbers) => {
+                    let accepted = numbered(numbers, proposal.sittings.clone())?;
+                    Response::new(profile.apply_day_plan(proposal, accepted, None)?)
+                }
             }
         }
         Command::Replan { keep, skip, apply } => {
             let series = |rows: &[String]| -> Result<Vec<String>> {
                 rows.iter().map(|row| Ok(profile.row(row, "block")?.split('@').next().unwrap_or_default().to_owned())).collect()
             };
-            let proposal = profile.replan(time_style(profile), series(keep)?, series(skip)?, None)?;
+            let pins = lumenna_surface::ReplanPins { keep: series(keep)?, skip: series(skip)?, sittings: Vec::new() };
+            let proposal = profile.replan(time_style(profile), pins, None)?;
             match apply.as_deref() {
                 None => Response::new(proposal),
-                Some(numbers) => Response::new(profile.apply_replan(numbered(numbers, proposal.changes)?, None)?),
+                Some(numbers) => {
+                    let accepted = numbered(numbers, proposal.changes.clone())?;
+                    Response::new(profile.apply_replan(proposal, accepted, None)?)
+                }
             }
         }
         Command::Carry { assignment, to } => {
@@ -1299,6 +1307,8 @@ fn listing_of(outcome: &Outcome) -> Option<Vec<(String, String)>> {
         | Outcome::History(_)
         | Outcome::Replan(_)
         | Outcome::DayPlan(_)
+        | Outcome::Replanned(_)
+        | Outcome::DayPlanned(_)
         | Outcome::DueReminders(_)
         | Outcome::Reminders(_)
         | Outcome::Server(_)

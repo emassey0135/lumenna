@@ -368,6 +368,8 @@ struct SettingsOut {
     day_start: String,
     day_end: String,
     week_start: String,
+    #[serde(default)]
+    urgency: lumenna_core::urgency::Coefficients,
 }
 
 impl From<&Settings> for SettingsOut {
@@ -389,6 +391,7 @@ impl From<&Settings> for SettingsOut {
             day_start: s.day_window.0.to_string(),
             day_end: s.day_window.1.to_string(),
             week_start: lumenna_core::time::weekday_name(s.week_start).to_lowercase(),
+            urgency: s.urgency,
         }
     }
 }
@@ -412,6 +415,7 @@ impl SettingsOut {
             week_start: weekday(&self.week_start).ok_or_else(|| {
                 StoreError::Unreadable(format!("settings: '{}' is not a weekday", self.week_start))
             })?,
+            urgency: self.urgency,
         })
     }
 }

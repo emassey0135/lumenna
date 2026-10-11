@@ -368,7 +368,7 @@ impl Lumenna {
         named("saved filter", name)?;
         self.told(|store| {
             let snapshot = repaired(store);
-            let expr = resolve::query(&snapshot, query)?;
+            let (expr, sort) = resolve::list_query(&snapshot, query)?;
             let change = edit::create_filter(SavedFilter {
                 id: FilterId::new(),
                 name: name.to_owned(),
@@ -378,7 +378,7 @@ impl Lumenna {
                 deleted_at: None,
             });
             store.apply_recorded(&change)?;
-            Ok(Change::announced(format!("Saved {name}: {}", expr.describe()), &change))
+            Ok(Change::announced(format!("Saved {name}: {}", resolve::described(&expr, sort)), &change))
         })
     }
 
@@ -562,7 +562,8 @@ impl Lumenna {
             let mut readback = None;
             if let Some(query) = query {
                 // Checked now, stored as text.
-                readback = Some(resolve::query(&snapshot, &query)?.describe());
+                let (expr, sort) = resolve::list_query(&snapshot, &query)?;
+                readback = Some(resolve::described(&expr, sort));
                 after.query = query;
             }
             let change = edit::update_filter(before, after);

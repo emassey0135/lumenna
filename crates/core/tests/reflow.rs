@@ -122,6 +122,25 @@ fn the_work_moves_before_the_day_does() {
 }
 
 #[test]
+fn a_sitting_the_person_keeps_stays_and_the_one_before_it_goes() {
+    let mut world = World::new();
+    let deep = world.block("Deep work", BlockKind::Work, 9, 0, 60, false);
+    world.sitting(deep, "Essay", 30);
+    world.sitting(deep, "Email", 30);
+    let email = *world.snapshot.assignments.iter().find(|(_, a)| world.snapshot.tasks[&a.task_id].title == "Email").unwrap().0;
+    let proposal = world.reflow(at(9, 20), &[Pin::KeepSitting(email)]);
+    let moved: Vec<_> = proposal
+        .changes
+        .iter()
+        .filter_map(|c| match c {
+            Proposed::MoveSitting { task, .. } => Some(world.snapshot.tasks[task].title.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(moved, ["Essay"]);
+}
+
+#[test]
 fn what_the_person_pins_is_kept_or_skipped_and_the_proposal_follows() {
     let mut world = World::new();
     world.block("Deep work", BlockKind::Work, 9, 0, 120, false);

@@ -152,6 +152,19 @@ pub(crate) fn query(snapshot: &Snapshot, text: &str) -> Result<Expr> {
     Ok(parse_filter(text, &Known::from_snapshot(snapshot))?)
 }
 
+/// What a list's query selects and in what order, as said back.
+pub(crate) fn described(expr: &Expr, sort: lumenna_core::filter::Sort) -> String {
+    match sort {
+        lumenna_core::filter::Sort::Own => expr.describe(),
+        lumenna_core::filter::Sort::Urgency => format!("{}, most urgent first", expr.describe()),
+    }
+}
+
+/// A list's query, which may end in `sort: urgency`.
+pub(crate) fn list_query(snapshot: &Snapshot, text: &str) -> Result<(Expr, lumenna_core::filter::Sort)> {
+    Ok(lumenna_parse::parse_query(text, &Known::from_snapshot(snapshot))?)
+}
+
 /// `45m`, `2h`, `1h30m`, or a bare number of minutes.
 pub(crate) fn minutes(text: &str) -> Result<u32> {
     if let Ok(plain) = text.trim().parse::<u32>() {

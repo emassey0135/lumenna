@@ -25,6 +25,8 @@ pub enum Pin {
     Keep(SeriesId),
     /// Skip it today, freeing its time.
     Skip(SeriesId),
+    /// Leave this sitting in its block, though the block cannot hold it all.
+    KeepSitting(AssignmentId),
 }
 
 /// One change a proposal makes.
@@ -97,6 +99,8 @@ pub fn propose_reflow(
 ) -> Result<Proposal, crate::recur::RecurError> {
     let kept: BTreeSet<SeriesId> = pins.iter().filter_map(|p| if let Pin::Keep(s) = p { Some(*s) } else { None }).collect();
     let skipped: BTreeSet<SeriesId> = pins.iter().filter_map(|p| if let Pin::Skip(s) = p { Some(*s) } else { None }).collect();
+    let staying: BTreeSet<AssignmentId> =
+        pins.iter().filter_map(|p| if let Pin::KeepSitting(a) = p { Some(*a) } else { None }).collect();
     let mut occurrences: Vec<Occurrence> = snapshot.day(day)?;
     occurrences.sort_by_key(|o| (o.start_time, o.series_id));
     let reference = |o: &Occurrence| match snapshot.series.get(&o.series_id) {
@@ -135,8 +139,10 @@ pub fn propose_reflow(
             i64::from(a.planned_mins.or_else(|| snapshot.tasks.get(&a.task_id).and_then(|t| t.estimate_mins)).unwrap_or(0))
         };
         let mut planned: i64 = started_work + sittings.iter().map(length).sum::<i64>();
+        // A sitting the person keeps is counted, never moved: the next to go is the last of the rest.
         while planned > available {
-            let Some(last) = sittings.pop() else { break };
+            let Some(at) = sittings.iter().rposition(|a| !staying.contains(&a.id)) else { break };
+            let last = sittings.remove(at);
             planned -= length(&last);
             proposal.changes.push(Proposed::MoveSitting { assignment: last.id, task: last.task_id, from: occurrence.series_id });
         }

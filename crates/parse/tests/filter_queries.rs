@@ -9,7 +9,7 @@ use lumenna_core::state::State;
 use lumenna_core::time::{DateSpec, Which};
 use lumenna_parse::filter::Expected;
 use lumenna_parse::quickadd::Known;
-use lumenna_parse::parse_filter;
+use lumenna_parse::{parse_filter, parse_query};
 
 fn store() -> Snapshot {
     let mut snapshot = Snapshot::default();
@@ -227,4 +227,20 @@ fn trailing_junk_does_not_pass_silently() {
     let error = fails("p1 p2");
     assert!(error.message.contains("unexpected 'p2'"), "{}", error.message);
     assert!(error.expected.contains(&Expected::Operator));
+}
+
+#[test]
+fn a_list_query_may_end_in_its_order_and_nowhere_else() {
+    let snapshot = lumenna_core::snapshot::Snapshot::default();
+    let known = Known::from_snapshot(&snapshot);
+    use lumenna_core::filter::Sort;
+    assert_eq!(parse_query("p1 sort: urgency", &known).unwrap().1, Sort::Urgency);
+    assert_eq!(parse_query("p1 sort:urgency", &known).unwrap().1, Sort::Urgency);
+    assert_eq!(parse_query("sort: urgency", &known).unwrap(), (lumenna_core::filter::Expr::All, Sort::Urgency));
+    assert_eq!(parse_query("p1", &known).unwrap().1, Sort::Own);
+    assert!(parse_query("p1 sort: urgency & p2", &known).unwrap_err().message.contains("at the end"));
+    assert!(parse_query("p1 sort: due", &known).unwrap_err().message.contains("not an order"));
+    assert!(parse_query("p1 sort:", &known).unwrap_err().message.contains("needs an order"));
+    // A block's filter selects and does not order, so it says so rather than search for "sort:".
+    assert!(parse_filter("p1 sort: urgency", &known).unwrap_err().message.contains("orders a list"));
 }

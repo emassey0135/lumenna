@@ -66,6 +66,21 @@ impl Clock {
     }
 }
 
+fn replan_changes(proposal: &lumenna_surface::Replan) {
+    for (n, change) in proposal.changes.iter().enumerate() {
+        println!("{:>3}  {}", n + 1, change.sentence);
+    }
+}
+
+fn day_plan_sittings(plan: &lumenna_surface::DayPlan) {
+    for (n, sitting) in plan.sittings.iter().enumerate() {
+        println!("{:>3}  {}", n + 1, sitting.sentence);
+        if let Some(reason) = &sitting.reason {
+            println!("     {reason}");
+        }
+    }
+}
+
 /// Writes a response.
 pub fn emit(response: &Response, format: Format, clock: Clock) {
     match format {
@@ -110,18 +125,19 @@ fn text(response: &Response, clock: Clock) {
         Outcome::Paired(_) => println!("{}", response.announcement()),
         Outcome::Replan(proposal) => {
             println!("{}", response.announcement());
-            for (n, change) in proposal.changes.iter().enumerate() {
-                println!("{:>3}  {}", n + 1, change.sentence);
-            }
+            replan_changes(proposal);
+        }
+        Outcome::Replanned(done) => {
+            println!("{}", response.announcement());
+            replan_changes(&done.next);
         }
         Outcome::DayPlan(plan) => {
             println!("{}", response.announcement());
-            for (n, sitting) in plan.sittings.iter().enumerate() {
-                println!("{:>3}  {}", n + 1, sitting.sentence);
-                if let Some(reason) = &sitting.reason {
-                    println!("     {reason}");
-                }
-            }
+            day_plan_sittings(plan);
+        }
+        Outcome::DayPlanned(done) => {
+            println!("{}", response.announcement());
+            day_plan_sittings(&done.next);
         }
         Outcome::History(found) => {
             println!("{}", response.announcement());

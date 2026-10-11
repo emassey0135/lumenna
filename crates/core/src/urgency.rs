@@ -15,8 +15,11 @@ use crate::model::{BlockRef, Task};
 use crate::snapshot::Snapshot;
 use crate::state::Facts;
 
-/// How much each term counts. The defaults are Taskwarrior's where it has the term.
+/// How much each term counts. The defaults are Taskwarrior's where it has the term. A synced
+/// setting, so every device ranks alike.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 pub struct Coefficients {
     /// The most a due date adds, at a week overdue or more.
     pub due: f32,

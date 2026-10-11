@@ -92,12 +92,9 @@ weights, and the day's timeline with its free time.
 Built: the score and its terms (`task_history`, `lum task history`), and per-task history
 from the records already kept, on a task's own screen. Still to come:
 
-- **The coefficients as synced settings**, so ranking agrees across devices; today they are
-  `Coefficients::default()`.
-- **Ordering by urgency**: what block suggestions rank by, and a `sort: urgency` clause the
-  filter language lacks (filters have no `sort` clause at all; comparison operators stay out).
-  Whether a task list's *default* order becomes urgency rather than the person's own is a
-  decision to make with the lists' tree in mind.
+- **Whether a task list's *default* order becomes urgency** rather than the person's own: a
+  decision to make with the lists' tree in mind. The weights are a synced setting
+  (`urgency-weights`) and `sort: urgency` orders any list, both built.
 - **A history view in every app** beyond the task's own screen, and `lum history`.
   Field-level history from Automerge (title and due changes over time) later, with its own
   API.
