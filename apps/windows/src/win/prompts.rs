@@ -15,7 +15,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::core::{HSTRING, PCWSTR};
 
-use super::controls;
+use super::{a11y, controls};
 use super::dialog::{self, Class, Dialog, Template};
 
 const FIELD: u16 = 100;
@@ -85,6 +85,8 @@ struct Pick<'a> {
     title: &'a str,
     label: &'a str,
     items: &'a [String],
+    /// Why each is offered, said after it; empty where nothing is.
+    reasons: &'a [String],
     yes: &'a str,
     chosen: RefCell<Option<usize>>,
 }
@@ -104,6 +106,9 @@ impl Dialog for Pick<'_> {
         for item in self.items {
             let text = HSTRING::from(item.as_str());
             controls::send(list, LB_ADDSTRING, 0, text.as_ptr() as isize);
+        }
+        for (index, reason) in self.reasons.iter().enumerate().filter(|(_, reason)| !reason.is_empty()) {
+            a11y::set_item_description(list, index as u32 + 1, reason);
         }
         controls::send(list, LB_SETCURSEL, 0, 0);
         controls::focus(list);
@@ -126,13 +131,14 @@ impl Dialog for Pick<'_> {
 }
 
 /// Offers a list and returns the position of the one chosen. `label` names the list, and
-/// `yes` is the button that takes the one chosen ("Move").
-pub fn pick(owner: HWND, title: &str, label: &str, items: &[String], yes: &str) -> Option<usize> {
+/// `yes` is the button that takes the one chosen ("Move"). `reasons`, where not empty, say why
+/// each is offered: its description, said after it as a hint is.
+pub fn pick(owner: HWND, title: &str, label: &str, items: &[String], reasons: &[String], yes: &str) -> Option<usize> {
     if items.is_empty() {
         fail(owner, &format!("{title}: there is nothing to choose from."));
         return None;
     }
-    let pick = Pick { title, label, items, yes, chosen: RefCell::new(None) };
+    let pick = Pick { title, label, items, reasons, yes, chosen: RefCell::new(None) };
     if dialog::run(Some(owner), &pick) == 1 { pick.chosen.into_inner().filter(|i| *i < items.len()) } else { None }
 }
 

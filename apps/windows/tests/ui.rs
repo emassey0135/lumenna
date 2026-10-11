@@ -691,6 +691,10 @@ fn every_dialog_fits_the_screen_at_the_largest_text_size_with_nothing_overlappin
     app.post(&["esc", "cmd:142", "home", "context"]);
     choose_from_menu(&app, "Reminders...");
     fits_and_nothing_overlaps(&app, "Reminders");
+    app.post(&["esc", "cmd:140", "cmd:184"]);
+    fits_and_nothing_overlaps(&app, "Plan the Day");
+    app.post(&["esc", "cmd:185"]);
+    fits_and_nothing_overlaps(&app, "Replan from Now");
     app.post(&["esc", SETTINGS]);
     for page in ["General", "Planning", "Devices", "Backups", "Export and Import"] {
         app.post(&[&format!("select:{page}")]);
@@ -874,4 +878,225 @@ fn f1_lists_every_key_and_alt_enter_opens_the_tasks_details() {
     // Alt+Enter, as the menu command it stands for: the selected task's details.
     app.post(&[GO_TASKS, "home", "cmd:113"]);
     assert!(app.focus().starts_with("Edit 'Title:'"), "{}", app.focus());
+}
+
+// ---------------------------------------------------------------------------------------
+// The planner: the day's own actions, its proposals, a choice's reason, a task's history
+// ---------------------------------------------------------------------------------------
+
+const NEXT_DAY: &str = "cmd:181";
+const PLAN_DAY: &str = "cmd:184";
+const REPLAN: &str = "cmd:185";
+const WHAT_NOW: &str = "cmd:186";
+const END_DAY: &str = "cmd:187";
+
+/// Today, once the last few minutes of the day are over: a test that seeds today's blocks
+/// and the app it starts must agree on which day that is.
+fn today_clear_of_midnight() -> jiff::civil::Date {
+    let now = jiff::Zoned::now();
+    let left = 24 * 60 - (i32::from(now.hour()) * 60 + i32::from(now.minute()));
+    if left <= 3 {
+        std::thread::sleep(Duration::from_secs(u64::try_from(left * 60 + 5).unwrap_or(0)));
+    }
+    jiff::Zoned::now().date()
+}
+
+/// A work block on `date` from `at` for `minutes`, happening once; its identifier.
+fn work_block(lumenna: &Lumenna, title: &str, date: jiff::civil::Date, at: &str, minutes: u32) -> String {
+    let block = NewBlock {
+        title: title.to_owned(),
+        at: at.to_owned(),
+        minutes,
+        date: Some(date.to_string()),
+        kind: "work".to_owned(),
+        ..NewBlock::default()
+    };
+    lumenna.add_block(block).unwrap();
+    lumenna.plan(Some(date.to_string())).unwrap().blocks.into_iter().find(|b| b.title == title).unwrap().id
+}
+
+/// The whole of today, so it is under way whenever the test runs: 1440 minutes, since one
+/// short of that is over in the day's last minute.
+fn all_day(lumenna: &Lumenna, today: jiff::civil::Date) -> String {
+    work_block(lumenna, "Deep work", today, "00:00", 1440)
+}
+
+/// The rows of the window in front that are tree items, as described.
+fn tree_items(app: &App) -> Vec<String> {
+    app.front().into_iter().map(|l| l.trim_start().to_owned()).filter(|l| l.starts_with("TreeItem")).collect()
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn the_days_own_actions_are_its_summary_rows_and_the_day_menus() {
+    let today = today_clear_of_midnight();
+    let app = App::launch(|lumenna| {
+        all_day(lumenna, today);
+    });
+    app.post(&["home", "context"]);
+    let names = choose_from_menu(&app, "End the Day...");
+    let at = |name: &str| names.iter().position(|n| n == name).unwrap_or_else(|| panic!("no {name} in {names:?}"));
+    assert!(
+        at("Plan the Day...") < at("Replan from Now...")
+            && at("Replan from Now...") < at("What Should I Work On?...")
+            && at("What Should I Work On?...") < at("End the Day..."),
+        "in the core's order: {names:?}"
+    );
+    // Asked before it is done, in the core's words.
+    let asked = app.front();
+    assert!(asked.iter().any(|l| l.contains("End the day?")), "{asked:#?}");
+    app.post(&["esc"]);
+    // A day with nothing to do to it says so, rather than nothing.
+    app.post(&[NEXT_DAY, END_DAY]);
+    assert_eq!(app.status(), "That does not apply here.");
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn what_should_i_work_on_says_why_each_is_offered_and_starts_the_one_chosen() {
+    let today = today_clear_of_midnight();
+    let app = App::launch(|lumenna| {
+        all_day(lumenna, today);
+        add(lumenna, "Write report p1");
+    });
+    app.post(&[WHAT_NOW]);
+    let picker = app.front();
+    let offered = picker.iter().find(|l| l.trim_start().starts_with("ListItem 'Write report")).unwrap_or_else(|| panic!("{picker:#?}"));
+    // Why, as its description; never in its name.
+    let name = offered.split('\'').nth(1).unwrap_or_default();
+    assert!(!name.contains("Suggested"), "{offered}");
+    assert!(offered.contains("help='Suggested because") && offered.contains("msaa-description='Suggested because"), "{offered}");
+    app.post(&["enter"]);
+    let plan = app.store().plan(None).unwrap();
+    let started: Vec<&str> = plan.blocks.iter().flat_map(|b| &b.assignments).map(|a| a.title.as_str()).collect();
+    assert_eq!(started, ["Write report"], "{}", app.status());
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn replan_from_now_says_its_proposal_and_makes_only_the_changes_left_checked() {
+    let today = today_clear_of_midnight();
+    let app = App::launch(|lumenna| {
+        let deep = all_day(lumenna, today);
+        // A whole day each: neither fits in what is left of today, whenever the test runs.
+        for title in ["Essay", "Email"] {
+            let task = lumenna.add_task(title).unwrap().task.unwrap().id;
+            lumenna.assign(&task, &deep, Some(today.to_string()), Some(1440)).unwrap();
+        }
+    });
+    app.post(&[REPLAN]);
+    let screen = app.front();
+    assert!(screen.iter().any(|l| l.contains("Window 'Replan from Now'")), "{screen:#?}");
+    assert!(unnamed(&screen).is_empty(), "{:#?}", unnamed(&screen));
+    let rows = tree_items(&app);
+    assert_eq!(rows.len(), 2, "{screen:#?}");
+    assert!(rows.iter().all(|r| r.contains(" checked")), "every change checked to begin with: {rows:#?}");
+    // The whole proposal is said as it opens.
+    let front = app.automation.front(app.window);
+    let said = automation::wait(Duration::from_secs(5), || app.automation.status(front).filter(|s| !s.is_empty()));
+    assert!(said.as_deref().is_some_and(|s| s.contains("Essay") && s.contains("Email")), "{said:?}");
+    // The first left unchecked: only the second is made.
+    let kept = if rows[0].contains("Essay") { "Essay" } else { "Email" };
+    app.post(&["space"]);
+    assert!(tree_items(&app)[0].contains(" unchecked"), "{:#?}", tree_items(&app));
+    app.post(&["enter"]);
+    assert!(app.status().starts_with("Replanned"), "{}", app.status());
+    let plan = app.store().plan(None).unwrap();
+    let left: Vec<&str> = plan.blocks[0].assignments.iter().map(|a| a.title.as_str()).collect();
+    assert_eq!(left, [kept]);
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn plan_the_day_says_why_each_sitting_and_proposes_again_around_one_turned_down() {
+    let tomorrow = today_clear_of_midnight().tomorrow().unwrap();
+    let app = App::launch(|lumenna| {
+        work_block(lumenna, "Morning", tomorrow, "09:00", 30);
+        work_block(lumenna, "Afternoon", tomorrow, "14:00", 30);
+        for task in ["Report p1", "Email p2", "Filing p3"] {
+            add(lumenna, task);
+        }
+    });
+    app.post(&[NEXT_DAY, PLAN_DAY]);
+    let rows = tree_items(&app);
+    assert_eq!(rows.len(), 2, "{:#?}", app.front());
+    assert!(rows[0].starts_with("TreeItem 'Report goes in Morning"), "{rows:#?}");
+    assert!(
+        rows[0].contains("help='Suggested because priority 1.'") && rows[0].contains("msaa-description='Suggested because priority 1.'"),
+        "its reason, as its description: {rows:#?}"
+    );
+    // Report turned down: Email is planned, and Morning is offered to Filing instead.
+    app.post(&["space", "enter"]);
+    let front = app.automation.front(app.window);
+    assert!(front != app.window, "the screen stays while there is more to plan");
+    assert_eq!(app.automation.status(front).as_deref(), Some("Planned 1 task. Now: Plans 1 task: Filing in Morning."));
+    let rows = tree_items(&app);
+    assert!(rows.len() == 1 && rows[0].starts_with("TreeItem 'Filing goes in Morning") && rows[0].contains(" checked"), "{rows:#?}");
+    app.post(&["esc"]);
+    let plan = app.store().plan(Some(tomorrow.to_string())).unwrap();
+    let planned: Vec<(&str, &str)> =
+        plan.blocks.iter().flat_map(|b| b.assignments.iter().map(move |a| (b.title.as_str(), a.title.as_str()))).collect();
+    assert_eq!(planned, [("Afternoon", "Email")]);
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn a_tasks_history_is_on_its_own_screen_and_never_in_the_list() {
+    let today = today_clear_of_midnight();
+    let app = App::launch(|lumenna| {
+        let deep = all_day(lumenna, today);
+        let task = lumenna.add_task("Write report").unwrap().task.unwrap().id;
+        lumenna.assign(&task, &deep, Some(today.to_string()), Some(30)).unwrap();
+    });
+    app.post(&[GO_TASKS, "home"]);
+    let window = app.front();
+    let history = window.iter().find(|l| l.trim_start().starts_with("Edit 'History:'")).unwrap_or_else(|| panic!("{window:#?}"));
+    assert!(history.contains("1 sitting"), "{history}");
+    assert!(app.focus().contains("Write report") && !app.focus().contains("sitting"), "{}", app.focus());
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn a_block_that_ended_with_work_short_offers_carry_forward_on_its_notification() {
+    use windows::UI::Notifications::ToastNotificationManager;
+    use windows::core::HSTRING;
+
+    const ID: &str = "io.github.emassey0135.Lumenna.UiTest";
+    // A block of a minute that ended a minute ago, so its end is owed now, and one tomorrow
+    // with room for what it left short, in this week whatever day it is.
+    let now = jiff::Zoned::now();
+    if now.hour() == 0 && now.minute() < 3 {
+        std::thread::sleep(Duration::from_secs(180));
+    }
+    let start = jiff::Zoned::now().checked_sub(jiff::Span::new().minutes(2)).unwrap();
+    let today = start.date();
+    let app = App::launch_with(&[("LUMENNA_APP_ID", ID)], |lumenna| {
+        lumenna.set_setting("reminders", "true").unwrap();
+        lumenna.set_setting("week-start", &format!("{:?}", today.weekday()).to_lowercase()).unwrap();
+        let deep = work_block(lumenna, "Deep work", today, &start.strftime("%H:%M").to_string(), 1);
+        work_block(lumenna, "Admin", today.tomorrow().unwrap(), "09:00", 60);
+        let task = lumenna.add_task("Essay").unwrap().task.unwrap().id;
+        lumenna.assign(&task, &deep, Some(today.to_string()), Some(30)).unwrap();
+        let since = jiff::Timestamp::now().checked_sub(jiff::SignedDuration::from_mins(3)).unwrap();
+        let settings = lumenna.path().join("device-settings");
+        let mut text = std::fs::read_to_string(&settings).unwrap_or_default();
+        text.push_str(&format!("reminders-delivered\t{since}\n"));
+        std::fs::write(&settings, text).unwrap();
+    });
+    let history = ToastNotificationManager::History().unwrap();
+    let shown = automation::wait(Duration::from_secs(15), || {
+        let toasts = history.GetHistoryWithId(&HSTRING::from(ID)).ok()?;
+        (0..toasts.Size().ok()?)
+            .filter_map(|i| toasts.GetAt(i).ok()?.Content().ok()?.GetXml().ok().map(|x| x.to_string()))
+            .find(|xml| xml.contains("Essay"))
+    });
+    let _ = history.ClearWithId(&HSTRING::from(ID));
+    windows_registry_forget(ID);
+    let xml = shown.expect("the block's end was shown");
+    let since = jiff::Timestamp::now().checked_sub(jiff::SignedDuration::from_mins(5)).unwrap();
+    let due = app.store().reminders_due(since.to_string(), None).unwrap();
+    let texts: Vec<(&str, &str)> = due.due.iter().map(|r| (r.text.as_str(), r.carry.as_str())).collect();
+    let end = due.due.iter().find(|r| !r.carry.is_empty()).unwrap_or_else(|| panic!("the core offers to carry it: {texts:#?}
+{xml}"));
+    assert!(xml.contains(&format!(r#"content="{}" arguments="carry""#, end.carry)), "{xml}");
 }

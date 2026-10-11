@@ -35,7 +35,7 @@ use crate::speech;
 /// Every page's status line.
 const STATUS: u16 = 199;
 const WIDTH: i16 = 252;
-const HEIGHT: i16 = 230;
+const HEIGHT: i16 = 250;
 
 /// The pages, in order. Only some are opened directly, from the menu bar; the rest are named
 /// so the order is written down once.
@@ -422,14 +422,16 @@ const VERBOSITY: u16 = 204;
 const WEEK_START: u16 = 205;
 const TASK_REMINDERS: u16 = 206;
 const BLOCK_REMINDERS: u16 = 207;
+const URGENCY: u16 = 208;
 
 /// What is typed, and written when the field is left, never as each key is pressed.
-const TYPED: [(u16, &str); 5] = [
+const TYPED: [(u16, &str); 6] = [
     (DAY_START, "day-start"),
     (DAY_END, "day-end"),
     (ALL_DAY, "all-day-reminder-hour"),
     (TASK_REMINDERS, "default-task-reminders"),
     (BLOCK_REMINDERS, "default-block-reminders"),
+    (URGENCY, "urgency-weights"),
 ];
 const CHOICES: [(u16, &str); 2] = [(VERBOSITY, "verbosity"), (WEEK_START, "week-start")];
 
@@ -482,11 +484,13 @@ impl Dialog for Planning<'_> {
             .item(Class::ComboBox, "", VERBOSITY, LIST, 7, 94, 110, 60)
             .item(Class::Static, &name("week-start", 'W', true), u16::MAX, 0, 128, 84, 110, 9)
             .item(Class::ComboBox, "", WEEK_START, LIST, 128, 94, 110, 120)
-            .item(Class::Static, &name("default-task-reminders", 't', true), u16::MAX, 0, 7, 114, 238, 9)
-            .item(Class::Edit, "", TASK_REMINDERS, FIELD, 7, 124, 238, 14)
-            .item(Class::Static, &name("default-block-reminders", 'b', true), u16::MAX, 0, 7, 144, 238, 9)
-            .item(Class::Edit, "", BLOCK_REMINDERS, FIELD, 7, 154, 238, 14)
-            .item(Class::Static, "These sync to all your devices.", u16::MAX, SS_NOPREFIX.0, 7, 174, 238, 9)
+            .item(Class::Static, &name("urgency-weights", 'u', true), u16::MAX, 0, 7, 114, 238, 9)
+            .item(Class::Edit, "", URGENCY, FIELD, 7, 124, 238, 14)
+            .item(Class::Static, &name("default-task-reminders", 't', true), u16::MAX, 0, 7, 144, 238, 9)
+            .item(Class::Edit, "", TASK_REMINDERS, FIELD, 7, 154, 238, 14)
+            .item(Class::Static, &name("default-block-reminders", 'b', true), u16::MAX, 0, 7, 174, 238, 9)
+            .item(Class::Edit, "", BLOCK_REMINDERS, FIELD, 7, 184, 238, 14)
+            .item(Class::Static, "These sync to all your devices.", u16::MAX, SS_NOPREFIX.0, 7, 204, 238, 9)
     }
 
     fn init(&self, page: HWND) -> bool {

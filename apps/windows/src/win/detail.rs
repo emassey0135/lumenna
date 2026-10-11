@@ -43,6 +43,7 @@ const LABELS: u16 = 306;
 const NOTES: u16 = 307;
 const WAITS: u16 = 308;
 const STATE: u16 = 309;
+const HISTORY: u16 = 310;
 
 /// Where a field sits: across the pane, or in one of its two columns.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -84,6 +85,8 @@ pub struct Detail {
     /// "Add…" and "Stop Waiting", under the list of what it waits for.
     wait_buttons: Vec<(HWND, Action)>,
     state: HWND,
+    /// What has happened to it: the core's lines, on the task's own screen and never in a list.
+    history: HWND,
     /// Save, Mark Done and the rest, in rows of three.
     buttons: Vec<(HWND, Action)>,
     shown: RefCell<Option<TaskDetail>>,
@@ -141,6 +144,8 @@ impl Detail {
         a11y::set_name(wait_buttons[0].0, "Add something it waits for");
         a11y::set_name(wait_buttons[1].0, "Stop waiting for the selected task");
         let state = field("State:", WC_EDITW, line | ES_READONLY as u32, STATE, Column::Full, 1, "");
+        let read_only = (ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY) as u32 | WS_VSCROLL.0;
+        let history = field("Histor&y:", WC_EDITW, read_only, HISTORY, Column::Full, 3, "");
         let buttons = vec![
             button("&Save", Action::Save),
             // Named again from the task's own actions whenever one is shown.
@@ -163,6 +168,7 @@ impl Detail {
         }
         unsafe {
             let _ = SetWindowSubclass(notes, Some(leaves_on_tab), 1, 0);
+            let _ = SetWindowSubclass(history, Some(leaves_on_tab), 1, 0);
         }
         let detail = Self {
             placeholder,
@@ -178,6 +184,7 @@ impl Detail {
             waits,
             wait_buttons,
             state,
+            history,
             buttons,
             shown: RefCell::new(None),
             projects: RefCell::new(Vec::new()),
@@ -247,6 +254,7 @@ impl Detail {
             controls::send(self.waits, LB_SETCURSEL, 0, 0);
             controls::enable(self.wait_buttons[1].0, !task.depends.is_empty());
             controls::set_text(self.state, &crate::speech::task_state(task));
+            controls::set_text(self.history, &task.history.join("\r\n"));
             for (button, action) in self.wait_buttons.iter().chain(&self.buttons) {
                 if let Action::Kinds(kinds) = action {
                     let offered = actions::of_kind(&task.actions, kinds);

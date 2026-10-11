@@ -19,6 +19,7 @@ mod menu;
 mod prompts;
 mod quick_add;
 mod pairing;
+mod proposal;
 mod reminders;
 mod settings;
 mod shortcuts;

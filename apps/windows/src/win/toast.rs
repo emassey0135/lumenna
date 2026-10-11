@@ -31,6 +31,8 @@ pub enum Answered {
     Open(DueReminder),
     Dismiss(DueReminder),
     Snooze(DueReminder),
+    /// A block's end: the rest of what it left short, each to its next block.
+    Carry(DueReminder),
     /// The summary of what was missed: open the window.
     Summary,
 }
@@ -61,13 +63,20 @@ impl Toasts {
         Some(Self { notifier, shown: std::cell::RefCell::new(Vec::new()) })
     }
 
-    /// One reminder: its title, the whole message, and the core's Dismiss and Snooze. It stays
-    /// until answered, as a reminder does.
+    /// One reminder: its title, the whole message, and the core's Dismiss and Snooze, with Carry
+    /// Forward first at a block's end that left work short, whose question the message ends in.
+    /// It stays until answered, as a reminder does.
     pub fn remind(&self, reminder: &DueReminder, window: Poster) {
+        let carry = if reminder.carry.is_empty() {
+            String::new()
+        } else {
+            format!(r#"<action content="{}" arguments="carry" activationType="foreground"/>"#, escape(&reminder.carry))
+        };
         let xml = format!(
-            r#"<toast scenario="reminder" launch="open"><visual><binding template="ToastGeneric"><text>{}</text><text>{}</text></binding></visual><actions><action content="{}" arguments="dismiss" activationType="foreground"/><action content="{}" arguments="snooze" activationType="foreground"/></actions></toast>"#,
+            r#"<toast scenario="reminder" launch="open"><visual><binding template="ToastGeneric"><text>{}</text><text>{}</text></binding></visual><actions>{}<action content="{}" arguments="dismiss" activationType="foreground"/><action content="{}" arguments="snooze" activationType="foreground"/></actions></toast>"#,
             escape(&reminder.title),
             escape(&reminder.text),
+            carry,
             escape(&reminder.dismiss),
             escape(&reminder.snooze),
         );
@@ -76,6 +85,7 @@ impl Toasts {
             let answered = match arguments {
                 "dismiss" => Answered::Dismiss(reminder.clone()),
                 "snooze" => Answered::Snooze(reminder.clone()),
+                "carry" => Answered::Carry(reminder.clone()),
                 _ => Answered::Open(reminder.clone()),
             };
             window.send(WM_REMINDER, answered);

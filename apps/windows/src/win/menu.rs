@@ -63,6 +63,11 @@ pub const PREVIOUS_DAY: u16 = 180;
 pub const NEXT_DAY: u16 = 181;
 pub const GO_TO_NOW: u16 = 182;
 pub const GO_TO_DAY: u16 = 183;
+pub const PLAN_DAY: u16 = 184;
+pub const REPLAN: u16 = 185;
+pub const WHAT_NOW: u16 = 186;
+pub const END_DAY: u16 = 187;
+pub const CLEAR_DAY: u16 = 188;
 
 pub const SHOW_WINDOW: u16 = 200;
 pub const ABOUT: u16 = 201;
@@ -131,6 +136,14 @@ pub const MENUS: [(&str, &[(u16, &str)]); 6] = [
         (GO_TO_DAY, "&Go to Day...\tCtrl+G"),
         (0, ""),
         (NEW_BLOCK, "&Add Block...\tCtrl+Shift+N"),
+        (0, ""),
+        // The day's own actions, named as the core names them; each runs the day shown's
+        // action of that kind (`App::act_on_day`).
+        (PLAN_DAY, "P&lan the Day..."),
+        (REPLAN, "&Replan from Now..."),
+        (WHAT_NOW, "&What Should I Work On?..."),
+        (END_DAY, "&End the Day..."),
+        (CLEAR_DAY, "&Clear the Rest of the Day..."),
     ]),
     ("&Help", &[(KEYBOARD_HELP, "&Keyboard Shortcuts\tF1"), (ABOUT, "&About Lumenna")]),
 ];

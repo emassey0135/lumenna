@@ -797,6 +797,14 @@ impl App {
             }
             menu::KEYBOARD_HELP => help::show(self.main),
             command if !task_kinds(command).is_empty() => self.act_on_task_in_hand(task_kinds(command)),
+            command if day_kind(command).is_some() => {
+                if self.day().is_none() {
+                    self.go(Place::Today, true);
+                }
+                if let (Some(day), Some(kind)) = (self.day(), day_kind(command)) {
+                    day.act_on_day(self, kind);
+                }
+            }
             menu::PREVIOUS_DAY | menu::NEXT_DAY | menu::GO_TO_NOW | menu::GO_TO_DAY => {
                 if self.day().is_none() {
                     self.go(Place::Today, true);
@@ -990,6 +998,12 @@ impl App {
                     self.say_change(&change);
                 }
             }
+            Answered::Carry(reminder) => {
+                let block = format!("{}@{}", reminder.target, reminder.occurrence);
+                if let Some(change) = self.perform(|_| lumenna.carry_rest_forward(&block)) {
+                    self.say_change(&change);
+                }
+            }
             Answered::Open(reminder) => {
                 self.show_window();
                 if reminder.kind == "block" {
@@ -1143,6 +1157,18 @@ unsafe extern "system" fn pane_procedure(hwnd: HWND, message: u32, wparam: WPARA
             WM_ERASEBKGND => dark::erase(hwnd, wparam).unwrap_or_else(|| DefWindowProcW(hwnd, message, wparam, lparam)),
             _ => DefWindowProcW(hwnd, message, wparam, lparam),
         }
+    }
+}
+
+/// The day's own action a Day-menu command means.
+fn day_kind(command: u16) -> Option<ActionKind> {
+    match command {
+        menu::PLAN_DAY => Some(ActionKind::PlanDay),
+        menu::REPLAN => Some(ActionKind::Replan),
+        menu::WHAT_NOW => Some(ActionKind::WhatNow),
+        menu::END_DAY => Some(ActionKind::EndDay),
+        menu::CLEAR_DAY => Some(ActionKind::ClearDay),
+        _ => None,
     }
 }
 
