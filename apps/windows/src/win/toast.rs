@@ -33,6 +33,8 @@ pub enum Answered {
     Snooze(DueReminder),
     /// A block's end: the rest of what it left short, each to its next block.
     Carry(DueReminder),
+    /// A block's work outrunning its time: the app, at Replan from Now.
+    Replan,
     /// The summary of what was missed: open the window.
     Summary,
 }
@@ -64,7 +66,8 @@ impl Toasts {
     }
 
     /// One reminder: its title, the whole message, and the core's Dismiss and Snooze, with Carry
-    /// Forward first at a block's end that left work short, whose question the message ends in.
+    /// Forward first at a block's end that left work short, whose question the message ends in,
+    /// or Replan where a block's work outruns its time.
     /// It stays until answered, as a reminder does.
     pub fn remind(&self, reminder: &DueReminder, window: Poster) {
         let carry = if reminder.carry.is_empty() {
@@ -72,11 +75,17 @@ impl Toasts {
         } else {
             format!(r#"<action content="{}" arguments="carry" activationType="foreground"/>"#, escape(&reminder.carry))
         };
+        let replan = if reminder.replan.is_empty() {
+            String::new()
+        } else {
+            format!(r#"<action content="{}" arguments="replan" activationType="foreground"/>"#, escape(&reminder.replan))
+        };
         let xml = format!(
-            r#"<toast scenario="reminder" launch="open"><visual><binding template="ToastGeneric"><text>{}</text><text>{}</text></binding></visual><actions>{}<action content="{}" arguments="dismiss" activationType="foreground"/><action content="{}" arguments="snooze" activationType="foreground"/></actions></toast>"#,
+            r#"<toast scenario="reminder" launch="open"><visual><binding template="ToastGeneric"><text>{}</text><text>{}</text></binding></visual><actions>{}{}<action content="{}" arguments="dismiss" activationType="foreground"/><action content="{}" arguments="snooze" activationType="foreground"/></actions></toast>"#,
             escape(&reminder.title),
             escape(&reminder.text),
             carry,
+            replan,
             escape(&reminder.dismiss),
             escape(&reminder.snooze),
         );
@@ -86,6 +95,7 @@ impl Toasts {
                 "dismiss" => Answered::Dismiss(reminder.clone()),
                 "snooze" => Answered::Snooze(reminder.clone()),
                 "carry" => Answered::Carry(reminder.clone()),
+                "replan" => Answered::Replan,
                 _ => Answered::Open(reminder.clone()),
             };
             window.send(WM_REMINDER, answered);

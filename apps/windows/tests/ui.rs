@@ -1100,3 +1100,105 @@ fn a_block_that_ended_with_work_short_offers_carry_forward_on_its_notification()
 {xml}"));
     assert!(xml.contains(&format!(r#"content="{}" arguments="carry""#, end.carry)), "{xml}");
 }
+
+/// Now, as minutes into today, once there are `room` minutes of the day left after it: a
+/// test laying blocks out from now waits out the end of the day rather than run past it.
+fn minutes_with_room(room: i32) -> (jiff::civil::Date, i32) {
+    loop {
+        let now = jiff::Zoned::now();
+        let minutes = i32::from(now.hour()) * 60 + i32::from(now.minute());
+        if minutes + room < 24 * 60 {
+            return (now.date(), minutes);
+        }
+        std::thread::sleep(Duration::from_secs(30));
+    }
+}
+
+/// A clock time `minutes` into the day.
+fn clock(minutes: i32) -> String {
+    format!("{:02}:{:02}", minutes / 60, minutes % 60)
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn replan_offers_other_options_and_taking_one_shows_its_proposal_in_place() {
+    // Under way until three minutes from now, a break due to start inside it, and work after:
+    // the break has to move, unless it is skipped.
+    let (today, now) = minutes_with_room(12);
+    let app = App::launch(|lumenna| {
+        work_block(lumenna, "Deep work", today, "00:00", u32::try_from(now + 3).unwrap());
+        let lunch = NewBlock {
+            title: "Lunch".to_owned(),
+            at: clock(now + 2),
+            minutes: 2,
+            date: Some(today.to_string()),
+            kind: "break".to_owned(),
+            ..NewBlock::default()
+        };
+        lumenna.add_block(lunch).unwrap();
+        work_block(lumenna, "Review", today, &clock(now + 4), 4);
+    });
+    app.post(&[REPLAN]);
+    let screen = app.front();
+    assert!(screen.iter().any(|l| l.trim_start().starts_with("Text 'Other options:'")), "{screen:#?}");
+    let option = screen
+        .iter()
+        .map(|l| l.trim_start())
+        .find(|l| l.starts_with("Button 'Skip Lunch today, your only break left today."))
+        .unwrap_or_else(|| panic!("{screen:#?}"));
+    let name = option.split('\'').nth(1).unwrap().to_owned();
+    app.post(&[&format!("invoke:{name}")]);
+    let front = app.automation.front(app.window);
+    assert_eq!(app.automation.status(front).as_deref(), Some("Lunch is skipped today."));
+    let rows = tree_items(&app);
+    assert!(rows.len() == 1 && rows[0].starts_with("TreeItem 'Lunch is skipped today") && rows[0].contains(" checked"), "{rows:#?}");
+    // Nothing does better than nothing moving: no other options, and no heading for them.
+    let screen = app.front();
+    assert!(!screen.iter().any(|l| l.contains("Other options") || l.contains("'Skip ")), "{screen:#?}");
+    assert!(app.focus().contains("Lunch is skipped today"), "on what is proposed now: {}", app.focus());
+    app.post(&["esc"]);
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn a_blocks_work_outrunning_it_is_a_notification_with_the_cores_replan_button() {
+    use windows::UI::Notifications::ToastNotificationManager;
+    use windows::core::HSTRING;
+
+    const ID: &str = "io.github.emassey0135.Lumenna.UiTest";
+    // A block of two minutes that started a minute ago, ten minutes of work planned in it (an
+    // overrun of a few minutes is not said),
+    // and another block straight after it to run into.
+    let (today, mut now) = minutes_with_room(6);
+    while now < 2 {
+        std::thread::sleep(Duration::from_secs(30));
+        now = minutes_with_room(6).1;
+    }
+    let app = App::launch_with(&[("LUMENNA_APP_ID", ID)], |lumenna| {
+        lumenna.set_setting("reminders", "true").unwrap();
+        let deep = work_block(lumenna, "Deep work", today, &clock(now - 1), 2);
+        work_block(lumenna, "Meeting", today, &clock(now + 1), 1);
+        let task = lumenna.add_task("Essay").unwrap().task.unwrap().id;
+        lumenna.assign(&task, &deep, Some(today.to_string()), Some(10)).unwrap();
+        let since = jiff::Timestamp::now().checked_sub(jiff::SignedDuration::from_mins(3)).unwrap();
+        let settings = lumenna.path().join("device-settings");
+        let mut text = std::fs::read_to_string(&settings).unwrap_or_default();
+        text.push_str(&format!("reminders-delivered\t{since}\n"));
+        std::fs::write(&settings, text).unwrap();
+    });
+    let history = ToastNotificationManager::History().unwrap();
+    let shown = automation::wait(Duration::from_secs(15), || {
+        let toasts = history.GetHistoryWithId(&HSTRING::from(ID)).ok()?;
+        (0..toasts.Size().ok()?)
+            .filter_map(|i| toasts.GetAt(i).ok()?.Content().ok()?.GetXml().ok().map(|x| x.to_string()))
+            .find(|xml| xml.contains("more than it holds"))
+    });
+    let _ = history.ClearWithId(&HSTRING::from(ID));
+    windows_registry_forget(ID);
+    let since = jiff::Timestamp::now().checked_sub(jiff::SignedDuration::from_mins(5)).unwrap();
+    let due = app.store().reminders_due(since.to_string(), None).unwrap();
+    let texts: Vec<(&str, &str)> = due.due.iter().map(|r| (r.text.as_str(), r.replan.as_str())).collect();
+    let xml = shown.unwrap_or_else(|| panic!("the overrun was shown: {texts:#?}"));
+    let overrun = due.due.iter().find(|r| !r.replan.is_empty()).unwrap_or_else(|| panic!("the core offers to replan: {texts:#?}"));
+    assert!(xml.contains(&format!(r#"content="{}" arguments="replan""#, overrun.replan)), "{xml}");
+}
