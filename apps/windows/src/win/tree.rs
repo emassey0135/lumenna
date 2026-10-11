@@ -15,7 +15,7 @@ use windows::Win32::UI::Controls::{
     TVI_LAST, TVM_HITTEST,
     TVI_ROOT, TVIF_PARAM, TVIF_STATE, TVIF_TEXT, TVINSERTSTRUCTW, TVINSERTSTRUCTW_0,
     TVIS_STATEIMAGEMASK, TVITEMEXW, TVM_DELETEITEM, TVM_ENSUREVISIBLE, TVM_EXPAND,
-    TVM_GETITEMRECT, TVM_GETITEMW, TVM_GETNEXTITEM, TVM_INSERTITEMW,
+    TVM_GETITEMRECT, TVM_GETITEMW, TVM_GETNEXTITEM, TVM_INSERTITEMW, TVM_MAPHTREEITEMTOACCID,
     TVM_SELECTITEM, TVM_SETEXTENDEDSTYLE, TVM_SETITEMW, TVS_CHECKBOXES, TVS_DISABLEDRAGDROP,
     TVS_EX_DOUBLEBUFFER, TVS_HASBUTTONS, TVS_HASLINES, TVS_LINESATROOT, TVS_NOHSCROLL, TVS_SHOWSELALWAYS,
     WC_TREEVIEWW,
@@ -57,6 +57,11 @@ impl Tree {
         let style =
             TVS_HASBUTTONS | TVS_HASLINES | TVS_LINESATROOT | TVS_SHOWSELALWAYS | TVS_DISABLEDRAGDROP | TVS_NOHSCROLL;
         let hwnd = controls::create(parent, WC_TREEVIEWW, "", style | WS_TABSTOP.0, WS_EX_CLIENTEDGE.0, id);
+        Self::adopt(hwnd, name, checkboxes)
+    }
+
+    /// Takes on a tree view that a dialog template made, as [`Tree::create`] makes one.
+    pub fn adopt(hwnd: HWND, name: &str, checkboxes: bool) -> Self {
         unsafe {
             let _ = SetWindowTheme(hwnd, w!("Explorer"), None);
             if checkboxes {
@@ -210,6 +215,22 @@ impl Tree {
         if let Some(index) = target {
             self.select(index);
         }
+    }
+
+    /// Whether a row's checkbox is checked now: the tree checks one itself, on Space or a
+    /// click.
+    pub fn is_checked(&self, index: usize) -> bool {
+        let Some(handle) = self.handles.borrow().get(index).copied() else { return false };
+        let mut tv = TVITEMEXW { mask: TVIF_STATE, hItem: handle, stateMask: TVIS_STATEIMAGEMASK.0, ..Default::default() };
+        controls::send(self.hwnd, TVM_GETITEMW, 0, &raw mut tv as isize);
+        tv.state & TVIS_STATEIMAGEMASK.0 == state_image(Some(true))
+    }
+
+    /// Describes a row: what a screen reader says after it, never as part of its name.
+    pub fn describe(&self, index: usize, description: &str) {
+        let Some(handle) = self.handles.borrow().get(index).copied() else { return };
+        let child = controls::send(self.hwnd, TVM_MAPHTREEITEMTOACCID, handle.0 as usize, 0);
+        a11y::set_item_description(self.hwnd, child as u32, description);
     }
 
     /// Remembers what the person collapsed, so a reload keeps it so.

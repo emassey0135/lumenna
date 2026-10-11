@@ -394,6 +394,12 @@ pub fn describe(element: &IUIAutomationElement) -> String {
         {
             line += &format!(" help='{help}'");
         }
+        if let Ok(legacy) = element.GetCurrentPatternAs::<IUIAutomationLegacyIAccessiblePattern>(UIA_LegacyIAccessiblePatternId)
+            && let Ok(description) = legacy.CurrentDescription()
+            && !description.is_empty()
+        {
+            line += &format!(" msaa-description='{description}'");
+        }
         if let Ok(key) = element.CurrentAccessKey()
             && !key.is_empty()
         {

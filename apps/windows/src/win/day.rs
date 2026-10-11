@@ -7,12 +7,16 @@
 //!
 //! On a sitting, Space starts or stops its timer and Delete takes it out of the block; on a
 //! block, Enter changes it and Delete deletes it; on free time, Enter adds a block there.
-//! Everything else is in the row's context menu.
+//! Everything else is in the row's context menu. What can be done to the day itself is the
+//! summary row's, and the Day menu's.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use lumenna_surface::{Action, ActionKind, CancelledBlock, go_to_day_question, unsayable_repeat_note, Plan, PlanAssignment, PlanBlock, PlanItem, block_fields, day_block_fields};
+use lumenna_surface::{
+    Action, ActionKind, CancelledBlock, Plan, PlanAssignment, PlanBlock, PlanItem, Subject, block_fields, day_block_fields,
+    go_to_day_question, not_offered, unsayable_repeat_note,
+};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{NM_DBLCLK, NMHDR, NMTVKEYDOWN, TVN_KEYDOWN, TVN_SELCHANGEDW, WC_BUTTONW};
 use windows::Win32::UI::Input::KeyboardAndMouse::{VK_DELETE, VK_SPACE};
@@ -25,7 +29,7 @@ use super::controls::{self, rect};
 use super::core::sentence;
 use super::tree::{Item, Tree};
 use super::view::{Metrics, View};
-use super::{actions, prompts};
+use super::{actions, prompts, proposal};
 use crate::speech::{self, Clock};
 
 const PREVIOUS: u16 = 500;
@@ -37,7 +41,8 @@ const TREE: u16 = 504;
 /// One row of the day.
 #[derive(Clone)]
 enum Row {
-    Summary(String),
+    /// The day's heading, with what can be done to the day itself.
+    Summary(String, Vec<Action>),
     Block(PlanBlock),
     Sitting(PlanAssignment),
     Free { start: String, minutes: u32, text: String, actions: Vec<Action> },
@@ -49,7 +54,7 @@ impl Row {
     /// What identifies it across a reload, for keeping the selection.
     fn key(&self) -> String {
         match self {
-            Self::Summary(_) => "summary".to_owned(),
+            Self::Summary(..) => "summary".to_owned(),
             Self::Block(block) => format!("block:{}", block.id),
             Self::Sitting(sitting) => format!("sitting:{}", sitting.id),
             Self::Free { start, .. } => format!("free:{start}"),
@@ -61,7 +66,7 @@ impl Row {
     fn text(&self) -> String {
         let clock = Locale;
         match self {
-            Self::Summary(text) => text.clone(),
+            Self::Summary(text, _) => text.clone(),
             Self::Block(block) => speech::block(block, &clock),
             Self::Sitting(sitting) => speech::sitting(sitting),
             Self::Free { text, .. } => text.clone(),
@@ -77,7 +82,8 @@ impl Row {
             Self::Sitting(sitting) => &sitting.actions,
             Self::Free { actions, .. } => actions,
             Self::Cancelled(block) => &block.actions,
-            Self::Summary(_) | Self::Now(_) => &[],
+            Self::Summary(_, actions) => actions,
+            Self::Now(_) => &[],
         }
     }
 }
@@ -138,12 +144,12 @@ impl DayView {
         let plan = match app.core.lumenna.plan(day) {
             Ok(plan) => plan,
             Err(error) => {
-                let rows = vec![Row::Summary(sentence(&error))];
+                let rows = vec![Row::Summary(sentence(&error), Vec::new())];
                 self.show(rows, key, near);
                 return;
             }
         };
-        let mut rows = vec![Row::Summary(speech::summary(&plan.date, &plan.summary, &Locale))];
+        let mut rows = vec![Row::Summary(speech::summary(&plan.date, &plan.summary, &Locale), plan.actions.clone())];
         for item in &plan.timeline {
             match item {
                 PlanItem::Block { row } => {
@@ -318,9 +324,31 @@ impl DayView {
             (Row::Block(block), ActionKind::Edit) => self.edit(app, block),
             (Row::Sitting(_), ActionKind::EditTask) => app.open_detail(),
             (Row::Free { start, minutes, .. }, ActionKind::AddBlock) => self.add_block(app, Some(start), Some(*minutes)),
-            _ => {}
+            _ => self.day_form(app, action),
         };
         if let Some((change, _)) = actions::run(app, app.main, action, form) {
+            app.say_change(&change);
+        }
+    }
+
+    /// The day's own screens: Plan the Day and Replan from Now.
+    fn day_form(&self, app: &App, action: &Action) {
+        match action.kind {
+            ActionKind::PlanDay => proposal::plan_day(app, &action.target),
+            ActionKind::Replan => proposal::replan(app),
+            _ => {}
+        }
+    }
+
+    /// The day's own action of `kind`, from the Day menu: run as the summary row runs it, or
+    /// why the day shown has none.
+    pub fn act_on_day(&self, app: &App, kind: ActionKind) {
+        let offered = self.plan.borrow().as_ref().map(|plan| plan.actions.clone()).unwrap_or_default();
+        let Some(action) = actions::of_kind(&offered, &[kind]) else {
+            return app.say(&speech::sentence(&not_offered(kind, Subject::Day, false)));
+        };
+        let form = || self.day_form(app, &action);
+        if let Some((change, _)) = actions::run(app, app.main, &action, form) {
             app.say_change(&change);
         }
     }

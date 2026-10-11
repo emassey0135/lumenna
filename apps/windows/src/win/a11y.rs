@@ -15,7 +15,7 @@ use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
 use windows::Win32::System::Variant::{VARIANT, VARIANT_0, VARIANT_0_0, VARIANT_0_0_0, VT_I4};
 use windows::Win32::UI::Accessibility::{
-    CLSID_AccPropServices, IAccPropServices, LiveSetting_Property_GUID, NotifyWinEvent,
+    CLSID_AccPropServices, HelpText_Property_GUID, IAccPropServices, LiveSetting_Property_GUID, NotifyWinEvent,
     PROPID_ACC_DESCRIPTION, PROPID_ACC_NAME,
 };
 use windows::Win32::UI::WindowsAndMessaging::{CHILDID_SELF, EVENT_OBJECT_LIVEREGIONCHANGED, OBJID_CLIENT};
@@ -64,6 +64,18 @@ pub fn set_description(hwnd: HWND, description: &str) {
             PROPID_ACC_DESCRIPTION,
             &HSTRING::from(description),
         );
+    });
+}
+
+/// Describes one item of a list box or tree view (its MSAA child id; a list box's first is 1):
+/// why a choice is offered, said after it, never as part of its name. Both MSAA's description,
+/// which NVDA and JAWS read from these controls, and UI Automation's help text: Windows' own
+/// UI Automation proxy for an item does not carry an annotated description over to it.
+pub fn set_item_description(hwnd: HWND, item: u32, description: &str) {
+    with_services(|services| unsafe {
+        let text = HSTRING::from(description);
+        let _ = services.SetHwndPropStr(hwnd, OBJID_CLIENT.0 as u32, item, PROPID_ACC_DESCRIPTION, &text);
+        let _ = services.SetHwndPropStr(hwnd, OBJID_CLIENT.0 as u32, item, HelpText_Property_GUID, &text);
     });
 }
 

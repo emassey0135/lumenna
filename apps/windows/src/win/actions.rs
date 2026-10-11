@@ -3,8 +3,9 @@
 //! key — asks each one's question as a Windows dialog, and hands the answer back to the core.
 //! Which actions a row has, what they are called and what they ask are never decided here.
 //!
-//! Only a [`Question::Form`] is the app's own: the task details, the block form, and the list
-//! of a task's or block's reminders (`reminders.rs`).
+//! Only a [`Question::Form`] is the app's own: the task details, the block form, the list
+//! of a task's or block's reminders (`reminders.rs`), and the day's Replan from Now and Plan
+//! the Day (`proposal.rs`).
 
 use lumenna_surface::{Action, ActionKind, Answer, Change, Choice, Question, Subject, length_question, not_offered};
 use windows::Win32::Foundation::HWND;
@@ -125,7 +126,8 @@ pub fn run(app: &App, owner: HWND, action: &Action, form: impl FnOnce()) -> Opti
                 return None;
             }
             let texts: Vec<String> = offered.choices.iter().map(choice_text).collect();
-            let index = prompts::pick(owner, &action.title, &format!("{title}:"), &texts, yes)?;
+            let reasons: Vec<String> = offered.choices.iter().map(|c| c.reason.clone().unwrap_or_default()).collect();
+            let index = prompts::pick(owner, &action.title, &format!("{title}:"), &texts, &reasons, yes)?;
             let id = offered.choices[index].id.clone();
             if length.is_none() {
                 return act(Answer::Picked { id, length: None }).ok();
