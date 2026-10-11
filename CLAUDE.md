@@ -976,7 +976,8 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   change, the core's sentence as its label and a sitting's reason as its description, what
   fits nowhere as read-only lines under a heading, the proposal said once the window is in
   front. Applying shows the core's `next` until it proposes nothing. `LUMENNA_NOW` (a local date and
-  time) pins the now they pass the core, for tests of the rest of a day at any hour.
+  time, `clock::pinned_now`) pins the now they and reminder delivery pass the core, for
+  tests of the rest of a day at any hour.
   Replan's other options are buttons named by their sentences, under their heading; one
   proposes again with its pins, in place. An overrun warning's Replan button
   (`app.reminder-replan`) brings the window up on Replan from Now. A tree row's

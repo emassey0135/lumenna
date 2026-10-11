@@ -90,3 +90,16 @@ impl Clock for Locale {
         day.and_then(|day| day.format(format)).map_or_else(|_| iso.to_owned(), |text| text.to_string())
     }
 }
+
+/// Now, as the core is to take it, a local date and time: the clock's (`None`), unless
+/// `LUMENNA_NOW` (`2026-05-06T10:00`) pins it, so a test of the rest of a day, or of a
+/// reminder, runs the same at any hour.
+pub fn pinned_now() -> Option<String> {
+    std::env::var("LUMENNA_NOW").ok().filter(|now| !now.is_empty())
+}
+
+/// The pinned now as an instant (RFC 3339), for what takes one: reminders.
+pub fn pinned_instant() -> Option<String> {
+    let civil: jiff::civil::DateTime = pinned_now()?.parse().ok()?;
+    Some(civil.to_zoned(jiff::tz::TimeZone::system()).ok()?.timestamp().to_string())
+}

@@ -156,24 +156,21 @@ class OtherOptionsTest(unittest.TestCase, DayActions):
 
 class OverrunTest(unittest.TestCase):
     def setUp(self):
-        # A block begun three minutes ago, with forty minutes of work in thirty and another
-        # block straight after: its work outruns its time from the start.
-        start = datetime.datetime.now() - datetime.timedelta(minutes=3)
-        after = start + datetime.timedelta(minutes=30)
-        # Reminders fire from the real clock, so this cannot pin now: in the hour and a half
-        # around midnight the blocks would cross into another day.
-        if (after + datetime.timedelta(minutes=60)).date() != start.date():
-            self.skipTest("the blocks would cross midnight")
+        # At a pinned 10:00, a block begun at 9:57 holds forty minutes of work in thirty, a
+        # meeting straight after: its work outruns its time from the start. The app gives
+        # reminders from LUMENNA_NOW too, last given four minutes before it.
+        wait_out_midnight()
+        now = datetime.datetime.combine(datetime.date.today(), datetime.time(10, 0))
         self.notifications = Notifications()
         self.addCleanup(self.notifications.stop)
         self.session = Session([
             ("config", "set", "day-start", "00:00"),
-            ("block", "add", "Deep work", "--at", start.strftime("%H:%M"), "--minutes", "30"),
-            ("block", "add", "Meeting", "--at", after.strftime("%H:%M"), "--minutes", "60", "--kind", "event"),
+            ("block", "add", "Deep work", "--at", "09:57", "--minutes", "30"),
+            ("block", "add", "Meeting", "--at", "10:27", "--minutes", "60", "--kind", "event"),
             ("task", "add", "Write the report"),
             assign_forty_minutes,
-        ], device_settings={
-            "reminders-delivered": (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=4))
+        ], environment={"LUMENNA_NOW": now.strftime("%Y-%m-%dT%H:%M")}, device_settings={
+            "reminders-delivered": (now - datetime.timedelta(minutes=4)).astimezone(datetime.timezone.utc)
             .strftime("%Y-%m-%dT%H:%M:%SZ"),
         })
         self.addCleanup(self.session.close)
