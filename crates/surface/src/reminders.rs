@@ -301,6 +301,50 @@ impl Lumenna {
     }
 }
 
+impl Lumenna {
+    /// [`Lumenna::reminders_missed`] at a given moment, for tests.
+    #[doc(hidden)]
+    pub fn missed_at(&self, shown: Vec<String>, kept: bool, now: Timestamp) -> Result<DueReminders> {
+        let last = self.device_setting("reminders-caught-up").and_then(|t| t.parse::<Timestamp>().ok());
+        self.write_device_setting("reminders-caught-up", Some(&now.to_string()))?;
+        let empty = || DueReminders {
+            announcement: "No reminders".to_owned(),
+            notices: Vec::new(),
+            due: Vec::new(),
+            missed: Vec::new(),
+            missed_summary: String::new(),
+            elsewhere: false,
+        };
+        let Some(last) = last else { return Ok(empty()) };
+        // Never further back than a day, as delivery does.
+        let since = last.max(now.checked_sub(SignedDuration::from_hours(24)).unwrap_or(now));
+        let until = now.checked_sub(SignedDuration::from_mins(1)).unwrap_or(now);
+        if until <= since {
+            return Ok(empty());
+        }
+        let armed = self.device_setting("reminders-armed-until").and_then(|t| t.parse::<Timestamp>().ok());
+        let mut found = self.notifications(since, until, now)?;
+        let given = |n: &DueReminder| {
+            let at = n.at.parse::<Timestamp>().ok();
+            shown.iter().any(|s| *s == format!("{}@{}", n.key, n.occurrence))
+                || (kept && matches!((at, armed), (Some(at), Some(armed)) if at <= armed))
+        };
+        found.due.retain(|n| !given(n));
+        found.missed.retain(|n| !given(n));
+        found.missed_summary = if found.missed.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "{} missed: {}.",
+                capitalised(&count_line(found.missed.len(), "reminder")),
+                found.missed.iter().map(|n| n.missed.as_str()).collect::<Vec<_>>().join(", ")
+            )
+        };
+        found.announcement = count_line(found.due.len() + found.missed.len(), "reminder");
+        Ok(found)
+    }
+}
+
 fn capitalised(text: &str) -> String {
     let mut chars = text.chars();
     chars.next().map_or_else(String::new, |first| first.to_uppercase().chain(chars).collect())
@@ -330,10 +374,32 @@ impl Lumenna {
         let now = Timestamp::now();
         // A moment ago, so a firing exactly now is still handed over.
         let from = now.checked_sub(SignedDuration::from_secs(1)).unwrap_or(now);
-        let mut found = self.notifications(from, timestamp(&until)?, from)?;
+        let until = timestamp(&until)?;
+        let mut found = self.notifications(from, until, from)?;
+        // How far ahead the system was given reminders, for `reminders_missed` to know what
+        // it may have missed.
+        self.write_device_setting("reminders-armed-until", Some(&until.to_string()))?;
         found.due.append(&mut found.missed);
         found.missed_summary.clear();
         Ok(found)
+    }
+
+    /// What a system that schedules notifications itself missed since this was last asked,
+    /// to say on launch, on returning to the front, and after a restart: the device was off,
+    /// or the app went unopened past the window it last handed over. Recent ones come as
+    /// `due`, older ones as one summary; the first time, nothing.
+    ///
+    /// `kept` says the system shows what it was handed even after a restart (iOS, watchOS), so
+    /// anything within the window last handed over counts as given. Otherwise (Android, Wear
+    /// OS, whose alarms a restart clears) `shown` names what the app did show, each as
+    /// `<key>@<occurrence>`, and every other firing since counts as missed. A firing in the
+    /// last minute is left to the system, which may be showing it now.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn reminders_missed(&self, shown: Vec<String>, kept: bool) -> Result<DueReminders> {
+        self.missed_at(shown, kept, Timestamp::now())
     }
 
     /// The reminders a task or block has: its own, or the defaults it takes.
