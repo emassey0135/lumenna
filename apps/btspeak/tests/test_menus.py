@@ -365,6 +365,33 @@ class Menus(unittest.TestCase):
         starts = [(b["title"], b["start"]) for b in self.call("plan", date="2030-01-15")["blocks"]]
         self.assertEqual(starts, [("Deep work", "09:00"), ("Review", "11:00"), ("Lunch", "12:00")])
 
+    def test_replan_offers_other_options_each_proposed_in_place_when_taken(self):
+        proposals = self.proposing("2030-01-15T10:40")
+        for title, kind, at, minutes in [("Deep work", "work", "09:00", 120), ("Lunch", "break", "10:30", 30),
+                                         ("Review", "work", "11:00", 60)]:
+            self.call("block.add", title=title, kind=kind, at=at, minutes=minutes, date="2030-01-15")
+        script = play([("menu", "Skip Lunch today"), ("menu", "Cancel")])
+        real = btspeak_stub.dynamic_menu
+        rows = []
+
+        def recording(menu, **kwargs):
+            rows.append([item.get_title() for item in menu])
+            return real(menu, **kwargs)
+
+        proposals.dialogs.dynamic_menu = recording
+        self.addCleanup(setattr, proposals.dialogs, "dynamic_menu", real)
+        proposals.proposal_screen(self.session, "replan")
+        self.assertTrue(script.finished(), script.steps)
+        self.assertEqual(rows[0][rows[0].index("Other options"):], [
+            "Other options",
+            "Skip Lunch today, your only break left today. Then nothing else needs to change.",
+            "Skip Review today. Then Lunch moves from 10:30 to 11:00.",
+            "Cancel",
+        ])
+        self.assertEqual(script.said, ["Lunch is skipped today."])
+        self.assertEqual(script.titles[1], "Replan from now. Lunch is skipped today.")
+        self.assertNotIn("Other options", rows[1])
+
     def test_a_stale_replan_is_refused_in_the_cores_words_over_a_new_proposal(self):
         proposals = self.proposing("2030-01-15T10:40")
         self.call("block.add", title="Deep work", at="09:00", minutes=120, date="2030-01-15")

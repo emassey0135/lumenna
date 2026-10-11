@@ -38,7 +38,7 @@ On free time, Add block here, a. On a cancelled day, Restore this day, o.
 
 ## Replan from now and Plan the day
 
-The title says the whole proposal before anything changes. Each change is a row, checked to begin with; Enter turns it off or on, and a sitting of Plan the day says after a moment why its task was chosen. Make the changes checked, or Plan the ones checked, makes them, and also says after a moment what becomes of one left unchecked: the core proposes again around it, and the new proposal is shown, until nothing more is proposed. Cancel leaves, making nothing. Both are on the main menu too.
+The title says the whole proposal before anything changes. Each change is a row, checked to begin with; Enter turns it off or on, and a sitting of Plan the day says after a moment why its task was chosen. Make the changes checked, or Plan the ones checked, makes them, and also says after a moment what becomes of one left unchecked: the core proposes again around it, and the new proposal is shown, until nothing more is proposed. Cancel leaves, making nothing. Both are on the main menu too. Under Other options, Replan from now lists up to three other ways through the day, each saying what it costs; Enter on one shows its proposal in place.
 
 ## Blocks
 

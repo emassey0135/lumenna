@@ -6,7 +6,7 @@ A task with a due date and every block offer Reminders, r, in their context menu
 
 ## What came due
 
-Reminders, r, on the main menu, lists what came due over the last day and was not dismissed. Control-D dismisses one, on every device. Its context menu also has Snooze 10 minutes, z, and, where a block ended with work left short and the reminder asks whether to carry it on, Carry forward, f.
+Reminders, r, on the main menu, lists what came due over the last day and was not dismissed. Control-D dismisses one, on every device. Its context menu also has Snooze 10 minutes, z, and, where a block ended with work left short and the reminder asks whether to carry it on, Carry forward, f; and where a block's work outruns its time, Replan, p, which opens Replan from now.
 
 ## Reminders on this device
 
