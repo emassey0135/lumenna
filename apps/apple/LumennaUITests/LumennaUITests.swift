@@ -438,8 +438,10 @@ final class LumennaUITests: XCTestCase {
         if !takes.isHittable { app.swipeUp() }
         // Still for a moment first: a tap while the form still glides after the swipe only
         // stops it, and on a runner the break was saved taking no tasks.
+        // Up to six seconds: on a slow runner the glide outlasted three, and the tap, landing
+        // while the form still moved, did not turn the switch on.
         var last = CGRect.null
-        for _ in 0..<20 where takes.frame != last {
+        for _ in 0..<40 where takes.frame != last {
             last = takes.frame
             usleep(150_000)
         }
@@ -585,6 +587,13 @@ final class LumennaUITests: XCTestCase {
 
     // MARK: - Settings
 
+    /// Waits out a page's arrival. On iPad a page shown beside its list fades in after its
+    /// bar is there, and an audit taken mid-fade measured its headings' grey against half a
+    /// background: contrast, and once Dynamic Type, failed on text that reads fine once shown.
+    private func settle() {
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 1))
+    }
+
     func testSettingsAndDevicesPassAnAudit() throws {
         tab("Settings")
         XCTAssertTrue(cell(containing: "Planning").waitForExistence(timeout: 5))
@@ -593,6 +602,7 @@ final class LumennaUITests: XCTestCase {
         for page in ["Planning", "Backups", "Export and Import"] {
             reveal(page).tap()
             XCTAssertTrue(app.navigationBars[page].waitForExistence(timeout: 5))
+            settle()
             // Planning's times are `NamedDatePicker`s, whose visible names are hidden as a
             // `NamedRow`'s are: the picker carries the name.
             try audit(.all, page, namedRows: page == "Planning")

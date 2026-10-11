@@ -370,11 +370,16 @@ final class LumennaMacUITests: XCTestCase {
         // Asked again, saying why, with what was typed still there.
         XCTAssertTrue(app.sheets.textFields["Day"].waitForValue("someday soon"), app.debugDescription)
         XCTAssertTrue(app.sheets.staticTexts.containing(NSPredicate(format: "value CONTAINS[c] 'someday soon'")).firstMatch.exists)
-        enter("12 October", into: app.sheets.textFields["Day"])
+        // Twenty days off, so the title is the date itself, not "Tomorrow" or a weekday,
+        // whatever day the test runs.
+        let ahead = Calendar.current.date(byAdding: .day, value: 20, to: Date())!
+        let day = Calendar.current.component(.day, from: ahead)
+        let month = DateFormatter().monthSymbols[Calendar.current.component(.month, from: ahead) - 1]
+        enter("\(day) \(month)", into: app.sheets.textFields["Day"])
         app.sheets.buttons["Go"].click()
         XCTAssertTrue(app.sheets.firstMatch.waitForNonExistence(timeout: 5))
         let title = window.title
-        XCTAssertTrue(title.contains("12 October") || title.contains("October 12"), title)
+        XCTAssertTrue(title.contains("\(day) \(month)") || title.contains("\(month) \(day)"), title)
     }
 
     // MARK: - Organising, from the sidebar

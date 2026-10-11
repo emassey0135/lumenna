@@ -211,7 +211,18 @@ final class ReminderSchedule {
     /// handed over. Asked just before re-arming, which moves the window on.
     @discardableResult
     func catchUp() -> [UNNotificationRequest] {
-        guard let found = try? lumenna.remindersMissed(shown: [], kept: true) else { return [] }
+        show(missed())
+    }
+
+    /// What the core says was missed; asked anywhere but the main thread when re-arming.
+    private func missed() -> DueReminders? {
+        try? lumenna.remindersMissed(shown: [], kept: true)
+    }
+
+    /// Hands what was missed to the notification center, on the main thread.
+    @discardableResult
+    private func show(_ found: DueReminders?) -> [UNNotificationRequest] {
+        guard let found else { return [] }
         let requests = ReminderDelivery.requests(found)
         if let first = found.due.first { centre.useCategories([Reminders.category(for: first)]) }
         requests.forEach(centre.schedule)
@@ -221,17 +232,33 @@ final class ReminderSchedule {
     /// Hands the notification center everything that fires in the next two days, replacing
     /// what it held of ours and cancelling what no longer fires; `catchingUp` first shows what
     /// was missed (on launch, on coming to the front, in a background refresh). `done` runs
-    /// once it has.
+    /// on the main thread once it has.
+    ///
+    /// Off the main thread, on a queue of its own: asking the core loads every year of the
+    /// store, after every change, and the main thread must never wait on it, nor on the
+    /// sync queue, which this never touches. One re-arm at a time, in order.
     func rearm(asking: Bool = false, catchingUp: Bool = false, then done: @escaping () -> Void = {}) {
-        if catchingUp { catchUp() }
+        let lumenna = lumenna
         let now = now()
-        guard let upcoming = try? lumenna.upcomingReminders(until: Reminders.rfc3339(now.addingTimeInterval(Reminders.window))) else {
-            return done()
+        work.async { [weak self] in
+            let missed = catchingUp ? self?.missed() : nil
+            let until = Reminders.rfc3339(now.addingTimeInterval(Reminders.window))
+            let upcoming = try? lumenna.upcomingReminders(until: until)
+            // What is handed over is the notification center's to do, quickly, on the main
+            // thread, where its answers come back too.
+            DispatchQueue.main.async {
+                self?.show(missed)
+                guard let upcoming else { return done() }
+                self?.arm(upcoming, now: now, asking: asking, then: done)
+            }
         }
+    }
+
+    private func arm(_ upcoming: DueReminders, now: Date, asking: Bool, then done: @escaping () -> Void) {
+        let centre = centre
         let requests = Reminders.requests(upcoming.due, after: now)
         if let first = upcoming.due.first { centre.useCategories([Reminders.category(for: first)]) }
         let wanted = Set(requests.map(\.identifier))
-        let centre = centre
         centre.pendingIdentifiers { pending in
             let stale = pending.filter { $0.hasPrefix(Reminders.prefix) && !wanted.contains($0) }
             if !stale.isEmpty { centre.cancel(stale) }
@@ -244,6 +271,11 @@ final class ReminderSchedule {
             }
         }
     }
+
+    /// Where re-arming asks the core: never the main thread, never the sync queue. At the
+    /// main thread's own priority but one, since the main thread may wait for the store while
+    /// this holds it, and waiting on a lower priority is an inversion.
+    private let work = DispatchQueue(label: "lumenna.reminders", qos: .userInitiated)
 }
 
 /// Gives reminders as they come due, for a process that runs (the Mac): while it holds the
