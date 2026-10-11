@@ -460,10 +460,13 @@ day no longer matches, is one undoable change, and **proposes again** (`Replanne
 a change taken alone can leave the day crowded, so what was not accepted becomes a pin (a
 block kept where it is, a sitting kept in its block) and the day as it now is is proposed
 afresh. A proposal carries its pins and clock, so a client hands it back whole. **Other
-options** (`Replan::alternatives`, at most three) each skip one block not yet over, offered
-only where that does better (less unfit, then less moved), each saying its cost and what
-follows ("Skip Lunch today, your only break left today. Then nothing else needs to
-change."); taking one is `replan` again with its `pins`. **The overrun warning**
+options** (`Replan::alternatives`, at most three) each let one block not yet over shorten
+below its minimum (`Pin::Floor`, `ReplanPins::floors`: a work block to 15 minutes, a break to
+half) or skip it, offered only where that does better (less unfit, then fewer minutes moved
+and shrunk), shortening first as the cheaper, each saying its cost and what follows ("Let
+Lunch shorten from 30 minutes to 15 minutes: 15 minutes less break. Then …"); taking one is
+`replan` again with its `pins`. The minimum binds the main proposal and never an option. A
+block pushed against an anchored one shrinks to the gap before it when its floor allows. **The overrun warning**
 (`remind::overrun_at`, `Firing::overrun`, under `overrun_key`) is said before the clock says
 it: when a block's planned work first outruns its time by more than the free time after it,
 or `FEW_MINS`. Idle, that moment is fixed by the records; with a timer running, work and time
@@ -480,9 +483,12 @@ refused where a task was done or put in that block since, and plans again
 The surface words both (`task_history`, `TaskDetail::history`): asked for about one task,
 never said in a list or a live region. The weights are a synced setting
 (`Settings::urgency`, a key per weight so concurrent edits of different weights both hold),
-said and read as one line, `urgency-weights` ("due 12, priority 6 3.9 1.8 0, …"). A list's
-query may end in `sort: urgency` (`parse_query`, `Sort`): siblings most urgent first, a
-subtask kept under its parent. A block's filter selects and never orders, so `parse_filter`
+said and read as one line, `urgency-weights` ("due 12, priority 6 3.9 1.8 0, …"). **Task
+lists are most urgent first by default** (`Settings::task_order`, the synced `task-order`:
+`urgency` or `added`): siblings by urgency, a subtask kept under its parent, the order added
+breaking ties. Tasks have no order of their own to move up or down, so nothing is lost. A
+list's query may end in `sort: urgency` or `sort: added` (`parse_query`, `Sort`) to choose
+for itself. A block's filter selects and never orders, so `parse_filter`
 refuses `sort:` rather than search for it.
 
 ### Backup and export

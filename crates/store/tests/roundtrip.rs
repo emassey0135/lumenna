@@ -132,6 +132,7 @@ fn every_core_record_round_trips() {
             blocked: -6.0,
             ..lumenna_core::urgency::Coefficients::default()
         },
+        task_order: lumenna_core::filter::Sort::Added,
     };
 
     let mut docs = Documents::new();

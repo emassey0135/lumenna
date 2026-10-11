@@ -157,6 +157,9 @@ pub(crate) enum Command {
         /// Skip this block today.
         #[arg(long)]
         skip: Vec<String>,
+        /// Take this other option, by its number, before anything else.
+        #[arg(long)]
+        option: Option<usize>,
         /// Make the changes proposed: all of them, or those numbered, such as 1,3.
         #[arg(long, num_args = 0..=1, default_missing_value = "all")]
         apply: Option<String>,
@@ -1109,12 +1112,18 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
                 }
             }
         }
-        Command::Replan { keep, skip, apply } => {
+        Command::Replan { keep, skip, option, apply } => {
             let series = |rows: &[String]| -> Result<Vec<String>> {
                 rows.iter().map(|row| Ok(profile.row(row, "block")?.split('@').next().unwrap_or_default().to_owned())).collect()
             };
-            let pins = lumenna_surface::ReplanPins { keep: series(keep)?, skip: series(skip)?, sittings: Vec::new() };
-            let proposal = profile.replan(time_style(profile), pins, None)?;
+            let pins = lumenna_surface::ReplanPins { keep: series(keep)?, skip: series(skip)?, ..Default::default() };
+            let mut proposal = profile.replan(time_style(profile), pins, None)?;
+            if let Some(n) = option {
+                let taken = proposal.alternatives.get(n.wrapping_sub(1)).ok_or_else(|| {
+                    CliError::Message(format!("there is no option {n}: {} offered", proposal.alternatives.len()))
+                })?;
+                proposal = profile.replan(time_style(profile), taken.pins.clone(), None)?;
+            }
             match apply.as_deref() {
                 None => Response::new(proposal),
                 Some(numbers) => {

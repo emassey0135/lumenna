@@ -152,7 +152,8 @@ impl Lumenna {
                 })
                 .collect();
 
-            let mut rows = Rows::new(&snapshot.task_rows_sorted(&expr, &cx, sort), "task");
+            let order = sort.unwrap_or(snapshot.settings.task_order);
+            let mut rows = Rows::new(&snapshot.task_rows_sorted(&expr, &cx, order), "task");
             if !query.trim().is_empty() {
                 rows.query = Some(Query {
                     text: query.to_owned(),

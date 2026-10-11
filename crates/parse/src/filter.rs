@@ -127,15 +127,16 @@ pub fn parse_filter(input: &str, known: &Known) -> Result<Expr, ParseError> {
     Ok(expr)
 }
 
-/// Reads a list's query: a filter, then optionally `sort: urgency` at the end.
+/// Reads a list's query: a filter, then optionally its order at the end, `sort: urgency` or
+/// `sort: added`; `None` when it names none, so the list takes the `task-order` setting.
 ///
 /// # Errors
 ///
 /// As [`parse_filter`], or an order that is not one, or one not at the end.
-pub fn parse_query(input: &str, known: &Known) -> Result<(Expr, Sort), ParseError> {
+pub fn parse_query(input: &str, known: &Known) -> Result<(Expr, Option<Sort>), ParseError> {
     let tokens = words(input);
     let Some(at) = tokens.iter().position(|w| w.lower.starts_with("sort:")) else {
-        return Ok((parse_filter(input, known)?, Sort::Own));
+        return Ok((parse_filter(input, known)?, None));
     };
     let word = &tokens[at];
     let glued = &word.lower["sort:".len()..];
@@ -151,12 +152,13 @@ pub fn parse_query(input: &str, known: &Known) -> Result<(Expr, Sort), ParseErro
     }
     let sort = match key_text {
         Some("urgency") => Sort::Urgency,
+        Some("added") => Sort::Added,
         Some(other) => {
             let key = key.unwrap_or(word);
             return Err(ParseError {
                 start: key.start,
                 end: key.end,
-                message: format!("'{other}' at position {} is not an order; the order there is is urgency", key.start),
+                message: format!("'{other}' at position {} is not an order: urgency or added", key.start),
                 expected: vec![Expected::Keyword],
             });
         }
@@ -164,12 +166,12 @@ pub fn parse_query(input: &str, known: &Known) -> Result<(Expr, Sort), ParseErro
             return Err(ParseError {
                 start: word.start,
                 end: word.end,
-                message: format!("'sort:' at position {} needs an order after it: urgency", word.start),
+                message: format!("'sort:' at position {} needs an order after it: urgency or added", word.start),
                 expected: vec![Expected::Keyword],
             });
         }
     };
-    Ok((parse_filter(&input[..word.start], known)?, sort))
+    Ok((parse_filter(&input[..word.start], known)?, Some(sort)))
 }
 
 struct Cursor<'a> {

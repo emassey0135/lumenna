@@ -111,7 +111,7 @@ fn a_change_taken_alone_is_made_and_the_rest_of_the_day_is_proposed_again_around
 }
 
 #[test]
-fn other_options_each_skip_a_block_and_say_what_that_costs_and_saves() {
+fn other_options_shorten_or_skip_a_block_and_say_what_that_costs_and_saves() {
     let (_directory, lumenna) = open();
     block(&lumenna, "Deep work", "work", "09:00", 120);
     block(&lumenna, "Lunch", "break", "10:30", 30);
@@ -121,12 +121,37 @@ fn other_options_each_skip_a_block_and_say_what_that_costs_and_saves() {
     assert_eq!(
         said,
         [
+            // The minimum binds the proposal, never an option, which says the price instead;
+            // shortening costs less than skipping, so it comes first.
+            "Let Lunch shorten from 30 minutes to 15 minutes: 15 minutes less break. \
+             Then Review moves from 11:00 to 11:15 and shortens from 1 hour to 45 minutes.",
             "Skip Lunch today, your only break left today. Then nothing else needs to change.",
             "Skip Review today. Then Lunch moves from 10:30 to 11:00.",
         ]
     );
+    let shortened = lumenna.replan(TimeStyle::TwentyFourHour, proposal.alternatives[0].pins.clone(), Some(NOW.to_owned())).unwrap();
+    assert_eq!(
+        shortened.announcement,
+        "Lunch moves from 10:30 to 11:00 and shortens from 30 minutes to 15 minutes; \
+         Review moves from 11:00 to 11:15 and shortens from 1 hour to 45 minutes."
+    );
     // Taking one is asking again with its pins: the skip is then a change to make.
-    let skipped = lumenna.replan(TimeStyle::TwentyFourHour, proposal.alternatives[0].pins.clone(), Some(NOW.to_owned())).unwrap();
+    let skipped = lumenna.replan(TimeStyle::TwentyFourHour, proposal.alternatives[1].pins.clone(), Some(NOW.to_owned())).unwrap();
     assert_eq!(skipped.announcement, "Lunch is skipped today.");
     assert!(skipped.alternatives.is_empty(), "nothing does better than nothing moving");
+}
+
+#[test]
+fn a_work_block_let_below_its_minimum_says_the_minimum_it_goes_under() {
+    let (_directory, lumenna) = open();
+    // Deep work runs to 11:10; Review, at its 30-minute minimum, no longer fits before Class.
+    block(&lumenna, "Deep work", "work", "09:00", 130);
+    block(&lumenna, "Review", "work", "11:00", 60);
+    block(&lumenna, "Class", "event", "11:30", 60);
+    let proposal = lumenna.replan(TimeStyle::TwentyFourHour, ReplanPins::default(), Some(NOW.to_owned())).unwrap();
+    assert_eq!(proposal.announcement, "Review moves from 11:00 to 12:30 and shortens from 1 hour to 30 minutes.");
+    assert_eq!(
+        proposal.alternatives[0].sentence,
+        "Let Review shorten to 20 minutes, under its minimum of 30 minutes. Then nothing else needs to change."
+    );
 }

@@ -152,16 +152,17 @@ pub(crate) fn query(snapshot: &Snapshot, text: &str) -> Result<Expr> {
     Ok(parse_filter(text, &Known::from_snapshot(snapshot))?)
 }
 
-/// What a list's query selects and in what order, as said back.
-pub(crate) fn described(expr: &Expr, sort: lumenna_core::filter::Sort) -> String {
+/// What a list's query selects, and the order it names, as said back.
+pub(crate) fn described(expr: &Expr, sort: Option<lumenna_core::filter::Sort>) -> String {
     match sort {
-        lumenna_core::filter::Sort::Own => expr.describe(),
-        lumenna_core::filter::Sort::Urgency => format!("{}, most urgent first", expr.describe()),
+        None => expr.describe(),
+        Some(lumenna_core::filter::Sort::Urgency) => format!("{}, most urgent first", expr.describe()),
+        Some(lumenna_core::filter::Sort::Added) => format!("{}, in the order added", expr.describe()),
     }
 }
 
 /// A list's query, which may end in `sort: urgency`.
-pub(crate) fn list_query(snapshot: &Snapshot, text: &str) -> Result<(Expr, lumenna_core::filter::Sort)> {
+pub(crate) fn list_query(snapshot: &Snapshot, text: &str) -> Result<(Expr, Option<lumenna_core::filter::Sort>)> {
     Ok(lumenna_parse::parse_query(text, &Known::from_snapshot(snapshot))?)
 }
 

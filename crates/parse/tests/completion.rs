@@ -109,7 +109,7 @@ fn after_an_operator_a_filter_offers_predicates() {
 #[test]
 fn after_a_complete_predicate_a_filter_offers_operators_and_its_order() {
     let found = texts("#work ", 6, Syntax::Filter);
-    assert_eq!(found, vec!["!", "&", "sort: urgency", "|"]);
+    assert_eq!(found, vec!["!", "&", "sort: added", "sort: urgency", "|"]);
 }
 
 #[test]

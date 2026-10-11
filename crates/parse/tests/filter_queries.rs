@@ -234,10 +234,11 @@ fn a_list_query_may_end_in_its_order_and_nowhere_else() {
     let snapshot = lumenna_core::snapshot::Snapshot::default();
     let known = Known::from_snapshot(&snapshot);
     use lumenna_core::filter::Sort;
-    assert_eq!(parse_query("p1 sort: urgency", &known).unwrap().1, Sort::Urgency);
-    assert_eq!(parse_query("p1 sort:urgency", &known).unwrap().1, Sort::Urgency);
-    assert_eq!(parse_query("sort: urgency", &known).unwrap(), (lumenna_core::filter::Expr::All, Sort::Urgency));
-    assert_eq!(parse_query("p1", &known).unwrap().1, Sort::Own);
+    assert_eq!(parse_query("p1 sort: urgency", &known).unwrap().1, Some(Sort::Urgency));
+    assert_eq!(parse_query("p1 sort:urgency", &known).unwrap().1, Some(Sort::Urgency));
+    assert_eq!(parse_query("p1 sort: added", &known).unwrap().1, Some(Sort::Added));
+    assert_eq!(parse_query("sort: urgency", &known).unwrap(), (lumenna_core::filter::Expr::All, Some(Sort::Urgency)));
+    assert_eq!(parse_query("p1", &known).unwrap().1, None, "the list takes the setting");
     assert!(parse_query("p1 sort: urgency & p2", &known).unwrap_err().message.contains("at the end"));
     assert!(parse_query("p1 sort: due", &known).unwrap_err().message.contains("not an order"));
     assert!(parse_query("p1 sort:", &known).unwrap_err().message.contains("needs an order"));

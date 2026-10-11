@@ -92,9 +92,6 @@ weights, and the day's timeline with its free time.
 Built: the score and its terms (`task_history`, `lum task history`), and per-task history
 from the records already kept, on a task's own screen in every app. Still to come:
 
-- **Whether a task list's *default* order becomes urgency** rather than the person's own: a
-  decision to make with the lists' tree in mind. The weights are a synced setting
-  (`urgency-weights`) and `sort: urgency` orders any list, both built.
 - **A history view in every app** beyond the task's own screen, and `lum history`.
   Field-level history from Automerge (title and due changes over time) later, with its own
   API.
@@ -120,9 +117,7 @@ Built (`core::reflow`, `replan.rs`, `lum replan [--keep] [--skip] [--apply [1,3]
 `replan` and `replan.apply`): the walk, moving the work first, pins, the proposal said in
 the app's clock, applied whole or in part (the rest pinned and proposed again) against the
 day as it is now, one undo; Replan from Now on the day, a screen in every app. Still to
-come: alternatives that break a block's minimum and say so (built: skipping a block), and
-each app's Replan button on the overrun warning and its other options (built in the core).
-As designed:
+come: nothing of the design below; every part is built. As designed:
 
 - **Three situations, kept apart.** Assigned work exceeding the block is a plan that was
   wrong when made, predictable in advance. A block running past its end, and a block that

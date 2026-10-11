@@ -171,3 +171,15 @@ fn what_does_not_fit_before_the_days_end_is_said_not_squeezed_in() {
     let proposal = world.reflow(at(21, 20), &[]);
     assert_eq!(proposal.unplaceable, [wind_down], "a break cannot shrink, and 21:30 + 60 is past 22:00");
 }
+
+#[test]
+fn a_pushed_block_shrinks_to_the_gap_before_an_anchored_one_when_its_floor_allows() {
+    let mut world = World::new();
+    world.block("Deep work", BlockKind::Work, 9, 0, 125, false);
+    let review = world.block("Review", BlockKind::Work, 11, 0, 60, false);
+    world.block("Class", BlockKind::Event, 11, 30, 60, true);
+    // Deep work runs to 11:05: 25 minutes before Class, and Review's floor is its half, 30.
+    world.snapshot.series.get_mut(&review).unwrap().min_duration_mins = Some(20);
+    let proposal = world.reflow(at(10, 40), &[]);
+    assert_eq!(proposal.changes.iter().filter_map(block_change).collect::<Vec<_>>(), [(review, at(11, 5), 25)]);
+}

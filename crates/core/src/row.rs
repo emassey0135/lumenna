@@ -189,7 +189,7 @@ impl Snapshot {
     /// ancestor that *is* present, so an outline stays coherent.
     #[must_use]
     pub fn task_rows(&self, expr: &Expr, cx: &Context<'_>) -> Vec<Row> {
-        self.task_rows_sorted(expr, cx, crate::filter::Sort::Own)
+        self.task_rows_sorted(expr, cx, self.settings.task_order)
     }
 
     /// The same rows, siblings in `sort`'s order. A subtask stays under its parent whatever

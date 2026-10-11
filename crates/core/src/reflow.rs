@@ -27,6 +27,9 @@ pub enum Pin {
     Skip(SeriesId),
     /// Leave this sitting in its block, though the block cannot hold it all.
     KeepSitting(AssignmentId),
+    /// Let this block shorten to as little as these minutes, below its own minimum: what an
+    /// alternative offers, its cost said, and the person chose.
+    Floor(SeriesId, u32),
 }
 
 /// One change a proposal makes.
@@ -99,6 +102,8 @@ pub fn propose_reflow(
 ) -> Result<Proposal, crate::recur::RecurError> {
     let kept: BTreeSet<SeriesId> = pins.iter().filter_map(|p| if let Pin::Keep(s) = p { Some(*s) } else { None }).collect();
     let skipped: BTreeSet<SeriesId> = pins.iter().filter_map(|p| if let Pin::Skip(s) = p { Some(*s) } else { None }).collect();
+    let floors: BTreeMap<SeriesId, u32> =
+        pins.iter().filter_map(|p| if let Pin::Floor(s, m) = p { Some((*s, *m)) } else { None }).collect();
     let staying: BTreeSet<AssignmentId> =
         pins.iter().filter_map(|p| if let Pin::KeepSitting(a) = p { Some(*a) } else { None }).collect();
     let mut occurrences: Vec<Occurrence> = snapshot.day(day)?;
@@ -159,7 +164,7 @@ pub fn propose_reflow(
             series: o.series_id,
             start: minutes(o.start_time),
             length: o.duration_mins,
-            floor: o.min_duration_mins.min(o.duration_mins).max(1),
+            floor: floors.get(&o.series_id).copied().unwrap_or(o.min_duration_mins).min(o.duration_mins).max(1),
             fixed: o.flags.anchored || kept.contains(&o.series_id),
         })
         .collect();
@@ -194,15 +199,22 @@ pub fn propose_reflow(
             continue;
         }
         let start = slot.start.max(cursor);
-        let length = if start == slot.start {
+        let mut length = if start == slot.start {
             slot.length
         } else {
             // Pushed later: shrink, keeping the end, down to its floor; past that, move later.
             let natural_end = slot.start + i64::from(slot.length);
             u32::try_from((natural_end - start).max(i64::from(slot.floor))).unwrap_or(slot.floor).min(slot.length)
         };
-        // A fixed block still to come that this would run into: it is placed after that one.
+        // A fixed block still to come that this would run into: it shrinks to the gap before
+        // it if its floor allows, and is placed after that one if not.
         let next_fixed = pending.iter().find(|s| s.fixed).map(|s| s.start);
+        if let Some(fixed) = next_fixed.filter(|fixed| start + i64::from(length) > *fixed && start < *fixed)
+            && let Ok(room) = u32::try_from(fixed - start)
+            && room >= slot.floor
+        {
+            length = room;
+        }
         if next_fixed.is_some_and(|fixed| start + i64::from(length) > fixed && start < fixed) {
             let at = pending.iter().position(|s| s.fixed).map_or(pending.len(), |i| i + 1);
             pending.insert(at, slot);

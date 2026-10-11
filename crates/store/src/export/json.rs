@@ -370,6 +370,8 @@ struct SettingsOut {
     week_start: String,
     #[serde(default)]
     urgency: lumenna_core::urgency::Coefficients,
+    #[serde(default)]
+    task_order: lumenna_core::filter::Sort,
 }
 
 impl From<&Settings> for SettingsOut {
@@ -392,6 +394,7 @@ impl From<&Settings> for SettingsOut {
             day_end: s.day_window.1.to_string(),
             week_start: lumenna_core::time::weekday_name(s.week_start).to_lowercase(),
             urgency: s.urgency,
+            task_order: s.task_order,
         }
     }
 }
@@ -416,6 +419,7 @@ impl SettingsOut {
                 StoreError::Unreadable(format!("settings: '{}' is not a weekday", self.week_start))
             })?,
             urgency: self.urgency,
+            task_order: self.task_order,
         })
     }
 }
