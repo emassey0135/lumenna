@@ -57,6 +57,8 @@ import type {
   ExportFormat,
   CancelledBlock,
   Change,
+  DueReminders,
+  ReminderList,
   SidebarEntry,
   PairedWith,
   Place,
@@ -392,6 +394,23 @@ const api = {
     const status = store().syncStatus();
     return announcementText(status.announcement, status.notices ?? []);
   },
+
+  // -------------------------------------------------------------------------------------
+  // Reminders. A browser has no lock to take: the one tab that owns the store gives them,
+  // keeping its own "since".
+  // -------------------------------------------------------------------------------------
+
+  /** What came due after `since` up to `now` (RFC 3339): one by one, and what was missed. */
+  remindersDue: (since: string, now: string): DueReminders => store().remindersDue(since, now),
+
+  /** A task's or block's reminders: its own, or the defaults it takes. */
+  remindersOf: (target: string): ReminderList => store().remindersOf(target),
+
+  /** A notification's Dismiss, on every device; what to say. */
+  dismissReminder: (key: string, occurrence: string): string => said(store().dismissReminder(key, occurrence)),
+
+  /** A notification's Snooze, for the core's ten minutes; what to say. */
+  snoozeReminder: (key: string, occurrence: string): string => said(store().snoozeReminder(key, occurrence)),
 
   /** A saved filter, from the form its heading's New opens. */
   addFilter: (name: string, query: string) => done(store().addFilter(name, query)),

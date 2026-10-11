@@ -16,6 +16,8 @@ import { defer, focusIn, movePane, runCommand, useCommand } from "./commands";
 import { Details } from "./Details";
 import type { DetailsHandle } from "./Details";
 import { QuickAdd } from "./QuickAdd";
+import { ReminderLists, RemindersDue, useDelivery } from "./Reminders";
+import type { Due } from "./Reminders";
 import { say } from "./say";
 import { Settings } from "./Settings";
 import { Sidebar } from "./Sidebar";
@@ -37,6 +39,10 @@ export function App() {
   const [keysOpen, setKeysOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const details = useRef<DetailsHandle>(null);
+  const [due, setDue] = useState<Due[]>([]);
+  useDelivery(ready, (batch) =>
+    setDue((now) => [...now, ...batch.filter((one) => !now.some((there) => there.id === one.id))]),
+  );
 
   useEffect(() => {
     core.open(profile).then(
@@ -233,6 +239,7 @@ export function App() {
             {notice}
           </p>
         )}
+        <RemindersDue due={due} onDealt={(id) => setDue((now) => now.filter((one) => one.id !== id))} />
       </header>
       <nav aria-label="Places">
         <Sidebar revision={revision} place={place} onPlace={setPlace} onChanged={changed} />
@@ -278,6 +285,7 @@ export function App() {
         }}
       />
       <KeyboardShortcuts isOpen={keysOpen} onClose={() => setKeysOpen(false)} />
+      <ReminderLists />
       <Prompts />
       <BlockForms />
       <QuickAdd

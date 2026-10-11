@@ -349,3 +349,28 @@ table.keys td:first-child {
   white-space: nowrap;
   font-weight: bold;
 }
+
+/* What came due, in the banner, and a task's or block's reminders: a line each, its buttons after it. */
+.due {
+  flex-basis: 100%;
+  border: 1px solid var(--edge);
+  padding: var(--gap);
+}
+.due h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+.due ul,
+.reminders {
+  list-style: none;
+  margin: 0 0 var(--gap);
+  padding: 0;
+}
+.due li,
+.reminders li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
