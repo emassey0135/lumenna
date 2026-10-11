@@ -423,6 +423,7 @@ const WEEK_START: u16 = 205;
 const TASK_REMINDERS: u16 = 206;
 const BLOCK_REMINDERS: u16 = 207;
 const URGENCY: u16 = 208;
+const TASK_ORDER: u16 = 209;
 
 /// What is typed, and written when the field is left, never as each key is pressed.
 const TYPED: [(u16, &str); 6] = [
@@ -433,7 +434,7 @@ const TYPED: [(u16, &str); 6] = [
     (BLOCK_REMINDERS, "default-block-reminders"),
     (URGENCY, "urgency-weights"),
 ];
-const CHOICES: [(u16, &str); 2] = [(VERBOSITY, "verbosity"), (WEEK_START, "week-start")];
+const CHOICES: [(u16, &str); 3] = [(VERBOSITY, "verbosity"), (WEEK_START, "week-start"), (TASK_ORDER, "task-order")];
 
 struct Planning<'a> {
     app: &'a App,
@@ -480,6 +481,8 @@ impl Dialog for Planning<'_> {
             .item(Class::Edit, "", DAY_END, FIELD, 128, 34, 110, 14)
             .item(Class::Static, &name("all-day-reminder-hour", 'A', true), u16::MAX, 0, 7, 54, 110, 9)
             .item(Class::Edit, "", ALL_DAY, FIELD, 7, 64, 110, 14)
+            .item(Class::Static, &name("task-order", 'l', true), u16::MAX, 0, 128, 54, 110, 9)
+            .item(Class::ComboBox, "", TASK_ORDER, LIST, 128, 64, 110, 60)
             .item(Class::Static, &name("verbosity", 'm', true), u16::MAX, 0, 7, 84, 110, 9)
             .item(Class::ComboBox, "", VERBOSITY, LIST, 7, 94, 110, 60)
             .item(Class::Static, &name("week-start", 'W', true), u16::MAX, 0, 128, 84, 110, 9)
