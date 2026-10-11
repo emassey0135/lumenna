@@ -128,9 +128,13 @@ The daemon's socket if it answers, else a `lum rpc' of its own."
   (or (when-let* ((socket (lumenna--socket)))
         ;; A socket left by a daemon that died does not answer; then spawn.
         (ignore-errors
+          ;; UTF-8, as Eglot opens its connections: Emacs 30's jsonrpc makes it binary
+          ;; itself, but Emacs 29's reads what arrives as text, and on binary its JSON
+          ;; parser met a raw byte's internal form (a 0xC1 lead) in the first non-ASCII
+          ;; character, a reminder's dash.
           (make-network-process
            :name "lumenna" :family 'local :service socket
-           :coding 'binary :noquery t)))
+           :coding 'utf-8-emacs-unix :noquery t)))
       (let ((program (executable-find lumenna-lum-program)))
         (unless program
           (user-error "Cannot find `%s'; install Lumenna or set `lumenna-lum-program'"
@@ -141,7 +145,7 @@ The daemon's socket if it answers, else a `lum rpc' of its own."
                           (and lumenna-profile (list "--profile" (expand-file-name lumenna-profile)))
                           (list "rpc"))
          :connection-type 'pipe
-         :coding 'binary
+         :coding 'utf-8-emacs-unix
          :noquery t
          :stderr (get-buffer-create " *lumenna rpc stderr*")))))
 
