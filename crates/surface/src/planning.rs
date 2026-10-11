@@ -199,8 +199,10 @@ impl Lumenna {
                 timeline,
                 blocks,
                 cancelled,
+                actions: Vec::new(),
             };
-            crate::actions::fill_plan(&mut plan);
+            let carries = crate::day::carries(&snapshot, &plan, &now);
+            crate::actions::fill_plan(&mut plan, &carries);
             Ok(plan)
         })
     }

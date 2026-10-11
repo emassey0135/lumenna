@@ -168,3 +168,10 @@ pub fn suggested_because(reasons: &[lumenna_core::suggestions::Reason]) -> Optio
         (true, false) => Some(format!("Offered, though {}.", listed(&against))),
     }
 }
+
+/// The same with its first letter a capital: "3 blocks" as a sentence starts.
+#[must_use]
+pub fn capitalised(text: &str) -> String {
+    let mut chars = text.chars();
+    chars.next().map_or_else(String::new, |first| first.to_uppercase().chain(chars).collect())
+}
