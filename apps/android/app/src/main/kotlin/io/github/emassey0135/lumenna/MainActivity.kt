@@ -46,7 +46,7 @@ class MainActivity : ComponentActivity() {
 
     private fun handle(intent: Intent?) {
         if (intent?.action == NEW_TASK) newTask.value += 1
-        Reminders.opened(intent)?.let { opened.value = (opened.value?.first ?: 0L) + 1 to it }
+        Reminders.opened(this, intent)?.let { opened.value = (opened.value?.first ?: 0L) + 1 to it }
     }
 
     override fun onNewIntent(intent: Intent) {

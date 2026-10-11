@@ -241,7 +241,7 @@ fun LumennaApp(
                 if (requested > 0) go(Tab.TASKS, Screen.QuickAdd())
             }
 
-            // A reminder's notification, tapped: its task, or its block's day.
+            // A reminder's notification, tapped: its task, or its block's day; its Replan button, Replan from Now.
             val tapped = opened?.collectAsState()?.value
             LaunchedEffect(tapped) {
                 val reminder = tapped?.second
@@ -249,6 +249,8 @@ fun LumennaApp(
                     "task" -> go(Tab.TASKS, Screen.Task(reminder.target))
                     "block" -> if (reminder.occurrence == Clock.today() || reminder.occurrence.isEmpty()) go(Tab.TODAY)
                         else go(Tab.TODAY, Screen.Day(reminder.occurrence))
+                    // An overrun's Replan button: the rest of today, worked out again.
+                    Reminders.REPLAN -> go(Tab.TODAY, Screen.Proposal(io.github.emassey0135.lumenna.core.ActionKind.REPLAN, Clock.today()))
                     else -> {}
                 }
             }

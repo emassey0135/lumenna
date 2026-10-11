@@ -202,6 +202,11 @@ object Reminders {
     private const val OPEN_KIND = "io.github.emassey0135.lumenna.open.kind"
     private const val OPEN_TARGET = "io.github.emassey0135.lumenna.open.target"
     private const val OPEN_OCCURRENCE = "io.github.emassey0135.lumenna.open.occurrence"
+    /** The notification to take away once the app has opened for it: a button's, which does not cancel itself. */
+    private const val OPEN_CANCEL = "io.github.emassey0135.lumenna.open.cancel"
+
+    /** What a notification's Replan button opens: Replan from Now, for [ReminderOpened.kind]. */
+    const val REPLAN = "replan"
 
     /** The missed summary's tag. */
     private const val MISSED = "missed"
@@ -408,7 +413,31 @@ object Reminders {
             .addAction(0, button(due.snooze), pressed(SNOOZE))
             // At a block's end with work left short, the text ends in the question this answers.
             .apply { if (due.carry.isNotEmpty()) addAction(0, button(due.carry), pressed(CARRY)) }
+            // A block's work outrunning its time: Replan opens the app at Replan from Now.
+            .apply {
+                if (due.replan.isNotEmpty()) {
+                    val replan = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        putExtra(OPEN_KIND, REPLAN)
+                        putExtra(OPEN_TARGET, due.target)
+                        putExtra(OPEN_OCCURRENCE, due.occurrence)
+                        putExtra(OPEN_CANCEL, id)
+                    }
+                    replan?.let {
+                        addAction(0, button(due.replan), PendingIntent.getActivity(context, "replan $id".hashCode(), it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+                    }
+                }
+            }
             .build()
+    }
+
+    /**
+     * What a notification opened the app to, if one did; a button that opened it (Replan) has
+     * its notification taken away, as tapping the notification itself does.
+     */
+    fun opened(context: Context, intent: Intent?): ReminderOpened? {
+        intent?.getStringExtra(OPEN_CANCEL)?.let { context.getSystemService(NotificationManager::class.java).cancel(it, NOTIFICATION) }
+        return opened(intent)
     }
 
     /** What a notification opened the app to, if one did. */

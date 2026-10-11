@@ -48,6 +48,19 @@ fun ProposalScreen(core: Core, navigator: Navigator, screen: Screen.Proposal) {
             item { Heading(button(words.unfit)) }
             model.unfit.forEach { line -> item { Text(line) } }
         }
+        // Other ways through the day, each named by what it is, costs and leads to.
+        if (model.alternatives.isNotEmpty()) {
+            item { Heading(model.others) }
+            model.alternatives.forEach { other ->
+                item {
+                    FilledTonalButton(
+                        onClick = { model.take(other) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(other.sentence, maxLines = Int.MAX_VALUE) },
+                    )
+                }
+            }
+        }
         if (items.isNotEmpty()) {
             item { Text(words.hint) }
             item {
