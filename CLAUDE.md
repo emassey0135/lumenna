@@ -394,6 +394,13 @@ surface's `reminders.rs` words them and answers the apps.
   running app or `lum notify` holds it and calls `deliver_reminders`, which remembers when it
   last delivered (`reminders-delivered`, a device setting) and goes back at most a day. A
   system that schedules notifications itself asks `upcoming_reminders(until)` instead.
+- **A reminder is a phrase the core reads** (`parse_trigger`, `trigger_phrase`): "5m before
+  start", "at end", "30m before" (a task's due time needs no saying). Adding one is the
+  reminder list's Add Reminder action, a Text question; the defaults are settings in the
+  same phrases, separated by commas (`SettingKind::Line`). A task with a due date and every
+  block offer Reminders (`Question::Form`: the app's list of `reminders_of`), whose own
+  reminders each offer Remove Reminder. A notification's buttons are `DueReminder::dismiss`
+  and `snooze`.
 - **Dismissing and snoozing write a `ReminderAck`**, which syncs: best effort, since a sleeping
   device may still show it. "Reminders on this device" is a device setting and never syncs.
 

@@ -166,7 +166,7 @@ private fun SettingControl(core: Core, prompt: Prompter, setting: Setting) {
                 }
             }
         }
-        SettingKind.TIME, SettingKind.NUMBER, SettingKind.FOLDER -> SettingRow(setting.title, setting.said, setting.hint) {
+        SettingKind.TIME, SettingKind.NUMBER, SettingKind.FOLDER, SettingKind.LINE -> SettingRow(setting.title, setting.said, setting.hint) {
             val time = setting.kind == SettingKind.TIME
             prompt.show {
                 AskText(

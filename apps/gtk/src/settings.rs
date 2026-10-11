@@ -293,7 +293,7 @@ fn setting_field(app: &Rc<App>, page: &PageBox, status: &Status, key: &'static s
             });
         }
         SettingKind::Choice => page.field(&label, &setting_choice(app, status, &shown)),
-        SettingKind::Time | SettingKind::Number | SettingKind::Folder => {
+        SettingKind::Time | SettingKind::Number | SettingKind::Folder | SettingKind::Line => {
             page.field(&label, &setting_entry(app, status, key, &shown.hint));
         }
     }

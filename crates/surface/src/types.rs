@@ -964,6 +964,8 @@ pub enum SettingKind {
     Number,
     /// A folder on this device.
     Folder,
+    /// A line of text the core reads, such as the default reminders' phrases.
+    Line,
 }
 
 // ---------------------------------------------------------------------------------------

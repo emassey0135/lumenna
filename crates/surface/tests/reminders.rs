@@ -137,3 +137,56 @@ fn one_process_gives_reminders_and_delivery_picks_up_where_it_stopped() {
     drop(lock);
     assert!(lumenna.take_reminders().unwrap().is_some(), "free again once let go");
 }
+
+#[test]
+fn a_reminder_is_added_and_removed_through_the_actions_every_app_offers() {
+    let (_directory, lumenna) = open();
+    let series = block_in(&lumenna, "Deep work", 120, None);
+    let row = lumenna.list_blocks().unwrap().rows.remove(0);
+    let open = row.actions.iter().find(|a| a.title == "Reminders").expect("a block's row opens its reminders");
+    assert_eq!(open.question, lumenna_surface::Question::Form);
+    let list = lumenna.reminders_of(series.clone()).unwrap();
+    let add = list.actions[0].clone();
+    assert_eq!(add.title, "Add Reminder");
+    lumenna.act(add.clone(), lumenna_surface::Answer::Text { text: "10m after end".to_owned() }).unwrap();
+    assert!(lumenna.act(add, lumenna_surface::Answer::Text { text: "when it feels right".to_owned() }).is_err());
+    let list = lumenna.reminders_of(series.clone()).unwrap();
+    assert_eq!(list.reminders[0].words, "10 minutes after it ends");
+    let remove = list.reminders[0].actions[0].clone();
+    assert_eq!(remove.title, "Remove Reminder");
+    lumenna.act(remove, lumenna_surface::Answer::Yes).unwrap();
+    assert_eq!(lumenna.reminders_of(series).unwrap().announcement, "1 reminder, the defaults");
+}
+
+#[test]
+fn a_task_offers_reminders_only_once_it_has_something_to_count_from() {
+    let (_directory, lumenna) = open();
+    lumenna.add_task("someday").unwrap();
+    lumenna.add_task("call the bank tomorrow 3pm").unwrap();
+    let rows = lumenna.list_tasks("").unwrap().rows;
+    let offers = |title: &str| rows.iter().find(|r| r.title == title).unwrap().actions.iter().any(|a| a.title == "Reminders");
+    assert!(!offers("someday"));
+    assert!(offers("call the bank"));
+}
+
+#[test]
+fn the_defaults_are_set_as_phrases_and_read_back_as_them() {
+    let (_directory, lumenna) = open();
+    let get = |key: &str| lumenna.settings(Some(key.to_owned())).unwrap().settings.remove(0).value;
+    assert_eq!(get("default-block-reminders"), "5m before start");
+    lumenna.set_setting("default-block-reminders", "5m before start, at end").unwrap();
+    assert_eq!(get("default-block-reminders"), "5m before start, at end");
+    lumenna.set_setting("default-task-reminders", "1h30m before").unwrap();
+    assert_eq!(get("default-task-reminders"), "1h30m before due");
+    assert!(lumenna.set_setting("default-task-reminders", "at end").is_err(), "a task has no end");
+    lumenna.set_setting("default-block-reminders", "").unwrap();
+    assert_eq!(get("default-block-reminders"), "");
+}
+
+#[test]
+fn a_notifications_buttons_are_the_cores() {
+    let (_directory, lumenna) = open();
+    block_in(&lumenna, "Deep work", 60, None);
+    let first = lumenna.upcoming_reminders(hours(3)).unwrap().due.remove(0);
+    assert_eq!((first.dismiss.as_str(), first.snooze.as_str()), ("Dismiss", "Snooze 10 Minutes"));
+}

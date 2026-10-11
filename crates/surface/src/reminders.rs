@@ -50,6 +50,10 @@ pub struct DueReminder {
     pub text: String,
     /// The same, said of the past, for a summary of what was missed: "Deep work started".
     pub missed: String,
+    /// The notification's button that dismisses it, on every device.
+    pub dismiss: String,
+    /// The notification's button that snoozes it for [`SNOOZE_MINS`].
+    pub snooze: String,
 }
 
 /// What reminders to give now, or over a while.
@@ -93,6 +97,9 @@ pub struct ReminderView {
     pub at: Option<String>,
     /// How it reads: "5 minutes before it starts".
     pub words: String,
+    /// What can be done to it: Remove, for one of its own; nothing for a default.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actions: Vec<crate::actions::Action>,
 }
 
 /// The reminders a task or block has.
@@ -107,6 +114,9 @@ pub struct ReminderList {
     pub notices: Vec<String>,
     /// Them, in time order of what they count from.
     pub reminders: Vec<ReminderView>,
+    /// What can be done to the list: Add Reminder, which asks for a phrase.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actions: Vec<crate::actions::Action>,
 }
 
 /// "in 5 minutes", "now", "5 minutes ago": the gap between a firing and what it is about.
@@ -212,6 +222,8 @@ fn notification(firing: &Firing, snapshot: &Snapshot, verbosity: Verbosity) -> D
         title,
         text,
         missed,
+        dismiss: "Dismiss".to_owned(),
+        snooze: format!("Snooze {}", crate::actions::title_case(&duration(SNOOZE_MINS))),
     }
 }
 
@@ -347,6 +359,11 @@ impl Lumenna {
                 own.iter().map(|r| view(r.id, &r.trigger, true)).collect()
             };
             let mine = views.first().is_some_and(|v| v.own);
+            let target_id = match target {
+                ReminderTarget::Task(id) => id.to_string(),
+                ReminderTarget::Block(id) => id.to_string(),
+            };
+            let block = matches!(target, ReminderTarget::Block(_));
             Ok(ReminderList {
                 announcement: match (views.len(), mine) {
                     (0, _) => "No reminders".to_owned(),
@@ -355,6 +372,7 @@ impl Lumenna {
                 },
                 notices: Vec::new(),
                 reminders: views,
+                actions: crate::actions::add_reminder(&target_id, &target_name(&snapshot, target), block),
             })
         })
     }
@@ -389,6 +407,21 @@ impl Lumenna {
             store.apply_recorded(&change)?;
             Ok(Change::of(&change))
         })
+    }
+
+    /// Gives a task or block a reminder of its own from a phrase: "5m before start", "at end",
+    /// "30m before" (for a task, its due time).
+    ///
+    /// # Errors
+    ///
+    /// If nothing matches `target`, or the phrase does not read.
+    pub fn add_reminder_saying(&self, target: String, phrase: String) -> Result<Change> {
+        let block = self.with(|store| {
+            store.load_all_years()?;
+            Ok(matches!(reminder_target(&repaired(store), &target)?, ReminderTarget::Block(_)))
+        })?;
+        let trigger = parse_trigger(&phrase, block)?;
+        self.add_reminder(target, anchor_word(&trigger.anchor).to_owned(), trigger.offset_mins)
     }
 
     /// Removes one of a task's or block's own reminders.
@@ -515,7 +548,9 @@ impl Lumenna {
 }
 
 fn view(id: ReminderId, trigger: &Trigger, own: bool) -> ReminderView {
+    let words = trigger_words(trigger);
     ReminderView {
+        actions: if own { crate::actions::reminder(&id.to_string(), &words) } else { Vec::new() },
         id: id.to_string(),
         own,
         anchor: anchor_word(&trigger.anchor).to_owned(),
@@ -524,7 +559,58 @@ fn view(id: ReminderId, trigger: &Trigger, own: bool) -> ReminderView {
             ReminderAnchor::Absolute(at) => Some(at.timestamp().to_string()),
             _ => None,
         },
-        words: trigger_words(trigger),
+        words,
+    }
+}
+
+/// A trigger as the phrase `parse_trigger` reads back: "5m before start", "at end".
+#[must_use]
+pub fn trigger_phrase(trigger: &Trigger) -> String {
+    let anchor = match trigger.anchor {
+        ReminderAnchor::BlockStart => "start",
+        ReminderAnchor::BlockEnd => "end",
+        ReminderAnchor::Due | ReminderAnchor::Absolute(_) => "due",
+    };
+    let minutes = trigger.offset_mins.unsigned_abs();
+    let span = match (minutes / 60, minutes % 60) {
+        (0, m) => format!("{m}m"),
+        (h, 0) => format!("{h}h"),
+        (h, m) => format!("{h}h{m}m"),
+    };
+    match trigger.offset_mins {
+        0 => format!("at {anchor}"),
+        n if n < 0 => format!("{span} before {anchor}"),
+        _ => format!("{span} after {anchor}"),
+    }
+}
+
+/// A reminder as a person types it: "5m before start", "at end", "1h after"; for a task the
+/// anchor is its due time, which needs no saying. `block` says which it is for.
+///
+/// # Errors
+///
+/// If it does not read, or names an anchor the target lacks.
+pub fn parse_trigger(text: &str, block: bool) -> Result<Trigger> {
+    let lower = text.trim().to_lowercase();
+    let words: Vec<&str> = lower.split_whitespace().collect();
+    let anchor = |word: Option<&&str>| -> Result<ReminderAnchor> {
+        match (word.copied(), block) {
+            (None, true) | (Some("start" | "starts"), true) => Ok(ReminderAnchor::BlockStart),
+            (Some("end" | "ends"), true) => Ok(ReminderAnchor::BlockEnd),
+            (None, false) | (Some("due"), false) => Ok(ReminderAnchor::Due),
+            (Some(other), true) => Err(LumennaError::new(format!("a block's reminder counts from its start or end, not '{other}'"))),
+            (Some(other), false) => Err(LumennaError::new(format!("a task's reminder counts from when it is due, not '{other}'"))),
+        }
+    };
+    let example = if block { "such as 5m before start, or at end" } else { "such as 30m before, or at due" };
+    match words.as_slice() {
+        ["at", rest @ ..] if rest.len() <= 1 => Ok(Trigger { anchor: anchor(rest.first())?, offset_mins: 0 }),
+        [span, way @ ("before" | "after"), rest @ ..] if rest.len() <= 1 => {
+            let minutes = i32::try_from(resolve::minutes(span)?).unwrap_or(i32::MAX);
+            let offset_mins = if *way == "before" { -minutes } else { minutes };
+            Ok(Trigger { anchor: anchor(rest.first())?, offset_mins })
+        }
+        _ => Err(LumennaError::new(format!("'{}' is not a reminder; {example}", text.trim()))),
     }
 }
 
