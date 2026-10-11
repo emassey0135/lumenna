@@ -357,6 +357,7 @@ const api = {
   proposalWords(kind: ActionKind): ProposalWords {
     const words = proposalWords(kind);
     for (const key of ["title", "item", "apply", "cancel", "unfit"] as const) words[key] = sentenceCase(words[key]);
+    if (words.others) words.others = sentenceCase(words.others);
     return words;
   },
 
@@ -522,6 +523,8 @@ export interface Proposed {
   announcement: string;
   items: { sentence: string; reason?: string }[];
   unfit: string[];
+  /** Other ways to replan (Replan from Now's alone): each its sentence, and the pins it asks with. */
+  alternatives: { sentence: string; pins: ReplanPins }[];
   pins: ReplanPins | DayPins;
   record: Replan | DayPlan;
 }
@@ -537,6 +540,7 @@ function replanned(record: Replan): Proposed {
     announcement: announcementText(record.announcement, record.notices ?? []),
     items: record.changes.map((change) => ({ sentence: change.sentence })),
     unfit: record.unplaceable ?? [],
+    alternatives: record.alternatives ?? [],
     pins: record.pins,
     record,
   };
@@ -547,6 +551,7 @@ function planned(record: DayPlan): Proposed {
     announcement: announcementText(record.announcement, record.notices ?? []),
     items: record.sittings.map((sitting) => ({ sentence: sitting.sentence, reason: sitting.reason ?? undefined })),
     unfit: record.unfit ?? [],
+    alternatives: [],
     pins: record.pins,
     record,
   };

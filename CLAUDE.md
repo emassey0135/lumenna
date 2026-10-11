@@ -543,8 +543,9 @@ library is only on a BTSpeak (`/BTSpeak/Python/BTSpeak/`); elsewhere the tests r
   apply, whose announcement already says the next). A `Flag` rebuilds it on the next
   proposal; it never exits on `session.restless()`, which its own apply sets.
   `proposals.NOW` fixes the moment for tests.
-- **Carry Forward at a block's end is the Reminders screen's** (`f`, `carry_rest`): the
-  service has no keys, and the text it says already ends in the question.
+- **Carry Forward at a block's end and Replan on an overrun are the Reminders screen's**
+  (`f`, `carry_rest`; `p`, the Replan from now screen): the service has no keys, and only
+  says the text, which already ends in the question or says the overrun.
 
 ## The Emacs client
 
@@ -578,7 +579,9 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
 - **A proposal is a buffer of checkable lines** (`lumenna-proposal.el`). Its source draws
   the proposal it holds and never asks again, since `lumenna-refresh-all` redraws it after
   every write and asking would lose the checks; `g` asks again, keeping the pins.
-  `lumenna-proposal--now` fixes the moment for tests.
+  `lumenna-proposal--now` fixes the moment for tests. Other options take the place of the
+  proposal as a partial apply's `next` does. A reminder's `replan` button, and `r` in the
+  due list, open Replan from Now.
 - **A choice's reason is its completion annotation**, never part of the line chosen.
 
 ## The iOS app
@@ -1190,8 +1193,10 @@ with `lum`.
   `replan` and `plan_day` actions (the summary row's, and the Day actions menu's). Each change
   is its line with a check box named by the core's `item` and described by the line, as a
   reminder's buttons are by its text; after a partial apply the list is the core's `next`, a
-  new list whose first box takes focus. The clock the proposal is said in is the browser's
-  (`Intl`'s `hour12`).
+  new list whose first box takes focus. Replan's other options are buttons named by their
+  sentences; one taken is the proposal shown next. An overrun warning's Replan in Reminders
+  due opens the screen, and dismisses the warning only once something was replanned. The
+  clock the proposal is said in is the browser's (`Intl`'s `hour12`).
 - **Playwright's clock does not reach the worker**, where the core reads the time. Tests that
   need a fixed day serve `worker.ts` with a shifted `Date` in front (`at` in
   `tests/planner.spec.ts`).

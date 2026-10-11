@@ -173,6 +173,31 @@ test("Replan from now says its proposal, makes the change checked, and shows wha
   await expect(page.getByRole("treegrid", { name: "The day" }).getByRole("row", { name: /Lunch/ })).toHaveAccessibleName(/12:00 PM/);
 });
 
+test("Replan from now offers other options, each by its sentence, and one taken is the proposal shown", async ({ page }) => {
+  await record(page);
+  await at(page, MORNING);
+  await open(page);
+  await crowdedDay(page);
+  await page.getByRole("button", { name: "Day actions" }).click();
+  await page.getByRole("menuitem", { name: "Replan from now" }).click();
+  const screen = page.getByRole("dialog", { name: "Replan from now" });
+  const others = screen.getByRole("region", { name: "Other options" });
+  const skip = others.getByRole("button", { name: /^Skip Lunch today, your only break left today\./ });
+  await expect(skip).toBeVisible();
+  await axe(page);
+  await skip.click();
+  await expect.poll(() => announced(page)).toContain("Lunch is skipped today.");
+  const boxes = screen.getByRole("checkbox", { name: "Make this change" });
+  await expect(boxes).toHaveCount(1);
+  await expect(boxes.first()).toHaveAccessibleDescription("Lunch is skipped today");
+  await expect(boxes.first()).toBeFocused();
+  // Nothing does better than nothing moving: no other options, and no heading for them.
+  await expect(screen.getByRole("heading", { name: "Other options" })).toHaveCount(0);
+  await screen.getByRole("button", { name: "Make the changes checked" }).click();
+  await expect(screen).toBeHidden();
+  await expect(page.getByRole("treegrid", { name: "The day" }).getByRole("row", { name: /Lunch/ })).toHaveCount(0);
+});
+
 test("Plan the day lists each sitting with why, and plans again around one turned down", async ({ page }) => {
   await record(page);
   await at(page, MORNING);
@@ -248,4 +273,40 @@ test("a block's end with work left short offers Carry Forward, which carries it 
   await expect(carry).toHaveCount(0);
   const afternoon = day.getByRole("row", { name: /Afternoon/ });
   await expect(afternoon).toHaveAccessibleName(/1 task assigned/);
+});
+
+test("a block's work outrunning its time is said with Replan, which opens Replan from now", async ({ page }) => {
+  await record(page);
+  await at(page, new Date(2030, 0, 15, 8, 50), true);
+  await open(page);
+  await add(page, "Write report");
+  await place(page, /^Today/);
+  await addBlock(page, "Deep work", "9:00", 60);
+  // Straight after it, so the overrun has no free time to spill into.
+  await addBlock(page, "Admin", "10:00", 60);
+  const day = page.getByRole("treegrid", { name: "The day" });
+  await day.getByRole("row", { name: /Deep work/ }).click();
+  await page.keyboard.press("Shift+F10");
+  await page.getByRole("menuitem", { name: "Assign a task" }).click();
+  await page.getByRole("combobox", { name: "Assign a task to Deep work" }).fill("Write");
+  await page.getByRole("option", { name: /^Write report/ }).click();
+  await page.getByRole("button", { name: "Assign" }).click();
+  await page.getByRole("textbox", { name: "Planned length" }).fill("90m");
+  await page.getByRole("dialog", { name: "Planned length" }).getByRole("button", { name: "Save" }).click();
+  // A plan too big from the start is said as the block starts.
+  await page.clock.runFor("11:00");
+  await page.waitForTimeout(300);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  const due = page.getByRole("region", { name: "Reminders due" });
+  const replan = due.getByRole("button", { name: "Replan" });
+  await expect(replan).toBeVisible();
+  await expect(replan).toHaveAccessibleDescription(/^Deep work has .* more than it holds/);
+  await axe(page);
+  await replan.click();
+  const screen = page.getByRole("dialog", { name: "Replan from now" });
+  await expect(screen).toBeVisible();
+  // Cancelled, the warning stays, and focus is back on its button.
+  await screen.getByRole("button", { name: "Cancel" }).click();
+  await expect(screen).toBeHidden();
+  await expect(replan).toBeFocused();
 });
