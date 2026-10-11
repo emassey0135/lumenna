@@ -129,7 +129,12 @@ on a sitting left short of its planned time, each one undoable change. Still to 
 
 ### Re-flow when the day slips
 
-`propose_reflow(day, now, pinned) -> Proposal { changes, unplaceable, alternatives }`.
+Built (`core::reflow`, `replan.rs`, `lum replan [--keep] [--skip] [--apply [1,3]]`, RPC
+`replan` and `replan.apply`): the walk, moving the work first, pins, the proposal said in
+the app's clock, applied whole or per change against the day as it is now, one undo. Still
+to come: the Replan from Now day action and each app's screen for it (the action is held
+back until they exist), alternatives, the overrun warning on the scheduler, and staying
+silent. As designed:
 
 - **Three situations, kept apart.** Assigned work exceeding the block is a plan that was
   wrong when made, predictable in advance. A block running past its end, and a block that

@@ -108,6 +108,12 @@ fn text(response: &Response, clock: Clock) {
         | Outcome::Restore(_)
         | Outcome::Import(_) => println!("{}", response.announcement()),
         Outcome::Paired(_) => println!("{}", response.announcement()),
+        Outcome::Replan(proposal) => {
+            println!("{}", response.announcement());
+            for (n, change) in proposal.changes.iter().enumerate() {
+                println!("{:>3}  {}", n + 1, change.sentence);
+            }
+        }
         Outcome::History(found) => {
             println!("{}", response.announcement());
             for part in &found.history {

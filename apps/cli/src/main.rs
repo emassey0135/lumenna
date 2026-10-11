@@ -148,6 +148,19 @@ pub(crate) enum Command {
     EndDay,
     /// Clear the rest of today, leaving the block under way.
     ClearDay,
+    /// Work out the rest of today again from now: says what would change, and changes it
+    /// only with --apply.
+    Replan {
+        /// Leave this block where it is (a row number from `lum plan`, or its identifier).
+        #[arg(long)]
+        keep: Vec<String>,
+        /// Skip this block today.
+        #[arg(long)]
+        skip: Vec<String>,
+        /// Make the changes proposed: all of them, or those numbered, such as 1,3.
+        #[arg(long, num_args = 0..=1, default_missing_value = "all")]
+        apply: Option<String>,
+    },
     /// Put the rest of a sitting's planned time in another block.
     Carry {
         /// A row number from `lum plan`, or the assignment identifier.
@@ -1048,6 +1061,32 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         }
         Command::EndDay => Response::new(profile.end_day(true)?),
         Command::ClearDay => Response::new(profile.end_day(false)?),
+        Command::Replan { keep, skip, apply } => {
+            let series = |rows: &[String]| -> Result<Vec<String>> {
+                rows.iter().map(|row| Ok(profile.row(row, "block")?.split('@').next().unwrap_or_default().to_owned())).collect()
+            };
+            let style = match clock(profile) {
+                render::Clock::TwelveHour => lumenna_surface::TimeStyle::TwelveHour,
+                render::Clock::TwentyFourHour => lumenna_surface::TimeStyle::TwentyFourHour,
+            };
+            let proposal = profile.replan(style, series(keep)?, series(skip)?, None)?;
+            match apply.as_deref() {
+                None => Response::new(proposal),
+                Some("all") => Response::new(profile.apply_replan(proposal.changes, None)?),
+                Some(numbers) => {
+                    let mut chosen = Vec::new();
+                    for number in numbers.split(',') {
+                        let n: usize = number.trim().parse().map_err(|_| {
+                            CliError::Message(format!("'{number}' is not the number of a change"))
+                        })?;
+                        chosen.push(proposal.changes.get(n.wrapping_sub(1)).cloned().ok_or_else(|| {
+                            CliError::Message(format!("there is no change {n}: {} proposed", proposal.changes.len()))
+                        })?);
+                    }
+                    Response::new(profile.apply_replan(chosen, None)?)
+                }
+            }
+        }
         Command::Carry { assignment, to } => {
             Response::new(profile.carry_forward(&profile.row(assignment, "assignment")?, &profile.row(to, "block")?)?)
         }
@@ -1254,6 +1293,7 @@ fn listing_of(outcome: &Outcome) -> Option<Vec<(String, String)>> {
         | Outcome::Places(_)
         | Outcome::Value(_)
         | Outcome::History(_)
+        | Outcome::Replan(_)
         | Outcome::DueReminders(_)
         | Outcome::Reminders(_)
         | Outcome::Server(_)

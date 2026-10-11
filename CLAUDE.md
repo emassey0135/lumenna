@@ -436,6 +436,15 @@ block itself for a one-off), End the Day and Clear the Rest of the Day (`Plan::a
 today: later repeating blocks cancelled for today, one-offs to the trash), and Carry Forward
 on a sitting left short, its task open, to a block whose filter admits it, the old sitting
 marked Deferred.
+Re-flow is a proposal, never a change (`core::reflow`, the surface's `replan.rs`, `lum
+replan`, RPC `replan`/`replan.apply`): the work moves first (a block's last sittings beyond
+its time left go to the next block of the week that takes them, else back to the list), then
+the walk from now, anchored and kept blocks fixed, a pushed block shrinking to its minimum
+keeping its end, then moving later. Every change is a whole sentence in the clock the app
+passes (`TimeStyle`), since for someone who cannot glance at a timeline the description is
+the check. `apply_replan` takes the changes accepted, refuses any the day no longer matches,
+and is one undoable change. No block starts past midnight; a day planned past its window
+runs to midnight. The Replan from Now day action waits until every app has its screen.
 The surface words both (`task_history`, `TaskDetail::history`): asked for about one task,
 never said in a list or a live region. The coefficients are `Coefficients::default()` until
 they become synced settings.
