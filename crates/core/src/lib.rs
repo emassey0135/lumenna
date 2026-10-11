@@ -21,6 +21,7 @@ pub mod repair;
 pub mod row;
 pub mod snapshot;
 pub mod suggest;
+pub mod suggestions;
 pub mod state;
 pub mod time;
 pub mod urgency;

@@ -106,17 +106,14 @@ from the records already kept, on a task's own screen. Still to come:
 
 ### Suggestions for a block
 
-`suggest_tasks(block, now, limit) -> [Suggestion { task, reasons }]`, behind "what should I
-work on?" in a block, behind adding tasks to a block, and for filling free time.
+Built: `core::suggestions`, behind Assign a Task, each choice's `reason` its spoken
+description; and Put in a Block offering only the blocks whose filter admits the task.
+Still to come:
 
-- Candidates are the tasks the block's `task_filter` admits, ranked by urgency, with a task
-  whose estimate fits the block's remaining time raised and one already assigned elsewhere
-  today lowered, never excluded.
-- **Reasons are required and are the accessible label**: "Suggested because overdue by two
-  days, priority 1, and its 30-minute estimate fits your remaining 35 minutes."
-- `task_filter` already limits what "Assign a Task" offers from a block (`Lumenna::choices`).
-  The other way round, "Put in a Block" (`work_blocks`) still offers every block that takes
-  tasks; it should offer only blocks whose filter admits the task.
+- **"What should I work on?"** from a block under way, and for filling free time: the same
+  ranking, asked for from the day.
+- **Every app showing a choice's `reason`** as its description (accessible description,
+  hint, or a second line).
 
 ### Carrying unfinished work forward
 

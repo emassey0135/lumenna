@@ -425,6 +425,11 @@ worked; blocking; blocked, strongly negative; already in a block today, mildly n
 the sum **multiplied** by the project's weight, so the order within a project holds and only
 the scale between projects changes. `core::history` counts what the records already hold:
 sittings and time, how often a task was put in a block and left, its age, its completions.
+`core::suggestions` ranks what a block is offered: the open tasks its filter admits, by
+urgency, a task whose estimate fits the time left raised, nothing excluded for not fitting.
+Assign a Task offers them in that order, each `Choice::reason` the sentence a person hears
+("Suggested because overdue by 1 day, priority 1, and its estimate of 30 minutes fits the 35
+minutes left"); Put in a Block offers only the blocks whose filter admits the task.
 The surface words both (`task_history`, `TaskDetail::history`): asked for about one task,
 never said in a list or a live region. The coefficients are `Coefficients::default()` until
 they become synced settings.
