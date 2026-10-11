@@ -34,6 +34,9 @@ import kotlinx.coroutines.launch
 // moved: on boot, on the app's start and return to the front, after the store changes, and
 // after a background sync.
 
+/** A firing's notification as shown: its tag, `<key>@<occurrence>`, and the store that showed it. */
+data class ShownNotification(val tag: String, val store: String?)
+
 /** One firing as an alarm: which reminder and occurrence (what a dismissal names), and when. */
 data class ReminderAlarm(val key: String, val occurrence: String, val at: Instant) {
     /** The alarm's and its notification's identity: re-arming the same firing replaces it. */
@@ -208,6 +211,9 @@ object Reminders {
     /** What a notification's Replan button opens: Replan from Now, for [ReminderOpened.kind]. */
     const val REPLAN = "replan"
 
+    /** Which store showed a firing's notification, its directory, in the notification's extras. */
+    private const val STORE = "io.github.emassey0135.lumenna.store"
+
     /** The missed summary's tag. */
     private const val MISSED = "missed"
 
@@ -251,28 +257,39 @@ object Reminders {
      */
     private fun clearDealtWith(context: Context, core: Core) {
         val manager = context.getSystemService(NotificationManager::class.java)
-        val shown = manager.activeNotifications.filter {
-            it.notification.channelId == CHANNEL && it.id == NOTIFICATION && it.tag?.contains('@') == true
-        }
-        if (shown.isEmpty()) return
+        val shown = manager.activeNotifications.filter { it.notification.channelId == CHANNEL && it.id == NOTIFICATION }
+            .map { ShownNotification(it.tag.orEmpty(), it.notification.extras.getString(STORE)) }
+        dealtWith(core, shown).forEach { manager.cancel(it, NOTIFICATION) }
+    }
+
+    /**
+     * Of the firings [shown], the tags of those this store showed and has since dealt with.
+     * Only this store's: another store in the process — a test's, beside the app's own — has
+     * firings this one knows nothing of, and taking those away raced that store's showing
+     * them. One shown before notifications named their store counts as this one's.
+     */
+    fun dealtWith(core: Core, shown: List<ShownNotification>): List<String> {
+        val ours = shown.filter { it.tag.contains('@') && (it.store == null || it.store == core.directory.path) }
+        if (ours.isEmpty()) return emptyList()
         val since = Instant.now().minus(Duration.ofDays(1)).toString()
         val still = core.lumenna.remindersDue(since, null).let { it.due + it.missed }.map { "${it.key}@${it.occurrence}" }.toSet()
-        shown.filter { it.tag !in still }.forEach { manager.cancel(it.tag, NOTIFICATION) }
+        return ours.map { it.tag }.filter { it !in still }
     }
 
     /**
      * An alarm went off: shows its firing, as the core words it now, unless it has been dealt
      * with since it was set. One delayed past the core's few minutes is said of the past.
      */
-    fun fire(context: Context, core: Core, key: String, occurrence: String, at: String) {
-        val moment = runCatching { Instant.parse(at) }.getOrNull() ?: return
+    fun fire(context: Context, core: Core, key: String, occurrence: String, at: String): DueReminder? {
+        val moment = runCatching { Instant.parse(at) }.getOrNull() ?: return null
         val now = maxOf(Instant.now(), moment)
-        val found = core.attempt { core.lumenna.remindersDue(moment.minusSeconds(1).toString(), now.toString()) } ?: return
+        val found = core.attempt { core.lumenna.remindersDue(moment.minusSeconds(1).toString(), now.toString()) } ?: return null
         val match = { due: DueReminder -> due.key == key && due.occurrence == occurrence }
-        val shown = found.due.firstOrNull(match)?.also { show(context, it, it.text) }
-            ?: found.missed.firstOrNull(match)?.also { show(context, it, it.missed) }
+        val shown = found.due.firstOrNull(match)?.also { show(context, core, it, it.text) }
+            ?: found.missed.firstOrNull(match)?.also { show(context, core, it, it.missed) }
         // Told to the core at the next catching up, so it is not counted as missed.
         if (shown != null) SystemShown(context).record("$key@$occurrence")
+        return shown
     }
 
     /**
@@ -281,7 +298,7 @@ object Reminders {
      */
     private fun catchUp(context: Context, core: Core) {
         val found = ReminderCatchUp(core.lumenna, SystemShown(context)).catchUp()
-        found.due.forEach { show(context, it, it.text) }
+        found.due.forEach { show(context, core, it, it.text) }
         if (found.missedSummary.isNotEmpty() && notificationsAllowed(context)) {
             try {
                 context.getSystemService(NotificationManager::class.java).notify(MISSED, NOTIFICATION, summary(context, found.missedSummary))
@@ -363,11 +380,11 @@ object Reminders {
             .extend(NotificationCompat.WearableExtender().setBridgeTag(BRIDGE_TAG))
             .build()
 
-    private fun show(context: Context, due: DueReminder, text: String) {
+    private fun show(context: Context, core: Core, due: DueReminder, text: String) {
         if (!notificationsAllowed(context)) return
         channel(context)
         try {
-            context.getSystemService(NotificationManager::class.java).notify("${due.key}@${due.occurrence}", NOTIFICATION, notification(context, due, text))
+            context.getSystemService(NotificationManager::class.java).notify("${due.key}@${due.occurrence}", NOTIFICATION, notification(context, due, text, core.directory.path))
         } catch (_: SecurityException) {
             // Notifications were refused after the check.
         }
@@ -378,7 +395,7 @@ object Reminders {
      * buttons, and Carry Forward where the core offers it, in sentence case as Android writes. A reminder's category, so Do Not Disturb lets it through only where the person
      * allows reminders; nothing in it is said by sound alone.
      */
-    fun notification(context: Context, due: DueReminder, text: String = due.text): Notification {
+    fun notification(context: Context, due: DueReminder, text: String = due.text, store: String? = null): Notification {
         val id = "${due.key}@${due.occurrence}"
         fun pressed(action: String) = PendingIntent.getBroadcast(
             context, 0,
@@ -393,6 +410,7 @@ object Reminders {
             putExtra(OPEN_OCCURRENCE, due.occurrence)
         }
         return NotificationCompat.Builder(context, CHANNEL)
+            .apply { store?.let { addExtras(android.os.Bundle().apply { putString(STORE, it) }) } }
             .setSmallIcon(io.github.emassey0135.lumenna.shared.R.drawable.ic_reminder)
             .setContentTitle(due.title)
             .setContentText(text)
