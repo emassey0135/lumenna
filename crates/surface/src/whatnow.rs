@@ -174,7 +174,7 @@ impl Lumenna {
                 });
             }
             Ok(Choices {
-                announcement: if offered.is_empty() { none } else { count_line(offered.len(), "thing to work on") },
+                announcement: if offered.is_empty() { none } else { match offered.len() { 1 => "1 thing to work on".to_owned(), n => format!("{n} things to work on") } },
                 notices: Vec::new(),
                 choices: offered,
             })
