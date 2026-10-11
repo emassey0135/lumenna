@@ -42,6 +42,9 @@ pub struct Detail {
     waits_label: gtk::Label,
     stop_waiting: gtk::Button,
     state: gtk::Entry,
+    /// What has happened to it, under a History heading; hidden when nothing has.
+    history_heading: gtk::Label,
+    history: gtk::TextView,
     /// Each button and the kinds of action it runs.
     buttons: Vec<(gtk::Button, &'static [ActionKind])>,
     shown: RefCell<Option<TaskDetail>>,
@@ -176,6 +179,20 @@ impl Detail {
         state.update_relation(&[gtk::accessible::Relation::LabelledBy(&[state_label.upcast_ref()])]);
         grid.attach(&state_label, 0, 13, 2, 1);
         grid.attach(&state, 0, 14, 2, 1);
+        // Read-only lines, named by the heading over them: Tab reaches them, the arrows read
+        // them a line at a time.
+        let history_heading = gtk::Label::builder()
+            .label("History")
+            .xalign(0.0)
+            .margin_top(6)
+            .accessible_role(gtk::AccessibleRole::Heading)
+            .build();
+        history_heading.add_css_class("heading");
+        let history = gtk::TextView::builder().editable(false).cursor_visible(false).wrap_mode(gtk::WrapMode::WordChar).build();
+        history.update_relation(&[gtk::accessible::Relation::LabelledBy(&[history_heading.upcast_ref()])]);
+        crate::prompts::leaves_on_tab(&history);
+        grid.attach(&history_heading, 0, 15, 2, 1);
+        grid.attach(&history, 0, 16, 2, 1);
         let buttons = gtk::FlowBox::builder()
             .selection_mode(gtk::SelectionMode::None)
             .min_children_per_line(2)
@@ -224,6 +241,8 @@ impl Detail {
             waits_label,
             stop_waiting,
             state,
+            history_heading,
+            history,
             buttons: vec![
                 (add_wait.clone(), &[ActionKind::WaitFor]),
                 (mark_done.clone(), &[ActionKind::MarkDone, ActionKind::MarkNotDone]),
@@ -336,7 +355,7 @@ impl Detail {
             self.labels.set_text(&fields.labels);
             self.notes.buffer().set_text(&fields.notes);
             let items =
-                task.depends.iter().map(|other| Item { key: other.id.clone(), text: other.title.clone(), depth: 0 }).collect();
+                task.depends.iter().map(|other| Item { key: other.id.clone(), text: other.title.clone(), depth: 0, ..Default::default() }).collect();
             if self.waits.set(items) {
                 self.waits.select_key_or_near(None, Some(0));
             }
@@ -345,6 +364,9 @@ impl Detail {
             self.waits.widget.set_visible(!task.depends.is_empty());
             self.stop_waiting.set_sensitive(!task.depends.is_empty());
             self.state.set_text(&speech::task_state(task));
+            self.history.buffer().set_text(&task.history.join("\n"));
+            self.history_heading.set_visible(!task.history.is_empty());
+            self.history.set_visible(!task.history.is_empty());
             // A button is there while the task offers its action, and says it as the core
             // titles it: Mark Done is Mark Not Done on a done task.
             for (button, kinds) in &self.buttons {

@@ -22,6 +22,7 @@ mod detail;
 mod help;
 mod pairing;
 mod prompts;
+mod proposal;
 mod quick_add;
 mod reminders;
 mod settings;

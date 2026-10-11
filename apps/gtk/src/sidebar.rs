@@ -90,7 +90,7 @@ impl Sidebar {
     /// which would throw away whatever the middle pane was doing.
     pub fn reload(&self, app: &App) {
         let entries = places::sidebar(&app.core.lumenna);
-        let items = entries.iter().map(|entry| Item { key: entry.key(), text: entry.text.clone(), depth: entry.depth }).collect();
+        let items = entries.iter().map(|entry| Item { key: entry.key(), text: entry.text.clone(), depth: entry.depth, ..Default::default() }).collect();
         *self.entries.borrow_mut() = entries;
         if self.tree.set(items) {
             let current = self.current.borrow().clone();

@@ -938,6 +938,14 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   The UI tests stand in for the shell with a notification server on the private bus
   (`harness.Notifications`), started before the app, which picks its backend at the first
   notification.
+- **The day's own actions are its heading row's** (the summary, `Plan::actions`) and the Day
+  menu's. Replan from Now and Plan the Day are one screen (`proposal.rs`): a check box per
+  change, the core's sentence as its label and a sitting's reason as its description, what
+  fits nowhere as read-only lines under a heading, the proposal said once the window is in
+  front. Applying shows the core's `next` until it proposes nothing. A tree row's
+  `description` (`Item::description`) is how a choice's reason reaches Orca, after its name.
+- **The core words a whole sentence in `Locale::style()`**: the desktop's clock setting,
+  else whether the locale's own time says 13:00 as 13.
 - **It serves the command surface while it holds the sync endpoint** (`Core::start_syncing`,
   the surface's `rpc` feature), and stops serving before it stops syncing.
 - **One instance per profile** through GApplication's bus name, tagged per profile.

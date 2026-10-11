@@ -29,6 +29,7 @@ use lumenna_desktop::outline;
 
 /// One row as the tree shows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default)]
 pub struct Item {
     /// What identifies it across a reload.
     pub key: String,
@@ -36,6 +37,8 @@ pub struct Item {
     pub text: String,
     /// How deep the core put it; the tree nests it under the nearest shallower row above.
     pub depth: u32,
+    /// Said after it, never in its name: a choice's reason, say. Empty for none.
+    pub description: String,
 }
 
 mod imp {
@@ -57,6 +60,8 @@ mod imp {
         /// GTK cannot report the level itself (`Tree::word_levels`).
         #[property(get, set)]
         pub shown: RefCell<String>,
+        /// Its accessible description, if any.
+        pub description: RefCell<String>,
         /// Where it is in the flat list the tree was given.
         pub index: Cell<usize>,
         /// Its position among its siblings, from one, and how many siblings there are.
@@ -82,9 +87,10 @@ glib::wrapper! {
 }
 
 impl Row {
-    fn new(text: &str, index: usize) -> Self {
+    fn new(text: &str, description: &str, index: usize) -> Self {
         let row: Self = glib::Object::builder().property("text", text).property("shown", text).build();
         row.imp().index.set(index);
+        *row.imp().description.borrow_mut() = description.to_owned();
         row
     }
 
@@ -228,6 +234,12 @@ impl Tree {
             let Some(row) = list_row.item().and_downcast::<Row>() else { return };
             let level = i32::try_from(list_row.depth()).unwrap_or(i32::MAX - 1) + 1;
             expander.update_property(&[gtk::accessible::Property::Level(level)]);
+            let description = row.imp().description.borrow();
+            if description.is_empty() {
+                expander.reset_property(gtk::AccessibleProperty::Description);
+            } else {
+                expander.update_property(&[gtk::accessible::Property::Description(&description)]);
+            }
             expander.update_relation(&[
                 gtk::accessible::Relation::PosInSet(row.imp().position.get() as i32),
                 gtk::accessible::Relation::SetSize(row.imp().siblings.get() as i32),
@@ -505,7 +517,7 @@ impl Tree {
     pub fn set(&self, items: Vec<Item>) -> bool {
         let same = {
             let old = self.items.borrow();
-            old.len() == items.len() && old.iter().zip(&items).all(|(a, b)| a.key == b.key && a.depth == b.depth)
+            old.len() == items.len() && old.iter().zip(&items).all(|(a, b)| a.key == b.key && a.depth == b.depth && a.description == b.description)
         };
         if same {
             for (row, item) in self.rows.borrow().iter().zip(&items) {
@@ -522,7 +534,7 @@ impl Tree {
         self.busy.set(true);
         let depths: Vec<u32> = items.iter().map(|item| item.depth).collect();
         let parents = outline::parents(&depths);
-        let rows: Vec<Row> = items.iter().enumerate().map(|(index, item)| Row::new(&item.text, index)).collect();
+        let rows: Vec<Row> = items.iter().enumerate().map(|(index, item)| Row::new(&item.text, &item.description, index)).collect();
         let mut tops = Vec::new();
         let mut children: Vec<Vec<Row>> = vec![Vec::new(); rows.len()];
         for (index, parent) in parents.iter().enumerate() {
