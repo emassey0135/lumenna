@@ -71,9 +71,7 @@ class ReplanTest(unittest.TestCase, DayActions):
         # apps pass now through, so it runs the same at any hour: three blocks crowding the
         # next half hour. Only the date is the clock's, so the two minutes before midnight
         # are waited out.
-        while datetime.datetime.now() + datetime.timedelta(minutes=2) > datetime.datetime.combine(
-                datetime.date.today() + datetime.timedelta(days=1), datetime.time()):
-            pump(5)
+        wait_out_midnight()
         now = datetime.datetime.combine(datetime.date.today(), datetime.time(10, 0))
         seed = [("config", "set", "day-start", "00:00"), ("config", "set", "day-end", "23:59")]
         seed += [("block", "add", name, "--at", start, "--minutes", "15")
@@ -115,6 +113,83 @@ class ReplanTest(unittest.TestCase, DayActions):
         self.assertIsNone(self.session.find("button", "Make the Changes Checked"))
         pump(1.5)
         self.assertEqual(self.session.said(), ["Nothing needs to change: the rest of the day still fits."])
+
+
+def wait_out_midnight():
+    """Waits out the two minutes before midnight: a pinned now keeps the clock's date."""
+    while datetime.datetime.now() + datetime.timedelta(minutes=2) > datetime.datetime.combine(
+            datetime.date.today() + datetime.timedelta(days=1), datetime.time()):
+        pump(5)
+
+
+class OtherOptionsTest(unittest.TestCase, DayActions):
+    def setUp(self):
+        # At a pinned 10:40, Deep work runs into Lunch, which pushes Review: skipping either
+        # is another option.
+        wait_out_midnight()
+        now = datetime.datetime.combine(datetime.date.today(), datetime.time(10, 40))
+        self.session = Session([
+            ("config", "set", "day-start", "00:00"),
+            ("block", "add", "Deep work", "--at", "09:00", "--minutes", "120"),
+            ("block", "add", "Lunch", "--at", "10:30", "--minutes", "30", "--kind", "break"),
+            ("block", "add", "Review", "--at", "11:00", "--minutes", "60"),
+        ], environment={"LUMENNA_NOW": now.strftime("%Y-%m-%dT%H:%M")})
+        self.session.press("Control+1", wait=1.5)
+        self.session.said()
+
+    def tearDown(self):
+        self.session.close()
+
+    def test_another_option_is_proposed_in_place_and_said(self):
+        self.run_day_action("replan")
+        self.session.wait_for_window("Replan from Now")
+        self.assertIsNotNone(self.session.find("heading", "Other options"))
+        pump(1.5)
+        self.session.said()
+        skip = "Skip Lunch today, your only break left today. Then nothing else needs to change."
+        self.session.tab_to(skip, most=12)
+        self.session.press("Return", wait=1)
+        self.assertEqual(self.session.said(), ["Lunch is skipped today."])
+        self.assertEqual(self.session.focus(), "[check box] 'Lunch is skipped today' checked")
+        self.assertIsNone(self.session.find("heading", "Other options"), "nothing does better")
+
+
+class OverrunTest(unittest.TestCase):
+    def setUp(self):
+        # A block begun three minutes ago, with forty minutes of work in thirty and another
+        # block straight after: its work outruns its time from the start.
+        start = datetime.datetime.now() - datetime.timedelta(minutes=3)
+        after = start + datetime.timedelta(minutes=30)
+        # Reminders fire from the real clock, so this cannot pin now: in the hour and a half
+        # around midnight the blocks would cross into another day.
+        if (after + datetime.timedelta(minutes=60)).date() != start.date():
+            self.skipTest("the blocks would cross midnight")
+        self.notifications = Notifications()
+        self.addCleanup(self.notifications.stop)
+        self.session = Session([
+            ("config", "set", "day-start", "00:00"),
+            ("block", "add", "Deep work", "--at", start.strftime("%H:%M"), "--minutes", "30"),
+            ("block", "add", "Meeting", "--at", after.strftime("%H:%M"), "--minutes", "60", "--kind", "event"),
+            ("task", "add", "Write the report"),
+            assign_forty_minutes,
+        ], device_settings={
+            "reminders-delivered": (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=4))
+            .strftime("%Y-%m-%dT%H:%M:%SZ"),
+        })
+        self.addCleanup(self.session.close)
+
+    def test_an_overrun_warning_offers_replan_which_opens_replan_from_now(self):
+        number, shown = self.notifications.wait_for("Deep work")
+        self.assertIn("more than it holds", shown["body"])
+        self.assertIn("Replan", shown["actions"], shown)
+        self.notifications.press(number, "Replan")
+        self.session.wait_for_window("Replan from Now")
+
+
+def assign_forty_minutes(session):
+    block = next(r for r in json.loads(session.lum("block", "list", "--json"))["rows"] if r["title"] == "Deep work")
+    task = json.loads(session.lum("task", "list", "--json"))["rows"][0]["id"]
+    session.lum("assign", task, "--block", block["id"], "--minutes", "40")
 
 
 class AllDayTest(unittest.TestCase, DayActions):

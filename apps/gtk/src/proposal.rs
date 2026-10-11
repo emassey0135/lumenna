@@ -61,6 +61,9 @@ struct Screen {
     unfit_heading: gtk::Label,
     unfit: gtk::TextView,
     hint: gtk::Label,
+    /// Replan's other options, each a button named by its sentence, under their heading.
+    others_heading: gtk::Label,
+    others: gtk::Box,
     apply: gtk::Button,
     cancel: gtk::Button,
     proposal: RefCell<Proposal>,
@@ -73,8 +76,28 @@ impl Screen {
         crate::window::announce(&self.status, &text);
     }
 
-    /// Shows `proposal`: a check box for each part, all checked, and what does not fit.
-    fn show(&self, proposal: Proposal) {
+    /// Shows `proposal`: a check box for each part, all checked, what does not fit, and
+    /// Replan's other options.
+    fn show(self: &Rc<Self>, proposal: Proposal) {
+        while let Some(child) = self.others.first_child() {
+            self.others.remove(&child);
+        }
+        let alternatives = match &proposal {
+            Proposal::Replan(replan) => replan.alternatives.clone(),
+            Proposal::Day(_) => Vec::new(),
+        };
+        for alternative in &alternatives {
+            let label = gtk::Label::builder().label(&alternative.sentence).wrap(true).xalign(0.0).build();
+            let button = gtk::Button::builder().child(&label).build();
+            button.update_property(&[gtk::accessible::Property::Label(&alternative.sentence)]);
+            let (weak, pins) = (Rc::downgrade(self), alternative.pins.clone());
+            button.connect_clicked(move |_| {
+                let (Some(screen), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
+                screen.take(&app, pins.clone());
+            });
+            self.others.append(&button);
+        }
+        self.others_heading.set_visible(!alternatives.is_empty() && !self.words.others.is_empty());
         while let Some(child) = self.parts.first_child() {
             self.parts.remove(&child);
         }
@@ -112,6 +135,18 @@ impl Screen {
             Some(check) => check.grab_focus(),
             None => self.cancel.grab_focus(),
         };
+    }
+
+    /// Takes one of the other options: Replan again with its pins, shown in place.
+    fn take(self: &Rc<Self>, app: &App, pins: lumenna_surface::ReplanPins) {
+        match app.core.lumenna.replan(app.clock.style(), pins, now()) {
+            Ok(replan) => {
+                self.show(Proposal::Replan(replan));
+                self.land();
+                self.say(&self.status.label());
+            }
+            Err(error) => prompts::fail(&self.window, &sentence(&error)),
+        }
     }
 
     /// Makes the parts checked, then shows what the core proposes next, or closes.
@@ -187,7 +222,8 @@ fn ask(app: &App, like: &Proposal) -> lumenna_surface::Result<Proposal> {
     }
 }
 
-/// Replan from Now: the rest of today.
+/// Replan from Now: the rest of today. An overrun warning's Replan button runs it too
+/// (`app.reminder-replan`), bringing the window up first.
 pub fn replan(app: &Rc<App>) {
     match app.core.lumenna.replan(app.clock.style(), Default::default(), now()) {
         Ok(replan) => open(app, ActionKind::Replan, Proposal::Replan(replan)),
@@ -219,6 +255,14 @@ fn open(app: &Rc<App>, kind: ActionKind, proposal: Proposal) {
     let unfit = gtk::TextView::builder().editable(false).cursor_visible(false).wrap_mode(gtk::WrapMode::WordChar).build();
     unfit.update_relation(&[gtk::accessible::Relation::LabelledBy(&[unfit_heading.upcast_ref()])]);
     prompts::leaves_on_tab(&unfit);
+    let others_heading = gtk::Label::builder()
+        .label(&words.others)
+        .xalign(0.0)
+        .margin_top(6)
+        .accessible_role(gtk::AccessibleRole::Heading)
+        .build();
+    others_heading.add_css_class("heading");
+    let others = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).build();
     let hint = gtk::Label::builder().label(&words.hint).wrap(true).xalign(0.0).build();
     hint.add_css_class("dim-label");
     let cancel = gtk::Button::with_label(&words.cancel);
@@ -240,6 +284,8 @@ fn open(app: &Rc<App>, kind: ActionKind, proposal: Proposal) {
     body.append(&parts);
     body.append(&unfit_heading);
     body.append(&unfit);
+    body.append(&others_heading);
+    body.append(&others);
     body.append(&hint);
     body.append(&buttons);
     let scrolled = gtk::ScrolledWindow::builder()
@@ -265,6 +311,8 @@ fn open(app: &Rc<App>, kind: ActionKind, proposal: Proposal) {
         unfit_heading,
         unfit,
         hint,
+        others_heading,
+        others,
         apply: apply.clone(),
         cancel: cancel.clone(),
         proposal: RefCell::new(proposal.clone()),

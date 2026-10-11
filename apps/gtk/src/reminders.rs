@@ -91,6 +91,10 @@ fn notify(app: &App, due: &DueReminder) {
     let which = (due.key.clone(), due.occurrence.clone()).to_variant();
     notification.add_button_with_target_value(&due.dismiss, "app.reminder-dismiss", Some(&which));
     notification.add_button_with_target_value(&due.snooze, "app.reminder-snooze", Some(&which));
+    // When a block's work outruns its time, the core's button that opens Replan from Now.
+    if !due.replan.is_empty() {
+        notification.add_button_with_target_value(&due.replan, "app.reminder-replan", Some(&which));
+    }
     // At a block's end with work left short, the core's offer to carry it forward; the
     // message already ends in the question.
     if !due.carry.is_empty() {
@@ -157,6 +161,18 @@ fn add_actions(app: &App) {
         open_target(&app, &kind, &target, &occurrence);
     });
     app.application.add_action(&open);
+    let replan = gio::SimpleAction::new("reminder-replan", Some(pair));
+    replan.connect_activate(|_, parameter| {
+        let (Some(app), Some((key, occurrence))) =
+            (crate::window::app(), parameter.and_then(|p| p.get::<(String, String)>()))
+        else {
+            return;
+        };
+        app.application.withdraw_notification(&id(&key, &occurrence));
+        app.show_window();
+        crate::proposal::replan(&app);
+    });
+    app.application.add_action(&replan);
     let show = gio::SimpleAction::new("show-window", None);
     show.connect_activate(|_, _| {
         if let Some(app) = crate::window::app() {
