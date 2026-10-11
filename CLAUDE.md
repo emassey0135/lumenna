@@ -402,6 +402,11 @@ surface's `reminders.rs` words them and answers the apps.
   block offer Reminders (`Question::Form`: the app's list of `reminders_of`), whose own
   reminders each offer Remove Reminder. A notification's buttons are `DueReminder::dismiss`
   and `snooze`.
+- **A system that schedules ahead also asks what it missed** (`reminders_missed`), on launch,
+  on returning to the front and after a restart: iOS and watchOS keep what they were handed,
+  so only what came past the window last handed over (`upcoming_reminders` records it) was
+  missed (`kept`); Android and Wear OS lose their alarms on a restart, so they pass what they
+  showed (`<key>@<occurrence>`) and the rest since the last ask was missed.
 - **Who delivers, per client**: the resident desktop apps through `deliver_reminders`; iOS,
   watchOS, Android and Wear OS by scheduling `upcoming_reminders`; `lum notify` on a console;
   Emacs's `lumenna-reminders-mode` and BTSpeak's resident service (`reminders.py`, its unit

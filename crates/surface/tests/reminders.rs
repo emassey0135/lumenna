@@ -190,3 +190,36 @@ fn a_notifications_buttons_are_the_cores() {
     let first = lumenna.upcoming_reminders(hours(3)).unwrap().due.remove(0);
     assert_eq!((first.dismiss.as_str(), first.snooze.as_str()), ("Dismiss", "Snooze 10 Minutes"));
 }
+
+fn later(minutes: i64) -> Timestamp {
+    Timestamp::now().checked_add(SignedDuration::from_mins(minutes)).unwrap()
+}
+
+#[test]
+fn a_system_that_keeps_what_it_was_given_misses_only_what_came_past_its_window() {
+    let (_directory, lumenna) = open();
+    block_in(&lumenna, "Deep work", 30, None);
+    block_in(&lumenna, "Review", 120, None);
+    assert!(lumenna.missed_at(Vec::new(), true, later(0)).unwrap().due.is_empty(), "the first time, nothing");
+    // Handed an hour ahead: Deep work's reminder, not Review's.
+    let handed = lumenna.upcoming_reminders(later(60).to_string()).unwrap();
+    assert_eq!(handed.due.len(), 1);
+    // Unopened for three hours: Review's came past the window, so it was never shown.
+    let missed = lumenna.missed_at(Vec::new(), true, later(180)).unwrap();
+    assert_eq!(missed.missed_summary, "1 reminder missed: Review started.");
+}
+
+#[test]
+fn a_system_whose_restart_clears_its_alarms_misses_what_it_did_not_show() {
+    let (_directory, lumenna) = open();
+    block_in(&lumenna, "Deep work", 30, None);
+    block_in(&lumenna, "Review", 120, None);
+    lumenna.missed_at(Vec::new(), false, later(0)).unwrap();
+    let all = lumenna.upcoming_reminders(later(180).to_string()).unwrap().due;
+    let deep = all.iter().find(|n| n.title == "Deep work").unwrap();
+    // Deep work's alarm went off and was shown; then the phone was off past Review's.
+    let shown = vec![format!("{}@{}", deep.key, deep.occurrence)];
+    let missed = lumenna.missed_at(shown, false, later(180)).unwrap();
+    assert_eq!(missed.missed_summary, "1 reminder missed: Review started.");
+    assert!(lumenna.missed_at(Vec::new(), false, later(181)).unwrap().missed.is_empty(), "said once");
+}
