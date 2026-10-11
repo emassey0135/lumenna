@@ -204,6 +204,17 @@ final class ReminderScheduleTests: XCTestCase {
         XCTAssertTrue(schedule.catchUp().isEmpty, "the system kept what it was handed")
     }
 
+    func testOneEditReArmsOnceAndReArmingCausesNoMore() throws {
+        let schedule = ReminderSchedule(lumenna: core.lumenna, centre: centre)
+        schedule.follow()
+        try block("Deep work", inMinutes: 60)
+        NotificationCenter.default.post(name: Core.changed, object: nil)
+        // Long enough for a re-arm that led to another, and that to a third, to show.
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 3))
+        XCTAssertEqual(schedule.rearms, 1, "one edit, one re-arm, and nothing after")
+        XCTAssertEqual(centre.scheduled.count, 1)
+    }
+
     func testABlocksReminderListShowsTheDefaultThenItsOwnWhichSwipesRemove() throws {
         let (series, _) = try block("Deep work", inMinutes: 120)
         let list = RemindersViewController(core: core, target: series)

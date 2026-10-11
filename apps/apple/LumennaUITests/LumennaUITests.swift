@@ -864,7 +864,10 @@ final class LumennaUITests: XCTestCase {
         XCTAssertTrue(reason.waitForExistence(timeout: 5), "asked again, saying why")
         let field = app.alerts.textFields.firstMatch
         XCTAssertEqual(field.value as? String, "when it feels right", "with what was typed")
-        replace(field, with: "10m after end")
+        // Emptied by the field's own Clear button: moving the caret key by key to delete
+        // left CI's iPad waiting, a minute a key, for animations to finish.
+        field.buttons["Clear text"].tap()
+        field.typeText("10m after end")
         press(alertButton: "Add")
         let own = cell(containing: "10 minutes after it ends")
         XCTAssertTrue(own.waitForExistence(timeout: 5), app.debugDescription)
