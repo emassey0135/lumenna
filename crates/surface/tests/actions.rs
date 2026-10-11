@@ -379,3 +379,51 @@ fn a_tasks_history_and_urgency_say_why_it_ranks_where_it_does() {
     assert_eq!(waited_on.terms[0].words, "1 task waits on it");
     assert_eq!(lumenna.show_task(&report).unwrap().task.history, ["made today"], "on its own screen too");
 }
+
+#[test]
+fn a_block_offers_its_tasks_most_urgent_first_each_saying_why() {
+    let (_directory, lumenna) = open();
+    day_block(&lumenna, "Deep work", None);
+    add(&lumenna, "someday");
+    add(&lumenna, "write report yesterday p1 30m");
+    add(&lumenna, "call the bank tomorrow");
+    let block = lumenna.plan(None).unwrap().blocks.remove(0);
+    let offered = lumenna.choices(find(&block.actions, "Assign a Task")).unwrap().choices;
+    let titles: Vec<&str> = offered.iter().map(|c| c.title.as_str()).collect();
+    assert_eq!(titles, ["write report", "call the bank", "someday"]);
+    assert_eq!(
+        offered[0].reason.as_deref(),
+        Some("Suggested because overdue by 1 day, priority 1, and its estimate of 30 minutes fits the 23 hours 59 minutes left.")
+    );
+    assert_eq!(offered[1].reason.as_deref(), Some("Suggested because due tomorrow."));
+    assert_eq!(offered[2].reason, None, "nothing to say for it");
+}
+
+#[test]
+fn put_in_a_block_offers_only_the_blocks_whose_filter_admits_the_task() {
+    let (_directory, lumenna) = open();
+    lumenna.add_project("Work", None).unwrap();
+    for (title, filter) in [("Deep work", Some("#Work")), ("Anything", None)] {
+        lumenna
+            .add_block(NewBlock {
+                title: title.to_owned(),
+                at: "23:00".to_owned(),
+                minutes: 60,
+                date: Some("today".to_owned()),
+                kind: "work".to_owned(),
+                task_filter: filter.map(str::to_owned),
+                ..NewBlock::default()
+            })
+            .unwrap();
+    }
+    add(&lumenna, "call mum");
+    add(&lumenna, "file the report #Work");
+    let offered = |title: &str| -> Vec<String> {
+        let put = find(&task_actions(&lumenna, title), "Put in a Block");
+        lumenna.choices(put).unwrap().choices.into_iter().map(|c| c.title).collect()
+    };
+    assert_eq!(offered("call mum"), ["Anything"], "Deep work takes #Work tasks");
+    let mut both = offered("file the report");
+    both.sort();
+    assert_eq!(both, ["Anything", "Deep work"]);
+}

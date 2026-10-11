@@ -124,3 +124,47 @@ pub fn device_status(device: &crate::types::DeviceView, now: jiff::Timestamp, di
     }
     parts
 }
+
+/// Why a task is suggested, as the one sentence that is its description: "Suggested because
+/// overdue by 2 days, priority 1, and its estimate of 30 minutes fits the 35 minutes left";
+/// what counts against it comes after ("…, though it waits on another task"). Nothing when
+/// there is nothing to say.
+#[must_use]
+pub fn suggested_because(reasons: &[lumenna_core::suggestions::Reason]) -> Option<String> {
+    use lumenna_core::suggestions::Reason as R;
+    let days = |n: i64| count_line(usize::try_from(n).unwrap_or(0), "day");
+    let mut for_it = Vec::new();
+    let mut against = Vec::new();
+    for reason in reasons {
+        match reason {
+            R::Overdue(0) => for_it.push("overdue".to_owned()),
+            R::Overdue(n) => for_it.push(format!("overdue by {}", days(*n))),
+            R::DueIn(0) => for_it.push("due today".to_owned()),
+            R::DueIn(1) => for_it.push("due tomorrow".to_owned()),
+            R::DueIn(n) => for_it.push(format!("due in {}", days(*n))),
+            R::Priority(p) => for_it.push(format!("priority {p}")),
+            R::Started => for_it.push("partly worked".to_owned()),
+            R::Blocking(1) => for_it.push("a task waits on it".to_owned()),
+            R::Blocking(n) => for_it.push(format!("{n} tasks wait on it")),
+            R::Fits { estimate, remaining } => {
+                for_it.push(format!("its estimate of {} fits the {} left", duration(*estimate), duration(*remaining)));
+            }
+            R::Longer { estimate, remaining } => {
+                against.push(format!("its estimate of {} is more than the {} left", duration(*estimate), duration(*remaining)));
+            }
+            R::Blocked => against.push("it waits on another task".to_owned()),
+            R::AssignedToday => against.push("it is in a block already today".to_owned()),
+        }
+    }
+    let listed = |parts: &[String]| match parts {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
+    };
+    match (for_it.is_empty(), against.is_empty()) {
+        (true, true) => None,
+        (false, true) => Some(format!("Suggested because {}.", listed(&for_it))),
+        (false, false) => Some(format!("Suggested because {}, though {}.", listed(&for_it), listed(&against))),
+        (true, false) => Some(format!("Offered, though {}.", listed(&against))),
+    }
+}

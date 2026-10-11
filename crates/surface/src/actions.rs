@@ -260,6 +260,11 @@ pub struct Choice {
     /// A block's end, `HH:MM`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end: Option<String>,
+    /// Why it is offered where it is, for its description: "Suggested because overdue by
+    /// 2 days, priority 1, and its estimate of 30 minutes fits the 35 minutes left."
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+    pub reason: Option<String>,
 }
 
 /// What a picker offers.
@@ -981,7 +986,7 @@ impl Lumenna {
     pub fn choices(&self, action: Action) -> Result<Choices> {
         use ActionKind as K;
         if (action.subject, action.kind) == (Subject::Task, K::PutInBlock) {
-            return self.open_work_blocks();
+            return self.blocks_for(Some(&action.target), None, Some(7));
         }
         self.with(|store| {
             store.load_all_years()?;
@@ -1034,19 +1039,34 @@ impl Lumenna {
                     } else {
                         lumenna_core::model::BlockRef::OneOff(series.id)
                     };
-                    let assigned: BTreeSet<TaskId> = snapshot
-                        .assignments
-                        .values()
-                        .filter(|a| a.block_ref == occurrence)
-                        .map(|a| a.task_id)
-                        .collect();
                     let filter = series.task_filter.clone().unwrap_or_default();
                     let none = if filter.trim().is_empty() {
                         "There is no open task to assign.".to_owned()
                     } else {
                         format!("No open task matches this block's filter, {filter}.")
                     };
-                    choices(task_choices(&snapshot, &filter, |t| assigned.contains(&t.id))?, "task", &none)
+                    // Best first, each with why: the block's own question, "what goes here?"
+                    let expr = if filter.trim().is_empty() { None } else { Some(resolve::query(&snapshot, &filter)?) };
+                    let length = snapshot
+                        .day(day)
+                        .ok()
+                        .and_then(|day| day.into_iter().find(|o| o.series_id == series.id).map(|o| o.duration_mins))
+                        .unwrap_or(series.duration_mins);
+                    let now = Zoned::now();
+                    let offered = lumenna_core::suggestions::suggest(&snapshot, expr.as_ref(), occurrence, length, &now, usize::MAX)
+                        .into_iter()
+                        .filter_map(|suggestion| {
+                            let task = snapshot.tasks.get(&suggestion.task)?;
+                            Some(Choice {
+                                id: task.id.to_string(),
+                                title: task.title.clone(),
+                                detail: snapshot.projects.get(&task.project_id).map(|p| p.name.clone()),
+                                reason: crate::words::suggested_because(&suggestion.reasons),
+                                ..Choice::default()
+                            })
+                        })
+                        .collect();
+                    choices(offered, "task", &none)
                 }
                 (Subject::Project, K::MoveUnder) => {
                     let project = resolve::project(&snapshot, &action.target)?;
@@ -1197,14 +1217,6 @@ fn resolve_archived(lumenna: &Lumenna, name: &str) -> Result<bool> {
     lumenna.with(|store| Ok(resolve::project(&repaired(store), name)?.archived))
 }
 
-impl Lumenna {
-    /// The work blocks a task could go in this week, but for those already over: which
-    /// they are is the planner's own question.
-    fn open_work_blocks(&self) -> Result<Choices> {
-        self.work_block_choices(None, Some(7))
-    }
-}
-
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// What Put in a Block offers from another day: `days` days of work blocks from `from`
@@ -1214,11 +1226,45 @@ impl Lumenna {
     ///
     /// If `from` is not a date.
     pub fn work_block_choices(&self, from: Option<String>, days: Option<u32>) -> Result<Choices> {
+        self.blocks_for(None, from, days)
+    }
+}
+
+impl Lumenna {
+    /// The work blocks of `days` days from `from` still to come, and, for `task`, only those
+    /// whose filter admits it: a block that takes #Work tasks is not offered for a call home.
+    fn blocks_for(&self, task: Option<&str>, from: Option<String>, days: Option<u32>) -> Result<Choices> {
         let blocks = self.work_blocks(from, days)?;
+        let admitted: Option<BTreeSet<String>> = match task {
+            None => None,
+            Some(task) => Some(self.with(|store| {
+                store.load_all_years()?;
+                let snapshot = repaired(store);
+                let task = snapshot
+                    .tasks
+                    .get(&resolve::task_id(&snapshot, task)?)
+                    .cloned()
+                    .ok_or_else(|| LumennaError::new("that task is not here"))?;
+                let now = Zoned::now();
+                let cx = lumenna_core::filter::Context::new(&snapshot, &now);
+                Ok(snapshot
+                    .series
+                    .values()
+                    .filter(|series| match series.task_filter.as_deref().map(str::trim) {
+                        None | Some("") => true,
+                        // A filter that no longer reads (a label renamed away) admits nothing
+                        // rather than everything.
+                        Some(text) => resolve::query(&snapshot, text).is_ok_and(|expr| expr.matches(&task, &cx)),
+                    })
+                    .map(|series| series.id.to_string())
+                    .collect())
+            })?),
+        };
         let open: Vec<Choice> = blocks
             .blocks
             .into_iter()
             .filter(|b| b.when != "past")
+            .filter(|b| admitted.as_ref().is_none_or(|ids| ids.contains(b.id.split('@').next().unwrap_or(&b.id))))
             .map(|b| Choice {
                 id: b.id,
                 title: b.title,
