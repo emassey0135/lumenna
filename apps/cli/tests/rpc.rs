@@ -506,3 +506,22 @@ fn upcoming_reminders_come_over_the_pipe_with_what_dismissing_one_takes() {
     let out = rpc.talk(&[&format!(r#"{{"jsonrpc":"2.0","id":2,"method":"reminder.dismiss","params":{{"key":"{key}","occurrence":"{occurrence}"}}}}"#)]);
     assert!(out.contains(r#""changed":true"#), "{out}");
 }
+
+#[test]
+fn only_one_client_gives_reminders_and_the_next_waits_its_turn() {
+    // Two `lum rpc` servers at once, as a person's Emacs and BTSpeak service might be: the
+    // first takes the right to give reminders; the second is told another gives them.
+    let rpc = Rpc::new();
+    let deliver = r#"{"jsonrpc":"2.0","id":1,"method":"reminder.deliver","params":{}}"#;
+    let mut first = rpc.spawn();
+    writeln!(first.stdin.as_mut().unwrap(), "{deliver}").unwrap();
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(first.stdout.as_mut().unwrap()), &mut line).unwrap();
+    assert!(line.contains(r#""result":"due_reminders""#), "{line}");
+    let second = rpc.talk(&[deliver]);
+    assert!(second.contains("Another app on this device gives reminders"), "{second}");
+    drop(first.stdin.take());
+    first.wait().unwrap();
+    let after = rpc.talk(&[deliver]);
+    assert!(!after.contains("Another app"), "free once the first let go: {after}");
+}
