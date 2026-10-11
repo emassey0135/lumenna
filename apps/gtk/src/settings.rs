@@ -471,6 +471,7 @@ fn planning(app: &Rc<App>) -> gtk::Widget {
     setting_field(app, &page, &status, "verbosity", 'm');
     setting_field(app, &page, &status, "week-start", 'W');
     setting_field(app, &page, &status, "urgency-weights", 'u');
+    setting_field(app, &page, &status, "task-order", 'k');
     page.footer("These sync to all your devices.");
     page.finish().0
 }

@@ -7,6 +7,8 @@ import unittest
 from harness import Atspi, Session
 
 SEED = [
+    # The tree as added: these tests are about nesting and focus, not urgency.
+    ("config", "set", "task-order", "added"),
     ("project", "add", "Work"),
     ("project", "add", "Reports", "--parent", "Work"),
     ("task", "add", "Buy milk"),

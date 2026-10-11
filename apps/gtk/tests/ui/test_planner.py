@@ -265,6 +265,9 @@ class UrgencyTest(unittest.TestCase):
         session.wait_for_window("Preferences")
         session.press("Control+Page_Down", "Alt+u")
         self.assertEqual(session.focus(), "[text] 'How urgency is weighed'")
+        # A drop-down's mnemonic opens its list; Escape closes it on the drop-down.
+        session.press("Alt+k", "Escape")
+        self.assertIn("'Task lists are in'", session.focus())
 
 
 if __name__ == "__main__":

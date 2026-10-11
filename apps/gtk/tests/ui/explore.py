@@ -8,6 +8,8 @@ import sys
 from harness import Session, pump
 
 SEED = [
+    # The tree as added: these tests are about nesting and focus, not urgency.
+    ("config", "set", "task-order", "added"),
     ("project", "add", "Work"),
     ("project", "add", "Reports", "--parent", "Work"),
     ("task", "add", "Buy milk"),
