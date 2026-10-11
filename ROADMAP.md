@@ -90,7 +90,7 @@ weights, and the day's timeline with its free time.
 ### Urgency and history
 
 Built: the score and its terms (`task_history`, `lum task history`), and per-task history
-from the records already kept, on a task's own screen. Still to come:
+from the records already kept, on a task's own screen in every app. Still to come:
 
 - **Whether a task list's *default* order becomes urgency** rather than the person's own: a
   decision to make with the lists' tree in mind. The weights are a synced setting
@@ -103,30 +103,24 @@ from the records already kept, on a task's own screen. Still to come:
 
 ### Suggestions for a block
 
-Built: `core::suggestions`, behind Assign a Task, each choice's `reason` its spoken
-description; and Put in a Block offering only the blocks whose filter admits the task.
-Still to come:
-
-- **Every app showing a choice's `reason`** as its description (accessible description,
-  hint, or a second line).
+Built: `core::suggestions`, behind Assign a Task and What Should I Work On?, each choice's
+`reason` its description in every app; and Put in a Block offering only the blocks whose
+filter admits the task.
 
 ### Carrying unfinished work forward, and day commands
 
 Built (`day.rs`, `lum end`, `extend`, `end-day`, `clear-day`, `carry`): End Now and Add 15
 Minutes on the block under way, End the Day and Clear the Rest of the Day, and Carry Forward
-on a sitting left short of its planned time, each one undoable change. Still to come:
-
-- **Each app's notification button** for a block end's carry offer (`DueReminder::carry`),
-  built in the core with What Should I Work On? (`lum next`).
+on a sitting left short of its planned time, each one undoable change; the carry offer at a
+block's end, a button on every app's notification; What Should I Work On? (`lum next`).
 
 ### Re-flow when the day slips
 
 Built (`core::reflow`, `replan.rs`, `lum replan [--keep] [--skip] [--apply [1,3]]`, RPC
 `replan` and `replan.apply`): the walk, moving the work first, pins, the proposal said in
-the app's clock, applied whole or per change against the day as it is now, one undo. Still
-to come: the Replan from Now day action and each app's screen for it (the action is held
-back until they exist), alternatives, the overrun warning on the scheduler, and staying
-silent. As designed:
+the app's clock, applied whole or in part (the rest pinned and proposed again) against the
+day as it is now, one undo; Replan from Now on the day, a screen in every app. Still to
+come: alternatives, the overrun warning on the scheduler, and staying silent. As designed:
 
 - **Three situations, kept apart.** Assigned work exceeding the block is a plan that was
   wrong when made, predictable in advance. A block running past its end, and a block that
@@ -156,8 +150,7 @@ silent. As designed:
 ### The whole-day plan
 
 Built (`core::dayplan`, `dayplan.rs`, `lum plan-day [date] [--leave] [--apply [1,3]]`, RPC
-`day_plan` and `day_plan.apply`). Still to come: each app's screen for it, offered from the
-day. As designed: `propose_day(date, now, pinned)`: walk the day's work blocks in order, run suggestions for
+`day_plan` and `day_plan.apply`), Plan the Day on the day, a screen in every app. As designed: `propose_day(date, now, pinned)`: walk the day's work blocks in order, run suggestions for
 each, and assign greedily until the estimates fill it. One proposal, naming what did not
 fit, pinned the same way. Greedy and editable is worth more than optimal packing. Always
 optional.
