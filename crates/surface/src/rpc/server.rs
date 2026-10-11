@@ -128,6 +128,7 @@ pub const METHODS: &[&str] = &[
     "form.unsayable_repeat_note",
     "form.project_options",
     "form.new_block_start",
+    "reminder.deliver",
     "reminder.due",
     "reminder.upcoming",
     "reminder.list",
@@ -175,6 +176,9 @@ struct Server {
     /// The pairing under way, if there is one. One at a time: two would each show words,
     /// and a person could not tell which answer went where.
     pairing: Mutex<Option<Arc<Pairing>>>,
+    /// The right to give this device's reminders, once this client asked to and no other
+    /// process had it; let go with the connection.
+    reminders: Mutex<Option<Arc<crate::ReminderLock>>>,
 }
 
 /// Where replies go, and the framing to write with.
@@ -207,6 +211,7 @@ pub fn serve_streams(
         writer: Mutex::new(Writer { out, framing: Framing::Lines }),
         running: AtomicBool::new(true),
         pairing: Mutex::new(None),
+        reminders: Mutex::new(None),
     });
 
     let watcher = Arc::clone(&server);
@@ -661,6 +666,25 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         "form.go_to_day" => Response::new(Derived::of(crate::go_to_day_question())),
         "form.new_filter" => Response::new(Derived::of(crate::new_filter_questions())),
         // Reminders: what to give, a target's own, and dealing with one firing.
+        // What to give now, for a client that gives this device's reminders (BTSpeak's service,
+        // Emacs): only while no other process does, so a running app and a client never both
+        // say one.
+        "reminder.deliver" => {
+            let mut held = server.reminders.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            if held.is_none() {
+                *held = l.take_reminders()?;
+            }
+            match held.clone() {
+                Some(lock) => Response::new(l.deliver_reminders(lock, maybe_text(params, "now"))?),
+                None => Response::new(crate::DueReminders {
+                    announcement: "Another app on this device gives reminders".to_owned(),
+                    notices: Vec::new(),
+                    due: Vec::new(),
+                    missed: Vec::new(),
+                    missed_summary: String::new(),
+                }),
+            }
+        }
         "reminder.due" => Response::new(l.reminders_due(text_of(params, "since")?, maybe_text(params, "now"))?),
         "reminder.upcoming" => Response::new(l.upcoming_reminders(text_of(params, "until")?)?),
         "reminder.list" => Response::new(l.reminders_of(text_of(params, "target")?)?),

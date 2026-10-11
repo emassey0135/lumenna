@@ -392,7 +392,8 @@ surface's `reminders.rs` words them and answers the apps.
   the past, for the one summary of what came while nothing ran (`STALE_MINS`).
 - **One process per device delivers** (`take_reminders`, a lock on `reminders.lock`): a
   running app or `lum notify` holds it and calls `deliver_reminders`, which remembers when it
-  last delivered (`reminders-delivered`, a device setting) and goes back at most a day. A
+  last delivered (`reminders-delivered`, a device setting) and goes back at most a day; over
+  RPC, `reminder.deliver` takes it for its connection. A
   system that schedules notifications itself asks `upcoming_reminders(until)` instead.
 - **A reminder is a phrase the core reads** (`parse_trigger`, `trigger_phrase`): "5m before
   start", "at end", "30m before" (a task's due time needs no saying). Adding one is the
