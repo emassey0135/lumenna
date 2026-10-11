@@ -26,6 +26,9 @@ protocol ActionAsking: AnyObject {
     func tell(title: String, _ sentence: String)
     /// Says why something could not be done, in the core's words.
     func fail(_ sentence: String)
+    /// Opens the app's own list of a task's or block's reminders (`ActionKind.reminders`,
+    /// whose target is the task or block): every screen offering the action opens the same.
+    func openReminders(_ action: Action)
 }
 
 extension ActionAsking {
@@ -69,6 +72,8 @@ enum ActionRun {
             }
         }
         switch action.question {
+        case .form where action.kind == .reminders:
+            asker.openReminders(action)
         case .form:
             form(action)
         case .immediate:

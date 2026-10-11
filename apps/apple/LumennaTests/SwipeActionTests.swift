@@ -171,7 +171,7 @@ final class SwipeActionTests: XCTestCase {
         }
     }
 
-    func testABlockOnTheDaySwipesAssignAndDeleteAndOffersEditAndCancelThisDayOnceAsActions() throws {
+    func testABlockOnTheDaySwipesAssignAndDeleteAndOffersEditCancelThisDayAndRemindersOnceAsActions() throws {
         let fields = BlockFields(
             title: "Deep work", start: "09:00", minutes: "60", kind: "work", acceptsTasks: true,
             countsCapacity: true, anchored: false, repeat: "every day", until: "", minMinutes: "",
@@ -185,7 +185,7 @@ final class SwipeActionTests: XCTestCase {
         let index = try XCTUnwrap((0..<list.numberOfItems(inSection: 0)).first { offered(day, $0).menu.contains("Delete Block") })
         let row = offered(day, index)
         XCTAssertEqual(row.trailing, ["Assign a Task", "Delete Block"])
-        XCTAssertEqual(row.custom, ["Edit Block", "Cancel This Day"])
+        XCTAssertEqual(row.custom, ["Edit Block", "Cancel This Day", "Reminders"])
         assertEachOnce(row, block.actions)
         run("Cancel This Day", in: day.customActions(at: path(index)))
         XCTAssertEqual(try core.lumenna.plan(date: nil).cancelled.map(\.title), ["Deep work"], "the custom action runs the core's")

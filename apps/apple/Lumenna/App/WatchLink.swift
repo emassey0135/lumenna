@@ -42,7 +42,9 @@ final class WatchLink: NSObject, WCSessionDelegate {
         DispatchQueue.main.async { [self] in
             do {
                 replyHandler(try link.answer(message: message))
-                if link.tookIn() { NotificationCenter.default.post(name: Core.changed, object: nil) }
+                if link.tookIn() {
+                    NotificationCenter.default.post(name: Core.changed, object: nil, userInfo: ["arrived": true])
+                }
             } catch {
                 // Nothing a watch can read: it says it could not sync, and tries again later.
                 replyHandler(Data())

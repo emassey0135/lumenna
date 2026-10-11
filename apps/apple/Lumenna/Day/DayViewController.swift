@@ -456,6 +456,23 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         }
     }
 
+    /// A reminder's block, chosen in Notification Center: its day, with VoiceOver on it.
+    func show(day iso: String, series: String) {
+        day = iso == Clock.isoDay(.now) ? nil : iso
+        reload { [weak self] in
+            guard let self else { return }
+            let index = rows.firstIndex {
+                if case let .block(block) = $0 { return block.series == series }
+                return false
+            }
+            if let index {
+                focus(IndexPath(item: index, section: 0))
+            } else {
+                UIAccessibility.post(notification: .screenChanged, argument: summary)
+            }
+        }
+    }
+
     // MARK: - Undo, and going to a day
 
     @objc func undoChange() {

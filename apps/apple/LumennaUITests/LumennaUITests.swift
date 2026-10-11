@@ -627,6 +627,26 @@ final class LumennaUITests: XCTestCase {
         try audit(.all, "task detail", namedRows: true)
     }
 
+    /// The default reminders are phrases the core reads, saved on Return, never a keystroke at
+    /// a time; one it refuses stays in its field with the core's reason beside it.
+    func testADefaultReminderIsAPhraseSavedOnReturnAndARefusedOneStaysWithItsReason() {
+        tab("Settings")
+        reveal("Planning").tap()
+        XCTAssertTrue(app.navigationBars["Planning"].waitForExistence(timeout: 5))
+        let field = app.textFields["Reminders for a task with a due date"]
+        for _ in 0..<6 where !(field.exists && field.isHittable) { app.swipeUp() }
+        XCTAssertTrue(field.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(app.switches["Reminders on this device"].exists, "this device's own, beside the defaults")
+        field.tap()
+        field.typeText("at end\n")
+        let reason = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "counts from when it is due")).firstMatch
+        XCTAssertTrue(reason.waitForExistence(timeout: 5), "the core's reason, with its field")
+        XCTAssertEqual(field.value as? String, "at end", "what was typed stays")
+        replace(field, with: "30m before\n")
+        XCTAssertTrue(reason.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(field.value as? String, "30m before due", "read back as the core says it")
+    }
+
     /// Every settings page at the largest accessibility text size, kept as screenshots: what
     /// the audit can only estimate, shown.
     func testSettingsPagesAtTheLargestTextSize() {
@@ -816,6 +836,32 @@ final class LumennaUITests: XCTestCase {
         app.buttons["Restore This Day"].tap()
         XCTAssertTrue(cancelled.waitForNonExistence(timeout: 5))
         XCTAssertTrue(cell(containing: "Run").exists)
+    }
+
+    // MARK: - Reminders
+
+    /// A block's Reminders lists the default, takes a phrase the core reads, asks again with
+    /// the core's reason when it cannot read one, and an own reminder swipes Remove Reminder.
+    func testABlocksRemindersTakeAPhraseAndARefusedOneIsAskedAgainWithTheReason() throws {
+        addBlock("Deep work")
+        choose("Reminders", fromMenuOf: cell(containing: "Deep work"))
+        XCTAssertTrue(app.navigationBars["Reminders"].waitForExistence(timeout: 5))
+        XCTAssertTrue(cell(containing: "5 minutes before it starts").waitForExistence(timeout: 5), app.debugDescription)
+        try audit(.all, "reminders")
+        app.buttons["Add Reminder"].tap()
+        answer("when it feels right", with: "Add")
+        let reason = app.alerts.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "is not a reminder")).firstMatch
+        XCTAssertTrue(reason.waitForExistence(timeout: 5), "asked again, saying why")
+        let field = app.alerts.textFields.firstMatch
+        XCTAssertEqual(field.value as? String, "when it feels right", "with what was typed")
+        replace(field, with: "10m after end")
+        press(alertButton: "Add")
+        let own = cell(containing: "10 minutes after it ends")
+        XCTAssertTrue(own.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertFalse(cell(containing: "5 minutes before it starts").exists, "its own replaces the default")
+        reveal(actionsOf: own)
+        app.buttons["Remove Reminder"].tap()
+        XCTAssertTrue(cell(containing: "5 minutes before it starts").waitForExistence(timeout: 5), "the default again")
     }
 
     func testUndoWorksFromTheDayToo() {

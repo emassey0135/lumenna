@@ -72,4 +72,13 @@ final class RootTabs: UITabBarController, CommandActions {
     @objc func undoChange() { undoInStore(core) }
     @objc func redoChange() { redoInStore(core) }
     @objc func syncNow() { syncAndSay(core) }
+
+    /// A reminder chosen in Notification Center: its task, or its block on its day.
+    @objc func openReminded(kind: String, target: String, day: String) {
+        if kind == "task" {
+            select(1) { $0.tasks.showBeside(TaskDetailViewController(core: $0.core, id: target)) }
+        } else {
+            select(0) { $0.day.show(day: day, series: target) }
+        }
+    }
 }

@@ -25,6 +25,8 @@ import UIKit
     @objc optional func nextDay()
     @objc optional func goToNow()
     @objc optional func goToDay()
+    /// A reminder's notification, chosen: its task, or its block on `day`.
+    @objc optional func openReminded(kind: String, target: String, day: String)
 }
 
 /// Every keyboard command, once, with the Mac app's keys — an iPad or iPhone keyboard is a

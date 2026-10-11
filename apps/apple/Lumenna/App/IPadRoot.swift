@@ -104,6 +104,19 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
     @objc func undoChange() { undoInStore(core) }
     @objc func redoChange() { redoInStore(core) }
     @objc func syncNow() { syncAndSay(core) }
+
+    /// A reminder chosen in Notification Center: its task beside the task list, or its
+    /// block on its day.
+    @objc func openReminded(kind: String, target: String, day: String) {
+        if kind == "task" {
+            show(.place(.tasks)) { [weak self] _ in
+                guard let self else { return }
+                open(TaskDetailViewController(core: core, id: target))
+            }
+        } else {
+            show(.place(.today)) { ($0 as? DayViewController)?.show(day: day, series: target) }
+        }
+    }
 }
 
 /// The column beside a list, before anything is opened from it.

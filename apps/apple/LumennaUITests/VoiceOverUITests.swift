@@ -174,7 +174,7 @@ final class VoiceOverUITests: XCTestCase {
         try move(to: "Deep work", within: 30)
         let offered = actionsOffered()
         print("VoiceOver offers a block: \(offered)")
-        for action in ["Assign a Task", "Edit Block", "Cancel This Day", "Delete Block"] {
+        for action in ["Assign a Task", "Edit Block", "Cancel This Day", "Reminders", "Delete Block"] {
             XCTAssertEqual(offered.filter { $0 == action }.count, 1, "\(action) once among \(offered)")
         }
     }

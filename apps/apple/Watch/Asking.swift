@@ -58,6 +58,11 @@ final class WatchAsker: ObservableObject, ActionAsking {
         core.failure = sentence
     }
 
+    /// A task's or block's reminders, the form the Mac shows too (`Shared/Forms/ReminderList.swift`).
+    func openReminders(_ action: Action) {
+        show(RemindersForm(model: RemindersModel(core: core, target: action.target)).navigationTitle("Reminders"))
+    }
+
     /// Runs one of the core's actions; a form opens through `form`. What changed redraws every
     /// view, goes to the phone, and is said.
     func run(_ action: Action, form: (Action) -> Void = { _ in }, done: @escaping (Change) -> Void = { _ in }) {

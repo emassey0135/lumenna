@@ -533,6 +533,22 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
   on leaving, and a `BGAppRefreshTask` whenever iOS chooses. A refresh launches the app with
   no scene, so the `Core` is the app delegate's, one per process. Apple's simulated launch
   hung in the iOS 27 simulator; the handler has only run on a device.
+- **Reminders are scheduled, not delivered** (`Shared/Reminders.swift`): `ReminderSchedule`
+  hands `UNUserNotificationCenter` what `upcoming_reminders` says fires in the next 48 hours,
+  the earliest 60 (iOS keeps 64), identified `reminder <key> <occurrence>` so re-arming
+  replaces and what is no longer listed is cancelled. It re-arms at launch, on every
+  `Core.changed` (the foreground's included), and in `BackgroundSync`'s leaving round and
+  refresh, before the task ends. Dismiss and Snooze are a category whose buttons are the
+  core's words, answered by `ReminderResponder`, set as delegate before launch finishes.
+  Permission is asked when the person opens a Reminders list, turns reminders on, or makes an
+  edit that leaves something to fire, never at launch, and never under `LUMENNA_TEST_PROFILE`
+  (the system's alert would cover the app under test). A sync's change notice carries
+  `arrived`, so it is not taken for the person's edit. The scheduling is unit-tested through
+  the `NotificationCentre` seam (`ReminderScheduleTests`); UI tests cannot post real ones.
+- **A Reminders list is an `ItemListViewController`** (`RemindersViewController`): Add Reminder
+  in the bar asks the core's Text question, again with the reason when refused; an own
+  reminder swipes Remove Reminder. `ActionRun` opens it for `ActionKind.reminders` through the
+  asker (`openReminders`), so every screen offering the action opens the same list.
 - **Pairing is by code on iOS**: local discovery of others needs Apple's multicast
   entitlement. `PairingPrompt` blocks the pairing thread on a semaphore while the words are
   asked on the main thread.
@@ -608,6 +624,12 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 - **Not sandboxed, and shares `lum`'s profile**: the app and the command line on one Mac
   are one device with one store. `Core` compares `outsideVersion` once a second.
 - **Resident in the menu bar, and the device's sync process.** No daemon is needed or used.
+- **The resident app delivers reminders** (`ReminderDelivery`): while it holds
+  `take_reminders`, `deliver_reminders` every 20 seconds and on becoming active, each shown at
+  once through `UNUserNotificationCenter` with the iPhone's category, the missed summary as one
+  of its own. Without notification permission it lets the right go, for a process that can say
+  them. The Reminders list is the shared SwiftUI form (`Shared/Forms/ReminderList.swift`) in a
+  sheet, shared with the watch.
 - **Global shortcuts through Carbon's `RegisterEventHotKey`**, which needs no accessibility
   permission. Never Control-Option: it is VoiceOver's. The recorder warns of clashes with
   VoiceOver, VOCR (Control-Command S, P, L, I; Shift-Control-Command more) and macOS
@@ -653,6 +675,15 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   app (`WatchLink`) answers on the operations' own connection, so its own sync carries what
   the watch wrote to every other device. The watch is not in the device list: trust is the
   system's pairing of watch and phone.
+- **The watch schedules its own reminders**, from its own store, as the iPhone does
+  (`ReminderSchedule`, re-armed at launch, on becoming active, after each change and on a
+  background refresh every six hours). A phone's notification goes to the watch when the phone
+  is locked and the watch worn, so each firing would show twice. Apple's answer (DTS, forums
+  thread 765669): watchOS waits for the phone's notification to judge whether the two are one,
+  and they are one when their `UNNotificationRequest.identifier`s match and they fire at the
+  same moment; without a phone's, the watch shows its own after about 13 seconds. So the
+  identifier is the firing's (key and occurrence, the same on every device) and the trigger a
+  calendar one at the core's moment on both. Unverified on hardware.
 - **The phone's forms are the watch's** (`Shared/Forms`: task, block, planning settings),
   with its own answers beside the others' in `FormParts.swift`: the iPhone's wherever its
   SwiftUI behaves the same, else the name always above the field and Save in the form. So

@@ -156,6 +156,34 @@ final class LumennaWatchUITests: XCTestCase {
         XCTAssertTrue(block.waitForExistence(timeout: 5) || reveal(block).exists)
     }
 
+    /// A block's Reminders, from what its row offers: the default listed, a phrase the core
+    /// reads added, and one it refuses kept with the core's reason.
+    func testABlocksRemindersTakeAPhraseAndARefusedOneSaysWhy() throws {
+        XCTAssertTrue(app.buttons["Today"].waitForExistence(timeout: 10))
+        app.buttons["Today"].tap()
+        reveal(app.buttons["Add Block"]).tap()
+        let name = app.textFields["Name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        type("Deep work", into: name)
+        reveal(app.buttons["Save"], form: true).tap()
+        let block = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Deep work'")).firstMatch
+        XCTAssertTrue(block.waitForExistence(timeout: 5) || reveal(block).exists)
+        reveal(block).tap()
+        reveal(app.buttons["Reminders"]).tap()
+        let standing = app.staticTexts.matching(NSPredicate(format: "label CONTAINS '5 minutes before it starts'")).firstMatch
+        XCTAssertTrue(standing.waitForExistence(timeout: 5), app.debugDescription)
+        try audit("reminders")
+        let field = app.textFields["When"]
+        type("when it feels right", into: field)
+        reveal(app.buttons["Add Reminder"], form: true).tap()
+        let reason = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'is not a reminder'")).firstMatch
+        XCTAssertTrue(reason.waitForExistence(timeout: 5) || reveal(reason, form: true).exists, "the core's reason, with the field")
+        type("at end", into: field, clearing: "when it feels right".count)
+        reveal(app.buttons["Add Reminder"], form: true).tap()
+        let own = app.buttons.matching(NSPredicate(format: "label CONTAINS 'when it ends'")).firstMatch
+        XCTAssertTrue(own.waitForExistence(timeout: 5) || reveal(own, form: true, upward: true).exists, app.debugDescription)
+    }
+
     func testSettingsShowWhatSyncsAndPassAnAudit() throws {
         XCTAssertTrue(app.buttons["Today"].waitForExistence(timeout: 10))
         reveal(app.buttons["Settings"]).tap()
@@ -163,6 +191,10 @@ final class LumennaWatchUITests: XCTestCase {
         app.buttons["Planning"].tap()
         XCTAssertTrue(app.switches["Completing a task completes its subtasks"].waitForExistence(timeout: 5))
         try audit("planning settings")
+        // The default reminders, phrases, and whether this watch gives them.
+        XCTAssertTrue(reveal(app.textFields["Reminders for a block"], form: true).exists)
+        XCTAssertTrue(reveal(app.switches["Reminders on this device"], form: true).exists)
+        try audit("planning settings, reminders")
         back()
         app.buttons["Devices"].tap()
         XCTAssertTrue(app.staticTexts["No devices are paired yet. Pair one to sync with it."].waitForExistence(timeout: 5), "the synced list, empty in a fresh store")

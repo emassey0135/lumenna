@@ -1,4 +1,5 @@
 import AppKit
+import UserNotifications
 
 /// The Mac app: resident in the menu bar, syncing for as long as it runs, with
 /// a window that closes to the menu bar rather than quitting.
@@ -11,6 +12,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var quickAdd: QuickAddPanel?
     private var statusItem: NSStatusItem?
     private var backupTimer: Foundation.Timer?
+    /// Gives this Mac's reminders while it runs (`Shared/Reminders.swift`).
+    private var reminders: ReminderDelivery?
+    /// Answers a reminder's Dismiss and Snooze; the notification center holds it weakly.
+    private var responder: ReminderResponder?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
@@ -33,6 +38,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             summon: { [weak self] in self?.showMainWindow(nil) },
             quickAdd: { [weak self] in self?.quickAdd?.show() }
         )
+        // Resident, so it gives reminders itself as they come due, as `lum notify` would.
+        let responder = ReminderResponder(lumenna: core.lumenna) { [weak self] reminded in self?.open(reminded) }
+        UNUserNotificationCenter.current().delegate = responder
+        self.responder = responder
+        reminders = ReminderDelivery(lumenna: core.lumenna)
+        reminders?.follow()
+        reminders?.start()
         core.startSyncing()
         core.watchForOtherProcesses()
         backUp()
@@ -42,11 +54,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        reminders?.stop()
         core?.stopSyncing(waiting: true)
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
         core?.timeZoneMayHaveChanged()
+        reminders?.now()
     }
 
     /// Closing the window keeps the app running; clicking the Dock icon brings it back.
@@ -164,6 +178,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func go(_ place: Place) {
         showMainWindow(nil)
         main?.sidebar.select(place)
+    }
+
+    /// A reminder chosen in Notification Center: its task, or its block on its day.
+    private func open(_ reminded: RemindedOf) {
+        if reminded.kind == "task" {
+            go(.tasks)
+            main?.showTask(reminded.target)
+            main?.nextPane(nil)
+        } else {
+            go(.today)
+            main?.day?.show(day: reminded.day, series: reminded.target)
+        }
     }
 
     @objc func newTask(_ sender: Any?) {

@@ -141,6 +141,9 @@ targets:
         group: Shared
       - path: Shared/Actions.swift
         group: Shared
+      # Reminders as the system's notifications, scheduled as the phone schedules them.
+      - path: Shared/Reminders.swift
+        group: Shared
       # The task, block and settings forms the iPhone and the Mac use, with the watch's
       # differences beside theirs (FormParts.swift).
       - path: Shared/Forms
@@ -157,6 +160,7 @@ targets:
     dependencies:
       - sdk: Security.framework
       - sdk: WatchConnectivity.framework
+      - sdk: UserNotifications.framework
     info:
       path: Watch/Info.plist
       properties:

@@ -160,11 +160,12 @@ final class Core {
     }
 }
 
-/// What a sync brought in: every view showing the store reads it again.
+/// What a sync brought in: every view showing the store reads it again. Marked as arrived,
+/// so it is not taken for the person's own edit (`Reminders.isOwnEdit`).
 private final class Arrivals: SyncListener {
     func changed() {
         DispatchQueue.main.async {
-            NotificationCenter.default.post(name: Core.changed, object: nil)
+            NotificationCenter.default.post(name: Core.changed, object: nil, userInfo: ["arrived": true])
         }
     }
 }

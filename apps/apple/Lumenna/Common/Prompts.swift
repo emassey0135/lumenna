@@ -144,6 +144,10 @@ final class PhoneAsker: ActionAsking {
     func fail(_ sentence: String) {
         front?.showFailure(sentence)
     }
+
+    func openReminders(_ action: Action) {
+        presenter?.openReminders(action, core: core)
+    }
 }
 
 extension UIViewController {
