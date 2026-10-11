@@ -693,8 +693,9 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
   before `RootTabs`. **Something must be first responder** or the chain is empty and the
   Task and Day menus reach nothing: each screen with commands calls `takeKeyboardCommands`
   as it appears, unless text is being edited. ⌘Z in a field with typing to undo undoes
-  the typing. Row commands act on the row with keyboard focus, else VoiceOver's, else the
-  one open beside the list; the task open beside a list answers them itself.
+  the typing. Row commands act on the row with keyboard focus, else VoiceOver's (found
+  through its containers when VoiceOver's element is not a view, as the iPad's is:
+  `UIAccessibility.voiceOverView`), else the one open beside the list; the task open beside a list answers them itself.
 - **The iPad is the Mac's layout, not the iPhone's tabs** (`IPadRoot`, three columns): the
   core's places in a sidebar (`SidebarViewController`, from `Lumenna.places`, plus
   Settings), the place chosen, and what was opened from it (`showBeside`, which pushes on
