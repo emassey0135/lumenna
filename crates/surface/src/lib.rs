@@ -42,6 +42,7 @@ mod link;
 mod organise;
 pub mod places;
 mod planning;
+pub mod dayplan;
 pub mod replan;
 pub mod reminders;
 mod resolve;
@@ -64,6 +65,7 @@ use lumenna_store::Store;
 
 pub use fields::{unsayable_repeat_note, FieldKind, FormField, PairingWords, block_form, pairing_words, sentence_case, task_form};
 pub use history::{TaskHistory, UrgencyTerm};
+pub use dayplan::{DayPlan, ProposedSitting};
 pub use replan::{Replan, ReplanChange, TimeStyle};
 pub use reminders::{DueReminder, DueReminders, ReminderList, ReminderView};
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]

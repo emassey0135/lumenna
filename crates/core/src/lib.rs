@@ -16,6 +16,7 @@ pub mod id;
 pub mod model;
 pub mod order;
 pub mod recur;
+pub mod dayplan;
 pub mod reflow;
 pub mod remind;
 pub mod repair;

@@ -647,14 +647,18 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         "places" => Response::new(l.places()),
         // Replanning the rest of today: a proposal, then the changes the person accepted.
         "replan" => {
-            let style = match maybe_text(params, "clock").as_deref() {
-                None | Some("24-hour") => crate::TimeStyle::TwentyFourHour,
-                Some("12-hour") => crate::TimeStyle::TwelveHour,
-                Some(other) => return Err(invalid(format!("'{other}' is not a clock; use 12-hour or 24-hour"))),
-            };
+            let style = time_style(params)?;
             Response::new(l.replan(style, maybe_record(params, "keep")?.unwrap_or_default(), maybe_record(params, "skip")?.unwrap_or_default(), maybe_text(params, "now"))?)
         }
         "replan.apply" => Response::new(l.apply_replan(record(params, "changes")?, maybe_text(params, "now"))?),
+        // Planning a whole day: a proposal, then the sittings the person accepted.
+        "day_plan" => Response::new(l.propose_day_plan(
+            maybe_text(params, "date"),
+            time_style(params)?,
+            maybe_record(params, "exclude")?.unwrap_or_default(),
+            maybe_text(params, "now"),
+        )?),
+        "day_plan.apply" => Response::new(l.apply_day_plan(record(params, "sittings")?)?),
 
         // The forms' rules, for a client that cannot call them in-process.
         "form.task_fields" => Response::new(Derived::of(crate::task_fields(record(params, "task")?))),
@@ -771,6 +775,15 @@ fn maybe_bool(params: &Value, key: &str) -> std::result::Result<Option<bool>, Rp
         None | Some(Value::Null) => Ok(None),
         Some(Value::Bool(value)) => Ok(Some(*value)),
         Some(_) => Err(invalid(format!("'{key}' must be true or false"))),
+    }
+}
+
+/// The clock a proposal's sentences use: `clock`, the device setting's own words.
+fn time_style(params: &Value) -> std::result::Result<crate::TimeStyle, RpcError> {
+    match maybe_text(params, "clock").as_deref() {
+        None | Some("24-hour") => Ok(crate::TimeStyle::TwentyFourHour),
+        Some("12-hour") => Ok(crate::TimeStyle::TwelveHour),
+        Some(other) => Err(invalid(format!("'{other}' is not a clock; use 12-hour or 24-hour"))),
     }
 }
 

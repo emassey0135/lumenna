@@ -33,7 +33,7 @@ pub enum TimeStyle {
     TwentyFourHour,
 }
 
-fn clock(minutes: i64, style: TimeStyle) -> String {
+pub(crate) fn clock(minutes: i64, style: TimeStyle) -> String {
     let (h, m) = (minutes.div_euclid(60).rem_euclid(24), minutes.rem_euclid(60));
     match style {
         TimeStyle::TwentyFourHour => format!("{h:02}:{m:02}"),
@@ -98,12 +98,12 @@ fn title(snapshot: &Snapshot, series: SeriesId) -> String {
     snapshot.series.get(&series).map(|s| s.title.clone()).unwrap_or_default()
 }
 
-fn minutes_of(time: jiff::civil::Time) -> i64 {
+pub(crate) fn minutes_of(time: jiff::civil::Time) -> i64 {
     i64::from(time.hour()) * 60 + i64::from(time.minute())
 }
 
 /// Now, or for tests the local time given (`2026-05-06T10:40`).
-fn now_or(given: Option<&str>) -> Result<Zoned> {
+pub(crate) fn now_or(given: Option<&str>) -> Result<Zoned> {
     given.map_or_else(
         || Ok(Zoned::now()),
         |text| {

@@ -156,16 +156,22 @@ pub fn suggested_because(reasons: &[lumenna_core::suggestions::Reason]) -> Optio
             R::AssignedToday => against.push("it is in a block already today".to_owned()),
         }
     }
-    let listed = |parts: &[String]| match parts {
-        [] => String::new(),
-        [one] => one.clone(),
-        [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
-    };
     match (for_it.is_empty(), against.is_empty()) {
         (true, true) => None,
         (false, true) => Some(format!("Suggested because {}.", listed(&for_it))),
         (false, false) => Some(format!("Suggested because {}, though {}.", listed(&for_it), listed(&against))),
         (true, false) => Some(format!("Offered, though {}.", listed(&against))),
+    }
+}
+
+/// Parts as a list is said: "a", "a and b", "a, b, and c".
+#[must_use]
+pub fn listed(parts: &[String]) -> String {
+    match parts {
+        [] => String::new(),
+        [one] => one.clone(),
+        [first, second] => format!("{first} and {second}"),
+        [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
     }
 }
 

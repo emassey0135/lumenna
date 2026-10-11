@@ -163,7 +163,9 @@ silent. As designed:
 
 ### The whole-day plan
 
-`propose_day(date, now, pinned)`: walk the day's work blocks in order, run suggestions for
+Built (`core::dayplan`, `dayplan.rs`, `lum plan-day [date] [--leave] [--apply [1,3]]`, RPC
+`day_plan` and `day_plan.apply`). Still to come: each app's screen for it, offered from the
+day. As designed: `propose_day(date, now, pinned)`: walk the day's work blocks in order, run suggestions for
 each, and assign greedily until the estimates fill it. One proposal, naming what did not
 fit, pinned the same way. Greedy and editable is worth more than optimal packing. Always
 optional.

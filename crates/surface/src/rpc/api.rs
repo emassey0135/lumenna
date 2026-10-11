@@ -136,6 +136,8 @@ pub enum Outcome {
     History(crate::TaskHistory),
     /// What replanning the rest of today proposes.
     Replan(crate::Replan),
+    /// What planning a whole day proposes.
+    DayPlan(crate::DayPlan),
 }
 
 macro_rules! outcomes {
@@ -193,6 +195,7 @@ outcomes!(
     Reminders(crate::ReminderList),
     History(crate::TaskHistory),
     Replan(crate::Replan),
+    DayPlan(crate::DayPlan),
 );
 
 impl From<Imported> for Outcome {

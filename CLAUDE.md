@@ -445,6 +445,12 @@ passes (`TimeStyle`), since for someone who cannot glance at a timeline the desc
 the check. `apply_replan` takes the changes accepted, refuses any the day no longer matches,
 and is one undoable change. No block starts past midnight; a day planned past its window
 runs to midnight. The Replan from Now day action waits until every app has its screen.
+The whole-day plan (`core::dayplan`, the surface's `dayplan.rs`, `lum plan-day`, RPC
+`day_plan`/`day_plan.apply`) walks the day's work blocks still to come and gives each the
+tasks its suggestions rank first, greedily, until the estimates fill it: a task once a day,
+none already in a block that day, none blocked, one without an estimate counted as 30
+minutes and said so. What is due by then and fits nowhere is named. Applying it is one undo,
+refused where a task was done or put in that block since.
 The surface words both (`task_history`, `TaskDetail::history`): asked for about one task,
 never said in a list or a live region. The coefficients are `Coefficients::default()` until
 they become synced settings.
