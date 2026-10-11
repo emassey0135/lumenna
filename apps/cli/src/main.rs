@@ -75,6 +75,19 @@ pub(crate) enum Command {
     #[command(subcommand)]
     Filter(FilterCommand),
 
+    /// Work with reminders: a task's or a block's, and what comes up.
+    #[command(subcommand)]
+    Reminder(ReminderCommand),
+
+    /// Say reminders in this terminal as they come due, until stopped: for a console
+    /// without a desktop to show them. Written to the terminal, which speakup and BRLTTY
+    /// read; with --speak, through speech-dispatcher as well.
+    Notify {
+        /// Also say each one with spd-say.
+        #[arg(long)]
+        speak: bool,
+    },
+
     /// Show a day's blocks and what is assigned to them.
     Plan {
         /// A date phrase. Today if left out.
@@ -457,6 +470,57 @@ pub(crate) enum ProjectCommand {
         name: String,
         /// The multiplier, or `inherit` to take the parent's again.
         value: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum ReminderCommand {
+    /// List a task's or block's reminders: its own, or the defaults it takes.
+    List {
+        /// A row number from the last listing, or a task or block identifier.
+        target: String,
+    },
+    /// Give a task or block a reminder of its own, in place of the defaults.
+    Add {
+        /// A row number from the last listing, or a task or block identifier.
+        target: String,
+        /// What it counts from: due (a task), start or end (a block).
+        #[arg(long)]
+        at: String,
+        /// How long before, such as 5m or 1h.
+        #[arg(long, conflicts_with = "after")]
+        before: Option<String>,
+        /// How long after, such as 5m.
+        #[arg(long)]
+        after: Option<String>,
+    },
+    /// Remove one of a task's or block's own reminders.
+    Rm {
+        /// Its identifier, from `lum reminder list`.
+        id: String,
+    },
+    /// What comes up over the next hours.
+    Upcoming {
+        /// How many hours ahead.
+        #[arg(long, default_value_t = 24)]
+        hours: u32,
+    },
+    /// Dismiss one firing, on every device.
+    Dismiss {
+        /// The key a notification gives.
+        key: String,
+        /// The occurrence it names, as an ISO date.
+        occurrence: String,
+    },
+    /// Snooze one firing, on every device.
+    Snooze {
+        /// The key a notification gives.
+        key: String,
+        /// The occurrence it names, as an ISO date.
+        occurrence: String,
+        /// How long, such as 10m.
+        #[arg(long)]
+        r#for: Option<String>,
     },
 }
 
@@ -989,6 +1053,30 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
             }
             return network::unpair_device(profile, device);
         }
+        Command::Reminder(command) => match command {
+            ReminderCommand::List { target } => Response::new(profile.reminders_of(reminder_target(profile, target)?)?),
+            ReminderCommand::Add { target, at, before, after } => {
+                let offset = match (before, after) {
+                    (Some(span), _) => -i32::try_from(lumenna_surface::parse_minutes(span.clone())?).unwrap_or(i32::MAX),
+                    (_, Some(span)) => i32::try_from(lumenna_surface::parse_minutes(span.clone())?).unwrap_or(i32::MAX),
+                    (None, None) => 0,
+                };
+                Response::new(profile.add_reminder(reminder_target(profile, target)?, at.clone(), offset)?)
+            }
+            ReminderCommand::Rm { id } => Response::new(profile.remove_reminder(id.clone())?),
+            ReminderCommand::Upcoming { hours } => {
+                let until = jiff::Timestamp::now()
+                    .checked_add(jiff::SignedDuration::from_hours(i64::from(*hours)))
+                    .unwrap_or_else(|_| jiff::Timestamp::now());
+                Response::new(profile.upcoming_reminders(until.to_string())?)
+            }
+            ReminderCommand::Dismiss { key, occurrence } => Response::new(profile.dismiss_reminder(key.clone(), occurrence.clone())?),
+            ReminderCommand::Snooze { key, occurrence, r#for } => {
+                let minutes = r#for.as_ref().map(|span| lumenna_surface::parse_minutes(span.clone())).transpose()?;
+                Response::new(profile.snooze_reminder(key.clone(), occurrence.clone(), minutes)?)
+            }
+        },
+        Command::Notify { speak } => return notify(profile, *speak),
         Command::Undo => Response::new(profile.undo()?),
         Command::Redo => Response::new(profile.redo()?),
         Command::Backup { to } => {
@@ -1122,6 +1210,8 @@ fn listing_of(outcome: &Outcome) -> Option<Vec<(String, String)>> {
         | Outcome::Choices(_)
         | Outcome::Places(_)
         | Outcome::Value(_)
+        | Outcome::DueReminders(_)
+        | Outcome::Reminders(_)
         | Outcome::Server(_)
         | Outcome::Backup(_)
         | Outcome::Restore(_)
@@ -1154,4 +1244,50 @@ fn confirmed(actions: Option<Vec<lumenna_surface::Action>>, kind: ActionKind, ye
     let mut answer = String::new();
     std::io::stdin().read_line(&mut answer)?;
     Ok(answer.trim() == "yes")
+}
+
+/// A reminder's target from a row of the last listing, a task's or a block's.
+fn reminder_target(profile: &Profile, input: &str) -> Result<String> {
+    let task = profile.row(input, "task");
+    match task {
+        Ok(id) if id != input || input.parse::<usize>().is_err() => Ok(id),
+        _ => profile.row(input, "block"),
+    }
+}
+
+/// `lum notify`: says each reminder as it comes due, until stopped. Only one process on a
+/// device gives them; while another does (a desktop app), this waits its turn.
+fn notify(profile: &Profile, speak: bool) -> Result<Response> {
+    use std::io::Write;
+    let mut said_waiting = false;
+    let lock = loop {
+        if let Some(lock) = profile.take_reminders()? {
+            break lock;
+        }
+        if !said_waiting {
+            println!("Another app on this device gives reminders; waiting for it to stop.");
+            said_waiting = true;
+        }
+        std::thread::sleep(std::time::Duration::from_secs(5));
+    };
+    println!("Saying reminders as they come due. Ctrl+C stops.");
+    let say = |text: &str| {
+        // The bell first, so a speakup or braille user knows a reminder arrived.
+        print!("\u{7}");
+        println!("{text}");
+        let _ = std::io::stdout().flush();
+        if speak {
+            let _ = std::process::Command::new("spd-say").arg("--wait").arg(text).status();
+        }
+    };
+    loop {
+        let given = profile.deliver_reminders(lock.clone(), None)?;
+        if !given.missed_summary.is_empty() {
+            say(&given.missed_summary);
+        }
+        for notification in &given.due {
+            say(&notification.text);
+        }
+        std::thread::sleep(std::time::Duration::from_secs(20));
+    }
 }

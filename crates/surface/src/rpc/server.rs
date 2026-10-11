@@ -128,6 +128,13 @@ pub const METHODS: &[&str] = &[
     "form.unsayable_repeat_note",
     "form.project_options",
     "form.new_block_start",
+    "reminder.due",
+    "reminder.upcoming",
+    "reminder.list",
+    "reminder.add",
+    "reminder.rm",
+    "reminder.dismiss",
+    "reminder.snooze",
 ];
 
 /// What runs a round on the endpoint this process holds, when it holds one: a `sync` here is
@@ -653,6 +660,27 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         ))),
         "form.go_to_day" => Response::new(Derived::of(crate::go_to_day_question())),
         "form.new_filter" => Response::new(Derived::of(crate::new_filter_questions())),
+        // Reminders: what to give, a target's own, and dealing with one firing.
+        "reminder.due" => Response::new(l.reminders_due(text_of(params, "since")?, maybe_text(params, "now"))?),
+        "reminder.upcoming" => Response::new(l.upcoming_reminders(text_of(params, "until")?)?),
+        "reminder.list" => Response::new(l.reminders_of(text_of(params, "target")?)?),
+        "reminder.add" => {
+            let offset = match params.get("offset_mins") {
+                None | Some(Value::Null) => 0,
+                Some(value) => value
+                    .as_i64()
+                    .and_then(|n| i32::try_from(n).ok())
+                    .ok_or_else(|| invalid("'offset_mins' has to be a whole number, negative before"))?,
+            };
+            Response::new(l.add_reminder(text_of(params, "target")?, text_of(params, "anchor")?, offset)?)
+        }
+        "reminder.rm" => Response::new(l.remove_reminder(id()?)?),
+        "reminder.dismiss" => Response::new(l.dismiss_reminder(text_of(params, "key")?, text_of(params, "occurrence")?)?),
+        "reminder.snooze" => Response::new(l.snooze_reminder(
+            text_of(params, "key")?,
+            text_of(params, "occurrence")?,
+            maybe_number(params, "minutes")?,
+        )?),
         "form.new_block_start" => Response::new(Derived::of(l.new_block_start(maybe_text(params, "date"))?)),
         "form.project_options" => Response::new(Derived::of(l.project_options()?)),
         "form.unsayable_repeat_note" => Response::new(Derived::of(crate::unsayable_repeat_note(record(params, "block")?))),

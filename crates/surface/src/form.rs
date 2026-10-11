@@ -298,6 +298,16 @@ fn whole_minutes(text: &str, what: &str) -> Result<u32> {
     text.trim().parse().map_err(|_| LumennaError::new(format!("{what} has to be a whole number of minutes")))
 }
 
+/// A length as typed: `45m`, `2h`, `1h30m`, or a bare number of minutes.
+///
+/// # Errors
+///
+/// If it is none of those.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn parse_minutes(text: String) -> Result<u32> {
+    crate::resolve::minutes(&text)
+}
+
 /// The priorities a task can have, as a form offers them: `id` is the number.
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]

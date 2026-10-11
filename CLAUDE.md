@@ -370,6 +370,33 @@ so evaluation, the readback and the accessibility layer never depend on the pars
   title with a notice. A property test asserts every non-space character is in the title or
   inside a recognised span.
 
+### Reminders
+
+`core::remind::firings` works out every firing between two instants from the synced records
+alone; each device asks of its own store and delivers its own, with no coordinator. The
+surface's `reminders.rs` words them and answers the apps.
+
+- **A civil time becomes an instant only in `remind::instant`**, by RFC 5545's rule: a time a
+  daylight-saving change skips moves forward by the gap (2:30 becomes 3:30 on the spring
+  day), a time that happens twice is the first. A block keeps its real length across a
+  change: its end is its start plus its minutes. Expansion stays in UTC.
+- **A target's own reminders replace the defaults** (`default_task_reminders`,
+  `default_block_reminders`); a default fires under `remind::default_key`, derived from the
+  target and trigger and fixed forever, so a dismissal of it syncs and holds everywhere.
+- **What fires**: an open task at its due time or, date-only, the all-day hour; each block
+  occurrence at its start or end, a cancelled one never; snoozed at the snooze's end;
+  dismissed never. Windows are `(from, until]`, so checks in any steps fire each once (a
+  test proves it across the spring change).
+- **The text is the whole message**: "Deep work starts in 5 minutes — 3 tasks assigned, first
+  is Review PR", the detail left out under terse announcements. `missed` is the same said of
+  the past, for the one summary of what came while nothing ran (`STALE_MINS`).
+- **One process per device delivers** (`take_reminders`, a lock on `reminders.lock`): a
+  running app or `lum notify` holds it and calls `deliver_reminders`, which remembers when it
+  last delivered (`reminders-delivered`, a device setting) and goes back at most a day. A
+  system that schedules notifications itself asks `upcoming_reminders(until)` instead.
+- **Dismissing and snoozing write a `ReminderAck`**, which syncs: best effort, since a sleeping
+  device may still show it. "Reminders on this device" is a device setting and never syncs.
+
 ### Backup and export
 
 Kept apart in code, commands and wording, because confusing them is how someone sends a

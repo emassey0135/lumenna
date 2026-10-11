@@ -341,8 +341,13 @@ final class LumennaUITests: XCTestCase {
         // Not a day: the sheet stays, saying why.
         XCTAssertTrue(field.exists)
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] 'someday soon'")).firstMatch.waitForExistence(timeout: 5))
-        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20) + "12 October\n")
-        XCTAssertTrue(app.navigationBars.matching(NSPredicate(format: "identifier CONTAINS %@ OR identifier CONTAINS %@", "12 October", "October 12")).firstMatch.waitForExistence(timeout: 5),
+        // Twenty days off, so the title is the date itself, not "Tomorrow" or a weekday,
+        // whatever day the test runs.
+        let ahead = Calendar.current.date(byAdding: .day, value: 20, to: Date())!
+        let day = Calendar.current.component(.day, from: ahead)
+        let month = DateFormatter().monthSymbols[Calendar.current.component(.month, from: ahead) - 1]
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20) + "\(day) \(month)\n")
+        XCTAssertTrue(app.navigationBars.matching(NSPredicate(format: "identifier CONTAINS %@ OR identifier CONTAINS %@", "\(day) \(month)", "\(month) \(day)")).firstMatch.waitForExistence(timeout: 5),
                       "the day typed, shown:\n\(app.debugDescription)")
     }
 
