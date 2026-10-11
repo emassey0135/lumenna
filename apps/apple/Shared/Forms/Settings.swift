@@ -43,14 +43,28 @@ final class SettingsModel: NSObject, ObservableObject {
     }
 
     func set(_ key: String, _ value: String) {
-        guard values[key] != value else { return }
+        if let problem = commit(key, value) { failure = problem }
+    }
+
+    /// Sets `key`, returning the core's reason when it refuses the value: a line's refusal is
+    /// shown with its field rather than as an alert.
+    @discardableResult
+    func commit(_ key: String, _ value: String) -> String? {
+        guard values[key] != value else { return nil }
+        var problem: String?
         do {
             let change = try core.lumenna.setSetting(key: key, value: value)
             Announcer.say(change.announcement, notices: change.notices)
+            // Every view reads the store again, and reminders are scheduled anew: the
+            // defaults, the all-day hour and whether reminders are on all change what fires.
+            NotificationCenter.default.post(name: Core.changed, object: nil)
+            // Turning reminders on is a moment to ask to show them, if never asked.
+            if key == "reminders", value == "true" { Reminders.askIfUndecided() }
         } catch {
-            failure = error.sentence
+            problem = error.sentence
         }
         load()
+        return problem
     }
 
     func binding(_ key: String) -> Binding<String> {
@@ -159,9 +173,7 @@ struct SettingControl: View {
             EmptyView()
             #endif
         case .line:
-            // A line the core reads, such as the default reminders' phrases: no page lists
-            // one yet, and saving on every keystroke would send what is half typed.
-            EmptyView()
+            LineSetting(model: model, setting: setting)
         case .choice:
             ChoiceSection(
                 setting.title,
@@ -198,10 +210,89 @@ private struct SettingHint: ViewModifier {
     }
 }
 
+/// A line the core reads, such as the default reminders' phrases: saved when it is committed
+/// (Return, or leaving the field), never on each keystroke, which would send what is half
+/// typed. A refusal stays with its field, in the core's words, and is said.
+struct LineSetting: View {
+    @ObservedObject var model: SettingsModel
+    let setting: Setting
+    @State private var text = ""
+    @State private var problem: String?
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Named(setting.title) {
+                field
+                    .focused($focused)
+                    .onSubmit(commit)
+                    #if os(iOS) || os(watchOS)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    #endif
+            }
+            if let problem {
+                Text(problem)
+                    .font(.footnote)
+                    .foregroundStyle(Color.warningLabel)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .onAppear { text = model.values[setting.key] ?? setting.value }
+        .onChange(of: focused) { _, now in if !now { commit() } }
+        .onChange(of: model.values[setting.key]) { _, value in
+            if !focused, problem == nil { text = value ?? "" }
+        }
+        #if os(watchOS)
+        // A watch's line comes whole from the system's input screen, with no keystrokes and
+        // no Return: it is committed as it arrives.
+        .onChange(of: text) { _, _ in if text != model.values[setting.key] { commit() } }
+        #endif
+    }
+
+    /// The field itself, named as `namedField` names one, so focus can be followed.
+    private var field: some View {
+        #if os(macOS)
+        TextField(setting.title, text: $text)
+        #elseif os(iOS)
+        // It wraps, so a large text size shows all of it (a one-line field scrolls sideways
+        // and is clipped); so Return arrives as a line break, and commits instead.
+        TextField("", text: Binding(get: { text }, set: { typed in
+            guard typed.contains(where: \.isNewline) else { text = typed; return }
+            text = typed.split(whereSeparator: \.isNewline).joined(separator: " ")
+            // Leaving the field commits it.
+            focused = false
+        }), axis: .vertical)
+        .multilineTextAlignment(.trailing)
+        #else
+        TextField("", text: $text)
+        #endif
+    }
+
+    private func commit() {
+        guard text != model.values[setting.key] else {
+            problem = nil
+            return
+        }
+        problem = model.commit(setting.key, text)
+        if let problem {
+            Announcer.say(problem)
+        } else {
+            text = model.values[setting.key] ?? text
+        }
+    }
+}
+
 extension SettingsModel {
     /// The settings that sync, of `kinds`, in the core's order.
     func synced(_ kinds: [SettingKind]) -> [Setting] {
         settings.filter { $0.syncs && kinds.contains($0.kind) }
+    }
+
+    /// What reminders are given, in the core's order: the defaults and the all-day hour,
+    /// which sync, then whether this device gives them at all, which is its own.
+    var reminderSettings: [Setting] {
+        settings.filter { $0.key.contains("reminder") && ($0.syncs || $0.key == "reminders") }
     }
 
     /// This device's backup settings: what the core keeps apart from what syncs, but the clock,
@@ -218,13 +309,22 @@ struct PlanningSettings: View {
     var body: some View {
         Form {
             Section {
-                ForEach(model.synced([.toggle, .time, .number]), id: \.key) { setting in
+                ForEach(model.synced([.toggle, .time, .number]).filter { !$0.key.contains("reminder") }, id: \.key) { setting in
                     SettingControl(model: model, setting: setting)
                 }
             } header: {
                 FormParts.heading("Planning")
             } footer: {
                 FormParts.caption("These sync to all your devices.")
+            }
+            Section {
+                ForEach(model.reminderSettings, id: \.key) { setting in
+                    SettingControl(model: model, setting: setting)
+                }
+            } header: {
+                FormParts.heading("Reminders")
+            } footer: {
+                FormParts.caption("The defaults sync to all your devices. Whether reminders are given here is this device's alone.")
             }
             ForEach(model.synced([.choice]), id: \.key) { setting in
                 SettingControl(model: model, setting: setting)

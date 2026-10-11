@@ -188,6 +188,19 @@ extension NSWindow: ActionAsking {
         showFailure(sentence)
     }
 
+    /// A task's or block's reminders, as a sheet on this window (`Shared/Forms/ReminderList.swift`).
+    func openReminders(_ action: Action) {
+        guard let core = AppDelegate.shared?.core else { return }
+        let model = RemindersModel(core: core, target: action.target)
+        let sheet = NSWindow(contentViewController: NSViewController())
+        let host = HostedForm("Reminders", rootView: RemindersForm(model: model) { [weak self, weak sheet] in
+            if let sheet { self?.endSheet(sheet) }
+        })
+        sheet.contentViewController = host
+        sheet.title = "Reminders"
+        beginSheet(sheet)
+    }
+
     /// Runs one of the core's actions, asking its question here. A form opens through
     /// `form`; what changed goes to `done`.
     func run(_ action: Action, core: Core, form: (Action) -> Void = { _ in }, done: @escaping (Change, Answer) -> Void) {

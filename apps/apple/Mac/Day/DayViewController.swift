@@ -365,6 +365,23 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         Announcer.say(summary.stringValue)
     }
 
+    /// A reminder's block, chosen in Notification Center: its day, with the block selected.
+    func show(day iso: String, series: String) {
+        day = iso == Clock.isoDay(.now) ? nil : iso
+        reload()
+        let index = (0..<outline.numberOfRows).first { row in
+            if case let .block(block) = (outline.item(atRow: row) as? DayNode)?.kind { return block.series == series }
+            return false
+        }
+        if let index {
+            outline.selectRowIndexes([index], byExtendingSelection: false)
+            outline.scrollRowToVisible(index)
+            view.window?.makeFirstResponder(outline)
+        } else {
+            Announcer.say(summary.stringValue)
+        }
+    }
+
     /// "Go to now": today, on the now row or the block happening now.
     private func goToNow(announcing: Bool) {
         day = nil

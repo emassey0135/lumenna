@@ -191,8 +191,8 @@ struct BlockListView: View {
                     .accessibilityValue(RowSpeech.details(row) ?? "")
                 }
                 .swipeActions(edge: .trailing) {
-                    // The primary ones; Edit Block is the row's tap.
-                    ForEach(row.actions.filter { $0.primary && !$0.isForm }, id: \.self) { action in
+                    // The primary ones and Reminders; Edit Block is the row's tap.
+                    ForEach(row.actions.filter { ($0.primary && !$0.isForm) || $0.kind == .reminders }, id: \.self) { action in
                         Button(action.title, role: action.destructive ? .destructive : nil) { asker.run(action) }
                     }
                 }

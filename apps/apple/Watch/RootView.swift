@@ -8,6 +8,9 @@ struct RootView: View {
     @State private var adding = false
     @StateObject private var asker: WatchAsker
     @State private var folding = Folding()
+    /// What a reminder chosen in its notification is about: its task, or the day.
+    @State private var remindedTask: TaskOpened?
+    @State private var remindedDay: Place?
 
     init(core: WatchCore) {
         _asker = StateObject(wrappedValue: WatchAsker(core: core))
@@ -35,6 +38,20 @@ struct RootView: View {
             .navigationTitle("Lumenna")
             .navigationDestination(for: Place.self) { place in
                 PlaceView(place: place)
+            }
+            .navigationDestination(item: $remindedTask) { task in
+                TaskView(id: task.id)
+            }
+            .navigationDestination(item: $remindedDay) { place in
+                PlaceView(place: place)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Opened.reminded)) { note in
+                guard let reminded = note.object as? RemindedOf else { return }
+                if reminded.kind == "task" {
+                    remindedTask = TaskOpened(id: reminded.target)
+                } else {
+                    remindedDay = .today
+                }
             }
             .sheet(isPresented: $adding) {
                 QuickAddView(prefix: "")

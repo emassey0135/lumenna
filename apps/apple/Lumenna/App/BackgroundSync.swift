@@ -1,7 +1,8 @@
 import BackgroundTasks
 import UIKit
 
-/// Syncing while the app is not in front, within what iOS allows.
+/// Syncing while the app is not in front, within what iOS allows, and re-arming the reminders
+/// the system fires after each round.
 ///
 /// - **On leaving**, one round in the time iOS grants a backgrounded app to finish its work,
 ///   so what was just edited reaches the other devices now rather than at the next launch.
@@ -50,6 +51,8 @@ enum BackgroundSync {
         // The round and the stop both run on the sync queue; the background task ends once
         // they have, without the main thread waiting on either.
         core.syncNow { _ in
+            // What the round brought in may fire before the app is next opened.
+            AppDelegate.reminders?.rearm()
             core.stopSyncing(then: end)
         }
         schedule()
@@ -73,7 +76,11 @@ enum BackgroundSync {
             if case .success = result {
                 NotificationCenter.default.post(name: Core.changed, object: core)
             }
-            finish((try? result.get()) != nil)
+            // Re-armed before the task ends, whatever the round did: a refresh is also what
+            // carries the two-day window forward while the app is not opened.
+            let reminders = AppDelegate.reminders
+            guard let reminders else { return finish((try? result.get()) != nil) }
+            reminders.rearm { finish((try? result.get()) != nil) }
         }
     }
 }

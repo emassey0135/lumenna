@@ -466,6 +466,56 @@ final class LumennaMacUITests: XCTestCase {
         XCTAssertTrue(app.sheets.firstMatch.waitForNonExistence(timeout: 5))
     }
 
+    // MARK: - Reminders
+
+    /// A block's Reminders is a sheet listing the default; a phrase the core reads adds one
+    /// of its own, a refused one stays in its field with the core's reason, and Remove
+    /// Reminder brings the default back.
+    func testABlocksRemindersSheetTakesAPhraseAndShowsARefusalWithItsField() throws {
+        place("Today")
+        addBlock("Deep work")
+        let day = window.outlines["The day"]
+        menu(text(containing: "Deep work", in: day), "Reminders…")
+        let sheet = app.sheets.firstMatch
+        XCTAssertTrue(text(containing: "5 minutes before it starts", in: sheet).waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(sheet.staticTexts["1 reminder, the defaults"].exists, "the core's heading")
+        try audit("reminders", in: sheet)
+        let field = sheet.textFields["When"]
+        enter("when it feels right", into: field)
+        sheet.buttons["Add Reminder"].click()
+        XCTAssertTrue(text(containing: "is not a reminder", in: sheet).waitForExistence(timeout: 5), "the core's reason, with the field")
+        XCTAssertEqual(field.value as? String, "when it feels right", "what was typed stays")
+        enter("at end", into: field)
+        sheet.buttons["Add Reminder"].click()
+        XCTAssertTrue(text(containing: "when it ends", in: sheet).waitForExistence(timeout: 5))
+        XCTAssertFalse(text(containing: "is not a reminder", in: sheet).exists)
+        sheet.buttons["Remove Reminder, when it ends"].click()
+        XCTAssertTrue(text(containing: "5 minutes before it starts", in: sheet).waitForExistence(timeout: 5), "the default again")
+        sheetButton("Done")
+        XCTAssertTrue(sheet.waitForNonExistence(timeout: 5))
+    }
+
+    /// The default reminders are phrases saved when committed, never a keystroke at a time; a
+    /// refused one stays in its field with the core's reason.
+    func testADefaultReminderIsSavedOnReturnAndARefusalStaysWithItsField() {
+        app.typeKey(",", modifierFlags: .command)
+        let settings = app.windows["settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.toolbars.buttons["Planning"].click()
+        let field = settings.textFields["Reminders for a task with a due date"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5), settings.debugDescription)
+        XCTAssertTrue(settings.checkBoxes["Reminders on this device"].exists || settings.switches["Reminders on this device"].exists,
+                      "this device's own, beside the defaults")
+        enter("at end", into: field)
+        field.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(text(containing: "counts from when it is due", in: settings).waitForExistence(timeout: 5))
+        XCTAssertEqual(field.value as? String, "at end")
+        enter("30m before", into: field)
+        field.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(field.waitForValue("30m before due"), "read back as the core says it")
+        XCTAssertFalse(text(containing: "counts from when it is due", in: settings).exists)
+    }
+
     func testTheLengthStepperSaysTheLengthAndFollowsAChange() {
         place("Today")
         app.typeKey("n", modifierFlags: [.command, .shift])
