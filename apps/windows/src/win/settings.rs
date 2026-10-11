@@ -192,6 +192,7 @@ const AT_SIGN_IN: u16 = 100;
 const SHORTCUT: u16 = 110;
 const CHANGE: u16 = 120;
 const TOGGLE: u16 = 130;
+const REMINDERS: u16 = 140;
 
 struct General<'a> {
     app: &'a App,
@@ -239,6 +240,7 @@ impl General<'_> {
 
 impl Dialog for General<'_> {
     fn template(&self) -> Template {
+        let known = values(self.app);
         let mut template = page("General")
             .item(Class::Button, "&Open Lumenna when you sign in to Windows", AT_SIGN_IN, BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0, 7, 7, 238, 10)
             .item(
@@ -251,9 +253,10 @@ impl Dialog for General<'_> {
                 238,
                 26,
             )
-            .item(Class::Button, "Shortcuts from anywhere", u16::MAX, BS_GROUPBOX as u32, 7, 50, 238, 92);
+            .item(Class::Button, &titled(&known, "reminders", 'R', false), REMINDERS, BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0, 7, 50, 238, 10)
+            .item(Class::Button, "Shortcuts from anywhere", u16::MAX, BS_GROUPBOX as u32, 7, 64, 238, 92);
         for (index, kind) in Kind::ALL.into_iter().enumerate() {
-            let y = 62 + index as i16 * 38;
+            let y = 76 + index as i16 * 38;
             let index = index as u16;
             template = template
                 .item(Class::Static, &format!("{}:", kind.name()), u16::MAX, SS_NOPREFIX.0, 14, y, 224, 9)
@@ -262,12 +265,18 @@ impl Dialog for General<'_> {
                 .item(Class::Button, "Turn Off", TOGGLE + index, BUTTON, 184, y + 10, 54, 14);
         }
         let footer = "These work in any program, so they take their keys from whatever is in front. Control+Alt+Shift, because Control+Alt alone is AltGr on many keyboards, where it types letters.";
-        template.item(Class::Static, footer, u16::MAX, SS_NOPREFIX.0, 7, 148, 238, 36)
+        template.item(Class::Static, footer, u16::MAX, SS_NOPREFIX.0, 7, 160, 238, 36)
     }
 
     fn init(&self, page: HWND) -> bool {
         a11y::make_live(dialog::item(page, STATUS));
         controls::check(dialog::item(page, AT_SIGN_IN), sign_in::on());
+        let known = values(self.app);
+        let reminders = dialog::item(page, REMINDERS);
+        controls::check(reminders, value(&known, "reminders") == "true");
+        if let Some(hint) = known.iter().find(|s| s.key == "reminders").map(|s| &s.hint).filter(|h| !h.is_empty()) {
+            a11y::set_description(reminders, hint);
+        }
         for (index, kind) in Kind::ALL.into_iter().enumerate() {
             a11y::set_name(dialog::item(page, CHANGE + index as u16), &format!("Change the shortcut for {}", kind.name()));
         }
@@ -287,6 +296,12 @@ impl Dialog for General<'_> {
                 } else {
                     prompts::fail(sheet(page), "Windows would not change what starts when you sign in.");
                     controls::check(dialog::item(page, AT_SIGN_IN), sign_in::on());
+                }
+            }
+            REMINDERS => {
+                let on = controls::checked(dialog::item(page, REMINDERS));
+                if !set(self.app, page, "reminders", if on { "true" } else { "false" }) {
+                    controls::check(dialog::item(page, REMINDERS), !on);
                 }
             }
             id if (CHANGE..CHANGE + 2).contains(&id) => self.change(page, Kind::ALL[usize::from(id - CHANGE)]),
@@ -405,8 +420,17 @@ const DAY_END: u16 = 202;
 const ALL_DAY: u16 = 203;
 const VERBOSITY: u16 = 204;
 const WEEK_START: u16 = 205;
+const TASK_REMINDERS: u16 = 206;
+const BLOCK_REMINDERS: u16 = 207;
 
-const TIMES: [(u16, &str); 3] = [(DAY_START, "day-start"), (DAY_END, "day-end"), (ALL_DAY, "all-day-reminder-hour")];
+/// What is typed, and written when the field is left, never as each key is pressed.
+const TYPED: [(u16, &str); 5] = [
+    (DAY_START, "day-start"),
+    (DAY_END, "day-end"),
+    (ALL_DAY, "all-day-reminder-hour"),
+    (TASK_REMINDERS, "default-task-reminders"),
+    (BLOCK_REMINDERS, "default-block-reminders"),
+];
 const CHOICES: [(u16, &str); 2] = [(VERBOSITY, "verbosity"), (WEEK_START, "week-start")];
 
 struct Planning<'a> {
@@ -418,7 +442,7 @@ impl Planning<'_> {
     fn load(&self, page: HWND) {
         let known = values(self.app);
         controls::check(dialog::item(page, CASCADE), value(&known, "cascade-complete-subtasks") == "true");
-        for (id, key) in TIMES {
+        for (id, key) in TYPED {
             controls::set_text(dialog::item(page, id), &value(&known, key));
         }
         for (id, key) in CHOICES {
@@ -427,9 +451,9 @@ impl Planning<'_> {
         *self.known.borrow_mut() = known;
     }
 
-    /// A time field, when it is left: written if it changed, and put back if it does not read.
-    fn commit_times(&self, page: HWND) {
-        for (id, key) in TIMES {
+    /// A typed field, when it is left: written if it changed, and put back if it does not read.
+    fn commit_typed(&self, page: HWND) {
+        for (id, key) in TYPED {
             let field = dialog::item(page, id);
             let typed = controls::text(field).trim().to_owned();
             let was = value(&self.known.borrow(), key);
@@ -458,13 +482,17 @@ impl Dialog for Planning<'_> {
             .item(Class::ComboBox, "", VERBOSITY, LIST, 7, 94, 110, 60)
             .item(Class::Static, &name("week-start", 'W', true), u16::MAX, 0, 128, 84, 110, 9)
             .item(Class::ComboBox, "", WEEK_START, LIST, 128, 94, 110, 120)
-            .item(Class::Static, "These sync to all your devices.", u16::MAX, SS_NOPREFIX.0, 7, 116, 238, 9)
+            .item(Class::Static, &name("default-task-reminders", 't', true), u16::MAX, 0, 7, 114, 238, 9)
+            .item(Class::Edit, "", TASK_REMINDERS, FIELD, 7, 124, 238, 14)
+            .item(Class::Static, &name("default-block-reminders", 'b', true), u16::MAX, 0, 7, 144, 238, 9)
+            .item(Class::Edit, "", BLOCK_REMINDERS, FIELD, 7, 154, 238, 14)
+            .item(Class::Static, "These sync to all your devices.", u16::MAX, SS_NOPREFIX.0, 7, 174, 238, 9)
     }
 
     fn init(&self, page: HWND) -> bool {
         a11y::make_live(dialog::item(page, STATUS));
         let known = values(self.app);
-        for (id, key) in TIMES.iter().chain(&CHOICES) {
+        for (id, key) in TYPED.iter().chain(&CHOICES) {
             if let Some(hint) = known.iter().find(|s| s.key == *key).map(|s| &s.hint).filter(|h| !h.is_empty()) {
                 a11y::set_description(dialog::item(page, *id), hint);
             }
@@ -489,7 +517,7 @@ impl Dialog for Planning<'_> {
                 }
                 self.load(page);
             }
-            (id, EN_KILLFOCUS) if TIMES.iter().any(|(t, _)| *t == id) => self.commit_times(page),
+            (id, EN_KILLFOCUS) if TYPED.iter().any(|(t, _)| *t == id) => self.commit_typed(page),
             _ => {}
         }
         None
@@ -497,7 +525,7 @@ impl Dialog for Planning<'_> {
 
     fn message(&self, page: HWND, message: u32, _wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
         if finishing(message, lparam) {
-            self.commit_times(page);
+            self.commit_typed(page);
             return Some(0);
         }
         None
