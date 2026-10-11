@@ -14,6 +14,7 @@ import {
   Button,
   Checkbox,
   Dialog,
+  FieldError,
   Heading,
   Input,
   Label,
@@ -33,6 +34,7 @@ import {
 import { core } from "./core";
 import { DevicesPage } from "./Devices";
 import type { ExportChoice, Setting } from "./core";
+import { remindersOn, setRemindersOn } from "./Reminders";
 import { say } from "./say";
 
 /** Offers `data` as a file to save, called `name`. */
@@ -89,22 +91,34 @@ export function Settings(props: {
 
 function Planning(props: { revision: number }) {
   const [settings, setSettings] = useState<Setting[]>([]);
+  // Reminders on this device, which a browser keeps itself: the core's name and hint for it.
+  const [reminders, setReminders] = useState<Setting | undefined>();
+  const [on, setOn] = useState(remindersOn());
   // What is typed in a text field and not yet applied, by key.
   const [typed, setTyped] = useState<Record<string, string>>({});
+  // What the core said is wrong with what was typed, shown at its field, by key.
+  const [problems, setProblems] = useState<Record<string, string>>({});
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
     void core.settings().then((all) => {
       const shown = all.filter((setting) => setting.syncs);
       setSettings(shown);
-      setTyped(Object.fromEntries(shown.map((setting) => [setting.key, setting.value])));
+      setReminders(all.find((setting) => setting.key === "reminders"));
+      setTyped((now) => ({
+        ...Object.fromEntries(shown.map((setting) => [setting.key, setting.value])),
+        // A refused line stays as typed, beside what was wrong with it.
+        ...Object.fromEntries(Object.keys(problems).map((key) => [key, now[key] ?? ""])),
+      }));
     });
   }, [props.revision, reload]);
 
   const set = async (key: string, value: string) => {
     try {
       say(await core.setSetting(key, value));
+      setProblems(({ [key]: _gone, ...rest }) => rest);
     } catch (error) {
+      setProblems((now) => ({ ...now, [key]: (error as Error).message }));
       say((error as Error).message);
     }
     setReload((r) => r + 1);
@@ -153,6 +167,8 @@ function Planning(props: { revision: number }) {
         key={key}
         className="field"
         value={typed[key] ?? ""}
+        isInvalid={problems[key] !== undefined}
+        validationBehavior="aria"
         onChange={(text) => setTyped((now) => ({ ...now, [key]: text }))}
         // Applied when the field is left, as the desktop apps' are.
         onBlur={() => {
@@ -169,6 +185,7 @@ function Planning(props: { revision: number }) {
             {description}
           </Text>
         )}
+        <FieldError>{problems[key]}</FieldError>
       </TextField>
     );
   };
@@ -177,6 +194,23 @@ function Planning(props: { revision: number }) {
     <>
       {settings.map(control)}
       <p className="quiet">These sync to all your devices.</p>
+      {reminders && (
+        <div>
+          <Checkbox
+            className="check"
+            isSelected={on}
+            onChange={(checked) => {
+              setRemindersOn(checked);
+              setOn(checked);
+              say(checked ? "Reminders are on in this browser" : "Reminders are off in this browser");
+            }}
+          >
+            <span className="box" aria-hidden="true" />
+            {reminders.title}
+          </Checkbox>
+          {reminders.hint && <p className="quiet">{reminders.hint} Reminders are given while Lumenna is open in this tab.</p>}
+        </div>
+      )}
     </>
   );
 }

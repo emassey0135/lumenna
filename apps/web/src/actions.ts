@@ -10,6 +10,7 @@
 import { core } from "./core";
 import type { Action, ActionKind, Question } from "./core";
 import { ask, choose, confirm, pick } from "./Prompts";
+import { showReminders } from "./Reminders";
 import { say } from "./say";
 
 /** What an action did: what to say, and whether anything changed. */
@@ -47,6 +48,11 @@ export async function perform(
       case "immediate":
         return await core.act(action, { answer: "yes" });
       case "form":
+        // A task's or block's reminders are the same list wherever it is offered.
+        if (action.kind === "reminders") {
+          await showReminders(action);
+          return undefined;
+        }
         return (await form?.(action)) || undefined;
       case "confirm":
         if (!(await confirm(q.title, q.message, await core.sentence(q.yes)))) return undefined;
