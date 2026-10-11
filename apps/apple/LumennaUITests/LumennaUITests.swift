@@ -295,6 +295,15 @@ final class LumennaUITests: XCTestCase {
                issue.detailedDescription.contains("SwiftUI") {
                 return true
             }
+            // The same finding against a `NamedRow`'s hidden name, which the audit sees drawn
+            // but cannot resolve to an element: reported with no element, so its description
+            // names no SwiftUI node, beside the "Potentially inaccessible text" above, and only
+            // in some runs (the Planning page on iPad passed at 69fbcb7 and failed at the same
+            // commit an hour later). Only on those screens, only with no element.
+            if namedRows, issue.element == nil, issue.auditType == .dynamicType,
+               issue.compactDescription.contains("partially") {
+                return true
+            }
             let element = issue.element.map { "\($0.elementType.rawValue) '\($0.label)' \($0.frame)" }
             let finding = "\(issue.compactDescription) — \(issue.detailedDescription) [\(element ?? "unnamed element")]"
             issues.append(finding)
