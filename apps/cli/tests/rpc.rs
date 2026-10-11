@@ -520,6 +520,7 @@ fn only_one_client_gives_reminders_and_the_next_waits_its_turn() {
     assert!(line.contains(r#""result":"due_reminders""#), "{line}");
     let second = rpc.talk(&[deliver]);
     assert!(second.contains("Another app on this device gives reminders"), "{second}");
+    assert!(second.contains(r#""elsewhere":true"#), "a flag to act on, not only prose: {second}");
     drop(first.stdin.take());
     first.wait().unwrap();
     let after = rpc.talk(&[deliver]);

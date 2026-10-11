@@ -682,6 +682,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
                     due: Vec::new(),
                     missed: Vec::new(),
                     missed_summary: String::new(),
+                    elsewhere: true,
                 }),
             }
         }

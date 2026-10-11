@@ -75,6 +75,10 @@ pub struct DueReminders {
     /// started, Call the bank was due." Empty when nothing was missed.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub missed_summary: String,
+    /// Whether another process on this device gives reminders, so this one gives none: ask
+    /// again every few seconds, to take over when it stops.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub elsewhere: bool,
 }
 
 crate::announced!(DueReminders, ReminderList);
@@ -259,6 +263,7 @@ impl Lumenna {
                 due: Vec::new(),
                 missed: Vec::new(),
                 missed_summary: String::new(),
+                elsewhere: false,
             });
         }
         let device = self.reminder_device();
@@ -290,6 +295,7 @@ impl Lumenna {
                 due,
                 missed,
                 missed_summary,
+                elsewhere: false,
             })
         })
     }
