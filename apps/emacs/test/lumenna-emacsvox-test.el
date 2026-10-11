@@ -103,6 +103,20 @@
         (should (eq (plist-get keys :module) 'lumenna)))
       (should (null icons)))))
 
+(ert-deftest lumenna-emacsvox-a-reminder-is-one-notification-with-its-event ()
+  (skip-unless lumenna-emacsvox-test--lisp)
+  (let ((lumenna-announce-function #'lumenna-emacsvox-announce)
+        (lumenna-reminders--waiting nil)
+        submitted)
+    (cl-letf (((symbol-function 'emacsvox-aural-submit-notification)
+               (lambda (content &rest keys) (push (cons content keys) submitted)))
+              ((symbol-function 'lumenna-reminders--desktop-p) #'ignore))
+      (lumenna-reminders--give '(:due [(:key "k" :occurrence "2030-01-15" :title "Deep work"
+                                         :text "Deep work starts in 5 minutes")])))
+    (should (equal submitted '(("Deep work starts in 5 minutes"
+                                :facts (:role lumenna-reminder :event lumenna-reminder-due)
+                                :module lumenna :occasion state-change))))))
+
 (provide (quote lumenna-emacsvox-test))
 
 ;;; lumenna-emacsvox-test.el ends here

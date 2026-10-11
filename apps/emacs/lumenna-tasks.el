@@ -297,6 +297,7 @@ RET or r restores one; d deletes it from the trash, asking first.
    ("t" "Move to Top Level" lumenna-act-move-to-top)
    ("w" "Wait For" lumenna-act-wait-for)
    ("W" "Stop Waiting" lumenna-act-stop-waiting)
+   ("R" "Reminders" lumenna-act-reminders)
    ("d" "Move to Trash" lumenna-act-delete)))
 
 (lumenna-define-keys lumenna-task-mode
@@ -309,6 +310,7 @@ RET or r restores one; d deletes it from the trash, asking first.
    ("t" "Move to Top Level" lumenna-act-move-to-top)
    ("w" "Wait For" lumenna-act-wait-for)
    ("W" "Stop Waiting" lumenna-act-stop-waiting)
+   ("R" "Reminders" lumenna-act-reminders)
    ("d" "Move to Trash" lumenna-act-delete)))
 
 (lumenna-define-keys lumenna-trash-mode

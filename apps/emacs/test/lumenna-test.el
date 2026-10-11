@@ -39,6 +39,7 @@
           (lumenna-lum-program (lumenna-test--lum))
           (process-environment (cons (concat "LUMENNA_BACKUP_DIR=" profile "/backups") process-environment))
           (lumenna--connection nil)
+          (lumenna-reminders-start-automatically nil)
           (lumenna-announce-function #'ignore))
      (skip-unless (file-executable-p lumenna-lum-program))
      (unwind-protect
@@ -80,6 +81,116 @@
 
 (defun lumenna-test--line ()
   (buffer-substring-no-properties (line-beginning-position) (line-end-position)))
+
+;;;; Reminders
+
+(defun lumenna-test--deliver ()
+  "Ask what came due, as the timer does, and wait for the answer."
+  (lumenna-reminders-deliver)
+  (while lumenna-reminders--asking (accept-process-output nil 0.05)))
+
+(defmacro lumenna-test--reminding (&rest body)
+  "Run BODY against a fresh store in UTC, delivering at `now', a variable BODY sets.
+`said' collects what was announced and `shown' each desktop notification."
+  (declare (indent 0))
+  `(let ((process-environment (cons "TZ=UTC" process-environment)))
+     (lumenna-test--with-store
+       (let* ((now "2030-01-15T08:50:00Z")
+              (lumenna-reminders--now (lambda () now))
+              (lumenna-reminders--waiting nil)
+              said shown)
+         (cl-letf (((symbol-function 'lumenna-reminders--desktop-p) (lambda () t))
+                   ((symbol-function 'notifications-notify) (lambda (&rest params) (push params shown) 1)))
+           (let ((lumenna-announce-function (lambda (announcement _notices) (push announcement said))))
+             ,@body))))))
+
+(ert-deftest lumenna-a-reminder-is-said-once-shown-with-the-cores-buttons-and-dismissed ()
+  (lumenna-test--reminding
+    (lumenna-write "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "2030-01-15")
+    (setq said nil)
+    (lumenna-test--deliver)
+    (should-not said)
+    (setq now "2030-01-15T08:55:30Z")
+    (lumenna-test--deliver)
+    (should (equal said '("Deep work starts in 5 minutes — nothing assigned yet")))
+    (let ((notification (car shown)))
+      (should (= (length shown) 1))
+      (should (equal (plist-get notification :title) "Deep work"))
+      (should (equal (plist-get notification :actions)
+                     '("dismiss" "Dismiss" "snooze" "Snooze 10 Minutes" "default" "Deep work")))
+      (setq now "2030-01-15T08:56:00Z")
+      (lumenna-test--deliver)
+      (should (= (length said) 1))
+      (funcall (plist-get notification :on-action) 1 "dismiss"))
+    (should (equal (car said) "Dismissed"))
+    (should-not lumenna-reminders--waiting)
+    (should-not (append (plist-get (lumenna-call "reminder.due" :since "2030-01-15T08:50:00Z"
+                                                 :now "2030-01-15T08:59:00Z")
+                                   :due)
+                        nil))))
+
+(ert-deftest lumenna-what-came-while-nothing-ran-is-one-summary-dismissed-from-the-due-list ()
+  (lumenna-test--reminding
+    (lumenna-write "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "2030-01-15")
+    (lumenna-test--deliver)
+    (setq now "2030-01-15T09:30:00Z" said nil)
+    (lumenna-test--deliver)
+    (should (equal said '("1 reminder missed: Deep work started.")))
+    (should (equal (plist-get (car shown) :actions) '("dismiss" "Dismiss")))
+    (lumenna-reminders-due)
+    (lumenna-test--goto "1 reminder missed")
+    (lumenna-reminders-dismiss)
+    (goto-char (point-min))
+    (should (equal (lumenna-test--line) "Reminders due"))
+    (forward-line 1)
+    (should (equal (lumenna-test--line) "Nothing has come due"))))
+
+(ert-deftest lumenna-a-blocks-reminders-are-listed-added-by-a-phrase-and-removed ()
+  (lumenna-test--with-store
+    (lumenna-write "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "tomorrow")
+    (lumenna-blocks)
+    (lumenna-test--goto "Deep work")
+    (lumenna-act-reminders)
+    (should (equal (buffer-name) "*Lumenna reminders: Deep work*"))
+    (goto-char (point-min))
+    (should (equal (lumenna-test--line) "1 reminder, the defaults"))
+    (forward-line 1)
+    (should (equal (lumenna-test--line) "5 minutes before it starts, a default"))
+    (let ((answers '("when it feels right" "10m after end")) prompts)
+      (cl-letf (((symbol-function 'read-string) (lambda (prompt &rest _) (push prompt prompts) (pop answers))))
+        (lumenna-reminders-add))
+      (should (= (length prompts) 2))
+      (should (string-prefix-p "'when it feels right' is not a reminder" (car prompts))))
+    (goto-char (point-min))
+    (should (equal (lumenna-test--line) "1 reminder"))
+    (lumenna-test--goto "10 minutes after it ends")
+    (lumenna-act-delete)
+    (goto-char (point-min))
+    (should (equal (lumenna-test--line) "1 reminder, the defaults"))))
+
+(ert-deftest lumenna-a-task-offers-reminders-once-it-is-due ()
+  (lumenna-test--with-store
+    (lumenna-write "task.add" :text "someday")
+    (lumenna-write "task.add" :text "call the bank tomorrow at 3pm")
+    (lumenna-tasks)
+    (lumenna-test--goto "someday")
+    (should-error (lumenna-act-reminders) :type 'user-error)
+    (lumenna-test--goto "call the bank")
+    (lumenna-act-reminders)
+    (should (equal (buffer-name) "*Lumenna reminders: call the bank*"))))
+
+(ert-deftest lumenna-a-default-reminder-the-core-refuses-is-asked-again-with-its-sentence ()
+  (lumenna-test--with-store
+    (lumenna-settings)
+    (lumenna-test--goto "Reminders for a block")
+    (let ((answers '("at the end of time" "at end")) prompts)
+      (cl-letf (((symbol-function 'read-string) (lambda (prompt initial &rest _) (push (cons prompt initial) prompts) (pop answers))))
+        (lumenna-activate))
+      (should (= (length prompts) 2))
+      (should (string-match-p "not a reminder\\|not 'the" (car (car prompts))))
+      (should (equal (cdr (car prompts)) "at the end of time")))
+    (should (equal (plist-get (aref (plist-get (lumenna-call "config.get" :key "default-block-reminders") :settings) 0) :value)
+                   "at end"))))
 
 ;;;; Tasks
 

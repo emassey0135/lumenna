@@ -77,6 +77,24 @@ delete, `M-p`/`M-n` reorder, and the rest in `?`). `M-x lumenna` lists the place
 app's sidebar does, each project, label and filter under its heading. Settings, devices and
 pairing are in `lumenna-settings` and `lumenna-devices`.
 
+## Reminders
+
+While Emacs runs, `lumenna-reminders-mode` gives this device's reminders: every twenty
+seconds, and on coming back to Emacs, what came due is said in the echo area (or on
+Emacsvox's notification lane, with its alarm cue; Emacspeak plays its alarm icon) and, where
+Emacs has D-Bus and a notification service, shown as a desktop notification whose buttons
+are the core's Dismiss and Snooze. It starts on the first connection unless
+`lumenna-reminders-start-automatically` is nil, and gives way to whatever else on the device
+already gives reminders — the Mac, GTK or Windows app, or `lum notify` — so a reminder is
+never said twice. What came while nothing ran is one summary.
+
+`C-c l r` (`lumenna-reminders-due`) lists what came due and was not dealt with: `d`
+dismisses one and `z` snoozes it, on every device; RET opens what it is about. On a task with
+a due date or a block, `R` lists its reminders: `a` adds one by a phrase (`5m before start`,
+`at end`, `30m before`), asked again with the core's sentence if it cannot be read, and `d`
+removes one of its own. The defaults for every task and block, and Reminders on this device,
+are in Settings.
+
 ## Speech
 
 Three layers, each used only where it can be:

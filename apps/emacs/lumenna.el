@@ -62,6 +62,10 @@ is nil."
   "Called with START, END and the ROW plist after each row is drawn.
 `lumenna-emacsvox' uses this to attach semantic facts to the line.")
 
+(defvar lumenna-connected-hook nil
+  "Run after a connection to Lumenna is opened and checked.
+`lumenna-reminders' starts giving reminders from here.")
+
 (defvar lumenna-changed-functions nil
   "Called with the EVENT and its RESULT after a change succeeds.
 EVENT is the RPC method, or for an action SUBJECT/KIND, as \"task/mark_done\".
@@ -153,7 +157,8 @@ The daemon's socket if it answers, else a `lum rpc' of its own."
           (jsonrpc-shutdown connection)
           (user-error "This client reads version %s of Lumenna's data and `lum' speaks version %s; update whichever is older"
                       lumenna-contract (plist-get server :contract))))
-      (setq lumenna--connection connection)))
+      (setq lumenna--connection connection)
+      (run-hooks 'lumenna-connected-hook)))
   lumenna--connection)
 
 (defun lumenna-disconnect ()
@@ -642,6 +647,8 @@ To the trash, from the trash, out of a block, or a device unpaired.")
   "Move what is at point one place down among its siblings.")
 (lumenna-define-action lumenna-act-move-to-top ("move_to_top_level")
   "Take what is at point out from under its parent.")
+(lumenna-define-action lumenna-act-reminders ("reminders")
+  "List the reminders of the task or block at point, to add or remove one.")
 
 (defun lumenna--outline-level ()
   "The outline level of the line at point: the item's depth, below the heading."
@@ -1031,7 +1038,8 @@ And Settings, which is this client's.")
    ("/" "Search or filter" lumenna-search)
    ("u" "Undo" lumenna-undo)
    ("y" "Redo" lumenna-redo)
-   ("n" "Sync now" lumenna-sync-now))
+   ("n" "Sync now" lumenna-sync-now)
+   ("r" "Reminders due" lumenna-reminders-due))
   ("Settings"
    ("d" "Devices and sync" lumenna-devices)
    ("s" "Settings" lumenna-settings))
@@ -1050,6 +1058,7 @@ And Settings, which is this client's.")
 (require 'lumenna-day)
 (require 'lumenna-organise)
 (require 'lumenna-settings)
+(require 'lumenna-reminders)
 (require 'lumenna-voice)
 (with-eval-after-load 'emacsvox-aural-submission
   (require 'lumenna-emacsvox))

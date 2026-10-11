@@ -43,7 +43,8 @@
     ("sitting/unassign" . delete-object)
     ("sitting/start_timer" . open-object)
     ("sitting/resume_timer" . open-object)
-    ("sitting/stop_timer" . close-object))
+    ("sitting/stop_timer" . close-object)
+    ("reminder/due" . alarm))
   "The sound each kind of change plays, by the action that made it: SUBJECT/KIND.")
 
 (defun lumenna-voice--sound (event _result)

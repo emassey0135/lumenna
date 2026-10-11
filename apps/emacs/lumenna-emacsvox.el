@@ -43,7 +43,9 @@
     (lumenna-deleted :kind event :summary "A Lumenna task, block or sitting was deleted"
                      :roles (lumenna-task lumenna-block lumenna-sitting))
     (lumenna-timer-started :kind event :summary "A Lumenna sitting's timer started" :roles (lumenna-sitting))
-    (lumenna-timer-stopped :kind event :summary "A Lumenna sitting's timer stopped" :roles (lumenna-sitting)))
+    (lumenna-timer-stopped :kind event :summary "A Lumenna sitting's timer stopped" :roles (lumenna-sitting))
+    (lumenna-reminder :kind role :summary "A Lumenna reminder, given as it comes due")
+    (lumenna-reminder-due :kind event :summary "A Lumenna reminder came due" :roles (lumenna-reminder)))
   "What Lumenna's facts mean, registered with Emacsvox and owned by Lumenna.")
 
 (defconst lumenna-emacsvox-events
@@ -55,7 +57,8 @@
     ("sitting/unassign" lumenna-sitting lumenna-deleted delete-object)
     ("sitting/start_timer" lumenna-sitting lumenna-timer-started open-object)
     ("sitting/resume_timer" lumenna-sitting lumenna-timer-started open-object)
-    ("sitting/stop_timer" lumenna-sitting lumenna-timer-stopped close-object))
+    ("sitting/stop_timer" lumenna-sitting lumenna-timer-stopped close-object)
+    ("reminder/due" lumenna-reminder lumenna-reminder-due alarm))
   "Each change, by the action that made it (SUBJECT/KIND): its role, event and cue.")
 
 (defun lumenna-emacsvox--register ()

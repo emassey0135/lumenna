@@ -317,6 +317,7 @@ today the next whole hour, another day when the day starts."
    ("i" "Assign a Task" lumenna-act-assign)
    ("x" "Cancel This Day" lumenna-act-cancel-day)
    ("o" "Restore This Day" lumenna-act-restore)
+   ("R" "Reminders" lumenna-act-reminders)
    ("d" "Delete Block, or a sitting's Unassign" lumenna-act-delete))
   ("A task in a block"
    ("RET" "The task itself" lumenna-activate)
@@ -328,6 +329,7 @@ today the next whole hour, another day when the day starts."
 (lumenna-define-keys lumenna-blocks-mode
   ("The block at point"
    ("e" "Edit Block" lumenna-act-edit)
+   ("R" "Reminders" lumenna-act-reminders)
    ("d" "Delete Block" lumenna-act-delete)))
 
 (provide 'lumenna-day)
