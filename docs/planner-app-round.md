@@ -97,3 +97,26 @@ on the Planning page after the day window and week start.
 - Never change `crates/`. If the core lacks something or a word is wrong, say so to
   `lumenna-f0` with SendMessage and carry on with the rest.
 - Update your app's CLAUDE.md section for anything non-obvious.
+
+## Second round (a01960e)
+
+Two more, on the screens and notifications built in the first round.
+
+### 9. Other options on the Replan screen
+
+`Replan::alternatives` is a list (at most three) of `ReplanAlternative { sentence, pins }`:
+"Skip Lunch today, your only break left today. Then nothing else needs to change." Show
+them under the heading `proposal_words(replan).others` ("Other options"), each as a button
+(or a row with an action) whose name is its `sentence`. Choosing one calls
+`replan(style, alternative.pins, None)` and shows that proposal in place, saying its
+`announcement`, as after a partial apply. A proposal with no alternatives shows no heading.
+Plan the Day's `others` is empty: it has none.
+
+### 10. The overrun warning's Replan button
+
+A reminder can now be a block's work outrunning its time: "Deep work has 25 minutes left and
+40 minutes of work planned, more than it holds." Its `DueReminder::replan` is a button title
+("Replan") or empty. Where it is set, give the notification that button beside Dismiss and
+Snooze; it opens the app at the Replan from Now screen (the app comes to the front where the
+platform needs that). Where the app lists due reminders itself (web, Emacs, BTSpeak), offer it
+there. Test what can be tested; say what cannot.
