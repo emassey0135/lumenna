@@ -194,4 +194,62 @@ class ReminderScheduleTest {
             manager.cancel(review.id, 1)
         }
     }
+
+    // MARK: - Catching up after the device was off
+
+    /** What the app showed, as the alarm receiver records it. */
+    private class Shown(vararg ids: String) : ShownReminders {
+        val ids = ids.toMutableSet()
+        override fun all(): Set<String> = ids.toSet()
+        override fun forget(told: Set<String>) {
+            ids -= told
+        }
+    }
+
+    /**
+     * The device off since an hour ago: what the core last heard of catching up is put back an
+     * hour, as a phone switched off then would have left it.
+     */
+    private fun offSinceAnHourAgo() {
+        val file = File(directory, "device-settings")
+        val kept = file.takeIf { it.exists() }?.readLines().orEmpty().filter { !it.startsWith("reminders-caught-up\t") }
+        file.writeText((kept + "reminders-caught-up\t${Instant.now().minus(Duration.ofHours(1))}").joinToString("\n") + "\n")
+    }
+
+    @Test
+    fun aFiringNotShownWhileTheDeviceWasOffComesBackOnce() {
+        val catchUp = ReminderCatchUp(core.lumenna, Shown())
+        assertTrue("the first time, nothing", catchUp.catchUp().due.isEmpty())
+        offSinceAnHourAgo()
+        // Its default fired two or three minutes ago, while the device was off.
+        blockIn("Deep work", 3)
+        val found = catchUp.catchUp()
+        assertEquals(listOf("Deep work"), found.due.map { it.title })
+        assertTrue(found.missedSummary.isEmpty())
+        assertTrue("caught up once", catchUp.catchUp().due.isEmpty())
+    }
+
+    @Test
+    fun aFiringTheAppShowedIsNotCaughtUpAndIsForgottenOnceTold() {
+        val first = ReminderCatchUp(core.lumenna, Shown())
+        first.catchUp()
+        offSinceAnHourAgo()
+        blockIn("Deep work", 3)
+        val fired = core.lumenna.remindersDue(Instant.now().minus(Duration.ofHours(1)).toString(), null).due.single()
+        val shown = Shown("${fired.key}@${fired.occurrence}")
+        assertTrue(ReminderCatchUp(core.lumenna, shown).catchUp().due.isEmpty())
+        assertTrue("told, so forgotten", shown.ids.isEmpty())
+    }
+
+    @Test
+    fun whatWasMissedLongAgoComesAsOneSummary() {
+        val catchUp = ReminderCatchUp(core.lumenna, Shown())
+        catchUp.catchUp()
+        offSinceAnHourAgo()
+        blockIn("Deep work", -30)
+        val found = catchUp.catchUp()
+        assertTrue(found.due.isEmpty())
+        assertEquals("1 reminder missed: Deep work started.", found.missedSummary)
+        assertEquals(found.missedSummary, Reminders.summary(context, found.missedSummary).extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+    }
 }
