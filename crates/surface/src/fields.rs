@@ -334,3 +334,53 @@ mod tests {
         assert_eq!(sentence_case("Export JSON, Complete".to_owned()), "Export JSON, complete");
     }
 }
+
+/// Every word of a proposal's screen: Replan from Now's or Plan the Day's.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+pub struct ProposalWords {
+    /// The screen's title.
+    pub title: String,
+    /// What a change in the list is, as its check box's name says it: "Make this change".
+    pub item: String,
+    /// The button that makes the changes checked.
+    pub apply: String,
+    /// The button that closes the screen, making nothing.
+    pub cancel: String,
+    /// Under the list: what becomes of a change left unchecked.
+    pub hint: String,
+    /// Said, and shown in place of the list, when nothing is proposed.
+    pub nothing: String,
+    /// The heading over what does not fit.
+    pub unfit: String,
+}
+
+/// The words of `kind`'s screen: [`ActionKind::Replan`](crate::ActionKind::Replan) or
+/// [`ActionKind::PlanDay`](crate::ActionKind::PlanDay); any other kind has Replan's.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+#[must_use]
+pub fn proposal_words(kind: crate::ActionKind) -> ProposalWords {
+    match kind {
+        crate::ActionKind::PlanDay => ProposalWords {
+            title: "Plan the Day".to_owned(),
+            item: "Plan this".to_owned(),
+            apply: "Plan the Ones Checked".to_owned(),
+            cancel: "Cancel".to_owned(),
+            hint: "A sitting left unchecked stays out of its block, and the day is planned again around it.".to_owned(),
+            nothing: "There is nothing to plan.".to_owned(),
+            unfit: "Due, and fits in no block".to_owned(),
+        },
+        _ => ProposalWords {
+            title: "Replan from Now".to_owned(),
+            item: "Make this change".to_owned(),
+            apply: "Make the Changes Checked".to_owned(),
+            cancel: "Cancel".to_owned(),
+            hint: "A change left unchecked is not made: what it would move stays where it is, and the rest of the day is \
+                   proposed again around it."
+                .to_owned(),
+            nothing: "Nothing needs to change: the rest of the day still fits.".to_owned(),
+            unfit: "Does not fit".to_owned(),
+        },
+    }
+}

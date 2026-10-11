@@ -65,7 +65,10 @@ use lumenna_core::edit;
 use lumenna_core::snapshot::Snapshot;
 use lumenna_store::Store;
 
-pub use fields::{unsayable_repeat_note, FieldKind, FormField, PairingWords, block_form, pairing_words, sentence_case, task_form};
+pub use fields::{
+    unsayable_repeat_note, FieldKind, FormField, PairingWords, ProposalWords, block_form, pairing_words, proposal_words, sentence_case,
+    task_form,
+};
 pub use history::{TaskHistory, UrgencyTerm};
 pub use dayplan::{DayPins, DayPlan, DayPlanned, ProposedSitting};
 pub use replan::{Replan, ReplanChange, ReplanPins, Replanned, TimeStyle};

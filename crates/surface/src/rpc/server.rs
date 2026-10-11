@@ -694,6 +694,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
             maybe_bool(params, "local")?.unwrap_or(true),
         ))),
         "form.go_to_day" => Response::new(Derived::of(crate::go_to_day_question())),
+        "form.proposal" => Response::new(Derived::of(crate::proposal_words(record(params, "kind")?))),
         "form.new_filter" => Response::new(Derived::of(crate::new_filter_questions())),
         // Reminders: what to give, a target's own, and dealing with one firing.
         // What to give now, for a client that gives this device's reminders (BTSpeak's service,
