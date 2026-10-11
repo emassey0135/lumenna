@@ -57,6 +57,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func sceneWillEnterForeground(_ scene: UIScene) {
         core?.timeZoneMayHaveChanged()
         core?.backUpIfDue(presentingFrom: window?.rootViewController)
+        // What fired past the window last handed over, then the window moved on.
+        AppDelegate.reminders?.rearm(catchingUp: true)
         NotificationCenter.default.post(name: Core.changed, object: core)
     }
 

@@ -80,7 +80,7 @@ enum BackgroundSync {
             // carries the two-day window forward while the app is not opened.
             let reminders = AppDelegate.reminders
             guard let reminders else { return finish((try? result.get()) != nil) }
-            reminders.rearm { finish((try? result.get()) != nil) }
+            reminders.rearm(catchingUp: true) { finish((try? result.get()) != nil) }
         }
     }
 }

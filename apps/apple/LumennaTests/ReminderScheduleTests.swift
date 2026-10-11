@@ -163,6 +163,47 @@ final class ReminderScheduleTests: XCTestCase {
         XCTAssertTrue(delivery.deliver(now: Reminders.rfc3339(fire.addingTimeInterval(120))).isEmpty, "given once")
     }
 
+    /// Sets this device's own settings as an earlier run left them, in the file the core
+    /// keeps them in: what moments in the past cannot be made any other way.
+    private func deviceSettings(_ values: [String: String]) throws {
+        let profile = try Core.profileDirectory()
+        let file = profile.appendingPathComponent("device-settings")
+        let kept = ((try? String(contentsOf: file, encoding: .utf8)) ?? "")
+            .split(separator: "\n").map(String.init)
+            .filter { line in !values.keys.contains { line.hasPrefix("\($0)\t") } }
+        let lines = kept + values.map { "\($0.key)\t\($0.value)" }
+        try (lines.joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
+    }
+
+    func testAFiringPastTheArmedWindowIsCaughtUpAndShownOnce() throws {
+        // One fired three minutes ago, recent enough to say as it is; one half an hour ago,
+        // said in the summary. Both after the window last handed over ended.
+        try block("Stand-up", inMinutes: 2)
+        try block("Deep work", inMinutes: -25)
+        let schedule = ReminderSchedule(lumenna: core.lumenna, centre: centre)
+        XCTAssertTrue(schedule.catchUp().isEmpty, "the first time, nothing is owed")
+        let hoursAgo = { (hours: Double) in Reminders.rfc3339(Date().addingTimeInterval(-hours * 3600)) }
+        // As if last armed two hours ago, for a window that ran out an hour ago.
+        try deviceSettings(["reminders-caught-up": hoursAgo(2), "reminders-armed-until": hoursAgo(1)])
+        let shown = schedule.catchUp()
+        XCTAssertEqual(shown.count, 2, "\(shown.map(\.content.body))")
+        let fresh = try XCTUnwrap(shown.first { $0.content.title == "Stand-up" })
+        XCTAssertNil(fresh.trigger, "shown at once")
+        XCTAssertEqual(fresh.content.categoryIdentifier, Reminders.category, "with Dismiss and Snooze")
+        let summary = try XCTUnwrap(shown.first { $0.content.title.isEmpty })
+        XCTAssertEqual(summary.content.body, "1 reminder missed: Deep work started.")
+        XCTAssertTrue(schedule.catchUp().isEmpty, "shown once")
+    }
+
+    func testAFiringWithinTheArmedWindowIsTheSystemsToShowAndNotCaughtUp() throws {
+        try block("Stand-up", inMinutes: 2)
+        let schedule = ReminderSchedule(lumenna: core.lumenna, centre: centre)
+        schedule.catchUp()
+        let hoursAgo = { (hours: Double) in Reminders.rfc3339(Date().addingTimeInterval(-hours * 3600)) }
+        try deviceSettings(["reminders-caught-up": hoursAgo(2), "reminders-armed-until": hoursAgo(-40)])
+        XCTAssertTrue(schedule.catchUp().isEmpty, "the system kept what it was handed")
+    }
+
     func testABlocksReminderListShowsTheDefaultThenItsOwnWhichSwipesRemove() throws {
         let (series, _) = try block("Deep work", inMinutes: 120)
         let list = RemindersViewController(core: core, target: series)

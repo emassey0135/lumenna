@@ -32,7 +32,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
             self.responder = responder
             let reminders = ReminderSchedule(lumenna: core.lumenna)
             reminders.follow()
-            reminders.rearm()
+            reminders.rearm(catchingUp: true)
             Self.reminders = reminders
         }
         return true
