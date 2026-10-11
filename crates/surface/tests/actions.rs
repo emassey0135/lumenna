@@ -170,12 +170,13 @@ fn a_weight_starts_from_the_projects_own() {
     assert_eq!(initial, "1.5");
 }
 
+/// A block the whole of today, so it is under way whenever the test runs.
 fn day_block(lumenna: &Lumenna, title: &str, repeat: Option<&str>) {
     lumenna
         .add_block(NewBlock {
             title: title.to_owned(),
             at: "00:00".to_owned(),
-            minutes: 1439,
+            minutes: 1440,
             date: Some("today".to_owned()),
             kind: "work".to_owned(),
             repeat: repeat.map(str::to_owned),
@@ -325,7 +326,7 @@ fn a_blocks_list_row_says_when_as_a_task_says_due_with_the_start_for_the_clients
     let deep = rows.iter().find(|r| r.title == "Deep work").unwrap();
     assert_eq!(deep.due.as_deref(), Some("every day"));
     assert_eq!(deep.due_time.as_deref(), Some("00:00"));
-    assert_eq!(deep.value.as_deref(), Some("23 hours 59 minutes"));
+    assert_eq!(deep.value.as_deref(), Some("24 hours"));
     let dentist = rows.iter().find(|r| r.title == "Dentist").unwrap();
     assert_eq!(dentist.due.as_deref(), Some("today"));
 }
@@ -393,7 +394,7 @@ fn a_block_offers_its_tasks_most_urgent_first_each_saying_why() {
     assert_eq!(titles, ["write report", "call the bank", "someday"]);
     assert_eq!(
         offered[0].reason.as_deref(),
-        Some("Suggested because overdue by 1 day, priority 1, and its estimate of 30 minutes fits the 23 hours 59 minutes left.")
+        Some("Suggested because overdue by 1 day, priority 1, and its estimate of 30 minutes fits the 24 hours left.")
     );
     assert_eq!(offered[1].reason.as_deref(), Some("Suggested because due tomorrow."));
     assert_eq!(offered[2].reason, None, "nothing to say for it");
@@ -449,17 +450,21 @@ fn the_block_under_way_ends_now_or_runs_longer_on_this_day_alone() {
     let block = lumenna.plan(None).unwrap().blocks.remove(0);
     let longer = find(&block.actions, "Add 15 Minutes");
     lumenna.act(longer, Answer::Yes).unwrap();
-    assert_eq!(lumenna.plan(None).unwrap().blocks[0].duration_mins, 1439 + 15);
+    assert_eq!(lumenna.plan(None).unwrap().blocks[0].duration_mins, 1440 + 15);
     let block = lumenna.plan(None).unwrap().blocks.remove(0);
     lumenna.act(find(&block.actions, "End Now"), Answer::Yes).unwrap();
     let ended = lumenna.plan(None).unwrap().blocks.remove(0);
-    assert!(ended.duration_mins < 1439, "as long as it has run");
+    assert!(ended.duration_mins < 1440, "as long as it has run");
     assert!(ended.changed_for_this_day);
-    assert_eq!(lumenna.plan(Some("tomorrow".to_owned())).unwrap().blocks[0].duration_mins, 1439, "other days untouched");
+    assert_eq!(lumenna.plan(Some("tomorrow".to_owned())).unwrap().blocks[0].duration_mins, 1440, "other days untouched");
 }
 
 #[test]
 fn ending_the_day_ends_what_is_under_way_and_clears_the_rest_in_one_undoable_change() {
+    // A block still to come today needs a minute of today left after now.
+    while jiff::Zoned::now().time() >= jiff::civil::time(23, 58, 0, 0) {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+    }
     let (_directory, lumenna) = open();
     day_block(&lumenna, "All day", Some("every day"));
     block_at(&lumenna, "Late call", "23:59", 1, "today", None);
@@ -471,11 +476,11 @@ fn ending_the_day_ends_what_is_under_way_and_clears_the_rest_in_one_undoable_cha
     assert_eq!(said.announcement, "Ended All day and cleared 1 block");
     let after = lumenna.plan(None).unwrap();
     assert_eq!(after.blocks.len(), 1, "the late call is in the trash");
-    assert!(after.blocks[0].duration_mins < 1439);
+    assert!(after.blocks[0].duration_mins < 1440);
     lumenna.undo().unwrap();
     let back = lumenna.plan(None).unwrap();
     assert_eq!(back.blocks.len(), 2, "one undo brings it all back");
-    assert_eq!(back.blocks[0].duration_mins, 1439);
+    assert_eq!(back.blocks[0].duration_mins, 1440);
 }
 
 #[test]

@@ -40,10 +40,17 @@ pub(crate) fn carries(snapshot: &Snapshot, plan: &Plan, now: &Zoned) -> BTreeSet
 }
 
 /// What can be done to today itself, while something is left of it.
-pub(crate) fn day_actions(plan: &Plan) -> Vec<Action> {
+pub(crate) fn day_actions(plan: &Plan, what_now: bool) -> Vec<Action> {
     let today = Zoned::now().date().to_string();
+    // A day still to come, or the rest of today, with a work block still ahead to fill.
+    let to_fill = plan.date >= today && plan.blocks.iter().any(|b| b.accepts_tasks && b.when != "past");
+    let plan_day = || {
+        let mut day = Action::new(ActionKind::PlanDay, Subject::Day, "Plan the Day", plan.date.clone());
+        day.question = Question::Form;
+        day
+    };
     if plan.date != today {
-        return Vec::new();
+        return if to_fill { vec![plan_day()] } else { Vec::new() };
     }
     let current = plan.blocks.iter().find(|b| b.when == "now");
     let later = plan.blocks.iter().filter(|b| b.when == "upcoming").count();
@@ -53,6 +60,18 @@ pub(crate) fn day_actions(plan: &Plan) -> Vec<Action> {
         n => format!("The {n} blocks after it are cleared for today."),
     };
     let mut actions = Vec::new();
+    if to_fill {
+        actions.push(plan_day());
+    }
+    // What is left of the day, worked out again from now: a proposal, said before it is done.
+    if current.is_some() || later > 0 {
+        actions.push(Action::new(ActionKind::Replan, Subject::Day, "Replan from Now", plan.date.clone()));
+    }
+    if what_now {
+        let mut ask = Action::new(ActionKind::WhatNow, Subject::Day, "What Should I Work On?", plan.date.clone());
+        ask.question = Question::Pick { title: "What should I work on?".to_owned(), length: None, yes: "Start".to_owned() };
+        actions.push(ask);
+    }
     if let Some(current) = current {
         let mut end = Action::new(ActionKind::EndDay, Subject::Day, "End the Day", plan.date.clone());
         end.destructive = later > 0;

@@ -114,7 +114,6 @@ fn text(response: &Response, clock: Clock) {
         | Outcome::Completions(_)
         | Outcome::Preview(_)
         | Outcome::WorkBlocks(_)
-        | Outcome::Choices(_)
         | Outcome::Places(_)
         | Outcome::Value(_)
 
@@ -123,6 +122,18 @@ fn text(response: &Response, clock: Clock) {
         | Outcome::Restore(_)
         | Outcome::Import(_) => println!("{}", response.announcement()),
         Outcome::Paired(_) => println!("{}", response.announcement()),
+        Outcome::Choices(offered) => {
+            println!("{}", response.announcement());
+            for (n, choice) in offered.choices.iter().enumerate() {
+                match &choice.detail {
+                    Some(detail) => println!("{:>3}  {}, {detail}", n + 1, choice.title),
+                    None => println!("{:>3}  {}", n + 1, choice.title),
+                }
+                if let Some(reason) = &choice.reason {
+                    println!("     {reason}");
+                }
+            }
+        }
         Outcome::Replan(proposal) => {
             println!("{}", response.announcement());
             replan_changes(proposal);

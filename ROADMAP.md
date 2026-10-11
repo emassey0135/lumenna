@@ -107,8 +107,6 @@ Built: `core::suggestions`, behind Assign a Task, each choice's `reason` its spo
 description; and Put in a Block offering only the blocks whose filter admits the task.
 Still to come:
 
-- **"What should I work on?"** from a block under way, and for filling free time: the same
-  ranking, asked for from the day.
 - **Every app showing a choice's `reason`** as its description (accessible description,
   hint, or a second line).
 
@@ -118,11 +116,8 @@ Built (`day.rs`, `lum end`, `extend`, `end-day`, `clear-day`, `carry`): End Now 
 Minutes on the block under way, End the Day and Clear the Rest of the Day, and Carry Forward
 on a sitting left short of its planned time, each one undoable change. Still to come:
 
-- **Offering it at the block's end**: "Deep work ended. Essay draft: 40 of 90 minutes. Carry
-  the remaining 50 to tomorrow's Deep work?", as the block-end reminder's own action, with
-  the next block whose filter admits the task chosen first and overfill reported. Never
-  carried automatically: the question is where "the estimate was wrong" gets noticed.
-- **Replan from now**, which is re-flow, below.
+- **Each app's notification button** for a block end's carry offer (`DueReminder::carry`),
+  built in the core with What Should I Work On? (`lum next`).
 
 ### Re-flow when the day slips
 

@@ -161,6 +161,13 @@ pub(crate) enum Command {
         #[arg(long, num_args = 0..=1, default_missing_value = "all")]
         apply: Option<String>,
     },
+    /// What to work on now: the block under way's own sittings, then what is suggested.
+    /// With --start, starts on one of them.
+    Next {
+        /// Start on this one, by its number in the list.
+        #[arg(long)]
+        start: Option<usize>,
+    },
     /// Plan a whole day: each work block still to come given its most urgent tasks until
     /// full. Says the plan, and makes it only with --apply.
     PlanDay {
@@ -172,6 +179,11 @@ pub(crate) enum Command {
         /// Make the sittings proposed: all of them, or those numbered, such as 1,3.
         #[arg(long, num_args = 0..=1, default_missing_value = "all")]
         apply: Option<String>,
+    },
+    /// Carry the rest of everything a block left short, each to the next block that takes it.
+    CarryRest {
+        /// A row number from `lum plan`, or `<block>@<date>`.
+        block: String,
     },
     /// Put the rest of a sitting's planned time in another block.
     Carry {
@@ -1073,6 +1085,18 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         }
         Command::EndDay => Response::new(profile.end_day(true)?),
         Command::ClearDay => Response::new(profile.end_day(false)?),
+        Command::Next { start } => {
+            let offered = profile.what_should_i_work_on(None)?;
+            match start {
+                None => Response::new(offered),
+                Some(n) => {
+                    let choice = offered.choices.get(n.wrapping_sub(1)).ok_or_else(|| {
+                        CliError::Message(format!("there is no {n}: {}", offered.announcement))
+                    })?;
+                    Response::new(profile.start_on(&choice.id, None)?)
+                }
+            }
+        }
         Command::PlanDay { date, leave, apply } => {
             let exclude = leave.iter().map(|row| profile.row(row, "task")).collect::<std::result::Result<Vec<_>, _>>()?;
             let pins = lumenna_surface::DayPins { exclude, declined: Vec::new() };
@@ -1099,6 +1123,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
                 }
             }
         }
+        Command::CarryRest { block } => Response::new(profile.carry_rest_forward(&profile.row(block, "block")?)?),
         Command::Carry { assignment, to } => {
             Response::new(profile.carry_forward(&profile.row(assignment, "assignment")?, &profile.row(to, "block")?)?)
         }

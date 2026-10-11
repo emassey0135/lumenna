@@ -435,7 +435,19 @@ End Now and Add 15 Minutes on the block under way (a modified day of a repeating
 block itself for a one-off), End the Day and Clear the Rest of the Day (`Plan::actions`, on
 today: later repeating blocks cancelled for today, one-offs to the trash), and Carry Forward
 on a sitting left short, its task open, to a block whose filter admits it, the old sitting
-marked Deferred.
+marked Deferred. **A block's end offers it** (`remind::falls_short`, `Firing::carry`): the
+first reminder at or after the end says it, or, with none, a firing of its own under
+`carry_key`, armed by scheduling devices from the sittings as they stand and re-armed as
+they change. Its words are the surface's `carry.rs` ("Essay: 40 minutes of 1 hour 30
+minutes. Carry the remaining 50 minutes to Admin tomorrow?", overfill said), its button
+`DueReminder::carry`, which runs `carry_rest_forward(<series>@<date>)`: every sitting to its
+next block in one change; a block with more than one short sitting offers Carry the Rest
+Forward too. **What Should I Work On?** (`whatnow.rs`, a day action and `lum next`) is a
+Pick: in a block under way its own unfinished sittings, then its suggestions; in free time
+the suggestions for the time until the next block. The answer starts on it at once, in the
+block under way or a block of its own in the free time, its timer running, one change. The
+day's Plan the Day and Replan from Now are `Question::Form`, the app's screens over
+`propose_day_plan` and `replan`.
 Re-flow is a proposal, never a change (`core::reflow`, the surface's `replan.rs`, `lum
 replan`, RPC `replan`/`replan.apply`): the work moves first (a block's last sittings beyond
 its time left go to the next block of the week that takes them, else back to the list), then
