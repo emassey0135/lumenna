@@ -9,7 +9,9 @@
 // described by its text. A change made alone can leave the day crowded, so after a partial
 // apply the core proposes again around what was left, and that is what the screen shows next;
 // it closes once nothing is left to propose. A refusal (the day moved since) is shown in the
-// screen, which asks for a new proposal.
+// screen, which asks for a new proposal. Replan from Now's other options (skipping a block,
+// each with what it costs) are buttons under the core's heading, each named by its sentence;
+// choosing one asks again with its pins and shows that proposal in place.
 
 import { useEffect, useRef, useState } from "react";
 import { Button, Checkbox, Dialog, Heading, Modal } from "react-aria-components";
@@ -148,6 +150,21 @@ function Screen(props: { of: ProposalKind; close: () => void; onChanged: () => v
     }
   };
 
+  // Another option taken: the proposal it makes, shown and said in place of this one.
+  const take = async (pins: ReplanPins) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      setProblem(undefined);
+      show(await propose(pins));
+    } catch (error) {
+      setProblem((error as Error).message);
+      say((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const nothing = proposal !== undefined && proposal.items.length === 0;
 
   return (
@@ -187,6 +204,20 @@ function Screen(props: { of: ProposalKind; close: () => void; onChanged: () => v
           <ul className="plain">
             {proposal.unfit.map((line) => (
               <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {proposal && proposal.alternatives.length > 0 && words?.others && (
+        <section aria-labelledby="proposal-others">
+          <h3 id="proposal-others">{words.others}</h3>
+          <ul className="plain">
+            {proposal.alternatives.map((other) => (
+              <li key={other.sentence}>
+                <Button isDisabled={busy} onPress={() => void take(other.pins)}>
+                  {other.sentence}
+                </Button>
+              </li>
             ))}
           </ul>
         </section>

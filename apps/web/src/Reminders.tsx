@@ -4,8 +4,8 @@
 // every twenty seconds, and on coming back to the tab, it asks the core what came due since it
 // last looked, from when it opened. Each is said through the live region, always, and shown as
 // a notification where the browser allows; acting on one is in the page, in Reminders due,
-// whose buttons are the core's Dismiss and Snooze, and at a block's end with work left short its
-// Carry Forward. When each fires and what it says are the core's; this decides nothing about
+// whose buttons are the core's Dismiss and Snooze, at a block's end with work left short its
+// Carry Forward, and when a block's work outruns its time its Replan. When each fires and what it says are the core's; this decides nothing about
 // them.
 //
 // A browser has no device settings the core can keep (no file system), so whether reminders
@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button, Dialog, Heading, Modal } from "react-aria-components";
 import { perform } from "./actions";
+import { showProposal } from "./Proposal";
 import { core } from "./core";
 import type { Action, DueReminder, ReminderList } from "./core";
 import { say } from "./say";
@@ -62,6 +63,8 @@ export interface Due {
   snooze?: string;
   /** At a block's end with work left short, the core's Carry Forward; its text asks already. */
   carry?: string;
+  /** A block's work outrunning its time: the core's Replan, which opens Replan from Now. */
+  replan?: string;
   /** What carrying forward carries: `<series>@<date>`. */
   block?: string;
   /** What dismissing it dismisses: itself, or for a summary, everything missed. */
@@ -127,6 +130,7 @@ export function useDelivery(ready: boolean, give: (due: Due[]) => void): void {
             dismiss: await sentence(reminder.dismiss),
             snooze: await sentence(reminder.snooze),
             carry: reminder.carry ? await sentence(reminder.carry) : undefined,
+            replan: reminder.replan ? await sentence(reminder.replan) : undefined,
             block: `${reminder.target}@${reminder.occurrence}`,
             firings: [reminder],
           });
@@ -160,11 +164,16 @@ export function useDelivery(ready: boolean, give: (due: Due[]) => void): void {
 /** What came due and was not dealt with, each with the core's buttons. In the banner. */
 export function RemindersDue(props: { due: Due[]; onDealt: (id: string) => void; onChanged: () => void }) {
   if (props.due.length === 0) return null;
-  const deal = async (due: Due, how: "dismiss" | "snooze" | "carry") => {
+  const deal = async (due: Due, how: "dismiss" | "snooze" | "carry" | "replan") => {
     const index = props.due.findIndex((d) => d.id === due.id);
     try {
       let said = "";
-      if (how === "carry" && due.block) {
+      if (how === "replan") {
+        // Answered only once the day is replanned: cancelled, the warning stays, and the
+        // screen gives focus back to its button. What was changed the screen has said.
+        if (!(await showProposal({ kind: "replan" }))) return;
+        for (const firing of due.firings) await core.dismissReminder(firing.key, firing.occurrence);
+      } else if (how === "carry" && due.block) {
         // The work carried on, and the firing dealt with: it has been answered.
         said = await core.carryRestForward(due.block);
         for (const firing of due.firings) await core.dismissReminder(firing.key, firing.occurrence);
@@ -196,6 +205,11 @@ export function RemindersDue(props: { due: Due[]; onDealt: (id: string) => void;
             {due.snooze && (
               <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, "snooze")}>
                 {due.snooze}
+              </Button>
+            )}
+            {due.replan && (
+              <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, "replan")}>
+                {due.replan}
               </Button>
             )}
             {due.carry && (
