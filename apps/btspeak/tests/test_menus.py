@@ -384,6 +384,8 @@ class Menus(unittest.TestCase):
         self.assertTrue(script.finished(), script.steps)
         self.assertEqual(rows[0][rows[0].index("Other options"):], [
             "Other options",
+            "Let Lunch shorten from 30 minutes to 15 minutes: 15 minutes less break. "
+            "Then Review moves from 11:00 to 11:15 and shortens from 1 hour to 45 minutes.",
             "Skip Lunch today, your only break left today. Then nothing else needs to change.",
             "Skip Review today. Then Lunch moves from 10:30 to 11:00.",
             "Cancel",

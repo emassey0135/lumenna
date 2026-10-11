@@ -902,6 +902,7 @@
                      "Review moves from 11:00 to 11:30 and shortens from 1 hour to 30 minutes, checked"
                      "Make the Changes Checked. A change left unchecked is not made: what it would move stays where it is, and the rest of the day is proposed again around it."
                      "Other options"
+                     "  Let Lunch shorten from 30 minutes to 15 minutes: 15 minutes less break. Then Review moves from 11:00 to 11:15 and shortens from 1 hour to 45 minutes."
                      "  Skip Lunch today, your only break left today. Then nothing else needs to change."
                      "  Skip Review today. Then Lunch moves from 10:30 to 11:00."
                      "Cancel")))
@@ -1032,7 +1033,8 @@
     (lumenna-replan)
     (let ((lines (lumenna-test--lines)))
       (should (equal (seq-drop (member "Other options" lines) 1)
-                     '("  Skip Lunch today, your only break left today. Then nothing else needs to change."
+                     '("  Let Lunch shorten from 30 minutes to 15 minutes: 15 minutes less break. Then Review moves from 11:00 to 11:15 and shortens from 1 hour to 45 minutes."
+                       "  Skip Lunch today, your only break left today. Then nothing else needs to change."
                        "  Skip Review today. Then Lunch moves from 10:30 to 11:00."
                        "Cancel"))))
     (lumenna-test--goto "Skip Lunch today")

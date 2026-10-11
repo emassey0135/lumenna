@@ -359,8 +359,9 @@ class WearTest {
         press("Today")
         press("Replan from now")
         assertTrue(checked("Lunch moves from"))
-        press("Review moves from", substring = true)
-        assertTrue("unchecked", !checked("Review moves from"))
+        // By its length: an other option's sentence also says Review moves, to 45 minutes.
+        press("shortens from 1 hour to 30 minutes", substring = true)
+        assertTrue("unchecked", !checked("shortens from 1 hour to 30 minutes"))
         press("Make the changes checked")
         // The list holds only the rows on screen, and the button pressed is at its foot.
         rule.waitForIdle()
@@ -427,7 +428,7 @@ class WearTest {
     @Test
     fun anotherOptionOnTheReplanScreenIsProposedInPlace() {
         replannedDay()
-        val skip = core.lumenna.replan(io.github.emassey0135.lumenna.Clock.style, io.github.emassey0135.lumenna.core.ReplanPins(emptyList(), emptyList(), emptyList()), plannerNow.value).alternatives.first()
+        val skip = core.lumenna.replan(io.github.emassey0135.lumenna.Clock.style, io.github.emassey0135.lumenna.core.ReplanPins(emptyList(), emptyList(), emptyList()), plannerNow.value).alternatives.first { it.sentence.startsWith("Skip Lunch today") }
         press("Today")
         press("Replan from now")
         said("Other options").assertExists()

@@ -839,7 +839,7 @@ class LumennaTest {
     fun anotherOptionOnTheReplanScreenIsProposedInPlaceAndSaid() {
         replannedDay()
         val proposal = core.lumenna.replan(Clock.style, io.github.emassey0135.lumenna.core.ReplanPins(emptyList(), emptyList(), emptyList()), plannerNow.value)
-        val skip = proposal.alternatives.first()
+        val skip = proposal.alternatives.first { it.sentence.startsWith("Skip Lunch today") }
         assertTrue(skip.sentence, skip.sentence.startsWith("Skip Lunch today"))
         tab("Today")
         button("Replan from now")
