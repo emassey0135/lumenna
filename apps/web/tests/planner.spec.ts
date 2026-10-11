@@ -89,6 +89,17 @@ async function crowdedDay(page: Page) {
   await addBlock(page, "Admin", "12:00", 60);
 }
 
+test("a block added over one already in the day takes focus itself", async ({ page }) => {
+  await at(page, MORNING);
+  await open(page);
+  await place(page, /^Today/);
+  await addBlock(page, "Deep work", "9:00", 120);
+  const day = page.getByRole("treegrid", { name: "The day" });
+  await expect(day.getByRole("row", { name: /Deep work/ })).toBeFocused();
+  await addBlock(page, "Lunch", "10:30", 30, "Break");
+  await expect(day.getByRole("row", { name: /Lunch/ })).toBeFocused();
+});
+
 test("the day's own actions are offered on its summary row and in Day actions, in the core's order", async ({ page }) => {
   await at(page, MORNING);
   await open(page);

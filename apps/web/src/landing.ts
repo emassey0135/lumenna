@@ -30,7 +30,10 @@ export function useLanding(
         (row) => row.dataset.key !== undefined,
       );
       const stale = rows.some((row) => !current.has(row.dataset.key!));
-      if ((stale || rows.length === 0) && keys.length > 0 && tries++ < 20) {
+      // A row just added may not be drawn yet while every row drawn is current: wait for it,
+      // or focus falls back to whatever holds the old position.
+      const missing = wanted.key !== undefined && current.has(wanted.key) && !rows.some((row) => row.dataset.key === wanted.key);
+      if ((stale || missing || rows.length === 0) && keys.length > 0 && tries++ < 20) {
         frame = requestAnimationFrame(land);
         return;
       }
