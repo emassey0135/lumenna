@@ -226,6 +226,11 @@ class ReminderScheduleTest {
         if (android.os.Build.VERSION.SDK_INT >= 31) assertTrue(notification.actions[2].actionIntent.isActivity)
     }
 
+    /**
+     * What going off decides, from what `fire` showed. Not read back from the notification
+     * manager: posting is asynchronous there (`notify` returns before the notification is
+     * listed), so a read straight after missed it about as often as not on an emulator.
+     */
     @Test
     fun anAlarmGoingOffShowsItsFiringUnlessItWasDismissedSince() {
         InstrumentationRegistry.getInstrumentation().uiAutomation
@@ -234,16 +239,41 @@ class ReminderScheduleTest {
         blockIn("Review", 120)
         val (deep, review) = ReminderSchedule(core.lumenna, Recorded()).arm()
         val manager = context.getSystemService(NotificationManager::class.java)
-        fun shown() = manager.activeNotifications.filter { it.notification.channelId == Reminders.CHANNEL }.map { it.tag }
         try {
-            Reminders.fire(context, core, deep.key, deep.occurrence, deep.at.toString())
-            assertEquals(listOf(deep.id), shown())
+            assertEquals(deep.key, Reminders.fire(context, core, deep.key, deep.occurrence, deep.at.toString())?.key)
             core.lumenna.dismissReminder(review.key, review.occurrence)
-            Reminders.fire(context, core, review.key, review.occurrence, review.at.toString())
-            assertEquals("a firing dismissed elsewhere since it was armed is not shown", listOf(deep.id), shown())
+            assertEquals(
+                "a firing dismissed elsewhere since it was armed is not shown",
+                null, Reminders.fire(context, core, review.key, review.occurrence, review.at.toString()),
+            )
         } finally {
             manager.cancel(deep.id, 1)
             manager.cancel(review.id, 1)
+        }
+    }
+
+    /**
+     * Arming takes away what was dealt with since it was shown, but only what its own store
+     * showed. The app's own store arms whenever it changes or an alarm of its own goes off, and
+     * it once took away a test store's notification as dealt with, between the test showing it
+     * and looking for it.
+     */
+    @Test
+    fun armingTakesAwayOnlyWhatItsOwnStoreShowedAndHasDealtWith() {
+        // Starting in three minutes, so its five-minute warning has gone off and been shown.
+        blockIn("Deep work", 3)
+        val deep = core.lumenna.remindersDue(Instant.now().minus(Duration.ofHours(1)).toString(), null).due.single()
+        assertEquals("a notification names the store that showed it", core.directory.path,
+            Reminders.notification(context, deep, store = core.directory.path).extras.getString("io.github.emassey0135.lumenna.store"))
+        val ours = ShownNotification("${deep.key}@${deep.occurrence}", core.directory.path)
+        val other = Core(File(context.cacheDir, "test-${UUID.randomUUID()}"))
+        try {
+            assertEquals("another store knows nothing of it, and leaves it", emptyList<String>(), Reminders.dealtWith(other, listOf(ours)))
+            assertEquals("not dealt with, it stays", emptyList<String>(), Reminders.dealtWith(core, listOf(ours)))
+            core.lumenna.dismissReminder(deep.key, deep.occurrence)
+            assertEquals(listOf(ours.tag), Reminders.dealtWith(core, listOf(ours)))
+        } finally {
+            other.directory.deleteRecursively()
         }
     }
 

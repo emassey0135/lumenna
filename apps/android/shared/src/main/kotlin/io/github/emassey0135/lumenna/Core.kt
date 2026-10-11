@@ -31,7 +31,10 @@ import kotlinx.coroutines.flow.asStateFlow
  * SQLite file, so they run on the main thread and a screen never shows a state the store has
  * moved past, as on the iPhone.
  */
-class Core(directory: File) {
+class Core(
+    /** Where the store lives: also what tells its notifications from another store's. */
+    val directory: File,
+) {
     val lumenna: Lumenna
 
     init {

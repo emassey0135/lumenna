@@ -1103,7 +1103,9 @@ gives the toolchain. Three modules: `app` (the phone), `wear` (Wear OS) and `sha
 - **An alarm going off asks the core again** (`reminders_due` over that one moment): a firing
   dismissed or done elsewhere since it was armed is not shown, and one Android held back past
   the core's few minutes is shown in its `missed` words. Each arming also takes away shown
-  notifications dealt with since on another device. Dismiss and Snooze are `ReminderReceiver`,
+  notifications dealt with since on another device, but only its own store's (a
+  notification names its store in its extras): the app's store arming took away a test
+  store's. Posting is asynchronous, so tests judge what `fire` showed, not the manager's list. Dismiss and Snooze are `ReminderReceiver`,
   not exported. A notification is a reminder's category, so Do Not Disturb decides.
 - **Notifications are asked for once** (Android 13 and later), when the person first adds a
   reminder or turns reminders on; after that the Reminders page says they are off and opens
