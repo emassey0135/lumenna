@@ -89,6 +89,44 @@ class ReminderSchedule(private val lumenna: Lumenna, private val alarms: Alarms)
     }
 }
 
+/** The firings this app has shown since the core was last told, each `<key>@<occurrence>`. */
+interface ShownReminders {
+    fun all(): Set<String>
+
+    /** Forgets [told], once the core has heard of them; any shown since stay. */
+    fun forget(told: Set<String>)
+}
+
+/**
+ * What was missed while nothing could show it — the device off, so its alarms gone — asked of
+ * the core just before each arming (`remindersMissed`). Android's alarms do not survive a
+ * restart, so the core is told what this app did show, and the rest since it last asked was
+ * missed. What was told is forgotten only once the core has taken it.
+ */
+class ReminderCatchUp(private val lumenna: Lumenna, private val shown: ShownReminders) {
+    fun catchUp(): io.github.emassey0135.lumenna.core.DueReminders {
+        val told = shown.all()
+        val found = lumenna.remindersMissed(told.toList(), false)
+        shown.forget(told)
+        return found
+    }
+}
+
+/** What was shown, in the app's preferences. */
+class SystemShown(context: Context) : ShownReminders {
+    private val preferences = context.getSharedPreferences(Reminders.PREFERENCES, Context.MODE_PRIVATE)
+
+    override fun all(): Set<String> = synchronized(Reminders) { preferences.getStringSet("shown", emptySet()).orEmpty().toSet() }
+
+    override fun forget(told: Set<String>) = synchronized(Reminders) {
+        preferences.edit().putStringSet("shown", all() - told).apply()
+    }
+
+    fun record(id: String) = synchronized(Reminders) {
+        preferences.edit().putStringSet("shown", all() + id).apply()
+    }
+}
+
 /** AlarmManager, remembering what it set in the app's preferences. */
 class SystemAlarms(private val context: Context) : Alarms {
     private val manager = context.getSystemService(AlarmManager::class.java)
@@ -163,6 +201,9 @@ object Reminders {
     private const val OPEN_TARGET = "io.github.emassey0135.lumenna.open.target"
     private const val OPEN_OCCURRENCE = "io.github.emassey0135.lumenna.open.occurrence"
 
+    /** The missed summary's tag. */
+    private const val MISSED = "missed"
+
     /** Notifications are posted under their firing's identity, with this one number. */
     private const val NOTIFICATION = 1
 
@@ -171,6 +212,9 @@ object Reminders {
     fun arm(context: Context, core: Core) {
         channel(context)
         try {
+            // First what was missed — after a restart, everything since the last look but what
+            // was shown — then the alarms, which cancel any for a firing now past.
+            catchUp(context, core)
             ReminderSchedule(core.lumenna, SystemAlarms(context)).arm()
             clearDealtWith(context, core)
         } catch (_: LumennaException) {
@@ -197,7 +241,9 @@ object Reminders {
      */
     private fun clearDealtWith(context: Context, core: Core) {
         val manager = context.getSystemService(NotificationManager::class.java)
-        val shown = manager.activeNotifications.filter { it.notification.channelId == CHANNEL && it.id == NOTIFICATION && it.tag != null }
+        val shown = manager.activeNotifications.filter {
+            it.notification.channelId == CHANNEL && it.id == NOTIFICATION && it.tag?.contains('@') == true
+        }
         if (shown.isEmpty()) return
         val since = Instant.now().minus(Duration.ofDays(1)).toString()
         val still = core.lumenna.remindersDue(since, null).let { it.due + it.missed }.map { "${it.key}@${it.occurrence}" }.toSet()
@@ -213,8 +259,41 @@ object Reminders {
         val now = maxOf(Instant.now(), moment)
         val found = core.attempt { core.lumenna.remindersDue(moment.minusSeconds(1).toString(), now.toString()) } ?: return
         val match = { due: DueReminder -> due.key == key && due.occurrence == occurrence }
-        found.due.firstOrNull(match)?.let { show(context, it, it.text) }
-            ?: found.missed.firstOrNull(match)?.let { show(context, it, it.missed) }
+        val shown = found.due.firstOrNull(match)?.also { show(context, it, it.text) }
+            ?: found.missed.firstOrNull(match)?.also { show(context, it, it.missed) }
+        // Told to the core at the next catching up, so it is not counted as missed.
+        if (shown != null) SystemShown(context).record("$key@$occurrence")
+    }
+
+    /**
+     * Shows what the core says was missed: each recent one as its own reminder, with its
+     * buttons, and the older ones as one summary.
+     */
+    private fun catchUp(context: Context, core: Core) {
+        val found = ReminderCatchUp(core.lumenna, SystemShown(context)).catchUp()
+        found.due.forEach { show(context, it, it.text) }
+        if (found.missedSummary.isNotEmpty() && notificationsAllowed(context)) {
+            try {
+                context.getSystemService(NotificationManager::class.java).notify(MISSED, NOTIFICATION, summary(context, found.missedSummary))
+            } catch (_: SecurityException) {
+                // Notifications were refused after the check.
+            }
+        }
+    }
+
+    /** The one notification for what was missed long enough ago to be said together. */
+    fun summary(context: Context, text: String): Notification {
+        val open = context.packageManager.getLaunchIntentForPackage(context.packageName)
+        return NotificationCompat.Builder(context, CHANNEL)
+            .setSmallIcon(io.github.emassey0135.lumenna.shared.R.drawable.ic_reminder)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setTicker(text)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setAutoCancel(true)
+            .extend(NotificationCompat.WearableExtender().setBridgeTag(BRIDGE_TAG))
+            .apply { open?.let { setContentIntent(PendingIntent.getActivity(context, 0, it, PendingIntent.FLAG_IMMUTABLE)) } }
+            .build()
     }
 
     /** The notification's Dismiss button: on every device, as soon as they hear of it. */
