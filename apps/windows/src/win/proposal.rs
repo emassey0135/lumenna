@@ -7,12 +7,14 @@
 //! reason as the row's description and beside the list. What fits nowhere is plain lines
 //! under the core's heading. Applying makes the rows still checked; the core then proposes
 //! again around what was turned down, and while that proposes anything the screen shows it.
+//! Replan from Now offers the core's other options too, a button each under its heading:
+//! taking one shows the proposal it stands for in place.
 //! Every word here is the core's (`proposal_words`).
 
 use std::cell::{Cell, RefCell};
 
 use lumenna_surface::{
-    ActionKind, Change, DayPins, DayPlan, ProposalWords, Replan, ReplanPins, Result, TimeStyle, proposal_words,
+    ActionKind, Change, DayPins, DayPlan, ProposalWords, Replan, ReplanAlternative, ReplanPins, Result, TimeStyle, proposal_words,
 };
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
@@ -20,7 +22,7 @@ use windows::Win32::UI::Controls::{
     NMHDR, TVN_SELCHANGEDW, TVS_DISABLEDRAGDROP, TVS_NOHSCROLL, TVS_SHOWSELALWAYS,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    BS_DEFPUSHBUTTON, BS_PUSHBUTTON, ES_AUTOVSCROLL, ES_MULTILINE, ES_READONLY, IDCANCEL, IDOK, PostMessageW, WM_APP,
+    BN_CLICKED, BS_DEFPUSHBUTTON, BS_MULTILINE, BS_PUSHBUTTON, ES_AUTOVSCROLL, ES_MULTILINE, ES_READONLY, IDCANCEL, IDOK, PostMessageW, WM_APP,
     WM_NOTIFY, WS_BORDER, WS_TABSTOP, WS_VSCROLL,
 };
 
@@ -41,6 +43,10 @@ const NOTHING: u16 = 104;
 const UNFIT_LABEL: u16 = 105;
 const UNFIT: u16 = 106;
 const HINT: u16 = 107;
+const OTHERS_LABEL: u16 = 108;
+/// The other options, a button each, from here on: at most three, as the core offers.
+const OTHERS: u16 = 110;
+const OTHER_COUNT: u16 = 3;
 /// The announcement is said once the screen is up: said while it is being made, it went
 /// unheard.
 const WM_OPENED: u32 = WM_APP + 1;
@@ -67,6 +73,21 @@ impl Proposed {
             Self::Replan(replan) => replan.changes.iter().map(|c| (c.sentence.clone(), String::new())).collect(),
             Self::Day(plan) => plan.sittings.iter().map(|s| (s.sentence.clone(), s.reason.clone().unwrap_or_default())).collect(),
         }
+    }
+
+    /// Other ways through the rest of today; a day's plan has none.
+    fn others(&self) -> &[ReplanAlternative] {
+        match self {
+            Self::Replan(replan) => &replan.alternatives,
+            Self::Day(_) => &[],
+        }
+    }
+
+    /// The proposal an other option stands for: the rest of today asked again with its pins.
+    fn take(&self, app: &App, index: usize) -> Option<Result<Self>> {
+        let Self::Replan(replan) = self else { return None };
+        let option = replan.alternatives.get(index)?;
+        Some(app.core.lumenna.replan(replan.style, option.pins.clone(), None).map(Self::Replan))
     }
 
     fn unfit(&self) -> &[String] {
@@ -132,10 +153,24 @@ impl Screen<'_> {
         let said = proposed.said();
         controls::set_text(dialog::item(hwnd, ANNOUNCED), &said);
         let any = !rows.is_empty();
-        let apply = dialog::item(hwnd, IDOK.0 as u16);
-        let list = dialog::item(hwnd, LIST);
-        if !any && [apply, list].contains(&controls::focused()) {
-            controls::focus(dialog::item(hwnd, IDCANCEL.0 as u16));
+        let others = proposed.others();
+        let unfit = proposed.unfit().join("\r\n");
+        let reasons = rows.iter().any(|(_, reason)| !reason.is_empty());
+        let mut shown = vec![
+            (LIST, any),
+            (HINT, any),
+            (IDOK.0 as u16, any),
+            (REASON, any && reasons),
+            (NOTHING, !any),
+            (UNFIT_LABEL, !unfit.is_empty()),
+            (UNFIT, !unfit.is_empty()),
+            (OTHERS_LABEL, !others.is_empty()),
+        ];
+        shown.extend((0..OTHER_COUNT).map(|i| (OTHERS + i, usize::from(i) < others.len())));
+        // Focus first leaves whatever is about to be hidden, or it would go nowhere.
+        let focused = controls::focused();
+        if shown.iter().any(|(id, visible)| !visible && dialog::item(hwnd, *id) == focused) {
+            controls::focus(dialog::item(hwnd, if any { LIST } else { IDCANCEL.0 as u16 }));
         }
         if let Some(tree) = self.list.borrow().as_ref() {
             let items = rows
@@ -151,18 +186,17 @@ impl Screen<'_> {
                 tree.select_quietly(0);
             }
         }
-        let reasons = rows.iter().any(|(_, reason)| !reason.is_empty());
-        for (id, visible) in [(LIST, any), (HINT, any), (IDOK.0 as u16, any), (REASON, any && reasons), (NOTHING, !any)] {
+        for (index, option) in others.iter().enumerate().take(usize::from(OTHER_COUNT)) {
+            // Named by the whole option, which a button's text is; an ampersand is its own.
+            controls::set_text(dialog::item(hwnd, OTHERS + index as u16), &option.sentence.replace('&', "&&"));
+        }
+        for (id, visible) in shown {
             controls::show(dialog::item(hwnd, id), visible);
         }
         // The core's words for nothing to do, unless the announcement already is them.
         let nothing = if said.trim_end_matches('.') == self.words.nothing.trim_end_matches('.') { "" } else { &self.words.nothing };
         controls::set_text(dialog::item(hwnd, NOTHING), nothing);
-        let unfit = proposed.unfit().join("\r\n");
         controls::set_text(dialog::item(hwnd, UNFIT), &unfit);
-        for id in [UNFIT_LABEL, UNFIT] {
-            controls::show(dialog::item(hwnd, id), !unfit.is_empty());
-        }
         self.show_reason(hwnd);
     }
 
@@ -218,6 +252,24 @@ impl Screen<'_> {
         }
         None
     }
+
+    /// Takes the other option at `index`: its proposal shown in place, and said.
+    fn take(&self, hwnd: HWND, index: usize) {
+        let taken = self.proposed.borrow().take(self.app, index);
+        match taken {
+            Some(Ok(proposed)) => {
+                *self.proposed.borrow_mut() = proposed;
+                self.fill(hwnd);
+                // On what is proposed now: the button pressed stands for something else, or
+                // nothing.
+                let any = !self.proposed.borrow().rows().is_empty();
+                controls::focus(dialog::item(hwnd, if any { LIST } else { IDCANCEL.0 as u16 }));
+                self.say(hwnd, &self.proposed.borrow().said());
+            }
+            Some(Err(error)) => prompts::fail(hwnd, &sentence(&error)),
+            None => {}
+        }
+    }
 }
 
 impl Dialog for Screen<'_> {
@@ -227,8 +279,9 @@ impl Dialog for Screen<'_> {
         let lines = (ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL) as u32 | WS_VSCROLL.0 | WS_BORDER.0 | WS_TABSTOP.0;
         // The status line first, so Windows does not name it after the label before it. The
         // list's name is the screen's title, which says what checking a row does.
-        Template::new(&self.words.title, 300, 236)
-            .item(Class::Static, "", STATUS, SS_NOPREFIX.0, 7, 208, 230, 21)
+        let others = if self.words.others.is_empty() { String::new() } else { format!("{}:", self.words.others) };
+        let mut template = Template::new(&self.words.title, 300, 318)
+            .item(Class::Static, "", STATUS, SS_NOPREFIX.0, 7, 290, 230, 21)
             .item(Class::Static, "", ANNOUNCED, SS_NOPREFIX.0, 7, 7, 286, 36)
             .named("SysTreeView32", "", LIST, tree, 7, 46, 286, 84)
             .item(Class::Static, "", REASON, SS_NOPREFIX.0, 7, 133, 286, 18)
@@ -237,7 +290,13 @@ impl Dialog for Screen<'_> {
             .item(Class::Edit, "", UNFIT, lines, 7, 164, 286, 22)
             .item(Class::Static, &self.words.hint, HINT, SS_NOPREFIX.0, 7, 190, 166, 18)
             .item(Class::Button, &self.words.apply, IDOK.0 as u16, (BS_DEFPUSHBUTTON as u32) | WS_TABSTOP.0, 177, 190, 116, 14)
-            .item(Class::Button, &self.words.cancel, IDCANCEL.0 as u16, button, 243, 212, 50, 14)
+            .item(Class::Static, &others, OTHERS_LABEL, SS_NOPREFIX.0, 7, 212, 286, 9);
+        // Two lines each: an option says what it costs and what follows.
+        for index in 0..OTHER_COUNT {
+            let y = 222 + 22 * index as i16;
+            template = template.item(Class::Button, "", OTHERS + index, button | BS_MULTILINE as u32, 7, y, 286, 20);
+        }
+        template.item(Class::Button, &self.words.cancel, IDCANCEL.0 as u16, button, 243, 294, 50, 14)
     }
 
     fn init(&self, hwnd: HWND) -> bool {
@@ -255,11 +314,16 @@ impl Dialog for Screen<'_> {
         true
     }
 
-    fn command(&self, hwnd: HWND, id: u16, _code: u16) -> Option<isize> {
+    fn command(&self, hwnd: HWND, id: u16, code: u16) -> Option<isize> {
         match i32::from(id) {
             id if id == IDOK.0 => self.apply(hwnd),
             id if id == IDCANCEL.0 => Some(0),
-            _ => None,
+            _ => {
+                if let Some(index) = id.checked_sub(OTHERS).filter(|i| *i < OTHER_COUNT && u32::from(code) == BN_CLICKED) {
+                    self.take(hwnd, usize::from(index));
+                }
+                None
+            }
         }
     }
 

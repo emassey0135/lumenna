@@ -1019,6 +1019,17 @@ impl App {
                 }
             }
             Answered::Summary => self.show_window(),
+            // Today's own Replan from Now, as the Day menu runs it, once the window is in front.
+            Answered::Replan => {
+                self.show_window();
+                self.go(Place::Today, true);
+                self.defer(|app| {
+                    if let Some(day) = app.day() {
+                        day.go_to_now(app, false);
+                        day.act_on_day(app, ActionKind::Replan);
+                    }
+                });
+            }
         }
     }
 }
