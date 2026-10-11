@@ -300,10 +300,11 @@ pub fn pairing_words(this_device: String, local: bool) -> PairingWords {
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn sentence_case(text: String) -> String {
-    // An acronym keeps its capitals: "JSON" is a name, not a word.
+    // An acronym keeps its capitals: "JSON" is a name, not a word. So does "I", and "I'm".
     let lower = |word: &str| {
         let letters: Vec<char> = word.chars().filter(|c| c.is_alphabetic()).collect();
-        if letters.len() > 1 && letters.iter().all(|c| c.is_uppercase()) { word.to_owned() } else { word.to_lowercase() }
+        let pronoun = word.trim_matches(|c: char| !c.is_alphabetic()) == "I" || word.starts_with("I'") || word.starts_with("I\u{2019}");
+        if pronoun || (letters.len() > 1 && letters.iter().all(|c| c.is_uppercase())) { word.to_owned() } else { word.to_lowercase() }
     };
     let mut words = text.split(' ');
     let first = words.next().unwrap_or_default().to_owned();
@@ -313,6 +314,14 @@ pub fn sentence_case(text: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sentence_case_keeps_the_pronoun_i_and_acronyms() {
+        assert_eq!(sentence_case("What Should I Work On?".to_owned()), "What should I work on?");
+        assert_eq!(sentence_case("Export As JSON".to_owned()), "Export as JSON");
+        assert_eq!(sentence_case("Where I'm Going".to_owned()), "Where I'm going");
+        assert_eq!(sentence_case("Mark Done".to_owned()), "Mark done");
+    }
 
     #[test]
     fn every_task_field_and_block_field_has_a_form_field() {
