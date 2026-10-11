@@ -7,7 +7,7 @@ const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "modu
 
 export const core: Comlink.Remote<Api> = Comlink.wrap<Api>(worker);
 
-export type { DayRow, Line } from "./worker";
+export type { DayRow, Line, Proposed } from "./worker";
 export type {
   Action,
   ActionKind,
@@ -22,6 +22,7 @@ export type {
   ExportChoice,
   FormField,
   PairingWords,
+  ProposalWords,
   Question,
   Place,
   PlanAssignment,

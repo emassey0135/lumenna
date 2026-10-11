@@ -374,3 +374,21 @@ table.keys td:first-child {
   gap: 0.5rem;
   padding: 0.25rem 0;
 }
+
+/* A proposal's changes: each one's line, why, and its check box, one under another. */
+ul.changes li {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.proposal .buttons .quiet {
+  flex-basis: 100%;
+}
+
+/* A choice's reason, under its line in a pick. */
+.choice-reason {
+  display: block;
+  font-size: 0.9em;
+}

@@ -4,8 +4,9 @@
 // every twenty seconds, and on coming back to the tab, it asks the core what came due since it
 // last looked, from when it opened. Each is said through the live region, always, and shown as
 // a notification where the browser allows; acting on one is in the page, in Reminders due,
-// whose buttons are the core's Dismiss and Snooze. When each fires and what it says are the
-// core's; this decides nothing about them.
+// whose buttons are the core's Dismiss and Snooze, and at a block's end with work left short its
+// Carry Forward. When each fires and what it says are the core's; this decides nothing about
+// them.
 //
 // A browser has no device settings the core can keep (no file system), so whether reminders
 // are on in this browser is kept in its storage, under the core's name for the setting.
@@ -59,6 +60,10 @@ export interface Due {
   /** The buttons, in the core's words and the web's sentence case. */
   dismiss: string;
   snooze?: string;
+  /** At a block's end with work left short, the core's Carry Forward; its text asks already. */
+  carry?: string;
+  /** What carrying forward carries: `<series>@<date>`. */
+  block?: string;
   /** What dismissing it dismisses: itself, or for a summary, everything missed. */
   firings: DueReminder[];
 }
@@ -121,6 +126,8 @@ export function useDelivery(ready: boolean, give: (due: Due[]) => void): void {
             text: reminder.text,
             dismiss: await sentence(reminder.dismiss),
             snooze: await sentence(reminder.snooze),
+            carry: reminder.carry ? await sentence(reminder.carry) : undefined,
+            block: `${reminder.target}@${reminder.occurrence}`,
             firings: [reminder],
           });
         }
@@ -151,14 +158,21 @@ export function useDelivery(ready: boolean, give: (due: Due[]) => void): void {
 }
 
 /** What came due and was not dealt with, each with the core's buttons. In the banner. */
-export function RemindersDue(props: { due: Due[]; onDealt: (id: string) => void }) {
+export function RemindersDue(props: { due: Due[]; onDealt: (id: string) => void; onChanged: () => void }) {
   if (props.due.length === 0) return null;
-  const deal = async (due: Due, snooze: boolean) => {
+  const deal = async (due: Due, how: "dismiss" | "snooze" | "carry") => {
     const index = props.due.findIndex((d) => d.id === due.id);
     try {
       let said = "";
-      for (const firing of due.firings) {
-        said = await (snooze ? core.snoozeReminder(firing.key, firing.occurrence) : core.dismissReminder(firing.key, firing.occurrence));
+      if (how === "carry" && due.block) {
+        // The work carried on, and the firing dealt with: it has been answered.
+        said = await core.carryRestForward(due.block);
+        for (const firing of due.firings) await core.dismissReminder(firing.key, firing.occurrence);
+        props.onChanged();
+      } else {
+        for (const firing of due.firings) {
+          said = await (how === "snooze" ? core.snoozeReminder(firing.key, firing.occurrence) : core.dismissReminder(firing.key, firing.occurrence));
+        }
       }
       props.onDealt(due.id);
       // Focus to what took its place, else out of the list that is gone.
@@ -176,12 +190,17 @@ export function RemindersDue(props: { due: Due[]; onDealt: (id: string) => void 
         {props.due.map((due) => (
           <li key={due.id} id={`due-${due.id}`}>
             <span id={`due-text-${due.id}`}>{due.text}</span>
-            <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, false)}>
+            <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, "dismiss")}>
               {due.dismiss}
             </Button>
             {due.snooze && (
-              <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, true)}>
+              <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, "snooze")}>
                 {due.snooze}
+              </Button>
+            )}
+            {due.carry && (
+              <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, "carry")}>
+                {due.carry}
               </Button>
             )}
           </li>
