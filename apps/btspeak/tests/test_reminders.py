@@ -103,11 +103,17 @@ class Reminders(unittest.TestCase):
         giver.once()
         held = self.client.call("reminder.deliver", now="2030-01-15T08:51:00Z")
         self.assertEqual(held["announcement"], "Another app on this device gives reminders")
+        other = self.giver(at)
+        self.assertEqual(other.once(), [], "says nothing while the first gives them")
+        self.assertEqual(other.pause(), reminders.WAITING)
+        self.assertEqual(giver.pause(), reminders.INTERVAL)
         on["on"] = False
         self.assertEqual(giver.once(), [])
         self.assertIsNone(giver.client)
         free = self.client.call("reminder.deliver", now="2030-01-15T08:52:00Z")
         self.assertNotEqual(free["announcement"], "Another app on this device gives reminders")
+        self.assertNotIn("elsewhere", free)
+        self.assertTrue(held["elsewhere"])
 
     # -- a task's or block's own ----------------------------------------------------------
 

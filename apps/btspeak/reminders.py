@@ -31,6 +31,9 @@ from connect import connect  # noqa: E402
 #: How often to ask what came due, in seconds.
 INTERVAL = 20
 
+#: How often to ask while another process gives reminders, to take over soon after it stops.
+WAITING = 5
+
 #: The device setting that turns the service off, with its `.values` file in Settings.
 SETTING = "lumenna-reminders"
 
@@ -86,6 +89,8 @@ class Giver:
         self._show = show
         self._now = now
         self.client = None
+        #: Whether another process on the device gave reminders when last asked.
+        self.elsewhere = False
 
     def let_go(self) -> None:
         """Closes the connection, which lets go of the right to give reminders."""
@@ -97,6 +102,7 @@ class Giver:
         """Asks what came due and gives it; what was given, in order."""
         if not self._on():
             self.let_go()
+            self.elsewhere = False
             return []
         if self.client is None:
             self.client = self._open()
@@ -106,6 +112,8 @@ class Giver:
         except Disconnected:
             self.client = None
             return []
+        # Said to no one: the other process gives them, and this one waits its turn.
+        self.elsewhere = bool(found.get("elsewhere"))
         given = []
         if found.get("missed_summary"):
             given.append(found["missed_summary"])
@@ -115,6 +123,10 @@ class Giver:
             self._speak(text)
             self._show(text)
         return given
+
+    def pause(self) -> float:
+        """How long to wait before asking again: shorter while another process gives them."""
+        return WAITING if self.elsewhere else INTERVAL
 
     def run(self) -> None:
         """Gives reminders until stopped."""
@@ -126,7 +138,7 @@ class Giver:
                     # Logged where the unit's journal finds it; the next round tries again.
                     print(f"lumenna reminders: {error.message}", file=sys.stderr, flush=True)
                     self.let_go()
-                time.sleep(INTERVAL)
+                time.sleep(self.pause())
         finally:
             self.let_go()
 
