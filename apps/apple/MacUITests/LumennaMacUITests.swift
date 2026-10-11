@@ -621,6 +621,31 @@ final class LumennaMacUITests: XCTestCase {
         XCTAssertTrue(cancelled.waitForNonExistence(timeout: 5))
     }
 
+    /// The Day menu holds the day's own actions, the core's; Plan the Day opens its sheet, each
+    /// sitting a check box named by its sentence, and planning what is checked closes it when
+    /// nothing more is proposed.
+    func testTheDayMenuPlansTheDayFromASheetOfCheckBoxes() throws {
+        place("Tasks")
+        addTask("write the report p1")
+        place("Today")
+        // Tomorrow, so its block is still to come whenever the test runs.
+        app.typeKey("]", modifierFlags: .command)
+        addBlock("Writing")
+        let day = window.outlines["The day"]
+        XCTAssertTrue(text(containing: "Writing", in: day).waitForExistence(timeout: 5))
+        app.menuBars.menuBarItems["Day"].click()
+        let item = app.menuBars.menuItems["Plan the Day…"]
+        XCTAssertTrue(item.waitForExistence(timeout: 5), "the day's action is in the Day menu")
+        item.click()
+        let sitting = app.sheets.checkBoxes.matching(NSPredicate(format: "label BEGINSWITH 'write the report goes in Writing'")).firstMatch
+        XCTAssertTrue(sitting.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertEqual(sitting.value as? Int, 1, "checked to begin with")
+        try audit("plan the day")
+        sheetButton("Plan the Ones Checked")
+        XCTAssertTrue(app.sheets.firstMatch.waitForNonExistence(timeout: 5), "nothing more to plan, so it closes")
+        XCTAssertTrue(day.staticTexts["write the report"].waitForExistence(timeout: 5))
+    }
+
     // MARK: - Settings
 
     func testBackUpNowWritesABackupWhereTheyGo() throws {

@@ -102,9 +102,17 @@ private struct PickPrompt: View {
                     dismiss()
                     chosen(choice)
                 } label: {
-                    Text(choice.shownTitle)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(choice.shownTitle)
+                        // Why it is offered, the core's: a line beneath, and the hint.
+                        if let reason = choice.reason {
+                            Text(reason).font(.footnote).foregroundStyle(Color.quietLabel)
+                        }
+                    }
                 }
+                .accessibilityLabel(choice.shownTitle)
                 .accessibilityValue([choice.shownDetail, level].compactMap { $0 }.joined(separator: ", "))
+                .accessibilityHint(choice.reason ?? "")
             }
         }
         .navigationTitle(title)

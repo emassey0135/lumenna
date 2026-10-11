@@ -13,6 +13,9 @@ struct Item: Hashable {
     var heading = false
     /// What can be done to it, as the core says, offered as `RowActions` offers them.
     var actions: [Action] = []
+    /// Why it is offered, the core's ("Suggested because …"): a line beneath, and VoiceOver's
+    /// hint, never its name.
+    var reason: String?
 }
 
 /// A plain list with the same focus rules as the task list: after a change, VoiceOver stays
@@ -95,7 +98,8 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
                 : UIListContentConfiguration.subtitleCell()
             content.text = item.title
             content.textProperties.numberOfLines = 0
-            content.secondaryText = item.detail
+            let lines = [item.detail, item.reason].compactMap { $0 }.filter { !$0.isEmpty }
+            content.secondaryText = lines.isEmpty ? nil : lines.joined(separator: "\n")
             content.secondaryTextProperties.color = .quietLabel
             content.secondaryTextProperties.numberOfLines = 0
             content.directionalLayoutMargins.leading += CGFloat(item.depth) * 20
@@ -107,6 +111,7 @@ class ItemListViewController: UIViewController, UICollectionViewDelegate {
             cell.isAccessibilityElement = true
             cell.accessibilityLabel = item.title
             cell.accessibilityValue = item.spoken ?? item.detail
+            cell.accessibilityHint = item.reason
             cell.accessibilityTraits = item.heading ? [.header, .button] : .button
             // Only what is not swiped, which UIKit adds to the swipe actions.
             cell.accessibilityCustomActions = self?.rowActions(for: item).customActions

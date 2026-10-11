@@ -25,6 +25,10 @@ enum Reminders {
     static let category = "io.github.emassey0135.lumenna.reminder"
     static let dismissAction = "io.github.emassey0135.lumenna.reminder.dismiss"
     static let snoozeAction = "io.github.emassey0135.lumenna.reminder.snooze"
+    /// The category of a block's end with work left short: Dismiss and Snooze, and the core's
+    /// Carry Forward (`DueReminder.carry`), whose question the text already ends in.
+    static let carryCategory = "io.github.emassey0135.lumenna.reminder.carry"
+    static let carryAction = "io.github.emassey0135.lumenna.reminder.carry-forward"
     /// What every reminder's identifier starts with, so re-arming cancels only its own.
     static let prefix = "reminder "
     /// How far ahead to schedule: the system holds 64 pending, so not a week of blocks.
@@ -58,7 +62,7 @@ enum Reminders {
         content.title = reminder.title
         content.body = reminder.text
         content.sound = .default
-        content.categoryIdentifier = category
+        content.categoryIdentifier = reminder.carry.isEmpty ? category : carryCategory
         // The reminders of one task or block group together.
         content.threadIdentifier = reminder.target
         content.userInfo = [
@@ -79,6 +83,34 @@ enum Reminders {
             intentIdentifiers: [],
             options: []
         )
+    }
+
+    /// The carry category: the same buttons, then the core's Carry Forward.
+    static func carryCategory(for reminder: DueReminder) -> UNNotificationCategory {
+        UNNotificationCategory(
+            identifier: carryCategory,
+            actions: [
+                UNNotificationAction(identifier: dismissAction, title: reminder.dismiss, options: []),
+                UNNotificationAction(identifier: snoozeAction, title: reminder.snooze, options: []),
+                UNNotificationAction(identifier: carryAction, title: reminder.carry, options: []),
+            ],
+            intentIdentifiers: [],
+            options: []
+        )
+    }
+
+    /// A reminder that offered Carry Forward, last seen: what names the carry category's
+    /// buttons when what is handed over now has none, since setting the categories replaces
+    /// them all, and a carry notification already shown still needs its button.
+    private static var lastCarried: DueReminder?
+
+    /// Every category these reminders need, and the carry one once any has offered it.
+    static func categories(for due: [DueReminder]) -> Set<UNNotificationCategory> {
+        if let carried = due.first(where: { !$0.carry.isEmpty }) { lastCarried = carried }
+        var categories = Set<UNNotificationCategory>()
+        if let first = due.first { categories.insert(category(for: first)) }
+        if let lastCarried { categories.insert(carryCategory(for: lastCarried)) }
+        return categories
     }
 
     /// What to hand a system that schedules: each firing still to come, at its moment, the
@@ -227,7 +259,7 @@ final class ReminderSchedule {
     private func show(_ found: DueReminders?) -> [UNNotificationRequest] {
         guard let found else { return [] }
         let requests = ReminderDelivery.requests(found)
-        if let first = found.due.first { centre.useCategories([Reminders.category(for: first)]) }
+        if !found.due.isEmpty { centre.useCategories(Reminders.categories(for: found.due)) }
         requests.forEach(centre.schedule)
         return requests
     }
@@ -261,7 +293,7 @@ final class ReminderSchedule {
     private func arm(_ upcoming: DueReminders, now: Date, asking: Bool, then done: @escaping () -> Void) {
         let centre = centre
         let requests = Reminders.requests(upcoming.due, after: now)
-        if let first = upcoming.due.first { centre.useCategories([Reminders.category(for: first)]) }
+        if !upcoming.due.isEmpty { centre.useCategories(Reminders.categories(for: upcoming.due)) }
         let wanted = Set(requests.map(\.identifier))
         centre.pendingIdentifiers { pending in
             let stale = pending.filter { $0.hasPrefix(Reminders.prefix) && !wanted.contains($0) }
@@ -353,7 +385,7 @@ final class ReminderDelivery {
         guard let lock, let found = try? lumenna.deliverReminders(lock: lock, now: now) else { return [] }
         last = Date()
         let requests = Self.requests(found)
-        if let first = found.due.first { centre.useCategories([Reminders.category(for: first)]) }
+        if !found.due.isEmpty { centre.useCategories(Reminders.categories(for: found.due)) }
         requests.forEach(centre.schedule)
         return requests
     }
@@ -422,6 +454,9 @@ final class ReminderResponder: NSObject, UNUserNotificationCenterDelegate {
             switch action {
             case Reminders.dismissAction: change = try lumenna.dismissReminder(key: key, occurrence: occurrence)
             case Reminders.snoozeAction: change = try lumenna.snoozeReminder(key: key, occurrence: occurrence, minutes: nil)
+            case Reminders.carryAction:
+                guard let target = info["target"] as? String else { return }
+                change = try lumenna.carryRestForward(block: "\(target)@\(occurrence)")
             case UNNotificationDefaultActionIdentifier:
                 if let kind = info["kind"] as? String, let target = info["target"] as? String {
                     open(RemindedOf(kind: kind, target: target, day: occurrence))

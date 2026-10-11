@@ -630,6 +630,18 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
   (the system's alert would cover the app under test). A sync's change notice carries
   `arrived`, so it is not taken for the person's edit. The scheduling is unit-tested through
   the `NotificationCentre` seam (`ReminderScheduleTests`); UI tests cannot post real ones.
+  A firing with `carry` set is in a second category, its third button the core's Carry
+  Forward (`carry_rest_forward` of `<target>@<occurrence>`). Setting categories replaces them
+  all, so the carry one is set from the last carry reminder seen whenever any is handed over:
+  one already showing keeps its button.
+- **The day's own actions** (`Plan.actions`) are the day's bar menu ("Day actions") and the
+  heading's custom actions, which make the heading at least 44 points tall: an element with
+  actions fails the audit's hit area. Replan from Now and Plan the Day open one SwiftUI
+  screen for all three apps (`Shared/Forms/ProposalForm.swift`, `ProposalModel`): each change
+  a toggle named by its sentence, its reason and the core's `item` its hint, and after a
+  partial apply the core's `next` in its place until nothing is proposed. A refusal is shown
+  on the screen and the proposal asked for again with the same pins. The clock it asks in is
+  `Clock.style`, the locale's. A pick's `Choice.reason` is its second line and its hint.
 - **A Reminders list is an `ItemListViewController`** (`RemindersViewController`): Add Reminder
   in the bar asks the core's Text question, again with the reason when refused; an own
   reminder swipes Remove Reminder. `ActionRun` opens it for `ActionKind.reminders` through the
@@ -715,6 +727,10 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   of its own. Without notification permission it lets the right go, for a process that can say
   them. The Reminders list is the shared SwiftUI form (`Shared/Forms/ReminderList.swift`) in a
   sheet, shared with the watch.
+- **The Day menu ends in the day's own actions**, rebuilt as it opens (`MainMenu.DayMenu`):
+  the day shown's, else today's, which goes to the day first; also a pull-down beside the
+  day's buttons. The proposal screen is a `HostedForm` sheet with its own Cancel and default
+  button. A picker sheet's reason is its row's second line and VoiceOver help.
 - **Global shortcuts through Carbon's `RegisterEventHotKey`**, which needs no accessibility
   permission. Never Control-Option: it is VoiceOver's. The recorder warns of clashes with
   VoiceOver, VOCR (Control-Command S, P, L, I; Shift-Control-Command more) and macOS
@@ -791,7 +807,9 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   status says only its version (`device_status(…, direct: false)`).
 - **A row offers its actions when tapped** where the phone has more swipe actions than a
   watch row holds (a block, a sitting, free time); a project, label or filter's are buttons
-  at the foot of its list. Completion is offered after the line is entered, beside the
+  at the foot of its list. The day's heading, tapped, offers the day's own actions, Plan the
+  Day and Replan from Now opening the shared proposal screen in the asker's sheet. Completion
+  is offered after the line is entered, beside the
   field, as BTSpeak offers it: the system's input screen takes no suggestions.
 - **A text field is named explicitly** (`accessibilityLabel`): with text in it, its title
   gives way to the text.

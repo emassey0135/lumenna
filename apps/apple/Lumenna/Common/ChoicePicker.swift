@@ -24,7 +24,7 @@ final class ChoicePicker: ItemListViewController {
 
     override func load() throws -> (items: [Item], count: String) {
         let items = choices.map { choice in
-            Item(key: choice.id, title: choice.shownTitle, detail: choice.shownDetail, depth: choice.depth)
+            Item(key: choice.id, title: choice.shownTitle, detail: choice.shownDetail, depth: choice.depth, reason: choice.reason)
         }
         return (items, choices.count == 1 ? "1 choice" : "\(choices.count) choices")
     }

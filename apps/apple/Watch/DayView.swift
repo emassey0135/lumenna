@@ -47,9 +47,16 @@ struct DayView: View {
         let shown = plan.map { folding.shown(rows($0), depth: \.depth, key: \.key) } ?? []
         List {
             if let plan {
-                // The day's heading, as every app says it: "<day>. <summary>".
-                Text(plan.summary.isEmpty ? plan.announcement : "\(Clock.spokenDay(plan.date)). \(plan.summary)")
-                    .font(.footnote)
+                // The day's heading, as every app says it: "<day>. <summary>". Tapped, it
+                // offers the day's own actions, the core's, as a row offers its own.
+                let heading = plan.summary.isEmpty ? plan.announcement : "\(Clock.spokenDay(plan.date)). \(plan.summary)"
+                if plan.actions.isEmpty {
+                    Text(heading).font(.footnote)
+                } else {
+                    Button { offerDay(plan) } label: { Text(heading).font(.footnote) }
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityIdentifier("day.heading")
+                }
                 ForEach(Array(shown.enumerated()), id: \.element.item.key) { _, row in
                     rowView(row, in: plan)
                 }
@@ -141,6 +148,20 @@ struct DayView: View {
     private func button(_ text: String, heading: Bool = false, actions: @escaping () -> Void) -> some View {
         Button(action: actions) { Text(text) }
             .accessibilityAddTraits(heading ? .isHeader : [])
+    }
+
+    /// The day's own actions; Plan the Day and Replan from Now open their screen, the shared
+    /// one (`Shared/Forms/ProposalForm.swift`).
+    private func offerDay(_ plan: Plan) {
+        asker.offer(Clock.spokenDay(plan.date), plan.actions, form: { action in
+            do {
+                guard let model = try ProposalModel(core: core, action: action) else { return }
+                model.close = { [weak asker] in asker?.asked = nil }
+                asker.show(ProposalForm(model: model).navigationTitle(model.words.title))
+            } catch {
+                core.failure = error.sentence
+            }
+        })
     }
 
     private func toggle(_ key: String, saying said: String) {

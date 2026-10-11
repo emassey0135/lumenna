@@ -14,3 +14,17 @@ extension BlockFormModel {
         window.beginSheet(sheet)
     }
 }
+
+extension ProposalModel {
+    /// Shows Replan from Now or Plan the Day (`Shared/Forms/ProposalForm.swift`) as a sheet on
+    /// `window`, open until nothing more is proposed or it is cancelled.
+    func present(on window: NSWindow) {
+        let host = HostedForm(words.title, rootView: ProposalForm(model: self))
+        let sheet = NSWindow(contentViewController: host)
+        sheet.title = words.title
+        close = { [weak window, weak sheet] in
+            if let sheet { window?.endSheet(sheet) }
+        }
+        window.beginSheet(sheet)
+    }
+}

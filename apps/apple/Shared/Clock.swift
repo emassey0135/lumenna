@@ -31,6 +31,13 @@ enum Clock {
         parser.date(from: clock).map(speaker.string(from:)) ?? clock
     }
 
+    /// The clock this device says times in, for what the core words with times in it (a
+    /// proposal's sentences): the locale's, or the person's own 24-hour setting.
+    static var style: TimeStyle {
+        let format = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: .current) ?? ""
+        return format.contains("a") ? .twelveHour : .twentyFourHour
+    }
+
     /// "1 hour, 30 minutes".
     static func length(_ minutes: UInt32) -> String {
         lengths.string(from: TimeInterval(minutes) * 60) ?? "\(minutes) minutes"

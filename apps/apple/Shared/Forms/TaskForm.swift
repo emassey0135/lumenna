@@ -180,6 +180,17 @@ struct TaskDetailView: View {
             } header: {
                 FormParts.heading("About")
             }
+            // What the records hold of its past, the core's words: on its own screen only,
+            // never in a list.
+            if !task.history.isEmpty {
+                Section {
+                    ForEach(Array(task.history.enumerated()), id: \.offset) { _, line in
+                        Text(line)
+                    }
+                } header: {
+                    FormParts.heading("History")
+                }
+            }
             Section {
                 #if os(macOS) || os(watchOS)
                 // On the phone Save is in the navigation bar; on the Mac ⌘S reaches it too,

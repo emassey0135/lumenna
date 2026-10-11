@@ -156,6 +156,33 @@ final class LumennaWatchUITests: XCTestCase {
         XCTAssertTrue(block.waitForExistence(timeout: 5) || reveal(block).exists)
     }
 
+    /// The day's heading offers the day's own actions; Plan the Day opens the phone's screen,
+    /// each sitting a switch named by its sentence, and planning closes it when nothing more is
+    /// proposed.
+    func testTheDaysHeadingOffersPlanTheDayWhichPlansWhatIsChecked() throws {
+        add("write the report p1")
+        XCTAssertTrue(app.buttons["Today"].waitForExistence(timeout: 10))
+        app.buttons["Today"].tap()
+        // Tomorrow, so its block is still to come whenever the test runs.
+        reveal(app.buttons["Next Day"]).tap()
+        reveal(app.buttons["Add Block"]).tap()
+        let name = app.textFields["Name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        type("Writing", into: name)
+        reveal(app.buttons["Save"], form: true).tap()
+        let heading = app.buttons["day.heading"]
+        XCTAssertTrue(heading.waitForExistence(timeout: 5) || reveal(heading, upward: true).exists)
+        reveal(heading, upward: true).tap()
+        reveal(app.buttons["Plan the Day"]).tap()
+        let sitting = app.switches.matching(NSPredicate(format: "label BEGINSWITH 'write the report goes in Writing'")).firstMatch
+        XCTAssertTrue(sitting.waitForExistence(timeout: 5), app.debugDescription)
+        try audit("plan the day")
+        reveal(app.buttons["Plan the Ones Checked"], form: true).tap()
+        XCTAssertTrue(sitting.waitForNonExistence(timeout: 5), "nothing more to plan, so it closes")
+        let planned = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'write the report'")).firstMatch
+        XCTAssertTrue(planned.waitForExistence(timeout: 5) || reveal(planned).exists)
+    }
+
     /// A block's Reminders, from what its row offers: the default listed, a phrase the core
     /// reads added, and one it refuses kept with the core's reason.
     func testABlocksRemindersTakeAPhraseAndARefusedOneSaysWhy() throws {
@@ -254,8 +281,14 @@ final class LumennaWatchUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] 'someday soon'")).firstMatch.waitForExistence(timeout: 5),
                       "a day it cannot read, said: \(app.debugDescription)")
         type("12 October", into: field, clearing: "someday soon".count)
-        XCTAssertTrue(app.navigationBars.matching(NSPredicate(format: "identifier CONTAINS %@ OR identifier CONTAINS %@", "12 October", "October 12")).firstMatch.waitForExistence(timeout: 5)
-            || app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@", "12 October", "October 12")).firstMatch.exists,
+        // Within a day of 12 October the day is said as Yesterday, Today or Tomorrow instead.
+        let today = Calendar.current.dateComponents([.month, .day], from: .now)
+        let near = today.month == 10 ? ["13": "Yesterday", "12": "Today", "11": "Tomorrow"][String(today.day ?? 0)] : nil
+        let names = ["12 October", "October 12"] + [near].compactMap { $0 }
+        let named = NSPredicate(format: "identifier IN %@ OR identifier CONTAINS %@ OR identifier CONTAINS %@", names, names[0], names[1])
+        let said = NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@ OR label BEGINSWITH %@", names[0], names[1], (near ?? names[0]) + ".")
+        XCTAssertTrue(app.navigationBars.matching(named).firstMatch.waitForExistence(timeout: 5)
+            || app.staticTexts.matching(said).firstMatch.exists,
                       app.debugDescription)
     }
 

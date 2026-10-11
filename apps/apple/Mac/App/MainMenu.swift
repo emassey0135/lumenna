@@ -113,7 +113,33 @@ enum MainMenu {
         menu.addItem(item("Next Day", #selector(AppDelegate.nextDay(_:)), "]"))
         menu.addItem(item("Go to Now", #selector(AppDelegate.goToNow(_:)), "t"))
         menu.addItem(item("Go to Day…", #selector(AppDelegate.goToDay(_:)), "j"))
+        // Then the day's own actions, the core's, as the menu opens.
+        menu.delegate = DayMenu.shared
         return menu
+    }
+
+    /// The Day menu's own part: the day's actions (`Plan.actions`), the core's, in its order,
+    /// after what moves through days. Rebuilt each time the menu opens, since they change with
+    /// the day and the time.
+    final class DayMenu: NSObject, NSMenuDelegate {
+        static let shared = DayMenu()
+        /// What marks the items it added, to take them away again.
+        static let tag = 7400
+
+        func menuNeedsUpdate(_ menu: NSMenu) {
+            for item in menu.items where item.tag == Self.tag { menu.removeItem(item) }
+            guard let app = AppDelegate.shared else { return }
+            let actions = app.dayActions
+            guard !actions.isEmpty else { return }
+            let separator = NSMenuItem.separator()
+            separator.tag = Self.tag
+            menu.addItem(separator)
+            for action in actions {
+                let item = ClosureMenuItem(title: action.asks ? action.title + "…" : action.title) { app.performDay(action) }
+                item.tag = Self.tag
+                menu.addItem(item)
+            }
+        }
     }
 
     private static let f6 = String(Character(UnicodeScalar(UInt16(NSF6FunctionKey))!))
