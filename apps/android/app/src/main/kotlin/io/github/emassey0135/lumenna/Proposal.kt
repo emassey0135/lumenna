@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -67,6 +68,15 @@ fun ProposalScreen(core: Core, navigator: Navigator, screen: Screen.Proposal) {
             if (model.unfit.isNotEmpty()) {
                 Heading(button(words.unfit))
                 model.unfit.forEach { Text(it, Modifier.padding(vertical = 4.dp)) }
+            }
+            // Other ways through the day, each named by what it is, costs and leads to.
+            if (model.alternatives.isNotEmpty()) {
+                Heading(model.others)
+                model.alternatives.forEach { other ->
+                    OutlinedButton(modifier = Target.fillMaxWidth().padding(vertical = 4.dp), onClick = { model.take(other) }) {
+                        Text(other.sentence, Modifier.fillMaxWidth())
+                    }
+                }
             }
             if (items.isNotEmpty()) {
                 Text(words.hint, Modifier.padding(top = 16.dp), style = MaterialTheme.typography.bodyMedium, color = quiet())

@@ -209,6 +209,24 @@ class ReminderScheduleTest {
     }
 
     @Test
+    fun workOutrunningABlockIsSaidWithAReplanButtonThatOpensTheApp() {
+        core.lumenna.setSetting("default-block-reminders", "")
+        for ((title, at) in listOf("Deep work" to "09:00", "Meeting" to "10:00")) {
+            core.lumenna.addBlock(NewBlock(title = title, at = at, minutes = 60u, date = "2026-05-06", kind = "work", repeat = null))
+        }
+        val deep = core.lumenna.listBlocks().rows.first { it.title == "Deep work" }.id
+        for ((title, minutes) in listOf("Essay" to 40u, "Email" to 30u)) {
+            core.lumenna.assign(core.lumenna.addTask(title).task!!.id, deep, "2026-05-06", minutes)
+        }
+        val overrun = core.lumenna.remindersDue(instant("2026-05-06T08:59"), instant("2026-05-06T09:01")).due.single()
+        assertEquals("Replan", overrun.replan)
+        val notification = Reminders.notification(context, overrun)
+        assertEquals(listOf("Dismiss", "Snooze 10 minutes", "Replan"), notification.actions.map { it.title.toString() })
+        // It opens the app, rather than doing something behind it.
+        if (android.os.Build.VERSION.SDK_INT >= 31) assertTrue(notification.actions[2].actionIntent.isActivity)
+    }
+
+    @Test
     fun anAlarmGoingOffShowsItsFiringUnlessItWasDismissedSince() {
         InstrumentationRegistry.getInstrumentation().uiAutomation
             .grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)

@@ -168,6 +168,9 @@ fun WearApp(core: Core, entry: TextEntry? = null, opened: kotlinx.coroutines.flo
         when (reminder.kind) {
             "task" -> navigator.open(Screen.Task(reminder.target))
             "block" -> navigator.open(Screen.Day)
+            // An overrun's Replan button: the rest of today, worked out again.
+            io.github.emassey0135.lumenna.Reminders.REPLAN ->
+                navigator.open(Screen.Proposal(io.github.emassey0135.lumenna.core.ActionKind.REPLAN, io.github.emassey0135.lumenna.Clock.today()))
         }
     }
     val changes by core.changes.collectAsState()

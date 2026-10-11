@@ -24,7 +24,7 @@ class MainActivity : ComponentActivity() {
     private val opened = MutableStateFlow<Pair<Long, ReminderOpened>?>(null)
 
     private fun handle(intent: Intent?) {
-        Reminders.opened(intent)?.let { opened.value = (opened.value?.first ?: 0L) + 1 to it }
+        Reminders.opened(this, intent)?.let { opened.value = (opened.value?.first ?: 0L) + 1 to it }
     }
 
     override fun onNewIntent(intent: Intent) {

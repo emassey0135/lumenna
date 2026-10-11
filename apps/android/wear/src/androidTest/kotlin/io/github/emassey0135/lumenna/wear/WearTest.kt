@@ -47,6 +47,9 @@ class WearTest {
 
     /** The moment a proposal is made against: now, unless a test fixes one. */
     private val plannerNow = androidx.compose.runtime.mutableStateOf<String?>(null)
+
+    /** What a reminder's notification opened the app to, as the activity hands it over. */
+    private val opened = kotlinx.coroutines.flow.MutableStateFlow<Pair<Long, io.github.emassey0135.lumenna.ReminderOpened>?>(null)
     private val asked = mutableListOf<String>()
 
     /** What Wear OS allows reminders, as a test says it; the system's answer when null. */
@@ -68,7 +71,7 @@ class WearTest {
                 io.github.emassey0135.lumenna.LocalReminderAccess provides { context -> access ?: io.github.emassey0135.lumenna.Reminders.access(context) },
                 io.github.emassey0135.lumenna.LocalPlannerNow provides plannerNow.value,
             ) {
-                androidx.wear.compose.material3.MaterialTheme { WearApp(core, entry) }
+                androidx.wear.compose.material3.MaterialTheme { WearApp(core, entry, opened) }
             }
         }
     }
@@ -359,7 +362,8 @@ class WearTest {
         press("Review moves from", substring = true)
         assertTrue("unchecked", !checked("Review moves from"))
         press("Make the changes checked")
-        rule.waitUntil(5_000) { rule.onAllNodes(hasText("Walk moves from", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        // The list holds only the rows on screen, and the button pressed is at its foot.
+        rule.waitForIdle()
         assertTrue("the next proposal starts checked", checked("Walk moves from"))
         press("Make the changes checked")
         rule.waitUntil(5_000) { rule.onAllNodes(hasText("Make the changes checked")).fetchSemanticsNodes().isEmpty() }
@@ -378,7 +382,8 @@ class WearTest {
         said("Suggested because priority 1").assertExists()
         press("Report goes in Morning", substring = true)
         press("Plan the ones checked")
-        rule.waitUntil(5_000) { rule.onAllNodes(hasText("Filing goes in Morning", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitForIdle()
+        shown("Filing goes in Morning", substring = true).assertExists()
         press("Plan the ones checked")
         rule.waitUntil(5_000) { rule.onAllNodes(hasText("Plan the ones checked")).fetchSemanticsNodes().isEmpty() }
         val planned = core.lumenna.plan("tomorrow").blocks.associate { b -> b.title to b.assignments.map { it.title } }
@@ -408,5 +413,36 @@ class WearTest {
         assertTrue(history.isNotEmpty())
         said("History").assertExists()
         history.forEach { said(it).assertExists() }
+    }
+
+    private fun replannedDay() {
+        plannerNow.value = "2026-05-06T10:40"
+        block("All day", "today", "00:00", 1440u)
+        block("Deep work", "2026-05-06", "09:00", 120u)
+        block("Lunch", "2026-05-06", "10:30", 30u, "break")
+        block("Review", "2026-05-06", "11:00", 60u)
+        rule.runOnIdle { core.changed() }
+    }
+
+    @Test
+    fun anotherOptionOnTheReplanScreenIsProposedInPlace() {
+        replannedDay()
+        val skip = core.lumenna.replan(io.github.emassey0135.lumenna.Clock.style, io.github.emassey0135.lumenna.core.ReplanPins(emptyList(), emptyList(), emptyList()), plannerNow.value).alternatives.first()
+        press("Today")
+        press("Replan from now")
+        said("Other options").assertExists()
+        press(skip.sentence)
+        // The list holds only the rows on screen, and the option pressed was at its foot.
+        rule.waitForIdle()
+        assertTrue(checked("Lunch is skipped"))
+        assertTrue(rule.onAllNodes(hasText("Other options")).fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun anOverrunsReplanButtonOpensReplanFromNow() {
+        replannedDay()
+        rule.runOnIdle { opened.value = 1L to io.github.emassey0135.lumenna.ReminderOpened(io.github.emassey0135.lumenna.Reminders.REPLAN, "", "") }
+        rule.waitUntil(5_000) { rule.onAllNodes(hasText("Lunch moves from", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(checked("Lunch moves from"))
     }
 }

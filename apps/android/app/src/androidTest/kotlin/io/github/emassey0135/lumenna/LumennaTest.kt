@@ -62,6 +62,9 @@ class LumennaTest {
     /** The moment a proposal is made against: now, unless a test fixes one. */
     private val plannerNow = androidx.compose.runtime.mutableStateOf<String?>(null)
 
+    /** What a reminder's notification opened the app to, as the activity hands it over. */
+    private val opened = kotlinx.coroutines.flow.MutableStateFlow<Pair<Long, ReminderOpened>?>(null)
+
     @Before
     fun open() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -71,7 +74,7 @@ class LumennaTest {
         rule.enableAccessibilityChecks()
         rule.setContent {
             androidx.compose.runtime.CompositionLocalProvider(LocalPlannerNow provides plannerNow.value) {
-                PhoneWidth { LumennaTheme { LumennaApp(core) } }
+                PhoneWidth { LumennaTheme { LumennaApp(core, opened = opened) } }
             }
         }
     }
@@ -817,5 +820,45 @@ class LumennaTest {
         assertTrue("a task has a history from the day it is added", history.isNotEmpty())
         rule.onNode(hasText("History") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)).performScrollTo()
         history.forEach { line -> rule.onNode(hasText(line)).performScrollTo().assertExists() }
+    }
+
+    /** The replanned day of the core's own tests, at its moment, and a block under way today. */
+    private fun replannedDay() {
+        plannerNow.value = "2026-05-06T10:40"
+        seed {
+            it.addBlock(NewBlock(title = "All day", at = "00:00", minutes = 1440u, date = "today", kind = "work", repeat = null))
+            for ((title, kind, at, minutes) in listOf(
+                listOf("Deep work", "work", "09:00", "120"), listOf("Lunch", "break", "10:30", "30"), listOf("Review", "work", "11:00", "60"),
+            )) {
+                it.addBlock(NewBlock(title = title, at = at, minutes = minutes.toUInt(), date = "2026-05-06", kind = kind, repeat = null))
+            }
+        }
+    }
+
+    @Test
+    fun anotherOptionOnTheReplanScreenIsProposedInPlaceAndSaid() {
+        replannedDay()
+        val proposal = core.lumenna.replan(Clock.style, io.github.emassey0135.lumenna.core.ReplanPins(emptyList(), emptyList(), emptyList()), plannerNow.value)
+        val skip = proposal.alternatives.first()
+        assertTrue(skip.sentence, skip.sentence.startsWith("Skip Lunch today"))
+        tab("Today")
+        button("Replan from now")
+        rule.onNode(hasText("Other options") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)).assertExists()
+        button(skip.sentence)
+        val taken = core.lumenna.replan(Clock.style, skip.pins, plannerNow.value)
+        shows(taken.announcement)
+        checkBox("Lunch is skipped").assertIsOn()
+        assertTrue("nothing does better, so no other options", rule.onAllNodes(hasText("Other options")).fetchSemanticsNodes().isEmpty())
+        button("Make the changes checked")
+        rule.waitUntil(5_000) { core.lumenna.plan("2026-05-06").blocks.none { it.title == "Lunch" } }
+    }
+
+    @Test
+    fun anOverrunsReplanButtonOpensReplanFromNow() {
+        replannedDay()
+        tab("Tasks")
+        rule.runOnIdle { opened.value = 1L to ReminderOpened(Reminders.REPLAN, "", "") }
+        rule.waitUntil(5_000) { rule.onAllNodes(hasText("Make the changes checked")).fetchSemanticsNodes().isNotEmpty() }
+        checkBox("Lunch moves from").assertIsOn()
     }
 }

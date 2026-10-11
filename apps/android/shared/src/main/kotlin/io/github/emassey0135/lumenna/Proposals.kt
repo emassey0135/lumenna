@@ -56,6 +56,28 @@ class ProposalModel(private val core: Core, val kind: ActionKind, private val da
         get() = replan?.changes?.map { ProposalItem(it.sentence, null) }
             ?: plan?.sittings?.map { ProposalItem(it.sentence, it.reason) }.orEmpty()
 
+    /**
+     * Other ways through the rest of the day (a replan's alone), under the heading
+     * [ProposalWords.others], each named by its sentence: "Skip Lunch today, …".
+     */
+    val alternatives: List<io.github.emassey0135.lumenna.core.ReplanAlternative> get() = replan?.alternatives.orEmpty()
+
+    /** [ProposalWords.others] in sentence case; empty for Plan the Day, which has none. */
+    val others: String get() = words.others.takeIf { it.isNotEmpty() }?.let(::button).orEmpty()
+
+    /**
+     * Takes another option: the day proposed again with its pins, shown in place and said, as
+     * after a partial apply. False if the core could not say, which is said instead.
+     */
+    fun take(alternative: io.github.emassey0135.lumenna.core.ReplanAlternative): Boolean {
+        refused = null
+        val proposed = core.attempt { core.lumenna.replan(Clock.style, alternative.pins, now) } ?: return false
+        replan = proposed
+        checked = items.indices.toSet()
+        core.say(announcement)
+        return true
+    }
+
     /** What does not fit, said, under the heading [ProposalWords.unfit]. */
     val unfit: List<String> get() = replan?.unplaceable ?: plan?.unfit.orEmpty()
 
