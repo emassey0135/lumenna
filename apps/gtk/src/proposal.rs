@@ -122,13 +122,13 @@ impl Screen {
         let made = match &proposal {
             Proposal::Replan(replan) => {
                 let accepted = replan.changes.iter().zip(&checked).filter(|(_, c)| **c).map(|(p, _)| p.clone()).collect();
-                lumenna.apply_replan(replan.clone(), accepted, None).map(|done| {
+                lumenna.apply_replan(replan.clone(), accepted, now()).map(|done| {
                     (speech::announcement(&done.announcement, &done.notices), Proposal::Replan(done.next))
                 })
             }
             Proposal::Day(plan) => {
                 let accepted = plan.sittings.iter().zip(&checked).filter(|(_, c)| **c).map(|(p, _)| p.clone()).collect();
-                lumenna.apply_day_plan(plan.clone(), accepted, None).map(|done| {
+                lumenna.apply_day_plan(plan.clone(), accepted, now()).map(|done| {
                     (speech::announcement(&done.announcement, &done.notices), Proposal::Day(done.next))
                 })
             }
@@ -168,22 +168,28 @@ impl Screen {
     }
 }
 
+/// Now, as the core is to take it: the clock, unless `LUMENNA_NOW` (a local date and time,
+/// `2026-05-06T10:00`) pins it, so a test of the rest of a day runs the same at any hour.
+fn now() -> Option<String> {
+    std::env::var("LUMENNA_NOW").ok().filter(|now| !now.is_empty())
+}
+
 /// Asks the core again for the same kind of proposal, keeping what was decided.
 fn ask(app: &App, like: &Proposal) -> lumenna_surface::Result<Proposal> {
     let style = app.clock.style();
     match like {
-        Proposal::Replan(replan) => app.core.lumenna.replan(style, replan.pins.clone(), None).map(Proposal::Replan),
+        Proposal::Replan(replan) => app.core.lumenna.replan(style, replan.pins.clone(), now()).map(Proposal::Replan),
         Proposal::Day(plan) => app
             .core
             .lumenna
-            .propose_day_plan(Some(plan.date.clone()), style, plan.pins.clone(), None)
+            .propose_day_plan(Some(plan.date.clone()), style, plan.pins.clone(), now())
             .map(Proposal::Day),
     }
 }
 
 /// Replan from Now: the rest of today.
 pub fn replan(app: &Rc<App>) {
-    match app.core.lumenna.replan(app.clock.style(), Default::default(), None) {
+    match app.core.lumenna.replan(app.clock.style(), Default::default(), now()) {
         Ok(replan) => open(app, ActionKind::Replan, Proposal::Replan(replan)),
         Err(error) => app.fail(&sentence(&error)),
     }
@@ -191,7 +197,7 @@ pub fn replan(app: &Rc<App>) {
 
 /// Plan the Day: `date` (ISO, or a date phrase).
 pub fn plan_day(app: &Rc<App>, date: &str) {
-    match app.core.lumenna.propose_day_plan(Some(date.to_owned()), app.clock.style(), Default::default(), None) {
+    match app.core.lumenna.propose_day_plan(Some(date.to_owned()), app.clock.style(), Default::default(), now()) {
         Ok(plan) => open(app, ActionKind::PlanDay, Proposal::Day(plan)),
         Err(error) => app.fail(&sentence(&error)),
     }

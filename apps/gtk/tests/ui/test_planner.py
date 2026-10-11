@@ -8,17 +8,6 @@ import unittest
 from harness import Atspi, Notifications, Session, pump
 
 
-def at(minutes):
-    """A time of day `minutes` from now, `HH:MM`."""
-    return (datetime.datetime.now() + datetime.timedelta(minutes=minutes)).strftime("%H:%M")
-
-
-def today_holds(earliest, latest):
-    """Whether every time from `earliest` to `latest` minutes from now falls today."""
-    now = datetime.datetime.now()
-    return all((now + datetime.timedelta(minutes=m)).date() == now.date() for m in (earliest, latest))
-
-
 class DayActions:
     """Runs one of the day's own actions from its heading row's menu, found by where the
     core's order puts it: the menu's items read as nameless to AT-SPI here."""
@@ -78,13 +67,18 @@ class PlanTheDayTest(unittest.TestCase, DayActions):
 
 class ReplanTest(unittest.TestCase, DayActions):
     def setUp(self):
-        # Three blocks crowding the next half hour, and room after them, all of it today.
-        if not today_holds(0, 90):
-            self.skipTest("too near midnight for blocks still to come today")
+        # The rest of today from a fixed now, 10:00, pinned through LUMENNA_NOW as the other
+        # apps pass now through, so it runs the same at any hour: three blocks crowding the
+        # next half hour. Only the date is the clock's, so the two minutes before midnight
+        # are waited out.
+        while datetime.datetime.now() + datetime.timedelta(minutes=2) > datetime.datetime.combine(
+                datetime.date.today() + datetime.timedelta(days=1), datetime.time()):
+            pump(5)
+        now = datetime.datetime.combine(datetime.date.today(), datetime.time(10, 0))
         seed = [("config", "set", "day-start", "00:00"), ("config", "set", "day-end", "23:59")]
-        seed += [("block", "add", name, "--at", at(start), "--minutes", "15")
-                 for name, start in (("First", 3), ("Second", 10), ("Third", 17))]
-        self.session = Session(seed)
+        seed += [("block", "add", name, "--at", start, "--minutes", "15")
+                 for name, start in (("First", "10:03"), ("Second", "10:10"), ("Third", "10:17"))]
+        self.session = Session(seed, environment={"LUMENNA_NOW": now.strftime("%Y-%m-%dT%H:%M")})
         self.session.press("Control+1", wait=1.5)
         self.session.said()
 
