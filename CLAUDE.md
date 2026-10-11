@@ -693,6 +693,9 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
   and project trees fold with Expand and Collapse actions and say which they are; a
   project's, label's or filter's actions are its own, the core's, as in Browse. A screen
   chosen by a command acts a turn later: it is not in the window until then.
+- **The Day menu ends in the day's own actions**, one item per kind (`dayActionItems`), since
+  the menu bar is built once: each runs the shown day's action of that kind, read again first,
+  or says `notOffered`. From another place they go to today first.
 - **⌘F never reaches the app in the iPad simulator**: no responder is asked about it, where
   ⌘3 is. Filter Tasks stays on ⌘F in the Edit menu, and its test skips on iPad.
 - **Three layers of iOS tests.** `LumennaTests` (unit tests hosted in the app) asks each
@@ -744,7 +747,10 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   sheet, shared with the watch.
 - **The Day menu ends in the day's own actions**, rebuilt as it opens (`MainMenu.DayMenu`):
   the day shown's, else today's, which goes to the day first; also a pull-down beside the
-  day's buttons. The proposal screen is a `HostedForm` sheet with its own Cancel and default
+  day's buttons. Plan the Day and Replan from Now have Command-Option-P and -R (`DayKeys`,
+  the iPad's too), answered by `DayMenu.menuHasKeyEquivalent` with the menu closed; that
+  stops AppKit looking through the menu's items, so it matches the fixed ones (Command-[)
+  itself. The proposal screen is a `HostedForm` sheet with its own Cancel and default
   button. A picker sheet's reason is its row's second line and VoiceOver help.
 - **Global shortcuts through Carbon's `RegisterEventHotKey`**, which needs no accessibility
   permission. Never Control-Option: it is VoiceOver's. The recorder warns of clashes with

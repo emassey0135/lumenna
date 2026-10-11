@@ -105,6 +105,17 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
     @objc func redoChange() { redoInStore(core) }
     @objc func syncNow() { syncAndSay(core) }
 
+    // The day's own actions from anywhere else: today's, on the day.
+    @objc func planTheDay() { onToday(.planDay) }
+    @objc func replanFromNow() { onToday(.replan) }
+    @objc func whatNow() { onToday(.whatNow) }
+    @objc func endTheDay() { onToday(.endDay) }
+    @objc func clearTheDay() { onToday(.clearDay) }
+
+    private func onToday(_ kind: ActionKind) {
+        show(.place(.today)) { ($0 as? DayViewController)?.runDay(kind) }
+    }
+
     /// The overrun warning's Replan: today, with Replan from Now over it.
     @objc func openReplan() {
         show(.place(.today)) { ($0 as? DayViewController)?.openReplan() }

@@ -646,6 +646,24 @@ final class LumennaMacUITests: XCTestCase {
         XCTAssertTrue(day.staticTexts["write the report"].waitForExistence(timeout: 5))
     }
 
+    /// Command-Option-P is Plan the Day with the Day menu closed, and the menu's fixed keys
+    /// still work beside it: Command-] goes to the next day.
+    func testCommandOptionPPlansTheDayAndTheDayMenusOtherKeysStillWork() throws {
+        place("Today")
+        let day = window.outlines["The day"]
+        XCTAssertTrue(day.waitForExistence(timeout: 5))
+        app.typeKey("]", modifierFlags: .command)
+        // The window is titled with the day shown.
+        let tomorrow = expectation(for: NSPredicate(format: "title == 'Tomorrow'"), evaluatedWith: window)
+        XCTAssertEqual(XCTWaiter.wait(for: [tomorrow], timeout: 5), .completed, "Command-] still goes to the next day: \(window.title)")
+        addBlock("Writing")
+        XCTAssertTrue(text(containing: "Writing", in: day).waitForExistence(timeout: 5))
+        app.typeKey("p", modifierFlags: [.command, .option])
+        XCTAssertTrue(app.sheets.staticTexts["Plan the Day"].waitForExistence(timeout: 5), app.debugDescription)
+        sheetButton("Cancel")
+        XCTAssertTrue(app.sheets.firstMatch.waitForNonExistence(timeout: 5))
+    }
+
     // MARK: - Settings
 
     func testBackUpNowWritesABackupWhereTheyGo() throws {

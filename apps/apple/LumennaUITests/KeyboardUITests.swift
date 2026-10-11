@@ -103,6 +103,28 @@ final class KeyboardUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars[today].waitForExistence(timeout: 5))
     }
 
+    /// The Day menu's own part, by its keys: Command-Option-P is Plan the Day on the day
+    /// shown, refused in the core's words where the day has nothing to plan, and opening its
+    /// screen once it has. On iPad the command exists only in the menu bar.
+    func testCommandOptionPPlansTheDayShownWhereItHasABlockToFill() {
+        tab("Today")
+        XCTAssertTrue(app.buttons["Next Day"].waitForExistence(timeout: 5))
+        let planning = app.navigationBars["Plan the Day"]
+        press("p", [.command, .option])
+        XCTAssertFalse(planning.waitForExistence(timeout: 2), "an empty day has no Plan the Day")
+        // Tomorrow, so its block is still to come whenever the test runs.
+        press("]")
+        press("n", [.command, .shift])
+        let name = app.textFields["Name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        name.tap()
+        name.typeText("Writing")
+        app.buttons["Save"].tap()
+        XCTAssertTrue(app.cells.containing(NSPredicate(format: "label CONTAINS 'Writing'")).firstMatch.waitForExistence(timeout: 5))
+        press("p", [.command, .option])
+        XCTAssertTrue(planning.waitForExistence(timeout: 5), "the day shown has a block to fill")
+    }
+
     // MARK: - iPad
 
     func testOnIPadATaskOpensBesideItsListAndCommandKMarksItDone() throws {

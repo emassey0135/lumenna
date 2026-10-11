@@ -72,7 +72,8 @@ final class ReminderScheduleTests: XCTestCase {
         let fires = try XCTUnwrap(moment(request))
         let expected = Calendar.current.date(bySetting: .second, value: 0, of: start.addingTimeInterval(-5 * 60)) ?? start
         XCTAssertEqual(fires.timeIntervalSince1970, expected.timeIntervalSince1970, accuracy: 60, "at the core's moment")
-        let category = try XCTUnwrap(centre.categories.first)
+        // By name: the carry and replan categories join it once any reminder has offered them.
+        let category = try XCTUnwrap(centre.categories.first { $0.identifier == Reminders.category })
         XCTAssertEqual(category.actions.map(\.title), ["Dismiss", "Snooze 10 Minutes"], "the core's words")
     }
 

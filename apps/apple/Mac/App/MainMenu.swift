@@ -137,7 +137,48 @@ enum MainMenu {
             for action in actions {
                 let item = ClosureMenuItem(title: action.asks ? action.title + "…" : action.title) { app.performDay(action) }
                 item.tag = Self.tag
+                if let key = DayKeys.key(for: action.kind) {
+                    item.keyEquivalent = key
+                    item.keyEquivalentModifierMask = [.command, .option]
+                }
                 menu.addItem(item)
+            }
+        }
+
+        /// The keys work with the menu closed, whatever the day offers: the day's action of
+        /// that kind, or why it has none (`notOffered`), rather than a key that does nothing.
+        func menuHasKeyEquivalent(
+            _ menu: NSMenu, for event: NSEvent, target: AutoreleasingUnsafeMutablePointer<AnyObject?>,
+            action: UnsafeMutablePointer<Selector?>
+        ) -> Bool {
+            let modifiers = event.modifierFlags.intersection([.command, .option, .shift, .control])
+            let typed = event.charactersIgnoringModifiers?.lowercased() ?? ""
+            // Implementing this means AppKit no longer looks through the menu's own items, so
+            // the fixed ones (Previous Day, Go to Day) are matched here.
+            if let item = menu.items.first(where: {
+                $0.tag != Self.tag && !$0.keyEquivalent.isEmpty && $0.keyEquivalent == typed
+                    && $0.keyEquivalentModifierMask.intersection([.command, .option, .shift, .control]) == modifiers
+            }) {
+                target.pointee = item.target
+                action.pointee = item.action
+                return true
+            }
+            guard modifiers == [.command, .option], let kind = DayKeys.kind(for: typed) else { return false }
+            pending = kind
+            target.pointee = self
+            action.pointee = #selector(runPending(_:))
+            return true
+        }
+
+        private var pending: ActionKind?
+
+        @objc private func runPending(_ sender: Any?) {
+            guard let kind = pending, let app = AppDelegate.shared else { return }
+            pending = nil
+            if let action = app.dayActions.first(kind) {
+                app.performDay(action)
+            } else {
+                Announcer.say(notOffered(kind: kind, subject: .day, thisDevice: false))
             }
         }
     }
