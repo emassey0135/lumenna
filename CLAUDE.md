@@ -1140,6 +1140,15 @@ with `lum`.
   and pairs by code. `.cargo/config.toml` sets getrandom's `wasm_js` backend.
 - **Callbacks into the core are wrapped in the worker**: a Comlink proxy answers any
   property, so wasm-bindgen's `f.call(…)` on one became a remote call named "call".
+- **Replan from Now and Plan the Day are one screen** (`Proposal.tsx`), opened by the day's
+  `replan` and `plan_day` actions (the summary row's, and the Day actions menu's). Each change
+  is its line with a check box named by the core's `item` and described by the line, as a
+  reminder's buttons are by its text; after a partial apply the list is the core's `next`, a
+  new list whose first box takes focus. The clock the proposal is said in is the browser's
+  (`Intl`'s `hour12`).
+- **Playwright's clock does not reach the worker**, where the core reads the time. Tests that
+  need a fixed day serve `worker.ts` with a shifted `Date` in front (`at` in
+  `tests/planner.spec.ts`).
 
 ## Conventions
 

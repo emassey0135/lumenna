@@ -48,6 +48,8 @@ export interface Item {
   id: string;
   text: string;
   depth?: number;
+  /** Why it is offered, when the core says: its description, never its name. */
+  reason?: string;
 }
 
 let open: ((question: Question) => void) | undefined;
@@ -228,7 +230,16 @@ function Picking(props: { question: Extract<Question, { kind: "pick" }>; close: 
             <ListBox>
               {(item: Item) => (
                 <ListBoxItem textValue={item.text} style={{ paddingInlineStart: `${0.5 + (item.depth ?? 0)}em` }}>
-                  {item.text}
+                  {item.reason ? (
+                    <>
+                      <Text slot="label">{item.text}</Text>
+                      <Text slot="description" className="quiet choice-reason">
+                        {item.reason}
+                      </Text>
+                    </>
+                  ) : (
+                    item.text
+                  )}
                 </ListBoxItem>
               )}
             </ListBox>

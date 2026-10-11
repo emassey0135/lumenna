@@ -20,6 +20,7 @@ import { askText, byKind, perform, REMOVING } from "./actions";
 import { useCommand } from "./commands";
 import { rowKey, useLanding } from "./landing";
 import { choose } from "./Prompts";
+import { showProposal } from "./Proposal";
 import { asksForMenu, RowMenu } from "./RowMenu";
 import { say } from "./say";
 
@@ -27,6 +28,8 @@ interface Shown {
   date: string;
   title: string;
   rows: DayRow[];
+  /** The day's own actions: Plan the Day, Replan from Now, What Should I Work On?, … */
+  actions: Action[];
 }
 
 /** Every row in the order the tree shows them, sittings after their block. */
@@ -56,6 +59,7 @@ export function Day(props: {
   const [selected, setSelected] = useState<string | undefined>();
   const [collapsed, setCollapsed] = useState<Set<Key>>(new Set());
   const [menu, setMenu] = useState(false);
+  const [dayMenu, setDayMenu] = useState(false);
   const [minute, setMinute] = useState(0);
   const tree = useRef<HTMLDivElement>(null);
   // Whether the day has opened on now yet: once, so coming back does not move the selection.
@@ -220,15 +224,22 @@ export function Day(props: {
 
   // Runs one of a row's actions. The forms are this client's own: a block's, a new block's in
   // free time, and the details of a sitting's task.
-  const run = async (at: DayRow, action: Action) => {
+  // `land` false leaves focus where it went back to: the Day actions button, not a row.
+  const run = async (at: DayRow, action: Action, landing = true) => {
     const index = Math.max(0, keys.indexOf(at.key));
     const done = await perform(action, async () => {
       if (action.kind === "edit" && at.block) await edit(at.block);
       else if (action.kind === "add_block" && at.free) await addBlock(action.other ?? at.free.start, at.free.minutes);
       else if (action.kind === "edit_task") props.onOpenTask(action.target);
+      // The day's two proposals are this client's screens, over the core's words.
+      else if (action.kind === "replan" || action.kind === "plan_day") {
+        const of = action.kind === "replan" ? ({ kind: "replan" } as const) : ({ kind: "plan_day", date: action.target } as const);
+        // What was made is said by the screen as it is made.
+        return { said: "", changed: await showProposal(of) };
+      }
     });
     if (!done) return;
-    land(at.key, index);
+    if (landing) land(at.key, index);
     props.onChanged();
     say(done.said);
   };
@@ -294,6 +305,17 @@ export function Day(props: {
         </Button>
         <Button onPress={() => void goToDay()}>Go to day</Button>
         <Button onPress={() => void addBlock()}>Add block</Button>
+        {/* The day's own actions, wherever focus is: its summary row offers them too. */}
+        <RowMenu
+          label="Day actions"
+          actions={shown?.actions ?? []}
+          onAction={(action) => {
+            const summary = flat[0];
+            if (summary) void run(summary, action, false);
+          }}
+          isOpen={dayMenu}
+          onOpenChange={setDayMenu}
+        />
         <RowMenu
           actions={row(selected)?.actions ?? []}
           onAction={(action) => {

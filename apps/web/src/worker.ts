@@ -41,10 +41,17 @@ import init, {
   taskStateText,
   trashedText,
   keyboardShortcuts,
+  proposalWords,
 } from "./core/lumenna_web.js";
 import type {
   Action,
+  ActionKind,
   Answer,
+  DayPins,
+  DayPlan,
+  ProposalWords,
+  Replan,
+  ReplanPins,
   Choice,
   FormField,
   ShortcutGroup,
@@ -208,7 +215,13 @@ const api = {
     const found = store().choices(action);
     return {
       announcement: found.announcement,
-      choices: found.choices.map((choice) => ({ id: choice.id, text: choiceText(choice), depth: choice.depth })),
+      // Why each is offered, when the core says: its description, never its name.
+      choices: found.choices.map((choice) => ({
+        id: choice.id,
+        text: choiceText(choice),
+        depth: choice.depth,
+        reason: choice.reason ?? undefined,
+      })),
     };
   },
 
@@ -254,7 +267,7 @@ const api = {
    */
   day(date?: string) {
     const plan = store().plan(date);
-    const rows: DayRow[] = [{ key: "summary", text: summaryText(plan.date, plan.summary ?? ""), kind: "summary", actions: [], children: [] }];
+    const rows: DayRow[] = [{ key: "summary", text: summaryText(plan.date, plan.summary ?? ""), kind: "summary", actions: plan.actions ?? [], children: [] }];
     for (const item of plan.timeline ?? []) {
       if (item.item === "block") {
         const block = plan.blocks.find((b) => b.row === item.row);
@@ -285,7 +298,9 @@ const api = {
     for (const cancelled of plan.cancelled ?? []) {
       rows.push({ key: `cancelled:${cancelled.series}`, text: cancelledText(cancelled), kind: "cancelled", cancelled, actions: cancelled.actions ?? [], children: [] });
     }
-    return { date: plan.date, title: dayText(plan.date), rows };
+    // The day's own actions (Plan the Day, Replan from Now, …) are its summary row's, and the
+    // Day actions menu's.
+    return { date: plan.date, title: dayText(plan.date), rows, actions: plan.actions ?? [] };
   },
 
   /** An ISO date as a person says it, and `HH:MM` as this browser says it. */
@@ -332,6 +347,41 @@ const api = {
     const scope: BlockScope = date ? { Occurrence: { date } } : "Series";
     return said(store().editBlock(series, edit, scope));
   },
+
+  // -------------------------------------------------------------------------------------
+  // The planner: Replan from Now and Plan the Day, each a proposal said in full and made as
+  // the person checks it, in this browser's clock.
+  // -------------------------------------------------------------------------------------
+
+  /** Every word of a proposal's screen, the buttons and headings in the web's sentence case. */
+  proposalWords(kind: ActionKind): ProposalWords {
+    const words = proposalWords(kind);
+    for (const key of ["title", "item", "apply", "cancel", "unfit"] as const) words[key] = sentenceCase(words[key]);
+    return words;
+  },
+
+  /** What replanning the rest of today proposes, keeping to `pins` (none at first). */
+  replan: (pins?: ReplanPins): Proposed => replanned(store().replan(pins)),
+
+  /** Makes the changes checked (by index), and what is proposed next. */
+  applyReplan(proposal: Proposed, accepted: number[]): Made {
+    const record = proposal.record as Replan;
+    const made = store().applyReplan(record, accepted.map((index) => record.changes[index]).filter((c) => c !== undefined));
+    return { said: announcementText(made.announcement, made.notices ?? []), next: replanned(made.next) };
+  },
+
+  /** What planning `date` proposes, keeping to `pins` (none at first). */
+  proposeDayPlan: (date: string, pins?: DayPins): Proposed => planned(store().proposeDayPlan(date, pins)),
+
+  /** Makes the sittings checked (by index), and what is proposed next. */
+  applyDayPlan(proposal: Proposed, accepted: number[]): Made {
+    const record = proposal.record as DayPlan;
+    const made = store().applyDayPlan(record, accepted.map((index) => record.sittings[index]).filter((s) => s !== undefined));
+    return { said: announcementText(made.announcement, made.notices ?? []), next: planned(made.next) };
+  },
+
+  /** A reminder's Carry Forward: the rest of a block's short work (`<series>@<date>`) carried on. */
+  carryRestForward: (block: string): string => said(store().carryRestForward(block)),
 
   // -------------------------------------------------------------------------------------
   // Devices and sync. A browser reaches other devices through a relay, and pairs by code.
@@ -461,6 +511,45 @@ export interface DayRow {
   /** What can be done to it, as the core offers it. */
   actions: Action[];
   children: DayRow[];
+}
+
+/**
+ * A proposal as its screen shows it, Replan from Now's or Plan the Day's alike: what to say on
+ * showing it, a line (and why) for each change, what does not fit; and the core's own record,
+ * handed back to apply it.
+ */
+export interface Proposed {
+  announcement: string;
+  items: { sentence: string; reason?: string }[];
+  unfit: string[];
+  pins: ReplanPins | DayPins;
+  record: Replan | DayPlan;
+}
+
+/** What applying a proposal made, as said, and the proposal for the day as it is now. */
+export interface Made {
+  said: string;
+  next: Proposed;
+}
+
+function replanned(record: Replan): Proposed {
+  return {
+    announcement: announcementText(record.announcement, record.notices ?? []),
+    items: record.changes.map((change) => ({ sentence: change.sentence })),
+    unfit: record.unplaceable ?? [],
+    pins: record.pins,
+    record,
+  };
+}
+
+function planned(record: DayPlan): Proposed {
+  return {
+    announcement: announcementText(record.announcement, record.notices ?? []),
+    items: record.sittings.map((sitting) => ({ sentence: sitting.sentence, reason: sitting.reason ?? undefined })),
+    unfit: record.unfit ?? [],
+    pins: record.pins,
+    record,
+  };
 }
 
 export type Api = typeof api;

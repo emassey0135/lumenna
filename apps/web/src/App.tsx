@@ -6,6 +6,7 @@ import * as Comlink from "comlink";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "react-aria-components";
 import { Prompts } from "./Prompts";
+import { Proposals } from "./Proposal";
 import { BlockForms } from "./BlockForm";
 import { Blocks } from "./Blocks";
 import { core } from "./core";
@@ -239,7 +240,7 @@ export function App() {
             {notice}
           </p>
         )}
-        <RemindersDue due={due} onDealt={(id) => setDue((now) => now.filter((one) => one.id !== id))} />
+        <RemindersDue due={due} onDealt={(id) => setDue((now) => now.filter((one) => one.id !== id))} onChanged={changed} />
       </header>
       <nav aria-label="Places">
         <Sidebar revision={revision} place={place} onPlace={setPlace} onChanged={changed} />
@@ -287,6 +288,7 @@ export function App() {
       <KeyboardShortcuts isOpen={keysOpen} onClose={() => setKeysOpen(false)} />
       <ReminderLists />
       <Prompts />
+      <Proposals onChanged={changed} />
       <BlockForms />
       <QuickAdd
         prefix={shown.quickAddPrefix}

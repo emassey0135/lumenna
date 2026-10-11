@@ -235,6 +235,17 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
             </ul>
           )}
         </section>
+        {/* What has happened to it: on its own screen only, never in a list. */}
+        {(task.history ?? []).length > 0 && (
+          <section aria-labelledby="task-history">
+            <h3 id="task-history">History</h3>
+            <ul className="plain">
+              {(task.history ?? []).map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </section>
+        )}
         <TextField className="field" value={state} isReadOnly>
           <Label>State</Label>
           <Input />

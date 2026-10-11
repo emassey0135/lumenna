@@ -15,6 +15,7 @@ use std::path::Path;
 
 mod clock;
 mod manage;
+mod planner;
 mod reminders;
 mod sync;
 
