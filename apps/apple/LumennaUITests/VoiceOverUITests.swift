@@ -57,11 +57,17 @@ final class VoiceOverUITests: XCTestCase {
         add("call the bank", "water the plants")
         try voiceOver.enable()
         try move(to: "call the bank")
-        // A moment for VoiceOver's focus to reach the app, which acts on VoiceOver's row: the
-        // service hands back the speech as it starts, and a key pressed at once (one run in
-        // six on the SE) found no row in hand and completed nothing.
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.5))
-        app.typeKey("k", modifierFlags: .command)
+        // ⌘K acts on VoiceOver's row, which reaches the app a little after the service hands
+        // back the speech: a key pressed before then finds no row in hand and does nothing
+        // (on the SE, and on a slow runner's iPhone). So press until the row has gone, which
+        // is what the key does; a press that found nothing changed nothing, so pressing again
+        // completes only the one row.
+        let completed = app.cells.matching(NSPredicate(format: "label == 'call the bank'")).firstMatch
+        for _ in 0..<5 {
+            app.typeKey("k", modifierFlags: .command)
+            if completed.waitForNonExistence(timeout: 2) { break }
+        }
+        XCTAssertFalse(completed.exists, "⌘K marked VoiceOver's row done")
         // Everything said meanwhile: the row focus lands on, then the core's announcement.
         var heard: [String] = []
         let landed = waitUntil {

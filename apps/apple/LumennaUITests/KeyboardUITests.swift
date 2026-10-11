@@ -109,11 +109,20 @@ final class KeyboardUITests: XCTestCase {
     func testCommandOptionPPlansTheDayShownWhereItHasABlockToFill() {
         tab("Today")
         XCTAssertTrue(app.buttons["Next Day"].waitForExistence(timeout: 5))
+        let today = title
+        // A later day, so its block is still to come whenever the test runs. Pressed until the
+        // day moves: a day screen just chosen in the sidebar takes the keyboard commands as it
+        // appears, and on CI's iPad keys sent before then reached nothing. A day two on is as
+        // good as one.
+        let moved = app.navigationBars.matching(NSPredicate(format: "identifier != %@", today)).firstMatch
+        for _ in 0..<5 where !moved.exists {
+            press("]")
+            _ = moved.waitForExistence(timeout: 2)
+        }
+        XCTAssertTrue(moved.exists, "Command-] went to another day")
         let planning = app.navigationBars["Plan the Day"]
         press("p", [.command, .option])
         XCTAssertFalse(planning.waitForExistence(timeout: 2), "an empty day has no Plan the Day")
-        // Tomorrow, so its block is still to come whenever the test runs.
-        press("]")
         press("n", [.command, .shift])
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
