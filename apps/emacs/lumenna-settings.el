@@ -70,10 +70,25 @@ core reads and checks it."
                                                     options nil t nil nil (car (rassoc now options)))
                                    options)))
                       ((equal (plist-get setting :kind) "folder")
-                       (expand-file-name (read-directory-name prompt now)))
-                      (t (read-string prompt now)))))
-    (unless (equal value now)
-      (lumenna-write "config.set" :key (plist-get setting :key) :value value))))
+                       (expand-file-name (read-directory-name prompt now))))))
+    (if (or options (equal (plist-get setting :kind) "folder"))
+        (unless (equal value now)
+          (lumenna-write "config.set" :key (plist-get setting :key) :value value))
+      (lumenna--type-setting setting prompt now))))
+
+(defun lumenna--type-setting (setting prompt now)
+  "Read SETTING's new value as a line, asking PROMPT, starting from NOW.
+Saved when entered, never as it is typed.  A value the core refuses is asked
+again, the core's sentence first and the line as it was typed."
+  (let ((typed now) wrong done)
+    (while (not done)
+      (let ((value (read-string (if wrong (lumenna--prompt wrong prompt) prompt) typed)))
+        (if (equal value now)
+            (setq done t)
+          (condition-case err
+              (progn (lumenna-write "config.set" :key (plist-get setting :key) :value value)
+                     (setq done t))
+            (user-error (setq wrong (cadr err) typed value))))))))
 
 ;;;; Devices and syncing
 
