@@ -286,6 +286,9 @@ def activity(message=None, stdscr=None):
 #: The device's settings, as `BTSpeak.settings.getValue` reads them; a test may change one.
 device_settings = {"time-format": "24-hour"}
 
+#: What the device was given to say, to braille and to play, in order, as `(kind, what)`.
+given: list = []
+
 #: The device's clipboard, as one string.
 _clipboard = [""]
 
@@ -299,7 +302,10 @@ def install() -> None:
     host = types.ModuleType("BTSpeak.host")
     host.push_app_context = lambda *a, **k: None
     host.pop_app_context = lambda *a, **k: None
-    host.say = lambda *a, **k: None
+    host.say = lambda text, *a, **k: given.append(("say", text))
+    host.play_sound = lambda name, *a, **k: given.append(("sound", name))
+    brl = types.ModuleType("BTSpeak.brl")
+    brl.push_message = lambda text, *a, **k: given.append(("braille", text))
     dialogs = types.ModuleType("BTSpeak.dialogs")
     for name, value in list(globals().items()):
         if name in {"Choice", "DynamicMenuItem", "MenuCommand", "InputField", "dynamic_menu", "request_choice",
@@ -316,11 +322,13 @@ def install() -> None:
     package.host = host
     package.clipboard = clipboard
     package.settings = settings
+    package.brl = brl
     sys.modules["BTSpeak"] = package
     sys.modules["BTSpeak.dialogs"] = dialogs
     sys.modules["BTSpeak.host"] = host
     sys.modules["BTSpeak.clipboard"] = clipboard
     sys.modules["BTSpeak.settings"] = settings
+    sys.modules["BTSpeak.brl"] = brl
 
 
 def play(steps) -> Script:

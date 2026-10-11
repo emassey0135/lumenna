@@ -23,5 +23,6 @@ Press H-Chord on any Lumenna screen for help about that screen. Press Z-Chord to
 - Blocks, shortcut b: every block, including ones on no day near today.
 - Trash, shortcut x: deleted tasks, to restore or delete from the trash.
 - Undo, shortcut u, and Redo, shortcut y: the last change made on this device, wherever it was made.
+- Reminders, shortcut r: what came due over the last day, to dismiss or snooze. See [Lumenna Reminders](help:lumenna-reminders).
 - Sync now, shortcut n: one round with your other devices now. See [Lumenna Settings](help:lumenna-settings).
 - Settings, shortcut s: see [Lumenna Settings](help:lumenna-settings).

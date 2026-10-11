@@ -56,6 +56,7 @@ KEYS = {
     "merge_into": "m",
     "colour": "c",
     "change_query": "q",
+    "reminders": "r",
 }
 
 #: The kinds the delete keys do — Control-D and the D chord.
