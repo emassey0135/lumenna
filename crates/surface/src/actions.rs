@@ -123,6 +123,9 @@ pub enum ActionKind {
     ClearDay,
     /// Put the rest of a sitting's planned time in another block.
     CarryForward,
+    /// Replan the rest of today: the app's own screen over `Lumenna::replan`. Not offered
+    /// until every app has that screen; an app opens a form action it does not know as another.
+    Replan,
 }
 
 /// What an action is done to: with [`ActionKind`], what runs.
@@ -351,7 +354,10 @@ fn action(kind: ActionKind, subject: Subject, title: impl Into<String>, target: 
         target: target.into(),
         other: None,
         destructive: matches!(kind, ActionKind::Delete | ActionKind::DeleteForGood | ActionKind::Unassign | ActionKind::Unpair),
-        question: if matches!(kind, ActionKind::Edit | ActionKind::EditTask | ActionKind::AddBlock | ActionKind::Reminders) {
+        question: if matches!(
+            kind,
+            ActionKind::Edit | ActionKind::EditTask | ActionKind::AddBlock | ActionKind::Reminders | ActionKind::Replan
+        ) {
             Question::Form
         } else {
             Question::Immediate
@@ -1283,7 +1289,7 @@ impl Lumenna {
 impl Lumenna {
     /// The work blocks of `days` days from `from` still to come, and, for `task`, only those
     /// whose filter admits it: a block that takes #Work tasks is not offered for a call home.
-    fn blocks_for(&self, task: Option<&str>, from: Option<String>, days: Option<u32>) -> Result<Choices> {
+    pub(crate) fn blocks_for(&self, task: Option<&str>, from: Option<String>, days: Option<u32>) -> Result<Choices> {
         let blocks = self.work_blocks(from, days)?;
         let admitted: Option<BTreeSet<String>> = match task {
             None => None,

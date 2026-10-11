@@ -645,6 +645,16 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         }
         "choices" => Response::new(l.choices(record(params, "action")?)?),
         "places" => Response::new(l.places()),
+        // Replanning the rest of today: a proposal, then the changes the person accepted.
+        "replan" => {
+            let style = match maybe_text(params, "clock").as_deref() {
+                None | Some("24-hour") => crate::TimeStyle::TwentyFourHour,
+                Some("12-hour") => crate::TimeStyle::TwelveHour,
+                Some(other) => return Err(invalid(format!("'{other}' is not a clock; use 12-hour or 24-hour"))),
+            };
+            Response::new(l.replan(style, maybe_record(params, "keep")?.unwrap_or_default(), maybe_record(params, "skip")?.unwrap_or_default(), maybe_text(params, "now"))?)
+        }
+        "replan.apply" => Response::new(l.apply_replan(record(params, "changes")?, maybe_text(params, "now"))?),
 
         // The forms' rules, for a client that cannot call them in-process.
         "form.task_fields" => Response::new(Derived::of(crate::task_fields(record(params, "task")?))),
