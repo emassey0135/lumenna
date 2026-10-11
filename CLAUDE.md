@@ -543,7 +543,9 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
   the earliest 60 (iOS keeps 64), identified `reminder <key> <occurrence>` so re-arming
   replaces and what is no longer listed is cancelled. It re-arms at launch, on every
   `Core.changed` (the foreground's included), and in `BackgroundSync`'s leaving round and
-  refresh, before the task ends. Dismiss and Snooze are a category whose buttons are the
+  refresh, before the task ends. On launch, the foreground and a refresh it first catches up
+  (`reminders_missed`, `kept: true`): what fired past the last window is shown at once, the
+  older as one summary. Dismiss and Snooze are a category whose buttons are the
   core's words, answered by `ReminderResponder`, set as delegate before launch finishes.
   Permission is asked when the person opens a Reminders list, turns reminders on, or makes an
   edit that leaves something to fire, never at launch, and never under `LUMENNA_TEST_PROFILE`

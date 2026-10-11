@@ -204,9 +204,26 @@ final class ReminderSchedule {
         }
     }
 
+    /// Shows what fired while nothing was armed for it: past the window last handed over, as
+    /// when the app went unopened for two days. The system keeps what it was handed, so the
+    /// core counts everything within that window as given (`kept`). Recent ones are shown as
+    /// they are, at once, with their buttons; older ones as one summary. Returns what it
+    /// handed over. Asked just before re-arming, which moves the window on.
+    @discardableResult
+    func catchUp() -> [UNNotificationRequest] {
+        guard let found = try? lumenna.remindersMissed(shown: [], kept: true) else { return [] }
+        let requests = ReminderDelivery.requests(found)
+        if let first = found.due.first { centre.useCategories([Reminders.category(for: first)]) }
+        requests.forEach(centre.schedule)
+        return requests
+    }
+
     /// Hands the notification center everything that fires in the next two days, replacing
-    /// what it held of ours and cancelling what no longer fires. `done` runs once it has.
-    func rearm(asking: Bool = false, then done: @escaping () -> Void = {}) {
+    /// what it held of ours and cancelling what no longer fires; `catchingUp` first shows what
+    /// was missed (on launch, on coming to the front, in a background refresh). `done` runs
+    /// once it has.
+    func rearm(asking: Bool = false, catchingUp: Bool = false, then done: @escaping () -> Void = {}) {
+        if catchingUp { catchUp() }
         let now = now()
         guard let upcoming = try? lumenna.upcomingReminders(until: Reminders.rfc3339(now.addingTimeInterval(Reminders.window))) else {
             return done()

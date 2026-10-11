@@ -25,7 +25,7 @@ struct LumennaWatchApp: App {
             .onChange(of: phase) { _, phase in
                 guard phase == .active else { return }
                 opened.core?.phone.syncNow()
-                opened.reminders?.soon()
+                opened.reminders?.rearm(catchingUp: true)
             }
         }
     }
@@ -57,7 +57,7 @@ final class Opened: ObservableObject {
             self.responder = responder
             let reminders = ReminderSchedule(lumenna: core.lumenna)
             reminders.follow()
-            reminders.rearm()
+            reminders.rearm(catchingUp: true)
             self.reminders = reminders
         } catch {
             core = nil
@@ -88,7 +88,7 @@ final class WatchDelegate: NSObject, WKApplicationDelegate {
                 continue
             }
             Self.scheduleRefresh()
-            reminders.rearm { refresh.setTaskCompletedWithSnapshot(false) }
+            reminders.rearm(catchingUp: true) { refresh.setTaskCompletedWithSnapshot(false) }
         }
     }
 
