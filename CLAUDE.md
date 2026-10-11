@@ -402,6 +402,13 @@ surface's `reminders.rs` words them and answers the apps.
   block offer Reminders (`Question::Form`: the app's list of `reminders_of`), whose own
   reminders each offer Remove Reminder. A notification's buttons are `DueReminder::dismiss`
   and `snooze`.
+- **Who delivers, per client**: the resident desktop apps through `deliver_reminders`; iOS,
+  watchOS, Android and Wear OS by scheduling `upcoming_reminders`; `lum notify` on a console;
+  Emacs's `lumenna-reminders-mode` and BTSpeak's resident service (`reminders.py`, its unit
+  and toggle in `system/`, installed only from its Settings, after asking) through
+  `reminder.deliver`, whose `elsewhere` says another process has it, so ask again soon. The
+  web's one tab delivers through `reminders_due` with a "since" of its own, and keeps
+  "Reminders on this device" in local storage: a browser has no device-settings file.
 - **Dismissing and snoozing write a `ReminderAck`**, which syncs: best effort, since a sleeping
   device may still show it. "Reminders on this device" is a device setting and never syncs.
 
@@ -906,6 +913,26 @@ gives the toolchain. Three modules: `app` (the phone), `wear` (Wear OS) and `sha
   15 minutes. Discovery hears multicast only under a `MulticastLock`, held while syncing or
   pairing; it is not exclusive and `mdns-sd` binds 5353 with `SO_REUSEPORT`, so other apps'
   mDNS is unaffected. The emulator's NAT passes no multicast.
+- **Reminders are AlarmManager alarms** (`shared/Reminders.kt`, for the phone and the watch):
+  the next 48 hours of `upcoming_reminders`, at most 100, each a broadcast whose data is its
+  firing (`key@occurrence`), so re-arming replaces it; what was set and is no longer listed is
+  cancelled. Armed when the store changes (`Reminders.follow`, which the app's return to the
+  front moves too, since it says the store changed), after `SyncWorker`'s round, on boot, an
+  update, a clock or zone change and exact alarms being granted (`ReminderRearmReceiver`), and
+  by an alarm a day on. `ReminderSchedule` over an `Alarms` is the seam the tests check.
+- **Exact where the person allows it**: `SCHEDULE_EXACT_ALARM`, not `USE_EXACT_ALARM`, which
+  Google Play keeps for alarm clocks and calendars. Refused, alarms are inexact and the
+  Reminders settings page says so, with the system's page that grants it. Revoking exact
+  alarms kills the app, tests and all, so the page reads what is allowed through
+  `LocalReminderAccess`, which tests set.
+- **An alarm going off asks the core again** (`reminders_due` over that one moment): a firing
+  dismissed or done elsewhere since it was armed is not shown, and one Android held back past
+  the core's few minutes is shown in its `missed` words. Each arming also takes away shown
+  notifications dealt with since on another device. Dismiss and Snooze are `ReminderReceiver`,
+  not exported. A notification is a reminder's category, so Do Not Disturb decides.
+- **Notifications are asked for once** (Android 13 and later), when the person first adds a
+  reminder or turns reminders on; after that the Reminders page says they are off and opens
+  the system's page. Tests grant the permission first, or the system's question covers the app.
 
 ## The Wear OS app
 
@@ -937,6 +964,14 @@ phone does.
   apps with the same package and signing key. Both are enrolled, and the watch joins every
   device's list. Each side remembers, in `local_state`, that it introduced itself, so a watch
   unpaired since is not enrolled again: the link refuses on both sides.
+- **A firing is shown once on the wrist.** The watch gives its own store's reminders, as the
+  phone does (`shared/Reminders.kt`), and turns off bridging of the phone's reminder
+  notifications only (`BridgingManager`, excluding `Reminders.BRIDGE_TAG`, which each carries).
+  Not the phone's local-only flag: with that, a watch without this app would get no
+  reminders at all. A dismissal on either reaches the other at the next sync, which takes
+  its copy away.
+- **A row's custom action that opens a screen runs on the main thread in tests**
+  (`actOnMain`): Wear's navigation refuses the test thread, where TalkBack never calls it.
 - The watch says it runs `wearos` (`PLATFORM`), in pairing and over the link.
 - **32-bit ARM too** (`armeabi-v7a`): many Wear OS watches run a 32-bit Android. The phone's
   APK leaves it out.
