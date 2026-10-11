@@ -7,6 +7,8 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.hasContentDescription
@@ -57,6 +59,9 @@ class LumennaTest {
     private lateinit var directory: File
     private lateinit var core: Core
 
+    /** The moment a proposal is made against: now, unless a test fixes one. */
+    private val plannerNow = androidx.compose.runtime.mutableStateOf<String?>(null)
+
     @Before
     fun open() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -64,7 +69,11 @@ class LumennaTest {
         core = Core(directory)
         Clock.update(context)
         rule.enableAccessibilityChecks()
-        rule.setContent { PhoneWidth { LumennaTheme { LumennaApp(core) } } }
+        rule.setContent {
+            androidx.compose.runtime.CompositionLocalProvider(LocalPlannerNow provides plannerNow.value) {
+                PhoneWidth { LumennaTheme { LumennaApp(core) } }
+            }
+        }
     }
 
     @After
@@ -470,7 +479,7 @@ class LumennaTest {
     fun aTaskCanBeAssignedToABlockAndTimed() {
         seed {
             it.addTask("write the chapter")
-            it.addBlock(NewBlock(title = "All day", at = "00:00", minutes = 1439u, date = "today", kind = "work", repeat = null))
+            it.addBlock(NewBlock(title = "All day", at = "00:00", minutes = 1440u, date = "today", kind = "work", repeat = null))
         }
         tab("Today")
         act("All day", "Assign a task", substring = true)
@@ -491,7 +500,7 @@ class LumennaTest {
     fun aTimerStartsPausesResumesAndStops() {
         seed {
             it.addTask("write the chapter")
-            it.addBlock(NewBlock(title = "All day", at = "00:00", minutes = 1439u, date = "today", kind = "work", repeat = null))
+            it.addBlock(NewBlock(title = "All day", at = "00:00", minutes = 1440u, date = "today", kind = "work", repeat = null))
         }
         tab("Today")
         act("All day", "Assign a task", substring = true)
@@ -704,5 +713,109 @@ class LumennaTest {
         rule.onNode(hasText("Terse") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)).performClick()
         rule.waitForIdle()
         assertEquals("terse", core.lumenna.settings("verbosity").settings.single().value)
+    }
+
+    // MARK: - The planner
+
+    /** The day's heading, which carries the day's own actions. */
+    private fun dayHeading() = rule.onNode(
+        SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading) and hasContentDescription("Today. ", substring = true),
+    )
+
+    private fun checkBox(text: String) = rule.onNode(
+        hasText(text, substring = true) and SemanticsMatcher.keyIsDefined(SemanticsProperties.ToggleableState),
+    )
+
+    @Test
+    fun theDaysOwnActionsAreOnItsHeadingAndWhatToWorkOnSaysWhyEachIsOffered() {
+        seed {
+            it.addTask("write the chapter p1")
+            it.addBlock(NewBlock(title = "All day", at = "00:00", minutes = 1440u, date = "today", kind = "work", repeat = null))
+        }
+        tab("Today")
+        val offered = dayHeading().fetchSemanticsNode().config.getOrNull(SemanticsActions.CustomActions).orEmpty().map { it.label }
+        assertEquals(core.lumenna.plan(null).actions.map { it.sentence }, offered)
+        val whatNow = core.lumenna.plan(null).actions.single { it.kind == io.github.emassey0135.lumenna.core.ActionKind.WHAT_NOW }.sentence
+        assertTrue(offered.toString(), offered.containsAll(listOf("Replan from now", whatNow, "End the day")))
+        button(whatNow)
+        // Why it is offered is its description, beneath its name.
+        shows("Suggested because")
+        rule.onNode(hasText("write the chapter") and hasText("Suggested because", substring = true)).assertExists()
+        button("write the chapter")
+        rule.waitUntil(5_000) { core.lumenna.plan(null).blocks.single().assignments.any { it.title == "write the chapter" } }
+    }
+
+    @Test
+    fun replanFromNowSaysItsProposalAndAfterAChangeTakenAloneShowsTheNext() {
+        // The day replanned is a fixed one, at a fixed moment, so the proposal does not depend
+        // on when the test runs; a block under way today offers the action.
+        plannerNow.value = "2026-05-06T10:40"
+        seed {
+            it.addBlock(NewBlock(title = "All day", at = "00:00", minutes = 1440u, date = "today", kind = "work", repeat = null))
+            for ((title, kind, at, minutes) in listOf(
+                listOf("Deep work", "work", "09:00", "120"), listOf("Lunch", "break", "10:30", "30"),
+                listOf("Review", "work", "11:00", "60"), listOf("Walk", "break", "12:00", "30"),
+            )) {
+                it.addBlock(NewBlock(title = title, at = at, minutes = minutes.toUInt(), date = "2026-05-06", kind = kind, repeat = null))
+            }
+        }
+        val expected = core.lumenna.replan(Clock.style, io.github.emassey0135.lumenna.core.ReplanPins(emptyList(), emptyList(), emptyList()), plannerNow.value)
+        tab("Today")
+        button("Replan from now")
+        // Said as it opens: the whole proposal in one sentence.
+        shows(expected.announcement)
+        checkBox("Lunch moves from").assertIsOn()
+        checkBox("Review moves from").assertIsOn()
+        checkBox("Review moves from").performClick()
+        rule.waitForIdle()
+        checkBox("Review moves from").assertIsOff()
+        button("Make the changes checked")
+        // Review kept where it is crowds what follows: the core proposes again around it.
+        rule.waitUntil(5_000) { rule.onAllNodes(hasText("Walk moves from", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        checkBox("Walk moves from").assertIsOn()
+        // The snackbar may still be saying the first proposal; the list no longer has Review.
+        assertTrue(rule.onAllNodes(hasText("Review moves from", substring = true) and SemanticsMatcher.keyIsDefined(SemanticsProperties.ToggleableState)).fetchSemanticsNodes().isEmpty())
+        button("Make the changes checked")
+        rule.waitUntil(5_000) { rule.onAllNodes(hasText("Make the changes checked")).fetchSemanticsNodes().isEmpty() }
+        val day = core.lumenna.plan("2026-05-06").blocks.associate { it.title to it.start }
+        assertEquals("11:00", day["Review"])
+        assertEquals("12:00", day["Lunch"])
+    }
+
+    @Test
+    fun planTheDayGivesEachSittingItsReasonAndPlansAgainAroundOneTurnedDown() {
+        seed {
+            it.addBlock(NewBlock(title = "Morning", at = "09:00", minutes = 30u, date = "tomorrow", kind = "work", repeat = null))
+            it.addBlock(NewBlock(title = "Afternoon", at = "14:00", minutes = 30u, date = "tomorrow", kind = "work", repeat = null))
+            it.addTask("Report p1")
+            it.addTask("Email p2")
+            it.addTask("Filing p3")
+        }
+        tab("Today")
+        button("Next day")
+        button("Plan the day")
+        shows("Report goes in Morning")
+        rule.onNode(hasText("Report goes in Morning", substring = true) and hasText("Suggested because priority 1", substring = true)).assertExists()
+        checkBox("Report goes in Morning").performClick()
+        rule.waitForIdle()
+        button("Plan the ones checked")
+        // Report turned down for Morning, Morning goes to Filing next.
+        rule.waitUntil(5_000) { rule.onAllNodes(hasText("Filing goes in Morning", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        button("Plan the ones checked")
+        rule.waitUntil(5_000) { rule.onAllNodes(hasText("Plan the ones checked")).fetchSemanticsNodes().isEmpty() }
+        val planned = core.lumenna.plan("tomorrow").blocks.associate { block -> block.title to block.assignments.map { it.title } }
+        assertEquals(mapOf("Morning" to listOf("Filing"), "Afternoon" to listOf("Email")), planned)
+    }
+
+    @Test
+    fun aTasksPageHasItsHistoryUnderAHeading() {
+        seed { it.addTask("draft the report") }
+        tab("Tasks")
+        row("draft the report").performClick()
+        rule.waitForIdle()
+        val history = core.lumenna.showTask(core.lumenna.listTasks("").rows.single().id).task.history
+        assertTrue("a task has a history from the day it is added", history.isNotEmpty())
+        rule.onNode(hasText("History") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)).performScrollTo()
+        history.forEach { line -> rule.onNode(hasText(line)).performScrollTo().assertExists() }
     }
 }

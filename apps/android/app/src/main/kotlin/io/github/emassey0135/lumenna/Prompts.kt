@@ -130,6 +130,10 @@ fun Choose(title: String, choices: List<Option>, yes: String, dismiss: () -> Uni
                             if (detail.isNotEmpty()) {
                                 Text(detail, style = MaterialTheme.typography.bodyMedium, color = quiet())
                             }
+                            // Why it is offered, as its description: a line of its own, never its name.
+                            if (choice.reason.isNotEmpty()) {
+                                Text(choice.reason, style = MaterialTheme.typography.bodyMedium, color = quiet())
+                            }
                         }
                     }
                 }

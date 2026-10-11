@@ -44,6 +44,9 @@ class WearTest {
     private lateinit var directory: File
     private lateinit var core: Core
     private val answers = ArrayDeque<String>()
+
+    /** The moment a proposal is made against: now, unless a test fixes one. */
+    private val plannerNow = androidx.compose.runtime.mutableStateOf<String?>(null)
     private val asked = mutableListOf<String>()
 
     /** What Wear OS allows reminders, as a test says it; the system's answer when null. */
@@ -63,6 +66,7 @@ class WearTest {
         rule.setContent {
             androidx.compose.runtime.CompositionLocalProvider(
                 io.github.emassey0135.lumenna.LocalReminderAccess provides { context -> access ?: io.github.emassey0135.lumenna.Reminders.access(context) },
+                io.github.emassey0135.lumenna.LocalPlannerNow provides plannerNow.value,
             ) {
                 androidx.wear.compose.material3.MaterialTheme { WearApp(core, entry) }
             }
@@ -317,5 +321,92 @@ class WearTest {
         shown("Allow exact alarms").assertExists()
         press("Reminders on this device")
         assertEquals("false", core.lumenna.settings("reminders").settings.single().value)
+    }
+
+    // MARK: - The planner
+
+    private fun block(title: String, date: String, at: String, minutes: UInt, kind: String = "work") =
+        core.lumenna.addBlock(io.github.emassey0135.lumenna.core.NewBlock(title = title, at = at, minutes = minutes, date = date, kind = kind, repeat = null))
+
+    private fun checked(text: String): Boolean =
+        shown(text, substring = true).fetchSemanticsNode().config.getOrNull(SemanticsProperties.ToggleableState) == androidx.compose.ui.state.ToggleableState.On
+
+    @Test
+    fun theDaysOwnActionsAreOnItsHeadingAndButtonsAfterItsRows() {
+        block("All day", "today", "00:00", 1440u)
+        rule.runOnIdle { core.changed() }
+        press("Today")
+        val expected = core.lumenna.plan(null).actions.map { it.sentence }
+        val heading = rule.onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading) and hasText("Today. ", substring = true))
+        assertEquals(expected, heading.fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.CustomActions).orEmpty().map { it.label })
+        assertTrue(expected.toString(), "Replan from now" in expected)
+        expected.forEach { shown(it).assertExists() }
+    }
+
+    @Test
+    fun replanFromNowSaysItsProposalAndAfterAChangeTakenAloneShowsTheNext() {
+        // A fixed day and moment, so the proposal does not depend on when the test runs.
+        plannerNow.value = "2026-05-06T10:40"
+        block("All day", "today", "00:00", 1440u)
+        block("Deep work", "2026-05-06", "09:00", 120u)
+        block("Lunch", "2026-05-06", "10:30", 30u, "break")
+        block("Review", "2026-05-06", "11:00", 60u)
+        block("Walk", "2026-05-06", "12:00", 30u, "break")
+        rule.runOnIdle { core.changed() }
+        press("Today")
+        press("Replan from now")
+        assertTrue(checked("Lunch moves from"))
+        press("Review moves from", substring = true)
+        assertTrue("unchecked", !checked("Review moves from"))
+        press("Make the changes checked")
+        rule.waitUntil(5_000) { rule.onAllNodes(hasText("Walk moves from", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue("the next proposal starts checked", checked("Walk moves from"))
+        press("Make the changes checked")
+        rule.waitUntil(5_000) { rule.onAllNodes(hasText("Make the changes checked")).fetchSemanticsNodes().isEmpty() }
+        assertEquals("12:00", core.lumenna.plan("2026-05-06").blocks.single { it.title == "Lunch" }.start)
+    }
+
+    @Test
+    fun planTheDayGivesEachSittingItsReasonAndPlansAgainAroundOneTurnedDown() {
+        block("Morning", "tomorrow", "09:00", 30u)
+        block("Afternoon", "tomorrow", "14:00", 30u)
+        listOf("Report p1", "Email p2", "Filing p3").forEach { core.lumenna.addTask(it) }
+        rule.runOnIdle { core.changed() }
+        press("Today")
+        press("Next day")
+        press("Plan the day")
+        said("Suggested because priority 1").assertExists()
+        press("Report goes in Morning", substring = true)
+        press("Plan the ones checked")
+        rule.waitUntil(5_000) { rule.onAllNodes(hasText("Filing goes in Morning", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        press("Plan the ones checked")
+        rule.waitUntil(5_000) { rule.onAllNodes(hasText("Plan the ones checked")).fetchSemanticsNodes().isEmpty() }
+        val planned = core.lumenna.plan("tomorrow").blocks.associate { b -> b.title to b.assignments.map { it.title } }
+        assertEquals(mapOf("Morning" to listOf("Filing"), "Afternoon" to listOf("Email")), planned)
+    }
+
+    @Test
+    fun whatToWorkOnSaysWhyEachIsOfferedBeneathItsName() {
+        block("All day", "today", "00:00", 1440u)
+        core.lumenna.addTask("write the chapter p1")
+        rule.runOnIdle { core.changed() }
+        press("Today")
+        press(core.lumenna.plan(null).actions.single { it.kind == io.github.emassey0135.lumenna.core.ActionKind.WHAT_NOW }.sentence)
+        shown("write the chapter").assertExists()
+        said("Suggested because").assertExists()
+        press("write the chapter")
+        rule.waitUntil(5_000) { core.lumenna.plan(null).blocks.single().assignments.any { it.title == "write the chapter" } }
+    }
+
+    @Test
+    fun aTasksScreenHasItsHistoryUnderAHeading() {
+        core.lumenna.addTask("draft the report")
+        rule.runOnIdle { core.changed() }
+        press("Tasks")
+        press("draft the report")
+        val history = core.lumenna.showTask(core.lumenna.listTasks("").rows.single().id).task.history
+        assertTrue(history.isNotEmpty())
+        said("History").assertExists()
+        history.forEach { said(it).assertExists() }
     }
 }

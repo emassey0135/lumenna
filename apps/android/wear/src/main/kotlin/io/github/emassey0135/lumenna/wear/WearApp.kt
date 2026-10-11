@@ -63,6 +63,8 @@ sealed interface Screen {
     data class Reminders(val target: String) : Screen
     /** Reminders on this watch. */
     data object ReminderSettings : Screen
+    /** Replan from Now or Plan the Day, for a day: the core's proposal, to accept in part. */
+    data class Proposal(val kind: io.github.emassey0135.lumenna.core.ActionKind, val date: String) : Screen
     /** A list to choose one from: an action, a project, a task, a length. */
     data class Choose(val title: String, val message: String?, val choices: List<Option>, val chosen: (Option) -> Unit) : Screen
 }
@@ -203,6 +205,7 @@ fun WearApp(core: Core, entry: TextEntry? = null, opened: kotlinx.coroutines.flo
                             is Screen.Reminders -> RemindersScreen(core, navigator, screen.target, changes)
                             Screen.ReminderSettings -> ReminderSettingsScreen(core, changes)
                             is Screen.Choose -> ChooseScreen(screen)
+                            is Screen.Proposal -> ProposalScreen(core, navigator, screen)
                         }
                     }
                 }

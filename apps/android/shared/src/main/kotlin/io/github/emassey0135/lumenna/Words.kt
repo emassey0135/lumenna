@@ -23,6 +23,11 @@ object Clock {
         twentyFourHour = DateFormat.is24HourFormat(context)
     }
 
+    /** The clock the core words a proposal's times in, as this device has its own. */
+    val style: io.github.emassey0135.lumenna.core.TimeStyle
+        get() = if (twentyFourHour) io.github.emassey0135.lumenna.core.TimeStyle.TWENTY_FOUR_HOUR
+        else io.github.emassey0135.lumenna.core.TimeStyle.TWELVE_HOUR
+
     /** `14:30` as this phone says it: "2:30 PM", or "14:30". */
     fun time(clock: String): String {
         val time = runCatching { LocalTime.parse(clock) }.getOrNull() ?: return clock

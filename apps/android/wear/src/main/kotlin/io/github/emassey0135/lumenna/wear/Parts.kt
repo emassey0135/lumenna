@@ -85,8 +85,14 @@ fun RowButton(
     )
 }
 
-/** A section's title, which TalkBack can move between by heading. */
+/**
+ * A section's title, which TalkBack can move between by heading; [actions] are what is done to
+ * what it heads, as its custom actions — the day's, on the day's heading.
+ */
 @Composable
-fun Heading(text: String) {
-    ListHeader(modifier = Modifier.semantics { heading() }) { Text(text) }
+fun Heading(text: String, actions: List<RowAction> = emptyList()) {
+    ListHeader(modifier = Modifier.semantics {
+        heading()
+        if (actions.isNotEmpty()) customActions = actions.map { action -> CustomAccessibilityAction(action.name) { action.run(); true } }
+    }) { Text(text) }
 }
