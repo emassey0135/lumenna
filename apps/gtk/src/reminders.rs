@@ -67,7 +67,7 @@ pub fn start(app: &Rc<App>) {
 }
 
 fn deliver(app: &App, lock: Arc<ReminderLock>) {
-    let found = match app.core.lumenna.deliver_reminders(lock, None) {
+    let found = match app.core.lumenna.deliver_reminders(lock, crate::clock::pinned_instant()) {
         Ok(found) => found,
         Err(error) => return eprintln!("Reminders: {}", sentence(&error)),
     };
