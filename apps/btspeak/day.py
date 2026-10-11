@@ -16,6 +16,7 @@ from actions import spoken_day
 from client import LumennaError
 from rows import Tree, clock, describe
 from session import Command, Flag, Session, choose, empty_then, heading, live_menu, row_item, screen
+import proposals  # noqa: F401 - registers Replan from now's and Plan the day's screens
 import tasks
 
 
@@ -37,8 +38,8 @@ def day_plan(session: Session) -> str:
 
     Enter does a row's main thing — edits a block, shows a sitting's task, adds a block in free
     time, puts a cancelled day back. The rest is on the row's context menu (M-Chord with
-    Dot 7); moving between days and adding a block are on the main menu (M-Chord), and on
-    their keys.
+    Dot 7); the day's own actions, moving between days and adding a block are on the main
+    menu (M-Chord), and on their keys.
     """
     shown = {"date": "", "plan": {}, "heading": ""}
     moved = Flag()
@@ -84,7 +85,8 @@ def day_plan(session: Session) -> str:
             session, build, lambda: shown["heading"], default=now, moved=moved,
             main=lambda row: plan_main(session, row),
             context=lambda rows: actions.commands(session, rows),
-            app=[
+            app=lambda: [
+                *day_commands(session, shown["plan"]),
                 Command("Add a block", lambda _: add_block(session, date=date() or "today"), key="a"),
                 Command("Previous day", lambda _: step(-1), key="p"),
                 Command("Next day", lambda _: step(1), key="n"),
@@ -96,6 +98,17 @@ def day_plan(session: Session) -> str:
             app_title="Day menu",
         )
     return ""
+
+
+def day_commands(session: Session, plan: dict) -> list[Command]:
+    """What can be done to the day shown itself, the plan's own actions in the core's order,
+    first on the Day menu: Plan the day, Replan from now, What should I work on?, End the day,
+    Clear the rest of the day."""
+    return [
+        Command(actions.named(action), lambda _, action=action: actions.act(session, action),
+                key=actions.DAY_KEYS.get(action["kind"], ""))
+        for action in plan.get("actions", [])
+    ]
 
 
 def plan_rows(plan: dict) -> list[dict]:

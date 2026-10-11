@@ -545,6 +545,13 @@ When nothing is offered, the core's sentence says why."
     (if (null choices)
         (progn (lumenna-say offered) nil)
       (let* ((lines (lumenna--unique (mapcar (lambda (c) (cons (lumenna--choice-line c) c)) choices)))
+             ;; Why a choice is offered ("Suggested because ...") is its description:
+             ;; beside it as completion shows it, never in the name typed.
+             (completion-extra-properties
+              (list :annotation-function
+                    (lambda (line)
+                      (let ((reason (plist-get (cdr (assoc line lines)) :reason)))
+                        (if (and reason (not (string-empty-p reason))) (concat "  " reason) "")))))
              (picked (cdr (assoc (completing-read (lumenna--prompt (plist-get question :title)) lines nil t)
                                  lines)))
              (length (when (plist-get question :length)
@@ -1060,6 +1067,7 @@ And Settings, which is this client's.")
 
 (require 'lumenna-tasks)
 (require 'lumenna-day)
+(require 'lumenna-proposal)
 (require 'lumenna-organise)
 (require 'lumenna-settings)
 (require 'lumenna-reminders)

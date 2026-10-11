@@ -61,14 +61,24 @@
 
 (defvar-local lumenna--day nil "The day shown, as a date phrase; nil follows today.")
 (defvar-local lumenna--date nil "The ISO date the day buffer last showed.")
+(defvar-local lumenna--day-actions nil
+  "What can be done to the day shown itself: the plan's `actions', in order.")
 
 (define-derived-mode lumenna-day-mode lumenna-list-mode "Lumenna Day"
   "A day: blocks with their sittings under them, free time, and now.
 RET edits a block, shows a sitting's task, adds a block in free time, or puts
-a cancelled day back.  [ and ] move between days.
+a cancelled day back.  [ and ] move between days.  On the first line, . offers
+the day's own actions: Plan the Day, Replan from Now and the rest.
 
 \\{lumenna-day-mode-map}"
-  (setq-local lumenna--activate #'lumenna--day-activate))
+  (setq-local lumenna--activate #'lumenna--day-activate)
+  (setq-local lumenna--actions-function #'lumenna--day-here-actions))
+
+(defun lumenna--day-here-actions ()
+  "The actions on the line at point: a row's own, or on the heading the day's."
+  (if-let* ((row (lumenna--row-here)))
+      (plist-get row :actions)
+    lumenna--day-actions))
 
 ;;;###autoload
 (defun lumenna-today ()
@@ -80,7 +90,8 @@ a cancelled day back.  [ and ] move between days.
 (defun lumenna--day-listing ()
   "The heading and rows of the day this buffer shows."
   (let ((plan (if lumenna--day (lumenna-call "plan" :date lumenna--day) (lumenna-call "plan"))))
-    (setq lumenna--date (plist-get plan :date))
+    (setq lumenna--date (plist-get plan :date)
+          lumenna--day-actions (append (plist-get plan :actions) nil))
     ;; "<day>. <summary>", each its own sentence.
     (cons (format "%s. %s" (lumenna--spoken-day lumenna--date)
                   (let ((summary (plist-get plan :summary)))
@@ -149,6 +160,49 @@ a cancelled day back.  [ and ] move between days.
   "Set how long the sitting at point is meant to take, or clear it.")
 (lumenna-define-action lumenna-act-log-minutes ("log_minutes")
   "Record the whole of the sitting at point, replacing what was logged.")
+
+(lumenna-define-action lumenna-act-end-now ("end_now")
+  "End the block under way now.")
+(lumenna-define-action lumenna-act-extend ("extend")
+  "Give the block under way 15 minutes more.")
+(lumenna-define-action lumenna-act-carry ("carry_forward" "carry_rest")
+  "Carry what a sitting, or a block, left short forward to a block that takes it.")
+
+(defun lumenna--day-act (kind)
+  "Do the day's own action of KIND, wherever point is.
+A day that does not offer it says the core's sentence, and what it does offer."
+  (if-let* ((action (seq-find (lambda (a) (equal (plist-get a :kind) kind)) lumenna--day-actions)))
+      (lumenna-act action nil)
+    (user-error "%s" (string-join
+                      (delq nil (list (lumenna--value "form.not_offered" :kind kind :subject "day")
+                                      (and lumenna--day-actions
+                                           (format "This offers %s" (lumenna--titles lumenna--day-actions)))))
+                      " "))))
+
+(defun lumenna-day-plan ()
+  "Plan the day shown: each work block still to come given its most urgent tasks."
+  (interactive)
+  (lumenna--day-act "plan_day"))
+
+(defun lumenna-day-replan ()
+  "Replan the rest of today from now."
+  (interactive)
+  (lumenna--day-act "replan"))
+
+(defun lumenna-day-what-now ()
+  "Choose what to work on now, from what the core suggests, and start on it."
+  (interactive)
+  (lumenna--day-act "what_now"))
+
+(defun lumenna-day-end ()
+  "End the day: the block under way ends now, the blocks after it are cleared."
+  (interactive)
+  (lumenna--day-act "end_day"))
+
+(defun lumenna-day-clear ()
+  "Clear the rest of the day: the blocks still to come today."
+  (interactive)
+  (lumenna--day-act "clear_day"))
 
 (defun lumenna--day-activate (row)
   "RET on ROW: edit a block, open a sitting's task, add a block in free time,
@@ -311,13 +365,21 @@ today the next whole hour, another day when the day starts."
    ("[" "Previous day" lumenna-day-previous)
    ("]" "Next day" lumenna-day-next)
    ("t" "Today, at now" lumenna-day-today)
-   ("j" "Go to a day" lumenna-day-go-to))
+   ("j" "Go to a day" lumenna-day-go-to)
+   ("P" "Plan the Day" lumenna-day-plan)
+   ("r" "Replan from Now" lumenna-day-replan)
+   ("w" "What Should I Work On?" lumenna-day-what-now)
+   ("E" "End the Day" lumenna-day-end)
+   ("C" "Clear the Rest of the Day" lumenna-day-clear))
   ("A block"
    ("e" "Edit Block, or a sitting's Edit Task Details" lumenna-act-edit)
    ("i" "Assign a Task" lumenna-act-assign)
    ("x" "Cancel This Day" lumenna-act-cancel-day)
    ("o" "Restore This Day" lumenna-act-restore)
    ("R" "Reminders" lumenna-act-reminders)
+   ("N" "End Now" lumenna-act-end-now)
+   ("+" "Add 15 Minutes" lumenna-act-extend)
+   ("f" "Carry Forward, or a block's Carry the Rest Forward" lumenna-act-carry)
    ("d" "Delete Block, or a sitting's Unassign" lumenna-act-delete))
   ("A task in a block"
    ("RET" "The task itself" lumenna-activate)

@@ -15,10 +15,11 @@
 ;; connection when one does.
 ;;
 ;; What came due and was not dealt with stays in M-x lumenna-reminders-due,
-;; where d dismisses one and z snoozes it.  A task's or block's own reminders
-;; are its Reminders action (R): a list of them, a to add one by a phrase the
-;; core reads ("5m before start"), d to remove one.  When each fires, what it
-;; says and the buttons' words are all the core's.
+;; where d dismisses one, z snoozes it, and c carries forward what a block's
+;; end left short, where its reminder offers to.  A task's or block's own
+;; reminders are its Reminders action (R): a list of them, a to add one by a
+;; phrase the core reads ("5m before start"), d to remove one.  When each
+;; fires, what it says and the buttons' words are all the core's.
 
 ;;; Code:
 
@@ -101,11 +102,17 @@ ran, a plist with `:summary' and `:missed', the missed reminders.")
          :title title :body body :app-name "Lumenna"
          :actions (append (list "dismiss" (plist-get first :dismiss))
                           (unless (plist-get reminder :summary)
-                            (list "snooze" (plist-get first :snooze) "default" (plist-get first :title))))
+                            (append (list "snooze" (plist-get first :snooze))
+                                    ;; At a block's end with work left short, the text ends
+                                    ;; in the question this button answers.
+                                    (when (lumenna-reminders--carry-p reminder)
+                                      (list "carry" (plist-get reminder :carry)))
+                                    (list "default" (plist-get first :title)))))
          :on-action (lambda (_id action)
                       (pcase action
                         ("dismiss" (lumenna-reminders--deal reminder "reminder.dismiss"))
                         ("snooze" (lumenna-reminders--deal reminder "reminder.snooze"))
+                        ("carry" (lumenna-reminders--carry reminder))
                         ("default" (lumenna-reminders--open reminder)))))))))
 
 (defun lumenna-reminders--give (found)
@@ -199,6 +206,21 @@ A summary of what was missed is dismissed one by one."
                       lumenna-reminders--waiting))
     (lumenna--wrote method result)))
 
+(defun lumenna-reminders--carry-p (reminder)
+  "Whether REMINDER offers to carry its block's short work forward."
+  (let ((carry (plist-get reminder :carry)))
+    (and (stringp carry) (not (string-empty-p carry)))))
+
+(defun lumenna-reminders--carry (reminder)
+  "Carry the work REMINDER's block left short forward (`carry_rest'), and say it.
+That answers the reminder, so it leaves what came due."
+  (let ((result (lumenna-call "carry_rest" :block (format "%s@%s" (plist-get reminder :target)
+                                                          (plist-get reminder :occurrence)))))
+    (setq lumenna-reminders--waiting
+          (seq-remove (lambda (r) (equal (lumenna-reminders--key r) (lumenna-reminders--key reminder)))
+                      lumenna-reminders--waiting))
+    (lumenna--wrote "block/carry_rest" result)))
+
 (defun lumenna-reminders--open (reminder)
   "Open what REMINDER is about: its task, or its block's day."
   (let ((first (if (plist-get reminder :summary) (car (plist-get reminder :missed)) reminder)))
@@ -252,6 +274,14 @@ A summary of what was missed is dismissed one by one."
   (let ((reminder (lumenna-reminders--at-point)))
     (when (plist-get reminder :summary) (user-error "What was missed can be dismissed, not snoozed"))
     (lumenna-reminders--deal reminder "reminder.snooze")))
+
+(defun lumenna-reminders-carry ()
+  "Carry what the block of the reminder at point left short forward, as it offers."
+  (interactive)
+  (let ((reminder (lumenna-reminders--at-point)))
+    (unless (lumenna-reminders--carry-p reminder)
+      (user-error "%s" (lumenna--value "form.not_offered" :kind "carry_rest" :subject "reminder")))
+    (lumenna-reminders--carry reminder)))
 
 ;;;; A task's or block's own
 
@@ -320,7 +350,8 @@ One the core cannot read is asked again, with the core's sentence first."
   ("The reminder at point"
    ("RET" "Open what it is about" lumenna-activate)
    ("d" "Dismiss" lumenna-reminders-dismiss)
-   ("z" "Snooze" lumenna-reminders-snooze)))
+   ("z" "Snooze" lumenna-reminders-snooze)
+   ("c" "Carry Forward, where it offers to" lumenna-reminders-carry)))
 
 (lumenna-define-keys lumenna-reminder-list-mode
   ("Reminders"

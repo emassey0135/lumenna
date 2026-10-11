@@ -149,7 +149,12 @@ def dynamic_menu(menu, title=None, exit_condition=None, refresh_interval=0, defa
     script.titles.append(title() if callable(title) else (title or ""))
     selection = default
     handle = _Menu(menu)
-    script.menus.append({"context": context_menu, "app": app_menu, "keys": dict(global_keys or {}), "empty": empty_message})
+    script.menus.append({
+        "context": context_menu, "app": app_menu, "keys": dict(global_keys or {}), "empty": empty_message,
+        # What each row says after it, as the device says a row's hint: by the row's title.
+        "hints": {item.get_title(): item.hint for item in menu if item.hint},
+        "announced": _ignored.get("announce_title", True),
+    })
     while True:
         if exit_condition and exit_condition():
             return Choice(selection, "")

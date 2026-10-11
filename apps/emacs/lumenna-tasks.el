@@ -208,11 +208,25 @@ The other keys are the task's own actions, wherever point is.
 \\{lumenna-task-mode-map}"
   (setq-local lumenna--describe #'lumenna--describe-field)
   (setq-local lumenna--actions-function (lambda () (plist-get (lumenna--task) :actions)))
-  (setq-local lumenna--activate (lambda (row) (lumenna-task-edit (plist-get row :field)))))
+  (setq-local lumenna--activate (lambda (row)
+                                  (if (plist-get row :line)
+                                      (message "%s" (plist-get row :title))
+                                    (lumenna-task-edit (plist-get row :field))))))
 
 (defun lumenna--describe-field (row)
-  "A field ROW of a task's details, as its line."
-  (format "%s: %s" (plist-get row :title) (plist-get row :value)))
+  "A field ROW of a task's details, as its line.
+A line of its history, or its heading, is said as it is."
+  (if (plist-get row :line)
+      (plist-get row :title)
+    (format "%s: %s" (plist-get row :title) (plist-get row :value))))
+
+(defun lumenna--task-history (task)
+  "TASK's history as rows, under a heading.
+On the task's own screen only, never in a list."
+  (when-let* ((lines (append (plist-get task :history) nil)))
+    (cons (list :key "History" :title "History" :line t :role "heading" :face 'lumenna-heading)
+          (mapcar (lambda (line) (list :key (concat "History: " line) :title line :line t :depth 1))
+                  lines))))
 
 (defun lumenna--task-fields (task)
   "TASK's details as rows, one field each: its form, then what is known."
@@ -248,7 +262,8 @@ The other keys are the task's own actions, wherever point is.
    #'lumenna-task-mode
    (lambda ()
      (let ((task (lumenna--task id)))
-       (cons (format "Task: %s" (plist-get task :title)) (lumenna--task-fields task))))
+       (cons (format "Task: %s" (plist-get task :title))
+             (append (lumenna--task-fields task) (lumenna--task-history task)))))
    'lumenna--task id))
 
 ;; The task form, wherever an action asks for it: a task's Edit Details, a

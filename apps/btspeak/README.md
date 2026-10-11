@@ -74,7 +74,8 @@ subtasks. That is all core's, so that every client behaves alike and none can dr
 | `actions.py` | Each row's actions, the core's, as its context menu, letters and delete keys; their questions asked with the device's dialogs and done through `act`. |
 | `menus.py` | The contract check and the main menu. |
 | `tasks.py` | Task lists, what can be done to one task, quick add, and the trash. |
-| `day.py` | The planner — blocks, sittings, free time and now — and the block series. |
+| `day.py` | The planner — blocks, sittings, free time and now, and the day's own actions — and the block series. |
+| `proposals.py` | Replan from now and Plan the day: the core's proposal, checked and made. |
 | `organise.py` | Projects, labels and saved filters. |
 | `preferences.py` | Settings, devices, sync and pairing, backups, export and import. |
 | `reminder_lists.py` | A task's or block's reminders, what came due, and the Reminders settings page. |
@@ -140,4 +141,5 @@ a temporary directory and record the `systemctl` commands rather than run them.
 
 In the app, a task with a due date and every block offer Reminders (`r`): their list, Add
 reminder by a phrase, Remove reminder. The main menu's Reminders (`r`) lists what came due
-over the last day, to dismiss or snooze.
+over the last day, to dismiss or snooze, or, at a block's end that left work short, to carry
+it forward.

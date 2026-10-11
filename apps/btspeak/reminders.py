@@ -14,7 +14,9 @@ and is turned off either by the device's own setting, `lumenna-reminders` (off),
 of the right so another process may take it, or by the app's Reminders on this device, which
 the core honours.
 
-Dismissing and snoozing are the app's Reminders screen: a service has no keys of its own.
+Dismissing, snoozing and carrying forward what a block's end left short (the reminder's
+`carry`, whose question ends its text) are the app's Reminders screen: a service has no keys
+of its own.
 """
 
 from __future__ import annotations

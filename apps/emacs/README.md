@@ -70,7 +70,17 @@ whether it takes tasks, counts toward capacity or is anchored, its shortest leng
 filter its tasks come from, its last day and its colour — `i` Assign a Task, `x` Cancel
 This Day, `o` Restore This Day. On a sitting, `s` starts its timer, pauses it, or resumes
 it; `S` stops it, ending the sitting; `l` sets its planned length; `m` logs minutes; `e`
-opens its task. `d` deletes a block or unassigns a sitting.
+opens its task. `d` deletes a block or unassigns a sitting. On the block under way, `N` is
+End Now and `+` Add 15 Minutes; `f` is a short sitting's Carry Forward, or a block's Carry
+the Rest Forward.
+
+The day's own actions are its first line's (`.` there offers them all) and these keys
+anywhere in the day: `P` Plan the Day, `r` Replan from Now, `w` What Should I Work On?
+(each suggestion's reason beside it as it completes), `E` End the Day and `C` Clear the
+Rest of the Day. Plan the Day and Replan from Now open a buffer of the core's proposal, a
+change per line, each checked: `SPC` or `RET` unchecks one, `C-c C-c` makes what is checked,
+and the core's next proposal, around what was left unchecked, takes its place until nothing
+more is proposed; `q` cancels. A task's own buffer ends with its History.
 
 Projects, labels and saved filters each have their own list (`a` add, `r` rename, `d`
 delete, `M-p`/`M-n` reorder, and the rest in `?`). `M-x lumenna` lists the places as every
@@ -89,7 +99,9 @@ already gives reminders — the Mac, GTK or Windows app, or `lum notify` — so 
 never said twice. What came while nothing ran is one summary.
 
 `C-c l r` (`lumenna-reminders-due`) lists what came due and was not dealt with: `d`
-dismisses one and `z` snoozes it, on every device; RET opens what it is about. On a task with
+dismisses one and `z` snoozes it, on every device, and `c` carries forward what a block's
+end left short, where the reminder offers to (its notification has the button too); RET
+opens what it is about. On a task with
 a due date or a block, `R` lists its reminders: `a` adds one by a phrase (`5m before start`,
 `at end`, `30m before`), asked again with the core's sentence if it cannot be read, and `d`
 removes one of its own. The defaults for every task and block, and Reminders on this device,

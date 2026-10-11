@@ -5,7 +5,8 @@ A task with a due date and every block offer Reminders (`r`): their list, from
 sentence when it cannot be read, and Remove reminder on each of its own (the delete keys).
 The main menu's Reminders lists what came due over the last day and was not dealt with,
 whatever gave it — this app's service, or another device's dismissal not yet here — to
-dismiss (the delete keys) or snooze (`z`). Settings has Reminders on this device, the core's
+dismiss (the delete keys) or snooze (`z`), and, at a block's end that left work short, to
+carry it forward (`f`, the reminder's own Carry forward, `carry_rest`). Settings has Reminders on this device, the core's
 own setting, and the reminder service, installed only when asked.
 """
 
@@ -135,12 +136,24 @@ def due(session: Session) -> str:
             return session.write(method, key=reminder["key"], occurrence=reminder["occurrence"])
         return run
 
+    def carry(reminder) -> str:
+        # At a block's end with work left short: its text ends in the question this answers.
+        return session.write("carry_rest", block=f"{reminder['target']}@{reminder['occurrence']}")
+
+    def no_carry(_reminder) -> str:
+        try:
+            return session.call("form.not_offered", kind="carry_rest", subject="reminder").get("value", "")
+        except LumennaError as error:
+            return error.message
+
     with screen("lumenna-reminders"):
         live_menu(
             session, build, lambda: state["heading"],
             context=lambda rows: [
                 Command(lambda row: (row or {}).get("dismiss", "Dismiss"), deal("reminder.dismiss"), deletes=True),
                 Command(lambda row: (row or {}).get("snooze", "Snooze"), deal("reminder.snooze"), key="z"),
+                Command(lambda row: session.sentence((row or {}).get("carry", "")), carry, key="f",
+                        applies=lambda row: bool((row or {}).get("carry")), refuse=no_carry),
             ],
             app=undo_commands(session),
             empty="Nothing has come due.",
