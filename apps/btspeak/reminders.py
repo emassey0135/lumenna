@@ -48,30 +48,35 @@ def enabled() -> bool:
         return True
 
 
+def play(path) -> None:
+    """Plays a sound file as the device's own services do, with ffplay, waiting for it."""
+    import subprocess
+
+    subprocess.run(["ffplay", "-nodisp", "-autoexit", str(path)], check=False,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def chime() -> None:
-    """The device's notification sound, before the words, as its own reminders have it."""
+    """The device's notification sound, before the words, as its calendar reminders play it:
+    `notification.ogg` in its data directory."""
     try:
         from BTSpeak import host
 
-        play = getattr(host, "play_sound", None)
-        if play is not None:
-            play("notification")
+        play(Path(host.getDataDirectory()) / "notification.ogg")
     except Exception:  # noqa: BLE001 - a sound that cannot play must not lose the words
         pass
 
 
 def say(text: str) -> None:
-    """Spoken by the device's own speech."""
+    """Spoken, and pushed to the braille display when one is attached: the device's own
+    `host.say_brl`, so braille follows the device's rules for whether there is a display."""
     from BTSpeak import host
 
-    host.say(text)
+    host.say_brl(text)
 
 
 def braille(text: str) -> None:
-    """Shown on the braille display as a message, as the device shows its own."""
-    from BTSpeak import brl
-
-    brl.push_message(text)
+    """Nothing more: `say` has shown it on the display already."""
 
 
 class Giver:

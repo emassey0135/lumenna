@@ -4,12 +4,15 @@
 # Who it runs as, the profile and the Python are filled in then.
 [Unit]
 Description=Lumenna reminders for @PROFILE@
-After=sound.target
+# As BTSpeak's own calendar reminders: after the device is ready to speak and show.
+After=multi-user.target btspeak-ready.service
+Requires=btspeak-ready.service
 
 [Service]
+Type=simple
 ExecStart=@PYTHON@ /BTSpeak/Services/lumenna-reminders.py
 Environment="LUMENNA_PROFILE=@PROFILE@"
-Restart=on-failure
+Restart=always
 RestartSec=10
 User=@USER@
 
