@@ -356,7 +356,7 @@
 (ert-deftest lumenna-the-day-opens-on-now-and-plans-a-sitting ()
   (lumenna-test--with-store
     (lumenna-write "task.add" :text "write the chapter")
-    (lumenna-write "block.add" :title "Focus" :at "00:00" :minutes 1439 :date "today")
+    (lumenna-write "block.add" :title "Focus" :at "00:00" :minutes 1440 :date "today")
     (lumenna-today)
     (should (string-match-p "Focus" (lumenna-test--line)))
     (lumenna-test--answering ("write the chapter, Inbox" "45m")
@@ -394,7 +394,7 @@
 (ert-deftest lumenna-a-sitting-pauses-resumes-and-stops ()
   (lumenna-test--with-store
     (lumenna-write "task.add" :text "write the chapter")
-    (lumenna-write "block.add" :title "Focus" :at "00:00" :minutes 1439 :date "today")
+    (lumenna-write "block.add" :title "Focus" :at "00:00" :minutes 1440 :date "today")
     (lumenna-today)
     (lumenna-test--answering ("write the chapter, Inbox" "")
       (lumenna-act-assign))
@@ -416,7 +416,7 @@
 
 (ert-deftest lumenna-a-block-is-changed-a-field-at-a-time-and-a-break-can-take-tasks ()
   (lumenna-test--with-store
-    (lumenna-write "block.add" :title "Train" :at "00:00" :minutes 1439 :date "today" :kind "break")
+    (lumenna-write "block.add" :title "Train" :at "00:00" :minutes 1440 :date "today" :kind "break")
     (lumenna-today)
     (lumenna-test--goto "Train")
     (should-not (string-match-p "assigned" (lumenna-test--line)))
@@ -839,6 +839,185 @@
             (should (equal (lumenna-test--titles) '("through the daemon"))))
         (lumenna-disconnect)
         (delete-process daemon)))))
+
+;;;; The planner
+
+(defun lumenna-test--block-at (title kind at minutes date)
+  (lumenna-write "block.add" :title title :kind kind :at at :minutes minutes :date date))
+
+(defmacro lumenna-test--planning (now &rest body)
+  "Run BODY against a fresh store, proposals asked as at NOW, times in 24 hours.
+`said' collects what was announced."
+  (declare (indent 1))
+  `(lumenna-test--with-store
+     (let* ((lumenna-proposal--now (lambda () ,now))
+            (display-time-24hr-format t)
+            said
+            (lumenna-announce-function (lambda (announcement notices) (push (cons announcement notices) said))))
+       ,@body)))
+
+(defun lumenna-test--lines ()
+  "Every line of the buffer, without its properties."
+  (split-string (buffer-substring-no-properties (point-min) (point-max)) "\n" t))
+
+(ert-deftest lumenna-the-days-heading-offers-the-days-own-actions-and-what-to-work-on-says-why ()
+  (lumenna-test--with-store
+    (lumenna-write "task.add" :text "write the chapter p1 30m")
+    (lumenna-write "block.add" :title "Focus" :at "00:00" :minutes 1440 :date "today")
+    (lumenna-today)
+    (goto-char (point-min))
+    (let ((kinds (mapcar (lambda (a) (plist-get a :kind)) (lumenna-actions))))
+      (should (equal (seq-take kinds 4) '("plan_day" "replan" "what_now" "end_day"))))
+    (let (annotated)
+      (cl-letf (((symbol-function 'completing-read)
+                 (lambda (_prompt choices &rest _)
+                   (let ((line (car (car choices))))
+                     (setq annotated (funcall (plist-get completion-extra-properties :annotation-function) line))
+                     (should-not (string-match-p "Suggested" line))
+                     line))))
+        (lumenna-day-what-now))
+      (should (string-match-p "\\`  Suggested because priority 1" annotated)))
+    (lumenna-test--goto "write the chapter")
+    (should (string-match-p "in progress" (lumenna-test--line)))))
+
+(ert-deftest lumenna-a-day-without-an-action-says-the-cores-sentence ()
+  (lumenna-test--with-store
+    (lumenna-today)
+    (lumenna-day-previous)
+    (should (equal (cadr (should-error (lumenna-day-replan) :type 'user-error))
+                   "That does not apply here."))))
+
+(ert-deftest lumenna-replan-says-its-proposal-and-shows-the-next-after-a-partial-apply ()
+  (lumenna-test--planning "2030-01-15T10:40"
+    (lumenna-test--block-at "Deep work" "work" "09:00" 120 "2030-01-15")
+    (lumenna-test--block-at "Lunch" "break" "10:30" 30 "2030-01-15")
+    (lumenna-test--block-at "Review" "work" "11:00" 60 "2030-01-15")
+    (setq said nil)
+    (lumenna-replan)
+    (should (equal (caar said)
+                   "Lunch moves from 10:30 to 11:00; Review moves from 11:00 to 11:30 and shortens from 1 hour to 30 minutes."))
+    (should (equal (lumenna-test--lines)
+                   '("Replan from Now. Lunch moves from 10:30 to 11:00; Review moves from 11:00 to 11:30 and shortens from 1 hour to 30 minutes."
+                     "Lunch moves from 10:30 to 11:00, checked"
+                     "Review moves from 11:00 to 11:30 and shortens from 1 hour to 30 minutes, checked"
+                     "Make the Changes Checked. A change left unchecked is not made: what it would move stays where it is, and the rest of the day is proposed again around it."
+                     "Cancel")))
+    (lumenna-test--goto "30 minutes, checked")
+    (lumenna-proposal-toggle)
+    (should (equal (caar said) "Make this change, not checked"))
+    (should (string-suffix-p ", not checked" (lumenna-test--line)))
+    (lumenna-test--goto "Make the Changes")
+    (lumenna-activate)
+    (should (equal (caar said) "Replanned: Lunch moves from 10:30 to 11:00. Lunch moves from 11:00 to 12:00."))
+    ;; Lunch moved alone runs into Review, kept where it is: the core proposes again.
+    (should (equal (buffer-name) "*Lumenna: Replan from Now*"))
+    (should (member "Lunch moves from 11:00 to 12:00, checked" (lumenna-test--lines)))
+    (lumenna-proposal-apply)
+    (should-not (get-buffer "*Lumenna: Replan from Now*"))
+    (let ((plan (lumenna-call "plan" :date "2030-01-15")))
+      (should (equal (mapcar (lambda (b) (cons (plist-get b :title) (plist-get b :start)))
+                             (append (plist-get plan :blocks) nil))
+                     '(("Deep work" . "09:00") ("Review" . "11:00") ("Lunch" . "12:00")))))))
+
+(ert-deftest lumenna-a-replan-with-nothing-to-change-says-so-with-no-button-and-a-stale-one-is-refused ()
+  (lumenna-test--planning "2030-01-15T10:40"
+    (lumenna-test--block-at "Deep work" "work" "09:00" 120 "2030-01-15")
+    (lumenna-test--block-at "Lunch" "break" "10:30" 30 "2030-01-15")
+    (lumenna-replan)
+    ;; Meanwhile the day moves: the same proposal is made elsewhere.
+    (lumenna-call "replan.apply" :proposal lumenna-proposal--proposal
+                  :accepted (vconcat (lumenna-proposal--items)) :now "2030-01-15T10:40")
+    (setq said nil)
+    (lumenna-proposal-apply)
+    (let ((lines (lumenna-test--lines)))
+      (should (string-prefix-p "the day changed since this was proposed" (nth 1 lines)))
+      (should (equal (nth 2 lines) "Nothing needs to change: the rest of the day still fits."))
+      (should-not (seq-find (lambda (l) (string-prefix-p "Make the Changes" l)) lines))
+      (should (equal (car (last lines)) "Cancel")))
+    (should (equal (cdar said) '("Nothing needs to change: the rest of the day still fits.")))))
+
+(ert-deftest lumenna-plan-the-day-gives-each-sitting-its-reason-and-plans-again-around-what-was-turned-down ()
+  (lumenna-test--planning "2030-01-15T08:00"
+    (lumenna-test--block-at "Deep work" "work" "09:00" 60 "2030-01-15")
+    (lumenna-test--block-at "Admin" "work" "14:00" 60 "2030-01-15")
+    (lumenna-write "task.add" :text "write report p1 15m")
+    (lumenna-write "task.add" :text "email bob 30m")
+    (lumenna-plan-the-day "2030-01-15")
+    (should (equal (caar said) "Plans 2 tasks: write report and email bob in Deep work."))
+    (should (member "write report goes in Deep work at 09:00, for 15 minutes, checked, Suggested because priority 1 and its estimate of 15 minutes fits the 1 hour left."
+                    (lumenna-test--lines)))
+    (lumenna-test--goto "email bob goes in")
+    (lumenna-activate)
+    (lumenna-proposal-apply)
+    (should (equal (caar said) "Planned 1 task. Now: Plans 1 task: email bob in Admin."))
+    (lumenna-test--goto "email bob goes in Admin at 14:00")
+    (lumenna-proposal-apply)
+    (should-not (get-buffer "*Lumenna: Plan the Day*"))
+    (let ((blocks (append (plist-get (lumenna-call "plan" :date "2030-01-15") :blocks) nil)))
+      (should (equal (mapcar (lambda (b) (mapcar (lambda (a) (plist-get a :title)) (plist-get b :assignments))) blocks)
+                     '(("write report") ("email bob")))))))
+
+(ert-deftest lumenna-plan-the-day-is-the-days-form-and-cancel-makes-nothing ()
+  (lumenna-test--with-store
+    (lumenna-write "task.add" :text "write report 15m")
+    (lumenna-write "block.add" :title "Deep" :at "9:00" :minutes 60 :date "tomorrow")
+    (lumenna-today)
+    (lumenna-day-next)
+    (lumenna-day-plan)
+    (should (equal (buffer-name) "*Lumenna: Plan the Day*"))
+    (lumenna-proposal-cancel)
+    (should-not (get-buffer "*Lumenna: Plan the Day*"))
+    (should (equal (plist-get (aref (plist-get (lumenna-call "plan" :date "tomorrow") :blocks) 0) :assignments) []))))
+
+(ert-deftest lumenna-a-tasks-history-is-on-its-own-screen-under-a-heading-and-never-in-a-list ()
+  (lumenna-test--with-store
+    (lumenna-write "task.add" :text "write the chapter")
+    (lumenna-tasks)
+    (should-not (seq-find (lambda (l) (string-match-p "made today" l)) (lumenna-test--lines)))
+    (lumenna-test--goto "write the chapter")
+    (lumenna-activate)
+    (let ((lines (lumenna-test--lines)))
+      (should (equal (last lines 2) '("History" "  made today"))))))
+
+(ert-deftest lumenna-a-blocks-end-offers-to-carry-its-short-work-forward-from-the-notification ()
+  (lumenna-test--reminding
+    (lumenna-call "config.set" :key "default-block-reminders" :value "")
+    (lumenna-write "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "2030-01-15")
+    (lumenna-write "block.add" :title "Admin" :at "9:00" :minutes 60 :date "2030-01-16")
+    (lumenna-write "task.add" :text "Essay")
+    (let* ((plan (lumenna-call "plan" :date "2030-01-15"))
+           (block (plist-get (aref (plist-get plan :blocks) 0) :id))
+           (task (plist-get (aref (plist-get (lumenna-call "task.list") :rows) 0) :id)))
+      (lumenna-call "assign" :task task :block block :date "2030-01-15" :minutes 90)
+      (let ((sitting (plist-get (aref (plist-get (aref (plist-get (lumenna-call "plan" :date "2030-01-15") :blocks) 0)
+                                                 :assignments)
+                                      0)
+                                :id)))
+        (lumenna-call "stop" :assignment sitting :minutes 40)))
+    (setq now "2030-01-15T09:58:00Z")
+    (lumenna-test--deliver)
+    (setq now "2030-01-15T10:00:30Z" said nil)
+    (lumenna-test--deliver)
+    (should (equal said '("Deep work is ending. Essay: 40 minutes of 1 hour 30 minutes. Carry the remaining 50 minutes to Admin tomorrow?")))
+    (let ((notification (car shown)))
+      (should (equal (plist-get notification :actions)
+                     '("dismiss" "Dismiss" "snooze" "Snooze 10 Minutes" "carry" "Carry Forward" "default" "Deep work")))
+      (funcall (plist-get notification :on-action) 1 "carry"))
+    (should (equal (car said) "Carried forward Essay to Admin"))
+    (should-not lumenna-reminders--waiting)
+    (let ((next (aref (plist-get (lumenna-call "plan" :date "2030-01-16") :blocks) 0)))
+      (should (equal (plist-get (aref (plist-get next :assignments) 0) :planned_mins) 50)))))
+
+(ert-deftest lumenna-the-due-list-carries-forward-only-where-a-reminder-offers-to ()
+  (lumenna-test--reminding
+    (lumenna-write "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "2030-01-15")
+    (lumenna-test--deliver)
+    (setq now "2030-01-15T08:55:30Z")
+    (lumenna-test--deliver)
+    (lumenna-reminders-due)
+    (lumenna-test--goto "Deep work starts")
+    (should (equal (cadr (should-error (lumenna-reminders-carry) :type 'user-error))
+                   "That does not apply here."))))
 
 (provide 'lumenna-test)
 

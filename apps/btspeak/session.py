@@ -141,7 +141,8 @@ def live_menu(
     `build()` returns the rows (`row_item`s), or a string to say instead of opening at all.
     `main(row)` is what Enter does on a row; `context` and `app` are `Command`s for the two
     menus, and `context` may be a function of the rows giving them, for commands that are the
-    rows' own actions (`actions.commands`). `title` is a string or a function of nothing, read on each rebuild, and
+    rows' own actions (`actions.commands`); `app` may be a function of nothing, read after
+    `build`, for a screen's own actions that come with what it shows (the day's). `title` is a string or a function of nothing, read on each rebuild, and
     so is `empty`, what an empty list says: the listing's own `empty` (`Rows::empty`), read
     after `build`. `moved`, when
     given, is another reason to rebuild — the day changing under the planner — and is cleared
@@ -156,7 +157,8 @@ def live_menu(
                 dialogs.show_message(items)
             return
         here = context([row_of(item) for item in items if row_of(item) is not None]) if callable(context) else context
-        wire(items, main, here, app)
+        offered = app() if callable(app) else app
+        wire(items, main, here, offered)
         heading = title() if callable(title) else title
         choice = dialogs.dynamic_menu(
             items,
@@ -165,9 +167,9 @@ def live_menu(
             refresh_interval=REFRESH,
             default=min(selection, max(len(items) - 1, 0)),
             context_menu=context_commands(here),
-            app_menu=app_commands(app),
+            app_menu=app_commands(offered),
             app_menu_title=app_title or f"{heading.split(',')[0]} menu",
-            global_keys=keys(here, app),
+            global_keys=keys(here, offered),
             empty_message=empty() if callable(empty) else empty,
         )
         nudged = bool(moved and moved(clear=True))
@@ -268,10 +270,31 @@ def screen(topic: str):
 HELP = str(Path(__file__).resolve().parent / "help")
 
 
-def choose(options: dict, prompt: str, default=None):
-    """One choice from `options`, key to label; the key, or None if cancelled."""
+def choose(options: dict, prompt: str, default=None, hints=None):
+    """One choice from `options`, key to label; the key, or None if cancelled.
+
+    `hints`, key to text, is why a choice is offered ("Suggested because ..."): its
+    description, never its name. A choice dialog has no description, so where any choice has
+    one the choices are a menu instead, each row's hint said after it, as the device says a
+    menu's hints."""
     if not options:
         return None
+    hints = {key: hint for key, hint in (hints or {}).items() if hint and key in options}
+    if hints:
+        picked = []
+
+        def pick(key):
+            def run(menu) -> None:
+                picked.append(key)
+                menu.close()
+            return run
+
+        dialogs.dynamic_menu(
+            [dialogs.DynamicMenuItem(title=label, action=pick(key), hint=hints.get(key)) for key, label in options.items()],
+            title=prompt,
+            default=list(options).index(default) if default in options else 0,
+        )
+        return picked[0] if picked else None
     choice = dialogs.request_choice(options, prompt, default=default)
     return None if choice is None else choice.key
 

@@ -267,7 +267,7 @@ class Menus(unittest.TestCase):
 
     def test_a_sitting_pauses_resumes_and_stops(self):
         self.call("task.add", text="draft")
-        self.call("block.add", title="Focus", at="00:00", minutes=1439, date="today")
+        self.call("block.add", title="Focus", at="00:00", minutes=1440, date="today")
         self.run_script(
             [
                 ("key", "Focus", "i"),
@@ -287,7 +287,7 @@ class Menus(unittest.TestCase):
 
     def test_a_break_let_take_tasks_is_offered_for_them(self):
         self.call("task.add", text="read")
-        self.call("block.add", title="Train", at="00:00", minutes=1439, date="today", kind="break")
+        self.call("block.add", title="Train", at="00:00", minutes=1440, date="today", kind="break")
         self.run_script(
             [
                 ("context", "Train", "Edit block"),
@@ -303,6 +303,127 @@ class Menus(unittest.TestCase):
         self.assertTrue(block["accepts_tasks"])
         self.assertIn("takes tasks", block["details"])
         self.assertEqual(block["assignments"][0]["title"], "read")
+
+    # -- the planner ------------------------------------------------------------------
+
+    def proposing(self, now):
+        import proposals
+        proposals.NOW = lambda: now
+        self.addCleanup(setattr, proposals, "NOW", None)
+        return proposals
+
+    def test_the_day_menu_offers_the_days_own_actions_and_what_to_work_on_says_why(self):
+        self.call("task.add", text="review p1")
+        self.call("task.add", text="draft")
+        self.call("block.add", title="Focus", at="00:00", minutes=1440, date="today")
+        script = self.run_script(
+            [("app", "What should"), ("menu", "review"), ("back",)],
+            lambda: day.day_plan(self.session),
+        )
+        labels = [c.get_label(None).lower() for c in script.menus[0]["app"]]
+        self.assertEqual(labels[:4], ["plan the day", "replan from now", "what should i work on?, w", "end the day"])
+        # Why a task is suggested is the row's hint, never its name.
+        self.assertEqual(script.menus[1]["hints"], {"review, Inbox": "Suggested because priority 1."})
+        self.assertEqual(script.titles[1], "What should I work on?")
+        sitting = self.call("plan")["blocks"][0]["assignments"][0]
+        self.assertEqual((sitting["title"], sitting["status"]), ("review", "in progress"))
+
+    def test_a_pick_without_reasons_stays_a_choice(self):
+        self.call("task.add", text="draft")
+        self.call("block.add", title="Focus", at="00:00", minutes=1440, date="today")
+        script = self.run_script(
+            [("key", "Focus", "i"), ("choose", "draft"), ("input", ""), ("back",)],
+            lambda: day.day_plan(self.session),
+        )
+        self.assertEqual(self.call("plan")["blocks"][0]["assignments"][0]["title"], "draft")
+        self.assertTrue(script.finished())
+
+    def test_replan_says_its_proposal_and_shows_the_next_after_a_partial_apply(self):
+        proposals = self.proposing("2030-01-15T10:40")
+        for title, kind, at, minutes in [("Deep work", "work", "09:00", 120), ("Lunch", "break", "10:30", 30),
+                                         ("Review", "work", "11:00", 60)]:
+            self.call("block.add", title=title, kind=kind, at=at, minutes=minutes, date="2030-01-15")
+        script = play([
+            ("menu", "shortens from 1 hour to 30 minutes, checked"),
+            ("menu", "Make the changes checked"),
+            ("menu", "Make the changes checked"),
+        ])
+        said = proposals.proposal_screen(self.session, "replan")
+        self.assertTrue(script.finished(), script.steps)
+        self.assertEqual(script.titles, [
+            "Replan from now. Lunch moves from 10:30 to 11:00; Review moves from 11:00 to 11:30 and shortens from 1 hour to 30 minutes.",
+            "Replan from now. Lunch moves from 11:00 to 12:00.",
+        ])
+        self.assertEqual([m["announced"] for m in script.menus], [True, False])
+        self.assertEqual(script.menus[0]["hints"]["Make the changes checked"],
+                         "A change left unchecked is not made: what it would move stays where it is, and the rest of the day is proposed again around it.")
+        self.assertEqual(script.said, [
+            "Make this change, not checked",
+            "Replanned: Lunch moves from 10:30 to 11:00. Lunch moves from 11:00 to 12:00.",
+        ])
+        self.assertTrue(said.startswith("Replanned: Lunch moves from 11:00 to 12:00"), said)
+        starts = [(b["title"], b["start"]) for b in self.call("plan", date="2030-01-15")["blocks"]]
+        self.assertEqual(starts, [("Deep work", "09:00"), ("Review", "11:00"), ("Lunch", "12:00")])
+
+    def test_a_stale_replan_is_refused_in_the_cores_words_over_a_new_proposal(self):
+        proposals = self.proposing("2030-01-15T10:40")
+        self.call("block.add", title="Deep work", at="09:00", minutes=120, date="2030-01-15")
+        self.call("block.add", title="Lunch", kind="break", at="10:30", minutes=30, date="2030-01-15")
+        stale = proposals.ask(self.session, "replan", None)
+        self.call("replan.apply", proposal=stale, accepted=stale["changes"], now="2030-01-15T10:40")
+        script = play([("menu", "Make the changes checked"), ("menu", "Cancel")])
+        real, asked = proposals.ask, []
+        # The screen opens on the proposal made before the day moved.
+        proposals.ask = lambda *args, **kwargs: stale if not asked.append(1) and len(asked) == 1 else real(*args, **kwargs)
+        self.addCleanup(setattr, proposals, "ask", real)
+        proposals.proposal_screen(self.session, "replan")
+        self.assertTrue(script.finished(), script.steps)
+        self.assertTrue(script.said[0].startswith("the day changed since this was proposed"), script.said)
+        self.assertTrue(script.said[0].endswith("Nothing needs to change: the rest of the day still fits"), script.said)
+        self.assertEqual(script.titles[1], "Replan from now. Nothing needs to change: the rest of the day still fits.")
+        self.assertNotIn("Make the changes checked", script.menus[1]["hints"])
+
+    def test_plan_the_day_gives_each_sitting_its_reason_and_plans_again_around_what_was_turned_down(self):
+        proposals = self.proposing("2030-01-15T08:00")
+        self.call("block.add", title="Deep work", at="09:00", minutes=60, date="2030-01-15")
+        self.call("block.add", title="Admin", at="14:00", minutes=60, date="2030-01-15")
+        self.call("task.add", text="write report p1 15m")
+        self.call("task.add", text="email bob 30m")
+        script = play([
+            ("menu", "email bob goes in Deep work"),
+            ("app", "Plan the ones checked"),
+            ("menu", "Plan the ones checked"),
+        ])
+        said = proposals.proposal_screen(self.session, "plan_day", "2030-01-15")
+        self.assertTrue(script.finished(), script.steps)
+        self.assertEqual(script.titles[0], "Plan the day. Plans 2 tasks: write report and email bob in Deep work.")
+        self.assertEqual(
+            script.menus[0]["hints"]["write report goes in Deep work at 09:00, for 15 minutes, checked"],
+            "Suggested because priority 1 and its estimate of 15 minutes fits the 1 hour left.",
+        )
+        self.assertIn("Planned 1 task. Now: Plans 1 task: email bob in Admin.", script.said)
+        self.assertEqual(script.titles[1], "Plan the day. Plans 1 task: email bob in Admin.")
+        self.assertEqual(said, "Planned 1 task.")
+        blocks = self.call("plan", date="2030-01-15")["blocks"]
+        self.assertEqual([[a["title"] for a in b["assignments"]] for b in blocks], [["write report"], ["email bob"]])
+
+    def test_plan_the_day_opens_from_the_day_menu_and_cancel_makes_nothing(self):
+        self.call("task.add", text="write report 15m")
+        self.call("block.add", title="Deep", at="9:00", minutes=60, date="tomorrow")
+        script = self.run_script(
+            [("app", "Next day"), ("app", "Plan the day"), ("menu", "Cancel"), ("back",)],
+            lambda: day.day_plan(self.session),
+        )
+        self.assertTrue(script.titles[2].startswith("Plan the day. Plans 1 task"), script.titles)
+        self.assertEqual(self.call("plan", date="tomorrow")["blocks"][0]["assignments"], [])
+
+    def test_a_tasks_details_end_with_its_history(self):
+        self.call("task.add", text="write the chapter")
+        script = self.run_script(
+            [("menu", "write the chapter"), ("back",)],
+            lambda: tasks.task_list(self.session),
+        )
+        self.assertEqual(script.shown[-1][-2:], ["History", "made today"])
 
     def test_a_task_is_read_back_before_it_is_added_when_asked_for(self):
         import options

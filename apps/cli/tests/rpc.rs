@@ -279,7 +279,7 @@ fn a_block_takes_its_settings_and_a_sitting_pauses_over_rpc() {
     let rpc = Rpc::new();
     let out = rpc.talk(&[
         r#"{"jsonrpc":"2.0","id":1,"method":"task.add","params":{"text":"read the paper"}}"#,
-        r#"{"jsonrpc":"2.0","id":2,"method":"block.add","params":{"title":"Train","at":"00:00","minutes":1439,"kind":"break","accepts_tasks":true,"notes":"window seat","colour":"Blue"}}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"block.add","params":{"title":"Train","at":"00:00","minutes":1440,"kind":"break","accepts_tasks":true,"notes":"window seat","colour":"Blue"}}"#,
         r#"{"jsonrpc":"2.0","id":3,"method":"plan"}"#,
     ]);
     assert!(out.contains(r#""accepts_tasks":true"#), "{out}");

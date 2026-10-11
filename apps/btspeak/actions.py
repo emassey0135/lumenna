@@ -57,6 +57,14 @@ KEYS = {
     "colour": "c",
     "change_query": "q",
     "reminders": "r",
+    # A sitting's Carry Forward and a block's Carry the Rest Forward: no row offers both.
+    "carry_forward": "f",
+    "carry_rest": "f",
+}
+
+#: The letters for the day's own actions, on the Day menu: none a row of the day uses.
+DAY_KEYS = {
+    "what_now": "w",
 }
 
 #: The kinds the delete keys do — Control-D and the D chord.
@@ -177,7 +185,8 @@ def ask_pick(session: Session, action: dict, question: dict):
     if action["kind"] == "put_in_block":
         # The core offers this week's; a block further off is asked for by its day.
         options[ANOTHER_DAY] = "Another day"
-    picked = choose(options, question.get("title") or named(action))
+    picked = choose(options, question.get("title") or named(action),
+                    hints={c["id"]: c.get("reason") for c in choices})
     if picked is None:
         return ""
     if picked == ANOTHER_DAY:

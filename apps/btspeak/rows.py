@@ -54,6 +54,11 @@ def _time_format() -> str:
     return local.replace(":%S", "") or "%H:%M"
 
 
+def twelve_hour() -> bool:
+    """Whether the device says times in the 12-hour clock, for what the core words itself."""
+    return "%p" in _time_format()
+
+
 def clock(hhmm: str) -> str:
     """A time of day, `HH:MM` as the server sends it, as this device says times."""
     try:

@@ -158,6 +158,33 @@ class Reminders(unittest.TestCase):
         )
         self.assertIn("Snoozed for 10 minutes", script.said)
 
+    def test_a_blocks_end_that_left_work_short_is_carried_forward_from_what_came_due(self):
+        self.client.call("config.set", key="default-block-reminders", value="")
+        self.client.call("block.add", title="Admin", at="9:00", minutes=60, date="2030-01-16")
+        self.client.call("task.add", text="Essay")
+        block = self.client.call("plan", date="2030-01-15")["blocks"][0]["id"]
+        task = self.client.call("task.list")["rows"][0]["id"]
+        self.client.call("assign", task=task, block=block, date="2030-01-15", minutes=90)
+        sitting = self.client.call("plan", date="2030-01-15")["blocks"][0]["assignments"][0]["id"]
+        self.client.call("stop", assignment=sitting, minutes=40)
+        reminder_lists.NOW = lambda: datetime.datetime(2030, 1, 15, 10, 1, tzinfo=datetime.timezone.utc)
+        ending = "Deep work is ending. Essay: 40 minutes of 1 hour 30 minutes. Carry the remaining 50 minutes to Admin tomorrow?"
+        script = self.run_script(
+            [("context", ending, "Carry forward"), ("back",)],
+            lambda: reminder_lists.due(self.session),
+        )
+        self.assertIn("Carried forward Essay to Admin", script.said)
+        admin = self.client.call("plan", date="2030-01-16")["blocks"][0]
+        self.assertEqual(admin["assignments"][0]["planned_mins"], 50)
+
+    def test_carrying_forward_where_a_reminder_does_not_offer_it_says_why(self):
+        reminder_lists.NOW = lambda: datetime.datetime(2030, 1, 15, 9, 0, tzinfo=datetime.timezone.utc)
+        script = self.run_script(
+            [("key", "Deep work starts", "f"), ("back",)],
+            lambda: reminder_lists.due(self.session),
+        )
+        self.assertIn("That does not apply here.", script.said)
+
     # -- settings and the service ---------------------------------------------------------
 
     def test_the_service_is_installed_only_when_asked_and_only_where_it_is_told(self):

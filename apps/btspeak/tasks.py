@@ -170,6 +170,9 @@ def task_details(task: dict, named: dict | None = None, labels: dict | None = No
         lines.append("State: " + ", ".join(task["state"]))
     if task.get("notes"):
         lines.append(line("notes", task["notes"]))
+    if task.get("history"):
+        # What the records hold of it, said about one task here and never in a list.
+        lines.extend(["History", *task["history"]])
     dialogs.view_lines(lines, wrap=True)
     return ""
 

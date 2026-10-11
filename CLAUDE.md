@@ -524,6 +524,18 @@ library is only on a BTSpeak (`/BTSpeak/Python/BTSpeak/`); elsewhere the tests r
 - **It is a line in `~/BTSpeak/user.menu`**, added with `user_menu.add_item`, not a `.menu`
   file. `connect.find_lum` finds `lum` in the checkout's `target/`, since a menu launch's
   `PATH` lacks it.
+- **The day's own actions lead the Day menu**: `live_menu`'s `app` may be a function, read
+  after `build`, so the menu offers what the plan shown offers (`day.day_commands`).
+- **A choice's reason is its row's hint.** `request_choice` has no description, so a pick
+  whose choices carry a `reason` is a `dynamic_menu` instead (`session.choose(hints=…)`),
+  the device saying each hint after the row; a pick without reasons stays a choice dialog.
+- **Replan from now and Plan the day are one menu** (`proposals.py`): rows toggled by Enter
+  with callable titles, the title the whole proposal (said as it opens, not again after an
+  apply, whose announcement already says the next). A `Flag` rebuilds it on the next
+  proposal; it never exits on `session.restless()`, which its own apply sets.
+  `proposals.NOW` fixes the moment for tests.
+- **Carry Forward at a block's end is the Reminders screen's** (`f`, `carry_rest`): the
+  service has no keys, and the text it says already ends in the question.
 
 ## The Emacs client
 
@@ -552,6 +564,13 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
   each line and events on the notification lane, whose rules are one per role and event (a
   rule per method played the sound twice). The Emacsvox layer is tested against Emacsvox
   itself (`test/lumenna-emacsvox-test.el`, skipped without it).
+- **The day's own actions are its heading's**: on the first line, which has no row, `.`
+  offers the plan's `actions`; `P`, `r`, `w`, `E` and `C` run them from anywhere in the day.
+- **A proposal is a buffer of checkable lines** (`lumenna-proposal.el`). Its source draws
+  the proposal it holds and never asks again, since `lumenna-refresh-all` redraws it after
+  every write and asking would lose the checks; `g` asks again, keeping the pins.
+  `lumenna-proposal--now` fixes the moment for tests.
+- **A choice's reason is its completion annotation**, never part of the line chosen.
 
 ## The iOS app
 
