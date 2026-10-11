@@ -185,6 +185,34 @@ class Reminders(unittest.TestCase):
         )
         self.assertIn("That does not apply here.", script.said)
 
+    def test_a_blocks_work_outrunning_it_opens_replan_from_what_came_due(self):
+        import proposals
+        self.client.call("config.set", key="default-block-reminders", value="")
+        self.client.call("block.add", title="Meeting", at="10:00", minutes=60, date="2030-01-15")
+        block = self.client.call("plan", date="2030-01-15")["blocks"][0]["id"]
+        for title, minutes in [("Essay", 40), ("Email", 30)]:
+            task = self.client.call("task.add", text=title)["task"]["id"]
+            self.client.call("assign", task=task, block=block, date="2030-01-15", minutes=minutes)
+        reminder_lists.NOW = lambda: datetime.datetime(2030, 1, 15, 9, 1, tzinfo=datetime.timezone.utc)
+        proposals.NOW = lambda: "2030-01-15T09:01"
+        self.addCleanup(setattr, proposals, "NOW", None)
+        overrun = "Deep work has 1 hour left and 1 hour 10 minutes of work planned, more than it holds"
+        script = self.run_script(
+            [("context", overrun, "Replan"), ("menu", "Cancel"), ("key", overrun, "p"), ("menu", "Cancel"), ("back",)],
+            lambda: reminder_lists.due(self.session),
+        )
+        self.assertEqual(script.titles[0], "Reminders, 1 reminder")
+        self.assertTrue(script.titles[1].startswith("Replan from now. "), script.titles)
+        self.assertTrue(script.titles[2].startswith("Replan from now. "), script.titles)
+
+    def test_replan_where_a_reminder_does_not_offer_it_says_why(self):
+        reminder_lists.NOW = lambda: datetime.datetime(2030, 1, 15, 9, 0, tzinfo=datetime.timezone.utc)
+        script = self.run_script(
+            [("key", "Deep work starts", "p"), ("back",)],
+            lambda: reminder_lists.due(self.session),
+        )
+        self.assertIn("That does not apply here.", script.said)
+
     # -- settings and the service ---------------------------------------------------------
 
     def test_the_service_is_installed_only_when_asked_and_only_where_it_is_told(self):

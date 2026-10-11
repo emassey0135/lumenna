@@ -100,6 +100,14 @@ def proposal_screen(session: Session, kind: str, date: str | None = None) -> str
             menu.close()
         return ""
 
+    def take(other: dict) -> str:
+        try:
+            again = ask(session, kind, date, other.get("pins"))
+        except LumennaError as error:
+            return error.message
+        show(again)
+        return spoken(again)
+
     def cancel(menu) -> None:
         state["done"] = True
         menu.close()
@@ -126,6 +134,12 @@ def proposal_screen(session: Session, kind: str, date: str | None = None) -> str
         if items:
             # What becomes of a change left unchecked, beside the button that makes the rest.
             rows.append(dialogs.DynamicMenuItem(title=session.sentence(words["apply"]), action=apply, hint=words["hint"]))
+        others = proposal.get("alternatives") or []
+        if others:
+            # Other options, each asking again with its own pins; none, no heading.
+            rows.append(dialogs.DynamicMenuItem(title=words["others"], action=lambda: ""))
+            rows.extend(dialogs.DynamicMenuItem(title=other["sentence"], action=lambda other=other: take(other))
+                        for other in others)
         rows.append(dialogs.DynamicMenuItem(title=session.sentence(words["cancel"]), action=cancel))
         return rows
 

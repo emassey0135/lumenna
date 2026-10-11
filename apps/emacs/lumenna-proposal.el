@@ -129,6 +129,13 @@ SPC or RET turns one off or on;
            (when items
              (list (list :key "apply" :role "button" :button 'apply
                          :title (format "%s. %s" (plist-get words :apply) (plist-get words :hint)))))
+           ;; Other options, each asking again with its own pins; none, no heading.
+           (when-let* ((others (append (plist-get proposal :alternatives) nil)))
+             (cons (list :key "others" :role "heading" :title (plist-get words :others) :face 'lumenna-heading)
+                   (seq-map-indexed (lambda (other index)
+                                      (list :key (format "other %d" index) :role "button" :button 'other
+                                            :depth 1 :other other :title (plist-get other :sentence)))
+                                    others)))
            (list (list :key "cancel" :role "button" :button 'cancel :title (plist-get words :cancel)))))))
 
 (defun lumenna-proposal--describe (row)
@@ -151,7 +158,17 @@ The reason is the change's description, so it follows its name and state."
   (pcase (plist-get row :button)
     ('apply (lumenna-proposal-apply))
     ('cancel (lumenna-proposal-cancel))
-    (_ (lumenna-proposal-toggle))))
+    ('other (lumenna-proposal-take-other))
+    ((guard (equal (plist-get row :role) "change")) (lumenna-proposal-toggle))
+    (_ (message "%s" (plist-get row :title)))))
+
+(defun lumenna-proposal-take-other ()
+  "Take the other option at point: the core's proposal for it, shown and said."
+  (interactive)
+  (let ((other (or (plist-get (lumenna-row) :other) (user-error "No other option on this line"))))
+    (let ((again (lumenna-proposal--ask lumenna-proposal--kind lumenna-proposal--date (plist-get other :pins))))
+      (lumenna-proposal--show again)
+      (lumenna-say again))))
 
 (defun lumenna-proposal-toggle ()
   "Turn the change at point off, or back on, and say which it is now."
@@ -225,6 +242,7 @@ moved past is refused: the core's sentence is shown, over a new proposal."
    ("SPC" "Check or uncheck the change at point" lumenna-proposal-toggle)
    ("x" "Check or uncheck the change at point" lumenna-proposal-toggle)
    ("RET" "Check or uncheck a change, or press a button" lumenna-activate)
+   ("o" "Take the other option at point" lumenna-proposal-take-other)
    ("C-c C-c" "Make the changes checked" lumenna-proposal-apply)
    ("C-c C-k" "Cancel, making nothing" lumenna-proposal-cancel)
    ("q" "Cancel, making nothing" lumenna-proposal-cancel)

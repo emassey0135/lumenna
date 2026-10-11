@@ -901,6 +901,9 @@
                      "Lunch moves from 10:30 to 11:00, checked"
                      "Review moves from 11:00 to 11:30 and shortens from 1 hour to 30 minutes, checked"
                      "Make the Changes Checked. A change left unchecked is not made: what it would move stays where it is, and the rest of the day is proposed again around it."
+                     "Other options"
+                     "  Skip Lunch today, your only break left today. Then nothing else needs to change."
+                     "  Skip Review today. Then Lunch moves from 10:30 to 11:00."
                      "Cancel")))
     (lumenna-test--goto "30 minutes, checked")
     (lumenna-proposal-toggle)
@@ -1017,7 +1020,52 @@
     (lumenna-reminders-due)
     (lumenna-test--goto "Deep work starts")
     (should (equal (cadr (should-error (lumenna-reminders-carry) :type 'user-error))
+                   "That does not apply here."))
+    (should (equal (cadr (should-error (lumenna-reminders-replan) :type 'user-error))
                    "That does not apply here."))))
+
+(ert-deftest lumenna-replan-offers-other-options-each-proposed-in-place-when-taken ()
+  (lumenna-test--planning "2030-01-15T10:40"
+    (lumenna-test--block-at "Deep work" "work" "09:00" 120 "2030-01-15")
+    (lumenna-test--block-at "Lunch" "break" "10:30" 30 "2030-01-15")
+    (lumenna-test--block-at "Review" "work" "11:00" 60 "2030-01-15")
+    (lumenna-replan)
+    (let ((lines (lumenna-test--lines)))
+      (should (equal (seq-drop (member "Other options" lines) 1)
+                     '("  Skip Lunch today, your only break left today. Then nothing else needs to change."
+                       "  Skip Review today. Then Lunch moves from 10:30 to 11:00."
+                       "Cancel"))))
+    (lumenna-test--goto "Skip Lunch today")
+    (lumenna-activate)
+    (should (equal (caar said) "Lunch is skipped today."))
+    (let ((lines (lumenna-test--lines)))
+      (should (equal (nth 1 lines) "Lunch is skipped today, checked"))
+      (should-not (member "Other options" lines)))))
+
+(ert-deftest lumenna-a-blocks-work-outrunning-it-offers-replan-from-the-notification ()
+  (lumenna-test--reminding
+    (lumenna-call "config.set" :key "default-block-reminders" :value "")
+    (lumenna-write "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "2030-01-15")
+    (lumenna-write "block.add" :title "Meeting" :at "10:00" :minutes 60 :date "2030-01-15")
+    (let ((block (plist-get (aref (plist-get (lumenna-call "plan" :date "2030-01-15") :blocks) 0) :id)))
+      (dolist (task '(("Essay" . 40) ("Email" . 30)))
+        (let ((id (plist-get (plist-get (lumenna-call "task.add" :text (car task)) :task) :id)))
+          (lumenna-call "assign" :task id :block block :date "2030-01-15" :minutes (cdr task)))))
+    (setq now "2030-01-15T08:58:00Z")
+    (lumenna-test--deliver)
+    (setq now "2030-01-15T09:00:30Z" said nil)
+    (lumenna-test--deliver)
+    (should (equal said '("Deep work has 1 hour left and 1 hour 10 minutes of work planned, more than it holds")))
+    (let ((notification (car shown))
+          (lumenna-proposal--now (lambda () "2030-01-15T09:01")))
+      (should (equal (plist-get notification :actions)
+                     '("dismiss" "Dismiss" "snooze" "Snooze 10 Minutes" "replan" "Replan" "default" "Deep work")))
+      (funcall (plist-get notification :on-action) 1 "replan")
+      (should (equal (buffer-name) "*Lumenna: Replan from Now*"))
+      (lumenna-reminders-due)
+      (lumenna-test--goto "Deep work has")
+      (lumenna-reminders-replan)
+      (should (equal (buffer-name) "*Lumenna: Replan from Now*")))))
 
 (provide 'lumenna-test)
 

@@ -140,6 +140,17 @@ def due(session: Session) -> str:
         # At a block's end with work left short: its text ends in the question this answers.
         return session.write("carry_rest", block=f"{reminder['target']}@{reminder['occurrence']}")
 
+    def replan(_reminder) -> str:
+        import proposals  # here, since proposals imports actions, which this imports too
+
+        return proposals.proposal_screen(session, "replan")
+
+    def no_replan(_reminder) -> str:
+        try:
+            return session.call("form.not_offered", kind="replan", subject="reminder").get("value", "")
+        except LumennaError as error:
+            return error.message
+
     def no_carry(_reminder) -> str:
         try:
             return session.call("form.not_offered", kind="carry_rest", subject="reminder").get("value", "")
@@ -154,6 +165,9 @@ def due(session: Session) -> str:
                 Command(lambda row: (row or {}).get("snooze", "Snooze"), deal("reminder.snooze"), key="z"),
                 Command(lambda row: session.sentence((row or {}).get("carry", "")), carry, key="f",
                         applies=lambda row: bool((row or {}).get("carry")), refuse=no_carry),
+                # A block's work outrunning its time: Replan from now.
+                Command(lambda row: session.sentence((row or {}).get("replan", "")), replan, key="p",
+                        applies=lambda row: bool((row or {}).get("replan")), refuse=no_replan),
             ],
             app=undo_commands(session),
             empty="Nothing has come due.",

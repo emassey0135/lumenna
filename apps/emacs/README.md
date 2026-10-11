@@ -80,7 +80,8 @@ anywhere in the day: `P` Plan the Day, `r` Replan from Now, `w` What Should I Wo
 Rest of the Day. Plan the Day and Replan from Now open a buffer of the core's proposal, a
 change per line, each checked: `SPC` or `RET` unchecks one, `C-c C-c` makes what is checked,
 and the core's next proposal, around what was left unchecked, takes its place until nothing
-more is proposed; `q` cancels. A task's own buffer ends with its History.
+more is proposed; `q` cancels. Under Other options, `RET` or `o` on one shows the core's
+proposal for it in place. A task's own buffer ends with its History.
 
 Projects, labels and saved filters each have their own list (`a` add, `r` rename, `d`
 delete, `M-p`/`M-n` reorder, and the rest in `?`). `M-x lumenna` lists the places as every
@@ -100,7 +101,8 @@ never said twice. What came while nothing ran is one summary.
 
 `C-c l r` (`lumenna-reminders-due`) lists what came due and was not dealt with: `d`
 dismisses one and `z` snoozes it, on every device, and `c` carries forward what a block's
-end left short, where the reminder offers to (its notification has the button too); RET
+end left short, where the reminder offers to, and `r` opens Replan from Now where a block's
+work outruns its time (each notification has its button too); RET
 opens what it is about. On a task with
 a due date or a block, `R` lists its reminders: `a` adds one by a phrase (`5m before start`,
 `at end`, `30m before`), asked again with the core's sentence if it cannot be read, and `d`

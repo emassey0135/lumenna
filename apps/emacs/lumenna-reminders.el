@@ -34,6 +34,7 @@
 (declare-function lumenna--day-turn "lumenna-day" (day))
 (declare-function lumenna--task "lumenna-tasks" (&optional id))
 (declare-function dbus-ping "dbus" (bus service &optional timeout))
+(declare-function lumenna-replan "lumenna-proposal" ())
 
 (defcustom lumenna-reminders-start-automatically t
   "Whether reminders start being given once Lumenna first connects.
@@ -107,12 +108,16 @@ ran, a plist with `:summary' and `:missed', the missed reminders.")
                                     ;; in the question this button answers.
                                     (when (lumenna-reminders--carry-p reminder)
                                       (list "carry" (plist-get reminder :carry)))
+                                    ;; A block's work outrunning its time: Replan from Now.
+                                    (when (lumenna-reminders--replan-p reminder)
+                                      (list "replan" (plist-get reminder :replan)))
                                     (list "default" (plist-get first :title)))))
          :on-action (lambda (_id action)
                       (pcase action
                         ("dismiss" (lumenna-reminders--deal reminder "reminder.dismiss"))
                         ("snooze" (lumenna-reminders--deal reminder "reminder.snooze"))
                         ("carry" (lumenna-reminders--carry reminder))
+                        ("replan" (lumenna-replan))
                         ("default" (lumenna-reminders--open reminder)))))))))
 
 (defun lumenna-reminders--give (found)
@@ -210,6 +215,18 @@ A summary of what was missed is dismissed one by one."
   "Whether REMINDER offers to carry its block's short work forward."
   (let ((carry (plist-get reminder :carry)))
     (and (stringp carry) (not (string-empty-p carry)))))
+
+(defun lumenna-reminders--replan-p (reminder)
+  "Whether REMINDER offers Replan from Now: a block's work outrunning its time."
+  (let ((replan (plist-get reminder :replan)))
+    (and (stringp replan) (not (string-empty-p replan)))))
+
+(defun lumenna-reminders-replan ()
+  "Open Replan from Now, as the reminder at point offers to."
+  (interactive)
+  (unless (lumenna-reminders--replan-p (lumenna-reminders--at-point))
+    (user-error "%s" (lumenna--value "form.not_offered" :kind "replan" :subject "reminder")))
+  (lumenna-replan))
 
 (defun lumenna-reminders--carry (reminder)
   "Carry the work REMINDER's block left short forward (`carry_rest'), and say it.
@@ -351,7 +368,8 @@ One the core cannot read is asked again, with the core's sentence first."
    ("RET" "Open what it is about" lumenna-activate)
    ("d" "Dismiss" lumenna-reminders-dismiss)
    ("z" "Snooze" lumenna-reminders-snooze)
-   ("c" "Carry Forward, where it offers to" lumenna-reminders-carry)))
+   ("c" "Carry Forward, where it offers to" lumenna-reminders-carry)
+   ("r" "Replan from Now, where it offers to" lumenna-reminders-replan)))
 
 (lumenna-define-keys lumenna-reminder-list-mode
   ("Reminders"
