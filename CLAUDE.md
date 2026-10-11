@@ -417,6 +417,18 @@ surface's `reminders.rs` words them and answers the apps.
 - **Dismissing and snoozing write a `ReminderAck`**, which syncs: best effort, since a sleeping
   device may still show it. "Reminders on this device" is a device setting and never syncs.
 
+### Urgency and history
+
+`core::urgency` scores a task, computed and never stored, after Taskwarrior's: additive
+terms (due, rising and still rising while overdue to a ceiling; priority; age; partly
+worked; blocking; blocked, strongly negative; already in a block today, mildly negative),
+the sum **multiplied** by the project's weight, so the order within a project holds and only
+the scale between projects changes. `core::history` counts what the records already hold:
+sittings and time, how often a task was put in a block and left, its age, its completions.
+The surface words both (`task_history`, `TaskDetail::history`): asked for about one task,
+never said in a list or a live region. The coefficients are `Coefficients::default()` until
+they become synced settings.
+
 ### Backup and export
 
 Kept apart in code, commands and wording, because confusing them is how someone sends a

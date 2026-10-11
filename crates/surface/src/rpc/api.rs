@@ -132,6 +132,8 @@ pub enum Outcome {
     DueReminders(crate::DueReminders),
     /// A task's or block's reminders.
     Reminders(crate::ReminderList),
+    /// A task's history and urgency.
+    History(crate::TaskHistory),
 }
 
 macro_rules! outcomes {
@@ -187,6 +189,7 @@ outcomes!(
     Value(Derived),
     DueReminders(crate::DueReminders),
     Reminders(crate::ReminderList),
+    History(crate::TaskHistory),
 );
 
 impl From<Imported> for Outcome {

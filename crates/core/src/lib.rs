@@ -11,6 +11,7 @@
 
 pub mod edit;
 pub mod filter;
+pub mod history;
 pub mod id;
 pub mod model;
 pub mod order;
@@ -22,6 +23,7 @@ pub mod snapshot;
 pub mod suggest;
 pub mod state;
 pub mod time;
+pub mod urgency;
 
 pub use id::{
     AssignmentId, CompletionId, FilterId, LabelId, NodeId, ProjectId, ReminderId, SeriesId,

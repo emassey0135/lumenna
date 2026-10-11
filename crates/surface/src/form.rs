@@ -360,6 +360,7 @@ mod tests {
             state: vec!["ready".to_owned()],
             created_at: "2026-10-01T09:00:00Z".to_owned(),
             actions: Vec::new(),
+            history: Vec::new(),
         }
     }
 

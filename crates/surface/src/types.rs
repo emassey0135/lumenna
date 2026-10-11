@@ -487,6 +487,10 @@ pub struct TaskDetail {
     pub state: Vec<String>,
     /// When it was created.
     pub created_at: String,
+    /// What has happened to it, as parts: "3 sittings, 1 hour logged", "made 4 months ago".
+    /// For its own screen, asked for; never said in a list.
+    #[serde(default, skip_serializing_if = "none")]
+    pub history: Vec<String>,
     /// What can be done to it, in the order offered ([`crate::actions`]).
     #[serde(default, skip_serializing_if = "none")]
     pub actions: Vec<crate::actions::Action>,
@@ -542,6 +546,7 @@ impl TaskDetail {
             state: snapshot.states_of(task, now).iter().map(|s| s.keyword().to_owned()).collect(),
             created_at: task.created_at.to_string(),
             actions: crate::actions::task(snapshot, task, snapshot.facts().is_completed(task), true),
+            history: crate::history::history_words(&lumenna_core::history::history(snapshot, task, now), now.date()),
         }
     }
 

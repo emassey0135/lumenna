@@ -108,6 +108,19 @@ fn text(response: &Response, clock: Clock) {
         | Outcome::Restore(_)
         | Outcome::Import(_) => println!("{}", response.announcement()),
         Outcome::Paired(_) => println!("{}", response.announcement()),
+        Outcome::History(found) => {
+            println!("{}", response.announcement());
+            for part in &found.history {
+                println!("  {part}");
+            }
+            println!("urgency {}", found.urgency);
+            for term in &found.terms {
+                println!("  {:+.1}  {}", term.value, term.words);
+            }
+            if !found.weight.is_empty() {
+                println!("  times {}", found.weight);
+            }
+        }
         Outcome::Reminders(list) => {
             println!("{}", response.announcement());
             for reminder in &list.reminders {

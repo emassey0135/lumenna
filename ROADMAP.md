@@ -87,35 +87,22 @@ weights, and the day's timeline with its free time.
 - **No language model.** It cannot explain itself or be property-tested, and it would send
   the day to a server.
 
-### Urgency
+### Urgency and history
 
-`urgency(task, now) -> f32`, computed and never stored, after Taskwarrior's. It orders block
-suggestions, the default sort of task lists, and a `sort: urgency` clause the filter
-language does not have yet. It never schedules anything by itself.
+Built: the score and its terms (`task_history`, `lum task history`), and per-task history
+from the records already kept, on a task's own screen. Still to come:
 
-- Additive terms: due proximity (rising, and still rising while overdue, up to a ceiling);
-  priority; age (small); partly worked (finishing beats starting); blocking other tasks;
-  blocked (strongly negative: not actionable); already assigned today (mildly negative).
-- **Project weight multiplies the sum.** An additive project term lets a heavy project's
-  trivia outrank another project's emergency; multiplying keeps the order within each
-  project and scales between them. Weights stay narrow (about 0.5 to 2), a sub-project's own
-  weight replaces the inherited one, and labels have none.
-- The coefficients are synced settings with good defaults, so ranking agrees across
-  devices. `lum task show --urgency` breaks a score into its terms.
-- If a task becomes permanent furniture at the top, add a staleness question ("this has
-  been at the top for three weeks; is it real?") rather than a bigger formula.
-- **Filters have no `sort` clause** (for `sort: urgency`, among others). Comparison
-  operators stay out: the vocabulary grows by named predicates.
-
-### History
-
-**Per-task history from the records already kept**, first: "rescheduled 7 times", "three
-sittings, 90 minutes logged against a 60-minute estimate", "created four months ago, never
-assigned", and the remaining effort across sittings ("43 minutes worked, 17 left against
-your estimate"), asked for, never in a live region. Repeated deferral says a task is badly
-defined or secretly unimportant: support for executive function, not a statistic. Then a
-history view in every app and `lum history`. Field-level history from Automerge (title and
-due-date changes over time) later, with its own API.
+- **The coefficients as synced settings**, so ranking agrees across devices; today they are
+  `Coefficients::default()`.
+- **Ordering by urgency**: what block suggestions rank by, and a `sort: urgency` clause the
+  filter language lacks (filters have no `sort` clause at all; comparison operators stay out).
+  Whether a task list's *default* order becomes urgency rather than the person's own is a
+  decision to make with the lists' tree in mind.
+- **A history view in every app** beyond the task's own screen, and `lum history`.
+  Field-level history from Automerge (title and due changes over time) later, with its own
+  API.
+- If a task becomes permanent furniture at the top, a staleness question ("this has been at
+  the top for three weeks; is it real?") rather than a bigger formula.
 
 ### Suggestions for a block
 

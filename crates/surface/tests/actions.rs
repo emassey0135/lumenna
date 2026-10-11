@@ -364,3 +364,18 @@ fn a_new_block_starts_at_the_next_hour_today_and_when_the_day_starts_on_another_
     assert!(hour == (now + 1).min(23) || (hour == 8 && now + 1 < 8), "{today} at {now}");
     assert!(today.ends_with(":00"));
 }
+
+#[test]
+fn a_tasks_history_and_urgency_say_why_it_ranks_where_it_does() {
+    let (_directory, lumenna) = open();
+    let report = add(&lumenna, "write report tomorrow p1");
+    let figures = add(&lumenna, "gather figures");
+    lumenna.add_dependency(&report, &figures).unwrap();
+    let found = lumenna.task_history(&report).unwrap();
+    let words: Vec<&str> = found.terms.iter().map(|t| t.words.as_str()).collect();
+    assert_eq!(words, ["due tomorrow", "priority 1", "waits on another task"]);
+    assert_eq!(found.history, ["made today"]);
+    let waited_on = lumenna.task_history(&figures).unwrap();
+    assert_eq!(waited_on.terms[0].words, "1 task waits on it");
+    assert_eq!(lumenna.show_task(&report).unwrap().task.history, ["made today"], "on its own screen too");
+}
