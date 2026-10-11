@@ -282,7 +282,7 @@ impl DayView {
         self.go_to(app, next);
     }
 
-    fn go_to(&self, app: &App, date: jiff::civil::Date) {
+    pub fn go_to(&self, app: &App, date: jiff::civil::Date) {
         let today = jiff::Zoned::now().date();
         *self.day.borrow_mut() = (date != today).then(|| date.to_string());
         self.list(app);

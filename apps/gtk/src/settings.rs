@@ -393,8 +393,9 @@ fn general(app: &Rc<App>) -> gtk::Widget {
     let at_sign_in = prompts::check("_Open Lumenna when you sign in, in the background");
     at_sign_in.set_active(autostart_file(app).is_some_and(|file| file.exists()));
     page.add(&at_sign_in);
+    setting_field(app, &page, &Status(page.status.clone()), "reminders", 'R');
     page.footer(
-        "Lumenna keeps running after its window is closed, so it syncs and reminds you. Start it again, from the menu or with lumenna-gtk, to bring the window back. This setting is this computer's alone.",
+        "Lumenna keeps running after its window is closed, so it syncs and reminds you. Start it again, from the menu or with lumenna-gtk, to bring the window back. These settings are this computer's alone.",
     );
     let (widget, status) = page.finish();
     let app = Rc::downgrade(app);
@@ -465,6 +466,8 @@ fn planning(app: &Rc<App>) -> gtk::Widget {
     setting_field(app, &page, &status, "day-start", 's');
     setting_field(app, &page, &status, "day-end", 'e');
     setting_field(app, &page, &status, "all-day-reminder-hour", 'A');
+    setting_field(app, &page, &status, "default-task-reminders", 'R');
+    setting_field(app, &page, &status, "default-block-reminders", 'b');
     setting_field(app, &page, &status, "verbosity", 'm');
     setting_field(app, &page, &status, "week-start", 'W');
     page.footer("These sync to all your devices.");

@@ -143,10 +143,84 @@ class Orca:
         self.process.wait(timeout=10)
 
 
+NOTIFICATIONS_XML = """
+<node>
+  <interface name="org.freedesktop.Notifications">
+    <method name="GetCapabilities"><arg direction="out" type="as"/></method>
+    <method name="Notify">
+      <arg direction="in" type="s"/><arg direction="in" type="u"/><arg direction="in" type="s"/>
+      <arg direction="in" type="s"/><arg direction="in" type="s"/><arg direction="in" type="as"/>
+      <arg direction="in" type="a{sv}"/><arg direction="in" type="i"/><arg direction="out" type="u"/>
+    </method>
+    <method name="CloseNotification"><arg direction="in" type="u"/></method>
+    <method name="GetServerInformation">
+      <arg direction="out" type="s"/><arg direction="out" type="s"/><arg direction="out" type="s"/>
+      <arg direction="out" type="s"/>
+    </method>
+    <signal name="ActionInvoked"><arg type="u"/><arg type="s"/></signal>
+    <signal name="NotificationClosed"><arg type="u"/><arg type="u"/></signal>
+  </interface>
+</node>
+"""
+
+
+class Notifications:
+    """A notification server on the private bus, standing in for GNOME Shell's: what the app
+    shows is recorded, and a button is pressed by saying it was, as the shell does. Started
+    before the app, which chooses where notifications go when it first sends one."""
+
+    def __init__(self):
+        self.bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+        self.shown = {}
+        self.closed = []
+        info = Gio.DBusNodeInfo.new_for_xml(NOTIFICATIONS_XML)
+        self.registration = self.bus.register_object(
+            "/org/freedesktop/Notifications", info.interfaces[0], self._call, None, None)
+        self.owner = Gio.bus_own_name_on_connection(
+            self.bus, "org.freedesktop.Notifications", Gio.BusNameOwnerFlags.REPLACE, None, None)
+        pump(0.2)
+
+    def _call(self, connection, sender, path, interface, method, parameters, invocation):
+        if method == "Notify":
+            _, replaces, _, summary, body, actions, _, _ = parameters.unpack()
+            number = replaces or len(self.shown) + 1
+            self.shown[number] = {"summary": summary, "body": body,
+                                  "actions": dict(zip(actions[1::2], actions[0::2]))}
+            invocation.return_value(GLib.Variant("(u)", (number,)))
+        elif method == "CloseNotification":
+            self.closed.append(parameters.unpack()[0])
+            invocation.return_value(None)
+        elif method == "GetCapabilities":
+            invocation.return_value(GLib.Variant("(as)", (["actions", "body"],)))
+        else:
+            invocation.return_value(GLib.Variant("(ssss)", ("fake", "lumenna", "1", "1.2")))
+
+    def wait_for(self, summary, seconds=40):
+        """The notification titled `summary`, once shown: its number, body and buttons by label."""
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            for number, shown in self.shown.items():
+                if shown["summary"] == summary:
+                    return number, shown
+            pump(0.2)
+        raise AssertionError(f"no notification {summary!r}; shown: {list(self.shown.values())}")
+
+    def press(self, number, label):
+        """Presses a notification's button by its label, as the shell would."""
+        key = self.shown[number]["actions"][label]
+        self.bus.emit_signal(None, "/org/freedesktop/Notifications", "org.freedesktop.Notifications",
+                             "ActionInvoked", GLib.Variant("(us)", (number, key)))
+        pump(0.5)
+
+    def stop(self):
+        Gio.bus_unown_name(self.owner)
+        self.bus.unregister_object(self.registration)
+
+
 class Session:
     """One run of the app on a store of its own."""
 
-    def __init__(self, seed=(), orca=None, environment=None):
+    def __init__(self, seed=(), orca=None, environment=None, device_settings=None):
         self.directory = tempfile.mkdtemp(prefix="lumenna-ui-")
         self.environment = dict(
             os.environ,
@@ -156,6 +230,9 @@ class Session:
         )
         for command in seed:
             self.lum(*command)
+        if device_settings:
+            lines = "".join(f"{key}\t{value}\n" for key, value in device_settings.items())
+            (Path(self.directory) / "profile" / "device-settings").write_text(lines)
         self.announcements = []
         self.listener = Atspi.EventListener.new(self._announced)
         self.listener.register("object:announcement")
@@ -271,6 +348,15 @@ class Session:
     def find_all(self, role):
         found = []
         _walk(self.app, lambda a: found.append(a) if a.get_role_name() == role else None)
+        return found
+
+    def find_all_in_front(self, role):
+        """Every accessible with this role in the window in front."""
+        found = []
+        for index in range(self.app.get_child_count()):
+            window = self.app.get_child_at_index(index)
+            if window and window.get_state_set().contains(Atspi.StateType.ACTIVE):
+                _walk(window, lambda a: found.append(a) if a.get_role_name() == role else None)
         return found
 
     def said(self):

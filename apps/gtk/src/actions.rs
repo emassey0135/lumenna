@@ -45,6 +45,11 @@ pub type After = Rc<dyn Fn(&Rc<App>, &Action, &Answer)>;
 /// A menu of `actions`, each running its own when chosen. Those that remove something come
 /// last, apart.
 pub fn menu(actions: &[Action], after: Option<After>) -> (gio::Menu, gio::SimpleActionGroup) {
+    menu_from(actions, after, None)
+}
+
+/// A menu of `actions` asked over another window than the main one, when `from` says which.
+pub fn menu_from(actions: &[Action], after: Option<After>, from: Option<Asking>) -> (gio::Menu, gio::SimpleActionGroup) {
     let menu = gio::Menu::new();
     let (keeping, removing) = (gio::Menu::new(), gio::Menu::new());
     let group = gio::SimpleActionGroup::new();
@@ -56,10 +61,13 @@ pub fn menu(actions: &[Action], after: Option<After>) -> (gio::Menu, gio::Simple
         let section = if action.destructive { &removing } else { &keeping };
         section.append(Some(&title), Some(&format!("row.{name}")));
         let simple = gio::SimpleAction::new(&name, None);
-        let (action, after) = (action.clone(), after.clone());
+        let (action, after, from) = (action.clone(), after.clone(), from.clone());
         simple.connect_activate(move |_, _| {
             if let Some(app) = crate::window::app() {
-                run(&app, action.clone(), after.clone());
+                match &from {
+                    Some(from) => run_from(&app, action.clone(), after.clone(), from.clone()),
+                    None => run(&app, action.clone(), after.clone()),
+                }
             }
         });
         group.add_action(&simple);
@@ -197,6 +205,7 @@ async fn form(app: &Rc<App>, action: Action) {
             add_block(app, &action.target, action.other.as_deref(), 60).await;
         }
         (Subject::Filter, ActionKind::New) => new_filter(app).await,
+        (_, ActionKind::Reminders) => crate::reminders::show(app, &action),
         _ => {}
     }
 }
