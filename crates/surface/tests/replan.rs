@@ -109,3 +109,24 @@ fn a_change_taken_alone_is_made_and_the_rest_of_the_day_is_proposed_again_around
          What is under way runs into Lunch at 10:30: stop now to make it, or miss it."
     );
 }
+
+#[test]
+fn other_options_each_skip_a_block_and_say_what_that_costs_and_saves() {
+    let (_directory, lumenna) = open();
+    block(&lumenna, "Deep work", "work", "09:00", 120);
+    block(&lumenna, "Lunch", "break", "10:30", 30);
+    block(&lumenna, "Review", "work", "11:00", 60);
+    let proposal = lumenna.replan(TimeStyle::TwentyFourHour, ReplanPins::default(), Some(NOW.to_owned())).unwrap();
+    let said: Vec<_> = proposal.alternatives.iter().map(|a| a.sentence.as_str()).collect();
+    assert_eq!(
+        said,
+        [
+            "Skip Lunch today, your only break left today. Then nothing else needs to change.",
+            "Skip Review today. Then Lunch moves from 10:30 to 11:00.",
+        ]
+    );
+    // Taking one is asking again with its pins: the skip is then a change to make.
+    let skipped = lumenna.replan(TimeStyle::TwentyFourHour, proposal.alternatives[0].pins.clone(), Some(NOW.to_owned())).unwrap();
+    assert_eq!(skipped.announcement, "Lunch is skipped today.");
+    assert!(skipped.alternatives.is_empty(), "nothing does better than nothing moving");
+}

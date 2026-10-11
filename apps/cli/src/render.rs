@@ -70,6 +70,12 @@ fn replan_changes(proposal: &lumenna_surface::Replan) {
     for (n, change) in proposal.changes.iter().enumerate() {
         println!("{:>3}  {}", n + 1, change.sentence);
     }
+    if !proposal.alternatives.is_empty() {
+        println!("Other options, by --skip:");
+        for option in &proposal.alternatives {
+            println!("     {}", option.sentence);
+        }
+    }
 }
 
 fn day_plan_sittings(plan: &lumenna_surface::DayPlan) {

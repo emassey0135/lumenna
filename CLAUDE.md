@@ -459,7 +459,16 @@ the check. `apply_replan(proposal, accepted)` makes the changes accepted, refuse
 day no longer matches, is one undoable change, and **proposes again** (`Replanned::next`):
 a change taken alone can leave the day crowded, so what was not accepted becomes a pin (a
 block kept where it is, a sitting kept in its block) and the day as it now is is proposed
-afresh. A proposal carries its pins and clock, so a client hands it back whole. No block starts past midnight; a day planned past its window
+afresh. A proposal carries its pins and clock, so a client hands it back whole. **Other
+options** (`Replan::alternatives`, at most three) each skip one block not yet over, offered
+only where that does better (less unfit, then less moved), each saying its cost and what
+follows ("Skip Lunch today, your only break left today. Then nothing else needs to
+change."); taking one is `replan` again with its `pins`. **The overrun warning**
+(`remind::overrun_at`, `Firing::overrun`, under `overrun_key`) is said before the clock says
+it: when a block's planned work first outruns its time by more than the free time after it,
+or `FEW_MINS`. Idle, that moment is fixed by the records; with a timer running, work and time
+shrink together, so it outruns from the timer's start or never. Its `DueReminder::replan`
+button opens Replan from Now. No block starts past midnight; a day planned past its window
 runs to midnight. The Replan from Now day action waits until every app has its screen.
 The whole-day plan (`core::dayplan`, the surface's `dayplan.rs`, `lum plan-day`, RPC
 `day_plan`/`day_plan.apply`) walks the day's work blocks still to come and gives each the
