@@ -54,16 +54,7 @@ pub fn dialog_font() -> DialogFont {
 /// units, plus `extra` around it, fits the work area of the monitor `owner` is on. Text size
 /// at its largest would otherwise put a large form off the screen.
 pub fn fitting_points(owner: Option<HWND>, face: &str, wanted: u16, width: i16, height: i16, extra: (i16, i16)) -> u16 {
-    let (dpi, area) = unsafe {
-        let monitor = match owner {
-            Some(owner) => MonitorFromWindow(owner, MONITOR_DEFAULTTONEAREST),
-            None => MonitorFromWindow(HWND::default(), MONITOR_DEFAULTTOPRIMARY),
-        };
-        let mut info = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..Default::default() };
-        let _ = GetMonitorInfoW(monitor, &mut info);
-        let dpi = owner.map_or_else(|| GetDpiForSystem(), |owner| GetDpiForWindow(owner)).max(96);
-        (dpi, info.rcWork)
-    };
+    let (dpi, area) = screen(owner);
     let RECT { left, top, right, bottom } = area;
     // The frame and caption, generously, at this DPI.
     let chrome = (dpi as i32 * 40 / 96, dpi as i32 * 70 / 96);
@@ -74,6 +65,21 @@ pub fn fitting_points(owner: Option<HWND>, face: &str, wanted: u16, width: i16, 
         w <= right - left && h <= bottom - top
     };
     (8..=wanted).rev().find(|&points| fits(points)).unwrap_or(8)
+}
+
+/// The DPI of `window` (the system's without one) and the work area of the monitor it is on
+/// (the primary one without one): what a window has to fit.
+pub fn screen(window: Option<HWND>) -> (u32, RECT) {
+    unsafe {
+        let monitor = match window {
+            Some(window) => MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST),
+            None => MonitorFromWindow(HWND::default(), MONITOR_DEFAULTTOPRIMARY),
+        };
+        let mut info = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..Default::default() };
+        let _ = GetMonitorInfoW(monitor, &mut info);
+        let dpi = window.map_or_else(|| GetDpiForSystem(), |window| GetDpiForWindow(window)).max(96);
+        (dpi, info.rcWork)
+    }
 }
 
 /// A font's dialog base units at `dpi`: the average width of its letters and its height, in

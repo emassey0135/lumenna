@@ -514,17 +514,26 @@ fn lum_sync_runs_its_round_on_the_running_app() {
 
 /// Checks the window in front fits its screen's work area, and that nothing directly in it
 /// lies outside it or over anything else: what Text size at its largest would break.
-fn fits_and_nothing_overlaps(app: &App, what: &str) {
-    use windows::Win32::Foundation::RECT;
+/// The work area of the screen `window` is on.
+fn work_area(window: windows::Win32::Foundation::HWND) -> windows::Win32::Foundation::RECT {
     use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow};
 
-    let front = app.automation.front(app.window);
-    let (window, items) = app.automation.boxes(front);
     let mut monitor = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..Default::default() };
     unsafe {
-        let _ = GetMonitorInfoW(MonitorFromWindow(front, MONITOR_DEFAULTTONEAREST), &mut monitor);
+        let _ = GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &mut monitor);
     }
-    let work = monitor.rcWork;
+    monitor.rcWork
+}
+
+fn fits_and_nothing_overlaps(app: &App, what: &str) {
+    use windows::Win32::Foundation::RECT;
+
+    let front = app.automation.front(app.window);
+    // Otherwise what is measured is the main window, and a dialog that never opened reads as
+    // one that does not fit.
+    assert!(front != app.window, "{what} did not open: {:#?}", app.front());
+    let (window, items) = app.automation.boxes(front);
+    let work = work_area(front);
     assert!(
         window.left >= work.left && window.top >= work.top && window.right <= work.right && window.bottom <= work.bottom,
         "{what} is off the screen: {window:?} in {work:?}"
@@ -556,9 +565,17 @@ fn every_dialog_fits_the_screen_at_the_largest_text_size_with_nothing_overlappin
     // Windows' largest Text size, 225%, without changing the person's own setting.
     let app = App::launch_with(&[("LUMENNA_TEXT_SCALE", "2.25")], |lumenna| {
         add(lumenna, "Write report");
-        let block = NewBlock { title: "Deep work".to_owned(), at: "11pm".to_owned(), minutes: 30, kind: "work".to_owned(), ..NewBlock::default() };
+        // Ending at midnight, so it is never over and Put in a Block always has it to offer.
+        let block = NewBlock { title: "Deep work".to_owned(), at: "11pm".to_owned(), minutes: 60, kind: "work".to_owned(), ..NewBlock::default() };
         lumenna.add_block(block).unwrap();
     });
+    // The main window fits too, whatever the screen.
+    let (window, _) = app.automation.boxes(app.window);
+    let work = work_area(app.window);
+    assert!(
+        window.left >= work.left && window.top >= work.top && window.right <= work.right && window.bottom <= work.bottom,
+        "the main window is off the screen: {window:?} in {work:?}"
+    );
     app.post(&[NEW_TASK]);
     fits_and_nothing_overlaps(&app, "New Task");
     app.post(&["esc", "cmd:101"]);

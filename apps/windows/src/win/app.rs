@@ -223,6 +223,7 @@ impl App {
             )
             .ok()?
         };
+        fit_to_screen(main);
         let pane = |name: &str| {
             
             unsafe {
@@ -930,6 +931,23 @@ impl App {
             && let Some(content) = self.content() {
                 content.view().minute(self);
             }
+    }
+}
+
+/// Sizes the main window at 1100 by 720 at 100%, scaled to its screen's DPI, and keeps it
+/// within the screen's work area. In pixels alone it was a postage stamp at 200% and wider
+/// than a 1024-pixel screen.
+fn fit_to_screen(window: HWND) {
+    let (dpi, work) = font::screen(Some(window));
+    let scaled = |size: i32| size * dpi as i32 / 96;
+    let width = scaled(1100).min(work.right - work.left);
+    let height = scaled(720).min(work.bottom - work.top);
+    let mut placed = RECT::default();
+    unsafe {
+        let _ = GetWindowRect(window, &mut placed);
+        let left = placed.left.clamp(work.left, work.right - width);
+        let top = placed.top.clamp(work.top, work.bottom - height);
+        let _ = SetWindowPos(window, None, left, top, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
     }
 }
 
