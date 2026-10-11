@@ -162,6 +162,12 @@ fn populated() -> Populated {
         all_day_reminder_hour: time(8, 30, 0, 0),
         day_window: (time(7, 0, 0, 0), time(23, 0, 0, 0)),
         week_start: Weekday::Sunday,
+        urgency: lumenna_core::urgency::Coefficients {
+            due: 10.0,
+            priority: [7.0, 4.5, 2.0, 0.5],
+            blocked: -6.0,
+            ..lumenna_core::urgency::Coefficients::default()
+        },
     };
 
     let before = store.snapshot().0.settings;

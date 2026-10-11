@@ -90,9 +90,48 @@ pub struct Replan {
     /// What does not fit, said: the planner cannot make time.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unplaceable: Vec<String>,
+    /// What the person decided that this proposal keeps to, handed back to apply it.
+    pub pins: ReplanPins,
+    /// The clock its sentences are in, for the proposal that follows.
+    pub style: TimeStyle,
 }
 
 crate::announced!(Replan);
+
+/// What the person decided about the rest of today, which a proposal keeps to: each a
+/// block's series, or a sitting's identifier.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+pub struct ReplanPins {
+    /// Blocks left where and as long as they are.
+    #[serde(default)]
+    pub keep: Vec<String>,
+    /// Blocks skipped today.
+    #[serde(default)]
+    pub skip: Vec<String>,
+    /// Sittings left in their block.
+    #[serde(default)]
+    pub sittings: Vec<String>,
+}
+
+/// A replan's accepted changes made, and what is proposed now.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+pub struct Replanned {
+    /// What was changed, then what is proposed now, or that the rest of the day fits.
+    pub announcement: String,
+    /// Anything else worth saying.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notices: Vec<String>,
+    /// The change made: one undo takes it back.
+    pub change: Change,
+    /// The proposal for the day as it is now, the changes not accepted kept to as pins.
+    pub next: Replan,
+}
+
+crate::announced!(Replanned);
 
 fn title(snapshot: &Snapshot, series: SeriesId) -> String {
     snapshot.series.get(&series).map(|s| s.title.clone()).unwrap_or_default()
@@ -134,9 +173,9 @@ impl Lumenna {
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// What replanning the rest of today proposes, said in `style`'s clock: nothing changes
-    /// until [`Lumenna::apply_replan`]. `keep` and `skip` are blocks (series identifiers) the
-    /// person pinned: left where they are, or skipped today. `now` is for tests, a local date
-    /// and time; a running app leaves it out.
+    /// until [`Lumenna::apply_replan`]. `pins` are what the person decided: blocks kept or
+    /// skipped, sittings kept. `now` is for tests, a local date and time; a running app
+    /// leaves it out.
     ///
     /// # Errors
     ///
@@ -144,10 +183,10 @@ impl Lumenna {
     pub fn replan(
         &self,
         style: TimeStyle,
-        keep: Vec<String>,
-        skip: Vec<String>,
+        pins: ReplanPins,
         now: Option<String>,
     ) -> Result<Replan> {
+        let ReplanPins { keep, skip, sittings: kept_sittings } = pins.clone();
         let now = now_or(now.as_deref())?;
         let (snapshot, proposal, window_end, starts) = self.with(|store| {
             store.load_all_years()?;
@@ -158,6 +197,9 @@ impl Lumenna {
             }
             for id in &skip {
                 pins.push(Pin::Skip(resolve::series_id(&snapshot, id)?));
+            }
+            for id in &kept_sittings {
+                pins.push(Pin::KeepSitting(resolve::assignment_id(&snapshot, id)?));
             }
             let day = snapshot.day(now.date())?;
             // The day ends at the window's end; once the person has planned past it, at midnight,
@@ -268,22 +310,42 @@ impl Lumenna {
         } else {
             crate::words::capitalised(&joined(&said))
         };
-        Ok(Replan { announcement, notices: Vec::new(), changes, unplaceable })
+        Ok(Replan { announcement, notices: Vec::new(), changes, unplaceable, pins, style })
     }
 
-    /// Applies the changes of a proposal the person accepted: all of them, or a few. Each is
-    /// checked against the day as it is now; one that no longer matches is refused, so the
-    /// client asks for a new proposal rather than acting on a stale one. One undoable change.
+    /// Makes the changes of `proposal` the person accepted, all or some, and proposes again:
+    /// a change taken alone can leave the day still crowded, or crowd it another way, so the
+    /// rest are not dropped but kept to (a block not moved is kept where it is, a sitting not
+    /// moved stays) and the day as it now is proposed afresh. Each change is checked against
+    /// the day as it is now; one that no longer matches is refused, so the client asks for a
+    /// new proposal rather than acting on a stale one. One undoable change.
     ///
     /// # Errors
     ///
     /// If the day changed since the proposal was made.
-    pub fn apply_replan(
-        &self,
-        changes: Vec<ReplanChange>,
-        now: Option<String>,
-    ) -> Result<Change> {
-        let now = now_or(now.as_deref())?;
+    pub fn apply_replan(&self, proposal: Replan, accepted: Vec<ReplanChange>, now: Option<String>) -> Result<Replanned> {
+        let mut pins = proposal.pins.clone();
+        for declined in proposal.changes.iter().filter(|c| !accepted.contains(c)) {
+            match declined.kind.as_str() {
+                "block" => pins.keep.push(declined.target.clone()),
+                "skip" => pins.skip.retain(|s| !declined.target.starts_with(s.as_str())),
+                "sitting" => pins.sittings.push(declined.target.clone()),
+                _ => {}
+            }
+        }
+        let change = self.apply_changes(&accepted, &now_or(now.as_deref())?)?;
+        let next = self.replan(proposal.style, pins, now)?;
+        let announcement = if change.changed {
+            format!("{}. {}", change.announcement.trim_end_matches('.'), next.announcement)
+        } else {
+            next.announcement.clone()
+        };
+        Ok(Replanned { announcement, notices: Vec::new(), change, next })
+    }
+}
+
+impl Lumenna {
+    fn apply_changes(&self, changes: &[ReplanChange], now: &Zoned) -> Result<Change> {
         let day = now.date();
         self.told(|store| {
             store.load_all_years()?;
@@ -291,7 +353,7 @@ impl Lumenna {
             let occurrences = snapshot.day(day)?;
             let stale = || LumennaError::new("the day changed since this was proposed; ask for a new proposal");
             let mut edits: Vec<Edit> = Vec::new();
-            for change in &changes {
+            for change in changes {
                 match change.kind.as_str() {
                     "block" => {
                         let series_id = resolve::series_id(&snapshot, &change.target)?;

@@ -20,7 +20,7 @@
 //! token kinds that would have been valid, [`crate::complete`] is built on it, and it is
 //! produced deliberately rather than inferred from a combinator's internals.
 
-use lumenna_core::filter::{DueFilter, Expr, Predicate};
+use lumenna_core::filter::{DueFilter, Expr, Predicate, Sort};
 use lumenna_core::model::Priority;
 use lumenna_core::state::State;
 use lumenna_core::suggest;
@@ -105,6 +105,15 @@ pub fn parse_filter(input: &str, known: &Known) -> Result<Expr, ParseError> {
     if tokens.is_empty() {
         return Ok(Expr::All);
     }
+    // An order means something only to a list: anywhere else, say so rather than search for it.
+    if let Some(word) = tokens.iter().find(|w| w.lower.starts_with("sort:")) {
+        return Err(ParseError {
+            start: word.start,
+            end: word.end,
+            message: format!("'sort:' at position {} orders a list, and only at the end of its query", word.start),
+            expected: vec![Expected::Operator],
+        });
+    }
     let mut parser = Cursor { input, tokens: &tokens, at: 0, known };
     let expr = parser.expression()?;
     if parser.at < parser.tokens.len() {
@@ -116,6 +125,51 @@ pub fn parse_filter(input: &str, known: &Known) -> Result<Expr, ParseError> {
         ));
     }
     Ok(expr)
+}
+
+/// Reads a list's query: a filter, then optionally `sort: urgency` at the end.
+///
+/// # Errors
+///
+/// As [`parse_filter`], or an order that is not one, or one not at the end.
+pub fn parse_query(input: &str, known: &Known) -> Result<(Expr, Sort), ParseError> {
+    let tokens = words(input);
+    let Some(at) = tokens.iter().position(|w| w.lower.starts_with("sort:")) else {
+        return Ok((parse_filter(input, known)?, Sort::Own));
+    };
+    let word = &tokens[at];
+    let glued = &word.lower["sort:".len()..];
+    let (key, rest) = if glued.is_empty() { (tokens.get(at + 1), &tokens[(at + 2).min(tokens.len())..]) } else { (Some(word), &tokens[at + 1..]) };
+    let key_text = if glued.is_empty() { key.map(|k| k.lower.as_str()) } else { Some(glued) };
+    if let Some(after) = rest.first() {
+        return Err(ParseError {
+            start: after.start,
+            end: after.end,
+            message: format!("unexpected '{}' at position {}: sort: goes at the end", after.raw(input), after.start),
+            expected: Vec::new(),
+        });
+    }
+    let sort = match key_text {
+        Some("urgency") => Sort::Urgency,
+        Some(other) => {
+            let key = key.unwrap_or(word);
+            return Err(ParseError {
+                start: key.start,
+                end: key.end,
+                message: format!("'{other}' at position {} is not an order; the order there is is urgency", key.start),
+                expected: vec![Expected::Keyword],
+            });
+        }
+        None => {
+            return Err(ParseError {
+                start: word.start,
+                end: word.end,
+                message: format!("'sort:' at position {} needs an order after it: urgency", word.start),
+                expected: vec![Expected::Keyword],
+            });
+        }
+    };
+    Ok((parse_filter(&input[..word.start], known)?, sort))
 }
 
 struct Cursor<'a> {

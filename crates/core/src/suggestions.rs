@@ -10,7 +10,7 @@ use crate::filter::{Context, Expr};
 use crate::id::TaskId;
 use crate::model::BlockRef;
 use crate::snapshot::Snapshot;
-use crate::urgency::{Coefficients, Term, days_until_due, urgency};
+use crate::urgency::{Term, days_until_due, urgency};
 
 /// What fitting the time left adds to a task's score.
 const FITS: f32 = 2.0;
@@ -88,7 +88,7 @@ pub fn suggest(
     let left = remaining(snapshot, block, length);
     let inside: std::collections::BTreeSet<TaskId> =
         snapshot.assignments.values().filter(|a| a.block_ref == block).map(|a| a.task_id).collect();
-    let coefficients = Coefficients::default();
+    let coefficients = snapshot.settings.urgency;
     let mut found: Vec<Suggestion> = snapshot
         .tasks
         .values()

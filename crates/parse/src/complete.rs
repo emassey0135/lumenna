@@ -203,6 +203,8 @@ fn bare(
                 for word in ["&", "|", "!"] {
                     out.push(Candidate::new(CandidateKind::Operator, word, word));
                 }
+                // After a whole filter, a list's query may end in its order.
+                out.push(Candidate::new(CandidateKind::Keyword, "sort: urgency", "sort: urgency"));
             }
             Expected::Project => {
                 out.push(Candidate::new(CandidateKind::Project, "#", "#"));

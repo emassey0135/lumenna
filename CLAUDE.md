@@ -442,18 +442,26 @@ its time left go to the next block of the week that takes them, else back to the
 the walk from now, anchored and kept blocks fixed, a pushed block shrinking to its minimum
 keeping its end, then moving later. Every change is a whole sentence in the clock the app
 passes (`TimeStyle`), since for someone who cannot glance at a timeline the description is
-the check. `apply_replan` takes the changes accepted, refuses any the day no longer matches,
-and is one undoable change. No block starts past midnight; a day planned past its window
+the check. `apply_replan(proposal, accepted)` makes the changes accepted, refuses any the
+day no longer matches, is one undoable change, and **proposes again** (`Replanned::next`):
+a change taken alone can leave the day crowded, so what was not accepted becomes a pin (a
+block kept where it is, a sitting kept in its block) and the day as it now is is proposed
+afresh. A proposal carries its pins and clock, so a client hands it back whole. No block starts past midnight; a day planned past its window
 runs to midnight. The Replan from Now day action waits until every app has its screen.
 The whole-day plan (`core::dayplan`, the surface's `dayplan.rs`, `lum plan-day`, RPC
 `day_plan`/`day_plan.apply`) walks the day's work blocks still to come and gives each the
 tasks its suggestions rank first, greedily, until the estimates fill it: a task once a day,
 none already in a block that day, none blocked, one without an estimate counted as 30
 minutes and said so. What is due by then and fits nowhere is named. Applying it is one undo,
-refused where a task was done or put in that block since.
+refused where a task was done or put in that block since, and plans again
+(`DayPlanned::next`), each sitting turned down kept out of its block alone.
 The surface words both (`task_history`, `TaskDetail::history`): asked for about one task,
-never said in a list or a live region. The coefficients are `Coefficients::default()` until
-they become synced settings.
+never said in a list or a live region. The weights are a synced setting
+(`Settings::urgency`, a key per weight so concurrent edits of different weights both hold),
+said and read as one line, `urgency-weights` ("due 12, priority 6 3.9 1.8 0, …"). A list's
+query may end in `sort: urgency` (`parse_query`, `Sort`): siblings most urgent first, a
+subtask kept under its parent. A block's filter selects and never orders, so `parse_filter`
+refuses `sort:` rather than search for it.
 
 ### Backup and export
 

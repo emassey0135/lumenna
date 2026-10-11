@@ -16,6 +16,7 @@
 //!   which is what lets a future version add a variant without older clients refusing to
 //!   load documents that use it.
 
+use lumenna_core::urgency::Coefficients;
 use automerge::ReadDoc;
 use automerge::transaction::Transactable;
 use jiff::civil;
@@ -945,6 +946,20 @@ pub(crate) fn read_settings<D: ReadDoc>(r: &Reader<'_, D>) -> Settings {
             .and_then(|n| i8::try_from(n).ok())
             .and_then(|n| civil::Weekday::from_monday_zero_offset(n).ok())
             .unwrap_or(defaults.week_start),
+        urgency: {
+            // A weight each, so two devices changing different ones both keep theirs.
+            let d = defaults.urgency;
+            let w = |key: &str, default: f32| r.f32(&format!("urgency_{key}")).unwrap_or(default);
+            Coefficients {
+                due: w("due", d.due),
+                priority: [w("p1", d.priority[0]), w("p2", d.priority[1]), w("p3", d.priority[2]), w("p4", d.priority[3])],
+                age: w("age", d.age),
+                started: w("started", d.started),
+                blocking: w("blocking", d.blocking),
+                blocked: w("blocked", d.blocked),
+                assigned_today: w("assigned_today", d.assigned_today),
+            }
+        },
     }
 }
 
@@ -987,7 +1002,26 @@ pub(crate) fn write_settings<T: Transactable>(
         "week_start",
         before.map(|b| i64::from(b.week_start.to_monday_zero_offset())),
         i64::from(now.week_start.to_monday_zero_offset()),
-    )
+    )?;
+    let weights = |c: &Coefficients| {
+        [
+            ("due", c.due),
+            ("p1", c.priority[0]),
+            ("p2", c.priority[1]),
+            ("p3", c.priority[2]),
+            ("p4", c.priority[3]),
+            ("age", c.age),
+            ("started", c.started),
+            ("blocking", c.blocking),
+            ("blocked", c.blocked),
+            ("assigned_today", c.assigned_today),
+        ]
+    };
+    let was = before.map(|b| weights(&b.urgency));
+    for (index, (key, value)) in weights(&now.urgency).into_iter().enumerate() {
+        w.set_f32(&format!("urgency_{key}"), was.map(|was| was[index].1), value)?;
+    }
+    Ok(())
 }
 
 /// Writes a list of triggers as a map keyed by position.

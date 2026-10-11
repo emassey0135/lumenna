@@ -138,6 +138,10 @@ pub enum Outcome {
     Replan(crate::Replan),
     /// What planning a whole day proposes.
     DayPlan(crate::DayPlan),
+    /// A replan's changes made, and the next proposal.
+    Replanned(crate::Replanned),
+    /// A day plan's sittings made, and the next plan.
+    DayPlanned(crate::DayPlanned),
 }
 
 macro_rules! outcomes {
@@ -196,6 +200,8 @@ outcomes!(
     History(crate::TaskHistory),
     Replan(crate::Replan),
     DayPlan(crate::DayPlan),
+    Replanned(crate::Replanned),
+    DayPlanned(crate::DayPlanned),
 );
 
 impl From<Imported> for Outcome {

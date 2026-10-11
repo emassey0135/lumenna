@@ -129,7 +129,7 @@ impl Lumenna {
         let now = Zoned::now();
         self.told(|store| {
             let snapshot = repaired(store);
-            let expr = resolve::query(&snapshot, query)?;
+            let (expr, sort) = resolve::list_query(&snapshot, query)?;
             let cx = Context::new(&snapshot, &now);
 
             let unresolved: Vec<Unresolved> = expr
@@ -152,11 +152,11 @@ impl Lumenna {
                 })
                 .collect();
 
-            let mut rows = Rows::new(&snapshot.task_rows(&expr, &cx), "task");
+            let mut rows = Rows::new(&snapshot.task_rows_sorted(&expr, &cx, sort), "task");
             if !query.trim().is_empty() {
                 rows.query = Some(Query {
                     text: query.to_owned(),
-                    description: expr.describe(),
+                    description: resolve::described(&expr, sort),
                     unresolved,
                 });
             }

@@ -126,6 +126,12 @@ fn every_core_record_round_trips() {
         all_day_reminder_hour: time(7, 30, 0, 0),
         day_window: (time(6, 0, 0, 0), time(23, 0, 0, 0)),
         week_start: Weekday::Sunday,
+        urgency: lumenna_core::urgency::Coefficients {
+            due: 10.0,
+            priority: [7.0, 4.5, 2.0, 0.5],
+            blocked: -6.0,
+            ..lumenna_core::urgency::Coefficients::default()
+        },
     };
 
     let mut docs = Documents::new();

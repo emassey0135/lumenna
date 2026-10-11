@@ -51,7 +51,8 @@ fn minutes(time: jiff::civil::Time) -> i64 {
 
 /// A plan for `day`'s work blocks still to come at `now`, each given what its filter (from
 /// `filters`, read by the caller; a block absent from it takes any task) admits, best first,
-/// leaving out `excluded` (tasks the person said not to plan today).
+/// leaving out `excluded` (tasks the person said not to plan today) and each of `declined`
+/// in that block (a sitting the person turned down, which may still go elsewhere).
 ///
 /// # Errors
 ///
@@ -62,6 +63,7 @@ pub fn propose_day(
     now: &Zoned,
     filters: &BTreeMap<SeriesId, Expr>,
     excluded: &BTreeSet<TaskId>,
+    declined: &BTreeSet<(TaskId, SeriesId)>,
 ) -> Result<DayProposal, RecurError> {
     let mut occurrences: Vec<Occurrence> = snapshot.day(day)?;
     occurrences.sort_by_key(|o| (o.start_time, o.series_id));
@@ -108,7 +110,10 @@ pub fn propose_day(
                 break;
             }
             // What cannot be finished yet is not planned; it is still offered by hand.
-            if taken.contains(&suggestion.task) || suggestion.reasons.contains(&Reason::Blocked) {
+            if taken.contains(&suggestion.task)
+                || suggestion.reasons.contains(&Reason::Blocked)
+                || declined.contains(&(suggestion.task, occurrence.series_id))
+            {
                 continue;
             }
             let Some(task) = snapshot.tasks.get(&suggestion.task) else { continue };

@@ -24,6 +24,6 @@ pub mod quickadd;
 pub mod words;
 
 pub use complete::{Candidate, CandidateKind, Completions, Syntax, complete};
-pub use filter::{ParseError, parse_filter};
+pub use filter::{ParseError, parse_filter, parse_query};
 pub use quickadd::{QuickAdd, parse_quick_add};
 pub use words::{Word, words};

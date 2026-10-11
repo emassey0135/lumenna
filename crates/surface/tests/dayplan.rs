@@ -1,6 +1,6 @@
 //! Planning a whole day: said in full before anything changes, then applied as accepted.
 
-use lumenna_surface::{Lumenna, NewBlock, TimeStyle};
+use lumenna_surface::{DayPins, Lumenna, NewBlock, TimeStyle};
 
 const NOW: &str = "2026-05-06T08:00";
 
@@ -25,7 +25,7 @@ fn block(lumenna: &Lumenna, title: &str, kind: &str, at: &str, minutes: u32, fil
 }
 
 fn plan(lumenna: &Lumenna, style: TimeStyle) -> lumenna_surface::DayPlan {
-    lumenna.propose_day_plan(Some("2026-05-06".to_owned()), style, Vec::new(), Some(NOW.to_owned())).unwrap()
+    lumenna.propose_day_plan(Some("2026-05-06".to_owned()), style, DayPins::default(), Some(NOW.to_owned())).unwrap()
 }
 
 #[test]
@@ -51,10 +51,10 @@ fn an_accepted_plan_is_one_change_and_planning_again_offers_nothing_twice() {
     lumenna.add_task("Email p2").unwrap();
     let proposal = plan(&lumenna, TimeStyle::TwentyFourHour);
     assert_eq!(proposal.sittings.len(), 2);
-    let done = lumenna.apply_day_plan(proposal.sittings.clone()).unwrap();
-    assert_eq!(done.announcement, "Planned 2 tasks");
+    let done = lumenna.apply_day_plan(proposal.clone(), proposal.sittings.clone(), Some(NOW.to_owned())).unwrap();
+    assert_eq!(done.announcement, "Planned 2 tasks.");
     assert!(plan(&lumenna, TimeStyle::TwentyFourHour).sittings.is_empty(), "both are planned already");
-    assert!(lumenna.apply_day_plan(proposal.sittings).is_err(), "applying it again is stale");
+    assert!(lumenna.apply_day_plan(proposal.clone(), proposal.sittings, Some(NOW.to_owned())).is_err(), "applying it again is stale");
     lumenna.undo().unwrap();
     assert_eq!(plan(&lumenna, TimeStyle::TwentyFourHour).sittings.len(), 2, "one undo takes the plan back");
 }
@@ -70,4 +70,21 @@ fn what_is_due_and_fits_nowhere_is_named() {
         .unwrap();
     let proposal = plan(&lumenna, TimeStyle::TwentyFourHour);
     assert!(proposal.announcement.ends_with("Tax return is due and fits in no block."), "{}", proposal.announcement);
+}
+
+#[test]
+fn a_sitting_turned_down_frees_its_time_for_another_task_and_its_task_for_another_block() {
+    let (_directory, lumenna) = open();
+    block(&lumenna, "Morning", "work", "09:00", 30, None);
+    block(&lumenna, "Afternoon", "work", "14:00", 30, None);
+    lumenna.add_task("Report p1").unwrap();
+    lumenna.add_task("Email p2").unwrap();
+    lumenna.add_task("Filing p3").unwrap();
+    let proposal = plan(&lumenna, TimeStyle::TwentyFourHour);
+    assert_eq!(proposal.announcement, "Plans 2 tasks: Report in Morning and Email in Afternoon.");
+    // Report is turned down for Morning, Email taken: Morning goes to Filing next, and Report
+    // has no other block left with room.
+    let email = proposal.sittings[1].clone();
+    let done = lumenna.apply_day_plan(proposal, vec![email], Some(NOW.to_owned())).unwrap();
+    assert_eq!(done.announcement, "Planned 1 task. Now: Plans 1 task: Filing in Morning.");
 }
