@@ -39,6 +39,8 @@ impl Lumenna {
             ("day-start", time_text(settings.day_window.0)),
             ("day-end", time_text(settings.day_window.1)),
             ("week-start", format!("{:?}", settings.week_start).to_lowercase()),
+            ("default-task-reminders", phrases(&settings.default_task_reminders)),
+            ("default-block-reminders", phrases(&settings.default_block_reminders)),
         ]
         .into_iter()
         .map(|(key, value)| described(key, value))
@@ -98,6 +100,8 @@ impl Lumenna {
                             LumennaError::new(format!("'{value}' is not a day of the week"))
                         })?;
                 }
+                "default-task-reminders" => after.default_task_reminders = triggers(value, false)?,
+                "default-block-reminders" => after.default_block_reminders = triggers(value, true)?,
                 other => return Err(LumennaError::new(format!("no setting called '{other}'"))),
             }
             let change = edit::update_settings(before, after);
@@ -411,6 +415,18 @@ fn described(key: &str, value: String) -> Setting {
             options(&[("true", "On"), ("false", "Off")]),
             "Off silences them here alone; every other device still gives them.",
         ),
+        "default-task-reminders" => (
+            "Reminders for a task with a due date",
+            K::Line,
+            Vec::new(),
+            "Such as 30m before, or at due; several separated by commas. Empty for none. A task with reminders of its own takes those instead.",
+        ),
+        "default-block-reminders" => (
+            "Reminders for a block",
+            K::Line,
+            Vec::new(),
+            "Such as 5m before start, or at end; several separated by commas. Empty for none. A block with reminders of its own takes those instead.",
+        ),
         "clock" => ("Clock", K::Choice, options(&[("12-hour", "12-hour"), ("24-hour", "24-hour")]), ""),
         _ => ("", K::Choice, Vec::new(), ""),
     };
@@ -423,4 +439,18 @@ fn described(key: &str, value: String) -> Setting {
         syncs: !DEVICE_KEYS.contains(&key),
         hint: hint.to_owned(),
     }
+}
+
+/// Triggers as the defaults' setting shows them: "5m before start, at end".
+fn phrases(triggers: &[lumenna_core::model::Trigger]) -> String {
+    triggers.iter().map(crate::reminders::trigger_phrase).collect::<Vec<_>>().join(", ")
+}
+
+/// The defaults' setting read back: phrases separated by commas, or empty for none.
+fn triggers(text: &str, block: bool) -> Result<Vec<lumenna_core::model::Trigger>> {
+    text.split(',')
+        .map(str::trim)
+        .filter(|phrase| !phrase.is_empty() && !phrase.eq_ignore_ascii_case("none"))
+        .map(|phrase| crate::reminders::parse_trigger(phrase, block))
+        .collect()
 }

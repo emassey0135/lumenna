@@ -147,7 +147,7 @@ private fun ScalingLazyListScope.setting(core: Core, setting: Setting) {
                 }
             }
         }
-        SettingKind.TIME, SettingKind.NUMBER, SettingKind.FOLDER -> item {
+        SettingKind.TIME, SettingKind.NUMBER, SettingKind.FOLDER, SettingKind.LINE -> item {
             TextFieldButton(setting.title, setting.said) { core.set(setting, it.trim()) }
         }
     }

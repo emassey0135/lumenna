@@ -190,7 +190,7 @@ fn a_repeating_block_skips_a_day_and_the_skipped_day_comes_back() {
     day_block(&lumenna, "Deep work", Some("every day"));
     let plan = lumenna.plan(None).unwrap();
     let actions = &plan.blocks[0].actions;
-    assert_eq!(titles(actions), ["Assign a Task", "Edit Block", "Cancel This Day", "Delete Block"]);
+    assert_eq!(titles(actions), ["Assign a Task", "Edit Block", "Cancel This Day", "Reminders", "Delete Block"]);
     let Question::Confirm { message, .. } = &find(actions, "Delete Block").question else { panic!() };
     assert!(message.starts_with("Every occurrence goes"));
     lumenna.act(find(actions, "Cancel This Day"), Answer::Yes).unwrap();

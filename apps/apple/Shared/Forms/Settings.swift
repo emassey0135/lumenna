@@ -158,6 +158,10 @@ struct SettingControl: View {
             // A folder of this device's is chosen where there is a file system to choose from.
             EmptyView()
             #endif
+        case .line:
+            // A line the core reads, such as the default reminders' phrases: no page lists
+            // one yet, and saving on every keystroke would send what is half typed.
+            EmptyView()
         case .choice:
             ChoiceSection(
                 setting.title,

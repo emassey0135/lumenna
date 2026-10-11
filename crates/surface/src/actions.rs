@@ -111,6 +111,8 @@ pub enum ActionKind {
     New,
     /// Stop syncing with a device.
     Unpair,
+    /// Open the app's list of a task's or block's reminders.
+    Reminders,
 }
 
 /// What an action is done to: with [`ActionKind`], what runs.
@@ -137,6 +139,9 @@ pub enum Subject {
     Filter,
     /// A paired device, by key.
     Device,
+    /// A reminder of a task's or block's own, by identifier; for New, the task or block it
+    /// is for.
+    Reminder,
 }
 
 /// One thing that can be done, and what it asks first.
@@ -329,7 +334,7 @@ fn action(kind: ActionKind, subject: Subject, title: impl Into<String>, target: 
         target: target.into(),
         other: None,
         destructive: matches!(kind, ActionKind::Delete | ActionKind::DeleteForGood | ActionKind::Unassign | ActionKind::Unpair),
-        question: if matches!(kind, ActionKind::Edit | ActionKind::EditTask | ActionKind::AddBlock) {
+        question: if matches!(kind, ActionKind::Edit | ActionKind::EditTask | ActionKind::AddBlock | ActionKind::Reminders) {
             Question::Form
         } else {
             Question::Immediate
@@ -436,6 +441,10 @@ pub(crate) fn task(snapshot: &Snapshot, task: &Task, done: bool, shown: bool) ->
         stop.sentence = format!("Stop waiting for {title}");
         actions.push(stop);
     }
+    // Only a task with a due date has something for a reminder to count from.
+    if task.due.is_some() {
+        actions.push(a(K::Reminders, "Reminders"));
+    }
     actions.push(a(K::Delete, "Move to Trash"));
     actions
 }
@@ -461,6 +470,7 @@ pub fn block(block: &PlanBlock) -> Vec<Action> {
     if block.changed_for_this_day {
         actions.push(a(K::RestoreDay, "Restore This Day"));
     }
+    actions.push(action(K::Reminders, Subject::Series, "Reminders", block.series.clone()));
     actions.push(a(K::Delete, "Delete Block").asking(deleting_block(&block.title, block.repeats)));
     actions
 }
@@ -530,6 +540,7 @@ pub(crate) fn series(series: &BlockSeries) -> Vec<Action> {
     let id = series.id.to_string();
     vec![
         action(ActionKind::Edit, Subject::Series, "Edit Block", id.clone()),
+        action(ActionKind::Reminders, Subject::Series, "Reminders", id.clone()),
         action(ActionKind::Delete, Subject::Series, "Delete Block", id)
             .asking(deleting_block(&series.title, series.is_recurring())),
     ]
@@ -712,6 +723,40 @@ pub fn length_question() -> Question {
         unreachable!()
     };
     Question::Text { title, label, initial, hint, optional, yes: "Save".to_owned(), sentence }
+}
+
+/// A reminder of a target's own: removing it, which undo brings back.
+#[must_use]
+pub fn reminder(id: &str, words: &str) -> Vec<Action> {
+    let mut remove = action(ActionKind::Delete, Subject::Reminder, "Remove", id);
+    remove.title = "Remove Reminder".to_owned();
+    remove.sentence = crate::fields::sentence_case(remove.title.clone());
+    let _ = words;
+    vec![remove]
+}
+
+/// A target's list of reminders: adding one, by a phrase the core reads.
+#[must_use]
+pub fn add_reminder(target: &str, name: &str, block: bool) -> Vec<Action> {
+    let hint = if block {
+        "Such as 5m before start, at end, or 10m after end."
+    } else {
+        "Such as 30m before, at due, or 1h after."
+    };
+    vec![action(ActionKind::New, Subject::Reminder, "Add Reminder", target)
+        .asking(text(format!("New reminder for {name}"), "When", "", hint, false))]
+}
+
+/// "10 Minutes" from "10 minutes": a fixed phrase in Title Case, for a button.
+#[must_use]
+pub fn title_case(text: &str) -> String {
+    text.split(' ')
+        .map(|word| {
+            let mut chars = word.chars();
+            chars.next().map_or_else(String::new, |first| first.to_uppercase().chain(chars).collect())
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// A paired device's. A device cannot unpair itself, so that is not offered on its own row.
@@ -1131,6 +1176,8 @@ impl Lumenna {
             (S::Filter, K::MoveUp) => self.reorder_filter(target, Direction::Up),
             (S::Filter, K::MoveDown) => self.reorder_filter(target, Direction::Down),
             (S::Filter, K::Delete) => self.delete_filter(target),
+            (S::Reminder, K::New) => self.add_reminder_saying(target.to_owned(), answer_text(&answer)?),
+            (S::Reminder, K::Delete) => self.remove_reminder(target.to_owned()),
             #[cfg(feature = "link")]
             (S::Device, K::Rename) => {
                 let name = answer_text(&answer)?;
