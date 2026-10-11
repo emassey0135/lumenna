@@ -41,6 +41,7 @@ pub const METHODS: &[&str] = &[
     "task.add",
     "task.list",
     "task.show",
+    "task.history",
     "task.edit",
     "task.done",
     "task.undone",
@@ -419,6 +420,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         "task.add" => Response::new(l.add_task(&text_of(params, "text")?)?),
         "task.list" => Response::new(l.list_tasks(&maybe_text(params, "query").unwrap_or_default())?),
         "task.show" => Response::new(l.show_task(&id()?)?),
+        "task.history" => Response::new(l.task_history(&id()?)?),
         "task.edit" => Response::new(l.edit_task(&id()?, TaskEdit {
             title: maybe_text(params, "title"),
             due: maybe_text(params, "due"),

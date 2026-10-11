@@ -355,6 +355,11 @@ pub(crate) enum TaskCommand {
         id: String,
     },
 
+    /// What has happened to a task, and what makes up its urgency.
+    History {
+        /// A row number from the last listing, or an identifier.
+        id: String,
+    },
     /// Delete a task from the trash. Undo can bring it back, and it stays in the history every
     /// device keeps and in backups.
     Erase {
@@ -1123,6 +1128,7 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
             }
             Response::new(change)
         }
+        TaskCommand::History { id: input } => Response::new(profile.task_history(&id(input)?)?),
         TaskCommand::Restore { id: input } => Response::new(profile.restore_task(&id(input)?)?),
         TaskCommand::Erase { id: input, yes } => {
             let id = id(input)?;
@@ -1210,6 +1216,7 @@ fn listing_of(outcome: &Outcome) -> Option<Vec<(String, String)>> {
         | Outcome::Choices(_)
         | Outcome::Places(_)
         | Outcome::Value(_)
+        | Outcome::History(_)
         | Outcome::DueReminders(_)
         | Outcome::Reminders(_)
         | Outcome::Server(_)

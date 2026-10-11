@@ -35,6 +35,7 @@ mod devices;
 pub mod endpoint;
 mod error;
 mod form;
+pub mod history;
 #[cfg(feature = "link")]
 mod link;
 mod organise;
@@ -60,6 +61,7 @@ use lumenna_core::snapshot::Snapshot;
 use lumenna_store::Store;
 
 pub use fields::{unsayable_repeat_note, FieldKind, FormField, PairingWords, block_form, pairing_words, sentence_case, task_form};
+pub use history::{TaskHistory, UrgencyTerm};
 pub use reminders::{DueReminder, DueReminders, ReminderList, ReminderView};
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub use reminders::ReminderLock;
