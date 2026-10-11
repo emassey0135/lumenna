@@ -983,7 +983,7 @@ final class LumennaUITests: XCTestCase {
         app.buttons["Save"].tap()
         XCTAssertTrue(cell(containing: "Writing").waitForExistence(timeout: 5))
 
-        app.buttons["Day actions"].tap()
+        app.buttons["Day Actions"].tap()
         app.buttons["Plan the Day"].tap()
         XCTAssertTrue(app.navigationBars["Plan the Day"].waitForExistence(timeout: 5))
         let sitting = app.switches.containing(NSPredicate(format: "label BEGINSWITH 'write the report goes in Writing'")).firstMatch

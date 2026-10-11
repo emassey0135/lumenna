@@ -37,6 +37,10 @@ extension UIViewController {
         let navigation = UINavigationController(rootViewController: screen)
         model.close = { [weak navigation] in navigation?.dismiss(animated: true) }
         model.applied = applied
+        // Over the whole iPad, not a form sheet: the day's rows half under a form sheet read
+        // to the audit as text cut off ("Potentially inaccessible text"), and a proposal for
+        // the whole day is a screen's worth anyway. The iPhone's sheet covers its width.
+        if traitCollection.userInterfaceIdiom == .pad { navigation.modalPresentationStyle = .fullScreen }
         var front: UIViewController = self
         while let next = front.presentedViewController, !next.isBeingDismissed { front = next }
         front.present(navigation, animated: true)

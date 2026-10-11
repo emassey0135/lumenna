@@ -648,13 +648,15 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
   one already showing keeps its button. An overrun warning (`replan` set) is a third, its
   button the core's Replan, `.foreground`: `ReminderResponder` hands on a `RemindedOf` with
   `replan`, and each app opens today with Replan from Now over it (`openReplan`).
-- **The day's own actions** (`Plan.actions`) are the day's bar menu ("Day actions") and the
-  heading's custom actions, which make the heading at least 44 points tall: an element with
+- **The day's own actions** (`Plan.actions`) are a Day Actions menu button among the day's
+  buttons (in the navigation bar it crowded the title, which the iPad's narrow column clipped)
+  and the heading's custom actions, which make the heading at least 44 points tall: an element with
   actions fails the audit's hit area. Replan from Now and Plan the Day open one SwiftUI
   screen for all three apps (`Shared/Forms/ProposalForm.swift`, `ProposalModel`): each change
   a toggle named by its sentence, its reason and the core's `item` its hint, and after a
-  partial apply the core's `next` in its place until nothing is proposed. A refusal is shown
-  on the screen and the proposal asked for again with the same pins. The clock it asks in is
+  partial apply the core's `next` in its place until nothing is proposed. On iPad it is full
+  screen: as a form sheet, the day's rows half under it failed the audit as cut-off text. A
+  refusal is shown on the screen and the proposal asked for again with the same pins. The clock it asks in is
   `Clock.style`, the locale's. Its other options (`Replan.alternatives`) are buttons under
   `others`, each proposing again with its pins in place. A pick's `Choice.reason` is its second line and its hint.
 - **A Reminders list is an `ItemListViewController`** (`RemindersViewController`): Add Reminder
