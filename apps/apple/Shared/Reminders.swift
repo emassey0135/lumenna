@@ -177,6 +177,9 @@ final class ReminderSchedule {
     private let now: () -> Date
     private var queued = false
     private var observer: NSObjectProtocol?
+    /// How many times it has re-armed: a test holds it to one per change, since a re-arm that
+    /// caused another would keep the app from ever going idle.
+    private(set) var rearms = 0
 
     init(lumenna: Lumenna, centre: NotificationCentre = UNUserNotificationCenter.current(), now: @escaping () -> Date = Date.init) {
         self.lumenna = lumenna
@@ -240,6 +243,7 @@ final class ReminderSchedule {
     func rearm(asking: Bool = false, catchingUp: Bool = false, then done: @escaping () -> Void = {}) {
         let lumenna = lumenna
         let now = now()
+        rearms += 1
         work.async { [weak self] in
             let missed = catchingUp ? self?.missed() : nil
             let until = Reminders.rfc3339(now.addingTimeInterval(Reminders.window))

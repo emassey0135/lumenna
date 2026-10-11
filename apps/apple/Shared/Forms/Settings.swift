@@ -250,10 +250,12 @@ struct LineSetting: View {
         #endif
     }
 
-    /// The field itself, named as `namedField` names one, so focus can be followed.
-    private var field: some View {
+    /// The field itself, named as `namedField` names one, so focus can be followed. Its
+    /// placeholder says what empty means, in a grey that reads: an empty field with no
+    /// placeholder left the iPad's audit an empty, unnamed text element whose size is fixed.
+    @ViewBuilder private var field: some View {
         #if os(macOS)
-        TextField(setting.title, text: $text)
+        TextField(setting.title, text: $text, prompt: Text("None"))
         #elseif os(iOS)
         // It wraps, so a large text size shows all of it (a one-line field scrolls sideways
         // and is clipped); so Return arrives as a line break, and commits instead.
@@ -262,10 +264,10 @@ struct LineSetting: View {
             text = typed.split(whereSeparator: \.isNewline).joined(separator: " ")
             // Leaving the field commits it.
             focused = false
-        }), axis: .vertical)
+        }), prompt: example("None"), axis: .vertical)
         .multilineTextAlignment(.trailing)
         #else
-        TextField("", text: $text)
+        TextField("", text: $text, prompt: example("None"))
         #endif
     }
 
