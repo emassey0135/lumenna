@@ -14,7 +14,7 @@ import io.github.emassey0135.lumenna.core.sentenceCase
 // `Lumenna.act`.
 
 /** Something offered for choosing, as a chooser shows it. */
-data class Option(val key: String, val title: String, val detail: String = "", val depth: Int = 0)
+data class Option(val key: String, val title: String, val detail: String = "", val depth: Int = 0, val reason: String = "")
 
 /**
  * "level 2" where an option's level in a tree changes from the option shown before it, or
@@ -32,16 +32,17 @@ fun detailOf(shown: List<Option>, index: Int): String =
 
 /**
  * How a choice the core offers reads, in every app's order: a block "<day>, <start> to <end>,
- * <title>" in this device's clock, as one line; anything else "<title>, <detail>".
+ * <title>" in this device's clock, as one line; anything else "<title>, <detail>". Why it is
+ * offered ("Suggested because …") is its reason, shown as its description, never in its name.
  */
 fun option(choice: Choice): Option {
     val date = choice.date
     val start = choice.start
     return if (date != null && start != null) {
         val span = choice.end?.let { "${Clock.time(start)} to ${Clock.time(it)}" } ?: Clock.time(start)
-        Option(choice.id, "${Clock.spokenDay(date)}, $span, ${choice.title}", "", choice.depth.toInt())
+        Option(choice.id, "${Clock.spokenDay(date)}, $span, ${choice.title}", "", choice.depth.toInt(), choice.reason.orEmpty())
     } else {
-        Option(choice.id, choice.title, choice.detail.orEmpty(), choice.depth.toInt())
+        Option(choice.id, choice.title, choice.detail.orEmpty(), choice.depth.toInt(), choice.reason.orEmpty())
     }
 }
 

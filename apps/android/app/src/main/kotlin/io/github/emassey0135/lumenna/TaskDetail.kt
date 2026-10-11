@@ -145,6 +145,12 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task, chan
             }
             Text("State: ${current.state.joinToString(", ")}")
 
+            // What the records hold of it, the core's lines: on its own screen only, never a list.
+            if (current.history.isNotEmpty()) {
+                Heading("History")
+                current.history.forEach { line -> Text(line, Modifier.padding(vertical = 4.dp)) }
+            }
+
             // The core's, in its order: this screen is the task's form, so no Edit Details.
             Heading("Actions")
             current.actions.forEach { action ->

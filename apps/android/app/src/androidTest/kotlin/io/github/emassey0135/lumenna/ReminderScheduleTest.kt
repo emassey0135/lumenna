@@ -167,11 +167,45 @@ class ReminderScheduleTest {
         assertEquals(due.title, notification.extras.getString(Notification.EXTRA_TITLE))
         assertEquals(due.text, notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
         assertEquals("Deep work starts in 5 minutes — nothing assigned yet", due.text)
-        assertEquals(listOf(due.dismiss, due.snooze), notification.actions.map { it.title.toString() })
-        assertEquals(listOf("Dismiss", "Snooze 10 Minutes"), notification.actions.map { it.title.toString() })
+        assertEquals(listOf(due.dismiss, due.snooze).map(::button), notification.actions.map { it.title.toString() })
+        assertEquals("sentence case, as Android writes", listOf("Dismiss", "Snooze 10 minutes"), notification.actions.map { it.title.toString() })
         assertEquals(Notification.CATEGORY_REMINDER, notification.category)
         assertEquals(Reminders.CHANNEL, notification.channelId)
         assertEquals("not bridged to a watch that gives its own", Reminders.BRIDGE_TAG, NotificationCompat.WearableExtender(notification).bridgeTag)
+    }
+
+    /** The instant of a civil time here, as the core reads one. */
+    private fun instant(civil: String): String = LocalDateTime.parse(civil).atZone(ZoneId.systemDefault()).toInstant().toString()
+
+    @Test
+    fun aBlocksEndWithWorkLeftShortOffersCarryForwardWhichCarriesItToTheNextBlock() {
+        InstrumentationRegistry.getInstrumentation().uiAutomation
+            .grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
+        // Fixed days, as the core's own test has them: no reminder at the end but the offer.
+        core.lumenna.setSetting("default-block-reminders", "")
+        for ((title, date) in listOf("Deep work" to "2026-05-06", "Admin" to "2026-05-07")) {
+            core.lumenna.addBlock(NewBlock(title = title, at = "09:00", minutes = 60u, date = date, kind = "work", repeat = null))
+        }
+        val deep = core.lumenna.listBlocks().rows.first { it.title == "Deep work" }.id
+        val essay = core.lumenna.addTask("Essay").task!!.id
+        core.lumenna.assign(essay, deep, "2026-05-06", 90u)
+        core.lumenna.stopTimer(core.lumenna.plan("2026-05-06").blocks.single().assignments.single().id, 40u)
+
+        val end = core.lumenna.remindersDue(instant("2026-05-06T09:59"), instant("2026-05-06T10:01")).due.single()
+        assertTrue(end.text, end.text.endsWith("Carry the remaining 50 minutes to Admin tomorrow?"))
+        val notification = Reminders.notification(context, end)
+        assertEquals(listOf("Dismiss", "Snooze 10 minutes", "Carry forward"), notification.actions.map { it.title.toString() })
+
+        // What the button runs: its intent reaches the app's own store, so the test runs it on this one.
+        val manager = context.getSystemService(NotificationManager::class.java)
+        try {
+            Reminders.carry(context, core, end.key, end.target, end.occurrence)
+            assertEquals(50u, core.lumenna.plan("2026-05-07").blocks.single().assignments.single().plannedMins)
+            val told = manager.activeNotifications.single { it.tag == "carried" }
+            assertEquals("Carried forward Essay to Admin", told.notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+        } finally {
+            manager.cancel("carried", 1)
+        }
     }
 
     @Test

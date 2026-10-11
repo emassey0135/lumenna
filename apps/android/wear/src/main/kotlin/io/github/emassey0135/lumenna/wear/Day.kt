@@ -41,6 +41,8 @@ fun DayScreen(core: Core, navigator: Navigator, changes: Long) {
     val plan = remember(changes, day) { core.attempt { core.lumenna.plan(day) } }
     val entry = LocalTextEntry.current
     val shown = plan?.let { folded(rows(it), { row -> row.depth }, { row -> row.key }, collapsed) }.orEmpty()
+    // The day's own actions, the core's: on its heading, and as buttons after its rows.
+    val dayActions = plan?.let { dayActions(core, navigator, entry, it) }.orEmpty()
     WearList {
         // The day's heading, as every app says it: "<day>. <summary>".
         item {
@@ -49,6 +51,7 @@ fun DayScreen(core: Core, navigator: Navigator, changes: Long) {
                     listOf(Clock.spokenDay(p.date), p.summary.ifEmpty { p.announcement.replaceFirstChar { c -> c.uppercase() } })
                         .filter { it.isNotEmpty() }.joinToString(". ")
                 } ?: "Day",
+                dayActions,
             )
         }
         shown.forEachIndexed { index, shownRow ->
@@ -70,6 +73,9 @@ fun DayScreen(core: Core, navigator: Navigator, changes: Long) {
                 )
             }
         }
+        dayActions.forEach { action ->
+            item { Button(onClick = action.run, modifier = Modifier.fillMaxWidth(), label = { Text(action.name) }) }
+        }
         item { Button(onClick = { navigator.open(Screen.BlockForm(BlockPurpose.Add(date = plan?.date))) }, modifier = Modifier.fillMaxWidth(), label = { Text("Add block") }) }
         item { Button(onClick = { day = step(plan, -1) }, modifier = Modifier.fillMaxWidth(), label = { Text("Previous day") }) }
         if (day != null) item { Button(onClick = { day = null }, modifier = Modifier.fillMaxWidth(), label = { Text("Today") }) }
@@ -88,6 +94,14 @@ private fun step(plan: Plan?, days: Long): String? {
     val next = from.plusDays(days)
     return if (next == LocalDate.now()) null else next.toString()
 }
+
+/** What can be done to the day itself: the core's (`Plan.actions`); only its two screens are the watch's. */
+private fun dayActions(core: Core, navigator: Navigator, entry: TextEntry?, plan: Plan): List<RowAction> =
+    core.offered(plan.actions, navigator, entry, form = { action ->
+        if (action.kind == ActionKind.PLAN_DAY || action.kind == ActionKind.REPLAN) {
+            navigator.open(Screen.Proposal(action.kind, action.target))
+        }
+    })
 
 /**
  * What can be done to a day row: the core's, in its order. Only its forms are this screen's to

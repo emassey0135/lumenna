@@ -247,12 +247,13 @@ fun ChooseScreen(screen: Screen.Choose) {
         screen.choices.forEachIndexed { index, choice ->
             item {
                 // In a tree, the level where it changes beside the detail, as a tree's rows say it.
-                val detail = detailOf(screen.choices, index)
+                // Why it is offered ("Suggested because …") beneath, as its description.
+                val detail = listOf(detailOf(screen.choices, index), choice.reason).filter { it.isNotEmpty() }.joinToString("\n")
                 Button(
                     onClick = { screen.chosen(choice) },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(choice.title) },
-                    secondaryLabel = detail.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
+                    secondaryLabel = detail.takeIf { it.isNotEmpty() }?.let { { Text(it, maxLines = Int.MAX_VALUE) } },
                 )
             }
         }

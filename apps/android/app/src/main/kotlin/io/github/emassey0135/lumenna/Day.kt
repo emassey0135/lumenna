@@ -45,6 +45,8 @@ import androidx.compose.ui.semantics.CollectionInfo
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.collectionInfo
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -118,6 +120,10 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
     Offer(Command.GO_TO_DAY) { asking = DayAsk.GoTo }
     Offer(Command.NEW_BLOCK) { navigator.push(Screen.BlockForm(BlockPurpose.Add(date = shown?.date))) }
 
+    // The day's own actions, the core's, in its order: Plan the Day and Replan from Now open
+    // their screens; the rest ask their questions as any row's do.
+    val dayActions = shown?.let { day -> dayActions(core, navigator, prompt, day) }.orEmpty()
+
     ScreenFrame(shown?.let { Clock.spokenDay(it.date) } ?: "Today", core, navigator, actions = {
         IconButton(onClick = { navigator.push(Screen.BlockForm(BlockPurpose.Add(date = shown?.date))) }) {
             Icon(Icons.Filled.Add, contentDescription = "Add block")
@@ -134,6 +140,10 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
                 heading()
                 contentDescription = listOfNotNull(shown?.let { Clock.spokenDay(it.date) }, summary.ifEmpty { null })
                     .joinToString(". ")
+                // Where the day is, its actions are: on its heading, as on its buttons below.
+                if (dayActions.isNotEmpty()) {
+                    customActions = dayActions.map { action -> CustomAccessibilityAction(action.name) { action.run(); true } }
+                }
             },
         )
         FlowRow(
@@ -144,6 +154,11 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
             OutlinedButton(modifier = Target, onClick = { day = null }) { Text("Now") }
             OutlinedButton(modifier = Target, onClick = { step(1) }) { Text("Next day") }
             OutlinedButton(modifier = Target, onClick = { asking = DayAsk.GoTo }) { Text("Go to day") }
+            dayActions.forEach { action ->
+                OutlinedButton(modifier = Target, onClick = action.run) {
+                    Text(action.name, color = if (action.destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
+                }
+            }
         }
         LazyColumn(
             Modifier.fillMaxSize().semantics { collectionInfo = CollectionInfo(list.size, 1) },
@@ -242,6 +257,14 @@ private fun actions(
         else -> {}
     }
 })
+
+/** What can be done to the day itself: the core's (`Plan.actions`); only its two screens are this app's. */
+private fun dayActions(core: Core, navigator: Navigator, prompt: Prompter, plan: Plan): List<RowAction> =
+    core.offered(plan.actions, prompt, form = navigator.formOr { action ->
+        if (action.kind == ActionKind.PLAN_DAY || action.kind == ActionKind.REPLAN) {
+            navigator.push(Screen.Proposal(action.kind, action.target))
+        }
+    })
 
 /**
  * A block, added or changed. Times and days are typed as they are said —

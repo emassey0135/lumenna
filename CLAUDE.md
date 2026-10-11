@@ -1056,6 +1056,16 @@ gives the toolchain. Three modules: `app` (the phone), `wear` (Wear OS) and `sha
 - **Notifications are asked for once** (Android 13 and later), when the person first adds a
   reminder or turns reminders on; after that the Reminders page says they are off and opens
   the system's page. Tests grant the permission first, or the system's question covers the app.
+- **Carry Forward on a reminder** (`DueReminder.carry`, sentence case like Dismiss and Snooze)
+  is `ReminderReceiver`'s too: it runs `carryRestForward("<target>@<occurrence>")` and says the
+  change in a quiet notification of its own (tag `carried`, no `@`, so arming does not take it
+  for a firing), since the app may not be open to say it.
+- **The planner's screens are shared** (`shared/Proposals.kt`, `ProposalModel`): Replan from
+  Now and Plan the Day, which the day's own actions (`Plan.actions`, on the day's heading as
+  custom actions and as buttons) open. The proposal is said on opening; after a partial apply
+  the core's `next` is the screen's list until it is empty. `LocalPlannerNow` fixes the
+  moment proposed against, so the tests' proposals do not depend on when they run. A pick's
+  `Choice.reason` is `Option.reason`, a line of its own beneath the name.
 
 ## The Wear OS app
 

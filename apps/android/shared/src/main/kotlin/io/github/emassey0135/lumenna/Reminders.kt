@@ -194,7 +194,9 @@ object Reminders {
     internal const val DISMISS = "io.github.emassey0135.lumenna.reminder.DISMISS"
     internal const val SNOOZE = "io.github.emassey0135.lumenna.reminder.SNOOZE"
     internal const val REARM = "io.github.emassey0135.lumenna.reminder.REARM"
+    internal const val CARRY = "io.github.emassey0135.lumenna.reminder.CARRY"
     private const val KEY = "key"
+    private const val TARGET = "target"
     private const val OCCURRENCE = "occurrence"
     private const val AT = "at"
     private const val OPEN_KIND = "io.github.emassey0135.lumenna.open.kind"
@@ -203,6 +205,9 @@ object Reminders {
 
     /** The missed summary's tag. */
     private const val MISSED = "missed"
+
+    /** The tag of what carrying forward from a notification said. No `@`: it is no firing. */
+    private const val CARRIED = "carried"
 
     /** Notifications are posted under their firing's identity, with this one number. */
     private const val NOTIFICATION = 1
@@ -312,6 +317,47 @@ object Reminders {
         arm(context, core)
     }
 
+    /**
+     * The notification's Carry Forward button, at a block's end with work left short: carries
+     * the rest of each sitting to the next block that takes its task, and says what it did in
+     * the notification's place, since the app may not be open to say it.
+     */
+    fun carry(context: Context, core: Core, key: String, target: String, occurrence: String) {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        manager.cancel("$key@$occurrence", NOTIFICATION)
+        val said = try {
+            val change = core.lumenna.carryRestForward("$target@$occurrence")
+            core.changed()
+            core.say(change)
+            sentence(change.announcement, change.notices)
+        } catch (error: LumennaException) {
+            core.say(error.sentence)
+            error.sentence
+        }
+        if (notificationsAllowed(context)) {
+            try {
+                manager.notify(CARRIED, NOTIFICATION, told(context, said))
+            } catch (_: SecurityException) {
+                // Notifications were refused after the check.
+            }
+        }
+        arm(context, core)
+    }
+
+    /** What a notification's button did, said quietly where the reminder was, and gone in a while. */
+    fun told(context: Context, text: String): Notification =
+        NotificationCompat.Builder(context, CHANNEL)
+            .setSmallIcon(io.github.emassey0135.lumenna.shared.R.drawable.ic_reminder)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setTicker(text)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setSilent(true)
+            .setAutoCancel(true)
+            .setTimeoutAfter(60_000)
+            .extend(NotificationCompat.WearableExtender().setBridgeTag(BRIDGE_TAG))
+            .build()
+
     private fun show(context: Context, due: DueReminder, text: String) {
         if (!notificationsAllowed(context)) return
         channel(context)
@@ -324,15 +370,15 @@ object Reminders {
 
     /**
      * A firing's notification: the core's title, its whole message, and its Dismiss and Snooze
-     * buttons. A reminder's category, so Do Not Disturb lets it through only where the person
+     * buttons, and Carry Forward where the core offers it, in sentence case as Android writes. A reminder's category, so Do Not Disturb lets it through only where the person
      * allows reminders; nothing in it is said by sound alone.
      */
     fun notification(context: Context, due: DueReminder, text: String = due.text): Notification {
         val id = "${due.key}@${due.occurrence}"
-        fun button(action: String) = PendingIntent.getBroadcast(
+        fun pressed(action: String) = PendingIntent.getBroadcast(
             context, 0,
             Intent(context, ReminderReceiver::class.java).setAction(action).setData(uri(id))
-                .putExtra(KEY, due.key).putExtra(OCCURRENCE, due.occurrence),
+                .putExtra(KEY, due.key).putExtra(OCCURRENCE, due.occurrence).putExtra(TARGET, due.target),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
@@ -358,8 +404,10 @@ object Reminders {
                     setContentIntent(PendingIntent.getActivity(context, id.hashCode(), it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
                 }
             }
-            .addAction(0, due.dismiss, button(DISMISS))
-            .addAction(0, due.snooze, button(SNOOZE))
+            .addAction(0, button(due.dismiss), pressed(DISMISS))
+            .addAction(0, button(due.snooze), pressed(SNOOZE))
+            // At a block's end with work left short, the text ends in the question this answers.
+            .apply { if (due.carry.isNotEmpty()) addAction(0, button(due.carry), pressed(CARRY)) }
             .build()
     }
 
@@ -396,6 +444,10 @@ object Reminders {
             FIRE -> if (key != null && occurrence != null) fire(context, core, key, occurrence, intent.getStringExtra(AT).orEmpty())
             DISMISS -> if (key != null && occurrence != null) dismiss(context, core, key, occurrence)
             SNOOZE -> if (key != null && occurrence != null) snooze(context, core, key, occurrence)
+            CARRY -> {
+                val target = intent.getStringExtra(TARGET)
+                if (key != null && target != null && occurrence != null) carry(context, core, key, target, occurrence)
+            }
             else -> {
                 // The phone may have moved to another zone, which moves every civil time.
                 core.timeZoneMayHaveChanged()

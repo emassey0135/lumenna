@@ -174,6 +174,12 @@ fun TaskScreen(core: Core, navigator: Navigator, screen: Screen.Task, changes: L
         if (current.repetition == null && current.recurrence != null) item { Text("Repeats by the rule ${current.recurrence}") }
         item { Text("State: ${current.state.joinToString(", ")}") }
 
+        // What the records hold of it, the core's lines: on its own screen only, never a list.
+        if (current.history.isNotEmpty()) {
+            item { Heading("History") }
+            current.history.forEach { line -> item { Text(line) } }
+        }
+
         // The core's, in its order: this screen is the task's form, so no Edit Details.
         item { Heading("Actions") }
         current.actions.forEach { action ->
