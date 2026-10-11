@@ -1337,6 +1337,30 @@ pub fn plan_minutes(
     })
 }
 
+/// Marks a sitting as moved on: it did not get its planned time and the rest went to another
+/// block ([`AssignmentStatus::Deferred`](crate::model::AssignmentStatus::Deferred)). What was
+/// logged stays.
+///
+/// # Errors
+///
+/// If the assignment is not loaded.
+pub fn defer_sitting(snapshot: &Snapshot, assignment_id: AssignmentId, year: i16) -> Result<Edit, EditError> {
+    let assignment = snapshot
+        .assignments
+        .get(&assignment_id)
+        .ok_or(EditError::NotFound { kind: "assignment" })?;
+    if assignment.status == crate::model::AssignmentStatus::Deferred {
+        return Ok(Edit::nothing());
+    }
+    let mut deferred = assignment.clone();
+    deferred.status = crate::model::AssignmentStatus::Deferred;
+    deferred.running_since = None;
+    Ok(Edit {
+        description: "Moved the rest on".to_owned(),
+        changes: vec![Change::Assignment { year, transition: Box::new(Transition::updated(assignment.clone(), deferred)) }],
+    })
+}
+
 // ---------------------------------------------------------------------------------------
 // Devices
 // ---------------------------------------------------------------------------------------

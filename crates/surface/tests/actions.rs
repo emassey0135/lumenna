@@ -190,7 +190,7 @@ fn a_repeating_block_skips_a_day_and_the_skipped_day_comes_back() {
     day_block(&lumenna, "Deep work", Some("every day"));
     let plan = lumenna.plan(None).unwrap();
     let actions = &plan.blocks[0].actions;
-    assert_eq!(titles(actions), ["Assign a Task", "Edit Block", "Cancel This Day", "Reminders", "Delete Block"]);
+    assert_eq!(titles(actions), ["Assign a Task", "Edit Block", "End Now", "Add 15 Minutes", "Cancel This Day", "Reminders", "Delete Block"]);
     let Question::Confirm { message, .. } = &find(actions, "Delete Block").question else { panic!() };
     assert!(message.starts_with("Every occurrence goes"));
     lumenna.act(find(actions, "Cancel This Day"), Answer::Yes).unwrap();
@@ -426,4 +426,83 @@ fn put_in_a_block_offers_only_the_blocks_whose_filter_admits_the_task() {
     let mut both = offered("file the report");
     both.sort();
     assert_eq!(both, ["Anything", "Deep work"]);
+}
+
+fn block_at(lumenna: &Lumenna, title: &str, at: &str, minutes: u32, date: &str, repeat: Option<&str>) {
+    lumenna
+        .add_block(NewBlock {
+            title: title.to_owned(),
+            at: at.to_owned(),
+            minutes,
+            date: Some(date.to_owned()),
+            kind: "work".to_owned(),
+            repeat: repeat.map(str::to_owned),
+            ..NewBlock::default()
+        })
+        .unwrap();
+}
+
+#[test]
+fn the_block_under_way_ends_now_or_runs_longer_on_this_day_alone() {
+    let (_directory, lumenna) = open();
+    day_block(&lumenna, "All day", Some("every day"));
+    let block = lumenna.plan(None).unwrap().blocks.remove(0);
+    let longer = find(&block.actions, "Add 15 Minutes");
+    lumenna.act(longer, Answer::Yes).unwrap();
+    assert_eq!(lumenna.plan(None).unwrap().blocks[0].duration_mins, 1439 + 15);
+    let block = lumenna.plan(None).unwrap().blocks.remove(0);
+    lumenna.act(find(&block.actions, "End Now"), Answer::Yes).unwrap();
+    let ended = lumenna.plan(None).unwrap().blocks.remove(0);
+    assert!(ended.duration_mins < 1439, "as long as it has run");
+    assert!(ended.changed_for_this_day);
+    assert_eq!(lumenna.plan(Some("tomorrow".to_owned())).unwrap().blocks[0].duration_mins, 1439, "other days untouched");
+}
+
+#[test]
+fn ending_the_day_ends_what_is_under_way_and_clears_the_rest_in_one_undoable_change() {
+    let (_directory, lumenna) = open();
+    day_block(&lumenna, "All day", Some("every day"));
+    block_at(&lumenna, "Late call", "23:59", 1, "today", None);
+    let plan = lumenna.plan(None).unwrap();
+    let end = find(&plan.actions, "End the Day");
+    let lumenna_surface::Question::Confirm { message, .. } = &end.question else { panic!() };
+    assert_eq!(message, "All day ends now. The block after it is cleared for today. Undo brings it back.");
+    let said = lumenna.act(end, Answer::Yes).unwrap();
+    assert_eq!(said.announcement, "Ended All day and cleared 1 block");
+    let after = lumenna.plan(None).unwrap();
+    assert_eq!(after.blocks.len(), 1, "the late call is in the trash");
+    assert!(after.blocks[0].duration_mins < 1439);
+    lumenna.undo().unwrap();
+    let back = lumenna.plan(None).unwrap();
+    assert_eq!(back.blocks.len(), 2, "one undo brings it all back");
+    assert_eq!(back.blocks[0].duration_mins, 1439);
+}
+
+#[test]
+fn a_sitting_left_short_carries_its_remaining_time_to_another_block() {
+    let (_directory, lumenna) = open();
+    let yesterday = jiff::Zoned::now().date().yesterday().unwrap().to_string();
+    block_at(&lumenna, "Deep work", "09:00", 120, &yesterday, Some("every day"));
+    let essay = add(&lumenna, "essay draft");
+    lumenna.assign(&essay, &lumenna.plan(Some(yesterday.clone())).unwrap().blocks[0].id, None, Some(90)).unwrap();
+    let sitting = lumenna.plan(Some(yesterday.clone())).unwrap().blocks[0].assignments[0].id.clone();
+    lumenna.stop_timer(&sitting, Some(40)).unwrap();
+    let plan = lumenna.plan(Some(yesterday.clone())).unwrap();
+    let carry = find(&plan.blocks[0].assignments[0].actions, "Carry Forward");
+    let lumenna_surface::Question::Pick { title, .. } = &carry.question else { panic!() };
+    assert_eq!(title, "Carry the remaining 50 minutes of essay draft to");
+    let to = lumenna.choices(carry.clone()).unwrap().choices.remove(0);
+    let said = lumenna.act(carry, Answer::Picked { id: to.id.clone(), length: None }).unwrap();
+    assert_eq!(said.announcement, "Carried the remaining 50 minutes of essay draft to Deep work");
+    let carried = lumenna
+        .plan(to.date.clone())
+        .unwrap()
+        .blocks
+        .into_iter()
+        .flat_map(|b| b.assignments)
+        .find(|s| s.title == "essay draft")
+        .unwrap();
+    assert_eq!(carried.planned_mins, Some(50));
+    let again = lumenna.plan(Some(yesterday)).unwrap();
+    assert!(!titles(&again.blocks[0].assignments[0].actions).contains(&"Carry Forward"), "moved on, so carried once");
 }

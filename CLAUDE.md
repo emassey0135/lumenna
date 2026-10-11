@@ -430,6 +430,12 @@ urgency, a task whose estimate fits the time left raised, nothing excluded for n
 Assign a Task offers them in that order, each `Choice::reason` the sentence a person hears
 ("Suggested because overdue by 1 day, priority 1, and its estimate of 30 minutes fits the 35
 minutes left"); Put in a Block offers only the blocks whose filter admits the task.
+The day's own commands are `day.rs`, each the person's decision and one undoable change:
+End Now and Add 15 Minutes on the block under way (a modified day of a repeating block, the
+block itself for a one-off), End the Day and Clear the Rest of the Day (`Plan::actions`, on
+today: later repeating blocks cancelled for today, one-offs to the trash), and Carry Forward
+on a sitting left short, its task open, to a block whose filter admits it, the old sitting
+marked Deferred.
 The surface words both (`task_history`, `TaskDetail::history`): asked for about one task,
 never said in a list or a live region. The coefficients are `Coefficients::default()` until
 they become synced settings.

@@ -115,21 +115,17 @@ Still to come:
 - **Every app showing a choice's `reason`** as its description (accessible description,
   hint, or a second line).
 
-### Carrying unfinished work forward
+### Carrying unfinished work forward, and day commands
 
-At a block's end, a sitting with less logged than planned and its task not done is
-**offered** onward: "Deep work ended. Essay draft: 40 of 90 minutes. Carry the remaining 50
-to tomorrow's Deep work?" The destination is the next block whose filter admits the task,
-with the same capacity check, and overfill is reported. Never carried automatically: silent
-carries build a tomorrow nobody decided on, and the question is where "the estimate was
-wrong" gets noticed.
+Built (`day.rs`, `lum end`, `extend`, `end-day`, `clear-day`, `carry`): End Now and Add 15
+Minutes on the block under way, End the Day and Clear the Rest of the Day, and Carry Forward
+on a sitting left short of its planned time, each one undoable change. Still to come:
 
-### Day commands
-
-End the day now, clear the rest of the day, replan from now; and on one block, end it now
-or add fifteen minutes (a modified occurrence each, since occurrences have no lifecycle
-state that could survive a merge). Each is the person's own decision and needs no proposal,
-though ending early offers carry-forward. Skipping an occurrence is built.
+- **Offering it at the block's end**: "Deep work ended. Essay draft: 40 of 90 minutes. Carry
+  the remaining 50 to tomorrow's Deep work?", as the block-end reminder's own action, with
+  the next block whose filter admits the task chosen first and overfill reported. Never
+  carried automatically: the question is where "the estimate was wrong" gets noticed.
+- **Replan from now**, which is re-flow, below.
 
 ### Re-flow when the day slips
 

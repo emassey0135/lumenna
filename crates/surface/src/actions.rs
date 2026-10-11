@@ -113,6 +113,16 @@ pub enum ActionKind {
     Unpair,
     /// Open the app's list of a task's or block's reminders.
     Reminders,
+    /// End the block under way now.
+    EndNow,
+    /// Give the block under way more time.
+    Extend,
+    /// End the block under way and clear the rest of the day.
+    EndDay,
+    /// Clear the rest of the day, leaving the block under way.
+    ClearDay,
+    /// Put the rest of a sitting's planned time in another block.
+    CarryForward,
 }
 
 /// What an action is done to: with [`ActionKind`], what runs.
@@ -142,6 +152,8 @@ pub enum Subject {
     /// A reminder of a task's or block's own, by identifier; for New, the task or block it
     /// is for.
     Reminder,
+    /// A day of the plan, as an ISO date.
+    Day,
 }
 
 /// One thing that can be done, and what it asks first.
@@ -359,6 +371,11 @@ const fn is_primary(kind: ActionKind, subject: Subject) -> bool {
 }
 
 impl Action {
+    /// An action with no question yet, for the modules that build their own.
+    pub(crate) fn new(kind: ActionKind, subject: Subject, title: &str, target: String) -> Self {
+        action(kind, subject, title, target)
+    }
+
     fn asking(mut self, question: Question) -> Self {
         self.question = question;
         self
@@ -469,6 +486,11 @@ pub fn block(block: &PlanBlock) -> Vec<Action> {
         }));
     }
     actions.push(a(K::Edit, "Edit Block"));
+    // The block under way can end now or run longer: a modified day, the person's own call.
+    if block.when == "now" {
+        actions.push(a(K::EndNow, "End Now"));
+        actions.push(a(K::Extend, &format!("Add {} Minutes", crate::day::EXTEND_MINS)));
+    }
     if block.repeats {
         actions.push(a(K::CancelDay, "Cancel This Day"));
     }
@@ -842,13 +864,26 @@ fn rows_ids(rows: &Rows) -> Vec<Option<RowId>> {
 }
 
 /// Gives a day's blocks, sittings, free time and cancelled days their actions.
-pub(crate) fn fill_plan(plan: &mut crate::types::Plan) {
+pub(crate) fn fill_plan(plan: &mut crate::types::Plan, carries: &BTreeSet<String>) {
     for block in &mut plan.blocks {
         for sitting in &mut block.assignments {
             sitting.actions = self::sitting(sitting);
+            // Ended short of its planned time with the task still open: the rest can go on.
+            if carries.contains(&sitting.id) {
+                let left = sitting.planned_mins.unwrap_or(0).saturating_sub(sitting.minutes);
+                let mut carry = action(ActionKind::CarryForward, Subject::Sitting, "Carry Forward", sitting.id.clone());
+                carry.question = Question::Pick {
+                    title: format!("Carry the remaining {} of {} to", crate::words::duration(left), sitting.title),
+                    length: None,
+                    yes: "Carry Forward".to_owned(),
+                };
+                let at = sitting.actions.len().saturating_sub(1);
+                sitting.actions.insert(at, carry);
+            }
         }
         block.actions = self::block(block);
     }
+    plan.actions = crate::day::day_actions(plan);
     for item in &mut plan.timeline {
         if let PlanItem::Free { start, actions, .. } = item {
             *actions = free_time(&plan.date, start);
@@ -987,6 +1022,16 @@ impl Lumenna {
         use ActionKind as K;
         if (action.subject, action.kind) == (Subject::Task, K::PutInBlock) {
             return self.blocks_for(Some(&action.target), None, Some(7));
+        }
+        if (action.subject, action.kind) == (Subject::Sitting, K::CarryForward) {
+            let task = self.with(|store| {
+                store.load_all_years()?;
+                let snapshot = repaired(store);
+                let id = resolve::assignment_id(&snapshot, &action.target)?;
+                Ok(snapshot.assignments.get(&id).map(|a| a.task_id.to_string()))
+            })?;
+            let task = task.ok_or_else(|| LumennaError::new("that sitting is not here"))?;
+            return self.blocks_for(Some(&task), None, Some(7));
         }
         self.with(|store| {
             store.load_all_years()?;
@@ -1157,6 +1202,11 @@ impl Lumenna {
                 self.stop_timer(target, Some(resolve::minutes(&text)?)).map(timer)
             }
             (S::Sitting, K::Unassign) => self.unassign(target),
+            (S::Sitting, K::CarryForward) => self.carry_forward(target, &answer_pick(&answer)?.0),
+            (S::Block, K::EndNow) => self.end_block_now(target),
+            (S::Block, K::Extend) => self.extend_block(target, crate::day::EXTEND_MINS),
+            (S::Day, K::EndDay) => self.end_day(true),
+            (S::Day, K::ClearDay) => self.end_day(false),
             (S::Project, K::Rename) => self.rename_project(target, &answer_text(&answer)?),
             (S::Project, K::NewInside) => self.add_project(&answer_text(&answer)?, Some(target.to_owned())),
             (S::Project, K::New) => self.add_project(&answer_text(&answer)?, None),

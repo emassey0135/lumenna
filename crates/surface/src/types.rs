@@ -589,6 +589,10 @@ pub struct Plan {
     /// without remembering what used to be there.
     #[serde(default, skip_serializing_if = "none")]
     pub cancelled: Vec<CancelledBlock>,
+    /// What can be done to the day itself: End the Day and Clear the Rest of the Day, on
+    /// today while something is left of it.
+    #[serde(default, skip_serializing_if = "none")]
+    pub actions: Vec<crate::actions::Action>,
 }
 
 /// The work blocks a task could be put in, from a task itself rather than from a day.

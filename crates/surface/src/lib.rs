@@ -27,6 +27,7 @@
 //! calls in; here a bare number is refused rather than mistaken for a prefix.
 
 pub mod actions;
+pub mod day;
 mod durability;
 pub mod fields;
 #[cfg(feature = "link")]

@@ -130,6 +130,33 @@ pub(crate) enum Command {
         minutes: String,
     },
 
+    /// End the block under way now, on this day alone.
+    End {
+        /// A row number from `lum plan`, or the block's identifier.
+        block: String,
+    },
+    /// Give the block under way longer, on this day alone.
+    Extend {
+        /// A row number from `lum plan`, or the block's identifier.
+        block: String,
+        /// How much longer, such as 15m.
+        #[arg(long, default_value = "15m")]
+        by: String,
+    },
+    /// End the block under way and clear the rest of today: repeating blocks are cancelled
+    /// for today, ones that happen once go to the trash. One undo brings it all back.
+    EndDay,
+    /// Clear the rest of today, leaving the block under way.
+    ClearDay,
+    /// Put the rest of a sitting's planned time in another block.
+    Carry {
+        /// A row number from `lum plan`, or the assignment identifier.
+        assignment: String,
+        /// The block to carry it to, `<series>@<date>` or a row number from `lum plan`.
+        #[arg(long)]
+        to: String,
+    },
+
     /// Start the timer on an assignment, or resume a paused one.
     Start {
         /// The assignment identifier.
@@ -1013,6 +1040,16 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
                 })?)
             };
             Response::new(profile.plan_minutes(&profile.row(assignment, "assignment")?, minutes)?)
+        }
+        Command::End { block } => Response::new(profile.end_block_now(&profile.row(block, "block")?)?),
+        Command::Extend { block, by } => {
+            let minutes = lumenna_surface::parse_minutes(by.clone())?;
+            Response::new(profile.extend_block(&profile.row(block, "block")?, minutes)?)
+        }
+        Command::EndDay => Response::new(profile.end_day(true)?),
+        Command::ClearDay => Response::new(profile.end_day(false)?),
+        Command::Carry { assignment, to } => {
+            Response::new(profile.carry_forward(&profile.row(assignment, "assignment")?, &profile.row(to, "block")?)?)
         }
         Command::Start { assignment } => {
             Response::new(profile.start_timer(&profile.row(assignment, "assignment")?)?)
