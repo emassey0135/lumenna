@@ -26,7 +26,11 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
             // Before launching finishes, so a reminder's button pressed while the app was not
             // running reaches it.
             let responder = ReminderResponder(lumenna: core.lumenna) { reminded in
-                Self.root?.openReminded?(kind: reminded.kind, target: reminded.target, day: reminded.day)
+                if reminded.replan {
+                    Self.root?.openReplan?()
+                } else {
+                    Self.root?.openReminded?(kind: reminded.kind, target: reminded.target, day: reminded.day)
+                }
             }
             UNUserNotificationCenter.current().delegate = responder
             self.responder = responder

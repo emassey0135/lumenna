@@ -182,6 +182,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// A reminder chosen in Notification Center: its task, or its block on its day.
     private func open(_ reminded: RemindedOf) {
+        if reminded.replan {
+            // The overrun warning's Replan: today, with Replan from Now over it.
+            NSApp.activate()
+            go(.today)
+            main?.day?.openReplan()
+            return
+        }
         if reminded.kind == "task" {
             go(.tasks)
             main?.showTask(reminded.target)

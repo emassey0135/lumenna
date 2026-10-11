@@ -452,6 +452,16 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         }
     }
 
+    /// Replan from Now, as the overrun warning's Replan opens it: today, the screen over it.
+    func openReplan() {
+        showNow(announcing: false)
+        do {
+            presentProposal(try ProposalModel(core: core, kind: .replan))
+        } catch {
+            showFailure(error.sentence)
+        }
+    }
+
     // MARK: - Moving through days
 
     private func step(_ days: Int) {

@@ -105,6 +105,11 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
     @objc func redoChange() { redoInStore(core) }
     @objc func syncNow() { syncAndSay(core) }
 
+    /// The overrun warning's Replan: today, with Replan from Now over it.
+    @objc func openReplan() {
+        show(.place(.today)) { ($0 as? DayViewController)?.openReplan() }
+    }
+
     /// A reminder chosen in Notification Center: its task beside the task list, or its
     /// block on its day.
     @objc func openReminded(kind: String, target: String, day: String) {

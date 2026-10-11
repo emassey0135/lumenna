@@ -27,6 +27,8 @@ import UIKit
     @objc optional func goToDay()
     /// A reminder's notification, chosen: its task, or its block on `day`.
     @objc optional func openReminded(kind: String, target: String, day: String)
+    /// The overrun warning's Replan: today, with Replan from Now open over it.
+    @objc optional func openReplan()
 }
 
 /// Every keyboard command, once, with the Mac app's keys — an iPad or iPhone keyboard is a

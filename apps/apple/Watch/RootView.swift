@@ -47,7 +47,16 @@ struct RootView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: Opened.reminded)) { note in
                 guard let reminded = note.object as? RemindedOf else { return }
-                if reminded.kind == "task" {
+                if reminded.replan {
+                    // The overrun warning's Replan: Replan from Now, the phone's screen.
+                    do {
+                        let model = try ProposalModel(core: core, kind: .replan)
+                        model.close = { [weak asker] in asker?.asked = nil }
+                        asker.show(ProposalForm(model: model).navigationTitle(model.words.title))
+                    } catch {
+                        core.failure = error.sentence
+                    }
+                } else if reminded.kind == "task" {
                     remindedTask = TaskOpened(id: reminded.target)
                 } else {
                     remindedDay = .today
