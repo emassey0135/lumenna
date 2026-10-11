@@ -17,8 +17,12 @@ fn a_list_sorted_by_urgency_puts_the_most_urgent_first_by_the_synced_weights() {
     let (_directory, lumenna) = open();
     lumenna.add_task("Low p4").unwrap();
     lumenna.add_task("High p1").unwrap();
-    assert_eq!(titles(&lumenna, ""), ["Low", "High"], "the person's own order");
+    assert_eq!(titles(&lumenna, ""), ["High", "Low"], "most urgent first, by default");
+    assert_eq!(titles(&lumenna, "sort: added"), ["Low", "High"]);
     assert_eq!(titles(&lumenna, "sort: urgency"), ["High", "Low"]);
+    lumenna.set_setting("task-order", "added").unwrap();
+    assert_eq!(titles(&lumenna, ""), ["Low", "High"], "the setting, synced");
+    assert_eq!(titles(&lumenna, "sort: urgency"), ["High", "Low"], "a query's own order wins");
     let rows = lumenna.list_tasks("p1 | p4 sort: urgency").unwrap();
     assert!(rows.query.unwrap().description.ends_with(", most urgent first"));
     // Weights that favour p4 turn the order round.

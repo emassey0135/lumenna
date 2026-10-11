@@ -138,14 +138,16 @@ impl<'a> Context<'a> {
     }
 }
 
-/// The order a list's query asks for, from its `sort:` clause.
+/// The order a task list is in: the `task-order` setting, or a query's `sort:` clause.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 pub enum Sort {
-    /// The person's own order: no clause.
+    /// Most urgent first among siblings, the order added breaking ties. The default.
     #[default]
-    Own,
-    /// Most urgent first among siblings, the person's order breaking ties.
     Urgency,
+    /// The order tasks were added: `sort: added`.
+    Added,
 }
 
 /// A name in a query that does not match anything in the store.

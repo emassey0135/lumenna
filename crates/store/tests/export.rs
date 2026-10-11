@@ -168,6 +168,7 @@ fn populated() -> Populated {
             blocked: -6.0,
             ..lumenna_core::urgency::Coefficients::default()
         },
+        task_order: lumenna_core::filter::Sort::Added,
     };
 
     let before = store.snapshot().0.settings;

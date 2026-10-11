@@ -71,9 +71,9 @@ fn replan_changes(proposal: &lumenna_surface::Replan) {
         println!("{:>3}  {}", n + 1, change.sentence);
     }
     if !proposal.alternatives.is_empty() {
-        println!("Other options, by --skip:");
-        for option in &proposal.alternatives {
-            println!("     {}", option.sentence);
+        println!("Other options, by --option:");
+        for (n, option) in proposal.alternatives.iter().enumerate() {
+            println!("{:>3}  {}", n + 1, option.sentence);
         }
     }
 }

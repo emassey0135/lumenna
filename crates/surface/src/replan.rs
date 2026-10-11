@@ -94,8 +94,9 @@ pub struct Replan {
     pub pins: ReplanPins,
     /// The clock its sentences are in, for the proposal that follows.
     pub style: TimeStyle,
-    /// Other options, each a block skipped and what that costs and saves: "Skip Lunch today,
-    /// your only break left today. Then nothing else needs to change." Choosing one asks
+    /// Other options, each a block let shorten below its minimum or skipped, with what that
+    /// costs and saves: "Let Lunch shorten from 30 minutes to 15 minutes: 15 minutes less
+    /// break. Then Review moves from 11:00 to 11:15 and shortens from 1 hour to 45 minutes." Choosing one asks
     /// [`Lumenna::replan`] again with its `pins`. Offered only where it does better.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub alternatives: Vec<ReplanAlternative>,
@@ -132,7 +133,27 @@ pub struct ReplanPins {
     /// Sittings left in their block.
     #[serde(default)]
     pub sittings: Vec<String>,
+    /// Blocks let shorten below their own minimum, as an option chose.
+    #[serde(default)]
+    #[cfg_attr(feature = "uniffi", uniffi(default = []))]
+    pub floors: Vec<ReplanFloor>,
 }
+
+/// A block let shorten below its own minimum, to as little as `minutes`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+pub struct ReplanFloor {
+    /// The block's series.
+    pub block: String,
+    /// The least it may be.
+    pub minutes: u32,
+}
+
+/// The least an option lets a work block shorten to: less is not worth sitting down for.
+const WORK_FLOOR: u32 = 15;
+/// The least an option lets a break shorten to.
+const BREAK_FLOOR: u32 = 10;
 
 /// A replan's accepted changes made, and what is proposed now.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -170,6 +191,14 @@ pub(crate) fn now_or(given: Option<&str>) -> Result<Zoned> {
                 .map_err(|_| LumennaError::new(format!("'{text}' is not a local date and time")))
         },
     )
+}
+
+/// How far a proposal moves and shrinks the day, in minutes: what an option is weighed by.
+fn upheaval(changes: &[ReplanChange]) -> i64 {
+    changes
+        .iter()
+        .map(|c| (c.to_start - c.from_start).abs() + i64::from(c.from_mins.saturating_sub(c.to_mins)))
+        .sum()
 }
 
 fn joined(sentences: &[String]) -> String {
@@ -340,7 +369,7 @@ impl Lumenna {
 impl Lumenna {
     /// The proposal for `pins`, with other options worked out when `alternatives`.
     fn propose(&self, style: TimeStyle, pins: ReplanPins, now: &Zoned, alternatives: bool) -> Result<Replan> {
-        let ReplanPins { keep, skip, sittings: kept_sittings } = pins.clone();
+        let ReplanPins { keep, skip, sittings: kept_sittings, floors } = pins.clone();
         let now = now.clone();
         let (snapshot, proposal, window_end, starts) = self.with(|store| {
             store.load_all_years()?;
@@ -354,6 +383,9 @@ impl Lumenna {
             }
             for id in &kept_sittings {
                 pins.push(Pin::KeepSitting(resolve::assignment_id(&snapshot, id)?));
+            }
+            for floor in &floors {
+                pins.push(Pin::Floor(resolve::series_id(&snapshot, &floor.block)?, floor.minutes));
             }
             let day = snapshot.day(now.date())?;
             // The day ends at the window's end; once the person has planned past it, at midnight,
@@ -465,22 +497,24 @@ impl Lumenna {
             crate::words::capitalised(&joined(&said))
         };
         let alternatives = if alternatives && !(changes.is_empty() && unplaceable.is_empty()) {
-            self.alternatives(&snapshot, style, &pins, &now, (unplaceable.len(), changes.len()))?
+            self.alternatives(&snapshot, style, &pins, &now, (unplaceable.len(), upheaval(&changes)))?
         } else {
             Vec::new()
         };
         Ok(Replan { announcement, notices: Vec::new(), changes, unplaceable, pins, style, alternatives })
     }
 
-    /// Skipping each block still to come today, where that does better than `score`
-    /// (what does not fit, then how much moves), best first: what it costs, and what follows.
+    /// Letting each block not yet over shorten below its minimum, or skipping it, where that
+    /// does better than `score` (what does not fit, then how far things move and shrink), the
+    /// cheaper first: what it costs, and what follows.
+    #[allow(clippy::too_many_lines)]
     fn alternatives(
         &self,
         snapshot: &Snapshot,
         style: TimeStyle,
         pins: &ReplanPins,
         now: &Zoned,
-        score: (usize, usize),
+        score: (usize, i64),
     ) -> Result<Vec<ReplanAlternative>> {
         let at = minutes_of(now.time());
         let mut day = snapshot.day(now.date())?;
@@ -502,7 +536,8 @@ impl Lumenna {
             let option = self.propose(style, tried.clone(), now, false)?;
             let own = |c: &ReplanChange| c.kind == "skip" && c.target == occurrence.series_id.to_string();
             let rest: Vec<String> = option.changes.iter().filter(|c| !own(c)).map(|c| c.sentence.clone()).chain(option.unplaceable.iter().cloned()).collect();
-            let better = (option.unplaceable.len(), option.changes.iter().filter(|c| !own(c)).count());
+            let others: Vec<ReplanChange> = option.changes.iter().filter(|c| !own(c)).cloned().collect();
+            let better = (option.unplaceable.len(), upheaval(&others));
             if better >= score {
                 continue;
             }
@@ -529,10 +564,62 @@ impl Lumenna {
                 String::new()
             };
             let then = if rest.is_empty() { "nothing else needs to change".to_owned() } else { joined(&rest).trim_end_matches('.').to_owned() };
-            found.push((better, ReplanAlternative { sentence: format!("Skip {name} today{cost}. Then {then}."), pins: tried }));
+            found.push((better, 1, ReplanAlternative { sentence: format!("Skip {name} today{cost}. Then {then}."), pins: tried }));
         }
-        found.sort_by_key(|(score, _)| *score);
-        Ok(found.into_iter().take(ALTERNATIVES).map(|(_, alternative)| alternative).collect())
+        // Shortening below a block's minimum: the minimum binds the main proposal, never an
+        // option, which says the price instead. Costs less than skipping, so it comes first.
+        for occurrence in later.iter().filter(|o| !o.flags.anchored && o.kind != lumenna_core::model::BlockKind::Event) {
+            let least = if occurrence.kind == lumenna_core::model::BlockKind::Break {
+                (occurrence.duration_mins / 2).max(BREAK_FLOOR)
+            } else {
+                WORK_FLOOR
+            };
+            if least >= occurrence.min_duration_mins || pins.floors.iter().any(|f| occurrence.series_id.to_string().starts_with(f.block.as_str())) {
+                continue;
+            }
+            let mut tried = pins.clone();
+            tried.floors.push(ReplanFloor { block: occurrence.series_id.to_string(), minutes: least });
+            let option = self.propose(style, tried.clone(), now, false)?;
+            let better = (option.unplaceable.len(), upheaval(&option.changes));
+            if better >= score {
+                continue;
+            }
+            // How short it would be, as the option proposes it: only below its minimum counts.
+            let Some(to) = option
+                .changes
+                .iter()
+                .find(|c| c.kind == "block" && c.target == occurrence.series_id.to_string())
+                .map(|c| c.to_mins)
+                .filter(|to| *to < occurrence.min_duration_mins)
+            else {
+                continue;
+            };
+            let name = title(snapshot, occurrence.series_id);
+            let shorten = if occurrence.kind == lumenna_core::model::BlockKind::Break {
+                format!(
+                    "Let {name} shorten from {} to {}: {} less break",
+                    duration(occurrence.duration_mins),
+                    duration(to),
+                    duration(occurrence.duration_mins - to)
+                )
+            } else {
+                format!("Let {name} shorten to {}, under its minimum of {}", duration(to), duration(occurrence.min_duration_mins))
+            };
+            let rest: Vec<String> = option
+                .changes
+                .iter()
+                .filter(|c| c.target != occurrence.series_id.to_string())
+                .map(|c| c.sentence.clone())
+                .chain(option.unplaceable.iter().cloned())
+                .collect();
+            let then = if rest.is_empty() { "nothing else needs to change".to_owned() } else { joined(&rest).trim_end_matches('.').to_owned() };
+            found.push((better, 0, ReplanAlternative {
+                sentence: format!("{shorten}. Then {then}."),
+                pins: tried,
+            }));
+        }
+        found.sort_by_key(|((unfit, moved), dearer, _)| (*unfit, *dearer, *moved));
+        Ok(found.into_iter().take(ALTERNATIVES).map(|(_, _, alternative)| alternative).collect())
     }
 }
 

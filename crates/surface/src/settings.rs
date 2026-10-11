@@ -41,6 +41,13 @@ impl Lumenna {
             ("week-start", format!("{:?}", settings.week_start).to_lowercase()),
             ("default-task-reminders", phrases(&settings.default_task_reminders)),
             ("default-block-reminders", phrases(&settings.default_block_reminders)),
+            (
+                "task-order",
+                match settings.task_order {
+                    lumenna_core::filter::Sort::Urgency => "urgency".to_owned(),
+                    lumenna_core::filter::Sort::Added => "added".to_owned(),
+                },
+            ),
             ("urgency-weights", weights_phrase(&settings.urgency)),
         ]
         .into_iter()
@@ -104,6 +111,13 @@ impl Lumenna {
                 "default-task-reminders" => after.default_task_reminders = triggers(value, false)?,
                 "default-block-reminders" => after.default_block_reminders = triggers(value, true)?,
                 "urgency-weights" => after.urgency = weights(value)?,
+                "task-order" => {
+                    after.task_order = match value.to_lowercase().as_str() {
+                        "urgency" => lumenna_core::filter::Sort::Urgency,
+                        "added" => lumenna_core::filter::Sort::Added,
+                        _ => return Err(LumennaError::new("task order is urgency or added")),
+                    };
+                }
                 other => return Err(LumennaError::new(format!("no setting called '{other}'"))),
             }
             let change = edit::update_settings(before, after);
@@ -428,6 +442,12 @@ fn described(key: &str, value: String) -> Setting {
             K::Line,
             Vec::new(),
             "Such as 5m before start, or at end; several separated by commas. Empty for none. A block with reminders of its own takes those instead.",
+        ),
+        "task-order" => (
+            "Task lists are in",
+            K::Choice,
+            options(&[("urgency", "Most urgent first"), ("added", "The order added")]),
+            "A subtask stays under its task either way. A list's query can end in sort: urgency or sort: added to choose for itself.",
         ),
         "urgency-weights" => (
             "How urgency is weighed",

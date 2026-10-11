@@ -204,7 +204,9 @@ fn bare(
                     out.push(Candidate::new(CandidateKind::Operator, word, word));
                 }
                 // After a whole filter, a list's query may end in its order.
-                out.push(Candidate::new(CandidateKind::Keyword, "sort: urgency", "sort: urgency"));
+                for order in ["sort: urgency", "sort: added"] {
+                    out.push(Candidate::new(CandidateKind::Keyword, order, order));
+                }
             }
             Expected::Project => {
                 out.push(Candidate::new(CandidateKind::Project, "#", "#"));

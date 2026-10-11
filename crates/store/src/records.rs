@@ -946,6 +946,10 @@ pub(crate) fn read_settings<D: ReadDoc>(r: &Reader<'_, D>) -> Settings {
             .and_then(|n| i8::try_from(n).ok())
             .and_then(|n| civil::Weekday::from_monday_zero_offset(n).ok())
             .unwrap_or(defaults.week_start),
+        task_order: match r.string("task_order").as_deref() {
+            Some("added") => lumenna_core::filter::Sort::Added,
+            _ => lumenna_core::filter::Sort::Urgency,
+        },
         urgency: {
             // A weight each, so two devices changing different ones both keep theirs.
             let d = defaults.urgency;
@@ -1017,6 +1021,11 @@ pub(crate) fn write_settings<T: Transactable>(
             ("assigned_today", c.assigned_today),
         ]
     };
+    let order = |o: lumenna_core::filter::Sort| match o {
+        lumenna_core::filter::Sort::Urgency => "urgency",
+        lumenna_core::filter::Sort::Added => "added",
+    };
+    w.set_string("task_order", before.map(|b| order(b.task_order)), order(now.task_order))?;
     let was = before.map(|b| weights(&b.urgency));
     for (index, (key, value)) in weights(&now.urgency).into_iter().enumerate() {
         w.set_f32(&format!("urgency_{key}"), was.map(|was| was[index].1), value)?;

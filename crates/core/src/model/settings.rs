@@ -36,6 +36,9 @@ pub struct Settings {
     /// How much each part of a task's urgency counts.
     #[cfg_attr(feature = "serde", serde(default))]
     pub urgency: crate::urgency::Coefficients,
+    /// The order task lists are in, unless a query says otherwise.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub task_order: crate::filter::Sort,
 }
 
 impl Default for Settings {
@@ -49,6 +52,7 @@ impl Default for Settings {
             day_window: (civil::time(8, 0, 0, 0), civil::time(22, 0, 0, 0)),
             week_start: civil::Weekday::Monday,
             urgency: crate::urgency::Coefficients::default(),
+            task_order: crate::filter::Sort::Urgency,
         }
     }
 }
