@@ -303,7 +303,14 @@ def install() -> None:
     host.push_app_context = lambda *a, **k: None
     host.pop_app_context = lambda *a, **k: None
     host.say = lambda text, *a, **k: given.append(("say", text))
-    host.play_sound = lambda name, *a, **k: given.append(("sound", name))
+
+    def say_brl(text, *a, **k):
+        # As the device's: speech, then the display's message.
+        given.append(("say", text))
+        given.append(("braille", text))
+
+    host.say_brl = say_brl
+    host.getDataDirectory = lambda: "/BTSpeak/Data"
     brl = types.ModuleType("BTSpeak.brl")
     brl.push_message = lambda text, *a, **k: given.append(("braille", text))
     dialogs = types.ModuleType("BTSpeak.dialogs")

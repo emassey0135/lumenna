@@ -67,6 +67,8 @@ class Reminders(unittest.TestCase):
         shutil.rmtree(self.profile, ignore_errors=True)
 
     def giver(self, at: dict, on=lambda: True):
+        # The sound file the device plays, recorded rather than played.
+        reminders.play = lambda path: btspeak_stub.given.append(("sound", Path(path).stem))
         giver = reminders.Giver(open_client=lambda: connect(self.profile), on=on, now=lambda: at["now"])
         self.givers.append(giver)
         return giver
