@@ -161,6 +161,18 @@ pub(crate) enum Command {
         #[arg(long, num_args = 0..=1, default_missing_value = "all")]
         apply: Option<String>,
     },
+    /// Plan a whole day: each work block still to come given its most urgent tasks until
+    /// full. Says the plan, and makes it only with --apply.
+    PlanDay {
+        /// The day, such as tomorrow; today when left out.
+        date: Option<String>,
+        /// Leave this task out (a row number, or its identifier).
+        #[arg(long)]
+        leave: Vec<String>,
+        /// Make the sittings proposed: all of them, or those numbered, such as 1,3.
+        #[arg(long, num_args = 0..=1, default_missing_value = "all")]
+        apply: Option<String>,
+    },
     /// Put the rest of a sitting's planned time in another block.
     Carry {
         /// A row number from `lum plan`, or the assignment identifier.
@@ -1061,30 +1073,22 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         }
         Command::EndDay => Response::new(profile.end_day(true)?),
         Command::ClearDay => Response::new(profile.end_day(false)?),
+        Command::PlanDay { date, leave, apply } => {
+            let leave = leave.iter().map(|row| profile.row(row, "task")).collect::<std::result::Result<Vec<_>, _>>()?;
+            let proposal = profile.propose_day_plan(date.clone(), time_style(profile), leave, None)?;
+            match apply.as_deref() {
+                None => Response::new(proposal),
+                Some(numbers) => Response::new(profile.apply_day_plan(numbered(numbers, proposal.sittings)?)?),
+            }
+        }
         Command::Replan { keep, skip, apply } => {
             let series = |rows: &[String]| -> Result<Vec<String>> {
                 rows.iter().map(|row| Ok(profile.row(row, "block")?.split('@').next().unwrap_or_default().to_owned())).collect()
             };
-            let style = match clock(profile) {
-                render::Clock::TwelveHour => lumenna_surface::TimeStyle::TwelveHour,
-                render::Clock::TwentyFourHour => lumenna_surface::TimeStyle::TwentyFourHour,
-            };
-            let proposal = profile.replan(style, series(keep)?, series(skip)?, None)?;
+            let proposal = profile.replan(time_style(profile), series(keep)?, series(skip)?, None)?;
             match apply.as_deref() {
                 None => Response::new(proposal),
-                Some("all") => Response::new(profile.apply_replan(proposal.changes, None)?),
-                Some(numbers) => {
-                    let mut chosen = Vec::new();
-                    for number in numbers.split(',') {
-                        let n: usize = number.trim().parse().map_err(|_| {
-                            CliError::Message(format!("'{number}' is not the number of a change"))
-                        })?;
-                        chosen.push(proposal.changes.get(n.wrapping_sub(1)).cloned().ok_or_else(|| {
-                            CliError::Message(format!("there is no change {n}: {} proposed", proposal.changes.len()))
-                        })?);
-                    }
-                    Response::new(profile.apply_replan(chosen, None)?)
-                }
+                Some(numbers) => Response::new(profile.apply_replan(numbered(numbers, proposal.changes)?, None)?),
             }
         }
         Command::Carry { assignment, to } => {
@@ -1294,6 +1298,7 @@ fn listing_of(outcome: &Outcome) -> Option<Vec<(String, String)>> {
         | Outcome::Value(_)
         | Outcome::History(_)
         | Outcome::Replan(_)
+        | Outcome::DayPlan(_)
         | Outcome::DueReminders(_)
         | Outcome::Reminders(_)
         | Outcome::Server(_)
@@ -1328,6 +1333,33 @@ fn confirmed(actions: Option<Vec<lumenna_surface::Action>>, kind: ActionKind, ye
     let mut answer = String::new();
     std::io::stdin().read_line(&mut answer)?;
     Ok(answer.trim() == "yes")
+}
+
+/// The clock a proposal is said in: this device's `clock` setting.
+fn time_style(profile: &Profile) -> lumenna_surface::TimeStyle {
+    match clock(profile) {
+        render::Clock::TwelveHour => lumenna_surface::TimeStyle::TwelveHour,
+        render::Clock::TwentyFourHour => lumenna_surface::TimeStyle::TwentyFourHour,
+    }
+}
+
+/// The items of a proposal `--apply` names: `all`, or numbers as printed, such as 1,3.
+fn numbered<T: Clone>(numbers: &str, items: Vec<T>) -> Result<Vec<T>> {
+    if numbers == "all" {
+        return Ok(items);
+    }
+    numbers
+        .split(',')
+        .map(|number| {
+            let n: usize = number
+                .trim()
+                .parse()
+                .map_err(|_| CliError::Message(format!("'{number}' is not the number of a change")))?;
+            items.get(n.wrapping_sub(1)).cloned().ok_or_else(|| {
+                CliError::Message(format!("there is no change {n}: {} proposed", items.len()))
+            })
+        })
+        .collect()
 }
 
 /// A reminder's target from a row of the last listing, a task's or a block's.

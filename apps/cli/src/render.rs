@@ -114,6 +114,15 @@ fn text(response: &Response, clock: Clock) {
                 println!("{:>3}  {}", n + 1, change.sentence);
             }
         }
+        Outcome::DayPlan(plan) => {
+            println!("{}", response.announcement());
+            for (n, sitting) in plan.sittings.iter().enumerate() {
+                println!("{:>3}  {}", n + 1, sitting.sentence);
+                if let Some(reason) = &sitting.reason {
+                    println!("     {reason}");
+                }
+            }
+        }
         Outcome::History(found) => {
             println!("{}", response.announcement());
             for part in &found.history {
