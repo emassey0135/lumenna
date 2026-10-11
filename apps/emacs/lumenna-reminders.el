@@ -49,6 +49,13 @@ The echo area, and Emacsvox or Emacspeak, say it either way."
 (defconst lumenna-reminders-interval 20
   "How often, in seconds, to ask what came due.")
 
+(defconst lumenna-reminders-waiting-interval 5
+  "How often, in seconds, to ask while another process gives reminders.
+Soon after it stops, this one takes over.")
+
+(defvar lumenna-reminders--every lumenna-reminders-interval
+  "The timer's interval now: shorter while another process gives reminders.")
+
 (defvar lumenna-reminders--now nil
   "For tests: a function of no arguments giving the moment to deliver at, RFC 3339.
 Nil asks the core for now.")
@@ -128,6 +135,7 @@ ran, a plist with `:summary' and `:missed', the missed reminders.")
          (lumenna--params (list :now (and lumenna-reminders--now (funcall lumenna-reminders--now))))
          :success-fn (lambda (found)
                        (setq lumenna-reminders--asking nil)
+                       (lumenna-reminders--pace (lumenna--true (plist-get found :elsewhere)))
                        (lumenna-reminders--give found))
          :error-fn (lambda (err)
                      (setq lumenna-reminders--asking nil)
@@ -136,6 +144,18 @@ ran, a plist with `:summary' and `:missed', the missed reminders.")
          :timeout 30)
       (error (setq lumenna-reminders--asking nil)
              (message "Lumenna reminders: %s" (error-message-string err))))))
+
+(defun lumenna-reminders--start (every)
+  "Ask what came due every EVERY seconds from now."
+  (when lumenna-reminders--timer (cancel-timer lumenna-reminders--timer))
+  (setq lumenna-reminders--every every
+        lumenna-reminders--timer (run-at-time every every #'lumenna-reminders-deliver)))
+
+(defun lumenna-reminders--pace (elsewhere)
+  "Ask more often while ELSEWHERE, another process giving reminders; silently."
+  (let ((every (if elsewhere lumenna-reminders-waiting-interval lumenna-reminders-interval)))
+    (when (and lumenna-reminders-mode (/= every lumenna-reminders--every))
+      (lumenna-reminders--start every))))
 
 (defun lumenna-reminders--focus-changed ()
   "Ask again on coming back to Emacs, as an app does on coming to the front."
@@ -154,8 +174,8 @@ and shown, unless another process on this device already gives them."
     (setq lumenna-reminders--timer nil))
   (remove-function after-focus-change-function #'lumenna-reminders--focus-changed)
   (when lumenna-reminders-mode
-    (setq lumenna-reminders--timer
-          (run-at-time 0 lumenna-reminders-interval #'lumenna-reminders-deliver))
+    (lumenna-reminders--start lumenna-reminders-interval)
+    (lumenna-reminders-deliver)
     (add-function :after after-focus-change-function #'lumenna-reminders--focus-changed)))
 
 (defun lumenna-reminders--connected ()

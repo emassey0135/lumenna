@@ -129,6 +129,29 @@
                                    :due)
                         nil))))
 
+(ert-deftest lumenna-while-another-process-gives-reminders-emacs-asks-every-five-seconds-silently ()
+  (lumenna-test--reminding
+    (let (other
+          (lumenna-reminders-mode t)
+          (lumenna-reminders--every lumenna-reminders-interval)
+          (lumenna-reminders--timer nil))
+      (unwind-protect
+          (progn
+            ;; Another connection takes the right first.
+            (let ((lumenna--connection nil))
+              (lumenna-call "reminder.deliver" :now "2030-01-15T08:40:00Z")
+              (setq other lumenna--connection))
+            (setq said nil)
+            (lumenna-test--deliver)
+            (should (= lumenna-reminders--every 5))
+            (should-not said)
+            (jsonrpc-shutdown other)
+            (sleep-for 0.3)
+            (lumenna-test--deliver)
+            (should (= lumenna-reminders--every 20)))
+        (when lumenna-reminders--timer (cancel-timer lumenna-reminders--timer))
+        (when other (ignore-errors (jsonrpc-shutdown other)))))))
+
 (ert-deftest lumenna-what-came-while-nothing-ran-is-one-summary-dismissed-from-the-due-list ()
   (lumenna-test--reminding
     (lumenna-write "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "2030-01-15")
