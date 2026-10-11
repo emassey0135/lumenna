@@ -815,6 +815,13 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   `window::spawn` waits for it to close, so a dialog is not mapped under a closing menu.
 - **A keyboard context menu opens when its keys are let go**: a popover opened on
   Shift+F10's press is closed by the releases.
+- **Reminders are `GNotification`s** (`reminders.rs`), so GNOME Shell shows them and Orca
+  reads them as it reads any other; their buttons and opening are application actions
+  (`app.reminder-dismiss`, `-snooze`, `-open`), which reach the app with its window closed.
+  It asks for `take_reminders` every five seconds until it has them, then delivers every 20.
+  The UI tests stand in for the shell with a notification server on the private bus
+  (`harness.Notifications`), started before the app, which picks its backend at the first
+  notification.
 - **It serves the command surface while it holds the sync endpoint** (`Core::start_syncing`,
   the surface's `rpc` feature), and stops serving before it stops syncing.
 - **One instance per profile** through GApplication's bus name, tagged per profile.

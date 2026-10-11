@@ -23,6 +23,7 @@ mod help;
 mod pairing;
 mod prompts;
 mod quick_add;
+mod reminders;
 mod settings;
 mod shortcuts;
 mod sidebar;

@@ -287,6 +287,7 @@ impl App {
         });
         self.core.start_syncing();
         self.core.back_up_if_due();
+        crate::reminders::start(self);
         crate::tray::start();
         if shortcuts {
             let parent = self.window.is_visible().then(|| self.window.clone().upcast::<gtk::Window>());
