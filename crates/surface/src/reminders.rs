@@ -54,6 +54,11 @@ pub struct DueReminder {
     pub dismiss: String,
     /// The notification's button that snoozes it for [`SNOOZE_MINS`].
     pub snooze: String,
+    /// At a block's end with work left short: the button that carries it forward
+    /// ([`Lumenna::carry_rest_forward`] of `target@occurrence`). Empty when there is none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[cfg_attr(feature = "uniffi", uniffi(default = ""))]
+    pub carry: String,
 }
 
 /// What reminders to give now, or over a while.
@@ -190,6 +195,18 @@ fn words(firing: &Firing, snapshot: &Snapshot, verbosity: Verbosity) -> (String,
     (title, text, missed)
 }
 
+/// What a block's end says of the work it left short, and whether any of it can go on.
+fn carry_words(firing: &Firing, snapshot: &Snapshot) -> Option<(String, bool)> {
+    let ReminderTarget::Block(series) = firing.target else { return None };
+    if !firing.carry {
+        return None;
+    }
+    let now = firing.at.to_zoned(jiff::tz::TimeZone::system());
+    let offers = crate::carry::offers(snapshot, series, firing.occurrence, &now);
+    let words = crate::carry::offer_words(&offers, now.date())?;
+    Some((words, offers.iter().any(|o| o.to.is_some())))
+}
+
 /// "3 tasks assigned, first is Review PR", or nothing for a block that takes no tasks.
 fn sittings_detail(snapshot: &Snapshot, series: lumenna_core::SeriesId, date: jiff::civil::Date) -> Option<String> {
     let block = snapshot.series.get(&series)?;
@@ -213,6 +230,11 @@ fn sittings_detail(snapshot: &Snapshot, series: lumenna_core::SeriesId, date: ji
 
 fn notification(firing: &Firing, snapshot: &Snapshot, verbosity: Verbosity) -> DueReminder {
     let (title, text, missed) = words(firing, snapshot, verbosity);
+    let carried = carry_words(firing, snapshot);
+    let text = match &carried {
+        Some((offer, _)) => format!("{}. {offer}", text.trim_end_matches('.')),
+        None => text,
+    };
     let (target, kind) = match firing.target {
         ReminderTarget::Task(id) => (id.to_string(), "task"),
         ReminderTarget::Block(id) => (id.to_string(), "block"),
@@ -228,6 +250,7 @@ fn notification(firing: &Firing, snapshot: &Snapshot, verbosity: Verbosity) -> D
         missed,
         dismiss: "Dismiss".to_owned(),
         snooze: format!("Snooze {}", crate::actions::title_case(&duration(SNOOZE_MINS))),
+        carry: if carried.is_some_and(|(_, movable)| movable) { "Carry Forward".to_owned() } else { String::new() },
     }
 }
 

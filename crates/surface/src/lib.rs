@@ -43,7 +43,9 @@ mod organise;
 pub mod places;
 mod planning;
 pub mod dayplan;
+mod carry;
 pub mod replan;
+mod whatnow;
 pub mod reminders;
 mod resolve;
 #[cfg(all(feature = "rpc", any(unix, windows)))]

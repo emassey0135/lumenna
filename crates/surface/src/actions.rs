@@ -123,9 +123,14 @@ pub enum ActionKind {
     ClearDay,
     /// Put the rest of a sitting's planned time in another block.
     CarryForward,
-    /// Replan the rest of today: the app's own screen over `Lumenna::replan`. Not offered
-    /// until every app has that screen; an app opens a form action it does not know as another.
+    /// Asked of today: what to work on now, and starting on it.
+    WhatNow,
+    /// Carry the rest of every sitting a block left short to the next block that takes it.
+    CarryRest,
+    /// Replan the rest of today: the app's own screen over `Lumenna::replan`.
     Replan,
+    /// Plan a whole day: the app's own screen over `Lumenna::propose_day_plan`.
+    PlanDay,
 }
 
 /// What an action is done to: with [`ActionKind`], what runs.
@@ -356,7 +361,12 @@ fn action(kind: ActionKind, subject: Subject, title: impl Into<String>, target: 
         destructive: matches!(kind, ActionKind::Delete | ActionKind::DeleteForGood | ActionKind::Unassign | ActionKind::Unpair),
         question: if matches!(
             kind,
-            ActionKind::Edit | ActionKind::EditTask | ActionKind::AddBlock | ActionKind::Reminders | ActionKind::Replan
+            ActionKind::Edit
+                | ActionKind::EditTask
+                | ActionKind::AddBlock
+                | ActionKind::Reminders
+                | ActionKind::Replan
+                | ActionKind::PlanDay
         ) {
             Question::Form
         } else {
@@ -870,7 +880,7 @@ fn rows_ids(rows: &Rows) -> Vec<Option<RowId>> {
 }
 
 /// Gives a day's blocks, sittings, free time and cancelled days their actions.
-pub(crate) fn fill_plan(plan: &mut crate::types::Plan, carries: &BTreeSet<String>) {
+pub(crate) fn fill_plan(plan: &mut crate::types::Plan, carries: &BTreeSet<String>, what_now: bool) {
     for block in &mut plan.blocks {
         for sitting in &mut block.assignments {
             sitting.actions = self::sitting(sitting);
@@ -888,8 +898,15 @@ pub(crate) fn fill_plan(plan: &mut crate::types::Plan, carries: &BTreeSet<String
             }
         }
         block.actions = self::block(block);
+        // What its end offers: the rest of every sitting it left short, each to its next block.
+        if block.assignments.iter().filter(|s| carries.contains(&s.id)).count() > 1 {
+            let mut all = action(ActionKind::CarryRest, Subject::Block, "Carry the Rest Forward", block.id.clone());
+            all.question = Question::Immediate;
+            let at = block.actions.len().saturating_sub(1);
+            block.actions.insert(at, all);
+        }
     }
-    plan.actions = crate::day::day_actions(plan);
+    plan.actions = crate::day::day_actions(plan, what_now);
     for item in &mut plan.timeline {
         if let PlanItem::Free { start, actions, .. } = item {
             *actions = free_time(&plan.date, start);
@@ -1028,6 +1045,9 @@ impl Lumenna {
         use ActionKind as K;
         if (action.subject, action.kind) == (Subject::Task, K::PutInBlock) {
             return self.blocks_for(Some(&action.target), None, Some(7));
+        }
+        if (action.subject, action.kind) == (Subject::Day, K::WhatNow) {
+            return self.what_now_choices(&Zoned::now());
         }
         if (action.subject, action.kind) == (Subject::Sitting, K::CarryForward) {
             let task = self.with(|store| {
@@ -1211,6 +1231,8 @@ impl Lumenna {
             (S::Sitting, K::CarryForward) => self.carry_forward(target, &answer_pick(&answer)?.0),
             (S::Block, K::EndNow) => self.end_block_now(target),
             (S::Block, K::Extend) => self.extend_block(target, crate::day::EXTEND_MINS),
+            (S::Block, K::CarryRest) => self.carry_rest_forward(target),
+            (S::Day, K::WhatNow) => self.work_on(&answer_pick(&answer)?.0, &Zoned::now()),
             (S::Day, K::EndDay) => self.end_day(true),
             (S::Day, K::ClearDay) => self.end_day(false),
             (S::Project, K::Rename) => self.rename_project(target, &answer_text(&answer)?),

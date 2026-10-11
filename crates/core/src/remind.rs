@@ -44,6 +44,9 @@ pub struct Firing {
     pub snoozed: bool,
     /// Whether the task's due date has no time, so `anchor_at` is the all-day hour.
     pub all_day: bool,
+    /// Whether, at a block's end, sittings in it fell short of their time with their tasks
+    /// still open, so the rest can be carried forward: said with the end, or fired by itself.
+    pub carry: bool,
 }
 
 /// The instant a civil date and time name in `zone`: forward across a skipped hour, the
@@ -90,6 +93,25 @@ pub fn default_key(target: &ReminderTarget, trigger: &Trigger) -> ReminderId {
     feed(anchor);
     feed(&trigger.offset_mins.to_le_bytes());
     ReminderId::from_uuid(Uuid::from_u128(hash))
+}
+
+/// The key a block's end fires under when it fires only to offer carrying work forward: fixed
+/// forever, as [`default_key`] is.
+#[must_use]
+pub fn carry_key(series: crate::id::SeriesId) -> ReminderId {
+    default_key(&ReminderTarget::Block(series), &Trigger { anchor: ReminderAnchor::BlockEnd, offset_mins: i32::MIN })
+}
+
+/// Whether `block`'s sittings include one left short of its planned time, its task still open.
+#[must_use]
+pub fn falls_short(snapshot: &Snapshot, facts: &crate::state::Facts<'_>, block: crate::model::BlockRef) -> bool {
+    use crate::model::AssignmentStatus as S;
+    snapshot.assignments.values().any(|a| {
+        a.block_ref == block
+            && matches!(a.status, S::Planned | S::InProgress | S::Worked)
+            && a.planned_mins.is_some_and(|planned| a.accumulated_mins < planned)
+            && snapshot.tasks.get(&a.task_id).is_some_and(|t| !t.is_deleted() && !facts.is_completed(t))
+    })
 }
 
 /// Every firing in `(from, until]`, in time order, for `device` (`None` for a device with no
@@ -193,7 +215,18 @@ pub fn firings(
                 continue;
             }
             let at = anchor_at.saturating_add(offset(&trigger)).unwrap_or(anchor_at);
-            consider(Firing { key, own: is_own, target, occurrence: due.date, trigger, anchor_at, at, snoozed: false, all_day });
+            consider(Firing {
+                key,
+                own: is_own,
+                target,
+                occurrence: due.date,
+                trigger,
+                anchor_at,
+                at,
+                snoozed: false,
+                all_day,
+                carry: false,
+            });
         }
     }
 
@@ -210,6 +243,15 @@ pub fn firings(
             .saturating_add(SignedDuration::from_mins(i64::from(occurrence.duration_mins)))
             .unwrap_or(start);
         let target = ReminderTarget::Block(occurrence.series_id);
+        // Work left short is offered on at the end: with the first reminder at or after the
+        // end, or, without one, by a firing of its own then. A scheduling device arms it from
+        // the sittings as they stand, and re-arms as they change.
+        let reference = if series.is_recurring() {
+            crate::model::BlockRef::Occurrence(occurrence.series_id, occurrence.date)
+        } else {
+            crate::model::BlockRef::OneOff(occurrence.series_id)
+        };
+        let mut carry = series.flags.accepts_tasks && falls_short(snapshot, &facts, reference);
         for (key, trigger, is_own) in triggers(target, &snapshot.settings.default_block_reminders) {
             let anchor_at = match trigger.anchor {
                 ReminderAnchor::BlockStart => start,
@@ -217,6 +259,8 @@ pub fn firings(
                 _ => continue,
             };
             let at = anchor_at.saturating_add(offset(&trigger)).unwrap_or(anchor_at);
+            let carries = carry && matches!(trigger.anchor, ReminderAnchor::BlockEnd) && trigger.offset_mins >= 0;
+            carry &= !carries;
             consider(Firing {
                 key,
                 own: is_own,
@@ -227,6 +271,21 @@ pub fn firings(
                 at,
                 snoozed: false,
                 all_day: false,
+                carry: carries,
+            });
+        }
+        if carry {
+            consider(Firing {
+                key: carry_key(occurrence.series_id),
+                own: false,
+                target,
+                occurrence: occurrence.date,
+                trigger: Trigger::at(ReminderAnchor::BlockEnd),
+                anchor_at: end,
+                at: end,
+                snoozed: false,
+                all_day: false,
+                carry: true,
             });
         }
     }
@@ -248,6 +307,7 @@ pub fn firings(
                 at,
                 snoozed: false,
                 all_day: false,
+                carry: false,
             });
         }
     }

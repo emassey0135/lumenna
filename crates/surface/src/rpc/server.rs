@@ -645,6 +645,11 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         }
         "choices" => Response::new(l.choices(record(params, "action")?)?),
         "places" => Response::new(l.places()),
+        // What a block's end offers: its short work carried to the next blocks that take it.
+        "carry_rest" => Response::new(l.carry_rest_forward(&text_of(params, "block")?)?),
+        // What to work on now, and starting on it.
+        "what_now" => Response::new(l.what_should_i_work_on(maybe_text(params, "now"))?),
+        "start_on" => Response::new(l.start_on(&text_of(params, "choice")?, maybe_text(params, "now"))?),
         // Replanning the rest of today: a proposal, then the changes the person accepted.
         "replan" => Response::new(l.replan(
             time_style(params)?,

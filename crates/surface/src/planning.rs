@@ -202,7 +202,8 @@ impl Lumenna {
                 actions: Vec::new(),
             };
             let carries = crate::day::carries(&snapshot, &plan, &now);
-            crate::actions::fill_plan(&mut plan, &carries);
+            let what_now = crate::whatnow::offered(&snapshot, &now);
+            crate::actions::fill_plan(&mut plan, &carries, what_now);
             Ok(plan)
         })
     }
@@ -984,7 +985,7 @@ fn summary(blocks: &[PlanBlock], overdue: Option<usize>) -> String {
 /// A one-off block's assignment names no date, so its year is its series' — and a series
 /// this device has not loaded gives no answer. Guessing would write the edit into a document
 /// for the wrong year, holding a fragment of the record, so it is an error instead.
-fn assignment_year(snapshot: &Snapshot, id: AssignmentId) -> Result<i16> {
+pub(crate) fn assignment_year(snapshot: &Snapshot, id: AssignmentId) -> Result<i16> {
     snapshot
         .assignments
         .get(&id)

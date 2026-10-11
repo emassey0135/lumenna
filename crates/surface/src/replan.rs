@@ -261,7 +261,7 @@ impl Lumenna {
                                 .date
                                 .as_deref()
                                 .and_then(|d| d.parse().ok())
-                                .map(|d| lumenna_core::time::day_words(d, now.date()))
+                                .map(|d| crate::carry::on_day(d, now.date()))
                                 .unwrap_or_default();
                             let at = to.start.as_deref().and_then(|t| t.parse::<jiff::civil::Time>().ok()).map(minutes_of);
                             let at = at.map_or_else(String::new, |at| format!(" at {}", clock(at, style)));
