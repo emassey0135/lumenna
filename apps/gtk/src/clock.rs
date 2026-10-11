@@ -26,6 +26,17 @@ impl Locale {
     fn twelve_hour(&self) -> Option<bool> {
         self.interface.as_ref().map(|settings| settings.string("clock-format") == "12h")
     }
+
+    /// The clock the core is to say times in, for what it words whole: a replan's changes.
+    /// The desktop's setting, else whether the locale's own time says 13:00 as 13.
+    pub fn style(&self) -> lumenna_surface::TimeStyle {
+        let twelve = self.twelve_hour().unwrap_or_else(|| {
+            glib::DateTime::from_local(2000, 1, 1, 13, 0, 0.0)
+                .and_then(|time| time.format("%X"))
+                .is_ok_and(|text| !text.contains("13"))
+        });
+        if twelve { lumenna_surface::TimeStyle::TwelveHour } else { lumenna_surface::TimeStyle::TwentyFourHour }
+    }
 }
 
 impl Clock for Locale {

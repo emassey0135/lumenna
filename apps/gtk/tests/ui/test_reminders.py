@@ -18,16 +18,16 @@ def utc(moment):
 
 class DeliveryTest(unittest.TestCase):
     def setUp(self):
-        # The firing must be today, a few minutes back, whatever time the tests run.
-        if ago(10).date() != datetime.date.today():
-            self.skipTest("too near midnight for a reminder earlier today")
         self.notifications = Notifications()
         self.addCleanup(self.notifications.stop)
 
     def start(self, due_minutes_ago, delivered_minutes_ago):
-        due = ago(due_minutes_ago).strftime("%H:%M")
+        # Named by its day, which after midnight can be yesterday.
+        due = ago(due_minutes_ago)
+        day = "today" if due.date() == datetime.date.today() else "yesterday"
         self.session = Session(
-            [("config", "set", "default-task-reminders", "at due"), ("task", "add", f"Call the bank today at {due}")],
+            [("config", "set", "default-task-reminders", "at due"),
+             ("task", "add", f"Call the bank {day} at {due.strftime('%H:%M')}")],
             device_settings={"reminders-delivered": utc(ago(delivered_minutes_ago))},
         )
         self.addCleanup(self.session.close)

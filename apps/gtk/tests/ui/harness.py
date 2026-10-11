@@ -228,8 +228,13 @@ class Session:
             LUMENNA_BACKUP_DIR=str(Path(self.directory) / "backups"),
             **(environment or {}),
         )
+        # Each a `lum` command, or a function of the session for what needs an earlier
+        # command's answer.
         for command in seed:
-            self.lum(*command)
+            if callable(command):
+                command(self)
+            else:
+                self.lum(*command)
         if device_settings:
             lines = "".join(f"{key}\t{value}\n" for key, value in device_settings.items())
             (Path(self.directory) / "profile" / "device-settings").write_text(lines)

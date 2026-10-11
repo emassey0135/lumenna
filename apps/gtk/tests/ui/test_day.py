@@ -8,7 +8,7 @@ from harness import Atspi, Session
 # A block over the whole day is happening now whenever the tests run.
 SEED = [
     ("task", "add", "Write the report"),
-    ("block", "add", "All day", "--at", "00:00", "--minutes", "1439"),
+    ("block", "add", "All day", "--at", "00:00", "--minutes", "1440"),
 ]
 
 

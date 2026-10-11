@@ -27,7 +27,8 @@ use crate::actions;
 /// One row of the day.
 #[derive(Clone)]
 enum Row {
-    Summary(String),
+    /// The day's heading, with the day's own actions.
+    Summary(String, Vec<Action>),
     Block(PlanBlock),
     Sitting(PlanAssignment),
     Free { start: String, end: String, title: String, details: Vec<String>, actions: Vec<Action> },
@@ -39,7 +40,7 @@ impl Row {
     /// What identifies it across a reload, for keeping the selection.
     fn key(&self) -> String {
         match self {
-            Self::Summary(_) => "summary".to_owned(),
+            Self::Summary(..) => "summary".to_owned(),
             Self::Block(block) => format!("block:{}", block.id),
             Self::Sitting(sitting) => format!("sitting:{}", sitting.id),
             Self::Free { start, .. } => format!("free:{start}"),
@@ -50,7 +51,7 @@ impl Row {
 
     fn text(&self, clock: &dyn Clock) -> String {
         match self {
-            Self::Summary(text) => text.clone(),
+            Self::Summary(text, _) => text.clone(),
             Self::Block(block) => speech::block(block, clock),
             Self::Sitting(sitting) => speech::sitting(sitting),
             Self::Free { start, end, title, details, .. } => speech::free_time(title, details, start, end, clock),
@@ -66,7 +67,8 @@ impl Row {
             Self::Sitting(sitting) => &sitting.actions,
             Self::Free { actions, .. } => actions,
             Self::Cancelled(block) => &block.actions,
-            Self::Summary(_) | Self::Now { .. } => &[],
+            Self::Summary(_, actions) => actions,
+            Self::Now { .. } => &[],
         }
     }
 }
@@ -180,6 +182,12 @@ impl DayView {
         self.selected().map(|row| row.actions().to_vec()).unwrap_or_default()
     }
 
+    /// The day's own actions: Plan the Day, Replan from Now and the rest, as the core offers
+    /// them for the day shown.
+    pub fn day_actions(&self) -> Vec<Action> {
+        self.plan.borrow().as_ref().map(|plan| plan.actions.clone()).unwrap_or_default()
+    }
+
     /// The task a selected sitting is for: what the Task menu acts on from the day.
     pub fn selected_task(&self) -> Option<String> {
         match self.selected()? {
@@ -195,11 +203,11 @@ impl DayView {
         let plan = match app.core.lumenna.plan(day) {
             Ok(plan) => plan,
             Err(error) => {
-                self.show(app, vec![Row::Summary(sentence(&error))], key, near);
+                self.show(app, vec![Row::Summary(sentence(&error), Vec::new())], key, near);
                 return;
             }
         };
-        let mut rows = vec![Row::Summary(speech::summary(&plan.date, &plan.summary, &app.clock))];
+        let mut rows = vec![Row::Summary(speech::summary(&plan.date, &plan.summary, &app.clock), plan.actions.clone())];
         for item in &plan.timeline {
             match item {
                 PlanItem::Block { row } => {
@@ -229,7 +237,7 @@ impl DayView {
     fn show(&self, app: &App, rows: Vec<Row>, key: Option<String>, near: Option<usize>) {
         let items = rows
             .iter()
-            .map(|row| Item { key: row.key(), text: row.text(&app.clock), depth: u32::from(matches!(row, Row::Sitting(_))) })
+            .map(|row| Item { key: row.key(), text: row.text(&app.clock), depth: u32::from(matches!(row, Row::Sitting(_))), ..Default::default() })
             .collect();
         *self.rows.borrow_mut() = rows;
         if self.tree.set(items) {

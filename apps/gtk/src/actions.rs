@@ -164,8 +164,12 @@ async fn answer(app: &App, from: &Asking, action: &Action, typed: Option<String>
                 from.say(app, &choices.announcement);
                 return None;
             }
-            let options: Vec<(String, u32)> =
-                choices.choices.iter().map(|choice| (speech::choice(choice, &app.clock), choice.depth)).collect();
+            // Why a choice is offered is its description, never its name.
+            let options: Vec<(String, u32, String)> = choices
+                .choices
+                .iter()
+                .map(|choice| (speech::choice(choice, &app.clock), choice.depth, choice.reason.clone().unwrap_or_default()))
+                .collect();
             let index = prompts::pick(window, title, "C_hoices", &options, yes).await?;
             let id = choices.choices.get(index)?.id.clone();
             let length = match length {
@@ -206,6 +210,8 @@ async fn form(app: &Rc<App>, action: Action) {
         }
         (Subject::Filter, ActionKind::New) => new_filter(app).await,
         (_, ActionKind::Reminders) => crate::reminders::show(app, &action),
+        (_, ActionKind::PlanDay) => crate::proposal::plan_day(app, &action.target),
+        (_, ActionKind::Replan) => crate::proposal::replan(app),
         _ => {}
     }
 }

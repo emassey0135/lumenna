@@ -698,6 +698,24 @@ impl App {
         on_day("next-day", |app, day| day.step(app, 1));
         on_day("go-to-now", |app, day| day.go_to_now(app, true));
         on_day("go-to-day", |app, day| day.ask_for_day(app));
+        // The day's own actions, on the day shown: Plan the Day, Replan from Now and the rest.
+        let day_command = |name: &str, kind: ActionKind| {
+            simple_with(self, name, move |app| {
+                if app.day().is_none() {
+                    app.go(Place::Today, true);
+                }
+                let Some(day) = app.day() else { return };
+                match day.day_actions().into_iter().find(|action| action.kind == kind) {
+                    Some(action) => crate::actions::run(app, action, None),
+                    None => app.say(&lumenna_surface::actions::not_offered(kind, Subject::Day, false)),
+                }
+            });
+        };
+        day_command("plan-day", ActionKind::PlanDay);
+        day_command("replan", ActionKind::Replan);
+        day_command("what-now", ActionKind::WhatNow);
+        day_command("end-day", ActionKind::EndDay);
+        day_command("clear-day", ActionKind::ClearDay);
         // Each runs the task in hand's action of its kind, as its row's menu would: Mark Done
         // is Mark Not Done on a done task. A command the task does not offer does nothing.
         let task_command = |name: &str, kinds: &'static [ActionKind]| {
@@ -891,6 +909,14 @@ fn menu_bar() -> gio::Menu {
                 item("_Go to Day…", "win.go-to-day"),
             ]),
             section(vec![item("_Add Block…", "win.new-block")]),
+            // The day's own actions, titled as the core titles them.
+            section(vec![
+                item("P_lan the Day…", "win.plan-day"),
+                item("_Replan from Now…", "win.replan"),
+                item("What Should I _Work On?…", "win.what-now"),
+                item("_End the Day…", "win.end-day"),
+                item("_Clear the Rest of the Day…", "win.clear-day"),
+            ]),
         ]),
     );
     bar.append_submenu(

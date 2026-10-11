@@ -91,6 +91,12 @@ fn notify(app: &App, due: &DueReminder) {
     let which = (due.key.clone(), due.occurrence.clone()).to_variant();
     notification.add_button_with_target_value(&due.dismiss, "app.reminder-dismiss", Some(&which));
     notification.add_button_with_target_value(&due.snooze, "app.reminder-snooze", Some(&which));
+    // At a block's end with work left short, the core's offer to carry it forward; the
+    // message already ends in the question.
+    if !due.carry.is_empty() {
+        let carry = (due.key.clone(), due.occurrence.clone(), due.target.clone()).to_variant();
+        notification.add_button_with_target_value(&due.carry, "app.reminder-carry", Some(&carry));
+    }
     let target = (due.kind.clone(), due.target.clone(), due.occurrence.clone()).to_variant();
     notification.set_default_action_and_target_value("app.reminder-open", Some(&target));
     app.application.send_notification(Some(&id(&due.key, &due.occurrence)), &notification);
@@ -124,6 +130,23 @@ fn add_actions(app: &App) {
     app.application.add_action(&answer("reminder-snooze", |app, key, occurrence| {
         app.core.lumenna.snooze_reminder(key, occurrence, None)
     }));
+    let carry = gio::SimpleAction::new("reminder-carry", Some(glib::VariantTy::new("(sss)").expect("a valid type")));
+    carry.connect_activate(|_, parameter| {
+        let (Some(app), Some((key, occurrence, target))) =
+            (crate::window::app(), parameter.and_then(|p| p.get::<(String, String, String)>()))
+        else {
+            return;
+        };
+        app.application.withdraw_notification(&id(&key, &occurrence));
+        match app.core.lumenna.carry_rest_forward(&format!("{target}@{occurrence}")) {
+            Ok(change) => {
+                app.store_changed();
+                app.say_change(&change);
+            }
+            Err(error) => app.fail(&sentence(&error)),
+        }
+    });
+    app.application.add_action(&carry);
     let open = gio::SimpleAction::new("reminder-open", Some(glib::VariantTy::new("(sss)").expect("a valid type")));
     open.connect_activate(|_, parameter| {
         let (Some(app), Some((kind, target, occurrence))) =
@@ -230,7 +253,7 @@ impl List {
         match app.core.lumenna.reminders_of(self.target.clone()) {
             Ok(list) => {
                 self.status.set_label(&speech::sentence(&speech::announcement(&list.announcement, &list.notices)));
-                let items = list.reminders.iter().map(|r| Item { key: r.id.clone(), text: r.words.clone(), depth: 0 }).collect();
+                let items = list.reminders.iter().map(|r| Item { key: r.id.clone(), text: r.words.clone(), depth: 0, ..Default::default() }).collect();
                 *self.reminders.borrow_mut() = list.reminders;
                 *self.actions.borrow_mut() = list.actions;
                 if let Some(add) = actions::find(&self.actions.borrow(), &[ActionKind::New]) {

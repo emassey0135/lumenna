@@ -169,6 +169,7 @@ impl TaskList {
                         // said in words (`tree`).
                         text: if self.trash { speech::trashed(row, &app.clock) } else { speech::row(row, false, &app.clock) },
                         depth: row.depth,
+                        ..Default::default()
                     })
                     .collect();
                 *self.rows.borrow_mut() = listing.rows;

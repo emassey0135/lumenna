@@ -470,6 +470,7 @@ fn planning(app: &Rc<App>) -> gtk::Widget {
     setting_field(app, &page, &status, "default-block-reminders", 'b');
     setting_field(app, &page, &status, "verbosity", 'm');
     setting_field(app, &page, &status, "week-start", 'W');
+    setting_field(app, &page, &status, "urgency-weights", 'u');
     page.footer("These sync to all your devices.");
     page.finish().0
 }
@@ -498,7 +499,7 @@ impl Devices {
                 let items = status
                     .devices
                     .iter()
-                    .map(|device| Item { key: device.node_id.clone(), text: devices::line(device, now), depth: 0 })
+                    .map(|device| Item { key: device.node_id.clone(), text: devices::line(device, now), depth: 0, ..Default::default() })
                     .collect();
                 // An empty list is no use to reach: the sync status already says there is
                 // nothing paired.

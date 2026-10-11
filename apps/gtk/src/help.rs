@@ -55,12 +55,13 @@ pub fn show(app: &Rc<App>) {
     tree.widget.set_min_content_height(360);
     let mut items = Vec::new();
     for group in Group::ALL {
-        items.push(Item { key: format!("group:{}", group.title()), text: group.title().to_owned(), depth: 0 });
+        items.push(Item { key: format!("group:{}", group.title()), text: group.title().to_owned(), depth: 0, ..Default::default() });
         for (index, entry) in entries().iter().filter(|e| e.group == group).enumerate() {
             items.push(Item {
                 key: format!("{}:{index}", group.title()),
                 text: format!("{}, {}", entry.title, entry.keys.join(" or ")),
                 depth: 1,
+                ..Default::default()
             });
         }
     }
