@@ -67,15 +67,14 @@ class PlanTheDayTest(unittest.TestCase, DayActions):
 
 class ReplanTest(unittest.TestCase, DayActions):
     def setUp(self):
-        # The rest of today from a fixed now, 10:00, pinned through LUMENNA_NOW as the other
-        # apps pass now through, so it runs the same at any hour: three blocks crowding the
-        # next half hour. Only the date is the clock's, so the two minutes before midnight
-        # are waited out.
-        wait_out_midnight()
-        now = datetime.datetime.combine(datetime.date.today(), datetime.time(10, 0))
+        # The rest of today from the real now, since the day offers Replan from Now only while
+        # a block is under way or to come by the clock, pinned through LUMENNA_NOW as the
+        # other apps pass now through so the proposal holds while the test runs: three blocks
+        # crowding the next half hour.
+        now = day_around_now(self, after=35)
         seed = [("config", "set", "day-start", "00:00"), ("config", "set", "day-end", "23:59")]
-        seed += [("block", "add", name, "--at", start, "--minutes", "15")
-                 for name, start in (("First", "10:03"), ("Second", "10:10"), ("Third", "10:17"))]
+        seed += [("block", "add", name, "--at", at(now, minutes), "--minutes", "15")
+                 for name, minutes in (("First", 3), ("Second", 10), ("Third", 17))]
         self.session = Session(seed, environment={"LUMENNA_NOW": now.strftime("%Y-%m-%dT%H:%M")})
         self.session.press("Control+1", wait=1.5)
         self.session.said()
@@ -122,17 +121,32 @@ def wait_out_midnight():
         pump(5)
 
 
+def day_around_now(test, before=0, after=0):
+    """The real now to the minute, for blocks the day offers its actions over, which are read
+    by the clock. A day holds no block past midnight, so a test whose blocks would cross it
+    skips: waiting out as much as an hour and a half is no better."""
+    now = datetime.datetime.now().replace(second=0, microsecond=0)
+    midnight = datetime.datetime.combine(now.date(), datetime.time())
+    if now - datetime.timedelta(minutes=before) < midnight \
+            or now + datetime.timedelta(minutes=after) >= midnight + datetime.timedelta(days=1):
+        test.skipTest("its blocks would cross midnight")
+    return now
+
+
+def at(now, minutes):
+    return (now + datetime.timedelta(minutes=minutes)).strftime("%H:%M")
+
+
 class OtherOptionsTest(unittest.TestCase, DayActions):
     def setUp(self):
-        # At a pinned 10:40, Deep work runs into Lunch, which pushes Review: skipping either
-        # is another option.
-        wait_out_midnight()
-        now = datetime.datetime.combine(datetime.date.today(), datetime.time(10, 40))
+        # At the real now, pinned as in ReplanTest, Deep work runs into Lunch, which pushes
+        # Review: shortening or skipping either is another option.
+        now = day_around_now(self, before=20, after=85)
         self.session = Session([
             ("config", "set", "day-start", "00:00"),
-            ("block", "add", "Deep work", "--at", "09:00", "--minutes", "120"),
-            ("block", "add", "Lunch", "--at", "10:30", "--minutes", "30", "--kind", "break"),
-            ("block", "add", "Review", "--at", "11:00", "--minutes", "60"),
+            ("block", "add", "Deep work", "--at", at(now, -20), "--minutes", "40"),
+            ("block", "add", "Lunch", "--at", at(now, -10), "--minutes", "30", "--kind", "break"),
+            ("block", "add", "Review", "--at", at(now, 20), "--minutes", "60"),
         ], environment={"LUMENNA_NOW": now.strftime("%Y-%m-%dT%H:%M")})
         self.session.press("Control+1", wait=1.5)
         self.session.said()
