@@ -967,4 +967,31 @@ final class LumennaUITests: XCTestCase {
         tab("Today")
         XCTAssertTrue(app.cells.matching(NSPredicate(format: "label == 'draft'")).firstMatch.waitForExistence(timeout: 5))
     }
+
+    // MARK: - The planner
+
+    func testPlanTheDayIsADayActionWhoseScreenPlansWhatIsChecked() throws {
+        add("write the report p1")
+        tab("Today")
+        // Tomorrow, so its block is still to come whenever the test runs.
+        app.buttons["Next Day"].tap()
+        app.buttons["Add block"].tap()
+        let name = app.textFields["Name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        name.tap()
+        name.typeText("Writing")
+        app.buttons["Save"].tap()
+        XCTAssertTrue(cell(containing: "Writing").waitForExistence(timeout: 5))
+
+        app.buttons["Day actions"].tap()
+        app.buttons["Plan the Day"].tap()
+        XCTAssertTrue(app.navigationBars["Plan the Day"].waitForExistence(timeout: 5))
+        let sitting = app.switches.containing(NSPredicate(format: "label BEGINSWITH 'write the report goes in Writing'")).firstMatch
+        XCTAssertTrue(sitting.waitForExistence(timeout: 5), "each sitting a check box named by its sentence")
+        XCTAssertEqual(sitting.value as? String, "1", "checked to begin with")
+        try audit(.all, "plan the day")
+        app.buttons["Plan the Ones Checked"].tap()
+        XCTAssertTrue(app.navigationBars["Plan the Day"].waitForNonExistence(timeout: 5), "nothing more to plan, so it closes")
+        XCTAssertTrue(app.cells.matching(NSPredicate(format: "label == 'write the report'")).firstMatch.waitForExistence(timeout: 5))
+    }
 }

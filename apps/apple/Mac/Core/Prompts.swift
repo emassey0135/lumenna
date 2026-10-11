@@ -168,7 +168,7 @@ extension NSWindow: ActionAsking {
     }
 
     func askPick(title: String, choices: [Choice], yes: String, then: @escaping (Choice) -> Void) {
-        let items = choices.map { PickerItem(key: $0.id, title: $0.shownTitle, detail: $0.shownDetail, depth: Int($0.depth)) }
+        let items = choices.map { PickerItem(key: $0.id, title: $0.shownTitle, detail: $0.shownDetail, depth: Int($0.depth), reason: $0.reason) }
         PickerSheet.present(on: self, title: title, items: items, yes: yes) { item in
             if let choice = choices.first(where: { $0.id == item.key }) { then(choice) }
         }

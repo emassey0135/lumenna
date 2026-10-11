@@ -29,6 +29,8 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     private let summary = UILabel()
     private var landedOnNow = false
     private weak var dayButtons: UIStackView?
+    /// The day's own actions (`Plan.actions`): Plan the Day, Replan from Now, End the Day.
+    private let dayMenu = UIBarButtonItem(image: UIImage(systemName: "ellipsis.circle"))
 
     init(core: Core) {
         self.core = core
@@ -50,6 +52,8 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         summary.textColor = .quietLabel
         summary.numberOfLines = 0
         summary.accessibilityTraits = .header
+        // It carries the day's own actions, so it is a target a finger can land on too.
+        summary.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
         // Moving through days, under the summary rather than in a bottom toolbar, which the
         // floating tab bar would cover.
         let days = UIStackView(arrangedSubviews: [
@@ -93,7 +97,9 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
 
         let add = UIBarButtonItem(systemItem: .add, primaryAction: UIAction { [weak self] _ in self?.addBlock() })
         add.accessibilityLabel = "Add block"
-        navigationItem.rightBarButtonItem = add
+        dayMenu.accessibilityLabel = "Day actions"
+        dayMenu.title = "Day actions"
+        navigationItem.rightBarButtonItems = [add, dayMenu]
         // In the navigation bar, as on the task list: a bottom toolbar would sit under the
         // floating tab bar.
         navigationItem.leftBarButtonItems = [
@@ -177,6 +183,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             title = Clock.spokenDay(plan.date)
             // The day's heading, as every app says it: "<day>. <summary>".
             summary.text = "\(Clock.spokenDay(plan.date)). \(plan.summary)"
+            offerDayActions(plan)
             listed = plan.timeline.flatMap { item -> [Row] in
                 switch item {
                 case let .block(row):
@@ -405,6 +412,44 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             self?.reload { Announcer.say(change.announcement, notices: change.notices) }
         }
         presentBlockForm(model)
+    }
+
+    // MARK: - The day's own actions
+
+    /// The day's actions, the core's, in its order: a menu in the bar, and the heading's
+    /// actions for VoiceOver, where the day is.
+    private func offerDayActions(_ plan: Plan) {
+        let run = { [weak self] (action: Action) in self?.performDay(action) }
+        dayMenu.menu = UIMenu(title: Clock.spokenDay(plan.date), children: plan.actions.map { action in
+            UIAction(title: action.title, attributes: action.destructive ? .destructive : []) { _ in run(action) }
+        })
+        dayMenu.isHidden = plan.actions.isEmpty
+        summary.isAccessibilityElement = true
+        summary.accessibilityCustomActions = plan.actions.map { action in
+            UIAccessibilityCustomAction(name: action.title) { _ in
+                run(action)
+                return true
+            }
+        }
+    }
+
+    /// The day's actions as offered, for tests: the menu's titles.
+    var dayActionTitles: [String] { dayMenu.menu?.children.map(\.title) ?? [] }
+    /// The heading's actions, as VoiceOver lists them.
+    var headingActions: [UIAccessibilityCustomAction] { summary.accessibilityCustomActions ?? [] }
+
+    /// Runs one of the day's actions: Plan the Day and Replan from Now open their screen,
+    /// the rest ask their question here. Focus stays where it was, or near it.
+    func performDay(_ action: Action) {
+        let focused = UIAccessibility.focusedElement(using: .notificationVoiceOver) as? UICollectionViewCell
+        let index = focused.flatMap { collectionView.indexPath(for: $0) }?.item
+        let key = index.flatMap { $0 < rows.count ? foldKey(rows[$0]) : nil }
+        run(action, core: core, form: { [weak self] action in
+            guard let self else { return }
+            self.presentProposal(for: action, core: self.core)
+        }) { [weak self] change, _ in
+            self?.changed(change, keeping: key, near: index)
+        }
     }
 
     // MARK: - Moving through days

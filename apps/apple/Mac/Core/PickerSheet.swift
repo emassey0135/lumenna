@@ -7,6 +7,9 @@ struct PickerItem {
     var detail: String?
     /// How deep it sits in a tree, shown as indentation, as the Mac's outlines show it.
     var depth = 0
+    /// Why it is offered, the core's ("Suggested because …"): a line beneath, and its
+    /// description for VoiceOver, never its name.
+    var reason: String?
 }
 
 /// Choosing one of many — a task to wait for, a project to move under, a block to put a task
@@ -142,7 +145,7 @@ final class PickerSheet: NSViewController, NSTableViewDataSource, NSTableViewDel
         table.scrollRowToVisible(row)
         // The field keeps focus, so say what is now chosen.
         let item = shown[row]
-        Announcer.say([item.title, item.detail].compactMap { $0 }.joined(separator: ", "))
+        Announcer.say([item.title, item.detail, item.reason].compactMap { $0 }.joined(separator: ", "))
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { shown.count }
@@ -150,8 +153,14 @@ final class PickerSheet: NSViewController, NSTableViewDataSource, NSTableViewDel
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let item = shown[row]
         let cell = TwoLineCell()
-        cell.show(title: item.title, detail: item.detail)
+        let lines = [item.detail, item.reason].compactMap { $0 }.filter { !$0.isEmpty }
+        cell.show(title: item.title, detail: lines.isEmpty ? nil : lines.joined(separator: "\n"))
         cell.indent = CGFloat(item.depth) * 16
+        if let reason = item.reason {
+            cell.setAccessibilityLabel(item.title)
+            cell.setAccessibilityValueDescription(item.detail ?? "")
+            cell.setAccessibilityHelp(reason)
+        }
         return cell
     }
 

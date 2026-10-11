@@ -43,6 +43,13 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
     let outline = TaskOutline()
     private let summary = HeadingLabel(wrappingLabelWithString: "")
     private var landedOnNow = false
+    /// The day's own actions (`Plan.actions`), the core's: a pull-down beside the day's
+    /// buttons, and the Day menu's.
+    private let dayActionsButton: NSPopUpButton = {
+        let button = NSPopUpButton(frame: .zero, pullsDown: true)
+        button.setAccessibilityLabel("Day Actions")
+        return button
+    }()
 
     init(core: Core, window: MainWindowController) {
         self.core = core
@@ -65,6 +72,7 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
             NSButton(title: "Next Day", target: self, action: #selector(nextDay(_:))),
             NSButton(title: "Go to Day…", target: self, action: #selector(goToDay(_:))),
             NSButton(title: "Add Block…", target: self, action: #selector(newBlock(_:))),
+            dayActionsButton,
         ])
         buttons.spacing = 8
 
@@ -129,6 +137,7 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
             title = Clock.spokenDay(plan.date)
             main?.window?.title = title ?? "Today"
             summary.stringValue = "\(Clock.spokenDay(plan.date)). \(plan.summary)"
+            offerDayActions(plan)
             var nodes: [DayNode] = []
             for item in plan.timeline {
                 switch item {
@@ -292,6 +301,38 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         case let (.addBlock, .free(start, _, minutes, _, _, _)): addBlock(at: action.other ?? start, minutes: minutes)
         case (.editTask, _): main?.showTask(action.target); main?.nextPane(nil)
         default: break
+        }
+    }
+
+    // MARK: - The day's own actions
+
+    private func offerDayActions(_ plan: Plan) {
+        let menu = NSMenu()
+        // A pull-down shows its first item as its title.
+        menu.addItem(NSMenuItem(title: "Day Actions", action: nil, keyEquivalent: ""))
+        menu.add(plan.actions) { [weak self] action in self?.performDay(action) }
+        dayActionsButton.menu = menu
+        dayActionsButton.isHidden = plan.actions.isEmpty
+    }
+
+    /// The day's actions as the pull-down offers them, for tests.
+    var dayActionTitles: [String] { dayActionsButton.itemArray.dropFirst().map(\.title) }
+
+    /// Runs one of the day's actions: Plan the Day and Replan from Now open their sheet, the
+    /// rest ask their question here. The selection stays on its row, or near where it was.
+    func performDay(_ action: Action) {
+        guard let window = view.window else { return }
+        let key = selected?.key
+        let index = outline.selectedRow
+        window.run(action, core: core, form: { [weak self] action in
+            guard let self else { return }
+            do {
+                try ProposalModel(core: self.core, action: action)?.present(on: window)
+            } catch {
+                window.showFailure(error.sentence)
+            }
+        }) { [weak self] change, _ in
+            self?.reload(keeping: key, near: index, saying: change)
         }
     }
 

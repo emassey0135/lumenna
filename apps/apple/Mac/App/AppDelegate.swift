@@ -275,6 +275,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         main?.day?.goToDay(sender)
     }
 
+    /// The day's own actions for the Day menu: the day shown's, else today's, which go to the
+    /// day first.
+    var dayActions: [Action] {
+        main?.day?.plan?.actions ?? (try? core.lumenna.plan(date: nil).actions) ?? []
+    }
+
+    /// One of the day's actions, from the Day menu: on the day shown, else on today's.
+    func performDay(_ action: Action) {
+        if main?.day == nil { go(.today) }
+        main?.day?.performDay(action)
+    }
+
     @objc func backUpNow(_ sender: Any?) {
         do {
             let done = try core.lumenna.backup(to: nil)
