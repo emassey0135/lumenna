@@ -232,7 +232,7 @@ private fun actions(
     prompt: Prompter,
     row: DayRow,
     edit: (PlanBlock) -> Unit,
-): List<RowAction> = core.offered(row.actions, prompt, form = { action ->
+): List<RowAction> = core.offered(row.actions, prompt, form = navigator.formOr { action ->
     when (action.kind) {
         ActionKind.EDIT -> if (row is DayRow.Block) edit(row.block)
         ActionKind.EDIT_TASK -> navigator.push(Screen.Task(action.target))

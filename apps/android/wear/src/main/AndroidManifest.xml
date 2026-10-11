@@ -10,6 +10,16 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
+    <!-- Reminders: shown as notifications (asked for from Android 13, when the person first
+         adds a reminder or turns them on), at their exact time where the person allows it
+         (SCHEDULE_EXACT_ALARM, which they grant in the system's Alarms and reminders; refused,
+         alarms are inexact and Settings says so), and set again after the device starts.
+         Not USE_EXACT_ALARM: Google Play keeps it for alarm clocks and calendars, and a task
+         manager whose reminders come a few minutes late without it is neither. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- Not backed up to Google: syncing between paired devices is how the store reaches another. -->
     <application
         android:name=".WearApplication"
@@ -40,5 +50,23 @@
                 <data android:scheme="wear" android:host="*" android:pathPrefix="/lumenna/sync" />
             </intent-filter>
         </service>
+        <!-- Reminders' alarms and their notifications' Dismiss and Snooze: the app's own
+             intents only. -->
+        <receiver
+            android:name="io.github.emassey0135.lumenna.ReminderReceiver"
+            android:exported="false" />
+        <!-- What moves every alarm: starting up, an update, the clock or zone changing, exact
+             alarms granted. Each is a broadcast only the system sends. -->
+        <receiver
+            android:name="io.github.emassey0135.lumenna.ReminderRearmReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

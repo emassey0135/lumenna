@@ -235,7 +235,7 @@ fun BlocksScreen(core: Core, navigator: Navigator, changes: Long) {
         open = { item -> navigator.push(Screen.BlockForm(BlockPurpose.Series(item.key))) },
         openLabel = "Edit every occurrence",
         actions = { item ->
-            core.offered(item.actions, prompt, form = { navigator.push(Screen.BlockForm(BlockPurpose.Series(it.target))) })
+            core.offered(item.actions, prompt, form = navigator.formOr { navigator.push(Screen.BlockForm(BlockPurpose.Series(it.target))) })
         },
     )
     prompt.Host()

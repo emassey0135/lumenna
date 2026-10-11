@@ -65,6 +65,15 @@ at once, so what was just edited reaches the other devices, and then one every 1
 so — Android's least, stretched when the phone dozes or the app is seldom opened. A round
 reaches only the devices running at that moment, such as a Mac or `lum daemon`.
 
+## Reminders
+
+Android schedules them itself: the app hands AlarmManager the next two days' firings, as the
+core words them, and sets them again whenever they may have moved. They come at their exact
+time if Lumenna may set exact alarms (Settings, Reminders, Allow exact alarms, which opens
+Android's Alarms and reminders page); otherwise a few minutes late, as Android allows. Each is
+a notification on the Reminders channel with Dismiss and Snooze, which reach every device. The
+watch gives its own, and the phone's are not passed on to it, so each comes once there.
+
 ## Not yet
 
 Pairing on the local network is untested on Android, because the emulator sits behind its own

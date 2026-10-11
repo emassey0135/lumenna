@@ -10,5 +10,7 @@ class LumennaApplication : Application(), CoreHolder {
     override fun onCreate() {
         super.onCreate()
         SyncWorker.schedulePeriodic(this)
+        // Reminders are armed now and after every change to the store (`Reminders.follow`).
+        core.getOrNull()?.let { Reminders.follow(this, it) }
     }
 }

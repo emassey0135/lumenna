@@ -139,7 +139,7 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks, chang
             core,
             rows,
             // The core's, in its order: in the trash, Restore and Delete from Trash.
-            actions = { row -> core.offered(row.actions, prompt, form = { navigator.push(Screen.Task(it.target)) }) },
+            actions = { row -> core.offered(row.actions, prompt, form = navigator.formOr { navigator.push(Screen.Task(it.target)) }) },
             open = if (screen.trash) null else { row -> navigator.push(Screen.Task(row.id)) },
         )
     }

@@ -69,6 +69,7 @@ fun SettingsScreen(core: Core, navigator: Navigator, changes: Long) {
             listOf(
                 Item("devices", "Devices and sync", core.lumenna.syncStatus().announcement),
                 Item("planning", "Planning", "The day, the week, completing subtasks, announcements"),
+                Item("reminders", "Reminders", "On this device: notifications and alarms"),
                 Item("backups", "Backups", "On this device only"),
                 Item("export", "Export and import", "JSON, Markdown, org, calendar"),
             ).let { Listing(it) }
@@ -78,6 +79,7 @@ fun SettingsScreen(core: Core, navigator: Navigator, changes: Long) {
                 when (item.key) {
                     "devices" -> Screen.Devices
                     "planning" -> Screen.Planning
+                    "reminders" -> Screen.ReminderSettings
                     "backups" -> Screen.Backups
                     else -> Screen.Export
                 },
@@ -144,13 +146,15 @@ private fun ChooseOne(
  * or a number typed. Its name, options and what it does are the core's.
  */
 @Composable
-private fun SettingControl(core: Core, prompt: Prompter, setting: Setting) {
+private fun SettingControl(core: Core, prompt: Prompter, setting: Setting, turnedOn: () -> Unit = {}) {
     when (setting.kind) {
         SettingKind.TOGGLE -> Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .toggleable(setting.on, role = Role.Switch) { core.set(setting, if (it) "true" else "false") },
+                    .toggleable(setting.on, role = Role.Switch) {
+                        if (core.set(setting, if (it) "true" else "false") != null && it) turnedOn()
+                    },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(setting.title, Modifier.weight(1f))
@@ -195,6 +199,56 @@ fun PlanningScreen(core: Core, navigator: Navigator, changes: Long) {
             shown.forEach { SettingControl(core, prompt, it) }
             Text(
                 "These sync to all your devices.",
+                style = MaterialTheme.typography.bodySmall,
+                color = quiet(),
+                modifier = Modifier.padding(16.dp),
+            )
+        }
+    }
+    prompt.Host()
+}
+
+/**
+ * Reminders on this device: the core's setting for whether it gives them, then what Android
+ * allows — notifications, and alarms at an exact time — each with the system's page that
+ * grants it. When each reminder comes is set in Planning and on a task or block, and syncs.
+ */
+@Composable
+fun ReminderSettingsScreen(core: Core, navigator: Navigator, changes: Long) {
+    val context = LocalContext.current
+    val shown = remember(changes) { settings(core).reminders() }
+    // Read again whenever the app comes back, as from the system's settings (`changes` moves).
+    val access = LocalReminderAccess.current
+    val (allowed, exact, grant) = remember(changes) { access(context) }
+    val ask = rememberNotificationAsk()
+    val prompt = rememberPrompter()
+    ScreenFrame("Reminders", core, navigator) {
+        Column(Modifier.verticalScroll(rememberScrollState())) {
+            shown.forEach { SettingControl(core, prompt, it, turnedOn = ask) }
+            if (!allowed) {
+                Text(
+                    "Notifications are off for Lumenna, so no reminder can be shown on this device.",
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+                OutlinedButton(
+                    modifier = Target.padding(horizontal = 16.dp),
+                    onClick = { if (Reminders.shouldAsk(context)) ask() else context.startActivity(Reminders.notificationSettings(context)) },
+                ) { Text("Allow notifications") }
+            }
+            if (!exact) {
+                Text(
+                    "Reminders may come a few minutes late: Lumenna is not allowed to set alarms for an exact time.",
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+                grant?.let { intent ->
+                    OutlinedButton(modifier = Target.padding(horizontal = 16.dp), onClick = { context.startActivity(intent) }) {
+                        Text("Allow exact alarms")
+                    }
+                }
+            }
+            Text(
+                "When reminders come is set in Planning, and on a task or block in its Reminders; those sync to all " +
+                    "your devices. This page is this device's own.",
                 style = MaterialTheme.typography.bodySmall,
                 color = quiet(),
                 modifier = Modifier.padding(16.dp),

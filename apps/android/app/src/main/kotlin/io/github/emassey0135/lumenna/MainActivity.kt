@@ -41,8 +41,12 @@ class MainActivity : ComponentActivity() {
         data.addAll(shortcuts.groups())
     }
 
+    /** The last reminder notification tapped, counted so a second tap on the same one opens it too. */
+    private val opened = MutableStateFlow<Pair<Long, ReminderOpened>?>(null)
+
     private fun handle(intent: Intent?) {
         if (intent?.action == NEW_TASK) newTask.value += 1
+        Reminders.opened(intent)?.let { opened.value = (opened.value?.first ?: 0L) + 1 to it }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -66,7 +70,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             LumennaTheme {
                 core.fold(
-                    onSuccess = { LumennaApp(it, newTask, shortcuts) },
+                    onSuccess = { LumennaApp(it, newTask, shortcuts, opened) },
                     // Nothing works without the store, so say why plainly.
                     onFailure = { error ->
                         Text(

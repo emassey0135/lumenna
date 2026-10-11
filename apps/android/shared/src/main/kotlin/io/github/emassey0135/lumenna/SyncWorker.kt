@@ -31,6 +31,8 @@ class SyncWorker(context: Context, parameters: WorkerParameters) : Worker(contex
         val core = (applicationContext as CoreHolder).core.getOrNull() ?: return Result.failure()
         return try {
             core.syncRound()
+            // What arrived may move a reminder, and the app may not be running to see it.
+            Reminders.arm(applicationContext, core)
             // Anything that arrived is shown if the app is open.
             Handler(Looper.getMainLooper()).post { core.changed() }
             Result.success()
