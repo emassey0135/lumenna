@@ -677,7 +677,8 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
 - **The audits collect every issue and fail once** (`audit()`). Exemptions, all narrow:
   "potentially inaccessible text" on `NamedRow` screens, the keyboard's
   `TUIPredictionViewCell`, and "partially unsupported" Dynamic Type on SwiftUI nodes (the
-  audit reports it even for a stock button). To see an unnamed finding, run with
+  audit reports it even for a stock button), or with no element at all on a `NamedRow` screen,
+  where it comes and goes on the iPad between runs of one build (likely a row's hidden name). To see an unnamed finding, run with
   `AUDIT_ATTACH=1` and `xcrun xcresulttool export attachments`.
 - **Keyboard commands are the Mac's keys and names, once** (`KeyboardCommands.swift`): on
   iPad the menu bar (`AppDelegate.buildMenu`, with Find and Format removed, which would take
