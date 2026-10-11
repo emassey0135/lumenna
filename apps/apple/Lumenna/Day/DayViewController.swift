@@ -30,7 +30,13 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     private var landedOnNow = false
     private weak var dayButtons: UIStackView?
     /// The day's own actions (`Plan.actions`): Plan the Day, Replan from Now, End the Day.
-    private let dayMenu = UIBarButtonItem(image: UIImage(systemName: "ellipsis.circle"))
+    /// Among the day's buttons, not in the navigation bar: beside Add and Undo there, it
+    /// crowded the title until the audit found it clipped in the iPad's narrow column.
+    private lazy var dayMenu: UIButton = {
+        let button = dayButton("Day Actions") {}
+        button.showsMenuAsPrimaryAction = true
+        return button
+    }()
 
     init(core: Core) {
         self.core = core
@@ -61,6 +67,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             dayButton("Now") { [weak self] in self?.showNow() },
             dayButton("Next Day") { [weak self] in self?.step(1) },
             dayButton("Go to Day") { [weak self] in self?.chooseDay() },
+            dayMenu,
         ])
         days.distribution = .equalSpacing
         dayButtons = days
@@ -97,9 +104,7 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
 
         let add = UIBarButtonItem(systemItem: .add, primaryAction: UIAction { [weak self] _ in self?.addBlock() })
         add.accessibilityLabel = "Add block"
-        dayMenu.accessibilityLabel = "Day actions"
-        dayMenu.title = "Day actions"
-        navigationItem.rightBarButtonItems = [add, dayMenu]
+        navigationItem.rightBarButtonItem = add
         // In the navigation bar, as on the task list: a bottom toolbar would sit under the
         // floating tab bar.
         navigationItem.leftBarButtonItems = [
