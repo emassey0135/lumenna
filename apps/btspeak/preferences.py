@@ -16,6 +16,7 @@ from BTSpeak import clipboard, dialogs
 
 import actions
 import options
+import reminder_lists
 from client import LumennaError
 from session import REFRESH, Command, Session, ask, choose, confirm, live_menu, row_item, screen, spoken
 from tasks import undo_commands
@@ -33,7 +34,7 @@ def planning(setting: dict) -> bool:
 
 def on_this_device(setting: dict) -> bool:
     """Whether a setting is on the Backups page: this device's own."""
-    return not setting.get("syncs") and setting["key"] not in NOT_HERE
+    return not setting.get("syncs") and setting["key"] not in NOT_HERE and setting["key"] not in reminder_lists.KEYS
 
 
 def read_back_title() -> str:
@@ -52,6 +53,7 @@ def settings(session: Session) -> str:
     items = [
         dialogs.DynamicMenuItem(title="Planning", shortcut="p", action=lambda: setting_page(session, "Planning", planning)),
         dialogs.DynamicMenuItem(title="Devices and sync", shortcut="d", action=lambda: devices(session)),
+        dialogs.DynamicMenuItem(title="Reminders, on this device", shortcut="m", action=lambda: reminder_lists.settings_page(session)),
         dialogs.DynamicMenuItem(title="Backups, on this device only", shortcut="b", action=lambda: backups(session)),
         dialogs.DynamicMenuItem(title="Export and import", shortcut="e", action=lambda: export_import(session)),
         dialogs.DynamicMenuItem(title=lambda *_: read_back_title(), shortcut="r", action=toggle_read_back),
@@ -104,12 +106,25 @@ def change_setting(session: Session, setting: dict) -> str:
     said = ". ".join(part for part in (setting["title"], setting.get("hint", "")) if part)
     if options:
         chosen = choose(options, said, default=value)
-    else:
-        takes = TAKES.get(setting.get("kind", ""))
-        chosen = dialogs.request_input(f"{said}, {takes}" if takes else said, default_text=value)
-    if chosen is None or chosen == value:
-        return ""
-    return session.write("config.set", key=setting["key"], value=chosen)
+        if chosen is None or chosen == value:
+            return ""
+        return session.write("config.set", key=setting["key"], value=chosen)
+    takes = TAKES.get(setting.get("kind", ""))
+    asked = f"{said}, {takes}" if takes else said
+    # Saved when entered. One the core refuses is asked again, its sentence first and the
+    # line as typed, as a refused field stays in its dialog.
+    wrong, typed = "", value
+    while True:
+        chosen = dialogs.request_input(f"{wrong}. {asked}" if wrong else asked, default_text=typed)
+        if chosen is None or chosen == value:
+            return ""
+        try:
+            result = session.call("config.set", key=setting["key"], value=chosen)
+        except LumennaError as error:
+            wrong, typed = error.message, chosen
+            continue
+        session.wrote()
+        return spoken(result)
 
 
 # ---------------------------------------------------------------------------------------

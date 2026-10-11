@@ -77,6 +77,10 @@ subtasks. That is all core's, so that every client behaves alike and none can dr
 | `day.py` | The planner — blocks, sittings, free time and now — and the block series. |
 | `organise.py` | Projects, labels and saved filters. |
 | `preferences.py` | Settings, devices, sync and pairing, backups, export and import. |
+| `reminder_lists.py` | A task's or block's reminders, what came due, and the Reminders settings page. |
+| `reminders.py` | The resident reminder service. |
+| `service.py` | Installing and removing that service, only when asked. |
+| `system/` | The service's systemd unit and its `.values` toggle, as the device keeps them. |
 
 The menus are laid out as the phone's are — the day, tasks, projects, labels, filters, the
 trash, settings — so the two can be described in one breath. A row's context menu offers
@@ -116,12 +120,24 @@ this row, choose that, type this — failing at once if the app asks for somethi
 each test reads as the conversation a person would have. Pairing is among them, against a
 second server.
 
-## Not built yet
+## Reminders
 
-Reminders. They want a separate resident Python service — `host.say()` plus a sound —
-because delivery belongs to whatever process owns an output device and the daemon owns none.
-That needs the core's reminder model first, and a systemd unit under `/BTSpeak/Systemd/` with the
-implementation under `/BTSpeak/Services/`, following the twenty-odd existing examples. The
-one thing to improve on: `btspeak-calendar-reminders` keeps its fired set in memory, so
-restarting re-announces the day, and `ReminderAck` already handles that properly.
-Their `# TBD: braille` also means reminders never reach the display; push to both.
+`reminders.py` is a small resident service, apart from the sync daemon, because delivery
+belongs to whatever process owns an output and the daemon owns none. Every twenty seconds it
+asks `reminder.deliver` what came due and gives each: the notification sound, then
+`host.say()` and `brl.push_message()`, so a reminder reaches the display too. What fires, its
+words, and remembering what was given — so a restart does not say the day again, and what
+came while it was stopped is one summary — are the core's; there is no reminder logic here.
+`reminder.deliver` gives the right to one connection on the device, so the service and any
+other app never both say one.
+
+It is laid out as the device's own services are: the code in `/BTSpeak/Services/`, the unit
+in `/BTSpeak/Systemd/`, the toggle in `/BTSpeak/Settings/lumenna-reminders.values` (off lets
+go of the right to give them). The unit and the toggle are kept in `system/`; `service.py`
+fills in the person and the profile and puts all three in place, and links and starts the
+unit, only from Settings, Reminders, Reminder service, after asking. The tests install into
+a temporary directory and record the `systemctl` commands rather than run them.
+
+In the app, a task with a due date and every block offer Reminders (`r`): their list, Add
+reminder by a phrase, Remove reminder. The main menu's Reminders (`r`) lists what came due
+over the last day, to dismiss or snooze.

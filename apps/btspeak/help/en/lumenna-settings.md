@@ -4,6 +4,10 @@
 
 Enter changes a setting. Times are written as you would say them: 9am, 14:30. These settings sync to all your devices.
 
+## Reminders, on this device
+
+Reminders on this device, and the reminder service that gives them while Lumenna is closed. See [Lumenna Reminders](help:lumenna-reminders). The defaults for every task and every block are on Planning: phrases such as 5m before start, separated by commas.
+
 ## Read a task back before adding it
 
 On the Settings page, r turns this on or off. When it is on, a task you type is read back — its date, priority, project and labels as understood — and you choose Add it, or Change it to edit the line. It is this device's alone.

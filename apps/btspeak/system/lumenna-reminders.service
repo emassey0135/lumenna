@@ -1,0 +1,17 @@
+# Lumenna's reminders on BTSpeak, as the device runs its own: the code in /BTSpeak/Services,
+# this unit in /BTSpeak/Systemd, the toggle in /BTSpeak/Settings. Written there by the app's
+# Settings, Reminders, Reminder service, only when asked; removing it there takes it away.
+# Who it runs as, the profile and the Python are filled in then.
+[Unit]
+Description=Lumenna reminders for @PROFILE@
+After=sound.target
+
+[Service]
+ExecStart=@PYTHON@ /BTSpeak/Services/lumenna-reminders.py
+Environment="LUMENNA_PROFILE=@PROFILE@"
+Restart=on-failure
+RestartSec=10
+User=@USER@
+
+[Install]
+WantedBy=multi-user.target

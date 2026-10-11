@@ -33,6 +33,7 @@ from session import Session, live_menu
 import day
 import organise
 import preferences
+import reminder_lists
 import tasks
 
 
@@ -44,7 +45,8 @@ CONTRACT = 1
 #: Methods this app calls that a server from before them would not answer. Asked for at the
 #: start, so an old `lum` is a sentence then rather than a failure halfway through a pairing.
 NEEDS = ("pair", "pair.confirm", "block.show", "act", "choices", "places", "form.task_edit", "form.not_offered",
-         "form.project_reference", "form.task_form", "form.block_form", "form.pairing_words", "form.sentence_case")
+         "form.project_reference", "form.task_form", "form.block_form", "form.pairing_words", "form.sentence_case",
+         "reminder.list", "reminder.due", "reminder.dismiss", "reminder.snooze")
 
 
 def run(client) -> int:
@@ -116,6 +118,7 @@ def main_menu(session: Session) -> None:
         return places + [
             item(title="Undo", shortcut="u", action=lambda: session.write("undo")),
             item(title="Redo", shortcut="y", action=lambda: session.write("redo")),
+            item(title="Reminders", shortcut="r", action=lambda: reminder_lists.due(session)),
             item(title="Sync now", shortcut="n", action=lambda: preferences.sync_now(session)),
             item(title="Settings", shortcut="s", action=lambda: preferences.settings(session)),
         ]
