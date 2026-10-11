@@ -439,7 +439,10 @@ final class LumennaUITests: XCTestCase {
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
-        name.typeText("Train")
+        // Return puts the keyboard away: left up, on the SE it covered the form up to just
+        // under Takes tasks, and the tap on the switch turned nothing on.
+        name.typeText("Train\n")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "the keyboard went")
         // Its own start, not the form's next hour: the same whenever the test runs.
         setStart((hour: "11", minute: "00", period: "PM"))
         app.buttons["Break"].tap()

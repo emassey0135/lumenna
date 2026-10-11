@@ -368,7 +368,7 @@ final class TaskListViewController: UIViewController {
     /// open beside the list.
     private var rowInHand: RowView? {
         let focused = UIFocusSystem.focusSystem(for: view)?.focusedItem as? UIView
-        let spoken = UIAccessibility.focusedElement(using: .notificationVoiceOver) as? UIView
+        let spoken = UIAccessibility.voiceOverView
         for view in [focused, spoken].compactMap({ $0 }) {
             let cell = sequence(first: view, next: \.superview).first { $0 is UICollectionViewCell } as? UICollectionViewCell
             if let cell, let path = collectionView.indexPath(for: cell) { return row(at: path) }

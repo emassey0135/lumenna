@@ -57,6 +57,10 @@ final class VoiceOverUITests: XCTestCase {
         add("call the bank", "water the plants")
         try voiceOver.enable()
         try move(to: "call the bank")
+        // A moment for VoiceOver's focus to reach the app, which acts on VoiceOver's row: the
+        // service hands back the speech as it starts, and a key pressed at once (one run in
+        // six on the SE) found no row in hand and completed nothing.
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.5))
         app.typeKey("k", modifierFlags: .command)
         // Everything said meanwhile: the row focus lands on, then the core's announcement.
         var heard: [String] = []

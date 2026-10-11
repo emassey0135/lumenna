@@ -84,3 +84,17 @@ struct RowActions {
         return swipe
     }
 }
+
+extension UIAccessibility {
+    /// The view VoiceOver is on, or the view its element is inside: VoiceOver can report an
+    /// element that is not a view (the iPad's did, for a list cell), found through its
+    /// containers. Taken as only a view, ⌘K on the iPad did nothing to VoiceOver's row.
+    static var voiceOverView: UIView? {
+        var current = focusedElement(using: .notificationVoiceOver)
+        for _ in 0..<8 {
+            if let view = current as? UIView { return view }
+            current = (current as? UIAccessibilityElement)?.accessibilityContainer
+        }
+        return nil
+    }
+}

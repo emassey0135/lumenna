@@ -446,7 +446,9 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     /// Runs one of the day's actions: Plan the Day and Replan from Now open their screen,
     /// the rest ask their question here. Focus stays where it was, or near it.
     func performDay(_ action: Action) {
-        let focused = UIAccessibility.focusedElement(using: .notificationVoiceOver) as? UICollectionViewCell
+        let focused = UIAccessibility.voiceOverView.flatMap { view in
+            sequence(first: view, next: \.superview).first { $0 is UICollectionViewCell } as? UICollectionViewCell
+        }
         let index = focused.flatMap { collectionView.indexPath(for: $0) }?.item
         let key = index.flatMap { $0 < rows.count ? foldKey(rows[$0]) : nil }
         run(action, core: core, form: { [weak self] action in
