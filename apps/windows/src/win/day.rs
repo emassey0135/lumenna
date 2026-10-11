@@ -220,6 +220,18 @@ impl DayView {
         self.say_summary(app);
     }
 
+    /// Goes to `date` with the block of `series` selected, as a reminder of it opens it.
+    pub fn show_block(&self, app: &App, date: jiff::civil::Date, series: &str) {
+        self.go_to(app, date);
+        let key = self.rows.borrow().iter().find_map(|row| match row {
+            Row::Block(block) if block.series == series => Some(row.key()),
+            _ => None,
+        });
+        if key.is_some() {
+            self.tree.select_key_or_near(key.as_deref(), None);
+        }
+    }
+
     pub fn ask_for_day(&self, app: &App) {
         let Some(phrase) = actions::ask(app.main, &go_to_day_question(), "").filter(|p| !p.is_empty()) else {
             return;

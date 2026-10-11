@@ -55,7 +55,12 @@ impl App {
         let turn = ONE_WINDOW_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
         let profile = tempfile::tempdir().unwrap();
         let backups = tempfile::tempdir().unwrap();
-        seed(&Lumenna::open(profile.path().to_str().unwrap()).unwrap());
+        let lumenna = Lumenna::open(profile.path().to_str().unwrap()).unwrap();
+        // A test's blocks and tasks would otherwise come due as real toasts on the screen of
+        // whoever runs it. A test of reminders turns them back on.
+        lumenna.set_setting("reminders", "false").unwrap();
+        seed(&lumenna);
+        drop(lumenna);
         let child = Command::new(env!("CARGO_BIN_EXE_lumenna"))
             .arg("--profile")
             .arg(profile.path())
@@ -414,6 +419,107 @@ fn a_new_blocks_start_is_the_cores_and_follows_its_day_until_the_start_is_change
 
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn a_blocks_reminders_are_listed_added_and_removed_as_the_core_offers_them() {
+    let app = App::launch(|lumenna| {
+        let block = NewBlock { title: "Deep work".to_owned(), at: "11pm".to_owned(), minutes: 60, kind: "work".to_owned(), ..NewBlock::default() };
+        lumenna.add_block(block).unwrap();
+    });
+    let store = app.store();
+    let series = store.list_blocks().unwrap().rows[0].id.clone();
+    let defaults = store.reminders_of(series.clone()).unwrap();
+    app.post(&["cmd:142", "home", "context"]);
+    let menu = choose_from_menu(&app, "Reminders...");
+    let at = |name: &str| menu.iter().position(|m| m == name);
+    assert!(at("Reminders...") < at("Delete Block..."), "{menu:?}");
+    let dialog = app.front();
+    assert!(dialog.iter().any(|l| l.contains("Window 'Reminders'")), "{dialog:#?}");
+    assert!(dialog.iter().any(|l| l.contains(&defaults.reminders[0].words)), "the default is listed: {dialog:#?}");
+    assert!(dialog.iter().any(|l| l.contains(&defaults.announcement)), "{dialog:#?}");
+    assert!(unnamed(&dialog).is_empty(), "{:#?}", unnamed(&dialog));
+
+    // Add Reminder asks for a phrase, and the block's own replaces the default.
+    app.post(&["invoke:Add Reminder...", "text:at end", "enter"]);
+    let own = store.reminders_of(series.clone()).unwrap();
+    assert!(own.reminders.len() == 1 && own.reminders[0].own, "{own:?}");
+    let dialog = app.front();
+    assert!(dialog.iter().any(|l| l.contains(&own.reminders[0].words)), "{dialog:#?}");
+    // A phrase the core cannot read is refused, and asked again.
+    app.post(&["invoke:Add Reminder...", "text:whenever", "enter"]);
+    assert!(app.front().iter().any(|l| l.contains("Window 'Lumenna'")), "the refusal: {:#?}", app.front());
+    app.post(&["enter", "esc"]);
+    assert_eq!(store.reminders_of(series.clone()).unwrap().reminders.len(), 1);
+
+    // Delete in the list removes it, and the default is back.
+    app.post(&["focus:Reminders:", "delete"]);
+    let after = store.reminders_of(series).unwrap();
+    assert!(after.reminders.iter().all(|r| !r.own), "{after:?}");
+    app.post(&["esc"]);
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn a_reminder_that_comes_due_is_a_windows_notification_with_the_cores_buttons() {
+    use windows::UI::Notifications::ToastNotificationManager;
+    use windows::core::HSTRING;
+
+    // An identity of the test's own, so it shows and clears nothing of the person's.
+    const ID: &str = "io.github.emassey0135.Lumenna.UiTest";
+    let due = jiff::Zoned::now().checked_sub(jiff::Span::new().minutes(1)).unwrap();
+    let app = App::launch_with(&[("LUMENNA_APP_ID", ID)], |lumenna| {
+        lumenna.set_setting("reminders", "true").unwrap();
+        lumenna.add_task(&format!("Call the bank {} at {}", due.date(), due.strftime("%H:%M"))).unwrap();
+        let task = lumenna.list_tasks("").unwrap().rows[0].id.clone();
+        lumenna.add_reminder(task, "due".to_owned(), 0).unwrap();
+        // As if this device last gave reminders a few minutes ago, so the minute just gone is
+        // owed now rather than after the next one.
+        let since = jiff::Timestamp::now().checked_sub(jiff::SignedDuration::from_mins(3)).unwrap();
+        let settings = lumenna.path().join("device-settings");
+        let mut text = std::fs::read_to_string(&settings).unwrap_or_default();
+        text.push_str(&format!("reminders-delivered\t{since}\n"));
+        std::fs::write(&settings, text).unwrap();
+    });
+    let history = ToastNotificationManager::History().unwrap();
+    let shown = automation::wait(Duration::from_secs(15), || {
+        let toasts = history.GetHistoryWithId(&HSTRING::from(ID)).ok()?;
+        (0..toasts.Size().ok()?).find_map(|i| toasts.GetAt(i).ok()?.Content().ok()?.GetXml().ok().map(|x| x.to_string()))
+    });
+    let _ = history.ClearWithId(&HSTRING::from(ID));
+    windows_registry_forget(ID);
+    let xml = shown.expect("a toast was shown");
+    assert!(xml.contains("Call the bank"), "{xml}");
+    let store = app.store();
+    let task = store.list_tasks("").unwrap().rows[0].id.clone();
+    // Its buttons are the core's.
+    let words = store.reminders_due(jiff::Timestamp::now().checked_sub(jiff::SignedDuration::from_mins(3)).unwrap().to_string(), None).unwrap();
+    let reminder = words.due.iter().find(|r| r.target == task).expect("the core has it due");
+    assert!(xml.contains(&reminder.dismiss) && xml.contains(&reminder.snooze), "{xml}");
+}
+
+/// Chooses `name` from the context menu that is open, by the arrow keys as the keyboard
+/// reaches it, and returns every item it had.
+fn choose_from_menu(app: &App, name: &str) -> Vec<String> {
+    let items = app.automation.menu_items();
+    let names: Vec<String> = items.iter().map(|i| i.split('\'').nth(1).unwrap_or_default().to_owned()).collect();
+    let at = names.iter().position(|n| n == name).unwrap_or_else(|| panic!("no {name} in {names:?}"));
+    // Down skips separators, so it counts the items before it.
+    let before = items[..at].iter().filter(|i| !i.starts_with("Separator")).count();
+    for _ in 0..=before {
+        app.post(&["down"]);
+    }
+    app.post(&["enter"]);
+    names
+}
+
+/// Removes the identity a test gave Windows for its toasts.
+fn windows_registry_forget(id: &str) {
+    use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RegDeleteTreeW};
+    unsafe {
+        let _ = RegDeleteTreeW(HKEY_CURRENT_USER, &windows::core::HSTRING::from(format!("Software\\Classes\\AppUserModelId\\{id}")));
+    }
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn the_pairing_dialog_asks_for_a_code_when_the_field_is_empty() {
     let app = App::launch(|_| {});
     app.post(&[SETTINGS, "select:Devices", "invoke:Pair a Device..."]);
@@ -582,6 +688,9 @@ fn every_dialog_fits_the_screen_at_the_largest_text_size_with_nothing_overlappin
     fits_and_nothing_overlaps(&app, "New Block");
     app.post(&["esc", GO_TASKS, "home", PUT_IN_BLOCK]);
     fits_and_nothing_overlaps(&app, "Put in a Block");
+    app.post(&["esc", "cmd:142", "home", "context"]);
+    choose_from_menu(&app, "Reminders...");
+    fits_and_nothing_overlaps(&app, "Reminders");
     app.post(&["esc", SETTINGS]);
     for page in ["General", "Planning", "Devices", "Backups", "Export and Import"] {
         app.post(&[&format!("select:{page}")]);

@@ -14,8 +14,9 @@
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::rc::Rc;
+use std::sync::Arc;
 
-use lumenna_surface::{Action, ActionKind, Change, Lumenna, Result};
+use lumenna_surface::{Action, ActionKind, Change, Lumenna, ReminderLock, Result};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     COLOR_BTNFACE, CreateFontIndirectW, DeleteObject, GetDC, GetTextMetricsW, HBRUSH, HFONT, LOGFONTW,
@@ -35,7 +36,8 @@ use windows::core::{HSTRING, w};
 
 use super::blocks::BlockList;
 use super::controls::{self, rect};
-use super::core::{Core, Poster, WM_SAY, WM_STORE_CHANGED, said};
+use super::core::{Core, Poster, WM_SAY, WM_STORE_CHANGED, said, taken};
+use super::toast::{Answered, Toasts, WM_REMINDER};
 use super::dark;
 use super::day::DayView;
 use super::font;
@@ -111,6 +113,12 @@ pub struct App {
     pub devices_page: Cell<Option<HWND>>,
     icon: HICON,
     taskbar_created: u32,
+    /// Windows' notifications, for reminders; `None` where it has none to give.
+    toasts: Option<Toasts>,
+    /// The right to give this device's reminders, while this process holds it.
+    reminders: RefCell<Option<Arc<ReminderLock>>>,
+    /// Seconds since the app started, for what is done every few of them.
+    ticks: Cell<u32>,
 }
 
 thread_local! {
@@ -271,6 +279,9 @@ impl App {
             devices_page: Cell::new(None),
             icon,
             taskbar_created: tray::taskbar_created(),
+            toasts: Toasts::new(),
+            reminders: RefCell::new(None),
+            ticks: Cell::new(0),
         });
         app.update_font();
         dark::window(main);
@@ -293,6 +304,7 @@ impl App {
         let poster = Poster::new(self.main);
         self.core.start_syncing(poster);
         self.core.back_up_if_due(poster);
+        self.give_reminders();
         if !taken.is_empty() {
             self.say(&shortcut::taken(&taken, shortcuts::another_copy_open(self.main)));
         }
@@ -931,6 +943,69 @@ impl App {
             && let Some(content) = self.content() {
                 content.view().minute(self);
             }
+        let ticks = self.ticks.get().wrapping_add(1);
+        self.ticks.set(ticks);
+        // Every few seconds, while another process gives them, whether it has stopped; and
+        // what has come due, every twenty.
+        if (self.reminders.borrow().is_none() && ticks.is_multiple_of(5)) || ticks.is_multiple_of(20) {
+            self.give_reminders();
+        }
+    }
+
+    // -------------------------------------------------------------------------------------
+    // Reminders
+    // -------------------------------------------------------------------------------------
+
+    /// Shows what has come due as toasts, while this process is the one on the device that
+    /// gives them: another (`lum notify`, another copy) may hold that right, and this takes
+    /// it when that one stops.
+    fn give_reminders(&self) {
+        let Some(toasts) = &self.toasts else { return };
+        if self.reminders.borrow().is_none() {
+            let taken = self.core.lumenna.take_reminders().ok().flatten();
+            *self.reminders.borrow_mut() = taken;
+        }
+        let Some(lock) = self.reminders.borrow().clone() else { return };
+        let Ok(due) = self.core.lumenna.deliver_reminders(lock, None) else { return };
+        let window = Poster::new(self.main);
+        for reminder in &due.due {
+            toasts.remind(reminder, window);
+        }
+        if !due.missed_summary.is_empty() {
+            toasts.summary(&due.missed_summary, window);
+        }
+    }
+
+    /// A toast answered: its button's dismissal or snooze, or what it is about opened.
+    fn reminder_answered(&self, answered: Answered) {
+        let lumenna = &self.core.lumenna;
+        match answered {
+            Answered::Dismiss(reminder) => {
+                if let Some(change) = self.perform(|_| lumenna.dismiss_reminder(reminder.key, reminder.occurrence)) {
+                    self.say_change(&change);
+                }
+            }
+            Answered::Snooze(reminder) => {
+                if let Some(change) = self.perform(|_| lumenna.snooze_reminder(reminder.key, reminder.occurrence, None)) {
+                    self.say_change(&change);
+                }
+            }
+            Answered::Open(reminder) => {
+                self.show_window();
+                if reminder.kind == "block" {
+                    self.go(Place::Today, true);
+                    if let (Some(day), Ok(date)) = (self.day(), reminder.occurrence.parse()) {
+                        day.show_block(self, date, &reminder.target);
+                    }
+                } else {
+                    self.go(Place::Tasks, true);
+                    if let Some(list) = self.task_list() {
+                        list.land_on(&reminder.target);
+                    }
+                }
+            }
+            Answered::Summary => self.show_window(),
+        }
     }
 }
 
@@ -1010,6 +1085,8 @@ unsafe extern "system" fn main_procedure(hwnd: HWND, message: u32, wparam: WPARA
                         app.last_focus.set(focus);
                     }
                 } else {
+                    // Back in front, as from sleep: whatever came due meanwhile.
+                    app.give_reminders();
                     let last = app.last_focus.get();
                     if !last.is_invalid() && IsWindow(Some(last)).as_bool() && IsWindowVisible(last).as_bool() {
                         controls::focus(last);
@@ -1027,6 +1104,7 @@ unsafe extern "system" fn main_procedure(hwnd: HWND, message: u32, wparam: WPARA
             WM_TIMER => app.on_timer(),
             WM_STORE_CHANGED => app.store_changed(),
             WM_SAY => app.say(&said(lparam)),
+            WM_REMINDER => app.reminder_answered(taken(lparam)),
             WM_DEFERRED => {
                 let action = app.deferred.borrow_mut().pop_front();
                 if let Some(action) = action {

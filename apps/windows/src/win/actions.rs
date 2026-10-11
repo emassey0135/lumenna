@@ -3,7 +3,8 @@
 //! key — asks each one's question as a Windows dialog, and hands the answer back to the core.
 //! Which actions a row has, what they are called and what they ask are never decided here.
 //!
-//! Only a [`Question::Form`] is the app's own: the task details and the block form.
+//! Only a [`Question::Form`] is the app's own: the task details, the block form, and the list
+//! of a task's or block's reminders (`reminders.rs`).
 
 use lumenna_surface::{Action, ActionKind, Answer, Change, Choice, Question, Subject, length_question, not_offered};
 use windows::Win32::Foundation::HWND;
@@ -11,7 +12,7 @@ use windows::Win32::Foundation::HWND;
 use super::app::App;
 use super::clock::Locale;
 use super::core::sentence;
-use super::prompts;
+use super::{prompts, reminders};
 use crate::speech;
 
 /// A context menu's commands are this plus the action's position, clear of the menu bar's.
@@ -83,6 +84,11 @@ pub fn run(app: &App, owner: HWND, action: &Action, form: impl FnOnce()) -> Opti
         }
     };
     match &action.question {
+        // The one form every row shares, so no view need know it.
+        Question::Form if action.kind == ActionKind::Reminders => {
+            reminders::show(app, owner, action);
+            None
+        }
         Question::Form => {
             form();
             None
