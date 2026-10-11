@@ -37,6 +37,7 @@ fn in_a_block_its_own_sittings_come_first_and_choosing_one_starts_its_timer() {
     let offered = lumenna.what_should_i_work_on(at("09:20")).unwrap();
     let titles: Vec<_> = offered.choices.iter().map(|c| c.title.as_str()).collect();
     assert_eq!(titles, ["Essay", "Email"]);
+    assert_eq!(offered.announcement, "2 things to work on");
     assert_eq!(offered.choices[0].reason.as_deref(), Some("Planned for Deep work, 30 minutes."));
     let started = lumenna.start_on(&offered.choices[0].id, at("09:20")).unwrap();
     assert_eq!(started.announcement, "Started on Essay");
