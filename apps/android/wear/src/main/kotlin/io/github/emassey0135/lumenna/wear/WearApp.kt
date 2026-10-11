@@ -59,6 +59,10 @@ sealed interface Screen {
     data object Settings : Screen
     data object Planning : Screen
     data object Devices : Screen
+    /** A task's or a block series' reminders. */
+    data class Reminders(val target: String) : Screen
+    /** Reminders on this watch. */
+    data object ReminderSettings : Screen
     /** A list to choose one from: an action, a project, a task, a length. */
     data class Choose(val title: String, val message: String?, val choices: List<Option>, val chosen: (Option) -> Unit) : Screen
 }
@@ -152,9 +156,18 @@ private fun glyph(path: String) = ImageVector.Builder(
 ).addPath(pathData = addPathNodes(path), fill = SolidColor(Color.Black)).build()
 
 @Composable
-fun WearApp(core: Core, entry: TextEntry? = null) {
+fun WearApp(core: Core, entry: TextEntry? = null, opened: kotlinx.coroutines.flow.StateFlow<Pair<Long, io.github.emassey0135.lumenna.ReminderOpened>?>? = null) {
     val controller = rememberSwipeDismissableNavController()
     val navigator = remember(controller) { Navigator(controller) }
+    // A reminder's notification, tapped: its task, or the day its block is on.
+    val tapped = opened?.collectAsState()?.value
+    LaunchedEffect(tapped) {
+        val reminder = tapped?.second ?: return@LaunchedEffect
+        when (reminder.kind) {
+            "task" -> navigator.open(Screen.Task(reminder.target))
+            "block" -> navigator.open(Screen.Day)
+        }
+    }
     val changes by core.changes.collectAsState()
     var said by remember { mutableStateOf("") }
     LaunchedEffect(core) {
@@ -187,6 +200,8 @@ fun WearApp(core: Core, entry: TextEntry? = null) {
                             Screen.Settings -> SettingsScreen(navigator)
                             Screen.Planning -> PlanningScreen(core, changes)
                             Screen.Devices -> DevicesScreen(core, navigator, changes)
+                            is Screen.Reminders -> RemindersScreen(core, navigator, screen.target, changes)
+                            Screen.ReminderSettings -> ReminderSettingsScreen(core, changes)
                             is Screen.Choose -> ChooseScreen(screen)
                         }
                     }

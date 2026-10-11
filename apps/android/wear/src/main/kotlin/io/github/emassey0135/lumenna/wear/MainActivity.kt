@@ -1,6 +1,10 @@
 package io.github.emassey0135.lumenna.wear
 
+import android.content.Intent
 import android.os.Bundle
+import io.github.emassey0135.lumenna.ReminderOpened
+import io.github.emassey0135.lumenna.Reminders
+import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.drop
@@ -16,8 +20,21 @@ import io.github.emassey0135.lumenna.WatchLink
 class MainActivity : ComponentActivity() {
     private val core get() = (application as WearApplication).core
 
+    /** The last reminder notification tapped, counted so a second tap on the same one opens it too. */
+    private val opened = MutableStateFlow<Pair<Long, ReminderOpened>?>(null)
+
+    private fun handle(intent: Intent?) {
+        Reminders.opened(intent)?.let { opened.value = (opened.value?.first ?: 0L) + 1 to it }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handle(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handle(intent)
         // A change here, or one from another device, goes to the watch or phone near by, a
         // moment after the last of a run of them.
         core.getOrNull()?.let { opened ->
@@ -30,7 +47,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 core.fold(
-                    onSuccess = { WearApp(it) },
+                    onSuccess = { WearApp(it, opened = opened) },
                     // Nothing works without the store, so say why plainly.
                     onFailure = { error -> Text("Lumenna could not open its store. ${error.message.orEmpty()}") },
                 )

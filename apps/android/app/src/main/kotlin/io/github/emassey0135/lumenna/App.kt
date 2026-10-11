@@ -122,6 +122,12 @@ sealed interface Screen {
 
     /** Export and import. */
     data object Export : Screen
+
+    /** A task's or a block series' reminders. */
+    data class Reminders(val target: String) : Screen
+
+    /** Reminders on this device: whether, and what Android allows them. */
+    data object ReminderSettings : Screen
 }
 
 /** The four tabs, as on the iPhone: each its own back stack. */
@@ -166,7 +172,12 @@ private val SplitWidth = 840.dp
 private val SidebarWidth = 300.dp
 
 @Composable
-fun LumennaApp(core: Core, newTask: StateFlow<Long>? = null, shortcuts: Shortcuts = remember { Shortcuts() }) {
+fun LumennaApp(
+    core: Core,
+    newTask: StateFlow<Long>? = null,
+    shortcuts: Shortcuts = remember { Shortcuts() },
+    opened: StateFlow<Pair<Long, ReminderOpened>?>? = null,
+) {
     var tab by rememberSaveable { mutableStateOf(Tab.TODAY) }
     val stacks = remember { Tab.entries.associateWith { mutableStateListOf(it.root) } }
     // A wide window's: the place the sidebar chose, and what was opened from it.
@@ -225,6 +236,18 @@ fun LumennaApp(core: Core, newTask: StateFlow<Long>? = null, shortcuts: Shortcut
             val requested = newTask?.collectAsState()?.value ?: 0L
             LaunchedEffect(requested) {
                 if (requested > 0) go(Tab.TASKS, Screen.QuickAdd())
+            }
+
+            // A reminder's notification, tapped: its task, or its block's day.
+            val tapped = opened?.collectAsState()?.value
+            LaunchedEffect(tapped) {
+                val reminder = tapped?.second
+                when (reminder?.kind) {
+                    "task" -> go(Tab.TASKS, Screen.Task(reminder.target))
+                    "block" -> if (reminder.occurrence == Clock.today() || reminder.occurrence.isEmpty()) go(Tab.TODAY)
+                        else go(Tab.TODAY, Screen.Day(reminder.occurrence))
+                    else -> {}
+                }
             }
 
             // The commands any screen answers; a screen offering one of its own answers instead.
@@ -395,6 +418,8 @@ private fun Screens(core: Core, navigator: Navigator, screen: Screen, changes: L
         Screen.Planning -> PlanningScreen(core, navigator, changes)
         Screen.Backups -> BackupsScreen(core, navigator, changes)
         Screen.Export -> ExportScreen(core, navigator)
+        is Screen.Reminders -> RemindersScreen(core, navigator, screen.target, changes)
+        Screen.ReminderSettings -> ReminderSettingsScreen(core, navigator, changes)
     }
 }
 

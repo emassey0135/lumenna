@@ -62,4 +62,4 @@ fun Core.offered(
     entry: TextEntry?,
     form: (Action) -> Unit = {},
     done: (Change) -> Unit = {},
-): List<RowAction> = rowActions(actions, WearAsker(navigator, entry), form, done).sortedByDescending { it.primary }
+): List<RowAction> = rowActions(actions, WearAsker(navigator, entry), navigator.formOr(form), done).sortedByDescending { it.primary }

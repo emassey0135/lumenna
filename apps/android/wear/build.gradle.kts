@@ -51,6 +51,9 @@ dependencies {
     implementation(libs.wear.input)
     implementation(libs.activity.compose)
     implementation(libs.work.runtime)
+    // BridgingManager: the phone's reminder notifications are not bridged here, since the
+    // watch gives its own store's.
+    implementation(libs.wear.phone.interactions)
 
     androidTestImplementation(bom)
     androidTestImplementation(libs.compose.ui.test.junit4)

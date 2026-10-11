@@ -149,7 +149,7 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task, chan
             Heading("Actions")
             current.actions.forEach { action ->
                 TextButton(modifier = Target, onClick = {
-                    core.perform(action, asker, form = {}) { if (action.kind == ActionKind.DELETE) navigator.back() }
+                    core.perform(action, asker, form = navigator.formOr {}) { if (action.kind == ActionKind.DELETE) navigator.back() }
                 }) {
                     Text(action.name, color = if (action.destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
                 }

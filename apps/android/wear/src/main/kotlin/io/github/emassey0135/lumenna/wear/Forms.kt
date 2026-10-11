@@ -180,7 +180,7 @@ fun TaskScreen(core: Core, navigator: Navigator, screen: Screen.Task, changes: L
             item {
                 val entry = LocalTextEntry.current
                 Button(onClick = {
-                    core.perform(action, WearAsker(navigator, entry), form = {}) {
+                    core.perform(action, WearAsker(navigator, entry), form = navigator.formOr {}) {
                         if (action.kind == ActionKind.DELETE) navigator.back()
                     }
                 }, modifier = Modifier.fillMaxWidth(), label = { Text(action.name) })

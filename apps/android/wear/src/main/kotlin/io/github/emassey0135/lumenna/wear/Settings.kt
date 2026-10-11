@@ -37,6 +37,7 @@ fun SettingsScreen(navigator: Navigator) {
         item { Heading("Settings") }
         item { Button(onClick = { navigator.open(Screen.Planning) }, modifier = Modifier.fillMaxWidth(), label = { Text("Planning") }) }
         item { Button(onClick = { navigator.open(Screen.Devices) }, modifier = Modifier.fillMaxWidth(), label = { Text("Devices and sync") }) }
+        item { Button(onClick = { navigator.open(Screen.ReminderSettings) }, modifier = Modifier.fillMaxWidth(), label = { Text("Reminders") }) }
     }
 }
 

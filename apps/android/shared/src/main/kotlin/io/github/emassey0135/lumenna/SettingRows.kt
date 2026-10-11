@@ -19,6 +19,9 @@ fun List<Setting>.planning(): List<Setting> = filter { it.syncs }
  */
 fun List<Setting>.backups(): List<Setting> = filter { !it.syncs && it.key.startsWith("backup-") && it.kind != SettingKind.FOLDER }
 
+/** The Reminders page's: whether this device gives reminders, its own setting. */
+fun List<Setting>.reminders(): List<Setting> = filter { it.key == "reminders" }
+
 /** A setting's value as it is said: its option's name, a time in this device's clock. */
 val Setting.said: String
     get() = when (kind) {

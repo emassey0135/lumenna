@@ -46,6 +46,9 @@ class WearTest {
     private val answers = ArrayDeque<String>()
     private val asked = mutableListOf<String>()
 
+    /** What Wear OS allows reminders, as a test says it; the system's answer when null. */
+    private var access: io.github.emassey0135.lumenna.ReminderAccess? = null
+
     @Before
     fun open() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -57,7 +60,13 @@ class WearTest {
             asked += label
             answers.removeFirstOrNull()?.let(answered)
         }
-        rule.setContent { androidx.wear.compose.material3.MaterialTheme { WearApp(core, entry) } }
+        rule.setContent {
+            androidx.compose.runtime.CompositionLocalProvider(
+                io.github.emassey0135.lumenna.LocalReminderAccess provides { context -> access ?: io.github.emassey0135.lumenna.Reminders.access(context) },
+            ) {
+                androidx.wear.compose.material3.MaterialTheme { WearApp(core, entry) }
+            }
+        }
     }
 
     @After
@@ -264,5 +273,49 @@ class WearTest {
         answers += "in 3 days"
         press("Day")
         assertEquals(core.lumenna.newBlockStart("in 3 days"), valueOf("Starts at"))
+    }
+
+    /**
+     * A row's custom action run on the main thread, as TalkBack runs it: one that opens a
+     * screen navigates, which the test thread may not.
+     */
+    private fun actOnMain(row: String, label: String) {
+        val actions = shown(row, substring = true).fetchSemanticsNode().config
+            .getOrNull(androidx.compose.ui.semantics.SemanticsActions.CustomActions).orEmpty()
+        val action = actions.single { it.label == label }
+        rule.runOnUiThread { action.action() }
+        rule.waitForIdle()
+    }
+
+    @Test
+    fun aBlocksRemindersAreItsDefaultsUntilOneOfItsOwnIsAddedByAPhrase() {
+        // Granted, so adding the first reminder asks nothing over the app.
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.uiAutomation.grantRuntimePermission(instrumentation.targetContext.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
+        core.lumenna.addBlock(io.github.emassey0135.lumenna.core.NewBlock(title = "Deep work", at = "9:00", minutes = 90u, date = "today", kind = "work", repeat = null))
+        rule.runOnIdle { core.changed() }
+        press("Today")
+        actOnMain("Deep work", "Reminders")
+        said("1 reminder, the defaults").assertExists()
+        said("5 minutes before it starts, default").assertExists()
+        answers += "at end"
+        press("Add reminder")
+        assertEquals(listOf("New reminder for Deep work"), asked)
+        shown("When it ends").assertExists()
+        actOnMain("When it ends", "Remove reminder")
+        said("1 reminder, the defaults").assertExists()
+    }
+
+    @Test
+    fun theRemindersSettingsTurnThemOffOnThisWatchAndSayWhatIsRefused() {
+        access = io.github.emassey0135.lumenna.ReminderAccess(notifications = false, exact = false, grantExact = android.content.Intent())
+        press("Settings")
+        press("Reminders")
+        said("Notifications are off for Lumenna").assertExists()
+        shown("Allow notifications").assertExists()
+        said("not allowed to set alarms for an exact time").assertExists()
+        shown("Allow exact alarms").assertExists()
+        press("Reminders on this device")
+        assertEquals("false", core.lumenna.settings("reminders").settings.single().value)
     }
 }
