@@ -102,11 +102,35 @@ fn text(response: &Response, clock: Clock) {
         | Outcome::Choices(_)
         | Outcome::Places(_)
         | Outcome::Value(_)
+
         | Outcome::Server(_)
         | Outcome::Backup(_)
         | Outcome::Restore(_)
         | Outcome::Import(_) => println!("{}", response.announcement()),
         Outcome::Paired(_) => println!("{}", response.announcement()),
+        Outcome::Reminders(list) => {
+            println!("{}", response.announcement());
+            for reminder in &list.reminders {
+                let id = if reminder.own { format!("  ({})", reminder.id) } else { String::new() };
+                println!("  {}{id}", reminder.words);
+            }
+        }
+        Outcome::DueReminders(found) => {
+            println!("{}", response.announcement());
+            if !found.missed_summary.is_empty() {
+                println!("{}", found.missed_summary);
+            }
+            for notification in &found.due {
+                let at = notification.at.parse::<jiff::Timestamp>().map_or_else(
+                    |_| notification.at.clone(),
+                    |at| {
+                        let local = at.to_zoned(jiff::tz::TimeZone::system());
+                        format!("{} {}", local.date(), clock.time(&format!("{:02}:{:02}", local.hour(), local.minute())))
+                    },
+                );
+                println!("  {at}  {}", notification.text);
+            }
+        }
         Outcome::Synced(report) => {
             println!("{}", response.announcement());
             for peer in &report.peers {

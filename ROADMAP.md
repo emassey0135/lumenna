@@ -28,29 +28,16 @@ The order, and why:
 
 ## 2. Reminders and time events
 
-The model is built: `Reminder` (targeting a task or a block series, anchored to a due date,
-a block's start or end, or an absolute time, with an offset that may be after), `Delivery`
-(every device, only these, all but these), `ReminderAck`, and the all-day hour. Nothing
-creates, lists, schedules, delivers, dismisses or snoozes one, and the default task and
-block reminders cannot be set.
+The core and the surface are built: when each reminder fires, across daylight-saving
+changes; what it says; one process per device delivering; dismissing and snoozing, synced;
+`lum reminder` and `lum notify`. Still to come:
 
-- **The core schedules**: `reminders_due(since, now)`, over the FFI and RPC. The same
-  scheduler serves hooks' time events and the planner's overrun warning.
-- **Every device schedules its own notifications from synced data**, with no coordinator.
-  Dismissing or snoozing writes a `ReminderAck`, which syncs; best effort, since a sleeping
-  device may still show it. A device mute is local and never syncs.
-- **Reminders attach to a series** and fire per occurrence; a cancelled occurrence
-  suppresses them. A date-only due date fires at the all-day hour.
-- **The content is the whole message**: "Deep work starts in 5 minutes — 3 tasks assigned,
-  first is Review PR", never "Upcoming block".
-- **Late start**: say anything under a few minutes stale, fold the rest into one summary,
-  and let acks suppress what another device handled. Two resident processes on one machine
-  must not both deliver.
-- **What a block in a skipped or repeated DST hour does** must be decided first, once, in
-  the core, where a civil occurrence becomes an instant: whether a 2:30 block on the spring
-  day moves to 3:30, clamps to 3:00 or is skipped; which 1:30 an autumn one means; and how a
-  block spanning the change counts its length and caps its timer. Never during expansion,
-  or a routine loses a day each spring.
+- **Delivery in every app** (below), each over `deliver_reminders` or `upcoming_reminders`.
+- **Setting reminders in every app**: a task's and a block's own, and the defaults in
+  settings (a phrase such as `5m before start` for the defaults' setting).
+- **Reminders at a fixed moment** exist in the model and the scheduler; nothing sets one.
+- **The same scheduler for hooks' time events and the planner's overrun warning.**
+- **Delivery to some devices only** (`Delivery`) has no way to be set.
 
 **Who delivers.** Whatever process owns the output, and never the daemon: on a Linux desktop
 the tray app does it better, without one no notification service is listening, and a system

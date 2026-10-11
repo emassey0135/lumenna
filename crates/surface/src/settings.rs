@@ -172,7 +172,7 @@ impl Lumenna {
     }
 
     /// A setting that belongs to this device alone.
-    fn device_setting(&self, key: &str) -> Option<String> {
+    pub(crate) fn device_setting(&self, key: &str) -> Option<String> {
         let text = std::fs::read_to_string(self.device_settings_path()).ok()?;
         text.lines()
             .filter_map(|line| line.split_once('\t'))
@@ -181,7 +181,7 @@ impl Lumenna {
     }
 
     /// Writes a device setting; `None` puts it back to its default.
-    fn write_device_setting(&self, key: &str, value: Option<&str>) -> Result<()> {
+    pub(crate) fn write_device_setting(&self, key: &str, value: Option<&str>) -> Result<()> {
         let text = std::fs::read_to_string(self.device_settings_path()).unwrap_or_default();
         let mut lines: Vec<String> = text
             .lines()
@@ -263,6 +263,7 @@ impl Lumenna {
             ),
             // For a client with no clock setting of its own to follow, as a terminal has none.
             described("clock", self.device_setting("clock").unwrap_or_else(|| "24-hour".to_owned())),
+            described("reminders", self.device_setting("reminders").unwrap_or_else(|| "true".to_owned())),
         ])
     }
 
@@ -292,6 +293,10 @@ impl Lumenna {
             "backup-every" => {
                 parse_every(value)?;
                 self.write_device_setting(key, Some(&value.trim().to_lowercase()))?;
+            }
+            "reminders" => {
+                let on = resolve::yes_or_no(value)?;
+                self.write_device_setting(key, if on { None } else { Some("false") })?;
             }
             "clock" => {
                 let clock = match value.trim().to_lowercase().as_str() {
@@ -400,6 +405,12 @@ fn described(key: &str, value: String) -> Setting {
         ),
         "backup-keep" => ("Backups kept", K::Number, Vec::new(), ""),
         "backup-dir" => ("Backups go to", K::Folder, Vec::new(), ""),
+        "reminders" => (
+            "Reminders on this device",
+            K::Toggle,
+            options(&[("true", "On"), ("false", "Off")]),
+            "Off silences them here alone; every other device still gives them.",
+        ),
         "clock" => ("Clock", K::Choice, options(&[("12-hour", "12-hour"), ("24-hour", "24-hour")]), ""),
         _ => ("", K::Choice, Vec::new(), ""),
     };

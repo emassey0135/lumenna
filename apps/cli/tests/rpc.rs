@@ -489,3 +489,20 @@ fn what_saving_a_form_sends_is_the_cores_to_work_out_for_a_client_over_the_pipe(
     assert_eq!(reply["result"]["value"]["priority"], 1, "{out}");
     assert!(reply["result"]["value"]["title"].is_null(), "only what changed: {out}");
 }
+
+#[test]
+fn upcoming_reminders_come_over_the_pipe_with_what_dismissing_one_takes() {
+    let rpc = Rpc::new();
+    // The next hour but one: at least an hour off, so its 5-minute reminder is still to come.
+    let start = jiff::Zoned::now().checked_add(jiff::SignedDuration::from_hours(2)).unwrap();
+    let at = format!("{:02}:00", start.hour());
+    rpc.cli(&["block", "add", "Deep work", "--at", &at, "--minutes", "60", "--date", &start.date().to_string()]);
+    let until = jiff::Timestamp::now().checked_add(jiff::SignedDuration::from_hours(3)).unwrap();
+    let out = rpc.talk(&[&format!(r#"{{"jsonrpc":"2.0","id":1,"method":"reminder.upcoming","params":{{"until":"{until}"}}}}"#)]);
+    let reply: serde_json::Value = serde_json::from_str(out.lines().next().unwrap()).unwrap();
+    let first = &reply["result"]["due"][0];
+    assert_eq!(first["text"], "Deep work starts in 5 minutes — nothing assigned yet", "{out}");
+    let (key, occurrence) = (first["key"].as_str().unwrap(), first["occurrence"].as_str().unwrap());
+    let out = rpc.talk(&[&format!(r#"{{"jsonrpc":"2.0","id":2,"method":"reminder.dismiss","params":{{"key":"{key}","occurrence":"{occurrence}"}}}}"#)]);
+    assert!(out.contains(r#""changed":true"#), "{out}");
+}

@@ -1117,3 +1117,19 @@ fn a_script_deletes_a_label_without_being_asked() {
     let out = lum.ok(&["label", "rm", "calls"]);
     assert!(out.contains("calls"), "{out}");
 }
+
+#[test]
+fn a_block_takes_a_reminder_of_its_own_in_place_of_the_default_and_it_comes_up() {
+    let lum = Lum::new();
+    // The next hour but one: at least an hour off, so its 5-minute reminder is still to come.
+    let start = jiff::Zoned::now().checked_add(jiff::SignedDuration::from_hours(2)).unwrap();
+    let at = format!("{:02}:00", start.hour());
+    lum.ok(&["block", "add", "Deep work", "--at", &at, "--minutes", "60", "--date", &start.date().to_string()]);
+    lum.ok(&["block", "list"]);
+    assert!(lum.ok(&["reminder", "list", "1"]).contains("5 minutes before it starts"), "the default");
+    lum.ok(&["reminder", "add", "1", "--at", "end", "--before", "10m"]);
+    let listed = lum.ok(&["reminder", "list", "1"]);
+    assert!(listed.contains("10 minutes before it ends") && !listed.contains("5 minutes before it starts"), "{listed}");
+    let upcoming = lum.ok(&["reminder", "upcoming", "--hours", "3"]);
+    assert!(upcoming.contains("Deep work ends in 10 minutes"), "{upcoming}");
+}

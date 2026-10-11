@@ -15,6 +15,7 @@ pub mod id;
 pub mod model;
 pub mod order;
 pub mod recur;
+pub mod remind;
 pub mod repair;
 pub mod row;
 pub mod snapshot;

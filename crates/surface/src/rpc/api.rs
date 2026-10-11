@@ -128,6 +128,10 @@ pub enum Outcome {
     Places(crate::places::Places),
     /// What a form function worked out.
     Value(Derived),
+    /// Reminders to give.
+    DueReminders(crate::DueReminders),
+    /// A task's or block's reminders.
+    Reminders(crate::ReminderList),
 }
 
 macro_rules! outcomes {
@@ -181,6 +185,8 @@ outcomes!(
     Choices(Choices),
     Places(crate::places::Places),
     Value(Derived),
+    DueReminders(crate::DueReminders),
+    Reminders(crate::ReminderList),
 );
 
 impl From<Imported> for Outcome {

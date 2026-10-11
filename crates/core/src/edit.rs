@@ -1492,3 +1492,39 @@ pub fn update_settings(before: Settings, after: Settings) -> Edit {
         changes: vec![Change::Settings { before: Box::new(before), after: Box::new(after) }],
     }
 }
+
+// ---------------------------------------------------------------------------------------
+// Reminders
+// ---------------------------------------------------------------------------------------
+
+/// Adds a reminder, said as `description` (the surface words what it is about).
+#[must_use]
+pub fn create_reminder(reminder: Reminder, description: String) -> Edit {
+    Edit { description, changes: vec![Change::Reminder(Box::new(Transition::created(reminder)))] }
+}
+
+/// Moves a reminder to the trash, said as `description`.
+///
+/// # Errors
+///
+/// If the reminder is not loaded.
+pub fn trash_reminder(snapshot: &Snapshot, id: crate::id::ReminderId, description: String) -> Result<Edit, EditError> {
+    let reminder = snapshot.reminders.get(&id).ok_or(EditError::NotFound { kind: "reminder" })?;
+    if reminder.deleted_at.is_some() {
+        return Ok(Edit::nothing());
+    }
+    let mut trashed = reminder.clone();
+    trashed.deleted_at = Some(time::now());
+    Ok(Edit { description, changes: vec![Change::Reminder(Box::new(Transition::updated(reminder.clone(), trashed)))] })
+}
+
+/// Records what was done with one firing of a reminder, replacing what was done before: a
+/// dismissal after a snooze ends it. It syncs, so every device stops showing that firing.
+#[must_use]
+pub fn acknowledge(snapshot: &Snapshot, ack: ReminderAck, description: String) -> Edit {
+    let before = snapshot.acks.get(&(ack.reminder_id, ack.occurrence_date)).cloned();
+    if before.as_ref() == Some(&ack) {
+        return Edit::nothing();
+    }
+    Edit { description, changes: vec![Change::Ack(Box::new(Transition { before, after: Some(ack) }))] }
+}
