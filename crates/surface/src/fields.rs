@@ -363,6 +363,11 @@ pub struct ProposalWords {
     pub nothing: String,
     /// The heading over what does not fit.
     pub unfit: String,
+    /// The heading over other options (Replan's `alternatives`), each a button that asks again
+    /// with its pins. Empty where a screen has none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[cfg_attr(feature = "uniffi", uniffi(default = ""))]
+    pub others: String,
 }
 
 /// The words of `kind`'s screen: [`ActionKind::Replan`](crate::ActionKind::Replan) or
@@ -379,6 +384,7 @@ pub fn proposal_words(kind: crate::ActionKind) -> ProposalWords {
             hint: "A sitting left unchecked stays out of its block, and the day is planned again around it.".to_owned(),
             nothing: "There is nothing to plan.".to_owned(),
             unfit: "Due, and fits in no block".to_owned(),
+            others: String::new(),
         },
         _ => ProposalWords {
             title: "Replan from Now".to_owned(),
@@ -390,6 +396,7 @@ pub fn proposal_words(kind: crate::ActionKind) -> ProposalWords {
                 .to_owned(),
             nothing: "Nothing needs to change: the rest of the day still fits.".to_owned(),
             unfit: "Does not fit".to_owned(),
+            others: "Other options".to_owned(),
         },
     }
 }

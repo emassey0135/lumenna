@@ -94,9 +94,28 @@ pub struct Replan {
     pub pins: ReplanPins,
     /// The clock its sentences are in, for the proposal that follows.
     pub style: TimeStyle,
+    /// Other options, each a block skipped and what that costs and saves: "Skip Lunch today,
+    /// your only break left today. Then nothing else needs to change." Choosing one asks
+    /// [`Lumenna::replan`] again with its `pins`. Offered only where it does better.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alternatives: Vec<ReplanAlternative>,
 }
 
 crate::announced!(Replan);
+
+/// Another way through the rest of the day.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+pub struct ReplanAlternative {
+    /// What it is, what it costs and what follows, in a sentence or two.
+    pub sentence: String,
+    /// The pins to propose with, to take it.
+    pub pins: ReplanPins,
+}
+
+/// At most this many other options: more is a menu of strategies, not a choice.
+const ALTERNATIVES: usize = 3;
 
 /// What the person decided about the rest of today, which a proposal keeps to: each a
 /// block's series, or a sitting's identifier.
@@ -186,131 +205,7 @@ impl Lumenna {
         pins: ReplanPins,
         now: Option<String>,
     ) -> Result<Replan> {
-        let ReplanPins { keep, skip, sittings: kept_sittings } = pins.clone();
-        let now = now_or(now.as_deref())?;
-        let (snapshot, proposal, window_end, starts) = self.with(|store| {
-            store.load_all_years()?;
-            let snapshot = repaired(store);
-            let mut pins = Vec::new();
-            for id in &keep {
-                pins.push(Pin::Keep(resolve::series_id(&snapshot, id)?));
-            }
-            for id in &skip {
-                pins.push(Pin::Skip(resolve::series_id(&snapshot, id)?));
-            }
-            for id in &kept_sittings {
-                pins.push(Pin::KeepSitting(resolve::assignment_id(&snapshot, id)?));
-            }
-            let day = snapshot.day(now.date())?;
-            // The day ends at the window's end; once the person has planned past it, at midnight,
-            // or later still if a block already runs past that.
-            let window = minutes_of(snapshot.settings.day_window.1);
-            let last = day.iter().map(|o| minutes_of(o.start_time) + i64::from(o.duration_mins)).max().unwrap_or(0);
-            let window_end = if last > window { last.max(24 * 60) } else { window };
-            let proposal = propose_reflow(&snapshot, now.date(), minutes_of(now.time()), window_end, &pins)
-                .map_err(|e| LumennaError::new(e.to_string()))?;
-            let starts: std::collections::BTreeMap<SeriesId, i64> =
-                day.iter().map(|o| (o.series_id, minutes_of(o.start_time))).collect();
-            Ok((snapshot, proposal, window_end, starts))
-        })?;
-        let mut changes = Vec::new();
-        for change in &proposal.changes {
-            match change {
-                Proposed::Block { series, from_start, to_start, from_mins, to_mins } => {
-                    let name = title(&snapshot, *series);
-                    let moves = from_start != to_start;
-                    let shortens = from_mins != to_mins;
-                    let sentence = match (moves, shortens) {
-                        (true, true) => format!(
-                            "{name} moves from {} to {} and shortens from {} to {}",
-                            clock(*from_start, style),
-                            clock(*to_start, style),
-                            duration(*from_mins),
-                            duration(*to_mins)
-                        ),
-                        (true, false) => format!("{name} moves from {} to {}", clock(*from_start, style), clock(*to_start, style)),
-                        _ => format!("{name} shortens from {} to {}", duration(*from_mins), duration(*to_mins)),
-                    };
-                    changes.push(ReplanChange {
-                        sentence,
-                        kind: "block".to_owned(),
-                        target: series.to_string(),
-                        from_start: *from_start,
-                        to_start: *to_start,
-                        from_mins: *from_mins,
-                        to_mins: *to_mins,
-                        destination: String::new(),
-                    });
-                }
-                Proposed::Skip { series } => changes.push(ReplanChange {
-                    sentence: format!("{} is skipped today", title(&snapshot, *series)),
-                    kind: "skip".to_owned(),
-                    target: series.to_string(),
-                    from_start: 0,
-                    to_start: 0,
-                    from_mins: 0,
-                    to_mins: 0,
-                    destination: String::new(),
-                }),
-                Proposed::MoveSitting { assignment, task, from } => {
-                    let name = snapshot.tasks.get(task).map(|t| t.title.clone()).unwrap_or_default();
-                    let destination = self.destination_for(&task.to_string(), *from, now.date())?;
-                    let sentence = match &destination {
-                        Some(to) => {
-                            let day = to
-                                .date
-                                .as_deref()
-                                .and_then(|d| d.parse().ok())
-                                .map(|d| crate::carry::on_day(d, now.date()))
-                                .unwrap_or_default();
-                            let at = to.start.as_deref().and_then(|t| t.parse::<jiff::civil::Time>().ok()).map(minutes_of);
-                            let at = at.map_or_else(String::new, |at| format!(" at {}", clock(at, style)));
-                            format!("{name} does not fit in {} and moves to {} {day}{at}", title(&snapshot, *from), to.title)
-                        }
-                        None => format!(
-                            "{name} does not fit in {} and goes back to the list, since no block this week takes it",
-                            title(&snapshot, *from)
-                        ),
-                    };
-                    changes.push(ReplanChange {
-                        sentence,
-                        kind: "sitting".to_owned(),
-                        target: assignment.to_string(),
-                        from_start: 0,
-                        to_start: 0,
-                        from_mins: 0,
-                        to_mins: 0,
-                        destination: destination.map(|d| d.id).unwrap_or_default(),
-                    });
-                }
-            }
-        }
-        let unplaceable: Vec<String> = proposal
-            .unplaceable
-            .iter()
-            .map(|series| {
-                let name = title(&snapshot, *series);
-                // An anchored or kept block cannot move, so only what is under way is in its way.
-                let fixed = snapshot.series.get(series).is_some_and(|b| b.flags.anchored)
-                    || keep.iter().any(|k| series.to_string().starts_with(k.as_str()));
-                match starts.get(series) {
-                    Some(start) if fixed => format!(
-                        "what is under way runs into {name} at {}: stop now to make it, or miss it",
-                        clock(*start, style)
-                    ),
-                    _ if window_end >= 24 * 60 => format!("{name} does not fit before midnight"),
-                    _ => format!("{name} does not fit before the day ends at {}", clock(window_end, style)),
-                }
-            })
-            .collect();
-        let mut said: Vec<String> = changes.iter().map(|c| c.sentence.clone()).collect();
-        said.extend(unplaceable.iter().cloned());
-        let announcement = if said.is_empty() {
-            "Nothing needs to change: the rest of the day still fits.".to_owned()
-        } else {
-            crate::words::capitalised(&joined(&said))
-        };
-        Ok(Replan { announcement, notices: Vec::new(), changes, unplaceable, pins, style })
+        self.propose(style, pins, &now_or(now.as_deref())?, true)
     }
 
     /// Makes the changes of `proposal` the person accepted, all or some, and proposes again:
@@ -439,6 +334,205 @@ impl Lumenna {
             store.apply_recorded(&change)?;
             Ok(Change::of(&change))
         })
+    }
+}
+
+impl Lumenna {
+    /// The proposal for `pins`, with other options worked out when `alternatives`.
+    fn propose(&self, style: TimeStyle, pins: ReplanPins, now: &Zoned, alternatives: bool) -> Result<Replan> {
+        let ReplanPins { keep, skip, sittings: kept_sittings } = pins.clone();
+        let now = now.clone();
+        let (snapshot, proposal, window_end, starts) = self.with(|store| {
+            store.load_all_years()?;
+            let snapshot = repaired(store);
+            let mut pins = Vec::new();
+            for id in &keep {
+                pins.push(Pin::Keep(resolve::series_id(&snapshot, id)?));
+            }
+            for id in &skip {
+                pins.push(Pin::Skip(resolve::series_id(&snapshot, id)?));
+            }
+            for id in &kept_sittings {
+                pins.push(Pin::KeepSitting(resolve::assignment_id(&snapshot, id)?));
+            }
+            let day = snapshot.day(now.date())?;
+            // The day ends at the window's end; once the person has planned past it, at midnight,
+            // or later still if a block already runs past that.
+            let window = minutes_of(snapshot.settings.day_window.1);
+            let last = day.iter().map(|o| minutes_of(o.start_time) + i64::from(o.duration_mins)).max().unwrap_or(0);
+            let window_end = if last > window { last.max(24 * 60) } else { window };
+            let proposal = propose_reflow(&snapshot, now.date(), minutes_of(now.time()), window_end, &pins)
+                .map_err(|e| LumennaError::new(e.to_string()))?;
+            let starts: std::collections::BTreeMap<SeriesId, i64> =
+                day.iter().map(|o| (o.series_id, minutes_of(o.start_time))).collect();
+            Ok((snapshot, proposal, window_end, starts))
+        })?;
+        let mut changes = Vec::new();
+        for change in &proposal.changes {
+            match change {
+                Proposed::Block { series, from_start, to_start, from_mins, to_mins } => {
+                    let name = title(&snapshot, *series);
+                    let moves = from_start != to_start;
+                    let shortens = from_mins != to_mins;
+                    let sentence = match (moves, shortens) {
+                        (true, true) => format!(
+                            "{name} moves from {} to {} and shortens from {} to {}",
+                            clock(*from_start, style),
+                            clock(*to_start, style),
+                            duration(*from_mins),
+                            duration(*to_mins)
+                        ),
+                        (true, false) => format!("{name} moves from {} to {}", clock(*from_start, style), clock(*to_start, style)),
+                        _ => format!("{name} shortens from {} to {}", duration(*from_mins), duration(*to_mins)),
+                    };
+                    changes.push(ReplanChange {
+                        sentence,
+                        kind: "block".to_owned(),
+                        target: series.to_string(),
+                        from_start: *from_start,
+                        to_start: *to_start,
+                        from_mins: *from_mins,
+                        to_mins: *to_mins,
+                        destination: String::new(),
+                    });
+                }
+                Proposed::Skip { series } => changes.push(ReplanChange {
+                    sentence: format!("{} is skipped today", title(&snapshot, *series)),
+                    kind: "skip".to_owned(),
+                    target: series.to_string(),
+                    from_start: 0,
+                    to_start: 0,
+                    from_mins: 0,
+                    to_mins: 0,
+                    destination: String::new(),
+                }),
+                Proposed::MoveSitting { assignment, task, from } => {
+                    let name = snapshot.tasks.get(task).map(|t| t.title.clone()).unwrap_or_default();
+                    let destination = self.destination_for(&task.to_string(), *from, now.date())?;
+                    let sentence = match &destination {
+                        Some(to) => {
+                            let day = to
+                                .date
+                                .as_deref()
+                                .and_then(|d| d.parse().ok())
+                                .map(|d| crate::carry::on_day(d, now.date()))
+                                .unwrap_or_default();
+                            let at = to.start.as_deref().and_then(|t| t.parse::<jiff::civil::Time>().ok()).map(minutes_of);
+                            let at = at.map_or_else(String::new, |at| format!(" at {}", clock(at, style)));
+                            format!("{name} does not fit in {} and moves to {} {day}{at}", title(&snapshot, *from), to.title)
+                        }
+                        None => format!(
+                            "{name} does not fit in {} and goes back to the list, since no block this week takes it",
+                            title(&snapshot, *from)
+                        ),
+                    };
+                    changes.push(ReplanChange {
+                        sentence,
+                        kind: "sitting".to_owned(),
+                        target: assignment.to_string(),
+                        from_start: 0,
+                        to_start: 0,
+                        from_mins: 0,
+                        to_mins: 0,
+                        destination: destination.map(|d| d.id).unwrap_or_default(),
+                    });
+                }
+            }
+        }
+        let unplaceable: Vec<String> = proposal
+            .unplaceable
+            .iter()
+            .map(|series| {
+                let name = title(&snapshot, *series);
+                // An anchored or kept block cannot move, so only what is under way is in its way.
+                let fixed = snapshot.series.get(series).is_some_and(|b| b.flags.anchored)
+                    || keep.iter().any(|k| series.to_string().starts_with(k.as_str()));
+                match starts.get(series) {
+                    Some(start) if fixed => format!(
+                        "what is under way runs into {name} at {}: stop now to make it, or miss it",
+                        clock(*start, style)
+                    ),
+                    _ if window_end >= 24 * 60 => format!("{name} does not fit before midnight"),
+                    _ => format!("{name} does not fit before the day ends at {}", clock(window_end, style)),
+                }
+            })
+            .collect();
+        let mut said: Vec<String> = changes.iter().map(|c| c.sentence.clone()).collect();
+        said.extend(unplaceable.iter().cloned());
+        let announcement = if said.is_empty() {
+            "Nothing needs to change: the rest of the day still fits.".to_owned()
+        } else {
+            crate::words::capitalised(&joined(&said))
+        };
+        let alternatives = if alternatives && !(changes.is_empty() && unplaceable.is_empty()) {
+            self.alternatives(&snapshot, style, &pins, &now, (unplaceable.len(), changes.len()))?
+        } else {
+            Vec::new()
+        };
+        Ok(Replan { announcement, notices: Vec::new(), changes, unplaceable, pins, style, alternatives })
+    }
+
+    /// Skipping each block still to come today, where that does better than `score`
+    /// (what does not fit, then how much moves), best first: what it costs, and what follows.
+    fn alternatives(
+        &self,
+        snapshot: &Snapshot,
+        style: TimeStyle,
+        pins: &ReplanPins,
+        now: &Zoned,
+        score: (usize, usize),
+    ) -> Result<Vec<ReplanAlternative>> {
+        let at = minutes_of(now.time());
+        let mut day = snapshot.day(now.date())?;
+        day.sort_by_key(|o| (o.start_time, o.series_id));
+        // Every block not over yet but the one under way, which re-flow keeps as it is: one due
+        // to start during it, and run over, is a choice as much as one still to come.
+        let ends = |o: &lumenna_core::recur::Occurrence| minutes_of(o.start_time) + i64::from(o.duration_mins);
+        let current = day.iter().find(|o| minutes_of(o.start_time) <= at && at < ends(o)).map(|o| o.series_id);
+        let later: Vec<_> = day
+            .into_iter()
+            .filter(|o| ends(o) > at && Some(o.series_id) != current)
+            .filter(|o| !pins.skip.iter().any(|s| o.series_id.to_string().starts_with(s.as_str())))
+            .collect();
+        let facts = snapshot.facts();
+        let mut found = Vec::new();
+        for occurrence in &later {
+            let mut tried = pins.clone();
+            tried.skip.push(occurrence.series_id.to_string());
+            let option = self.propose(style, tried.clone(), now, false)?;
+            let own = |c: &ReplanChange| c.kind == "skip" && c.target == occurrence.series_id.to_string();
+            let rest: Vec<String> = option.changes.iter().filter(|c| !own(c)).map(|c| c.sentence.clone()).chain(option.unplaceable.iter().cloned()).collect();
+            let better = (option.unplaceable.len(), option.changes.iter().filter(|c| !own(c)).count());
+            if better >= score {
+                continue;
+            }
+            let name = title(snapshot, occurrence.series_id);
+            let block = snapshot.series.get(&occurrence.series_id);
+            let reference = match block {
+                Some(series) if series.is_recurring() => lumenna_core::model::BlockRef::Occurrence(occurrence.series_id, occurrence.date),
+                _ => lumenna_core::model::BlockRef::OneOff(occurrence.series_id),
+            };
+            let planned = snapshot
+                .assignments
+                .values()
+                .filter(|a| a.block_ref == reference && snapshot.tasks.get(&a.task_id).is_some_and(|t| !t.is_deleted() && !facts.is_completed(t)))
+                .count();
+            let breaks = later.iter().filter(|o| o.kind == lumenna_core::model::BlockKind::Break).count();
+            // What it costs, said so the choice is the person's with the price in view.
+            let cost = if occurrence.flags.anchored {
+                ", which is anchored: this means missing it".to_owned()
+            } else if occurrence.kind == lumenna_core::model::BlockKind::Break {
+                if breaks == 1 { ", your only break left today".to_owned() } else { format!(", one of {breaks} breaks left today") }
+            } else if planned > 0 {
+                format!(", and the {} planned in it", crate::words::count_line(planned, "sitting"))
+            } else {
+                String::new()
+            };
+            let then = if rest.is_empty() { "nothing else needs to change".to_owned() } else { joined(&rest).trim_end_matches('.').to_owned() };
+            found.push((better, ReplanAlternative { sentence: format!("Skip {name} today{cost}. Then {then}."), pins: tried }));
+        }
+        found.sort_by_key(|(score, _)| *score);
+        Ok(found.into_iter().take(ALTERNATIVES).map(|(_, alternative)| alternative).collect())
     }
 }
 

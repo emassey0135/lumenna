@@ -71,7 +71,7 @@ pub use fields::{
 };
 pub use history::{TaskHistory, UrgencyTerm};
 pub use dayplan::{DayPins, DayPlan, DayPlanned, ProposedSitting};
-pub use replan::{Replan, ReplanChange, ReplanPins, Replanned, TimeStyle};
+pub use replan::{Replan, ReplanAlternative, ReplanChange, ReplanPins, Replanned, TimeStyle};
 pub use reminders::{DueReminder, DueReminders, ReminderList, ReminderView};
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub use reminders::ReminderLock;

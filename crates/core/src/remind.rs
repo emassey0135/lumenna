@@ -47,7 +47,21 @@ pub struct Firing {
     /// Whether, at a block's end, sittings in it fell short of their time with their tasks
     /// still open, so the rest can be carried forward: said with the end, or fired by itself.
     pub carry: bool,
+    /// Whether this is a block's work outrunning its time, and by how much at `at`.
+    pub overrun: Option<Overrun>,
 }
+
+/// A block's planned work outrunning the time left in it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Overrun {
+    /// The minutes left in the block.
+    pub left: u32,
+    /// The minutes of planned work still to do in it.
+    pub work: u32,
+}
+
+/// Below this, an overrun is not worth saying: a few minutes over is ordinary.
+pub const FEW_MINS: i64 = 5;
 
 /// The instant a civil date and time name in `zone`: forward across a skipped hour, the
 /// first of a repeated one (RFC 5545).
@@ -100,6 +114,70 @@ pub fn default_key(target: &ReminderTarget, trigger: &Trigger) -> ReminderId {
 #[must_use]
 pub fn carry_key(series: crate::id::SeriesId) -> ReminderId {
     default_key(&ReminderTarget::Block(series), &Trigger { anchor: ReminderAnchor::BlockEnd, offset_mins: i32::MIN })
+}
+
+/// The key a block's overrun warning fires under: fixed forever, as [`default_key`] is.
+#[must_use]
+pub fn overrun_key(series: crate::id::SeriesId) -> ReminderId {
+    default_key(&ReminderTarget::Block(series), &Trigger { anchor: ReminderAnchor::BlockEnd, offset_mins: i32::MIN + 1 })
+}
+
+/// When `block` (from `start` to `end`) first has more planned work left than time, by more
+/// than `threshold` minutes, and by how much then; `None` when it never does.
+///
+/// The work left is each open sitting's planned time less what is logged. With no timer
+/// running the shortfall grows a minute a minute, so its moment is fixed by the records;
+/// with one running, work and time shrink together and the shortfall holds, so it either
+/// already outruns from when the timer started or never does. A plan too big from the start
+/// is said as the block starts.
+#[must_use]
+pub fn overrun_at(
+    snapshot: &Snapshot,
+    facts: &crate::state::Facts<'_>,
+    block: crate::model::BlockRef,
+    start: Timestamp,
+    end: Timestamp,
+    threshold_mins: i64,
+) -> Option<(Timestamp, Overrun)> {
+    use crate::model::AssignmentStatus as S;
+    let sittings: Vec<_> = snapshot
+        .assignments
+        .values()
+        .filter(|a| {
+            a.block_ref == block
+                && matches!(a.status, S::Planned | S::InProgress)
+                && snapshot.tasks.get(&a.task_id).is_some_and(|t| !t.is_deleted() && !facts.is_completed(t))
+        })
+        .collect();
+    let work: i64 = sittings
+        .iter()
+        .map(|a| i64::from(a.planned_mins.unwrap_or(0).saturating_sub(a.accumulated_mins)))
+        .sum();
+    if work == 0 {
+        return None;
+    }
+    let mins = |minutes: i64| SignedDuration::from_mins(minutes);
+    let at = match sittings.iter().filter_map(|a| a.running_since).min() {
+        None => end.checked_sub(mins(work - threshold_mins)).ok()?.max(start),
+        Some(since) => {
+            let since = since.max(start);
+            let shortfall = work - end.duration_since(since).as_mins();
+            if shortfall <= threshold_mins {
+                return None;
+            }
+            since
+        }
+    };
+    if at >= end {
+        return None;
+    }
+    let left = end.duration_since(at).as_mins();
+    let done_since = sittings.iter().filter_map(|a| a.running_since).min().map_or(0, |since| at.duration_since(since.max(start)).as_mins());
+    let overrun = Overrun {
+        left: u32::try_from(left).unwrap_or(0),
+        work: u32::try_from((work - done_since).max(0)).unwrap_or(0),
+    };
+    Some((at, overrun))
 }
 
 /// Whether `block`'s sittings include one left short of its planned time, its task still open.
@@ -226,12 +304,14 @@ pub fn firings(
                 snoozed: false,
                 all_day,
                 carry: false,
+                overrun: None,
             });
         }
     }
 
     // Blocks: every occurrence in reach; a cancelled one is not expanded at all.
-    for occurrence in snapshot.occurrences(&(first..=last))? {
+    let occurrences = snapshot.occurrences(&(first..=last))?;
+    for occurrence in &occurrences {
         let Some(series) = snapshot.series.get(&occurrence.series_id) else { continue };
         if series.deleted_at.is_some() {
             continue;
@@ -272,7 +352,36 @@ pub fn firings(
                 snoozed: false,
                 all_day: false,
                 carry: carries,
+                overrun: None,
             });
+        }
+        // Planned work outrunning its time is said before the clock says it, unless the
+        // overrun fits in the free time after the block, or is only a few minutes.
+        if series.flags.accepts_tasks {
+            let ends = occurrence.date.to_datetime(occurrence.start_time)
+                + SignedDuration::from_mins(i64::from(occurrence.duration_mins));
+            let next = occurrences
+                .iter()
+                .filter(|o| o.date == occurrence.date && o.date.to_datetime(o.start_time) >= ends)
+                .map(|o| o.date.to_datetime(o.start_time))
+                .min();
+            let day_end = occurrence.date.to_datetime(snapshot.settings.day_window.1);
+            let gap = next.unwrap_or(day_end).duration_since(ends).as_mins().max(0);
+            if let Some((at, overrun)) = overrun_at(snapshot, &facts, reference, start, end, gap.max(FEW_MINS)) {
+                consider(Firing {
+                    key: overrun_key(occurrence.series_id),
+                    own: false,
+                    target,
+                    occurrence: occurrence.date,
+                    trigger: Trigger::at(ReminderAnchor::BlockEnd),
+                    anchor_at: end,
+                    at,
+                    snoozed: false,
+                    all_day: false,
+                    carry: false,
+                    overrun: Some(overrun),
+                });
+            }
         }
         if carry {
             consider(Firing {
@@ -286,6 +395,7 @@ pub fn firings(
                 snoozed: false,
                 all_day: false,
                 carry: true,
+                overrun: None,
             });
         }
     }
@@ -308,6 +418,7 @@ pub fn firings(
                 snoozed: false,
                 all_day: false,
                 carry: false,
+                overrun: None,
             });
         }
     }
