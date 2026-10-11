@@ -306,6 +306,17 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
 
     // MARK: - The day's own actions
 
+    /// Replan from Now, as the overrun warning's Replan opens it: today, the sheet over it.
+    func openReplan() {
+        goToNow(announcing: false)
+        guard let window = view.window else { return }
+        do {
+            try ProposalModel(core: core, kind: .replan).present(on: window)
+        } catch {
+            window.showFailure(error.sentence)
+        }
+    }
+
     private func offerDayActions(_ plan: Plan) {
         let menu = NSMenu()
         // A pull-down shows its first item as its title.

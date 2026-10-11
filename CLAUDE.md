@@ -645,7 +645,9 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
   A firing with `carry` set is in a second category, its third button the core's Carry
   Forward (`carry_rest_forward` of `<target>@<occurrence>`). Setting categories replaces them
   all, so the carry one is set from the last carry reminder seen whenever any is handed over:
-  one already showing keeps its button.
+  one already showing keeps its button. An overrun warning (`replan` set) is a third, its
+  button the core's Replan, `.foreground`: `ReminderResponder` hands on a `RemindedOf` with
+  `replan`, and each app opens today with Replan from Now over it (`openReplan`).
 - **The day's own actions** (`Plan.actions`) are the day's bar menu ("Day actions") and the
   heading's custom actions, which make the heading at least 44 points tall: an element with
   actions fails the audit's hit area. Replan from Now and Plan the Day open one SwiftUI
@@ -653,7 +655,8 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
   a toggle named by its sentence, its reason and the core's `item` its hint, and after a
   partial apply the core's `next` in its place until nothing is proposed. A refusal is shown
   on the screen and the proposal asked for again with the same pins. The clock it asks in is
-  `Clock.style`, the locale's. A pick's `Choice.reason` is its second line and its hint.
+  `Clock.style`, the locale's. Its other options (`Replan.alternatives`) are buttons under
+  `others`, each proposing again with its pins in place. A pick's `Choice.reason` is its second line and its hint.
 - **A Reminders list is an `ItemListViewController`** (`RemindersViewController`): Add Reminder
   in the bar asks the core's Text question, again with the reason when refused; an own
   reminder swipes Remove Reminder. `ActionRun` opens it for `ActionKind.reminders` through the
@@ -1107,7 +1110,12 @@ gives the toolchain. Three modules: `app` (the phone), `wear` (Wear OS) and `sha
   custom actions and as buttons) open. The proposal is said on opening; after a partial apply
   the core's `next` is the screen's list until it is empty. `LocalPlannerNow` fixes the
   moment proposed against, so the tests' proposals do not depend on when they run. A pick's
-  `Choice.reason` is `Option.reason`, a line of its own beneath the name.
+  `Choice.reason` is `Option.reason`, a line of its own beneath the name. A replan's other
+  options are buttons under the core's `others`, each proposing again in place (`take`).
+- **An overrun's Replan button** (`DueReminder.replan`) opens the activity, not the receiver,
+  with `ReminderOpened.kind` `replan`: the app goes to Replan from Now for today. A button that
+  opens an activity does not cancel its notification, so `Reminders.opened(context, intent)`
+  takes it away.
 
 ## The Wear OS app
 

@@ -70,6 +70,25 @@ final class ProposalModel: ObservableObject, Identifiable {
         return (plan?.sittings ?? []).enumerated().map { Item(id: $0.offset, sentence: $0.element.sentence, reason: $0.element.reason) }
     }
 
+    /// Other ways through the rest of the day, each with what it costs (Replan only): under the
+    /// heading `words.others`.
+    var alternatives: [ReplanAlternative] {
+        replan?.alternatives ?? []
+    }
+
+    /// Takes another option: the proposal it names, shown in place and said, as after a
+    /// partial apply.
+    func choose(_ alternative: ReplanAlternative) {
+        problem = nil
+        do {
+            try propose(replanPins: alternative.pins, dayPins: DayPins(exclude: [], declined: []))
+            Announcer.say(announcement, notices: replan?.notices ?? [])
+        } catch {
+            problem = error.sentence
+            Announcer.say(error.sentence)
+        }
+    }
+
     /// What does not fit, under the heading `words.unfit`.
     var unfit: [String] {
         replan?.unplaceable ?? plan?.unfit ?? []
@@ -196,6 +215,15 @@ struct ProposalForm: View {
                     }
                 } header: {
                     FormParts.heading(model.words.unfit)
+                }
+            }
+            if !model.alternatives.isEmpty {
+                Section {
+                    ForEach(Array(model.alternatives.enumerated()), id: \.offset) { _, alternative in
+                        Button(alternative.sentence) { model.choose(alternative) }
+                    }
+                } header: {
+                    FormParts.heading(model.words.others)
                 }
             }
             Section {

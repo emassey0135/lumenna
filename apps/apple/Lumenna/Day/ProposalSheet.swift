@@ -25,13 +25,20 @@ extension UIViewController {
     func presentProposal(for action: Action, core: Core, applied: @escaping (Change) -> Void = { _ in }) {
         do {
             guard let model = try ProposalModel(core: core, action: action) else { return }
-            let screen = ProposalViewController(model: model)
-            let navigation = UINavigationController(rootViewController: screen)
-            model.close = { [weak navigation] in navigation?.dismiss(animated: true) }
-            model.applied = applied
-            present(navigation, animated: true)
+            presentProposal(model, applied: applied)
         } catch {
             showFailure(error.sentence)
         }
+    }
+
+    /// Opens a proposal's screen in a sheet of its own, over whatever is in front.
+    func presentProposal(_ model: ProposalModel, applied: @escaping (Change) -> Void = { _ in }) {
+        let screen = ProposalViewController(model: model)
+        let navigation = UINavigationController(rootViewController: screen)
+        model.close = { [weak navigation] in navigation?.dismiss(animated: true) }
+        model.applied = applied
+        var front: UIViewController = self
+        while let next = front.presentedViewController, !next.isBeingDismissed { front = next }
+        front.present(navigation, animated: true)
     }
 }

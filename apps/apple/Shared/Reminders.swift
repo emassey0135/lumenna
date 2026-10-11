@@ -29,6 +29,10 @@ enum Reminders {
     /// Carry Forward (`DueReminder.carry`), whose question the text already ends in.
     static let carryCategory = "io.github.emassey0135.lumenna.reminder.carry"
     static let carryAction = "io.github.emassey0135.lumenna.reminder.carry-forward"
+    /// The category of a block's work outrunning its time: Dismiss and Snooze, and the core's
+    /// Replan (`DueReminder.replan`), which opens the app at Replan from Now.
+    static let replanCategory = "io.github.emassey0135.lumenna.reminder.replan"
+    static let replanAction = "io.github.emassey0135.lumenna.reminder.replan-from-now"
     /// What every reminder's identifier starts with, so re-arming cancels only its own.
     static let prefix = "reminder "
     /// How far ahead to schedule: the system holds 64 pending, so not a week of blocks.
@@ -62,7 +66,7 @@ enum Reminders {
         content.title = reminder.title
         content.body = reminder.text
         content.sound = .default
-        content.categoryIdentifier = reminder.carry.isEmpty ? category : carryCategory
+        content.categoryIdentifier = !reminder.carry.isEmpty ? carryCategory : !reminder.replan.isEmpty ? replanCategory : category
         // The reminders of one task or block group together.
         content.threadIdentifier = reminder.target
         content.userInfo = [
@@ -99,6 +103,24 @@ enum Reminders {
         )
     }
 
+    /// The replan category: the same buttons, then the core's Replan, which brings the app to
+    /// the front, since what it opens is a screen.
+    static func replanCategory(for reminder: DueReminder) -> UNNotificationCategory {
+        UNNotificationCategory(
+            identifier: replanCategory,
+            actions: [
+                UNNotificationAction(identifier: dismissAction, title: reminder.dismiss, options: []),
+                UNNotificationAction(identifier: snoozeAction, title: reminder.snooze, options: []),
+                UNNotificationAction(identifier: replanAction, title: reminder.replan, options: [.foreground]),
+            ],
+            intentIdentifiers: [],
+            options: []
+        )
+    }
+
+    /// The last reminder seen offering Replan, for the same reason as `lastCarried`.
+    private static var lastReplanned: DueReminder?
+
     /// A reminder that offered Carry Forward, last seen: what names the carry category's
     /// buttons when what is handed over now has none, since setting the categories replaces
     /// them all, and a carry notification already shown still needs its button.
@@ -107,9 +129,11 @@ enum Reminders {
     /// Every category these reminders need, and the carry one once any has offered it.
     static func categories(for due: [DueReminder]) -> Set<UNNotificationCategory> {
         if let carried = due.first(where: { !$0.carry.isEmpty }) { lastCarried = carried }
+        if let replanned = due.first(where: { !$0.replan.isEmpty }) { lastReplanned = replanned }
         var categories = Set<UNNotificationCategory>()
         if let first = due.first { categories.insert(category(for: first)) }
         if let lastCarried { categories.insert(carryCategory(for: lastCarried)) }
+        if let lastReplanned { categories.insert(replanCategory(for: lastReplanned)) }
         return categories
     }
 
@@ -411,6 +435,8 @@ struct RemindedOf {
     let target: String
     /// The occurrence's day, ISO.
     let day: String
+    /// Whether it was the overrun warning's Replan: the app opens at Replan from Now.
+    var replan = false
 }
 
 /// Answers a reminder's buttons, the core's Dismiss and Snooze, and opens what it is about
@@ -457,6 +483,9 @@ final class ReminderResponder: NSObject, UNUserNotificationCenterDelegate {
             case Reminders.carryAction:
                 guard let target = info["target"] as? String else { return }
                 change = try lumenna.carryRestForward(block: "\(target)@\(occurrence)")
+            case Reminders.replanAction:
+                open(RemindedOf(kind: info["kind"] as? String ?? "block", target: info["target"] as? String ?? "", day: occurrence, replan: true))
+                return
             case UNNotificationDefaultActionIdentifier:
                 if let kind = info["kind"] as? String, let target = info["target"] as? String {
                     open(RemindedOf(kind: kind, target: target, day: occurrence))

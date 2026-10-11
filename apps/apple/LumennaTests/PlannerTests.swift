@@ -99,6 +99,28 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(model.items.isEmpty, "asked again: \(model.items)")
     }
 
+    func testReplanOffersOtherOptionsAndTakingOneShowsItsProposalInPlace() throws {
+        try block("Deep work", at: "09:00", minutes: 120)
+        try block("Lunch", kind: "break", at: "10:30", minutes: 30)
+        try block("Review", at: "11:00", minutes: 60)
+        let model = try ProposalModel(core: core, kind: .replan, now: "\(day)T10:40")
+        XCTAssertEqual(model.words.others, "Other options")
+        XCTAssertEqual(model.alternatives.map(\.sentence).first, "Skip Lunch today, your only break left today. Then nothing else needs to change.")
+        XCTAssertEqual(model.alternatives.count, 2)
+        model.choose(model.alternatives[0])
+        XCTAssertNil(model.problem)
+        XCTAssertEqual(model.announcement, "Lunch is skipped today.")
+        XCTAssertEqual(model.items.count, 1, "the skip is the change to make")
+        XCTAssertEqual(model.checked, [true])
+        XCTAssertTrue(model.alternatives.isEmpty, "so no Other options heading")
+    }
+
+    func testPlanTheDayHasNoOtherOptions() throws {
+        let model = try ProposalModel(core: core, kind: .planDay(day), now: "\(day)T08:00")
+        XCTAssertTrue(model.words.others.isEmpty)
+        XCTAssertTrue(model.alternatives.isEmpty)
+    }
+
     func testReplanWithNothingToChangeSaysSoAndOffersNoApply() throws {
         let model = try ProposalModel(core: core, kind: .replan, now: "\(day)T10:40")
         XCTAssertTrue(model.items.isEmpty)
@@ -134,11 +156,11 @@ final class PlannerTests: XCTestCase {
 
     // MARK: - Carry Forward on a reminder
 
-    private func reminder(carry: String) -> DueReminder {
+    private func reminder(carry: String, replan: String = "") -> DueReminder {
         DueReminder(
             key: "k", occurrence: day, at: "\(day)T10:00:00Z", target: "series", kind: "block", title: "Deep work",
             text: "Deep work ends now. Carry the rest forward?", missed: "Deep work ended", dismiss: "Dismiss",
-            snooze: "Snooze", carry: carry
+            snooze: "Snooze", carry: carry, replan: replan
         )
     }
 
@@ -152,5 +174,20 @@ final class PlannerTests: XCTestCase {
         XCTAssertEqual(carry.actions.last?.identifier, Reminders.carryAction)
         let plain = try XCTUnwrap(categories.first { $0.identifier == Reminders.category })
         XCTAssertEqual(plain.actions.map(\.title), ["Dismiss", "Snooze"])
+    }
+
+    func testAnOverrunWarningHasAReplanButtonThatOpensTheAppAtReplanFromNow() throws {
+        let warned = reminder(carry: "", replan: "Replan")
+        XCTAssertEqual(Reminders.content(warned).categoryIdentifier, Reminders.replanCategory)
+        let categories = Reminders.categories(for: [warned])
+        let replan = try XCTUnwrap(categories.first { $0.identifier == Reminders.replanCategory })
+        XCTAssertEqual(replan.actions.map(\.title), ["Dismiss", "Snooze", "Replan"])
+        XCTAssertEqual(replan.actions.last?.identifier, Reminders.replanAction)
+        XCTAssertTrue(replan.actions.last?.options.contains(.foreground) ?? false, "it brings the app to the front")
+
+        var opened: RemindedOf?
+        let responder = ReminderResponder(lumenna: core.lumenna) { opened = $0 }
+        responder.answer(Reminders.replanAction, info: Reminders.content(warned).userInfo)
+        XCTAssertEqual(opened?.replan, true)
     }
 }

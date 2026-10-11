@@ -73,6 +73,11 @@ final class RootTabs: UITabBarController, CommandActions {
     @objc func redoChange() { redoInStore(core) }
     @objc func syncNow() { syncAndSay(core) }
 
+    /// The overrun warning's Replan: today, with Replan from Now over it.
+    @objc func openReplan() {
+        select(0) { $0.day.openReplan() }
+    }
+
     /// A reminder chosen in Notification Center: its task, or its block on its day.
     @objc func openReminded(kind: String, target: String, day: String) {
         if kind == "task" {
