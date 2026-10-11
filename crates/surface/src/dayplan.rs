@@ -230,7 +230,7 @@ impl Lumenna {
             store.load_all_years()?;
             let snapshot = repaired(store);
             let facts = snapshot.facts();
-            let stale = |why: &str| LumennaError::new(format!("{why} since this was planned; ask for a new plan"));
+            let stale = |why: &str| LumennaError::new(format!("{why} since this was planned"));
             let mut edits: Vec<Edit> = Vec::new();
             for sitting in sittings {
                 let task_id = resolve::task_id(&snapshot, &sitting.task)?;

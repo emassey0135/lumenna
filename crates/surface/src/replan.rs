@@ -351,7 +351,7 @@ impl Lumenna {
             store.load_all_years()?;
             let snapshot = repaired(store);
             let occurrences = snapshot.day(day)?;
-            let stale = || LumennaError::new("the day changed since this was proposed; ask for a new proposal");
+            let stale = || LumennaError::new("the day has changed since this was proposed");
             let mut edits: Vec<Edit> = Vec::new();
             for change in changes {
                 match change.kind.as_str() {

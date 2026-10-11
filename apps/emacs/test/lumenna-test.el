@@ -930,7 +930,7 @@
     (setq said nil)
     (lumenna-proposal-apply)
     (let ((lines (lumenna-test--lines)))
-      (should (string-prefix-p "the day changed since this was proposed" (nth 1 lines)))
+      (should (string-prefix-p "the day has changed since this was proposed" (nth 1 lines)))
       (should (equal (nth 2 lines) "Nothing needs to change: the rest of the day still fits."))
       (should-not (seq-find (lambda (l) (string-prefix-p "Make the Changes" l)) lines))
       (should (equal (car (last lines)) "Cancel")))
