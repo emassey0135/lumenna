@@ -378,7 +378,7 @@ class Menus(unittest.TestCase):
         self.addCleanup(setattr, proposals, "ask", real)
         proposals.proposal_screen(self.session, "replan")
         self.assertTrue(script.finished(), script.steps)
-        self.assertTrue(script.said[0].startswith("the day changed since this was proposed"), script.said)
+        self.assertTrue(script.said[0].startswith("the day has changed since this was proposed"), script.said)
         self.assertTrue(script.said[0].endswith("Nothing needs to change: the rest of the day still fits"), script.said)
         self.assertEqual(script.titles[1], "Replan from now. Nothing needs to change: the rest of the day still fits.")
         self.assertNotIn("Make the changes checked", script.menus[1]["hints"])
