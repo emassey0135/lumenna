@@ -99,13 +99,13 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
 
     FollowBlockForm(core, navigator)
     FollowProposal(core, navigator)
+    FollowReminders(core, navigator)
     // The moment proposals are made against: a test's, or now.
     val plannerNow = LocalPlannerNow.current
     LaunchedEffect(plannerNow) { app.send(ShellEvent.PlanFrom(plannerNow)) }
 
     val move = { step: DayMove -> app.send(ShellEvent.Day(step)) }
     val addBlock = { app.send(ShellEvent.Block(BlockEvent.New(null, null))) }
-    val local = navigator.localScreens()
 
     Offer(Command.PREVIOUS_DAY) { move(DayMove.PREVIOUS) }
     Offer(Command.NEXT_DAY) { move(DayMove.NEXT) }
@@ -114,7 +114,7 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
     Offer(Command.NEW_BLOCK) { addBlock() }
 
     // The day's own actions, the app's, in the core's order.
-    val dayActions = day?.let { app.rowActions("summary", it.actions, local) }.orEmpty()
+    val dayActions = day?.let { app.rowActions("summary", it.actions) }.orEmpty()
 
     ScreenFrame(day?.let { Clock.spokenDay(it.date) } ?: "Today", core, navigator, actions = {
         IconButton(onClick = { addBlock() }) {
@@ -167,7 +167,7 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
                     speech = speech.joinToString(", "),
                     index = index,
                     depth = item.depth.toInt(),
-                    actions = app.rowActions(item.key, item.actions, local),
+                    actions = app.rowActions(item.key, item.actions),
                     focus = focus.requester(item.key),
                     key = item.key,
                     say = core::say,
@@ -184,21 +184,6 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
                 HorizontalDivider()
             }
         }
-    }
-}
-
-/**
- * The actions whose screens are still this app's own, over the UniFFI core, while the rest have
- * moved onto the app: a reminder list. True when one was
- * opened, so the app is not asked.
- */
-fun Navigator.localScreens(): (Action) -> Boolean = { action ->
-    when (action.kind) {
-        ActionKind.REMINDERS -> {
-            push(Screen.Reminders(action.target))
-            true
-        }
-        else -> false
     }
 }
 

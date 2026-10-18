@@ -100,6 +100,7 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
     val here = view?.takeIf { it.place == screen.place }
     val list = here?.list
     val trash = screen.place == Place.Trash
+    FollowReminders(core, navigator)
     var filter by rememberSaveable(screen, stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
 
     val field = remember { FocusRequester() }
@@ -154,7 +155,6 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
         AppTaskRows(
             core,
             list?.items.orEmpty().filter { !it.hidden },
-            local = navigator.localScreens(),
             open = if (trash) null else { row ->
                 app.send(ShellEvent.Focus(row.id))
                 navigator.push(Screen.Task(row.id))

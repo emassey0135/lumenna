@@ -118,8 +118,8 @@ sealed interface Screen {
     /** Export and import. */
     data object Export : Screen
 
-    /** A task's or a block series' reminders. */
-    data class Reminders(val target: String) : Screen
+    /** A task's or a block series' reminders: the app's list, while it has one open. */
+    data object Reminders : Screen
 
     /** Reminders on this device: whether, and what Android allows them. */
     data object ReminderSettings : Screen
@@ -428,7 +428,7 @@ private fun Screens(core: Core, navigator: Navigator, screen: Screen, changes: L
         Screen.Planning -> PlanningScreen(core, navigator)
         Screen.Backups -> BackupsScreen(core, navigator)
         Screen.Export -> ExportScreen(core, navigator)
-        is Screen.Reminders -> RemindersScreen(core, navigator, screen.target, changes)
+        Screen.Reminders -> RemindersScreen(core, navigator)
         Screen.ReminderSettings -> ReminderSettingsScreen(core, navigator, changes)
         Screen.Proposal -> ProposalScreen(core, navigator)
     }
