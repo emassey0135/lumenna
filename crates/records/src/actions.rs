@@ -123,6 +123,10 @@ pub enum ActionKind {
     Replan,
     /// Plan a whole day: the app's own screen over `Lumenna::propose_day_plan`.
     PlanDay,
+    /// Show what is under a row folded away: the app's, which changes nothing stored.
+    Expand,
+    /// Fold away what is under a row.
+    Collapse,
 }
 
 /// What an action is done to: with [`ActionKind`], what runs.

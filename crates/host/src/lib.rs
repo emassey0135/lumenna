@@ -229,6 +229,20 @@ impl Lumenna {
         Arc::clone(&self.store)
     }
 
+    /// The store as it stands, repaired and every year loaded, with the documents' heads it
+    /// was read at: what the app works from, and what tells it whether the store has moved
+    /// since. Takes in what another process wrote first, as every operation does.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn snapshot(&self) -> Result<(Snapshot, Vec<lumenna_store::ChangeHash>)> {
+        self.with(|store| {
+            store.load_all_years()?;
+            Ok((repaired(store), store.version()))
+        })
+    }
+
     /// The profile directory.
     #[must_use]
     pub fn path(&self) -> &Path {

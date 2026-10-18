@@ -26,7 +26,13 @@ sittings** until they are done.
 crates/core/    domain model, queries, mutations, row projection. No I/O, no Automerge.
 crates/parse/   quick-add and filter parsers, and the completion they share.
 crates/store/   Automerge documents + the SQLite file they live in.
-crates/host/ the command surface: the `Lumenna` object, one method per operation.
+crates/records/ what a person is told, as records built from a snapshot alone: rows and their
+                actions, questions, forms, the listings, the words. No store.
+crates/host/    the command surface: the `Lumenna` object, one method per operation, over the
+                store; re-exports records under the paths it always had.
+crates/app/     the Crux app: the screens' state (place, row in hand, folding, the question
+                open) as events in and view models out; every write an effect. No host.
+crates/bridge/  the app beside its store: a `Session` answering the app's host effects inline.
 crates/ffi/     the library the Swift and Kotlin apps link; re-exports surface over UniFFI.
 crates/sync/    Iroh endpoints, the document sync session, and pairing.
 crates/desktop/ what the Windows, GTK and web apps decide alike: row wording, flat rows as a

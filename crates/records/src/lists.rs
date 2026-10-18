@@ -25,7 +25,7 @@ fn to_u32(n: usize) -> u32 {
 /// If the query cannot be read; the message says where and what was expected.
 pub fn tasks(snapshot: &Snapshot, query: &str, now: &Zoned) -> Result<Rows> {
     let (expr, sort) = resolve::list_query(snapshot, query)?;
-    let cx = Context::new(snapshot, &now);
+    let cx = Context::new(snapshot, now);
 
     let unresolved: Vec<Unresolved> = expr
         .unresolved(snapshot)
@@ -81,7 +81,7 @@ pub fn tasks(snapshot: &Snapshot, query: &str, now: &Zoned) -> Result<Rows> {
 /// Never; a `Result` as every listing is.
 pub fn search(snapshot: &Snapshot, text: &str, now: &Zoned) -> Result<Rows> {
     let expr = Expr::Predicate(Predicate::Search(text.to_owned()));
-    let cx = Context::new(snapshot, &now);
+    let cx = Context::new(snapshot, now);
     let mut rows = Rows::new(&snapshot.task_rows(&expr, &cx), "task");
     rows.empty = format!("No task has {text} in it.");
     crate::actions::fill_rows(&mut rows, snapshot);

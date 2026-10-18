@@ -1,0 +1,22 @@
+[package]
+name = "lumenna-bridge"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The app's host effects answered by the host: one loop, for every shell that runs the app beside its store."
+
+[dependencies]
+crux_core = "0.20.0"
+jiff.workspace = true
+lumenna-app = { path = "../app" }
+lumenna-host.workspace = true
+lumenna-records.workspace = true
+lumenna-store.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

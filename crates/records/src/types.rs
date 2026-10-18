@@ -248,7 +248,7 @@ fn push<T: ToString>(into: &mut Vec<String>, before: Option<T>, after: Option<T>
 // ---------------------------------------------------------------------------------------
 
 /// A listing of rows, all of one kind.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Rows {
@@ -337,7 +337,7 @@ pub struct Unresolved {
 }
 
 /// One row, as its components.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct RowView {

@@ -1,0 +1,20 @@
+[package]
+name = "lumenna-app"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Lumenna's screens as a Crux app: what is open, what is in hand, what to say, as view models; every write an effect."
+
+[dependencies]
+crux_core = "0.20.0"
+facet = "=0.46.5"
+jiff.workspace = true
+lumenna-core.workspace = true
+lumenna-parse.workspace = true
+lumenna-records.workspace = true
+serde.workspace = true
+
+[lints]
+workspace = true
