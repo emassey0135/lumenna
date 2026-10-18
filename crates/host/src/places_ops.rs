@@ -1,7 +1,6 @@
 //! The sidebar, as the store has it now.
 
-use crate::places::{Place, Places, SidebarEntry, SidebarGroup, SidebarKind, line};
-use crate::types::RowView;
+use crate::places::{Places, SidebarEntry};
 use crate::Lumenna;
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
@@ -14,64 +13,16 @@ impl Lumenna {
     }
 }
 
-/// Every place, as the sidebar lists them: Today, Tasks, the project tree, labels, saved
-/// filters, blocks, the trash.
-///
-/// A listing that fails leaves its group empty rather than the whole sidebar: the places
-/// that do not depend on it still work.
+/// Every place, as the sidebar lists them, as the store has it now (`places::sidebar`).
 pub fn sidebar(lumenna: &Lumenna) -> Vec<SidebarEntry> {
-    let place = |place: Place, detail: &str, depth: u32| SidebarEntry {
-        text: line(&place.title(), detail),
-        kind: SidebarKind::Place(place),
-        depth,
-        archived: false,
-        actions: Vec::new(),
-    };
-    let group = |group: SidebarGroup, title: &str| SidebarEntry {
-        kind: SidebarKind::Group(group),
-        text: title.to_owned(),
-        depth: 0,
-        archived: false,
-        actions: crate::actions::heading(group),
-    };
-    let detail = |row: &RowView| {
-        row.value.iter().cloned().chain(row.state.iter().cloned()).collect::<Vec<_>>().join(", ")
-    };
-
-    let mut entries = vec![place(Place::Today, "", 0), place(Place::Tasks, "", 0)];
-
-    entries.push(group(SidebarGroup::Projects, "Projects"));
-    for row in lumenna.list_projects().map(|r| r.rows).unwrap_or_default() {
-        let mut entry = place(Place::Project(row.title.clone()), &detail(&row), row.depth + 1);
-        entry.archived = row.state.iter().any(|s| s == "archived");
-        entry.actions = row.actions;
-        entries.push(entry);
-    }
-
-    entries.push(group(SidebarGroup::Labels, "Labels"));
-    for row in lumenna.list_labels().map(|r| r.rows).unwrap_or_default() {
-        let mut entry = place(Place::Label(row.title.clone()), &detail(&row), 1);
-        entry.actions = row.actions;
-        entries.push(entry);
-    }
-
-    entries.push(group(SidebarGroup::Filters, "Saved Filters"));
-    for filter in lumenna.list_filters().map(|f| f.filters).unwrap_or_default() {
-        let query = filter.query.clone();
-        let mut entry = place(Place::Filter { name: filter.name, query: filter.query }, &query, 1);
-        entry.actions = filter.actions;
-        entries.push(entry);
-    }
-
-    entries.push(place(Place::Blocks, "", 0));
-    let trashed = lumenna.list_tasks("deleted").map(|r| r.announcement).unwrap_or_default();
-    entries.push(place(Place::Trash, &trashed, 0));
-    entries
+    let now = jiff::Zoned::now();
+    lumenna.with(|store| Ok(crate::places::sidebar(&crate::repaired(store), &now))).unwrap_or_default()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::places::Place;
 
     fn open() -> (tempfile::TempDir, std::sync::Arc<Lumenna>) {
         let directory = tempfile::tempdir().unwrap();

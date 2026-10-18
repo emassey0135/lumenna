@@ -4,7 +4,11 @@
 //! Named for what they are beside the rest of the surface (`SidebarEntry`): a bare `Group`
 //! would shadow SwiftUI's in the Swift bindings.
 
+use jiff::Zoned;
+use lumenna_core::snapshot::Snapshot;
 use serde::{Deserialize, Serialize};
+
+use crate::types::RowView;
 
 use crate::{label_reference, project_reference};
 
@@ -160,4 +164,59 @@ pub fn place_query(place: &Place) -> String {
 #[must_use]
 pub fn place_quick_add_prefix(place: &Place) -> String {
     place.quick_add_prefix()
+}
+
+/// Every place, as the sidebar lists them: Today, Tasks, the project tree, labels, saved
+/// filters, blocks, the trash.
+///
+/// A listing that fails leaves its group empty rather than the whole sidebar: the places
+/// that do not depend on it still work.
+pub fn sidebar(snapshot: &Snapshot, now: &Zoned) -> Vec<SidebarEntry> {
+    let place = |place: Place, detail: &str, depth: u32| SidebarEntry {
+        text: line(&place.title(), detail),
+        kind: SidebarKind::Place(place),
+        depth,
+        archived: false,
+        actions: Vec::new(),
+    };
+    let group = |group: SidebarGroup, title: &str| SidebarEntry {
+        kind: SidebarKind::Group(group),
+        text: title.to_owned(),
+        depth: 0,
+        archived: false,
+        actions: crate::actions::heading(group),
+    };
+    let detail = |row: &RowView| {
+        row.value.iter().cloned().chain(row.state.iter().cloned()).collect::<Vec<_>>().join(", ")
+    };
+
+    let mut entries = vec![place(Place::Today, "", 0), place(Place::Tasks, "", 0)];
+
+    entries.push(group(SidebarGroup::Projects, "Projects"));
+    for row in crate::lists::projects(snapshot).map(|r| r.rows).unwrap_or_default() {
+        let mut entry = place(Place::Project(row.title.clone()), &detail(&row), row.depth + 1);
+        entry.archived = row.state.iter().any(|s| s == "archived");
+        entry.actions = row.actions;
+        entries.push(entry);
+    }
+
+    entries.push(group(SidebarGroup::Labels, "Labels"));
+    for row in crate::lists::labels(snapshot).map(|r| r.rows).unwrap_or_default() {
+        let mut entry = place(Place::Label(row.title.clone()), &detail(&row), 1);
+        entry.actions = row.actions;
+        entries.push(entry);
+    }
+
+    entries.push(group(SidebarGroup::Filters, "Saved Filters"));
+    for filter in crate::lists::filters(snapshot).map(|f| f.filters).unwrap_or_default() {
+        let query = filter.query.clone();
+        let mut entry = place(Place::Filter { name: filter.name, query: filter.query }, &query, 1);
+        entry.actions = filter.actions;
+        entries.push(entry);
+    }
+
+    entries.push(place(Place::Blocks, "", 0));
+    let trashed = crate::lists::tasks(snapshot, "deleted", now).map(|r| r.announcement).unwrap_or_default();
+    entries.push(place(Place::Trash, &trashed, 0));
+    entries
 }

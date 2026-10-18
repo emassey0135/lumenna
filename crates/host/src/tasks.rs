@@ -4,7 +4,6 @@ use std::collections::BTreeSet;
 
 use jiff::Zoned;
 use lumenna_core::edit::{self, Edit, EditError, MoveTo};
-use lumenna_core::filter::{Context, Expr, Predicate};
 use lumenna_core::id::LabelId;
 use lumenna_core::model::{Due, Label, Priority, Recurrence, Task};
 use lumenna_core::order::OrderKey;
@@ -14,8 +13,7 @@ use lumenna_store::Store;
 use crate::error::{LumennaError, Result};
 use crate::resolve::{self, order_after};
 use crate::types::{
-    Announced, Change, MoveTarget, Query, Rows, TaskDetail, TaskEdit, TaskShown, Unresolved,
-    name_kind,
+    Announced, Change, MoveTarget, Rows, TaskDetail, TaskEdit, TaskShown,
 };
 use crate::{Lumenna, repaired};
 
@@ -127,57 +125,7 @@ impl Lumenna {
     /// If the query cannot be read; the message says where and what was expected.
     pub fn list_tasks(&self, query: &str) -> Result<Rows> {
         let now = Zoned::now();
-        self.told(|store| {
-            let snapshot = repaired(store);
-            let (expr, sort) = resolve::list_query(&snapshot, query)?;
-            let cx = Context::new(&snapshot, &now);
-
-            let unresolved: Vec<Unresolved> = expr
-                .unresolved(&snapshot)
-                .into_iter()
-                .map(|name| Unresolved {
-                    kind: name_kind(name.kind).to_owned(),
-                    name: name.name,
-                    suggestion: name.suggestion,
-                })
-                .collect();
-            let notices: Vec<String> = unresolved
-                .iter()
-                .map(|name| {
-                    let hint = name
-                        .suggestion
-                        .as_deref()
-                        .map_or_else(String::new, |near| format!(" — did you mean '{near}'?"));
-                    format!("no {} called '{}'{hint}", name.kind, name.name)
-                })
-                .collect();
-
-            let order = sort.unwrap_or(snapshot.settings.task_order);
-            let mut rows = Rows::new(&snapshot.task_rows_sorted(&expr, &cx, order), "task");
-            if !query.trim().is_empty() {
-                rows.query = Some(Query {
-                    text: query.to_owned(),
-                    description: resolve::described(&expr, sort),
-                    unresolved,
-                });
-            }
-            rows.notices = notices;
-            // A place's own query reads as that place: a project, a label.
-            let is = |reference: String| query.trim() == reference;
-            rows.empty = match query.trim() {
-                "" => "No open tasks.".to_owned(),
-                "deleted" => "The trash is empty.".to_owned(),
-                _ if snapshot.projects.values().any(|p| p.deleted_at.is_none() && is(crate::project_reference(p.name.clone()))) => {
-                    "No open tasks in this project.".to_owned()
-                }
-                _ if snapshot.labels.values().any(|l| l.deleted_at.is_none() && is(crate::label_reference(l.name.clone()))) => {
-                    "No open task has this label.".to_owned()
-                }
-                _ => "No tasks match this filter.".to_owned(),
-            };
-            crate::actions::fill_rows(&mut rows, &snapshot);
-            Ok(rows)
-        })
+        self.told(|store| crate::lists::tasks(&repaired(store), query, &now))
     }
 
     /// Tasks whose title or notes contain `text`.
@@ -186,19 +134,8 @@ impl Lumenna {
     ///
     /// If there is nothing to search for.
     pub fn search_tasks(&self, text: &str) -> Result<Rows> {
-        if text.trim().is_empty() {
-            return Err(LumennaError::new("nothing to search for"));
-        }
         let now = Zoned::now();
-        self.told(|store| {
-            let snapshot = repaired(store);
-            let expr = Expr::Predicate(Predicate::Search(text.to_owned()));
-            let cx = Context::new(&snapshot, &now);
-            let mut rows = Rows::new(&snapshot.task_rows(&expr, &cx), "task");
-            rows.empty = format!("No task has {text} in it.");
-            crate::actions::fill_rows(&mut rows, &snapshot);
-            Ok(rows)
-        })
+        self.told(|store| crate::lists::search(&repaired(store), text, &now))
     }
 
     /// Everything about one task.

@@ -13,6 +13,7 @@ pub mod error;
 pub mod fields;
 pub mod form;
 pub mod history;
+pub mod lists;
 pub mod places;
 pub mod resolve;
 pub mod tree;
