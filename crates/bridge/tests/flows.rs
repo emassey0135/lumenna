@@ -33,8 +33,9 @@ impl App {
         self.view().list.unwrap().items
     }
 
+    /// The titles of the rows shown, folded rows left out.
     fn titles(&self) -> Vec<String> {
-        self.items().into_iter().map(|item| item.row.title).collect()
+        self.items().into_iter().filter(|item| !item.hidden).map(|item| item.row.title).collect()
     }
 
     fn id_of(&self, title: &str) -> String {
@@ -86,7 +87,7 @@ fn marking_the_task_in_hand_done_puts_the_row_that_took_its_place_in_hand() {
     let second = app.items()[1].row.id.clone();
     app.send(Event::Focus(first.id.clone()));
 
-    let shell = app.send(Event::Run(ActionKind::MarkDone));
+    let shell = app.send(Event::Run(vec![ActionKind::MarkDone]));
 
     assert!(!said(&shell).is_empty(), "the change is said");
     assert!(!app.titles().contains(&first.title));
@@ -97,7 +98,7 @@ fn marking_the_task_in_hand_done_puts_the_row_that_took_its_place_in_hand() {
 fn a_key_the_row_does_not_offer_says_why_and_changes_nothing() {
     let mut app = App::new();
     app.add("Buy milk");
-    let shell = app.send(Event::Run(ActionKind::Restore));
+    let shell = app.send(Event::Run(vec![ActionKind::Restore]));
     assert_eq!(said(&shell), ["That does not apply here."]);
     assert_eq!(app.titles(), ["Buy milk"]);
 }
@@ -106,7 +107,7 @@ fn a_key_the_row_does_not_offer_says_why_and_changes_nothing() {
 fn a_pick_offers_what_the_host_says_and_a_refused_answer_stays_in_its_question() {
     let mut app = App::new();
     app.add("Buy milk");
-    let shell = app.send(Event::Run(ActionKind::MoveToProject));
+    let shell = app.send(Event::Run(vec![ActionKind::MoveToProject]));
     let asking = app.view().asking.expect("the pick is open");
     assert_eq!(asking.action.kind, ActionKind::MoveToProject);
     let choices = asking.choices.expect("what it offers came back");
@@ -127,7 +128,7 @@ fn collapsing_a_task_hides_its_subtasks_and_keeps_it_in_hand() {
     app.add("Book the train");
     let parent = app.id_of("Plan the trip");
     app.send(Event::Focus(app.id_of("Book the train")));
-    app.send(Event::Run(ActionKind::MakeSubtaskOf));
+    app.send(Event::Run(vec![ActionKind::MakeSubtaskOf]));
     app.send(Event::Answer(Answer::Picked { id: parent.clone(), length: None }));
     assert_eq!(app.view().asking, None, "the subtask is made");
     let items = app.items();
@@ -135,14 +136,15 @@ fn collapsing_a_task_hides_its_subtasks_and_keeps_it_in_hand() {
     assert_eq!(items[1].level.as_deref(), Some("level 2"));
 
     app.send(Event::Focus(parent.clone()));
-    let shell = app.send(Event::Run(ActionKind::Collapse));
+    let shell = app.send(Event::Run(vec![ActionKind::Collapse]));
     assert_eq!(said(&shell), ["Collapsed"]);
     assert_eq!(app.titles(), ["Plan the trip"]);
     assert_eq!(app.items()[0].row.expanded, Some(false));
     assert_eq!(app.view().focus, Some(parent));
+    assert!(app.items()[1].hidden, "still there, for a tree that folds by itself");
 
-    app.send(Event::Run(ActionKind::Expand));
-    assert_eq!(app.items().len(), 2);
+    app.send(Event::Run(vec![ActionKind::Expand]));
+    assert_eq!(app.titles().len(), 2);
 }
 
 #[test]
@@ -175,4 +177,34 @@ fn opening_a_place_lists_what_it_holds_with_nothing_in_hand() {
     assert_eq!(view.title, "Trash");
     assert!(view.list.unwrap().items.is_empty());
     assert_eq!(view.focus, None);
+}
+
+#[test]
+fn putting_a_task_in_a_block_asks_how_long_once_the_block_is_picked() {
+    let mut app = App::new();
+    let elsewhere = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    elsewhere
+        .add_block(lumenna_host::NewBlock {
+            title: "Deep work".to_owned(),
+            at: "09:00".to_owned(),
+            minutes: 120,
+            date: Some("tomorrow".to_owned()),
+            kind: "work".to_owned(),
+            ..lumenna_host::NewBlock::default()
+        })
+        .unwrap();
+    app.add("Write the report");
+
+    app.send(Event::Run(vec![ActionKind::PutInBlock]));
+    let asking = app.view().asking.unwrap();
+    assert!(matches!(asking.question, lumenna_records::Question::Pick { length: Some(_), .. }));
+    let block = asking.choices.unwrap().choices[0].id.clone();
+
+    app.send(Event::Answer(Answer::Picked { id: block, length: None }));
+    let asking = app.view().asking.expect("the length is asked next");
+    assert!(matches!(asking.question, lumenna_records::Question::Text { .. }));
+
+    let shell = app.send(Event::Answer(Answer::Text { text: "45m".to_owned() }));
+    assert_eq!(app.view().asking, None);
+    assert!(said(&shell).iter().any(|s| s.contains("Deep work")), "{shell:?}");
 }

@@ -7,6 +7,10 @@ license.workspace = true
 repository.workspace = true
 description = "Lumenna's screens as a Crux app: what is open, what is in hand, what to say, as view models; every write an effect."
 
+[features]
+# TypeScript types for the web client's view models and events.
+wasm = ["dep:tsify", "dep:wasm-bindgen", "lumenna-records/wasm"]
+
 [dependencies]
 crux_core = "0.20.0"
 facet = "=0.46.5"
@@ -15,6 +19,8 @@ lumenna-core.workspace = true
 lumenna-parse.workspace = true
 lumenna-records.workspace = true
 serde.workspace = true
+tsify = { version = "0.5", optional = true, default-features = false, features = ["js"] }
+wasm-bindgen = { version = "0.2", optional = true }
 
 [lints]
 workspace = true

@@ -67,6 +67,7 @@ mod effects {
 
 /// What happens: what the person does, and what the host answers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum Event {
     /// The app has started: watch the store.
     Start,
@@ -76,9 +77,10 @@ pub enum Event {
     Focus(String),
     /// Run an action a row offered: from its menu, a button, a swipe.
     Perform(Action),
-    /// Run the action of this kind on the row in hand, for a key that means one thing on every
-    /// row: Delete, Space for Mark Done.
-    Run(ActionKind),
+    /// Run the first of these kinds the row in hand offers, for a key that means one thing on
+    /// every row: Space is Mark Done, Mark Not Done or Restore. One it offers none of says why,
+    /// in the words for the first.
+    Run(Vec<ActionKind>),
     /// The answer to the question open.
     Answer(Answer),
     /// Leave the question open unanswered.
@@ -117,6 +119,9 @@ pub struct Open {
     pub choices: Option<Choices>,
     /// Why the last answer was refused: the question stays open with it.
     pub refusal: Option<String>,
+    /// What was picked, for a pick that asks a second question once one is: how long a
+    /// sitting is meant to take.
+    pub picked: Option<String>,
 }
 
 /// Everything the screens hold.
@@ -145,7 +150,7 @@ impl Model {
     fn items(&self) -> Option<Vec<Item>> {
         let store = self.store.as_ref()?;
         let rows = view::listing(&store.snapshot, &self.place(), &store.now)?.ok()?;
-        Some(list::shown(&rows, &self.folded))
+        Some(list::items(&rows, &self.folded))
     }
 
     /// Keeps the row in hand where the person left it, after the list changed under it.
@@ -207,11 +212,11 @@ impl Lumenna {
         match &action.question {
             Question::Immediate => host(HostRequest::Act { action, answer: Answer::Yes }),
             Question::Pick { .. } => {
-                model.open = Some(Open { action: action.clone(), choices: None, refusal: None });
+                model.open = Some(Open { action: action.clone(), choices: None, refusal: None, picked: None });
                 render().and(host(HostRequest::Choices { action }))
             }
             Question::Form | Question::Confirm { .. } | Question::Text { .. } | Question::Choose { .. } => {
-                model.open = Some(Open { action, choices: None, refusal: None });
+                model.open = Some(Open { action, choices: None, refusal: None, picked: None });
                 render()
             }
         }
@@ -267,30 +272,45 @@ impl App for Lumenna {
                 render()
             }
             Event::Focus(id) => {
-                if let Some(at) = model.items().and_then(|items| items.iter().position(|item| item.row.id == id)) {
+                if let Some(at) = model.items().and_then(|items| list::position(&items, &id)) {
                     model.focus = Some(id);
                     model.position = at;
                 }
                 Command::done()
             }
             Event::Perform(action) => self.perform(action, model),
-            Event::Run(kind) => {
+            Event::Run(kinds) => {
                 let items = model.items().unwrap_or_default();
                 let Some(item) = model.focus.as_ref().and_then(|id| items.iter().find(|item| &item.row.id == id)) else {
                     return Command::done();
                 };
-                match item.row.actions.iter().find(|a| a.kind == kind) {
-                    Some(action) => self.perform(action.clone(), model),
-                    None => {
+                let found = kinds.iter().find_map(|kind| item.row.actions.iter().find(|a| a.kind == *kind));
+                match (found, kinds.first()) {
+                    (Some(action), _) => self.perform(action.clone(), model),
+                    (None, Some(kind)) => {
                         let subject = item.row.actions.first().map_or(lumenna_records::Subject::Task, |a| a.subject);
-                        say(not_offered(kind, subject, false))
+                        say(not_offered(*kind, subject, false))
                     }
+                    (None, None) => Command::done(),
                 }
             }
-            Event::Answer(answer) => match &model.open {
-                Some(open) => host(HostRequest::Act { action: open.action.clone(), answer }),
-                None => Command::done(),
-            },
+            Event::Answer(answer) => {
+                let Some(open) = &mut model.open else { return Command::done() };
+                // A pick that asks how long: the length is asked once one is picked, and both
+                // go together.
+                if let (Question::Pick { length: Some(_), .. }, Answer::Picked { id, length: None }, None) =
+                    (&open.action.question, &answer, &open.picked)
+                {
+                    open.picked = Some(id.clone());
+                    open.refusal = None;
+                    return render();
+                }
+                let answer = match (&open.picked, answer) {
+                    (Some(id), Answer::Text { text }) => Answer::Picked { id: id.clone(), length: Some(text) },
+                    (_, answer) => answer,
+                };
+                host(HostRequest::Act { action: open.action.clone(), answer })
+            }
             Event::Cancel => {
                 model.open = None;
                 render()

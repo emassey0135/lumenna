@@ -3,7 +3,7 @@
 use jiff::Zoned;
 use lumenna_core::snapshot::Snapshot;
 use lumenna_records::places::{Place, SidebarEntry, sidebar};
-use lumenna_records::{Action, Choices, LumennaError, Query, Rows, lists};
+use lumenna_records::{Action, Choices, LumennaError, Query, Question, Rows, length_question, lists};
 use serde::{Deserialize, Serialize};
 
 use crate::list::{self, Item};
@@ -11,6 +11,7 @@ use crate::Model;
 
 /// Everything on screen.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ViewModel {
     /// Whether the store has arrived: until it has there is nothing to show.
     pub ready: bool,
@@ -32,6 +33,7 @@ pub struct ViewModel {
 
 /// A list of tasks as shown.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ListView {
     /// The rows shown.
     pub items: Vec<Item>,
@@ -50,9 +52,13 @@ pub struct ListView {
 
 /// An action's question, open.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Asking {
-    /// The action, whose `question` is what to ask.
+    /// The action asking.
     pub action: Action,
+    /// What to ask now: the action's question, or, once a pick that asks how long has its
+    /// choice, how long.
+    pub question: Question,
     /// What a pick offers, once known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub choices: Option<Choices>,
@@ -76,7 +82,7 @@ pub fn view(model: &Model) -> ViewModel {
     };
     let list = listing(&store.snapshot, &place, &store.now).map(|found| match found {
         Ok(rows) => ListView {
-            items: list::shown(&rows, &model.folded),
+            items: list::items(&rows, &model.folded),
             empty: rows.empty.clone(),
             query: rows.query.clone(),
             notices: rows.notices.clone(),
@@ -94,6 +100,7 @@ pub fn view(model: &Model) -> ViewModel {
         focus: model.focus.clone(),
         asking: model.open.as_ref().map(|open| Asking {
             action: open.action.clone(),
+            question: if open.picked.is_some() { length_question() } else { open.action.question.clone() },
             choices: open.choices.clone(),
             refusal: open.refusal.clone(),
         }),
