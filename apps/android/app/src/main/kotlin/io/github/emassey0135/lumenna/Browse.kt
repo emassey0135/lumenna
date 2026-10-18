@@ -132,7 +132,7 @@ fun BrowseScreen(core: Core, navigator: Navigator, changes: Long) {
                     "labels" -> Screen.Labels
                     "filters" -> Screen.Filters
                     "blocks" -> Screen.Blocks
-                    else -> Screen.Tasks(title = "Trash", query = "deleted", trash = true)
+                    else -> Screen.Tasks(io.github.emassey0135.lumenna.app.Place.Trash)
                 },
             )
         },
@@ -158,10 +158,7 @@ fun ProjectsScreen(core: Core, navigator: Navigator, changes: Long) {
         },
         addLabel = "Add project",
         add = { core.addNew(SidebarGroup.PROJECTS, prompt) },
-        open = { item ->
-            val reference = projectReference(item.title)
-            navigator.push(Screen.Tasks(item.title, reference, "$reference "))
-        },
+        open = { item -> navigator.push(Screen.Tasks(io.github.emassey0135.lumenna.app.Place.Project(item.title))) },
         openLabel = "Show its tasks",
         actions = { item -> core.offered(item.actions, prompt) },
     )
@@ -182,10 +179,7 @@ fun LabelsScreen(core: Core, navigator: Navigator, changes: Long) {
         },
         addLabel = "Add label",
         add = { core.addNew(SidebarGroup.LABELS, prompt) },
-        open = { item ->
-            val reference = labelReference(item.title)
-            navigator.push(Screen.Tasks(item.title, reference, "$reference "))
-        },
+        open = { item -> navigator.push(Screen.Tasks(io.github.emassey0135.lumenna.app.Place.Label(item.title))) },
         openLabel = "Show the tasks wearing it",
         actions = { item -> core.offered(item.actions, prompt) },
     )
@@ -207,7 +201,7 @@ fun FiltersScreen(core: Core, navigator: Navigator, changes: Long) {
         },
         addLabel = "Add filter",
         add = { core.addNew(SidebarGroup.FILTERS, prompt) },
-        open = { item -> navigator.push(Screen.Tasks(item.title, queries[item.key].orEmpty())) },
+        open = { item -> navigator.push(Screen.Tasks(io.github.emassey0135.lumenna.app.Place.Filter(item.title, queries[item.key].orEmpty()))) },
         openLabel = "Show its tasks",
         actions = { item -> core.offered(item.actions, prompt) },
     )

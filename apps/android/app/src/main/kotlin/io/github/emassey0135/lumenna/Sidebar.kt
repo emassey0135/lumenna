@@ -35,10 +35,8 @@ fun Destination.screen(): Screen = when (this) {
     Destination.Settings -> Screen.Settings
     is Destination.At -> when (val place = place) {
         Place.Today -> Screen.Day()
-        Place.Tasks -> Screen.Tasks()
         Place.Blocks -> Screen.Blocks
-        Place.Trash -> Screen.Tasks(title = "Trash", query = placeQuery(place), trash = true)
-        else -> Screen.Tasks(placeTitle(place), placeQuery(place), placeQuickAddPrefix(place))
+        else -> Screen.Tasks(place.toApp())
     }
 }
 

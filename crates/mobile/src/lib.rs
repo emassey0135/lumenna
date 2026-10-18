@@ -11,6 +11,7 @@
 //! shapes `lum --json` and the RPC surface keep are no concern here.
 
 mod events;
+mod words;
 
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, PoisonError};

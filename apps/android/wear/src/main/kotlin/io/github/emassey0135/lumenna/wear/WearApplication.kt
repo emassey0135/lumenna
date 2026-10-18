@@ -11,7 +11,7 @@ import androidx.wear.phone.interactions.notifications.BridgingManager
 /** Holds the one open store for the life of the process, as the phone app does. */
 class WearApplication : Application(), CoreHolder {
     /** Opened on first use, so a failure to open is shown rather than crashing. */
-    override val core: Result<Core> by lazy { runCatching { Core(Core.profileDirectory(this)) } }
+    override val core: Result<Core> by lazy { runCatching { Core(Core.profileDirectory(this), PLATFORM) } }
 
     override fun onCreate() {
         super.onCreate()

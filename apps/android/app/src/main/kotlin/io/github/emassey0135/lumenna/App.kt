@@ -73,13 +73,8 @@ sealed interface Screen {
     /** The day planner, on a date; today when null. */
     data class Day(val date: String? = null) : Screen
 
-    /** Tasks matching a query, under a title; `prefix` starts a task added here. */
-    data class Tasks(
-        val title: String = "Tasks",
-        val query: String = "",
-        val prefix: String = "",
-        val trash: Boolean = false,
-    ) : Screen
+    /** A place's tasks, as the app lists them: every open task, a project's, the trash. */
+    data class Tasks(val place: io.github.emassey0135.lumenna.app.Place = io.github.emassey0135.lumenna.app.Place.Tasks) : Screen
 
     /** One task's details. */
     data class Task(val id: String) : Screen
@@ -221,7 +216,7 @@ fun LumennaApp(
                         to == Tab.TODAY -> show(Destination.At(Place.Today), *screens)
                         to == Tab.SETTINGS -> show(Destination.Settings, *screens)
                         first == Screen.Blocks -> show(Destination.At(Place.Blocks))
-                        first is Screen.Tasks && first.trash -> show(Destination.At(Place.Trash))
+                        first is Screen.Tasks && first.place == io.github.emassey0135.lumenna.app.Place.Trash -> show(Destination.At(Place.Trash))
                         else -> show(Destination.At(Place.Tasks), *screens)
                     }
                     return
@@ -267,7 +262,7 @@ fun LumennaApp(
             Offer(Command.GO_TODAY) { go(Tab.TODAY) }
             Offer(Command.GO_TASKS) { go(Tab.TASKS) }
             Offer(Command.GO_BLOCKS) { go(Tab.BROWSE, Screen.Blocks) }
-            Offer(Command.GO_TRASH) { go(Tab.BROWSE, Screen.Tasks(title = "Trash", query = "deleted", trash = true)) }
+            Offer(Command.GO_TRASH) { go(Tab.BROWSE, Screen.Tasks(io.github.emassey0135.lumenna.app.Place.Trash)) }
             Offer(Command.SETTINGS) { go(Tab.SETTINGS) }
             Offer(Command.SYNC_NOW) { syncNow(core) }
 
@@ -407,7 +402,7 @@ fun syncNow(core: Core) {
 @Composable
 private fun Screens(core: Core, navigator: Navigator, screen: Screen, changes: Long) {
     when (screen) {
-        is Screen.Tasks -> TaskListScreen(core, navigator, screen, changes)
+        is Screen.Tasks -> TaskListScreen(core, navigator, screen)
         is Screen.QuickAdd -> QuickAddScreen(core, navigator, screen)
         is Screen.Task -> TaskDetailScreen(core, navigator, screen, changes)
         is Screen.Day -> DayScreen(core, navigator, screen, changes)

@@ -74,6 +74,35 @@ fun rememberRowFocus(core: Core, keys: List<String>, state: LazyListState): RowF
     return focus
 }
 
+/**
+ * A list on the app's rows: whenever the app moves the row in hand itself ([ViewModel.landing]
+ * goes up, past what opening the place moved), focus goes to that row — input focus and
+ * TalkBack's — and then what the turn said is said. [keys] are the rows as now listed.
+ */
+@Composable
+fun rememberLanding(core: Core, keys: List<String>, state: LazyListState): RowFocus {
+    val focus = remember { RowFocus(core) }
+    val view = LocalView.current
+    val shown by core.app.view.collectAsState()
+    val opened by core.app.opened.collectAsState()
+    val landing = shown?.landing
+    val first = remember { landing }
+    LaunchedEffect(landing) {
+        if (landing == null || landing == first || landing <= opened) return@LaunchedEffect
+        val place = shown?.focus?.let(keys::indexOf)?.takeIf { it >= 0 }
+        if (place != null) {
+            state.scrollToItem(place)
+            // The row has to be composed, and laid out, before it can take focus.
+            withFrameNanos {}
+            withFrameNanos {}
+            runCatching { focus.requester(keys[place]).requestFocus() }
+            view.moveAccessibilityFocus(keys[place])
+        }
+        core.release()
+    }
+    return focus
+}
+
 /** Which row a node is, so its node can be found in the accessibility tree. */
 val RowKey = SemanticsPropertyKey<String>("RowKey")
 var SemanticsPropertyReceiver.rowKey by RowKey
@@ -86,7 +115,7 @@ var SemanticsPropertyReceiver.rowTitle by RowTitle
  * Puts TalkBack's focus on the row whose key is [key], as TalkBack itself does: by performing
  * the accessibility-focus action on its node. Nothing happens when no screen reader is on.
  */
-private fun View.moveAccessibilityFocus(key: String) {
+internal fun View.moveAccessibilityFocus(key: String) {
     val owner = (this as? ViewRootForTest)?.semanticsOwner ?: return
     fun find(node: SemanticsNode): SemanticsNode? =
         if (node.config.getOrNull(RowKey) == key) node else node.children.firstNotNullOfOrNull(::find)

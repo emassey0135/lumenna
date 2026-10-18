@@ -34,6 +34,8 @@ import kotlinx.coroutines.flow.asStateFlow
 class Core(
     /** Where the store lives: also what tells its notifications from another store's. */
     val directory: File,
+    /** What this device says it runs, in pairing: "android", or "wearos" on a watch. */
+    val platform: String = "android",
 ) {
     val lumenna: Lumenna
 
@@ -42,6 +44,13 @@ class Core(
         directory.mkdirs()
         lumenna = Lumenna.open(directory.absolutePath)
     }
+
+    /**
+     * The app itself over this store (`AppModel`), opened on first use, on the main thread: the
+     * screens that have moved onto it draw its view and send it what the person does.
+     */
+    val app: AppModel by lazy { AppModel(this, platform).also { appOpened = true } }
+    private var appOpened = false
 
     private val generation = MutableStateFlow(0L)
 
@@ -56,6 +65,8 @@ class Core(
     /** Every screen showing the store reads it again. */
     fun changed() {
         generation.value += 1
+        // A write through the UniFFI core is another connection's to the app: it takes it in.
+        if (appOpened) app.tick()
     }
 
     /** Says [text], politely, after whatever is being said now. */

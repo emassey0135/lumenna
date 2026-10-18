@@ -61,35 +61,41 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.collectAsState
+import io.github.emassey0135.lumenna.app.Item
+import io.github.emassey0135.lumenna.app.ListView
+import io.github.emassey0135.lumenna.app.Place
+import io.github.emassey0135.lumenna.app.RowView
+import io.github.emassey0135.lumenna.app.ShellEvent
 import io.github.emassey0135.lumenna.records.ActionKind
-import io.github.emassey0135.lumenna.records.LumennaException
+import io.github.emassey0135.lumenna.records.labelReference
 import io.github.emassey0135.lumenna.records.notOffered
 import io.github.emassey0135.lumenna.records.Preview
-import io.github.emassey0135.lumenna.records.RowView
-import io.github.emassey0135.lumenna.records.Rows
+import io.github.emassey0135.lumenna.records.projectReference
 import io.github.emassey0135.lumenna.records.Syntax
 
 
 /**
- * Tasks, with a filter field above them, or the trash.
+ * A place's tasks, with a filter field above them, or the trash: the app's list (`ViewModel.list`)
+ * while this screen shows its place, which it opens as it comes to the front.
  *
- * The filter is applied as it is typed, and read back: how it was understood and how many
- * tasks it found. A misread filter shows wrong results silently, and wrong results are
+ * The filter is the app's too, applied as it is typed and read back: how it was understood and
+ * how many tasks it found. A misread filter shows wrong results silently, and wrong results are
  * invisible.
  */
 @Composable
-fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks, changes: Long) {
-    var filter by rememberSaveable(screen, stateSaver = TextFieldValue.Saver) {
-        mutableStateOf(TextFieldValue(screen.query))
-    }
-    val prompt = rememberPrompter()
-    // A filter part-typed is often not one yet; its error is the readback, not an alert.
-    val listing: Result<Rows> = remember(filter.text, changes) {
-        runCatching { core.lumenna.listTasks(filter.text) }
-    }
+fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
+    val app = core.app
+    val view by app.view.collectAsState()
+    // This screen's place is the app's while it is in front; back on it, the place again.
+    LaunchedEffect(screen.place) { app.send(ShellEvent.Open(screen.place)) }
+    val here = view?.takeIf { it.place == screen.place }
+    val list = here?.list
+    val trash = screen.place == Place.Trash
+    var filter by rememberSaveable(screen, stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
 
     val field = remember { FocusRequester() }
-    if (!screen.trash) {
+    if (!trash) {
         val shortcuts = LocalShortcuts.current
         // Collected, not a key: clearing the request would change the key, and cancel the
         // effect before the field had focus.
@@ -107,21 +113,24 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks, chang
         Offer(Command.FILTER) { runCatching { field.requestFocus() } }
     }
 
-    ScreenFrame(screen.title, core, navigator, actions = {
-        if (!screen.trash) {
-            IconButton(onClick = { navigator.push(Screen.QuickAdd(screen.prefix)) }) {
+    ScreenFrame(here?.title ?: placeTitle(screen.place), core, navigator, actions = {
+        if (!trash) {
+            IconButton(onClick = { navigator.push(Screen.QuickAdd(quickAddPrefix(screen.place))) }) {
                 Icon(Icons.Filled.Add, contentDescription = "Add task")
             }
         }
     }) {
-        if (!screen.trash) {
+        if (!trash) {
             CompletingField(
                 core = core,
                 syntax = Syntax.FILTER,
                 label = "Filter",
                 example = "#Work & overdue",
                 value = filter,
-                onValueChange = { filter = it },
+                onValueChange = {
+                    if (it.text != filter.text) app.send(ShellEvent.Filter(it.text))
+                    filter = it
+                },
                 onSubmit = {},
                 imeAction = ImeAction.Search,
                 modifier = Modifier.padding(horizontal = 16.dp),
@@ -129,66 +138,78 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks, chang
             )
         }
         Text(
-            readback(listing),
+            list?.let(::readback).orEmpty(),
             style = MaterialTheme.typography.bodySmall,
             color = quiet(),
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
-        val rows = listing.getOrNull()?.rows.orEmpty()
-        TaskRows(
+        AppTaskRows(
             core,
-            rows,
-            // The core's, in its order: in the trash, Restore and Delete from Trash.
-            actions = { row -> core.offered(row.actions, prompt, form = navigator.formOr { navigator.push(Screen.Task(it.target)) }) },
-            open = if (screen.trash) null else { row -> navigator.push(Screen.Task(row.id)) },
+            list?.items.orEmpty().filter { !it.hidden },
+            open = if (trash) null else { row ->
+                app.send(ShellEvent.Focus(row.id))
+                navigator.push(Screen.Task(row.id))
+            },
         )
     }
-    prompt.Host()
+    AppQuestions(core) { action -> navigator.push(Screen.Task(action.target)) }
+}
+
+/** What a place is called before the app has shown it. */
+fun placeTitle(place: Place): String = when (place) {
+    Place.Today -> "Today"
+    Place.Tasks -> "Tasks"
+    is Place.Project -> place.field0
+    is Place.Label -> place.field0
+    is Place.Filter -> place.name
+    Place.Blocks -> "Blocks"
+    Place.Trash -> "Trash"
+}
+
+/** What a task added from a place's list starts with: its project or label, as quick add reads one. */
+fun quickAddPrefix(place: Place): String = when (place) {
+    is Place.Project -> projectReference(place.field0) + " "
+    is Place.Label -> labelReference(place.field0) + " "
+    else -> ""
 }
 
 /** How the filter was understood, and what it found — or why it is not one yet. */
-private fun readback(listing: Result<Rows>): String = listing.fold(
-    onSuccess = { rows ->
-        val unresolved = rows.query?.unresolved.orEmpty().map { name ->
-            "no ${name.kind} called ${name.name}" + (name.suggestion?.let { ", did you mean $it?" } ?: "")
-        }
-        // An empty listing says what is empty, in the core's words: "The trash is empty."
-        val found = if (rows.rows.isEmpty() && rows.empty.isNotEmpty()) rows.empty else rows.announcement
-        (listOfNotNull(rows.query?.description?.takeIf { it.isNotBlank() }, found) + unresolved)
-            .joinToString(". ") { it.trimEnd('.') }.replaceFirstChar { it.uppercase() }
-    },
-    onFailure = { (it as? LumennaException)?.sentence ?: it.message.orEmpty() },
-)
+private fun readback(list: ListView): String {
+    val unresolved = list.query?.unresolved.orEmpty().map { name ->
+        "no ${name.kind} called ${name.name}" + (name.suggestion?.let { ", did you mean $it?" } ?: "")
+    }
+    // An empty listing says what is empty, in the core's words: "The trash is empty."
+    val found = if (list.items.isEmpty() && list.empty.isNotEmpty()) list.empty else list.announcement
+    return (listOfNotNull(list.refusal, list.query?.description?.takeIf { it.isNotBlank() }, found) + unresolved + list.notices)
+        .joinToString(". ") { it.trimEnd('.') }.replaceFirstChar { it.uppercase() }
+}
 
 /**
- * Task rows: one TalkBack stop each, its title the description and everything else its
- * state; its actions are custom accessibility actions, and the same ones on a long press.
+ * The app's task rows: one TalkBack stop each, its title the description and everything else
+ * its state; its actions, the app's, are custom accessibility actions, and the same ones on a
+ * long press. Expand and Collapse are among them where something is under a row.
  */
 @Composable
-fun TaskRows(core: Core, all: List<RowView>, actions: (RowView) -> List<RowAction>, open: ((RowView) -> Unit)?) {
-    val folding = rememberFolding()
-    val shown = folded(all, { it.depth.toInt() }, { it.id }, folding.value)
-    val rows = shown.map { it.item }
+fun AppTaskRows(core: Core, items: List<Item>, open: ((RowView) -> Unit)?) {
     val state = rememberLazyListState()
-    val focus = rememberRowFocus(core, rows.map { it.id }, state)
+    val keys = items.map { it.row.id }
+    val focus = rememberLanding(core, keys, state)
     LazyColumn(
         Modifier
             .fillMaxSize()
-            .semantics { collectionInfo = CollectionInfo(rowCount = rows.size, columnCount = 1) },
+            .semantics { collectionInfo = CollectionInfo(rowCount = items.size, columnCount = 1) },
         state = state,
     ) {
-        itemsIndexed(shown, key = { _, row -> row.item.id }) { index, fold ->
-            val row = fold.item
-            // The level is said against the row shown before, which folding can change.
-            val previous = if (index > 0) rows[index - 1].depth else null
+        itemsIndexed(items, key = { _, item -> item.row.id }) { index, item ->
+            val row = item.row
             ListRow(
                 title = row.title,
-                detail = listOfNotNull(RowSpeech.details(row)).plus(row.state.filter { it != "ready" }).joinToString(", "),
-                speech = RowSpeech.value(row, previous, fold.state),
+                detail = listOfNotNull(AppRowSpeech.details(row)).plus(row.state.filter { it != "ready" }).joinToString(", "),
+                speech = AppRowSpeech.value(item),
                 done = row.checked,
                 depth = row.depth.toInt(),
                 index = index,
-                actions = focus.actions(row.id, index, actions(row)) + listOfNotNull(foldAction(core, fold, row.id, folding)),
+                actions = core.app.rowActions(row.id, row.actions),
                 open = open?.let { { it(row) } },
                 openLabel = "Show details",
                 focus = focus.requester(row.id),
