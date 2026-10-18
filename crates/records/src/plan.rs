@@ -417,3 +417,12 @@ pub fn work_blocks(snapshot: &Snapshot, first: jiff::civil::Date, days: u32, now
         blocks,
     })
 }
+
+/// How sittings name an occurrence: a day of a repeating block, or a one-off block itself.
+#[must_use]
+pub fn block_ref(snapshot: &Snapshot, occurrence: &Occurrence) -> lumenna_core::model::BlockRef {
+    match snapshot.series.get(&occurrence.series_id) {
+        Some(series) if series.is_recurring() => lumenna_core::model::BlockRef::Occurrence(occurrence.series_id, occurrence.date),
+        _ => lumenna_core::model::BlockRef::OneOff(occurrence.series_id),
+    }
+}

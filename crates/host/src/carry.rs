@@ -108,15 +108,7 @@ pub(crate) fn offers(snapshot: &Snapshot, series: SeriesId, date: jiff::civil::D
     offered
 }
 
-/// Where a day is, said after "to Deep work": "today", "tomorrow", "on Friday".
-pub(crate) fn on_day(date: jiff::civil::Date, today: jiff::civil::Date) -> String {
-    let words = lumenna_core::time::day_words(date, today);
-    match words.as_str() {
-        "today" => "later today".to_owned(),
-        "tomorrow" | "yesterday" => words,
-        _ => format!("on {words}"),
-    }
-}
+pub(crate) use lumenna_records::words::on_day;
 
 /// What is said of the offers, and whether any of them can go anywhere.
 pub(crate) fn offer_words(offers: &[Offer], today: jiff::civil::Date) -> Option<String> {

@@ -8,7 +8,9 @@
 //! command line and the same list on a phone cannot drift apart.
 
 pub mod actions;
+pub mod choices;
 pub mod day;
+pub mod dayplan;
 pub mod error;
 pub mod exports;
 pub mod fields;
@@ -19,6 +21,7 @@ pub mod places;
 pub mod plan;
 pub mod proposals;
 pub mod reminders;
+pub mod replan;
 pub mod resolve;
 pub mod text;
 pub mod tree;

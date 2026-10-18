@@ -15,9 +15,8 @@ use std::sync::Arc;
 use crux_core::Core;
 use crux_core::Request;
 use jiff::Zoned;
-use lumenna_app::proposal::{Applied, Kind, Pins, Proposal};
+use lumenna_app::proposal::{Applied, Proposal};
 use lumenna_app::{Arrival, Effect, Event, HostAnswer, HostRequest, NetworkAnswer, NetworkRequest, ViewModel, Watch};
-use lumenna_records::proposals::{DayPins, ReplanPins};
 use lumenna_host::Lumenna;
 use lumenna_store::ChangeHash;
 
@@ -98,23 +97,6 @@ pub fn answer(lumenna: &Lumenna, request: HostRequest) -> HostAnswer {
         })),
         HostRequest::Undo => wrote(lumenna.undo()),
         HostRequest::Redo => wrote(lumenna.redo()),
-        HostRequest::Choices { action } => HostAnswer::Offered(lumenna.choices(action)),
-        HostRequest::Propose { kind, pins, style } => HostAnswer::Proposed(Box::new(match (kind, pins) {
-            (Kind::Replan, pins) => {
-                let pins = match pins {
-                    Some(Pins::Replan(pins)) => pins,
-                    _ => ReplanPins::default(),
-                };
-                lumenna.replan(style, pins, None).map(Proposal::Replan)
-            }
-            (Kind::PlanDay(date), pins) => {
-                let pins = match pins {
-                    Some(Pins::Day(pins)) => pins,
-                    _ => DayPins::default(),
-                };
-                lumenna.propose_day_plan(Some(date), style, pins, None).map(Proposal::Day)
-            }
-        })),
         HostRequest::Apply { proposal, accepted } => {
             let applied = match proposal {
                 Proposal::Replan(replan) => {

@@ -105,7 +105,7 @@ fn a_key_the_row_does_not_offer_says_why_and_changes_nothing() {
 }
 
 #[test]
-fn a_pick_offers_what_the_host_says_and_a_refused_answer_stays_in_its_question() {
+fn a_pick_offers_what_fits_and_a_refused_answer_stays_in_its_question() {
     let mut app = App::new();
     Lumenna::open(app.profile.to_str().unwrap()).unwrap().add_project("Work", None).unwrap();
     app.add("Buy milk");

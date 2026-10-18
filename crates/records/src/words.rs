@@ -181,3 +181,13 @@ pub fn capitalised(text: &str) -> String {
     let mut chars = text.chars();
     chars.next().map_or_else(String::new, |first| first.to_uppercase().chain(chars).collect())
 }
+
+/// Where a day is, said after "to Deep work": "today", "tomorrow", "on Friday".
+pub fn on_day(date: jiff::civil::Date, today: jiff::civil::Date) -> String {
+    let words = lumenna_core::time::day_words(date, today);
+    match words.as_str() {
+        "today" => "later today".to_owned(),
+        "tomorrow" | "yesterday" => words,
+        _ => format!("on {words}"),
+    }
+}

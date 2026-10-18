@@ -182,8 +182,6 @@ impl PartialEq for HostAnswer {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Wrote(a, x), Self::Wrote(b, y)) => a == b && x == y,
-            (Self::Offered(a), Self::Offered(b)) => a == b,
-            (Self::Proposed(a), Self::Proposed(b)) => a == b,
             (Self::Applied(a, x), Self::Applied(b, y)) => a == b && x == y,
             (Self::Listed(a), Self::Listed(b)) => a == b,
             (Self::Saved(a), Self::Saved(b)) => a == b,
@@ -609,8 +607,19 @@ impl Lumenna {
         match &action.question {
             Question::Immediate => host(HostRequest::Act { action, answer: Answer::Yes }),
             Question::Pick { .. } => {
-                model.open = Some(Open::new(Purpose::Action(action.clone())));
-                render().and(host(HostRequest::Choices { action }))
+                let Some(store) = &model.store else { return Command::done() };
+                match lumenna_records::choices::offered(&store.snapshot, &action, &store.now) {
+                    // Nothing to pick: the question never opens, and why is all that is said.
+                    Ok(choices) if choices.choices.is_empty() => say(choices.announcement),
+                    Ok(choices) => {
+                        let said = choices.announcement.clone();
+                        let mut open = Open::new(Purpose::Action(action));
+                        open.choices = Some(choices);
+                        model.open = Some(open);
+                        render().and(say(said))
+                    }
+                    Err(error) => say(error.message()),
+                }
             }
             Question::Form | Question::Confirm { .. } | Question::Text { .. } | Question::Choose { .. } => {
                 model.open = Some(Open::new(Purpose::Action(action)));
@@ -931,14 +940,47 @@ impl Lumenna {
 
     /// Opens a proposal's screen and asks for its first proposal.
     fn propose(&self, kind: proposal::Kind, model: &mut Model) -> Command<Effect, Event> {
-        model.proposal = Some(proposal::Screen::new(kind.clone()));
+        model.proposal = Some(proposal::Screen::new(kind));
         model.proposal_made = false;
+        self.repropose(None, model)
+    }
+
+    /// Proposes the open screen's day again with `pins`, from the store as it is: shown and
+    /// said in place, or why not.
+    fn repropose(&self, pins: Option<proposal::Pins>, model: &mut Model) -> Command<Effect, Event> {
         let style = model.style.unwrap_or(proposal::default_style());
-        render().and(host(HostRequest::Propose { kind, pins: None, style }))
+        let (Some(store), Some(screen)) = (&model.store, &mut model.proposal) else { return Command::done() };
+        let proposed = match (&screen.kind, pins) {
+            (proposal::Kind::Replan, pins) => {
+                let pins = match pins {
+                    Some(proposal::Pins::Replan(pins)) => pins,
+                    _ => lumenna_records::proposals::ReplanPins::default(),
+                };
+                lumenna_records::replan::propose(&store.snapshot, style, pins, &store.now, true).map(proposal::Proposal::Replan)
+            }
+            (proposal::Kind::PlanDay(date), pins) => {
+                let pins = match pins {
+                    Some(proposal::Pins::Day(pins)) => pins,
+                    _ => lumenna_records::proposals::DayPins::default(),
+                };
+                lumenna_records::dayplan::propose(&store.snapshot, Some(date), style, &pins, &store.now).map(proposal::Proposal::Day)
+            }
+        };
+        match proposed {
+            Ok(proposal) => {
+                let said = proposal.spoken();
+                screen.show(proposal);
+                render().and(say(said))
+            }
+            Err(error) => {
+                screen.busy = false;
+                screen.refusal = Some(error.message().to_owned());
+                render().and(say(error.message()))
+            }
+        }
     }
 
     fn proposal(&self, event: ProposalEvent, model: &mut Model) -> Command<Effect, Event> {
-        let style = model.style.unwrap_or(proposal::default_style());
         if event == ProposalEvent::Replan {
             return self.propose(proposal::Kind::Replan, model);
         }
@@ -963,9 +1005,8 @@ impl Lumenna {
                 let Some(proposal::Proposal::Replan(replan)) = &screen.proposal else { return Command::done() };
                 let Some(other) = replan.alternatives.get(index as usize) else { return Command::done() };
                 let pins = Some(proposal::Pins::Replan(other.pins.clone()));
-                screen.busy = true;
                 screen.refusal = None;
-                render().and(host(HostRequest::Propose { kind: screen.kind.clone(), pins, style }))
+                self.repropose(pins, model)
             }
             ProposalEvent::Close => {
                 model.proposal_made = screen.made;
@@ -1309,21 +1350,6 @@ impl App for Lumenna {
                 model.style = Some(style);
                 Command::done()
             }
-            Event::Answered(HostAnswer::Proposed(result)) => {
-                let Some(screen) = &mut model.proposal else { return Command::done() };
-                match *result {
-                    Ok(proposal) => {
-                        let said = proposal.spoken();
-                        screen.show(proposal);
-                        render().and(say(said))
-                    }
-                    Err(error) => {
-                        screen.busy = false;
-                        screen.refusal = Some(error.message().to_owned());
-                        render().and(say(error.message()))
-                    }
-                }
-            }
             Event::Answered(HostAnswer::Applied(result, store)) => {
                 if let Some(store) = store {
                     model.store = Some(store);
@@ -1352,8 +1378,8 @@ impl App for Lumenna {
                     Err(error) => {
                         screen.refusal = Some(error.message().to_owned());
                         let pins = screen.proposal.as_ref().map(proposal::Proposal::pins);
-                        let request = HostRequest::Propose { kind: screen.kind.clone(), pins, style: model.style.unwrap_or(proposal::default_style()) };
-                        render().and(say(error.message())).and(host(request))
+                        let said = say(error.message());
+                        render().and(said).and(self.repropose(pins, model))
                     }
                 }
             }
@@ -1365,25 +1391,6 @@ impl App for Lumenna {
             Event::Undo => host(HostRequest::Undo),
             Event::Redo => host(HostRequest::Redo),
             Event::Answered(HostAnswer::Wrote(result, store)) => self.wrote(*result, store, model),
-            Event::Answered(HostAnswer::Offered(result)) => {
-                let Some(open) = &mut model.open else { return Command::done() };
-                match result {
-                    // Nothing to pick: the question closes, and why is all that is said.
-                    Ok(choices) if choices.choices.is_empty() => {
-                        model.open = None;
-                        render().and(say(choices.announcement))
-                    }
-                    Ok(choices) => {
-                        let said = choices.announcement.clone();
-                        open.choices = Some(choices);
-                        render().and(say(said))
-                    }
-                    Err(error) => {
-                        model.open = None;
-                        render().and(say(error.message()))
-                    }
-                }
-            }
         }
     }
 

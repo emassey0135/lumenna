@@ -5,25 +5,15 @@
 //! free time. One change, which one undo takes back.
 
 use jiff::Zoned;
-use lumenna_core::dayplan::{SHORTEST_SITTING, UNESTIMATED_MINS};
+use lumenna_core::dayplan::UNESTIMATED_MINS;
 use lumenna_core::edit::{self, Edit};
-use lumenna_core::model::{AssignmentStatus, BlockKind, BlockRef, BlockSeries};
-use lumenna_core::recur::Occurrence;
-use lumenna_core::snapshot::Snapshot;
+use lumenna_core::model::{BlockKind, BlockRef, BlockSeries};
 
-use crate::actions::{Choice, Choices};
+use crate::actions::Choices;
 use crate::error::{LumennaError, Result};
 use crate::types::Change;
-use crate::words::{count_line, duration, suggested_because};
 use crate::{Lumenna, repaired, resolve};
 use crate::plan::{Now, where_now};
-
-fn reference(snapshot: &Snapshot, occurrence: &Occurrence) -> BlockRef {
-    match snapshot.series.get(&occurrence.series_id) {
-        Some(series) if series.is_recurring() => BlockRef::Occurrence(occurrence.series_id, occurrence.date),
-        _ => BlockRef::OneOff(occurrence.series_id),
-    }
-}
 
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
@@ -54,96 +44,7 @@ impl Lumenna {
     pub(crate) fn what_now_choices(&self, now: &Zoned) -> Result<Choices> {
         self.with(|store| {
             store.load_all_years()?;
-            let snapshot = repaired(store);
-            let mut offered = Vec::new();
-            let (filter, block, left, none) = match where_now(&snapshot, now)? {
-                Now::Block(occurrence, left) => {
-                    let series = snapshot.series.get(&occurrence.series_id);
-                    let title = series.map(|s| s.title.clone()).unwrap_or_default();
-                    if !occurrence.flags.accepts_tasks {
-                        return Ok(Choices {
-                            announcement: format!("{title} is under way, and takes no tasks."),
-                            notices: Vec::new(),
-                            choices: Vec::new(),
-                        });
-                    }
-                    let block = reference(&snapshot, &occurrence);
-                    let facts = snapshot.facts();
-                    // What was planned for this block comes first: the plan already made.
-                    let mut sittings: Vec<_> = snapshot
-                        .assignments
-                        .values()
-                        .filter(|a| a.block_ref == block && matches!(a.status, AssignmentStatus::Planned | AssignmentStatus::InProgress))
-                        .collect();
-                    sittings.sort_by(|a, b| a.order.cmp_with(&a.id, &b.order, &b.id));
-                    for sitting in sittings {
-                        let Some(task) = snapshot.tasks.get(&sitting.task_id) else { continue };
-                        if task.is_deleted() || facts.is_completed(task) {
-                            continue;
-                        }
-                        let progress = match sitting.planned_mins {
-                            Some(planned) if sitting.accumulated_mins == 0 => {
-                                format!("Planned for {title}, {}.", duration(planned))
-                            }
-                            Some(planned) => format!(
-                                "Planned for {title}: {} of {} done.",
-                                duration(sitting.accumulated_mins),
-                                duration(planned)
-                            ),
-                            None => format!("Planned for {title}."),
-                        };
-                        offered.push(Choice {
-                            id: format!("sitting:{}", sitting.id),
-                            title: task.title.clone(),
-                            detail: snapshot.projects.get(&task.project_id).map(|p| p.name.clone()),
-                            reason: Some(progress),
-                            ..Choice::default()
-                        });
-                    }
-                    let filter = match series.and_then(|s| s.task_filter.as_deref()).map(str::trim) {
-                        None | Some("") => None,
-                        Some(text) => Some(resolve::query(&snapshot, text)?),
-                    };
-                    (filter, block, left, format!("Nothing open fits {title}."))
-                }
-                Now::Free(left, block_next) => {
-                    // A block of its own is made for the free time, so the suggestions are
-                    // asked of a block that does not exist yet: any task, the time until the next.
-                    let none = if left < SHORTEST_SITTING {
-                        let minutes = format!("{} only {}", if left == 1 { "is" } else { "are" }, count_line(left as usize, "minute"));
-                        if block_next {
-                            format!("There {minutes} before the next block.")
-                        } else {
-                            format!("There {minutes} left of the day.")
-                        }
-                    } else {
-                        "There is no open task to work on.".to_owned()
-                    };
-                    if left < SHORTEST_SITTING {
-                        return Ok(Choices { announcement: none, notices: Vec::new(), choices: Vec::new() });
-                    }
-                    (None, BlockRef::OneOff(lumenna_core::id::SeriesId::new()), left, none)
-                }
-            };
-            // The block's own sittings are not among its suggestions, so nothing is offered twice.
-            for suggestion in lumenna_core::suggestions::suggest(&snapshot, filter.as_ref(), block, left, now, usize::MAX) {
-                if suggestion.reasons.contains(&lumenna_core::suggestions::Reason::Blocked) {
-                    continue;
-                }
-                let Some(task) = snapshot.tasks.get(&suggestion.task) else { continue };
-                offered.push(Choice {
-                    id: format!("task:{}", task.id),
-                    title: task.title.clone(),
-                    detail: snapshot.projects.get(&task.project_id).map(|p| p.name.clone()),
-                    reason: suggested_because(&suggestion.reasons),
-                    ..Choice::default()
-                });
-            }
-            Ok(Choices {
-                announcement: if offered.is_empty() { none } else { match offered.len() { 1 => "1 thing to work on".to_owned(), n => format!("{n} things to work on") } },
-                notices: Vec::new(),
-                choices: offered,
-            })
+            lumenna_records::choices::what_now(&repaired(store), now)
         })
     }
 
@@ -172,11 +73,11 @@ impl Lumenna {
             let (block, year, block_title) = match where_now(&snapshot, now)? {
                 Now::Block(occurrence, _) => {
                     let title = snapshot.series.get(&occurrence.series_id).map(|s| s.title.clone()).unwrap_or_default();
-                    let year = match reference(&snapshot, &occurrence) {
+                    let year = match lumenna_records::plan::block_ref(&snapshot, &occurrence) {
                         BlockRef::Occurrence(_, date) => date.year(),
                         BlockRef::OneOff(series) => snapshot.series.get(&series).map_or(now.date().year(), |s| s.start_date.year()),
                     };
-                    (reference(&snapshot, &occurrence), year, title)
+                    (lumenna_records::plan::block_ref(&snapshot, &occurrence), year, title)
                 }
                 Now::Free(left, _) => {
                     // A block of its own for the free time: as long as the task is meant to take,

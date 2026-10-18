@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crux_core::capability::Operation;
 use jiff::Zoned;
 use lumenna_core::snapshot::Snapshot;
-use lumenna_records::{Action, Answer, Change, Choices, LumennaError};
+use lumenna_records::{Action, Answer, Change, LumennaError};
 
 /// The store as it stands, and the moment it was read at.
 #[derive(Debug, Clone)]
@@ -46,11 +46,6 @@ pub enum HostRequest {
         /// The answer to its question.
         answer: Answer,
     },
-    /// What a pick offers for an action (`Lumenna::choices`).
-    Choices {
-        /// The action asking.
-        action: Action,
-    },
     /// Add a task from a quick-add line.
     AddTask {
         /// The line as typed, a place's own start included.
@@ -73,16 +68,6 @@ pub enum HostRequest {
         edit: lumenna_records::types::BlockEdit,
         /// To which occurrences.
         scope: lumenna_records::types::BlockScope,
-    },
-    /// A proposal for the day: Replan from Now's or Plan the Day's, with these pins, said in
-    /// this clock.
-    Propose {
-        /// Which.
-        kind: crate::proposal::Kind,
-        /// What the person decided; none at first.
-        pins: Option<crate::proposal::Pins>,
-        /// The clock its sentences say times in.
-        style: lumenna_records::proposals::TimeStyle,
     },
     /// Make the changes accepted, by position, out of a proposal.
     Apply {
@@ -150,8 +135,6 @@ pub enum HostAnswer {
     /// A write: what it did, and the store just after it, so the app moves focus to what it
     /// made against the list that holds it.
     Wrote(Box<Result<Change, LumennaError>>, Option<Arrival>),
-    /// What a pick offers.
-    Offered(Result<Choices, LumennaError>),
     /// The paired devices.
     Devices(Result<lumenna_records::types::DeviceList, LumennaError>),
     /// What came due.
@@ -162,8 +145,6 @@ pub enum HostAnswer {
     Saved(Box<Result<(crate::SaveFile, String), LumennaError>>),
     /// What an import did, as said, and the store just after it.
     Imported(Box<Result<String, LumennaError>>, Option<Arrival>),
-    /// A proposal.
-    Proposed(Box<Result<crate::proposal::Proposal, LumennaError>>),
     /// What applying a proposal made, and the store just after it.
     Applied(Box<Result<crate::proposal::Applied, LumennaError>>, Option<Arrival>),
 }

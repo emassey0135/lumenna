@@ -208,3 +208,12 @@ pub fn block_kind(word: &str) -> Result<lumenna_core::model::BlockKind> {
         ))),
     }
 }
+
+/// A day of a block, `<series>@<date>`, as its two halves.
+///
+/// # Errors
+///
+/// If it names no day.
+pub fn split_day(target: &str) -> Result<(&str, &str)> {
+    target.split_once('@').ok_or_else(|| LumennaError::new(format!("'{target}' does not name a day of a block")))
+}
