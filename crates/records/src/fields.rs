@@ -161,6 +161,7 @@ pub fn unsayable_repeat_note(block: crate::BlockShown) -> Option<String> {
 
 /// What the pairing screen says, every sentence and button of it. Only what names the
 /// device is the client's: how it calls itself where it finds the other by itself.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

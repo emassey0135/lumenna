@@ -8,7 +8,11 @@ import io.github.emassey0135.lumenna.app.ShellEvent
 import io.github.emassey0135.lumenna.app.TimeStyle
 import io.github.emassey0135.lumenna.app.Turn
 import io.github.emassey0135.lumenna.app.ViewModel
+import io.github.emassey0135.lumenna.app.SaveFile
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -52,6 +56,11 @@ class AppModel(
         })
     }
 
+    private val saving = MutableSharedFlow<SaveFile>(extraBufferCapacity = 4)
+
+    /** Files the app made for the person to keep — a backup, an export — for a screen to save where they choose. */
+    val files: SharedFlow<SaveFile> = saving.asSharedFlow()
+
     /** What to draw: the view model as the app last left it. */
     val view: StateFlow<ViewModel?> = shown.asStateFlow()
 
@@ -91,6 +100,7 @@ class AppModel(
             // No list showing to land: say it anyway, a moment on.
             main.postDelayed({ core.release() }, 1500)
         }
+        turn.files.forEach { saving.tryEmit(it) }
         val date = turn.view.day?.date
         for (said in turn.said) {
             core.report(if (said.heading && date != null) "${Clock.spokenDay(date)}. ${said.text}" else said.text)

@@ -2,7 +2,7 @@
 //! and why a key does nothing on a row.
 
 use boltffi::export;
-use lumenna_records::{ActionKind, Subject};
+use lumenna_records::{ActionKind, PairingWords, Subject};
 
 /// `text` in sentence case: for a platform whose convention it is, and for braille.
 #[export]
@@ -14,4 +14,10 @@ pub fn sentence_case(text: String) -> String {
 #[export]
 pub fn not_offered(kind: ActionKind, subject: Subject, this_device: bool) -> String {
     lumenna_records::not_offered(kind, subject, this_device)
+}
+
+/// Every sentence and button of pairing, `this_device` being what this device is called.
+#[export]
+pub fn pairing_words(this_device: String, local: bool) -> PairingWords {
+    lumenna_records::pairing_words(this_device, local)
 }
