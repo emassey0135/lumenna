@@ -178,9 +178,9 @@ pub fn view(model: &Model) -> ViewModel {
             DetailsView {
                 fields: draft.map_or_else(|| lumenna_records::task_fields(task.clone()), |d| d.fields.clone()),
                 dirty: draft.is_some_and(|d| d.fields != lumenna_records::task_fields(d.original.clone())),
+                projects: projects_for(&task, &store.snapshot),
                 task,
                 form: lumenna_records::task_form(),
-                projects: lumenna_records::tree::project_options(&store.snapshot),
             }
         }),
         block_form: model.block_form.as_ref().map(crate::blockform::Form::view),
@@ -224,4 +224,16 @@ pub fn view(model: &Model) -> ViewModel {
             refusal: open.refusal.clone(),
         }),
     }
+}
+
+/// The projects a task's Project field offers: every one not archived, in tree order, and the
+/// task's own when it is archived, so the field does not lose it.
+fn projects_for(task: &lumenna_records::types::TaskDetail, snapshot: &lumenna_core::snapshot::Snapshot) -> Vec<lumenna_records::Choice> {
+    let mut projects = lumenna_records::tree::project_options(snapshot);
+    if let Some(own) = &task.project
+        && !projects.iter().any(|project| &project.id == own)
+    {
+        projects.push(lumenna_records::Choice { id: own.clone(), title: own.clone(), ..lumenna_records::Choice::default() });
+    }
+    projects
 }

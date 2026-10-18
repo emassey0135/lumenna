@@ -81,6 +81,7 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
         app.send(ShellEvent.Details(DetailsEvent.Field(key, value)))
     }
     val save = { app.send(ShellEvent.Details(DetailsEvent.Save)) }
+    val local = navigator.localScreens()
 
     Offer(Command.SAVE) { save() }
 
@@ -153,7 +154,7 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
             // The core's, in its order: this screen is the task's form, so no Edit Details.
             Heading("Actions")
             current.actions.forEach { action ->
-                TextButton(modifier = Target, onClick = { app.send(ShellEvent.Perform(action)) }) {
+                TextButton(modifier = Target, onClick = { if (!local(action)) app.send(ShellEvent.Perform(action)) }) {
                     Text(action.name, color = if (action.destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
                 }
             }

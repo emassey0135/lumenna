@@ -544,7 +544,8 @@ class LumennaTest {
         val takes = rule.onNode(hasText("Takes tasks") and SemanticsMatcher.keyIsDefined(SemanticsProperties.ToggleableState))
         takes.performScrollTo()
         takes.performClick()
-        press("Save")
+        // The form's button is the core's word for what it does: a new block is added.
+        press("Add")
         says("Train", "takes tasks")
         val block = core.lumenna.plan(null).blocks.single()
         assertTrue(block.acceptsTasks)

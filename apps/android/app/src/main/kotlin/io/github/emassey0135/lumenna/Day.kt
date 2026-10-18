@@ -52,84 +52,72 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import io.github.emassey0135.lumenna.records.ActionKind
-import io.github.emassey0135.lumenna.records.BlockFields
-import io.github.emassey0135.lumenna.records.BlockScope
-import io.github.emassey0135.lumenna.records.FieldKind
-import io.github.emassey0135.lumenna.records.Question
-import io.github.emassey0135.lumenna.records.goToDayQuestion
-import io.github.emassey0135.lumenna.records.LumennaException
-import io.github.emassey0135.lumenna.records.blockDefaults
-import io.github.emassey0135.lumenna.records.blockEdit
-import io.github.emassey0135.lumenna.records.blockFields
-import io.github.emassey0135.lumenna.records.dayBlockFields
-import io.github.emassey0135.lumenna.records.newBlock
-import io.github.emassey0135.lumenna.records.CancelledBlock
-import io.github.emassey0135.lumenna.records.Plan
-import io.github.emassey0135.lumenna.records.PlanAssignment
-import io.github.emassey0135.lumenna.records.PlanBlock
-import io.github.emassey0135.lumenna.records.PlanItem
-
-/** What the day screen is asking. */
-private sealed interface DayAsk {
-    data class Which(val block: PlanBlock) : DayAsk
-    data object GoTo : DayAsk
-}
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import io.github.emassey0135.lumenna.app.Action
+import io.github.emassey0135.lumenna.app.ActionKind
+import io.github.emassey0135.lumenna.app.Answer
+import io.github.emassey0135.lumenna.app.BlockEvent
+import io.github.emassey0135.lumenna.app.BlockFields
+import io.github.emassey0135.lumenna.app.DayKind
+import io.github.emassey0135.lumenna.app.DayMove
+import io.github.emassey0135.lumenna.app.FieldKind
+import io.github.emassey0135.lumenna.app.Place
+import io.github.emassey0135.lumenna.app.ShellEvent
 
 /**
- * The planner: a day as it is lived, as a list.
+ * The planner: a day as it is lived, as a list — the app's day (`ViewModel.day`).
  *
  * Blocks in time order with their sittings beneath them, free time as rows of its own, and now
  * as a position rather than a highlight. The summary above says what a glance at a timeline
- * would. Opening on today scrolls to now, not to midnight.
+ * would. Which day, what is in hand, opening on now, folding, Go to Day and which occurrences a
+ * change is to are the app's.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Long) {
-    var day by rememberSaveable(screen) { mutableStateOf(screen.date) }
-    var asking by remember { mutableStateOf<DayAsk?>(null) }
-    val prompt = rememberPrompter()
-    val plan: Result<Plan> = remember(day, changes) { runCatching { core.lumenna.plan(day) } }
-    val shown = plan.getOrNull()
-    val folding = rememberFolding()
-    val folds = folded(shown?.let { rows(it) }.orEmpty(), { it.depth }, { it.key }, folding.value)
-    val list = folds.map { it.item }
+fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
+    val app = core.app
+    val view by app.view.collectAsState()
+    LaunchedEffect(screen) {
+        app.send(ShellEvent.Open(Place.Today))
+        // A day asked for by date: a reminder's block on another day.
+        screen.date?.let { date -> app.send(ShellEvent.Day(DayMove.ASK)); app.send(ShellEvent.Answer(Answer.Text(date))) }
+    }
+    val day = view?.takeIf { it.place == Place.Today }?.day
+    val items = day?.items.orEmpty().filter { !it.hidden && it.kind != DayKind.SUMMARY }
     val scroll = rememberLazyListState()
-    val focus = rememberRowFocus(core, list.map { it.key }, scroll)
+    val focus = rememberLanding(core, items.map { it.key }, scroll)
 
     // Lands on now once a day is opened, so the morning's past blocks are not in the way.
-    LaunchedEffect(shown?.date) {
-        val now = list.indexOfFirst { it is DayRow.Now }
+    LaunchedEffect(day?.date) {
+        val now = items.indexOfFirst { it.kind == DayKind.NOW }
         if (now >= 0) scroll.scrollToItem(now)
     }
 
-    // A block that happens once opens its form; a repeating one asks which days first.
-    val edit: (PlanBlock) -> Unit = { block ->
-        if (block.repeats && shown != null) asking = DayAsk.Which(block)
-        else navigator.push(Screen.BlockForm(BlockPurpose.Series(block.series)))
-    }
+    FollowBlockForm(core, navigator)
 
-    fun step(days: Long) {
-        val from = java.time.LocalDate.parse(shown?.date ?: Clock.today())
-        day = from.plusDays(days).toString()
-    }
+    val move = { step: DayMove -> app.send(ShellEvent.Day(step)) }
+    val addBlock = { app.send(ShellEvent.Block(BlockEvent.New(null, null))) }
+    val local = navigator.localScreens()
 
-    Offer(Command.PREVIOUS_DAY) { step(-1) }
-    Offer(Command.NEXT_DAY) { step(1) }
-    Offer(Command.GO_TO_NOW) { day = null }
-    Offer(Command.GO_TO_DAY) { asking = DayAsk.GoTo }
-    Offer(Command.NEW_BLOCK) { navigator.push(Screen.BlockForm(BlockPurpose.Add(date = shown?.date))) }
+    Offer(Command.PREVIOUS_DAY) { move(DayMove.PREVIOUS) }
+    Offer(Command.NEXT_DAY) { move(DayMove.NEXT) }
+    Offer(Command.GO_TO_NOW) { move(DayMove.NOW) }
+    Offer(Command.GO_TO_DAY) { move(DayMove.ASK) }
+    Offer(Command.NEW_BLOCK) { addBlock() }
 
-    // The day's own actions, the core's, in its order: Plan the Day and Replan from Now open
-    // their screens; the rest ask their questions as any row's do.
-    val dayActions = shown?.let { day -> dayActions(core, navigator, prompt, day) }.orEmpty()
+    // The day's own actions, the app's, in the core's order.
+    val dayActions = day?.let { app.rowActions("summary", it.actions, local) }.orEmpty()
 
-    ScreenFrame(shown?.let { Clock.spokenDay(it.date) } ?: "Today", core, navigator, actions = {
-        IconButton(onClick = { navigator.push(Screen.BlockForm(BlockPurpose.Add(date = shown?.date))) }) {
+    ScreenFrame(day?.let { Clock.spokenDay(it.date) } ?: "Today", core, navigator, actions = {
+        IconButton(onClick = { addBlock() }) {
             Icon(Icons.Filled.Add, contentDescription = "Add block")
         }
     }) {
-        val summary = plan.fold({ it.summary }, { (it as? io.github.emassey0135.lumenna.records.LumennaException)?.sentence.orEmpty() })
+        val summary = day?.summary.orEmpty()
         Text(
             summary,
             style = MaterialTheme.typography.bodyMedium,
@@ -138,7 +126,7 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
             // bar's to show, beside it.
             modifier = Modifier.padding(horizontal = 16.dp).semantics {
                 heading()
-                contentDescription = listOfNotNull(shown?.let { Clock.spokenDay(it.date) }, summary.ifEmpty { null })
+                contentDescription = listOfNotNull(day?.let { Clock.spokenDay(it.date) }, summary.ifEmpty { null })
                     .joinToString(". ")
                 // Where the day is, its actions are: on its heading, as on its buttons below.
                 if (dayActions.isNotEmpty()) {
@@ -150,10 +138,10 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
             Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            OutlinedButton(modifier = Target, onClick = { step(-1) }) { Text("Previous day") }
-            OutlinedButton(modifier = Target, onClick = { day = null }) { Text("Now") }
-            OutlinedButton(modifier = Target, onClick = { step(1) }) { Text("Next day") }
-            OutlinedButton(modifier = Target, onClick = { asking = DayAsk.GoTo }) { Text("Go to day") }
+            OutlinedButton(modifier = Target, onClick = { move(DayMove.PREVIOUS) }) { Text("Previous day") }
+            OutlinedButton(modifier = Target, onClick = { move(DayMove.NOW) }) { Text("Now") }
+            OutlinedButton(modifier = Target, onClick = { move(DayMove.NEXT) }) { Text("Next day") }
+            OutlinedButton(modifier = Target, onClick = { move(DayMove.ASK) }) { Text("Go to day") }
             dayActions.forEach { action ->
                 OutlinedButton(modifier = Target, onClick = action.run) {
                     Text(action.name, color = if (action.destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
@@ -161,138 +149,99 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
             }
         }
         LazyColumn(
-            Modifier.fillMaxSize().semantics { collectionInfo = CollectionInfo(list.size, 1) },
+            Modifier.fillMaxSize().semantics { collectionInfo = CollectionInfo(items.size, 1) },
             state = scroll,
         ) {
-            itemsIndexed(list, key = { _, row -> row.key }) { index, row ->
-                val (title, details) = words(row)
-                val speech = details + listOfNotNull(folds[index].state, levelChange(folds, index))
+            itemsIndexed(items, key = { _, item -> item.key }) { index, item ->
+                val (title, details) = words(item)
+                val fold = item.expanded?.let { if (it) "expanded" else "collapsed" }
+                val speech = details + listOfNotNull(fold, item.level)
+                val edit = item.actions.firstOrNull { it.kind == ActionKind.EDIT }
                 ListRow(
                     title = title,
                     detail = details.joinToString(", "),
                     speech = speech.joinToString(", "),
                     index = index,
-                    depth = row.depth,
-                    actions = focus.actions(row.key, index, actions(core, navigator, prompt, row, edit)) +
-                        listOfNotNull(foldAction(core, folds[index], row.key, folding)),
-                    focus = focus.requester(row.key),
-                    key = row.key,
+                    depth = item.depth.toInt(),
+                    actions = app.rowActions(item.key, item.actions, local),
+                    focus = focus.requester(item.key),
+                    key = item.key,
                     say = core::say,
-                    open = when (row) {
-                        is DayRow.Block -> ({ edit(row.block) })
-                        is DayRow.Sitting -> ({ navigator.push(Screen.Task(row.sitting.task)) })
+                    open = when {
+                        item.kind == DayKind.BLOCK && edit != null -> ({
+                            app.send(ShellEvent.Focus(item.key))
+                            app.send(ShellEvent.Perform(edit))
+                        })
+                        item.kind == DayKind.SITTING -> item.sitting?.let { sitting -> { navigator.push(Screen.Task(sitting.task)) } }
                         else -> null
                     },
-                    openLabel = if (row is DayRow.Sitting) "Show the task" else "Edit",
+                    openLabel = if (item.kind == DayKind.SITTING) "Show the task" else "Edit",
                 )
                 HorizontalDivider()
             }
         }
     }
-
-    val dismiss = { asking = null }
-    when (val question = asking) {
-        is DayAsk.Which -> {
-            val block = question.block
-            val date = shown?.date ?: Clock.today()
-            run {
-                // "This day, or every day?" is asked, never guessed.
-                AlertDialog(
-                    onDismissRequest = dismiss,
-                    title = { Text("Change ${block.title}") },
-                    text = { Text("Which occurrences?") },
-                    confirmButton = {
-                        Column(horizontalAlignment = Alignment.End) {
-                            TextButton(modifier = Target, onClick = {
-                                asking = null
-                                navigator.push(
-                                    Screen.BlockForm(
-                                        BlockPurpose.Occurrence(block, date),
-                                    ),
-                                )
-                            }) { Text("${Clock.spokenDay(date)} only") }
-                            TextButton(modifier = Target, onClick = {
-                                asking = null
-                                navigator.push(Screen.BlockForm(BlockPurpose.Series(block.series)))
-                            }) { Text("Every occurrence") }
-                            TextButton(modifier = Target, onClick = dismiss) { Text("Cancel") }
-                        }
-                    },
-                )
-            }
-        }
-        DayAsk.GoTo -> {
-            // The core's question, as every app asks it.
-            val q = goToDayQuestion() as Question.Text
-            AskText(q.said, q.label, q.yes, example = "next friday", hint = q.hint.ifEmpty { null }, dismiss = dismiss) { text ->
-                core.attempt { core.lumenna.plan(text) }?.let {
-                    asking = null
-                    day = it.date
-                }
-            }
-        }
-        null -> {}
-    }
-    prompt.Host()
+    AppQuestions(core) { action -> navigator.push(Screen.Task(action.target)) }
 }
 
 /**
- * What can be done to a day row, as custom actions and on a long press: the core's, in its
- * order. Only its forms are this screen's to open: a block's, the task a sitting is for, and a
- * new block in free time.
+ * The actions whose screens are still this app's own, over the UniFFI core, while the rest have
+ * moved onto the app: Replan from Now, Plan the Day and a reminder list. True when one was
+ * opened, so the app is not asked.
  */
-private fun actions(
-    core: Core,
-    navigator: Navigator,
-    prompt: Prompter,
-    row: DayRow,
-    edit: (PlanBlock) -> Unit,
-): List<RowAction> = core.offered(row.actions, prompt, form = navigator.formOr { action ->
+fun Navigator.localScreens(): (Action) -> Boolean = { action ->
     when (action.kind) {
-        ActionKind.EDIT -> if (row is DayRow.Block) edit(row.block)
-        ActionKind.EDIT_TASK -> navigator.push(Screen.Task(action.target))
-        ActionKind.ADD_BLOCK -> if (row is DayRow.Free) {
-            navigator.push(Screen.BlockForm(BlockPurpose.Add(date = action.target, at = action.other ?: row.start, minutes = row.minutes)))
+        ActionKind.REPLAN, ActionKind.PLAN_DAY -> {
+            push(Screen.Proposal(io.github.emassey0135.lumenna.records.ActionKind.valueOf(action.kind.name), action.target))
+            true
         }
-        else -> {}
+        ActionKind.REMINDERS -> {
+            push(Screen.Reminders(action.target))
+            true
+        }
+        else -> false
     }
-})
+}
 
-/** What can be done to the day itself: the core's (`Plan.actions`); only its two screens are this app's. */
-private fun dayActions(core: Core, navigator: Navigator, prompt: Prompter, plan: Plan): List<RowAction> =
-    core.offered(plan.actions, prompt, form = navigator.formOr { action ->
-        if (action.kind == ActionKind.PLAN_DAY || action.kind == ActionKind.REPLAN) {
-            navigator.push(Screen.Proposal(action.kind, action.target))
-        }
-    })
+/** The block form is the app's: shown over [navigator]'s screen while the app has one open. */
+@Composable
+fun FollowBlockForm(core: Core, navigator: Navigator) {
+    val view by core.app.view.collectAsState()
+    val open = view?.blockForm != null
+    LaunchedEffect(open) { if (open && navigator.current !is Screen.BlockForm) navigator.push(Screen.BlockForm) }
+}
 
 /**
- * A block, added or changed. Times and days are typed as they are said —
- * "9am", "14:30", "next monday" — and the core reads them, as on the command line.
- *
- * What a block is made from, and which fields a change sends, are the core's (`newBlock`,
- * `blockEdit`), as for every app: only what changed, so an edit made elsewhere to another field
- * stands. A change of kind brings the kind's flags with it (`blockDefaults`); a flag can then
- * be set apart from it.
+ * A block, added or changed: the app's block form (`ViewModel.block_form`), open from the day
+ * until the app closes it. Times and days are typed as they are said — "9am", "14:30", "next
+ * monday" — and the core reads them. Which fields it shows, what a new block starts from, the
+ * flags a kind brings, and which fields a change sends are the app's.
  */
 @Composable
-fun BlockFormScreen(core: Core, navigator: Navigator, purpose: BlockPurpose) {
-    // What it edits and how it saves are shared with the watch (`BlockFormModel`).
-    val model = remember(purpose) { BlockFormModel(core, purpose) }
-    var fields by model::fields
-    var day by model::day
-    val title = model.title
-    val kind = model::kind
-    val save = { if (model.save()) navigator.back() }
+fun BlockFormScreen(core: Core, navigator: Navigator) {
+    val app = core.app
+    val view by app.view.collectAsState()
+    val form = view?.blockForm
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(form == null) { if (form != null) shown = true else if (shown) navigator.back() }
+    // Leaving the form gives it up.
+    DisposableEffect(Unit) { onDispose { if (app.view.value?.blockForm != null) app.send(ShellEvent.Block(BlockEvent.Cancel)) } }
+    // Each line keeps its own text while typing is on its way.
+    val typed = remember { mutableStateMapOf<String, String>() }
+    val set = { key: String, value: String -> app.send(ShellEvent.Block(BlockEvent.Field(key, value))) }
+    val save = { app.send(ShellEvent.Block(BlockEvent.Save)) }
     Offer(Command.SAVE) { save() }
 
-    ScreenFrame(title, core, navigator, actions = {
-        IconButton(onClick = { save() }) { Icon(Icons.Filled.Check, contentDescription = "Save") }
+    ScreenFrame(form?.heading ?: "Block", core, navigator, actions = {
+        IconButton(onClick = { save() }) { Icon(Icons.Filled.Check, contentDescription = form?.yes ?: "Save") }
     }) {
-        // The core's fields, in its order (`blockForm`): the kind a choice among its options,
-        // the flags switches, the rest lines of text the core reads.
+        if (form == null) return@ScreenFrame
+        val fields = form.values
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-            blockFormFields.filter(model::shows).forEach { field ->
+            form.refusal?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp).semantics { liveRegion = LiveRegionMode.Polite }) }
+            // The app's fields, in the core's order: the kind a choice among its options, the
+            // flags switches, the rest lines of text the core reads.
+            form.fields.forEach { field ->
                 when (field.kind) {
                     FieldKind.CHOICE -> {
                         Heading(field.label)
@@ -302,7 +251,7 @@ fun BlockFormScreen(core: Core, navigator: Navigator, purpose: BlockPurpose) {
                                     Modifier
                                         .fillMaxWidth()
                                         .heightIn(min = 48.dp)
-                                        .selectable(fields.kind == option.id, role = Role.RadioButton) { kind(option.id) }
+                                        .selectable(fields.kind == option.id, role = Role.RadioButton) { set(field.key, option.id) }
                                         .padding(vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
@@ -311,29 +260,54 @@ fun BlockFormScreen(core: Core, navigator: Navigator, purpose: BlockPurpose) {
                                 }
                             }
                         }
-                        field.help?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = quiet()) }
+                        field.hint.ifEmpty { null }?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = quiet()) }
                     }
-                    FieldKind.TOGGLE -> Flag(field.label, fields.flag(field.key)) { fields = fields.withFlag(field.key, it) }
+                    FieldKind.TOGGLE -> Flag(field.label, fields.flag(field.key)) { set(field.key, it.toString()) }
                     else -> {
                         val minutes = field.kind == FieldKind.MINUTES
-                        // A new block's day is the model's; the length is read back as it is typed.
-                        val value = if (field.key == "date") day else fields.text(field.key)
+                        val value = typed[field.key] ?: if (field.key == "date") form.date else fields.text(field.key)
+                        // The length is read back as it is typed.
                         val help = if (field.key == "minutes") {
-                            fields.minutes.trim().toUIntOrNull()?.let { "Lasts ${Clock.length(it)}." } ?: model.help(field)
+                            value.trim().toUIntOrNull()?.let { "Lasts ${Clock.length(it)}." } ?: field.hint.ifEmpty { null }
                         } else {
-                            model.help(field)
+                            field.hint.ifEmpty { null }
                         }
                         BlockField(
                             field.label, value, field.example, help,
                             number = minutes,
                             prose = field.key == "title" || field.key == "notes",
                             lines = if (field.kind == FieldKind.LINES) 3 else 1,
-                        ) { if (field.key == "date") day = it else fields = fields.withText(field.key, it) }
+                        ) {
+                            typed[field.key] = it
+                            set(field.key, it)
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/** A block form field's text, by the core's key; a toggle or the kind reads empty here. */
+private fun BlockFields.text(key: String): String = when (key) {
+    "title" -> title
+    "start" -> start
+    "minutes" -> minutes
+    "repeat" -> repeat
+    "until" -> until
+    "min_minutes" -> minMinutes
+    "task_filter" -> taskFilter
+    "colour" -> colour
+    "notes" -> notes
+    else -> ""
+}
+
+/** A block form toggle, by the core's key. */
+private fun BlockFields.flag(key: String): Boolean = when (key) {
+    "accepts_tasks" -> acceptsTasks
+    "counts_capacity" -> countsCapacity
+    "anchored" -> anchored
+    else -> false
 }
 
 /** A flag of the block, as a switch row: one TalkBack stop that says it and whether it is on. */

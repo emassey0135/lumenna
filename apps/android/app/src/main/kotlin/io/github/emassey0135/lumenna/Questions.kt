@@ -52,8 +52,8 @@ fun AppQuestions(core: Core, form: (Action) -> Unit) {
                 hint = asking.refusal ?: question.hint.ifEmpty { null },
                 dismiss = cancel,
             ) { text -> answer(Answer.Text(text)) }
-            is Question.Pick -> {
-                val offered = asking.choices ?: return@key
+            // What a pick offers comes with the question, once the app has worked it out.
+            is Question.Pick -> asking.choices?.let { offered ->
                 val yes = question.yes.ifEmpty { action?.name.orEmpty() }
                 Choose(action?.asks(question.title) ?: question.title, offered.choices.map(::option), appButton(yes), cancel) { picked ->
                     answer(Answer.Picked(picked.key, null))

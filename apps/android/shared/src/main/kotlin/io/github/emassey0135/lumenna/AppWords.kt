@@ -38,7 +38,7 @@ fun option(choice: Choice): Option {
  * the UniFFI core's while lists share `RowAction` with screens still on it; the two enums name
  * the same variants.
  */
-fun AppModel.rowActions(row: String, actions: List<Action>): List<RowAction> = actions.map { action ->
+fun AppModel.rowActions(row: String, actions: List<Action>, local: (Action) -> Boolean = { false }): List<RowAction> = actions.map { action ->
     RowAction(
         action.name,
         io.github.emassey0135.lumenna.records.ActionKind.valueOf(action.kind.name),
@@ -47,7 +47,8 @@ fun AppModel.rowActions(row: String, actions: List<Action>): List<RowAction> = a
         action.primary,
     ) {
         send(ShellEvent.Focus(row))
-        send(ShellEvent.Perform(action))
+        // An action whose screen is not yet the app's opens the shell's own (`local`).
+        if (!local(action)) send(ShellEvent.Perform(action))
     }
 }
 
@@ -86,4 +87,19 @@ fun io.github.emassey0135.lumenna.records.Place.toApp(): io.github.emassey0135.l
     is io.github.emassey0135.lumenna.records.Place.Filter -> io.github.emassey0135.lumenna.app.Place.Filter(name, query)
     io.github.emassey0135.lumenna.records.Place.Blocks -> io.github.emassey0135.lumenna.app.Place.Blocks
     io.github.emassey0135.lumenna.records.Place.Trash -> io.github.emassey0135.lumenna.app.Place.Trash
+}
+
+/**
+ * What a day row says: its first line, then the rest, in every app's order (as [words] says
+ * the UniFFI core's): a block "<start> to <end>, <title>, <details>"; a sitting "<title>,
+ * <details>"; free time "<title>, <details>, <start> to <end>"; now "<title>, <time>"; a
+ * cancelled day "<start>, <title>, <details>". The clock is this device's.
+ */
+fun words(item: io.github.emassey0135.lumenna.app.DayItem): Pair<String, List<String>> {
+    item.sitting?.let { return it.title to it.details }
+    item.free?.let { return it.title to it.details + "${Clock.time(it.start)} to ${Clock.time(it.end)}" }
+    item.now?.let { return "${it.title}, ${Clock.time(it.time)}" to emptyList() }
+    item.cancelled?.let { return "${Clock.time(it.start)}, ${it.title}" to it.details }
+    val block = item.block ?: return "" to emptyList()
+    return "${Clock.time(block.start)} to ${Clock.time(block.end)}, ${block.title}" to block.details
 }

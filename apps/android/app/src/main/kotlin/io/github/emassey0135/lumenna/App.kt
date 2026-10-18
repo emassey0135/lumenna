@@ -82,8 +82,8 @@ sealed interface Screen {
     /** Adding a task in a line, starting from `prefix`. */
     data class QuickAdd(val prefix: String = "") : Screen
 
-    /** A block, added or changed. */
-    data class BlockForm(val purpose: BlockPurpose) : Screen
+    /** The app's block form, while it has one open. */
+    data object BlockForm : Screen
 
     /** Projects, labels, saved filters, blocks and the trash. */
     data object Browse : Screen
@@ -252,7 +252,10 @@ fun LumennaApp(
 
             // The commands any screen answers; a screen offering one of its own answers instead.
             Offer(Command.NEW_TASK) { go(Tab.TASKS, Screen.QuickAdd()) }
-            Offer(Command.NEW_BLOCK) { go(Tab.TODAY, Screen.BlockForm(BlockPurpose.Add(date = null))) }
+            Offer(Command.NEW_BLOCK) {
+                go(Tab.TODAY)
+                core.app.send(io.github.emassey0135.lumenna.app.ShellEvent.Block(io.github.emassey0135.lumenna.app.BlockEvent.New(null, null)))
+            }
             Offer(Command.FILTER) {
                 go(Tab.TASKS)
                 shortcuts.filterAsked.value = true
@@ -405,13 +408,13 @@ private fun Screens(core: Core, navigator: Navigator, screen: Screen, changes: L
         is Screen.Tasks -> TaskListScreen(core, navigator, screen)
         is Screen.QuickAdd -> QuickAddScreen(core, navigator, screen)
         is Screen.Task -> TaskDetailScreen(core, navigator, screen)
-        is Screen.Day -> DayScreen(core, navigator, screen, changes)
-        is Screen.BlockForm -> BlockFormScreen(core, navigator, screen.purpose)
+        is Screen.Day -> DayScreen(core, navigator, screen)
+        Screen.BlockForm -> BlockFormScreen(core, navigator)
         Screen.Browse -> BrowseScreen(core, navigator, changes)
         Screen.Projects -> ProjectsScreen(core, navigator, changes)
         Screen.Labels -> LabelsScreen(core, navigator, changes)
         Screen.Filters -> FiltersScreen(core, navigator, changes)
-        Screen.Blocks -> BlocksScreen(core, navigator, changes)
+        Screen.Blocks -> BlocksScreen(core, navigator)
         Screen.Settings -> SettingsScreen(core, navigator, changes)
         Screen.Devices -> DevicesScreen(core, navigator, changes)
         Screen.Pairing -> PairingScreen(core, navigator)

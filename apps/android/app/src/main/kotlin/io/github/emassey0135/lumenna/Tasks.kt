@@ -146,6 +146,7 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
         AppTaskRows(
             core,
             list?.items.orEmpty().filter { !it.hidden },
+            local = navigator.localScreens(),
             open = if (trash) null else { row ->
                 app.send(ShellEvent.Focus(row.id))
                 navigator.push(Screen.Task(row.id))
@@ -190,7 +191,13 @@ private fun readback(list: ListView): String {
  * long press. Expand and Collapse are among them where something is under a row.
  */
 @Composable
-fun AppTaskRows(core: Core, items: List<Item>, open: ((RowView) -> Unit)?) {
+fun AppTaskRows(
+    core: Core,
+    items: List<Item>,
+    open: ((RowView) -> Unit)?,
+    openLabel: String = "Show details",
+    local: (io.github.emassey0135.lumenna.app.Action) -> Boolean = { false },
+) {
     val state = rememberLazyListState()
     val keys = items.map { it.row.id }
     val focus = rememberLanding(core, keys, state)
@@ -209,9 +216,9 @@ fun AppTaskRows(core: Core, items: List<Item>, open: ((RowView) -> Unit)?) {
                 done = row.checked,
                 depth = row.depth.toInt(),
                 index = index,
-                actions = core.app.rowActions(row.id, row.actions),
+                actions = core.app.rowActions(row.id, row.actions, local),
                 open = open?.let { { it(row) } },
-                openLabel = "Show details",
+                openLabel = openLabel,
                 focus = focus.requester(row.id),
                 key = row.id,
                 say = core::say,

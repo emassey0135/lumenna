@@ -1,5 +1,10 @@
 package io.github.emassey0135.lumenna
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import io.github.emassey0135.lumenna.app.BlockEvent
+import io.github.emassey0135.lumenna.app.ShellEvent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -208,29 +213,38 @@ fun FiltersScreen(core: Core, navigator: Navigator, changes: Long) {
     prompt.Host()
 }
 
-/** Every block series: for the ones not on any day near enough to find from the planner. */
+/**
+ * Every block series, as the app lists them (its Blocks place): said as a task row is, when in
+ * this device's clock ("every weekday at 9:00 AM"), then how long. Opening one changes every
+ * occurrence, in the app's block form.
+ */
 @Composable
-fun BlocksScreen(core: Core, navigator: Navigator, changes: Long) {
-    val prompt = rememberPrompter()
-    ItemListScreen(
-        "Blocks", core, navigator, changes = changes,
-        load = {
-            val rows = core.lumenna.listBlocks()
-            // Said as a task row is: when, in this device's clock ("every weekday at 9:00 AM"),
-            // then how long.
-            Listing(
-                rows.rows.map { Item(it.id, it.title, RowSpeech.details(it).orEmpty(), actions = it.actions) },
-                rows.announcement,
-                rows.empty,
+fun BlocksScreen(core: Core, navigator: Navigator) {
+    val app = core.app
+    val view by app.view.collectAsState()
+    LaunchedEffect(Unit) { app.send(ShellEvent.Open(io.github.emassey0135.lumenna.app.Place.Blocks)) }
+    val list = view?.takeIf { it.place == io.github.emassey0135.lumenna.app.Place.Blocks }?.list
+    FollowBlockForm(core, navigator)
+    ScreenFrame("Blocks", core, navigator, actions = {
+        IconButton(onClick = { app.send(ShellEvent.Block(BlockEvent.New(null, null))) }) {
+            Icon(Icons.Filled.Add, contentDescription = "Add block")
+        }
+    }) {
+        val count = list?.let { if (it.items.isEmpty() && it.empty.isNotEmpty()) it.empty else it.announcement }.orEmpty()
+        if (count.isNotEmpty()) {
+            Text(
+                count.replaceFirstChar { it.uppercase() },
+                style = MaterialTheme.typography.bodyMedium,
+                color = quiet(),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
-        },
-        addLabel = "Add block",
-        add = { navigator.push(Screen.BlockForm(BlockPurpose.Add())) },
-        open = { item -> navigator.push(Screen.BlockForm(BlockPurpose.Series(item.key))) },
-        openLabel = "Edit every occurrence",
-        actions = { item ->
-            core.offered(item.actions, prompt, form = navigator.formOr { navigator.push(Screen.BlockForm(BlockPurpose.Series(it.target))) })
-        },
-    )
-    prompt.Host()
+        }
+        AppTaskRows(core, list?.items.orEmpty().filter { !it.hidden }, open = { row ->
+            row.actions.firstOrNull { it.kind == io.github.emassey0135.lumenna.app.ActionKind.EDIT }?.let { edit ->
+                app.send(ShellEvent.Focus(row.id))
+                app.send(ShellEvent.Perform(edit))
+            }
+        }, openLabel = "Edit every occurrence")
+    }
+    AppQuestions(core) {}
 }
