@@ -7,9 +7,19 @@
 //! changed, so a concurrent edit to another field elsewhere stands. A change refused keeps the
 //! form open with the reason in it.
 
+use crux_core::Command;
+use crux_core::render::render;
+use jiff::civil::Date;
 use lumenna_core::snapshot::Snapshot;
+use lumenna_records::Action;
+use lumenna_records::places::Place;
 use lumenna_records::{BlockFields, FormField};
 use serde::{Deserialize, Serialize};
+
+use crate::asking::Open;
+use crate::host::HostRequest;
+use crate::model::Model;
+use crate::{DayKind, Effect, Event, Lumenna, host, say};
 
 /// What the person does in the block form.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -232,6 +242,110 @@ impl Form {
             date: self.date.clone(),
             yes: if adding { "Add" } else { "Save" }.to_owned(),
             refusal: self.refusal.clone(),
+        }
+    }
+}
+
+impl Lumenna {
+    /// Edit on a block: every occurrence of a series from the Blocks list; from the day, a
+    /// repeating block asks first which occurrences, never guessing.
+    pub(crate) fn edit_block(&self, action: &Action, model: &mut Model) -> Command<Effect, Event> {
+        let block = model.day_view().and_then(|view| {
+            view.items.into_iter().filter(|i| i.kind == DayKind::Block).find_map(|i| i.block.filter(|b| b.id == action.target))
+        });
+        match block {
+            Some(block) if block.repeats => {
+                let today = model.store.as_ref().map(|s| s.now.date());
+                let date = block.id.split('@').nth(1).and_then(|d| d.parse::<Date>().ok());
+                let day = match (date, today) {
+                    (Some(date), Some(today)) => lumenna_records::words::capitalised(&lumenna_core::time::day_words(date, today)),
+                    _ => "This day".to_owned(),
+                };
+                model.open = Some(Open::new(crate::asking::Purpose::EditWhich(block, day)));
+                render()
+            }
+            Some(block) => self.series_form(&block.series, model),
+            None => self.series_form(&action.target, model),
+        }
+    }
+
+    /// The form for every occurrence of the series `id`, from the series as it is.
+    pub(crate) fn series_form(&self, id: &str, model: &mut Model) -> Command<Effect, Event> {
+        let Some(store) = &model.store else { return Command::done() };
+        match lumenna_records::plan::block_shown(&store.snapshot, id) {
+            Ok(shown) => {
+                // A rule is given exactly when the series repeats.
+                let rule = shown.repeats.then(|| shown.rrule.clone()).flatten();
+                let heading =
+                    if shown.repeats { format!("Change {}, every occurrence", shown.title) } else { format!("Change {}", shown.title) };
+                let series = shown.id.clone();
+                model.block_form = Some(Form::change(
+                    Purpose::Series(series),
+                    heading,
+                    lumenna_records::block_fields(shown),
+                    rule,
+                ));
+                render()
+            }
+            Err(error) => say(error.message()),
+        }
+    }
+
+    pub(crate) fn block(&self, event: BlockEvent, model: &mut Model) -> Command<Effect, Event> {
+        let Some(store) = model.store.clone() else { return Command::done() };
+        match event {
+            BlockEvent::New { start, minutes } => {
+                // On the day shown, or today from anywhere else.
+                let date = if model.place() == Place::Today { model.day.map(|d| d.to_string()) } else { None }
+                    .unwrap_or_else(|| "today".to_owned());
+                let offered = lumenna_records::fields::new_block_start(&store.snapshot, Some(&date), &store.now)
+                    .unwrap_or_else(|_| "09:00".to_owned());
+                model.block_form = Some(Form::add(date, start, minutes.unwrap_or(60), offered));
+                render()
+            }
+            BlockEvent::Field { key, value } => {
+                if let Some(form) = &mut model.block_form {
+                    form.set(&key, value, &store.snapshot, &store.now);
+                }
+                render()
+            }
+            BlockEvent::Cancel => {
+                model.block_form = None;
+                render()
+            }
+            BlockEvent::Save => {
+                let Some(form) = &mut model.block_form else { return Command::done() };
+                let request = match &form.purpose {
+                    Purpose::Add { .. } => {
+                        lumenna_records::new_block(form.fields.clone(), Some(form.date.clone())).map(|block| Some(HostRequest::AddBlock(block)))
+                    }
+                    Purpose::Series(series) => lumenna_records::block_edit(form.initial.clone(), form.fields.clone())
+                        .map(|edit| edit.map(|edit| HostRequest::EditBlock { series: series.clone(), edit, scope: lumenna_records::types::BlockScope::Series })),
+                    Purpose::Occurrence { series, date } => {
+                        lumenna_records::block_edit(form.initial.clone(), form.fields.clone()).map(|edit| {
+                            edit.map(|edit| HostRequest::EditBlock {
+                                series: series.clone(),
+                                edit,
+                                scope: lumenna_records::types::BlockScope::Occurrence { date: date.clone() },
+                            })
+                        })
+                    }
+                };
+                match request {
+                    Err(error) => {
+                        form.refusal = Some(error.message().to_owned());
+                        render()
+                    }
+                    Ok(None) => {
+                        model.block_form = None;
+                        render().and(say("Nothing changed"))
+                    }
+                    Ok(Some(request)) => {
+                        form.saving = true;
+                        host(request)
+                    }
+                }
+            }
         }
     }
 }

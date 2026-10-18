@@ -4,9 +4,16 @@
 
 use std::collections::BTreeSet;
 
+use crux_core::Command;
+use crux_core::render::render;
+use lumenna_records::places::Place;
 use lumenna_records::types::{CancelledBlock, Plan, PlanAssignment, PlanBlock, PlanItem};
 use lumenna_records::{Action, ActionKind, Question, Subject};
 use serde::{Deserialize, Serialize};
+
+use crate::asking::{Open, Purpose};
+use crate::model::Model;
+use crate::{DayMove, Effect, Event, Lumenna};
 
 /// What a row of the day is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -208,4 +215,31 @@ pub fn opening(view: &DayView) -> Option<String> {
         .find(|item| item.kind == DayKind::Now || item.block.as_ref().is_some_and(|b| b.when == "now" && item.kind == DayKind::Block))
         .or_else(|| view.items.first())
         .map(|item| item.key.clone())
+}
+
+impl Lumenna {
+    pub(crate) fn day_move(&self, step: DayMove, model: &mut Model) -> Command<Effect, Event> {
+        let Some(store) = &model.store else { return Command::done() };
+        let today = store.now.date();
+        let shown = if model.place() == Place::Today { model.day.unwrap_or(today) } else { today };
+        match step {
+            DayMove::Previous | DayMove::Next => {
+                let days = if step == DayMove::Next { 1 } else { -1 };
+                let Ok(to) = shown.checked_add(jiff::Span::new().days(days)) else { return Command::done() };
+                model.show_day((to != today).then_some(to))
+            }
+            DayMove::Today => model.show_day(None),
+            DayMove::Now => {
+                let shown = model.show_day(None);
+                if let Some(key) = model.day_view().as_ref().and_then(opening) {
+                    model.hold(&key);
+                }
+                shown
+            }
+            DayMove::Ask => {
+                model.open = Some(Open::new(Purpose::GoToDay));
+                render()
+            }
+        }
+    }
 }

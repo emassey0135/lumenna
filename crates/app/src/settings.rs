@@ -4,8 +4,15 @@
 
 use std::collections::BTreeMap;
 
+use crux_core::Command;
+use crux_core::render::render;
+use lumenna_records::LumennaError;
 use lumenna_records::types::{ExportFormat, Setting};
 use serde::{Deserialize, Serialize};
+
+use crate::host::{Arrival, HostRequest};
+use crate::model::Model;
+use crate::{Effect, Event, Lumenna, host, say};
 
 /// What the person does in Settings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -132,4 +139,64 @@ pub fn view(settings: &Settings, today: jiff::civil::Date) -> SettingsView {
         })
         .collect();
     SettingsView { settings: rows, exports }
+}
+
+impl Lumenna {
+    pub(crate) fn settings(&self, event: SettingsEvent, model: &mut Model) -> Command<Effect, Event> {
+        match event {
+            SettingsEvent::Open => {
+                model.settings = Some(Settings::default());
+                render().and(host(HostRequest::Settings))
+            }
+            SettingsEvent::Close => {
+                model.settings = None;
+                model.devices = None;
+                render()
+            }
+            SettingsEvent::Type { key, value } => {
+                if let Some(settings) = &mut model.settings {
+                    settings.typed.insert(key, value);
+                }
+                render()
+            }
+            SettingsEvent::Set { key, value } => {
+                let Some(settings) = &mut model.settings else { return Command::done() };
+                settings.typed.insert(key.clone(), value.clone());
+                settings.setting = Some(key.clone());
+                host(HostRequest::SetSetting { key, value })
+            }
+            SettingsEvent::Backup => host(HostRequest::Backup),
+            SettingsEvent::Export(format) => host(HostRequest::Export(format)),
+            SettingsEvent::Import { name, bytes } => host(HostRequest::Import { name, bytes }),
+        }
+    }
+
+    pub(crate) fn listed(&self, result: Result<lumenna_records::types::SettingList, LumennaError>, model: &mut Model) -> Command<Effect, Event> {
+        let Some(settings) = &mut model.settings else { return Command::done() };
+        match result {
+            Ok(list) => {
+                settings.list = Some(list.settings);
+                render()
+            }
+            Err(error) => say(error.message()),
+        }
+    }
+
+    pub(crate) fn saved(&self, result: Result<(SaveFile, String), LumennaError>) -> Command<Effect, Event> {
+        match result {
+        Ok((file, said)) => { let save: Command<Effect, Event> = Command::notify_shell(file).into(); save.and(say(said)) }
+        Err(error) => say(error.message()),
+    }
+    }
+
+    pub(crate) fn imported(&self, result: Result<String, LumennaError>, store: Option<Arrival>, model: &mut Model) -> Command<Effect, Event> {
+        if let Some(store) = store {
+            model.store = Some(store);
+            model.settle();
+        }
+        match result {
+            Ok(said) => render().and(say(said)),
+            Err(error) => render().and(say(error.message())),
+        }
+    }
 }

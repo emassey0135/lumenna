@@ -5,8 +5,15 @@
 //! are still listed is the app's. Each new one is said, and shown as the platform shows a
 //! notification.
 
+use crux_core::Command;
+use crux_core::render::render;
+use lumenna_records::LumennaError;
 use lumenna_records::reminders::{DueReminder, DueReminders};
 use serde::{Deserialize, Serialize};
+
+use crate::host::HostRequest;
+use crate::model::Model;
+use crate::{Effect, Event, Lumenna, host, proposal, say};
 
 /// What the person, or the shell's clock, does about reminders due.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -108,4 +115,68 @@ pub fn arrived(found: &DueReminders) -> Vec<Due> {
         });
     }
     out
+}
+
+
+/// What a reminder's button does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Deal {
+    Dismiss,
+    Snooze,
+    Carry,
+}
+
+impl Lumenna {
+    /// An overrun warning's Replan from Now closed: once something was replanned, the warning is
+    /// dealt with.
+    pub(crate) fn replanned(&self, model: &mut Model) -> Command<Effect, Event> {
+        let Some(id) = model.replanning.take() else { return Command::done() };
+        if !model.proposal_made {
+            return Command::done();
+        }
+        self.deal(&id, Deal::Dismiss, model)
+    }
+
+    /// Takes the reminder `id` off the list and does what its button asks.
+    fn deal(&self, id: &str, how: Deal, model: &mut Model) -> Command<Effect, Event> {
+        let Some(at) = model.due.iter().position(|d| d.id == id) else { return Command::done() };
+        let item = model.due.remove(at);
+        let firings: Vec<(String, String)> = item.firings.iter().map(|f| (f.key.clone(), f.occurrence.clone())).collect();
+        let request = match how {
+            Deal::Dismiss => HostRequest::Dismiss(firings),
+            Deal::Snooze => HostRequest::Snooze(firings),
+            Deal::Carry => HostRequest::CarryForward { block: item.block.unwrap_or_default(), firings },
+        };
+        render().and(host(request))
+    }
+
+    pub(crate) fn due(&self, event: DueEvent, model: &mut Model) -> Command<Effect, Event> {
+        match event {
+            DueEvent::Look { since, now } => host(HostRequest::RemindersDue { since, now }),
+            DueEvent::Dismiss(id) => self.deal(&id, Deal::Dismiss, model),
+            DueEvent::Snooze(id) => self.deal(&id, Deal::Snooze, model),
+            DueEvent::Carry(id) => self.deal(&id, Deal::Carry, model),
+            // Cancelled, the warning stays; something replanned, it is dismissed.
+            DueEvent::Replan(id) => {
+                model.replanning = Some(id);
+                self.propose(proposal::Kind::Replan, model)
+            }
+        }
+    }
+
+    pub(crate) fn found(&self, result: Result<lumenna_records::reminders::DueReminders, LumennaError>, model: &mut Model) -> Command<Effect, Event> {
+        let Ok(found) = result else { return Command::done() };
+        let mut said = Command::done();
+        for item in arrived(&found) {
+            if model.due.iter().any(|d| d.id == item.id) {
+                continue;
+            }
+            // Each is said, always, and shown as a notification where the platform allows.
+            let notice: Command<Effect, Event> =
+                Command::notify_shell(Notice { id: item.id.clone(), title: item.title.clone(), text: item.text.clone() }).into();
+            said = said.and(self::say(item.text.clone())).and(notice);
+            model.due.push(item);
+        }
+        render().and(said)
+    }
 }

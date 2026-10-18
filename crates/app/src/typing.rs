@@ -1,7 +1,12 @@
 //! A quick-add line being typed: what it will add, and what fits where the cursor is.
 
+use crux_core::Command;
+use crux_core::render::render;
 use lumenna_records::types::{Completions, Preview};
 use serde::{Deserialize, Serialize};
+
+use crate::model::Model;
+use crate::{Effect, Event, Lumenna};
 
 /// What the person does in quick add.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -67,4 +72,31 @@ pub fn splice(line: &Line, start: u32, end: u32, text: &str) -> Line {
     out.push_str(&line.text[end..]);
     let cursor = u32::try_from(start + text.len()).unwrap_or(u32::MAX);
     Line { text: out, cursor }
+}
+
+impl Lumenna {
+    pub(crate) fn typing(&self, event: Typing, model: &mut Model) -> Command<Effect, Event> {
+        match event {
+            Typing::Open => {
+                let text = model.place().quick_add_prefix();
+                let cursor = u32::try_from(text.len()).unwrap_or(u32::MAX);
+                model.line = Some(Line { text, cursor });
+                model.add_refused = None;
+            }
+            Typing::Text { text, cursor } => model.line = Some(Line { text, cursor }),
+            Typing::Choose(index) => {
+                let (Some(line), Some(store)) = (&model.line, &model.store) else { return Command::done() };
+                let offer = lumenna_records::text::completions(
+                    &store.snapshot,
+                    &line.text,
+                    line.cursor,
+                    lumenna_records::types::Syntax::QuickAdd,
+                );
+                let Some(candidate) = offer.candidates.get(index as usize) else { return Command::done() };
+                model.line = Some(splice(line, offer.start, offer.end, &candidate.text));
+            }
+            Typing::Close => model.line = None,
+        }
+        render()
+    }
 }

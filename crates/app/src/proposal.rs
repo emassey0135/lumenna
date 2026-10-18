@@ -7,9 +7,16 @@
 //! on the screen, which asks for a new proposal with the same pins. Replan from Now's other
 //! options each ask again with their pins, shown in place.
 
+use crux_core::Command;
+use crux_core::render::render;
+use lumenna_records::LumennaError;
 use lumenna_records::proposals::{DayPins, DayPlan, Replan, ReplanPins, TimeStyle};
 use lumenna_records::{ActionKind, ProposalWords, proposal_words};
 use serde::{Deserialize, Serialize};
+
+use crate::host::{Arrival, HostRequest};
+use crate::model::Model;
+use crate::{Effect, Event, Lumenna, host, say};
 
 /// What the person does on a proposal's screen.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -230,4 +237,119 @@ pub fn view(screen: &Screen) -> ProposalView {
 #[must_use]
 pub const fn default_style() -> TimeStyle {
     TimeStyle::TwentyFourHour
+}
+
+impl Lumenna {
+    /// Opens a proposal's screen and asks for its first proposal.
+    pub(crate) fn propose(&self, kind: Kind, model: &mut Model) -> Command<Effect, Event> {
+        model.proposal = Some(Screen::new(kind));
+        model.proposal_made = false;
+        self.repropose(None, model)
+    }
+
+    /// Proposes the open screen's day again with `pins`, from the store as it is: shown and
+    /// said in place, or why not.
+    pub(crate) fn repropose(&self, pins: Option<Pins>, model: &mut Model) -> Command<Effect, Event> {
+        let style = model.style.unwrap_or(default_style());
+        let (Some(store), Some(screen)) = (&model.store, &mut model.proposal) else { return Command::done() };
+        let proposed = match (&screen.kind, pins) {
+            (Kind::Replan, pins) => {
+                let pins = match pins {
+                    Some(Pins::Replan(pins)) => pins,
+                    _ => lumenna_records::proposals::ReplanPins::default(),
+                };
+                lumenna_records::replan::propose(&store.snapshot, style, pins, &store.now, true).map(Proposal::Replan)
+            }
+            (Kind::PlanDay(date), pins) => {
+                let pins = match pins {
+                    Some(Pins::Day(pins)) => pins,
+                    _ => lumenna_records::proposals::DayPins::default(),
+                };
+                lumenna_records::dayplan::propose(&store.snapshot, Some(date), style, &pins, &store.now).map(Proposal::Day)
+            }
+        };
+        match proposed {
+            Ok(proposal) => {
+                let said = proposal.spoken();
+                screen.show(proposal);
+                render().and(say(said))
+            }
+            Err(error) => {
+                screen.busy = false;
+                screen.refusal = Some(error.message().to_owned());
+                render().and(say(error.message()))
+            }
+        }
+    }
+
+    pub(crate) fn proposal(&self, event: ProposalEvent, model: &mut Model) -> Command<Effect, Event> {
+        if event == ProposalEvent::Replan {
+            return self.propose(Kind::Replan, model);
+        }
+        let Some(screen) = &mut model.proposal else { return Command::done() };
+        match event {
+            ProposalEvent::Check { index, on } => {
+                if let Some(checked) = screen.checked.get_mut(index as usize) {
+                    *checked = on;
+                }
+                render()
+            }
+            ProposalEvent::Apply => {
+                let Some(proposal) = screen.proposal.clone() else { return Command::done() };
+                if screen.busy {
+                    return Command::done();
+                }
+                screen.busy = true;
+                let accepted = screen.checked.iter().enumerate().filter(|(_, on)| **on).map(|(at, _)| at).collect();
+                render().and(host(HostRequest::Apply { proposal, accepted }))
+            }
+            ProposalEvent::Take(index) => {
+                let Some(Proposal::Replan(replan)) = &screen.proposal else { return Command::done() };
+                let Some(other) = replan.alternatives.get(index as usize) else { return Command::done() };
+                let pins = Some(Pins::Replan(other.pins.clone()));
+                screen.refusal = None;
+                self.repropose(pins, model)
+            }
+            ProposalEvent::Close => {
+                model.proposal_made = screen.made;
+                model.proposal = None;
+                render().and(self.replanned(model))
+            }
+            ProposalEvent::Replan => Command::done(),
+        }
+    }
+
+    pub(crate) fn applied(&self, result: Result<Applied, LumennaError>, store: Option<Arrival>, model: &mut Model) -> Command<Effect, Event> {
+        if let Some(store) = store {
+            model.store = Some(store);
+            model.settle();
+        }
+        let Some(screen) = &mut model.proposal else { return render() };
+        match result {
+            Ok(applied) => {
+                screen.made = true;
+                screen.refusal = None;
+                let said = std::iter::once(applied.announcement.as_str())
+                    .chain(applied.notices.iter().map(String::as_str))
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                // Nothing left to propose: the screen closes, saying what was made.
+                if applied.next.is_empty() {
+                    model.proposal_made = true;
+                    model.proposal = None;
+                    return render().and(say(said)).and(self.replanned(model));
+                }
+                screen.show(applied.next);
+                render().and(say(said))
+            }
+            // The day moved since: why is kept here, and the day as it now is proposed.
+            Err(error) => {
+                screen.refusal = Some(error.message().to_owned());
+                let pins = screen.proposal.as_ref().map(Proposal::pins);
+                let said = say(error.message());
+                render().and(said).and(self.repropose(pins, model))
+            }
+        }
+    }
 }

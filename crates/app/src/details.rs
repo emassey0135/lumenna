@@ -4,9 +4,15 @@
 //! the store changes underneath. Saving sends only what changed, against the task as it was
 //! when the typing began (`task_edit`), so a concurrent edit to another field elsewhere holds.
 
+use crux_core::Command;
+use crux_core::render::render;
 use lumenna_records::types::TaskDetail;
 use lumenna_records::{Choice, FormField, TaskFields};
 use serde::{Deserialize, Serialize};
+
+use crate::host::HostRequest;
+use crate::model::Model;
+use crate::{Effect, Event, Lumenna, host, say};
 
 /// What the person does in the details.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,4 +83,47 @@ pub fn set(mut fields: TaskFields, key: &str, value: String) -> TaskFields {
         _ => {}
     }
     fields
+}
+
+impl Lumenna {
+    pub(crate) fn details(&self, event: DetailsEvent, model: &mut Model) -> Command<Effect, Event> {
+        match event {
+            DetailsEvent::Show(task) => {
+                model.details.shown = Some(task);
+                render()
+            }
+            DetailsEvent::Field { key, value } => {
+                let Some(task) = model.details_shown() else { return Command::done() };
+                let draft = match model.details.draft.take() {
+                    Some(draft) if draft.task == task.id => draft,
+                    // Typing begins: what saving will compare with is the task as it is now.
+                    _ => Draft {
+                        task: task.id.clone(),
+                        fields: lumenna_records::task_fields(task.clone()),
+                        original: task,
+                    },
+                };
+                let fields = set(draft.fields, &key, value);
+                model.details.draft = Some(Draft { fields, ..draft });
+                render()
+            }
+            DetailsEvent::Save => {
+                let Some(task) = model.details_shown() else { return Command::done() };
+                let (original, fields) = match &model.details.draft {
+                    Some(draft) if draft.task == task.id => (draft.original.clone(), draft.fields.clone()),
+                    _ => (task.clone(), lumenna_records::task_fields(task.clone())),
+                };
+                match lumenna_records::task_edit(original, fields) {
+                    None => {
+                        model.details.draft = None;
+                        render().and(say("Nothing changed"))
+                    }
+                    Some(edit) => {
+                        model.details.saving = true;
+                        host(HostRequest::EditTask { id: task.id, edit })
+                    }
+                }
+            }
+        }
+    }
 }

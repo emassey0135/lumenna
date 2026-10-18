@@ -152,3 +152,19 @@ pub enum HostAnswer {
 impl Operation for HostRequest {
     type Output = HostAnswer;
 }
+
+
+impl PartialEq for HostAnswer {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Wrote(a, x), Self::Wrote(b, y)) => a == b && x == y,
+            (Self::Applied(a, x), Self::Applied(b, y)) => a == b && x == y,
+            (Self::Listed(a), Self::Listed(b)) => a == b,
+            (Self::Saved(a), Self::Saved(b)) => a == b,
+            (Self::Imported(a, x), Self::Imported(b, y)) => a == b && x == y,
+            (Self::Devices(a), Self::Devices(b)) => a == b,
+            (Self::Found(a), Self::Found(b)) => a == b,
+            _ => false,
+        }
+    }
+}
