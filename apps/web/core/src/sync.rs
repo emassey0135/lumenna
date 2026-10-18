@@ -49,7 +49,7 @@ impl Core {
         show_code: js_sys::Function,
         confirm: js_sys::Function,
     ) -> js_sys::Promise {
-        let lumenna: Rc<Lumenna> = Rc::clone(&self.lumenna);
+        let lumenna: std::sync::Arc<Lumenna> = std::sync::Arc::clone(&self.lumenna);
         let syncing = Rc::clone(&self.syncing);
         syncing.cancelled.set(false);
         future_to_promise(async move {
@@ -94,7 +94,7 @@ impl Core {
     /// open; starting it again while it runs does nothing.
     #[wasm_bindgen(js_name = startSync)]
     pub fn start_sync(&self, changed: js_sys::Function) -> js_sys::Promise {
-        let lumenna = Rc::clone(&self.lumenna);
+        let lumenna = std::sync::Arc::clone(&self.lumenna);
         let syncing = Rc::clone(&self.syncing);
         future_to_promise(async move {
             if syncing.running.borrow().as_ref().is_some_and(SyncLoop::is_running) {

@@ -121,6 +121,31 @@ JSON crosses the FFI.
 - `uniffi.toml` names the Swift module `LumennaCore`. Methods named after Swift keywords
   (`import`, `open`) come out backticked, and work.
 
+## The app
+
+`crates/app` is the screens as a Crux 0.20 app; `crates/bridge` runs it beside a store. The
+move to Crux is under way: the web's task lists and sidebar are drawn from it, everything else
+still calls the host directly (the `legacy` tag is the last commit before the move).
+
+- **The app never depends on the host.** It holds the snapshot the host last sent (`Watch`, a
+  stream answered at once and on every change) and works each listing out with
+  `lumenna-records`, the functions `lum` lists with. Every write, and what a pick offers, is a
+  `HostRequest`, whose answer comes back as an event carrying the store as the write left it.
+- **`Session` answers the host's effects inline**, on the caller's thread: the web worker has
+  no threads for Crux's middleware, and SQLite answers in milliseconds. What is left for a
+  shell is drawing and saying (`Shell`). `tick` takes in a change made elsewhere, or a new
+  minute; it finds nothing once a change has been taken in.
+- **What every app decided for itself is the app's now**: the row in hand after a change (the
+  same row, else whatever holds its place among the rows shown); folding (Expand and Collapse
+  are row actions, and a folded row comes marked `hidden`, for a tree control that folds by
+  itself); the question open, a refusal staying in it, and a pick's length asked once one is
+  picked; the filter typed, the rows of the last that read staying while one being typed does
+  not; and what to say, an `Announce` a shell says once focus has landed.
+- **A list's first row is in hand as soon as it opens**, as in the desktop apps' trees, so the
+  details show it.
+- Flow tests are `crates/bridge/tests/flows.rs`: events in, view models and sentences out,
+  against a real store.
+
 ## The CLI
 
 Run it with `LUMENNA_PROFILE=/some/dir ./target/debug/lum ...` to keep test data out of the
@@ -1252,6 +1277,15 @@ with `lum`.
 - **`npm run screens`** takes a screenshot of every screen into `screens/out`, light and dark, at a
   desktop and a phone width, for a visual review: the tests read the accessibility tree and never
   look at the page. The layout stacks to two columns below 64rem and one below 40rem.
+- **The app runs in the worker beside the store** (`core/src/app.rs`, `src/session.ts`). The
+  page sends what the person did and draws the screen that comes back; `run` asks each question
+  the screen holds in the web's dialogs and sends the answer, a text field showing the app's
+  refusal. Screens not moved yet write through the store and call `changed()`, which the app
+  takes in at once (`refresh`); the one-second poll refreshes the app too, but reloads those
+  screens only for another process's writes, or a reload under a test's focus lost it.
+- **A command key waits for what is on its way** (`settled`): going to a place is a round trip
+  now, and a key pressed straight after Go to Trash acts in the trash. A deferred command keeps
+  trying each frame for a moment while its screen cannot act yet (a day still loading).
 - **Playwright's clock does not reach the worker**, where the core reads the time. Tests that
   need a fixed day serve `worker.ts` with a shifted `Date` in front (`at` in
   `tests/planner.spec.ts`).

@@ -7,10 +7,13 @@ const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "modu
 
 export const core: Comlink.Remote<Api> = Comlink.wrap<Api>(worker);
 
-export type { DayRow, Line, Proposed } from "./worker";
+export type { DayRow, Line, Proposed, Said, Screen, Shown, ShownItem } from "./worker";
 export type {
   Action,
   ActionKind,
+  Answer,
+  Asking,
+  Event,
   Choice,
   DueReminder,
   ReminderList,

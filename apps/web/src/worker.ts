@@ -9,6 +9,7 @@
 
 import * as Comlink from "comlink";
 import init, {
+  App,
   Core,
   announcementText,
   blockDefaults,
@@ -47,6 +48,11 @@ import type {
   Action,
   ActionKind,
   Answer,
+  Event,
+  Item,
+  ListView,
+  Turn,
+  ViewModel,
   DayPins,
   DayPlan,
   ProposalWords,
@@ -79,6 +85,7 @@ import type {
 } from "./core/lumenna_web.js";
 
 let core: Core | undefined;
+let app: App | undefined;
 
 function store(): Core {
   if (!core) throw new Error("The store is not open yet.");
@@ -117,6 +124,58 @@ async function opened(name: string): Promise<void> {
   if (!granted) throw new Error("Lumenna is open in another tab. Close it there to use it here.");
   await init();
   core = await Core.open(name);
+  app = core.app();
+}
+
+function session(): App {
+  if (!app) throw new Error("The store is not open yet.");
+  return app;
+}
+
+/** A row of the list shown, with the line a screen reader reads for it. */
+export interface ShownItem extends Item {
+  text: string;
+}
+
+/** The list shown, its rows' lines in the web's words, and what it found as one sentence. */
+export interface Shown extends Omit<ListView, "items"> {
+  items: ShownItem[];
+  readback: string;
+}
+
+/** The view model as the page draws it. */
+export interface Screen extends Omit<ViewModel, "list"> {
+  list?: Shown;
+}
+
+/** What an event left: the screen, and what to say once focus has landed. */
+export interface Said {
+  screen: Screen;
+  said: string[];
+}
+
+/** The view model in the web's words: each row's line, the headings in sentence case. */
+function screen(view: ViewModel): Screen {
+  const trash = view.place === "Trash";
+  const list = view.list && {
+    ...view.list,
+    items: view.list.items.map((item) => ({ ...item, text: trash ? trashedText(item.row) : rowText(item.row, false) })),
+    readback: announcementText(
+      [view.list.query && !trash ? view.list.query.description : undefined, view.list.announcement, ...(view.list.notices ?? [])]
+        .filter((p): p is string => !!p)
+        .join(". "),
+      [],
+    ),
+  };
+  return {
+    ...view,
+    sidebar: view.sidebar.map((entry) => ("Group" in entry.kind ? { ...entry, text: sentenceCase(entry.text) } : entry)),
+    list,
+  };
+}
+
+function turned(turn: Turn): Said {
+  return { screen: screen(turn.view), said: turn.said };
 }
 
 /** A row and the line a screen reader reads for it. */
@@ -137,6 +196,22 @@ const api = {
     opening ??= opened(name);
     return opening;
   },
+
+  /** Runs what the person did through the app: what to draw, and what to say. */
+  send: (event: Event): Said => turned(session().send(event)),
+
+  /** What changed elsewhere since, or a new minute: undefined when nothing did. */
+  tick(): Said | undefined {
+    const turn = session().tick();
+    return turn ? turned(turn) : undefined;
+  },
+
+  /** What to draw now. */
+  screen: (): Screen => screen(session().view()),
+
+  /** What a pick offers, each as its line reads, for the chooser. */
+  choiceLines: (choices: Choice[]) =>
+    choices.map((choice) => ({ id: choice.id, text: choiceText(choice), depth: choice.depth, reason: choice.reason ?? undefined })),
 
   /** A number that moves when another tab or process has written. */
   outsideVersion: (): number => store().outsideVersion(),

@@ -17,9 +17,10 @@ import { defer, focusIn, movePane, runCommand, useCommand } from "./commands";
 import { Details } from "./Details";
 import type { DetailsHandle } from "./Details";
 import { QuickAdd } from "./QuickAdd";
-import { ReminderLists, RemindersDue, useDelivery } from "./Reminders";
+import { ReminderLists, RemindersDue, showReminders, useDelivery } from "./Reminders";
 import type { Due } from "./Reminders";
 import { say } from "./say";
+import { refresh, sayAll, send, settled, start, useScreen } from "./session";
 import { Settings } from "./Settings";
 import { Sidebar } from "./Sidebar";
 import { TaskList } from "./TaskList";
@@ -32,8 +33,9 @@ export function App() {
   const [failure, setFailure] = useState<string | undefined>();
   const [notice, setNotice] = useState<string | undefined>();
   const [revision, setRevision] = useState(0);
-  const [place, setPlace] = useState<Place>("Tasks");
-  const [shown, setShown] = useState({ title: "Tasks", query: "", quickAddPrefix: "" });
+  const screen = useScreen();
+  const place: Place = screen?.place ?? "Tasks";
+  // The task in hand on the day, which the details show; in a list it is the app's.
   const [selected, setSelected] = useState<string | undefined>();
   const [adding, setAdding] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -47,7 +49,7 @@ export function App() {
 
   useEffect(() => {
     core.open(profile).then(
-      () => setReady(true),
+      () => start().then(() => setReady(true)),
       (error: Error) => setFailure(error.message),
     );
     // In a local-first app the browser may hold changes that are nowhere else yet: storage it
@@ -78,11 +80,14 @@ export function App() {
     if (ready) void startSyncing();
   }, [ready]);
 
-  // Another tab or process wrote: everything showing the store reads it again.
+  // The app takes in whatever moved — another tab, `lum`, a sync, a minute — and draws it.
+  // What is not yet drawn from the app's screen reads the store again only when another
+  // process wrote: this page's own writes already said so as they were made.
   useEffect(() => {
     if (!ready) return;
     let last: number | undefined;
     const timer = setInterval(() => {
+      void refresh();
       void core.outsideVersion().then((version) => {
         if (last !== undefined && version !== last) setRevision((r) => r + 1);
         last = version;
@@ -91,21 +96,18 @@ export function App() {
     return () => clearInterval(timer);
   }, [ready]);
 
-  useEffect(() => {
-    if (!ready) return;
-    void core.place(place).then(setShown);
-    setSelected(undefined);
-  }, [ready, place]);
+  useEffect(() => setSelected(undefined), [place]);
 
-  const changed = () => setRevision((r) => r + 1);
+  // A write made outside the app (the day, the details, settings): the app takes it in now.
+  const changed = () => {
+    setRevision((r) => r + 1);
+    void refresh();
+  };
 
   const undo = async (redo: boolean) => {
-    try {
-      say(await (redo ? core.redo() : core.undo()));
-      changed();
-    } catch (error) {
-      say((error as Error).message);
-    }
+    const turn = await send(redo ? "Redo" : "Undo");
+    sayAll(turn.said);
+    setRevision((r) => r + 1);
   };
 
   // Ctrl+Z undoes and Ctrl+Shift+Z or Ctrl+Y redoes, from anywhere but a field, where they
@@ -152,7 +154,7 @@ export function App() {
       if (target?.closest("[role='dialog'], [role='alertdialog']")) return;
       event.preventDefault();
       event.stopPropagation();
-      runCommand(id);
+      void settled().then(() => runCommand(id));
     };
     window.addEventListener("keydown", keys, true);
     return () => window.removeEventListener("keydown", keys, true);
@@ -166,18 +168,18 @@ export function App() {
       return;
     }
     focusMain.current = true;
-    setPlace(to);
+    void send({ Open: to });
   };
   useEffect(() => {
     if (!focusMain.current) return;
     focusMain.current = false;
     focusIn(".app > main", false);
-  }, [shown]);
+  }, [screen?.place]);
   // Goes to `to` first, where the screen there runs command `id`.
   const thenRun = (to: Place, id: string) => {
     focusMain.current = false;
     defer(id);
-    setPlace(to);
+    void send({ Open: to });
   };
 
   useCommand("new-task", () => setAdding(true), -1);
@@ -221,7 +223,7 @@ export function App() {
       </main>
     );
   }
-  if (!ready) {
+  if (!ready || !screen) {
     return <p role="status">Opening Lumenna…</p>;
   }
 
@@ -243,9 +245,9 @@ export function App() {
         <RemindersDue due={due} onDealt={(id) => setDue((now) => now.filter((one) => one.id !== id))} onChanged={changed} />
       </header>
       <nav aria-label="Places">
-        <Sidebar revision={revision} place={place} onPlace={setPlace} onChanged={changed} />
+        <Sidebar entries={screen.sidebar} place={place} onPlace={(to) => void send({ Open: to })} onChanged={changed} />
       </nav>
-      <main aria-label={shown.title}>
+      <main aria-label={screen.title}>
         {place === "Today" ? (
           <Day
             revision={revision}
@@ -260,19 +262,25 @@ export function App() {
           <Blocks revision={revision} onChanged={changed} />
         ) : (
           <TaskList
-            revision={revision}
-            place={place}
-            title={shown.title}
-            query={shown.query}
-            selected={selected}
-            onSelect={setSelected}
+            screen={screen}
             onOpen={() => details.current?.focus()}
-            onChanged={changed}
+            onForm={async (action) => {
+              // A task's or block's reminders are the same list wherever they are offered; any
+              // other form of a task's is its details, beside the list.
+              if (action.kind === "reminders") await showReminders(action);
+              else details.current?.focus();
+            }}
+            onChanged={() => setRevision((r) => r + 1)}
           />
         )}
       </main>
       <aside aria-label="Task details">
-        <Details ref={details} id={selected} revision={revision} onChanged={changed} />
+        <Details
+          ref={details}
+          id={place === "Today" || place === "Blocks" ? selected : (screen.focus ?? undefined)}
+          revision={revision}
+          onChanged={changed}
+        />
       </aside>
       <Settings
         isOpen={settingsOpen}
@@ -290,15 +298,7 @@ export function App() {
       <Prompts />
       <Proposals onChanged={changed} />
       <BlockForms />
-      <QuickAdd
-        prefix={shown.quickAddPrefix}
-        isOpen={adding}
-        onClose={() => setAdding(false)}
-        onAdded={(id) => {
-          changed();
-          if (id) setSelected(id);
-        }}
-      />
+      <QuickAdd prefix={screen.quick_add} isOpen={adding} onClose={() => setAdding(false)} onAdded={() => setRevision((r) => r + 1)} />
     </div>
   );
 }

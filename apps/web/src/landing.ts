@@ -60,3 +60,24 @@ export function useLanding(
 export function rowKey(event: { target: EventTarget }): string | undefined {
   return (event.target as HTMLElement).closest<HTMLElement>('[role="row"]')?.dataset.key;
 }
+
+/**
+ * Puts focus on the row `key` once the tree has drawn it, or on the tree itself when nothing is
+ * in hand. A React Aria tree builds its collection in a pass of its own, so the row can be a
+ * frame or two behind the screen.
+ */
+export function landOn(tree: HTMLElement | null, key: string | undefined): Promise<void> {
+  return new Promise((resolve) => {
+    let tries = 0;
+    const step = () => {
+      const row = key === undefined ? undefined : tree?.querySelector<HTMLElement>(`[role="row"][data-key="${CSS.escape(key)}"]`);
+      if (!row && key !== undefined && tries++ < 20) {
+        requestAnimationFrame(step);
+        return;
+      }
+      (row ?? tree)?.focus();
+      resolve();
+    };
+    requestAnimationFrame(step);
+  });
+}

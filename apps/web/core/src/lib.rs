@@ -13,6 +13,7 @@
 
 use std::path::Path;
 
+mod app;
 mod clock;
 mod manage;
 mod planner;
@@ -55,7 +56,7 @@ fn error(error: LumennaError) -> JsError {
 /// One open store.
 #[wasm_bindgen]
 pub struct Core {
-    lumenna: std::rc::Rc<Lumenna>,
+    lumenna: std::sync::Arc<Lumenna>,
     syncing: std::rc::Rc<sync::Syncing>,
 }
 
@@ -73,7 +74,7 @@ impl Core {
                 .map_err(|e| JsError::new(&format!("This browser's storage could not be opened: {e}")))?;
         }
         let lumenna = Lumenna::open_at(Path::new(&format!("/{name}"))).map_err(error)?;
-        Ok(Core { lumenna: std::rc::Rc::new(lumenna), syncing: std::rc::Rc::default() })
+        Ok(Core { lumenna: std::sync::Arc::new(lumenna), syncing: std::rc::Rc::default() })
     }
 
     /// A number that moves whenever another tab or process has written: what a view

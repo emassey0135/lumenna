@@ -1,12 +1,11 @@
-// The places, as the desktop apps list them —
-// the list itself is crates/desktop's `places::sidebar`, run in the worker.
+// The places, as the desktop apps list them: the app's sidebar (records' `places::sidebar`).
 //
 // Projects, labels and saved filters are managed here, as on the desktop: each row's menu
 // (the Menu key, Shift+F10, a right-click, or Actions) has the actions the core gives it, the
 // headings' New among them, and Delete runs the row's Delete. Renaming or making a place goes
 // to it.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { FocusEvent, KeyboardEvent, MouseEvent } from "react";
 import { Button, Collection, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
@@ -30,26 +29,18 @@ function key(entry: SidebarEntry): string {
 }
 
 export function Sidebar(props: {
-  revision: number;
+  entries: SidebarEntry[];
   place: Place;
   onPlace: (place: Place) => void;
   onChanged: () => void;
 }) {
-  const [entries, setEntries] = useState<SidebarEntry[]>([]);
+  const entries = props.entries;
   const [expanded, setExpanded] = useState<Set<Key> | undefined>();
   // The row in hand: the one focus was last on. Headings are never selected, so it is not
   // the selection.
   const [held, setHeld] = useState<string | undefined>();
   const [menu, setMenu] = useState(false);
   const tree = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    let current = true;
-    void core.sidebar().then((entries) => current && setEntries(entries));
-    return () => {
-      current = false;
-    };
-  }, [props.revision]);
 
   const nodes = useMemo(() => nest(entries, key, (entry) => entry.depth), [entries]);
   // Everything open at first; after that, as the person leaves it.

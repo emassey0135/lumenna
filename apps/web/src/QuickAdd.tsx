@@ -11,7 +11,7 @@ import type { ContextType } from "react";
 import { Button, ComboBox, ComboBoxStateContext, Dialog, Heading, Input, Label, ListBox, ListBoxItem, Modal, Popover } from "react-aria-components";
 import type { Key } from "react-aria-components";
 import { core } from "./core";
-import { say } from "./say";
+import { sayAll, send } from "./session";
 
 /** What fits in one place on one line: `text` and `cursor` say which. */
 interface Offer {
@@ -22,7 +22,7 @@ interface Offer {
   candidates: { id: string; text: string; label: string }[];
 }
 
-export function QuickAdd(props: { prefix: string; isOpen: boolean; onClose: () => void; onAdded: (id?: string) => void }) {
+export function QuickAdd(props: { prefix: string; isOpen: boolean; onClose: () => void; onAdded: () => void }) {
   const [text, setText] = useState(props.prefix);
   const [readback, setReadback] = useState("");
   const [offer, setOffer] = useState<Offer>({ text: "", cursor: -1, start: 0, end: 0, candidates: [] });
@@ -82,15 +82,13 @@ export function QuickAdd(props: { prefix: string; isOpen: boolean; onClose: () =
 
   const add = async () => {
     if (!text.trim()) return;
-    try {
-      const added = await core.add(text);
+    const turn = await send({ QuickAdd: text });
+    // Refused, the dialog stays, with what was typed, so it can be put right.
+    if (!turn.screen.add_refused) {
       props.onClose();
-      props.onAdded(added.id);
-      say(added.said);
-    } catch (error) {
-      // The dialog stays, with what was typed, so it can be put right.
-      say((error as Error).message);
+      props.onAdded();
     }
+    sayAll(turn.said);
   };
 
   return (

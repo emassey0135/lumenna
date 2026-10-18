@@ -10,7 +10,7 @@ import { core } from "./core";
 import type { Action, Line } from "./core";
 import { byKind, perform, REMOVING } from "./actions";
 import { useCommand } from "./commands";
-import { rowKey, useLanding } from "./landing";
+import { landOn, rowKey, useLanding } from "./landing";
 import { asksForMenu, RowMenu } from "./RowMenu";
 import { say } from "./say";
 
@@ -54,9 +54,26 @@ export function Blocks(props: { revision: number; onChanged: () => void }) {
       await freshBlock(undefined, 60),
       "New block",
     );
-    // A new series' row is listed under its first occurrence, so land near where it was.
-    if (saved) changed(saved.said, undefined, ids.indexOf(selected ?? ""));
+    // A new series' row is listed under its first occurrence: focus goes to it once listed.
+    if (!saved) return;
+    added.current = saved.series;
+    props.onChanged();
+    if (!saved.series) say(saved.said);
+    else heard.current = saved.said;
   };
+  const added = useRef<string | undefined>(undefined);
+  const heard = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const series = added.current;
+    const line = series && lines.find((l) => l.row.id.split("@")[0] === series);
+    if (!line) return;
+    added.current = undefined;
+    setSelected(line.row.id);
+    void landOn(tree.current, line.row.id).then(() => {
+      say(heard.current);
+      heard.current = undefined;
+    });
+  }, [lines]);
   useCommand("new-block", () => void add());
 
 

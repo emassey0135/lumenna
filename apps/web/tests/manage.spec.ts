@@ -297,12 +297,15 @@ test("every shared command works on the web's key", async ({ page }) => {
   await places(page).getByRole("row", { name: /^Tasks/ }).focus();
 
   // File
+  const tasksPlace = places(page).getByRole("row", { name: /^Tasks/ });
   await page.keyboard.press("Alt+Shift+KeyQ");
   await expect(page.getByRole("combobox", { name: "Task" })).toBeFocused();
   await page.keyboard.press("Escape");
+  await expect(tasksPlace).toBeFocused();
   await page.keyboard.press("Alt+Shift+KeyE");
   await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(tasksPlace).toBeFocused();
   await page.keyboard.press("Alt+Shift+KeyY");
   await expect(live).toContainText("Syncing");
   await page.keyboard.press("Alt+Shift+KeyC");
@@ -324,13 +327,12 @@ test("every shared command works on the web's key", async ({ page }) => {
   await expect(main.getByRole("toolbar", { name: "Day" })).toBeVisible();
   await page.keyboard.press("Alt+Shift+Digit2");
   await expect(main.getByRole("row", { name: /^Water the plants/ })).toBeFocused();
-  // With no task chosen, the details pane itself takes focus.
+  // The row in hand is the task the details show, from the moment the list opens.
+  await expect(details.getByRole("textbox", { name: "Title" })).toHaveValue("Water the plants");
   await page.keyboard.press("Alt+Shift+Period");
-  await expect(details).toBeFocused();
+  await expect(details.getByRole("textbox", { name: "Title" })).toBeFocused();
   await page.keyboard.press("Alt+Shift+Comma");
   await expect(main.getByRole("row", { name: /^Water the plants/ })).toBeFocused();
-  await main.getByRole("row", { name: /^Water the plants/ }).click();
-  await expect(details.getByRole("textbox", { name: "Title" })).toHaveValue("Water the plants");
   await page.keyboard.press("Alt+Shift+Period");
   await expect(details.getByRole("textbox", { name: "Title" })).toBeFocused();
   await page.keyboard.press("Alt+Shift+Period");
@@ -347,10 +349,11 @@ test("every shared command works on the web's key", async ({ page }) => {
   await page.keyboard.press("Escape");
   await page.keyboard.press("Alt+Shift+Digit2");
 
-  // Task, on the task in hand; with none, it says so.
+  // Task, on the task in hand; with none, as in the empty trash, it says so.
+  await page.keyboard.press("Alt+Shift+Digit4");
   await page.keyboard.press("Alt+Shift+KeyP");
   await expect(live).toContainText("No task is selected.");
-  await main.getByRole("row", { name: /^Water the plants/ }).click();
+  await page.keyboard.press("Alt+Shift+Digit2");
   await page.keyboard.press("Alt+Shift+KeyP");
   await expect(live).toContainText("There is no other project to move it to.");
   await page.keyboard.press("Alt+Shift+KeyW");
@@ -363,16 +366,23 @@ test("every shared command works on the web's key", async ({ page }) => {
   await expect(main.getByRole("row", { name: /^Water the ferns/ })).toHaveCount(0);
 
   // Day, from another place: each goes to the day first.
+  await page.keyboard.press("Alt+Shift+Digit1");
+  await expect(main.getByRole("toolbar", { name: "Day" })).toBeVisible();
+  await expect(heading(page)).not.toHaveText("");
+  const today = (await heading(page).textContent()) ?? "";
+  await page.keyboard.press("Alt+Shift+Digit2");
+  await expect(heading(page)).toHaveText("Tasks");
   await page.keyboard.press("Alt+Shift+PageDown");
   await expect(main.getByRole("toolbar", { name: "Day" })).toBeVisible();
-  const today = await heading(page).textContent();
-  await page.keyboard.press("Alt+Shift+PageDown");
-  await expect(heading(page)).not.toHaveText(today ?? "");
+  await expect(heading(page)).not.toHaveText(today);
+  await expect(heading(page)).not.toHaveText("Tasks");
+  const tomorrow = (await heading(page).textContent()) ?? "";
   await page.keyboard.press("Alt+Shift+PageUp");
-  await expect(heading(page)).toHaveText(today ?? "");
+  await expect(heading(page)).toHaveText(today);
   await page.keyboard.press("Alt+Shift+PageDown");
+  await expect(heading(page)).toHaveText(tomorrow);
   await page.keyboard.press("Alt+Shift+KeyO");
-  await expect(heading(page)).toHaveText(today ?? "");
+  await expect(heading(page)).toHaveText(today);
   await expect(main.locator('[role="row"]:focus')).toHaveCount(1);
   await page.keyboard.press("Alt+Shift+KeyG");
   await expect(page.getByRole("dialog", { name: /day/i })).toBeVisible();

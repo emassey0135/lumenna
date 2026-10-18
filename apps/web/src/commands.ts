@@ -30,10 +30,16 @@ export function useCommand(id: string, handler: Handler, priority = 0) {
     list.push(entry);
     offered.set(id, list);
     if (deferred.has(id)) {
-      // A frame later, so the screen has drawn what the command acts on.
-      requestAnimationFrame(() => {
-        if (deferred.delete(id)) ref.current();
-      });
+      // A frame later, so the screen has drawn what the command acts on; and again each frame
+      // for a moment while it cannot act yet, as a day whose plan is still loading cannot go to
+      // the next.
+      let tries = 0;
+      const attempt = () => {
+        if (!deferred.has(id)) return;
+        if (ref.current() !== false || tries++ >= 60) deferred.delete(id);
+        else requestAnimationFrame(attempt);
+      };
+      requestAnimationFrame(attempt);
     }
     return () => {
       const at = list.indexOf(entry);

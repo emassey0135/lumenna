@@ -29,14 +29,21 @@ pub struct ViewModel {
     pub asking: Option<Asking>,
     /// What a new task typed here starts with: `#Work ` in the Work project.
     pub quick_add: String,
+    /// The filter typed above the list, or the place's own query.
+    pub query: String,
+    /// Why the last quick-add line was refused, for the line to stay with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub add_refused: Option<String>,
 }
 
 /// A list of tasks as shown.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ListView {
-    /// The rows shown.
+    /// Every row, those folded away marked hidden.
     pub items: Vec<Item>,
+    /// How many there are, in a sentence: "3 tasks".
+    pub announcement: String,
     /// What the list says when it has none.
     pub empty: String,
     /// How the query was understood, for a filter.
@@ -45,7 +52,7 @@ pub struct ListView {
     /// Anything wrong with the query: a project it names that does not exist.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notices: Vec<String>,
-    /// Why the query could not be read, in place of rows.
+    /// Why the filter typed does not read yet: the rows are the last that did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refusal: Option<String>,
 }
@@ -67,11 +74,11 @@ pub struct Asking {
     pub refusal: Option<String>,
 }
 
-/// The tasks a place lists, or `None` for a place that is not a list of tasks.
-pub fn listing(snapshot: &Snapshot, place: &Place, now: &Zoned) -> Option<Result<Rows, LumennaError>> {
+/// The tasks a place lists under `query`, or `None` for a place that is not a list of tasks.
+pub fn listing(snapshot: &Snapshot, place: &Place, query: &str, now: &Zoned) -> Option<Result<Rows, LumennaError>> {
     match place {
         Place::Today | Place::Blocks => None,
-        _ => Some(lists::tasks(snapshot, &place.query(), now)),
+        _ => Some(lists::tasks(snapshot, query, now)),
     }
 }
 
@@ -80,13 +87,16 @@ pub fn view(model: &Model) -> ViewModel {
     let Some(store) = &model.store else {
         return ViewModel { place: Some(place.clone()), title: place.title(), ..ViewModel::default() };
     };
-    let list = listing(&store.snapshot, &place, &store.now).map(|found| match found {
+    // The rows of the last query that read; why the one typed does not, if it does not.
+    let refusal = lumenna_records::resolve::list_query(&store.snapshot, &model.query()).err().map(|e| e.message().to_owned());
+    let list = listing(&store.snapshot, &place, &model.shown_query(), &store.now).map(|found| match found {
         Ok(rows) => ListView {
             items: list::items(&rows, &model.folded),
+            announcement: rows.announcement.clone(),
             empty: rows.empty.clone(),
             query: rows.query.clone(),
             notices: rows.notices.clone(),
-            refusal: None,
+            refusal,
         },
         Err(error) => ListView { refusal: Some(error.message().to_owned()), ..ListView::default() },
     });
@@ -95,6 +105,8 @@ pub fn view(model: &Model) -> ViewModel {
         sidebar: sidebar(&store.snapshot, &store.now),
         title: place.title(),
         quick_add: place.quick_add_prefix(),
+        query: model.query(),
+        add_refused: model.add_refused.clone(),
         place: Some(place),
         list,
         focus: model.focus.clone(),

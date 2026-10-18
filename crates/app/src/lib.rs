@@ -75,6 +75,9 @@ pub enum Event {
     Open(Place),
     /// The person moved to a row.
     Focus(String),
+    /// The filter typed above the list, in place of the place's own query; empty for the
+    /// place's own again.
+    Filter(String),
     /// Run an action a row offered: from its menu, a button, a swipe.
     Perform(Action),
     /// Run the first of these kinds the row in hand offers, for a key that means one thing on
@@ -139,6 +142,14 @@ pub struct Model {
     pub folded: BTreeSet<String>,
     /// The question open, if any.
     pub open: Option<Open>,
+    /// The filter typed above the list, while the person stays in this place.
+    pub filter: Option<String>,
+    /// The last filter typed that read, whose rows stay shown while one being typed does not.
+    pub read: Option<String>,
+    /// A quick-add line on its way to the host.
+    pub adding: bool,
+    /// Why the last quick-add line was refused: the line stays, to be put right.
+    pub add_refused: Option<String>,
 }
 
 impl Model {
@@ -146,10 +157,20 @@ impl Model {
         self.place.clone().unwrap_or(Place::Tasks)
     }
 
+    /// The query typed: the filter, or the place's own.
+    fn query(&self) -> String {
+        self.filter.clone().unwrap_or_else(|| self.place().query())
+    }
+
+    /// The query whose rows are shown: the last that read.
+    fn shown_query(&self) -> String {
+        self.read.clone().unwrap_or_else(|| self.place().query())
+    }
+
     /// The rows shown in the place open, if it is a list of tasks and the store has arrived.
     fn items(&self) -> Option<Vec<Item>> {
         let store = self.store.as_ref()?;
-        let rows = view::listing(&store.snapshot, &self.place(), &store.now)?.ok()?;
+        let rows = view::listing(&store.snapshot, &self.place(), &self.shown_query(), &store.now)?.ok()?;
         Some(list::items(&rows, &self.folded))
     }
 
@@ -226,6 +247,7 @@ impl Lumenna {
         if let Some(store) = store {
             model.store = Some(store);
         }
+        let adding = std::mem::take(&mut model.adding);
         match result {
             Ok(change) => {
                 model.open = None;
@@ -238,6 +260,9 @@ impl Lumenna {
             }
             Err(error) => {
                 model.settle();
+                if adding {
+                    model.add_refused = Some(error.message().to_owned());
+                }
                 // A refused answer stays in its question, with the reason.
                 if let Some(open) = &mut model.open {
                     open.refusal = Some(error.message().to_owned());
@@ -265,6 +290,8 @@ impl App for Lumenna {
             }
             Event::Open(place) => {
                 model.place = Some(place);
+                model.filter = None;
+                model.read = None;
                 model.focus = None;
                 model.position = 0;
                 model.open = None;
@@ -277,6 +304,17 @@ impl App for Lumenna {
                     model.position = at;
                 }
                 Command::done()
+            }
+            Event::Filter(text) => {
+                model.filter = (!text.trim().is_empty()).then_some(text);
+                let reads = model.store.as_ref().is_some_and(|store| {
+                    lumenna_records::resolve::list_query(&store.snapshot, &model.query()).is_ok()
+                });
+                if reads {
+                    model.read = model.filter.clone();
+                }
+                model.settle();
+                render()
             }
             Event::Perform(action) => self.perform(action, model),
             Event::Run(kinds) => {
@@ -315,13 +353,22 @@ impl App for Lumenna {
                 model.open = None;
                 render()
             }
-            Event::QuickAdd(text) => host(HostRequest::AddTask { text }),
+            Event::QuickAdd(text) => {
+                model.adding = true;
+                model.add_refused = None;
+                host(HostRequest::AddTask { text })
+            }
             Event::Undo => host(HostRequest::Undo),
             Event::Redo => host(HostRequest::Redo),
             Event::Answered(HostAnswer::Wrote(result, store)) => self.wrote(*result, store, model),
             Event::Answered(HostAnswer::Offered(result)) => {
                 let Some(open) = &mut model.open else { return Command::done() };
                 match result {
+                    // Nothing to pick: the question closes, and why is all that is said.
+                    Ok(choices) if choices.choices.is_empty() => {
+                        model.open = None;
+                        render().and(say(choices.announcement))
+                    }
                     Ok(choices) => {
                         let said = choices.announcement.clone();
                         open.choices = Some(choices);

@@ -106,6 +106,7 @@ fn a_key_the_row_does_not_offer_says_why_and_changes_nothing() {
 #[test]
 fn a_pick_offers_what_the_host_says_and_a_refused_answer_stays_in_its_question() {
     let mut app = App::new();
+    Lumenna::open(app.profile.to_str().unwrap()).unwrap().add_project("Work", None).unwrap();
     app.add("Buy milk");
     let shell = app.send(Event::Run(vec![ActionKind::MoveToProject]));
     let asking = app.view().asking.expect("the pick is open");
@@ -207,4 +208,50 @@ fn putting_a_task_in_a_block_asks_how_long_once_the_block_is_picked() {
     let shell = app.send(Event::Answer(Answer::Text { text: "45m".to_owned() }));
     assert_eq!(app.view().asking, None);
     assert!(said(&shell).iter().any(|s| s.contains("Deep work")), "{shell:?}");
+}
+
+#[test]
+fn a_pick_with_nothing_to_offer_closes_and_says_why() {
+    let mut app = App::new();
+    app.add("Write the report");
+    let shell = app.send(Event::Run(vec![ActionKind::PutInBlock]));
+    assert_eq!(app.view().asking, None);
+    assert_eq!(said(&shell).len(), 1, "{shell:?}");
+    assert!(said(&shell)[0].contains("no work blocks"), "{shell:?}");
+}
+
+#[test]
+fn a_filter_typed_replaces_the_places_query_until_the_person_goes_elsewhere() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.add("Call the bank p1");
+    app.send(Event::Filter("p1".to_owned()));
+    assert_eq!(app.titles(), ["Call the bank"]);
+    assert_eq!(app.view().focus, Some(app.id_of("Call the bank")));
+    app.send(Event::Filter("due before".to_owned()));
+    let list = app.view().list.unwrap();
+    assert!(list.refusal.is_some(), "a filter still being typed says why it does not read");
+    assert_eq!(app.titles(), ["Call the bank"], "and the rows of the last that did stay");
+    app.send(Event::Open(lumenna_records::places::Place::Tasks));
+    assert_eq!(app.titles().len(), 2);
+    assert_eq!(app.view().query, "");
+}
+
+#[test]
+fn a_tick_after_a_change_has_been_taken_in_finds_nothing_new() {
+    let mut app = App::new();
+    let elsewhere = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    elsewhere
+        .add_block(lumenna_host::NewBlock {
+            title: "Commute".to_owned(),
+            at: "08:00".to_owned(),
+            minutes: 60,
+            date: Some("today".to_owned()),
+            kind: "break".to_owned(),
+            ..lumenna_host::NewBlock::default()
+        })
+        .unwrap();
+    assert_eq!(app.session.tick(), [Shell::Render]);
+    assert!(app.session.tick().is_empty());
+    assert!(app.session.tick().is_empty());
 }

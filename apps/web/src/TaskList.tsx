@@ -1,89 +1,59 @@
-// Tasks, with the filter above them.
+// Tasks, with the filter above them, as the app shows them (crates/app).
 //
-// A React Aria tree, so a subtask's level and every row's position are the tree's to say. Each
-// row's actions are the core's, in its menu (the Menu key, Shift+F10, a right-click, or
-// Actions). Space runs Mark Done, Mark Not Done or Restore, whichever the row has; Delete runs
-// what removes it — Move to Trash, or in the trash Delete from Trash — and Enter opens its
-// details. After a change, focus goes back to the same task if it is still listed, and
-// otherwise to whatever now holds its place.
+// A React Aria tree, so a subtask's level and every row's position are the tree's to say. What
+// is listed, what is folded and which row is in hand are the app's: the tree draws the screen
+// and sends back what the person did. Each row's actions are the core's, in its menu (the Menu
+// key, Shift+F10, a right-click, or Actions). Space runs Mark Done, Mark Not Done or Restore,
+// whichever the row has; Delete what removes it; Enter opens its details. After a change focus
+// goes where the app puts it — the same task if it is still listed, else whatever now holds its
+// place — and only then is the change said.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { Button, Collection, Input, Label, TextField, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
-import { core } from "./core";
-import type { Action, ActionKind, Line, Place } from "./core";
-import { byKind, perform, REMOVING } from "./actions";
+import type { Action, ActionKind, Event, Screen, ShownItem } from "./core";
+import { byKind, REMOVING } from "./actions";
 import { useCommand } from "./commands";
 import { asksForMenu, RowMenu } from "./RowMenu";
-import { rowKey, useLanding } from "./landing";
-import { say } from "./say";
-import { nest, parents } from "./tree";
+import { landOn, rowKey } from "./landing";
+import { run, sayAll, send } from "./session";
+import type { Form } from "./session";
+import { nest } from "./tree";
 import type { Node } from "./tree";
 
-export function TaskList(props: {
-  revision: number;
-  place: Place;
-  title: string;
-  query: string;
-  selected: string | undefined;
-  onSelect: (id: string | undefined) => void;
-  onOpen: () => void;
-  onChanged: () => void;
-}) {
-  const trash = props.place === "Trash";
-  const [filter, setFilter] = useState(props.query);
-  const [lines, setLines] = useState<Line[]>([]);
-  const [readback, setReadback] = useState("");
-  const [empty, setEmpty] = useState("");
-  const [failed, setFailed] = useState(false);
-  const [collapsed, setCollapsed] = useState<Set<Key>>(new Set());
+/** What Space runs on a row: whichever of these it has. */
+const CHECKING: ActionKind[] = ["mark_done", "mark_not_done", "restore"];
+
+export function TaskList(props: { screen: Screen; onOpen: () => void; onForm: Form; onChanged: () => void }) {
+  const { screen } = props;
+  const list = screen.list;
+  const trash = screen.place === "Trash";
+  const items = useMemo(() => list?.items ?? [], [list]);
+  const [filter, setFilter] = useState(screen.query);
   const tree = useRef<HTMLDivElement>(null);
   const filterField = useRef<HTMLInputElement>(null);
-
-  useEffect(() => setFilter(props.query), [props.query]);
-
-  useEffect(() => {
-    let current = true;
-    core.tasks(filter, trash).then(
-      (found) => {
-        if (!current) return;
-        setLines(found.lines);
-        setReadback(found.readback);
-        setFailed(false);
-        setEmpty(found.empty ?? "");
-      },
-      // A filter still being typed may not read yet: the rows stay, and the readback says why.
-      (error: Error) => {
-        if (!current) return;
-        setReadback(error.message);
-        setFailed(true);
-      },
-    );
-    return () => {
-      current = false;
-    };
-  }, [filter, trash, props.revision]);
-
-  const nodes = useMemo(() => nest(lines, (line) => line.row.id, (line) => line.row.depth), [lines]);
-  const expanded = useMemo(() => new Set<Key>(parents(nodes).filter((id) => !collapsed.has(id))), [nodes, collapsed]);
-
-  const ids = useMemo(() => lines.map((line) => line.row.id), [lines]);
-  const land = useLanding(tree, ids, props.onSelect);
-
   const [menu, setMenu] = useState(false);
 
-  // Runs one of a row's actions; Edit Details is the details beside the list.
-  const run = async (action: Action) => {
-    const index = Math.max(0, lines.findIndex((l) => l.row.id === action.target));
-    const done = await perform(action, () => {
-      props.onSelect(action.target);
-      props.onOpen();
-    });
-    if (!done) return;
-    land(action.target, index);
+  // A new place starts from its own query.
+  useEffect(() => setFilter(screen.query), [screen.place]);
+
+  const nodes = useMemo(() => nest(items, (item) => item.row.id, (item) => item.row.depth), [items]);
+  const expanded = useMemo(() => new Set<Key>(items.filter((item) => item.row.expanded).map((item) => item.row.id)), [items]);
+  const inHand = items.find((item) => item.row.id === screen.focus);
+
+  /** Runs `event` through the app from this list: focus where it lands, then what it said. */
+  const act = async (event: Event) => {
+    const turn = await run(event, props.onForm);
+    await landOn(tree.current, turn.screen.focus ?? undefined);
+    sayAll(turn.said);
     props.onChanged();
-    say(done.said);
+  };
+
+  /** Runs one of the row `id`'s kinds, with that row in hand. */
+  const onRow = async (id: string, kinds: ActionKind[]) => {
+    await send({ Focus: id });
+    await act({ Run: kinds });
   };
 
   // Filter Tasks: the filter, all of it selected so typing replaces it. Not in the trash.
@@ -93,13 +63,10 @@ export function TaskList(props: {
     filterField.current.select();
   });
 
-  // The Task menu's commands, on the task in hand here, so focus lands as a row's own action
-  // does; before the details' copy of them.
+  // The Task menu's commands, on the task in hand here, before the details' copy of them.
   const onSelected = (...kinds: ActionKind[]) => () => {
-    const line = lines.find((l) => l.row.id === props.selected);
-    const action = line && byKind(line.row.actions, ...kinds);
-    if (!action) return false;
-    void run(action);
+    if (!inHand || !byKind(inHand.row.actions, ...kinds)) return false;
+    void act({ Run: kinds });
   };
   useCommand("mark-done", onSelected("mark_done", "mark_not_done"), 1);
   useCommand("put-in-block", onSelected("put_in_block"), 1);
@@ -107,52 +74,54 @@ export function TaskList(props: {
 
   const keys = (event: KeyboardEvent) => {
     const id = rowKey(event);
-    const line = lines.find((l) => l.row.id === id);
-    if (!line) return;
+    if (!id || !items.some((item) => item.row.id === id)) return;
     if (asksForMenu(event)) {
       event.preventDefault();
-      props.onSelect(line.row.id);
-      setMenu(true);
+      void send({ Focus: id }).then(() => setMenu(true));
       return;
     }
-    const action =
-      event.key === " "
-        ? byKind(line.row.actions, "mark_done", "mark_not_done", "restore")
-        : event.key === "Delete"
-          ? byKind(line.row.actions, ...REMOVING)
-          : undefined;
-    if (!action) return;
+    const kinds = event.key === " " ? CHECKING : event.key === "Delete" ? REMOVING : undefined;
+    if (!kinds) return;
     event.preventDefault();
     event.stopPropagation();
-    void run(action);
+    void onRow(id, kinds);
   };
 
   const rightClick = (event: MouseEvent) => {
     const id = rowKey(event);
     if (!id) return;
     event.preventDefault();
-    props.onSelect(id);
-    setMenu(true);
+    void send({ Focus: id }).then(() => setMenu(true));
   };
 
   const choose = (selection: Selection) => {
     if (selection === "all") return;
     const [chosen] = [...selection];
-    props.onSelect(chosen === undefined ? undefined : String(chosen));
+    if (chosen !== undefined) void send({ Focus: String(chosen) });
+  };
+
+  // Left and Right fold a row: the row's own Expand or Collapse, run through the app.
+  const fold = (keys: Set<Key>) => {
+    const changed = items.find((item) => item.row.expanded !== undefined && item.row.expanded !== keys.has(item.row.id));
+    const action = changed && byKind(changed.row.actions, "expand", "collapse");
+    if (action) void act({ Perform: action });
   };
 
   return (
     <>
-      <h2>{props.title}</h2>
+      <h2>{screen.title}</h2>
       {!trash && (
         <TextField
           className="field"
           value={filter}
-          onChange={setFilter}
+          onChange={(text) => {
+            setFilter(text);
+            void send({ Filter: text });
+          }}
           onKeyDown={(event) => {
             // Finishing the filter says what it found, then goes to it.
-            if (event.key === "Enter") {
-              say(readback);
+            if (event.key === "Enter" && list) {
+              sayAll([list.refusal ?? list.readback]);
               tree.current?.querySelector<HTMLElement>('[role="row"]')?.focus();
             }
           }}
@@ -163,72 +132,72 @@ export function TaskList(props: {
       )}
       {/* An empty list says so once, in its own words below; a filter's problem always shows. */}
       <p className="quiet" id="readback">
-        {lines.length > 0 || failed ? readback : ""}
+        {list?.refusal ?? (items.length > 0 ? list?.readback : "")}
       </p>
       <div className="buttons">
         <RowMenu
-          actions={lines.find((l) => l.row.id === props.selected)?.row.actions ?? []}
-          onAction={(action) => void run(action)}
+          actions={inHand?.row.actions ?? []}
+          onAction={(action: Action) => void act({ Perform: action })}
           isOpen={menu}
           onOpenChange={setMenu}
         />
       </div>
       {/* Space and Delete are caught on the way down, before the tree takes Space for selection. */}
       <div onKeyDownCapture={keys} onContextMenu={rightClick}>
-      <Tree
-        ref={tree}
-        aria-label={props.title}
-        aria-describedby="readback"
-        items={nodes}
-        selectionMode="single"
-        selectionBehavior="replace"
-        disallowEmptySelection
-        selectedKeys={props.selected ? [props.selected] : []}
-        onSelectionChange={choose}
-        expandedKeys={expanded}
-        onExpandedChange={(keys) => setCollapsed(new Set(parents(nodes).filter((id) => !keys.has(id))))}
-        onAction={() => props.onOpen()}
-        renderEmptyState={() => <p className="quiet">{empty}</p>}
-      >
-        {function item(node: Node<Line>) {
-          const done = byKind(node.item.row.actions, "mark_done", "mark_not_done");
-          return (
-            <TreeItem id={node.id} textValue={node.item.text}>
-              <TreeItemContent>
-                {({ hasChildItems }) => (
-                  <div className="row">
-                    {hasChildItems && (
-                      <Button slot="chevron" className="chevron">
-                        ›
-                      </Button>
-                    )}
-                    {/* For a pointer: Mark Done (or not done) at a click, as a sighted user looks
-                        for it. Hidden from screen readers and out of the tab order, where Space and
-                        the row's menu already do it and the row says its state; its own pointer
-                        events stop here, so the row behind it is neither selected nor opened. */}
-                    {done && (
-                      <span
-                        className="done-box"
-                        aria-hidden="true"
-                        data-checked={done.kind === "mark_not_done" || undefined}
-                        title={done.sentence ?? done.title}
-                        onPointerDown={(event) => event.stopPropagation()}
-                        onPointerUp={(event) => event.stopPropagation()}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void run(done);
-                        }}
-                      />
-                    )}
-                    {node.item.text}
-                  </div>
-                )}
-              </TreeItemContent>
-              <Collection items={node.children}>{item}</Collection>
-            </TreeItem>
-          );
-        }}
-      </Tree>
+        <Tree
+          ref={tree}
+          aria-label={screen.title}
+          aria-describedby="readback"
+          items={nodes}
+          selectionMode="single"
+          selectionBehavior="replace"
+          disallowEmptySelection
+          selectedKeys={screen.focus ? [screen.focus] : []}
+          onSelectionChange={choose}
+          expandedKeys={expanded}
+          onExpandedChange={fold}
+          onAction={() => props.onOpen()}
+          renderEmptyState={() => <p className="quiet">{list?.empty}</p>}
+        >
+          {function item(node: Node<ShownItem>) {
+            const done = byKind(node.item.row.actions, "mark_done", "mark_not_done");
+            return (
+              <TreeItem id={node.id} textValue={node.item.text}>
+                <TreeItemContent>
+                  {({ hasChildItems }) => (
+                    <div className="row">
+                      {hasChildItems && (
+                        <Button slot="chevron" className="chevron">
+                          ›
+                        </Button>
+                      )}
+                      {/* For a pointer: Mark Done (or not done) at a click, as a sighted user looks
+                          for it. Hidden from screen readers and out of the tab order, where Space and
+                          the row's menu already do it and the row says its state; its own pointer
+                          events stop here, so the row behind it is neither selected nor opened. */}
+                      {done && (
+                        <span
+                          className="done-box"
+                          aria-hidden="true"
+                          data-checked={done.kind === "mark_not_done" || undefined}
+                          title={done.sentence ?? done.title}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onPointerUp={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void onRow(node.id, [done.kind]);
+                          }}
+                        />
+                      )}
+                      {node.item.text}
+                    </div>
+                  )}
+                </TreeItemContent>
+                <Collection items={node.children}>{item}</Collection>
+              </TreeItem>
+            );
+          }}
+        </Tree>
       </div>
     </>
   );

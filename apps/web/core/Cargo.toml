@@ -13,6 +13,10 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 lumenna-host = { path = "../../../crates/host", features = ["wasm", "sync"] }
+# The screens' state, run beside the store in this worker.
+lumenna-app = { path = "../../../crates/app", features = ["wasm"] }
+lumenna-bridge = { path = "../../../crates/bridge" }
+lumenna-records.workspace = true
 # Timers on the browser's event loop, for noticing a pairing given up.
 n0-future = "0.3"
 # The places and wording the desktop apps share, so the web says what they say.
