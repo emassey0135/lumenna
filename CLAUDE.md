@@ -149,8 +149,9 @@ turn (the `legacy` tag is the last commit before the move).
   middleware hands its work on through a channel. What is left for a shell is drawing, saying
   (`Shell::Announce`, and `Heading` for a day newly shown, in the shell's own words for the
   day), saving a file and showing a notification: each batch the app leaves later arrives
-  through the layer's callback. `Busy` counts the store's work under way, so a shell can wait
-  until the app is still (`Session`, natively, waits on every call).
+  through the layer's callback, and a shell draws it as it comes, never waiting on the thread
+  it draws on. `Busy` counts the store's work under way, so a test can wait until the app is
+  still: the flow tests' own `Session` waits on every call.
 - **The person can move on before a write is answered**: a write's answer that comes after an
   `Event::Focus` the person made since they last acted leaves the row they moved to in hand
   (`Model::moves`, `acted_at`), rather than pulling them to the row the write would have put

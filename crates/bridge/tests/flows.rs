@@ -1,13 +1,15 @@
 //! Whole flows through the app and a real store: events in, what is shown and said out.
 
-use lumenna_app::{BlockEvent, DayMove, DetailsEvent, Event, Item, ProposalEvent, SettingsEvent, Typing, ViewModel};
-use lumenna_records::places::Place;
 use std::sync::{Arc, Mutex};
 
-use crux_core::middleware::{EffectMiddleware, EffectResolver};
-use lumenna_app::{NetworkAnswer, NetworkRequest};
-use lumenna_bridge::{Session, Shell};
+use crux_core::middleware::{EffectMiddleware, EffectResolver, Layer};
+use lumenna_app::{
+    BlockEvent, DayMove, DetailsEvent, Effect, Event, Item, NetworkAnswer, NetworkRequest, ProposalEvent, SettingsEvent,
+    Typing, ViewModel,
+};
+use lumenna_bridge::{Shell, Stack, Store, shell, stack};
 use lumenna_host::Lumenna;
+use lumenna_records::places::Place;
 use lumenna_records::{ActionKind, Answer};
 
 /// A request of the network: its id, what it asks, and the way to answer it until answered.
@@ -27,6 +29,61 @@ impl EffectMiddleware for StandIn {
         let mut asked = self.0.0.lock().unwrap();
         let id = asked.len() as u64;
         asked.push((id, request, Some(resolver)));
+    }
+}
+
+/// The app and its store, each call waiting until the app is still, so a test reads each event's
+/// whole outcome in order: the store worker on a thread of its own.
+struct Session<N: EffectMiddleware<Op = NetworkRequest> + 'static> {
+    stack: Stack<N>,
+    store: Store,
+    /// What the app left for the shell after the call that led to it had returned.
+    later: Arc<Mutex<Vec<Effect>>>,
+}
+
+impl<N: EffectMiddleware<Op = NetworkRequest> + 'static> Session<N> {
+    /// The app over this store, started: it is watching the store, and has it.
+    #[must_use]
+    fn new(lumenna: Arc<Lumenna>, network: N) -> (Self, Vec<Shell>) {
+        let (store, worker) = Store::new(lumenna);
+        std::thread::spawn(move || futures::executor::block_on(worker.run()));
+        let session = Self { stack: stack(&store, network), store, later: Arc::default() };
+        let shell = session.send(Event::Start);
+        (session, shell)
+    }
+
+    /// Runs an event, and says what it left for the shell once the app is still.
+    fn send(&self, event: Event) -> Vec<Shell> {
+        let now = self.stack.update(event, self.later());
+        self.settled(now)
+    }
+
+    /// Looks for a change made elsewhere, or a new minute ([`Store::tick`]).
+    fn tick(&self) -> Vec<Shell> {
+        self.store.tick();
+        self.settled(Vec::new())
+    }
+
+    /// What the app has left for the shell since, once it is still: after the network answered.
+    fn settle(&self) -> Vec<Shell> {
+        self.settled(Vec::new())
+    }
+
+    /// What to draw.
+    #[must_use]
+    fn view(&self) -> ViewModel {
+        self.stack.view()
+    }
+
+    fn later(&self) -> impl Fn(Vec<Effect>) + Send + Sync + 'static {
+        let later = Arc::clone(&self.later);
+        move |effects| later.lock().unwrap().extend(effects)
+    }
+
+    fn settled(&self, mut effects: Vec<Effect>) -> Vec<Shell> {
+        self.store.busy().wait();
+        effects.append(&mut self.later.lock().unwrap());
+        shell(effects)
     }
 }
 
@@ -774,7 +831,6 @@ fn focus_lands_when_the_app_moves_it_and_never_for_the_persons_own_move() {
 #[test]
 fn a_write_answered_after_the_person_moved_leaves_the_row_they_moved_to_in_hand() {
     use crux_core::Core;
-    use lumenna_app::Effect;
     // The core alone, answered by hand, so the write's answer can come after the move.
     let dir = tempfile::tempdir().unwrap();
     let lumenna = Lumenna::open(dir.path().join("profile").to_str().unwrap()).unwrap();

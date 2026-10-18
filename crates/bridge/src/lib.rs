@@ -10,8 +10,8 @@
 //! notification ([`Shell`]).
 //!
 //! [`answer`] is the whole of what the host does for the app. [`Busy`] counts the store's
-//! work under way, so a shell or a test can wait until the app is still; [`Session`] does that
-//! for a native caller that wants each event's whole outcome at once.
+//! work under way, so a shell or a test can wait until the app is still. No shell waits for it
+//! on the thread it draws on: each draws what the app leaves as it arrives.
 
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 
@@ -29,7 +29,7 @@ use lumenna_store::ChangeHash;
 /// What the shell does, once an event has run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Shell {
-    /// Draw [`Session::view`] again.
+    /// Draw the view again.
     Render,
     /// Say this, once focus is where the view model puts it.
     Announce(String),
@@ -202,8 +202,8 @@ impl Busy {
         *self.0.hook.lock().unwrap_or_else(PoisonError::into_inner) = Some(Arc::new(hook));
     }
 
-    /// Waits until nothing is under way. Never on a browser's one thread, which would wait for
-    /// itself.
+    /// Waits until nothing is under way: for tests. Never on a browser's one thread, which would
+    /// wait for itself.
     #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub fn wait(&self) {
         let mut under_way = self.0.under_way.lock().unwrap_or_else(PoisonError::into_inner);
@@ -348,61 +348,4 @@ where
         .handle_effects_using(Watching(store.clone()))
         .handle_effects_using(Writing(store.clone()))
         .handle_effects_using(network)
-}
-
-/// The app and its store for a native caller that wants each event's whole outcome at once:
-/// the store worker on a thread of its own, and every call waiting until the app is still.
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-pub struct Session<N: EffectMiddleware<Op = NetworkRequest> + 'static> {
-    stack: Stack<N>,
-    store: Store,
-    /// What the app left for the shell after the call that led to it had returned.
-    later: Arc<Mutex<Vec<Effect>>>,
-}
-
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-impl<N: EffectMiddleware<Op = NetworkRequest> + 'static> Session<N> {
-    /// The app over this store, started: it is watching the store, and has it.
-    #[must_use]
-    pub fn new(lumenna: Arc<Lumenna>, network: N) -> (Self, Vec<Shell>) {
-        let (store, worker) = Store::new(lumenna);
-        std::thread::spawn(move || futures::executor::block_on(worker.run()));
-        let session = Self { stack: stack(&store, network), store, later: Arc::default() };
-        let shell = session.send(lumenna_app::Event::Start);
-        (session, shell)
-    }
-
-    /// Runs an event, and says what it left for the shell once the app is still.
-    pub fn send(&self, event: lumenna_app::Event) -> Vec<Shell> {
-        let now = self.stack.update(event, self.later());
-        self.settled(now)
-    }
-
-    /// Looks for a change made elsewhere, or a new minute ([`Store::tick`]).
-    pub fn tick(&self) -> Vec<Shell> {
-        self.store.tick();
-        self.settled(Vec::new())
-    }
-
-    /// What the app has left for the shell since, once it is still: after the network answered.
-    pub fn settle(&self) -> Vec<Shell> {
-        self.settled(Vec::new())
-    }
-
-    /// What to draw.
-    #[must_use]
-    pub fn view(&self) -> lumenna_app::ViewModel {
-        self.stack.view()
-    }
-
-    fn later(&self) -> impl Fn(Vec<Effect>) + Send + Sync + 'static {
-        let later = Arc::clone(&self.later);
-        move |effects| later.lock().unwrap_or_else(PoisonError::into_inner).extend(effects)
-    }
-
-    fn settled(&self, mut effects: Vec<Effect>) -> Vec<Shell> {
-        self.store.busy().wait();
-        effects.append(&mut self.later.lock().unwrap_or_else(PoisonError::into_inner));
-        shell(effects)
-    }
 }
