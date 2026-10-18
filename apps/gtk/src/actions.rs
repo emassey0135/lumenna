@@ -11,9 +11,9 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::gio;
 use lumenna_desktop::speech::{self, Clock as _};
-use lumenna_surface::actions::{Action, ActionKind, Answer, Question, Subject};
-use lumenna_surface::places::Place;
-use lumenna_surface::{Change, block_fields, day_block_fields};
+use lumenna_host::actions::{Action, ActionKind, Answer, Question, Subject};
+use lumenna_host::places::Place;
+use lumenna_host::{Change, block_fields, day_block_fields};
 
 use crate::block_form::{self, Purpose};
 use crate::core::sentence;
@@ -173,7 +173,7 @@ async fn answer(app: &App, from: &Asking, action: &Action, typed: Option<String>
             let index = prompts::pick(window, title, "C_hoices", &options, yes).await?;
             let id = choices.choices.get(index)?.id.clone();
             let length = match length {
-                Some(_) => Some(ask_text(window, &lumenna_surface::length_question(), None).await?),
+                Some(_) => Some(ask_text(window, &lumenna_host::length_question(), None).await?),
                 None => None,
             };
             Some(Answer::Picked { id, length })
@@ -269,7 +269,7 @@ async fn edit_series(app: &Rc<App>, series: &str) {
         Ok(shown) => shown,
         Err(error) => return app.fail(&sentence(&error)),
     };
-    let unsayable = lumenna_surface::unsayable_repeat_note(shown.clone());
+    let unsayable = lumenna_host::unsayable_repeat_note(shown.clone());
     let purpose = Purpose::Series { id: shown.id.clone() };
     let fields = block_fields(shown);
     let window = app.window.clone().upcast::<gtk::Window>();
@@ -286,7 +286,7 @@ fn finish(app: &App, change: &Change) {
 /// A new saved filter: its name, then its query, as the core asks them.
 async fn new_filter(app: &Rc<App>) {
     let window: gtk::Window = app.window.clone().upcast();
-    let questions = lumenna_surface::new_filter_questions();
+    let questions = lumenna_host::new_filter_questions();
     let [name_question, query_question] = questions.as_slice() else { return };
     let Some(name) = ask_text(&window, name_question, None).await else { return };
     let mut query = String::new();

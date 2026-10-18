@@ -6,7 +6,7 @@
 //! buttons and its own activation come back here only while the app runs, which is whenever
 //! it gives reminders: one left in the notification centre after it exits does nothing.
 
-use lumenna_surface::DueReminder;
+use lumenna_host::DueReminder;
 use windows::Data::Xml::Dom::XmlDocument;
 use windows::Foundation::TypedEventHandler;
 use windows::UI::Notifications::{ToastActivatedEventArgs, ToastNotification, ToastNotificationManager, ToastNotifier};

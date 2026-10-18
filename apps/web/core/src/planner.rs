@@ -3,7 +3,7 @@
 //! and carrying a block's short work forward from its end. Each export is one surface call,
 //! with times in this browser's clock.
 
-use lumenna_surface::{
+use lumenna_host::{
     ActionKind, Change, Choices, DayPins, DayPlan, DayPlanned, ProposalWords, ProposedSitting, Replan, ReplanChange,
     ReplanPins, Replanned, TimeStyle,
 };
@@ -96,5 +96,5 @@ impl Core {
 /// Every word of Replan from Now's screen (`replan`) or Plan the Day's (`plan_day`).
 #[wasm_bindgen(js_name = proposalWords)]
 pub fn proposal_words(kind: Ts<ActionKind>) -> Out<ProposalWords> {
-    js(&lumenna_surface::proposal_words(kind.to_rust()?))
+    js(&lumenna_host::proposal_words(kind.to_rust()?))
 }

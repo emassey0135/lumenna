@@ -15,7 +15,7 @@ use std::sync::Arc;
 use futures_channel::oneshot;
 use gtk::prelude::*;
 use gtk::{gdk, glib};
-use lumenna_surface::{BlockFields, BlockScope, Change, Lumenna, block_defaults, block_edit, new_block};
+use lumenna_host::{BlockFields, BlockScope, Change, Lumenna, block_defaults, block_edit, new_block};
 
 use crate::core::sentence;
 use crate::prompts;
@@ -43,7 +43,7 @@ fn mnemonic(key: &str) -> char {
 
 /// The kinds of block, value and name, as the core's form offers them.
 fn kinds() -> Vec<(String, String)> {
-    lumenna_surface::block_form()
+    lumenna_host::block_form()
         .into_iter()
         .find(|f| f.key == "kind")
         .map(|f| f.options.into_iter().map(|o| (o.id, o.title)).collect())
@@ -205,7 +205,7 @@ pub async fn run(
     let entry = |text: &str| gtk::Entry::builder().text(text).activates_default(true).build();
     let kinds = kinds();
     // The core's words for every field; the mnemonics are this app's, none used twice.
-    let fields = lumenna_surface::block_form();
+    let fields = lumenna_host::block_form();
     let words = |key: &str| fields.iter().find(|f| f.key == key);
     let marked = |key: &str| {
         let label = words(key).map_or(key, |f| f.label.as_str());

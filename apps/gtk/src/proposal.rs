@@ -12,8 +12,8 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::{gdk, glib};
 use lumenna_desktop::speech;
-use lumenna_surface::actions::ActionKind;
-use lumenna_surface::{DayPlan, ProposalWords, Replan, proposal_words};
+use lumenna_host::actions::ActionKind;
+use lumenna_host::{DayPlan, ProposalWords, Replan, proposal_words};
 
 use crate::core::sentence;
 use crate::prompts;
@@ -138,7 +138,7 @@ impl Screen {
     }
 
     /// Takes one of the other options: Replan again with its pins, shown in place.
-    fn take(self: &Rc<Self>, app: &App, pins: lumenna_surface::ReplanPins) {
+    fn take(self: &Rc<Self>, app: &App, pins: lumenna_host::ReplanPins) {
         match app.core.lumenna.replan(app.clock.style(), pins, crate::clock::pinned_now()) {
             Ok(replan) => {
                 self.show(Proposal::Replan(replan));
@@ -204,7 +204,7 @@ impl Screen {
 }
 
 /// Asks the core again for the same kind of proposal, keeping what was decided.
-fn ask(app: &App, like: &Proposal) -> lumenna_surface::Result<Proposal> {
+fn ask(app: &App, like: &Proposal) -> lumenna_host::Result<Proposal> {
     let style = app.clock.style();
     match like {
         Proposal::Replan(replan) => app.core.lumenna.replan(style, replan.pins.clone(), crate::clock::pinned_now()).map(Proposal::Replan),

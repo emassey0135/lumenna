@@ -1,7 +1,7 @@
 //! Reminders through the surface: what an app is handed, what it says, and dealing with one.
 
 use jiff::{SignedDuration, Timestamp, Zoned};
-use lumenna_surface::{Lumenna, NewBlock};
+use lumenna_host::{Lumenna, NewBlock};
 
 fn open() -> (tempfile::TempDir, Lumenna) {
     let directory = tempfile::tempdir().unwrap();
@@ -93,13 +93,13 @@ fn what_came_while_nothing_ran_is_one_summary_and_what_is_fresh_is_said_alone() 
     let task = lumenna.add_task("Call the bank").unwrap().affected.tasks[0].clone();
     let due = Zoned::now().checked_sub(SignedDuration::from_mins(40)).unwrap();
     lumenna
-        .edit_task(&task, lumenna_surface::TaskEdit { due: Some(format!("{} {:02}:{:02}", due.date(), due.hour(), due.minute())), ..Default::default() })
+        .edit_task(&task, lumenna_host::TaskEdit { due: Some(format!("{} {:02}:{:02}", due.date(), due.hour(), due.minute())), ..Default::default() })
         .unwrap();
     lumenna.add_reminder(task, "due".to_owned(), 0).unwrap();
     let fresh = lumenna.add_task("Water plants").unwrap().affected.tasks[0].clone();
     let soon = Zoned::now().checked_sub(SignedDuration::from_mins(1)).unwrap();
     lumenna
-        .edit_task(&fresh, lumenna_surface::TaskEdit { due: Some(format!("{} {:02}:{:02}", soon.date(), soon.hour(), soon.minute())), ..Default::default() })
+        .edit_task(&fresh, lumenna_host::TaskEdit { due: Some(format!("{} {:02}:{:02}", soon.date(), soon.hour(), soon.minute())), ..Default::default() })
         .unwrap();
     lumenna.add_reminder(fresh, "due".to_owned(), 0).unwrap();
     let since = Timestamp::now().checked_sub(SignedDuration::from_hours(2)).unwrap().to_string();
@@ -144,17 +144,17 @@ fn a_reminder_is_added_and_removed_through_the_actions_every_app_offers() {
     let series = block_in(&lumenna, "Deep work", 120, None);
     let row = lumenna.list_blocks().unwrap().rows.remove(0);
     let open = row.actions.iter().find(|a| a.title == "Reminders").expect("a block's row opens its reminders");
-    assert_eq!(open.question, lumenna_surface::Question::Form);
+    assert_eq!(open.question, lumenna_host::Question::Form);
     let list = lumenna.reminders_of(series.clone()).unwrap();
     let add = list.actions[0].clone();
     assert_eq!(add.title, "Add Reminder");
-    lumenna.act(add.clone(), lumenna_surface::Answer::Text { text: "10m after end".to_owned() }).unwrap();
-    assert!(lumenna.act(add, lumenna_surface::Answer::Text { text: "when it feels right".to_owned() }).is_err());
+    lumenna.act(add.clone(), lumenna_host::Answer::Text { text: "10m after end".to_owned() }).unwrap();
+    assert!(lumenna.act(add, lumenna_host::Answer::Text { text: "when it feels right".to_owned() }).is_err());
     let list = lumenna.reminders_of(series.clone()).unwrap();
     assert_eq!(list.reminders[0].words, "10 minutes after it ends");
     let remove = list.reminders[0].actions[0].clone();
     assert_eq!(remove.title, "Remove Reminder");
-    lumenna.act(remove, lumenna_surface::Answer::Yes).unwrap();
+    lumenna.act(remove, lumenna_host::Answer::Yes).unwrap();
     assert_eq!(lumenna.reminders_of(series).unwrap().announcement, "1 reminder, the defaults");
 }
 

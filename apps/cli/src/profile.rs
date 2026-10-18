@@ -7,8 +7,8 @@ use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use lumenna_surface::Lumenna;
-use lumenna_surface::words::count_line;
+use lumenna_host::Lumenna;
+use lumenna_host::words::count_line;
 
 use crate::error::{CliError, Result};
 

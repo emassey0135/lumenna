@@ -4,7 +4,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lumenna_surface::{Action, ActionKind, RowView, block_fields, unsayable_repeat_note};
+use lumenna_host::{Action, ActionKind, RowView, block_fields, unsayable_repeat_note};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{NM_DBLCLK, NMHDR, NMTVKEYDOWN, TVN_KEYDOWN, TVN_SELCHANGEDW, WC_STATICW};
 use windows::Win32::UI::Input::KeyboardAndMouse::VK_DELETE;

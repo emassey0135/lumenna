@@ -12,7 +12,7 @@ use std::sync::mpsc::{RecvTimeoutError, Sender, channel};
 use std::sync::Arc;
 use std::time::Duration;
 
-use lumenna_surface::{Lumenna, LumennaError, PairedWith, PairingPrompt, PairingWords, Reach, pairing_words};
+use lumenna_host::{Lumenna, LumennaError, PairedWith, PairingPrompt, PairingWords, Reach, pairing_words};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::WindowsAndMessaging::{

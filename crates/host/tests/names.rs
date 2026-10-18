@@ -1,6 +1,6 @@
 //! Projects, labels and saved filters are reached by name, so each needs one.
 
-use lumenna_surface::Lumenna;
+use lumenna_host::Lumenna;
 
 fn open() -> (tempfile::TempDir, std::sync::Arc<Lumenna>) {
     let directory = tempfile::tempdir().unwrap();

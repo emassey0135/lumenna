@@ -27,14 +27,14 @@ mod profile;
 mod render;
 mod service;
 
-use lumenna_surface::ActionKind;
+use lumenna_host::ActionKind;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 // The envelope `--json` writes is the one every RPC server writes.
-pub(crate) use lumenna_surface::rpc::api;
-use lumenna_surface::{BlockEdit, BlockScope, Direction, MoveTarget, NewBlock, TaskEdit};
+pub(crate) use lumenna_host::rpc::api;
+use lumenna_host::{BlockEdit, BlockScope, Direction, MoveTarget, NewBlock, TaskEdit};
 
 use api::{Outcome, Response};
 use error::{CliError, Result};
@@ -1083,7 +1083,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         }
         Command::End { block } => Response::new(profile.end_block_now(&profile.row(block, "block")?)?),
         Command::Extend { block, by } => {
-            let minutes = lumenna_surface::parse_minutes(by.clone())?;
+            let minutes = lumenna_host::parse_minutes(by.clone())?;
             Response::new(profile.extend_block(&profile.row(block, "block")?, minutes)?)
         }
         Command::EndDay => Response::new(profile.end_day(true)?),
@@ -1102,7 +1102,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         }
         Command::PlanDay { date, leave, apply } => {
             let exclude = leave.iter().map(|row| profile.row(row, "task")).collect::<std::result::Result<Vec<_>, _>>()?;
-            let pins = lumenna_surface::DayPins { exclude, declined: Vec::new() };
+            let pins = lumenna_host::DayPins { exclude, declined: Vec::new() };
             let proposal = profile.propose_day_plan(date.clone(), time_style(profile), pins, None)?;
             match apply.as_deref() {
                 None => Response::new(proposal),
@@ -1116,7 +1116,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
             let series = |rows: &[String]| -> Result<Vec<String>> {
                 rows.iter().map(|row| Ok(profile.row(row, "block")?.split('@').next().unwrap_or_default().to_owned())).collect()
             };
-            let pins = lumenna_surface::ReplanPins { keep: series(keep)?, skip: series(skip)?, ..Default::default() };
+            let pins = lumenna_host::ReplanPins { keep: series(keep)?, skip: series(skip)?, ..Default::default() };
             let mut proposal = profile.replan(time_style(profile), pins, None)?;
             if let Some(n) = option {
                 let taken = proposal.alternatives.get(n.wrapping_sub(1)).ok_or_else(|| {
@@ -1184,8 +1184,8 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
             ReminderCommand::List { target } => Response::new(profile.reminders_of(reminder_target(profile, target)?)?),
             ReminderCommand::Add { target, at, before, after } => {
                 let offset = match (before, after) {
-                    (Some(span), _) => -i32::try_from(lumenna_surface::parse_minutes(span.clone())?).unwrap_or(i32::MAX),
-                    (_, Some(span)) => i32::try_from(lumenna_surface::parse_minutes(span.clone())?).unwrap_or(i32::MAX),
+                    (Some(span), _) => -i32::try_from(lumenna_host::parse_minutes(span.clone())?).unwrap_or(i32::MAX),
+                    (_, Some(span)) => i32::try_from(lumenna_host::parse_minutes(span.clone())?).unwrap_or(i32::MAX),
                     (None, None) => 0,
                 };
                 Response::new(profile.add_reminder(reminder_target(profile, target)?, at.clone(), offset)?)
@@ -1199,7 +1199,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
             }
             ReminderCommand::Dismiss { key, occurrence } => Response::new(profile.dismiss_reminder(key.clone(), occurrence.clone())?),
             ReminderCommand::Snooze { key, occurrence, r#for } => {
-                let minutes = r#for.as_ref().map(|span| lumenna_surface::parse_minutes(span.clone())).transpose()?;
+                let minutes = r#for.as_ref().map(|span| lumenna_host::parse_minutes(span.clone())).transpose()?;
                 Response::new(profile.snooze_reminder(key.clone(), occurrence.clone(), minutes)?)
             }
         },
@@ -1300,7 +1300,7 @@ fn project(profile: &Profile, command: &ProjectCommand) -> Result<Response> {
         }
         ProjectCommand::Rm { name, keep_tasks } => profile.delete_project(name, *keep_tasks)?,
         ProjectCommand::Weight { name, value } => {
-            profile.weigh_project(name, lumenna_surface::parse_weight(value.clone())?)?
+            profile.weigh_project(name, lumenna_host::parse_weight(value.clone())?)?
         }
     }))
 }
@@ -1360,16 +1360,16 @@ fn listing_of(outcome: &Outcome) -> Option<Vec<(String, String)>> {
 /// Asks the question the core puts before the action of `kind` among `actions`, when it
 /// asks one: the same words every client asks. `--yes` answers it; without a terminal to
 /// ask at, a `strict` one is refused and any other goes ahead, as a script expects.
-fn confirmed(actions: Option<Vec<lumenna_surface::Action>>, kind: ActionKind, yes: bool, strict: bool) -> Result<bool> {
+fn confirmed(actions: Option<Vec<lumenna_host::Action>>, kind: ActionKind, yes: bool, strict: bool) -> Result<bool> {
     use std::io::IsTerminal;
     let question = actions.into_iter().flatten().find(|a| a.kind == kind).map(|a| a.question);
-    let Some(lumenna_surface::Question::Confirm { title, message, .. }) = question else { return Ok(true) };
+    let Some(lumenna_host::Question::Confirm { title, message, .. }) = question else { return Ok(true) };
     if yes {
         return Ok(true);
     }
     if !std::io::stdin().is_terminal() {
         if strict {
-            return Err(lumenna_surface::LumennaError::new(format!("{title} Nothing here can ask, so pass --yes")).into());
+            return Err(lumenna_host::LumennaError::new(format!("{title} Nothing here can ask, so pass --yes")).into());
         }
         return Ok(true);
     }
@@ -1380,10 +1380,10 @@ fn confirmed(actions: Option<Vec<lumenna_surface::Action>>, kind: ActionKind, ye
 }
 
 /// The clock a proposal is said in: this device's `clock` setting.
-fn time_style(profile: &Profile) -> lumenna_surface::TimeStyle {
+fn time_style(profile: &Profile) -> lumenna_host::TimeStyle {
     match clock(profile) {
-        render::Clock::TwelveHour => lumenna_surface::TimeStyle::TwelveHour,
-        render::Clock::TwentyFourHour => lumenna_surface::TimeStyle::TwentyFourHour,
+        render::Clock::TwelveHour => lumenna_host::TimeStyle::TwelveHour,
+        render::Clock::TwentyFourHour => lumenna_host::TimeStyle::TwentyFourHour,
     }
 }
 

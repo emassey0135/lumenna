@@ -8,8 +8,8 @@
 
 use std::cell::RefCell;
 
-use lumenna_surface::actions::heading;
-use lumenna_surface::{Action, ActionKind, Answer, Subject, new_filter_questions};
+use lumenna_host::actions::heading;
+use lumenna_host::{Action, ActionKind, Answer, Subject, new_filter_questions};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{
     NMHDR, NMTREEVIEWW, NMTVKEYDOWN, TVN_ITEMEXPANDEDW, TVN_KEYDOWN, TVN_SELCHANGEDW,
@@ -21,7 +21,7 @@ use super::controls::{self, rect};
 use super::tree::{Item, Tree};
 use super::view::Metrics;
 use super::actions;
-use lumenna_surface::places::{self, Place, SidebarEntry, SidebarGroup, SidebarKind};
+use lumenna_host::places::{self, Place, SidebarEntry, SidebarGroup, SidebarKind};
 
 const TREE: u16 = 200;
 pub struct Sidebar {

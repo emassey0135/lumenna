@@ -1,6 +1,6 @@
 //! How paired devices and exports are named and described.
 
-use lumenna_surface::{DeviceView, ExportFormat};
+use lumenna_host::{DeviceView, ExportFormat};
 
 /// A paired device, as its line in the list reads: "Kitchen Mac, macos, last synced 5
 /// minutes ago" — its name and platform, then the status the core words for every app.
@@ -13,7 +13,7 @@ pub fn line(device: &DeviceView, _now: jiff::Timestamp) -> String {
 
 /// How long ago a timestamp was, as a person says it — the core's wording.
 pub fn ago(timestamp: &str, now: jiff::Timestamp) -> String {
-    lumenna_surface::words::ago(timestamp, now)
+    lumenna_host::words::ago(timestamp, now)
 }
 
 /// The exports Settings offers, with what each is for and the extension its file takes.
@@ -84,7 +84,7 @@ mod tests {
             status: Vec::new(),
             actions: Vec::new(),
         };
-        view.status = lumenna_surface::words::device_status(&view, now(), true);
+        view.status = lumenna_host::words::device_status(&view, now(), true);
         view
     }
 

@@ -12,9 +12,9 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gdk, glib};
-use lumenna_surface::places::Place;
+use lumenna_host::places::Place;
 use lumenna_desktop::speech;
-use lumenna_surface::RowView;
+use lumenna_host::RowView;
 
 use crate::core::sentence;
 use crate::actions;
@@ -32,7 +32,7 @@ pub struct TaskList {
 }
 
 impl TaskList {
-    pub fn new(place: Place, lumenna: std::sync::Arc<lumenna_surface::Lumenna>) -> Rc<Self> {
+    pub fn new(place: Place, lumenna: std::sync::Arc<lumenna_host::Lumenna>) -> Rc<Self> {
         let trash = place == Place::Trash;
         let widget = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
@@ -48,7 +48,7 @@ impl TaskList {
         filter.update_property(&[gtk::accessible::Property::Description(
             "Such as p1 & due before: friday, or #Work. Down arrow offers what could come next. Enter goes to what it finds.",
         )]);
-        crate::completion::attach(&filter, lumenna, lumenna_surface::Syntax::Filter);
+        crate::completion::attach(&filter, lumenna, lumenna_host::Syntax::Filter);
         let readback = gtk::Label::builder().xalign(0.0).wrap(true).build();
         let tree = Tree::new(&place.title());
         // The trash is everything deleted, and nothing else: there is no filter to change.

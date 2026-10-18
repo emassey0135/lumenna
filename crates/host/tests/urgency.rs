@@ -1,6 +1,6 @@
 //! Ordering by urgency, and the weights every device ranks by.
 
-use lumenna_surface::Lumenna;
+use lumenna_host::Lumenna;
 
 fn open() -> (tempfile::TempDir, Lumenna) {
     let directory = tempfile::tempdir().unwrap();

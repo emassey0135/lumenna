@@ -26,7 +26,7 @@ sittings** until they are done.
 crates/core/    domain model, queries, mutations, row projection. No I/O, no Automerge.
 crates/parse/   quick-add and filter parsers, and the completion they share.
 crates/store/   Automerge documents + the SQLite file they live in.
-crates/surface/ the command surface: the `Lumenna` object, one method per operation.
+crates/host/ the command surface: the `Lumenna` object, one method per operation.
 crates/ffi/     the library the Swift and Kotlin apps link; re-exports surface over UniFFI.
 crates/sync/    Iroh endpoints, the document sync session, and pairing.
 crates/desktop/ what the Windows, GTK and web apps decide alike: row wording, flat rows as a
@@ -44,7 +44,7 @@ apps/web/       the web client: the core in WASM (core/), TypeScript and React A
 
 ## The command surface
 
-`crates/surface` is every operation, once, typed. `Lumenna` holds the open store; its
+`crates/host` is every operation, once, typed. `Lumenna` holds the open store; its
 methods take text identifiers and plain records and return records (`types.rs`). The CLI
 calls it, `lum rpc` serialises what it returns, the desktop apps link it, and UniFFI
 exports it unchanged to Swift and Kotlin (the `uniffi` feature, built by `crates/ffi`). No
@@ -138,7 +138,7 @@ real profile.
 
 ## The RPC server
 
-The surface over JSON-RPC (`crates/surface/src/rpc`, the `rpc` feature), for Emacs and the
+The surface over JSON-RPC (`crates/host/src/rpc`, the `rpc` feature), for Emacs and the
 BTSpeak app. `lum rpc` serves it on stdio to one client. Whichever process holds the
 device's sync endpoint — `lum`'s daemon, or the Mac, GTK or Windows app — serves it at the
 profile's address (`surface::endpoint`: `<profile>/lumenna.sock`, or on Windows a named
@@ -833,7 +833,7 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   Mac a menu item that asks ends in "…". Settings screens and the priority picker are built
   from the core's descriptions (`Setting.kind`, `priorities()`). Folding is
   `Shared/Folding.swift`, its UIKit swipe action an iOS extension.
-- **The device list builds without Iroh** (`crates/surface/src/devices.rs`): the watch is in
+- **The device list builds without Iroh** (`crates/host/src/devices.rs`): the watch is in
   no list and syncs with no device directly, so nothing is "this device" and a device's
   status says only its version (`device_status(…, direct: false)`).
 - **A row offers its actions when tapped** where the phone has more swipe actions than a
@@ -856,7 +856,7 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 
 ## The Windows app
 
-`apps/windows/`: Rust over `windows-rs`, linking `lumenna-surface` directly, binary
+`apps/windows/`: Rust over `windows-rs`, linking `lumenna-host` directly, binary
 `lumenna.exe`. Everything Win32 is in `src/win/` behind `cfg(windows)`.
 
 - **Building on ARM64 Windows needs clang on `PATH`** for `ring`: Visual Studio's
@@ -925,7 +925,7 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 
 ## The GTK app
 
-`apps/gtk/`: Rust over `gtk4-rs`, linking `lumenna-surface` directly, binary
+`apps/gtk/`: Rust over `gtk4-rs`, linking `lumenna-host` directly, binary
 `lumenna-gtk`.
 
 - **Every list is a `GtkListView` that says it is a tree** (`tree.rs`). `GtkTreeView`

@@ -3,7 +3,7 @@
 //! to a project, label, filter or task is the core's actions (`act`). Each export is one
 //! surface call; nothing is decided here.
 
-use lumenna_surface::{
+use lumenna_host::{
     BlockDefaults, BlockEdit, BlockFields, BlockShown, Change, ExportFormat, Exported, Imported,
     NewBlock, PlanBlock, SettingList, SyncStatus,
 };
@@ -71,31 +71,31 @@ impl Core {
 /// What a kind of block has unless set apart, or nothing for a word that is not a kind.
 #[wasm_bindgen(js_name = blockDefaults)]
 pub fn block_defaults(kind: String) -> Result<Option<Ts<BlockDefaults>>, JsError> {
-    lumenna_surface::block_defaults(kind).map(|d| js(&d)).transpose()
+    lumenna_host::block_defaults(kind).map(|d| js(&d)).transpose()
 }
 
 /// A series' fields as the form for every occurrence starts from them.
 #[wasm_bindgen(js_name = blockFields)]
 pub fn block_fields(block: Ts<BlockShown>) -> Out<BlockFields> {
-    js(&lumenna_surface::block_fields(block.to_rust()?))
+    js(&lumenna_host::block_fields(block.to_rust()?))
 }
 
 /// One day's block as the form for that day alone starts from it.
 #[wasm_bindgen(js_name = dayBlockFields)]
 pub fn day_block_fields(block: Ts<PlanBlock>) -> Out<BlockFields> {
-    js(&lumenna_surface::day_block_fields(block.to_rust()?))
+    js(&lumenna_host::day_block_fields(block.to_rust()?))
 }
 
 /// What saving `after` over `before` sends — only what changed — or nothing.
 #[wasm_bindgen(js_name = blockEdit)]
 pub fn block_edit(before: Ts<BlockFields>, after: Ts<BlockFields>) -> Result<Option<Ts<BlockEdit>>, JsError> {
-    lumenna_surface::block_edit(before.to_rust()?, after.to_rust()?).map_err(error)?.map(|e| js(&e)).transpose()
+    lumenna_host::block_edit(before.to_rust()?, after.to_rust()?).map_err(error)?.map(|e| js(&e)).transpose()
 }
 
 /// What a new block's form sends, starting on `date`.
 #[wasm_bindgen(js_name = newBlock)]
 pub fn new_block(fields: Ts<BlockFields>, date: Option<String>) -> Out<NewBlock> {
-    out(lumenna_surface::new_block(fields.to_rust()?, date))
+    out(lumenna_host::new_block(fields.to_rust()?, date))
 }
 
 /// One export Settings offers: its format, what its button says, and the file it downloads as.
@@ -125,7 +125,7 @@ pub fn export_choices() -> Out<ExportChoices> {
         .iter()
         .map(|export| ExportChoice {
             format: export.format,
-            label: lumenna_surface::sentence_case(export.label.trim_end_matches("...").to_owned()),
+            label: lumenna_host::sentence_case(export.label.trim_end_matches("...").to_owned()),
             name: lumenna_desktop::devices::export_name(export.format, today),
         })
         .collect();

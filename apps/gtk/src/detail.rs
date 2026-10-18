@@ -15,9 +15,9 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::{gdk, glib};
 use lumenna_desktop::speech;
-use lumenna_surface::{FormField, TaskDetail, TaskFields, task_edit, task_fields};
+use lumenna_host::{FormField, TaskDetail, TaskFields, task_edit, task_fields};
 
-use lumenna_surface::actions::{Action, ActionKind};
+use lumenna_host::actions::{Action, ActionKind};
 
 use crate::actions;
 use crate::tree::{Item, Tree};
@@ -99,12 +99,12 @@ fn field(form: &[FormField], key: &str, mnemonic: char) -> (String, String) {
 
 impl Detail {
     pub fn new() -> Rc<Self> {
-        let form = lumenna_surface::task_form();
+        let form = lumenna_host::task_form();
         let words = |key: &str, mnemonic: char| field(&form, key, mnemonic);
         let title = gtk::Entry::new();
         let due = gtk::Entry::new();
         let repeat = gtk::Entry::new();
-        let titles: Vec<String> = lumenna_surface::priorities().into_iter().map(|p| p.title).collect();
+        let titles: Vec<String> = lumenna_host::priorities().into_iter().map(|p| p.title).collect();
         let priority = gtk::DropDown::from_strings(&titles.iter().map(String::as_str).collect::<Vec<_>>());
         let estimate = gtk::Entry::new();
         let projects = gtk::StringList::new(&[]);
@@ -348,7 +348,7 @@ impl Detail {
             self.title.set_text(&fields.title);
             self.due.set_text(&fields.due);
             self.repeat.set_text(&fields.repeat);
-            let position = lumenna_surface::priorities().iter().position(|p| p.id == fields.priority.to_string());
+            let position = lumenna_host::priorities().iter().position(|p| p.id == fields.priority.to_string());
             self.priority.set_selected(position.unwrap_or(0) as u32);
             self.estimate.set_text(&fields.estimate);
             self.select_project(&fields.project);
@@ -373,7 +373,7 @@ impl Detail {
                 let action = actions::find(&task.actions, kinds);
                 button.set_sensitive(action.is_some());
                 if let Some(action) = action {
-                    let asks = !matches!(action.question, lumenna_surface::Question::Immediate);
+                    let asks = !matches!(action.question, lumenna_host::Question::Immediate);
                     button.set_label(&if asks { format!("{}…", action.title) } else { action.title.clone() });
                 }
             }
@@ -398,7 +398,7 @@ impl Detail {
             title: self.title.text().to_string(),
             due: self.due.text().to_string(),
             repeat: self.repeat.text().to_string(),
-            priority: lumenna_surface::priorities()
+            priority: lumenna_host::priorities()
                 .get(self.priority.selected() as usize)
                 .and_then(|p| p.id.parse().ok())
                 .unwrap_or(4),

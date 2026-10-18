@@ -8,7 +8,7 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use lumenna_surface::{Change, Lumenna, Syntax};
+use lumenna_host::{Change, Lumenna, Syntax};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::Controls::EM_SETSEL;

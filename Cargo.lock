@@ -2781,9 +2781,9 @@ dependencies = [
  "iroh",
  "jiff",
  "lumenna-core",
+ "lumenna-host",
  "lumenna-parse",
  "lumenna-store",
- "lumenna-surface",
  "lumenna-sync",
  "serde",
  "serde_json",
@@ -2810,7 +2810,7 @@ version = "0.1.0"
 dependencies = [
  "directories",
  "jiff",
- "lumenna-surface",
+ "lumenna-host",
  "serde",
  "tempfile",
  "tsify",
@@ -2821,7 +2821,7 @@ dependencies = [
 name = "lumenna-ffi"
 version = "0.1.0"
 dependencies = [
- "lumenna-surface",
+ "lumenna-host",
  "tempfile",
  "uniffi",
 ]
@@ -2838,8 +2838,30 @@ dependencies = [
  "ksni",
  "libadwaita",
  "lumenna-desktop",
- "lumenna-surface",
+ "lumenna-host",
  "tempfile",
+]
+
+[[package]]
+name = "lumenna-host"
+version = "0.1.0"
+dependencies = [
+ "iroh",
+ "jiff",
+ "lumenna-core",
+ "lumenna-parse",
+ "lumenna-store",
+ "lumenna-sync",
+ "n0-future",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "tsify",
+ "uniffi",
+ "wasm-bindgen",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2866,28 +2888,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "uuid",
-]
-
-[[package]]
-name = "lumenna-surface"
-version = "0.1.0"
-dependencies = [
- "iroh",
- "jiff",
- "lumenna-core",
- "lumenna-parse",
- "lumenna-store",
- "lumenna-sync",
- "n0-future",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.20",
- "tokio",
- "tsify",
- "uniffi",
- "wasm-bindgen",
- "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2920,7 +2920,7 @@ dependencies = [
  "jiff",
  "js-sys",
  "lumenna-desktop",
- "lumenna-surface",
+ "lumenna-host",
  "n0-future",
  "serde",
  "serde-wasm-bindgen",
@@ -2937,7 +2937,7 @@ version = "0.1.0"
 dependencies = [
  "jiff",
  "lumenna-desktop",
- "lumenna-surface",
+ "lumenna-host",
  "tempfile",
  "windows",
 ]

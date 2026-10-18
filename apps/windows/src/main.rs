@@ -9,7 +9,7 @@
 //! What is decided here rather than in Win32 code — how a row is worded, how flat rows become
 //! a tree — is in modules that build and are tested on every platform. What every client
 //! shares, such as what a task form sends back and which places the sidebar holds, is the
-//! surface's (`lumenna_surface::task_edit`, `places`). The rest is in `win`, and exists only
+//! surface's (`lumenna_host::task_edit`, `places`). The rest is in `win`, and exists only
 //! on Windows.
 
 #![cfg_attr(windows, windows_subsystem = "windows")]

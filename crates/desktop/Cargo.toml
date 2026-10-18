@@ -10,14 +10,14 @@ description = "What the apps that link the surface directly decide alike: how ro
 [dependencies]
 directories.workspace = true
 jiff.workspace = true
-lumenna-surface = { path = "../surface" }
+lumenna-host = { path = "../host" }
 serde.workspace = true
 tsify = { version = "0.5", optional = true, default-features = false, features = ["js"] }
 wasm-bindgen = { version = "0.2", optional = true }
 
 [features]
 # TypeScript types for the web client, which shares these places and this wording.
-wasm = ["dep:tsify", "dep:wasm-bindgen", "lumenna-surface/wasm"]
+wasm = ["dep:tsify", "dep:wasm-bindgen", "lumenna-host/wasm"]
 
 [lints]
 workspace = true

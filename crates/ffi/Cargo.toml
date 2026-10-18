@@ -23,10 +23,10 @@ default = ["network"]
 bindgen = ["uniffi/cli"]
 # Sync over Iroh and the command surface's socket. Every app has it but the Apple Watch's,
 # which syncs through its phone over the link alone: watchOS allows no sockets.
-network = ["lumenna-surface/sync", "lumenna-surface/rpc"]
+network = ["lumenna-host/sync", "lumenna-host/rpc"]
 
 [dependencies]
-lumenna-surface = { path = "../surface", features = ["uniffi", "link"] }
+lumenna-host = { path = "../host", features = ["uniffi", "link"] }
 uniffi = "0.32"
 
 [dev-dependencies]

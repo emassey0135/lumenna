@@ -2,7 +2,7 @@
 //! Kotlin. UniFFI generates the bindings.
 //!
 //! There is nothing to define here. The surface — the `Lumenna` object, its operations, and
-//! the records they return — is `lumenna_surface`, the same crate the command line calls, built
+//! the records they return — is `lumenna_host`, the same crate the command line calls, built
 //! with its `uniffi` feature. This crate exists to be the library an app links: a static one
 //! for the Apple targets, a dynamic one for Android and for `uniffi-bindgen` to read the
 //! interface out of.
@@ -10,11 +10,11 @@
 //! So a Swift `try lumenna.addTask(text:)` and `lum task add` run the same function, and a
 //! record reshaped in Rust fails to compile in Swift rather than failing to decode at run time.
 
-pub use lumenna_surface::*;
+pub use lumenna_host::*;
 
 // Without a reference from this crate, a linker may drop the surface's exported functions
 // from the library, since nothing here calls them.
-lumenna_surface::uniffi_reexport_scaffolding!();
+lumenna_host::uniffi_reexport_scaffolding!();
 
 #[cfg(test)]
 mod tests {

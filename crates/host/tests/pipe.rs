@@ -8,9 +8,9 @@ use std::path::Path;
 use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
 
-use lumenna_surface::endpoint::{self, Connection};
-use lumenna_surface::rpc::{Endpoint, Host};
-use lumenna_surface::Lumenna;
+use lumenna_host::endpoint::{self, Connection};
+use lumenna_host::rpc::{Endpoint, Host};
+use lumenna_host::Lumenna;
 
 fn serve(directory: &Path) -> Endpoint {
     let host = Host {
@@ -159,7 +159,7 @@ fn only_this_user_may_open_the_pipe() {
     unsafe { LocalFree(descriptor) };
 
     // Protected from inheritance, and one entry: full access for this user, nobody else.
-    let user = lumenna_surface::rpc::pipe_user().unwrap();
+    let user = lumenna_host::rpc::pipe_user().unwrap();
     let wanted: Vec<u16> = format!("D:P(A;;FA;;;{user})").encode_utf16().chain(Some(0)).collect();
     let mut expected: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
     let made = unsafe {

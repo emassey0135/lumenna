@@ -21,15 +21,15 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gio, glib};
-use lumenna_surface::places::Place;
+use lumenna_host::places::Place;
 use lumenna_desktop::speech;
-use lumenna_surface::{Change, Lumenna, Result};
+use lumenna_host::{Change, Lumenna, Result};
 
 use crate::clock::Locale;
 use crate::core::{Core, Event, sentence};
 use crate::detail::Detail;
 use crate::sidebar::Sidebar;
-use lumenna_surface::actions::{Action, ActionKind, Subject};
+use lumenna_host::actions::{Action, ActionKind, Subject};
 use crate::blocks::BlockList;
 use crate::day::DayView;
 use crate::tasks::TaskList;
@@ -632,9 +632,9 @@ impl App {
                 }
             });
         });
-        simple("new-project", |app| crate::sidebar::new_in(app, lumenna_surface::places::SidebarGroup::Projects));
-        simple("new-label", |app| crate::sidebar::new_in(app, lumenna_surface::places::SidebarGroup::Labels));
-        simple("new-filter", |app| crate::sidebar::new_in(app, lumenna_surface::places::SidebarGroup::Filters));
+        simple("new-project", |app| crate::sidebar::new_in(app, lumenna_host::places::SidebarGroup::Projects));
+        simple("new-label", |app| crate::sidebar::new_in(app, lumenna_host::places::SidebarGroup::Labels));
+        simple("new-filter", |app| crate::sidebar::new_in(app, lumenna_host::places::SidebarGroup::Filters));
         simple("close-window", |app| app.window.set_visible(false));
         simple("quit", |app| app.quit());
         simple("undo", |app| {
@@ -707,7 +707,7 @@ impl App {
                 let Some(day) = app.day() else { return };
                 match day.day_actions().into_iter().find(|action| action.kind == kind) {
                     Some(action) => crate::actions::run(app, action, None),
-                    None => app.say(&lumenna_surface::actions::not_offered(kind, Subject::Day, false)),
+                    None => app.say(&lumenna_host::actions::not_offered(kind, Subject::Day, false)),
                 }
             });
         };
@@ -725,7 +725,7 @@ impl App {
                     Some(action) => crate::actions::run(app, action.clone(), None),
                     // A task in hand that does not offer it says why; with none, nothing to say.
                     None if !actions.is_empty() => {
-                        app.say(&lumenna_surface::actions::not_offered(kinds[0], Subject::Task, false));
+                        app.say(&lumenna_host::actions::not_offered(kinds[0], Subject::Task, false));
                     }
                     None => {}
                 }

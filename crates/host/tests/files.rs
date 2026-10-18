@@ -1,6 +1,6 @@
 //! Backups and imports as a file's contents rather than a path — what a browser has.
 
-use lumenna_surface::{Imported, Lumenna};
+use lumenna_host::{Imported, Lumenna};
 
 fn open() -> (tempfile::TempDir, std::sync::Arc<Lumenna>) {
     let directory = tempfile::tempdir().unwrap();

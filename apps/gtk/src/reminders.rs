@@ -13,13 +13,13 @@ use std::sync::Arc;
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use lumenna_desktop::speech;
-use lumenna_surface::actions::{Action, ActionKind, Subject};
-use lumenna_surface::{DueReminder, ReminderLock, ReminderView};
+use lumenna_host::actions::{Action, ActionKind, Subject};
+use lumenna_host::{DueReminder, ReminderLock, ReminderView};
 
 use crate::actions::{self, Asking};
 use crate::core::sentence;
 use crate::tree::{Item, Tree};
-use lumenna_surface::places::Place;
+use lumenna_host::places::Place;
 
 use crate::window::App;
 
@@ -114,7 +114,7 @@ fn id(key: &str, occurrence: &str) -> String {
 /// notification reaches the app by name, whether its window is up or not.
 fn add_actions(app: &App) {
     let pair = glib::VariantTy::new("(ss)").expect("a valid type");
-    let answer = |name: &str, run: fn(&App, String, String) -> lumenna_surface::Result<lumenna_surface::Change>| {
+    let answer = |name: &str, run: fn(&App, String, String) -> lumenna_host::Result<lumenna_host::Change>| {
         let action = gio::SimpleAction::new(name, Some(pair));
         action.connect_activate(move |_, parameter| {
             let (Some(app), Some((key, occurrence))) = (crate::window::app(), parameter.and_then(|p| p.get::<(String, String)>())) else {
@@ -257,7 +257,7 @@ impl List {
         let reminder = self.tree.selected().and_then(|index| self.reminders.borrow().get(index).cloned());
         match reminder.as_ref().and_then(|r| actions::find(&r.actions, kinds)) {
             Some(action) => self.run(app, action.clone()),
-            None => self.say(&lumenna_surface::not_offered(kinds[0], Subject::Reminder, false)),
+            None => self.say(&lumenna_host::not_offered(kinds[0], Subject::Reminder, false)),
         }
     }
 
@@ -346,7 +346,7 @@ pub fn show(app: &Rc<App>, action: &Action) {
             let action = actions::find(&list.actions.borrow(), &[ActionKind::New]).cloned();
             match action {
                 Some(action) => list.run(&app, action),
-                None => list.say(&lumenna_surface::not_offered(ActionKind::New, Subject::Reminder, false)),
+                None => list.say(&lumenna_host::not_offered(ActionKind::New, Subject::Reminder, false)),
             }
         });
     }

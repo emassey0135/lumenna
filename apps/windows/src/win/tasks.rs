@@ -10,7 +10,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lumenna_surface::{Action, ActionKind, RowView, Syntax};
+use lumenna_host::{Action, ActionKind, RowView, Syntax};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{
     NM_DBLCLK, NM_TVSTATEIMAGECHANGING, NMHDR, NMTREEVIEWW, NMTVKEYDOWN, NMTVSTATEIMAGECHANGING,
@@ -27,7 +27,7 @@ use super::core::sentence;
 use super::tree::{Item, Tree};
 use super::view::{Metrics, View};
 use super::{actions, completion};
-use lumenna_surface::places::Place;
+use lumenna_host::places::Place;
 use crate::speech;
 
 const FILTER: u16 = 400;

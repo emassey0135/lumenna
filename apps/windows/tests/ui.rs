@@ -22,7 +22,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use automation::Automation;
-use lumenna_surface::{Lumenna, NewBlock};
+use lumenna_host::{Lumenna, NewBlock};
 use windows::Win32::Foundation::HWND;
 
 
@@ -598,7 +598,7 @@ fn lum_sync_runs_its_round_on_the_running_app() {
     let app = App::launch(|_| {});
     // The app answers at its pipe only while it holds the endpoint, and then lum cannot run a
     // round of its own: a round lum reports is the app's.
-    automation::wait(Duration::from_secs(20), || lumenna_surface::endpoint::connect(app.profile.path()).map(drop))
+    automation::wait(Duration::from_secs(20), || lumenna_host::endpoint::connect(app.profile.path()).map(drop))
         .expect("the app serves its pipe");
     let started = std::time::Instant::now();
     loop {
@@ -830,7 +830,7 @@ fn a_rows_menu_is_the_cores_and_never_offers_a_task_as_its_own_parent() {
         let rows = lumenna.list_tasks("").unwrap().rows;
         let report = rows.iter().find(|r| r.title == "Write report").unwrap().id.clone();
         let outline = rows.iter().find(|r| r.title == "Outline").unwrap().id.clone();
-        lumenna.move_task(&outline, lumenna_surface::MoveTarget::Parent { id: report }).unwrap();
+        lumenna.move_task(&outline, lumenna_host::MoveTarget::Parent { id: report }).unwrap();
     });
     let names = |items: Vec<String>| -> Vec<String> {
         items.iter().map(|item| item.split('\'').nth(1).unwrap_or_default().to_owned()).collect()
@@ -856,11 +856,11 @@ fn a_rows_menu_is_the_cores_and_never_offers_a_task_as_its_own_parent() {
     assert_eq!(menu, ["Weight..."], "the Inbox's menu");
     // Delete there says why not, in the core's words.
     app.post(&["delete"]);
-    let why = lumenna_surface::not_offered(lumenna_surface::ActionKind::Delete, lumenna_surface::Subject::Project, false);
+    let why = lumenna_host::not_offered(lumenna_host::ActionKind::Delete, lumenna_host::Subject::Project, false);
     assert_eq!(app.status(), lumenna_desktop::speech::sentence(&why));
     // F2 is Rename, as in Explorer; the Inbox keeps its name.
     app.post(&["f2"]);
-    let why = lumenna_surface::not_offered(lumenna_surface::ActionKind::Rename, lumenna_surface::Subject::Project, false);
+    let why = lumenna_host::not_offered(lumenna_host::ActionKind::Rename, lumenna_host::Subject::Project, false);
     assert_eq!(app.status(), lumenna_desktop::speech::sentence(&why));
 }
 

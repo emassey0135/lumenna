@@ -7,7 +7,7 @@
 
 use std::cell::RefCell;
 
-use lumenna_surface::{ActionKind, ExportFormat, Imported, Setting, Subject, not_offered};
+use lumenna_host::{ActionKind, ExportFormat, Imported, Setting, Subject, not_offered};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::Controls::{
@@ -552,7 +552,7 @@ const UNPAIR: u16 = 305;
 
 struct Devices<'a> {
     app: &'a App,
-    list: RefCell<Vec<lumenna_surface::DeviceView>>,
+    list: RefCell<Vec<lumenna_host::DeviceView>>,
 }
 
 impl Devices<'_> {
@@ -577,7 +577,7 @@ impl Devices<'_> {
         }
     }
 
-    fn chosen(&self, page: HWND) -> Option<lumenna_surface::DeviceView> {
+    fn chosen(&self, page: HWND) -> Option<lumenna_host::DeviceView> {
         let index = usize::try_from(controls::send(dialog::item(page, DEVICES), LB_GETCURSEL, 0, 0)).ok()?;
         self.list.borrow().get(index).cloned()
     }

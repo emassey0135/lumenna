@@ -10,7 +10,7 @@
 
 use std::cell::RefCell;
 
-use lumenna_surface::{ActionKind, Choice, TaskDetail, TaskFields, priorities, task_edit, task_fields, task_form};
+use lumenna_host::{ActionKind, Choice, TaskDetail, TaskFields, priorities, task_edit, task_fields, task_form};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::SystemServices::{SS_CENTER, SS_NOPREFIX};
 use windows::Win32::UI::Controls::{WC_BUTTONW, WC_COMBOBOXW, WC_EDITW, WC_LISTBOXW, WC_STATICW};
@@ -369,7 +369,7 @@ impl Detail {
     }
 
     /// What can be done to the task shown: for the Task menu, while focus is here.
-    pub fn actions(&self) -> Option<Vec<lumenna_surface::Action>> {
+    pub fn actions(&self) -> Option<Vec<lumenna_host::Action>> {
         self.shown.borrow().as_ref().map(|task| task.actions.clone())
     }
 

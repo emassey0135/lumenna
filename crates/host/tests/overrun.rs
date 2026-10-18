@@ -1,7 +1,7 @@
 //! A block's planned work outrunning its time is said before the clock says it, and not when
 //! it would only spill into free time.
 
-use lumenna_surface::{Lumenna, NewBlock};
+use lumenna_host::{Lumenna, NewBlock};
 
 fn open() -> (tempfile::TempDir, Lumenna) {
     let directory = tempfile::tempdir().unwrap();

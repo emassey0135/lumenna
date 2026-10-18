@@ -10,8 +10,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use gtk::glib;
 use lumenna_desktop::speech;
-use lumenna_surface::rpc::CommandServer;
-use lumenna_surface::{Lumenna, LumennaError, Reach, SyncListener, SyncService};
+use lumenna_host::rpc::CommandServer;
+use lumenna_host::{Lumenna, LumennaError, Reach, SyncListener, SyncService};
 
 /// Something from another thread for the window.
 #[derive(Debug)]

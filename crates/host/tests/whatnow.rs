@@ -1,7 +1,7 @@
 //! "What should I work on?": the block's own plan first, then what is suggested; choosing
 //! one starts on it.
 
-use lumenna_surface::{Lumenna, NewBlock};
+use lumenna_host::{Lumenna, NewBlock};
 
 fn open() -> (tempfile::TempDir, Lumenna) {
     let directory = tempfile::tempdir().unwrap();

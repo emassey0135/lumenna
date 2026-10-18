@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use anstream::eprint;
 use anstream::eprintln;
-use lumenna_surface::{LumennaError, PairingPrompt, Reach, SyncListener};
+use lumenna_host::{LumennaError, PairingPrompt, Reach, SyncListener};
 
 use crate::api::Response;
 use crate::error::{CliError, Result};
@@ -135,7 +135,7 @@ pub(crate) fn sync_once(profile: &Profile, local_only: bool) -> Result<Response>
 /// name, or nothing.
 fn answering(profile: &Profile) -> Option<String> {
     use std::io::{BufRead, BufReader, Write};
-    let mut connection = lumenna_surface::endpoint::connect(profile.directory())?;
+    let mut connection = lumenna_host::endpoint::connect(profile.directory())?;
     connection.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
     connection.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}\n").ok()?;
     let mut line = String::new();
@@ -159,7 +159,7 @@ pub(crate) fn daemon(profile: &Profile, local_only: bool) -> Result<()> {
         eprintln!("lum: another process is syncing this profile; this daemon takes over when it stops");
     }
 
-    let host = lumenna_surface::rpc::Host {
+    let host = lumenna_host::rpc::Host {
         process: "daemon".to_owned(),
         device_name: default_name(),
         platform: platform().to_owned(),
@@ -172,7 +172,7 @@ pub(crate) fn daemon(profile: &Profile, local_only: bool) -> Result<()> {
         backups: false,
     };
     let holding = Arc::clone(&service);
-    let endpoint = lumenna_surface::rpc::Endpoint::serve(profile.directory().to_path_buf(), host, move || holding.is_running());
+    let endpoint = lumenna_host::rpc::Endpoint::serve(profile.directory().to_path_buf(), host, move || holding.is_running());
 
     runtime()?.block_on(async {
         // A resident process takes a backup when one is due, checking hourly.
@@ -210,10 +210,10 @@ async fn stop_requested() {
 /// this profile's endpoint, it is relayed there, so the client reaches the running process
 /// as a client that can open its address does; otherwise this serves it.
 pub(crate) fn serve_rpc(profile: &Profile) -> Result<()> {
-    if lumenna_surface::rpc::relay(profile.directory())? {
+    if lumenna_host::rpc::relay(profile.directory())? {
         return Ok(());
     }
-    let host = lumenna_surface::rpc::Host {
+    let host = lumenna_host::rpc::Host {
         process: "lum rpc".to_owned(),
         device_name: default_name(),
         platform: platform().to_owned(),
@@ -221,7 +221,7 @@ pub(crate) fn serve_rpc(profile: &Profile) -> Result<()> {
         // Something that stays running, so it takes the backup when one is due.
         backups: true,
     };
-    lumenna_surface::rpc::serve_streams(
+    lumenna_host::rpc::serve_streams(
         profile.shared(),
         std::io::BufReader::new(std::io::stdin()),
         Box::new(std::io::stdout()),

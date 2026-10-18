@@ -7,7 +7,7 @@
 //! of a task's or block's reminders (`reminders.rs`), and the day's Replan from Now and Plan
 //! the Day (`proposal.rs`).
 
-use lumenna_surface::{Action, ActionKind, Answer, Change, Choice, Question, Subject, length_question, not_offered};
+use lumenna_host::{Action, ActionKind, Answer, Change, Choice, Question, Subject, length_question, not_offered};
 use windows::Win32::Foundation::HWND;
 
 use super::app::App;

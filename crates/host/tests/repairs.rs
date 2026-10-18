@@ -1,6 +1,6 @@
 //! A loop that two devices made between them is fixed once, written down, and said once.
 
-use lumenna_surface::{Lumenna, MoveTarget};
+use lumenna_host::{Lumenna, MoveTarget};
 
 fn open(at: &std::path::Path) -> std::sync::Arc<Lumenna> {
     Lumenna::open(at.to_str().unwrap()).unwrap()

@@ -8,7 +8,7 @@
 use anstream::{eprintln, print, println};
 use serde::Serialize;
 
-use lumenna_surface::{Plan, PlanItem, Rows, TaskDetail};
+use lumenna_host::{Plan, PlanItem, Rows, TaskDetail};
 
 use crate::api::{Outcome, Response};
 
@@ -66,7 +66,7 @@ impl Clock {
     }
 }
 
-fn replan_changes(proposal: &lumenna_surface::Replan) {
+fn replan_changes(proposal: &lumenna_host::Replan) {
     for (n, change) in proposal.changes.iter().enumerate() {
         println!("{:>3}  {}", n + 1, change.sentence);
     }
@@ -78,7 +78,7 @@ fn replan_changes(proposal: &lumenna_surface::Replan) {
     }
 }
 
-fn day_plan_sittings(plan: &lumenna_surface::DayPlan) {
+fn day_plan_sittings(plan: &lumenna_host::DayPlan) {
     for (n, sitting) in plan.sittings.iter().enumerate() {
         println!("{:>3}  {}", n + 1, sitting.sentence);
         if let Some(reason) = &sitting.reason {
@@ -229,7 +229,7 @@ fn text(response: &Response, clock: Clock) {
                 ("title", block.title.clone()),
                 ("id", block.id.clone()),
                 ("starts", format!("{} on {}", clock.time(&block.start), block.start_date)),
-                ("lasts", lumenna_surface::words::duration(block.minutes)),
+                ("lasts", lumenna_host::words::duration(block.minutes)),
                 ("kind", block.kind.clone()),
             ];
             match (&block.repetition, &block.rrule) {
@@ -242,7 +242,7 @@ fn text(response: &Response, clock: Clock) {
             fields.push(("counts capacity", yes(block.counts_capacity)));
             fields.push(("anchored", yes(block.anchored)));
             if let Some(minutes) = block.min_minutes {
-                fields.push(("shortest", lumenna_surface::words::duration(minutes)));
+                fields.push(("shortest", lumenna_host::words::duration(minutes)));
             }
             if let Some(until) = &block.until {
                 fields.push(("until", until.clone()));
@@ -367,7 +367,7 @@ fn day(plan: &Plan, clock: Clock) {
         println!("{}. {}", plan.date, plan.summary);
     }
     // The core words the details for every app; the terminal adds the row numbers.
-    let block_line = |block: &lumenna_surface::PlanBlock| {
+    let block_line = |block: &lumenna_host::PlanBlock| {
         println!(
             "{}  {} to {}  {}  {}",
             block.row,
@@ -395,7 +395,7 @@ fn day(plan: &Plan, clock: Clock) {
             PlanItem::Free { start, end, minutes, .. } => {
                 println!(
                     "   free, {} from {} to {}",
-                    lumenna_surface::words::duration(*minutes),
+                    lumenna_host::words::duration(*minutes),
                     clock.time(start),
                     clock.time(end)
                 );
@@ -417,7 +417,7 @@ fn day(plan: &Plan, clock: Clock) {
 
 /// One device as a sentence: what it is, and how syncing with it last went. Words rather
 /// than a symbol, because a glyph communicates nothing to a screen reader.
-fn device_line(device: &lumenna_surface::DeviceView) -> String {
+fn device_line(device: &lumenna_host::DeviceView) -> String {
     let mut parts = vec![device.name.clone(), device.platform.clone()];
     parts.extend(device.status.iter().cloned());
     parts.join(", ")

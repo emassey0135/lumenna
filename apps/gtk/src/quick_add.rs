@@ -12,7 +12,7 @@ use std::sync::Arc;
 use futures_channel::oneshot;
 use gtk::prelude::*;
 use gtk::{gdk, glib};
-use lumenna_surface::{Change, Lumenna};
+use lumenna_host::{Change, Lumenna};
 
 use crate::core::sentence;
 use crate::prompts;
@@ -80,7 +80,7 @@ pub async fn run(parent: Option<&gtk::Window>, application: &gtk::Application, l
     };
     update(&line);
     line.connect_changed(update);
-    crate::completion::attach(&line, Arc::clone(&lumenna), lumenna_surface::Syntax::QuickAdd);
+    crate::completion::attach(&line, Arc::clone(&lumenna), lumenna_host::Syntax::QuickAdd);
 
     let (sender, receiver) = oneshot::channel::<Option<Change>>();
     let sender = Rc::new(RefCell::new(Some(sender)));

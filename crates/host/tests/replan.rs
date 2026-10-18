@@ -1,7 +1,7 @@
 //! Replanning the rest of today: said in full before anything changes, then applied as
 //! accepted, and refused if the day has moved since.
 
-use lumenna_surface::{Lumenna, NewBlock, ReplanPins, TimeStyle};
+use lumenna_host::{Lumenna, NewBlock, ReplanPins, TimeStyle};
 
 const NOW: &str = "2026-05-06T10:40";
 

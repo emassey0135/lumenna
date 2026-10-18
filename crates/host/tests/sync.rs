@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
-use lumenna_surface::{Lumenna, PairingPrompt, Reach, SyncListener};
+use lumenna_host::{Lumenna, PairingPrompt, Reach, SyncListener};
 
 struct Yes {
     code: Mutex<Option<mpsc::Sender<String>>>,
@@ -160,7 +160,7 @@ fn another_store_on_the_same_profile_asks_the_holder_for_its_round() {
     if cfg!(all(unix, feature = "rpc")) {
         assert!(eventually(Duration::from_secs(10), || asked().is_ok()), "the holder ran the round: {:?}", asked());
     } else {
-        assert!(matches!(asked(), Err(lumenna_surface::LumennaError::SyncElsewhere { .. })));
+        assert!(matches!(asked(), Err(lumenna_host::LumennaError::SyncElsewhere { .. })));
     }
     #[cfg(feature = "rpc")]
     served.stop();

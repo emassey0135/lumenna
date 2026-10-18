@@ -7,8 +7,8 @@
 
 use std::sync::{Arc, Mutex, PoisonError};
 
-use lumenna_surface::rpc::CommandServer;
-use lumenna_surface::{Lumenna, LumennaError, Reach, SyncListener, SyncService};
+use lumenna_host::rpc::CommandServer;
+use lumenna_host::{Lumenna, LumennaError, Reach, SyncListener, SyncService};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_APP};
 

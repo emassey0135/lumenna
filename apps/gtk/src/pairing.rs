@@ -18,14 +18,14 @@ use futures_util::StreamExt;
 use gtk::prelude::*;
 use gtk::{gdk, glib};
 use lumenna_desktop::speech;
-use lumenna_surface::{Lumenna, LumennaError, PairedWith, PairingPrompt, PairingWords, Reach};
+use lumenna_host::{Lumenna, LumennaError, PairedWith, PairingPrompt, PairingWords, Reach};
 
 use crate::core::sentence;
 use crate::prompts;
 
 /// The pairing screen's words, the core's: how the device calls itself is the one thing here.
 fn words() -> PairingWords {
-    lumenna_surface::pairing_words("this computer".to_owned(), true)
+    lumenna_host::pairing_words("this computer".to_owned(), true)
 }
 
 /// What the pairing thread has to say to the dialog.

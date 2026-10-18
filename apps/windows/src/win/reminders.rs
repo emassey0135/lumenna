@@ -5,7 +5,7 @@
 
 use std::cell::RefCell;
 
-use lumenna_surface::{Action, ActionKind, ReminderList, Subject, not_offered};
+use lumenna_host::{Action, ActionKind, ReminderList, Subject, not_offered};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::Input::KeyboardAndMouse::VK_DELETE;
@@ -38,7 +38,7 @@ struct Reminders<'a> {
 }
 
 impl Reminders<'_> {
-    fn chosen(&self, hwnd: HWND) -> Option<lumenna_surface::ReminderView> {
+    fn chosen(&self, hwnd: HWND) -> Option<lumenna_host::ReminderView> {
         let index = usize::try_from(controls::send(dialog::item(hwnd, LIST), LB_GETCURSEL, 0, 0)).ok()?;
         self.shown.borrow().reminders.get(index).cloned()
     }

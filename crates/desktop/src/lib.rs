@@ -5,7 +5,7 @@
 //! depend on the toolkit — how a row is worded for a tree item's one name, how the core's flat
 //! depth-first rows become a tree, how a device's sync state is said. Each toolkit's tree
 //! reports level, position, set size and expansion itself, so the wording leaves those out
-//! for both (`speech`). The sidebar's places are the surface's (`lumenna_surface::places`),
+//! for both (`speech`). The sidebar's places are the surface's (`lumenna_host::places`),
 //! since the iPad and Android list them too.
 
 pub mod choices;

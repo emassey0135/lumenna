@@ -13,7 +13,7 @@
 
 use std::cell::{Cell, RefCell};
 
-use lumenna_surface::{
+use lumenna_host::{
     ActionKind, Change, DayPins, DayPlan, ProposalWords, Replan, ReplanAlternative, ReplanPins, Result, TimeStyle, proposal_words,
 };
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};

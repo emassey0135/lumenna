@@ -14,7 +14,7 @@ path = "src/main.rs"
 [dependencies]
 jiff.workspace = true
 lumenna-desktop = { path = "../../crates/desktop" }
-lumenna-surface = { path = "../../crates/surface", features = ["rpc", "sync"] }
+lumenna-host = { path = "../../crates/host", features = ["rpc", "sync"] }
 # 4.14 for `gtk_accessible_announce`, which is how a change is said. GTK tells AT-SPI a tree
 # item's level only from 4.16, so below that a row says its level in its text (`tree.rs`).
 gtk = { package = "gtk4", version = "0.11", features = ["v4_14"] }

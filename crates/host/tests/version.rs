@@ -1,6 +1,6 @@
 //! How a client learns that another process wrote to the store.
 
-use lumenna_surface::Lumenna;
+use lumenna_host::Lumenna;
 
 #[test]
 fn the_outside_version_moves_for_another_process_and_not_for_this_ones_own_edits() {

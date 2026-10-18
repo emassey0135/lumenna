@@ -1,6 +1,6 @@
 //! What can be done to each row, decided once for every client, and doing it.
 
-use lumenna_surface::{Action, ActionKind, Answer, Lumenna, NewBlock, Question, Subject};
+use lumenna_host::{Action, ActionKind, Answer, Lumenna, NewBlock, Question, Subject};
 
 fn open() -> (tempfile::TempDir, Lumenna) {
     let directory = tempfile::tempdir().unwrap();
@@ -41,7 +41,7 @@ fn a_subtask_can_move_to_the_top_and_a_waiting_task_can_stop_waiting() {
     let parent = add(&lumenna, "write report");
     let child = add(&lumenna, "outline");
     let other = add(&lumenna, "gather figures");
-    lumenna.move_task(&child, lumenna_surface::MoveTarget::Parent { id: parent }).unwrap();
+    lumenna.move_task(&child, lumenna_host::MoveTarget::Parent { id: parent }).unwrap();
     lumenna.add_dependency(&child, &other).unwrap();
     let actions = task_actions(&lumenna, "outline");
     assert!(titles(&actions).contains(&"Move to Top Level"));
@@ -56,7 +56,7 @@ fn a_task_is_never_offered_as_a_parent_of_itself_or_of_its_ancestors() {
     let top = add(&lumenna, "top");
     let middle = add(&lumenna, "middle");
     add(&lumenna, "elsewhere");
-    lumenna.move_task(&middle, lumenna_surface::MoveTarget::Parent { id: top }).unwrap();
+    lumenna.move_task(&middle, lumenna_host::MoveTarget::Parent { id: top }).unwrap();
     let offered = lumenna.choices(find(&task_actions(&lumenna, "top"), "Make Subtask Of")).unwrap();
     let names: Vec<&str> = offered.choices.iter().map(|c| c.title.as_str()).collect();
     assert_eq!(names, ["elsewhere"], "not itself, and not what is already under it");
@@ -163,7 +163,7 @@ fn an_empty_name_is_refused_by_the_core_in_every_client() {
 fn a_weight_starts_from_the_projects_own() {
     let (_directory, lumenna) = open();
     lumenna.add_project("Work", None).unwrap();
-    lumenna.weigh_project("Work", lumenna_surface::Weight::Value { value: 1.5 }).unwrap();
+    lumenna.weigh_project("Work", lumenna_host::Weight::Value { value: 1.5 }).unwrap();
     let rows = lumenna.list_projects().unwrap().rows;
     let weight = find(&rows.iter().find(|r| r.title == "Work").unwrap().actions, "Weight");
     let Question::Text { initial, .. } = &weight.question else { panic!() };
@@ -241,7 +241,7 @@ fn free_time_adds_a_block_through_the_clients_own_form() {
     let (_directory, lumenna) = open();
     let plan = lumenna.plan(None).unwrap();
     let free = plan.timeline.iter().find_map(|item| match item {
-        lumenna_surface::PlanItem::Free { actions, .. } => Some(actions.clone()),
+        lumenna_host::PlanItem::Free { actions, .. } => Some(actions.clone()),
         _ => None,
     });
     let actions = free.expect("an empty day is free time");
@@ -283,8 +283,8 @@ fn every_setting_says_its_name_its_control_and_whether_it_syncs() {
 
 #[test]
 fn a_device_cannot_unpair_itself_and_says_so_when_asked() {
-    assert!(lumenna_surface::not_offered(ActionKind::Unpair, Subject::Device, true).starts_with("This is the device you are using"));
-    let actions = lumenna_surface::actions::device("Phone", "ab12", true);
+    assert!(lumenna_host::not_offered(ActionKind::Unpair, Subject::Device, true).starts_with("This is the device you are using"));
+    let actions = lumenna_host::actions::device("Phone", "ab12", true);
     assert_eq!(titles(&actions), ["Rename"]);
 }
 
@@ -350,9 +350,9 @@ fn the_project_field_offers_every_project_not_archived_in_tree_order() {
     let names: Vec<(String, u32)> = lumenna.project_options().unwrap().into_iter().map(|c| (c.title, c.depth)).collect();
     assert!(names.contains(&("Reports".to_owned(), 1)));
     assert!(!names.iter().any(|(n, _)| n == "Old"));
-    let form = lumenna_surface::task_form();
-    assert_eq!(form.iter().find(|f| f.key == "project").unwrap().kind, lumenna_surface::FieldKind::Choice);
-    assert_eq!(form.iter().find(|f| f.key == "title").unwrap().kind, lumenna_surface::FieldKind::Line);
+    let form = lumenna_host::task_form();
+    assert_eq!(form.iter().find(|f| f.key == "project").unwrap().kind, lumenna_host::FieldKind::Choice);
+    assert_eq!(form.iter().find(|f| f.key == "title").unwrap().kind, lumenna_host::FieldKind::Line);
 }
 
 #[test]
@@ -470,7 +470,7 @@ fn ending_the_day_ends_what_is_under_way_and_clears_the_rest_in_one_undoable_cha
     block_at(&lumenna, "Late call", "23:59", 1, "today", None);
     let plan = lumenna.plan(None).unwrap();
     let end = find(&plan.actions, "End the Day");
-    let lumenna_surface::Question::Confirm { message, .. } = &end.question else { panic!() };
+    let lumenna_host::Question::Confirm { message, .. } = &end.question else { panic!() };
     assert_eq!(message, "All day ends now. The block after it is cleared for today. Undo brings it back.");
     let said = lumenna.act(end, Answer::Yes).unwrap();
     assert_eq!(said.announcement, "Ended All day and cleared 1 block");
@@ -494,7 +494,7 @@ fn a_sitting_left_short_carries_its_remaining_time_to_another_block() {
     lumenna.stop_timer(&sitting, Some(40)).unwrap();
     let plan = lumenna.plan(Some(yesterday.clone())).unwrap();
     let carry = find(&plan.blocks[0].assignments[0].actions, "Carry Forward");
-    let lumenna_surface::Question::Pick { title, .. } = &carry.question else { panic!() };
+    let lumenna_host::Question::Pick { title, .. } = &carry.question else { panic!() };
     assert_eq!(title, "Carry the remaining 50 minutes of essay draft to");
     let to = lumenna.choices(carry.clone()).unwrap().choices.remove(0);
     let said = lumenna.act(carry, Answer::Picked { id: to.id.clone(), length: None }).unwrap();

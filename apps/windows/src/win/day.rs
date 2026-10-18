@@ -13,7 +13,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use lumenna_surface::{
+use lumenna_host::{
     Action, ActionKind, CancelledBlock, Plan, PlanAssignment, PlanBlock, PlanItem, Subject, block_fields, day_block_fields,
     go_to_day_question, not_offered, unsayable_repeat_note,
 };

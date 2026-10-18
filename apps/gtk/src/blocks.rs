@@ -6,7 +6,7 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::{gdk, glib};
 use lumenna_desktop::speech;
-use lumenna_surface::RowView;
+use lumenna_host::RowView;
 
 use crate::actions;
 use crate::core::sentence;
@@ -74,7 +74,7 @@ impl BlockList {
     }
 
     /// What can be done to the selected row.
-    pub fn selected_actions(&self) -> Vec<lumenna_surface::Action> {
+    pub fn selected_actions(&self) -> Vec<lumenna_host::Action> {
         self.tree.selected().and_then(|index| self.row(index)).map(|row| row.actions).unwrap_or_default()
     }
 

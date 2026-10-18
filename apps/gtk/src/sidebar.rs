@@ -11,8 +11,8 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gdk, glib};
-use lumenna_surface::actions::{ActionKind, Answer, Subject};
-use lumenna_surface::places::{self, Place, SidebarEntry, SidebarGroup, SidebarKind};
+use lumenna_host::actions::{ActionKind, Answer, Subject};
+use lumenna_host::places::{self, Place, SidebarEntry, SidebarGroup, SidebarKind};
 
 use crate::actions;
 use crate::tree::{Item, Tree};
@@ -65,7 +65,7 @@ impl Sidebar {
                     // The Inbox says why it stays; a fixed place or a heading has nothing to say.
                     None => {
                         if let Some(subject) = subject {
-                            app.say(&lumenna_surface::actions::not_offered(ActionKind::Delete, subject, false));
+                            app.say(&lumenna_host::actions::not_offered(ActionKind::Delete, subject, false));
                         }
                     }
                 }
@@ -159,7 +159,7 @@ pub fn new_in(app: &Rc<App>, group: SidebarGroup) {
         text: String::new(),
         depth: 0,
         archived: false,
-        actions: lumenna_surface::actions::heading(group),
+        actions: lumenna_host::actions::heading(group),
     };
     if let Some(action) = entry.actions.first() {
         actions::run(app, action.clone(), Some(after(&entry)));

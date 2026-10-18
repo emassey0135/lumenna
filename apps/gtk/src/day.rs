@@ -16,8 +16,8 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::{gdk, glib};
 use lumenna_desktop::speech::{self, Clock};
-use lumenna_surface::actions::Action;
-use lumenna_surface::{CancelledBlock, Plan, PlanAssignment, PlanBlock, PlanItem};
+use lumenna_host::actions::Action;
+use lumenna_host::{CancelledBlock, Plan, PlanAssignment, PlanBlock, PlanItem};
 
 use crate::core::sentence;
 use crate::tree::{Item, Tree};
@@ -302,7 +302,7 @@ impl DayView {
         let (day, app) = (Rc::clone(self), Rc::clone(app));
         spawn(async move {
             let window: gtk::Window = app.window.clone().upcast();
-            let Some(phrase) = actions::ask_text(&window, &lumenna_surface::go_to_day_question(), None).await else {
+            let Some(phrase) = actions::ask_text(&window, &lumenna_host::go_to_day_question(), None).await else {
                 return;
             };
             match app.core.lumenna.plan(Some(phrase)) {

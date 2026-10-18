@@ -16,7 +16,7 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use lumenna_surface::{Action, ActionKind, Change, Lumenna, ReminderLock, Result};
+use lumenna_host::{Action, ActionKind, Change, Lumenna, ReminderLock, Result};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     COLOR_BTNFACE, CreateFontIndirectW, DeleteObject, GetDC, GetTextMetricsW, HBRUSH, HFONT, LOGFONTW,
@@ -55,7 +55,7 @@ use crate::shortcut::{self, Kind};
 use super::tray::{self, WM_SHOW_RUNNING, WM_TRAY};
 use super::view::{Metrics, View};
 use super::{a11y, core::sentence};
-use lumenna_surface::places::{Place, SidebarGroup};
+use lumenna_host::places::{Place, SidebarGroup};
 use crate::{profile, speech};
 
 /// Runs a deferred action: something a notification asked for that changes the window it

@@ -26,7 +26,7 @@ pub(crate) enum ExportFormat {
     Ics,
 }
 
-impl From<ExportFormat> for lumenna_surface::ExportFormat {
+impl From<ExportFormat> for lumenna_host::ExportFormat {
     fn from(format: ExportFormat) -> Self {
         match format {
             ExportFormat::Json => Self::Json,
@@ -37,13 +37,13 @@ impl From<ExportFormat> for lumenna_surface::ExportFormat {
     }
 }
 
-impl From<lumenna_surface::ExportFormat> for ExportFormat {
-    fn from(format: lumenna_surface::ExportFormat) -> Self {
+impl From<lumenna_host::ExportFormat> for ExportFormat {
+    fn from(format: lumenna_host::ExportFormat) -> Self {
         match format {
-            lumenna_surface::ExportFormat::Json => Self::Json,
-            lumenna_surface::ExportFormat::Markdown => Self::Markdown,
-            lumenna_surface::ExportFormat::Org => Self::Org,
-            lumenna_surface::ExportFormat::Ics => Self::Ics,
+            lumenna_host::ExportFormat::Json => Self::Json,
+            lumenna_host::ExportFormat::Markdown => Self::Markdown,
+            lumenna_host::ExportFormat::Org => Self::Org,
+            lumenna_host::ExportFormat::Ics => Self::Ics,
         }
     }
 }
@@ -51,7 +51,7 @@ impl From<lumenna_surface::ExportFormat> for ExportFormat {
 /// `lum export`: the present state, to standard output or a file.
 pub(crate) fn export(
     profile: &Profile,
-    format: lumenna_surface::ExportFormat,
+    format: lumenna_host::ExportFormat,
     output: Option<&Path>,
     force: bool,
 ) -> Result<Response> {

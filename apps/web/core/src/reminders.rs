@@ -4,7 +4,7 @@
 //! A browser has no lock to take (`take_reminders` is native only): the one tab that owns the
 //! store is the one that gives this browser's reminders, keeping its own "since" in memory.
 
-use lumenna_surface::{Change, DueReminders, ReminderList};
+use lumenna_host::{Change, DueReminders, ReminderList};
 use wasm_bindgen::prelude::*;
 
 use crate::{Core, Out, out};

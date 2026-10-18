@@ -1,6 +1,6 @@
 //! Planning a whole day: said in full before anything changes, then applied as accepted.
 
-use lumenna_surface::{DayPins, Lumenna, NewBlock, TimeStyle};
+use lumenna_host::{DayPins, Lumenna, NewBlock, TimeStyle};
 
 const NOW: &str = "2026-05-06T08:00";
 
@@ -24,7 +24,7 @@ fn block(lumenna: &Lumenna, title: &str, kind: &str, at: &str, minutes: u32, fil
         .unwrap();
 }
 
-fn plan(lumenna: &Lumenna, style: TimeStyle) -> lumenna_surface::DayPlan {
+fn plan(lumenna: &Lumenna, style: TimeStyle) -> lumenna_host::DayPlan {
     lumenna.propose_day_plan(Some("2026-05-06".to_owned()), style, DayPins::default(), Some(NOW.to_owned())).unwrap()
 }
 
@@ -66,7 +66,7 @@ fn what_is_due_and_fits_nowhere_is_named() {
     lumenna.add_task("Tax return p1").unwrap();
     let id = lumenna.list_tasks("").unwrap().rows[0].id.clone();
     lumenna
-        .edit_task(&id, lumenna_surface::TaskEdit { due: Some("2026-05-06".to_owned()), estimate: Some("2h".to_owned()), ..Default::default() })
+        .edit_task(&id, lumenna_host::TaskEdit { due: Some("2026-05-06".to_owned()), estimate: Some("2h".to_owned()), ..Default::default() })
         .unwrap();
     let proposal = plan(&lumenna, TimeStyle::TwentyFourHour);
     assert!(proposal.announcement.ends_with("Tax return is due and fits in no block."), "{}", proposal.announcement);

@@ -1,7 +1,7 @@
 //! What a block can be given beyond its time and kind, timers that pause, and the details
 //! the core words for every app.
 
-use lumenna_surface::{BlockEdit, BlockScope, DeviceView, Lumenna, NewBlock};
+use lumenna_host::{BlockEdit, BlockScope, DeviceView, Lumenna, NewBlock};
 
 fn open() -> (tempfile::TempDir, Lumenna) {
     let directory = tempfile::tempdir().unwrap();
@@ -154,7 +154,7 @@ fn device(this: bool, success: Option<&str>, error: Option<&str>, attempt: Optio
 
 #[test]
 fn a_device_says_how_syncing_with_it_last_went() {
-    use lumenna_surface::words::device_status;
+    use lumenna_host::words::device_status;
     let now: jiff::Timestamp = "2026-10-04T12:00:00Z".parse().unwrap();
     assert_eq!(device_status(&device(true, None, None, None), now, true), ["this device"]);
     assert_eq!(device_status(&device(false, None, None, None), now, true), ["not synced yet"]);
@@ -174,7 +174,7 @@ fn a_device_says_how_syncing_with_it_last_went() {
 
 #[test]
 fn a_watch_says_only_a_devices_version_since_it_never_syncs_with_one_directly() {
-    use lumenna_surface::words::device_status;
+    use lumenna_host::words::device_status;
     let now: jiff::Timestamp = "2026-10-04T12:00:00Z".parse().unwrap();
     assert!(device_status(&device(false, None, None, None), now, false).is_empty(), "not \"not synced yet\"");
     let mut older = device(false, Some("2026-10-04T11:55:00Z"), None, None);
@@ -194,7 +194,7 @@ fn the_days_hours_of_work_follow_the_flag_not_the_kind() {
 
 #[test]
 fn a_device_on_another_version_says_so() {
-    use lumenna_surface::words::device_status;
+    use lumenna_host::words::device_status;
     let now: jiff::Timestamp = "2026-10-04T12:00:00Z".parse().unwrap();
     let ours = lumenna_core::model::SCHEMA_VERSION;
     let older = DeviceView { schema_version: ours - 1, ..device(false, Some("2026-10-04T11:55:00Z"), None, None) };

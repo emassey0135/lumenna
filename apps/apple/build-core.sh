@@ -20,7 +20,7 @@ CONFIGURATION="${2:-${CONFIGURATION:-Debug}}"
 # Intel for a release, the Mac's own for a debug build) and the libraries joined into one.
 ARCHS="${ARCHS:-arm64}"
 # The watch's core has no network of its own: watchOS allows no sockets outside an audio
-# session, so it syncs through its iPhone (crates/surface/src/link.rs), and Iroh is left out.
+# session, so it syncs through its iPhone (crates/host/src/link.rs), and Iroh is left out.
 FEATURES=
 GENERATED="$ROOT/apps/apple/Generated"
 case "$PLATFORM" in
@@ -84,7 +84,7 @@ cargo run -q -p lumenna-ffi $FEATURES --features bindgen --bin uniffi-bindgen --
   generate --library "$HOST_TARGET/debug/liblumenna_ffi.dylib" \
   --language swift --out-dir "$GENERATED/bindings"
 
-# Swift imports the C half as the module LumennaCoreFFI (named in crates/surface/uniffi.toml);
+# Swift imports the C half as the module LumennaCoreFFI (named in crates/host/uniffi.toml);
 # give its map the name Clang looks for in a directory on the import path.
 mkdir -p "$GENERATED/include"
 cp "$GENERATED/bindings/LumennaCoreFFI.h" "$GENERATED/include/"

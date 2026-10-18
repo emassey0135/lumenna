@@ -12,8 +12,8 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use lumenna_desktop::{devices, profile, speech};
-use lumenna_surface::actions::{ActionKind, Subject};
-use lumenna_surface::{DeviceView, ExportFormat, Imported, Setting, SettingKind};
+use lumenna_host::actions::{ActionKind, Subject};
+use lumenna_host::{DeviceView, ExportFormat, Imported, Setting, SettingKind};
 
 use crate::core::sentence;
 use crate::window::{App, spawn};
@@ -525,7 +525,7 @@ impl Devices {
     fn act(&self, app: &Rc<App>, kinds: &[ActionKind]) {
         let Some(device) = self.chosen() else { return };
         let Some(action) = crate::actions::find(&device.actions, kinds) else {
-            let why = lumenna_surface::actions::not_offered(kinds[0], Subject::Device, device.this_device);
+            let why = lumenna_host::actions::not_offered(kinds[0], Subject::Device, device.this_device);
             return self.status.say(&why);
         };
         let status = self.status.clone();

@@ -1,6 +1,6 @@
 //! A block's end offers to carry on what it left short.
 
-use lumenna_surface::{Lumenna, NewBlock};
+use lumenna_host::{Lumenna, NewBlock};
 
 fn open() -> (tempfile::TempDir, Lumenna) {
     let directory = tempfile::tempdir().unwrap();

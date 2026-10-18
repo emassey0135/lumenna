@@ -12,7 +12,7 @@ description = "Lumenna's core for the web client: the surface, exported to JavaS
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-lumenna-surface = { path = "../../../crates/surface", features = ["wasm", "sync"] }
+lumenna-host = { path = "../../../crates/host", features = ["wasm", "sync"] }
 # Timers on the browser's event loop, for noticing a pairing given up.
 n0-future = "0.3"
 # The places and wording the desktop apps share, so the web says what they say.

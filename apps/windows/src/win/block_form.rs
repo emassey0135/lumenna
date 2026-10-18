@@ -10,7 +10,7 @@
 
 use std::cell::{Cell, RefCell};
 
-use lumenna_surface::{BlockFields, BlockScope, Change, Choice, FieldKind, Lumenna, block_defaults, block_edit, block_form, new_block};
+use lumenna_host::{BlockFields, BlockScope, Change, Choice, FieldKind, Lumenna, block_defaults, block_edit, block_form, new_block};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::WindowsAndMessaging::{

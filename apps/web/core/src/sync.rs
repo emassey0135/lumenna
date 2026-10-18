@@ -11,7 +11,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
-use lumenna_surface::{DeviceList, Lumenna, PairedWith, Reach, SyncLoop, SyncReport};
+use lumenna_host::{DeviceList, Lumenna, PairedWith, Reach, SyncLoop, SyncReport};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::{JsFuture, future_to_promise};
 

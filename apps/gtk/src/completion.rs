@@ -14,7 +14,7 @@ use std::sync::Arc;
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use lumenna_desktop::speech;
-use lumenna_surface::{Lumenna, Syntax};
+use lumenna_host::{Lumenna, Syntax};
 
 /// Makes an entry offer completions.
 pub fn attach(entry: &gtk::Entry, lumenna: Arc<Lumenna>, syntax: Syntax) {

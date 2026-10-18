@@ -1,6 +1,6 @@
 //! What the app offers to choose from that takes more than one listing to find.
 
-use lumenna_surface::Lumenna;
+use lumenna_host::Lumenna;
 
 use crate::speech::Clock;
 
@@ -43,7 +43,7 @@ pub fn work_blocks(lumenna: &Lumenna, from: jiff::civil::Date, days: i64, clock:
 
 #[cfg(test)]
 mod tests {
-    use lumenna_surface::NewBlock;
+    use lumenna_host::NewBlock;
 
     use super::*;
     use crate::speech::testing::TwelveHour;
