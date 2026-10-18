@@ -1,5 +1,16 @@
 package io.github.emassey0135.lumenna
 
+import io.github.emassey0135.lumenna.app.Typing
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.TextRange
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
@@ -68,10 +79,7 @@ import io.github.emassey0135.lumenna.app.Place
 import io.github.emassey0135.lumenna.app.RowView
 import io.github.emassey0135.lumenna.app.ShellEvent
 import io.github.emassey0135.lumenna.records.ActionKind
-import io.github.emassey0135.lumenna.records.labelReference
 import io.github.emassey0135.lumenna.records.notOffered
-import io.github.emassey0135.lumenna.records.Preview
-import io.github.emassey0135.lumenna.records.projectReference
 import io.github.emassey0135.lumenna.records.Syntax
 
 
@@ -115,7 +123,7 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
 
     ScreenFrame(here?.title ?: placeTitle(screen.place), core, navigator, actions = {
         if (!trash) {
-            IconButton(onClick = { navigator.push(Screen.QuickAdd(quickAddPrefix(screen.place))) }) {
+            IconButton(onClick = { navigator.push(Screen.QuickAdd) }) {
                 Icon(Icons.Filled.Add, contentDescription = "Add task")
             }
         }
@@ -165,13 +173,6 @@ fun placeTitle(place: Place): String = when (place) {
     is Place.Filter -> place.name
     Place.Blocks -> "Blocks"
     Place.Trash -> "Trash"
-}
-
-/** What a task added from a place's list starts with: its project or label, as quick add reads one. */
-fun quickAddPrefix(place: Place): String = when (place) {
-    is Place.Project -> projectReference(place.field0) + " "
-    is Place.Label -> labelReference(place.field0) + " "
-    else -> ""
 }
 
 /** How the filter was understood, and what it found — or why it is not one yet. */
@@ -354,44 +355,77 @@ fun ListRow(
 }
 
 /**
- * Adding a task in a line, the way it would be said. The readback beneath the field
- * says how the line is understood as it is typed — the date, priority, project and labels —
- * since there is no highlighting under the text to show it; an unknown project is an error,
- * and nothing is added until it is fixed.
+ * Adding a task in a line, the way it would be said: the app's line (`ViewModel.line`). The
+ * readback beneath the field says how the line is understood as it is typed — the date,
+ * priority, project and labels — since there is no highlighting under the text to show it; an
+ * unknown project is an error, and nothing is added until it is fixed. What fits at the cursor
+ * is offered beneath, named as the core names it ("project Work", not "#Work"), and put in
+ * where the app says. The line starts with what the place adds.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun QuickAddScreen(core: Core, navigator: Navigator, screen: Screen.QuickAdd) {
-    var line by rememberSaveable(stateSaver = TextFieldValue.Saver) {
-        mutableStateOf(TextFieldValue(screen.prefix, androidx.compose.ui.text.TextRange(screen.prefix.length)))
+fun QuickAddScreen(core: Core, navigator: Navigator) {
+    val app = core.app
+    val view by app.view.collectAsState()
+    val line = view?.line
+    var opened by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { app.send(ShellEvent.Typing(Typing.Open)) }
+    // Added, the app lets the line go, and the screen goes back.
+    LaunchedEffect(line == null) { if (line != null) opened = true else if (opened) navigator.back() }
+    // Leaving it lets the line go.
+    DisposableEffect(Unit) { onDispose { if (app.view.value?.line != null) app.send(ShellEvent.Typing(Typing.Close)) } }
+    // The field's own text while typing is on its way, so the caret stays put; the app's once none is.
+    var typed by remember { mutableStateOf<TextFieldValue?>(null) }
+    var pending by remember { mutableIntStateOf(0) }
+    val shown = typed ?: line?.let { TextFieldValue(it.text, TextRange(TextOffsets.utf16(it.cursor, it.text))) } ?: TextFieldValue("")
+    LaunchedEffect(line?.text, line?.cursor) { if (pending == 0) typed = null }
+    val tell = { value: TextFieldValue ->
+        typed = value
+        pending++
+        app.send(ShellEvent.Typing(Typing.Text(value.text, TextOffsets.bytes(value.selection.end, value.text))))
     }
-    val preview: Preview? = remember(line.text) {
-        if (line.text.isBlank()) null else runCatching { core.lumenna.previewTask(line.text) }.getOrNull()
-    }
-    val add = {
-        when {
-            line.text.isBlank() -> core.say("Nothing to add")
-            preview?.hasErrors == true ->
-                core.say(preview.diagnostics.filter { it.severity == "error" }.joinToString("; ") { it.message })
-            else -> core.change { it.addTask(line.text) }?.let { navigator.back() }
-        }
-    }
+    LaunchedEffect(view?.line) { if (pending > 0) pending-- }
+    val add = { app.send(ShellEvent.QuickAdd(shown.text)) }
 
     ScreenFrame("New task", core, navigator, actions = {
         IconButton(onClick = { add() }) { Icon(Icons.Filled.Check, contentDescription = "Add") }
     }) {
-        CompletingField(
-            core = core,
-            syntax = Syntax.QUICK_ADD,
-            label = "Task",
-            example = "call the bank tomorrow at 3pm p1 #Home @calls",
-            value = line,
-            onValueChange = { line = it },
-            onSubmit = { add() },
-            modifier = Modifier.padding(horizontal = 16.dp),
-            // Typing starts at once, as it does on the iPhone.
-            focused = true,
-        )
-        val said = preview?.let { sentence(it.announcement, it.diagnostics.map { d -> d.message }) }.orEmpty()
+        val focus = remember { FocusRequester() }
+        // Typing starts at once, as it does on the iPhone.
+        LaunchedEffect(Unit) { focus.requestFocus() }
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            OutlinedTextField(
+                value = shown,
+                onValueChange = { if (it.text != shown.text || it.selection != shown.selection) tell(it) },
+                label = { Text("Task") },
+                placeholder = { Text("call the bank tomorrow at 3pm p1 #Home @calls") },
+                modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrectEnabled = false,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(onDone = { add() }),
+            )
+            val candidates = line?.offer?.candidates.orEmpty()
+            if (candidates.isNotEmpty()) {
+                FlowRow(Modifier.padding(top = 4.dp)) {
+                    candidates.take(8).forEachIndexed { index, candidate ->
+                        SuggestionChip(
+                            onClick = {
+                                typed = null
+                                app.send(ShellEvent.Typing(Typing.Choose(index.toUInt())))
+                            },
+                            label = { Text(candidate.text) },
+                            modifier = Modifier
+                                .padding(end = 8.dp)
+                                .semantics { contentDescription = "Complete with ${candidate.label}" },
+                        )
+                    }
+                }
+            }
+        }
+        val said = line?.readback.orEmpty()
         Text(
             said,
             style = MaterialTheme.typography.bodyMedium,

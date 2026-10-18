@@ -79,8 +79,8 @@ sealed interface Screen {
     /** One task's details. */
     data class Task(val id: String) : Screen
 
-    /** Adding a task in a line, starting from `prefix`. */
-    data class QuickAdd(val prefix: String = "") : Screen
+    /** Adding a task in a line: the app's, starting with what the place adds. */
+    data object QuickAdd : Screen
 
     /** The app's block form, while it has one open. */
     data object BlockForm : Screen
@@ -233,7 +233,7 @@ fun LumennaApp(
             // New Task from outside the app: the Tasks tab, with quick add over its list.
             val requested = newTask?.collectAsState()?.value ?: 0L
             LaunchedEffect(requested) {
-                if (requested > 0) go(Tab.TASKS, Screen.QuickAdd())
+                if (requested > 0) go(Tab.TASKS, Screen.QuickAdd)
             }
 
             // A reminder's notification, tapped: its task, or its block's day; its Replan button, Replan from Now.
@@ -251,7 +251,7 @@ fun LumennaApp(
             }
 
             // The commands any screen answers; a screen offering one of its own answers instead.
-            Offer(Command.NEW_TASK) { go(Tab.TASKS, Screen.QuickAdd()) }
+            Offer(Command.NEW_TASK) { go(Tab.TASKS, Screen.QuickAdd) }
             Offer(Command.NEW_BLOCK) {
                 go(Tab.TODAY)
                 core.app.send(io.github.emassey0135.lumenna.app.ShellEvent.Block(io.github.emassey0135.lumenna.app.BlockEvent.New(null, null)))
@@ -406,7 +406,7 @@ fun syncNow(core: Core) {
 private fun Screens(core: Core, navigator: Navigator, screen: Screen, changes: Long) {
     when (screen) {
         is Screen.Tasks -> TaskListScreen(core, navigator, screen)
-        is Screen.QuickAdd -> QuickAddScreen(core, navigator, screen)
+        Screen.QuickAdd -> QuickAddScreen(core, navigator)
         is Screen.Task -> TaskDetailScreen(core, navigator, screen)
         is Screen.Day -> DayScreen(core, navigator, screen)
         Screen.BlockForm -> BlockFormScreen(core, navigator)
