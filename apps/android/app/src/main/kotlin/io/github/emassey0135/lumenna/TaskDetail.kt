@@ -43,74 +43,73 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
-import io.github.emassey0135.lumenna.records.ActionKind
-import io.github.emassey0135.lumenna.records.FieldKind
-import io.github.emassey0135.lumenna.records.TaskDetail
-import io.github.emassey0135.lumenna.records.TaskFields
-import io.github.emassey0135.lumenna.records.taskEdit
-import io.github.emassey0135.lumenna.records.taskFields
+import androidx.compose.runtime.collectAsState
+import io.github.emassey0135.lumenna.app.DetailsEvent
+import io.github.emassey0135.lumenna.app.FieldKind
+import io.github.emassey0135.lumenna.app.FormField
+import io.github.emassey0135.lumenna.app.ShellEvent
+import io.github.emassey0135.lumenna.app.TaskFields
 
 /**
- * One task, its fields edited and saved together.
+ * One task, its fields edited and saved together: the app's details (`ViewModel.details`) of
+ * the task this screen asks it to show.
  *
- * Saving sends only the fields that changed — the core decides which (`taskEdit`), as for
- * every app, since a field sent unchanged would win a last-write-wins race and revert another
- * device's edit to it. While the fields differ from the task, a change arriving from elsewhere
- * does not replace them: that would lose what is being typed.
+ * Which fields saving sends is the app's: only what changed, since a field sent unchanged would
+ * win a last-write-wins race and revert another device's edit to it; and typing not yet saved
+ * is kept when a change arrives from elsewhere. Each field keeps its own text while typing is
+ * on its way, and takes the app's once none is.
  */
 @Composable
-fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task, changes: Long) {
-    var task by remember(screen.id) { mutableStateOf<TaskDetail?>(null) }
-    var fields by remember(screen.id) { mutableStateOf<TaskFields?>(null) }
-    val prompt = rememberPrompter()
-    val asker = remember(prompt) { DialogAsker(core, prompt) }
-
-    LaunchedEffect(screen.id, changes) {
-        val shown = runCatching { core.lumenna.showTask(screen.id).task }.getOrNull()
-        val editing = task?.let { before -> fields?.let { taskEdit(before, it) } } != null
-        if (!editing || shown == null) {
-            task = shown
-            fields = shown?.let { taskFields(it) }
-        }
+fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
+    val app = core.app
+    val view by app.view.collectAsState()
+    LaunchedEffect(screen.id) { app.send(ShellEvent.Details(DetailsEvent.Show(screen.id))) }
+    val details = view?.details?.takeIf { it.task.id == screen.id }
+    var shown by remember(screen.id) { mutableStateOf(false) }
+    // Gone from under it — deleted here or elsewhere — the screen goes back.
+    LaunchedEffect(details == null) {
+        if (details != null) shown = true else if (shown) navigator.back()
     }
-
-    val current = task
-    val form = fields
-    // Which fields are sent is shared with the watch (`TaskField.save`): only what changed.
-    val save: () -> Unit = save@{
-        val before = current ?: return@save
-        form?.let { TaskField.save(core, before, it) }
+    var typed by remember(screen.id) { mutableStateOf<TaskFields?>(null) }
+    val form = typed ?: details?.fields
+    // The app's fields once nothing typed is on its way.
+    LaunchedEffect(details?.fields, details?.dirty) {
+        if (details != null && !details.dirty) typed = null
     }
+    val set = { key: String, value: String, fields: TaskFields ->
+        typed = fields
+        app.send(ShellEvent.Details(DetailsEvent.Field(key, value)))
+    }
+    val save = { app.send(ShellEvent.Details(DetailsEvent.Save)) }
 
     Offer(Command.SAVE) { save() }
-    // The projects to move it to, read again whenever the store changes, its own among them.
-    val projects = remember(changes, task?.project) { core.projectChoices(task?.project.orEmpty()) }
 
-    ScreenFrame(current?.title ?: "Task", core, navigator, actions = {
-        if (current != null) {
+    ScreenFrame(details?.task?.title ?: "Task", core, navigator, actions = {
+        if (details != null) {
             IconButton(onClick = { save() }) { Icon(Icons.Filled.Check, contentDescription = "Save") }
         }
     }) {
-        if (current == null || form == null) {
-            Text("This task is no longer here.", Modifier.padding(16.dp), color = quiet())
+        if (details == null || form == null) {
+            Text(if (shown) "This task is no longer here." else "", Modifier.padding(16.dp), color = quiet())
             return@ScreenFrame
         }
+        val current = details.task
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-            // The core's fields, in its order, as the watch has them too: the priority a choice
-            // among the core's options, the project one of the projects, the rest text.
-            taskFormFields.forEach { field ->
-                val text = TaskField.of(field)
+            // The app's fields, in the core's order: the priority a choice among the core's
+            // options, the project one of the projects, the rest text.
+            details.form.forEach { field ->
+                val text = AppTaskField.of(field)
                 if (field.key == "project") {
-                    ProjectField(field.label, form.project, projects) { fields = form.copy(project = it) }
+                    ProjectField(field.label, form.project, details.projects.map(::option)) { set("project", it, form.copy(project = it)) }
                     return@forEach
                 }
                 if (text != null) {
                     // Prose is corrected as it is typed; a date, a duration or a name is not.
-                    val prose = text == TaskField.TITLE || text == TaskField.NOTES
+                    val prose = text == AppTaskField.TITLE || text == AppTaskField.NOTES
                     // A field of one line saves on Enter, as a form's line does.
                     val line = field.kind != FieldKind.LINES
-                    Field(field.label, text.get(form), field.example, field.help, prose, lines = if (line) 1 else 3, onEnter = if (line) save else null) {
-                        fields = text.set(form, it)
+                    Field(field.label, text.get(form), field.example, field.hint.ifEmpty { null }, prose, lines = if (line) 1 else 3, onEnter = if (line) save else null) {
+                        set(field.key, it, text.set(form, it))
                     }
                     return@forEach
                 }
@@ -123,7 +122,7 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task, chan
                             Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = 48.dp)
-                                .selectable(chosen, role = Role.RadioButton) { fields = form.copy(priority = level) }
+                                .selectable(chosen, role = Role.RadioButton) { set("priority", option.id, form.copy(priority = level)) }
                                 .padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -154,15 +153,28 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task, chan
             // The core's, in its order: this screen is the task's form, so no Edit Details.
             Heading("Actions")
             current.actions.forEach { action ->
-                TextButton(modifier = Target, onClick = {
-                    core.perform(action, asker, form = navigator.formOr {}) { if (action.kind == ActionKind.DELETE) navigator.back() }
-                }) {
+                TextButton(modifier = Target, onClick = { app.send(ShellEvent.Perform(action)) }) {
                     Text(action.name, color = if (action.destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
                 }
             }
         }
     }
-    prompt.Host()
+    AppQuestions(core) {}
+}
+
+/** A text field of the task form, by the core's key: where its value lives in the app's [TaskFields]. */
+private enum class AppTaskField(val key: String, val get: (TaskFields) -> String, val set: (TaskFields, String) -> TaskFields) {
+    TITLE("title", { it.title }, { f, v -> f.copy(title = v) }),
+    DUE("due", { it.due }, { f, v -> f.copy(due = v) }),
+    REPEATS("repeat", { it.repeat }, { f, v -> f.copy(repeat = v) }),
+    ESTIMATE("estimate", { it.estimate }, { f, v -> f.copy(estimate = v) }),
+    PROJECT("project", { it.project }, { f, v -> f.copy(project = v) }),
+    LABELS("labels", { it.labels }, { f, v -> f.copy(labels = v) }),
+    NOTES("notes", { it.notes }, { f, v -> f.copy(notes = v) });
+
+    companion object {
+        fun of(field: FormField): AppTaskField? = entries.firstOrNull { it.key == field.key }
+    }
 }
 
 /**

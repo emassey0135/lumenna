@@ -404,7 +404,7 @@ private fun Screens(core: Core, navigator: Navigator, screen: Screen, changes: L
     when (screen) {
         is Screen.Tasks -> TaskListScreen(core, navigator, screen)
         is Screen.QuickAdd -> QuickAddScreen(core, navigator, screen)
-        is Screen.Task -> TaskDetailScreen(core, navigator, screen, changes)
+        is Screen.Task -> TaskDetailScreen(core, navigator, screen)
         is Screen.Day -> DayScreen(core, navigator, screen, changes)
         is Screen.BlockForm -> BlockFormScreen(core, navigator, screen.purpose)
         Screen.Browse -> BrowseScreen(core, navigator, changes)
