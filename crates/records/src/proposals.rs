@@ -20,7 +20,6 @@ pub enum TimeStyle {
 /// One change of a proposal, said, with what applying it takes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ReplanChange {
     /// The whole change in a sentence: "Lunch moves from 10:30 to 11:00".
     pub sentence: String,
@@ -45,7 +44,6 @@ pub struct ReplanChange {
 /// What replanning the rest of today proposes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Replan {
     /// The whole proposal in one sentence, said before anything changes; or that nothing
     /// needs to.
@@ -75,7 +73,6 @@ crate::announced!(Replan);
 /// Another way through the rest of the day.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ReplanAlternative {
     /// What it is, what it costs and what follows, in a sentence or two.
     pub sentence: String,
@@ -88,7 +85,6 @@ pub struct ReplanAlternative {
 /// block's series, or a sitting's identifier.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ReplanPins {
     /// Blocks left where and as long as they are.
     #[serde(default)]
@@ -108,7 +104,6 @@ pub struct ReplanPins {
 /// A block let shorten below its own minimum, to as little as `minutes`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ReplanFloor {
     /// The block's series.
     pub block: String,
@@ -120,7 +115,6 @@ pub struct ReplanFloor {
 /// A replan's accepted changes made, and what is proposed now.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Replanned {
     /// What was changed, then what is proposed now, or that the rest of the day fits.
     pub announcement: String,
@@ -138,7 +132,6 @@ crate::announced!(Replanned);
 /// One sitting a day plan proposes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ProposedSitting {
     /// The sitting in a sentence: "Report goes in Morning at 9:00, for 45 minutes".
     pub sentence: String,
@@ -156,7 +149,6 @@ pub struct ProposedSitting {
 /// What planning a day proposes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct DayPlan {
     /// The whole plan in a sentence or two, said before anything changes.
     pub announcement: String,
@@ -181,7 +173,6 @@ crate::announced!(DayPlan);
 /// What the person decided about a day's plan, which the next plan keeps to.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct DayPins {
     /// Tasks not to plan that day.
     #[serde(default)]
@@ -194,7 +185,6 @@ pub struct DayPins {
 /// A day plan's accepted sittings made, and what is proposed now.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct DayPlanned {
     /// What was planned, then what is proposed now, if anything.
     pub announcement: String,

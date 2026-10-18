@@ -3032,8 +3032,6 @@ dependencies = [
  "lumenna-records",
  "serde",
  "tempfile",
- "tsify",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -3079,9 +3077,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "tokio",
- "tsify",
  "uniffi",
- "wasm-bindgen",
  "windows-sys 0.61.2",
 ]
 

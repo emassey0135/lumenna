@@ -121,7 +121,6 @@ pub fn sitting_status(sitting: PlanAssignment) -> Vec<String> {
 /// form's check buttons start from, and go back to when the kind is changed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct BlockDefaults {
     /// Whether tasks can be put in it.
     pub accepts_tasks: bool,

@@ -82,7 +82,6 @@ fn to_u32(n: usize) -> u32 {
 /// What a mutation did.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Change {
     /// What happened, in a sentence.
     pub announcement: String,
@@ -143,7 +142,6 @@ impl Change {
 /// Identifiers a change touched, by kind.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Affected {
     /// Tasks.
     #[serde(default, skip_serializing_if = "none")]
@@ -250,7 +248,6 @@ fn push<T: ToString>(into: &mut Vec<String>, before: Option<T>, after: Option<T>
 /// A listing of rows, all of one kind.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Rows {
     /// The count line — *"17 tasks"*.
     pub announcement: String,
@@ -430,7 +427,6 @@ pub const fn name_kind(kind: NameKind) -> &'static str {
 /// One task, as `show_task` returns it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct TaskShown {
     /// Its title, which is all there is to announce.
     pub announcement: String,
@@ -564,7 +560,6 @@ impl TaskDetail {
 /// A day's blocks and what is assigned to them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Plan {
     /// The day and how many blocks it holds.
     pub announcement: String,
@@ -598,7 +593,6 @@ pub struct Plan {
 /// The work blocks a task could be put in, from a task itself rather than from a day.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct WorkBlocks {
     /// How many there are, and over how many days.
     pub announcement: String,
@@ -617,7 +611,6 @@ pub struct WorkBlocks {
 /// time are said is the platform's.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct WorkBlock {
     /// `<series>@<date>`, as `assign` takes it.
     pub id: String,
@@ -660,7 +653,6 @@ pub struct CancelledBlock {
 /// One row of a day's timeline.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[serde(tag = "item", rename_all = "snake_case")]
 pub enum PlanItem {
     /// A block, by its position in [`Plan::blocks`] counting from one.
@@ -760,7 +752,6 @@ pub struct PlanBlock {
 /// editor starts from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct BlockShown {
     /// Its name.
     pub announcement: String,
@@ -857,7 +848,6 @@ pub struct PlanAssignment {
 /// A timer stopped, or minutes logged by hand.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Timer {
     /// What happened, in a sentence.
     pub announcement: String,
@@ -881,7 +871,6 @@ pub struct Timer {
 /// The saved filters.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Filters {
     /// How many there are, in a sentence.
     pub announcement: String,
@@ -900,7 +889,6 @@ pub struct Filters {
 /// One saved filter. Stored as text, never as a resolved date range.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct FilterView {
     /// Its position, counting from one.
     pub row: u32,
@@ -918,7 +906,6 @@ pub struct FilterView {
 /// Settings, in a fixed order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct SettingList {
     /// How many, or the one value asked for.
     pub announcement: String,
@@ -1037,7 +1024,6 @@ impl Completions {
 /// Which grammar is being typed, for completion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[serde(rename_all = "kebab-case")]
 pub enum Syntax {
     /// A quick-add line.
@@ -1049,7 +1035,6 @@ pub enum Syntax {
 /// What a quick-add line would produce, without producing it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Preview {
     /// The readback: what would be saved, with the resolved date — the sentence that stands in
     /// for a sighted user's inline highlighting.
@@ -1092,7 +1077,6 @@ pub struct Preview {
 /// Something worth saying about a span of the input.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Diagnostic {
     /// `error` or `notice`. An error stops the add; a notice does not.
     pub severity: String,
@@ -1156,7 +1140,6 @@ impl Preview {
 /// Where a backup went.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct BackupDone {
     /// Where it went, in a sentence.
     pub announcement: String,
@@ -1173,7 +1156,6 @@ pub struct BackupDone {
 /// download.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct BackupFile {
     /// What was backed up, in a sentence.
     pub announcement: String,
@@ -1189,7 +1171,6 @@ pub struct BackupFile {
 /// What a restore did.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct RestoreDone {
     /// What came in, in a sentence.
     pub announcement: String,
@@ -1250,7 +1231,6 @@ impl ExportFormat {
 /// An export.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Exported {
     /// What was exported, in a sentence.
     pub announcement: String,
@@ -1270,7 +1250,6 @@ pub struct Exported {
 /// What an import of an export did, in records.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ImportDone {
     /// What came in, in a sentence.
     pub announcement: String,
@@ -1290,7 +1269,6 @@ pub struct ImportDone {
 /// What reading a file in did: it was an export, or it was a backup.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum Imported {
     /// A JSON export, imported record by record.
     Export {
@@ -1311,7 +1289,6 @@ pub enum Imported {
 /// The fields of a task to change; `None` leaves one alone.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct TaskEdit {
     /// A new title.
     #[serde(default)]
@@ -1345,7 +1322,6 @@ pub struct TaskEdit {
 /// Where to move a task.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum MoveTarget {
     /// Under another task, joining its project.
     Parent {
@@ -1364,7 +1340,6 @@ pub enum MoveTarget {
 /// A project's weight: its own, or inherited.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum Weight {
     /// Take the parent's again.
     Inherit,
@@ -1378,7 +1353,6 @@ pub enum Weight {
 /// The fields of a block to change; `None` leaves one alone.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct BlockEdit {
     /// What to call it.
     #[serde(default)]
@@ -1434,7 +1408,6 @@ pub struct BlockEdit {
 /// time, never guessed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum BlockScope {
     /// Every occurrence: the series itself.
     Series,
@@ -1448,7 +1421,6 @@ pub enum BlockScope {
 /// Which way to move something in its list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum Direction {
     /// One place earlier.
     Up,
@@ -1459,7 +1431,6 @@ pub enum Direction {
 /// A new block.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct NewBlock {
     /// What to call it.
     pub title: String,
@@ -1518,7 +1489,6 @@ pub struct NewBlock {
 /// The device a pairing joined.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct PairedWith {
     /// Who, and how much came across.
     pub announcement: String,
@@ -1537,7 +1507,6 @@ pub struct PairedWith {
 /// then reconciling the documents.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct LinkSynced {
     /// Who, and whether this paired them.
     pub announcement: String,
@@ -1558,7 +1527,6 @@ pub struct LinkSynced {
 /// How one device went in a sync round.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct PeerSync {
     /// What it is called.
     pub name: String,
@@ -1577,7 +1545,6 @@ pub struct PeerSync {
 /// A sync round with every paired device.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct SyncReport {
     /// How many were reached.
     pub announcement: String,
@@ -1628,7 +1595,6 @@ pub struct DeviceView {
 /// How syncing is going, as words rather than an icon.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct SyncStatus {
     /// Whether it is running, and with how many devices.
     pub announcement: String,
@@ -1663,7 +1629,6 @@ pub struct DeviceList {
 /// Which networks syncing may use.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum Reach {
     /// Anywhere: a relay and the address lookup service, so devices on different networks
     /// find each other.

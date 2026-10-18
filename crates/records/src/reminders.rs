@@ -56,7 +56,6 @@ pub struct DueReminder {
 /// What reminders to give now, or over a while.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct DueReminders {
     /// How many, or why none.
     pub announcement: String,

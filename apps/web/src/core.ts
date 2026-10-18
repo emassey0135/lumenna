@@ -30,7 +30,6 @@ export type {
   ReminderView,
   Setting,
   BlockFields,
-  BlockShown,
   SidebarEntry,
   ExportChoice,
   FormField,
