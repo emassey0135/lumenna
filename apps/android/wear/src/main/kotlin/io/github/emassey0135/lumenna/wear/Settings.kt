@@ -2,7 +2,6 @@ package io.github.emassey0135.lumenna.wear
 
 import io.github.emassey0135.lumenna.deviceName
 import io.github.emassey0135.lumenna.rowActions
-import io.github.emassey0135.lumenna.appButton
 import io.github.emassey0135.lumenna.app.pairingWords
 import io.github.emassey0135.lumenna.app.ShellEvent
 import io.github.emassey0135.lumenna.app.SettingsEvent
@@ -29,7 +28,6 @@ import io.github.emassey0135.lumenna.Option
 import io.github.emassey0135.lumenna.Clock
 import io.github.emassey0135.lumenna.Core
 import io.github.emassey0135.lumenna.RowAction
-import io.github.emassey0135.lumenna.said
 import io.github.emassey0135.lumenna.sentence
 import androidx.wear.compose.foundation.lazy.ScalingLazyListScope
 import androidx.wear.compose.material3.RadioButton
@@ -122,11 +120,11 @@ private fun PairingButtons(core: Core) {
     val pairing = view?.devices?.pairing
     val pair = { event: PairEvent -> app.send(ShellEvent.Devices(DevicesEvent.Pair(event))) }
     val context = LocalContext.current
-    val words = remember { pairingWords("this watch", true) }
+    val words = remember { pairingWords("this watch", true, io.github.emassey0135.lumenna.app.Capitals.SENTENCE) }
     LaunchedEffect(Unit) { pair(PairEvent.Open(deviceName(context))) }
     DisposableEffect(Unit) { onDispose { pair(PairEvent.Cancel) } }
     androidx.compose.foundation.layout.Column {
-        Heading(appButton(words.title))
+        Heading(words.title)
         val status = pairing?.problem ?: when {
             pairing?.mine != null -> words.waiting
             pairing?.running == true -> words.connecting
@@ -134,7 +132,7 @@ private fun PairingButtons(core: Core) {
         }
         Text(status, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
         pairing?.mine?.let { Text("${words.myCode}: $it") }
-        Button(onClick = { pair(PairEvent.Wait) }, enabled = pairing?.running != true, modifier = Modifier.fillMaxWidth(), label = { Text(appButton(words.wait)) })
+        Button(onClick = { pair(PairEvent.Wait) }, enabled = pairing?.running != true, modifier = Modifier.fillMaxWidth(), label = { Text(words.wait) })
         if (pairing?.running != true || pairing.waiting) {
             TextFieldButton(words.theirCode, "") { code ->
                 pair(PairEvent.Code(code))
@@ -142,9 +140,9 @@ private fun PairingButtons(core: Core) {
             }
         }
         pairing?.words?.let { three ->
-            Text("${appButton(words.matchTitle)} ${words.matchMessage} ${three.joinToString(", ")}.", Modifier.semantics { liveRegion = LiveRegionMode.Assertive })
-            Button(onClick = { pair(PairEvent.Confirm(true)) }, modifier = Modifier.fillMaxWidth(), label = { Text(appButton(words.matchYes)) })
-            Button(onClick = { pair(PairEvent.Confirm(false)) }, modifier = Modifier.fillMaxWidth(), label = { Text(appButton(words.matchNo)) })
+            Text("${words.matchTitle} ${words.matchMessage} ${three.joinToString(", ")}.", Modifier.semantics { liveRegion = LiveRegionMode.Assertive })
+            Button(onClick = { pair(PairEvent.Confirm(true)) }, modifier = Modifier.fillMaxWidth(), label = { Text(words.matchYes) })
+            Button(onClick = { pair(PairEvent.Confirm(false)) }, modifier = Modifier.fillMaxWidth(), label = { Text(words.matchNo) })
         }
     }
 }

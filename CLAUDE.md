@@ -39,7 +39,8 @@ crates/mobile/  the app for Android through BoltFFI: `App`, the shell's events, 
 crates/ffi/     the library the Swift apps link; re-exports surface over UniFFI.
 crates/sync/    Iroh endpoints, the document sync session, and pairing.
 crates/desktop/ what the Windows, GTK and web apps decide alike: row wording, flat rows as a
-                tree, work-block choices, device wording, the profile.
+                tree, work-block choices, device wording, the profile; with `app`, the app's
+                view worded line by line (`lines`) for the web and Android.
 apps/cli/       `lum`, and `lum rpc` for clients that cannot link Rust.
 apps/btspeak/   the BTSpeak app, in Python, over `lum rpc`.
 apps/emacs/     the Emacs client, in Elisp, over `lum rpc` or the profile's socket.
@@ -184,6 +185,18 @@ the host directly until their turn (the `legacy` tag is the last commit before t
   sentences the core composes whole, and when to look for reminders and the moment it looks at.
   A shell whose clock is pinned for tests says the moment proposals are made against
   (`Event::PlanFrom`), which applying them carries to the host.
+- **So are its capitals** (`Event::Capitals`): a shell that writes sentence case says so and
+  the view comes cased (`capitals.rs`): the sidebar's headings, a question's buttons and
+  answers, a question's title where it is its action's own name (else the core's, which keeps
+  names), a proposal's words, a reminder's buttons, the export labels, the block form's button.
+  An action carries both its `title` and `sentence`; a shell picks one by its platform.
+- **A view's lines are worded once** (`lumenna_desktop::lines`, over the `speech` functions):
+  each list row, the list's readback, the day's title and rows, a pick's choices, the devices,
+  the quick-add offer, the details' state. A `Line` is its first part, the rest, and the two
+  joined (`text`), for a list that shows two lines and one that reads one. The platform gives
+  only its locale's formatting of a time and a date (`speech::Formats`); "Today", "Tomorrow",
+  and when to give the year are `speech::Spoken`'s. The web's and Android's turns carry them,
+  and a day newly shown is said as "<day>. <summary>" before it reaches either.
 - Flow tests are `crates/bridge/tests/flows.rs`: events in, view models and sentences out,
   against a real store; a stand-in middleware takes the network's requests, and the test
   answers them. One test drives the core by hand, to hold a write's answer back.
@@ -1056,6 +1069,9 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 - **A text view keeps Tab**; `prompts::leaves_on_tab` steps it out of the focus chain.
 - **The sidebar's places are the surface's** (`surface::places`, `Lumenna.places`), shared
   by Windows, GTK, the web, the Mac, the iPad and Android.
+- **A sidebar entry carries its `title` and `detail`** beside its one line (`text`), so a sidebar
+  that shows two lines never cuts the line apart; `SidebarEntry::key_of` names a row by its kind
+  alone.
 - **A short list is a tree sized to its rows** (`Tree::fit`), hidden when empty. A list box
   in a scroller made the scroller a nameless Tab stop, and making the scroller
   non-focusable broke Tab for the whole page.
@@ -1127,9 +1143,10 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   from one thread of the app's, in order, what arrived together as one.
 - **`shared` holds the core and what decides nothing about looks**: the core's build and
   bindings, `Core` (the `Device` and, over it, the app), `AppModel` (turns taken on the main
-  thread in order, speech held while a list lands), `AppWords.kt` and `Words.kt` (this
-  platform's capitals and clock over the app's records: a row's speech, a day row's line, a
-  place's), `RowAction`, reminders' alarms, the watch's link and `SyncWorker` (through
+  thread in order, speech held while a list lands, the turn's `lines`), `Words.kt` (the
+  locale's time and date, handed to the core as `Clock.locale`), `AppWords.kt` (only what a
+  tree control would say by itself and a Compose list does not: folding and the level),
+  `RowAction`, reminders' alarms, the watch's link and `SyncWorker` (through
   `CoreHolder`, which each app's Application is). What is in hand, what is folded, which
   question is open, the forms, settings, pairing and proposals are the app's; each app draws
   them, the questions once at its root (`AppQuestions`, `WearQuestions`).
@@ -1345,8 +1362,8 @@ with `lum`.
   desktop and a phone width, for a visual review: the tests read the accessibility tree and never
   look at the page. The layout stacks to two columns below 64rem and one below 40rem.
 - **The app runs in the worker beside the store** (`core/src/app.rs`, `src/session.ts`). The
-  page sends what the person did and draws the screen that comes back; the worker words it
-  (each row's line, the day's words, sentence case). The store worker runs as a task, and the
+  page sends what the person did and draws the screen that comes back, each line as the turn's
+  `lines` word it, the capitals sentence case (`Event::Capitals`). The store worker runs as a task, and the
   network middleware hands each request to a runner on the browser's event loop
   (`core/src/app.rs`). Whatever the app leaves, at once or later, goes through one outbox to
   the listener the page gave (`listen`), a turn per batch; a call's reply is only the screen

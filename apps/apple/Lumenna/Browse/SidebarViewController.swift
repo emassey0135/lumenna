@@ -58,17 +58,11 @@ final class SidebarViewController: ItemListViewController {
         let places = core.lumenna.places().entries
         entries = Dictionary(places.map { (Self.key($0.kind), $0) }, uniquingKeysWith: { first, _ in first })
         var items = places.map { entry -> Item in
-            let title: String = switch entry.kind {
-            case let .group(group): switch group {
-                case .projects: "Projects"
-                case .labels: "Labels"
-                case .filters: "Saved Filters"
-                }
-            case let .place(place): placeTitle(place: place)
-            }
-            // The core's line is the title, then what is in it: shown on two lines here.
-            let detail = entry.text.hasPrefix(title + ", ") ? String(entry.text.dropFirst(title.count + 2)) : nil
-            var item = Item(key: Self.key(entry.kind), title: title, detail: detail, depth: entry.depth, actions: entry.actions)
+            // The core's title, then what is in it: shown on two lines here.
+            var item = Item(
+                key: Self.key(entry.kind), title: entry.title, detail: entry.detail.isEmpty ? nil : entry.detail,
+                depth: entry.depth, actions: entry.actions
+            )
             if case .group = entry.kind { item.heading = true }
             return item
         }

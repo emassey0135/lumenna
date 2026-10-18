@@ -9,27 +9,7 @@
 // decided here.
 
 import * as Comlink from "comlink";
-import init, {
-  App,
-  Core,
-  announcementText,
-  blockText,
-  cancelledText,
-  dayText,
-  deviceText,
-  freeText,
-  nowText,
-  sittingText,
-  summaryText,
-  candidateText,
-  choiceText,
-  pairingWords,
-  sentenceCase,
-  rowText,
-  taskStateText,
-  trashedText,
-  keyboardShortcuts,
-} from "./core/lumenna_web.js";
+import init, { App, Core, pairingWords, sentenceCase, keyboardShortcuts } from "./core/lumenna_web.js";
 import type {
   Asking,
   DayItem,
@@ -42,11 +22,10 @@ import type {
   DetailsView,
   Event,
   Item,
+  Lines,
   ListView,
   Turn,
   ViewModel,
-  ProposalWords,
-  Question,
   ShortcutGroup,
   PairingWords,
 } from "./core/lumenna_web.js";
@@ -90,6 +69,8 @@ async function opened(name: string): Promise<void> {
   // The clock the core's whole sentences say times in: this browser's.
   const hour12 = new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions().hour12;
   void app.send({ Clock: hour12 ? "twelve_hour" : "twenty_four_hour" });
+  // The web's capitals: buttons, headings and questions in sentence case.
+  void app.send({ Capitals: "Sentence" });
   // Open once the app has the store.
   await app.settled();
 }
@@ -162,48 +143,6 @@ export interface Screen extends Omit<ViewModel, "list" | "day" | "details" | "li
   line?: ShownLine;
 }
 
-/** A proposal's words with its buttons and headings in the web's sentence case. */
-function webWords(words: ProposalWords): ProposalWords {
-  const out = { ...words };
-  for (const key of ["title", "item", "apply", "cancel", "unfit"] as const) out[key] = sentenceCase(out[key]);
-  if (out.others) out.others = sentenceCase(out.others);
-  return out;
-}
-
-/** A question with its buttons, and a choice of answers' answers, in the web's sentence case. */
-function webQuestion(question: Question): Question {
-  switch (question.ask) {
-    case "confirm":
-      return { ...question, yes: sentenceCase(question.yes) };
-    case "text":
-      return { ...question, yes: sentenceCase(question.yes) };
-    case "pick":
-      return { ...question, yes: sentenceCase(question.yes ?? "") };
-    case "choose":
-      return { ...question, answers: question.answers.map((answer) => ({ ...answer, title: sentenceCase(answer.title) })) };
-    default:
-      return question;
-  }
-}
-
-/** A day's row as it reads. */
-function dayLine(item: DayItem, date: string, summary: string): string {
-  switch (item.kind) {
-    case "summary":
-      return summaryText(date, summary);
-    case "block":
-      return item.block ? blockText(item.block) : "";
-    case "sitting":
-      return item.sitting ? sittingText(item.sitting) : "";
-    case "free":
-      return item.free ? freeText(item.free.title, item.free.details, item.free.start, item.free.end) : "";
-    case "now":
-      return item.now ? nowText(item.now.title, item.now.time) : "";
-    case "cancelled":
-      return item.cancelled ? cancelledText(item.cancelled) : "";
-  }
-}
-
 /** What an event left: the screen, what to say once focus has landed, files to save, and
  * notifications to show. */
 export interface Said {
@@ -215,32 +154,24 @@ export interface Said {
   seq: number;
 }
 
-/** The view model in the web's words: each row's line, the headings in sentence case. */
-function screen(view: ViewModel): Screen {
-  const trash = view.place === "Trash";
+/** The view model as the page draws it, each line as the core words it in this browser's clock. */
+function screen(view: ViewModel, lines: Lines): Screen {
   const list = view.list && {
     ...view.list,
-    items: view.list.items.map((item) => ({ ...item, text: trash ? trashedText(item.row) : rowText(item.row, false) })),
-    readback: announcementText(
-      [view.list.query && !trash ? view.list.query.description : undefined, view.list.announcement, ...(view.list.notices ?? [])]
-        .filter((p): p is string => !!p)
-        .join(". "),
-      [],
-    ),
+    items: view.list.items.map((item, index) => ({ ...item, text: lines.list[index]?.text ?? item.row.title })),
+    readback: lines.readback,
   };
   const day = view.day && {
     ...view.day,
-    title: dayText(view.day.date),
-    items: view.day.items.map((item) => ({ ...item, text: dayLine(item, view.day!.date, view.day!.summary) })),
+    title: lines.day_title,
+    items: view.day.items.map((item, index) => ({ ...item, text: lines.day[index]?.text ?? "" })),
   };
-  const details = view.details && { ...view.details, state: taskStateText(view.details.task) };
-  const proposal = view.proposal && { ...view.proposal, words: webWords(view.proposal.words) };
+  const details = view.details && { ...view.details, state: lines.task_state };
   const asking = view.asking && {
     ...view.asking,
-    question: webQuestion(view.asking.question),
-    lines: view.asking.choices?.choices.map((choice) => ({
+    lines: view.asking.choices?.choices.map((choice, index) => ({
       id: choice.id,
-      text: choiceText(choice),
+      text: lines.choices[index]?.text ?? choice.title,
       depth: choice.depth,
       reason: choice.reason ?? undefined,
     })),
@@ -249,20 +180,15 @@ function screen(view: ViewModel): Screen {
     ...view.devices,
     list: view.devices.list && {
       ...view.devices.list,
-      devices: view.devices.list.devices.map((device) => ({ ...device, text: deviceText(device) })),
+      devices: view.devices.list.devices.map((device, index) => ({ ...device, text: lines.devices[index]?.text ?? device.name })),
     },
   };
   const due = (view.due ?? []).map((item) => ({
     ...item,
-    dismiss: sentenceCase(item.dismiss),
-    snooze: item.snooze ? sentenceCase(item.snooze) : undefined,
-    carry: item.carry ? sentenceCase(item.carry) : undefined,
-    replan: item.replan ? sentenceCase(item.replan) : undefined,
+    snooze: item.snooze ?? undefined,
+    carry: item.carry ?? undefined,
+    replan: item.replan ?? undefined,
   }));
-  const settings = view.settings && {
-    ...view.settings,
-    exports: view.settings.exports.map((choice) => ({ ...choice, label: sentenceCase(choice.label) })),
-  };
   const line = view.line && {
     text: view.line.text,
     cursor: unitsAt(view.line.text, view.line.cursor),
@@ -274,30 +200,17 @@ function screen(view: ViewModel): Screen {
       candidates: view.line.offer.candidates.map((candidate, index) => ({
         id: String(index),
         text: candidate.text,
-        label: candidateText(candidate),
+        label: lines.candidates[index] ?? candidate.label,
       })),
     },
   };
-  return {
-    ...view,
-    sidebar: view.sidebar.map((entry) => ("Group" in entry.kind ? { ...entry, text: sentenceCase(entry.text) } : entry)),
-    list,
-    day,
-    details,
-    line,
-    proposal,
-    settings,
-    devices,
-    due,
-    asking,
-  };
+  return { ...view, list, day, details, line, devices, due, asking };
 }
 
 function turned(turn: Turn): Said {
-  const date = turn.view.day?.date;
   return {
-    screen: screen(turn.view),
-    said: turn.said.map((saying) => (saying.heading && date ? summaryText(date, saying.text) : saying.text)),
+    screen: screen(turn.view, turn.lines),
+    said: turn.said,
     files: turn.files,
     notices: turn.notices,
     seq: turn.seq,
@@ -342,20 +255,14 @@ const api = {
   },
 
   /** What to draw now. */
-  screen: (): Screen => screen(session().view()),
+  screen: (): Screen => turned(session().now() as Turn).screen,
 
 
   /** A number that moves when another tab or process has written. */
   outsideVersion: (): number => store().outsideVersion(),
 
   /** Every sentence and button of pairing, buttons and questions in the web's sentence case. */
-  pairingWords(): PairingWords {
-    const words = pairingWords();
-    for (const key of ["title", "wait", "join", "match_title", "match_yes", "match_no", "copy_code"] as const) {
-      words[key] = sentenceCase(words[key]);
-    }
-    return { ...words, intro: words.intro_sentence };
-  },
+  pairingWords: (): PairingWords => pairingWords(),
 
   /** Fixed text — a button, a question with no one's name in it — in sentence case. */
   sentence: (text: string): string => sentenceCase(text),

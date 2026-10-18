@@ -166,7 +166,7 @@ class ReminderScheduleTest {
         assertEquals(due.title, notification.extras.getString(Notification.EXTRA_TITLE))
         assertEquals(due.text, notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
         assertEquals("Deep work starts in 5 minutes — nothing assigned yet", due.text)
-        assertEquals(listOf(due.dismiss, due.snooze).map(::appButton), notification.actions.map { it.title.toString() })
+        assertEquals(listOf(due.dismiss, due.snooze).map { io.github.emassey0135.lumenna.app.sentenceCase(it) }, notification.actions.map { it.title.toString() })
         assertEquals("sentence case, as Android writes", listOf("Dismiss", "Snooze 10 minutes"), notification.actions.map { it.title.toString() })
         assertEquals(Notification.CATEGORY_REMINDER, notification.category)
         assertEquals(Reminders.CHANNEL, notification.channelId)

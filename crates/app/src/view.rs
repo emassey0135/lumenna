@@ -34,6 +34,12 @@ pub struct ViewModel {
     pub day: Option<DayView>,
     /// The row in hand, by identifier.
     pub focus: Option<String>,
+    /// The sidebar's row in hand.
+    pub sidebar_held: crate::HeldView,
+    /// The open reminder list's row in hand.
+    pub reminders_held: crate::HeldView,
+    /// The devices list's row in hand.
+    pub devices_held: crate::HeldView,
     /// Counted: when this moves, the shell puts focus on `focus` — if focus is in that list, or
     /// lost, or coming back to it from a dialog. It does not move for the person's own moves.
     pub landing: u32,
@@ -145,6 +151,14 @@ fn folded_sidebar(mut entries: Vec<SidebarEntry>, folded: &std::collections::BTr
 }
 
 pub fn view(model: &Model) -> ViewModel {
+    let mut view = shown(model);
+    if model.capitals == crate::Capitals::Sentence {
+        crate::capitals::in_sentence_case(&mut view);
+    }
+    view
+}
+
+fn shown(model: &Model) -> ViewModel {
     let place = model.place();
     let Some(store) = &model.store else {
         return ViewModel { place: Some(place.clone()), title: place.title(), ..ViewModel::default() };
@@ -216,6 +230,9 @@ pub fn view(model: &Model) -> ViewModel {
         place: Some(place),
         list,
         focus: model.focus.clone(),
+        sidebar_held: model.sidebar_held.view(),
+        reminders_held: model.reminders_held.view(),
+        devices_held: model.devices_held.view(),
         landing: model.landing,
         asking: model.open.as_ref().map(|open| Asking {
             action: open.action().cloned(),

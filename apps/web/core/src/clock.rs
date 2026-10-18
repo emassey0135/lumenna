@@ -4,7 +4,7 @@
 //! days and months are called, is the person's locale, which in a browser is `Intl`'s
 //! default — the browser's language settings. Twelve- or twenty-four-hour comes with it.
 
-use lumenna_desktop::speech::Clock;
+use lumenna_desktop::speech::{Formats, Spoken};
 
 /// The browser's own way of saying times and dates.
 pub struct Browser;
@@ -32,42 +32,32 @@ fn local(year: i16, month: i8, day: i8, hour: i8, minute: i8) -> js_sys::Date {
     )
 }
 
-impl Clock for Browser {
-    fn time(&self, clock: &str) -> String {
-        let Ok(time) = clock.parse::<jiff::civil::Time>() else { return clock.to_owned() };
+/// The browser's clock, saying days as every app says them.
+pub const CLOCK: Spoken<Browser> = Spoken(Browser);
+
+impl Formats for Browser {
+    fn time(&self, hour: i8, minute: i8) -> String {
         #[cfg(all(target_family = "wasm", target_os = "unknown"))]
         {
-            let date = local(2000, 1, 1, time.hour(), time.minute());
-            if let Some(text) = format(&date, &[("hour", "numeric"), ("minute", "2-digit")]) {
+            if let Some(text) = format(&local(2000, 1, 1, hour, minute), &[("hour", "numeric"), ("minute", "2-digit")]) {
                 return text;
             }
         }
-        format!("{:02}:{:02}", time.hour(), time.minute())
+        format!("{hour:02}:{minute:02}")
     }
 
-    fn day(&self, iso: &str) -> String {
-        let Ok(date) = iso.parse::<jiff::civil::Date>() else { return iso.to_owned() };
-        let today = jiff::Zoned::now().date();
-        if date == today {
-            return "Today".to_owned();
-        }
-        if today.tomorrow().is_ok_and(|d| d == date) {
-            return "Tomorrow".to_owned();
-        }
-        if today.yesterday().is_ok_and(|d| d == date) {
-            return "Yesterday".to_owned();
-        }
+    fn date(&self, year: i16, month: i8, day: i8, with_year: bool) -> String {
         #[cfg(all(target_family = "wasm", target_os = "unknown"))]
         {
-            // The year only when it is not this one, as a person would say it.
             let mut options = vec![("weekday", "long"), ("day", "numeric"), ("month", "long")];
-            if date.year() != today.year() {
+            if with_year {
                 options.push(("year", "numeric"));
             }
-            if let Some(text) = format(&local(date.year(), date.month(), date.day(), 12, 0), &options) {
+            if let Some(text) = format(&local(year, month, day, 12, 0), &options) {
                 return text;
             }
         }
-        date.strftime("%A %-d %B %Y").to_string()
+        let Ok(date) = jiff::civil::Date::new(year, month, day) else { return String::new() };
+        date.strftime(if with_year { "%A %-d %B %Y" } else { "%A %-d %B" }).to_string()
     }
 }

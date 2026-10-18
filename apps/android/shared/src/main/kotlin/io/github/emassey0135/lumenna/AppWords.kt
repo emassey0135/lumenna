@@ -1,37 +1,26 @@
 package io.github.emassey0135.lumenna
 
 import io.github.emassey0135.lumenna.app.Action
+import io.github.emassey0135.lumenna.app.ActionKind
 import io.github.emassey0135.lumenna.app.Choice
-import io.github.emassey0135.lumenna.app.Question
+import io.github.emassey0135.lumenna.app.Item
+import io.github.emassey0135.lumenna.app.Line
+import io.github.emassey0135.lumenna.app.Place
 import io.github.emassey0135.lumenna.app.ShellEvent
-import io.github.emassey0135.lumenna.app.sentenceCase
+import io.github.emassey0135.lumenna.app.SidebarEntry
+import io.github.emassey0135.lumenna.app.SidebarKind
 
-// How the app's records (crates/mobile) are worded on Android: the platform's capitals, this
-// device's clock, and every app's order for a line.
+// What Android adds to the lines the core words (crates/desktop, through the turn's `lines`):
+// what a tree control would report by itself, which a Compose list does not.
 
 /** An action's name in this platform's capitals: sentence case, as Material and Wear OS write. */
 val Action.name: String get() = sentence.ifEmpty { title }
 
-/** A question's title in sentence case where it is the action's own name; one naming something keeps its capitals. */
-fun Action.asks(title: String): String = if (title == this.title) name else title
+/** A choice the app offers, as its [line] reads, with why it is offered. */
+fun option(choice: Choice, line: Line): Option = Option(choice.id, line.title, line.detail, choice.depth.toInt(), choice.reason.orEmpty())
 
-/** A text question's title in sentence case: the core's, which knows which words are names. */
-val Question.Text.said: String get() = sentence.ifEmpty { title }
-
-/** A fixed button's words in sentence case. */
-fun appButton(text: String): String = sentenceCase(text)
-
-/** How a choice the app offers reads: a block to pick "<day>, <start> to <end>, <title>", anything else its title and detail. */
-fun option(choice: Choice): Option {
-    val date = choice.date
-    val start = choice.start
-    return if (date != null && start != null) {
-        val span = choice.end?.let { "${Clock.time(start)} to ${Clock.time(it)}" } ?: Clock.time(start)
-        Option(choice.id, "${Clock.spokenDay(date)}, $span, ${choice.title}", "", choice.depth.toInt(), choice.reason.orEmpty())
-    } else {
-        Option(choice.id, choice.title, choice.detail.orEmpty(), choice.depth.toInt(), choice.reason.orEmpty())
-    }
-}
+/** A choice that is a name and what tells it apart: a project in the details' picker. */
+fun option(choice: Choice): Option = Option(choice.id, choice.title, choice.detail.orEmpty(), choice.depth.toInt(), choice.reason.orEmpty())
 
 /** The app's actions as a row's: each puts its row in hand, then runs. */
 fun AppModel.rowActions(row: String, actions: List<Action>, local: (Action) -> Boolean = { false }): List<RowAction> = actions.map { action ->
@@ -47,76 +36,38 @@ fun AppModel.rowActions(row: String, actions: List<Action>, local: (Action) -> B
     }
 }
 
-/** How an app row is said: the title, then everything else. */
-object AppRowSpeech {
-    /** When the row is due, its time in this phone's clock, then the rest of its value. */
-    fun details(row: io.github.emassey0135.lumenna.app.RowView): String? {
-        val due = row.due?.let { due -> row.dueTime?.let { "$due at ${Clock.time(it)}" } ?: due }
-        return listOfNotNull(due, row.value).joinToString(", ").ifEmpty { null }
-    }
-
-    /**
-     * Everything after the title: done or not, when it is due, notable states, whether what is
-     * under it is folded away, and the level where it changes from the row shown before (the
-     * app's word for it, which folding keeps right).
-     */
-    fun value(item: io.github.emassey0135.lumenna.app.Item): String {
-        val row = item.row
-        val parts = mutableListOf<String>()
-        if (row.checked == true) parts += "done"
-        details(row)?.let { parts += it }
-        // `ready` is true of almost every task; saying it everywhere buries the states that mean something.
-        parts += row.state.filter { it != "ready" }
-        row.expanded?.let { parts += if (it) "expanded" else "collapsed" }
-        item.level?.let { parts += it }
-        return parts.joinToString(", ")
-    }
-}
-
-
 /**
- * What a day row says: its first line, then the rest, in every app's order: a block "<start>
- * to <end>, <title>, <details>"; a sitting "<title>, <details>"; free time "<title>,
- * <details>, <start> to <end>"; now "<title>, <time>"; a cancelled day "<start>, <title>,
- * <details>". The clock is this device's.
+ * Everything a row says after its title: the core's line, then whether what is under it is
+ * folded away, and the level where it changes from the row shown before (the app's word for
+ * it, which folding keeps right). A tree control would say those two itself.
  */
-fun words(item: io.github.emassey0135.lumenna.app.DayItem): Pair<String, List<String>> {
-    item.sitting?.let { return it.title to it.details }
-    item.free?.let { return it.title to it.details + "${Clock.time(it.start)} to ${Clock.time(it.end)}" }
-    item.now?.let { return "${it.title}, ${Clock.time(it.time)}" to emptyList() }
-    item.cancelled?.let { return "${Clock.time(it.start)}, ${it.title}" to it.details }
-    val block = item.block ?: return "" to emptyList()
-    return "${Clock.time(block.start)} to ${Clock.time(block.end)}, ${block.title}" to block.details
-}
+fun spoken(line: Line?, expanded: Boolean?, level: String?): String =
+    listOfNotNull(line?.detail?.ifEmpty { null }, expanded?.let { if (it) "expanded" else "collapsed" }, level).joinToString(", ")
 
-/** What a place is called before the app has shown it. */
-fun placeTitle(place: io.github.emassey0135.lumenna.app.Place): String = when (place) {
-    io.github.emassey0135.lumenna.app.Place.Today -> "Today"
-    io.github.emassey0135.lumenna.app.Place.Tasks -> "Tasks"
-    is io.github.emassey0135.lumenna.app.Place.Project -> place.field0
-    is io.github.emassey0135.lumenna.app.Place.Label -> place.field0
-    is io.github.emassey0135.lumenna.app.Place.Filter -> place.name
-    io.github.emassey0135.lumenna.app.Place.Blocks -> "Blocks"
-    io.github.emassey0135.lumenna.app.Place.Trash -> "Trash"
-}
+/** A list's rows not folded away, each with its line. */
+fun shownRows(items: List<Item>, lines: List<Line>): List<Pair<Item, Line?>> =
+    items.mapIndexed { index, item -> item to lines.getOrNull(index) }.filter { !it.first.hidden }
+
+/** A list row's speech after its title. */
+fun spoken(item: Item, line: Line?): String = spoken(line, item.row.expanded, item.level)
 
 /** What identifies a place's row across a reload: a project and a label can share a name. */
-fun placeKey(kind: io.github.emassey0135.lumenna.app.SidebarKind): String = when (kind) {
-    is io.github.emassey0135.lumenna.app.SidebarKind.Group -> "group:${kind.field0}"
-    is io.github.emassey0135.lumenna.app.SidebarKind.Place -> placeKey(kind.field0)
+fun placeKey(kind: SidebarKind): String = when (kind) {
+    is SidebarKind.Group -> "group:${kind.field0}"
+    is SidebarKind.Place -> placeKey(kind.field0)
 }
 
-fun placeKey(place: io.github.emassey0135.lumenna.app.Place): String = when (place) {
-    is io.github.emassey0135.lumenna.app.Place.Project -> "project:${place.field0}"
-    is io.github.emassey0135.lumenna.app.Place.Label -> "label:${place.field0}"
-    is io.github.emassey0135.lumenna.app.Place.Filter -> "filter:${place.name}"
+fun placeKey(place: Place): String = when (place) {
+    is Place.Project -> "project:${place.field0}"
+    is Place.Label -> "label:${place.field0}"
+    is Place.Filter -> "filter:${place.name}"
     else -> place.toString()
 }
 
 /** One of the app's places as a row: its name, what is in it, and whether it is folded away. */
 data class PlaceRow(
     val key: String,
-    val entry: io.github.emassey0135.lumenna.app.SidebarEntry,
+    val entry: SidebarEntry,
     val title: String,
     val detail: String,
     val depth: Int,
@@ -127,31 +78,20 @@ data class PlaceRow(
 )
 
 /** The app's sidebar [entries] as rows, folded as the app has them: a row is open while it offers Collapse. */
-fun placeRows(entries: List<io.github.emassey0135.lumenna.app.SidebarEntry>): List<PlaceRow> {
+fun placeRows(entries: List<SidebarEntry>): List<PlaceRow> {
     var hiddenBelow: UInt? = null
     return entries.map { entry ->
-        val title = when (val kind = entry.kind) {
-            is io.github.emassey0135.lumenna.app.SidebarKind.Group -> when (kind.field0) {
-                io.github.emassey0135.lumenna.app.SidebarGroup.PROJECTS -> "Projects"
-                io.github.emassey0135.lumenna.app.SidebarGroup.LABELS -> "Labels"
-                io.github.emassey0135.lumenna.app.SidebarGroup.FILTERS -> "Saved filters"
-            }
-            is io.github.emassey0135.lumenna.app.SidebarKind.Place -> placeTitle(kind.field0)
-        }
-        // The core's line is the title, then what is in it: shown beneath it here. A heading
-        // is in sentence case here, where the core's line has it in title case.
-        val rest = if (entry.text.startsWith(title, ignoreCase = true)) entry.text.drop(title.length) else entry.text
         val below = hiddenBelow
         if (below != null && entry.depth <= below) hiddenBelow = null
         val hidden = hiddenBelow != null
         val expanded = entry.actions.firstNotNullOfOrNull {
             when (it.kind) {
-                io.github.emassey0135.lumenna.app.ActionKind.COLLAPSE -> true
-                io.github.emassey0135.lumenna.app.ActionKind.EXPAND -> false
+                ActionKind.COLLAPSE -> true
+                ActionKind.EXPAND -> false
                 else -> null
             }
         }
         if (expanded == false && !hidden) hiddenBelow = entry.depth
-        PlaceRow(placeKey(entry.kind), entry, title, rest.removePrefix(", "), entry.depth.toInt(), hidden, expanded)
+        PlaceRow(placeKey(entry.kind), entry, entry.title, entry.detail, entry.depth.toInt(), hidden, expanded)
     }
 }

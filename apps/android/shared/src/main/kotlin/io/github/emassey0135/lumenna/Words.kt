@@ -30,8 +30,27 @@ object Clock {
     /** `14:30` as this phone says it: "2:30 PM", or "14:30". */
     fun time(clock: String): String {
         val time = runCatching { LocalTime.parse(clock) }.getOrNull() ?: return clock
+        return format(time.hour, time.minute)
+    }
+
+    private fun format(hour: Int, minute: Int): String {
         val pattern = DateFormat.getBestDateTimePattern(Locale.getDefault(), if (twentyFourHour) "Hm" else "hma")
-        return time.format(DateTimeFormatter.ofPattern(pattern))
+        return LocalTime.of(hour, minute).format(DateTimeFormatter.ofPattern(pattern))
+    }
+
+    /**
+     * What this phone's locale writes for the core, which words every line: a time, and a date
+     * with its weekday and month named. "Today", "Tomorrow" and when to give the year are the core's.
+     */
+    val locale = object : io.github.emassey0135.lumenna.app.Locale {
+        override fun time(hour: Byte, minute: Byte): String = format(hour.toInt(), minute.toInt())
+
+        override fun date(year: Short, month: Byte, day: Byte, withYear: Boolean): String {
+            val date = LocalDate.of(year.toInt(), month.toInt(), day.toInt())
+            val weekday = date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())
+            val name = date.month.getDisplayName(TextStyle.FULL, Locale.getDefault())
+            return if (withYear) "$weekday ${date.dayOfMonth} $name ${date.year}" else "$weekday ${date.dayOfMonth} $name"
+        }
     }
 
     /** "1 hour 30 minutes", as the core, the command line and the BTSpeak app say it. */
@@ -47,23 +66,6 @@ object Clock {
 
     /** Today, as the core reads a date. */
     fun today(): String = LocalDate.now().toString()
-
-    /** An ISO date as a person says it: "Today", or "Monday 5 October". */
-    fun spokenDay(iso: String): String {
-        val day = runCatching { LocalDate.parse(iso) }.getOrNull() ?: return iso
-        val today = LocalDate.now()
-        return when (day) {
-            today -> "Today"
-            today.plusDays(1) -> "Tomorrow"
-            today.minusDays(1) -> "Yesterday"
-            else -> {
-                val weekday = day.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())
-                val month = day.month.getDisplayName(TextStyle.FULL, Locale.getDefault())
-                if (day.year == today.year) "$weekday ${day.dayOfMonth} $month"
-                else "$weekday ${day.dayOfMonth} $month ${day.year}"
-            }
-        }
-    }
 }
 
 /** The core counts text in UTF-8 bytes, as Rust strings do; Kotlin counts UTF-16 units. */

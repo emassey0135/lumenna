@@ -683,8 +683,8 @@ class LumennaTest {
         row("Devices and sync").performClick()
         rule.waitForIdle()
         press("Pair a device")
-        val words = io.github.emassey0135.lumenna.app.pairingWords("this phone", true)
-        button(appButton(words.join))
+        val words = io.github.emassey0135.lumenna.app.pairingWords("this phone", true, io.github.emassey0135.lumenna.app.Capitals.SENTENCE)
+        button(words.join)
         shows(words.needCode)
         rule.onNode(hasSetTextAction() and hasText(words.theirCode)).assert(
             SemanticsMatcher("left empty") { node ->

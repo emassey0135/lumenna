@@ -19,6 +19,8 @@
 
 mod asking;
 pub mod blockform;
+pub mod capitals;
+pub mod held;
 pub mod day;
 pub mod details;
 pub mod due;
@@ -39,6 +41,8 @@ use lumenna_records::{Action, ActionKind, Answer, Change};
 use serde::{Deserialize, Serialize};
 
 pub use blockform::{BlockEvent, BlockFormView};
+pub use capitals::Capitals;
+pub use held::{HeldView, Side};
 pub use day::{DayItem, DayKind, DayView};
 pub use details::{DetailsEvent, DetailsView};
 pub use typing::{LineView, Typing};
@@ -125,6 +129,9 @@ pub enum Event {
     Open(Place),
     /// The person moved to a row.
     Focus(String),
+    /// The person moved to a row of a list beside the main one: the sidebar, a reminder list,
+    /// the devices. A change made there lands there.
+    Hold(Side, String),
     /// The filter typed above the list, in place of the place's own query; empty for the
     /// place's own again.
     Filter(String),
@@ -171,6 +178,8 @@ pub enum Event {
     Pairing(NetworkAnswer),
     /// The clock this shell says times in, for the sentences the core composes whole.
     Clock(lumenna_records::proposals::TimeStyle),
+    /// How this shell writes its buttons, headings and questions.
+    Capitals(capitals::Capitals),
     /// The moment the day's proposals are made against, `YYYY-MM-DDTHH:MM` in local time: a
     /// shell whose clock is pinned, for tests. None for now.
     PlanFrom(Option<String>),
@@ -243,7 +252,15 @@ impl App for Lumenna {
         // would have put there.
         let moved_since = wrote && model.moves > model.acted_at;
         match &event {
-            Event::Focus(_) => model.moves += 1,
+            Event::Focus(_) => {
+                model.moves += 1;
+                model.acting = None;
+            }
+            Event::Open(_) => {
+                model.acting = None;
+                model.acted_at = model.moves;
+            }
+            Event::Hold(side, _) => model.acting = Some(*side),
             Event::Arrived(_)
             | Event::Answered(_)
             | Event::SyncStarted(_)
@@ -251,6 +268,7 @@ impl App for Lumenna {
             | Event::SyncStatus(_)
             | Event::Pairing(_)
             | Event::Clock(_)
+            | Event::Capitals(_)
             | Event::PlanFrom(_) => {}
             _ => model.acted_at = model.moves,
         }
@@ -259,7 +277,9 @@ impl App for Lumenna {
             model.focus = before.clone();
             model.settle();
         }
-        if !reported && (wrote || model.focus != before) {
+        model.settle_sides(wrote);
+        // A change made in a side list lands there; the main list's row moves on quietly.
+        if !reported && model.acting.is_none() && (wrote || model.focus != before) {
             model.landing += 1;
         }
         command
@@ -283,6 +303,11 @@ impl Lumenna {
             Event::Focus(key) => {
                 model.hold(&key);
                 model.details.shown = None;
+                render()
+            }
+            Event::Hold(side, key) => {
+                let keys = model.side_keys(side);
+                model.held_mut(side).hold(&key, &keys);
                 render()
             }
             Event::Filter(text) => self.filter(text, model),
@@ -322,6 +347,10 @@ impl Lumenna {
             Event::Clock(style) => {
                 model.style = Some(style);
                 Command::done()
+            }
+            Event::Capitals(capitals) => {
+                model.capitals = capitals;
+                render()
             }
             Event::QuickAdd(text) => {
                 model.adding = true;

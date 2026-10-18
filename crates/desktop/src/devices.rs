@@ -11,6 +11,11 @@ pub fn line(device: &DeviceView, _now: jiff::Timestamp) -> String {
     parts.join(", ")
 }
 
+/// [`line`], as the device's name and the rest.
+pub fn parts(device: &DeviceView) -> crate::speech::Line {
+    crate::speech::Line::of(device.name.clone(), std::iter::once(device.platform.clone()).chain(device.status.iter().cloned()).collect())
+}
+
 /// How long ago a timestamp was, as a person says it — the core's wording.
 pub fn ago(timestamp: &str, now: jiff::Timestamp) -> String {
     lumenna_host::words::ago(timestamp, now)

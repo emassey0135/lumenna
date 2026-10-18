@@ -25,8 +25,6 @@ import io.github.emassey0135.lumenna.Clock
 import io.github.emassey0135.lumenna.Core
 import io.github.emassey0135.lumenna.RowAction
 import io.github.emassey0135.lumenna.levelChange
-import io.github.emassey0135.lumenna.words
-import io.github.emassey0135.lumenna.said
 import java.time.LocalDate
 
 /**
@@ -41,7 +39,11 @@ fun DayScreen(core: Core, navigator: Navigator) {
     val view by app.view.collectAsState()
     LaunchedEffect(Unit) { app.send(ShellEvent.Open(Place.Today)) }
     val day = view?.takeIf { it.place == Place.Today }?.day
-    val items = day?.items.orEmpty().filter { !it.hidden && it.kind != DayKind.SUMMARY }
+    val worded by app.lines.collectAsState()
+    val lines = worded?.takeIf { day != null }
+    val rows = day?.items.orEmpty().mapIndexed { index, item -> item to lines?.day?.getOrNull(index) }
+    val heading = rows.firstOrNull { it.first.kind == DayKind.SUMMARY }?.second?.title
+    val shown = rows.filter { !it.first.hidden && it.first.kind != DayKind.SUMMARY }
     // The day's own actions, the app's: on its heading, and as buttons after its rows.
     val dayActions = day?.let { app.rowActions("summary", it.actions) }.orEmpty()
     val move = { step: DayMove -> app.send(ShellEvent.Day(step)) }
@@ -49,17 +51,17 @@ fun DayScreen(core: Core, navigator: Navigator) {
         // The day's heading, as every app says it: "<day>. <summary>".
         item {
             Heading(
-                day?.let { d -> listOf(Clock.spokenDay(d.date), d.summary).filter { it.isNotEmpty() }.joinToString(". ") } ?: "Day",
+                heading ?: "Day",
                 dayActions,
             )
         }
-        items.forEachIndexed { index, item ->
+        shown.forEach { (item, line) ->
             item {
-                val (title, details) = words(item)
+                val title = line?.title.orEmpty()
                 val actions = app.rowActions(item.key, item.actions).sortedByDescending { it.primary }
                 RowButton(
                     title,
-                    detail = details.joinToString(", "),
+                    detail = line?.detail.orEmpty(),
                     state = listOfNotNull(item.expanded?.let { if (it) "expanded" else "collapsed" }, item.level).joinToString(", ").ifEmpty { null },
                     actions = actions,
                     onLongClick = { navigator.actions(title, actions) },

@@ -1,10 +1,10 @@
 package io.github.emassey0135.lumenna.wear
 
 import io.github.emassey0135.lumenna.rowActions
-import io.github.emassey0135.lumenna.placeTitle
 import io.github.emassey0135.lumenna.placeRows
-import io.github.emassey0135.lumenna.appButton
-import io.github.emassey0135.lumenna.AppRowSpeech
+import io.github.emassey0135.lumenna.shownRows
+import io.github.emassey0135.lumenna.spoken
+import io.github.emassey0135.lumenna.app.placeTitle
 import io.github.emassey0135.lumenna.app.SidebarKind
 import io.github.emassey0135.lumenna.app.ShellEvent
 import io.github.emassey0135.lumenna.app.Place
@@ -35,7 +35,6 @@ import io.github.emassey0135.lumenna.Core
 import io.github.emassey0135.lumenna.RowAction
 import io.github.emassey0135.lumenna.levelChange
 import io.github.emassey0135.lumenna.detailOf
-import io.github.emassey0135.lumenna.said as asked
 import io.github.emassey0135.lumenna.sentence
 import io.github.emassey0135.lumenna.name
 
@@ -90,8 +89,8 @@ fun PlacesScreen(core: Core, navigator: Navigator) {
                             heading()
                             if (state != null) stateDescription = state
                         },
-                        // A heading's line is the core's in title case; Wear OS writes sentence case.
-                        label = { Text(appButton(row.entry.text)) },
+                        // In sentence case, as the app words a heading for Wear OS.
+                        label = { Text(row.entry.text) },
                     )
                 }
             }
@@ -125,22 +124,25 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
     val view by app.view.collectAsState()
     LaunchedEffect(place) { app.send(ShellEvent.Open(place)) }
     val trash = place == Place.Trash
-    val list = view?.takeIf { it.place == place }?.list
-    val items = list?.items.orEmpty().filter { !it.hidden }
+    val here = view?.takeIf { it.place == place }
+    val list = here?.list
+    val worded by app.lines.collectAsState()
+    val lines = worded?.takeIf { here != null }
+    val items = shownRows(list?.items.orEmpty(), lines?.list.orEmpty())
     WearList {
         item { Heading(placeTitle(place)) }
         if (!trash) {
             item { Button(onClick = { navigator.open(Screen.AddTask) }, modifier = Modifier.fillMaxWidth(), label = { Text("New task") }) }
         }
-        if (list != null && items.isEmpty()) item { Text(list.empty.ifEmpty { list.announcement.replaceFirstChar { it.uppercase() } }) }
-        items.forEach { shown ->
+        if (list != null && items.isEmpty()) item { Text(lines?.readback.orEmpty()) }
+        items.forEach { (shown, line) ->
             item {
                 val task = shown.row
                 val actions = app.rowActions(task.id, task.actions).sortedByDescending { it.primary }
                 RowButton(
                     task.title,
-                    detail = AppRowSpeech.details(task),
-                    state = AppRowSpeech.value(shown).ifEmpty { null },
+                    detail = line?.detail?.ifEmpty { null },
+                    state = spoken(shown, line).ifEmpty { null },
                     actions = actions,
                     onLongClick = { navigator.actions(task.title, actions) },
                     onClick = {
@@ -181,17 +183,21 @@ fun BlocksScreen(core: Core, navigator: Navigator) {
     val app = core.app
     val view by app.view.collectAsState()
     LaunchedEffect(Unit) { app.send(ShellEvent.Open(Place.Blocks)) }
-    val list = view?.takeIf { it.place == Place.Blocks }?.list
+    val here = view?.takeIf { it.place == Place.Blocks }
+    val list = here?.list
+    val worded by app.lines.collectAsState()
+    val lines = worded?.takeIf { here != null }
     WearList {
         item { Heading("Blocks") }
         if (list != null && list.items.isEmpty()) item { Text(list.empty) }
-        list?.items.orEmpty().forEach { shown ->
+        list?.items.orEmpty().forEachIndexed { index, shown ->
             item {
                 val row = shown.row
+                val line = lines?.list?.getOrNull(index)
                 val actions = app.rowActions(row.id, row.actions)
                 val edit = row.actions.firstOrNull { it.kind == ActionKind.EDIT }
                 // Said as a task row is: when, in this watch's clock, then how long.
-                RowButton(row.title, detail = AppRowSpeech.details(row), actions = actions, onLongClick = { navigator.actions(row.title, actions) }) {
+                RowButton(row.title, detail = line?.detail?.ifEmpty { null }, actions = actions, onLongClick = { navigator.actions(row.title, actions) }) {
                     edit?.let {
                         app.send(ShellEvent.Focus(row.id))
                         app.send(ShellEvent.Perform(it))

@@ -49,6 +49,8 @@ pub struct Model {
     pub proposal: Option<proposal::Screen>,
     /// The clock the shell says times in.
     pub style: Option<lumenna_records::proposals::TimeStyle>,
+    /// How the shell writes its buttons, headings and questions.
+    pub capitals: crate::capitals::Capitals,
     /// Whether the proposal's screen last closed had made anything.
     pub proposal_made: bool,
     /// The task or block whose reminders are listed, while the list is open.
@@ -82,6 +84,15 @@ pub struct Model {
     pub acted_at: u64,
     /// Sidebar rows folded away, by their key: a heading, or a project with projects inside.
     pub sidebar_folded: BTreeSet<String>,
+    /// The sidebar's row in hand.
+    pub sidebar_held: crate::held::Held,
+    /// The open reminder list's row in hand.
+    pub reminders_held: crate::held::Held,
+    /// The devices list's row in hand.
+    pub devices_held: crate::held::Held,
+    /// The side list the person last moved in, until they move in the main list or open a
+    /// place: a change it makes lands there, not in the main list.
+    pub acting: Option<crate::held::Side>,
 }
 
 

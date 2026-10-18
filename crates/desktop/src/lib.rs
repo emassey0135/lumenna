@@ -11,6 +11,8 @@
 pub mod choices;
 pub mod devices;
 pub mod keys;
+#[cfg(feature = "app")]
+pub mod lines;
 pub mod outline;
 pub mod profile;
 pub mod speech;

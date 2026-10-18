@@ -27,6 +27,7 @@ import io.github.emassey0135.lumenna.app.ShellEvent
 fun AppQuestions(core: Core, form: (Action) -> Unit) {
     val app = core.app
     val view by app.view.collectAsState()
+    val lines by app.lines.collectAsState()
     val asking = view?.asking ?: return
     val action = asking.action
     val cancel = { app.send(ShellEvent.Cancel) }
@@ -41,11 +42,11 @@ fun AppQuestions(core: Core, form: (Action) -> Unit) {
                 cancel()
             }
             is Question.Confirm -> Confirm(
-                action?.asks(question.title) ?: question.title, question.message, appButton(question.yes), cancel,
+                question.title, question.message, question.yes, cancel,
                 destructive = action?.destructive == true,
             ) { answer(Answer.Yes) }
             is Question.Text -> AskText(
-                action?.asks(question.said) ?: question.said, question.label, appButton(question.yes),
+                question.title, question.label, question.yes,
                 initial = question.initial,
                 // A refused answer stays, with what was typed, and the app's reason beneath it.
                 hint = asking.refusal ?: question.hint.ifEmpty { null },
@@ -54,13 +55,15 @@ fun AppQuestions(core: Core, form: (Action) -> Unit) {
             // What a pick offers comes with the question, once the app has worked it out.
             is Question.Pick -> asking.choices?.let { offered ->
                 val yes = question.yes.ifEmpty { action?.name.orEmpty() }
-                Choose(action?.asks(question.title) ?: question.title, offered.choices.map(::option), appButton(yes), cancel) { picked ->
+                val worded = lines?.choices.orEmpty()
+                val options = offered.choices.mapIndexed { index, choice -> worded.getOrNull(index)?.let { option(choice, it) } ?: option(choice) }
+                Choose(question.title, options, yes, cancel) { picked ->
                     answer(Answer.Picked(picked.key, null))
                 }
             }
             is Question.Choose -> AlertDialog(
                 onDismissRequest = cancel,
-                title = { Text(action?.asks(question.title) ?: question.title) },
+                title = { Text(question.title) },
                 text = { Text(question.message) },
                 confirmButton = {
                     // Stacked, as Material stacks buttons too long for a row: the answers, then
@@ -68,7 +71,7 @@ fun AppQuestions(core: Core, form: (Action) -> Unit) {
                     Column(horizontalAlignment = Alignment.End) {
                         question.answers.forEach { choice ->
                             TextButton(modifier = Target, onClick = { answer(Answer.Picked(choice.id, null)) }) {
-                                Text(appButton(choice.title), color = if (action?.destructive == true) MaterialTheme.colorScheme.error else Color.Unspecified)
+                                Text(choice.title, color = if (action?.destructive == true) MaterialTheme.colorScheme.error else Color.Unspecified)
                             }
                         }
                         TextButton(modifier = Target, onClick = cancel) { Text("Cancel") }

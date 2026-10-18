@@ -83,7 +83,7 @@ fun CompletingField(
                         label = { Text(candidate.text) },
                         modifier = Modifier
                             .padding(end = 8.dp)
-                            .semantics { contentDescription = "Complete with ${candidate.label}" },
+                            .semantics { contentDescription = "Complete with ${io.github.emassey0135.lumenna.app.candidateLine(candidate)}" },
                     )
                 }
             }

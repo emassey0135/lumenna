@@ -135,7 +135,7 @@ impl Sidebar {
 
     /// Adds a project, label or saved filter, as its heading's New does: for the File menu.
     pub fn add(&self, app: &App, group: SidebarGroup) {
-        let entry = SidebarEntry { kind: SidebarKind::Group(group), text: String::new(), depth: 0, archived: false, actions: Vec::new() };
+        let entry = SidebarEntry::new(SidebarKind::Group(group), "", "", 0, Vec::new());
         if let Some(action) = heading(group).into_iter().next() {
             self.act(app, &entry, &action);
         }
@@ -194,5 +194,5 @@ impl Sidebar {
 }
 
 fn place_key(place: &Place) -> String {
-    SidebarEntry { kind: SidebarKind::Place(place.clone()), text: String::new(), depth: 0, archived: false, actions: Vec::new() }.key()
+    SidebarEntry::key_of(&SidebarKind::Place(place.clone()))
 }

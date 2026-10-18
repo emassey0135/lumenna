@@ -108,6 +108,10 @@ pub struct SidebarEntry {
     pub kind: SidebarKind,
     /// The line as read: the name, then what is in it.
     pub text: String,
+    /// Its name alone: "Work", "Projects".
+    pub title: String,
+    /// What is in it, for a second line or a description: "3 open tasks". Empty for a heading.
+    pub detail: String,
     /// How deep it sits: a subproject is one deeper than its parent.
     pub depth: u32,
     /// For a project: whether it is archived, which decides "Archive" or "Unarchive".
@@ -118,9 +122,21 @@ pub struct SidebarEntry {
 }
 
 impl SidebarEntry {
+    /// A row: its line is its title, then what is in it.
+    #[must_use]
+    pub fn new(kind: SidebarKind, title: &str, detail: &str, depth: u32, actions: Vec<crate::actions::Action>) -> Self {
+        Self { text: line(title, detail), title: title.to_owned(), detail: detail.to_owned(), kind, depth, archived: false, actions }
+    }
+
     /// What identifies it across a reload, so the selection stays put.
     pub fn key(&self) -> String {
-        match &self.kind {
+        Self::key_of(&self.kind)
+    }
+
+    /// What identifies a row of this kind, whether or not one is listed.
+    #[must_use]
+    pub fn key_of(kind: &SidebarKind) -> String {
+        match kind {
             SidebarKind::Group(group) => format!("group:{group:?}"),
             SidebarKind::Place(place) => format!("place:{place:?}"),
         }
@@ -176,19 +192,12 @@ pub fn place_quick_add_prefix(place: &Place) -> String {
 /// A listing that fails leaves its group empty rather than the whole sidebar: the places
 /// that do not depend on it still work.
 pub fn sidebar(snapshot: &Snapshot, now: &Zoned) -> Vec<SidebarEntry> {
-    let place = |place: Place, detail: &str, depth: u32| SidebarEntry {
-        text: line(&place.title(), detail),
-        kind: SidebarKind::Place(place),
-        depth,
-        archived: false,
-        actions: Vec::new(),
+    let place = |place: Place, detail: &str, depth: u32| {
+        let title = place.title();
+        SidebarEntry::new(SidebarKind::Place(place), &title, detail, depth, Vec::new())
     };
-    let group = |group: SidebarGroup, title: &str| SidebarEntry {
-        kind: SidebarKind::Group(group),
-        text: title.to_owned(),
-        depth: 0,
-        archived: false,
-        actions: crate::actions::heading(group),
+    let group = |group: SidebarGroup, title: &str| {
+        SidebarEntry::new(SidebarKind::Group(group), title, "", 0, crate::actions::heading(group))
     };
     let detail = |row: &RowView| {
         row.value.iter().cloned().chain(row.state.iter().cloned()).collect::<Vec<_>>().join(", ")

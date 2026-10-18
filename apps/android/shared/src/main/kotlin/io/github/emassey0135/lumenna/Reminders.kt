@@ -16,6 +16,7 @@ import android.provider.Settings
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import io.github.emassey0135.lumenna.app.sentenceCase
 import io.github.emassey0135.lumenna.app.DueReminder
 import io.github.emassey0135.lumenna.app.Device
 import io.github.emassey0135.lumenna.app.LumennaError
@@ -427,10 +428,10 @@ object Reminders {
                     setContentIntent(PendingIntent.getActivity(context, id.hashCode(), it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
                 }
             }
-            .addAction(0, appButton(due.dismiss), pressed(DISMISS))
-            .addAction(0, appButton(due.snooze), pressed(SNOOZE))
+            .addAction(0, sentenceCase(due.dismiss), pressed(DISMISS))
+            .addAction(0, sentenceCase(due.snooze), pressed(SNOOZE))
             // At a block's end with work left short, the text ends in the question this answers.
-            .apply { if (due.carry.isNotEmpty()) addAction(0, appButton(due.carry), pressed(CARRY)) }
+            .apply { if (due.carry.isNotEmpty()) addAction(0, sentenceCase(due.carry), pressed(CARRY)) }
             // A block's work outrunning its time: Replan opens the app at Replan from Now.
             .apply {
                 if (due.replan.isNotEmpty()) {
@@ -442,7 +443,7 @@ object Reminders {
                         putExtra(OPEN_CANCEL, id)
                     }
                     replan?.let {
-                        addAction(0, appButton(due.replan), PendingIntent.getActivity(context, "replan $id".hashCode(), it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+                        addAction(0, sentenceCase(due.replan), PendingIntent.getActivity(context, "replan $id".hashCode(), it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
                     }
                 }
             }

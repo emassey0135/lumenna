@@ -186,11 +186,11 @@ class KeyboardTest {
     @Test
     fun ctrlPageDownShowsTheNextDayAndCtrlTComesBackToNow() {
         show()
-        val tomorrow = Clock.spokenDay(LocalDate.now().plusDays(1).toString())
+        val tomorrow = "Tomorrow"
         press(tab("Today"), Key.PageDown, ctrl = true)
         shows(tomorrow)
         press(tab("Today"), Key.T, ctrl = true)
-        shows(Clock.spokenDay(LocalDate.now().toString()))
+        shows("Today")
     }
 
     @Test

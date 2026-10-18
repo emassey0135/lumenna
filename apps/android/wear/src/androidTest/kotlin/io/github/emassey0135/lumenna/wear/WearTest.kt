@@ -137,8 +137,8 @@ class WearTest {
     fun quickAddOffersWhatFinishesTheLastWord() {
         answers += "call the bank #In"
         press("New task")
-        val offered = rule.onNode(hasContentDescription("Complete with project Inbox"))
-        runCatching { rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasContentDescription("Complete with project Inbox")) }
+        val offered = rule.onNode(hasContentDescription("Complete with Inbox, project"))
+        runCatching { rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasContentDescription("Complete with Inbox, project")) }
         offered.performClick()
         rule.waitForIdle()
         shown("call the bank #Inbox", substring = true).assertExists()
@@ -257,7 +257,7 @@ class WearTest {
         }
         press("Settings")
         press("Devices and sync")
-        val words = io.github.emassey0135.lumenna.app.pairingWords("this watch", true)
+        val words = io.github.emassey0135.lumenna.app.pairingWords("this watch", true, io.github.emassey0135.lumenna.app.Capitals.SENTENCE)
         answers += ""
         press(words.theirCode)
         assertEquals(listOf(words.theirCode), asked)

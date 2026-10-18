@@ -6,7 +6,7 @@
 //! exhaustive match, so a new event is sorted into one or the other where it is added.
 
 use boltffi::data;
-use lumenna_app::{BlockEvent, DayMove, DetailsEvent, DevicesEvent, DueEvent, Event, ProposalEvent, SettingsEvent, Typing};
+use lumenna_app::{BlockEvent, Capitals, Side, DayMove, DetailsEvent, DevicesEvent, DueEvent, Event, ProposalEvent, SettingsEvent, Typing};
 use lumenna_records::places::Place;
 use lumenna_records::proposals::TimeStyle;
 use lumenna_records::{Action, ActionKind, Answer};
@@ -25,6 +25,8 @@ pub enum ShellEvent {
     Open(Place),
     /// The person moved to a row.
     Focus(String),
+    /// The person moved to a row of a list beside the main one.
+    Hold(Side, String),
     /// The filter typed above the list; empty for the place's own query again.
     Filter(String),
     /// Run an action a row offered.
@@ -55,6 +57,8 @@ pub enum ShellEvent {
     Due(DueEvent),
     /// The clock this shell says times in.
     Clock(TimeStyle),
+    /// How this shell writes its buttons, headings and questions.
+    Capitals(Capitals),
     /// The moment proposals are made against, `YYYY-MM-DDTHH:MM` local, when the shell's clock
     /// is pinned for tests; none for now.
     PlanFrom(Option<String>),
@@ -72,6 +76,7 @@ impl From<ShellEvent> for Event {
             ShellEvent::Start => Event::Start,
             ShellEvent::Open(place) => Event::Open(place),
             ShellEvent::Focus(key) => Event::Focus(key),
+            ShellEvent::Hold(side, key) => Event::Hold(side, key),
             ShellEvent::Filter(text) => Event::Filter(text),
             ShellEvent::Perform(action) => Event::Perform(action),
             ShellEvent::Run(kinds) => Event::Run(kinds),
@@ -87,6 +92,7 @@ impl From<ShellEvent> for Event {
             ShellEvent::Devices(event) => Event::Devices(event),
             ShellEvent::Due(event) => Event::Due(event),
             ShellEvent::Clock(style) => Event::Clock(style),
+            ShellEvent::Capitals(capitals) => Event::Capitals(capitals),
             ShellEvent::PlanFrom(moment) => Event::PlanFrom(moment),
             ShellEvent::QuickAdd(line) => Event::QuickAdd(line),
             ShellEvent::Undo => Event::Undo,
@@ -104,6 +110,7 @@ impl TryFrom<Event> for ShellEvent {
             Event::Start => ShellEvent::Start,
             Event::Open(place) => ShellEvent::Open(place),
             Event::Focus(key) => ShellEvent::Focus(key),
+            Event::Hold(side, key) => ShellEvent::Hold(side, key),
             Event::Filter(text) => ShellEvent::Filter(text),
             Event::Perform(action) => ShellEvent::Perform(action),
             Event::Run(kinds) => ShellEvent::Run(kinds),
@@ -119,6 +126,7 @@ impl TryFrom<Event> for ShellEvent {
             Event::Devices(event) => ShellEvent::Devices(event),
             Event::Due(event) => ShellEvent::Due(event),
             Event::Clock(style) => ShellEvent::Clock(style),
+            Event::Capitals(capitals) => ShellEvent::Capitals(capitals),
             Event::PlanFrom(moment) => ShellEvent::PlanFrom(moment),
             Event::QuickAdd(line) => ShellEvent::QuickAdd(line),
             Event::Undo => ShellEvent::Undo,

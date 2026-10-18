@@ -87,7 +87,13 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
         screen.date?.let { date -> app.send(ShellEvent.Day(DayMove.ASK)); app.send(ShellEvent.Answer(Answer.Text(date))) }
     }
     val day = view?.takeIf { it.place == Place.Today }?.day
-    val items = day?.items.orEmpty().filter { !it.hidden && it.kind != DayKind.SUMMARY }
+    val worded by app.lines.collectAsState()
+    val lines = worded?.takeIf { day != null }
+    // Each row with its line; the summary is the heading's.
+    val rows = day?.items.orEmpty().mapIndexed { index, item -> item to lines?.day?.getOrNull(index) }
+    val heading = rows.firstOrNull { it.first.kind == DayKind.SUMMARY }?.second?.title
+    val shown = rows.filter { !it.first.hidden && it.first.kind != DayKind.SUMMARY }
+    val items = shown.map { it.first }
     val scroll = rememberLazyListState()
     val focus = rememberLanding(core, items.map { it.key }, scroll)
 
@@ -113,7 +119,7 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
     // The day's own actions, the app's, in the core's order.
     val dayActions = day?.let { app.rowActions("summary", it.actions) }.orEmpty()
 
-    ScreenFrame(day?.let { Clock.spokenDay(it.date) } ?: "Today", core, navigator, actions = {
+    ScreenFrame(lines?.dayTitle?.ifEmpty { null } ?: "Today", core, navigator, actions = {
         IconButton(onClick = { addBlock() }) {
             Icon(Icons.Filled.Add, contentDescription = "Add block")
         }
@@ -127,8 +133,7 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
             // bar's to show, beside it.
             modifier = Modifier.padding(horizontal = 16.dp).semantics {
                 heading()
-                contentDescription = listOfNotNull(day?.let { Clock.spokenDay(it.date) }, summary.ifEmpty { null })
-                    .joinToString(". ")
+                contentDescription = heading ?: summary
                 // Where the day is, its actions are: on its heading, as on its buttons below.
                 if (dayActions.isNotEmpty()) {
                     customActions = dayActions.map { action -> CustomAccessibilityAction(action.name) { action.run(); true } }
@@ -153,15 +158,12 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
             Modifier.fillMaxSize().semantics { collectionInfo = CollectionInfo(items.size, 1) },
             state = scroll,
         ) {
-            itemsIndexed(items, key = { _, item -> item.key }) { index, item ->
-                val (title, details) = words(item)
-                val fold = item.expanded?.let { if (it) "expanded" else "collapsed" }
-                val speech = details + listOfNotNull(fold, item.level)
+            itemsIndexed(shown, key = { _, (item, _) -> item.key }) { index, (item, line) ->
                 val edit = item.actions.firstOrNull { it.kind == ActionKind.EDIT }
                 ListRow(
-                    title = title,
-                    detail = details.joinToString(", "),
-                    speech = speech.joinToString(", "),
+                    title = line?.title.orEmpty(),
+                    detail = line?.detail.orEmpty(),
+                    speech = spoken(line, item.expanded, item.level),
                     index = index,
                     depth = item.depth.toInt(),
                     actions = app.rowActions(item.key, item.actions),

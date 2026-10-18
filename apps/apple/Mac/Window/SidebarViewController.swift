@@ -11,17 +11,9 @@ final class SidebarNode {
 
     init(_ entry: SidebarEntry) {
         self.entry = entry
-        let title: String = switch entry.kind {
-        case let .group(group): switch group {
-            case .projects: "Projects"
-            case .labels: "Labels"
-            case .filters: "Saved Filters"
-            }
-        case let .place(place): placeTitle(place: place)
-        }
-        self.title = title
-        // The core's line is the title, then what is in it.
-        detail = entry.text.hasPrefix(title + ", ") ? String(entry.text.dropFirst(title.count + 2)) : nil
+        // The core's title, then what is in it.
+        title = entry.title
+        detail = entry.detail.isEmpty ? nil : entry.detail
     }
 
     var place: Place? {

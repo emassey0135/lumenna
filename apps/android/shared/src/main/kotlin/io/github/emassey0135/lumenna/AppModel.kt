@@ -3,6 +3,8 @@ package io.github.emassey0135.lumenna
 import android.os.Handler
 import android.os.Looper
 import io.github.emassey0135.lumenna.app.App
+import io.github.emassey0135.lumenna.app.Capitals
+import io.github.emassey0135.lumenna.app.Lines
 import io.github.emassey0135.lumenna.app.Shell
 import io.github.emassey0135.lumenna.app.ShellEvent
 import io.github.emassey0135.lumenna.app.Turn
@@ -37,7 +39,7 @@ class AppModel(
     /** Turns handed over and not yet drawn. */
     private val waiting = java.util.concurrent.atomic.AtomicInteger(0)
 
-    private val app = App(core.device, platform, object : Shell {
+    private val app = App(core.device, platform, Clock.locale, object : Shell {
         override fun turn(turn: Turn) {
             waiting.incrementAndGet()
             main.post {
@@ -50,9 +52,16 @@ class AppModel(
         }
     })
 
+    private val worded = MutableStateFlow<Lines?>(null)
+
+    /** The view's lines, in this phone's clock: every row, the day, what a pick offers. */
+    val lines: StateFlow<Lines?> = worded.asStateFlow()
+
     init {
         shown.value = app.view()
+        worded.value = app.lines()
         app.send(ShellEvent.Clock(Clock.style))
+        app.send(ShellEvent.Capitals(Capitals.SENTENCE))
         main.post(object : Runnable {
             // The app's minutes: what is now, what is due.
             override fun run() {
@@ -109,6 +118,7 @@ class AppModel(
             quiet.value = turn.view.landing
         }
         shown.value = turn.view
+        worded.value = turn.lines
         // What follows the store — reminders' alarms — looks again, a moment after the last turn.
         core.moved()
         // Focus moves first, then this is said: the list that lands releases it.
@@ -118,9 +128,6 @@ class AppModel(
             main.postDelayed({ core.release() }, 1500)
         }
         turn.files.forEach { saving.tryEmit(it) }
-        val date = turn.view.day?.date
-        for (said in turn.said) {
-            core.report(if (said.heading && date != null) "${Clock.spokenDay(date)}. ${said.text}" else said.text)
-        }
+        turn.said.forEach(core::report)
     }
 }

@@ -33,76 +33,28 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.emassey0135.lumenna.app.Action
 
-/** One line of a list of things: what identifies it, how it reads, and how deep it sits. */
-data class Item(
-    val key: String,
-    val title: String,
-    val detail: String = "",
-    val depth: Int = 0,
-    val speech: String = detail,
-    /** What can be done to it: the core's. */
-    val actions: List<Action> = emptyList(),
-    /** Whether it is this device, for a device's row. */
-    val thisDevice: Boolean = false,
-)
-
-/** What a list loads: its items, what is said of them above, and what it says with none. */
-data class Listing(val items: List<Item>, val said: String = "", val empty: String = "")
+/** One entry of a menu: what identifies it, its name, and what it holds. */
+data class Item(val key: String, val title: String, val detail: String = "")
 
 /**
- * A list of things with what can be done to each: a heading's worth of count above, one
- * TalkBack stop per item, its actions custom actions and a long press.
+ * A fixed menu — Browse's kinds of thing, Settings' pages — one TalkBack stop per entry, each
+ * opening its screen. Nothing here changes under a row, so there is no row to land on again.
  */
 @Composable
-fun ItemListScreen(
-    title: String,
-    core: Core,
-    navigator: Navigator,
-    load: () -> Listing,
-    changes: Long,
-    addLabel: String? = null,
-    add: () -> Unit = {},
-    open: ((Item) -> Unit)?,
-    openLabel: String = "Open",
-    actions: (Item) -> List<RowAction> = { emptyList() },
-    header: (@Composable () -> Unit)? = null,
-) {
-    val loaded = remember(changes) { core.attempt(load) ?: Listing(emptyList()) }
-    val all = loaded.items
-    // An empty list says what is empty, in the core's words, in place of its count.
-    val count = if (all.isEmpty() && loaded.empty.isNotEmpty()) loaded.empty else loaded.said
-    val items = all
-    val state = rememberLazyListState()
-    val focus = rememberRowFocus(core, items.map { it.key }, state)
-    ScreenFrame(title, core, navigator, actions = {
-        if (addLabel != null) {
-            IconButton(onClick = add) { Icon(Icons.Filled.Add, contentDescription = addLabel) }
-        }
-    }) {
-        header?.invoke()
-        if (count.isNotEmpty()) {
-            Text(
-                count.replaceFirstChar { it.uppercase() },
-                style = MaterialTheme.typography.bodyMedium,
-                color = quiet(),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-        }
-        LazyColumn(Modifier.fillMaxSize().semantics { collectionInfo = CollectionInfo(items.size, 1) }, state = state) {
+fun MenuScreen(title: String, core: Core, navigator: Navigator, items: List<Item>, open: (Item) -> Unit) {
+    ScreenFrame(title, core, navigator) {
+        LazyColumn(Modifier.fillMaxSize().semantics { collectionInfo = CollectionInfo(items.size, 1) }) {
             itemsIndexed(items, key = { _, item -> item.key }) { index, item ->
                 ListRow(
                     title = item.title,
                     detail = item.detail,
-                    speech = item.speech,
+                    speech = item.detail,
                     index = index,
-                    depth = item.depth,
-                    actions = focus.actions(item.key, index, actions(item)),
-                    open = open?.let { { it(item) } },
-                    openLabel = openLabel,
-                    focus = focus.requester(item.key),
+                    actions = emptyList(),
+                    open = { open(item) },
+                    openLabel = "Open",
                     key = item.key,
                     say = core::say,
-                    thisDevice = item.thisDevice,
                 )
                 HorizontalDivider()
             }
@@ -125,9 +77,8 @@ fun BrowseScreen(core: Core, navigator: Navigator) {
         Item("blocks", "Blocks", ""),
         Item("trash", "Trash", trash?.detail.orEmpty()),
     )
-    ItemListScreen(
-        "Browse", core, navigator, changes = 0L,
-        load = { Listing(items) },
+    MenuScreen(
+        "Browse", core, navigator, items,
         open = { item ->
             navigator.push(
                 when (item.key) {
@@ -201,23 +152,26 @@ fun BlocksScreen(core: Core, navigator: Navigator) {
     val app = core.app
     val view by app.view.collectAsState()
     LaunchedEffect(Unit) { app.send(ShellEvent.Open(io.github.emassey0135.lumenna.app.Place.Blocks)) }
-    val list = view?.takeIf { it.place == io.github.emassey0135.lumenna.app.Place.Blocks }?.list
+    val here = view?.takeIf { it.place == io.github.emassey0135.lumenna.app.Place.Blocks }
+    val list = here?.list
+    val worded by app.lines.collectAsState()
+    val lines = worded?.takeIf { here != null }
     FollowBlockForm(core, navigator)
     ScreenFrame("Blocks", core, navigator, actions = {
         IconButton(onClick = { app.send(ShellEvent.Block(BlockEvent.New(null, null))) }) {
             Icon(Icons.Filled.Add, contentDescription = "Add block")
         }
     }) {
-        val count = list?.let { if (it.items.isEmpty() && it.empty.isNotEmpty()) it.empty else it.announcement }.orEmpty()
+        val count = lines?.readback.orEmpty()
         if (count.isNotEmpty()) {
             Text(
-                count.replaceFirstChar { it.uppercase() },
+                count,
                 style = MaterialTheme.typography.bodyMedium,
                 color = quiet(),
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
-        AppTaskRows(core, list?.items.orEmpty().filter { !it.hidden }, open = { row ->
+        AppTaskRows(core, shownRows(list?.items.orEmpty(), lines?.list.orEmpty()), open = { row ->
             row.actions.firstOrNull { it.kind == io.github.emassey0135.lumenna.app.ActionKind.EDIT }?.let { edit ->
                 app.send(ShellEvent.Focus(row.id))
                 app.send(ShellEvent.Perform(edit))

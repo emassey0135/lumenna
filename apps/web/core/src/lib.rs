@@ -17,7 +17,7 @@ use std::path::Path;
 mod app;
 mod clock;
 
-use clock::Browser;
+use clock::CLOCK;
 use lumenna_desktop::speech::{self, Clock};
 use lumenna_host::{Choice, Lumenna, LumennaError, PairingWords, TaskDetail};
 use serde::Serialize;
@@ -85,7 +85,7 @@ impl Core {
 /// A block on the day: its times, name, length, kind, and what is in it.
 #[wasm_bindgen(js_name = blockText)]
 pub fn block_text(block: Ts<lumenna_host::PlanBlock>) -> Result<String, JsError> {
-    Ok(speech::block(&block.to_rust()?, &Browser))
+    Ok(speech::block(&block.to_rust()?, &CLOCK))
 }
 
 /// A sitting: a task in a block for one session.
@@ -98,38 +98,45 @@ pub fn sitting_text(sitting: Ts<lumenna_host::PlanAssignment>) -> Result<String,
 /// details as the core words them, then its span in this browser's times.
 #[wasm_bindgen(js_name = freeText)]
 pub fn free_text(title: &str, details: Vec<String>, start: &str, end: &str) -> String {
-    speech::free_time(title, &details, start, end, &Browser)
+    speech::free_time(title, &details, start, end, &CLOCK)
 }
 
 /// Where the present falls: the core's title for it, then the time in this browser's clock.
 #[wasm_bindgen(js_name = nowText)]
 pub fn now_text(title: &str, time: &str) -> String {
-    format!("{title}, {}", Browser.time(time))
+    format!("{title}, {}", CLOCK.time(time))
 }
 
 /// A repeating block cancelled for this day alone.
 #[wasm_bindgen(js_name = cancelledText)]
 pub fn cancelled_text(block: Ts<lumenna_host::CancelledBlock>) -> Result<String, JsError> {
-    Ok(speech::cancelled(&block.to_rust()?, &Browser))
+    Ok(speech::cancelled(&block.to_rust()?, &CLOCK))
 }
 
 /// The day's first row: what a glance at a timeline gives.
 #[wasm_bindgen(js_name = summaryText)]
 pub fn summary_text(date: &str, summary: &str) -> String {
-    speech::summary(date, summary, &Browser)
+    speech::summary(date, summary, &CLOCK)
 }
 
 /// An ISO date as a person says it: "Today", or "Monday 5 October".
 #[wasm_bindgen(js_name = dayText)]
 pub fn day_text(iso: &str) -> String {
-    Browser.day(iso)
+    CLOCK.day(iso)
 }
 
 /// Every sentence and button of pairing. A browser calls itself "this browser", and cannot
 /// be found on a network by itself: it pairs by code.
 #[wasm_bindgen(js_name = pairingWords)]
 pub fn pairing_words() -> Out<PairingWords> {
-    js(&lumenna_host::pairing_words("this browser".to_owned(), false))
+    let mut words = lumenna_host::pairing_words("this browser".to_owned(), false);
+    // The web's capitals: buttons and headings in sentence case, the introduction the core's own
+    // sentence-case one.
+    for word in [&mut words.title, &mut words.wait, &mut words.join, &mut words.match_title, &mut words.match_yes, &mut words.match_no, &mut words.copy_code] {
+        *word = lumenna_host::sentence_case(std::mem::take(word));
+    }
+    words.intro = std::mem::take(&mut words.intro_sentence);
+    js(&words)
 }
 
 /// Fixed text — a button, a question — in sentence case, the web's: never a name.
@@ -147,13 +154,13 @@ pub fn sentence_case(text: String) -> String {
 /// that mean something — with `completed` left out where a checkbox says it.
 #[wasm_bindgen(js_name = rowText)]
 pub fn row_text(row: Ts<lumenna_host::RowView>, checkbox: bool) -> Result<String, JsError> {
-    Ok(speech::row(&row.to_rust()?, checkbox, &Browser))
+    Ok(speech::row(&row.to_rust()?, checkbox, &CLOCK))
 }
 
 /// A row in the trash, where saying `deleted` on every one is noise.
 #[wasm_bindgen(js_name = trashedText)]
 pub fn trashed_text(row: Ts<lumenna_host::RowView>) -> Result<String, JsError> {
-    Ok(speech::trashed(&row.to_rust()?, &Browser))
+    Ok(speech::trashed(&row.to_rust()?, &CLOCK))
 }
 
 /// A task's state as its details show it.
@@ -179,7 +186,7 @@ pub fn announcement_text(announcement: &str, notices: Vec<String>) -> String {
 /// apart.
 #[wasm_bindgen(js_name = choiceText)]
 pub fn choice_text(choice: Ts<Choice>) -> Result<String, JsError> {
-    Ok(lumenna_desktop::speech::choice(&choice.to_rust()?, &Browser))
+    Ok(lumenna_desktop::speech::choice(&choice.to_rust()?, &CLOCK))
 }
 
 /// A paired device, as its line in the list reads: "Kitchen Mac, macos, last synced 5 minutes

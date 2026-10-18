@@ -50,7 +50,7 @@ fun ProposalScreen(core: Core, navigator: Navigator) {
     DisposableEffect(Unit) { onDispose { if (app.view.value?.proposal != null) app.send(ShellEvent.Proposal(ProposalEvent.Close)) } }
     val send = { event: ProposalEvent -> app.send(ShellEvent.Proposal(event)) }
 
-    ScreenFrame(proposal?.words?.title?.let(::appButton) ?: "", core, navigator) {
+    ScreenFrame(proposal?.words?.title ?: "", core, navigator) {
         if (proposal == null) return@ScreenFrame
         val words = proposal.words
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
@@ -78,12 +78,12 @@ fun ProposalScreen(core: Core, navigator: Navigator) {
                 }
             }
             if (proposal.unfit.isNotEmpty()) {
-                Heading(appButton(words.unfit))
+                Heading(words.unfit)
                 proposal.unfit.forEach { Text(it, Modifier.padding(vertical = 4.dp)) }
             }
             // Other ways through the day, each named by what it is, costs and leads to.
             if (proposal.others.isNotEmpty() && words.others.isNotEmpty()) {
-                Heading(appButton(words.others))
+                Heading(words.others)
                 proposal.others.forEachIndexed { index, sentence ->
                     OutlinedButton(
                         modifier = Target.fillMaxWidth().padding(vertical = 4.dp),
@@ -99,9 +99,9 @@ fun ProposalScreen(core: Core, navigator: Navigator) {
                 Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
             ) {
-                TextButton(modifier = Target, onClick = navigator::back) { Text(appButton(words.cancel)) }
+                TextButton(modifier = Target, onClick = navigator::back) { Text(words.cancel) }
                 if (items.isNotEmpty()) {
-                    Button(modifier = Target, enabled = !proposal.busy, onClick = { send(ProposalEvent.Apply) }) { Text(appButton(words.apply)) }
+                    Button(modifier = Target, enabled = !proposal.busy, onClick = { send(ProposalEvent.Apply) }) { Text(words.apply) }
                 }
             }
         }

@@ -20,18 +20,86 @@ pub trait Clock {
     fn day(&self, iso: &str) -> String;
 }
 
+/// What a platform formats in its own locale: a time of day, and a date. The rest of saying a
+/// day — "Today", "Tomorrow", the year only when it is not this one — is [`Spoken`]'s, once.
+pub trait Formats {
+    /// A time of day as this device writes one: "2:30 PM", or "14:30".
+    fn time(&self, hour: i8, minute: i8) -> String;
+    /// A date with its weekday and month named, the year too when `with_year`: "Monday 5 October".
+    fn date(&self, year: i16, month: i8, day: i8, with_year: bool) -> String;
+}
+
+/// A [`Clock`] over a platform's [`Formats`], counting days from the device's today.
+pub struct Spoken<F>(pub F);
+
+impl<F: Formats> Clock for Spoken<F> {
+    fn time(&self, clock: &str) -> String {
+        match clock.parse::<jiff::civil::Time>() {
+            Ok(time) => self.0.time(time.hour(), time.minute()),
+            Err(_) => clock.to_owned(),
+        }
+    }
+
+    fn day(&self, iso: &str) -> String {
+        let Ok(date) = iso.parse::<jiff::civil::Date>() else { return iso.to_owned() };
+        let today = jiff::Zoned::now().date();
+        if date == today {
+            "Today".to_owned()
+        } else if today.tomorrow().is_ok_and(|d| d == date) {
+            "Tomorrow".to_owned()
+        } else if today.yesterday().is_ok_and(|d| d == date) {
+            "Yesterday".to_owned()
+        } else {
+            // The year only when it is not this one, as a person would say it.
+            self.0.date(date.year(), date.month(), date.day(), date.year() != today.year())
+        }
+    }
+}
+
+/// A line as read: what comes first — the name, or a block's times and name — then the rest.
+/// A list that shows two lines shows them so; one that reads one line reads [`Line::text`].
+#[boltffi::data]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+pub struct Line {
+    /// What comes first.
+    pub title: String,
+    /// The rest, joined: empty for nothing more.
+    pub detail: String,
+    /// The whole line: the title, then the rest.
+    pub text: String,
+}
+
+impl Line {
+    /// A line of `title`, then each of `rest` that says something.
+    #[must_use]
+    pub fn of(title: String, rest: Vec<String>) -> Self {
+        let detail = join(rest);
+        Self { text: join(vec![title.clone(), detail.clone()]), title, detail }
+    }
+
+    /// The whole line: the title, then the rest.
+    #[must_use]
+    pub fn text(&self) -> String {
+        self.text.clone()
+    }
+}
+
 /// One thing a picker offers: a block as "Tomorrow, 9:00 AM to 11:00 AM, Deep work", in
 /// this device's clock; anything else as its title, then what tells it apart (a task's
 /// project). Depth is left to the list, which says a level as its platform does.
 pub fn choice(choice: &lumenna_host::Choice, clock: &dyn Clock) -> String {
+    choice_line(choice, clock).text()
+}
+
+/// [`choice`], as its first part and the rest: a block's whole line is its first.
+pub fn choice_line(choice: &lumenna_host::Choice, clock: &dyn Clock) -> Line {
     match (&choice.date, &choice.start, &choice.end) {
-        (Some(date), Some(start), Some(end)) => {
-            format!("{}, {} to {}, {}", clock.day(date), clock.time(start), clock.time(end), choice.title)
-        }
-        _ => match &choice.detail {
-            Some(detail) => format!("{}, {detail}", choice.title),
-            None => choice.title.clone(),
-        },
+        (Some(date), Some(start), Some(end)) => Line::of(
+            format!("{}, {} to {}, {}", clock.day(date), clock.time(start), clock.time(end), choice.title),
+            Vec::new(),
+        ),
+        _ => Line::of(choice.title.clone(), choice.detail.iter().cloned().collect()),
     }
 }
 
@@ -40,7 +108,12 @@ pub fn choice(choice: &lumenna_host::Choice, clock: &dyn Clock) -> String {
 /// `ready` is true of almost every task, and saying it everywhere buries the states that
 /// mean something. `completed` is left to the checkbox where there is one.
 pub fn row(row: &RowView, checkbox: bool, clock: &dyn Clock) -> String {
-    let mut parts = vec![row.title.clone()];
+    row_line(row, checkbox, clock).text()
+}
+
+/// [`row`], as its title and the rest.
+pub fn row_line(row: &RowView, checkbox: bool, clock: &dyn Clock) -> Line {
+    let mut parts = Vec::new();
     parts.extend(due(row, clock));
     parts.extend(row.value.clone());
     parts.extend(
@@ -48,16 +121,21 @@ pub fn row(row: &RowView, checkbox: bool, clock: &dyn Clock) -> String {
             .filter(|state| !(checkbox && *state == "completed"))
             .map(str::to_owned),
     );
-    join(parts)
+    Line::of(row.title.clone(), parts)
 }
 
 /// A row in the trash, where every row is `deleted` and saying so on each is noise.
 pub fn trashed(row: &RowView, clock: &dyn Clock) -> String {
-    let mut parts = vec![row.title.clone()];
+    trashed_line(row, clock).text()
+}
+
+/// [`trashed`], as its title and the rest.
+pub fn trashed_line(row: &RowView, clock: &dyn Clock) -> Line {
+    let mut parts = Vec::new();
     parts.extend(due(row, clock));
     parts.extend(row.value.clone());
     parts.extend(row.trailing_states().filter(|state| *state != "deleted").map(str::to_owned));
-    join(parts)
+    Line::of(row.title.clone(), parts)
 }
 
 /// When a row is due, with the time in this device's clock: "due tomorrow at 3:00 PM".
@@ -90,17 +168,23 @@ pub fn place(title: &str, detail: &str) -> String {
 /// A block on the day: "9:00 AM to 11:00 AM, Deep work, 2 hours, work block, now, 3 tasks
 /// assigned" — the time and title, then the details the core words for every app.
 pub fn block(block: &PlanBlock, clock: &dyn Clock) -> String {
-    let mut parts = vec![format!("{} to {}", clock.time(&block.start), clock.time(&block.end)), block.title.clone()];
-    parts.extend(block.details.iter().cloned());
-    join(parts)
+    block_line(block, clock).text()
+}
+
+/// [`block`], as its times and title, then its details.
+pub fn block_line(block: &PlanBlock, clock: &dyn Clock) -> Line {
+    Line::of(format!("{} to {}, {}", clock.time(&block.start), clock.time(&block.end), block.title), block.details.clone())
 }
 
 /// A sitting: a task in a block for one session — its title, then the details the
 /// core words for every app, a capped timer among them, never presented as fact.
 pub fn sitting(sitting: &PlanAssignment) -> String {
-    let mut parts = vec![sitting.title.clone()];
-    parts.extend(sitting.details.iter().cloned());
-    join(parts)
+    sitting_line(sitting).text()
+}
+
+/// [`sitting`], as its title and its details.
+pub fn sitting_line(sitting: &PlanAssignment) -> Line {
+    Line::of(sitting.title.clone(), sitting.details.clone())
 }
 
 /// Free time, which a timeline shows by empty space and a list has to say.
@@ -111,10 +195,14 @@ pub fn free(start: &str, end: &str, minutes: u32, clock: &dyn Clock) -> String {
 /// Free time from its item, in the order every app says it: its title, its details, then
 /// its span in this device's clock.
 pub fn free_time(title: &str, details: &[String], start: &str, end: &str, clock: &dyn Clock) -> String {
-    let mut parts = vec![title.to_owned()];
-    parts.extend(details.iter().cloned());
+    free_line(title, details, start, end, clock).text()
+}
+
+/// [`free_time`], as its title, then its details and span.
+pub fn free_line(title: &str, details: &[String], start: &str, end: &str, clock: &dyn Clock) -> Line {
+    let mut parts = details.to_vec();
     parts.push(format!("{} to {}", clock.time(start), clock.time(end)));
-    join(parts)
+    Line::of(title.to_owned(), parts)
 }
 
 /// Where the present falls: a position, not a highlight.
@@ -124,9 +212,12 @@ pub fn now(time: &str, clock: &dyn Clock) -> String {
 
 /// A repeating block cancelled for this day alone.
 pub fn cancelled(block: &CancelledBlock, clock: &dyn Clock) -> String {
-    let mut parts = vec![clock.time(&block.start), block.title.clone()];
-    parts.extend(block.details.iter().cloned());
-    join(parts)
+    cancelled_line(block, clock).text()
+}
+
+/// [`cancelled`], as its time and title, then its details.
+pub fn cancelled_line(block: &CancelledBlock, clock: &dyn Clock) -> Line {
+    Line::of(format!("{}, {}", clock.time(&block.start), block.title), block.details.clone())
 }
 
 /// The day's first row: what a glance at a timeline gives a sighted user.
@@ -295,6 +386,42 @@ mod tests {
             super::block(&block, &TwelveHour),
             "9:00 AM to 11:00 AM, Deep work, 2 hours, work block, now, 1 task assigned"
         );
+        let line = block_line(&block, &TwelveHour);
+        assert_eq!(line.title, "9:00 AM to 11:00 AM, Deep work");
+        assert_eq!(line.detail, "2 hours, work block, now, 1 task assigned");
+        assert_eq!(line.text, super::block(&block, &TwelveHour));
+    }
+
+    /// Writes a date as its parts, so a test sees which parts the core asked for.
+    struct Parts;
+
+    impl Formats for Parts {
+        fn time(&self, hour: i8, minute: i8) -> String {
+            format!("{hour}h{minute:02}")
+        }
+
+        fn date(&self, year: i16, month: i8, day: i8, with_year: bool) -> String {
+            if with_year { format!("{day}/{month}/{year}") } else { format!("{day}/{month}") }
+        }
+    }
+
+    #[test]
+    fn a_day_near_today_is_said_by_name_and_another_by_the_platform_with_its_year_only_when_another_year() {
+        let today = jiff::Zoned::now().date();
+        let clock = Spoken(Parts);
+        assert_eq!(clock.day(&today.to_string()), "Today");
+        assert_eq!(clock.day(&today.tomorrow().unwrap().to_string()), "Tomorrow");
+        assert_eq!(clock.day(&today.yesterday().unwrap().to_string()), "Yesterday");
+        let later = today.checked_add(jiff::Span::new().days(10)).unwrap();
+        let expected = if later.year() == today.year() {
+            format!("{}/{}", later.day(), later.month())
+        } else {
+            format!("{}/{}/{}", later.day(), later.month(), later.year())
+        };
+        assert_eq!(clock.day(&later.to_string()), expected);
+        let next_year = jiff::civil::date(today.year() + 1, 3, 4);
+        assert_eq!(clock.day(&next_year.to_string()), format!("4/3/{}", today.year() + 1));
+        assert_eq!(clock.time("09:05"), "9h05");
     }
 
     #[test]

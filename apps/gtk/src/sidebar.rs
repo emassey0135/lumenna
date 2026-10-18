@@ -154,13 +154,7 @@ fn after(entry: &SidebarEntry) -> actions::After {
 
 /// What the File menu's New Project, New Label and New Saved Filter run: the heading's own.
 pub fn new_in(app: &Rc<App>, group: SidebarGroup) {
-    let entry = SidebarEntry {
-        kind: SidebarKind::Group(group),
-        text: String::new(),
-        depth: 0,
-        archived: false,
-        actions: lumenna_host::actions::heading(group),
-    };
+    let entry = SidebarEntry::new(SidebarKind::Group(group), "", "", 0, lumenna_host::actions::heading(group));
     if let Some(action) = entry.actions.first() {
         actions::run(app, action.clone(), Some(after(&entry)));
     }
@@ -168,6 +162,5 @@ pub fn new_in(app: &Rc<App>, group: SidebarGroup) {
 
 /// The key a place's row has in the sidebar.
 fn place_key(place: &Place) -> String {
-    SidebarEntry { kind: SidebarKind::Place(place.clone()), text: String::new(), depth: 0, archived: false, actions: Vec::new() }
-        .key()
+    SidebarEntry::key_of(&SidebarKind::Place(place.clone()))
 }

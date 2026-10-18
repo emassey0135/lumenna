@@ -10,7 +10,7 @@ use lumenna_app::{
 use lumenna_bridge::{Shell, Stack, Store, shell, stack};
 use lumenna_host::Lumenna;
 use lumenna_records::places::Place;
-use lumenna_records::{ActionKind, Answer};
+use lumenna_records::{ActionKind, Answer, Question};
 
 /// A request of the network: its id, what it asks, and the way to answer it until answered.
 type Request = (u64, NetworkRequest, Option<EffectResolver<NetworkAnswer>>);
@@ -650,6 +650,28 @@ fn renaming_a_project_goes_to_it_and_deleting_it_goes_to_tasks() {
     app.send(Event::Perform(sidebar_action(&app, "Office", ActionKind::Delete)));
     app.send(Event::Answer(Answer::Picked { id: "keep".to_owned(), length: None }));
     assert_eq!(app.view().place, Some(Place::Tasks));
+}
+
+#[test]
+fn a_shell_that_writes_sentence_case_gets_its_headings_buttons_and_answers_in_it() {
+    let mut app = App::new();
+    Lumenna::open(app.profile.to_str().unwrap()).unwrap().add_project("Work", None).unwrap();
+    app.session.tick();
+    let heading = |app: &App| app.view().sidebar.into_iter().find(|e| e.key() == "group:Filters").unwrap().title;
+    assert_eq!(heading(&app), "Saved Filters");
+    app.send(Event::Capitals(lumenna_app::Capitals::Sentence));
+    assert_eq!(heading(&app), "Saved filters");
+
+    // The question a delete asks, in the core's capitals and then the shell's: the same answers,
+    // each in sentence case, and nothing the core marks as a name changed.
+    app.send(Event::Capitals(lumenna_app::Capitals::Title));
+    app.send(Event::Perform(sidebar_action(&app, "Work", ActionKind::Delete)));
+    let Some(Question::Choose { answers: titled, .. }) = app.view().asking.map(|a| a.question) else { panic!("a choice of answers") };
+    app.send(Event::Capitals(lumenna_app::Capitals::Sentence));
+    let Some(Question::Choose { answers, .. }) = app.view().asking.map(|a| a.question) else { panic!("a choice of answers") };
+    let expected: Vec<String> = titled.iter().map(|a| lumenna_records::sentence_case(a.title.clone())).collect();
+    assert_eq!(answers.iter().map(|a| a.title.clone()).collect::<Vec<_>>(), expected);
+    assert!(titled.iter().zip(&answers).any(|(t, s)| t.title != s.title), "some answer had a capital to lose");
 }
 
 #[test]

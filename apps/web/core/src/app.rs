@@ -25,6 +25,9 @@ use tsify::{Ts, Tsify};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::{future_to_promise, spawn_local};
 
+use lumenna_desktop::lines::{Lines, lines};
+
+use crate::clock::CLOCK;
 use crate::{Core, Out, js};
 
 /// What this browser's sync is doing: the loop while it runs, and whether a pairing in
@@ -35,23 +38,16 @@ pub(crate) struct Syncing {
     pub(crate) cancelled: Cell<bool>,
 }
 
-/// Something to say.
-#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
-pub struct Saying {
-    /// The sentence; for a heading, the day's summary.
-    pub text: String,
-    /// Whether to say the day's heading, "<day>. <summary>", in this browser's words for the day.
-    pub heading: bool,
-}
-
 /// What the app left for the page: the view model, and what to say once focus is where it
 /// puts it.
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 pub struct Turn {
     /// What to draw.
     pub view: ViewModel,
+    /// The view's lines, in this browser's clock.
+    pub lines: Lines,
     /// What to say, in order.
-    pub said: Vec<Saying>,
+    pub said: Vec<String>,
     /// Files to save where the person keeps them: a backup, an export.
     pub files: Vec<SaveFile>,
     /// Notifications to show, as the browser shows them.
@@ -124,7 +120,8 @@ impl Inner {
 
     /// The view as it stands, as a turn with nothing to say: what a reply carries.
     fn current(&self) -> Turn {
-        Turn { view: self.stack.view(), said: Vec::new(), files: Vec::new(), notices: Vec::new(), seq: self.seq.get() }
+        let view = self.stack.view();
+        Turn { lines: lines(&view, &CLOCK), view, said: Vec::new(), files: Vec::new(), notices: Vec::new(), seq: self.seq.get() }
     }
 
     /// Hands what the outbox holds to the page, a turn per batch, until the app is gone.
@@ -152,8 +149,12 @@ impl Inner {
         let mut turn = Turn { seq, ..self.current() };
         for s in shell {
             match s {
-                Shell::Announce(text) => turn.said.push(Saying { text: text.clone(), heading: false }),
-                Shell::Heading(text) => turn.said.push(Saying { text: text.clone(), heading: true }),
+                Shell::Announce(text) => turn.said.push(text.clone()),
+                // "<day>. <summary>", for a day newly shown.
+                Shell::Heading(text) => turn.said.push(match &turn.view.day {
+                    Some(day) => lumenna_desktop::speech::summary(&day.date, text, &CLOCK),
+                    None => text.clone(),
+                }),
                 Shell::Save(file) => turn.files.push(file.clone()),
                 Shell::Notify(notice) => turn.notices.push(notice.clone()),
                 Shell::Render => {}
@@ -348,9 +349,9 @@ impl App {
         })
     }
 
-    /// What to draw now.
-    pub fn view(&self) -> Out<ViewModel> {
-        js(&self.inner.stack.view())
+    /// What to draw now, with its lines, as a turn with nothing to say.
+    pub fn now(&self) -> Out<Turn> {
+        js(&self.inner.current())
     }
 
     /// Gives every turn from now on to `listener`.

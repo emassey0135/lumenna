@@ -44,7 +44,7 @@ class CruxAppTest {
     @Test
     fun aTaskAddedThroughTheAppArrivesInATurnWithItsRowInHandAndItsReadbackSaid() {
         val shell = Turns()
-        val app = App(io.github.emassey0135.lumenna.app.Device(directory.absolutePath), "android", shell)
+        val app = App(io.github.emassey0135.lumenna.app.Device(directory.absolutePath), "android", Clock.locale, shell)
         shell.until { it.view.ready }
         app.send(ShellEvent.QuickAdd("Buy milk tomorrow"))
         val added = shell.until { turn -> turn.view.list?.items.orEmpty().any { it.row.title == "Buy milk" } }

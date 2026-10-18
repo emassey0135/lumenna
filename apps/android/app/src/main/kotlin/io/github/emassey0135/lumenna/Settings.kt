@@ -83,17 +83,15 @@ fun SettingsScreen(core: Core, navigator: Navigator) {
     val view by app.view.collectAsState()
     LaunchedEffect(Unit) { app.send(ShellEvent.Devices(DevicesEvent.Show)) }
     val status = view?.devices?.status.orEmpty()
-    ItemListScreen(
-        "Settings", core, navigator, changes = status.hashCode().toLong(),
-        load = {
-            listOf(
-                Item("devices", "Devices and sync", status),
-                Item("planning", "Planning", "The day, the week, completing subtasks, announcements"),
-                Item("reminders", "Reminders", "On this device: notifications and alarms"),
-                Item("backups", "Backups", "On this device only"),
-                Item("export", "Export and import", "JSON, Markdown, org, calendar"),
-            ).let { Listing(it) }
-        },
+    MenuScreen(
+        "Settings", core, navigator,
+        listOf(
+            Item("devices", "Devices and sync", status),
+            Item("planning", "Planning", "The day, the week, completing subtasks, announcements"),
+            Item("reminders", "Reminders", "On this device: notifications and alarms"),
+            Item("backups", "Backups", "On this device only"),
+            Item("export", "Export and import", "JSON, Markdown, org, calendar"),
+        ),
         open = { item ->
             navigator.push(
                 when (item.key) {
@@ -375,7 +373,7 @@ fun ExportScreen(core: Core, navigator: Navigator) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             view?.settings?.exports.orEmpty().forEach { export ->
                 OutlinedButton(modifier = Target, onClick = { app.send(ShellEvent.Settings(SettingsEvent.Export(export.format))) }) {
-                    Text("${appButton(export.label)}…")
+                    Text("${export.label}…")
                 }
             }
             OutlinedButton(modifier = Target, onClick = { open.launch(arrayOf("*/*")) }) { Text("Import or restore…") }
@@ -461,10 +459,10 @@ fun PairingScreen(core: Core, navigator: Navigator) {
     // Leaving the screen gives up, which ends the wait for the other device.
     DisposableEffect(Unit) { onDispose { app.send(ShellEvent.Devices(DevicesEvent.Pair(PairEvent.Cancel))) } }
     val pair = { event: PairEvent -> app.send(ShellEvent.Devices(DevicesEvent.Pair(event))) }
-    val words = remember(name) { pairingWords(name, true) }
+    val words = remember(name) { pairingWords(name, true, io.github.emassey0135.lumenna.app.Capitals.SENTENCE) }
     var entered by remember { mutableStateOf("") }
 
-    ScreenFrame(appButton(words.title), core, navigator) {
+    ScreenFrame(words.title, core, navigator) {
         if (pairing == null) return@ScreenFrame
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             val status = pairing.problem ?: when {
@@ -473,14 +471,14 @@ fun PairingScreen(core: Core, navigator: Navigator) {
                 else -> words.introSentence.ifEmpty { words.intro }
             }
             Text(status, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-            Button(modifier = Target, onClick = { pair(PairEvent.Wait) }, enabled = !pairing.running) { Text(appButton(words.wait)) }
+            Button(modifier = Target, onClick = { pair(PairEvent.Wait) }, enabled = !pairing.running) { Text(words.wait) }
             pairing.mine?.let { code ->
                 Text("${words.myCode}: $code", fontFamily = FontFamily.Monospace)
                 OutlinedButton(modifier = Target, onClick = {
                     val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                     clipboard.setPrimaryClip(android.content.ClipData.newPlainText(words.myCode, code))
                     core.say(words.copied)
-                }) { Text(appButton(words.copyCode)) }
+                }) { Text(words.copyCode) }
             }
             OutlinedTextField(
                 value = entered,
@@ -492,15 +490,15 @@ fun PairingScreen(core: Core, navigator: Navigator) {
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
                 modifier = Modifier.fillMaxWidth(),
             )
-            Button(modifier = Target, onClick = { pair(PairEvent.Join) }) { Text(appButton(words.join)) }
+            Button(modifier = Target, onClick = { pair(PairEvent.Join) }) { Text(words.join) }
         }
         pairing.words?.let { three ->
             AlertDialog(
                 onDismissRequest = {},
-                title = { Text(appButton(words.matchTitle)) },
+                title = { Text(words.matchTitle) },
                 text = { Text("${words.matchMessage} ${three.joinToString(", ")}.") },
-                confirmButton = { TextButton(modifier = Target, onClick = { pair(PairEvent.Confirm(true)) }) { Text(appButton(words.matchYes)) } },
-                dismissButton = { TextButton(modifier = Target, onClick = { pair(PairEvent.Confirm(false)) }) { Text(appButton(words.matchNo)) } },
+                confirmButton = { TextButton(modifier = Target, onClick = { pair(PairEvent.Confirm(true)) }) { Text(words.matchYes) } },
+                dismissButton = { TextButton(modifier = Target, onClick = { pair(PairEvent.Confirm(false)) }) { Text(words.matchNo) } },
             )
         }
     }

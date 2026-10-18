@@ -195,6 +195,7 @@ impl Lumenna {
         match event {
             DevicesEvent::Show => {
                 model.devices = Some(Devices::default());
+                model.devices_held = crate::held::Held::default();
                 render().and(host(HostRequest::Devices)).and(network_request(NetworkRequest::Status, Event::SyncStatus))
             }
             DevicesEvent::SyncNow => say("Syncing").and(network_request(NetworkRequest::SyncNow, Event::Synced)),

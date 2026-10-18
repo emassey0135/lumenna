@@ -147,6 +147,7 @@ impl Lumenna {
                 // A task's or block's reminders, a list of the app's.
                 (_, ActionKind::Reminders) => {
                     model.reminders = Some(action.target.clone());
+                    model.reminders_held = crate::held::Held::default();
                     return render();
                 }
                 // The day's two proposals are the app's screens over the host's proposing.
@@ -270,6 +271,12 @@ impl Lumenna {
                 // A place renamed, made or removed: go to where it now is.
                 let after = model.open.take().and_then(|open| after_place(&open, model.store.as_ref()?));
                 if change.changed && let Some(place) = after {
+                    // From the sidebar, its row in hand follows the place to where it now is.
+                    if model.acting == Some(crate::Side::Sidebar) {
+                        let key = lumenna_records::places::SidebarEntry::key_of(&lumenna_records::places::SidebarKind::Place(place.clone()));
+                        let keys = model.side_keys(crate::Side::Sidebar);
+                        model.sidebar_held.hold(&key, &keys);
+                    }
                     model.go(place);
                 }
                 if saving {

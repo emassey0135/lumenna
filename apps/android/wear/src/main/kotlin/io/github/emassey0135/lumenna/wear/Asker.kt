@@ -10,10 +10,7 @@ import io.github.emassey0135.lumenna.app.ActionKind
 import io.github.emassey0135.lumenna.app.Answer
 import io.github.emassey0135.lumenna.app.Question
 import io.github.emassey0135.lumenna.app.ShellEvent
-import io.github.emassey0135.lumenna.appButton
-import io.github.emassey0135.lumenna.asks
 import io.github.emassey0135.lumenna.option
-import io.github.emassey0135.lumenna.said
 
 /**
  * The question the app has open (`ViewModel.asking`), asked the watch's way: Wear's AlertDialog
@@ -40,7 +37,7 @@ fun WearQuestions(core: Core, navigator: Navigator, entry: TextEntry?) {
                 cancel()
             }
             is Question.Confirm -> navigator.confirm(
-                action?.asks(question.title) ?: question.title, question.message, appButton(question.yes), dismissed = cancel,
+                question.title, question.message, question.yes, dismissed = cancel,
             ) { answer(Answer.Yes) }
             is Question.Text -> {
                 // How long, chosen: a sitting's planned length, minutes logged, or the length a
@@ -48,21 +45,23 @@ fun WearQuestions(core: Core, navigator: Navigator, entry: TextEntry?) {
                 val length = action?.kind == ActionKind.PLANNED_LENGTH || action?.kind == ActionKind.LOG_MINUTES ||
                     action?.question is Question.Pick
                 if (length) {
-                    chooseLength(navigator, question.said, if (question.optional) "None" else null, cancel) { minutes ->
+                    chooseLength(navigator, question.title, if (question.optional) "None" else null, cancel) { minutes ->
                         answer(Answer.Text(minutes?.let { "${it}m" }.orEmpty()))
                     }
                 } else {
-                    entry?.ask(action?.asks(question.said) ?: question.said) { answer(Answer.Text(it)) }
+                    entry?.ask(question.title) { answer(Answer.Text(it)) }
                 }
             }
             is Question.Pick -> asked.choices?.let { offered ->
-                navigator.choose(action?.asks(question.title) ?: question.title, offered.choices.map(::option), cancelled = cancel) { picked ->
+                val worded = app.lines.value?.choices.orEmpty()
+                val options = offered.choices.mapIndexed { index, choice -> worded.getOrNull(index)?.let { option(choice, it) } ?: option(choice) }
+                navigator.choose(question.title, options, cancelled = cancel) { picked ->
                     answer(Answer.Picked(picked.key, null))
                 }
             }
             is Question.Choose -> navigator.choose(
-                action?.asks(question.title) ?: question.title,
-                question.answers.map { Option(it.id, appButton(it.title)) },
+                question.title,
+                question.answers.map { Option(it.id, it.title) },
                 question.message,
                 cancelled = cancel,
             ) { picked -> answer(Answer.Picked(picked.key, null)) }

@@ -74,7 +74,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import io.github.emassey0135.lumenna.app.Item
-import io.github.emassey0135.lumenna.app.ListView
+import io.github.emassey0135.lumenna.app.Line
+import io.github.emassey0135.lumenna.app.placeTitle
 import io.github.emassey0135.lumenna.app.Place
 import io.github.emassey0135.lumenna.app.RowView
 import io.github.emassey0135.lumenna.app.ShellEvent
@@ -99,6 +100,8 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
     LaunchedEffect(screen.place) { app.send(ShellEvent.Open(screen.place)) }
     val here = view?.takeIf { it.place == screen.place }
     val list = here?.list
+    val worded by app.lines.collectAsState()
+    val lines = worded?.takeIf { here != null }
     val trash = screen.place == Place.Trash
     FollowReminders(core, navigator)
     var filter by rememberSaveable(screen, stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
@@ -147,31 +150,20 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
             )
         }
         Text(
-            list?.let(::readback).orEmpty(),
+            lines?.readback.orEmpty(),
             style = MaterialTheme.typography.bodySmall,
             color = quiet(),
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
         AppTaskRows(
             core,
-            list?.items.orEmpty().filter { !it.hidden },
+            shownRows(list?.items.orEmpty(), lines?.list.orEmpty()),
             open = if (trash) null else { row ->
                 app.send(ShellEvent.Focus(row.id))
                 navigator.push(Screen.Task(row.id))
             },
         )
     }
-}
-
-/** How the filter was understood, and what it found — or why it is not one yet. */
-private fun readback(list: ListView): String {
-    val unresolved = list.query?.unresolved.orEmpty().map { name ->
-        "no ${name.kind} called ${name.name}" + (name.suggestion?.let { ", did you mean $it?" } ?: "")
-    }
-    // An empty listing says what is empty, in the core's words: "The trash is empty."
-    val found = if (list.items.isEmpty() && list.empty.isNotEmpty()) list.empty else list.announcement
-    return (listOfNotNull(list.refusal, list.query?.description?.takeIf { it.isNotBlank() }, found) + unresolved + list.notices)
-        .joinToString(". ") { it.trimEnd('.') }.replaceFirstChar { it.uppercase() }
 }
 
 /**
@@ -182,13 +174,13 @@ private fun readback(list: ListView): String {
 @Composable
 fun AppTaskRows(
     core: Core,
-    items: List<Item>,
+    items: List<Pair<Item, Line?>>,
     open: ((RowView) -> Unit)?,
     openLabel: String = "Show details",
     local: (io.github.emassey0135.lumenna.app.Action) -> Boolean = { false },
 ) {
     val state = rememberLazyListState()
-    val keys = items.map { it.row.id }
+    val keys = items.map { it.first.row.id }
     val focus = rememberLanding(core, keys, state)
     LazyColumn(
         Modifier
@@ -196,12 +188,12 @@ fun AppTaskRows(
             .semantics { collectionInfo = CollectionInfo(rowCount = items.size, columnCount = 1) },
         state = state,
     ) {
-        itemsIndexed(items, key = { _, item -> item.row.id }) { index, item ->
+        itemsIndexed(items, key = { _, (item, _) -> item.row.id }) { index, (item, line) ->
             val row = item.row
             ListRow(
                 title = row.title,
-                detail = listOfNotNull(AppRowSpeech.details(row)).plus(row.state.filter { it != "ready" }).joinToString(", "),
-                speech = AppRowSpeech.value(item),
+                detail = line?.detail.orEmpty(),
+                speech = spoken(item, line),
                 done = row.checked,
                 depth = row.depth.toInt(),
                 index = index,
@@ -356,6 +348,7 @@ fun QuickAddScreen(core: Core, navigator: Navigator) {
     val app = core.app
     val view by app.view.collectAsState()
     val line = view?.line
+    val lines by app.lines.collectAsState()
     var opened by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { app.send(ShellEvent.Typing(Typing.Open)) }
     // Added, the app lets the line go, and the screen goes back.
@@ -398,6 +391,7 @@ fun QuickAddScreen(core: Core, navigator: Navigator) {
             val candidates = line?.offer?.candidates.orEmpty()
             if (candidates.isNotEmpty()) {
                 FlowRow(Modifier.padding(top = 4.dp)) {
+                    val labels = lines?.candidates.orEmpty()
                     candidates.take(8).forEachIndexed { index, candidate ->
                         SuggestionChip(
                             onClick = {
@@ -407,7 +401,7 @@ fun QuickAddScreen(core: Core, navigator: Navigator) {
                             label = { Text(candidate.text) },
                             modifier = Modifier
                                 .padding(end = 8.dp)
-                                .semantics { contentDescription = "Complete with ${candidate.label}" },
+                                .semantics { contentDescription = "Complete with ${labels.getOrNull(index) ?: candidate.label}" },
                         )
                     }
                 }

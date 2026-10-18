@@ -24,20 +24,34 @@ use lumenna_app::{Effect, Notice, SaveFile, ViewModel};
 use lumenna_bridge::network::{Network, NetworkHandle};
 use lumenna_bridge::{Shell as Left, Stack, Store, shell, stack};
 use lumenna_host::{Lumenna, Reach};
+use lumenna_desktop::lines::{Lines, lines};
+use lumenna_desktop::speech::{self, Clock, Spoken};
 use lumenna_records::{Completions, LumennaError, Syntax};
 
 pub use device::{Device, LinkStream};
 pub use events::ShellEvent;
 
-/// Something to say.
-#[data]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Saying {
-    /// The sentence; for a heading, the day's summary.
-    pub text: String,
-    /// Whether to say the day's heading, "<day>. <summary>", in the shell's own words for the
-    /// day.
-    pub heading: bool,
+/// What the shell's locale writes: a time of day and a date. Saying a day — "Today",
+/// "Tomorrow" — and joining a line are the core's.
+#[export]
+pub trait Locale: Send + Sync {
+    /// A time of day as this device writes one: "2:30 PM", or "14:30".
+    fn time(&self, hour: i8, minute: i8) -> String;
+    /// A date with its weekday and month named, the year too when `with_year`.
+    fn date(&self, year: i16, month: i8, day: i8, with_year: bool) -> String;
+}
+
+/// The shell's [`Locale`] as the desktop crate's wording reads it.
+struct Formatted(Arc<dyn Locale>);
+
+impl speech::Formats for Formatted {
+    fn time(&self, hour: i8, minute: i8) -> String {
+        self.0.time(hour, minute)
+    }
+
+    fn date(&self, year: i16, month: i8, day: i8, with_year: bool) -> String {
+        self.0.date(year, month, day, with_year)
+    }
 }
 
 /// What the app left for the shell: what to draw, and what to say once focus is where the view
@@ -47,8 +61,10 @@ pub struct Saying {
 pub struct Turn {
     /// What to draw.
     pub view: ViewModel,
+    /// The view's lines, in this device's clock.
+    pub lines: Lines,
     /// What to say, in order.
-    pub said: Vec<Saying>,
+    pub said: Vec<String>,
     /// Files to save where the person keeps them: a backup, an export.
     pub files: Vec<SaveFile>,
     /// Notifications to show, as the platform shows them.
@@ -74,6 +90,8 @@ pub struct App {
     outbox: Mutex<mpsc::Sender<Vec<Effect>>>,
     /// What the app has left that the shell has not been handed yet, in batches.
     unsent: Arc<AtomicUsize>,
+    /// How this device says times and days.
+    clock: Arc<Spoken<Formatted>>,
 }
 
 #[export]
@@ -84,7 +102,7 @@ impl App {
     /// # Errors
     ///
     /// If a thread of the app's cannot be started.
-    pub fn new(device: &Device, platform: String, shell: Arc<dyn Shell>) -> Result<App, LumennaError> {
+    pub fn new(device: &Device, platform: String, locale: Arc<dyn Locale>, shell: Arc<dyn Shell>) -> Result<App, LumennaError> {
         let lumenna = Arc::clone(&device.lumenna);
         let (store, worker) = Store::new(Arc::clone(&lumenna));
         spawn("lumenna-store", move || futures::executor::block_on(worker.run()))?;
@@ -95,8 +113,10 @@ impl App {
         let drawing = Arc::clone(&stack);
         let unsent = Arc::new(AtomicUsize::new(0));
         let handed = Arc::clone(&unsent);
-        spawn("lumenna-shell", move || deliver(&delivering, &drawing, &*shell, &handed))?;
-        let app = App { lumenna, stack, store, network: handle, outbox: Mutex::new(outbox), unsent };
+        let clock = Arc::new(Spoken(Formatted(locale)));
+        let saying = Arc::clone(&clock);
+        spawn("lumenna-shell", move || deliver(&delivering, &drawing, &*shell, &handed, &*saying))?;
+        let app = App { lumenna, stack, store, network: handle, outbox: Mutex::new(outbox), unsent, clock };
         app.send(ShellEvent::Start);
         Ok(app)
     }
@@ -132,6 +152,11 @@ impl App {
         self.stack.view()
     }
 
+    /// The lines of what to draw now, in this device's clock.
+    pub fn lines(&self) -> Lines {
+        lines(&self.stack.view(), &*self.clock)
+    }
+
     /// Takes in what changed elsewhere — another process, a sync — or a new minute. The shell
     /// calls this on a timer while it is in front, and when told the store changed.
     pub fn tick(&self) {
@@ -164,7 +189,7 @@ fn spawn(name: &str, run: impl FnOnce() + Send + 'static) -> Result<(), LumennaE
 
 /// Hands the shell a turn for whatever the app has left, until the app is gone. What arrived
 /// together goes as one turn, so a burst of answers draws the view once.
-fn deliver(outbox: &mpsc::Receiver<Vec<Effect>>, stack: &Stack<Network>, shell: &dyn Shell, unsent: &AtomicUsize) {
+fn deliver(outbox: &mpsc::Receiver<Vec<Effect>>, stack: &Stack<Network>, shell: &dyn Shell, unsent: &AtomicUsize, clock: &dyn Clock) {
     let mut seq = 0;
     while let Ok(first) = outbox.recv() {
         let mut effects = first;
@@ -179,11 +204,16 @@ fn deliver(outbox: &mpsc::Receiver<Vec<Effect>>, stack: &Stack<Network>, shell: 
             continue;
         }
         seq += 1;
-        let mut turn = Turn { view: stack.view(), said: Vec::new(), files: Vec::new(), notices: Vec::new(), seq };
+        let view = stack.view();
+        let mut turn = Turn { lines: lines(&view, clock), view, said: Vec::new(), files: Vec::new(), notices: Vec::new(), seq };
         for one in left {
             match one {
-                Left::Announce(text) => turn.said.push(Saying { text, heading: false }),
-                Left::Heading(text) => turn.said.push(Saying { text, heading: true }),
+                Left::Announce(text) => turn.said.push(text),
+                // "<day>. <summary>", for a day newly shown.
+                Left::Heading(text) => turn.said.push(match &turn.view.day {
+                    Some(day) => speech::summary(&day.date, &text, clock),
+                    None => text,
+                }),
                 Left::Save(file) => turn.files.push(file),
                 Left::Notify(notice) => turn.notices.push(notice),
                 Left::Render => {}

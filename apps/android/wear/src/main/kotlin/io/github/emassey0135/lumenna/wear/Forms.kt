@@ -1,7 +1,6 @@
 package io.github.emassey0135.lumenna.wear
 
 import io.github.emassey0135.lumenna.option
-import io.github.emassey0135.lumenna.appButton
 import io.github.emassey0135.lumenna.TextOffsets
 import io.github.emassey0135.lumenna.app.Typing
 import io.github.emassey0135.lumenna.app.TaskFields
@@ -56,6 +55,7 @@ fun AddTaskScreen(core: Core, navigator: Navigator) {
     val app = core.app
     val view by app.view.collectAsState()
     val line = view?.line
+    val lines by app.lines.collectAsState()
     val entry = LocalTextEntry.current
     var opened by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { app.send(ShellEvent.Typing(Typing.Open)) }
@@ -78,8 +78,10 @@ fun AddTaskScreen(core: Core, navigator: Navigator) {
             item {
                 Button(
                     onClick = { app.send(ShellEvent.Typing(Typing.Choose(index.toUInt()))) },
-                    // Named as the core names it: "project Work", not "#Work".
-                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Complete with ${candidate.label}" },
+                    // Named as the core says it, name first: "Work, project", not "#Work".
+                    modifier = Modifier.fillMaxWidth().semantics {
+                        contentDescription = "Complete with ${lines?.candidates?.getOrNull(index) ?: candidate.label}"
+                    },
                     label = { Text(candidate.text) },
                 )
             }
@@ -245,7 +247,7 @@ fun BlockFormScreen(core: Core, navigator: Navigator) {
                 }
             }
         }
-        item { Button(onClick = { app.send(ShellEvent.Block(BlockEvent.Save)) }, modifier = Modifier.fillMaxWidth(), label = { Text(appButton(form.yes)) }) }
+        item { Button(onClick = { app.send(ShellEvent.Block(BlockEvent.Save)) }, modifier = Modifier.fillMaxWidth(), label = { Text(form.yes) }) }
     }
 }
 

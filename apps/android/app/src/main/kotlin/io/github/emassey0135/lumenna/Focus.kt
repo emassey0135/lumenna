@@ -44,37 +44,6 @@ class RowFocus internal constructor(private val core: Core) {
 }
 
 /**
- * A list's [RowFocus]. [keys] are the rows as now listed, in order; when the store changes
- * after a row's action, focus goes back to that row, or to the one now in its place.
- */
-@Composable
-fun rememberRowFocus(core: Core, keys: List<String>, state: LazyListState): RowFocus {
-    val focus = remember { RowFocus(core) }
-    val view = LocalView.current
-    val changes by core.changes.collectAsState()
-    LaunchedEffect(changes) {
-        val (key, index) = focus.target ?: return@LaunchedEffect
-        focus.target = null
-        if (keys.isNotEmpty()) {
-            val place = keys.indexOf(key).takeIf { it >= 0 } ?: index.coerceIn(0, keys.lastIndex)
-            state.scrollToItem(place)
-            // The row has to be composed, and laid out, before it can take focus.
-            withFrameNanos {}
-            withFrameNanos {}
-            runCatching { focus.requester(keys[place]).requestFocus() }
-            view.moveAccessibilityFocus(keys[place])
-        }
-        core.release()
-    }
-    // An action given up brings no change: focus is not put back on its row by a later one.
-    val cancels by core.cancels.collectAsState()
-    LaunchedEffect(cancels) { focus.target = null }
-    // Leaving the list says whatever was held for it.
-    DisposableEffect(Unit) { onDispose { core.release() } }
-    return focus
-}
-
-/**
  * A list on the app's rows: whenever the app moves the row in hand itself ([ViewModel.landing]
  * goes up, past what opening the place moved), focus goes to that row — input focus and
  * TalkBack's — and then what the turn said is said. [keys] are the rows as now listed.

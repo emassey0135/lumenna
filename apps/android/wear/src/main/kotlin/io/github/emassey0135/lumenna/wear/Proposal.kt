@@ -1,6 +1,5 @@
 package io.github.emassey0135.lumenna.wear
 
-import io.github.emassey0135.lumenna.appButton
 import io.github.emassey0135.lumenna.app.ShellEvent
 import io.github.emassey0135.lumenna.app.ProposalEvent
 import androidx.compose.runtime.DisposableEffect
@@ -40,7 +39,7 @@ fun ProposalScreen(core: Core, navigator: Navigator) {
         if (proposal == null) return@WearList
         val words = proposal.words
         val items = proposal.changes
-        item { Heading(appButton(words.title)) }
+        item { Heading(words.title) }
         proposal.refusal?.let { refused -> item { Text(refused, color = MaterialTheme.colorScheme.error) } }
         if (proposal.ready && items.isEmpty()) item { Text(words.nothing) }
         items.forEachIndexed { index, change ->
@@ -57,12 +56,12 @@ fun ProposalScreen(core: Core, navigator: Navigator) {
             }
         }
         if (proposal.unfit.isNotEmpty()) {
-            item { Heading(appButton(words.unfit)) }
+            item { Heading(words.unfit) }
             proposal.unfit.forEach { line -> item { Text(line) } }
         }
         // Other ways through the day, each named by what it is, costs and leads to.
         if (proposal.others.isNotEmpty() && words.others.isNotEmpty()) {
-            item { Heading(appButton(words.others)) }
+            item { Heading(words.others) }
             proposal.others.forEachIndexed { index, sentence ->
                 item {
                     FilledTonalButton(
@@ -81,10 +80,10 @@ fun ProposalScreen(core: Core, navigator: Navigator) {
                     onClick = { send(ProposalEvent.Apply) },
                     enabled = !proposal.busy,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text(appButton(words.apply)) },
+                    label = { Text(words.apply) },
                 )
             }
         }
-        item { FilledTonalButton(onClick = { navigator.back() }, modifier = Modifier.fillMaxWidth(), label = { Text(appButton(words.cancel)) }) }
+        item { FilledTonalButton(onClick = { navigator.back() }, modifier = Modifier.fillMaxWidth(), label = { Text(words.cancel) }) }
     }
 }
