@@ -434,3 +434,18 @@ fn the_readback_names_the_project_and_labels_as_they_resolved() {
     assert!(said.contains("in Work"), "{said}");
     assert!(said.contains("labelled errand"), "{said}");
 }
+
+#[test]
+fn a_hash_or_at_sign_with_no_name_stays_in_the_title_and_is_said() {
+    let p = preview("Call the bank # tomorrow");
+    assert_eq!(p.title, "Call the bank #");
+    assert_eq!(p.project, None, "not a project called nothing");
+    assert_eq!(p.diagnostics.len(), 1, "{:?}", p.diagnostics);
+    assert_eq!(p.diagnostics[0].severity, Severity::Notice);
+    assert_eq!(p.diagnostics[0].message, "'#' at position 14 has no project name after it; it stayed in the title");
+
+    let p = preview("Buy milk @");
+    assert_eq!(p.title, "Buy milk @");
+    assert!(p.labels.is_empty() && p.new_labels.is_empty(), "no label called nothing: {:?}", p.new_labels);
+    assert_eq!(p.diagnostics[0].message, "'@' at position 9 has no label name after it; it stayed in the title");
+}

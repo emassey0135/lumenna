@@ -191,6 +191,7 @@ export function TaskList(props: {
         renderEmptyState={() => <p className="quiet">{empty}</p>}
       >
         {function item(node: Node<Line>) {
+          const done = byKind(node.item.row.actions, "mark_done", "mark_not_done");
           return (
             <TreeItem id={node.id} textValue={node.item.text}>
               <TreeItemContent>
@@ -200,6 +201,24 @@ export function TaskList(props: {
                       <Button slot="chevron" className="chevron">
                         ›
                       </Button>
+                    )}
+                    {/* For a pointer: Mark Done (or not done) at a click, as a sighted user looks
+                        for it. Hidden from screen readers and out of the tab order, where Space and
+                        the row's menu already do it and the row says its state; its own pointer
+                        events stop here, so the row behind it is neither selected nor opened. */}
+                    {done && (
+                      <span
+                        className="done-box"
+                        aria-hidden="true"
+                        data-checked={done.kind === "mark_not_done" || undefined}
+                        title={done.sentence ?? done.title}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onPointerUp={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void run(done);
+                        }}
+                      />
                     )}
                     {node.item.text}
                   </div>

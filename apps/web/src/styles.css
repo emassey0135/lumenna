@@ -113,6 +113,42 @@ h2 {
   min-height: 3rem;
 }
 
+/* A task row's check box, for a pointer: 24 pixels to hit (WCAG 2.5.8), the edge at 3:1. */
+.done-box {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-inline-end: 0.4rem;
+  margin-block: -0.15rem;
+  cursor: pointer;
+}
+
+.done-box::before {
+  content: "";
+  width: 1rem;
+  height: 1rem;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  background: Field;
+}
+
+.done-box[data-checked]::before {
+  content: "✓";
+  display: grid;
+  place-items: center;
+  font-size: 0.8rem;
+  line-height: 1;
+  background: Highlight;
+  color: HighlightText;
+  border-color: Highlight;
+}
+
+.done-box:hover::before {
+  border-color: CanvasText;
+}
+
 /* A list's own words when it is empty, inside its box as a row would be. */
 .react-aria-Tree > .quiet {
   margin: 0;
@@ -149,6 +185,12 @@ h2 {
 /* Toward the text when collapsed, whichever way it runs. */
 .react-aria-TreeItem:not([data-expanded]) .chevron:dir(rtl) {
   transform: scaleX(-1);
+}
+
+/* A row's chevron and check box, then its line, which wraps beside them, not under them. */
+.react-aria-TreeItem .row {
+  display: flex;
+  align-items: flex-start;
 }
 
 .react-aria-TreeItem:not([data-has-child-items]) .row {

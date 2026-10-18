@@ -97,6 +97,8 @@ pub struct QuickAdd {
     pub estimate_mins: Option<Spanned<u32>>,
     /// Phrases that looked like they were going somewhere and were not understood.
     pub unparsed: Vec<Spanned<String>>,
+    /// A `#` or `@` with no name after it, left in the title.
+    pub bare_sigils: Vec<Spanned<String>>,
     /// Second and later occurrences of something only one of which can be set.
     ///
     /// These are **left in the title** rather than consumed. Dropping them would be the
@@ -117,6 +119,13 @@ pub fn parse_quick_add(input: &str, known: &Known) -> QuickAdd {
     while index < tokens.len() {
         let word = &tokens[index];
 
+        // A `#` or `@` alone names nothing: it stays in the title, and is said, rather than
+        // being read as a project or label called nothing.
+        if word.any_of(&["#", "@"]) {
+            out.bare_sigils.push(spanned_text(input, word.start, word.end));
+            index += 1;
+            continue;
+        }
         if let Some(rest) = word.lower.strip_prefix('#') {
             let (name, used) = sigil_name(input, &tokens, index, rest, &known.projects);
             let end = tokens[index + used - 1].end;
@@ -564,6 +573,18 @@ impl QuickAdd {
                 end: spanned.end,
                 message: format!(
                     "'{}' at position {} repeats something already given; it stayed in the title",
+                    spanned.value, spanned.start
+                ),
+            });
+        }
+        for spanned in &self.bare_sigils {
+            let noun = if spanned.value == "#" { "project" } else { "label" };
+            diagnostics.push(Diagnostic {
+                severity: Severity::Notice,
+                start: spanned.start,
+                end: spanned.end,
+                message: format!(
+                    "'{}' at position {} has no {noun} name after it; it stayed in the title",
                     spanned.value, spanned.start
                 ),
             });

@@ -93,3 +93,19 @@ test("nothing on the page breaks axe's accessibility rules", async ({ page }) =>
   const results = await new AxeBuilder({ page }).analyze();
   expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(", ")}`)).toEqual([]);
 });
+
+test("a row's check box marks it done at a click, and is no part of what a screen reader hears", async ({ page }) => {
+  await open(page);
+  await add(page, "Buy milk");
+  await add(page, "Call Sam");
+  const tasks = page.getByRole("main");
+  const row = tasks.getByRole("row", { name: /^Buy milk/ });
+  // Hidden from assistive technology: the row's name is its line alone, and no control is added.
+  await expect(row).toHaveAccessibleName(/^Buy milk/);
+  await expect(row.getByRole("checkbox")).toHaveCount(0);
+  await expect(row.getByRole("button")).toHaveCount(0);
+  await row.locator(".done-box").click();
+  await expect(tasks.getByRole("row", { name: /^Buy milk/ })).toHaveCount(0);
+  // As after Space: the task now in its place is the one in hand, not the one marked done.
+  await expect(tasks.getByRole("row", { name: /^Call Sam/ })).toBeFocused();
+});

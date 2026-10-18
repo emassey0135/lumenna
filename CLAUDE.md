@@ -1240,6 +1240,9 @@ with `lum`.
 - **React Aria gives a component its default class only when no `className` is passed**, so
   a class of our own names the default too (`"react-aria-Dialog wide"`): passing `"wide"` alone
   left the Replan and block dialogs without a background, and destructive menu items unpadded.
+- **A task row's check box is for a pointer alone** (`.done-box`): `aria-hidden`, never focused,
+  its pointer events stopped so the row is not selected or opened behind it. It runs the row's
+  Mark Done or Mark Not Done, which Space and the row's menu already offer to everyone else.
 - **`npm run screens`** takes a screenshot of every screen into `screens/out`, light and dark, at a
   desktop and a phone width, for a visual review: the tests read the accessibility tree and never
   look at the page. The layout stacks to two columns below 64rem and one below 40rem.
