@@ -130,3 +130,16 @@ test("the row in hand is not said to be selected again each time the screen is d
   const said = (await page.locator("[data-live-announcer]").textContent()) ?? "";
   expect(said.split("selected").length - 1).toBeLessThanOrEqual(1);
 });
+
+test("a sidebar heading folds with Left and opens with Right, through the app", async ({ page }) => {
+  await open(page);
+  const places = page.getByRole("navigation", { name: "Places" });
+  const projects = places.getByRole("row", { name: /^Projects/ });
+  await projects.focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(places.getByRole("row", { name: /^Inbox/ })).toHaveCount(0);
+  await expect(projects).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator('[aria-live="polite"]')).toContainText("Collapsed");
+  await page.keyboard.press("ArrowRight");
+  await expect(places.getByRole("row", { name: /^Inbox/ })).toBeVisible();
+});

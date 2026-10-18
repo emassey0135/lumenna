@@ -318,6 +318,8 @@ pub struct Model {
     pub due: Vec<due::Due>,
     /// An overrun warning whose Replan from Now is open: dismissed once something is replanned.
     pub replanning: Option<String>,
+    /// Sidebar rows folded away, by their key: a heading, or a project with projects inside.
+    pub sidebar_folded: BTreeSet<String>,
 }
 
 /// The rows a place shows, as its keys and their actions.
@@ -550,6 +552,17 @@ fn spoken(change: &Change) -> String {
 impl Lumenna {
     fn perform(&self, action: Action, model: &mut Model) -> Command<Effect, Event> {
         match action.kind {
+            // A sidebar row folds in the sidebar: its key, not a row of the list.
+            ActionKind::Expand | ActionKind::Collapse if action.target.starts_with("place:") || action.target.starts_with("group:") => {
+                let said = if action.kind == ActionKind::Expand {
+                    model.sidebar_folded.remove(&action.target);
+                    "Expanded"
+                } else {
+                    model.sidebar_folded.insert(action.target.clone());
+                    "Collapsed"
+                };
+                return render().and(say(said));
+            }
             // Folding is the app's: nothing stored changes.
             ActionKind::Expand | ActionKind::Collapse => {
                 let said = if action.kind == ActionKind::Expand {

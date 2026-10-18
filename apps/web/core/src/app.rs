@@ -19,8 +19,15 @@ use serde::{Deserialize, Serialize};
 use tsify::{Ts, Tsify};
 use wasm_bindgen::prelude::*;
 
-use crate::sync::Syncing;
 use crate::{Core, Out, js};
+
+/// What this browser's sync is doing: the loop while it runs, and whether a pairing in
+/// progress has been given up.
+#[derive(Default)]
+pub(crate) struct Syncing {
+    pub(crate) running: RefCell<Option<SyncLoop>>,
+    pub(crate) cancelled: std::cell::Cell<bool>,
+}
 
 /// Something to say.
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]

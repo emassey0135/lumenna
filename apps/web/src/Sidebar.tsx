@@ -14,7 +14,7 @@ import { byKind } from "./actions";
 import { rowKey } from "./landing";
 import { asksForMenu, RowMenu } from "./RowMenu";
 import { run as runEvent, sayAll } from "./session";
-import { nest, parents } from "./tree";
+import { nest } from "./tree";
 import type { Node } from "./tree";
 
 /** What identifies an entry across reloads: its kind, as written. */
@@ -33,7 +33,7 @@ export function Sidebar(props: {
   onChanged: () => void;
 }) {
   const entries = props.entries;
-  const [expanded, setExpanded] = useState<Set<Key> | undefined>();
+
   // The row in hand: the one focus was last on. Headings are never selected, so it is not
   // the selection.
   const [held, setHeld] = useState<string | undefined>();
@@ -45,8 +45,20 @@ export function Sidebar(props: {
   const here = placeKey(props.place);
   const selected = useMemo(() => [here], [here]);
   const nodes = useMemo(() => nest(entries, key, (entry) => entry.depth), [entries]);
-  // Everything open at first; after that, as the person leaves it.
-  const shown = expanded ?? new Set<Key>(parents(nodes));
+  // What is folded is the app's: a row is open while it offers Collapse.
+  const shown = useMemo(
+    () => new Set<Key>(entries.filter((e) => e.actions?.some((a) => a.kind === "collapse")).map(key)),
+    [entries],
+  );
+  // Left and Right fold a row: its own Expand or Collapse, run through the app.
+  const fold = (open: Set<Key>) => {
+    const changed = entries.find((e) => {
+      const action = byKind(e.actions, "expand", "collapse");
+      return action && (action.kind === "collapse") !== open.has(key(e));
+    });
+    const action = changed && byKind(changed.actions, "expand", "collapse");
+    if (action) void runEvent({ Perform: action }).then((turn) => sayAll(turn.said));
+  };
   const entry = (k: string | undefined) => entries.find((e) => key(e) === k);
 
   const go = (selection: Selection) => {
@@ -107,7 +119,7 @@ export function Sidebar(props: {
           selectedKeys={selected}
           onSelectionChange={go}
           expandedKeys={shown}
-          onExpandedChange={setExpanded}
+          onExpandedChange={fold}
         >
           {function item(node: Node<SidebarEntry>) {
             return (

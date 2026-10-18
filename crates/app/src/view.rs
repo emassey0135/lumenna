@@ -15,8 +15,13 @@ use crate::{DayView, DetailsView, LineView, Model};
 pub struct ViewModel {
     /// Whether the store has arrived: until it has there is nothing to show.
     pub ready: bool,
-    /// The places, as a sidebar lists them.
+    /// The places, as a sidebar lists them: a heading or a project with projects inside has
+    /// Expand or Collapse among its actions.
     pub sidebar: Vec<SidebarEntry>,
+    /// The sidebar's rows folded away, by key; a tree control folds them itself, a flat list
+    /// leaves out what is under them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sidebar_folded: Vec<String>,
     /// Where the person is.
     pub place: Option<Place>,
     /// What the window and the list are called.
@@ -112,6 +117,26 @@ pub fn listing(snapshot: &Snapshot, place: &Place, query: &str, now: &Zoned) -> 
     }
 }
 
+/// The sidebar with Expand or Collapse on each row that has rows under it.
+fn folded_sidebar(mut entries: Vec<SidebarEntry>, folded: &std::collections::BTreeSet<String>) -> Vec<SidebarEntry> {
+    let depths: Vec<u32> = entries.iter().map(|e| e.depth).collect();
+    for (at, entry) in entries.iter_mut().enumerate() {
+        if depths.get(at + 1).is_some_and(|next| *next > entry.depth) {
+            let key = entry.key();
+            let (kind, title) = if folded.contains(&key) {
+                (lumenna_records::ActionKind::Expand, "Expand")
+            } else {
+                (lumenna_records::ActionKind::Collapse, "Collapse")
+            };
+            let subject = entry.actions.first().map_or(lumenna_records::Subject::Project, |a| a.subject);
+            let mut fold = Action::new(kind, subject, title, key);
+            fold.question = Question::Immediate;
+            entry.actions.push(fold);
+        }
+    }
+    entries
+}
+
 pub fn view(model: &Model) -> ViewModel {
     let place = model.place();
     let Some(store) = &model.store else {
@@ -134,7 +159,8 @@ pub fn view(model: &Model) -> ViewModel {
     });
     ViewModel {
         ready: true,
-        sidebar: sidebar(&store.snapshot, &store.now),
+        sidebar: folded_sidebar(sidebar(&store.snapshot, &store.now), &model.sidebar_folded),
+        sidebar_folded: model.sidebar_folded.iter().cloned().collect(),
         title: place.title(),
         quick_add: place.quick_add_prefix(),
         query: model.query(),

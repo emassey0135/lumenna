@@ -124,27 +124,43 @@ JSON crosses the FFI.
 ## The app
 
 `crates/app` is the screens as a Crux 0.20 app; `crates/bridge` runs it beside a store. The
-move to Crux is under way: the web's task lists and sidebar are drawn from it, everything else
-still calls the host directly (the `legacy` tag is the last commit before the move).
+web is drawn from it entirely; the other clients still call the host directly until their
+turn (the `legacy` tag is the last commit before the move).
 
 - **The app never depends on the host.** It holds the snapshot the host last sent (`Watch`, a
-  stream answered at once and on every change) and works each listing out with
-  `lumenna-records`, the functions `lum` lists with. Every write, and what a pick offers, is a
-  `HostRequest`, whose answer comes back as an event carrying the store as the write left it.
-- **`Session` answers the host's effects inline**, on the caller's thread: the web worker has
-  no threads for Crux's middleware, and SQLite answers in milliseconds. What is left for a
-  shell is drawing and saying (`Shell`). `tick` takes in a change made elsewhere, or a new
-  minute; it finds nothing once a change has been taken in.
+  stream answered at once and on every change) and works out from it, with `lumenna-records`,
+  everything that is a function of the store: the listings, the sidebar, the day's plan, the
+  Blocks list, a task's details, a reminder list, completion and the quick-add preview, which
+  fields a block form shows. Every write is a `HostRequest`, whose answer comes back as an
+  event carrying the store as the write left it. What only the host can answer is asked of
+  it the same way: what a pick offers, Replan's and Plan the Day's proposals, settings (some
+  are a device's own), devices, reminders due, backups and exports.
+- **`Session` answers the host's requests inline**, on the caller's thread: the web worker has
+  no threads for Crux's middleware, and SQLite answers in milliseconds. What reaches other
+  devices (`Effect::Network`: syncing, pairing) is not answered inline: the bridge hands it to
+  the platform's runner with an id (`Shell::Network`), which answers it when it can
+  (`Session::answer_network`), a pairing more than once. What is left for a shell is drawing,
+  saying (`Shell::Announce`, and `Heading` for a day newly shown, in the shell's own words for
+  the day), saving a file and showing a notification. `tick` takes in a change made
+  elsewhere, or a new minute.
 - **What every app decided for itself is the app's now**: the row in hand after a change (the
-  same row, else whatever holds its place among the rows shown); folding (Expand and Collapse
-  are row actions, and a folded row comes marked `hidden`, for a tree control that folds by
-  itself); the question open, a refusal staying in it, and a pick's length asked once one is
-  picked; the filter typed, the rows of the last that read staying while one being typed does
-  not; and what to say, an `Announce` a shell says once focus has landed.
+  same row, else whatever holds its place among the rows shown); folding, the sidebar's too
+  (Expand and Collapse are row actions; a folded row comes marked `hidden`, for a tree control
+  that folds by itself); the question open, a refusal staying in it, a pick's length asked
+  once one is picked; where a place's action leads (renamed, made, deleted); a new saved
+  filter's two questions; the day shown, Go to Day, and today opening on now; the details'
+  draft, kept through a change elsewhere and saved as only what changed; the quick-add line
+  and a completion spliced into it; the block form, asking which occurrences of a repeating
+  block first; the proposal screens, checks, partial applies and other options; settings, a
+  refused line kept beside why; pairing's code, words and a code typed while waiting; when to
+  start syncing; reminders due and their buttons, an overrun's Replan dismissing it once
+  something is replanned; and what to say.
 - **A list's first row is in hand as soon as it opens**, as in the desktop apps' trees, so the
   details show it.
+- **A shell's clock is the shell's**: it tells the app its clock (`Event::Clock`) for the
+  sentences the core composes whole, and when to look for reminders and the moment it looks at.
 - Flow tests are `crates/bridge/tests/flows.rs`: events in, view models and sentences out,
-  against a real store.
+  against a real store; a stand-in runner answers the network.
 
 ## The CLI
 
@@ -1248,10 +1264,12 @@ with `lum`.
   A refused answer stays in its dialog.
 - **A row's action runs after its menu has closed** and focus is back on the row, so a
   dialog it opens returns focus there.
-- **Every menu, key and button runs a record's own `actions`** (`RowMenu`, `perform` in
-  `actions.ts`, which asks each question its way: a confirmation or a choice of answers as an
-  `alertdialog`, a line of text with the core's refusal at the field, a pick from `choices`).
-  Space and Delete run the row's action of the matching kind. Only the forms are the web's.
+- **Every menu, key and button runs a record's own `actions` through the app** (`run` in
+  `session.ts`): it sends the action and, while the screen holds a question, asks it the web's
+  way (a confirmation or a choice of answers as an `alertdialog`, a line of text with the
+  app's refusal at the field, a pick from what the app was offered) and sends the answer.
+  Space and Delete run the row's action of the matching kind. The forms are drawn from the
+  app's: the details, the block form, Settings, a proposal.
 - **The sidebar's row in hand is the one focus was last on**, not the selection: its
   headings (Projects, Labels, Saved Filters) are never selected.
 - **A React Aria check box's input is visually hidden**, so Playwright's `check()` waits for
@@ -1260,14 +1278,10 @@ with `lum`.
   and pairs by code. `.cargo/config.toml` sets getrandom's `wasm_js` backend.
 - **Callbacks into the core are wrapped in the worker**: a Comlink proxy answers any
   property, so wasm-bindgen's `f.call(…)` on one became a remote call named "call".
-- **Replan from Now and Plan the Day are one screen** (`Proposal.tsx`), opened by the day's
-  `replan` and `plan_day` actions (the summary row's, and the Day actions menu's). Each change
-  is its line with a check box named by the core's `item` and described by the line, as a
-  reminder's buttons are by its text; after a partial apply the list is the core's `next`, a
-  new list whose first box takes focus. Replan's other options are buttons named by their
-  sentences; one taken is the proposal shown next. An overrun warning's Replan in Reminders
-  due opens the screen, and dismisses the warning only once something was replanned. The
-  clock the proposal is said in is the browser's (`Intl`'s `hour12`).
+- **Replan from Now and Plan the Day are the app's screen, drawn** (`Proposal.tsx`): each change
+  its line with a check box named by the core's `item` and described by the line, as a
+  reminder's buttons are by its text; a new proposal is a new list (`shown`), whose first box
+  takes focus. The browser's clock (`Intl`'s `hour12`) is told the app at start.
 - **React Aria gives a component its default class only when no `className` is passed**, so
   a class of our own names the default too (`"react-aria-Dialog wide"`): passing `"wide"` alone
   left the Replan and block dialogs without a background, and destructive menu items unpadded.
@@ -1278,11 +1292,15 @@ with `lum`.
   desktop and a phone width, for a visual review: the tests read the accessibility tree and never
   look at the page. The layout stacks to two columns below 64rem and one below 40rem.
 - **The app runs in the worker beside the store** (`core/src/app.rs`, `src/session.ts`). The
-  page sends what the person did and draws the screen that comes back; `run` asks each question
-  the screen holds in the web's dialogs and sends the answer, a text field showing the app's
-  refusal. Screens not moved yet write through the store and call `changed()`, which the app
-  takes in at once (`refresh`); the one-second poll refreshes the app too, but reloads those
-  screens only for another process's writes, or a reload under a test's focus lost it.
+  page sends what the person did and draws the screen that comes back; the worker words it
+  (each row's line, the day's words, sentence case). The web core's runner answers the
+  network on the browser's event loop and pushes each turn to the page through the listener
+  it gave (`listen`). Turns are numbered (`seq`): a push and a reply can reach the page in
+  either order, and an older screen is never drawn over a newer one. The one-second poll
+  takes in another tab's or process's writes.
+- **A form keeps its own value while its typing is on its way**, and takes the last answer's
+  values once none is: an answer for earlier typing would otherwise undo later typing, and a
+  kind's flags would never arrive.
 - **A tree's `selectedKeys` is memoized by the key it holds**: React Aria says "… selected"
   whenever it is handed a new selection while the tree has focus, and a fresh array each draw
   said it five times after adding a block.

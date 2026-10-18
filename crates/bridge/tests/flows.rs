@@ -703,3 +703,15 @@ fn a_reminder_due_is_listed_once_said_shown_and_dismissed() {
     app.send(Event::Due(lumenna_app::DueEvent::Dismiss(due[0].id.clone())));
     assert!(app.view().due.is_empty());
 }
+
+#[test]
+fn a_sidebar_heading_folds_through_its_own_collapse_and_says_so() {
+    let mut app = App::new();
+    let collapse = sidebar_action(&app, "Projects", ActionKind::Collapse);
+    let shell = app.send(Event::Perform(collapse));
+    assert_eq!(said(&shell), ["Collapsed"]);
+    assert_eq!(app.view().sidebar_folded, ["group:Projects"]);
+    let expand = sidebar_action(&app, "Projects", ActionKind::Expand);
+    app.send(Event::Perform(expand));
+    assert!(app.view().sidebar_folded.is_empty());
+}

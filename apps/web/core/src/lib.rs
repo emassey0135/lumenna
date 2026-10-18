@@ -1,10 +1,11 @@
-//! Lumenna's core for the web client: the command surface, exported to JavaScript.
+//! Lumenna's core for the web client: the store and the app beside it, exported to JavaScript.
 //!
 //! The browser runs the same core every other client does — the same store, SQLite and
-//! Automerge, the same parsers, the same rules — compiled to WebAssembly. Nothing here
-//! decides anything: each export is one call on [`Lumenna`], with the records it takes and
-//! returns typed in TypeScript by `tsify`, derived from the surface's own records as UniFFI
-//! derives Swift's. Reshaping a record breaks the web build as it breaks every other.
+//! Automerge, the same parsers, the same rules, the same app (`lumenna-app`) — compiled to
+//! WebAssembly. Nothing here decides anything: [`app`] runs the app over the store, and the
+//! rest is the wording the desktop apps share, for each row's line in the browser's own clock.
+//! Records are typed in TypeScript by `tsify`, derived from the crates' own: reshaping one
+//! breaks the web build as it breaks every other.
 //!
 //! The store lives in OPFS through SQLite's sync access handles, which only a dedicated
 //! worker may use: this module is loaded by the app's worker, never by the page itself.
@@ -15,17 +16,10 @@ use std::path::Path;
 
 mod app;
 mod clock;
-mod manage;
-mod planner;
-mod reminders;
-mod sync;
 
 use clock::Browser;
-use lumenna_host::places::{Place, SidebarEntry};
 use lumenna_desktop::speech::{self, Clock};
-use lumenna_host::{
-    Action, Answer, Choice, FormField, Lumenna, LumennaError, PairingWords, Question, Syntax, TaskDetail, TaskEdit, TaskFields,
-};
+use lumenna_host::{Choice, Lumenna, LumennaError, PairingWords, TaskDetail};
 use serde::Serialize;
 use tsify::{Ts, Tsify};
 use wasm_bindgen::prelude::*;
@@ -33,9 +27,6 @@ use wasm_bindgen::prelude::*;
 /// What every export returns: the record, or the core's sentence for what went wrong.
 type Out<T> = Result<Ts<T>, JsError>;
 
-fn out<T: Tsify + Serialize>(result: lumenna_host::Result<T>) -> Out<T> {
-    js(&result.map_err(error)?)
-}
 
 /// A record as the plain object its TypeScript type describes.
 ///
@@ -57,7 +48,7 @@ fn error(error: LumennaError) -> JsError {
 #[wasm_bindgen]
 pub struct Core {
     lumenna: std::sync::Arc<Lumenna>,
-    syncing: std::rc::Rc<sync::Syncing>,
+    syncing: std::rc::Rc<app::Syncing>,
 }
 
 #[wasm_bindgen]
@@ -85,120 +76,6 @@ impl Core {
         Ok(self.lumenna.outside_version().map_err(error)? as f64)
     }
 
-    /// The surface's method of the same name, as `listTasks`.
-    #[wasm_bindgen(js_name = listTasks)]
-    pub fn list_tasks(&self, query: &str) -> Out<lumenna_host::Rows> {
-        out(self.lumenna.list_tasks(query))
-    }
-
-    /// The surface's method of the same name, as `searchTasks`.
-    #[wasm_bindgen(js_name = searchTasks)]
-    pub fn search_tasks(&self, text: &str) -> Out<lumenna_host::Rows> {
-        out(self.lumenna.search_tasks(text))
-    }
-
-    /// The surface's method of the same name, as `showTask`.
-    #[wasm_bindgen(js_name = showTask)]
-    pub fn show_task(&self, id: &str) -> Out<lumenna_host::TaskShown> {
-        out(self.lumenna.show_task(id))
-    }
-
-    /// The surface's method of the same name, as `addTask`.
-    #[wasm_bindgen(js_name = addTask)]
-    pub fn add_task(&self, text: &str) -> Out<lumenna_host::Change> {
-        out(self.lumenna.add_task(text))
-    }
-
-    /// The surface's method of the same name, as `previewTask`.
-    #[wasm_bindgen(js_name = previewTask)]
-    pub fn preview_task(&self, text: &str) -> Out<lumenna_host::Preview> {
-        out(self.lumenna.preview_task(text))
-    }
-
-    /// What could go at `cursor`, a UTF-8 byte offset into `text`.
-    #[wasm_bindgen(js_name = completeText)]
-    pub fn complete_text(&self, text: &str, cursor: u32, syntax: Ts<Syntax>) -> Out<lumenna_host::Completions> {
-        out(self.lumenna.complete_text(text, cursor, syntax.to_rust()?))
-    }
-
-    /// The surface's method of the same name, as `editTask`.
-    #[wasm_bindgen(js_name = editTask)]
-    pub fn edit_task(&self, id: &str, edit: Ts<TaskEdit>) -> Out<lumenna_host::Change> {
-        out(self.lumenna.edit_task(id, edit.to_rust()?))
-    }
-
-    /// The surface's method of the same name, as `undo`.
-    pub fn undo(&self) -> Out<lumenna_host::Change> {
-        out(self.lumenna.undo())
-    }
-
-    /// The surface's method of the same name, as `redo`.
-    pub fn redo(&self) -> Out<lumenna_host::Change> {
-        out(self.lumenna.redo())
-    }
-
-    /// The surface's method of the same name, as `listProjects`.
-    #[wasm_bindgen(js_name = listProjects)]
-    pub fn list_projects(&self) -> Out<lumenna_host::Rows> {
-        out(self.lumenna.list_projects())
-    }
-
-    /// The surface's method of the same name, as `listLabels`.
-    #[wasm_bindgen(js_name = listLabels)]
-    pub fn list_labels(&self) -> Out<lumenna_host::Rows> {
-        out(self.lumenna.list_labels())
-    }
-
-    /// The surface's method of the same name, as `listFilters`.
-    #[wasm_bindgen(js_name = listFilters)]
-    pub fn list_filters(&self) -> Out<lumenna_host::Filters> {
-        out(self.lumenna.list_filters())
-    }
-
-    /// A day's blocks and what is assigned to them; today when `date` is absent.
-    pub fn plan(&self, date: Option<String>) -> Out<lumenna_host::Plan> {
-        out(self.lumenna.plan(date))
-    }
-
-    /// Every block series, by when it starts.
-    #[wasm_bindgen(js_name = listBlocks)]
-    pub fn list_blocks(&self) -> Out<lumenna_host::Rows> {
-        out(self.lumenna.list_blocks())
-    }
-
-    /// One block series, as an editor starts from it.
-    #[wasm_bindgen(js_name = showBlock)]
-    pub fn show_block(&self, id: &str) -> Out<lumenna_host::BlockShown> {
-        out(self.lumenna.show_block(id))
-    }
-
-    /// The surface's method of the same name, as `addBlock`.
-    #[wasm_bindgen(js_name = addBlock)]
-    pub fn add_block(&self, block: Ts<lumenna_host::NewBlock>) -> Out<lumenna_host::Change> {
-        out(self.lumenna.add_block(block.to_rust()?))
-    }
-
-    /// Changes a block: every occurrence, or one day's alone.
-    #[wasm_bindgen(js_name = editBlock)]
-    pub fn edit_block(
-        &self,
-        id: &str,
-        edit: Ts<lumenna_host::BlockEdit>,
-        scope: Ts<lumenna_host::BlockScope>,
-    ) -> Out<lumenna_host::Change> {
-        out(self.lumenna.edit_block(id, edit.to_rust()?, scope.to_rust()?))
-    }
-
-    /// Runs one of a record's actions with the answer to its question: what every row's
-    /// menu, key and button does.
-    pub fn act(&self, action: Ts<Action>, answer: Ts<Answer>) -> Out<lumenna_host::Change> {
-        out(self.lumenna.act(action.to_rust()?, answer.to_rust()?))
-    }
-
-    /// What a pick offers for `action`, or, when nothing, why.
-    pub fn choices(&self, action: Ts<Action>) -> Out<lumenna_host::Choices> {
-        out(self.lumenna.choices(action.to_rust()?))
-    }
 }
 
 // ---------------------------------------------------------------------------------------
@@ -248,88 +125,11 @@ pub fn day_text(iso: &str) -> String {
     Browser.day(iso)
 }
 
-/// `14:30` as this browser says it.
-#[wasm_bindgen(js_name = timeText)]
-pub fn time_text(clock: &str) -> String {
-    Browser.time(clock)
-}
-
-/// A task's fields as a form starts from them.
-#[wasm_bindgen(js_name = taskFields)]
-pub fn task_fields(task: Ts<TaskDetail>) -> Out<TaskFields> {
-    out(Ok(lumenna_host::task_fields(task.to_rust()?)))
-}
-
-/// A form's fields, in order: each one's name, what it takes, an example, its control.
-#[derive(Serialize, serde::Deserialize, Tsify)]
-pub struct Form {
-    /// Each field, as the form shows them.
-    pub fields: Vec<FormField>,
-}
-
-/// The task form's fields, in the core's words: the priorities among its options.
-#[wasm_bindgen(js_name = taskForm)]
-pub fn task_form() -> Out<Form> {
-    js(&Form { fields: lumenna_host::task_form() })
-}
-
-/// The block form's fields, in the core's words.
-#[wasm_bindgen(js_name = blockForm)]
-pub fn block_form() -> Out<Form> {
-    js(&Form { fields: lumenna_host::block_form() })
-}
-
-/// What the task form's Project field offers.
-#[derive(Serialize, serde::Deserialize, Tsify)]
-pub struct ProjectOptions {
-    /// Every project not archived, in tree order, each with its depth; `id` is the name the
-    /// task form takes.
-    pub options: Vec<Choice>,
-}
-
-#[wasm_bindgen]
-impl Core {
-    /// When a new block on `date` (a date phrase, today when absent) starts unless the person
-    /// says otherwise, `HH:MM`: today the next whole hour, another day when the day starts.
-    #[wasm_bindgen(js_name = newBlockStart)]
-    pub fn new_block_start(&self, date: Option<String>) -> Result<String, JsError> {
-        self.lumenna.new_block_start(date).map_err(error)
-    }
-
-    /// The projects the task form's Project field offers.
-    #[wasm_bindgen(js_name = projectOptions)]
-    pub fn project_options(&self) -> Out<ProjectOptions> {
-        out(self.lumenna.project_options().map(|options| ProjectOptions { options }))
-    }
-}
-
 /// Every sentence and button of pairing. A browser calls itself "this browser", and cannot
 /// be found on a network by itself: it pairs by code.
 #[wasm_bindgen(js_name = pairingWords)]
 pub fn pairing_words() -> Out<PairingWords> {
     js(&lumenna_host::pairing_words("this browser".to_owned(), false))
-}
-
-/// The questions the web asks of its own accord, in the core's words: Go to Day, a new saved
-/// filter's two steps, and a sitting's length once a pick that has one is answered.
-#[derive(Serialize, serde::Deserialize, Tsify)]
-pub struct OwnQuestions {
-    /// Which day to go to.
-    pub go_to_day: Question,
-    /// A new saved filter's name, then its query.
-    pub new_filter: Vec<Question>,
-    /// How long a sitting is meant to take.
-    pub length: Question,
-}
-
-/// The questions the web asks of its own accord.
-#[wasm_bindgen(js_name = ownQuestions)]
-pub fn own_questions() -> Out<OwnQuestions> {
-    js(&OwnQuestions {
-        go_to_day: lumenna_host::go_to_day_question(),
-        new_filter: lumenna_host::new_filter_questions(),
-        length: lumenna_host::length_question(),
-    })
 }
 
 /// Fixed text — a button, a question — in sentence case, the web's: never a name.
@@ -338,51 +138,10 @@ pub fn sentence_case(text: String) -> String {
     lumenna_host::sentence_case(text)
 }
 
-/// What saving `fields` over `task` sends, or nothing if no field changed — only what
-/// changed, so a concurrent edit on another device is not reverted.
-#[wasm_bindgen(js_name = taskEdit)]
-pub fn task_edit(task: Ts<TaskDetail>, fields: Ts<TaskFields>) -> Result<Option<Ts<TaskEdit>>, JsError> {
-    lumenna_host::task_edit(task.to_rust()?, fields.to_rust()?).map(|edit| js(&edit)).transpose()
-}
-
 // ---------------------------------------------------------------------------------------
 // The places and wording the desktop apps share (`crates/desktop`), so the web says what
 // they say rather than a copy of it.
 // ---------------------------------------------------------------------------------------
-
-/// The sidebar's rows, in order.
-#[derive(Serialize, serde::Deserialize, Tsify)]
-pub struct Sidebar {
-    /// Each row, with what it is and how deep.
-    pub entries: Vec<SidebarEntry>,
-}
-
-#[wasm_bindgen]
-impl Core {
-    /// Every place, as the sidebar lists them: Today, Tasks, the project tree, labels, saved
-    /// filters, Blocks, the trash.
-    pub fn sidebar(&self) -> Out<Sidebar> {
-        out(Ok(Sidebar { entries: lumenna_host::sidebar(&self.lumenna) }))
-    }
-}
-
-/// What a place is called while it is shown.
-#[wasm_bindgen(js_name = placeTitle)]
-pub fn place_title(place: Ts<Place>) -> Result<String, JsError> {
-    Ok(place.to_rust()?.title())
-}
-
-/// The query a place's task list starts from.
-#[wasm_bindgen(js_name = placeQuery)]
-pub fn place_query(place: Ts<Place>) -> Result<String, JsError> {
-    Ok(place.to_rust()?.query())
-}
-
-/// What a task added while a place is shown starts with, so it lands there.
-#[wasm_bindgen(js_name = placeQuickAddPrefix)]
-pub fn place_quick_add_prefix(place: Ts<Place>) -> Result<String, JsError> {
-    Ok(place.to_rust()?.quick_add_prefix())
-}
 
 /// A row's line: its title, when it is due in the browser's clock, its value and the states
 /// that mean something — with `completed` left out where a checkbox says it.
