@@ -183,12 +183,14 @@ class Menus(unittest.TestCase):
         self.assertEqual(fields["start"].default_text, offered)
         # The day changed and the start was left as offered: tomorrow's, when the day starts.
         self.assertEqual(self.call("block.list")["rows"][0]["due_time"], "07:30")
+        # A start typed is kept. Not on the hour: an offer always is, and one typed the same as
+        # the offer counts as left as offered (between 17:00 and 18:00 the offer is 18:00).
         script = self.run_script(
-            [("app", "Add a block"), ("form", {"title": "Swim", "date": "tomorrow", "start": "18:00"}), ("back",)],
+            [("app", "Add a block"), ("form", {"title": "Swim", "date": "tomorrow", "start": "18:15"}), ("back",)],
             lambda: day.day_plan(self.session),
         )
         times = sorted(row["due_time"] for row in self.call("block.list")["rows"])
-        self.assertEqual(times, ["07:30", "18:00"])
+        self.assertEqual(times, ["07:30", "18:15"])
 
     def test_a_day_adds_a_block_assigns_a_task_and_times_it(self):
         self.call("task.add", text="write the chapter")
