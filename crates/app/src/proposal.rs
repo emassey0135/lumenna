@@ -85,11 +85,7 @@ impl Proposal {
             Self::Replan(r) => (&r.announcement, &r.notices),
             Self::Day(d) => (&d.announcement, &d.notices),
         };
-        std::iter::once(announcement.as_str())
-            .chain(notices.iter().map(String::as_str))
-            .filter(|s| !s.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ")
+        lumenna_records::words::spoken(announcement, notices)
     }
 
     /// How many changes it proposes.
@@ -329,11 +325,7 @@ impl Lumenna {
             Ok(applied) => {
                 screen.made = true;
                 screen.refusal = None;
-                let said = std::iter::once(applied.announcement.as_str())
-                    .chain(applied.notices.iter().map(String::as_str))
-                    .filter(|s| !s.is_empty())
-                    .collect::<Vec<_>>()
-                    .join(" ");
+                let said = lumenna_records::words::spoken(&applied.announcement, &applied.notices);
                 // Nothing left to propose: the screen closes, saying what was made.
                 if applied.next.is_empty() {
                     model.proposal_made = true;

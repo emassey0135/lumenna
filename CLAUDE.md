@@ -27,7 +27,8 @@ crates/core/    domain model, queries, mutations, row projection. No I/O, no Aut
 crates/parse/   quick-add and filter parsers, and the completion they share.
 crates/store/   Automerge documents + the SQLite file they live in.
 crates/records/ what a person is told, as records built from a snapshot alone: rows and their
-                actions, questions, forms, the listings, the words. No store.
+                actions, questions, forms, the listings, the day, what a pick offers, the
+                proposals, the words. No store.
 crates/host/    the command surface: the `Lumenna` object, one method per operation, over the
                 store; re-exports records under the paths it always had.
 crates/app/     the Crux app: the screens' state (place, row in hand, folding, the question
@@ -131,10 +132,12 @@ turn (the `legacy` tag is the last commit before the move).
   stream answered at once and on every change) and works out from it, with `lumenna-records`,
   everything that is a function of the store: the listings, the sidebar, the day's plan, the
   Blocks list, a task's details, a reminder list, completion and the quick-add preview, which
-  fields a block form shows. Every write is a `HostRequest`, whose answer comes back as an
-  event carrying the store as the write left it. What only the host can answer is asked of
-  it the same way: what a pick offers, Replan's and Plan the Day's proposals, settings (some
-  are a device's own), devices, reminders due, backups and exports.
+  fields a block form shows, what a pick offers (`records::choices`), What Should I Work On?,
+  and Replan's and Plan the Day's proposals (`records::replan`, `records::dayplan`). Every
+  write is a `HostRequest`, whose answer comes back as an event carrying the store as the
+  write left it; applying a proposal is one, since it checks the day has not moved. What only
+  the host can answer is asked of it the same way: settings (some are a device's own),
+  devices, reminders due (a device's own setting and key), backups and exports.
 - **`Session` answers the host's requests inline**, on the caller's thread: the web worker has
   no threads for Crux's middleware, and SQLite answers in milliseconds. What reaches other
   devices (`Effect::Network`: syncing, pairing) is not answered inline: the bridge hands it to

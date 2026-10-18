@@ -11,11 +11,8 @@ use crate::error::Result;
 use crate::resolve;
 use crate::tree::in_tree_order;
 use crate::types::{FilterView, Filters, Query, Rows, Unresolved, name_kind};
-use crate::words::count_line;
+use crate::words::{count_line, to_u32};
 
-fn to_u32(n: usize) -> u32 {
-    u32::try_from(n).unwrap_or(u32::MAX)
-}
 
 /// Tasks matching a filter query, or every open task for an empty one, most urgent first unless
 /// the store or the query says otherwise.

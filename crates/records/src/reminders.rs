@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{LumennaError, Result};
 use crate::resolve;
-use crate::words::{count_line, duration};
+use crate::words::{capitalised, count_line, duration};
 
 /// How old a firing may be and still be said on its own; older ones, from while nothing was
 /// running, are folded into one summary rather than read out one by one.
@@ -187,11 +187,6 @@ pub fn target_name(snapshot: &Snapshot, target: ReminderTarget) -> String {
     .unwrap_or_default()
 }
 
-/// `text` with its first letter a capital.
-pub fn capitalised(text: &str) -> String {
-    let mut chars = text.chars();
-    chars.next().map_or_else(String::new, |first| first.to_uppercase().chain(chars).collect())
-}
 
 /// The reminders a task or block has: its own, or the defaults it takes.
 ///

@@ -18,6 +18,7 @@ use jiff::Zoned;
 use lumenna_app::proposal::{Applied, Proposal};
 use lumenna_app::{Arrival, Effect, Event, HostAnswer, HostRequest, NetworkAnswer, NetworkRequest, ViewModel, Watch};
 use lumenna_host::Lumenna;
+use lumenna_records::words::spoken;
 use lumenna_store::ChangeHash;
 
 /// What the shell does, once an event has run.
@@ -134,10 +135,6 @@ fn each(
     Ok(last)
 }
 
-/// A record's sentence, then anything else worth saying.
-fn spoken(announcement: &str, notices: &[String]) -> String {
-    std::iter::once(announcement).chain(notices.iter().map(String::as_str)).filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ")
-}
 
 /// The app and its store, together.
 pub struct Session {

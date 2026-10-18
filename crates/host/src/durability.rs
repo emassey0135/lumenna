@@ -16,15 +16,12 @@ use crate::error::{LumennaError, Result};
 use crate::types::{
     Announced, BackupDone, BackupFile, ExportFormat, Exported, ImportDone, Imported, RestoreDone,
 };
-use crate::words::count_line;
+use crate::words::{count_line, to_u32};
 use crate::{Lumenna, repaired};
 
 /// The settings that stay on this device.
 pub const DEVICE_KEYS: &[&str] = &["backup-dir", "backup-keep", "backup-every", "clock", "reminders"];
 
-fn to_u32(n: usize) -> u32 {
-    u32::try_from(n).unwrap_or(u32::MAX)
-}
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {

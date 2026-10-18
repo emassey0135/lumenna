@@ -12,11 +12,8 @@ use lumenna_core::snapshot::Snapshot;
 use crate::error::Result;
 use crate::resolve;
 use crate::types::{TaskDetail, TaskShown, WorkBlock, WorkBlocks, BlockShown, CancelledBlock, Plan, PlanAssignment, PlanBlock, PlanItem, Rows, repetition_phrase};
-use crate::words::{block_details, count_line, duration, sitting_details, time_text};
+use crate::words::{block_details, count_line, duration, sitting_details, time_text, to_u32};
 
-fn to_u32(n: usize) -> u32 {
-    u32::try_from(n).unwrap_or(u32::MAX)
-}
 
 /// A day's blocks and what is assigned to them, as it stands at `now`: what a day's screen
 /// shows and `lum plan` says.

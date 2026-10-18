@@ -214,11 +214,7 @@ pub(crate) fn network_tell(request: NetworkRequest) -> Command<Effect, Event> {
 
 /// What a change says: its sentence, then anything else worth saying.
 pub(crate) fn spoken(change: &Change) -> String {
-    std::iter::once(change.announcement.as_str())
-        .chain(change.notices.iter().map(String::as_str))
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ")
+    lumenna_records::words::spoken(&change.announcement, &change.notices)
 }
 
 impl App for Lumenna {

@@ -191,3 +191,15 @@ pub fn on_day(date: jiff::civil::Date, today: jiff::civil::Date) -> String {
         _ => format!("on {words}"),
     }
 }
+
+/// A record's sentence, then anything else worth saying, as one line to say.
+#[must_use]
+pub fn spoken(announcement: &str, notices: &[String]) -> String {
+    std::iter::once(announcement).chain(notices.iter().map(String::as_str)).filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ")
+}
+
+/// A count as the `u32` a record carries, saturating rather than wrapping.
+#[must_use]
+pub fn to_u32(n: usize) -> u32 {
+    u32::try_from(n).unwrap_or(u32::MAX)
+}

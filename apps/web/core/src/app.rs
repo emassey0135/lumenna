@@ -14,6 +14,7 @@ use std::time::Duration;
 
 use lumenna_app::{Event, NetworkAnswer, NetworkRequest, Notice, SaveFile, ViewModel};
 use lumenna_bridge::{Session, Shell};
+use lumenna_records::words::spoken;
 use lumenna_host::{Lumenna, Reach, SyncLoop};
 use serde::{Deserialize, Serialize};
 use tsify::{Ts, Tsify};
@@ -227,10 +228,6 @@ impl Inner {
     }
 }
 
-/// A record's sentence, then anything else worth saying.
-fn spoken(announcement: &str, notices: &[String]) -> String {
-    std::iter::once(announcement).chain(notices.iter().map(String::as_str)).filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ")
-}
 
 #[wasm_bindgen]
 impl Core {

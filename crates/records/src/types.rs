@@ -20,7 +20,7 @@ use lumenna_core::row::{Role, Row, RowId};
 use lumenna_core::snapshot::Snapshot;
 use serde::{Deserialize, Serialize};
 
-use crate::words::{count_line, time_text};
+use crate::words::{count_line, time_text, to_u32};
 
 /// What every result carries: one sentence, and anything else worth saying.
 pub trait Announced: Sized {
@@ -71,9 +71,6 @@ fn none<T>(list: &[T]) -> bool {
     list.is_empty()
 }
 
-fn to_u32(n: usize) -> u32 {
-    u32::try_from(n).unwrap_or(u32::MAX)
-}
 
 // ---------------------------------------------------------------------------------------
 // Mutations

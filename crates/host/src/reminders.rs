@@ -20,7 +20,8 @@ use crate::error::{LumennaError, Result};
 use crate::types::Change;
 use crate::words::{count_line, duration};
 use crate::{Lumenna, repaired, resolve};
-use lumenna_records::reminders::{anchor_word, capitalised, gap, reminder_target, target_name, trigger_words};
+use lumenna_records::reminders::{anchor_word, gap, reminder_target, target_name, trigger_words};
+use lumenna_records::words::capitalised;
 pub use lumenna_records::reminders::{DueReminder, DueReminders, ReminderList, ReminderView, SNOOZE_MINS, STALE_MINS};
 
 
