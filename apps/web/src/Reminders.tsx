@@ -15,6 +15,7 @@ import { useEffect, useRef } from "react";
 import { Button, Dialog, Heading, Modal } from "react-aria-components";
 import { send } from "./session";
 import type { Action, Due, DueEvent, ShownReminders } from "./core";
+import { ActionKind, Side } from "./core";
 
 const ON = "lumenna:reminders";
 
@@ -70,7 +71,7 @@ export function useDelivery(ready: boolean): void {
       const now = new Date().toISOString();
       const from = since;
       since = now;
-      if (remindersOn()) void send({ Due: { Look: { since: from, now } } });
+      if (remindersOn()) void send({ tag: "Due", value0: { tag: "Look", since: from, now } });
     };
     const timer = setInterval(() => void look(), 20_000);
     const back = () => {
@@ -91,7 +92,7 @@ export function RemindersDue(props: { due: Due[] }) {
   if (props.due.length === 0) return null;
   const deal = async (due: Due, event: DueEvent) => {
     const index = props.due.findIndex((d) => d.id === due.id);
-    const turn = await send({ Due: event });
+    const turn = await send({ tag: "Due", value0: event });
     // Replan opens its screen, which has focus; otherwise focus goes to what took the place of
     // the one dealt with, else out of the list that is gone.
     if (turn.screen.proposal) return;
@@ -106,21 +107,21 @@ export function RemindersDue(props: { due: Due[] }) {
         {props.due.map((due) => (
           <li key={due.id} id={`due-${due.id}`}>
             <span id={`due-text-${due.id}`}>{due.text}</span>
-            <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, { Dismiss: due.id })}>
+            <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, { tag: "Dismiss", value0: due.id })}>
               {due.dismiss}
             </Button>
             {due.snooze && (
-              <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, { Snooze: due.id })}>
+              <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, { tag: "Snooze", value0: due.id })}>
                 {due.snooze}
               </Button>
             )}
             {due.replan && (
-              <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, { Replan: due.id })}>
+              <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, { tag: "Replan", value0: due.id })}>
                 {due.replan}
               </Button>
             )}
             {due.carry && (
-              <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, { Carry: due.id })}>
+              <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, { tag: "Carry", value0: due.id })}>
                 {due.carry}
               </Button>
             )}
@@ -136,10 +137,10 @@ export function RemindersDue(props: { due: Due[] }) {
 // ---------------------------------------------------------------------------------------
 
 /** Where a task's or block's list of reminders is shown: rendered once, while the app has one open. */
-export function ReminderLists(props: { list: ShownReminders | undefined }) {
-  const close = () => void send("CloseReminders");
+export function ReminderLists(props: { list: ShownReminders | null }) {
+  const close = () => void send({ tag: "CloseReminders" });
   return (
-    <Modal isDismissable isOpen={props.list !== undefined} onOpenChange={(isOpen) => !isOpen && close()}>
+    <Modal isDismissable isOpen={props.list != null} onOpenChange={(isOpen) => !isOpen && close()}>
       {props.list && <Reminders list={props.list} close={close} />}
     </Modal>
   );
@@ -152,8 +153,8 @@ function Reminders(props: { list: ShownReminders; close: () => void }) {
   // Where focus goes after a reminder is removed is the app's (`reminders_held`): the one now
   // in its place, else Add Reminder.
   const act = async (action: Action) => {
-    await send({ Perform: action });
-    if (action.kind === "new") void askToNotify();
+    await send({ tag: "Perform", value0: action });
+    if (action.kind === ActionKind.New) void askToNotify();
   };
 
   return (
@@ -165,7 +166,7 @@ function Reminders(props: { list: ShownReminders; close: () => void }) {
       {list.reminders.length > 0 && (
         <ul className="reminders" aria-labelledby="reminders-heading">
           {list.reminders.map((reminder) => (
-            <li key={reminder.id} data-key={reminder.id} onFocus={() => void send({ Hold: ["Reminders", reminder.id] })}>
+            <li key={reminder.id} data-key={reminder.id} onFocus={() => void send({ tag: "Hold", value0: Side.Reminders, value1: reminder.id })}>
               <span id={`reminder-${reminder.id}`}>{reminder.text}</span>
               {(reminder.actions ?? []).map((action) => (
                 <Button key={action.kind} aria-describedby={`reminder-${reminder.id}`} onPress={() => void act(action)}>

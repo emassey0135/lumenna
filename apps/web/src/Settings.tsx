@@ -33,6 +33,7 @@ import {
 } from "react-aria-components";
 import { DevicesPage } from "./Devices";
 import type { Screen, Setting, SettingView, SettingsView } from "./core";
+import { SettingKind } from "./core";
 import { send } from "./session";
 import { remindersOn, setRemindersOn } from "./Reminders";
 import { say } from "./say";
@@ -40,11 +41,11 @@ import { say } from "./say";
 export function Settings(props: {
   isOpen: boolean;
   onClose: () => void;
-  settings: SettingsView | undefined;
+  settings: SettingsView | null;
   /** The Devices page, as the app has it. */
   devices: Screen["devices"];
   /** The devices list's row in hand. */
-  held: Screen["devices_held"];
+  held: Screen["devicesHeld"];
 }) {
   return (
     <Modal isDismissable isOpen={props.isOpen} onOpenChange={(open) => !open && props.onClose()}>
@@ -78,7 +79,7 @@ export function Settings(props: {
   );
 }
 
-function Planning(props: { settings: SettingsView | undefined }) {
+function Planning(props: { settings: SettingsView | null }) {
   const all = props.settings?.settings ?? [];
   const settings = all.filter((row) => row.setting.syncs);
   // Reminders on this device, which a browser keeps itself: the core's name and hint for it.
@@ -86,13 +87,13 @@ function Planning(props: { settings: SettingsView | undefined }) {
   const [on, setOn] = useState(remindersOn());
 
   const set = async (key: string, value: string) => {
-    await send({ Settings: { Set: { key, value } } });
+    await send({ tag: "Settings", value0: { tag: "Set", key, value } });
   };
 
   const control = ({ setting, typed, problem }: SettingView) => {
     const { key, title, value, hint } = setting;
     const options = setting.options ?? [];
-    if (setting.kind === "toggle") {
+    if (setting.kind === SettingKind.Toggle) {
       const on = options[0]?.id ?? "true";
       const off = options[1]?.id ?? "false";
       return (
@@ -105,7 +106,7 @@ function Planning(props: { settings: SettingsView | undefined }) {
         </div>
       );
     }
-    if (setting.kind === "choice") {
+    if (setting.kind === SettingKind.Choice) {
       // A value set elsewhere that is not among the options is still the value.
       const items = options.some((o) => o.id === value) ? options : [...options, { id: value, title: value, depth: 0 }];
       return (
@@ -125,7 +126,7 @@ function Planning(props: { settings: SettingsView | undefined }) {
         </Select>
       );
     }
-    const description = hint || (setting.kind === "time" ? "A time, such as 8:00 or 22:30." : "");
+    const description = hint || (setting.kind === SettingKind.Time ? "A time, such as 8:00 or 22:30." : "");
     return <Line key={key} setting={setting} typed={typed} problem={problem} description={description} apply={set} />;
   };
 
@@ -169,7 +170,7 @@ function Line(props: { setting: Setting; typed: string; problem?: string | null;
       validationBehavior="aria"
       onChange={(value) => {
         setText(value);
-        void send({ Settings: { Type: { key: setting.key, value } } });
+        void send({ tag: "Settings", value0: { tag: "Type", key: setting.key, value } });
       }}
       onBlur={() => {
         if (changed()) void props.apply(setting.key, text);
@@ -207,7 +208,7 @@ function ReadFile(props: { label: string; accept: string }) {
           const file = event.target.files?.[0];
           event.target.value = "";
           if (!file) return;
-          void send({ Settings: { Import: { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) } } });
+          void send({ tag: "Settings", value0: { tag: "Import", name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) } });
         }}
       />
     </>
@@ -223,7 +224,7 @@ function Backups() {
       </p>
       <div className="buttons">
         <Button
-          onPress={() => void send({ Settings: "Backup" })}
+          onPress={() => void send({ tag: "Settings", value0: { tag: "Backup" } })}
         >
           Download a backup
         </Button>
@@ -234,14 +235,14 @@ function Backups() {
   );
 }
 
-function Exports(props: { settings: SettingsView | undefined }) {
+function Exports(props: { settings: SettingsView | null }) {
   const choices = props.settings?.exports ?? [];
   return (
     <>
       <p>An export is what is there now: no history, and nothing from the trash.</p>
       <div className="buttons stacked">
         {choices.map((choice) => (
-          <Button key={choice.format} onPress={() => void send({ Settings: { Export: choice.format } })}>
+          <Button key={choice.format} onPress={() => void send({ tag: "Settings", value0: { tag: "Export", value0: choice.format } })}>
             {choice.label}
           </Button>
         ))}

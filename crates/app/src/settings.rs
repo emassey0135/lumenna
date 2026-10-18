@@ -17,7 +17,6 @@ use crate::{Effect, Event, Lumenna, host, say};
 /// What the person does in Settings.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum SettingsEvent {
     /// Settings open.
     Open,
@@ -47,7 +46,6 @@ pub enum SettingsEvent {
         name: String,
         /// Its contents.
         #[serde(with = "serde_bytes")]
-        #[cfg_attr(feature = "wasm", tsify(type = "Uint8Array"))]
         bytes: Vec<u8>,
     },
 }
@@ -68,7 +66,6 @@ pub struct Settings {
 /// One setting as shown.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct SettingView {
     /// The setting, describing itself.
     pub setting: Setting,
@@ -82,7 +79,6 @@ pub struct SettingView {
 /// An export Settings offers.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ExportChoice {
     /// What it writes.
     pub format: ExportFormat,
@@ -95,7 +91,6 @@ pub struct ExportChoice {
 /// Settings as shown.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct SettingsView {
     /// Every setting, once known.
     pub settings: Vec<SettingView>,
@@ -106,13 +101,11 @@ pub struct SettingsView {
 /// A file for the shell to save: a backup or an export.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct SaveFile {
     /// What to call it.
     pub name: String,
     /// What it holds.
     #[serde(with = "serde_bytes")]
-    #[cfg_attr(feature = "wasm", tsify(type = "Uint8Array"))]
     pub bytes: Vec<u8>,
     /// Its media type.
     pub kind: String,

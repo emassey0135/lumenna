@@ -25,12 +25,21 @@ import {
   TextField,
 } from "react-aria-components";
 import type { BlockFields, BlockFormView, FormField } from "./core";
+import { FieldKind } from "./core";
 import { send } from "./session";
 
 /** Where the block form is shown: rendered once, in the app, while the app has one open. */
-export function BlockForms(props: { form: BlockFormView | undefined }) {
+/**
+ * A field's place in the form's values. A field is named as the core names it ("accepts_tasks"),
+ * which is what its edit sends back; the values record is typed as BoltFFI writes its fields.
+ */
+function fieldOf(key: string): string {
+  return key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+}
+
+export function BlockForms(props: { form: BlockFormView | null }) {
   return (
-    <Modal isDismissable isOpen={props.form !== undefined} onOpenChange={(isOpen) => !isOpen && void send({ Block: "Cancel" })}>
+    <Modal isDismissable isOpen={props.form !== null} onOpenChange={(isOpen) => !isOpen && void send({ tag: "Block", value0: { tag: "Cancel" } })}>
       {props.form && <Form form={props.form} />}
     </Modal>
   );
@@ -50,9 +59,9 @@ function Form(props: { form: BlockFormView }) {
   const set = (key: string, value: string | boolean) => {
     setValues((now) => ({ ...now, [key]: value }));
     pending.current++;
-    void send({ Block: { Field: { key, value: String(value) } } }).then((turn) => {
+    void send({ tag: "Block", value0: { tag: "Field", key, value: String(value) } }).then((turn) => {
       // The last answer is the form as all the typing left it, a kind's flags included.
-      if (--pending.current === 0 && turn.screen.block_form) setValues({ ...turn.screen.block_form.values, date: turn.screen.block_form.date });
+      if (--pending.current === 0 && turn.screen.blockForm) setValues({ ...turn.screen.blockForm.values, date: turn.screen.blockForm.date });
     });
   };
 
@@ -60,25 +69,25 @@ function Form(props: { form: BlockFormView }) {
   // the form stays with why.
   const save = (event: FormEvent) => {
     event.preventDefault();
-    void send({ Block: "Save" });
+    void send({ tag: "Block", value0: { tag: "Save" } });
   };
 
   const control = (field: FormField, first: boolean) => {
-    const key = field.key as keyof BlockFields | "date";
+    const key = fieldOf(field.key) as keyof BlockFields | "date";
     const help = field.hint && (
       <Text slot="description" className="quiet">
         {field.hint}
       </Text>
     );
     switch (field.kind) {
-      case "toggle":
+      case FieldKind.Toggle:
         return (
           <Checkbox key={field.key} className="check" isSelected={Boolean(values[key])} onChange={(on) => set(field.key, on)}>
             <span className="box" aria-hidden="true" />
             {field.label}
           </Checkbox>
         );
-      case "choice":
+      case FieldKind.Choice:
         return (
           <Select key={field.key} className="field" value={String(values[key])} onChange={(chosen) => set(field.key, String(chosen))}>
             <Label>{field.label}</Label>
@@ -91,7 +100,7 @@ function Form(props: { form: BlockFormView }) {
             </Popover>
           </Select>
         );
-      case "lines":
+      case FieldKind.Lines:
         return (
           <TextField key={field.key} className="field" value={String(values[key])} onChange={(text) => set(field.key, text)}>
             <Label>{field.label}</Label>
@@ -110,9 +119,9 @@ function Form(props: { form: BlockFormView }) {
     }
   };
 
-  const split = form.second_column ?? -1;
+  const split = form.secondColumn ?? -1;
   const columns = split < 0 ? [form.fields] : [form.fields.slice(0, split), form.fields.slice(split)];
-  const wide = form.second_column !== undefined && form.second_column !== null;
+  const wide = form.secondColumn !== undefined && form.secondColumn !== null;
 
   return (
     <Dialog className={wide ? "react-aria-Dialog wide" : "react-aria-Dialog"}>
@@ -129,7 +138,7 @@ function Form(props: { form: BlockFormView }) {
           </p>
         )}
         <div className="buttons">
-          <Button onPress={() => void send({ Block: "Cancel" })}>Cancel</Button>
+          <Button onPress={() => void send({ tag: "Block", value0: { tag: "Cancel" } })}>Cancel</Button>
           <Button type="submit">{form.yes}</Button>
         </div>
       </form>

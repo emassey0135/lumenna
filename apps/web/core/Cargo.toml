@@ -12,9 +12,10 @@ description = "Lumenna's core for the web client: the surface, exported to JavaS
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+boltffi = "=0.31.1"
 lumenna-host = { path = "../../../crates/host", features = ["sync"] }
 # The screens' state, run beside the store in this worker.
-lumenna-app = { path = "../../../crates/app", features = ["wasm"] }
+lumenna-app = { path = "../../../crates/app" }
 lumenna-bridge = { path = "../../../crates/bridge" }
 # The app's middleware: the store's from the bridge, the network's here.
 crux_core = "=0.20.0"
@@ -22,11 +23,8 @@ lumenna-records.workspace = true
 # Timers on the browser's event loop, for noticing a pairing given up.
 n0-future = "0.3"
 # The places and wording the desktop apps share, so the web says what they say.
-lumenna-desktop = { path = "../../../crates/desktop", features = ["wasm"] }
+lumenna-desktop = { path = "../../../crates/desktop", features = ["app"] }
 serde.workspace = true
-tsify = { version = "0.5", default-features = false, features = ["js"] }
-# Serialises every returned record the one way the TypeScript types describe: see `js` in lib.rs.
-serde-wasm-bindgen = "0.6"
 jiff.workspace = true
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"

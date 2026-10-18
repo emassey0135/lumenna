@@ -18,7 +18,6 @@ use crate::words::duration;
 #[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct TaskFields {
     /// The title.
     pub title: String,
@@ -148,7 +147,6 @@ pub fn block_defaults(kind: String) -> Option<BlockDefaults> {
 #[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct BlockFields {
     /// What it is called.
     pub title: String,

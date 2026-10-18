@@ -1,0 +1,17 @@
+# BoltFFI's configuration for the web client. scripts/build-core.mjs builds the wasm with Cargo
+# (the size-tuned `web` profile, or `dev`) and packs it with an overlay naming that artifact and
+# the output, src/core.
+[package]
+name = "lumenna-web"
+
+[targets.wasm.typescript]
+module_name = "lumenna_web"
+
+[targets.wasm.npm]
+package_name = "lumenna-core"
+targets = ["web"]
+generate_readme = false
+
+# The `web` profile already builds for size; wasm-opt would be one more tool to install.
+[targets.wasm.optimize]
+enabled = false

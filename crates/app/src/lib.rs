@@ -30,6 +30,7 @@ mod model;
 pub mod network;
 pub mod proposal;
 pub mod settings;
+pub mod shell;
 pub mod typing;
 mod view;
 
@@ -43,6 +44,7 @@ use serde::{Deserialize, Serialize};
 pub use blockform::{BlockEvent, BlockFormView};
 pub use capitals::Capitals;
 pub use held::{HeldView, Side};
+pub use shell::ShellEvent;
 pub use day::{DayItem, DayKind, DayView};
 pub use details::{DetailsEvent, DetailsView};
 pub use typing::{LineView, Typing};
@@ -105,7 +107,6 @@ mod effects {
 /// Moving through the days.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum DayMove {
     /// The day before the one shown.
     Previous,
@@ -121,7 +122,6 @@ pub enum DayMove {
 
 /// What happens: what the person does, and what the host answers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum Event {
     /// The app has started: watch the store.
     Start,

@@ -20,7 +20,6 @@ pub const SNOOZE_MINS: u32 = 10;
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct DueReminder {
     /// The reminder, for dismissing or snoozing it: its own identifier, or a default's.
     pub key: String,
@@ -85,7 +84,6 @@ crate::announced!(DueReminders, ReminderList);
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ReminderView {
     /// Its identifier: what removing it takes. A default's cannot be removed alone.
     pub id: String,
@@ -109,7 +107,6 @@ pub struct ReminderView {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ReminderList {
     /// How many, and whether they are its own or the defaults.
     pub announcement: String,

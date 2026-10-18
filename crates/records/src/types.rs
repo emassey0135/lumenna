@@ -308,7 +308,6 @@ impl Rows {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Query {
     /// The query as it was written.
     pub text: String,
@@ -324,7 +323,6 @@ pub struct Query {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Unresolved {
     /// `project` or `label`.
     pub kind: String,
@@ -339,7 +337,6 @@ pub struct Unresolved {
 #[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct RowView {
     /// Its position in this listing, counting from one — what `lum task done 3` takes.
     pub row: u32,
@@ -446,7 +443,6 @@ pub struct TaskShown {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct TaskDetail {
     /// The full identifier.
     pub id: String,
@@ -501,7 +497,6 @@ pub struct TaskDetail {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Dependency {
     /// The full identifier.
     pub id: String,
@@ -642,7 +637,6 @@ pub struct WorkBlock {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct CancelledBlock {
     /// The series' identifier, for `Lumenna::restore_occurrence`.
     pub series: String,
@@ -702,7 +696,6 @@ pub enum PlanItem {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct PlanBlock {
     /// Its position among blocks, counting from one.
     pub row: u32,
@@ -822,7 +815,6 @@ pub fn repetition_phrase(rrule: &str, from_completion: bool) -> Option<String> {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct PlanAssignment {
     /// Its position among assignments across the whole day, counting from one — so
     /// `lum start 1` works straight after `lum plan`.
@@ -935,7 +927,6 @@ pub struct SettingList {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Setting {
     /// Its name, as `lum config get` takes it.
     pub key: String,
@@ -963,7 +954,6 @@ pub struct Setting {
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[serde(rename_all = "snake_case")]
 pub enum SettingKind {
     /// On or off: `true` or `false`.
@@ -989,7 +979,6 @@ pub enum SettingKind {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Completions {
     /// How many candidates there are, said before the list.
     pub announcement: String,
@@ -1008,7 +997,6 @@ pub struct Completions {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Candidate {
     /// The text to put in, sigil included where one applies.
     pub text: String,
@@ -1211,7 +1199,6 @@ pub struct RestoreDone {
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[serde(rename_all = "lowercase")]
 pub enum ExportFormat {
     /// Everything current, structured — the one that imports back.
@@ -1587,7 +1574,6 @@ pub struct SyncReport {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct DeviceView {
     /// What it is called.
     pub name: String,
@@ -1643,7 +1629,6 @@ pub struct SyncStatus {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct DeviceList {
     /// How many.
     pub announcement: String,

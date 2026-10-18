@@ -4,31 +4,62 @@
 //! answers what it asks of the store on a task of its own here in the worker, and what reaches
 //! other devices — syncing, pairing — is this module's middleware, on the browser's event loop.
 //! Whatever the app leaves for the page, at once or after an answer, goes out one way: through
-//! the outbox, turned into a [`Turn`] and handed to the listener the page gave. Nothing about
-//! which row is in hand, what is folded or which question is open is the page's.
+//! the outbox, turned into a [`Turn`] and handed to the [`Listener`] the page gave. Nothing
+//! about which row is in hand, what is folded or which question is open is the page's.
+//!
+//! Exported through BoltFFI, typed as Android's are. What only a browser holds — the store's
+//! `Rc` state, its promises — is not `Send`, which BoltFFI asks of every export; [`Local`] says
+//! it is, which a browser's one thread makes true.
 
 use std::cell::{Cell, RefCell};
+use std::future::Future;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::Duration;
+
+use boltffi::{data, export};
 
 use crux_core::middleware::{EffectMiddleware, EffectResolver, Layer};
 use futures::StreamExt;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use futures::channel::oneshot;
-use lumenna_app::{Effect, Event, NetworkAnswer, NetworkRequest, Notice, SaveFile, ViewModel};
+use lumenna_app::{Effect, Event, NetworkAnswer, NetworkRequest, Notice, SaveFile, ShellEvent, ViewModel};
 use lumenna_bridge::{Shell, Stack, Store, shell, stack};
 use lumenna_host::{Lumenna, Reach, SyncLoop};
+use lumenna_records::LumennaError;
 use lumenna_records::words::spoken;
-use serde::{Deserialize, Serialize};
-use tsify::{Ts, Tsify};
-use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::{future_to_promise, spawn_local};
+use wasm_bindgen_futures::spawn_local;
 
 use lumenna_desktop::lines::{Lines, lines};
 
 use crate::clock::CLOCK;
-use crate::{Core, Out, js};
+/// What only a browser holds, said to be `Send` and `Sync` for BoltFFI.
+pub(crate) struct Local<T>(pub(crate) T);
+
+// SAFETY: wasm32-unknown-unknown, built without the atomics feature, has exactly one thread, so
+// nothing can move or share a value to another. The web core runs nowhere else: the workspace
+// compiles it natively to check it, and nothing runs that build.
+unsafe impl<T> Send for Local<T> {}
+// SAFETY: as for `Send`.
+unsafe impl<T> Sync for Local<T> {}
+
+impl<F: Future> Future for Local<F> {
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<F::Output> {
+        // SAFETY: the future inside is never moved out of its pin.
+        unsafe { self.map_unchecked_mut(|local| &mut local.0) }.poll(cx)
+    }
+}
+
+/// The page, as the app reaches it: every turn, one at a time, in order.
+#[export]
+pub trait Listener: Send + Sync {
+    /// A turn: draw it, then say it.
+    fn turn(&self, turn: Turn);
+}
 
 /// What this browser's sync is doing: the loop while it runs, and whether a pairing in
 /// progress has been given up.
@@ -40,7 +71,8 @@ pub(crate) struct Syncing {
 
 /// What the app left for the page: the view model, and what to say once focus is where it
 /// puts it.
-#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
+#[data]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Turn {
     /// What to draw.
     pub view: ViewModel,
@@ -80,7 +112,7 @@ struct Inner {
     store: Store,
     outbox: UnboundedSender<Outgoing>,
     /// The page's listener, for every turn.
-    listener: RefCell<Option<js_sys::Function>>,
+    listener: RefCell<Option<Arc<dyn Listener>>>,
     /// Who waits for the app to be still.
     waiting: RefCell<Vec<oneshot::Sender<()>>>,
     /// The last turn's number.
@@ -88,9 +120,9 @@ struct Inner {
 }
 
 /// The app over the store this worker holds.
-#[wasm_bindgen]
 pub struct App {
-    inner: Rc<Inner>,
+    lumenna: Arc<Lumenna>,
+    inner: Local<Rc<Inner>>,
 }
 
 impl Inner {
@@ -161,8 +193,8 @@ impl Inner {
             }
         }
         let listener = self.listener.borrow().clone();
-        if let (Some(listener), Ok(turn)) = (listener, js(&turn)) {
-            let _ = listener.call1(&JsValue::NULL, &turn.into());
+        if let Some(listener) = listener {
+            listener.turn(turn);
         }
     }
 }
@@ -288,83 +320,102 @@ impl Runner {
     }
 }
 
-#[wasm_bindgen]
-impl Core {
-    /// The app, started over this store. It has the store once [`App::settled`] answers; what it
-    /// leaves before the page listens is not handed on, since the page draws the view it finds.
-    pub fn app(&self) -> App {
-        let (store, worker) = Store::new(Arc::clone(&self.lumenna));
-        spawn_local(worker.run());
-        let (requests, asked) = unbounded();
-        let runner = Rc::new(Runner {
-            lumenna: Arc::clone(&self.lumenna),
-            store: store.clone(),
-            syncing: Rc::clone(&self.syncing),
-            confirm: RefCell::new(None),
-        });
-        spawn_local(runner.run(asked));
-        let (outbox, delivering) = unbounded();
-        let still = outbox.clone();
-        store.busy().when_still(move || {
-            let _ = still.unbounded_send(Outgoing::Still);
-        });
-        let inner = Rc::new(Inner {
-            stack: stack(&store, Network(requests)),
-            store,
-            outbox,
-            listener: RefCell::new(None),
-            waiting: RefCell::new(Vec::new()),
-            seq: Cell::new(0),
-        });
-        spawn_local(Rc::clone(&inner).deliver(delivering));
-        inner.send(Event::Start);
-        App { inner }
-    }
+/// Opens the profile called `name`, creating it on first use — SQLite in OPFS, durable across
+/// reloads — and starts the app over it. The app has the store once [`App::settled`] answers;
+/// what it leaves before the page listens is not handed on, since the page draws what it finds.
+///
+/// # Errors
+///
+/// If the browser's storage, or the profile, cannot be opened.
+#[export]
+pub async fn open(name: String) -> Result<App, LumennaError> {
+    Local(async move {
+        let lumenna = Arc::new(crate::open_store(&name).await?);
+        Ok(App { inner: Local(start(&lumenna)), lumenna })
+    })
+    .await
 }
 
-#[wasm_bindgen]
+/// The app, started over `lumenna`.
+fn start(lumenna: &Arc<Lumenna>) -> Rc<Inner> {
+    let (store, worker) = Store::new(Arc::clone(lumenna));
+    spawn_local(worker.run());
+    let (requests, asked) = unbounded();
+    let runner = Rc::new(Runner {
+        lumenna: Arc::clone(lumenna),
+        store: store.clone(),
+        syncing: Rc::default(),
+        confirm: RefCell::new(None),
+    });
+    spawn_local(runner.run(asked));
+    let (outbox, delivering) = unbounded();
+    let still = outbox.clone();
+    store.busy().when_still(move || {
+        let _ = still.unbounded_send(Outgoing::Still);
+    });
+    let inner = Rc::new(Inner {
+        stack: stack(&store, Network(requests)),
+        store,
+        outbox,
+        listener: RefCell::new(None),
+        waiting: RefCell::new(Vec::new()),
+        seq: Cell::new(0),
+    });
+    spawn_local(Rc::clone(&inner).deliver(delivering));
+    inner.send(Event::Start);
+    inner
+}
+
+#[export]
 impl App {
     /// Runs what the person did. Every turn it leaves goes to the listener; the answer is the
     /// view once the app is still, for a field that keeps its own value while typing is on its
     /// way.
-    pub fn send(&self, event: Ts<Event>) -> Result<js_sys::Promise, JsError> {
-        let event = event.to_rust()?;
-        self.inner.send(event);
-        Ok(self.reply())
+    pub async fn send(&self, event: ShellEvent) -> Turn {
+        self.inner.0.send(event.into());
+        self.reply().await
     }
 
-    /// Takes in what changed elsewhere since: another tab, `lum`, a sync, a write made through
-    /// the store's own exports, or a new minute. What it leaves goes to the listener.
-    pub fn tick(&self) -> js_sys::Promise {
-        self.inner.store.tick();
-        self.reply()
+    /// Takes in what changed elsewhere since: another tab, `lum`, a sync, or a new minute. What
+    /// it leaves goes to the listener.
+    pub async fn tick(&self) -> Turn {
+        self.inner.0.store.tick();
+        self.reply().await
     }
 
     /// Answers once the app is still: everything sent so far answered and handed on.
-    pub fn settled(&self) -> js_sys::Promise {
-        let settled = self.inner.settled();
-        future_to_promise(async move {
-            settled.await;
-            Ok(JsValue::UNDEFINED)
-        })
+    pub async fn settled(&self) {
+        Local(self.inner.0.settled()).await;
     }
 
     /// What to draw now, with its lines, as a turn with nothing to say.
-    pub fn now(&self) -> Out<Turn> {
-        js(&self.inner.current())
+    pub fn now(&self) -> Turn {
+        self.inner.0.current()
     }
 
     /// Gives every turn from now on to `listener`.
-    pub fn listen(&self, listener: js_sys::Function) {
-        *self.inner.listener.borrow_mut() = Some(listener);
+    pub fn listen(&self, listener: Arc<dyn Listener>) {
+        *self.inner.0.listener.borrow_mut() = Some(listener);
     }
 
-    fn reply(&self) -> js_sys::Promise {
-        let settled = self.inner.settled();
-        let inner = Rc::clone(&self.inner);
-        future_to_promise(async move {
+    /// A number that moves whenever another tab or process has written.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn outside_version(&self) -> Result<f64, LumennaError> {
+        // A JavaScript number holds this exactly: it is SQLite's data_version, a counter.
+        Ok(self.lumenna.outside_version()? as f64)
+    }
+}
+
+impl App {
+    /// The view once the app is still.
+    fn reply(&self) -> impl Future<Output = Turn> + Send + use<'_> {
+        let settled = Local(self.inner.0.settled());
+        async move {
             settled.await;
-            Ok(js(&inner.current())?.into())
-        })
+            self.inner.0.current()
+        }
     }
 }

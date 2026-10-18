@@ -13,7 +13,6 @@ use crate::ViewModel;
 /// How a shell writes its buttons, headings and questions.
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum Capitals {
     /// "Mark Done", "Saved Filters": the core's own.
     #[default]

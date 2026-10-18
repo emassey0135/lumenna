@@ -17,7 +17,7 @@ import { send, typed } from "./session";
 /** Quick add, open while the app has a line, and from the moment it is asked for (`opening`), so
  * what is typed straight away goes into it: opened with `Typing::Open`, closed by the app once a
  * task is added from it, or by Cancel or Escape here. */
-export function QuickAdd(props: { line: ShownLine | undefined; opening: boolean; onClose: () => void }) {
+export function QuickAdd(props: { line: ShownLine | null; opening: boolean; onClose: () => void }) {
   // Closed at once, and kept closed until it is asked for again: what is typed next belongs
   // wherever focus goes back to, and a turn still on its way must not open it again.
   const [closing, setClosing] = useState(false);
@@ -27,9 +27,9 @@ export function QuickAdd(props: { line: ShownLine | undefined; opening: boolean;
   const close = () => {
     setClosing(true);
     props.onClose();
-    void send({ Typing: "Close" });
+    void send({ tag: "Typing", value0: { tag: "Close" } });
   };
-  const open = !closing && (props.line !== undefined || props.opening);
+  const open = !closing && (props.line != null || props.opening);
   return (
     <Modal isDismissable isOpen={open} onOpenChange={(open) => !open && close()}>
       {open && <Line line={props.line} close={close} />}
@@ -37,7 +37,7 @@ export function QuickAdd(props: { line: ShownLine | undefined; opening: boolean;
   );
 }
 
-function Line(props: { line: ShownLine | undefined; close: () => void }) {
+function Line(props: { line: ShownLine | null; close: () => void }) {
   // What the field shows, set at once as typed so the caret stays put; the app's line is the same
   // a moment later. While typing is on its way, an answer for earlier typing is not shown.
   const [text, setText] = useState(props.line?.text ?? "");
@@ -66,7 +66,7 @@ function Line(props: { line: ShownLine | undefined; close: () => void }) {
   const choose = (key: Key | null) => {
     const at = offer.candidates.findIndex((c) => c.id === key);
     if (at < 0) return;
-    void send({ Typing: { Choose: at } }).then((turn) => {
+    void send({ tag: "Typing", value0: { tag: "Choose", value0: at } }).then((turn) => {
       const next = turn.screen.line;
       if (!next) return;
       spliced.current = next.text;
@@ -78,7 +78,7 @@ function Line(props: { line: ShownLine | undefined; close: () => void }) {
   // Added, the app lets the line go and the dialog closes; refused, it stays with what was
   // typed, so it can be put right.
   const add = () => {
-    if (text.trim()) void send({ QuickAdd: text });
+    if (text.trim()) void send({ tag: "QuickAdd", value0: text });
   };
 
   return (

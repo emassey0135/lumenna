@@ -17,7 +17,6 @@ use crate::{Effect, Event, Lumenna, host, say};
 /// What the person does in the details.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum DetailsEvent {
     /// Show this task's details, whatever is in hand: a sitting's task opened from the day.
     Show(String),
@@ -57,7 +56,6 @@ pub struct Details {
 /// The details as shown.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct DetailsView {
     /// The task as the store has it.
     pub task: TaskDetail,

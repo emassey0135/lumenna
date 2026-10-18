@@ -9,8 +9,9 @@
 // decided here.
 
 import * as Comlink from "comlink";
-import init, { App, Core, pairingWords, sentenceCase, keyboardShortcuts } from "./core/lumenna_web.js";
+import init, { open, pairingWords, sentenceCase, keyboardShortcuts } from "./core/lumenna_web.js";
 import type {
+  App,
   Asking,
   DayItem,
   DayView,
@@ -20,25 +21,20 @@ import type {
   Notice,
   SaveFile,
   DetailsView,
-  Event,
+  ShellEvent,
   Item,
   Lines,
+  ListView,
   ReminderList,
   ReminderView,
-  ListView,
   Turn,
   ViewModel,
   ShortcutGroup,
   PairingWords,
 } from "./core/lumenna_web.js";
+import { Capitals, TimeStyle } from "./core/lumenna_web.js";
 
-let core: Core | undefined;
 let app: App | undefined;
-
-function store(): Core {
-  if (!core) throw new Error("The store is not open yet.");
-  return core;
-}
 
 /** A UTF-16 offset — what an input element counts — as the UTF-8 byte offset the core counts. */
 function bytesAt(text: string, units: number): number {
@@ -65,14 +61,14 @@ async function opened(name: string): Promise<void> {
     });
   });
   if (!granted) throw new Error("Lumenna is open in another tab. Close it there to use it here.");
-  await init();
-  core = await Core.open(name);
-  app = core.app();
+  // The module, and its wasm beside it, which Vite serves as an asset.
+  await init(await fetch(new URL("./core/lumenna_web_bg.wasm", import.meta.url)));
+  app = await open(name);
   // The clock the core's whole sentences say times in: this browser's.
   const hour12 = new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions().hour12;
-  void app.send({ Clock: hour12 ? "twelve_hour" : "twenty_four_hour" });
+  void app.send({ tag: "Clock", value0: hour12 ? TimeStyle.TwelveHour : TimeStyle.TwentyFourHour });
   // The web's capitals: buttons, headings and questions in sentence case.
-  void app.send({ Capitals: "Sentence" });
+  void app.send({ tag: "Capitals", value0: Capitals.Sentence });
   // Open once the app has the store.
   await app.settled();
 }
@@ -130,23 +126,23 @@ export interface ShownChoice {
   reason?: string;
 }
 
-/** The question open, its buttons in the web's sentence case, a pick's choices as lines. */
+/** The question open, a pick's choices as lines. */
 export interface ShownAsking extends Asking {
-  lines?: ShownChoice[];
+  lines: ShownChoice[] | null;
 }
 
-/** The view model as the page draws it. */
 /** A task's or block's reminders, each with the line it reads as. */
 export type ShownReminders = Omit<ReminderList, "reminders"> & { reminders: (ReminderView & { text: string })[] };
 
+/** The view model as the page draws it: as the core's, each list's rows with their lines. */
 export interface Screen extends Omit<ViewModel, "list" | "day" | "details" | "line" | "devices" | "asking" | "reminders"> {
-  reminders?: ShownReminders;
-  asking?: ShownAsking;
-  devices?: Omit<DevicesView, "list"> & { list?: Omit<DeviceList, "devices"> & { devices: ShownDevice[] } };
-  list?: Shown;
-  day?: ShownDay;
-  details?: ShownDetails;
-  line?: ShownLine;
+  reminders: ShownReminders | null;
+  asking: ShownAsking | null;
+  devices: (Omit<DevicesView, "list"> & { list: (Omit<DeviceList, "devices"> & { devices: ShownDevice[] }) | null }) | null;
+  list: Shown | null;
+  day: ShownDay | null;
+  details: ShownDetails | null;
+  line: ShownLine | null;
 }
 
 /** What an event left: the screen, what to say once focus has landed, files to save, and
@@ -169,13 +165,13 @@ function screen(view: ViewModel, lines: Lines): Screen {
   };
   const day = view.day && {
     ...view.day,
-    title: lines.day_title,
+    title: lines.dayTitle,
     items: view.day.items.map((item, index) => ({ ...item, text: lines.day[index]?.text ?? "" })),
   };
-  const details = view.details && { ...view.details, state: lines.task_state };
+  const details = view.details && { ...view.details, state: lines.taskState };
   const asking = view.asking && {
     ...view.asking,
-    lines: view.asking.choices?.choices.map((choice, index) => ({
+    lines: view.asking.choices && view.asking.choices.choices.map((choice, index) => ({
       id: choice.id,
       text: lines.choices[index]?.text ?? choice.title,
       depth: choice.depth,
@@ -189,17 +185,11 @@ function screen(view: ViewModel, lines: Lines): Screen {
       devices: view.devices.list.devices.map((device, index) => ({ ...device, text: lines.devices[index]?.text ?? device.name })),
     },
   };
-  const due = (view.due ?? []).map((item) => ({
-    ...item,
-    snooze: item.snooze ?? undefined,
-    carry: item.carry ?? undefined,
-    replan: item.replan ?? undefined,
-  }));
   const line = view.line && {
     text: view.line.text,
     cursor: unitsAt(view.line.text, view.line.cursor),
     readback: view.line.readback,
-    hasErrors: view.line.has_errors,
+    hasErrors: view.line.hasErrors,
     offer: {
       start: unitsAt(view.line.text, view.line.offer.start),
       end: unitsAt(view.line.text, view.line.offer.end),
@@ -214,7 +204,7 @@ function screen(view: ViewModel, lines: Lines): Screen {
     ...view.reminders,
     reminders: view.reminders.reminders.map((reminder, index) => ({ ...reminder, text: lines.reminders[index]?.text ?? reminder.words })),
   };
-  return { ...view, list, day, details, line, devices, due, asking, reminders };
+  return { ...view, list, day, details, line, devices, asking, reminders };
 }
 
 function turned(turn: Turn): Said {
@@ -244,11 +234,11 @@ const api = {
    * Runs what the person did through the app. Every turn it leaves — what to draw, what to say —
    * goes to the listener; the answer is the screen once the app is still, with nothing to say.
    */
-  send: async (event: Event): Promise<Said> => turned((await session().send(event)) as Turn),
+  send: async (event: ShellEvent): Promise<Said> => turned(await session().send(event)),
 
   /** The quick-add line as typed, the cursor a UTF-16 offset as the input counts it. */
   typed: async (text: string, cursor: number): Promise<Said> =>
-    turned((await session().send({ Typing: { Text: { text, cursor: bytesAt(text, cursor) } } })) as Turn),
+    turned(await session().send({ tag: "Typing", value0: { tag: "Text", text, cursor: bytesAt(text, cursor) } })),
 
   /**
    * Hands `listener` every turn the app leaves — for what the person did, a pairing's code and
@@ -256,7 +246,7 @@ const api = {
    * calls the page's: a Comlink proxy answers any property, `.call` included.
    */
   listen(listener: (said: Said) => void): void {
-    session().listen((turn: Turn) => void listener(turned(turn)));
+    session().listen({ turn: (turn: Turn) => void listener(turned(turn)) });
   },
 
   /** Takes in what changed elsewhere since, or a new minute; what it leaves goes to the listener. */
@@ -265,11 +255,11 @@ const api = {
   },
 
   /** What to draw now. */
-  screen: (): Screen => turned(session().now() as Turn).screen,
+  screen: (): Screen => turned(session().now()).screen,
 
 
   /** A number that moves when another tab or process has written. */
-  outsideVersion: (): number => store().outsideVersion(),
+  outsideVersion: (): number => session().outsideVersion(),
 
   /** Every sentence and button of pairing, buttons and questions in the web's sentence case. */
   pairingWords: (): PairingWords => pairingWords(),

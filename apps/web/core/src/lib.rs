@@ -1,204 +1,63 @@
-//! Lumenna's core for the web client: the store and the app beside it, exported to JavaScript.
+//! Lumenna's core for the web client: the store and the app beside it, exported to TypeScript
+//! through BoltFFI, as Android's is to Kotlin.
 //!
 //! The browser runs the same core every other client does — the same store, SQLite and
 //! Automerge, the same parsers, the same rules, the same app (`lumenna-app`) — compiled to
-//! WebAssembly. Nothing here decides anything: [`app`] runs the app over the store, and the
-//! rest is the wording the desktop apps share, for each row's line in the browser's own clock.
-//! Records are typed in TypeScript by `tsify`, derived from the crates' own: reshaping one
-//! breaks the web build as it breaks every other.
+//! WebAssembly. Nothing here decides anything: [`app`] runs the app over the store and words its
+//! view in the browser's clock; the rest is what a shell asks outside a turn. Records are typed
+//! from the crates' own, so reshaping one breaks the web build as it breaks every other.
 //!
-//! The store lives in OPFS through SQLite's sync access handles, which only a dedicated
-//! worker may use: this module is loaded by the app's worker, never by the page itself.
-//! Values cross as `tsify::Ts`, converted inside each function, so a malformed value is an
-//! ordinary error rather than a leak at the boundary.
+//! The store lives in OPFS through SQLite's sync access handles, which only a dedicated worker
+//! may use: this module is loaded by the app's worker, never by the page itself.
 
 use std::path::Path;
+
+use boltffi::{data, export};
+use lumenna_host::Lumenna;
+use lumenna_records::{LumennaError, PairingWords};
 
 mod app;
 mod clock;
 
-use clock::CLOCK;
-use lumenna_desktop::speech::{self, Clock};
-use lumenna_host::{Choice, Lumenna, LumennaError, PairingWords, TaskDetail};
-use serde::Serialize;
-use tsify::{Ts, Tsify};
-use wasm_bindgen::prelude::*;
+pub use app::{App, Listener, Turn, open};
 
-/// What every export returns: the record, or the core's sentence for what went wrong.
-type Out<T> = Result<Ts<T>, JsError>;
-
-
-/// A record as the plain object its TypeScript type describes.
-///
-/// Not `Ts::from_rust`, which takes the serialiser's settings from the outermost type alone:
-/// serde writes a `#[serde(flatten)]` record (`TaskShown`) as a map, and a map not marked
-/// otherwise becomes a JavaScript `Map` — whose fields nothing reads, and which the core then
-/// cannot read back. Here every map is an object, wherever it sits.
-fn js<T: Tsify + Serialize>(value: &T) -> Out<T> {
-    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-    Ok(Ts::new_unchecked(value.serialize(&serializer)?))
-}
-
-/// The core's own sentence, which is written to be read out.
-fn error(error: LumennaError) -> JsError {
-    JsError::new(error.message())
-}
-
-/// One open store.
-#[wasm_bindgen]
-pub struct Core {
-    lumenna: std::sync::Arc<Lumenna>,
-    syncing: std::rc::Rc<app::Syncing>,
-}
-
-#[wasm_bindgen]
-impl Core {
-    /// Opens the profile called `name`, creating it on first use: SQLite in OPFS, durable
-    /// across reloads, in the browser's persistent storage when it has been granted.
-    pub async fn open(name: String) -> Result<Core, JsError> {
-        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-        {
-            console_error_panic_hook::set_once();
-            let pool = sqlite_wasm_vfs::sahpool::OpfsSAHPoolCfgBuilder::new().directory("lumenna").build();
-            sqlite_wasm_vfs::sahpool::install::<sqlite_wasm_rs::WasmOsCallback>(&pool, true)
-                .await
-                .map_err(|e| JsError::new(&format!("This browser's storage could not be opened: {e}")))?;
-        }
-        let lumenna = Lumenna::open_at(Path::new(&format!("/{name}"))).map_err(error)?;
-        Ok(Core { lumenna: std::sync::Arc::new(lumenna), syncing: std::rc::Rc::default() })
+/// The store called `name`: SQLite in OPFS, durable across reloads, in the browser's persistent
+/// storage when it has been granted.
+async fn open_store(name: &str) -> Result<Lumenna, LumennaError> {
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    {
+        console_error_panic_hook::set_once();
+        let pool = sqlite_wasm_vfs::sahpool::OpfsSAHPoolCfgBuilder::new().directory("lumenna").build();
+        sqlite_wasm_vfs::sahpool::install::<sqlite_wasm_rs::WasmOsCallback>(&pool, true)
+            .await
+            .map_err(|e| LumennaError::new(format!("This browser's storage could not be opened: {e}")))?;
     }
-
-    /// A number that moves whenever another tab or process has written: what a view
-    /// compares to know it should read again.
-    #[wasm_bindgen(js_name = outsideVersion)]
-    pub fn outside_version(&self) -> Result<f64, JsError> {
-        // A JavaScript number holds this exactly: it is SQLite's data_version, a counter.
-        Ok(self.lumenna.outside_version().map_err(error)? as f64)
-    }
-
+    Lumenna::open_at(Path::new(&format!("/{name}")))
 }
 
-// ---------------------------------------------------------------------------------------
-// The day, worded as the desktop apps word it, in this browser's times and days.
-// ---------------------------------------------------------------------------------------
-
-/// A block on the day: its times, name, length, kind, and what is in it.
-#[wasm_bindgen(js_name = blockText)]
-pub fn block_text(block: Ts<lumenna_host::PlanBlock>) -> Result<String, JsError> {
-    Ok(speech::block(&block.to_rust()?, &CLOCK))
-}
-
-/// A sitting: a task in a block for one session.
-#[wasm_bindgen(js_name = sittingText)]
-pub fn sitting_text(sitting: Ts<lumenna_host::PlanAssignment>) -> Result<String, JsError> {
-    Ok(speech::sitting(&sitting.to_rust()?))
-}
-
-/// Free time, which a timeline shows by empty space and a list has to say: its title and
-/// details as the core words them, then its span in this browser's times.
-#[wasm_bindgen(js_name = freeText)]
-pub fn free_text(title: &str, details: Vec<String>, start: &str, end: &str) -> String {
-    speech::free_time(title, &details, start, end, &CLOCK)
-}
-
-/// Where the present falls: the core's title for it, then the time in this browser's clock.
-#[wasm_bindgen(js_name = nowText)]
-pub fn now_text(title: &str, time: &str) -> String {
-    format!("{title}, {}", CLOCK.time(time))
-}
-
-/// A repeating block cancelled for this day alone.
-#[wasm_bindgen(js_name = cancelledText)]
-pub fn cancelled_text(block: Ts<lumenna_host::CancelledBlock>) -> Result<String, JsError> {
-    Ok(speech::cancelled(&block.to_rust()?, &CLOCK))
-}
-
-/// The day's first row: what a glance at a timeline gives.
-#[wasm_bindgen(js_name = summaryText)]
-pub fn summary_text(date: &str, summary: &str) -> String {
-    speech::summary(date, summary, &CLOCK)
-}
-
-/// An ISO date as a person says it: "Today", or "Monday 5 October".
-#[wasm_bindgen(js_name = dayText)]
-pub fn day_text(iso: &str) -> String {
-    CLOCK.day(iso)
-}
-
-/// Every sentence and button of pairing. A browser calls itself "this browser", and cannot
-/// be found on a network by itself: it pairs by code.
-#[wasm_bindgen(js_name = pairingWords)]
-pub fn pairing_words() -> Out<PairingWords> {
+/// Every sentence and button of pairing, in the web's capitals: its buttons and headings in
+/// sentence case, its introduction the core's own sentence-case one. A browser calls itself
+/// "this browser", and cannot be found on a network by itself: it pairs by code.
+#[export]
+pub fn pairing_words() -> PairingWords {
     let mut words = lumenna_host::pairing_words("this browser".to_owned(), false);
-    // The web's capitals: buttons and headings in sentence case, the introduction the core's own
-    // sentence-case one.
     for word in [&mut words.title, &mut words.wait, &mut words.join, &mut words.match_title, &mut words.match_yes, &mut words.match_no, &mut words.copy_code] {
         *word = lumenna_host::sentence_case(std::mem::take(word));
     }
     words.intro = std::mem::take(&mut words.intro_sentence);
-    js(&words)
+    words
 }
 
 /// Fixed text — a button, a question — in sentence case, the web's: never a name.
-#[wasm_bindgen(js_name = sentenceCase)]
+#[export]
 pub fn sentence_case(text: String) -> String {
     lumenna_host::sentence_case(text)
 }
 
-// ---------------------------------------------------------------------------------------
-// The places and wording the desktop apps share (`crates/desktop`), so the web says what
-// they say rather than a copy of it.
-// ---------------------------------------------------------------------------------------
-
-/// A row's line: its title, when it is due in the browser's clock, its value and the states
-/// that mean something — with `completed` left out where a checkbox says it.
-#[wasm_bindgen(js_name = rowText)]
-pub fn row_text(row: Ts<lumenna_host::RowView>, checkbox: bool) -> Result<String, JsError> {
-    Ok(speech::row(&row.to_rust()?, checkbox, &CLOCK))
-}
-
-/// A row in the trash, where saying `deleted` on every one is noise.
-#[wasm_bindgen(js_name = trashedText)]
-pub fn trashed_text(row: Ts<lumenna_host::RowView>) -> Result<String, JsError> {
-    Ok(speech::trashed(&row.to_rust()?, &CLOCK))
-}
-
-/// A task's state as its details show it.
-#[wasm_bindgen(js_name = taskStateText)]
-pub fn task_state_text(task: Ts<TaskDetail>) -> Result<String, JsError> {
-    Ok(speech::task_state(&task.to_rust()?))
-}
-
-/// A completion as offered: its name first, then its kind — "Work, project".
-#[wasm_bindgen(js_name = candidateText)]
-pub fn candidate_text(candidate: Ts<lumenna_host::Candidate>) -> Result<String, JsError> {
-    Ok(speech::candidate(&candidate.to_rust()?))
-}
-
-/// What a result says: its announcement, then each notice, as a sentence.
-#[wasm_bindgen(js_name = announcementText)]
-pub fn announcement_text(announcement: &str, notices: Vec<String>) -> String {
-    speech::sentence(&speech::announcement(announcement, &notices))
-}
-
-/// Something a pick offers, as its line reads: a block as the desktop apps word one
-/// ("Tomorrow, 9:00 AM to 11:00 AM, Deep work"), anything else its title and what tells it
-/// apart.
-#[wasm_bindgen(js_name = choiceText)]
-pub fn choice_text(choice: Ts<Choice>) -> Result<String, JsError> {
-    Ok(lumenna_desktop::speech::choice(&choice.to_rust()?, &CLOCK))
-}
-
-/// A paired device, as its line in the list reads: "Kitchen Mac, macos, last synced 5 minutes
-/// ago" — sync status in words rather than an icon.
-#[wasm_bindgen(js_name = deviceText)]
-pub fn device_text(device: Ts<lumenna_host::DeviceView>) -> Result<String, JsError> {
-    Ok(lumenna_desktop::devices::line(&device.to_rust()?, jiff::Timestamp::now()))
-}
-
 /// One keyboard command the desktop apps share (`lumenna_desktop::keys`), in the web's
 /// sentence case.
-#[derive(Serialize, serde::Deserialize, Tsify)]
+#[data]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Shortcut {
     /// What the web matches its own binding to: "undo".
     pub id: String,
@@ -209,7 +68,8 @@ pub struct Shortcut {
 }
 
 /// One heading of the keyboard help, and its commands in order.
-#[derive(Serialize, serde::Deserialize, Tsify)]
+#[data]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShortcutGroup {
     /// Which group: "file", "edit", "view", "task", "day", "lists", "help".
     pub id: String,
@@ -220,7 +80,8 @@ pub struct ShortcutGroup {
 }
 
 /// The keyboard help's groups.
-#[derive(Serialize, serde::Deserialize, Tsify)]
+#[data]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Shortcuts {
     /// Every group, in the menus' order, then lists, then help.
     pub groups: Vec<ShortcutGroup>,
@@ -228,8 +89,8 @@ pub struct Shortcuts {
 
 /// The keyboard commands every desktop app shares, grouped as their menus are, so the web's
 /// help names a command as theirs do. The web lists only those it binds, and adds its own.
-#[wasm_bindgen(js_name = keyboardShortcuts)]
-pub fn keyboard_shortcuts() -> Out<Shortcuts> {
+#[export]
+pub fn keyboard_shortcuts() -> Shortcuts {
     use lumenna_desktop::keys::{self, Group};
     let groups = Group::ALL
         .iter()
@@ -254,5 +115,5 @@ pub fn keyboard_shortcuts() -> Out<Shortcuts> {
                 .collect(),
         })
         .collect();
-    js(&Shortcuts { groups })
+    Shortcuts { groups }
 }

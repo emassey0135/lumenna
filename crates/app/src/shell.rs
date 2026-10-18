@@ -1,4 +1,5 @@
-//! What the shell sends: the app's events that a person's doing makes.
+//! What a shell sends across BoltFFI (Android's, the web's): the app's events that a person's
+//! doing makes.
 //!
 //! The app's [`Event`] also carries what its own effects answer — the store as it arrives, a
 //! write's result, the network's word — which never crosses, and BoltFFI cannot leave a variant
@@ -6,7 +7,7 @@
 //! exhaustive match, so a new event is sorted into one or the other where it is added.
 
 use boltffi::data;
-use lumenna_app::{BlockEvent, Capitals, Side, DayMove, DetailsEvent, DevicesEvent, DueEvent, Event, ProposalEvent, SettingsEvent, Typing};
+use crate::{BlockEvent, Capitals, DayMove, DetailsEvent, DevicesEvent, DueEvent, Event, ProposalEvent, SettingsEvent, Side, Typing};
 use lumenna_records::places::Place;
 use lumenna_records::proposals::TimeStyle;
 use lumenna_records::{Action, ActionKind, Answer};

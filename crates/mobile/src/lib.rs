@@ -11,7 +11,6 @@
 //! shapes `lum --json` and the RPC surface keep are no concern here.
 
 mod device;
-mod events;
 mod words;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -29,7 +28,7 @@ use lumenna_desktop::speech::{self, Clock, Spoken};
 use lumenna_records::{Completions, LumennaError, Syntax};
 
 pub use device::{Device, LinkStream};
-pub use events::ShellEvent;
+pub use lumenna_app::ShellEvent;
 
 /// What the shell's locale writes: a time of day and a date. Saying a day — "Today",
 /// "Tomorrow" — and joining a line are the core's.

@@ -10,6 +10,7 @@ import type { FocusEvent, KeyboardEvent, MouseEvent } from "react";
 import { Button, Collection, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
 import type { Action, SidebarEntry, Place } from "./core";
+import { ActionKind, Side } from "./core";
 import { byKind } from "./actions";
 import { rowKey } from "./landing";
 import { asksForMenu, RowMenu } from "./RowMenu";
@@ -19,7 +20,7 @@ import type { Node } from "./tree";
 
 /** What identifies a place's entry across reloads. */
 export function placeKey(entries: SidebarEntry[], place: Place): string | undefined {
-  return entries.find((entry) => "Place" in entry.kind && JSON.stringify(entry.kind.Place) === JSON.stringify(place))?.key;
+  return entries.find((entry) => entry.kind.tag === "Place" && JSON.stringify(entry.kind.value0) === JSON.stringify(place))?.key;
 }
 
 /** What identifies an entry across reloads: the app's key, which its row in hand is named by. */
@@ -47,17 +48,17 @@ export function Sidebar(props: {
   const nodes = useMemo(() => nest(entries, key, (entry) => entry.depth), [entries]);
   // What is folded is the app's: a row is open while it offers Collapse.
   const shown = useMemo(
-    () => new Set<Key>(entries.filter((e) => e.actions?.some((a) => a.kind === "collapse")).map(key)),
+    () => new Set<Key>(entries.filter((e) => e.actions?.some((a) => a.kind === ActionKind.Collapse)).map(key)),
     [entries],
   );
   // Left and Right fold a row: its own Expand or Collapse, run through the app.
   const fold = (open: Set<Key>) => {
     const changed = entries.find((e) => {
-      const action = byKind(e.actions, "expand", "collapse");
-      return action && (action.kind === "collapse") !== open.has(key(e));
+      const action = byKind(e.actions, ActionKind.Expand, ActionKind.Collapse);
+      return action && (action.kind === ActionKind.Collapse) !== open.has(key(e));
     });
-    const action = changed && byKind(changed.actions, "expand", "collapse");
-    if (action) void send({ Perform: action });
+    const action = changed && byKind(changed.actions, ActionKind.Expand, ActionKind.Collapse);
+    if (action) void send({ tag: "Perform", value0: action });
   };
   const entry = (k: string | undefined) => entries.find((e) => key(e) === k);
 
@@ -65,12 +66,12 @@ export function Sidebar(props: {
     if (selection === "all") return;
     const [chosen] = [...selection];
     const found = entry(String(chosen));
-    if (found && "Place" in found.kind) props.onPlace(found.kind.Place);
+    if (found && found.kind.tag === "Place") props.onPlace(found.kind.value0);
   };
 
   /** Runs one of a row's actions through the app, which goes where it leads, and says what it did. */
   const run = async (_at: SidebarEntry, action: Action) => {
-    await send({ Perform: action });
+    await send({ tag: "Perform", value0: action });
   };
 
   const keys = (event: KeyboardEvent) => {
@@ -82,7 +83,7 @@ export function Sidebar(props: {
       setMenu(true);
     } else if (event.key === "Delete") {
       // Delete here does what it does in every other list, asking first as the menu's does.
-      const action = byKind(at.actions, "delete");
+      const action = byKind(at.actions, ActionKind.Delete);
       if (!action) return;
       event.preventDefault();
       event.stopPropagation();
@@ -107,7 +108,7 @@ export function Sidebar(props: {
           const k = rowKey(event);
           if (k) {
             setHeld(k);
-            void send({ Hold: ["Sidebar", k] });
+            void send({ tag: "Hold", value0: Side.Sidebar, value1: k });
           }
         }}
       >

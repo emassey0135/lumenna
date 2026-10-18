@@ -9,7 +9,6 @@ use crate::Model;
 /// A list beside the main one.
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum Side {
     /// The places.
     Sidebar,
@@ -34,7 +33,6 @@ pub struct Held {
 /// `landing` goes up, and leaves it alone otherwise.
 #[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct HeldView {
     /// The row in hand, by key.
     pub focus: Option<String>,

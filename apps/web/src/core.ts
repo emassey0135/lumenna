@@ -10,11 +10,9 @@ export const core: Comlink.Remote<Api> = Comlink.wrap<Api>(worker);
 export type { Said, Screen, Shown, ShownDay, ShownDayItem, ShownDetails, ShownAsking, ShownChoice, ShownDevice, ShownItem, ShownLine, ShownReminders } from "./worker";
 export type {
   Action,
-  ActionKind,
   Answer,
   Asking,
   BlockFormView,
-  DayMove,
   Due,
   DueEvent,
   Notice,
@@ -23,7 +21,7 @@ export type {
   SettingView,
   SettingsView,
   ProposalView,
-  Event,
+  ShellEvent,
   Choice,
   DueReminder,
   ReminderList,
@@ -31,7 +29,6 @@ export type {
   Setting,
   BlockFields,
   SidebarEntry,
-  Side,
   HeldView,
   ExportChoice,
   FormField,
@@ -46,4 +43,20 @@ export type {
   ShortcutGroup,
   TaskDetail,
   TaskFields,
+} from "./core/lumenna_web.js";
+
+// The core's enumerations, which are numbers: compared by their names here, never by value.
+export {
+  ActionKind,
+  Capitals,
+  DayKind,
+  DayMove,
+  ExportFormat,
+  FieldKind,
+  SettingKind,
+  Side,
+  SidebarGroup,
+  Subject,
+  Syntax,
+  TimeStyle,
 } from "./core/lumenna_web.js";

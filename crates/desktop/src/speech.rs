@@ -60,7 +60,6 @@ impl<F: Formats> Clock for Spoken<F> {
 /// A list that shows two lines shows them so; one that reads one line reads [`Line::text`].
 #[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Line {
     /// What comes first.
     pub title: String,

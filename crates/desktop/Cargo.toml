@@ -10,14 +10,10 @@ description = "What the apps that link the surface directly decide alike: how ro
 [features]
 # The app's view worded line by line (`lines`), for the shells that draw the Crux app.
 app = ["dep:lumenna-app"]
-# Typed for TypeScript, for the web's worker.
-wasm = ["app", "dep:tsify", "dep:wasm-bindgen", "lumenna-app/wasm"]
 
 [dependencies]
 boltffi = "=0.31.1"
 lumenna-app = { path = "../app", optional = true }
-tsify = { version = "0.5", optional = true, default-features = false, features = ["js"] }
-wasm-bindgen = { version = "0.2", optional = true }
 lumenna-records.workspace = true
 directories.workspace = true
 jiff.workspace = true

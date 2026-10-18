@@ -13,7 +13,6 @@ use crate::actions::Choice;
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[serde(rename_all = "snake_case")]
 pub enum FieldKind {
     /// A line of text, read by the core: a date, a repetition, a duration, names.
@@ -36,7 +35,6 @@ pub enum FieldKind {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct FormField {
     /// Which field of [`TaskFields`](crate::TaskFields) or [`BlockFields`](crate::BlockFields)
     /// it is, by its field name; `date` for a new block's day.
@@ -164,7 +162,6 @@ pub fn unsayable_repeat_note(block: crate::BlockShown) -> Option<String> {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct PairingWords {
     /// The screen's title.
     pub title: String,
@@ -307,7 +304,6 @@ mod tests {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ProposalWords {
     /// The screen's title.
     pub title: String,

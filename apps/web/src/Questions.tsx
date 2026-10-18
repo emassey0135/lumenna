@@ -63,24 +63,24 @@ export function ChooseDialog(props: {
 
 /** Where the question open is shown: rendered once, in the app. A form's question is the
  * client's own screen, which `form` opens. */
-export function Questions(props: { asking: ShownAsking | undefined; form: (action: Action) => void }) {
+export function Questions(props: { asking: ShownAsking | null; form: (action: Action) => void }) {
   const asking = props.asking;
-  const cancel = () => void send("Cancel");
+  const cancel = () => void send({ tag: "Cancel" });
 
   // A form of the client's own: opened, and the question let go.
   useEffect(() => {
-    if (asking?.question.ask !== "form") return;
+    if (asking?.question.tag !== "Form") return;
     if (asking.action) props.form(asking.action);
     cancel();
-  }, [asking?.question.ask, asking?.action?.kind, asking?.action?.target]);
+  }, [asking?.question.tag, asking?.action?.kind, asking?.action?.target]);
 
-  if (!asking || asking.question.ask === "form" || asking.question.ask === "immediate") return null;
+  if (!asking || asking.question.tag === "Form" || asking.question.tag === "Immediate") return null;
   const question = asking.question;
   // A new question is a new dialog, so what was typed in the last one does not carry over.
   const key = JSON.stringify([asking.action?.kind, asking.action?.target, question]);
 
-  if (question.ask === "confirm" || question.ask === "choose") {
-    const answers = question.ask === "confirm" ? [{ id: "yes", title: question.yes }] : question.answers;
+  if (question.tag === "Confirm" || question.tag === "Choose") {
+    const answers = question.tag === "Confirm" ? [{ id: "yes", title: question.yes }] : question.answers;
     return (
       <ChooseDialog
         key={key}
@@ -90,14 +90,14 @@ export function Questions(props: { asking: ShownAsking | undefined; form: (actio
         answer={(index) => {
           const chosen = index === undefined ? undefined : answers[index];
           if (!chosen) cancel();
-          else void send({ Answer: question.ask === "confirm" ? { answer: "yes" } : { answer: "picked", id: chosen.id } });
+          else void send({ tag: "Answer", value0: question.tag === "Confirm" ? { tag: "Yes" } : { tag: "Picked", id: chosen.id, length: null } });
         }}
       />
     );
   }
   return (
     <Modal isDismissable isOpen onOpenChange={(isOpen) => !isOpen && cancel()}>
-      {question.ask === "text" ? (
+      {question.tag === "Text" ? (
         <TextQuestion
           key={key}
           heading={question.sentence || question.title}
@@ -127,7 +127,7 @@ function TextQuestion(props: {
   const [text, setText] = useState(props.initial);
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    void send({ Answer: { answer: "text", text } });
+    void send({ tag: "Answer", value0: { tag: "Text", text } });
   };
   return (
     <Dialog>
@@ -169,7 +169,7 @@ function PickQuestion(props: { heading: string; items: ShownChoice[]; yes: strin
       setProblem(props.items.length ? "Choose one first." : "There is nothing to choose.");
       return;
     }
-    void send({ Answer: { answer: "picked", id: String(chosen) } });
+    void send({ tag: "Answer", value0: { tag: "Picked", id: String(chosen), length: null } });
   };
 
   return (

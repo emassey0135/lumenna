@@ -10,7 +10,6 @@ use crate::speech::{self, Clock, Line};
 /// What a view reads as, line by line, in the order its records come.
 #[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Lines {
     /// Each of the list's rows.
     pub list: Vec<Line>,

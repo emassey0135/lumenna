@@ -27,7 +27,6 @@ use crate::types::{CancelledBlock, PlanAssignment, PlanBlock, PlanItem, Rows};
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[serde(rename_all = "snake_case")]
 pub enum ActionKind {
     /// Complete a task.
@@ -134,7 +133,6 @@ pub enum ActionKind {
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[serde(rename_all = "snake_case")]
 pub enum Subject {
     /// A task, by identifier.
@@ -166,7 +164,6 @@ pub enum Subject {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Action {
     /// What it does.
     pub kind: ActionKind,
@@ -198,7 +195,6 @@ pub struct Action {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[serde(tag = "ask", rename_all = "snake_case")]
 pub enum Question {
     /// Nothing: it runs at once, answered [`Answer::Yes`].
@@ -260,7 +256,6 @@ pub enum Question {
 #[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Choice {
     /// What [`Answer::Picked`] sends back.
     pub id: String,
@@ -292,7 +287,6 @@ pub struct Choice {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Choices {
     /// How many there are; or, when there are none, why, which is all a client says.
     pub announcement: String,
@@ -309,7 +303,6 @@ crate::announced!(Choices);
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[serde(tag = "answer", rename_all = "snake_case")]
 pub enum Answer {
     /// Go ahead: an immediate action, or a confirmation.

@@ -16,7 +16,6 @@ use crate::{label_reference, project_reference};
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum Place {
     /// The day planner.
     Today,
@@ -76,7 +75,6 @@ impl Place {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum SidebarKind {
     /// Somewhere to go.
     Place(Place),
@@ -88,7 +86,6 @@ pub enum SidebarKind {
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum SidebarGroup {
     /// The project tree.
     Projects,
@@ -102,7 +99,6 @@ pub enum SidebarGroup {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct SidebarEntry {
     /// What it is.
     pub kind: SidebarKind,

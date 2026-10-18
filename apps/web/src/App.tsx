@@ -9,7 +9,8 @@ import { Proposals } from "./Proposal";
 import { BlockForms } from "./BlockForm";
 import { Blocks } from "./Blocks";
 import { core } from "./core";
-import type { DayMove, Place } from "./core";
+import type { Place } from "./core";
+import { ActionKind, DayMove } from "./core";
 import { Day } from "./Day";
 import { KeyboardShortcuts, asksForKeys, commandFor } from "./Keys";
 import { defer, focusIn, movePane, runCommand, useCommand } from "./commands";
@@ -32,7 +33,7 @@ export function App() {
   const [failure, setFailure] = useState<string | undefined>();
   const [notice, setNotice] = useState<string | undefined>();
   const screen = useScreen();
-  const place: Place = screen?.place ?? "Tasks";
+  const place: Place = screen?.place ?? { tag: "Tasks" };
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
   // Quick add, asked for and not yet open in the app.
@@ -71,7 +72,7 @@ export function App() {
     return () => clearInterval(timer);
   }, [ready]);
 
-  const undo = (redo: boolean) => void send(redo ? "Redo" : "Undo");
+  const undo = (redo: boolean) => void send({ tag: redo ? "Redo" : "Undo" });
 
   // Ctrl+Z undoes and Ctrl+Shift+Z or Ctrl+Y redoes, from anywhere but a field, where they
   // undo typing as they do in the desktop apps' fields, or a dialog, whose question is not the
@@ -109,6 +110,7 @@ export function App() {
   // The shared commands, on the web's keys (Keys.tsx), from anywhere but a dialog, whose keys
   // are its own. The screen shown answers first; what it cannot, the window does here.
   useEffect(() => {
+    let commands: Promise<void> = Promise.resolve();
     if (!ready) return;
     const keys = (event: KeyboardEvent) => {
       const id = commandFor(event);
@@ -117,7 +119,10 @@ export function App() {
       if (target?.closest("[role='dialog'], [role='alertdialog']")) return;
       event.preventDefault();
       event.stopPropagation();
-      void settled().then(() => runCommand(id));
+      // In the order pressed, each once what the one before it sent has been answered and drawn:
+      // keys pressed together all waited on one settling, and ran on the screen before the first
+      // had changed it.
+      commands = commands.then(() => settled()).then(() => void runCommand(id));
     };
     window.addEventListener("keydown", keys, true);
     return () => window.removeEventListener("keydown", keys, true);
@@ -131,7 +136,7 @@ export function App() {
       return;
     }
     focusMain.current = true;
-    void send({ Open: to });
+    void send({ tag: "Open", value0: to });
   };
   useEffect(() => {
     if (!focusMain.current) return;
@@ -142,39 +147,39 @@ export function App() {
   const thenRun = (to: Place, id: string) => {
     focusMain.current = false;
     defer(id);
-    void send({ Open: to });
+    void send({ tag: "Open", value0: to });
   };
 
   const newTask = () => {
     setOpening(true);
-    void send({ Typing: "Open" }).finally(() => setOpening(false));
+    void send({ tag: "Typing", value0: { tag: "Open" } }).finally(() => setOpening(false));
   };
   useCommand("new-task", newTask, -1);
-  useCommand("new-block", () => thenRun("Today", "new-block"), -1);
+  useCommand("new-block", () => thenRun({ tag: "Today" }, "new-block"), -1);
   const openSettings = () => {
     setSettingsOpen(true);
-    void send({ Settings: "Open" });
+    void send({ tag: "Settings", value0: { tag: "Open" } });
   };
   useCommand("settings", openSettings, -1);
   useCommand(
     "sync-now",
     () =>
-      void send({ Devices: "SyncNow" }),
+      void send({ tag: "Devices", value0: { tag: "SyncNow" } }),
     -1,
   );
-  useCommand("filter", () => thenRun("Tasks", "filter"), -1);
-  useCommand("go-today", () => goTo("Today"), -1);
-  useCommand("go-tasks", () => goTo("Tasks"), -1);
-  useCommand("go-blocks", () => goTo("Blocks"), -1);
-  useCommand("go-trash", () => goTo("Trash"), -1);
+  useCommand("filter", () => thenRun({ tag: "Tasks" }, "filter"), -1);
+  useCommand("go-today", () => goTo({ tag: "Today" }), -1);
+  useCommand("go-tasks", () => goTo({ tag: "Tasks" }), -1);
+  useCommand("go-blocks", () => goTo({ tag: "Blocks" }), -1);
+  useCommand("go-trash", () => goTo({ tag: "Trash" }), -1);
   useCommand("next-pane", () => movePane(1), -1);
   useCommand("previous-pane", () => movePane(-1), -1);
   // The day's commands go to the day from any place: the app moves there itself.
-  const dayFrom = (step: DayMove) => () => void send({ Day: step }, { land: true });
-  useCommand("previous-day", dayFrom("Previous"), -1);
-  useCommand("next-day", dayFrom("Next"), -1);
-  useCommand("go-to-now", dayFrom("Now"), -1);
-  useCommand("go-to-day", dayFrom("Ask"), -1);
+  const dayFrom = (step: DayMove) => () => void send({ tag: "Day", value0: step }, { land: true });
+  useCommand("previous-day", dayFrom(DayMove.Previous), -1);
+  useCommand("next-day", dayFrom(DayMove.Next), -1);
+  useCommand("go-to-now", dayFrom(DayMove.Now), -1);
+  useCommand("go-to-day", dayFrom(DayMove.Ask), -1);
   for (const id of ["mark-done", "save-task", "put-in-block", "move-to-project"]) {
     // eslint-disable-next-line react-hooks/rules-of-hooks -- a fixed list, called in the same order every time
     useCommand(id, () => say("No task is selected."), -1);
@@ -210,12 +215,12 @@ export function App() {
         <RemindersDue due={screen.due ?? []} />
       </header>
       <nav aria-label="Places">
-        <Sidebar entries={screen.sidebar} place={place} onPlace={(to) => void send({ Open: to })} />
+        <Sidebar entries={screen.sidebar} place={place} onPlace={(to) => void send({ tag: "Open", value0: to })} />
       </nav>
       <main aria-label={screen.title}>
-        {place === "Today" ? (
+        {place.tag === "Today" ? (
           <Day screen={screen} />
-        ) : place === "Blocks" ? (
+        ) : place.tag === "Blocks" ? (
           <Blocks screen={screen} />
         ) : (
           <TaskList screen={screen} onOpen={() => details.current?.focus()} />
@@ -228,11 +233,11 @@ export function App() {
         isOpen={settingsOpen}
         onClose={() => {
           setSettingsOpen(false);
-          void send({ Settings: "Close" });
+          void send({ tag: "Settings", value0: { tag: "Close" } });
         }}
         settings={screen.settings}
         devices={screen.devices}
-        held={screen.devices_held}
+        held={screen.devicesHeld}
       />
       <KeyboardShortcuts isOpen={keysOpen} onClose={() => setKeysOpen(false)} />
       <ReminderLists list={screen.reminders} />
@@ -241,12 +246,12 @@ export function App() {
         asking={screen.asking}
         form={(action) => {
           // A task's form is its details, beside the list; a sitting's, its task's.
-          const opened = action.kind === "edit_task" ? send({ Details: { Show: action.target } }) : Promise.resolve();
+          const opened = action.kind === ActionKind.EditTask ? send({ tag: "Details", value0: { tag: "Show", value0: action.target } }) : Promise.resolve();
           void opened.then(() => requestAnimationFrame(() => details.current?.focus()));
         }}
       />
       <Proposals proposal={screen.proposal} />
-      <BlockForms form={screen.block_form} />
+      <BlockForms form={screen.blockForm} />
       <QuickAdd line={screen.line} opening={opening} onClose={() => setOpening(false)} />
     </div>
   );

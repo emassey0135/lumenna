@@ -34,8 +34,9 @@ crates/host/    the command surface: the `Lumenna` object, one method per operat
 crates/app/     the Crux app: the screens' state (place, row in hand, folding, the question
                 open) as events in and view models out; every write an effect. No host.
 crates/bridge/  the app beside its store: Crux middleware answering the app's store effects.
-crates/mobile/  the app for Android through BoltFFI: `App`, the shell's events, its turns, and
-                `Device`, the store for what runs without the screens.
+crates/mobile/  the app for Android through BoltFFI: `App`, its turns, and `Device`, the store
+                for what runs without the screens. The web's is apps/web/core, through BoltFFI
+                too; the shell's events (`ShellEvent`) are the app crate's, for both.
 crates/ffi/     the library the Swift apps link; re-exports surface over UniFFI.
 crates/sync/    Iroh endpoints, the document sync session, and pairing.
 crates/desktop/ what the Windows, GTK and web apps decide alike: row wording, flat rows as a
@@ -1320,9 +1321,13 @@ phone does.
 ## The web client
 
 `apps/web/`: TypeScript, React and React Aria Components over the core compiled to
-`wasm32-unknown-unknown` (`apps/web/core`, crate `lumenna-web`). `npm run core:dev` builds
-it and generates `src/core/` (not committed) with wasm-bindgen, whose CLI must match the
-crate's version in `Cargo.lock`. Tests are Playwright over the accessibility tree with axe:
+`wasm32-unknown-unknown` (`apps/web/core`, crate `lumenna-web`), exported through BoltFFI as
+Android's is. `npm run core:dev` (`scripts/build-core.mjs`) has BoltFFI build it, with the
+web's own Cargo profile through `cargo_args`, and pack it into `src/core/` (not committed): the
+module, its loader, the wasm-bindgen half its dependencies need (BoltFFI runs a wasm-bindgen CLI
+matching `Cargo.lock`'s, building one if none is on `PATH`), and the TypeScript types, which
+need `@boltffi/runtime` at the crates' version. wasm-opt is off: the `web` profile already
+builds for size. Tests are Playwright over the accessibility tree with axe:
 `npm test`; `LUMENNA_NETWORK=1` adds pairing over n0's relays, `LUMENNA_LUM=<lum>` pairing
 with `lum`.
 
@@ -1331,9 +1336,16 @@ with `lum`.
   core runs in `src/worker.ts` behind Comlink. No WAL there.
 - **One tab owns a store** (a Web Lock named for the profile). Opening is idempotent per
   worker, because React's development mode runs effects twice.
-- **Records are typed from the surface's structs** (`tsify`). Every export returns through
-  `js()` in `lib.rs`, which writes maps as plain objects: a `#[serde(flatten)]` record came
-  out a JavaScript `Map` otherwise.
+- **Records are typed as BoltFFI writes them**, from the crates' own: fields in camelCase,
+  data enums as tagged unions (`{ tag: "Open", value0: place }`), absent values `null`, and
+  enums with no data as numbers (`ActionKind.MarkDone`), compared by their constants, never
+  by value; `core.ts` re-exports the constants. A form field keeps the core's name for itself
+  (`accepts_tasks`), which its edit sends back, so a form reads its value by BoltFFI's spelling
+  (`fieldOf`). An event the page sends is `ShellEvent` (`lumenna_app::shell`), Android's too.
+- **BoltFFI asks every export to be `Send`**, and what only a browser holds (the store's `Rc`
+  state, its promises) is not: `Local` (`core/src/app.rs`) says it is, which a browser's one
+  thread, built without atomics, makes true. The page's bundle takes only the enumerations'
+  constants from the bindings (`treeshake` in `vite.config.ts`); the worker runs them whole.
 - **Spans cross as UTF-8 bytes**; the worker converts to the UTF-16 offsets an input counts.
 - **A React Aria tree builds its collection in a pass of its own**, so rows can lag the
   data by a render: focus after a change waits for current rows (`TaskList`).
@@ -1357,8 +1369,9 @@ with `lum`.
   it forever: tests focus it and press Space.
 - **A browser is an ordinary Iroh peer, always through a relay** (no UDP from a sandbox),
   and pairs by code. `.cargo/config.toml` sets getrandom's `wasm_js` backend.
-- **Callbacks into the core are wrapped in the worker**: a Comlink proxy answers any
-  property, so wasm-bindgen's `f.call(…)` on one became a remote call named "call".
+- **The page's listener reaches the core through the worker**: the core calls a `Listener`
+  object (`turn`), which the worker makes around the page's Comlink proxy, never the proxy
+  itself, which answers any property.
 - **Replan from Now and Plan the Day are the app's screen, drawn** (`Proposal.tsx`): each change
   its line with a check box named by the core's `item` and described by the line, as a
   reminder's buttons are by its text; a new proposal is a new list (`shown`), whose first box
@@ -1403,7 +1416,9 @@ with `lum`.
   whenever it is handed a new selection while the tree has focus, and a fresh array each draw
   said it five times after adding a block.
 - **A command key waits for what is on its way** (`settled`): going to a place is a round trip
-  now, and a key pressed straight after Go to Trash acts in the trash. A deferred command keeps
+  now, and a key pressed straight after Go to Trash acts in the trash. Keys run in the order
+  pressed, each after what the one before it sent (`commands` in `App.tsx`): keys that all waited
+  on one settling ran on the screen before the first had changed it. A deferred command keeps
   trying each frame for a moment while its screen cannot act yet (a day still loading).
 - **Playwright's clock does not reach the worker**, where the core reads the time. Tests that
   need a fixed day serve `worker.ts` with a shifted `Date` in front (`at` in

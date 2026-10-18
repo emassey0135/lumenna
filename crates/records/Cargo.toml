@@ -10,8 +10,6 @@ description = "What Lumenna tells a person, as records: rows, their actions and 
 [features]
 # Swift and Kotlin bindings through UniFFI, beside the host's.
 uniffi = ["dep:uniffi"]
-# TypeScript types for the web client.
-wasm = ["dep:tsify", "dep:wasm-bindgen"]
 # A store's errors as sentences, for the host, whose every operation reads the store.
 store = ["dep:lumenna-store"]
 # And a sync's, for the host's link and its Iroh endpoint.
@@ -26,11 +24,10 @@ lumenna-sync = { path = "../sync", optional = true, default-features = false }
 serde.workspace = true
 thiserror.workspace = true
 uniffi = { version = "0.32", optional = true }
-# The records the Crux app's view reaches, marked for its Kotlin (crates/mobile). Unconditional:
-# BoltFFI's scanner does not see its marker inside cfg_attr.
+# The records the Crux app's view reaches, marked for Android's Kotlin (crates/mobile) and the
+# web's TypeScript (apps/web/core). Unconditional: BoltFFI's scanner does not see its marker
+# inside cfg_attr.
 boltffi = "=0.31.1"
-tsify = { version = "0.5", optional = true, default-features = false, features = ["js"] }
-wasm-bindgen = { version = "0.2", optional = true }
 
 [dev-dependencies]
 serde_json.workspace = true

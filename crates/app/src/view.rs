@@ -13,7 +13,6 @@ use crate::{DayView, DetailsView, LineView, Model};
 /// Everything on screen.
 #[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ViewModel {
     /// Whether the store has arrived: until it has there is nothing to show.
     pub ready: bool,
@@ -83,7 +82,6 @@ pub struct ViewModel {
 /// A list of tasks as shown.
 #[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ListView {
     /// Every row, those folded away marked hidden.
     pub items: Vec<Item>,
@@ -105,7 +103,6 @@ pub struct ListView {
 /// A question open.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Asking {
     /// The action asking, when it is a row's action that asks.
     #[serde(default, skip_serializing_if = "Option::is_none")]

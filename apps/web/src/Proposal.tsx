@@ -9,14 +9,14 @@
 // is shown on the screen. Replan from Now's other options are buttons named by their sentences.
 
 import { Button, Checkbox, Dialog, Heading, Modal } from "react-aria-components";
-import type { Event, ProposalView } from "./core";
+import type { ProposalView, ShellEvent } from "./core";
 import { send } from "./session";
 
 /** Where a proposal's screen is shown: rendered once, in the app, while the app has one open. */
-export function Proposals(props: { proposal: ProposalView | undefined }) {
-  const close = () => void send({ Proposal: "Close" });
+export function Proposals(props: { proposal: ProposalView | null }) {
+  const close = () => void send({ tag: "Proposal", value0: { tag: "Close" } });
   return (
-    <Modal isDismissable isOpen={props.proposal !== undefined} onOpenChange={(isOpen) => !isOpen && close()}>
+    <Modal isDismissable isOpen={props.proposal != null} onOpenChange={(isOpen) => !isOpen && close()}>
       {props.proposal && <Screen proposal={props.proposal} close={close} />}
     </Modal>
   );
@@ -27,7 +27,7 @@ function Screen(props: { proposal: ProposalView; close: () => void }) {
   const { words } = proposal;
 
   /** Sends `event`; what comes back is said as every turn is (session.ts). */
-  const act = (event: Event) => void send(event);
+  const act = (event: ShellEvent) => void send(event);
 
   const nothing = proposal.ready && proposal.changes.length === 0;
 
@@ -52,7 +52,7 @@ function Screen(props: { proposal: ProposalView; close: () => void }) {
                 className="check"
                 autoFocus={index === 0}
                 isSelected={change.checked}
-                onChange={(on) => void send({ Proposal: { Check: { index, on } } })}
+                onChange={(on) => void send({ tag: "Proposal", value0: { tag: "Check", index, on } })}
                 aria-describedby={change.reason ? `change-${index} change-reason-${index}` : `change-${index}`}
               >
                 <span className="box" aria-hidden="true" />
@@ -78,7 +78,7 @@ function Screen(props: { proposal: ProposalView; close: () => void }) {
           <ul className="plain">
             {proposal.others.map((sentence, index) => (
               <li key={sentence}>
-                <Button isDisabled={proposal.busy} onPress={() => void act({ Proposal: { Take: index } })}>
+                <Button isDisabled={proposal.busy} onPress={() => void act({ tag: "Proposal", value0: { tag: "Take", value0: index } })}>
                   {sentence}
                 </Button>
               </li>
@@ -93,7 +93,7 @@ function Screen(props: { proposal: ProposalView; close: () => void }) {
         </Button>
         {proposal.ready && !nothing && (
           <>
-            <Button isDisabled={proposal.busy} aria-describedby="proposal-hint" onPress={() => void act({ Proposal: "Apply" })}>
+            <Button isDisabled={proposal.busy} aria-describedby="proposal-hint" onPress={() => void act({ tag: "Proposal", value0: { tag: "Apply" } })}>
               {words.apply}
             </Button>
             <span id="proposal-hint" className="quiet">

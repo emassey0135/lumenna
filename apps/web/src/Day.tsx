@@ -14,7 +14,8 @@ import { useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { Button, Collection, Toolbar, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
-import type { ActionKind, DayMove, Event, Screen, ShownDayItem } from "./core";
+import type { Screen, ShellEvent, ShownDayItem } from "./core";
+import { ActionKind, DayKind, DayMove } from "./core";
 import { byKind, REMOVING } from "./actions";
 import { useCommand } from "./commands";
 import { rowKey } from "./landing";
@@ -24,9 +25,9 @@ import { nest } from "./tree";
 import type { Node } from "./tree";
 
 /** What Space runs on a sitting: its timer. */
-const TIMING: ActionKind[] = ["start_timer", "pause_timer", "resume_timer"];
+const TIMING: ActionKind[] = [ActionKind.StartTimer, ActionKind.PauseTimer, ActionKind.ResumeTimer];
 /** What Enter runs: what a row is for. */
-const OPENING: ActionKind[] = ["edit", "edit_task", "add_block", "restore_day"];
+const OPENING: ActionKind[] = [ActionKind.Edit, ActionKind.EditTask, ActionKind.AddBlock, ActionKind.RestoreDay];
 
 export function Day(props: { screen: Screen }) {
   const day = props.screen.day;
@@ -41,23 +42,23 @@ export function Day(props: { screen: Screen }) {
   const selected = useMemo(() => (props.screen.focus ? [props.screen.focus] : []), [props.screen.focus]);
   const inHand = items.find((item) => item.key === props.screen.focus);
 
-  const addBlock = () => void send({ Block: { New: { start: undefined, minutes: undefined } } });
+  const addBlock = () => void send({ tag: "Block", value0: { tag: "New", start: null, minutes: null } });
 
   /** Sends `event`; what comes back lands focus and is said as every turn is (session.ts). */
-  const act = (event: Event) => void send(event);
+  const act = (event: ShellEvent) => void send(event);
 
-  const move = (step: DayMove) => act({ Day: step });
+  const move = (step: DayMove) => act({ tag: "Day", value0: step });
 
   // The Day menu's commands: each goes to the day first, from wherever it is pressed.
-  useCommand("previous-day", () => move("Previous"));
-  useCommand("next-day", () => move("Next"));
-  useCommand("go-to-day", () => move("Ask"));
-  useCommand("go-to-now", () => move("Now"));
+  useCommand("previous-day", () => move(DayMove.Previous));
+  useCommand("next-day", () => move(DayMove.Next));
+  useCommand("go-to-day", () => move(DayMove.Ask));
+  useCommand("go-to-now", () => move(DayMove.Now));
   useCommand("new-block", addBlock);
 
   const onRow = async (key: string, kinds: ActionKind[]) => {
-    await send({ Focus: key });
-    act({ Run: kinds });
+    await send({ tag: "Focus", value0: key });
+    act({ tag: "Run", value0: kinds });
   };
 
   const keysDown = (event: KeyboardEvent) => {
@@ -66,10 +67,10 @@ export function Day(props: { screen: Screen }) {
     if (!at) return;
     if (asksForMenu(event)) {
       event.preventDefault();
-      void send({ Focus: at.key }).then(() => setMenu(true));
+      void send({ tag: "Focus", value0: at.key }).then(() => setMenu(true));
       return;
     }
-    const kinds = event.key === " " && at.kind === "sitting" ? TIMING : event.key === "Delete" ? REMOVING : undefined;
+    const kinds = event.key === " " && at.kind === DayKind.Sitting ? TIMING : event.key === "Delete" ? REMOVING : undefined;
     if (!kinds) return;
     event.preventDefault();
     event.stopPropagation();
@@ -80,20 +81,20 @@ export function Day(props: { screen: Screen }) {
     const key = rowKey(event);
     if (!key) return;
     event.preventDefault();
-    void send({ Focus: key }).then(() => setMenu(true));
+    void send({ tag: "Focus", value0: key }).then(() => setMenu(true));
   };
 
   const chosen = (selection: Selection) => {
     if (selection === "all") return;
     const [key] = [...selection];
-    if (key !== undefined) void send({ Focus: String(key) });
+    if (key !== undefined) void send({ tag: "Focus", value0: String(key) });
   };
 
   // Left and Right fold a block: its own Expand or Collapse, run through the app.
   const fold = (open: Set<Key>) => {
-    const changed = items.find((item) => item.expanded !== undefined && item.expanded !== open.has(item.key));
-    const action = changed && byKind(changed.actions, "expand", "collapse");
-    if (action) act({ Perform: action });
+    const changed = items.find((item) => item.expanded != null && item.expanded !== open.has(item.key));
+    const action = changed && byKind(changed.actions, ActionKind.Expand, ActionKind.Collapse);
+    if (action) act({ tag: "Perform", value0: action });
   };
 
   return (
@@ -101,24 +102,24 @@ export function Day(props: { screen: Screen }) {
       <h2>{day?.title ?? "Today"}</h2>
       {/* A toolbar is one Tab stop, its buttons a press of the arrows apart (ARIA's toolbar pattern). */}
       <Toolbar className="buttons" aria-label="Day">
-        <Button isDisabled={!day} onPress={() => move("Previous")}>
+        <Button isDisabled={!day} onPress={() => move(DayMove.Previous)}>
           Previous day
         </Button>
-        <Button onPress={() => move("Today")}>Today</Button>
-        <Button isDisabled={!day} onPress={() => move("Next")}>
+        <Button onPress={() => move(DayMove.Today)}>Today</Button>
+        <Button isDisabled={!day} onPress={() => move(DayMove.Next)}>
           Next day
         </Button>
-        <Button onPress={() => move("Ask")}>Go to day</Button>
+        <Button onPress={() => move(DayMove.Ask)}>Go to day</Button>
         <Button onPress={addBlock}>Add block</Button>
         {/* The day's own actions, wherever focus is: its summary row offers them too. */}
         <RowMenu
           label="Day actions"
           actions={day?.actions ?? []}
-          onAction={(action) => act({ Perform: action })}
+          onAction={(action) => act({ tag: "Perform", value0: action })}
           isOpen={dayMenu}
           onOpenChange={setDayMenu}
         />
-        <RowMenu actions={inHand?.actions ?? []} onAction={(action) => act({ Perform: action })} isOpen={menu} onOpenChange={setMenu} />
+        <RowMenu actions={inHand?.actions ?? []} onAction={(action) => act({ tag: "Perform", value0: action })} isOpen={menu} onOpenChange={setMenu} />
       </Toolbar>
       {/* Space and Delete are caught on the way down, before the tree takes Space for selection. */}
       <div onKeyDownCapture={keysDown} onContextMenu={rightClick}>

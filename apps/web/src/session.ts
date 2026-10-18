@@ -9,7 +9,8 @@
 import * as Comlink from "comlink";
 import { useSyncExternalStore } from "react";
 import { core } from "./core";
-import type { Event, HeldView, Notice, Said, Screen, Side } from "./core";
+import type { HeldView, Notice, Said, Screen, ShellEvent } from "./core";
+import { Side } from "./core";
 import { landOn, rowOf } from "./landing";
 import { say } from "./say";
 
@@ -17,7 +18,7 @@ let screen: Screen | undefined;
 let shownSeq = 0;
 let landed = 0;
 /** Each side list's landing, as last landed. */
-const landedSides: Record<Side, number> = { Sidebar: 0, Reminders: 0, Devices: 0 };
+const landedSides = new Map<Side, number>();
 /** A turn whose focus lands wherever focus is: a command that goes somewhere, Next Day. */
 let landAnywhere = false;
 const listeners = new Set<() => void>();
@@ -75,7 +76,7 @@ const dialogOpen = () => document.querySelector('[role="dialog"], [role="alertdi
 
 /** Whether the screen has a dialog of the app's open, which has focus and keeps it. */
 function appDialog(s: Screen): boolean {
-  return Boolean(s.asking || s.block_form || s.proposal || s.reminders);
+  return Boolean(s.asking || s.blockForm || s.proposal || s.reminders);
 }
 
 /** Where focus was when the last dialog opened: where React Aria gives it back as it closes. */
@@ -138,10 +139,10 @@ function sides(s: Screen): [Side, HeldView, HTMLElement | null, (key: string | u
   const reminders = document.querySelector<HTMLElement>("[data-list='reminders']");
   const devices = document.querySelector<HTMLElement>("[data-list='devices']");
   return [
-    ["Sidebar", s.sidebar_held, sidebar, (key) => (key ? sidebar?.querySelector<HTMLElement>(`[role="row"][data-key="${CSS.escape(key)}"]`) ?? null : null)],
+    [Side.Sidebar, s.sidebarHeld, sidebar, (key) => (key ? sidebar?.querySelector<HTMLElement>(`[role="row"][data-key="${CSS.escape(key)}"]`) ?? null : null)],
     [
-      "Reminders",
-      s.reminders_held,
+      Side.Reminders,
+      s.remindersHeld,
       reminders,
       // A reminder's first button, or for one with none (a default) or none in hand, Add Reminder.
       (key) =>
@@ -149,7 +150,7 @@ function sides(s: Screen): [Side, HeldView, HTMLElement | null, (key: string | u
         reminders?.querySelector<HTMLElement>("[data-adding] button") ??
         null,
     ],
-    ["Devices", s.devices_held, devices, (key) => (key ? devices?.querySelector<HTMLElement>(`[role="option"][data-key="${CSS.escape(key)}"]`) ?? null : null)],
+    [Side.Devices, s.devicesHeld, devices, (key) => (key ? devices?.querySelector<HTMLElement>(`[role="option"][data-key="${CSS.escape(key)}"]`) ?? null : null)],
   ];
 }
 
@@ -194,8 +195,8 @@ async function apply(turn: Said) {
     if (!appDialog(s)) await land(s.focus ?? undefined, anywhere, before);
   }
   for (const [side, held] of sides(s)) {
-    if (held.landing <= landedSides[side]) continue;
-    landedSides[side] = held.landing;
+    if (held.landing <= (landedSides.get(side) ?? 0)) continue;
+    landedSides.set(side, held.landing);
     // The list and its row in hand as drawn by the time it lands: a later turn may have moved it.
     const now = () => sides(screen ?? s).find(([named]) => named === side)!;
     await landSide(() => now()[2], () => now()[3](now()[1].focus ?? undefined), before);
@@ -208,9 +209,9 @@ export async function start(): Promise<void> {
   noteOpeners();
   const first = await core.screen();
   landed = first.landing;
-  landedSides.Sidebar = first.sidebar_held.landing;
-  landedSides.Reminders = first.reminders_held.landing;
-  landedSides.Devices = first.devices_held.landing;
+  landedSides.set(Side.Sidebar, first.sidebarHeld.landing);
+  landedSides.set(Side.Reminders, first.remindersHeld.landing);
+  landedSides.set(Side.Devices, first.devicesHeld.landing);
   show(first);
   await core.listen(Comlink.proxy((turn: Said) => void apply(turn)));
 }
@@ -235,7 +236,7 @@ async function tracked(sending: Promise<Said>): Promise<Said> {
 /** Sends what the person did. Its turns are applied as every turn is; the screen once the app is
  * still is handed back too, for a form that keeps its own value while typing is on its way. With
  * `land`, the first landing it leads to puts focus in the list wherever focus is. */
-export function send(event: Event, options?: { land?: boolean }): Promise<Said> {
+export function send(event: ShellEvent, options?: { land?: boolean }): Promise<Said> {
   if (options?.land) landAnywhere = true;
   return tracked(core.send(event));
 }

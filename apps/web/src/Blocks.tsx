@@ -5,7 +5,8 @@ import { useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { Button, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
-import type { ActionKind, Event, Screen } from "./core";
+import type { Screen, ShellEvent } from "./core";
+import { ActionKind } from "./core";
 import { REMOVING } from "./actions";
 import { useCommand } from "./commands";
 import { rowKey } from "./landing";
@@ -22,15 +23,15 @@ export function Blocks(props: { screen: Screen }) {
   const selected = useMemo(() => (props.screen.focus ? [props.screen.focus] : []), [props.screen.focus]);
   const inHand = items.find((item) => item.row.id === props.screen.focus);
 
-  const add = () => void send({ Block: { New: { start: undefined, minutes: undefined } } });
+  const add = () => void send({ tag: "Block", value0: { tag: "New", start: null, minutes: null } });
   useCommand("new-block", add);
 
   /** Sends `event`; what comes back lands focus and is said as every turn is (session.ts). */
-  const act = (event: Event) => void send(event);
+  const act = (event: ShellEvent) => void send(event);
 
   const onRow = async (id: string, kinds: ActionKind[]) => {
-    await send({ Focus: id });
-    act({ Run: kinds });
+    await send({ tag: "Focus", value0: id });
+    act({ tag: "Run", value0: kinds });
   };
 
   const keys = (event: KeyboardEvent) => {
@@ -38,7 +39,7 @@ export function Blocks(props: { screen: Screen }) {
     if (!id || !items.some((item) => item.row.id === id)) return;
     if (asksForMenu(event)) {
       event.preventDefault();
-      void send({ Focus: id }).then(() => setMenu(true));
+      void send({ tag: "Focus", value0: id }).then(() => setMenu(true));
     } else if (event.key === "Delete") {
       event.preventDefault();
       event.stopPropagation();
@@ -50,13 +51,13 @@ export function Blocks(props: { screen: Screen }) {
     const id = rowKey(event);
     if (!id) return;
     event.preventDefault();
-    void send({ Focus: id }).then(() => setMenu(true));
+    void send({ tag: "Focus", value0: id }).then(() => setMenu(true));
   };
 
   const choose = (selection: Selection) => {
     if (selection === "all") return;
     const [key] = [...selection];
-    if (key !== undefined) void send({ Focus: String(key) });
+    if (key !== undefined) void send({ tag: "Focus", value0: String(key) });
   };
 
   return (
@@ -67,7 +68,7 @@ export function Blocks(props: { screen: Screen }) {
       </p>
       <div className="buttons">
         <Button onPress={add}>Add block</Button>
-        <RowMenu actions={inHand?.row.actions ?? []} onAction={(action) => act({ Perform: action })} isOpen={menu} onOpenChange={setMenu} />
+        <RowMenu actions={inHand?.row.actions ?? []} onAction={(action) => act({ tag: "Perform", value0: action })} isOpen={menu} onOpenChange={setMenu} />
       </div>
       <div onKeyDownCapture={keys} onContextMenu={rightClick}>
         <Tree
@@ -80,7 +81,7 @@ export function Blocks(props: { screen: Screen }) {
           disallowEmptySelection
           selectedKeys={selected}
           onSelectionChange={choose}
-          onAction={(key: Key) => void onRow(String(key), ["edit"])}
+          onAction={(key: Key) => void onRow(String(key), [ActionKind.Edit])}
           renderEmptyState={() => <p className="quiet">{list?.empty}</p>}
         >
           {(node) => (

@@ -12,7 +12,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { Button, Collection, Input, Label, TextField, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
-import type { Action, ActionKind, Event, Screen, ShownItem } from "./core";
+import type { Action, Screen, ShellEvent, ShownItem } from "./core";
+import { ActionKind } from "./core";
 import { byKind, REMOVING } from "./actions";
 import { useCommand } from "./commands";
 import { asksForMenu, RowMenu } from "./RowMenu";
@@ -23,12 +24,12 @@ import { nest } from "./tree";
 import type { Node } from "./tree";
 
 /** What Space runs on a row: whichever of these it has. */
-const CHECKING: ActionKind[] = ["mark_done", "mark_not_done", "restore"];
+const CHECKING: ActionKind[] = [ActionKind.MarkDone, ActionKind.MarkNotDone, ActionKind.Restore];
 
 export function TaskList(props: { screen: Screen; onOpen: () => void }) {
   const { screen } = props;
   const list = screen.list;
-  const trash = screen.place === "Trash";
+  const trash = screen.place?.tag === "Trash";
   const items = useMemo(() => list?.items ?? [], [list]);
   const [filter, setFilter] = useState(screen.query);
   const tree = useRef<HTMLDivElement>(null);
@@ -46,12 +47,12 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
   const inHand = items.find((item) => item.row.id === screen.focus);
 
   /** Sends `event`; what comes back lands focus and is said as every turn is (session.ts). */
-  const act = (event: Event) => void send(event);
+  const act = (event: ShellEvent) => void send(event);
 
   /** Runs one of the row `id`'s kinds, with that row in hand. */
   const onRow = async (id: string, kinds: ActionKind[]) => {
-    await send({ Focus: id });
-    act({ Run: kinds });
+    await send({ tag: "Focus", value0: id });
+    act({ tag: "Run", value0: kinds });
   };
 
   // Filter Tasks: the filter, all of it selected so typing replaces it. Not in the trash.
@@ -64,18 +65,18 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
   // The Task menu's commands, on the task in hand here, before the details' copy of them.
   const onSelected = (...kinds: ActionKind[]) => () => {
     if (!inHand || !byKind(inHand.row.actions, ...kinds)) return false;
-    act({ Run: kinds });
+    act({ tag: "Run", value0: kinds });
   };
-  useCommand("mark-done", onSelected("mark_done", "mark_not_done"), 1);
-  useCommand("put-in-block", onSelected("put_in_block"), 1);
-  useCommand("move-to-project", onSelected("move_to_project"), 1);
+  useCommand("mark-done", onSelected(ActionKind.MarkDone, ActionKind.MarkNotDone), 1);
+  useCommand("put-in-block", onSelected(ActionKind.PutInBlock), 1);
+  useCommand("move-to-project", onSelected(ActionKind.MoveToProject), 1);
 
   const keys = (event: KeyboardEvent) => {
     const id = rowKey(event);
     if (!id || !items.some((item) => item.row.id === id)) return;
     if (asksForMenu(event)) {
       event.preventDefault();
-      void send({ Focus: id }).then(() => setMenu(true));
+      void send({ tag: "Focus", value0: id }).then(() => setMenu(true));
       return;
     }
     const kinds = event.key === " " ? CHECKING : event.key === "Delete" ? REMOVING : undefined;
@@ -89,20 +90,20 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
     const id = rowKey(event);
     if (!id) return;
     event.preventDefault();
-    void send({ Focus: id }).then(() => setMenu(true));
+    void send({ tag: "Focus", value0: id }).then(() => setMenu(true));
   };
 
   const choose = (selection: Selection) => {
     if (selection === "all") return;
     const [chosen] = [...selection];
-    if (chosen !== undefined) void send({ Focus: String(chosen) });
+    if (chosen !== undefined) void send({ tag: "Focus", value0: String(chosen) });
   };
 
   // Left and Right fold a row: the row's own Expand or Collapse, run through the app.
   const fold = (keys: Set<Key>) => {
-    const changed = items.find((item) => item.row.expanded !== undefined && item.row.expanded !== keys.has(item.row.id));
-    const action = changed && byKind(changed.row.actions, "expand", "collapse");
-    if (action) act({ Perform: action });
+    const changed = items.find((item) => item.row.expanded != null && item.row.expanded !== keys.has(item.row.id));
+    const action = changed && byKind(changed.row.actions, ActionKind.Expand, ActionKind.Collapse);
+    if (action) act({ tag: "Perform", value0: action });
   };
 
   return (
@@ -114,7 +115,7 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
           value={filter}
           onChange={(text) => {
             setFilter(text);
-            void send({ Filter: text });
+            void send({ tag: "Filter", value0: text });
           }}
           onKeyDown={(event) => {
             // Finishing the filter says what it found, then goes to it.
@@ -135,7 +136,7 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
       <div className="buttons">
         <RowMenu
           actions={inHand?.row.actions ?? []}
-          onAction={(action: Action) => act({ Perform: action })}
+          onAction={(action: Action) => act({ tag: "Perform", value0: action })}
           isOpen={menu}
           onOpenChange={setMenu}
         />
@@ -158,7 +159,7 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
           renderEmptyState={() => <p className="quiet">{list?.empty}</p>}
         >
           {function item(node: Node<ShownItem>) {
-            const done = byKind(node.item.row.actions, "mark_done", "mark_not_done");
+            const done = byKind(node.item.row.actions, ActionKind.MarkDone, ActionKind.MarkNotDone);
             return (
               <TreeItem id={node.id} textValue={node.item.text}>
                 <TreeItemContent>
@@ -177,7 +178,7 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
                         <span
                           className="done-box"
                           aria-hidden="true"
-                          data-checked={done.kind === "mark_not_done" || undefined}
+                          data-checked={done.kind === ActionKind.MarkNotDone || undefined}
                           title={done.sentence ?? done.title}
                           onPointerDown={(event) => event.stopPropagation()}
                           onPointerUp={(event) => event.stopPropagation()}

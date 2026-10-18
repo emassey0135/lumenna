@@ -22,7 +22,8 @@ import {
 } from "react-aria-components";
 import { byKind } from "./actions";
 import { useCommand } from "./commands";
-import type { ActionKind, Event, FormField, Screen, TaskFields } from "./core";
+import type { FormField, Screen, ShellEvent, TaskFields } from "./core";
+import { ActionKind, FieldKind } from "./core";
 import { send } from "./session";
 
 export interface DetailsHandle {
@@ -49,19 +50,19 @@ export const Details = forwardRef<DetailsHandle, { screen: Screen }>(function De
   useImperativeHandle(ref, () => ({ focus: () => (title.current ?? undefined)?.focus() }));
 
   /** Sends `event`; what comes back is said as every turn is (session.ts). */
-  const act = (event: Event) => void send(event);
-  const save = () => void act({ Details: "Save" });
+  const act = (event: ShellEvent) => void send(event);
+  const save = () => void act({ tag: "Details", value0: { tag: "Save" } });
 
   // The Task menu's commands on the task shown, wherever it was chosen: a list's own come
   // first (TaskList), so focus lands as its row's action does.
   const onTask = (...kinds: ActionKind[]) => () => {
     const action = details && byKind(details.task.actions, ...kinds);
     if (!action) return false;
-    void act({ Perform: action });
+    void act({ tag: "Perform", value0: action });
   };
-  useCommand("mark-done", onTask("mark_done", "mark_not_done"));
-  useCommand("put-in-block", onTask("put_in_block"));
-  useCommand("move-to-project", onTask("move_to_project"));
+  useCommand("mark-done", onTask(ActionKind.MarkDone, ActionKind.MarkNotDone));
+  useCommand("put-in-block", onTask(ActionKind.PutInBlock));
+  useCommand("move-to-project", onTask(ActionKind.MoveToProject));
   useCommand("save-task", () => {
     if (!details) return false;
     save();
@@ -75,7 +76,7 @@ export const Details = forwardRef<DetailsHandle, { screen: Screen }>(function De
   const set = (key: keyof TaskFields, value: string | number) => {
     setFields({ ...fields, [key]: value });
     pending.current++;
-    void send({ Details: { Field: { key, value: String(value) } } }).then((turn) => {
+    void send({ tag: "Details", value0: { tag: "Field", key, value: String(value) } }).then((turn) => {
       // The last answer is the form as all the typing left it.
       if (--pending.current === 0 && turn.screen.details) setFields(turn.screen.details.fields);
     });
@@ -92,7 +93,7 @@ export const Details = forwardRef<DetailsHandle, { screen: Screen }>(function De
         {field.hint}
       </Text>
     );
-    if (field.kind === "choice") {
+    if (field.kind === FieldKind.Choice) {
       const items: { id: string | number; title: string; depth: number }[] =
         key === "project"
           ? [
@@ -130,7 +131,7 @@ export const Details = forwardRef<DetailsHandle, { screen: Screen }>(function De
         </Select>
       );
     }
-    const multiline = field.kind === "lines";
+    const multiline = field.kind === FieldKind.Lines;
     return (
       <TextField key={field.key} className="field" value={String(fields[key])} onChange={(text) => set(key, text)}>
         <Label>{field.label}</Label>
@@ -147,9 +148,9 @@ export const Details = forwardRef<DetailsHandle, { screen: Screen }>(function De
   // Several lines take the width; the rest go two to a row.
   const groups: FormField[][] = [];
   for (const field of form) {
-    const wide = field.kind === "lines";
+    const wide = field.kind === FieldKind.Lines;
     const last = groups[groups.length - 1];
-    if (!wide && last && last[0].kind !== "lines") last.push(field);
+    if (!wide && last && last[0].kind !== FieldKind.Lines) last.push(field);
     else groups.push([field]);
   }
 
@@ -162,7 +163,7 @@ export const Details = forwardRef<DetailsHandle, { screen: Screen }>(function De
       }}
     >
       {groups.map((group) =>
-        group.length === 1 && group[0].kind === "lines" ? (
+        group.length === 1 && group[0].kind === FieldKind.Lines ? (
           control(group[0])
         ) : (
           <div key={group[0].key} className="pair">
@@ -203,7 +204,7 @@ export const Details = forwardRef<DetailsHandle, { screen: Screen }>(function De
           <Button
             key={`${action.kind}:${action.other ?? ""}`}
             className={action.destructive ? "react-aria-Button destructive" : "react-aria-Button"}
-            onPress={() => void act({ Perform: action })}
+            onPress={() => void act({ tag: "Perform", value0: action })}
           >
             {action.sentence ?? action.title}
           </Button>

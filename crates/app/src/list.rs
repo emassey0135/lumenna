@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 /// One row of a list.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Item {
     /// The row, its actions including Expand or Collapse when something is under it, and
     /// `expanded` set when something is.

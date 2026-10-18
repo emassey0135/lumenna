@@ -9,7 +9,6 @@ use crate::types::Change;
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[serde(rename_all = "snake_case")]
 pub enum TimeStyle {
     /// 9:45 AM.

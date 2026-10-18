@@ -18,7 +18,6 @@ use crate::{DayMove, Effect, Event, Lumenna};
 /// What a row of the day is.
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[serde(rename_all = "snake_case")]
 pub enum DayKind {
     /// The day's summary, which is also where its own actions are.
@@ -38,7 +37,6 @@ pub enum DayKind {
 /// Free time, as a row says it.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct FreeTime {
     /// `HH:MM`.
     pub start: String,
@@ -55,7 +53,6 @@ pub struct FreeTime {
 /// Now, outside a block.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct NowRow {
     /// "Now".
     pub title: String,
@@ -66,7 +63,6 @@ pub struct NowRow {
 /// One row of the day.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct DayItem {
     /// What identifies it across a reload: `summary`, `block:<id>`, `sitting:<id>`,
     /// `free:<start>`, `now`, `cancelled:<series>`.
@@ -125,7 +121,6 @@ impl DayItem {
 /// A day, as shown.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct DayView {
     /// The day, ISO.
     pub date: String,

@@ -11,6 +11,7 @@ import { Button, Input, Label, ListBox, ListBoxItem, Text, TextField } from "rea
 import type { Selection } from "react-aria-components";
 import { core } from "./core";
 import type { Action, PairEvent, PairingView, PairingWords, Screen } from "./core";
+import { ActionKind, Side } from "./core";
 import { byKind } from "./actions";
 import { ChooseDialog } from "./Questions";
 import { say } from "./say";
@@ -46,8 +47,8 @@ function browserName(): string {
 }
 
 /** Settings' Devices page: the paired devices, how syncing is going, and pairing. */
-export function DevicesPage(props: { devices: Screen["devices"]; held: Screen["devices_held"] }) {
-  // The device in hand is the app's (`devices_held`): choosing one tells it, and after an unpair
+export function DevicesPage(props: { devices: Screen["devices"]; held: Screen["devicesHeld"] }) {
+  // The device in hand is the app's (`devicesHeld`): choosing one tells it, and after an unpair
   // it says which is in hand instead.
   const selected = props.held.focus ?? undefined;
   const [words, setWords] = useState<PairingWords | undefined>();
@@ -56,22 +57,22 @@ export function DevicesPage(props: { devices: Screen["devices"]; held: Screen["d
 
   // Shown: the app lists the devices and asks how syncing is going, and keeps both current.
   useEffect(() => {
-    void send({ Devices: "Show" });
+    void send({ tag: "Devices", value0: { tag: "Show" } });
     void core.pairingWords().then(setWords);
   }, []);
 
-  const others = devices.filter((d) => !d.this_device).length;
-  const chosen = devices.find((d) => d.node_id === selected);
+  const others = devices.filter((d) => !d.thisDevice).length;
+  const chosen = devices.find((d) => d.nodeId === selected);
 
-  const syncNow = () => void send({ Devices: "SyncNow" });
+  const syncNow = () => void send({ tag: "Devices", value0: { tag: "SyncNow" } });
 
   const run = async (action: Action) => {
-    await send({ Perform: action });
+    await send({ tag: "Perform", value0: action });
   };
 
   const keys = (event: KeyboardEvent) => {
     // Delete unpairs, as it removes in every other list.
-    const action = event.key === "Delete" ? byKind(chosen?.actions, "unpair") : undefined;
+    const action = event.key === "Delete" ? byKind(chosen?.actions, ActionKind.Unpair) : undefined;
     if (action) {
       event.preventDefault();
       void run(action);
@@ -89,12 +90,12 @@ export function DevicesPage(props: { devices: Screen["devices"]; held: Screen["d
             <ListBox
               aria-label="Paired devices"
               aria-describedby="devices-hint"
-              items={devices.map((device) => ({ ...device, id: device.node_id }))}
+              items={devices.map((device) => ({ ...device, id: device.nodeId }))}
               selectionMode="single"
               selectedKeys={selected ? [selected] : []}
               onSelectionChange={(keys: Selection) => {
                 const [key] = keys === "all" ? [] : [...keys].map(String);
-                if (key) void send({ Hold: ["Devices", key] });
+                if (key) void send({ tag: "Hold", value0: Side.Devices, value1: key });
               }}
               renderEmptyState={() => <p className="quiet">{props.devices?.list?.empty ?? ""}</p>}
             >
@@ -108,7 +109,7 @@ export function DevicesPage(props: { devices: Screen["devices"]; held: Screen["d
             <Button isDisabled={others === 0 || !props.devices?.syncing} onPress={() => void syncNow()}>
               Sync now
             </Button>
-            <Button isDisabled={!words} onPress={() => void send({ Devices: { Pair: { Open: browserName() } } })}>
+            <Button isDisabled={!words} onPress={() => void send({ tag: "Devices", value0: { tag: "Pair", value0: { tag: "Open", value0: browserName() } } })}>
               {words?.title ?? "Pair a device"}
             </Button>
             {chosen?.actions?.map((action) => (
@@ -141,17 +142,17 @@ export function PairingQuestion(props: { devices: Screen["devices"] }) {
   return (
     <ChooseDialog
       isOpen={Boolean(words && three)}
-      heading={words?.match_title ?? ""}
-      detail={words && three ? `${words.match_message} ${three.join(", ")}.` : ""}
-      options={words ? [words.match_yes, words.match_no] : []}
-      answer={(index) => void pair({ Confirm: index === 0 })}
+      heading={words?.matchTitle ?? ""}
+      detail={words && three ? `${words.matchMessage} ${three.join(", ")}.` : ""}
+      options={words ? [words.matchYes, words.matchNo] : []}
+      answer={(index) => void pair({ tag: "Confirm", value0: index === 0 })}
     />
   );
 }
 
 /** Sends what is done while pairing, and says what the app says about it. */
 async function pair(event: PairEvent) {
-  await send({ Devices: { Pair: event } });
+  await send({ tag: "Devices", value0: { tag: "Pair", value0: event } });
 }
 
 function Pairing(props: { words: PairingWords; pairing: PairingView }) {
@@ -178,7 +179,7 @@ function Pairing(props: { words: PairingWords; pairing: PairingView }) {
         value={name}
         onChange={(value) => {
           setName(value);
-          void send({ Devices: { Pair: { Name: value } } });
+          void send({ tag: "Devices", value0: { tag: "Pair", value0: { tag: "Name", value0: value } } });
         }}
         isDisabled={pairing.running}
         autoFocus
@@ -192,7 +193,7 @@ function Pairing(props: { words: PairingWords; pairing: PairingView }) {
       {pairing.mine ? (
         <>
           <TextField className="field" value={pairing.mine} isReadOnly>
-            <Label>{words.my_code}</Label>
+            <Label>{words.myCode}</Label>
             <Input ref={code} />
           </TextField>
           <div className="buttons">
@@ -204,13 +205,13 @@ function Pairing(props: { words: PairingWords; pairing: PairingView }) {
                 )
               }
             >
-              {words.copy_code}
+              {words.copyCode}
             </Button>
           </div>
         </>
       ) : (
         <div className="buttons">
-          <Button isDisabled={pairing.running} onPress={() => void pair("Wait")}>
+          <Button isDisabled={pairing.running} onPress={() => void pair({ tag: "Wait" })}>
             {words.wait}
           </Button>
         </div>
@@ -220,11 +221,11 @@ function Pairing(props: { words: PairingWords; pairing: PairingView }) {
         value={theirs}
         onChange={(value) => {
           setTheirs(value);
-          void send({ Devices: { Pair: { Code: value } } });
+          void send({ tag: "Devices", value0: { tag: "Pair", value0: { tag: "Code", value0: value } } });
         }}
         isDisabled={pairing.running && !pairing.waiting}
       >
-        <Label>{words.their_code}</Label>
+        <Label>{words.theirCode}</Label>
         <Input />
       </TextField>
       {pairing.problem && (
@@ -233,10 +234,10 @@ function Pairing(props: { words: PairingWords; pairing: PairingView }) {
         </p>
       )}
       <div className="buttons">
-        <Button onPress={() => void pair("Cancel")}>Cancel</Button>
+        <Button onPress={() => void pair({ tag: "Cancel" })}>Cancel</Button>
         {/* Typed or pasted: the clipboard is never read unasked, which a browser would have to
             prompt for, and which would send whatever happened to be copied. */}
-        <Button isDisabled={pairing.running && !pairing.waiting} onPress={() => void pair("Join")}>
+        <Button isDisabled={pairing.running && !pairing.waiting} onPress={() => void pair({ tag: "Join" })}>
           {words.join}
         </Button>
       </div>
