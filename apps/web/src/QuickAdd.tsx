@@ -11,15 +11,27 @@ import type { ContextType } from "react";
 import { Button, ComboBox, ComboBoxStateContext, Dialog, Heading, Input, Label, ListBox, ListBoxItem, Modal, Popover } from "react-aria-components";
 import type { Key } from "react-aria-components";
 import type { ShownLine } from "./core";
-import { sayAll, send, typed } from "./session";
+import { send, typed } from "./session";
 
 
-export function QuickAdd(props: { line: ShownLine | undefined; isOpen: boolean; onClose: () => void; onAdded: () => void }) {
+/** Quick add, open while the app has a line, and from the moment it is asked for (`opening`), so
+ * what is typed straight away goes into it: opened with `Typing::Open`, closed by the app once a
+ * task is added from it, or by Cancel or Escape here. */
+export function QuickAdd(props: { line: ShownLine | undefined; opening: boolean }) {
+  const close = () => void send({ Typing: "Close" });
+  const open = props.line !== undefined || props.opening;
+  return (
+    <Modal isDismissable isOpen={open} onOpenChange={(open) => !open && close()}>
+      {open && <Line line={props.line} close={close} />}
+    </Modal>
+  );
+}
+
+function Line(props: { line: ShownLine | undefined; close: () => void }) {
   // What the field shows, set at once as typed so the caret stays put; the app's line is the same
   // a moment later. While typing is on its way, an answer for earlier typing is not shown.
   const [text, setText] = useState(props.line?.text ?? "");
   const pending = useRef(0);
-  const opened = useRef(false);
   // The combobox's own state, so Down can open the list once a fresh offer is in it.
   const combo = useRef<ContextType<typeof ComboBoxStateContext>>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -27,17 +39,6 @@ export function QuickAdd(props: { line: ShownLine | undefined; isOpen: boolean; 
   const spliced = useRef<string | undefined>(undefined);
   const line = props.line;
   const offer = line?.offer ?? { start: 0, end: 0, candidates: [] };
-
-  // Opening starts the line with what the place adds; closing lets it go.
-  useEffect(() => {
-    if (props.isOpen && !opened.current) {
-      opened.current = true;
-      void send({ Typing: "Open" }).then((turn) => setText(turn.screen.line?.text ?? ""));
-    } else if (!props.isOpen && opened.current) {
-      opened.current = false;
-      void send({ Typing: "Close" });
-    }
-  }, [props.isOpen]);
 
   useEffect(() => {
     if (line && pending.current === 0) setText(line.text);
@@ -64,25 +65,19 @@ export function QuickAdd(props: { line: ShownLine | undefined; isOpen: boolean; 
     });
   };
 
-  const add = async () => {
-    if (!text.trim()) return;
-    const turn = await send({ QuickAdd: text });
-    // Refused, the dialog stays, with what was typed, so it can be put right.
-    if (!turn.screen.add_refused) {
-      props.onClose();
-      props.onAdded();
-    }
-    sayAll(turn.said);
+  // Added, the app lets the line go and the dialog closes; refused, it stays with what was
+  // typed, so it can be put right.
+  const add = () => {
+    if (text.trim()) void send({ QuickAdd: text });
   };
 
   return (
-    <Modal isDismissable isOpen={props.isOpen} onOpenChange={(open) => !open && props.onClose()}>
-      <Dialog>
+    <Dialog>
         <Heading slot="title">New task</Heading>
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            void add();
+            add();
           }}
         >
           <ComboBox
@@ -146,14 +141,13 @@ export function QuickAdd(props: { line: ShownLine | undefined; isOpen: boolean; 
             {line?.readback ?? ""}
           </output>
           <div className="buttons">
-            <Button onPress={props.onClose}>Cancel</Button>
+            <Button onPress={props.close}>Cancel</Button>
             <Button type="submit" isDisabled={!text.trim()}>
               Add
             </Button>
           </div>
         </form>
       </Dialog>
-    </Modal>
   );
 }
 

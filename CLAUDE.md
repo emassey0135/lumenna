@@ -160,6 +160,10 @@ turn (the `legacy` tag is the last commit before the move).
   something is replanned; and what to say.
 - **A list's first row is in hand as soon as it opens**, as in the desktop apps' trees, so the
   details show it.
+- **The view says when focus is the app's to move** (`ViewModel::landing`, a count): it moves
+  when a turn wrote or moved the row in hand, and never for `Event::Focus`, the person's own
+  move. A shell lands focus on the row in hand when the count goes up and leaves it alone
+  otherwise, so focus never jumps because a sync or a minute redrew the list.
 - **A shell's clock is the shell's**: it tells the app its clock (`Event::Clock`) for the
   sentences the core composes whole, and when to look for reminders and the moment it looks at.
 - Flow tests are `crates/bridge/tests/flows.rs`: events in, view models and sentences out,
@@ -1267,12 +1271,14 @@ with `lum`.
   A refused answer stays in its dialog.
 - **A row's action runs after its menu has closed** and focus is back on the row, so a
   dialog it opens returns focus there.
-- **Every menu, key and button runs a record's own `actions` through the app** (`run` in
-  `session.ts`): it sends the action and, while the screen holds a question, asks it the web's
-  way (a confirmation or a choice of answers as an `alertdialog`, a line of text with the
-  app's refusal at the field, a pick from what the app was offered) and sends the answer.
-  Space and Delete run the row's action of the matching kind. The forms are drawn from the
-  app's: the details, the block form, Settings, a proposal.
+- **Every menu, key and button sends a record's own `actions` to the app**, and nothing waits
+  on the answer: the question the app opens is drawn from the screen (`Questions.tsx`: a
+  confirmation or a choice of answers as an `alertdialog`, a line of text with the app's
+  refusal at the field, a pick from the lines the worker words), and answering it is another
+  event. Space and Delete run the row's action of the matching kind. The forms are drawn from
+  the app's: the details, the block form, quick add, Settings, a proposal, pairing's words.
+- **A dialog that is the app's is open while the screen says so**, and closes when the app lets
+  it go. Quick add opens at once, before the app's turn, so what is typed straight away goes in.
 - **The sidebar's row in hand is the one focus was last on**, not the selection: its
   headings (Projects, Labels, Saved Filters) are never selected.
 - **A React Aria check box's input is visually hidden**, so Playwright's `check()` waits for
@@ -1298,9 +1304,15 @@ with `lum`.
   page sends what the person did and draws the screen that comes back; the worker words it
   (each row's line, the day's words, sentence case). The web core's runner answers the
   network on the browser's event loop and pushes each turn to the page through the listener
-  it gave (`listen`). Turns are numbered (`seq`): a push and a reply can reach the page in
-  either order, and an older screen is never drawn over a newer one. The one-second poll
-  takes in another tab's or process's writes.
+  it gave (`listen`). Every turn, reply or push, is applied one way (`apply`): drawn, its files
+  saved, its notifications shown, focus landed if `landing` went up, then said, after focus so
+  the move does not cut it off. Turns are numbered (`seq`): a push and a reply can reach the
+  page in either order, and an older screen is never drawn over a newer one. The one-second
+  poll takes in another tab's or process's writes and new minutes.
+- **Landing waits for a dialog the turn closed** to leave and give focus back, then lands on the
+  main list's row in hand if focus is the list's to move: in the list, lost, back from that
+  dialog, or after a command that goes somewhere (`send(event, { land: true })`). Focus the
+  person takes elsewhere while the row is still being drawn stays where they took it.
 - **A form keeps its own value while its typing is on its way**, and takes the last answer's
   values once none is: an answer for earlier typing would otherwise undo later typing, and a
   kind's flags would never arrive.

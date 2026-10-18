@@ -23,14 +23,14 @@ import {
 import { byKind } from "./actions";
 import { useCommand } from "./commands";
 import type { ActionKind, Event, FormField, Screen, TaskFields } from "./core";
-import { run, sayAll, send } from "./session";
+import { send } from "./session";
 
 export interface DetailsHandle {
   /** Puts focus on the first field. */
   focus(): void;
 }
 
-export const Details = forwardRef<DetailsHandle, { screen: Screen; onChanged: () => void }>(function Details(props, ref) {
+export const Details = forwardRef<DetailsHandle, { screen: Screen }>(function Details(props, ref) {
   const details = props.screen.details;
   const title = useRef<HTMLInputElement>(null);
   // What each field shows, set at once as typed so the caret stays put; the app's draft is the
@@ -48,12 +48,8 @@ export const Details = forwardRef<DetailsHandle, { screen: Screen; onChanged: ()
 
   useImperativeHandle(ref, () => ({ focus: () => (title.current ?? undefined)?.focus() }));
 
-  /** Runs `event` through the app from here, and says what it did. */
-  const act = async (event: Event) => {
-    const turn = await run(event);
-    sayAll(turn.said);
-    props.onChanged();
-  };
+  /** Sends `event`; what comes back is said as every turn is (session.ts). */
+  const act = (event: Event) => void send(event);
   const save = () => void act({ Details: "Save" });
 
   // The Task menu's commands on the task shown, wherever it was chosen: a list's own come

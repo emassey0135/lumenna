@@ -67,6 +67,8 @@ pub struct Model {
     pub due: Vec<due::Due>,
     /// An overrun warning whose Replan from Now is open: dismissed once something is replanned.
     pub replanning: Option<String>,
+    /// Counted: each time the app moves focus itself, which is when a shell moves it.
+    pub landing: u32,
     /// Sidebar rows folded away, by their key: a heading, or a project with projects inside.
     pub sidebar_folded: BTreeSet<String>,
 }

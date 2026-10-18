@@ -33,16 +33,14 @@ import {
 } from "react-aria-components";
 import { DevicesPage } from "./Devices";
 import type { Screen, Setting, SettingView, SettingsView } from "./core";
-import { sayAll, send } from "./session";
+import { send } from "./session";
 import { remindersOn, setRemindersOn } from "./Reminders";
 import { say } from "./say";
 
 export function Settings(props: {
   isOpen: boolean;
   onClose: () => void;
-  revision: number;
   settings: SettingsView | undefined;
-  onChanged: () => void;
   /** The Devices page, as the app has it. */
   devices: Screen["devices"];
 }) {
@@ -61,13 +59,13 @@ export function Settings(props: {
             <Planning settings={props.settings} />
           </TabPanel>
           <TabPanel id="devices">
-            <DevicesPage devices={props.devices} onChanged={props.onChanged} />
+            <DevicesPage devices={props.devices} />
           </TabPanel>
           <TabPanel id="backups">
-            <Backups onChanged={props.onChanged} />
+            <Backups />
           </TabPanel>
           <TabPanel id="export">
-            <Exports settings={props.settings} onChanged={props.onChanged} />
+            <Exports settings={props.settings} />
           </TabPanel>
         </Tabs>
         <div className="buttons">
@@ -86,8 +84,7 @@ function Planning(props: { settings: SettingsView | undefined }) {
   const [on, setOn] = useState(remindersOn());
 
   const set = async (key: string, value: string) => {
-    const turn = await send({ Settings: { Set: { key, value } } });
-    sayAll(turn.said);
+    await send({ Settings: { Set: { key, value } } });
   };
 
   const control = ({ setting, typed, problem }: SettingView) => {
@@ -192,7 +189,7 @@ function Line(props: { setting: Setting; typed: string; problem?: string | null;
 }
 
 /** A button that reads a file the person chooses, and says what reading it did. */
-function ReadFile(props: { label: string; accept: string; onChanged: () => void }) {
+function ReadFile(props: { label: string; accept: string }) {
   const input = useRef<HTMLInputElement>(null);
   return (
     <>
@@ -208,16 +205,14 @@ function ReadFile(props: { label: string; accept: string; onChanged: () => void 
           const file = event.target.files?.[0];
           event.target.value = "";
           if (!file) return;
-          const turn = await send({ Settings: { Import: { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) } } });
-          sayAll(turn.said);
-          props.onChanged();
+          void send({ Settings: { Import: { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) } } });
         }}
       />
     </>
   );
 }
 
-function Backups(props: { onChanged: () => void }) {
+function Backups() {
   return (
     <>
       <p>
@@ -226,29 +221,29 @@ function Backups(props: { onChanged: () => void }) {
       </p>
       <div className="buttons">
         <Button
-          onPress={async () => sayAll((await send({ Settings: "Backup" })).said)}
+          onPress={() => void send({ Settings: "Backup" })}
         >
           Download a backup
         </Button>
-        <ReadFile label="Restore from a backup" accept=".lumbak" onChanged={props.onChanged} />
+        <ReadFile label="Restore from a backup" accept=".lumbak" />
       </div>
       <p className="quiet">Restoring merges: it adds what this browser lacks, and never takes back a later change.</p>
     </>
   );
 }
 
-function Exports(props: { settings: SettingsView | undefined; onChanged: () => void }) {
+function Exports(props: { settings: SettingsView | undefined }) {
   const choices = props.settings?.exports ?? [];
   return (
     <>
       <p>An export is what is there now: no history, and nothing from the trash.</p>
       <div className="buttons stacked">
         {choices.map((choice) => (
-          <Button key={choice.format} onPress={async () => sayAll((await send({ Settings: { Export: choice.format } })).said)}>
+          <Button key={choice.format} onPress={() => void send({ Settings: { Export: choice.format } })}>
             {choice.label}
           </Button>
         ))}
-        <ReadFile label="Import a JSON export or a backup" accept=".json,.lumbak" onChanged={props.onChanged} />
+        <ReadFile label="Import a JSON export or a backup" accept=".json,.lumbak" />
       </div>
     </>
   );

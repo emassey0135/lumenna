@@ -25,19 +25,18 @@ import {
   TextField,
 } from "react-aria-components";
 import type { BlockFields, BlockFormView, FormField } from "./core";
-import { landInMain } from "./landing";
-import { sayAll, send } from "./session";
+import { send } from "./session";
 
 /** Where the block form is shown: rendered once, in the app, while the app has one open. */
-export function BlockForms(props: { form: BlockFormView | undefined; onChanged: () => void }) {
+export function BlockForms(props: { form: BlockFormView | undefined }) {
   return (
     <Modal isDismissable isOpen={props.form !== undefined} onOpenChange={(isOpen) => !isOpen && void send({ Block: "Cancel" })}>
-      {props.form && <Form form={props.form} onChanged={props.onChanged} />}
+      {props.form && <Form form={props.form} />}
     </Modal>
   );
 }
 
-function Form(props: { form: BlockFormView; onChanged: () => void }) {
+function Form(props: { form: BlockFormView }) {
   const { form } = props;
   // What each field shows, set at once as typed; the app's form is the same a moment later, and
   // replaces it when it says otherwise (a kind's flags, the start a new day brings). While typing
@@ -57,14 +56,11 @@ function Form(props: { form: BlockFormView; onChanged: () => void }) {
     });
   };
 
-  const save = async (event: FormEvent) => {
+  // Saved, the form closes, focus goes to the block and it is said, as every turn is; refused,
+  // the form stays with why.
+  const save = (event: FormEvent) => {
     event.preventDefault();
-    const turn = await send({ Block: "Save" });
-    // Refused, the form stays, with why; saved, focus goes to the block, then it is said.
-    if (turn.screen.block_form) return;
-    await landInMain(turn.screen.focus ?? undefined);
-    sayAll(turn.said);
-    props.onChanged();
+    void send({ Block: "Save" });
   };
 
   const control = (field: FormField, first: boolean) => {
@@ -121,7 +117,7 @@ function Form(props: { form: BlockFormView; onChanged: () => void }) {
   return (
     <Dialog className={wide ? "react-aria-Dialog wide" : "react-aria-Dialog"}>
       <Heading slot="title">{form.heading}</Heading>
-      <form onSubmit={(event) => void save(event)}>
+      <form onSubmit={save}>
         <div className={wide ? "columns" : undefined}>
           {columns.map((column, index) => (
             <div key={index}>{column.map((field) => control(field, field === form.fields[0]))}</div>

@@ -10,45 +10,24 @@
 
 import { Button, Checkbox, Dialog, Heading, Modal } from "react-aria-components";
 import type { Event, ProposalView } from "./core";
-import { current, sayAll, send } from "./session";
-
-/**
- * Opens Replan from Now from wherever it is asked for — an overrun warning — and resolves once it
- * closes: whether anything was made.
- */
-export async function showReplan(): Promise<boolean> {
-  const turn = await send({ Proposal: "Replan" });
-  sayAll(turn.said);
-  return new Promise((resolve) => {
-    const wait = () =>
-      void current().then((screen) => {
-        if (screen.proposal) setTimeout(wait, 200);
-        else resolve(screen.proposal_made);
-      });
-    setTimeout(wait, 200);
-  });
-}
+import { send } from "./session";
 
 /** Where a proposal's screen is shown: rendered once, in the app, while the app has one open. */
-export function Proposals(props: { proposal: ProposalView | undefined; onChanged: () => void }) {
+export function Proposals(props: { proposal: ProposalView | undefined }) {
   const close = () => void send({ Proposal: "Close" });
   return (
     <Modal isDismissable isOpen={props.proposal !== undefined} onOpenChange={(isOpen) => !isOpen && close()}>
-      {props.proposal && <Screen proposal={props.proposal} close={close} onChanged={props.onChanged} />}
+      {props.proposal && <Screen proposal={props.proposal} close={close} />}
     </Modal>
   );
 }
 
-function Screen(props: { proposal: ProposalView; close: () => void; onChanged: () => void }) {
+function Screen(props: { proposal: ProposalView; close: () => void }) {
   const { proposal } = props;
   const { words } = proposal;
 
-  /** Runs `event` and says what it said: a proposal, what was made, or why not. */
-  const act = async (event: Event) => {
-    const turn = await send(event);
-    sayAll(turn.said);
-    props.onChanged();
-  };
+  /** Sends `event`; what comes back is said as every turn is (session.ts). */
+  const act = (event: Event) => void send(event);
 
   const nothing = proposal.ready && proposal.changes.length === 0;
 

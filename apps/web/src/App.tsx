@@ -4,7 +4,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "react-aria-components";
-import { Prompts } from "./Prompts";
+import { Questions } from "./Questions";
 import { Proposals } from "./Proposal";
 import { BlockForms } from "./BlockForm";
 import { Blocks } from "./Blocks";
@@ -18,7 +18,8 @@ import type { DetailsHandle } from "./Details";
 import { QuickAdd } from "./QuickAdd";
 import { ReminderLists, RemindersDue, useDelivery } from "./Reminders";
 import { say } from "./say";
-import { refresh, run, sayAll, send, settled, start, useScreen } from "./session";
+import { refresh, send, settled, start, useScreen } from "./session";
+import { PairingQuestion } from "./Devices";
 import { Settings } from "./Settings";
 import { Sidebar } from "./Sidebar";
 import { TaskList } from "./TaskList";
@@ -30,12 +31,12 @@ export function App() {
   const [ready, setReady] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
   const [notice, setNotice] = useState<string | undefined>();
-  const [revision, setRevision] = useState(0);
   const screen = useScreen();
   const place: Place = screen?.place ?? "Tasks";
-  const [adding, setAdding] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
+  // Quick add, asked for and not yet open in the app.
+  const [opening, setOpening] = useState(false);
   const details = useRef<DetailsHandle>(null);
   useDelivery(ready);
 
@@ -57,33 +58,13 @@ export function App() {
 
 
   // The app takes in whatever moved — another tab, `lum`, a sync, a minute — and draws it.
-  // What is not yet drawn from the app's screen reads the store again only when another
-  // process wrote: this page's own writes already said so as they were made.
   useEffect(() => {
     if (!ready) return;
-    let last: number | undefined;
-    const timer = setInterval(() => {
-      void refresh();
-      void core.outsideVersion().then((version) => {
-        if (last !== undefined && version !== last) setRevision((r) => r + 1);
-        last = version;
-      });
-    }, 1000);
+    const timer = setInterval(() => void refresh(), 1000);
     return () => clearInterval(timer);
   }, [ready]);
 
-
-  // A write made outside the app (the day, the details, settings): the app takes it in now.
-  const changed = () => {
-    setRevision((r) => r + 1);
-    void refresh();
-  };
-
-  const undo = async (redo: boolean) => {
-    const turn = await send(redo ? "Redo" : "Undo");
-    sayAll(turn.said);
-    setRevision((r) => r + 1);
-  };
+  const undo = (redo: boolean) => void send(redo ? "Redo" : "Undo");
 
   // Ctrl+Z undoes and Ctrl+Shift+Z or Ctrl+Y redoes, from anywhere but a field, where they
   // undo typing as they do in the desktop apps' fields, or a dialog, whose question is not the
@@ -157,7 +138,11 @@ export function App() {
     void send({ Open: to });
   };
 
-  useCommand("new-task", () => setAdding(true), -1);
+  const newTask = () => {
+    setOpening(true);
+    void send({ Typing: "Open" }).finally(() => setOpening(false));
+  };
+  useCommand("new-task", newTask, -1);
   useCommand("new-block", () => thenRun("Today", "new-block"), -1);
   const openSettings = () => {
     setSettingsOpen(true);
@@ -167,10 +152,7 @@ export function App() {
   useCommand(
     "sync-now",
     () =>
-      void (async () => {
-        sayAll((await send({ Devices: "SyncNow" })).said);
-        changed();
-      })(),
+      void send({ Devices: "SyncNow" }),
     -1,
   );
   useCommand("filter", () => thenRun("Tasks", "filter"), -1);
@@ -181,12 +163,7 @@ export function App() {
   useCommand("next-pane", () => movePane(1), -1);
   useCommand("previous-pane", () => movePane(-1), -1);
   // The day's commands go to the day from any place: the app moves there itself.
-  const dayFrom = (step: DayMove) => () =>
-    void (async () => {
-      const turn = await run({ Day: step });
-      focusIn(".app > main", false);
-      sayAll(turn.said);
-    })();
+  const dayFrom = (step: DayMove) => () => void send({ Day: step }, { land: true });
   useCommand("previous-day", dayFrom("Previous"), -1);
   useCommand("next-day", dayFrom("Next"), -1);
   useCommand("go-to-now", dayFrom("Now"), -1);
@@ -212,7 +189,7 @@ export function App() {
     <div className="app">
       <header>
         <h1>Lumenna</h1>
-        <Button onPress={() => setAdding(true)}>New task</Button>
+        <Button onPress={newTask}>New task</Button>
         <Button onPress={() => void undo(false)}>Undo</Button>
         <Button onPress={() => void undo(true)}>Redo</Button>
         <Button onPress={openSettings}>Settings</Button>
@@ -223,37 +200,22 @@ export function App() {
             {notice}
           </p>
         )}
-        <RemindersDue due={screen.due ?? []} onChanged={() => setRevision((r) => r + 1)} />
+        <RemindersDue due={screen.due ?? []} />
       </header>
       <nav aria-label="Places">
-        <Sidebar entries={screen.sidebar} place={place} onPlace={(to) => void send({ Open: to })} onChanged={changed} />
+        <Sidebar entries={screen.sidebar} place={place} onPlace={(to) => void send({ Open: to })} />
       </nav>
       <main aria-label={screen.title}>
         {place === "Today" ? (
-          <Day
-            screen={screen}
-            onChanged={() => setRevision((r) => r + 1)}
-            onOpenTask={(id) =>
-              void send({ Details: { Show: id } }).then(() => requestAnimationFrame(() => details.current?.focus()))
-            }
-          />
+          <Day screen={screen} />
         ) : place === "Blocks" ? (
-          <Blocks screen={screen} onChanged={() => setRevision((r) => r + 1)} />
+          <Blocks screen={screen} />
         ) : (
-          <TaskList
-            screen={screen}
-            onOpen={() => details.current?.focus()}
-            onForm={async (action) => {
-              // Any form of a task's is its details, beside the list.
-              void action;
-              details.current?.focus();
-            }}
-            onChanged={() => setRevision((r) => r + 1)}
-          />
+          <TaskList screen={screen} onOpen={() => details.current?.focus()} />
         )}
       </main>
       <aside aria-label="Task details">
-        <Details ref={details} screen={screen} onChanged={() => setRevision((r) => r + 1)} />
+        <Details ref={details} screen={screen} />
       </aside>
       <Settings
         isOpen={settingsOpen}
@@ -261,17 +223,23 @@ export function App() {
           setSettingsOpen(false);
           void send({ Settings: "Close" });
         }}
-        revision={revision}
         settings={screen.settings}
         devices={screen.devices}
-        onChanged={changed}
-     />
+      />
       <KeyboardShortcuts isOpen={keysOpen} onClose={() => setKeysOpen(false)} />
       <ReminderLists list={screen.reminders} />
-      <Prompts />
-      <Proposals proposal={screen.proposal} onChanged={() => setRevision((r) => r + 1)} />
-      <BlockForms form={screen.block_form} onChanged={() => setRevision((r) => r + 1)} />
-      <QuickAdd line={screen.line} isOpen={adding} onClose={() => setAdding(false)} onAdded={() => setRevision((r) => r + 1)} />
+      <PairingQuestion devices={screen.devices} />
+      <Questions
+        asking={screen.asking}
+        form={(action) => {
+          // A task's form is its details, beside the list; a sitting's, its task's.
+          const opened = action.kind === "edit_task" ? send({ Details: { Show: action.target } }) : Promise.resolve();
+          void opened.then(() => requestAnimationFrame(() => details.current?.focus()));
+        }}
+      />
+      <Proposals proposal={screen.proposal} />
+      <BlockForms form={screen.block_form} />
+      <QuickAdd line={screen.line} opening={opening} />
     </div>
   );
 }

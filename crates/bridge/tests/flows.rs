@@ -715,3 +715,15 @@ fn a_sidebar_heading_folds_through_its_own_collapse_and_says_so() {
     app.send(Event::Perform(expand));
     assert!(app.view().sidebar_folded.is_empty());
 }
+
+#[test]
+fn focus_lands_when_the_app_moves_it_and_never_for_the_persons_own_move() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.add("Call Sam");
+    let before = app.view().landing;
+    app.send(Event::Focus(app.id_of("Call Sam")));
+    assert_eq!(app.view().landing, before, "the person moved there: nothing to land");
+    app.send(Event::Run(vec![ActionKind::MarkDone]));
+    assert!(app.view().landing > before, "the app put the next row in hand");
+}

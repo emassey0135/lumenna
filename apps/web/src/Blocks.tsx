@@ -8,11 +8,11 @@ import type { Key, Selection } from "react-aria-components";
 import type { ActionKind, Event, Screen } from "./core";
 import { REMOVING } from "./actions";
 import { useCommand } from "./commands";
-import { landOn, rowKey } from "./landing";
+import { rowKey } from "./landing";
 import { asksForMenu, RowMenu } from "./RowMenu";
-import { run, sayAll, send } from "./session";
+import { send } from "./session";
 
-export function Blocks(props: { screen: Screen; onChanged: () => void }) {
+export function Blocks(props: { screen: Screen }) {
   const list = props.screen.list;
   const items = useMemo(() => list?.items ?? [], [list]);
   const tree = useRef<HTMLDivElement>(null);
@@ -22,24 +22,15 @@ export function Blocks(props: { screen: Screen; onChanged: () => void }) {
   const selected = useMemo(() => (props.screen.focus ? [props.screen.focus] : []), [props.screen.focus]);
   const inHand = items.find((item) => item.row.id === props.screen.focus);
 
-  /** Focus where the app puts it, then what it said. */
-  const settle = async (focus: string | undefined, said: string[]) => {
-    await landOn(tree.current, focus);
-    sayAll(said);
-    props.onChanged();
-  };
-
   const add = () => void send({ Block: { New: { start: undefined, minutes: undefined } } });
   useCommand("new-block", add);
 
-  const act = async (event: Event) => {
-    const turn = await run(event);
-    await settle(turn.screen.focus ?? undefined, turn.said);
-  };
+  /** Sends `event`; what comes back lands focus and is said as every turn is (session.ts). */
+  const act = (event: Event) => void send(event);
 
   const onRow = async (id: string, kinds: ActionKind[]) => {
     await send({ Focus: id });
-    await act({ Run: kinds });
+    act({ Run: kinds });
   };
 
   const keys = (event: KeyboardEvent) => {
@@ -76,7 +67,7 @@ export function Blocks(props: { screen: Screen; onChanged: () => void }) {
       </p>
       <div className="buttons">
         <Button onPress={add}>Add block</Button>
-        <RowMenu actions={inHand?.row.actions ?? []} onAction={(action) => void act({ Perform: action })} isOpen={menu} onOpenChange={setMenu} />
+        <RowMenu actions={inHand?.row.actions ?? []} onAction={(action) => act({ Perform: action })} isOpen={menu} onOpenChange={setMenu} />
       </div>
       <div onKeyDownCapture={keys} onContextMenu={rightClick}>
         <Tree

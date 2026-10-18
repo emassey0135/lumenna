@@ -12,8 +12,9 @@ import type { Selection } from "react-aria-components";
 import { core } from "./core";
 import type { Action, PairEvent, PairingView, PairingWords, Screen } from "./core";
 import { byKind } from "./actions";
-import { run as runEvent, sayAll, send } from "./session";
-import { choose } from "./Prompts";
+import { ChooseDialog } from "./Questions";
+import { say } from "./say";
+import { send } from "./session";
 
 
 /** What this browser is called on the other devices until someone renames it. */
@@ -45,7 +46,7 @@ function browserName(): string {
 }
 
 /** Settings' Devices page: the paired devices, how syncing is going, and pairing. */
-export function DevicesPage(props: { devices: Screen["devices"]; onChanged: () => void }) {
+export function DevicesPage(props: { devices: Screen["devices"] }) {
   const [selected, setSelected] = useState<string | undefined>();
   const [words, setWords] = useState<PairingWords | undefined>();
   const devices = props.devices?.list?.devices ?? [];
@@ -60,13 +61,11 @@ export function DevicesPage(props: { devices: Screen["devices"]; onChanged: () =
   const others = devices.filter((d) => !d.this_device).length;
   const chosen = devices.find((d) => d.node_id === selected);
 
-  const syncNow = async () => sayAll((await send({ Devices: "SyncNow" })).said);
+  const syncNow = () => void send({ Devices: "SyncNow" });
 
   const run = async (action: Action) => {
-    const turn = await runEvent({ Perform: action });
+    await send({ Perform: action });
     if (action.kind === "unpair") setSelected(undefined);
-    sayAll(turn.said);
-    props.onChanged();
   };
 
   const keys = (event: KeyboardEvent) => {
@@ -126,15 +125,36 @@ export function DevicesPage(props: { devices: Screen["devices"]; onChanged: () =
   );
 }
 
+/**
+ * The words to compare, asked while the app holds them: answered, the app lets them go. Drawn at
+ * the app's root beside Settings, not inside its dialog: a modal nested in another's content
+ * left Settings stuck closing, its overlay over the page, once the pairing ended.
+ */
+export function PairingQuestion(props: { devices: Screen["devices"] }) {
+  const [words, setWords] = useState<PairingWords | undefined>();
+  useEffect(() => {
+    void core.pairingWords().then(setWords);
+  }, []);
+  const three = props.devices?.pairing?.words;
+  return (
+    <ChooseDialog
+      isOpen={Boolean(words && three)}
+      heading={words?.match_title ?? ""}
+      detail={words && three ? `${words.match_message} ${three.join(", ")}.` : ""}
+      options={words ? [words.match_yes, words.match_no] : []}
+      answer={(index) => void pair({ Confirm: index === 0 })}
+    />
+  );
+}
+
 /** Sends what is done while pairing, and says what the app says about it. */
 async function pair(event: PairEvent) {
-  sayAll((await send({ Devices: { Pair: event } })).said);
+  await send({ Devices: { Pair: event } });
 }
 
 function Pairing(props: { words: PairingWords; pairing: PairingView }) {
   const { words, pairing } = props;
   const code = useRef<HTMLInputElement>(null);
-  const asked = useRef<string | undefined>(undefined);
   // What is typed, shown at once; the app has it a moment later.
   const [name, setName] = useState(pairing.name);
   const [theirs, setTheirs] = useState(pairing.theirs);
@@ -146,15 +166,6 @@ function Pairing(props: { words: PairingWords; pairing: PairingView }) {
       code.current?.select();
     }
   }, [pairing.mine]);
-
-  // The words to compare, asked once each time they come.
-  useEffect(() => {
-    const three = pairing.words;
-    if (!three || asked.current === three.join(" ")) return;
-    asked.current = three.join(" ");
-    const detail = `${words.match_message} ${three.join(", ")}.`;
-    void choose(words.match_title, detail, [words.match_yes, words.match_no]).then((index) => pair({ Confirm: index === 0 }));
-  }, [pairing.words]);
 
   return (
     <>
@@ -186,8 +197,8 @@ function Pairing(props: { words: PairingWords; pairing: PairingView }) {
             <Button
               onPress={() =>
                 void navigator.clipboard.writeText(pairing.mine ?? "").then(
-                  () => sayAll([words.copied]),
-                  () => sayAll(["Could not copy the code; select it and copy it instead."]),
+                  () => say(words.copied),
+                  () => say("Could not copy the code; select it and copy it instead."),
                 )
               }
             >

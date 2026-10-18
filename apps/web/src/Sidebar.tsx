@@ -13,7 +13,7 @@ import type { Action, SidebarEntry, Place } from "./core";
 import { byKind } from "./actions";
 import { rowKey } from "./landing";
 import { asksForMenu, RowMenu } from "./RowMenu";
-import { run as runEvent, sayAll } from "./session";
+import { send } from "./session";
 import { nest } from "./tree";
 import type { Node } from "./tree";
 
@@ -30,7 +30,6 @@ export function Sidebar(props: {
   entries: SidebarEntry[];
   place: Place;
   onPlace: (place: Place) => void;
-  onChanged: () => void;
 }) {
   const entries = props.entries;
 
@@ -57,7 +56,7 @@ export function Sidebar(props: {
       return action && (action.kind === "collapse") !== open.has(key(e));
     });
     const action = changed && byKind(changed.actions, "expand", "collapse");
-    if (action) void runEvent({ Perform: action }).then((turn) => sayAll(turn.said));
+    if (action) void send({ Perform: action });
   };
   const entry = (k: string | undefined) => entries.find((e) => key(e) === k);
 
@@ -70,9 +69,7 @@ export function Sidebar(props: {
 
   /** Runs one of a row's actions through the app, which goes where it leads, and says what it did. */
   const run = async (_at: SidebarEntry, action: Action) => {
-    const turn = await runEvent({ Perform: action });
-    props.onChanged();
-    sayAll(turn.said);
+    await send({ Perform: action });
   };
 
   const keys = (event: KeyboardEvent) => {

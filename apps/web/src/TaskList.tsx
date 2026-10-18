@@ -6,7 +6,7 @@
 // key, Shift+F10, a right-click, or Actions). Space runs Mark Done, Mark Not Done or Restore,
 // whichever the row has; Delete what removes it; Enter opens its details. After a change focus
 // goes where the app puts it — the same task if it is still listed, else whatever now holds its
-// place — and only then is the change said.
+// place — and only then is the change said, as every turn is (session.ts).
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
@@ -16,16 +16,16 @@ import type { Action, ActionKind, Event, Screen, ShownItem } from "./core";
 import { byKind, REMOVING } from "./actions";
 import { useCommand } from "./commands";
 import { asksForMenu, RowMenu } from "./RowMenu";
-import { landOn, rowKey } from "./landing";
-import { run, sayAll, send } from "./session";
-import type { Form } from "./session";
+import { rowKey } from "./landing";
+import { say } from "./say";
+import { send } from "./session";
 import { nest } from "./tree";
 import type { Node } from "./tree";
 
 /** What Space runs on a row: whichever of these it has. */
 const CHECKING: ActionKind[] = ["mark_done", "mark_not_done", "restore"];
 
-export function TaskList(props: { screen: Screen; onOpen: () => void; onForm: Form; onChanged: () => void }) {
+export function TaskList(props: { screen: Screen; onOpen: () => void }) {
   const { screen } = props;
   const list = screen.list;
   const trash = screen.place === "Trash";
@@ -45,18 +45,13 @@ export function TaskList(props: { screen: Screen; onOpen: () => void; onForm: Fo
   const selected = useMemo(() => (screen.focus ? [screen.focus] : []), [screen.focus]);
   const inHand = items.find((item) => item.row.id === screen.focus);
 
-  /** Runs `event` through the app from this list: focus where it lands, then what it said. */
-  const act = async (event: Event) => {
-    const turn = await run(event, props.onForm);
-    await landOn(tree.current, turn.screen.focus ?? undefined);
-    sayAll(turn.said);
-    props.onChanged();
-  };
+  /** Sends `event`; what comes back lands focus and is said as every turn is (session.ts). */
+  const act = (event: Event) => void send(event);
 
   /** Runs one of the row `id`'s kinds, with that row in hand. */
   const onRow = async (id: string, kinds: ActionKind[]) => {
     await send({ Focus: id });
-    await act({ Run: kinds });
+    act({ Run: kinds });
   };
 
   // Filter Tasks: the filter, all of it selected so typing replaces it. Not in the trash.
@@ -69,7 +64,7 @@ export function TaskList(props: { screen: Screen; onOpen: () => void; onForm: Fo
   // The Task menu's commands, on the task in hand here, before the details' copy of them.
   const onSelected = (...kinds: ActionKind[]) => () => {
     if (!inHand || !byKind(inHand.row.actions, ...kinds)) return false;
-    void act({ Run: kinds });
+    act({ Run: kinds });
   };
   useCommand("mark-done", onSelected("mark_done", "mark_not_done"), 1);
   useCommand("put-in-block", onSelected("put_in_block"), 1);
@@ -107,7 +102,7 @@ export function TaskList(props: { screen: Screen; onOpen: () => void; onForm: Fo
   const fold = (keys: Set<Key>) => {
     const changed = items.find((item) => item.row.expanded !== undefined && item.row.expanded !== keys.has(item.row.id));
     const action = changed && byKind(changed.row.actions, "expand", "collapse");
-    if (action) void act({ Perform: action });
+    if (action) act({ Perform: action });
   };
 
   return (
@@ -124,7 +119,7 @@ export function TaskList(props: { screen: Screen; onOpen: () => void; onForm: Fo
           onKeyDown={(event) => {
             // Finishing the filter says what it found, then goes to it.
             if (event.key === "Enter" && list) {
-              sayAll([list.refusal ?? list.readback]);
+              say(list.refusal ?? list.readback);
               tree.current?.querySelector<HTMLElement>('[role="row"]')?.focus();
             }
           }}
@@ -140,7 +135,7 @@ export function TaskList(props: { screen: Screen; onOpen: () => void; onForm: Fo
       <div className="buttons">
         <RowMenu
           actions={inHand?.row.actions ?? []}
-          onAction={(action: Action) => void act({ Perform: action })}
+          onAction={(action: Action) => act({ Perform: action })}
           isOpen={menu}
           onOpenChange={setMenu}
         />

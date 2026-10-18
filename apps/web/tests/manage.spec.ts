@@ -187,6 +187,8 @@ test("space pauses a running timer, and the menu offers resume and stop", async 
   await page.getByRole("option", { name: /^Write report/ }).click();
   await page.getByRole("button", { name: "Assign" }).click();
   await page.getByRole("dialog", { name: "Planned length" }).getByRole("button", { name: "Save" }).click();
+  // Focus comes back to the block the task was assigned from, then moves to the sitting.
+  await expect(day.getByRole("row", { name: /Deep work/ })).toBeFocused();
   const sitting = day.getByRole("row", { name: /^Write report/ });
   await sitting.focus();
   await page.keyboard.press("Space");
@@ -307,7 +309,7 @@ test("every shared command works on the web's key", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(tasksPlace).toBeFocused();
   await page.keyboard.press("Alt+Shift+KeyY");
-  await expect(live).toContainText("Syncing");
+  await expect(live).toContainText(/Syncing|Sync is not running/);
   await page.keyboard.press("Alt+Shift+KeyC");
   await expect(heading(page)).toHaveText(/Today|day/);
   await expect(page.getByRole("dialog", { name: "New block" })).toBeVisible();

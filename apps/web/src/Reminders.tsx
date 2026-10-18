@@ -13,7 +13,7 @@
 
 import { useEffect, useRef } from "react";
 import { Button, Dialog, Heading, Modal } from "react-aria-components";
-import { run, sayAll, send } from "./session";
+import { send } from "./session";
 import type { Action, Due, DueEvent, ReminderList } from "./core";
 
 const ON = "lumenna:reminders";
@@ -70,7 +70,7 @@ export function useDelivery(ready: boolean): void {
       asking = true;
       const now = new Date().toISOString();
       try {
-        if (remindersOn()) sayAll((await send({ Due: { Look: { since, now } } })).said);
+        if (remindersOn()) await send({ Due: { Look: { since, now } } });
         since = now;
       } finally {
         asking = false;
@@ -91,13 +91,11 @@ export function useDelivery(ready: boolean): void {
 }
 
 /** What came due and was not dealt with, each with the core's buttons. In the banner. */
-export function RemindersDue(props: { due: Due[]; onChanged: () => void }) {
+export function RemindersDue(props: { due: Due[] }) {
   if (props.due.length === 0) return null;
   const deal = async (due: Due, event: DueEvent) => {
     const index = props.due.findIndex((d) => d.id === due.id);
     const turn = await send({ Due: event });
-    sayAll(turn.said);
-    props.onChanged();
     // Replan opens its screen, which has focus; otherwise focus goes to what took the place of
     // the one dealt with, else out of the list that is gone.
     if (turn.screen.proposal) return;
@@ -156,8 +154,7 @@ function Reminders(props: { list: ReminderList; close: () => void }) {
   const adding = useRef<HTMLDivElement>(null);
 
   const act = async (action: Action) => {
-    const turn = await run({ Perform: action });
-    sayAll(turn.said);
+    await send({ Perform: action });
     if (action.kind === "new") void askToNotify();
     // A removed reminder's button is gone: focus goes to adding one.
     else setTimeout(() => adding.current?.querySelector("button")?.focus(), 0);

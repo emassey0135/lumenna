@@ -224,6 +224,29 @@ impl App for Lumenna {
     type Effect = Effect;
 
     fn update(&self, event: Event, model: &mut Model) -> Command<Effect, Event> {
+        // Where focus goes is the app's to say; the shell moves it only when this moves. Not when
+        // the person reports moving, or a late answer would pull them back; always after a
+        // write, whose rows a shell redraws.
+        let before = model.focus.clone();
+        let reported = matches!(event, Event::Focus(_));
+        let wrote = matches!(
+            event,
+            Event::Answered(HostAnswer::Wrote(..) | HostAnswer::Applied(..) | HostAnswer::Imported(..))
+        );
+        let command = self.dispatch(event, model);
+        if !reported && (wrote || model.focus != before) {
+            model.landing += 1;
+        }
+        command
+    }
+
+    fn view(&self, model: &Model) -> ViewModel {
+        view::view(model)
+    }
+}
+
+impl Lumenna {
+    fn dispatch(&self, event: Event, model: &mut Model) -> Command<Effect, Event> {
         match event {
             Event::Start => Command::stream_from_shell(Watch).then_send(Event::Arrived).and(host(HostRequest::Devices)),
             Event::Arrived(store) => self.arrived(store, model),
@@ -280,9 +303,5 @@ impl App for Lumenna {
             Event::Redo => host(HostRequest::Redo),
             Event::Answered(HostAnswer::Wrote(result, store)) => self.wrote(*result, store, model),
         }
-    }
-
-    fn view(&self, model: &Model) -> ViewModel {
-        view::view(model)
     }
 }

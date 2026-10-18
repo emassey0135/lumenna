@@ -30,8 +30,11 @@ pub struct ViewModel {
     pub list: Option<ListView>,
     /// The day shown, on Today.
     pub day: Option<DayView>,
-    /// The row in hand, by identifier: where the shell puts focus when it changes.
+    /// The row in hand, by identifier.
     pub focus: Option<String>,
+    /// Counted: when this moves, the shell puts focus on `focus` — if focus is in that list, or
+    /// lost, or coming back to it from a dialog. It does not move for the person's own moves.
+    pub landing: u32,
     /// The question an action is asking.
     pub asking: Option<Asking>,
     /// What a new task typed here starts with: `#Work ` in the Work project.
@@ -209,6 +212,7 @@ pub fn view(model: &Model) -> ViewModel {
         place: Some(place),
         list,
         focus: model.focus.clone(),
+        landing: model.landing,
         asking: model.open.as_ref().map(|open| Asking {
             action: open.action().cloned(),
             question: open.question(),

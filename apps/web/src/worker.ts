@@ -31,6 +31,7 @@ import init, {
   keyboardShortcuts,
 } from "./core/lumenna_web.js";
 import type {
+  Asking,
   DayItem,
   DayView,
   DeviceList,
@@ -45,7 +46,7 @@ import type {
   Turn,
   ViewModel,
   ProposalWords,
-  Choice,
+  Question,
   ShortcutGroup,
   PairingWords,
 } from "./core/lumenna_web.js";
@@ -135,8 +136,23 @@ export interface ShownLine {
 /** A paired device with the line it reads as. */
 export type ShownDevice = DeviceView & { text: string };
 
+/** Something to pick, as its line reads. */
+export interface ShownChoice {
+  id: string;
+  text: string;
+  depth?: number;
+  /** Why it is offered, when the core says: its description, never its name. */
+  reason?: string;
+}
+
+/** The question open, its buttons in the web's sentence case, a pick's choices as lines. */
+export interface ShownAsking extends Asking {
+  lines?: ShownChoice[];
+}
+
 /** The view model as the page draws it. */
-export interface Screen extends Omit<ViewModel, "list" | "day" | "details" | "line" | "devices"> {
+export interface Screen extends Omit<ViewModel, "list" | "day" | "details" | "line" | "devices" | "asking"> {
+  asking?: ShownAsking;
   devices?: Omit<DevicesView, "list"> & { list?: Omit<DeviceList, "devices"> & { devices: ShownDevice[] } };
   list?: Shown;
   day?: ShownDay;
@@ -150,6 +166,22 @@ function webWords(words: ProposalWords): ProposalWords {
   for (const key of ["title", "item", "apply", "cancel", "unfit"] as const) out[key] = sentenceCase(out[key]);
   if (out.others) out.others = sentenceCase(out.others);
   return out;
+}
+
+/** A question with its buttons, and a choice of answers' answers, in the web's sentence case. */
+function webQuestion(question: Question): Question {
+  switch (question.ask) {
+    case "confirm":
+      return { ...question, yes: sentenceCase(question.yes) };
+    case "text":
+      return { ...question, yes: sentenceCase(question.yes) };
+    case "pick":
+      return { ...question, yes: sentenceCase(question.yes ?? "") };
+    case "choose":
+      return { ...question, answers: question.answers.map((answer) => ({ ...answer, title: sentenceCase(answer.title) })) };
+    default:
+      return question;
+  }
 }
 
 /** A day's row as it reads. */
@@ -201,6 +233,16 @@ function screen(view: ViewModel): Screen {
   };
   const details = view.details && { ...view.details, state: taskStateText(view.details.task) };
   const proposal = view.proposal && { ...view.proposal, words: webWords(view.proposal.words) };
+  const asking = view.asking && {
+    ...view.asking,
+    question: webQuestion(view.asking.question),
+    lines: view.asking.choices?.choices.map((choice) => ({
+      id: choice.id,
+      text: choiceText(choice),
+      depth: choice.depth,
+      reason: choice.reason ?? undefined,
+    })),
+  };
   const devices = view.devices && {
     ...view.devices,
     list: view.devices.list && {
@@ -245,6 +287,7 @@ function screen(view: ViewModel): Screen {
     settings,
     devices,
     due,
+    asking,
   };
 }
 
@@ -297,9 +340,6 @@ const api = {
   /** What to draw now. */
   screen: (): Screen => screen(session().view()),
 
-  /** What a pick offers, each as its line reads, for the chooser. */
-  choiceLines: (choices: Choice[]) =>
-    choices.map((choice) => ({ id: choice.id, text: choiceText(choice), depth: choice.depth, reason: choice.reason ?? undefined })),
 
   /** A number that moves when another tab or process has written. */
   outsideVersion: (): number => store().outsideVersion(),
