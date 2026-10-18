@@ -4,3 +4,4 @@ dist/
 src/core/
 test-results/
 playwright-report/
+screens/out/

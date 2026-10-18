@@ -1237,6 +1237,12 @@ with `lum`.
   sentences; one taken is the proposal shown next. An overrun warning's Replan in Reminders
   due opens the screen, and dismisses the warning only once something was replanned. The
   clock the proposal is said in is the browser's (`Intl`'s `hour12`).
+- **React Aria gives a component its default class only when no `className` is passed**, so
+  a class of our own names the default too (`"react-aria-Dialog wide"`): passing `"wide"` alone
+  left the Replan and block dialogs without a background, and destructive menu items unpadded.
+- **`npm run screens`** takes a screenshot of every screen into `screens/out`, light and dark, at a
+  desktop and a phone width, for a visual review: the tests read the accessibility tree and never
+  look at the page. The layout stacks to two columns below 64rem and one below 40rem.
 - **Playwright's clock does not reach the worker**, where the core reads the time. Tests that
   need a fixed day serve `worker.ts` with a shifted `Date` in front (`at` in
   `tests/planner.spec.ts`).

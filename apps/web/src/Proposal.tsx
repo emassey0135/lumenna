@@ -168,7 +168,7 @@ function Screen(props: { of: ProposalKind; close: () => void; onChanged: () => v
   const nothing = proposal !== undefined && proposal.items.length === 0;
 
   return (
-    <Dialog aria-labelledby="proposal-heading" className="proposal">
+    <Dialog aria-labelledby="proposal-heading" className="react-aria-Dialog proposal">
       <Heading slot="title" id="proposal-heading">
         {words?.title ?? ""}
       </Heading>

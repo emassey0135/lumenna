@@ -36,6 +36,7 @@ export function TaskList(props: {
   const [lines, setLines] = useState<Line[]>([]);
   const [readback, setReadback] = useState("");
   const [empty, setEmpty] = useState("");
+  const [failed, setFailed] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<Key>>(new Set());
   const tree = useRef<HTMLDivElement>(null);
   const filterField = useRef<HTMLInputElement>(null);
@@ -49,10 +50,15 @@ export function TaskList(props: {
         if (!current) return;
         setLines(found.lines);
         setReadback(found.readback);
+        setFailed(false);
         setEmpty(found.empty ?? "");
       },
       // A filter still being typed may not read yet: the rows stay, and the readback says why.
-      (error: Error) => current && setReadback(error.message),
+      (error: Error) => {
+        if (!current) return;
+        setReadback(error.message);
+        setFailed(true);
+      },
     );
     return () => {
       current = false;
@@ -155,8 +161,9 @@ export function TaskList(props: {
           <Input ref={filterField} placeholder="#Work & overdue, or search: words" />
         </TextField>
       )}
+      {/* An empty list says so once, in its own words below; a filter's problem always shows. */}
       <p className="quiet" id="readback">
-        {readback}
+        {lines.length > 0 || failed ? readback : ""}
       </p>
       <div className="buttons">
         <RowMenu

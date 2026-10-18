@@ -30,7 +30,7 @@ export function RowMenu(props: {
           }}
         >
           {(item) => (
-            <MenuItem id={item.id} textValue={item.action.sentence ?? item.action.title} className={item.action.destructive ? "destructive" : undefined}>
+            <MenuItem id={item.id} textValue={item.action.sentence ?? item.action.title} className={item.action.destructive ? "react-aria-MenuItem destructive" : "react-aria-MenuItem"}>
               {item.action.sentence ?? item.action.title}
             </MenuItem>
           )}

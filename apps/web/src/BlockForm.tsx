@@ -245,7 +245,7 @@ function Form(props: { request: Request; finish: (saved?: Saved) => void }) {
   const columns = split < 0 ? [shown] : [shown.slice(0, split), shown.slice(split)];
 
   return (
-    <Dialog className={once ? undefined : "wide"}>
+    <Dialog className={once ? "react-aria-Dialog" : "react-aria-Dialog wide"}>
       <Heading slot="title">{heading}</Heading>
       <form onSubmit={save}>
         <div className={once ? undefined : "columns"}>

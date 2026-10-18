@@ -161,7 +161,7 @@ export function DevicesPage(props: {
             {chosen?.actions.map((action) => (
               <Button
                 key={action.kind}
-                className={action.destructive ? "destructive" : undefined}
+                className={action.destructive ? "react-aria-Button destructive" : "react-aria-Button"}
                 onPress={() => void run(action)}
               >
                 {action.sentence ?? action.title}

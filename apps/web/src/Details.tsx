@@ -255,7 +255,7 @@ export const Details = forwardRef<DetailsHandle, { id: string | undefined; revis
           {(task.actions ?? []).map((action) => (
             <Button
               key={`${action.kind}:${action.other ?? ""}`}
-              className={action.destructive ? "destructive" : undefined}
+              className={action.destructive ? "react-aria-Button destructive" : "react-aria-Button"}
               onPress={() => void act(action)}
             >
               {action.sentence ?? action.title}

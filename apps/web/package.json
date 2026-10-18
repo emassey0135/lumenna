@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "node scripts/build-core.mjs && tsc --noEmit && vite build",
     "check": "tsc --noEmit",
-    "test": "playwright test"
+    "test": "playwright test",
+    "screens": "playwright test --config playwright.screens.config.ts"
   },
   "license": "AGPL-3.0-or-later",
   "type": "module",

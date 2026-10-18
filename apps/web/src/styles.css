@@ -64,6 +64,31 @@ nav {
 
 aside {
   border-left: 1px solid var(--line);
+  /* The details' fields pair up only where the pane is wide enough for two. */
+  container-type: inline-size;
+}
+
+/* Narrower windows: the details go below the list; a phone's width: one column. */
+@media (max-width: 64rem) {
+  .app {
+    grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+  }
+  aside {
+    grid-column: 1 / -1;
+    border-left: none;
+    border-top: 1px solid var(--line);
+  }
+}
+
+@media (max-width: 40rem) {
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  nav {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
 }
 
 h2 {
@@ -86,6 +111,12 @@ h2 {
   flex-direction: column;
   border: 1px solid var(--line);
   min-height: 3rem;
+}
+
+/* A list's own words when it is empty, inside its box as a row would be. */
+.react-aria-Tree > .quiet {
+  margin: 0;
+  padding: 0.5rem;
 }
 
 .react-aria-TreeItem {
@@ -134,8 +165,21 @@ h2 {
 
 .pair {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, …): a field's own width must not push the second column out of the pane. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--gap);
+}
+
+@container (max-width: 30rem) {
+  .pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+input,
+textarea {
+  min-width: 0;
+  max-width: 100%;
 }
 
 input,
@@ -154,6 +198,19 @@ textarea,
 .react-aria-Button {
   background: ButtonFace;
   color: ButtonText;
+}
+
+/* What a pointer is over, and what it is pressing: shown, as a sighted user expects. */
+.react-aria-Button[data-hovered] {
+  background: color-mix(in srgb, ButtonFace 85%, CanvasText);
+}
+
+.react-aria-Button[data-pressed] {
+  background: color-mix(in srgb, ButtonFace 70%, CanvasText);
+}
+
+.react-aria-TreeItem[data-hovered]:not([data-selected]) {
+  background: color-mix(in srgb, Highlight 12%, Canvas);
 }
 
 .buttons {
@@ -307,6 +364,12 @@ h3 {
   .destructive {
     color: inherit;
   }
+  /* High contrast draws hover and pressing itself. */
+  .react-aria-Button[data-hovered],
+  .react-aria-Button[data-pressed],
+  .react-aria-TreeItem[data-hovered] {
+    background: revert;
+  }
 }
 
 /* Settings' pages: tabs in a row, as the arrows that move between them go, each a target of
@@ -336,6 +399,12 @@ table.keys {
   border-collapse: collapse;
   width: 100%;
   margin-bottom: var(--gap);
+  /* The same columns in every group's table, so the commands line up from one to the next. */
+  table-layout: fixed;
+}
+
+table.keys th:first-child {
+  width: 45%;
 }
 
 table.keys th,
@@ -346,7 +415,6 @@ table.keys td {
 }
 
 table.keys td:first-child {
-  white-space: nowrap;
   font-weight: bold;
 }
 
