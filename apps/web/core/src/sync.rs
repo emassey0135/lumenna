@@ -21,8 +21,8 @@ use crate::{Core, Out, error, js, out};
 /// progress has been given up.
 #[derive(Default)]
 pub(crate) struct Syncing {
-    running: RefCell<Option<SyncLoop>>,
-    cancelled: Cell<bool>,
+    pub(crate) running: RefCell<Option<SyncLoop>>,
+    pub(crate) cancelled: Cell<bool>,
 }
 
 /// What a JavaScript callback answered: the value, or what its promise settled to.

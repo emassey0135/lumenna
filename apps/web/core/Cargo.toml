@@ -28,6 +28,8 @@ serde-wasm-bindgen = "0.6"
 jiff.workspace = true
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
+# The pairing's question about the words, answered by the person later.
+futures = "0.3"
 # The browser's own Intl for times and days, and the promises sync answers with.
 js-sys = "0.3"
 

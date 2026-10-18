@@ -16,7 +16,7 @@ use crux_core::Core;
 use crux_core::Request;
 use jiff::Zoned;
 use lumenna_app::proposal::{Applied, Kind, Pins, Proposal};
-use lumenna_app::{Arrival, Effect, Event, HostAnswer, HostRequest, ViewModel, Watch};
+use lumenna_app::{Arrival, Effect, Event, HostAnswer, HostRequest, NetworkAnswer, NetworkRequest, ViewModel, Watch};
 use lumenna_records::proposals::{DayPins, ReplanPins};
 use lumenna_host::Lumenna;
 use lumenna_store::ChangeHash;
@@ -33,6 +33,16 @@ pub enum Shell {
     Heading(String),
     /// Save this file where the person keeps files: a backup, an export.
     Save(lumenna_app::SaveFile),
+    /// Show this notification, as the platform shows one.
+    Notify(lumenna_app::Notice),
+    /// Do this on the network, and answer it with [`Session::answer_network`] and its `id` when
+    /// it can be answered: a pairing more than once.
+    Network {
+        /// What answering it names.
+        id: u64,
+        /// What to do.
+        request: NetworkRequest,
+    },
 }
 
 /// The store as it stands now, and the heads it was read at.
@@ -78,6 +88,14 @@ pub fn answer(lumenna: &Lumenna, request: HostRequest) -> HostAnswer {
             let after = arrival(lumenna).ok().map(|(arrival, _)| arrival);
             HostAnswer::Imported(Box::new(done), after)
         }
+        HostRequest::Devices => HostAnswer::Devices(lumenna.devices()),
+        HostRequest::RemindersDue { since, now } => HostAnswer::Found(lumenna.reminders_due(since, now)),
+        HostRequest::Dismiss(firings) => wrote(each(&firings, |(key, occurrence)| lumenna.dismiss_reminder(key.clone(), occurrence.clone()))),
+        HostRequest::Snooze(firings) => wrote(each(&firings, |(key, occurrence)| lumenna.snooze_reminder(key.clone(), occurrence.clone(), None))),
+        HostRequest::CarryForward { block, firings } => wrote(lumenna.carry_rest_forward(&block).and_then(|carried| {
+            each(&firings, |(key, occurrence)| lumenna.dismiss_reminder(key.clone(), occurrence.clone()))?;
+            Ok(carried)
+        })),
         HostRequest::Undo => wrote(lumenna.undo()),
         HostRequest::Redo => wrote(lumenna.redo()),
         HostRequest::Choices { action } => HostAnswer::Offered(lumenna.choices(action)),
@@ -122,6 +140,18 @@ pub fn answer(lumenna: &Lumenna, request: HostRequest) -> HostAnswer {
     }
 }
 
+/// Runs `one` over every firing, answering with the last change: what a summary's Dismiss says.
+fn each(
+    firings: &[(String, String)],
+    one: impl Fn(&(String, String)) -> lumenna_host::Result<lumenna_records::Change>,
+) -> lumenna_host::Result<lumenna_records::Change> {
+    let mut last = lumenna_records::Change::unchanged("");
+    for firing in firings {
+        last = one(firing)?;
+    }
+    Ok(last)
+}
+
 /// A record's sentence, then anything else worth saying.
 fn spoken(announcement: &str, notices: &[String]) -> String {
     std::iter::once(announcement).chain(notices.iter().map(String::as_str)).filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ")
@@ -135,13 +165,24 @@ pub struct Session {
     watching: Vec<Request<Watch>>,
     /// The heads last sent, and the minute: a tick sends again only when either moved.
     sent: Option<(Vec<ChangeHash>, i8)>,
+    /// What the network has been asked and not finished answering, by id.
+    network: std::collections::BTreeMap<u64, Request<NetworkRequest>>,
+    /// The id the next network request gets.
+    next_id: u64,
 }
 
 impl Session {
     /// The app over this store, started: it is watching the store, and has it.
     #[must_use]
     pub fn new(lumenna: Arc<Lumenna>) -> (Self, Vec<Shell>) {
-        let mut session = Self { core: Core::new(), lumenna, watching: Vec::new(), sent: None };
+        let mut session = Self {
+            core: Core::new(),
+            lumenna,
+            watching: Vec::new(),
+            sent: None,
+            network: std::collections::BTreeMap::new(),
+            next_id: 0,
+        };
         let shell = session.send(Event::Start);
         (session, shell)
     }
@@ -174,6 +215,17 @@ impl Session {
         self.run(effects)
     }
 
+    /// Answers the network request `id`; a pairing's stream is answered until it ends.
+    pub fn answer_network(&mut self, id: u64, answer: NetworkAnswer) -> Vec<Shell> {
+        let ends = !matches!(answer, NetworkAnswer::Code(_) | NetworkAnswer::Words(_));
+        let Some(mut request) = self.network.remove(&id) else { return Vec::new() };
+        let effects = self.core.resolve(&mut request, answer).unwrap_or_default();
+        if !ends {
+            self.network.insert(id, request);
+        }
+        self.run(effects)
+    }
+
     /// What to draw.
     #[must_use]
     pub fn view(&self) -> ViewModel {
@@ -196,6 +248,13 @@ impl Session {
                         shell.push(if said.heading { Shell::Heading(said.text) } else { Shell::Announce(said.text) });
                     }
                     Effect::Save(request) => shell.push(Shell::Save(request.operation)),
+                    Effect::Notify(request) => shell.push(Shell::Notify(request.operation)),
+                    Effect::Network(request) => {
+                        let id = self.next_id;
+                        self.next_id += 1;
+                        shell.push(Shell::Network { id, request: request.operation.clone() });
+                        self.network.insert(id, request);
+                    }
                     Effect::Watch(mut request) => {
                         if let Ok((arrival, heads)) = arrival(&self.lumenna) {
                             self.sent = Some((heads, arrival.now.minute()));

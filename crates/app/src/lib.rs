@@ -15,8 +15,10 @@
 pub mod blockform;
 pub mod day;
 pub mod details;
+pub mod due;
 pub mod host;
 pub mod list;
+pub mod network;
 pub mod proposal;
 pub mod settings;
 pub mod typing;
@@ -39,6 +41,8 @@ pub use host::{Arrival, HostAnswer, HostRequest, Watch};
 pub use list::Item;
 pub use proposal::{ProposalEvent, ProposalView};
 pub use settings::{SaveFile, SettingsEvent, SettingsView};
+pub use due::{Due, DueEvent, Notice};
+pub use network::{DevicesEvent, DevicesView, NetworkAnswer, NetworkRequest, PairEvent};
 pub use view::{Asking, ListView, ViewModel};
 
 /// Something to say, once the shell has moved focus where the view model puts it: said
@@ -64,7 +68,7 @@ mod effects {
     use crux_core::macros::effect;
     use crux_core::render::RenderOperation;
 
-    use crate::{Announce, HostRequest, SaveFile, Watch};
+    use crate::{Announce, HostRequest, NetworkRequest, Notice, SaveFile, Watch};
 
     /// What the app asks for.
     #[effect]
@@ -80,6 +84,10 @@ mod effects {
         Host(HostRequest),
         /// Save a file the person keeps: a backup, an export.
         Save(SaveFile),
+        /// Reach other devices: the platform's runner answers, when it can.
+        Network(NetworkRequest),
+        /// Show a notification, as the platform shows one.
+        Notify(Notice),
     }
 }
 
@@ -136,6 +144,23 @@ pub enum Event {
     CloseReminders,
     /// Something done in Settings.
     Settings(SettingsEvent),
+    /// Something done on the Devices page, or while pairing.
+    Devices(DevicesEvent),
+    /// Reminders due: the shell's look, or a button.
+    Due(DueEvent),
+
+    /// Syncing started, or why not.
+    #[serde(skip)]
+    SyncStarted(NetworkAnswer),
+    /// A round's report.
+    #[serde(skip)]
+    Synced(NetworkAnswer),
+    /// How syncing is going.
+    #[serde(skip)]
+    SyncStatus(NetworkAnswer),
+    /// What a pairing under way says.
+    #[serde(skip)]
+    Pairing(NetworkAnswer),
     /// The clock this shell says times in, for the sentences the core composes whole.
     Clock(lumenna_records::proposals::TimeStyle),
     /// Add a task from a quick-add line.
@@ -163,6 +188,8 @@ impl PartialEq for HostAnswer {
             (Self::Listed(a), Self::Listed(b)) => a == b,
             (Self::Saved(a), Self::Saved(b)) => a == b,
             (Self::Imported(a, x), Self::Imported(b, y)) => a == b && x == y,
+            (Self::Devices(a), Self::Devices(b)) => a == b,
+            (Self::Found(a), Self::Found(b)) => a == b,
             _ => false,
         }
     }
@@ -279,6 +306,18 @@ pub struct Model {
     pub reminders: Option<String>,
     /// Settings, while open.
     pub settings: Option<settings::Settings>,
+    /// The Devices page, while shown.
+    pub devices: Option<network::Devices>,
+    /// A pairing, while its screen is open.
+    pub pairing: Option<network::Pairing>,
+    /// Whether this device keeps in sync now.
+    pub syncing: bool,
+    /// Whether keeping in sync has been asked for.
+    pub sync_asked: bool,
+    /// Reminders due, not yet dealt with.
+    pub due: Vec<due::Due>,
+    /// An overrun warning whose Replan from Now is open: dismissed once something is replanned.
+    pub replanning: Option<String>,
 }
 
 /// The rows a place shows, as its keys and their actions.
@@ -434,6 +473,25 @@ impl Model {
 #[derive(Debug, Default)]
 pub struct Lumenna;
 
+/// What a reminder's button does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Deal {
+    Dismiss,
+    Snooze,
+    Carry,
+}
+
+/// Starts a pairing: waiting to be dialled without `code`, else dialling it.
+fn start_pairing(pairing: &mut network::Pairing, code: Option<String>, words: &lumenna_records::PairingWords) -> Command<Effect, Event> {
+    pairing.problem = None;
+    pairing.running = true;
+    pairing.waiting = code.is_none();
+    let said = if code.is_some() { words.connecting.clone() } else { words.opening.clone() };
+    let name = pairing.name.trim().to_owned();
+    let pair: Command<Effect, Event> = Command::stream_from_shell(NetworkRequest::Pair { code, name }).then_send(Event::Pairing);
+    render().and(say(said)).and(pair)
+}
+
 /// Where a place renamed, made or removed is now, from the question that did it.
 fn after_place(open: &Open, store: &Arrival) -> Option<Place> {
     let answered = open.answered.clone();
@@ -468,6 +526,16 @@ fn say(text: impl Into<String>) -> Command<Effect, Event> {
 
 fn host(request: HostRequest) -> Command<Effect, Event> {
     Command::request_from_shell(request).then_send(Event::Answered)
+}
+
+/// A request of the network, its answer sent as `then`.
+fn network_request(request: NetworkRequest, then: fn(NetworkAnswer) -> Event) -> Command<Effect, Event> {
+    Command::request_from_shell(request).then_send(then)
+}
+
+/// Something told the network that needs no answer: the words' answer, giving up.
+fn network_tell(request: NetworkRequest) -> Command<Effect, Event> {
+    Command::request_from_shell(request).then_send(|_| Event::Pairing(NetworkAnswer::Done))
 }
 
 /// What a change says: its sentence, then anything else worth saying.
@@ -889,7 +957,7 @@ impl Lumenna {
             ProposalEvent::Close => {
                 model.proposal_made = screen.made;
                 model.proposal = None;
-                render()
+                render().and(self.replanned(model))
             }
             ProposalEvent::Replan => Command::done(),
         }
@@ -903,6 +971,7 @@ impl Lumenna {
             }
             SettingsEvent::Close => {
                 model.settings = None;
+                model.devices = None;
                 render()
             }
             SettingsEvent::Type { key, value } => {
@@ -923,14 +992,143 @@ impl Lumenna {
         }
     }
 
+    /// An overrun warning's Replan from Now closed: once something was replanned, the warning is
+    /// dealt with.
+    fn replanned(&self, model: &mut Model) -> Command<Effect, Event> {
+        let Some(id) = model.replanning.take() else { return Command::done() };
+        if !model.proposal_made {
+            return Command::done();
+        }
+        self.deal(&id, Deal::Dismiss, model)
+    }
+
+    /// Takes the reminder `id` off the list and does what its button asks.
+    fn deal(&self, id: &str, how: Deal, model: &mut Model) -> Command<Effect, Event> {
+        let Some(at) = model.due.iter().position(|d| d.id == id) else { return Command::done() };
+        let item = model.due.remove(at);
+        let firings: Vec<(String, String)> = item.firings.iter().map(|f| (f.key.clone(), f.occurrence.clone())).collect();
+        let request = match how {
+            Deal::Dismiss => HostRequest::Dismiss(firings),
+            Deal::Snooze => HostRequest::Snooze(firings),
+            Deal::Carry => HostRequest::CarryForward { block: item.block.unwrap_or_default(), firings },
+        };
+        render().and(host(request))
+    }
+
+    fn due(&self, event: DueEvent, model: &mut Model) -> Command<Effect, Event> {
+        match event {
+            DueEvent::Look { since, now } => host(HostRequest::RemindersDue { since, now }),
+            DueEvent::Dismiss(id) => self.deal(&id, Deal::Dismiss, model),
+            DueEvent::Snooze(id) => self.deal(&id, Deal::Snooze, model),
+            DueEvent::Carry(id) => self.deal(&id, Deal::Carry, model),
+            // Cancelled, the warning stays; something replanned, it is dismissed.
+            DueEvent::Replan(id) => {
+                model.replanning = Some(id);
+                self.propose(proposal::Kind::Replan, model)
+            }
+        }
+    }
+
+    fn devices(&self, event: DevicesEvent, model: &mut Model) -> Command<Effect, Event> {
+        match event {
+            DevicesEvent::Show => {
+                model.devices = Some(network::Devices::default());
+                render().and(host(HostRequest::Devices)).and(network_request(NetworkRequest::Status, Event::SyncStatus))
+            }
+            DevicesEvent::SyncNow => say("Syncing").and(network_request(NetworkRequest::SyncNow, Event::Synced)),
+            DevicesEvent::Pair(event) => self.pair(event, model),
+        }
+    }
+
+    fn pair(&self, event: PairEvent, model: &mut Model) -> Command<Effect, Event> {
+        if let PairEvent::Open(name) = event {
+            model.pairing = Some(network::Pairing { name, ..network::Pairing::default() });
+            return render();
+        }
+        let Some(pairing) = &mut model.pairing else { return Command::done() };
+        let words = lumenna_records::pairing_words(pairing.name.clone(), false);
+        match event {
+            PairEvent::Open(_) => Command::done(),
+            PairEvent::Name(name) => {
+                pairing.name = name;
+                render()
+            }
+            PairEvent::Code(code) => {
+                pairing.theirs = code;
+                render()
+            }
+            PairEvent::Wait => start_pairing(pairing, None, &words),
+            PairEvent::Join => {
+                let code = pairing.theirs.trim().to_owned();
+                if code.is_empty() {
+                    pairing.problem = Some(words.need_code.clone());
+                    return render().and(say(words.need_code));
+                }
+                // One pairing at a time: a code entered while waiting gives up the wait first.
+                if pairing.running {
+                    pairing.then = Some(code);
+                    return render().and(say(words.switching)).and(network_tell(NetworkRequest::CancelPairing));
+                }
+                start_pairing(pairing, Some(code), &words)
+            }
+            PairEvent::Confirm(matched) => {
+                pairing.words = None;
+                let said = if matched { words.finishing } else { words.refusing };
+                render().and(say(said)).and(network_tell(NetworkRequest::Confirm(matched)))
+            }
+            PairEvent::Cancel => {
+                if pairing.running {
+                    return network_tell(NetworkRequest::CancelPairing);
+                }
+                model.pairing = None;
+                render()
+            }
+        }
+    }
+
+    fn pairing(&self, answer: NetworkAnswer, model: &mut Model) -> Command<Effect, Event> {
+        let Some(pairing) = &mut model.pairing else { return Command::done() };
+        let words = lumenna_records::pairing_words(pairing.name.clone(), false);
+        match answer {
+            NetworkAnswer::Done | NetworkAnswer::Said(_) => Command::done(),
+            NetworkAnswer::Code(code) => {
+                pairing.mine = Some(code);
+                render().and(say(words.waiting))
+            }
+            NetworkAnswer::Words(three) => {
+                pairing.words = Some(three);
+                render()
+            }
+            NetworkAnswer::Paired(Ok(said)) => {
+                model.pairing = None;
+                render().and(say(said)).and(host(HostRequest::Devices))
+            }
+            NetworkAnswer::Paired(Err(why)) => {
+                pairing.running = false;
+                pairing.mine = None;
+                pairing.words = None;
+                if let Some(next) = pairing.then.take() {
+                    return start_pairing(pairing, Some(next), &words);
+                }
+                pairing.problem = Some(why.clone());
+                render().and(say(why))
+            }
+        }
+    }
+
     fn arrived(&self, store: Arrival, model: &mut Model) -> Command<Effect, Event> {
         model.store = Some(store);
         model.settle();
-        // A setting synced from elsewhere is shown as it now is.
+        let mut more = render();
+        // A setting synced from elsewhere is shown as it now is; so is a device, a round's
+        // outcome included.
         if model.settings.is_some() {
-            return render().and(host(HostRequest::Settings));
+            more = more.and(host(HostRequest::Settings));
         }
-        render()
+        if model.devices.is_some() {
+            more = more.and(host(HostRequest::Devices)).and(network_request(NetworkRequest::Status, Event::SyncStatus));
+        }
+        more
     }
 }
 
@@ -942,7 +1140,7 @@ impl App for Lumenna {
 
     fn update(&self, event: Event, model: &mut Model) -> Command<Effect, Event> {
         match event {
-            Event::Start => Command::stream_from_shell(Watch).then_send(Event::Arrived),
+            Event::Start => Command::stream_from_shell(Watch).then_send(Event::Arrived).and(host(HostRequest::Devices)),
             Event::Arrived(store) => self.arrived(store, model),
             Event::Open(place) => {
                 model.open = None;
@@ -1012,6 +1210,60 @@ impl App for Lumenna {
             Event::Block(event) => self.block(event, model),
             Event::Proposal(event) => self.proposal(event, model),
             Event::Settings(event) => self.settings(event, model),
+            Event::Devices(event) => self.devices(event, model),
+            Event::Due(event) => self.due(event, model),
+            Event::SyncStarted(answer) => match answer {
+                NetworkAnswer::Said(why) => say(format!("Syncing could not start: {why}")),
+                _ => {
+                    model.syncing = true;
+                    if model.devices.is_some() {
+                        return render().and(network_request(NetworkRequest::Status, Event::SyncStatus));
+                    }
+                    render()
+                }
+            },
+            Event::Synced(answer) => {
+                let said = match answer {
+                    NetworkAnswer::Said(said) => said,
+                    _ => String::new(),
+                };
+                say(said).and(host(HostRequest::Devices))
+            }
+            Event::SyncStatus(answer) => {
+                if let (NetworkAnswer::Said(status), Some(devices)) = (answer, &mut model.devices) {
+                    devices.status = Some(status);
+                }
+                render()
+            }
+            Event::Pairing(answer) => self.pairing(answer, model),
+            Event::Answered(HostAnswer::Devices(result)) => {
+                let Ok(list) = result else { return Command::done() };
+                // Another device paired: keep in sync with it while the app runs.
+                let start = !model.sync_asked && list.devices.iter().any(|d| !d.this_device);
+                if let Some(devices) = &mut model.devices {
+                    devices.list = Some(list);
+                }
+                if start {
+                    model.sync_asked = true;
+                    return render().and(network_request(NetworkRequest::StartSync, Event::SyncStarted));
+                }
+                render()
+            }
+            Event::Answered(HostAnswer::Found(result)) => {
+                let Ok(found) = result else { return Command::done() };
+                let mut said = Command::done();
+                for item in due::arrived(&found) {
+                    if model.due.iter().any(|d| d.id == item.id) {
+                        continue;
+                    }
+                    // Each is said, always, and shown as a notification where the platform allows.
+                    let notice: Command<Effect, Event> =
+                        Command::notify_shell(Notice { id: item.id.clone(), title: item.title.clone(), text: item.text.clone() }).into();
+                    said = said.and(self::say(item.text.clone())).and(notice);
+                    model.due.push(item);
+                }
+                render().and(said)
+            }
             Event::Answered(HostAnswer::Listed(result)) => {
                 let Some(settings) = &mut model.settings else { return Command::done() };
                 match result {
@@ -1078,9 +1330,9 @@ impl App for Lumenna {
                         if applied.next.is_empty() {
                             model.proposal_made = true;
                             model.proposal = None;
-                        } else {
-                            screen.show(applied.next);
+                            return render().and(say(said)).and(self.replanned(model));
                         }
+                        screen.show(applied.next);
                         render().and(say(said))
                     }
                     // The day moved since: why is kept here, and the day as it now is proposed.

@@ -2,7 +2,6 @@
 // task's details, as the desktop apps have them — here as landmarks, navigation, main and
 // complementary, which screen readers move between with their own keys.
 
-import * as Comlink from "comlink";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "react-aria-components";
 import { Prompts } from "./Prompts";
@@ -18,7 +17,6 @@ import { Details } from "./Details";
 import type { DetailsHandle } from "./Details";
 import { QuickAdd } from "./QuickAdd";
 import { ReminderLists, RemindersDue, useDelivery } from "./Reminders";
-import type { Due } from "./Reminders";
 import { say } from "./say";
 import { refresh, run, sayAll, send, settled, start, useScreen } from "./session";
 import { Settings } from "./Settings";
@@ -38,12 +36,8 @@ export function App() {
   const [adding, setAdding] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const details = useRef<DetailsHandle>(null);
-  const [due, setDue] = useState<Due[]>([]);
-  useDelivery(ready, (batch) =>
-    setDue((now) => [...now, ...batch.filter((one) => !now.some((there) => there.id === one.id))]),
-  );
+  useDelivery(ready);
 
   useEffect(() => {
     core.open(profile).then(
@@ -61,22 +55,6 @@ export function App() {
     });
   }, []);
 
-  // Syncing runs while the page is open, once there is another device to sync with.
-  // What arrives is in the store already: everything showing it reads it again.
-  const startSyncing = async () => {
-    try {
-      const devices = (await core.devices()).list;
-      if (!devices.some((device) => !device.thisDevice)) return;
-      await core.startSync(Comlink.proxy(() => setRevision((r) => r + 1)));
-      setSyncing(true);
-    } catch (error) {
-      say(`Syncing could not start: ${(error as Error).message}`);
-    }
-  };
-
-  useEffect(() => {
-    if (ready) void startSyncing();
-  }, [ready]);
 
   // The app takes in whatever moved — another tab, `lum`, a sync, a minute — and draws it.
   // What is not yet drawn from the app's screen reads the store again only when another
@@ -190,13 +168,8 @@ export function App() {
     "sync-now",
     () =>
       void (async () => {
-        say("Syncing");
-        try {
-          say(await core.syncNow());
-          changed();
-        } catch (error) {
-          say((error as Error).message);
-        }
+        sayAll((await send({ Devices: "SyncNow" })).said);
+        changed();
       })(),
     -1,
   );
@@ -250,7 +223,7 @@ export function App() {
             {notice}
           </p>
         )}
-        <RemindersDue due={due} onDealt={(id) => setDue((now) => now.filter((one) => one.id !== id))} onChanged={changed} />
+        <RemindersDue due={screen.due ?? []} onChanged={() => setRevision((r) => r + 1)} />
       </header>
       <nav aria-label="Places">
         <Sidebar entries={screen.sidebar} place={place} onPlace={(to) => void send({ Open: to })} onChanged={changed} />
@@ -290,13 +263,9 @@ export function App() {
         }}
         revision={revision}
         settings={screen.settings}
+        devices={screen.devices}
         onChanged={changed}
-        syncing={syncing}
-        onPaired={() => {
-          changed();
-          void startSyncing();
-        }}
-      />
+     />
       <KeyboardShortcuts isOpen={keysOpen} onClose={() => setKeysOpen(false)} />
       <ReminderLists list={screen.reminders} />
       <Prompts />

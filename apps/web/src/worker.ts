@@ -50,6 +50,10 @@ import type {
   Answer,
   DayItem,
   DayView,
+  DeviceList,
+  DeviceView,
+  DevicesView,
+  Notice,
   SaveFile,
   DetailsView,
   Event,
@@ -175,8 +179,12 @@ export interface ShownLine {
   offer: { start: number; end: number; candidates: { id: string; text: string; label: string }[] };
 }
 
+/** A paired device with the line it reads as. */
+export type ShownDevice = DeviceView & { text: string };
+
 /** The view model as the page draws it. */
-export interface Screen extends Omit<ViewModel, "list" | "day" | "details" | "line"> {
+export interface Screen extends Omit<ViewModel, "list" | "day" | "details" | "line" | "devices"> {
+  devices?: Omit<DevicesView, "list"> & { list?: Omit<DeviceList, "devices"> & { devices: ShownDevice[] } };
   list?: Shown;
   day?: ShownDay;
   details?: ShownDetails;
@@ -209,11 +217,15 @@ function dayLine(item: DayItem, date: string, summary: string): string {
   }
 }
 
-/** What an event left: the screen, what to say once focus has landed, and files to save. */
+/** What an event left: the screen, what to say once focus has landed, files to save, and
+ * notifications to show. */
 export interface Said {
   screen: Screen;
   said: string[];
   files: SaveFile[];
+  notices: Notice[];
+  /** Counted: an older screen is never drawn over a newer one. */
+  seq: number;
 }
 
 /** The view model in the web's words: each row's line, the headings in sentence case. */
@@ -236,6 +248,20 @@ function screen(view: ViewModel): Screen {
   };
   const details = view.details && { ...view.details, state: taskStateText(view.details.task) };
   const proposal = view.proposal && { ...view.proposal, words: webWords(view.proposal.words) };
+  const devices = view.devices && {
+    ...view.devices,
+    list: view.devices.list && {
+      ...view.devices.list,
+      devices: view.devices.list.devices.map((device) => ({ ...device, text: deviceText(device) })),
+    },
+  };
+  const due = (view.due ?? []).map((item) => ({
+    ...item,
+    dismiss: sentenceCase(item.dismiss),
+    snooze: item.snooze ? sentenceCase(item.snooze) : undefined,
+    carry: item.carry ? sentenceCase(item.carry) : undefined,
+    replan: item.replan ? sentenceCase(item.replan) : undefined,
+  }));
   const settings = view.settings && {
     ...view.settings,
     exports: view.settings.exports.map((choice) => ({ ...choice, label: sentenceCase(choice.label) })),
@@ -264,6 +290,8 @@ function screen(view: ViewModel): Screen {
     line,
     proposal,
     settings,
+    devices,
+    due,
   };
 }
 
@@ -273,6 +301,8 @@ function turned(turn: Turn): Said {
     screen: screen(turn.view),
     said: turn.said.map((saying) => (saying.heading && date ? summaryText(date, saying.text) : saying.text)),
     files: turn.files,
+    notices: turn.notices,
+    seq: turn.seq,
   };
 }
 
@@ -301,6 +331,15 @@ const api = {
   /** The quick-add line as typed, the cursor a UTF-16 offset as the input counts it. */
   typed: (text: string, cursor: number): Said =>
     turned(session().send({ Typing: { Text: { text, cursor: bytesAt(text, cursor) } } })),
+
+  /**
+   * Hands `listener` what an answer from the network leaves — a pairing's code and words, a
+   * round's report, a sync's arrivals — a turn at a time. A plain function that calls the
+   * page's: a Comlink proxy answers any property, `.call` included.
+   */
+  listen(listener: (said: Said) => void): void {
+    session().listen((turn: Turn) => void listener(turned(turn)));
+  },
 
   /** What changed elsewhere since, or a new minute: undefined when nothing did. */
   tick(): Said | undefined {

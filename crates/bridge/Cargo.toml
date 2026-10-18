@@ -11,7 +11,7 @@ description = "The app's host effects answered by the host: one loop, for every 
 crux_core = "0.20.0"
 jiff.workspace = true
 lumenna-app = { path = "../app" }
-lumenna-host.workspace = true
+lumenna-host = { workspace = true, features = ["link"] }
 lumenna-records.workspace = true
 lumenna-store.workspace = true
 

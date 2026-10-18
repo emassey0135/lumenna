@@ -53,6 +53,12 @@ pub struct ViewModel {
     /// Settings, while open.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub settings: Option<crate::SettingsView>,
+    /// The Devices page, while shown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub devices: Option<crate::DevicesView>,
+    /// Reminders due, not yet dealt with.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub due: Vec<crate::Due>,
     /// A task's or block's reminders, while their list is open.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reminders: Option<lumenna_records::reminders::ReminderList>,
@@ -148,6 +154,13 @@ pub fn view(model: &Model) -> ViewModel {
         proposal: model.proposal.as_ref().map(crate::proposal::view),
         proposal_made: model.proposal_made,
         settings: model.settings.as_ref().map(|s| crate::settings::view(s, store.now.date())),
+        devices: model.devices.as_ref().map(|d| crate::DevicesView {
+            list: d.list.clone(),
+            status: d.status.clone().unwrap_or_default(),
+            syncing: model.syncing,
+            pairing: model.pairing.as_ref().map(crate::network::Pairing::view),
+        }),
+        due: model.due.clone(),
         reminders: model
             .reminders
             .as_ref()

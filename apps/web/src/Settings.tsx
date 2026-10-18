@@ -32,7 +32,7 @@ import {
   TextField,
 } from "react-aria-components";
 import { DevicesPage } from "./Devices";
-import type { Setting, SettingView, SettingsView } from "./core";
+import type { Screen, Setting, SettingView, SettingsView } from "./core";
 import { sayAll, send } from "./session";
 import { remindersOn, setRemindersOn } from "./Reminders";
 import { say } from "./say";
@@ -43,10 +43,8 @@ export function Settings(props: {
   revision: number;
   settings: SettingsView | undefined;
   onChanged: () => void;
-  /** Whether this browser is keeping in sync. */
-  syncing: boolean;
-  /** A device was paired: syncing may need to start. */
-  onPaired: () => void;
+  /** The Devices page, as the app has it. */
+  devices: Screen["devices"];
 }) {
   return (
     <Modal isDismissable isOpen={props.isOpen} onOpenChange={(open) => !open && props.onClose()}>
@@ -63,7 +61,7 @@ export function Settings(props: {
             <Planning settings={props.settings} />
           </TabPanel>
           <TabPanel id="devices">
-            <DevicesPage revision={props.revision} syncing={props.syncing} onPaired={props.onPaired} />
+            <DevicesPage devices={props.devices} onChanged={props.onChanged} />
           </TabPanel>
           <TabPanel id="backups">
             <Backups onChanged={props.onChanged} />

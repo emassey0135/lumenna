@@ -5,26 +5,16 @@
 // Either way both show three words, and only if the person says they match is anything
 // paired. Then it syncs while it is open, through a relay that cannot read what it carries.
 
-import * as Comlink from "comlink";
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { Button, Input, Label, ListBox, ListBoxItem, Text, TextField } from "react-aria-components";
 import type { Selection } from "react-aria-components";
 import { core } from "./core";
-import type { Action, PairingWords } from "./core";
+import type { Action, PairEvent, PairingView, PairingWords, Screen } from "./core";
 import { byKind } from "./actions";
-import { run as runEvent, sayAll } from "./session";
+import { run as runEvent, sayAll, send } from "./session";
 import { choose } from "./Prompts";
-import { say } from "./say";
 
-interface Device {
-  id: string;
-  name: string;
-  thisDevice: boolean;
-  text: string;
-  /** What can be done to it, as the core offers it: no Unpair on this device's own row. */
-  actions: Action[];
-}
 
 /** What this browser is called on the other devices until someone renames it. */
 function browserName(): string {
@@ -55,59 +45,28 @@ function browserName(): string {
 }
 
 /** Settings' Devices page: the paired devices, how syncing is going, and pairing. */
-export function DevicesPage(props: {
-  revision: number;
-  /** Whether this browser is keeping in sync. */
-  syncing: boolean;
-  /** Something about the devices changed: syncing may need to start. */
-  onPaired: () => void;
-}) {
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [empty, setEmpty] = useState("");
+export function DevicesPage(props: { devices: Screen["devices"]; onChanged: () => void }) {
   const [selected, setSelected] = useState<string | undefined>();
-  const [pairing, setPairing] = useState(false);
-  const [reload, setReload] = useState(0);
-  const [status, setStatus] = useState("");
   const [words, setWords] = useState<PairingWords | undefined>();
+  const devices = props.devices?.list?.devices ?? [];
+  const pairing = props.devices?.pairing;
 
+  // Shown: the app lists the devices and asks how syncing is going, and keeps both current.
   useEffect(() => {
+    void send({ Devices: "Show" });
     void core.pairingWords().then(setWords);
   }, []);
 
-  // Read again whenever the store changes, a sync round's outcome included, so a device's
-  // status is current without Sync Now.
-  useEffect(() => {
-    void core.devices().then(
-      (found) => {
-        setDevices(found.list);
-        setEmpty(found.empty);
-      },
-      (error: Error) => say(error.message),
-    );
-    // How syncing is going, in the surface's words, given whether this browser's loop runs.
-    void core.syncStatus().then(setStatus, (error: Error) => setStatus(error.message));
-  }, [props.revision, props.syncing, reload]);
+  const others = devices.filter((d) => !d.this_device).length;
+  const chosen = devices.find((d) => d.node_id === selected);
 
-  const others = devices.filter((d) => !d.thisDevice).length;
-
-  const chosen = devices.find((d) => d.id === selected);
-  const refresh = () => setReload((r) => r + 1);
-
-  const syncNow = async () => {
-    say("Syncing");
-    try {
-      say(await core.syncNow());
-    } catch (error) {
-      say((error as Error).message);
-    }
-    refresh();
-  };
+  const syncNow = async () => sayAll((await send({ Devices: "SyncNow" })).said);
 
   const run = async (action: Action) => {
     const turn = await runEvent({ Perform: action });
     if (action.kind === "unpair") setSelected(undefined);
     sayAll(turn.said);
-    refresh();
+    props.onChanged();
   };
 
   const keys = (event: KeyboardEvent) => {
@@ -122,28 +81,21 @@ export function DevicesPage(props: {
   return (
     <>
       {pairing && words ? (
-        <Pairing
-          words={words}
-          onDone={(paired) => {
-            setPairing(false);
-            refresh();
-            if (paired) props.onPaired();
-          }}
-        />
+        <Pairing words={words} pairing={pairing} />
       ) : (
         <>
-          <p id="sync-status">{status}</p>
+          <p id="sync-status">{props.devices?.status ?? ""}</p>
           <div onKeyDownCapture={keys}>
             <ListBox
               aria-label="Paired devices"
               aria-describedby="devices-hint"
-              items={devices}
+              items={devices.map((device) => ({ ...device, id: device.node_id }))}
               selectionMode="single"
               selectedKeys={selected ? [selected] : []}
               onSelectionChange={(keys: Selection) => {
                 if (keys !== "all") setSelected([...keys].map(String)[0]);
               }}
-              renderEmptyState={() => <p className="quiet">{empty}</p>}
+              renderEmptyState={() => <p className="quiet">{props.devices?.list?.empty ?? ""}</p>}
             >
               {(device) => <ListBoxItem textValue={device.text}>{device.text}</ListBoxItem>}
             </ListBox>
@@ -152,13 +104,13 @@ export function DevicesPage(props: {
             Delete unpairs the selected device.
           </p>
           <div className="buttons">
-            <Button isDisabled={others === 0 || !props.syncing} onPress={() => void syncNow()}>
+            <Button isDisabled={others === 0 || !props.devices?.syncing} onPress={() => void syncNow()}>
               Sync now
             </Button>
-            <Button isDisabled={!words} onPress={() => setPairing(true)}>
+            <Button isDisabled={!words} onPress={() => void send({ Devices: { Pair: { Open: browserName() } } })}>
               {words?.title ?? "Pair a device"}
             </Button>
-            {chosen?.actions.map((action) => (
+            {chosen?.actions?.map((action) => (
               <Button
                 key={action.kind}
                 className={action.destructive ? "react-aria-Button destructive" : "react-aria-Button"}
@@ -174,91 +126,68 @@ export function DevicesPage(props: {
   );
 }
 
-function Pairing(props: { words: PairingWords; onDone: (paired: boolean) => void }) {
-  const { words } = props;
-  const [name, setName] = useState(browserName);
-  const [theirs, setTheirs] = useState("");
-  const [mine, setMine] = useState<string | undefined>();
-  const [running, setRunning] = useState(false);
-  // Whether the pairing running is waiting to be found, rather than dialling a code.
-  const [waiting, setWaiting] = useState(false);
-  const [problem, setProblem] = useState<string | undefined>();
+/** Sends what is done while pairing, and says what the app says about it. */
+async function pair(event: PairEvent) {
+  sayAll((await send({ Devices: { Pair: event } })).said);
+}
+
+function Pairing(props: { words: PairingWords; pairing: PairingView }) {
+  const { words, pairing } = props;
   const code = useRef<HTMLInputElement>(null);
-  // A code entered while waiting: the wait is given up, and this is dialled once it ends.
-  const then = useRef<string | undefined>(undefined);
+  const asked = useRef<string | undefined>(undefined);
+  // What is typed, shown at once; the app has it a moment later.
+  const [name, setName] = useState(pairing.name);
+  const [theirs, setTheirs] = useState(pairing.theirs);
 
   // The code is what the person needs next: focus goes to it, selected, ready to copy.
   useEffect(() => {
-    if (mine) {
+    if (pairing.mine) {
       code.current?.focus();
       code.current?.select();
     }
-  }, [mine]);
+  }, [pairing.mine]);
 
-  const start = async (dial: string | undefined) => {
-    setProblem(undefined);
-    setRunning(true);
-    setWaiting(dial === undefined);
-    say(dial ? words.connecting : words.opening);
-    try {
-      const said = await core.pair(
-        dial,
-        name.trim() || browserName(),
-        Comlink.proxy((shown: string) => {
-          setMine(shown);
-          say(words.waiting);
-        }),
-        Comlink.proxy(async (three: string[]) => {
-          const detail = `${words.match_message} ${three.join(", ")}.`;
-          const match = (await choose(words.match_title, detail, [words.match_yes, words.match_no])) === 0;
-          say(match ? words.finishing : words.refusing);
-          return match;
-        }),
-      );
-      say(said);
-      props.onDone(true);
-    } catch (error) {
-      setRunning(false);
-      setMine(undefined);
-      const next = then.current;
-      then.current = undefined;
-      if (next) {
-        void start(next);
-        return;
-      }
-      setProblem((error as Error).message);
-      say((error as Error).message);
-    }
-  };
-
-  const cancel = () => {
-    if (running) void core.cancelPairing();
-    else props.onDone(false);
-  };
+  // The words to compare, asked once each time they come.
+  useEffect(() => {
+    const three = pairing.words;
+    if (!three || asked.current === three.join(" ")) return;
+    asked.current = three.join(" ");
+    const detail = `${words.match_message} ${three.join(", ")}.`;
+    void choose(words.match_title, detail, [words.match_yes, words.match_no]).then((index) => pair({ Confirm: index === 0 }));
+  }, [pairing.words]);
 
   return (
     <>
       <h3>{words.title}</h3>
       <p>{words.intro}</p>
-      <TextField className="field" value={name} onChange={setName} isDisabled={running} autoFocus>
+      <TextField
+        className="field"
+        value={name}
+        onChange={(value) => {
+          setName(value);
+          void send({ Devices: { Pair: { Name: value } } });
+        }}
+        isDisabled={pairing.running}
+        autoFocus
+      >
         <Label>Name for this browser</Label>
         <Input />
         <Text slot="description" className="quiet">
           What your other devices call it.
         </Text>
       </TextField>
-      {mine ? (
+      {pairing.mine ? (
         <>
-          <TextField className="field" value={mine} isReadOnly>
+          <TextField className="field" value={pairing.mine} isReadOnly>
             <Label>{words.my_code}</Label>
             <Input ref={code} />
           </TextField>
           <div className="buttons">
             <Button
               onPress={() =>
-                void navigator.clipboard.writeText(mine).then(
-                  () => say(words.copied),
-                  () => say("Could not copy the code; select it and copy it instead."),
+                void navigator.clipboard.writeText(pairing.mine ?? "").then(
+                  () => sayAll([words.copied]),
+                  () => sayAll(["Could not copy the code; select it and copy it instead."]),
                 )
               }
             >
@@ -268,42 +197,33 @@ function Pairing(props: { words: PairingWords; onDone: (paired: boolean) => void
         </>
       ) : (
         <div className="buttons">
-          <Button isDisabled={running} onPress={() => void start(undefined)}>
+          <Button isDisabled={pairing.running} onPress={() => void pair("Wait")}>
             {words.wait}
           </Button>
         </div>
       )}
-      <TextField className="field" value={theirs} onChange={setTheirs} isDisabled={running && !waiting}>
+      <TextField
+        className="field"
+        value={theirs}
+        onChange={(value) => {
+          setTheirs(value);
+          void send({ Devices: { Pair: { Code: value } } });
+        }}
+        isDisabled={pairing.running && !pairing.waiting}
+      >
         <Label>{words.their_code}</Label>
         <Input />
       </TextField>
-      {problem && (
+      {pairing.problem && (
         <p role="alert" className="problem">
-          {problem}
+          {pairing.problem}
         </p>
       )}
       <div className="buttons">
-        <Button onPress={cancel}>Cancel</Button>
-        <Button
-          isDisabled={running && !waiting}
-          onPress={async () => {
-            // Typed or pasted: the clipboard is never read unasked, which a browser would have to
-            // prompt for, and which would send whatever happened to be copied.
-            const code = theirs.trim();
-            if (!code) {
-              setProblem(words.need_code);
-              return;
-            }
-            // One pairing at a time: a code entered while waiting gives up the wait first.
-            if (running) {
-              then.current = code;
-              void core.cancelPairing();
-              say(words.switching);
-              return;
-            }
-            void start(code);
-          }}
-        >
+        <Button onPress={() => void pair("Cancel")}>Cancel</Button>
+        {/* Typed or pasted: the clipboard is never read unasked, which a browser would have to
+            prompt for, and which would send whatever happened to be copied. */}
+        <Button isDisabled={pairing.running && !pairing.waiting} onPress={() => void pair("Join")}>
           {words.join}
         </Button>
       </div>

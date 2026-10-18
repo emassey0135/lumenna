@@ -53,7 +53,7 @@ fn said(shell: &[Shell]) -> Vec<&str> {
         .iter()
         .filter_map(|s| match s {
             Shell::Announce(text) | Shell::Heading(text) => Some(text.as_str()),
-            Shell::Render | Shell::Save(_) => None,
+            Shell::Render | Shell::Save(_) | Shell::Notify(_) | Shell::Network { .. } => None,
         })
         .collect()
 }
@@ -629,4 +629,77 @@ fn a_backup_and_an_export_are_files_to_save_and_an_export_imports_into_another_s
     let shell = other.send(Event::Settings(SettingsEvent::Import { name: json.name, bytes: json.bytes }));
     assert!(!said(&shell).is_empty());
     assert_eq!(other.titles(), ["Write report"]);
+}
+
+fn network(shell: &[Shell]) -> Vec<(u64, lumenna_app::NetworkRequest)> {
+    shell
+        .iter()
+        .filter_map(|s| match s {
+            Shell::Network { id, request } => Some((*id, request.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+fn pair(app: &mut App, event: lumenna_app::PairEvent) -> Vec<Shell> {
+    app.send(Event::Devices(lumenna_app::DevicesEvent::Pair(event)))
+}
+
+#[test]
+fn pairing_shows_its_code_then_asks_about_the_words_and_ends_closed() {
+    use lumenna_app::{NetworkAnswer, NetworkRequest, PairEvent};
+    let mut app = App::new();
+    app.send(Event::Devices(lumenna_app::DevicesEvent::Show));
+    pair(&mut app, PairEvent::Open("Test browser".to_owned()));
+    let shell = pair(&mut app, PairEvent::Wait);
+    let [(id, NetworkRequest::Pair { code: None, name })] = &network(&shell)[..] else { panic!("{shell:?}") };
+    let id = *id;
+    assert_eq!(name, "Test browser");
+    app.session.answer_network(id, NetworkAnswer::Code("ab12".to_owned()));
+    assert_eq!(app.view().devices.unwrap().pairing.unwrap().mine.as_deref(), Some("ab12"));
+    app.session.answer_network(id, NetworkAnswer::Words(vec!["adroitness".to_owned(), "tycoon".to_owned(), "village".to_owned()]));
+    assert_eq!(app.view().devices.unwrap().pairing.unwrap().words.map(|w| w.len()), Some(3));
+    let shell = pair(&mut app, PairEvent::Confirm(true));
+    assert!(matches!(network(&shell)[..], [(_, NetworkRequest::Confirm(true))]));
+    let shell = app.session.answer_network(id, NetworkAnswer::Paired(Ok("Paired with Kitchen Mac".to_owned())));
+    assert!(said(&shell).contains(&"Paired with Kitchen Mac"));
+    assert!(app.view().devices.unwrap().pairing.is_none());
+}
+
+#[test]
+fn a_code_typed_while_waiting_gives_up_the_wait_and_then_dials_it() {
+    use lumenna_app::{NetworkAnswer, NetworkRequest, PairEvent};
+    let mut app = App::new();
+    app.send(Event::Devices(lumenna_app::DevicesEvent::Show));
+    pair(&mut app, PairEvent::Open("Test browser".to_owned()));
+    let wait = network(&pair(&mut app, PairEvent::Wait))[0].0;
+    pair(&mut app, PairEvent::Code(" cd34 ".to_owned()));
+    let shell = pair(&mut app, PairEvent::Join);
+    assert!(matches!(network(&shell)[..], [(_, NetworkRequest::CancelPairing)]));
+    let shell = app.session.answer_network(wait, NetworkAnswer::Paired(Err("The pairing was given up.".to_owned())));
+    let dialled = network(&shell);
+    assert!(matches!(&dialled[..], [(_, NetworkRequest::Pair { code: Some(code), .. })] if code == "cd34"), "{shell:?}");
+    assert!(app.view().devices.unwrap().pairing.unwrap().problem.is_none());
+}
+
+#[test]
+fn a_reminder_due_is_listed_once_said_shown_and_dismissed() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    let since = jiff::Timestamp::now().to_string();
+    let tz = jiff::tz::TimeZone::system();
+    let moment = |minute| jiff::Zoned::now().date().tomorrow().unwrap().at(8, minute, 0, 0).to_zoned(tz.clone()).unwrap().timestamp().to_string();
+    let look = |app: &mut App, now: String| app.send(Event::Due(lumenna_app::DueEvent::Look { since: since.clone(), now: Some(now) }));
+    let shell = look(&mut app, moment(56));
+    let due = app.view().due;
+    assert_eq!(due.len(), 1, "{due:?}");
+    assert!(due[0].text.starts_with("Deep work starts in 5 minutes"), "{:?}", due[0]);
+    assert!(due[0].snooze.is_some());
+    assert!(said(&shell).iter().any(|s| s.starts_with("Deep work starts")));
+    assert!(shell.iter().any(|s| matches!(s, Shell::Notify(n) if n.id == due[0].id)));
+    // Looking again lists nothing twice.
+    look(&mut app, moment(57));
+    assert_eq!(app.view().due.len(), 1);
+    app.send(Event::Due(lumenna_app::DueEvent::Dismiss(due[0].id.clone())));
+    assert!(app.view().due.is_empty());
 }

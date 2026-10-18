@@ -4,16 +4,24 @@
 // (crates/app), run in the worker beside the store. The page sends what the person did and
 // draws what comes back; between the two it only asks questions, in its own dialogs.
 
+import * as Comlink from "comlink";
 import { useSyncExternalStore } from "react";
 import { core } from "./core";
-import type { Action, ActionKind, Answer, Event, Said, Screen } from "./core";
+import type { Action, ActionKind, Answer, Event, Notice, Said, Screen } from "./core";
 import { ask, choose, confirm, pick } from "./Prompts";
 import { say } from "./say";
 
 let screen: Screen | undefined;
+let shownSeq = 0;
 const listeners = new Set<() => void>();
 
-function show(next: Screen) {
+/** Draws `next`, unless a newer screen is already drawn: a reply and a push from the network can
+ * reach the page in either order. */
+function show(next: Screen, seq?: number) {
+  if (seq !== undefined) {
+    if (seq < shownSeq) return;
+    shownSeq = seq;
+  }
   screen = next;
   for (const listener of listeners) listener();
 }
@@ -29,9 +37,37 @@ export function useScreen(): Screen | undefined {
   );
 }
 
-/** Starts drawing: once the store is open. */
+/** Shows a notification, where the browser allows: the page has the reminder either way. */
+function notify(notice: Notice) {
+  try {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const shown = new Notification(notice.title, { body: notice.text, tag: notice.id });
+    shown.onclick = () => {
+      window.focus();
+      document.getElementById(`due-${notice.id}`)?.querySelector("button")?.focus();
+      shown.close();
+    };
+  } catch {
+    // A notification the browser will not show; the page has it.
+  }
+}
+
+/** What a turn hands the page besides the screen: files to save, notifications to show. */
+function deliver(turn: Said) {
+  for (const file of turn.files) download(file.name, file.bytes as Uint8Array<ArrayBuffer>, file.kind);
+  for (const notice of turn.notices) notify(notice);
+}
+
+/** Starts drawing, once the store is open, and listens for what the network brings. */
 export async function start(): Promise<void> {
   show(await core.screen());
+  await core.listen(
+    Comlink.proxy((turn: Said) => {
+      show(turn.screen, turn.seq);
+      deliver(turn);
+      sayAll(turn.said);
+    }),
+  );
 }
 
 /** Offers `data` as a file to save, called `name`. */
@@ -55,8 +91,8 @@ export async function send(event: Event): Promise<Said> {
   inFlight++;
   try {
     const turn = await core.send(event);
-    show(turn.screen);
-    for (const file of turn.files) download(file.name, file.bytes as Uint8Array<ArrayBuffer>, file.kind);
+    show(turn.screen, turn.seq);
+    deliver(turn);
     return turn;
   } finally {
     if (--inFlight === 0) {
@@ -83,7 +119,7 @@ export async function typed(text: string, cursor: number): Promise<Said> {
   inFlight++;
   try {
     const turn = await core.typed(text, cursor);
-    show(turn.screen);
+    show(turn.screen, turn.seq);
     return turn;
   } finally {
     if (--inFlight === 0) {
@@ -108,7 +144,7 @@ export async function current(): Promise<Screen> {
 export async function refresh(): Promise<boolean> {
   const turn = await core.tick();
   if (!turn) return false;
-  show(turn.screen);
+  show(turn.screen, turn.seq);
   return true;
 }
 
@@ -180,7 +216,7 @@ export async function run(first: Event, form?: Form): Promise<Said> {
     turn = await send(answer ? { Answer: answer } : "Cancel");
     said.push(...turn.said);
   }
-  return { screen: turn.screen, said, files: [] };
+  return { screen: turn.screen, said, files: [], notices: [], seq: turn.seq };
 }
 
 /** Runs the first of `kinds` the row in hand offers, or says why it offers none. */

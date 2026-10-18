@@ -14,10 +14,7 @@
 import { useEffect, useRef } from "react";
 import { Button, Dialog, Heading, Modal } from "react-aria-components";
 import { run, sayAll, send } from "./session";
-import { showReplan } from "./Proposal";
-import { core } from "./core";
-import type { Action, DueReminder, ReminderList } from "./core";
-import { say } from "./say";
+import type { Action, Due, DueEvent, ReminderList } from "./core";
 
 const ON = "lumenna:reminders";
 
@@ -52,48 +49,17 @@ export async function askToNotify(): Promise<void> {
   }
 }
 
-/** One thing that came due, as Reminders due lists it. */
-export interface Due {
-  /** What tells it apart, for the notification's tag and the page's element. */
-  id: string;
-  title: string;
-  text: string;
-  /** The buttons, in the core's words and the web's sentence case. */
-  dismiss: string;
-  snooze?: string;
-  /** At a block's end with work left short, the core's Carry Forward; its text asks already. */
-  carry?: string;
-  /** A block's work outrunning its time: the core's Replan, which opens Replan from Now. */
-  replan?: string;
-  /** What carrying forward carries: `<series>@<date>`. */
-  block?: string;
-  /** What dismissing it dismisses: itself, or for a summary, everything missed. */
-  firings: DueReminder[];
-}
-
-function shown(due: Due, open: (id: string) => void): void {
-  try {
-    if (!("Notification" in window) || Notification.permission !== "granted") return;
-    const notification = new Notification(due.title, { body: due.text, tag: due.id });
-    notification.onclick = () => {
-      window.focus();
-      open(due.id);
-      notification.close();
-    };
-  } catch {
-    // A notification the browser will not show; the page has it.
-  }
-}
-
 /** Focuses a reminder's first button in Reminders due. */
 function focusDue(id: string): void {
   document.getElementById(`due-${id}`)?.querySelector("button")?.focus();
 }
 
-/** Gives this browser's reminders while the tab is open; `give` receives each batch. */
-export function useDelivery(ready: boolean, give: (due: Due[]) => void): void {
-  const giving = useRef(give);
-  giving.current = give;
+/**
+ * Gives this browser's reminders while the tab is open: every twenty seconds, and on coming
+ * back to the tab, the app looks for what came due since the last look, from when the tab
+ * opened. What came due, what each says and which are still listed are the app's.
+ */
+export function useDelivery(ready: boolean): void {
   useEffect(() => {
     if (!ready) return;
     // From when the tab opened: nothing is owed from before.
@@ -104,45 +70,8 @@ export function useDelivery(ready: boolean, give: (due: Due[]) => void): void {
       asking = true;
       const now = new Date().toISOString();
       try {
-        if (!remindersOn()) {
-          since = now;
-          return;
-        }
-        const found = await core.remindersDue(since, now);
+        if (remindersOn()) sayAll((await send({ Due: { Look: { since, now } } })).said);
         since = now;
-        const batch: Due[] = [];
-        const sentence = (text: string) => core.sentence(text);
-        if (found.missed_summary && found.missed?.length) {
-          const first = found.missed[0];
-          batch.push({
-            id: `missed-${first.key}-${first.occurrence}`,
-            title: "Lumenna",
-            text: found.missed_summary,
-            dismiss: await sentence(first.dismiss),
-            firings: found.missed,
-          });
-        }
-        for (const reminder of found.due) {
-          batch.push({
-            id: `${reminder.key}-${reminder.occurrence}`,
-            title: reminder.title,
-            text: reminder.text,
-            dismiss: await sentence(reminder.dismiss),
-            snooze: await sentence(reminder.snooze),
-            carry: reminder.carry ? await sentence(reminder.carry) : undefined,
-            replan: reminder.replan ? await sentence(reminder.replan) : undefined,
-            block: `${reminder.target}@${reminder.occurrence}`,
-            firings: [reminder],
-          });
-        }
-        if (batch.length === 0) return;
-        giving.current(batch);
-        for (const due of batch) {
-          say(due.text);
-          shown(due, focusDue);
-        }
-      } catch (error) {
-        console.warn("Reminders:", (error as Error).message);
       } finally {
         asking = false;
       }
@@ -162,35 +91,19 @@ export function useDelivery(ready: boolean, give: (due: Due[]) => void): void {
 }
 
 /** What came due and was not dealt with, each with the core's buttons. In the banner. */
-export function RemindersDue(props: { due: Due[]; onDealt: (id: string) => void; onChanged: () => void }) {
+export function RemindersDue(props: { due: Due[]; onChanged: () => void }) {
   if (props.due.length === 0) return null;
-  const deal = async (due: Due, how: "dismiss" | "snooze" | "carry" | "replan") => {
+  const deal = async (due: Due, event: DueEvent) => {
     const index = props.due.findIndex((d) => d.id === due.id);
-    try {
-      let said = "";
-      if (how === "replan") {
-        // Answered only once the day is replanned: cancelled, the warning stays, and the
-        // screen gives focus back to its button. What was changed the screen has said.
-        if (!(await showReplan())) return;
-        for (const firing of due.firings) await core.dismissReminder(firing.key, firing.occurrence);
-      } else if (how === "carry" && due.block) {
-        // The work carried on, and the firing dealt with: it has been answered.
-        said = await core.carryRestForward(due.block);
-        for (const firing of due.firings) await core.dismissReminder(firing.key, firing.occurrence);
-        props.onChanged();
-      } else {
-        for (const firing of due.firings) {
-          said = await (how === "snooze" ? core.snoozeReminder(firing.key, firing.occurrence) : core.dismissReminder(firing.key, firing.occurrence));
-        }
-      }
-      props.onDealt(due.id);
-      // Focus to what took its place, else out of the list that is gone.
-      const next = props.due.filter((d) => d.id !== due.id)[Math.min(index, props.due.length - 2)];
-      setTimeout(() => (next ? focusDue(next.id) : document.querySelector<HTMLElement>(".app > header button")?.focus()), 0);
-      say(said);
-    } catch (error) {
-      say((error as Error).message);
-    }
+    const turn = await send({ Due: event });
+    sayAll(turn.said);
+    props.onChanged();
+    // Replan opens its screen, which has focus; otherwise focus goes to what took the place of
+    // the one dealt with, else out of the list that is gone.
+    if (turn.screen.proposal) return;
+    const left = turn.screen.due ?? [];
+    const next = left[Math.min(index, left.length - 1)];
+    setTimeout(() => (next ? focusDue(next.id) : document.querySelector<HTMLElement>(".app > header button")?.focus()), 0);
   };
   return (
     <section className="due" aria-labelledby="due-heading">
@@ -199,21 +112,21 @@ export function RemindersDue(props: { due: Due[]; onDealt: (id: string) => void;
         {props.due.map((due) => (
           <li key={due.id} id={`due-${due.id}`}>
             <span id={`due-text-${due.id}`}>{due.text}</span>
-            <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, "dismiss")}>
+            <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, { Dismiss: due.id })}>
               {due.dismiss}
             </Button>
             {due.snooze && (
-              <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, "snooze")}>
+              <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, { Snooze: due.id })}>
                 {due.snooze}
               </Button>
             )}
             {due.replan && (
-              <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, "replan")}>
+              <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, { Replan: due.id })}>
                 {due.replan}
               </Button>
             )}
             {due.carry && (
-              <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, "carry")}>
+              <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, { Carry: due.id })}>
                 {due.carry}
               </Button>
             )}

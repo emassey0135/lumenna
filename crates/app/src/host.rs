@@ -118,6 +118,26 @@ pub enum HostRequest {
         /// Its contents.
         bytes: Vec<u8>,
     },
+    /// The paired devices, this one first.
+    Devices,
+    /// What came due after `since` (RFC 3339) until now.
+    RemindersDue {
+        /// When the shell last looked.
+        since: String,
+        /// The moment looked at, for tests; now when absent.
+        now: Option<String>,
+    },
+    /// Dismiss these firings (key, occurrence), on every device.
+    Dismiss(Vec<(String, String)>),
+    /// Snooze these firings for the core's ten minutes.
+    Snooze(Vec<(String, String)>),
+    /// Carry the rest of a block's short work forward, and dismiss the firings that offered it.
+    CarryForward {
+        /// `<series>@<date>`.
+        block: String,
+        /// The firings, dismissed once it is carried.
+        firings: Vec<(String, String)>,
+    },
     /// Undo the last change made on this device.
     Undo,
     /// Redo the last change undone.
@@ -132,6 +152,10 @@ pub enum HostAnswer {
     Wrote(Box<Result<Change, LumennaError>>, Option<Arrival>),
     /// What a pick offers.
     Offered(Result<Choices, LumennaError>),
+    /// The paired devices.
+    Devices(Result<lumenna_records::types::DeviceList, LumennaError>),
+    /// What came due.
+    Found(Result<lumenna_records::reminders::DueReminders, LumennaError>),
     /// Every setting.
     Listed(Result<lumenna_records::types::SettingList, LumennaError>),
     /// A file to save, and what to say about it.
