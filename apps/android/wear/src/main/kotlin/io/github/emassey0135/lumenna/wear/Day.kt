@@ -1,5 +1,15 @@
 package io.github.emassey0135.lumenna.wear
 
+import io.github.emassey0135.lumenna.name
+import io.github.emassey0135.lumenna.rowActions
+import io.github.emassey0135.lumenna.LocalPlannerNow
+import io.github.emassey0135.lumenna.app.ShellEvent
+import io.github.emassey0135.lumenna.app.Place
+import io.github.emassey0135.lumenna.app.DayMove
+import io.github.emassey0135.lumenna.app.DayKind
+import io.github.emassey0135.lumenna.app.BlockEvent
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -20,53 +30,42 @@ import io.github.emassey0135.lumenna.folded
 import io.github.emassey0135.lumenna.levelChange
 import io.github.emassey0135.lumenna.rows
 import io.github.emassey0135.lumenna.actions
-import io.github.emassey0135.lumenna.records.ActionKind
 import io.github.emassey0135.lumenna.words
-import io.github.emassey0135.lumenna.records.Plan
-import io.github.emassey0135.lumenna.records.Question
-import io.github.emassey0135.lumenna.records.goToDayQuestion
 import io.github.emassey0135.lumenna.said
 import java.time.LocalDate
 
 /**
- * The day as lived, as the phone's day lists it (`DayRow`, `words`): its summary, each block
- * with its sittings beneath it, free time, now, and what is cancelled for the day. A row's
- * actions are the core's: TalkBack's custom actions, and a long press or a tap.
- * A block with sittings folds. Another day is a button away.
+ * The day as lived, the app's (`ViewModel.day`), as the phone's day lists it: its summary, each
+ * block with its sittings beneath it, free time, now, and what is cancelled for the day. A
+ * row's actions are the app's: TalkBack's custom actions, and a long press or a tap. A block
+ * with sittings folds. Another day is a button away, Go to Day the app's question.
  */
 @Composable
-fun DayScreen(core: Core, navigator: Navigator, changes: Long) {
-    var day by rememberSaveable { mutableStateOf<String?>(null) }
-    var collapsed by rememberSaveable { mutableStateOf(emptySet<String>()) }
-    val plan = remember(changes, day) { core.attempt { core.lumenna.plan(day) } }
-    val entry = LocalTextEntry.current
-    val shown = plan?.let { folded(rows(it), { row -> row.depth }, { row -> row.key }, collapsed) }.orEmpty()
-    // The day's own actions, the core's: on its heading, and as buttons after its rows.
-    val dayActions = plan?.let { dayActions(core, navigator, entry, it) }.orEmpty()
+fun DayScreen(core: Core, navigator: Navigator) {
+    val app = core.app
+    val view by app.view.collectAsState()
+    LaunchedEffect(Unit) { app.send(ShellEvent.Open(Place.Today)) }
+    val day = view?.takeIf { it.place == Place.Today }?.day
+    val items = day?.items.orEmpty().filter { !it.hidden && it.kind != DayKind.SUMMARY }
+    // The day's own actions, the app's: on its heading, and as buttons after its rows.
+    val dayActions = day?.let { app.rowActions("summary", it.actions) }.orEmpty()
+    val move = { step: DayMove -> app.send(ShellEvent.Day(step)) }
     WearList {
         // The day's heading, as every app says it: "<day>. <summary>".
         item {
             Heading(
-                plan?.let { p ->
-                    listOf(Clock.spokenDay(p.date), p.summary.ifEmpty { p.announcement.replaceFirstChar { c -> c.uppercase() } })
-                        .filter { it.isNotEmpty() }.joinToString(". ")
-                } ?: "Day",
+                day?.let { d -> listOf(Clock.spokenDay(d.date), d.summary).filter { it.isNotEmpty() }.joinToString(". ") } ?: "Day",
                 dayActions,
             )
         }
-        shown.forEachIndexed { index, shownRow ->
+        items.forEachIndexed { index, item ->
             item {
-                val row = shownRow.item
-                val (title, details) = words(row)
-                val actions = plan?.let { actions(core, navigator, entry, it, row) }.orEmpty() +
-                    if (shownRow.parent) listOf(RowAction(if (shownRow.collapsed) "Expand" else "Collapse") {
-                        collapsed = if (row.key in collapsed) collapsed - row.key else collapsed + row.key
-                        core.say(if (row.key in collapsed) "Collapsed" else "Expanded")
-                    }) else emptyList()
+                val (title, details) = words(item)
+                val actions = app.rowActions(item.key, item.actions).sortedByDescending { it.primary }
                 RowButton(
                     title,
                     detail = details.joinToString(", "),
-                    state = listOfNotNull(shownRow.state, levelChange(shown, index)).joinToString(", ").ifEmpty { null },
+                    state = listOfNotNull(item.expanded?.let { if (it) "expanded" else "collapsed" }, item.level).joinToString(", ").ifEmpty { null },
                     actions = actions,
                     onLongClick = { navigator.actions(title, actions) },
                     onClick = { if (actions.isNotEmpty()) navigator.actions(title, actions) },
@@ -76,57 +75,11 @@ fun DayScreen(core: Core, navigator: Navigator, changes: Long) {
         dayActions.forEach { action ->
             item { Button(onClick = action.run, modifier = Modifier.fillMaxWidth(), label = { Text(action.name) }) }
         }
-        item { Button(onClick = { navigator.open(Screen.BlockForm(BlockPurpose.Add(date = plan?.date))) }, modifier = Modifier.fillMaxWidth(), label = { Text("Add block") }) }
-        item { Button(onClick = { day = step(plan, -1) }, modifier = Modifier.fillMaxWidth(), label = { Text("Previous day") }) }
-        if (day != null) item { Button(onClick = { day = null }, modifier = Modifier.fillMaxWidth(), label = { Text("Today") }) }
-        item { Button(onClick = { day = step(plan, 1) }, modifier = Modifier.fillMaxWidth(), label = { Text("Next day") }) }
-        item {
-            // As the phone asks: a day as it is said, read by the core.
-            Button(onClick = {
-                entry?.ask((goToDayQuestion() as Question.Text).said) { text -> core.attempt { core.lumenna.plan(text) }?.let { day = it.date } }
-            }, modifier = Modifier.fillMaxWidth(), label = { Text("Go to day") })
-        }
+        item { Button(onClick = { app.send(ShellEvent.Block(BlockEvent.New(null, null))) }, modifier = Modifier.fillMaxWidth(), label = { Text("Add block") }) }
+        item { Button(onClick = { move(DayMove.PREVIOUS) }, modifier = Modifier.fillMaxWidth(), label = { Text("Previous day") }) }
+        if (day?.today == false) item { Button(onClick = { move(DayMove.TODAY) }, modifier = Modifier.fillMaxWidth(), label = { Text("Today") }) }
+        item { Button(onClick = { move(DayMove.NEXT) }, modifier = Modifier.fillMaxWidth(), label = { Text("Next day") }) }
+        // As the phone asks: a day as it is said, read by the app.
+        item { Button(onClick = { move(DayMove.ASK) }, modifier = Modifier.fillMaxWidth(), label = { Text("Go to day") }) }
     }
 }
-
-private fun step(plan: Plan?, days: Long): String? {
-    val from = plan?.date?.let { LocalDate.parse(it) } ?: LocalDate.now()
-    val next = from.plusDays(days)
-    return if (next == LocalDate.now()) null else next.toString()
-}
-
-/** What can be done to the day itself: the core's (`Plan.actions`); only its two screens are the watch's. */
-private fun dayActions(core: Core, navigator: Navigator, entry: TextEntry?, plan: Plan): List<RowAction> =
-    core.offered(plan.actions, navigator, entry, form = { action ->
-        if (action.kind == ActionKind.PLAN_DAY || action.kind == ActionKind.REPLAN) {
-            navigator.open(Screen.Proposal(action.kind, action.target))
-        }
-    })
-
-/**
- * What can be done to a day row: the core's, in its order. Only its forms are this screen's to
- * open: a block's, the task a sitting is for, and a new block in free time.
- */
-private fun actions(core: Core, navigator: Navigator, entry: TextEntry?, plan: Plan, row: DayRow): List<RowAction> =
-    core.offered(row.actions, navigator, entry, form = { action ->
-        when (action.kind) {
-            ActionKind.EDIT -> if (row is DayRow.Block) {
-                val block = row.block
-                val date = plan.date
-                // Never guessed: one day, or every day, of a repeating block.
-                if (!block.repeats) navigator.open(Screen.BlockForm(BlockPurpose.Series(block.series)))
-                else navigator.choose("Change ${block.title}", listOf(
-                    Option("day", "${Clock.spokenDay(date)} only"), Option("all", "Every occurrence"),
-                ), "Which occurrences?") { which ->
-                    navigator.open(Screen.BlockForm(
-                        if (which.key == "day") BlockPurpose.Occurrence(block, date) else BlockPurpose.Series(block.series),
-                    ))
-                }
-            }
-            ActionKind.EDIT_TASK -> navigator.open(Screen.Task(action.target))
-            ActionKind.ADD_BLOCK -> if (row is DayRow.Free) {
-                navigator.open(Screen.BlockForm(BlockPurpose.Add(date = action.target, at = action.other ?: row.start, minutes = row.minutes)))
-            }
-            else -> {}
-        }
-    })

@@ -1,5 +1,17 @@
 package io.github.emassey0135.lumenna.wear
 
+import io.github.emassey0135.lumenna.rowActions
+import io.github.emassey0135.lumenna.appButton
+import io.github.emassey0135.lumenna.app.pairingWords
+import io.github.emassey0135.lumenna.app.ShellEvent
+import io.github.emassey0135.lumenna.app.SettingsEvent
+import io.github.emassey0135.lumenna.app.SettingView
+import io.github.emassey0135.lumenna.app.SettingKind
+import io.github.emassey0135.lumenna.app.PairEvent
+import io.github.emassey0135.lumenna.app.DevicesEvent
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -25,8 +37,6 @@ import io.github.emassey0135.lumenna.said
 import io.github.emassey0135.lumenna.sentence
 import io.github.emassey0135.lumenna.set
 import io.github.emassey0135.lumenna.settings
-import io.github.emassey0135.lumenna.records.Setting
-import io.github.emassey0135.lumenna.records.SettingKind
 import androidx.wear.compose.foundation.lazy.ScalingLazyListScope
 import androidx.wear.compose.material3.RadioButton
 
@@ -41,49 +51,54 @@ fun SettingsScreen(navigator: Navigator) {
     }
 }
 
-/** What syncs to every device, as the phone shows it; and this watch's backups. Each setting's
- *  name, options and what it does are the core's. */
+/** The app's settings, open while a page showing them is. */
 @Composable
-fun PlanningScreen(core: Core, changes: Long) {
-    val all = remember(changes) { settings(core) }
+fun appSettings(core: Core): List<SettingView> {
+    val app = core.app
+    val view by app.view.collectAsState()
+    LaunchedEffect(Unit) { app.send(ShellEvent.Settings(SettingsEvent.Open)) }
+    return view?.settings?.settings.orEmpty()
+}
+
+/**
+ * What syncs to every device, as the phone shows it; and this watch's backups. Each setting's
+ * name, options and what it does are the core's; applying it is the app's.
+ */
+@Composable
+fun PlanningScreen(core: Core) {
+    val all = appSettings(core)
     WearList {
         item { Heading("Planning") }
-        all.planning().forEach { setting(core, it) }
+        all.filter { it.setting.syncs }.forEach { setting(core, it) }
         item { Text("These sync to all your devices.") }
         item { Heading("Backups") }
-        all.backups().forEach { setting(core, it) }
+        all.filter { !it.setting.syncs && it.setting.key.startsWith("backup-") && it.setting.kind != SettingKind.FOLDER }.forEach { setting(core, it) }
         item {
+            // Into this watch's backups, beside the others.
             Button(onClick = { core.attempt { core.lumenna.backup(null) }?.let { core.say(sentence(it.announcement, it.notices)) } }, modifier = Modifier.fillMaxWidth(), label = { Text("Back up now") })
         }
     }
 }
 
 /**
- * The paired devices, how syncing with each last went, Sync Now, and pairing another — a
- * Wear OS watch is a peer of its own. Each device's actions are the core's.
+ * The paired devices, the app's, how syncing with each last went, Sync Now, and pairing
+ * another — a Wear OS watch is a peer of its own. Each device's actions are the app's.
  */
 @Composable
-fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
-    val status = remember(changes) { core.attempt { core.lumenna.syncStatus() } }
-    val entry = LocalTextEntry.current
-    val syncNow = {
-        core.say("Syncing")
-        core.syncNow { result ->
-            result.fold(
-                { report -> core.changed(); core.say(sentence(report.announcement, report.peers.mapNotNull { peer -> peer.error?.let { "${peer.name}: $it" } })) },
-                { error -> core.say((error as? io.github.emassey0135.lumenna.records.LumennaException)?.let { io.github.emassey0135.lumenna.sentence(it.message.orEmpty(), emptyList()) } ?: error.message.orEmpty()) },
-            )
-        }
-    }
+fun DevicesScreen(core: Core, navigator: Navigator) {
+    val app = core.app
+    val view by app.view.collectAsState()
+    LaunchedEffect(Unit) { app.send(ShellEvent.Devices(DevicesEvent.Show)) }
+    val devices = view?.devices
     WearList {
         item { Heading("Devices and sync") }
-        status?.let { item { Text(it.announcement) } }
-        item { Button(onClick = { syncNow() }, modifier = Modifier.fillMaxWidth(), label = { Text("Sync now") }) }
-        status?.devices.orEmpty().forEach { device ->
+        devices?.status?.takeIf { it.isNotEmpty() }?.let { item { Text(it) } }
+        item { Button(onClick = { syncNow(core) }, modifier = Modifier.fillMaxWidth(), label = { Text("Sync now") }) }
+        devices?.list?.devices.orEmpty().forEach { device ->
             item {
                 // The core's: Rename, and Unpair on every row but this watch's own. Sync Now is
                 // with every device at once, so it is the screen's button above.
-                val actions = core.offered(device.actions, navigator, entry)
+                val actions = app.rowActions(device.nodeId, device.actions)
                 RowButton(
                     device.name,
                     detail = (listOf(device.platform) + device.status).joinToString(", "),
@@ -92,45 +107,69 @@ fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
                 ) { navigator.actions(device.name, actions) }
             }
         }
-        item { PairingButtons(core, navigator) }
+        item { PairingButtons(core) }
+    }
+}
+
+/** A round with every paired device now, on the UniFFI core while it holds the endpoint. */
+private fun syncNow(core: Core) {
+    core.say("Syncing")
+    core.syncNow { result ->
+        result.fold(
+            { report -> core.changed(); core.say(sentence(report.announcement, report.peers.mapNotNull { peer -> peer.error?.let { "${peer.name}: $it" } })) },
+            { error -> core.say(error.message.orEmpty()) },
+        )
     }
 }
 
 /**
- * Pairing, as the phone runs it (`PairingSession`): wait to be found, or join with a code;
- * then compare the words.
+ * Pairing, as the app runs it: wait to be found, or join with a code; then compare the words.
+ * Every sentence and button is the core's (`pairingWords`), buttons in sentence case. The code
+ * is asked for as a field is, by the system's input screen, and joined with once given.
  */
 @Composable
-private fun PairingButtons(core: Core, navigator: Navigator) {
+private fun PairingButtons(core: Core) {
+    val app = core.app
+    val view by app.view.collectAsState()
+    val pairing = view?.devices?.pairing
+    val pair = { event: PairEvent -> app.send(ShellEvent.Devices(DevicesEvent.Pair(event))) }
     val context = LocalContext.current
-    val session = remember { PairingSession(core, context, PLATFORM, "this watch") { core.changed() } }
-    // Every sentence and button is the core's (`pairingWords`), buttons in sentence case. The
-    // code is asked for as a field is, by the system's input screen, and joined with once given.
-    val words = session.words
-    DisposableEffect(Unit) { onDispose { session.cancel() } }
+    val words = remember { pairingWords("this watch", true) }
+    LaunchedEffect(Unit) { pair(PairEvent.Open(PairingSession.deviceName(context))) }
+    DisposableEffect(Unit) { onDispose { pair(PairEvent.Cancel) } }
     androidx.compose.foundation.layout.Column {
-        Heading(button(words.title))
-        Text(session.status, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-        session.code?.let { Text("${words.myCode}: $it") }
-        Button(onClick = { session.waitToBeFound() }, enabled = !session.running, modifier = Modifier.fillMaxWidth(), label = { Text(button(words.wait)) })
-        if (session.nextCode == null && (!session.running || session.waiting)) {
-            TextFieldButton(words.theirCode, "") { session.join(it) }
+        Heading(appButton(words.title))
+        val status = pairing?.problem ?: when {
+            pairing?.mine != null -> words.waiting
+            pairing?.running == true -> words.connecting
+            else -> words.introSentence.ifEmpty { words.intro }
         }
-        session.asked?.let { shown ->
-            Text("${button(words.matchTitle)} ${session.matchMessage(shown)}", Modifier.semantics { liveRegion = LiveRegionMode.Assertive })
-            Button(onClick = { session.answer(true) }, modifier = Modifier.fillMaxWidth(), label = { Text(button(words.matchYes)) })
-            Button(onClick = { session.answer(false) }, modifier = Modifier.fillMaxWidth(), label = { Text(button(words.matchNo)) })
+        Text(status, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+        pairing?.mine?.let { Text("${words.myCode}: $it") }
+        Button(onClick = { pair(PairEvent.Wait) }, enabled = pairing?.running != true, modifier = Modifier.fillMaxWidth(), label = { Text(appButton(words.wait)) })
+        if (pairing?.running != true || pairing.waiting) {
+            TextFieldButton(words.theirCode, "") { code ->
+                pair(PairEvent.Code(code))
+                pair(PairEvent.Join)
+            }
+        }
+        pairing?.words?.let { three ->
+            Text("${appButton(words.matchTitle)} ${words.matchMessage} ${three.joinToString(", ")}.", Modifier.semantics { liveRegion = LiveRegionMode.Assertive })
+            Button(onClick = { pair(PairEvent.Confirm(true)) }, modifier = Modifier.fillMaxWidth(), label = { Text(appButton(words.matchYes)) })
+            Button(onClick = { pair(PairEvent.Confirm(false)) }, modifier = Modifier.fillMaxWidth(), label = { Text(appButton(words.matchNo)) })
         }
     }
 }
 
-/** One setting, by the control its kind asks for. */
-private fun ScalingLazyListScope.setting(core: Core, setting: Setting) {
+/** One setting, by the control its kind asks for; applied through the app. */
+private fun ScalingLazyListScope.setting(core: Core, shown: SettingView) {
+    val setting = shown.setting
+    val set = { value: String -> core.app.send(ShellEvent.Settings(SettingsEvent.Set(setting.key, value))) }
     when (setting.kind) {
         SettingKind.TOGGLE -> item {
             SwitchButton(
-                checked = setting.on,
-                onCheckedChange = { core.set(setting, if (it) "true" else "false") },
+                checked = setting.value == "true",
+                onCheckedChange = { set(if (it) "true" else "false") },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text(setting.title) },
             )
@@ -141,7 +180,7 @@ private fun ScalingLazyListScope.setting(core: Core, setting: Setting) {
                 item {
                     RadioButton(
                         selected = setting.value == option.id,
-                        onSelect = { core.set(setting, option.id) },
+                        onSelect = { set(option.id) },
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text(option.title) },
                     )
@@ -149,8 +188,11 @@ private fun ScalingLazyListScope.setting(core: Core, setting: Setting) {
             }
         }
         SettingKind.TIME, SettingKind.NUMBER, SettingKind.FOLDER, SettingKind.LINE -> item {
-            TextFieldButton(setting.title, setting.said) { core.set(setting, it.trim()) }
+            val said = if (setting.kind == SettingKind.TIME) Clock.time(setting.value) else setting.value
+            TextFieldButton(setting.title, said) { set(it.trim()) }
         }
     }
+    // A refused line, beside why, as the app keeps it.
+    shown.problem?.let { problem -> item { Text(problem) } }
     if (setting.hint.isNotEmpty()) item { Text(setting.hint) }
 }

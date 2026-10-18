@@ -1,5 +1,17 @@
 package io.github.emassey0135.lumenna.wear
 
+import io.github.emassey0135.lumenna.option
+import io.github.emassey0135.lumenna.appButton
+import io.github.emassey0135.lumenna.TextOffsets
+import io.github.emassey0135.lumenna.app.Typing
+import io.github.emassey0135.lumenna.app.TaskFields
+import io.github.emassey0135.lumenna.app.ShellEvent
+import io.github.emassey0135.lumenna.app.FieldKind
+import io.github.emassey0135.lumenna.app.DetailsEvent
+import io.github.emassey0135.lumenna.app.BlockFields
+import io.github.emassey0135.lumenna.app.BlockEvent
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,14 +42,7 @@ import io.github.emassey0135.lumenna.taskFormFields
 import io.github.emassey0135.lumenna.text
 import io.github.emassey0135.lumenna.withFlag
 import io.github.emassey0135.lumenna.withText
-import io.github.emassey0135.lumenna.records.FieldKind
 import io.github.emassey0135.lumenna.perform
-import io.github.emassey0135.lumenna.records.ActionKind
-import io.github.emassey0135.lumenna.records.Syntax
-import io.github.emassey0135.lumenna.records.TaskDetail
-import io.github.emassey0135.lumenna.records.TaskFields
-import io.github.emassey0135.lumenna.records.taskEdit
-import io.github.emassey0135.lumenna.records.taskFields
 
 /**
  * A field the system's input screen fills: its name, then what it holds, one TalkBack stop.
@@ -55,47 +60,51 @@ fun TextFieldButton(name: String, value: String, example: String = "", ask: (Str
 }
 
 /**
- * Quick add: one line, read back by the core before anything is saved, as on every app.
+ * Quick add: the app's line, read back by the core before anything is saved, as on every app.
  * The input screen replaces a whole line, so the line is changed or added to; what could
- * finish its last word is offered beneath it.
+ * finish its last word is offered beneath it, and put in where the app says.
  */
 @Composable
-fun AddTaskScreen(core: Core, navigator: Navigator, prefix: String) {
-    var line by remember { mutableStateOf(prefix) }
+fun AddTaskScreen(core: Core, navigator: Navigator) {
+    val app = core.app
+    val view by app.view.collectAsState()
+    val line = view?.line
     val entry = LocalTextEntry.current
+    var opened by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { app.send(ShellEvent.Typing(Typing.Open)) }
+    // Added, the app lets the line go, and the screen goes back.
+    LaunchedEffect(line == null) { if (line != null) opened = true else if (opened) navigator.back() }
+    DisposableEffect(Unit) { onDispose { if (app.view.value?.line != null) app.send(ShellEvent.Typing(Typing.Close)) } }
+    val text = line?.text.orEmpty()
+    val set = { value: String -> app.send(ShellEvent.Typing(Typing.Text(value, TextOffsets.bytes(value.length, value)))) }
     // Straight to the input screen, as the phone's quick add opens with the keyboard up.
-    LaunchedEffect(Unit) { if (line.isBlank()) entry?.ask("New task") { line = it } }
-    val readback = remember(line) { if (line.isBlank()) null else core.attempt { core.lumenna.previewTask(line) } }
-    val offered = remember(line) { Completing.offered(core, line, Syntax.QUICK_ADD) }
+    LaunchedEffect(opened) { if (opened && text.isBlank()) entry?.ask("New task") { set(it) } }
     WearList {
         item { Heading("New task") }
-        item { TextFieldButton("Task", line, "call the bank tomorrow") { line = it } }
-        if (line.isNotBlank()) {
+        item { TextFieldButton("Task", text, "call the bank tomorrow") { set(it) } }
+        if (text.isNotBlank()) {
             item {
-                Button(onClick = { entry?.ask("Add to the line") { more -> line = "${line.trimEnd()} ${more.trim()}" } }, modifier = Modifier.fillMaxWidth(), label = { Text("Add to the line") })
+                Button(onClick = { entry?.ask("Add to the line") { more -> set("${text.trimEnd()} ${more.trim()}") } }, modifier = Modifier.fillMaxWidth(), label = { Text("Add to the line") })
             }
         }
-        offered?.let { (candidates, span) ->
-            candidates.take(8).forEach { candidate ->
-                item {
-                    Button(
-                        onClick = { line = Completing.insert(line, span, candidate) },
-                        // Named as the core names it: "project Work", not "#Work".
-                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Complete with ${candidate.label}" },
-                        label = { Text(candidate.text) },
-                    )
-                }
+        line?.offer?.candidates.orEmpty().take(8).forEachIndexed { index, candidate ->
+            item {
+                Button(
+                    onClick = { app.send(ShellEvent.Typing(Typing.Choose(index.toUInt()))) },
+                    // Named as the core names it: "project Work", not "#Work".
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Complete with ${candidate.label}" },
+                    label = { Text(candidate.text) },
+                )
             }
         }
         // What will be saved, before anything is: a misheard date is caught here.
-        readback?.let { preview ->
-            item { Text(preview.announcement.replaceFirstChar { it.uppercase() }) }
-            preview.notices.forEach { notice -> item { Text(notice) } }
+        line?.readback?.takeIf { it.isNotEmpty() }?.let { readback ->
+            item { Text(readback.replaceFirstChar { it.uppercase() }) }
         }
         item {
             Button(
-                onClick = { if (core.change { it.addTask(line) } != null) navigator.back() },
-                enabled = line.isNotBlank(),
+                onClick = { app.send(ShellEvent.QuickAdd(text)) },
+                enabled = text.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Add") },
             )
@@ -104,42 +113,37 @@ fun AddTaskScreen(core: Core, navigator: Navigator, prefix: String) {
 }
 
 /**
- * One task, edited as the phone edits it (`TaskField`): every field, saved as only what
- * changed, then what can be done to it.
+ * One task, the app's details, edited as the phone edits it: every field, through the system's
+ * input screen, saved by the app as only what changed, then what can be done to it.
  */
 @Composable
-fun TaskScreen(core: Core, navigator: Navigator, screen: Screen.Task, changes: Long) {
-    val id = screen.id
-    var task by screen.shown
-    var fields by screen.fields
-    LaunchedEffect(id, changes) {
-        val shown = runCatching { core.lumenna.showTask(id).task }.getOrNull()
-        // Another device's change follows unless this one is part way through editing.
-        val editing = task?.let { before -> fields?.let { taskEdit(before, it) } } != null
-        if (!editing || shown == null) {
-            task = shown
-            fields = shown?.let { taskFields(it) }
-        }
-    }
-    val current = task
-    val form = fields
+fun TaskScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
+    val app = core.app
+    val view by app.view.collectAsState()
+    LaunchedEffect(screen.id) { app.send(ShellEvent.Details(DetailsEvent.Show(screen.id))) }
+    val details = view?.details?.takeIf { it.task.id == screen.id }
+    var shown by remember(screen.id) { mutableStateOf(false) }
+    // Gone from under it — deleted here or elsewhere — the screen goes back.
+    LaunchedEffect(details == null) { if (details != null) shown = true else if (shown) navigator.back() }
+    val set = { key: String, value: String -> app.send(ShellEvent.Details(DetailsEvent.Field(key, value))) }
     WearList {
-        if (current == null || form == null) {
-            item { Text("This task is no longer here.") }
+        if (details == null) {
+            if (shown) item { Text("This task is no longer here.") }
             return@WearList
         }
+        val current = details.task
+        val form = details.fields
         item { Heading(current.title) }
         // The core's fields, in its order, as the phone has them: the priority a choice among
         // the core's options, the project one of the projects, the rest lines from the
         // system's input screen.
-        taskFormFields.forEach { field ->
-            val text = TaskField.of(field)
+        details.form.forEach { field ->
             if (field.key == "project") {
                 // A list to choose from, as the watch's other picks are: the projects in tree
-                // order (`projectOptions`), each saying its level where it changes.
+                // order, each saying its level where it changes.
                 item {
                     Button(
-                        onClick = { navigator.choose(field.label, core.projectChoices(current.project.orEmpty())) { fields = form.copy(project = it.key) } },
+                        onClick = { navigator.choose(field.label, details.projects.map(::option)) { set("project", it.key) } },
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text(field.label) },
                         secondaryLabel = { Text(form.project) },
@@ -147,8 +151,9 @@ fun TaskScreen(core: Core, navigator: Navigator, screen: Screen.Task, changes: L
                 }
                 return@forEach
             }
+            val text = form.text(field.key)
             if (text != null) {
-                item { TextFieldButton(field.label, text.get(form), field.example) { fields = text.set(form, it) } }
+                item { TextFieldButton(field.label, text, field.example) { set(field.key, it) } }
                 return@forEach
             }
             item { Heading(field.label) }
@@ -156,14 +161,14 @@ fun TaskScreen(core: Core, navigator: Navigator, screen: Screen.Task, changes: L
                 item {
                     RadioButton(
                         selected = form.priority == option.id.toUByte(),
-                        onSelect = { fields = form.copy(priority = option.id.toUByte()) },
+                        onSelect = { set("priority", option.id) },
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text(option.title) },
                     )
                 }
             }
         }
-        item { Button(onClick = { TaskField.save(core, current, form) }, modifier = Modifier.fillMaxWidth(), label = { Text("Save") }) }
+        item { Button(onClick = { app.send(ShellEvent.Details(DetailsEvent.Save)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Save") }) }
 
         if (current.depends.isNotEmpty()) {
             item { Heading("Waits for") }
@@ -180,36 +185,49 @@ fun TaskScreen(core: Core, navigator: Navigator, screen: Screen.Task, changes: L
             current.history.forEach { line -> item { Text(line) } }
         }
 
-        // The core's, in its order: this screen is the task's form, so no Edit Details.
+        // The app's, in the core's order: this screen is the task's form, so no Edit Details.
         item { Heading("Actions") }
         current.actions.forEach { action ->
-            item {
-                val entry = LocalTextEntry.current
-                Button(onClick = {
-                    core.perform(action, WearAsker(navigator, entry), form = navigator.formOr {}) {
-                        if (action.kind == ActionKind.DELETE) navigator.back()
-                    }
-                }, modifier = Modifier.fillMaxWidth(), label = { Text(action.name) })
-            }
+            item { Button(onClick = { app.send(ShellEvent.Perform(action)) }, modifier = Modifier.fillMaxWidth(), label = { Text(action.name) }) }
         }
     }
 }
 
-/** A length in minutes, from the lengths a sitting usually takes, or, given [without], none. */
-fun chooseLength(navigator: Navigator, title: String, without: String?, chosen: (UInt?) -> Unit) {
-    val lengths = listOf(15, 25, 30, 45, 60, 90, 120).map { Option(it.toString(), Clock.length(it.toUInt())) }
-    navigator.choose(title, lengths + listOfNotNull(without?.let { Option("", it) })) { choice -> chosen(choice.key.toUIntOrNull()) }
+/** A task field's text, by the core's key; null for the priority, whose value is a number. */
+private fun TaskFields.text(key: String): String? = when (key) {
+    "title" -> title
+    "due" -> due
+    "repeat" -> repeat
+    "estimate" -> estimate
+    "project" -> project
+    "labels" -> labels
+    "notes" -> notes
+    else -> null
 }
 
-/** A block, added or changed, in the form the phone has (`BlockFormModel`). */
+/** A length in minutes, from the lengths a sitting usually takes, or, given [without], none. */
+fun chooseLength(navigator: Navigator, title: String, without: String?, cancelled: () -> Unit = {}, chosen: (UInt?) -> Unit) {
+    val lengths = listOf(15, 25, 30, 45, 60, 90, 120).map { Option(it.toString(), Clock.length(it.toUInt())) }
+    navigator.choose(title, lengths + listOfNotNull(without?.let { Option("", it) }), cancelled = cancelled) { choice -> chosen(choice.key.toUIntOrNull()) }
+}
+
+/** A block, added or changed: the app's block form, as the phone has it. */
 @Composable
-fun BlockFormScreen(core: Core, navigator: Navigator, purpose: BlockPurpose) {
-    val model = remember(purpose) { BlockFormModel(core, purpose) }
-    val fields = model.fields
+fun BlockFormScreen(core: Core, navigator: Navigator) {
+    val app = core.app
+    val view by app.view.collectAsState()
+    val form = view?.blockForm
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(form == null) { if (form != null) shown = true else if (shown) navigator.back() }
+    DisposableEffect(Unit) { onDispose { if (app.view.value?.blockForm != null) app.send(ShellEvent.Block(BlockEvent.Cancel)) } }
+    val set = { key: String, value: String -> app.send(ShellEvent.Block(BlockEvent.Field(key, value))) }
     WearList {
-        item { Heading(model.title) }
-        // The core's fields, in its order (`blockForm`), as the phone has them.
-        blockFormFields.filter(model::shows).forEach { field ->
+        if (form == null) return@WearList
+        val fields = form.values
+        item { Heading(form.heading) }
+        form.refusal?.let { item { Text(it) } }
+        // The app's fields, in the core's order, as the phone has them.
+        form.fields.forEach { field ->
             when (field.kind) {
                 FieldKind.CHOICE -> {
                     item { Heading(field.label) }
@@ -217,35 +235,53 @@ fun BlockFormScreen(core: Core, navigator: Navigator, purpose: BlockPurpose) {
                         item {
                             RadioButton(
                                 selected = fields.kind == option.id,
-                                onSelect = { model.kind(option.id) },
+                                onSelect = { set(field.key, option.id) },
                                 modifier = Modifier.fillMaxWidth(),
                                 label = { Text(option.title) },
                             )
                         }
                     }
-                    field.help?.let { item { Text(it) } }
+                    field.hint.ifEmpty { null }?.let { item { Text(it) } }
                 }
-                FieldKind.TOGGLE -> item {
-                    Flag(field.label, fields.flag(field.key)) { model.fields = model.fields.withFlag(field.key, it) }
-                }
+                FieldKind.TOGGLE -> item { Flag(field.label, fields.flag(field.key)) { set(field.key, it.toString()) } }
                 else -> {
                     item {
-                        // A new block's day is the model's; the length is said in words beside it.
+                        // A new block's day is the form's; the length is said in words beside it.
                         val value = when (field.key) {
-                            "date" -> model.day
+                            "date" -> form.date
                             "minutes" -> fields.minutes.trim().toUIntOrNull()?.let { "${fields.minutes}, ${Clock.length(it)}" } ?: fields.minutes
                             else -> fields.text(field.key)
                         }
-                        TextFieldButton(field.label, value, field.example) {
-                            if (field.key == "date") model.day = it else model.fields = model.fields.withText(field.key, if (field.key == "minutes") it.trim() else it)
-                        }
+                        TextFieldButton(field.label, value, field.example) { set(field.key, if (field.key == "minutes") it.trim() else it) }
                     }
-                    if (field.key == "repeat") model.help(field)?.let { item { Text(it) } }
+                    if (field.key == "repeat") field.hint.ifEmpty { null }?.let { item { Text(it) } }
                 }
             }
         }
-        item { Button(onClick = { if (model.save()) navigator.back() }, modifier = Modifier.fillMaxWidth(), label = { Text("Save") }) }
+        item { Button(onClick = { app.send(ShellEvent.Block(BlockEvent.Save)) }, modifier = Modifier.fillMaxWidth(), label = { Text(appButton(form.yes)) }) }
     }
+}
+
+/** A block form field's text, by the core's key; a toggle or the kind reads empty here. */
+private fun BlockFields.text(key: String): String = when (key) {
+    "title" -> title
+    "start" -> start
+    "minutes" -> minutes
+    "repeat" -> repeat
+    "until" -> until
+    "min_minutes" -> minMinutes
+    "task_filter" -> taskFilter
+    "colour" -> colour
+    "notes" -> notes
+    else -> ""
+}
+
+/** A block form toggle, by the core's key. */
+private fun BlockFields.flag(key: String): Boolean = when (key) {
+    "accepts_tasks" -> acceptsTasks
+    "counts_capacity" -> countsCapacity
+    "anchored" -> anchored
+    else -> false
 }
 
 /** A flag of the block, as a switch: one TalkBack stop that says it and whether it is on. */

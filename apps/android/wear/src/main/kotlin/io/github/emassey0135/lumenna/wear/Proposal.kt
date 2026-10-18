@@ -1,5 +1,13 @@
 package io.github.emassey0135.lumenna.wear
 
+import io.github.emassey0135.lumenna.appButton
+import io.github.emassey0135.lumenna.app.ShellEvent
+import io.github.emassey0135.lumenna.app.ProposalEvent
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -16,26 +24,32 @@ import io.github.emassey0135.lumenna.ProposalModel
 import io.github.emassey0135.lumenna.button
 
 /**
- * Replan from Now, or Plan the Day, as the phone has it (`ProposalModel`): the proposal said as
- * the screen opens, each change a check box, all checked; applying makes those checked, and
- * what the core proposes next around what was left unchecked becomes the list.
+ * Replan from Now, or Plan the Day: the app's proposal, as the phone has it, said as the screen
+ * opens, each change a check box the app keeps, all checked; applying makes those checked, and
+ * what the core proposes next around what was left unchecked becomes the list, until nothing is
+ * left and the app closes it.
  */
 @Composable
-fun ProposalScreen(core: Core, navigator: Navigator, screen: Screen.Proposal) {
-    val now = LocalPlannerNow.current
-    val model = remember(screen) { ProposalModel(core, screen.kind, screen.date, now) }
-    val words = model.words
-    LaunchedEffect(model) { model.propose() }
-    val items = model.items
+fun ProposalScreen(core: Core, navigator: Navigator) {
+    val app = core.app
+    val view by app.view.collectAsState()
+    val proposal = view?.proposal
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(proposal == null) { if (proposal != null) shown = true else if (shown) navigator.back() }
+    DisposableEffect(Unit) { onDispose { if (app.view.value?.proposal != null) app.send(ShellEvent.Proposal(ProposalEvent.Close)) } }
+    val send = { event: ProposalEvent -> app.send(ShellEvent.Proposal(event)) }
     WearList {
-        item { Heading(model.title) }
-        model.refused?.let { refused -> item { Text(refused, color = MaterialTheme.colorScheme.error) } }
-        if (model.ready && items.isEmpty()) item { Text(words.nothing) }
+        if (proposal == null) return@WearList
+        val words = proposal.words
+        val items = proposal.changes
+        item { Heading(appButton(words.title)) }
+        proposal.refusal?.let { refused -> item { Text(refused, color = MaterialTheme.colorScheme.error) } }
+        if (proposal.ready && items.isEmpty()) item { Text(words.nothing) }
         items.forEachIndexed { index, change ->
             item {
                 CheckboxButton(
-                    checked = index in model.checked,
-                    onCheckedChange = { model.toggle(index) },
+                    checked = change.checked,
+                    onCheckedChange = { send(ProposalEvent.Check(index.toUInt(), it)) },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(change.sentence, maxLines = Int.MAX_VALUE) },
                     // Why this task, as its description. Every line of both shows: a sentence
@@ -44,19 +58,20 @@ fun ProposalScreen(core: Core, navigator: Navigator, screen: Screen.Proposal) {
                 )
             }
         }
-        if (model.unfit.isNotEmpty()) {
-            item { Heading(button(words.unfit)) }
-            model.unfit.forEach { line -> item { Text(line) } }
+        if (proposal.unfit.isNotEmpty()) {
+            item { Heading(appButton(words.unfit)) }
+            proposal.unfit.forEach { line -> item { Text(line) } }
         }
         // Other ways through the day, each named by what it is, costs and leads to.
-        if (model.alternatives.isNotEmpty()) {
-            item { Heading(model.others) }
-            model.alternatives.forEach { other ->
+        if (proposal.others.isNotEmpty() && words.others.isNotEmpty()) {
+            item { Heading(appButton(words.others)) }
+            proposal.others.forEachIndexed { index, sentence ->
                 item {
                     FilledTonalButton(
-                        onClick = { model.take(other) },
+                        onClick = { send(ProposalEvent.Take(index.toUInt())) },
+                        enabled = !proposal.busy,
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text(other.sentence, maxLines = Int.MAX_VALUE) },
+                        label = { Text(sentence, maxLines = Int.MAX_VALUE) },
                     )
                 }
             }
@@ -65,12 +80,13 @@ fun ProposalScreen(core: Core, navigator: Navigator, screen: Screen.Proposal) {
             item { Text(words.hint) }
             item {
                 Button(
-                    onClick = { if (model.apply()) navigator.back() },
+                    onClick = { send(ProposalEvent.Apply) },
+                    enabled = !proposal.busy,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text(button(words.apply)) },
+                    label = { Text(appButton(words.apply)) },
                 )
             }
         }
-        item { FilledTonalButton(onClick = { navigator.back() }, modifier = Modifier.fillMaxWidth(), label = { Text(button(words.cancel)) }) }
+        item { FilledTonalButton(onClick = { navigator.back() }, modifier = Modifier.fillMaxWidth(), label = { Text(appButton(words.cancel)) }) }
     }
 }

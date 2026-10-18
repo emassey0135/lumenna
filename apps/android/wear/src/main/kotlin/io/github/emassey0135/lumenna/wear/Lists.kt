@@ -1,5 +1,17 @@
 package io.github.emassey0135.lumenna.wear
 
+import io.github.emassey0135.lumenna.rowActions
+import io.github.emassey0135.lumenna.placeTitle
+import io.github.emassey0135.lumenna.placeRows
+import io.github.emassey0135.lumenna.appButton
+import io.github.emassey0135.lumenna.AppRowSpeech
+import io.github.emassey0135.lumenna.app.SidebarKind
+import io.github.emassey0135.lumenna.app.ShellEvent
+import io.github.emassey0135.lumenna.app.Place
+import io.github.emassey0135.lumenna.app.ActionKind
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -26,18 +38,7 @@ import io.github.emassey0135.lumenna.RowSpeech
 import io.github.emassey0135.lumenna.folded
 import io.github.emassey0135.lumenna.levelChange
 import io.github.emassey0135.lumenna.detailOf
-import io.github.emassey0135.lumenna.records.ActionKind
-import io.github.emassey0135.lumenna.records.SidebarEntry
-import io.github.emassey0135.lumenna.records.Subject
-import io.github.emassey0135.lumenna.records.Place
-import io.github.emassey0135.lumenna.records.Question
-import io.github.emassey0135.lumenna.records.newFilterQuestions
 import io.github.emassey0135.lumenna.said as asked
-import io.github.emassey0135.lumenna.records.SidebarGroup
-import io.github.emassey0135.lumenna.records.SidebarKind
-import io.github.emassey0135.lumenna.records.placeQuery
-import io.github.emassey0135.lumenna.records.placeQuickAddPrefix
-import io.github.emassey0135.lumenna.records.placeTitle
 import io.github.emassey0135.lumenna.sentence
 import io.github.emassey0135.lumenna.name
 import io.github.emassey0135.lumenna.button
@@ -62,59 +63,51 @@ fun WearList(content: ScalingLazyListScope.() -> Unit) {
 }
 
 /**
- * The places, as every app's sidebar has them, from the core: Today, Tasks, the projects,
- * labels and saved filters, Blocks and Trash. Headings and project trees fold. Then Undo,
- * Redo and Settings.
+ * The places, as every app's sidebar has them, from the app: Today, Tasks, the projects,
+ * labels and saved filters, Blocks and Trash. Headings and project trees fold, through the
+ * app; a heading's own action (New Project, …) beneath it. Then Undo, Redo and Settings.
  */
 @Composable
-fun PlacesScreen(core: Core, navigator: Navigator, changes: Long) {
-    val entries = remember(changes) { core.lumenna.places().entries.filter { !it.archived } }
-    var collapsed by rememberSaveable { mutableStateOf(emptySet<String>()) }
-    val key = { kind: SidebarKind ->
-        when (kind) {
-            is SidebarKind.Place -> "place:${kind.v1}"
-            is SidebarKind.Group -> "group:${kind.v1}"
-        }
-    }
-    val shown = folded(entries, { it.depth.toInt() }, { key(it.kind) }, collapsed)
-    val entry = LocalTextEntry.current
+fun PlacesScreen(core: Core, navigator: Navigator) {
+    val app = core.app
+    val view by app.view.collectAsState()
+    val rows = placeRows(view?.sidebar.orEmpty().filter { !it.archived }).filter { !it.hidden }
     WearList {
-        item { Button(onClick = { navigator.open(Screen.AddTask("")) }, modifier = Modifier.fillMaxWidth(), label = { Text("New task") }) }
-        shown.forEachIndexed { index, row ->
+        item { Button(onClick = { navigator.open(Screen.AddTask) }, modifier = Modifier.fillMaxWidth(), label = { Text("New task") }) }
+        rows.forEachIndexed { index, row ->
             item {
-                val place = row.item
-                val fold = row.state
-                val toggle = {
-                    val k = key(place.kind)
-                    collapsed = if (k in collapsed) collapsed - k else collapsed + k
-                    core.say(if (k in collapsed) "Collapsed" else "Expanded")
-                }
-                val state = listOfNotNull(fold, levelChange(shown, index)).joinToString(", ").ifEmpty { null }
-                when (val kind = place.kind) {
+                val previous = if (index > 0) rows[index - 1].depth else 0
+                val level = if (row.depth != previous) "level ${row.depth + 1}" else null
+                val fold = row.entry.actions.firstOrNull { it.kind == ActionKind.EXPAND || it.kind == ActionKind.COLLAPSE }
+                val state = listOfNotNull(row.expanded?.let { if (it) "expanded" else "collapsed" }, level).joinToString(", ").ifEmpty { null }
+                when (val kind = row.entry.kind) {
                     is SidebarKind.Place -> RowButton(
-                        place.text,
+                        row.entry.text,
                         state = state,
-                        actions = if (row.parent) listOf(RowAction(if (row.collapsed) "Expand" else "Collapse") { toggle() }) else emptyList(),
-                        onClick = { navigator.open(placeScreen(kind.v1)) },
+                        actions = listOfNotNull(fold).let { app.rowActions(row.key, it) },
+                        onClick = { navigator.open(placeScreen(kind.field0)) },
                     )
                     // A heading folds what is under it when pressed.
                     is SidebarKind.Group -> Button(
-                        onClick = { if (row.parent) toggle() },
+                        onClick = { fold?.let { app.send(ShellEvent.Perform(it)) } },
                         modifier = Modifier.fillMaxWidth().semantics {
                             heading()
                             if (state != null) stateDescription = state
                         },
                         // A heading's line is the core's in title case; Wear OS writes sentence case.
-                        label = { Text(button(place.text)) },
+                        label = { Text(appButton(row.entry.text)) },
                     )
                 }
             }
-            if (row.item.kind is SidebarKind.Group && !row.collapsed) {
-                item { NewPlace(core, navigator, entry, row.item) }
+            // What a heading adds under it, as every app's sidebar has it: the core's New Project and so on.
+            if (row.entry.kind is SidebarKind.Group && row.expanded != false) {
+                row.entry.actions.filter { it.kind == ActionKind.NEW }.forEach { new ->
+                    item { Button(onClick = { app.send(ShellEvent.Perform(new)) }, modifier = Modifier.fillMaxWidth(), label = { Text(new.name) }) }
+                }
             }
         }
-        item { Button(onClick = { core.change { it.undo() } }, modifier = Modifier.fillMaxWidth(), label = { Text("Undo") }) }
-        item { Button(onClick = { core.change { it.redo() } }, modifier = Modifier.fillMaxWidth(), label = { Text("Redo") }) }
+        item { Button(onClick = { app.send(ShellEvent.Undo) }, modifier = Modifier.fillMaxWidth(), label = { Text("Undo") }) }
+        item { Button(onClick = { app.send(ShellEvent.Redo) }, modifier = Modifier.fillMaxWidth(), label = { Text("Redo") }) }
         item { Button(onClick = { navigator.open(Screen.Settings) }, modifier = Modifier.fillMaxWidth(), label = { Text("Settings") }) }
     }
 }
@@ -125,112 +118,88 @@ private fun placeScreen(place: Place): Screen = when (place) {
     else -> Screen.Tasks(place)
 }
 
-/** What a heading adds under it, as every app's sidebar has it: the core's New Project and so on. */
-@Composable
-private fun NewPlace(core: Core, navigator: Navigator, entry: TextEntry?, heading: SidebarEntry) {
-    core.offered(heading.actions, navigator, entry, form = { action ->
-        // A new saved filter's form: its name, then its query.
-        if (action.subject == Subject.FILTER && action.kind == ActionKind.NEW) {
-            // The core's two steps: its name, then its query.
-            val (named, queried) = newFilterQuestions().map { it as Question.Text }
-            entry?.ask(named.asked) { name ->
-                entry.ask(queried.asked) { query -> core.change { it.addFilter(name.trim(), query.trim()) } }
-            }
-        }
-    }).forEach { action ->
-        Button(onClick = action.run, modifier = Modifier.fillMaxWidth(), label = { Text(action.name) })
-    }
-}
-
 /**
- * A place's tasks, each row as the phone says it: the title, then what the core says of it.
- * Its actions are the core's — TalkBack's custom actions, and a long press. Subtasks fold. A
- * project, label or filter's own actions are at the foot, the core's too.
+ * A place's tasks, the app's list, each row as the phone says it: the title, then what the core
+ * says of it. Its actions are the app's — TalkBack's custom actions, and a long press — the
+ * primary ones first. Subtasks fold. A project, label or filter's own actions are at the foot.
  */
 @Composable
-fun TasksScreen(core: Core, navigator: Navigator, place: Place, changes: Long) {
+fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
+    val app = core.app
+    val view by app.view.collectAsState()
+    LaunchedEffect(place) { app.send(ShellEvent.Open(place)) }
     val trash = place == Place.Trash
-    val listing = remember(changes, place) { core.attempt { core.lumenna.listTasks(placeQuery(place)) } }
-    var collapsed by rememberSaveable { mutableStateOf(emptySet<String>()) }
-    val entry = LocalTextEntry.current
-    val shown = folded(listing?.rows.orEmpty(), { it.depth.toInt() }, { it.id }, collapsed)
+    val list = view?.takeIf { it.place == place }?.list
+    val items = list?.items.orEmpty().filter { !it.hidden }
     WearList {
         item { Heading(placeTitle(place)) }
         if (!trash) {
-            item {
-                Button(onClick = { navigator.open(Screen.AddTask(placeQuickAddPrefix(place))) }, modifier = Modifier.fillMaxWidth(), label = { Text("New task") })
-            }
+            item { Button(onClick = { navigator.open(Screen.AddTask) }, modifier = Modifier.fillMaxWidth(), label = { Text("New task") }) }
         }
-        if (listing != null && listing.rows.isEmpty()) item { Text(listing.empty.ifEmpty { listing.announcement.replaceFirstChar { it.uppercase() } }) }
-        shown.forEachIndexed { index, row ->
+        if (list != null && items.isEmpty()) item { Text(list.empty.ifEmpty { list.announcement.replaceFirstChar { it.uppercase() } }) }
+        items.forEach { shown ->
             item {
-                val task = row.item
-                val previous = if (index > 0) shown[index - 1].item.depth else null
-                // The core's, in its order: in the trash, Restore and Delete from Trash.
-                val actions = core.offered(task.actions, navigator, entry, form = { navigator.open(Screen.Task(it.target)) }) +
-                    if (row.parent) listOf(RowAction(if (row.collapsed) "Expand" else "Collapse") {
-                        collapsed = if (task.id in collapsed) collapsed - task.id else collapsed + task.id
-                        core.say(if (task.id in collapsed) "Collapsed" else "Expanded")
-                    }) else emptyList()
+                val task = shown.row
+                val actions = app.rowActions(task.id, task.actions).sortedByDescending { it.primary }
                 RowButton(
                     task.title,
-                    detail = RowSpeech.details(task),
-                    state = RowSpeech.value(task, previous, row.state),
+                    detail = AppRowSpeech.details(task),
+                    state = AppRowSpeech.value(shown).ifEmpty { null },
                     actions = actions,
                     onLongClick = { navigator.actions(task.title, actions) },
-                    onClick = { navigator.open(Screen.Task(task.id)) },
+                    onClick = {
+                        app.send(ShellEvent.Focus(task.id))
+                        navigator.open(Screen.Task(task.id))
+                    },
                 )
             }
         }
-        placeActions(core, navigator, place)
-    }
-}
-
-/** A project's, label's or filter's actions, the core's, as buttons at the foot of its list. */
-private fun ScalingLazyListScope.placeActions(core: Core, navigator: Navigator, place: Place) {
-    val heading = when (place) {
-        is Place.Project -> "Project"
-        is Place.Label -> "Label"
-        is Place.Filter -> "Saved filter"
-        else -> return
-    }
-    val entry = core.attempt { core.lumenna.places() }?.entries?.firstOrNull { (it.kind as? SidebarKind.Place)?.v1 == place } ?: return
-    item { Heading(heading) }
-    entry.actions.forEach { action ->
-        item {
-            val text = LocalTextEntry.current
-            Button(
-                onClick = {
-                    // After a rename, a merge or a delete, the list stands for something gone.
-                    core.perform(action, WearAsker(navigator, text), form = {}) {
+        // A project's, label's or filter's actions, the app's, as buttons at the foot of its list.
+        val heading = when (place) {
+            is Place.Project -> "Project"
+            is Place.Label -> "Label"
+            is Place.Filter -> "Saved filter"
+            else -> null
+        }
+        val entry = view?.sidebar.orEmpty().firstOrNull { (it.kind as? SidebarKind.Place)?.field0 == place }
+        if (heading != null && entry != null) {
+            item { Heading(heading) }
+            entry.actions.filter { it.kind != ActionKind.EXPAND && it.kind != ActionKind.COLLAPSE }.forEach { action ->
+                item {
+                    Button(onClick = {
+                        app.send(ShellEvent.Perform(action))
+                        // After a rename, a merge or a delete, the list stands for something gone.
                         if (action.kind in leaving) navigator.back()
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text(action.name) },
-            )
+                    }, modifier = Modifier.fillMaxWidth(), label = { Text(action.name) })
+                }
+            }
         }
     }
 }
 
 private val leaving = setOf(ActionKind.RENAME, ActionKind.DELETE, ActionKind.MERGE_INTO, ActionKind.CHANGE_QUERY)
 
-/** Every block series, each opening the form for every occurrence; Delete asks first. */
+/** Every block series, the app's Blocks place, each opening the app's form for every occurrence; Delete asks first. */
 @Composable
-fun BlocksScreen(core: Core, navigator: Navigator, changes: Long) {
-    val listing = remember(changes) { core.attempt { core.lumenna.listBlocks() } }
+fun BlocksScreen(core: Core, navigator: Navigator) {
+    val app = core.app
+    val view by app.view.collectAsState()
+    LaunchedEffect(Unit) { app.send(ShellEvent.Open(Place.Blocks)) }
+    val list = view?.takeIf { it.place == Place.Blocks }?.list
     WearList {
         item { Heading("Blocks") }
-        if (listing != null && listing.rows.isEmpty()) item { Text(listing.empty) }
-        listing?.rows.orEmpty().forEach { row ->
+        if (list != null && list.items.isEmpty()) item { Text(list.empty) }
+        list?.items.orEmpty().forEach { shown ->
             item {
-                val entry = LocalTextEntry.current
-                val actions = core.offered(row.actions, navigator, entry, form = {
-                    navigator.open(Screen.BlockForm(io.github.emassey0135.lumenna.BlockPurpose.Series(it.target)))
-                })
+                val row = shown.row
+                val actions = app.rowActions(row.id, row.actions)
+                val edit = row.actions.firstOrNull { it.kind == ActionKind.EDIT }
                 // Said as a task row is: when, in this watch's clock, then how long.
-                RowButton(row.title, detail = RowSpeech.details(row), actions = actions, onLongClick = { navigator.actions(row.title, actions) }) {
-                    navigator.open(Screen.BlockForm(io.github.emassey0135.lumenna.BlockPurpose.Series(row.id)))
+                RowButton(row.title, detail = AppRowSpeech.details(row), actions = actions, onLongClick = { navigator.actions(row.title, actions) }) {
+                    edit?.let {
+                        app.send(ShellEvent.Focus(row.id))
+                        app.send(ShellEvent.Perform(it))
+                    }
                 }
             }
         }
@@ -240,6 +209,7 @@ fun BlocksScreen(core: Core, navigator: Navigator, changes: Long) {
 /** A list to choose one from, each choice a button. */
 @Composable
 fun ChooseScreen(screen: Screen.Choose) {
+    DisposableEffect(screen) { onDispose { if (!screen.answered) screen.cancelled() } }
     WearList {
         item { Heading(screen.title) }
         screen.message?.let { message -> item { Text(message) } }
@@ -259,6 +229,3 @@ fun ChooseScreen(screen: Screen.Choose) {
         }
     }
 }
-
-/** What a change said, for a sheet that has none of its own. */
-fun said(change: io.github.emassey0135.lumenna.records.Change) = sentence(change.announcement, change.notices)

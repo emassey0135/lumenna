@@ -42,65 +42,9 @@ fun Destination.screen(): Screen = when (this) {
     }
 }
 
-/** What identifies a place's row across a reload: a project and a label can share a name. */
-fun placeKey(kind: SidebarKind): String = when (kind) {
-    is SidebarKind.Group -> "group:${kind.field0}"
-    is SidebarKind.Place -> placeKey(kind.field0)
-}
-
-fun placeKey(place: Place): String = when (place) {
-    is Place.Project -> "project:${place.field0}"
-    is Place.Label -> "label:${place.field0}"
-    is Place.Filter -> "filter:${place.name}"
-    else -> place.toString()
-}
-
 private fun key(destination: Destination): String = when (destination) {
     Destination.Settings -> "settings"
     is Destination.At -> placeKey(destination.place)
-}
-
-/** One of the app's places as a row: its name, what is in it, and whether it is folded away. */
-data class PlaceRow(
-    val key: String,
-    val entry: SidebarEntry,
-    val title: String,
-    val detail: String,
-    val depth: Int,
-    /** Folded away under a collapsed row above it. */
-    val hidden: Boolean,
-    /** For a row with something under it: whether that is shown, as its Collapse says. */
-    val expanded: Boolean?,
-)
-
-/** The app's sidebar [entries] as rows, folded as the app has them: a row is open while it offers Collapse. */
-fun placeRows(entries: List<SidebarEntry>): List<PlaceRow> {
-    var hiddenBelow: UInt? = null
-    return entries.map { entry ->
-        val title = when (val kind = entry.kind) {
-            is SidebarKind.Group -> when (kind.field0) {
-                SidebarGroup.PROJECTS -> "Projects"
-                SidebarGroup.LABELS -> "Labels"
-                SidebarGroup.FILTERS -> "Saved filters"
-            }
-            is SidebarKind.Place -> placeTitle(kind.field0)
-        }
-        // The core's line is the title, then what is in it: shown beneath it here. A heading
-        // is in sentence case here, where the core's line has it in title case.
-        val rest = if (entry.text.startsWith(title, ignoreCase = true)) entry.text.drop(title.length) else entry.text
-        val below = hiddenBelow
-        if (below != null && entry.depth <= below) hiddenBelow = null
-        val hidden = hiddenBelow != null
-        val expanded = entry.actions.firstNotNullOfOrNull {
-            when (it.kind) {
-                ActionKind.COLLAPSE -> true
-                ActionKind.EXPAND -> false
-                else -> null
-            }
-        }
-        if (expanded == false && !hidden) hiddenBelow = entry.depth
-        PlaceRow(placeKey(entry.kind), entry, title, rest.removePrefix(", "), entry.depth.toInt(), hidden, expanded)
-    }
 }
 
 /**

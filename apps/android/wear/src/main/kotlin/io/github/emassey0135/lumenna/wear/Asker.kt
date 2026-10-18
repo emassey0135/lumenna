@@ -1,65 +1,71 @@
 package io.github.emassey0135.lumenna.wear
 
-import io.github.emassey0135.lumenna.Asker
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import io.github.emassey0135.lumenna.Core
 import io.github.emassey0135.lumenna.Option
+import io.github.emassey0135.lumenna.app.ActionKind
+import io.github.emassey0135.lumenna.app.Answer
+import io.github.emassey0135.lumenna.app.Question
+import io.github.emassey0135.lumenna.app.ShellEvent
+import io.github.emassey0135.lumenna.appButton
 import io.github.emassey0135.lumenna.asks
-import io.github.emassey0135.lumenna.button
 import io.github.emassey0135.lumenna.option
-import io.github.emassey0135.lumenna.rowActions
-import io.github.emassey0135.lumenna.RowAction
-import io.github.emassey0135.lumenna.records.Action
-import io.github.emassey0135.lumenna.records.ActionKind
-import io.github.emassey0135.lumenna.records.Change
-import io.github.emassey0135.lumenna.records.Question
-import io.github.emassey0135.lumenna.records.lengthQuestion
 import io.github.emassey0135.lumenna.said
 
 /**
- * The watch's way of asking an action's question, which the core words: Wear's AlertDialog for a
- * confirmation, a list to choose from for a pick or a choice of answers, and the system's input screen for a line
- * of text. A length is chosen from the lengths a sitting usually takes, as typing one on a
- * watch is slow.
+ * The question the app has open (`ViewModel.asking`), asked the watch's way: Wear's AlertDialog
+ * for a confirmation, a list to choose from for a pick or a choice of answers, and the system's
+ * input screen for a line of text. A length is chosen from the lengths a sitting usually takes,
+ * as typing one on a watch is slow. Each question is asked once as it opens, and again when an
+ * answer was refused, the app saying why; giving one up tells the app. A task's form is its own
+ * screen.
  */
-class WearAsker(private val navigator: Navigator, private val entry: TextEntry?) : Asker {
-    override fun confirm(action: Action, question: Question.Confirm, yes: () -> Unit) =
-        navigator.confirm(action.asks(question.title), question.message, button(question.yes)) { yes() }
-
-    override fun text(action: Action, question: Question.Text, answered: (String) -> Boolean) {
-        if (action.kind == ActionKind.PLANNED_LENGTH || action.kind == ActionKind.LOG_MINUTES) {
-            chooseLength(navigator, question.said, if (question.optional) "None" else null) { minutes ->
-                answered(minutes?.let { "${it}m" }.orEmpty())
+@Composable
+fun WearQuestions(core: Core, navigator: Navigator, entry: TextEntry?) {
+    val app = core.app
+    val view by app.view.collectAsState()
+    val asking = view?.asking
+    LaunchedEffect(asking?.action?.kind, asking?.action?.target, asking?.question, asking?.choices, asking?.refusal) {
+        val asked = asking ?: return@LaunchedEffect
+        val action = asked.action
+        val cancel = { app.send(ShellEvent.Cancel) }
+        val answer = { given: Answer -> app.send(ShellEvent.Answer(given)) }
+        when (val question = asked.question) {
+            Question.Immediate -> {}
+            Question.Form -> {
+                if (action != null && action.kind == ActionKind.EDIT_TASK) navigator.open(Screen.Task(action.target))
+                cancel()
             }
-        } else {
-            entry?.ask(question.said) { answered(it) }
+            is Question.Confirm -> navigator.confirm(
+                action?.asks(question.title) ?: question.title, question.message, appButton(question.yes), dismissed = cancel,
+            ) { answer(Answer.Yes) }
+            is Question.Text -> {
+                // How long, chosen: a sitting's planned length, minutes logged, or the length a
+                // pick asks once something is picked.
+                val length = action?.kind == ActionKind.PLANNED_LENGTH || action?.kind == ActionKind.LOG_MINUTES ||
+                    action?.question is Question.Pick
+                if (length) {
+                    chooseLength(navigator, question.said, if (question.optional) "None" else null, cancel) { minutes ->
+                        answer(Answer.Text(minutes?.let { "${it}m" }.orEmpty()))
+                    }
+                } else {
+                    entry?.ask(action?.asks(question.said) ?: question.said) { answer(Answer.Text(it)) }
+                }
+            }
+            is Question.Pick -> asked.choices?.let { offered ->
+                navigator.choose(action?.asks(question.title) ?: question.title, offered.choices.map(::option), cancelled = cancel) { picked ->
+                    answer(Answer.Picked(picked.key, null))
+                }
+            }
+            is Question.Choose -> navigator.choose(
+                action?.asks(question.title) ?: question.title,
+                question.answers.map { Option(it.id, appButton(it.title)) },
+                question.message,
+                cancelled = cancel,
+            ) { picked -> answer(Answer.Picked(picked.key, null)) }
         }
     }
-
-    override fun pick(action: Action, title: String, options: List<Option>, picked: (Option) -> Unit) =
-        navigator.choose(action.asks(title), options) { picked(it) }
-
-    override fun length(action: Action, picked: Option, hint: String, answered: (String) -> Boolean) =
-        // The core's question, under what was picked.
-        chooseLength(navigator, "${(lengthQuestion() as Question.Text).said}: ${picked.title}", "No planned length") { minutes ->
-            answered(minutes?.let { "${it}m" }.orEmpty())
-        }
-
-    override fun choose(action: Action, question: Question.Choose, picked: (Option) -> Unit) =
-        navigator.choose(
-            action.asks(question.title),
-            question.answers.map(::option).map { it.copy(title = button(it.title)) },
-            question.message,
-        ) { picked(it) }
 }
-
-/**
- * The core's actions as a row's, asked the watch's way; [form] opens the app's own forms. The
- * primary ones come first, as a watch row shows what is done to it most before the rest.
- */
-fun Core.offered(
-    actions: List<Action>,
-    navigator: Navigator,
-    entry: TextEntry?,
-    form: (Action) -> Unit = {},
-    done: (Change) -> Unit = {},
-): List<RowAction> = rowActions(actions, WearAsker(navigator, entry), navigator.formOr(form), done).sortedByDescending { it.primary }

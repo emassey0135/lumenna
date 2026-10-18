@@ -185,6 +185,9 @@ fun LumennaApp(
     // Each screen keeps what it holds — its scroll, a half-typed filter — while another is
     // over it, or as it moves between panes.
     val saved = rememberSaveableStateHolder()
+    // The moment proposals are made against: a test's, or now.
+    val plannerNow = LocalPlannerNow.current
+    LaunchedEffect(plannerNow) { core.app.send(io.github.emassey0135.lumenna.app.ShellEvent.PlanFrom(plannerNow)) }
 
     // The core's sentence for each change, said politely: a snackbar is a live region, and
     // Material gives it the time the person's accessibility settings ask for.

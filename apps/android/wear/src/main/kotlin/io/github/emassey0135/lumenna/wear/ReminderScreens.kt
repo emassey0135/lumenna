@@ -1,5 +1,14 @@
 package io.github.emassey0135.lumenna.wear
 
+import io.github.emassey0135.lumenna.rowActions
+import io.github.emassey0135.lumenna.app.ShellEvent
+import io.github.emassey0135.lumenna.app.SettingsEvent
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -19,18 +28,21 @@ import io.github.emassey0135.lumenna.perform
 import io.github.emassey0135.lumenna.reminders
 import io.github.emassey0135.lumenna.set
 import io.github.emassey0135.lumenna.settings
-import io.github.emassey0135.lumenna.records.Action
-import io.github.emassey0135.lumenna.records.ActionKind
 
 /**
- * A task's or a block's reminders, as the phone shows them: the core's announcement as the
- * heading, each reminder in its words, Remove reminder on one of its own (a tap or a long
- * press), and Add reminder at the foot, a phrase from the system's input screen.
+ * A task's or a block's reminders: the app's list, as the phone shows it: the core's
+ * announcement as the heading, each reminder in its words, Remove reminder on one of its own
+ * (a tap or a long press), and Add reminder at the foot, a phrase from the system's input
+ * screen, asked as the app's question.
  */
 @Composable
-fun RemindersScreen(core: Core, navigator: Navigator, target: String, changes: Long) {
-    val list = remember(changes) { core.attempt { core.lumenna.remindersOf(target) } }
-    val entry = LocalTextEntry.current
+fun RemindersScreen(core: Core, navigator: Navigator) {
+    val app = core.app
+    val view by app.view.collectAsState()
+    val list = view?.reminders
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(list == null) { if (list != null) shown = true else if (shown) navigator.back() }
+    DisposableEffect(Unit) { onDispose { if (app.view.value?.reminders != null) app.send(ShellEvent.CloseReminders) } }
     val ask = rememberNotificationAsk()
     WearList {
         item { Heading(list?.announcement?.replaceFirstChar { it.uppercase() } ?: "Reminders") }
@@ -38,7 +50,7 @@ fun RemindersScreen(core: Core, navigator: Navigator, target: String, changes: L
             item {
                 val words = reminder.words.replaceFirstChar { it.uppercase() }
                 if (reminder.own) {
-                    val actions = core.offered(reminder.actions, navigator, entry)
+                    val actions = app.rowActions(reminder.id, reminder.actions)
                     RowButton(words, actions = actions, onLongClick = { navigator.actions(words, actions) }) {
                         navigator.actions(words, actions)
                     }
@@ -52,7 +64,10 @@ fun RemindersScreen(core: Core, navigator: Navigator, target: String, changes: L
             item {
                 // Adding the first reminder is when notifications are asked for.
                 Button(
-                    onClick = { core.perform(action, WearAsker(navigator, entry), form = {}) { ask() } },
+                    onClick = {
+                        ask()
+                        app.send(ShellEvent.Perform(action))
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(action.name) },
                 )
@@ -69,17 +84,21 @@ fun RemindersScreen(core: Core, navigator: Navigator, target: String, changes: L
 @Composable
 fun ReminderSettingsScreen(core: Core, changes: Long) {
     val context = LocalContext.current
-    val shown = remember(changes) { settings(core).reminders() }
+    val shown = appSettings(core).filter { it.setting.key == "reminders" }
     val access = io.github.emassey0135.lumenna.LocalReminderAccess.current
     val (allowed, exact, grant) = remember(changes) { access(context) }
     val ask = rememberNotificationAsk()
     WearList {
         item { Heading("Reminders") }
-        shown.forEach { setting ->
+        shown.forEach { view ->
+            val setting = view.setting
             item {
                 SwitchButton(
-                    checked = setting.on,
-                    onCheckedChange = { on -> if (core.set(setting, if (on) "true" else "false") != null && on) ask() },
+                    checked = setting.value == "true",
+                    onCheckedChange = { on ->
+                        core.app.send(ShellEvent.Settings(SettingsEvent.Set(setting.key, if (on) "true" else "false")))
+                        if (on) ask()
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(setting.title) },
                 )
@@ -119,9 +138,4 @@ fun rememberNotificationAsk(): () -> Unit {
             }
         }
     }
-}
-
-/** Opens a task's or block's reminders for the core's Reminders action, else [form]. */
-fun Navigator.formOr(form: (Action) -> Unit): (Action) -> Unit = { action ->
-    if (action.kind == ActionKind.REMINDERS) open(Screen.Reminders(action.target)) else form(action)
 }

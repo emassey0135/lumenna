@@ -103,3 +103,70 @@ fun words(item: io.github.emassey0135.lumenna.app.DayItem): Pair<String, List<St
     val block = item.block ?: return "" to emptyList()
     return "${Clock.time(block.start)} to ${Clock.time(block.end)}, ${block.title}" to block.details
 }
+
+/** What a place is called before the app has shown it. */
+fun placeTitle(place: io.github.emassey0135.lumenna.app.Place): String = when (place) {
+    io.github.emassey0135.lumenna.app.Place.Today -> "Today"
+    io.github.emassey0135.lumenna.app.Place.Tasks -> "Tasks"
+    is io.github.emassey0135.lumenna.app.Place.Project -> place.field0
+    is io.github.emassey0135.lumenna.app.Place.Label -> place.field0
+    is io.github.emassey0135.lumenna.app.Place.Filter -> place.name
+    io.github.emassey0135.lumenna.app.Place.Blocks -> "Blocks"
+    io.github.emassey0135.lumenna.app.Place.Trash -> "Trash"
+}
+
+/** What identifies a place's row across a reload: a project and a label can share a name. */
+fun placeKey(kind: io.github.emassey0135.lumenna.app.SidebarKind): String = when (kind) {
+    is io.github.emassey0135.lumenna.app.SidebarKind.Group -> "group:${kind.field0}"
+    is io.github.emassey0135.lumenna.app.SidebarKind.Place -> placeKey(kind.field0)
+}
+
+fun placeKey(place: io.github.emassey0135.lumenna.app.Place): String = when (place) {
+    is io.github.emassey0135.lumenna.app.Place.Project -> "project:${place.field0}"
+    is io.github.emassey0135.lumenna.app.Place.Label -> "label:${place.field0}"
+    is io.github.emassey0135.lumenna.app.Place.Filter -> "filter:${place.name}"
+    else -> place.toString()
+}
+
+/** One of the app's places as a row: its name, what is in it, and whether it is folded away. */
+data class PlaceRow(
+    val key: String,
+    val entry: io.github.emassey0135.lumenna.app.SidebarEntry,
+    val title: String,
+    val detail: String,
+    val depth: Int,
+    /** Folded away under a collapsed row above it. */
+    val hidden: Boolean,
+    /** For a row with something under it: whether that is shown, as its Collapse says. */
+    val expanded: Boolean?,
+)
+
+/** The app's sidebar [entries] as rows, folded as the app has them: a row is open while it offers Collapse. */
+fun placeRows(entries: List<io.github.emassey0135.lumenna.app.SidebarEntry>): List<PlaceRow> {
+    var hiddenBelow: UInt? = null
+    return entries.map { entry ->
+        val title = when (val kind = entry.kind) {
+            is io.github.emassey0135.lumenna.app.SidebarKind.Group -> when (kind.field0) {
+                io.github.emassey0135.lumenna.app.SidebarGroup.PROJECTS -> "Projects"
+                io.github.emassey0135.lumenna.app.SidebarGroup.LABELS -> "Labels"
+                io.github.emassey0135.lumenna.app.SidebarGroup.FILTERS -> "Saved filters"
+            }
+            is io.github.emassey0135.lumenna.app.SidebarKind.Place -> placeTitle(kind.field0)
+        }
+        // The core's line is the title, then what is in it: shown beneath it here. A heading
+        // is in sentence case here, where the core's line has it in title case.
+        val rest = if (entry.text.startsWith(title, ignoreCase = true)) entry.text.drop(title.length) else entry.text
+        val below = hiddenBelow
+        if (below != null && entry.depth <= below) hiddenBelow = null
+        val hidden = hiddenBelow != null
+        val expanded = entry.actions.firstNotNullOfOrNull {
+            when (it.kind) {
+                io.github.emassey0135.lumenna.app.ActionKind.COLLAPSE -> true
+                io.github.emassey0135.lumenna.app.ActionKind.EXPAND -> false
+                else -> null
+            }
+        }
+        if (expanded == false && !hidden) hiddenBelow = entry.depth
+        PlaceRow(placeKey(entry.kind), entry, title, rest.removePrefix(", "), entry.depth.toInt(), hidden, expanded)
+    }
+}

@@ -163,17 +163,6 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
     }
 }
 
-/** What a place is called before the app has shown it. */
-fun placeTitle(place: Place): String = when (place) {
-    Place.Today -> "Today"
-    Place.Tasks -> "Tasks"
-    is Place.Project -> place.field0
-    is Place.Label -> place.field0
-    is Place.Filter -> place.name
-    Place.Blocks -> "Blocks"
-    Place.Trash -> "Trash"
-}
-
 /** How the filter was understood, and what it found — or why it is not one yet. */
 private fun readback(list: ListView): String {
     val unresolved = list.query?.unresolved.orEmpty().map { name ->

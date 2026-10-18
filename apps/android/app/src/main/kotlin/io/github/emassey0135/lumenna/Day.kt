@@ -100,9 +100,6 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
     FollowBlockForm(core, navigator)
     FollowProposal(core, navigator)
     FollowReminders(core, navigator)
-    // The moment proposals are made against: a test's, or now.
-    val plannerNow = LocalPlannerNow.current
-    LaunchedEffect(plannerNow) { app.send(ShellEvent.PlanFrom(plannerNow)) }
 
     val move = { step: DayMove -> app.send(ShellEvent.Day(step)) }
     val addBlock = { app.send(ShellEvent.Block(BlockEvent.New(null, null))) }

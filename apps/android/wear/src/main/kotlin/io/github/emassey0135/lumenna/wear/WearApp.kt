@@ -36,7 +36,7 @@ import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import io.github.emassey0135.lumenna.BlockPurpose
 import io.github.emassey0135.lumenna.Option
 import io.github.emassey0135.lumenna.Core
-import io.github.emassey0135.lumenna.records.Place
+import io.github.emassey0135.lumenna.app.Place
 import kotlinx.coroutines.delay
 
 /** What can be shown: each screen of the app, and each list of choices it offers. */
@@ -45,28 +45,33 @@ sealed interface Screen {
     data class Tasks(val place: Place) : Screen
     data object Day : Screen
     data object Blocks : Screen
-    data class Task(val id: String) : Screen {
-        /**
-         * The task as its form opened and the fields being edited, kept with the screen: a
-         * list chosen from (the project) is a screen of its own, and the form's composition
-         * does not outlive going to it.
-         */
-        val shown = mutableStateOf<io.github.emassey0135.lumenna.records.TaskDetail?>(null)
-        val fields = mutableStateOf<io.github.emassey0135.lumenna.records.TaskFields?>(null)
-    }
-    data class AddTask(val prefix: String) : Screen
-    data class BlockForm(val purpose: BlockPurpose) : Screen
+    data class Task(val id: String) : Screen
+    /** Quick add: the app's line. */
+    data object AddTask : Screen
+    /** The app's block form, while it has one open. */
+    data object BlockForm : Screen
     data object Settings : Screen
     data object Planning : Screen
     data object Devices : Screen
-    /** A task's or a block series' reminders. */
-    data class Reminders(val target: String) : Screen
+    /** A task's or a block series' reminders: the app's list, while it has one open. */
+    data object Reminders : Screen
     /** Reminders on this watch. */
     data object ReminderSettings : Screen
-    /** Replan from Now or Plan the Day, for a day: the core's proposal, to accept in part. */
-    data class Proposal(val kind: io.github.emassey0135.lumenna.records.ActionKind, val date: String) : Screen
-    /** A list to choose one from: an action, a project, a task, a length. */
-    data class Choose(val title: String, val message: String?, val choices: List<Option>, val chosen: (Option) -> Unit) : Screen
+    /** Replan from Now or Plan the Day: the app's proposal, to accept in part, while it has one open. */
+    data object Proposal : Screen
+    /**
+     * A list to choose one from: an action, a project, a task, a length. Left without a choice,
+     * [cancelled] says so.
+     */
+    data class Choose(
+        val title: String,
+        val message: String?,
+        val choices: List<Option>,
+        val chosen: (Option) -> Unit,
+        val cancelled: () -> Unit = {},
+    ) : Screen {
+        var answered = false
+    }
 }
 
 /**
@@ -88,12 +93,15 @@ class Navigator(private val controller: NavHostController) {
         controller.popBackStack()
     }
 
-    /** Offers `choices`; `chosen` runs once the list has closed. */
-    fun choose(title: String, choices: List<Option>, message: String? = null, chosen: (Option) -> Unit) {
-        open(Screen.Choose(title, message, choices) { choice ->
+    /** Offers `choices`; `chosen` runs once the list has closed, `cancelled` if it closed without one. */
+    fun choose(title: String, choices: List<Option>, message: String? = null, cancelled: () -> Unit = {}, chosen: (Option) -> Unit) {
+        lateinit var screen: Screen.Choose
+        screen = Screen.Choose(title, message, choices, { choice ->
+            screen.answered = true
             back()
             chosen(choice)
-        })
+        }, cancelled)
+        open(screen)
     }
 
     /** Offers a row's actions as a list, for a long press. */
@@ -109,18 +117,19 @@ class Navigator(private val controller: NavHostController) {
     var confirming by mutableStateOf<Confirming?>(null)
         private set
 
-    /** Asks [title] before something that cannot be taken back; [yes] runs once confirmed. */
-    fun confirm(title: String, message: String, yes: String, confirmed: () -> Unit) {
-        confirming = Confirming(title, message, yes, confirmed)
+    /** Asks [title] before something that cannot be taken back; [yes] runs once confirmed, [dismissed] if not. */
+    fun confirm(title: String, message: String, yes: String, dismissed: () -> Unit = {}, confirmed: () -> Unit) {
+        confirming = Confirming(title, message, yes, confirmed, dismissed)
     }
 
     fun answered() {
         confirming = null
     }
+
 }
 
 /** A question before something that cannot be taken back: the core's title, message and button. */
-data class Confirming(val title: String, val message: String, val yes: String, val confirmed: () -> Unit)
+data class Confirming(val title: String, val message: String, val yes: String, val confirmed: () -> Unit, val dismissed: () -> Unit = {})
 
 /**
  * Wear OS's own confirmation: the question, the message, then a confirm and a dismiss button.
@@ -132,7 +141,10 @@ private fun Confirmation(navigator: Navigator) {
     val asked = navigator.confirming
     AlertDialog(
         visible = asked != null,
-        onDismissRequest = { navigator.answered() },
+        onDismissRequest = {
+            navigator.answered()
+            asked?.dismissed?.invoke()
+        },
         title = { Text(asked?.title.orEmpty()) },
         text = asked?.message?.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
         confirmButton = {
@@ -142,7 +154,10 @@ private fun Confirmation(navigator: Navigator) {
             }) { Icon(glyph(CHECK), contentDescription = asked?.yes) }
         },
         dismissButton = {
-            AlertDialogDefaults.DismissButton(onClick = { navigator.answered() }) {
+            AlertDialogDefaults.DismissButton(onClick = {
+                navigator.answered()
+                asked?.dismissed?.invoke()
+            }) {
                 Icon(glyph(CLOSE), contentDescription = "Cancel")
             }
         },
@@ -170,10 +185,13 @@ fun WearApp(core: Core, entry: TextEntry? = null, opened: kotlinx.coroutines.flo
             "block" -> navigator.open(Screen.Day)
             // An overrun's Replan button: the rest of today, worked out again.
             io.github.emassey0135.lumenna.Reminders.REPLAN ->
-                navigator.open(Screen.Proposal(io.github.emassey0135.lumenna.records.ActionKind.REPLAN, io.github.emassey0135.lumenna.Clock.today()))
+                core.app.send(io.github.emassey0135.lumenna.app.ShellEvent.Proposal(io.github.emassey0135.lumenna.app.ProposalEvent.Replan))
         }
     }
     val changes by core.changes.collectAsState()
+    // The moment proposals are made against: a test's, or now.
+    val plannerNow = io.github.emassey0135.lumenna.LocalPlannerNow.current
+    LaunchedEffect(plannerNow) { core.app.send(io.github.emassey0135.lumenna.app.ShellEvent.PlanFrom(plannerNow)) }
     var said by remember { mutableStateOf("") }
     LaunchedEffect(core) {
         core.announcements.collect { text ->
@@ -192,27 +210,30 @@ fun WearApp(core: Core, entry: TextEntry? = null, opened: kotlinx.coroutines.flo
         AppScaffold {
             Box(Modifier.fillMaxSize()) {
                 SwipeDismissableNavHost(navController = controller, startDestination = "places") {
-                    composable("places") { PlacesScreen(core, navigator, changes) }
+                    composable("places") { PlacesScreen(core, navigator) }
                     composable("screen/{n}") { backStack ->
                         when (val screen = navigator.screen("screen/${backStack.arguments?.getString("n")}")) {
-                            Screen.Places -> PlacesScreen(core, navigator, changes)
-                            is Screen.Tasks -> TasksScreen(core, navigator, screen.place, changes)
-                            Screen.Day -> DayScreen(core, navigator, changes)
-                            Screen.Blocks -> BlocksScreen(core, navigator, changes)
-                            is Screen.Task -> TaskScreen(core, navigator, screen, changes)
-                            is Screen.AddTask -> AddTaskScreen(core, navigator, screen.prefix)
-                            is Screen.BlockForm -> BlockFormScreen(core, navigator, screen.purpose)
+                            Screen.Places -> PlacesScreen(core, navigator)
+                            is Screen.Tasks -> TasksScreen(core, navigator, screen.place)
+                            Screen.Day -> DayScreen(core, navigator)
+                            Screen.Blocks -> BlocksScreen(core, navigator)
+                            is Screen.Task -> TaskScreen(core, navigator, screen)
+                            Screen.AddTask -> AddTaskScreen(core, navigator)
+                            Screen.BlockForm -> BlockFormScreen(core, navigator)
                             Screen.Settings -> SettingsScreen(navigator)
-                            Screen.Planning -> PlanningScreen(core, changes)
-                            Screen.Devices -> DevicesScreen(core, navigator, changes)
-                            is Screen.Reminders -> RemindersScreen(core, navigator, screen.target, changes)
+                            Screen.Planning -> PlanningScreen(core)
+                            Screen.Devices -> DevicesScreen(core, navigator)
+                            Screen.Reminders -> RemindersScreen(core, navigator)
                             Screen.ReminderSettings -> ReminderSettingsScreen(core, changes)
                             is Screen.Choose -> ChooseScreen(screen)
-                            is Screen.Proposal -> ProposalScreen(core, navigator, screen)
+                            Screen.Proposal -> ProposalScreen(core, navigator)
                         }
                     }
                 }
                 Confirmation(navigator)
+                // The question the app has open, and the screens it opens, followed here.
+                WearQuestions(core, navigator, LocalTextEntry.current)
+                Follow(core, navigator)
             // What changes say, read by TalkBack as a polite live region. Not shown: on a
                 // watch's screen it covered the rows beneath it, and the accessibility check found
                 // a button only a third visible.
@@ -226,4 +247,19 @@ fun WearApp(core: Core, entry: TextEntry? = null, opened: kotlinx.coroutines.flo
             }
         }
     }
+}
+
+/**
+ * The screens the app opens itself — its block form, a proposal, a reminder list — opened over
+ * whatever is shown while the app has one open; each goes back when the app closes it.
+ */
+@Composable
+private fun Follow(core: Core, navigator: Navigator) {
+    val view by core.app.view.collectAsState()
+    val form = view?.blockForm != null
+    val proposal = view?.proposal != null
+    val reminders = view?.reminders != null
+    LaunchedEffect(form) { if (form) navigator.open(Screen.BlockForm) }
+    LaunchedEffect(proposal) { if (proposal) navigator.open(Screen.Proposal) }
+    LaunchedEffect(reminders) { if (reminders) navigator.open(Screen.Reminders) }
 }
