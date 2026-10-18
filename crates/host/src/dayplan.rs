@@ -6,87 +6,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use lumenna_core::dayplan::propose_day;
 use lumenna_core::edit::{self, Edit};
 use lumenna_core::model::BlockRef;
-use serde::{Deserialize, Serialize};
 
 use crate::error::{LumennaError, Result};
 use crate::replan::{TimeStyle, clock, minutes_of, now_or};
 use crate::types::Change;
 use crate::words::{count_line, duration, listed, suggested_because};
 use crate::{Lumenna, repaired, resolve};
+pub use lumenna_records::proposals::{DayPins, DayPlan, DayPlanned, ProposedSitting};
 
-/// One sitting a day plan proposes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-pub struct ProposedSitting {
-    /// The sitting in a sentence: "Report goes in Morning at 9:00, for 45 minutes".
-    pub sentence: String,
-    /// Why this task, as suggestions say it: "Suggested because priority 1".
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reason: Option<String>,
-    /// The task.
-    pub task: String,
-    /// The block, `<series>@<date>`.
-    pub block: String,
-    /// Its planned length.
-    pub minutes: u32,
-}
-
-/// What planning a day proposes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-pub struct DayPlan {
-    /// The whole plan in a sentence or two, said before anything changes.
-    pub announcement: String,
-    /// Anything else worth saying.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub notices: Vec<String>,
-    /// The day planned, `YYYY-MM-DD`.
-    pub date: String,
-    /// The sittings, in the order of the day, each to accept or not.
-    pub sittings: Vec<ProposedSitting>,
-    /// What is due by then and fits nowhere, by title.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub unfit: Vec<String>,
-    /// What the person decided that this plan keeps to, handed back to apply it.
-    pub pins: DayPins,
-    /// The clock its sentences are in, for the plan that follows.
-    pub style: TimeStyle,
-}
-
-crate::announced!(DayPlan);
-
-/// What the person decided about a day's plan, which the next plan keeps to.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-pub struct DayPins {
-    /// Tasks not to plan that day.
-    #[serde(default)]
-    pub exclude: Vec<String>,
-    /// Sittings turned down, `<task>@<series>`: that task may still go in another block.
-    #[serde(default)]
-    pub declined: Vec<String>,
-}
-
-/// A day plan's accepted sittings made, and what is proposed now.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-pub struct DayPlanned {
-    /// What was planned, then what is proposed now, if anything.
-    pub announcement: String,
-    /// Anything else worth saying.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub notices: Vec<String>,
-    /// The change made: one undo takes it back.
-    pub change: Change,
-    /// The plan for the day as it is now, the sittings turned down kept to.
-    pub next: DayPlan,
-}
-
-crate::announced!(DayPlanned);
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {

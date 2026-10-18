@@ -74,6 +74,23 @@ pub enum HostRequest {
         /// To which occurrences.
         scope: lumenna_records::types::BlockScope,
     },
+    /// A proposal for the day: Replan from Now's or Plan the Day's, with these pins, said in
+    /// this clock.
+    Propose {
+        /// Which.
+        kind: crate::proposal::Kind,
+        /// What the person decided; none at first.
+        pins: Option<crate::proposal::Pins>,
+        /// The clock its sentences say times in.
+        style: lumenna_records::proposals::TimeStyle,
+    },
+    /// Make the changes accepted, by position, out of a proposal.
+    Apply {
+        /// The proposal, whole, as it came.
+        proposal: crate::proposal::Proposal,
+        /// The changes accepted, by position.
+        accepted: Vec<usize>,
+    },
     /// Undo the last change made on this device.
     Undo,
     /// Redo the last change undone.
@@ -88,6 +105,10 @@ pub enum HostAnswer {
     Wrote(Box<Result<Change, LumennaError>>, Option<Arrival>),
     /// What a pick offers.
     Offered(Result<Choices, LumennaError>),
+    /// A proposal.
+    Proposed(Box<Result<crate::proposal::Proposal, LumennaError>>),
+    /// What applying a proposal made, and the store just after it.
+    Applied(Box<Result<crate::proposal::Applied, LumennaError>>, Option<Arrival>),
 }
 
 impl Operation for HostRequest {

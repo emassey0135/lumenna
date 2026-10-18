@@ -45,6 +45,11 @@ pub struct ViewModel {
     /// The block form, while it is open.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub block_form: Option<crate::BlockFormView>,
+    /// A proposal's screen, while it is open.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposal: Option<crate::ProposalView>,
+    /// Whether the proposal's screen last closed had made anything.
+    pub proposal_made: bool,
 }
 
 /// A list of tasks as shown.
@@ -134,6 +139,8 @@ pub fn view(model: &Model) -> ViewModel {
             }
         }),
         block_form: model.block_form.as_ref().map(crate::blockform::Form::view),
+        proposal: model.proposal.as_ref().map(crate::proposal::view),
+        proposal_made: model.proposal_made,
         line: model.line.as_ref().map(|line| {
             let preview = lumenna_records::text::preview(&store.snapshot, &line.text, &store.now);
             crate::typing::LineView {

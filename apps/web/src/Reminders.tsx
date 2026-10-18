@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button, Dialog, Heading, Modal } from "react-aria-components";
 import { perform } from "./actions";
-import { showProposal } from "./Proposal";
+import { showReplan } from "./Proposal";
 import { core } from "./core";
 import type { Action, DueReminder, ReminderList } from "./core";
 import { say } from "./say";
@@ -171,7 +171,7 @@ export function RemindersDue(props: { due: Due[]; onDealt: (id: string) => void;
       if (how === "replan") {
         // Answered only once the day is replanned: cancelled, the warning stays, and the
         // screen gives focus back to its button. What was changed the screen has said.
-        if (!(await showProposal({ kind: "replan" }))) return;
+        if (!(await showReplan())) return;
         for (const firing of due.firings) await core.dismissReminder(firing.key, firing.occurrence);
       } else if (how === "carry" && due.block) {
         // The work carried on, and the firing dealt with: it has been answered.

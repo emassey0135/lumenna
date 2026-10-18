@@ -1,6 +1,6 @@
 //! Whole flows through the app and a real store: events in, what is shown and said out.
 
-use lumenna_app::{BlockEvent, DayMove, DetailsEvent, Event, Item, Typing, ViewModel};
+use lumenna_app::{BlockEvent, DayMove, DetailsEvent, Event, Item, ProposalEvent, Typing, ViewModel};
 use lumenna_records::places::Place;
 use lumenna_bridge::{Session, Shell};
 use lumenna_host::Lumenna;
@@ -481,4 +481,45 @@ fn a_repeating_block_asks_which_occurrences_and_one_days_form_changes_that_day_a
     assert_eq!(block.duration_mins, 15);
     assert!(block.changed_for_this_day);
     assert_eq!(app.view().focus, Some(key));
+}
+
+#[test]
+fn plan_the_day_proposes_each_task_checked_and_a_partial_apply_proposes_again() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    app.add("Write report p1");
+    app.add("Buy milk");
+    app.send(Event::Open(Place::Today));
+    app.send(Event::Day(DayMove::Next));
+    let plan_day = app.view().day.unwrap().actions.into_iter().find(|a| a.kind == ActionKind::PlanDay).expect("Plan the Day");
+    let shell = app.send(Event::Perform(plan_day));
+    let proposal = app.view().proposal.expect("the screen is open");
+    assert!(proposal.ready);
+    assert_eq!(proposal.changes.len(), 2, "{proposal:?}");
+    assert!(proposal.changes.iter().all(|c| c.checked));
+    assert!(said(&shell).contains(&proposal.announcement.as_str()), "the whole proposal is said");
+    let milk = proposal.changes.iter().position(|c| c.sentence.contains("Buy milk")).unwrap();
+
+    app.send(Event::Proposal(ProposalEvent::Check { index: u32::try_from(milk).unwrap(), on: false }));
+    assert!(!app.view().proposal.unwrap().changes[milk].checked);
+    let shell = app.send(Event::Proposal(ProposalEvent::Apply));
+    assert!(!said(&shell).is_empty());
+    // Buy milk turned down for that block: nothing else to propose, so the screen closes.
+    assert!(app.view().proposal.is_none(), "{:?}", app.view().proposal);
+    let sittings: Vec<_> = app.view().day.unwrap().items.into_iter().filter_map(|i| i.sitting).map(|s| s.title).collect();
+    assert_eq!(sittings, ["Write report"]);
+}
+
+#[test]
+fn closing_a_proposal_makes_nothing() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    app.add("Write report");
+    app.send(Event::Open(Place::Today));
+    app.send(Event::Day(DayMove::Next));
+    let plan_day = app.view().day.unwrap().actions.into_iter().find(|a| a.kind == ActionKind::PlanDay).unwrap();
+    app.send(Event::Perform(plan_day));
+    app.send(Event::Proposal(ProposalEvent::Close));
+    assert!(app.view().proposal.is_none());
+    assert!(app.view().day.unwrap().items.iter().all(|i| i.sitting.is_none()));
 }

@@ -15,7 +15,9 @@ use std::sync::Arc;
 use crux_core::Core;
 use crux_core::Request;
 use jiff::Zoned;
+use lumenna_app::proposal::{Applied, Kind, Pins, Proposal};
 use lumenna_app::{Arrival, Effect, Event, HostAnswer, HostRequest, ViewModel, Watch};
+use lumenna_records::proposals::{DayPins, ReplanPins};
 use lumenna_host::Lumenna;
 use lumenna_store::ChangeHash;
 
@@ -56,6 +58,44 @@ pub fn answer(lumenna: &Lumenna, request: HostRequest) -> HostAnswer {
         HostRequest::Undo => wrote(lumenna.undo()),
         HostRequest::Redo => wrote(lumenna.redo()),
         HostRequest::Choices { action } => HostAnswer::Offered(lumenna.choices(action)),
+        HostRequest::Propose { kind, pins, style } => HostAnswer::Proposed(Box::new(match (kind, pins) {
+            (Kind::Replan, pins) => {
+                let pins = match pins {
+                    Some(Pins::Replan(pins)) => pins,
+                    _ => ReplanPins::default(),
+                };
+                lumenna.replan(style, pins, None).map(Proposal::Replan)
+            }
+            (Kind::PlanDay(date), pins) => {
+                let pins = match pins {
+                    Some(Pins::Day(pins)) => pins,
+                    _ => DayPins::default(),
+                };
+                lumenna.propose_day_plan(Some(date), style, pins, None).map(Proposal::Day)
+            }
+        })),
+        HostRequest::Apply { proposal, accepted } => {
+            let applied = match proposal {
+                Proposal::Replan(replan) => {
+                    let changes = accepted.iter().filter_map(|at| replan.changes.get(*at).cloned()).collect();
+                    lumenna.apply_replan(replan, changes, None).map(|made| Applied {
+                        announcement: made.announcement,
+                        notices: made.notices,
+                        next: Proposal::Replan(made.next),
+                    })
+                }
+                Proposal::Day(plan) => {
+                    let sittings = accepted.iter().filter_map(|at| plan.sittings.get(*at).cloned()).collect();
+                    lumenna.apply_day_plan(plan, sittings, None).map(|made| Applied {
+                        announcement: made.announcement,
+                        notices: made.notices,
+                        next: Proposal::Day(made.next),
+                    })
+                }
+            };
+            let after = arrival(lumenna).ok().map(|(arrival, _)| arrival);
+            HostAnswer::Applied(Box::new(applied), after)
+        }
     }
 }
 
@@ -139,7 +179,7 @@ impl Session {
                     Effect::Host(request) => {
                         let (operation, mut handle) = request.split();
                         let found = answer(&self.lumenna, operation);
-                        if let HostAnswer::Wrote(_, Some(_)) = &found
+                        if let HostAnswer::Wrote(_, Some(_)) | HostAnswer::Applied(_, Some(_)) = &found
                             && let Ok((_, heads)) = self.lumenna.snapshot()
                         {
                             // The app has the store as this write left it.

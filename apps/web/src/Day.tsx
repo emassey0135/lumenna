@@ -18,9 +18,8 @@ import type { Action, ActionKind, DayMove, Event, Screen, ShownDayItem } from ".
 import { byKind, REMOVING } from "./actions";
 import { useCommand } from "./commands";
 import { landOn, rowKey } from "./landing";
-import { showProposal } from "./Proposal";
 import { asksForMenu, RowMenu } from "./RowMenu";
-import { refresh, run, sayAll, send } from "./session";
+import { run, sayAll, send } from "./session";
 import { nest } from "./tree";
 import type { Node } from "./tree";
 
@@ -54,15 +53,9 @@ export function Day(props: {
     props.onChanged();
   };
 
-  /** The forms an action opens that are still this client's own. */
+  /** The forms an action opens that are still this client's own: a sitting's task's details. */
   const form = async (action: Action) => {
     if (action.kind === "edit_task") props.onOpenTask(action.target);
-    // The day's two proposals are this client's screens, over the core's words.
-    else if (action.kind === "replan" || action.kind === "plan_day") {
-      await showProposal(action.kind === "replan" ? { kind: "replan" } : { kind: "plan_day", date: action.target });
-      await refresh();
-      props.onChanged();
-    }
   };
 
   const addBlock = () => void send({ Block: { New: { start: undefined, minutes: undefined } } });

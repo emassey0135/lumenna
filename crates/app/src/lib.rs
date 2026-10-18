@@ -17,6 +17,7 @@ pub mod day;
 pub mod details;
 pub mod host;
 pub mod list;
+pub mod proposal;
 pub mod typing;
 mod view;
 
@@ -35,6 +36,7 @@ pub use details::{DetailsEvent, DetailsView};
 pub use typing::{LineView, Typing};
 pub use host::{Arrival, HostAnswer, HostRequest, Watch};
 pub use list::Item;
+pub use proposal::{ProposalEvent, ProposalView};
 pub use view::{Asking, ListView, ViewModel};
 
 /// Something to say, once the shell has moved focus where the view model puts it: said
@@ -124,6 +126,10 @@ pub enum Event {
     Typing(Typing),
     /// Something done in the block form.
     Block(BlockEvent),
+    /// Something done on a proposal's screen.
+    Proposal(ProposalEvent),
+    /// The clock this shell says times in, for the sentences the core composes whole.
+    Clock(lumenna_records::proposals::TimeStyle),
     /// Add a task from a quick-add line.
     QuickAdd(String),
     /// Undo the last change.
@@ -144,6 +150,8 @@ impl PartialEq for HostAnswer {
         match (self, other) {
             (Self::Wrote(a, x), Self::Wrote(b, y)) => a == b && x == y,
             (Self::Offered(a), Self::Offered(b)) => a == b,
+            (Self::Proposed(a), Self::Proposed(b)) => a == b,
+            (Self::Applied(a, x), Self::Applied(b, y)) => a == b && x == y,
             _ => false,
         }
     }
@@ -241,6 +249,12 @@ pub struct Model {
     pub line: Option<typing::Line>,
     /// The block form, while it is open.
     pub block_form: Option<blockform::Form>,
+    /// A proposal's screen, while it is open.
+    pub proposal: Option<proposal::Screen>,
+    /// The clock the shell says times in.
+    pub style: Option<lumenna_records::proposals::TimeStyle>,
+    /// Whether the proposal's screen last closed had made anything.
+    pub proposal_made: bool,
 }
 
 /// The rows a place shows, as its keys and their actions.
@@ -421,6 +435,9 @@ impl Lumenna {
             match (action.subject, action.kind) {
                 (Subject::Block, ActionKind::Edit) => return self.edit_block(&action, model),
                 (Subject::Series, ActionKind::Edit) => return self.series_form(&action.target, model),
+                // The day's two proposals are the app's screens over the host's proposing.
+                (Subject::Day, ActionKind::Replan) => return self.propose(proposal::Kind::Replan, model),
+                (Subject::Day, ActionKind::PlanDay) => return self.propose(proposal::Kind::PlanDay(action.target.clone()), model),
                 (Subject::FreeTime, ActionKind::AddBlock) => {
                     let minutes = model.day_view().and_then(|view| {
                         view.items.into_iter().find(|i| i.actions.iter().any(|a| a.kind == action.kind && a.target == action.target))?.free
@@ -720,6 +737,53 @@ impl Lumenna {
         }
     }
 
+    /// Opens a proposal's screen and asks for its first proposal.
+    fn propose(&self, kind: proposal::Kind, model: &mut Model) -> Command<Effect, Event> {
+        model.proposal = Some(proposal::Screen::new(kind.clone()));
+        model.proposal_made = false;
+        let style = model.style.unwrap_or(proposal::default_style());
+        render().and(host(HostRequest::Propose { kind, pins: None, style }))
+    }
+
+    fn proposal(&self, event: ProposalEvent, model: &mut Model) -> Command<Effect, Event> {
+        let style = model.style.unwrap_or(proposal::default_style());
+        if event == ProposalEvent::Replan {
+            return self.propose(proposal::Kind::Replan, model);
+        }
+        let Some(screen) = &mut model.proposal else { return Command::done() };
+        match event {
+            ProposalEvent::Check { index, on } => {
+                if let Some(checked) = screen.checked.get_mut(index as usize) {
+                    *checked = on;
+                }
+                render()
+            }
+            ProposalEvent::Apply => {
+                let Some(proposal) = screen.proposal.clone() else { return Command::done() };
+                if screen.busy {
+                    return Command::done();
+                }
+                screen.busy = true;
+                let accepted = screen.checked.iter().enumerate().filter(|(_, on)| **on).map(|(at, _)| at).collect();
+                render().and(host(HostRequest::Apply { proposal, accepted }))
+            }
+            ProposalEvent::Take(index) => {
+                let Some(proposal::Proposal::Replan(replan)) = &screen.proposal else { return Command::done() };
+                let Some(other) = replan.alternatives.get(index as usize) else { return Command::done() };
+                let pins = Some(proposal::Pins::Replan(other.pins.clone()));
+                screen.busy = true;
+                screen.refusal = None;
+                render().and(host(HostRequest::Propose { kind: screen.kind.clone(), pins, style }))
+            }
+            ProposalEvent::Close => {
+                model.proposal_made = screen.made;
+                model.proposal = None;
+                render()
+            }
+            ProposalEvent::Replan => Command::done(),
+        }
+    }
+
     fn arrived(&self, store: Arrival, model: &mut Model) -> Command<Effect, Event> {
         model.store = Some(store);
         model.settle();
@@ -818,6 +882,59 @@ impl App for Lumenna {
             Event::Details(event) => self.details(event, model),
             Event::Typing(event) => self.typing(event, model),
             Event::Block(event) => self.block(event, model),
+            Event::Proposal(event) => self.proposal(event, model),
+            Event::Clock(style) => {
+                model.style = Some(style);
+                Command::done()
+            }
+            Event::Answered(HostAnswer::Proposed(result)) => {
+                let Some(screen) = &mut model.proposal else { return Command::done() };
+                match *result {
+                    Ok(proposal) => {
+                        let said = proposal.spoken();
+                        screen.show(proposal);
+                        render().and(say(said))
+                    }
+                    Err(error) => {
+                        screen.busy = false;
+                        screen.refusal = Some(error.message().to_owned());
+                        render().and(say(error.message()))
+                    }
+                }
+            }
+            Event::Answered(HostAnswer::Applied(result, store)) => {
+                if let Some(store) = store {
+                    model.store = Some(store);
+                    model.settle();
+                }
+                let Some(screen) = &mut model.proposal else { return render() };
+                match *result {
+                    Ok(applied) => {
+                        screen.made = true;
+                        screen.refusal = None;
+                        let said = std::iter::once(applied.announcement.as_str())
+                            .chain(applied.notices.iter().map(String::as_str))
+                            .filter(|s| !s.is_empty())
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        // Nothing left to propose: the screen closes, saying what was made.
+                        if applied.next.is_empty() {
+                            model.proposal_made = true;
+                            model.proposal = None;
+                        } else {
+                            screen.show(applied.next);
+                        }
+                        render().and(say(said))
+                    }
+                    // The day moved since: why is kept here, and the day as it now is proposed.
+                    Err(error) => {
+                        screen.refusal = Some(error.message().to_owned());
+                        let pins = screen.proposal.as_ref().map(proposal::Proposal::pins);
+                        let request = HostRequest::Propose { kind: screen.kind.clone(), pins, style: model.style.unwrap_or(proposal::default_style()) };
+                        render().and(say(error.message())).and(host(request))
+                    }
+                }
+            }
             Event::QuickAdd(text) => {
                 model.adding = true;
                 model.add_refused = None;

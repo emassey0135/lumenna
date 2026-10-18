@@ -68,6 +68,11 @@ export function rowKey(event: { target: EventTarget }): string | undefined {
  */
 export function landOn(tree: HTMLElement | null, key: string | undefined): Promise<void> {
   return new Promise((resolve) => {
+    // A dialog the change opened (a form, a proposal) has focus, and keeps it.
+    if (document.querySelector('[role="dialog"], [role="alertdialog"]')) {
+      resolve();
+      return;
+    }
     let tries = 0;
     const step = () => {
       const row = key === undefined ? undefined : tree?.querySelector<HTMLElement>(`[role="row"][data-key="${CSS.escape(key)}"]`);

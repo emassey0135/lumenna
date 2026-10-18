@@ -128,6 +128,9 @@ async function opened(name: string): Promise<void> {
   await init();
   core = await Core.open(name);
   app = core.app();
+  // The clock the core's whole sentences say times in: this browser's.
+  const hour12 = new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions().hour12;
+  app.send({ Clock: hour12 ? "twelve_hour" : "twenty_four_hour" });
 }
 
 function session(): App {
@@ -179,6 +182,14 @@ export interface Screen extends Omit<ViewModel, "list" | "day" | "details" | "li
   line?: ShownLine;
 }
 
+/** A proposal's words with its buttons and headings in the web's sentence case. */
+function webWords(words: ProposalWords): ProposalWords {
+  const out = { ...words };
+  for (const key of ["title", "item", "apply", "cancel", "unfit"] as const) out[key] = sentenceCase(out[key]);
+  if (out.others) out.others = sentenceCase(out.others);
+  return out;
+}
+
 /** A day's row as it reads. */
 function dayLine(item: DayItem, date: string, summary: string): string {
   switch (item.kind) {
@@ -222,6 +233,7 @@ function screen(view: ViewModel): Screen {
     items: view.day.items.map((item) => ({ ...item, text: dayLine(item, view.day!.date, view.day!.summary) })),
   };
   const details = view.details && { ...view.details, state: taskStateText(view.details.task) };
+  const proposal = view.proposal && { ...view.proposal, words: webWords(view.proposal.words) };
   const line = view.line && {
     text: view.line.text,
     cursor: unitsAt(view.line.text, view.line.cursor),
@@ -244,6 +256,7 @@ function screen(view: ViewModel): Screen {
     day,
     details,
     line,
+    proposal,
   };
 }
 

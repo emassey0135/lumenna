@@ -56,7 +56,9 @@ mod text;
 // The records, their actions and their words are a crate of their own, which the app builds
 // its view models from without a store; here under the paths they always had.
 pub use lumenna_records::{actions, fields, form, history, places, types, words};
-pub(crate) use lumenna_records::{announced, error, lists, plan, resolve, tree};
+pub(crate) use lumenna_records::{error, lists, plan, resolve, tree};
+#[cfg(all(feature = "rpc", any(unix, windows)))]
+pub(crate) use lumenna_records::announced;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};

@@ -16,6 +16,7 @@ pub mod history;
 pub mod lists;
 pub mod places;
 pub mod plan;
+pub mod proposals;
 pub mod reminders;
 pub mod resolve;
 pub mod text;
