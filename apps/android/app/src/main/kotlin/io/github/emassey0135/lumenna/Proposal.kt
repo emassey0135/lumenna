@@ -1,5 +1,12 @@
 package io.github.emassey0135.lumenna
 
+import io.github.emassey0135.lumenna.app.ShellEvent
+import io.github.emassey0135.lumenna.app.ProposalEvent
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,33 +33,38 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 
 /**
- * Replan from Now, or Plan the Day: what the core proposes, said in full as the screen opens,
- * then each change a check box, all checked to begin with. Applying makes those checked; while
- * the core proposes more around what was left unchecked, that is the screen's new proposal.
- * Every word is the core's (`proposalWords`), in sentence case.
+ * Replan from Now, or Plan the Day: the app's proposal (`ViewModel.proposal`), said in full as
+ * the screen opens, then each change a check box, all checked to begin with. Applying makes
+ * those checked; while the core proposes more around what was left unchecked, that is the
+ * screen's new proposal, and once nothing is left the app closes it. Every word is the core's
+ * (`proposalWords`), in sentence case.
  */
 @Composable
-fun ProposalScreen(core: Core, navigator: Navigator, screen: Screen.Proposal) {
-    val now = LocalPlannerNow.current
-    val model = remember(screen) { ProposalModel(core, screen.kind, screen.date, now) }
-    val words = model.words
-    LaunchedEffect(model) { model.propose() }
-    val apply = { if (model.apply()) navigator.back() }
+fun ProposalScreen(core: Core, navigator: Navigator) {
+    val app = core.app
+    val view by app.view.collectAsState()
+    val proposal = view?.proposal
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(proposal == null) { if (proposal != null) shown = true else if (shown) navigator.back() }
+    // Leaving it gives it up.
+    DisposableEffect(Unit) { onDispose { if (app.view.value?.proposal != null) app.send(ShellEvent.Proposal(ProposalEvent.Close)) } }
+    val send = { event: ProposalEvent -> app.send(ShellEvent.Proposal(event)) }
 
-    ScreenFrame(model.title, core, navigator) {
+    ScreenFrame(proposal?.words?.title?.let(::appButton) ?: "", core, navigator) {
+        if (proposal == null) return@ScreenFrame
+        val words = proposal.words
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-            model.refused?.let { Text(it, Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.error) }
-            val items = model.items
-            if (model.ready && items.isEmpty()) {
+            proposal.refusal?.let { Text(it, Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.error) }
+            val items = proposal.changes
+            if (proposal.ready && items.isEmpty()) {
                 Text(words.nothing, Modifier.padding(vertical = 8.dp))
             }
             items.forEachIndexed { index, item ->
-                val on = index in model.checked
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = 48.dp)
-                        .toggleable(on, role = Role.Checkbox) { model.toggle(index) }
+                        .toggleable(item.checked, role = Role.Checkbox) { send(ProposalEvent.Check(index.toUInt(), it)) }
                         .padding(vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -62,20 +74,22 @@ fun ProposalScreen(core: Core, navigator: Navigator, screen: Screen.Proposal) {
                         item.reason?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = quiet()) }
                     }
                     // The check box's name is the core's: "Make this change".
-                    Checkbox(checked = on, onCheckedChange = null, modifier = Modifier.semantics { contentDescription = words.item })
+                    Checkbox(checked = item.checked, onCheckedChange = null, modifier = Modifier.semantics { contentDescription = words.item })
                 }
             }
-            if (model.unfit.isNotEmpty()) {
-                Heading(button(words.unfit))
-                model.unfit.forEach { Text(it, Modifier.padding(vertical = 4.dp)) }
+            if (proposal.unfit.isNotEmpty()) {
+                Heading(appButton(words.unfit))
+                proposal.unfit.forEach { Text(it, Modifier.padding(vertical = 4.dp)) }
             }
             // Other ways through the day, each named by what it is, costs and leads to.
-            if (model.alternatives.isNotEmpty()) {
-                Heading(model.others)
-                model.alternatives.forEach { other ->
-                    OutlinedButton(modifier = Target.fillMaxWidth().padding(vertical = 4.dp), onClick = { model.take(other) }) {
-                        Text(other.sentence, Modifier.fillMaxWidth())
-                    }
+            if (proposal.others.isNotEmpty() && words.others.isNotEmpty()) {
+                Heading(appButton(words.others))
+                proposal.others.forEachIndexed { index, sentence ->
+                    OutlinedButton(
+                        modifier = Target.fillMaxWidth().padding(vertical = 4.dp),
+                        enabled = !proposal.busy,
+                        onClick = { send(ProposalEvent.Take(index.toUInt())) },
+                    ) { Text(sentence, Modifier.fillMaxWidth()) }
                 }
             }
             if (items.isNotEmpty()) {
@@ -85,11 +99,19 @@ fun ProposalScreen(core: Core, navigator: Navigator, screen: Screen.Proposal) {
                 Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
             ) {
-                TextButton(modifier = Target, onClick = navigator::back) { Text(button(words.cancel)) }
+                TextButton(modifier = Target, onClick = navigator::back) { Text(appButton(words.cancel)) }
                 if (items.isNotEmpty()) {
-                    Button(modifier = Target, onClick = { apply() }) { Text(button(words.apply)) }
+                    Button(modifier = Target, enabled = !proposal.busy, onClick = { send(ProposalEvent.Apply) }) { Text(appButton(words.apply)) }
                 }
             }
         }
     }
+}
+
+/** The app's proposal screen: shown over [navigator]'s screen while the app has one open. */
+@Composable
+fun FollowProposal(core: Core, navigator: Navigator) {
+    val view by core.app.view.collectAsState()
+    val open = view?.proposal != null
+    LaunchedEffect(open) { if (open && navigator.current != Screen.Proposal) navigator.push(Screen.Proposal) }
 }

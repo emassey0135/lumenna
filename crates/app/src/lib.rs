@@ -171,6 +171,9 @@ pub enum Event {
     Pairing(NetworkAnswer),
     /// The clock this shell says times in, for the sentences the core composes whole.
     Clock(lumenna_records::proposals::TimeStyle),
+    /// The moment the day's proposals are made against, `YYYY-MM-DDTHH:MM` in local time: a
+    /// shell whose clock is pinned, for tests. None for now.
+    PlanFrom(Option<String>),
     /// Add a task from a quick-add line.
     QuickAdd(String),
     /// Undo the last change.
@@ -247,7 +250,8 @@ impl App for Lumenna {
             | Event::Synced(_)
             | Event::SyncStatus(_)
             | Event::Pairing(_)
-            | Event::Clock(_) => {}
+            | Event::Clock(_)
+            | Event::PlanFrom(_) => {}
             _ => model.acted_at = model.moves,
         }
         let command = self.dispatch(event, model);
@@ -310,6 +314,10 @@ impl Lumenna {
             Event::CloseReminders => {
                 model.reminders = None;
                 render()
+            }
+            Event::PlanFrom(moment) => {
+                model.plan_from = moment;
+                Command::done()
             }
             Event::Clock(style) => {
                 model.style = Some(style);

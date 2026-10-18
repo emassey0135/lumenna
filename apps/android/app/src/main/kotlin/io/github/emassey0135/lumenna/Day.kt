@@ -98,6 +98,10 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
     }
 
     FollowBlockForm(core, navigator)
+    FollowProposal(core, navigator)
+    // The moment proposals are made against: a test's, or now.
+    val plannerNow = LocalPlannerNow.current
+    LaunchedEffect(plannerNow) { app.send(ShellEvent.PlanFrom(plannerNow)) }
 
     val move = { step: DayMove -> app.send(ShellEvent.Day(step)) }
     val addBlock = { app.send(ShellEvent.Block(BlockEvent.New(null, null))) }
@@ -185,15 +189,11 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
 
 /**
  * The actions whose screens are still this app's own, over the UniFFI core, while the rest have
- * moved onto the app: Replan from Now, Plan the Day and a reminder list. True when one was
+ * moved onto the app: a reminder list. True when one was
  * opened, so the app is not asked.
  */
 fun Navigator.localScreens(): (Action) -> Boolean = { action ->
     when (action.kind) {
-        ActionKind.REPLAN, ActionKind.PLAN_DAY -> {
-            push(Screen.Proposal(io.github.emassey0135.lumenna.records.ActionKind.valueOf(action.kind.name), action.target))
-            true
-        }
         ActionKind.REMINDERS -> {
             push(Screen.Reminders(action.target))
             true

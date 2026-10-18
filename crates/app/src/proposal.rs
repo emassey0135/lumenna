@@ -250,21 +250,23 @@ impl Lumenna {
     /// said in place, or why not.
     pub(crate) fn repropose(&self, pins: Option<Pins>, model: &mut Model) -> Command<Effect, Event> {
         let style = model.style.unwrap_or(default_style());
+        let from = planned_from(model);
         let (Some(store), Some(screen)) = (&model.store, &mut model.proposal) else { return Command::done() };
+        let now = from.unwrap_or_else(|| store.now.clone());
         let proposed = match (&screen.kind, pins) {
             (Kind::Replan, pins) => {
                 let pins = match pins {
                     Some(Pins::Replan(pins)) => pins,
                     _ => lumenna_records::proposals::ReplanPins::default(),
                 };
-                lumenna_records::replan::propose(&store.snapshot, style, pins, &store.now, true).map(Proposal::Replan)
+                lumenna_records::replan::propose(&store.snapshot, style, pins, &now, true).map(Proposal::Replan)
             }
             (Kind::PlanDay(date), pins) => {
                 let pins = match pins {
                     Some(Pins::Day(pins)) => pins,
                     _ => lumenna_records::proposals::DayPins::default(),
                 };
-                lumenna_records::dayplan::propose(&store.snapshot, Some(date), style, &pins, &store.now).map(Proposal::Day)
+                lumenna_records::dayplan::propose(&store.snapshot, Some(date), style, &pins, &now).map(Proposal::Day)
             }
         };
         match proposed {
@@ -300,7 +302,7 @@ impl Lumenna {
                 }
                 screen.busy = true;
                 let accepted = screen.checked.iter().enumerate().filter(|(_, on)| **on).map(|(at, _)| at).collect();
-                render().and(host(HostRequest::Apply { proposal, accepted }))
+                render().and(host(HostRequest::Apply { proposal, accepted, now: model.plan_from.clone() }))
             }
             ProposalEvent::Take(index) => {
                 let Some(Proposal::Replan(replan)) = &screen.proposal else { return Command::done() };
@@ -347,4 +349,10 @@ impl Lumenna {
             }
         }
     }
+}
+
+/// The moment the shell pinned proposals to (`Event::PlanFrom`), in this device's zone.
+fn planned_from(model: &Model) -> Option<jiff::Zoned> {
+    let moment = model.plan_from.as_deref()?.parse::<jiff::civil::DateTime>().ok()?;
+    moment.to_zoned(jiff::tz::TimeZone::system()).ok()
 }

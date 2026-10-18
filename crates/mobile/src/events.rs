@@ -55,6 +55,9 @@ pub enum ShellEvent {
     Due(DueEvent),
     /// The clock this shell says times in.
     Clock(TimeStyle),
+    /// The moment proposals are made against, `YYYY-MM-DDTHH:MM` local, when the shell's clock
+    /// is pinned for tests; none for now.
+    PlanFrom(Option<String>),
     /// Add a task from a quick-add line.
     QuickAdd(String),
     /// Undo the last change.
@@ -84,6 +87,7 @@ impl From<ShellEvent> for Event {
             ShellEvent::Devices(event) => Event::Devices(event),
             ShellEvent::Due(event) => Event::Due(event),
             ShellEvent::Clock(style) => Event::Clock(style),
+            ShellEvent::PlanFrom(moment) => Event::PlanFrom(moment),
             ShellEvent::QuickAdd(line) => Event::QuickAdd(line),
             ShellEvent::Undo => Event::Undo,
             ShellEvent::Redo => Event::Redo,
@@ -115,6 +119,7 @@ impl TryFrom<Event> for ShellEvent {
             Event::Devices(event) => ShellEvent::Devices(event),
             Event::Due(event) => ShellEvent::Due(event),
             Event::Clock(style) => ShellEvent::Clock(style),
+            Event::PlanFrom(moment) => ShellEvent::PlanFrom(moment),
             Event::QuickAdd(line) => ShellEvent::QuickAdd(line),
             Event::Undo => ShellEvent::Undo,
             Event::Redo => ShellEvent::Redo,

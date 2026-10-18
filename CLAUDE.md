@@ -183,6 +183,8 @@ turn (the `legacy` tag is the last commit before the move).
   otherwise, so focus never jumps because a sync or a minute redrew the list.
 - **A shell's clock is the shell's**: it tells the app its clock (`Event::Clock`) for the
   sentences the core composes whole, and when to look for reminders and the moment it looks at.
+  A shell whose clock is pinned for tests says the moment proposals are made against
+  (`Event::PlanFrom`), which applying them carries to the host.
 - Flow tests are `crates/bridge/tests/flows.rs`: events in, view models and sentences out,
   against a real store; a stand-in middleware takes the network's requests, and the test
   answers them. One test drives the core by hand, to hold a write's answer back.

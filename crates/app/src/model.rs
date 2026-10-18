@@ -65,6 +65,8 @@ pub struct Model {
     pub sync_asked: bool,
     /// Reminders due, not yet dealt with.
     pub due: Vec<due::Due>,
+    /// The moment proposals are made against, when the shell pins it (`Event::PlanFrom`).
+    pub plan_from: Option<String>,
     /// Whether a look for reminders due is with the host now.
     pub looking: bool,
     /// The looks asked for meanwhile, as one: the earliest `since`, and the latest moment.

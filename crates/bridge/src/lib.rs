@@ -122,11 +122,11 @@ pub fn answer(lumenna: &Lumenna, request: HostRequest) -> HostAnswer {
         })),
         HostRequest::Undo => wrote(lumenna.undo()),
         HostRequest::Redo => wrote(lumenna.redo()),
-        HostRequest::Apply { proposal, accepted } => {
+        HostRequest::Apply { proposal, accepted, now } => {
             let applied = match proposal {
                 Proposal::Replan(replan) => {
                     let changes = accepted.iter().filter_map(|at| replan.changes.get(*at).cloned()).collect();
-                    lumenna.apply_replan(replan, changes, None).map(|made| Applied {
+                    lumenna.apply_replan(replan, changes, now.clone()).map(|made| Applied {
                         announcement: made.announcement,
                         notices: made.notices,
                         next: Proposal::Replan(made.next),
@@ -134,7 +134,7 @@ pub fn answer(lumenna: &Lumenna, request: HostRequest) -> HostAnswer {
                 }
                 Proposal::Day(plan) => {
                     let sittings = accepted.iter().filter_map(|at| plan.sittings.get(*at).cloned()).collect();
-                    lumenna.apply_day_plan(plan, sittings, None).map(|made| Applied {
+                    lumenna.apply_day_plan(plan, sittings, now).map(|made| Applied {
                         announcement: made.announcement,
                         notices: made.notices,
                         next: Proposal::Day(made.next),

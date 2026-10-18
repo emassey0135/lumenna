@@ -75,6 +75,8 @@ pub enum HostRequest {
         proposal: crate::proposal::Proposal,
         /// The changes accepted, by position.
         accepted: Vec<usize>,
+        /// The moment it was proposed against, when the shell pinned it.
+        now: Option<String>,
     },
     /// A saved filter, from its two questions.
     AddFilter {

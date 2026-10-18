@@ -124,8 +124,8 @@ sealed interface Screen {
     /** Reminders on this device: whether, and what Android allows them. */
     data object ReminderSettings : Screen
 
-    /** Replan from Now or Plan the Day, for a day: the core's proposal, to accept in part. */
-    data class Proposal(val kind: io.github.emassey0135.lumenna.records.ActionKind, val date: String) : Screen
+    /** Replan from Now or Plan the Day: the app's proposal, to accept in part, while it has one open. */
+    data object Proposal : Screen
 }
 
 /** The four tabs, as on the iPhone: each its own back stack. */
@@ -245,7 +245,10 @@ fun LumennaApp(
                     "block" -> if (reminder.occurrence == Clock.today() || reminder.occurrence.isEmpty()) go(Tab.TODAY)
                         else go(Tab.TODAY, Screen.Day(reminder.occurrence))
                     // An overrun's Replan button: the rest of today, worked out again.
-                    Reminders.REPLAN -> go(Tab.TODAY, Screen.Proposal(io.github.emassey0135.lumenna.records.ActionKind.REPLAN, Clock.today()))
+                    Reminders.REPLAN -> {
+                        go(Tab.TODAY)
+                        core.app.send(io.github.emassey0135.lumenna.app.ShellEvent.Proposal(io.github.emassey0135.lumenna.app.ProposalEvent.Replan))
+                    }
                     else -> {}
                 }
             }
@@ -427,7 +430,7 @@ private fun Screens(core: Core, navigator: Navigator, screen: Screen, changes: L
         Screen.Export -> ExportScreen(core, navigator)
         is Screen.Reminders -> RemindersScreen(core, navigator, screen.target, changes)
         Screen.ReminderSettings -> ReminderSettingsScreen(core, navigator, changes)
-        is Screen.Proposal -> ProposalScreen(core, navigator, screen)
+        Screen.Proposal -> ProposalScreen(core, navigator)
     }
 }
 
