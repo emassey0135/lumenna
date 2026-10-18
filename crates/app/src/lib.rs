@@ -18,6 +18,7 @@ pub mod details;
 pub mod host;
 pub mod list;
 pub mod proposal;
+pub mod settings;
 pub mod typing;
 mod view;
 
@@ -37,6 +38,7 @@ pub use typing::{LineView, Typing};
 pub use host::{Arrival, HostAnswer, HostRequest, Watch};
 pub use list::Item;
 pub use proposal::{ProposalEvent, ProposalView};
+pub use settings::{SaveFile, SettingsEvent, SettingsView};
 pub use view::{Asking, ListView, ViewModel};
 
 /// Something to say, once the shell has moved focus where the view model puts it: said
@@ -62,7 +64,7 @@ mod effects {
     use crux_core::macros::effect;
     use crux_core::render::RenderOperation;
 
-    use crate::{Announce, HostRequest, Watch};
+    use crate::{Announce, HostRequest, SaveFile, Watch};
 
     /// What the app asks for.
     #[effect]
@@ -76,6 +78,8 @@ mod effects {
         Watch(Watch),
         /// A write: the host's.
         Host(HostRequest),
+        /// Save a file the person keeps: a backup, an export.
+        Save(SaveFile),
     }
 }
 
@@ -130,6 +134,8 @@ pub enum Event {
     Proposal(ProposalEvent),
     /// Close the list of a task's or block's reminders.
     CloseReminders,
+    /// Something done in Settings.
+    Settings(SettingsEvent),
     /// The clock this shell says times in, for the sentences the core composes whole.
     Clock(lumenna_records::proposals::TimeStyle),
     /// Add a task from a quick-add line.
@@ -154,6 +160,9 @@ impl PartialEq for HostAnswer {
             (Self::Offered(a), Self::Offered(b)) => a == b,
             (Self::Proposed(a), Self::Proposed(b)) => a == b,
             (Self::Applied(a, x), Self::Applied(b, y)) => a == b && x == y,
+            (Self::Listed(a), Self::Listed(b)) => a == b,
+            (Self::Saved(a), Self::Saved(b)) => a == b,
+            (Self::Imported(a, x), Self::Imported(b, y)) => a == b && x == y,
             _ => false,
         }
     }
@@ -268,6 +277,8 @@ pub struct Model {
     pub proposal_made: bool,
     /// The task or block whose reminders are listed, while the list is open.
     pub reminders: Option<String>,
+    /// Settings, while open.
+    pub settings: Option<settings::Settings>,
 }
 
 /// The rows a place shows, as its keys and their actions.
@@ -604,6 +615,7 @@ impl Lumenna {
         }
         let adding = std::mem::take(&mut model.adding);
         let saving = std::mem::take(&mut model.details.saving);
+        let setting = model.settings.as_mut().and_then(|s| s.setting.take());
         let block_saving = model.block_form.as_mut().is_some_and(|form| std::mem::take(&mut form.saving));
         match result {
             Ok(change) => {
@@ -614,6 +626,11 @@ impl Lumenna {
                 }
                 if saving {
                     model.details.draft = None;
+                }
+                if let (Some(key), Some(settings)) = (&setting, &mut model.settings) {
+                    settings.problems.remove(key);
+                    settings.typed.remove(key);
+                    return render().and(say(spoken(&change))).and(host(HostRequest::Settings));
                 }
                 if adding {
                     model.line = None;
@@ -643,6 +660,11 @@ impl Lumenna {
                 model.settle();
                 if adding {
                     model.add_refused = Some(error.message().to_owned());
+                }
+                // A line refused stays as typed, beside what was wrong with it.
+                if let (Some(key), Some(settings)) = (&setting, &mut model.settings) {
+                    settings.problems.insert(key.clone(), error.message().to_owned());
+                    return render().and(say(error.message()));
                 }
                 if block_saving && let Some(form) = &mut model.block_form {
                     form.refusal = Some(error.message().to_owned());
@@ -873,9 +895,41 @@ impl Lumenna {
         }
     }
 
+    fn settings(&self, event: SettingsEvent, model: &mut Model) -> Command<Effect, Event> {
+        match event {
+            SettingsEvent::Open => {
+                model.settings = Some(settings::Settings::default());
+                render().and(host(HostRequest::Settings))
+            }
+            SettingsEvent::Close => {
+                model.settings = None;
+                render()
+            }
+            SettingsEvent::Type { key, value } => {
+                if let Some(settings) = &mut model.settings {
+                    settings.typed.insert(key, value);
+                }
+                render()
+            }
+            SettingsEvent::Set { key, value } => {
+                let Some(settings) = &mut model.settings else { return Command::done() };
+                settings.typed.insert(key.clone(), value.clone());
+                settings.setting = Some(key.clone());
+                host(HostRequest::SetSetting { key, value })
+            }
+            SettingsEvent::Backup => host(HostRequest::Backup),
+            SettingsEvent::Export(format) => host(HostRequest::Export(format)),
+            SettingsEvent::Import { name, bytes } => host(HostRequest::Import { name, bytes }),
+        }
+    }
+
     fn arrived(&self, store: Arrival, model: &mut Model) -> Command<Effect, Event> {
         model.store = Some(store);
         model.settle();
+        // A setting synced from elsewhere is shown as it now is.
+        if model.settings.is_some() {
+            return render().and(host(HostRequest::Settings));
+        }
         render()
     }
 }
@@ -957,6 +1011,31 @@ impl App for Lumenna {
             Event::Typing(event) => self.typing(event, model),
             Event::Block(event) => self.block(event, model),
             Event::Proposal(event) => self.proposal(event, model),
+            Event::Settings(event) => self.settings(event, model),
+            Event::Answered(HostAnswer::Listed(result)) => {
+                let Some(settings) = &mut model.settings else { return Command::done() };
+                match result {
+                    Ok(list) => {
+                        settings.list = Some(list.settings);
+                        render()
+                    }
+                    Err(error) => say(error.message()),
+                }
+            }
+            Event::Answered(HostAnswer::Saved(result)) => match *result {
+                Ok((file, said)) => { let save: Command<Effect, Event> = Command::notify_shell(file).into(); save.and(say(said)) }
+                Err(error) => say(error.message()),
+            },
+            Event::Answered(HostAnswer::Imported(result, store)) => {
+                if let Some(store) = store {
+                    model.store = Some(store);
+                    model.settle();
+                }
+                match *result {
+                    Ok(said) => render().and(say(said)),
+                    Err(error) => render().and(say(error.message())),
+                }
+            }
             Event::CloseReminders => {
                 model.reminders = None;
                 render()

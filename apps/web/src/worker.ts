@@ -50,6 +50,7 @@ import type {
   Answer,
   DayItem,
   DayView,
+  SaveFile,
   DetailsView,
   Event,
   Item,
@@ -208,10 +209,11 @@ function dayLine(item: DayItem, date: string, summary: string): string {
   }
 }
 
-/** What an event left: the screen, and what to say once focus has landed. */
+/** What an event left: the screen, what to say once focus has landed, and files to save. */
 export interface Said {
   screen: Screen;
   said: string[];
+  files: SaveFile[];
 }
 
 /** The view model in the web's words: each row's line, the headings in sentence case. */
@@ -234,6 +236,10 @@ function screen(view: ViewModel): Screen {
   };
   const details = view.details && { ...view.details, state: taskStateText(view.details.task) };
   const proposal = view.proposal && { ...view.proposal, words: webWords(view.proposal.words) };
+  const settings = view.settings && {
+    ...view.settings,
+    exports: view.settings.exports.map((choice) => ({ ...choice, label: sentenceCase(choice.label) })),
+  };
   const line = view.line && {
     text: view.line.text,
     cursor: unitsAt(view.line.text, view.line.cursor),
@@ -257,6 +263,7 @@ function screen(view: ViewModel): Screen {
     details,
     line,
     proposal,
+    settings,
   };
 }
 
@@ -265,6 +272,7 @@ function turned(turn: Turn): Said {
   return {
     screen: screen(turn.view),
     said: turn.said.map((saying) => (saying.heading && date ? summaryText(date, saying.text) : saying.text)),
+    files: turn.files,
   };
 }
 

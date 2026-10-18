@@ -1,6 +1,6 @@
 //! Whole flows through the app and a real store: events in, what is shown and said out.
 
-use lumenna_app::{BlockEvent, DayMove, DetailsEvent, Event, Item, ProposalEvent, Typing, ViewModel};
+use lumenna_app::{BlockEvent, DayMove, DetailsEvent, Event, Item, ProposalEvent, SettingsEvent, Typing, ViewModel};
 use lumenna_records::places::Place;
 use lumenna_bridge::{Session, Shell};
 use lumenna_host::Lumenna;
@@ -53,7 +53,7 @@ fn said(shell: &[Shell]) -> Vec<&str> {
         .iter()
         .filter_map(|s| match s {
             Shell::Announce(text) | Shell::Heading(text) => Some(text.as_str()),
-            Shell::Render => None,
+            Shell::Render | Shell::Save(_) => None,
         })
         .collect()
 }
@@ -584,4 +584,49 @@ fn a_blocks_reminders_list_keeps_a_phrase_it_cannot_read_in_its_question() {
     assert_eq!(app.view().reminders.unwrap().announcement, "1 reminder");
     app.send(Event::CloseReminders);
     assert!(app.view().reminders.is_none());
+}
+
+fn setting(app: &App, key: &str) -> lumenna_app::settings::SettingView {
+    app.view().settings.unwrap().settings.into_iter().find(|s| s.setting.key == key).unwrap()
+}
+
+#[test]
+fn a_setting_applies_and_one_refused_stays_as_typed_beside_why() {
+    let mut app = App::new();
+    app.send(Event::Settings(SettingsEvent::Open));
+    assert_eq!(setting(&app, "day-start").typed, "08:00");
+    app.send(Event::Settings(SettingsEvent::Type { key: "day-start".to_owned(), value: "07:".to_owned() }));
+    assert_eq!(setting(&app, "day-start").typed, "07:");
+    let shell = app.send(Event::Settings(SettingsEvent::Set { key: "day-start".to_owned(), value: "07:00".to_owned() }));
+    assert!(!said(&shell).is_empty());
+    let day_start = setting(&app, "day-start");
+    assert_eq!(day_start.setting.value, "07:00");
+    assert_eq!(day_start.problem, None);
+    app.send(Event::Settings(SettingsEvent::Set { key: "day-end".to_owned(), value: "teatime".to_owned() }));
+    let day_end = setting(&app, "day-end");
+    assert_eq!(day_end.typed, "teatime");
+    assert!(day_end.problem.is_some());
+}
+
+#[test]
+fn a_backup_and_an_export_are_files_to_save_and_an_export_imports_into_another_store() {
+    let mut app = App::new();
+    app.add("Write report");
+    app.send(Event::Settings(SettingsEvent::Open));
+    let saved = |shell: Vec<Shell>| {
+        shell.into_iter().find_map(|s| match s {
+            Shell::Save(file) => Some(file),
+            _ => None,
+        })
+    };
+    let backup = saved(app.send(Event::Settings(SettingsEvent::Backup))).expect("a backup to save");
+    assert!(backup.name.ends_with(".lumbak"));
+    assert!(!backup.bytes.is_empty());
+    let json = saved(app.send(Event::Settings(SettingsEvent::Export(lumenna_records::types::ExportFormat::Json)))).unwrap();
+    assert!(json.name.ends_with(".json"));
+
+    let mut other = App::new();
+    let shell = other.send(Event::Settings(SettingsEvent::Import { name: json.name, bytes: json.bytes }));
+    assert!(!said(&shell).is_empty());
+    assert_eq!(other.titles(), ["Write report"]);
 }

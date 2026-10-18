@@ -50,6 +50,9 @@ pub struct ViewModel {
     pub proposal: Option<crate::ProposalView>,
     /// Whether the proposal's screen last closed had made anything.
     pub proposal_made: bool,
+    /// Settings, while open.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settings: Option<crate::SettingsView>,
     /// A task's or block's reminders, while their list is open.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reminders: Option<lumenna_records::reminders::ReminderList>,
@@ -144,6 +147,7 @@ pub fn view(model: &Model) -> ViewModel {
         block_form: model.block_form.as_ref().map(crate::blockform::Form::view),
         proposal: model.proposal.as_ref().map(crate::proposal::view),
         proposal_made: model.proposal_made,
+        settings: model.settings.as_ref().map(|s| crate::settings::view(s, store.now.date())),
         reminders: model
             .reminders
             .as_ref()

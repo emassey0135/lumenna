@@ -31,6 +31,8 @@ pub enum Shell {
     /// Say the day's heading, "<day>. <summary>", the day in the shell's own words: what a
     /// day newly shown says. This is the summary.
     Heading(String),
+    /// Save this file where the person keeps files: a backup, an export.
+    Save(lumenna_app::SaveFile),
 }
 
 /// The store as it stands now, and the heads it was read at.
@@ -56,6 +58,26 @@ pub fn answer(lumenna: &Lumenna, request: HostRequest) -> HostAnswer {
         HostRequest::AddBlock(block) => wrote(lumenna.add_block(block)),
         HostRequest::EditBlock { series, edit, scope } => wrote(lumenna.edit_block(&series, edit, scope)),
         HostRequest::AddFilter { name, query } => wrote(lumenna.add_filter(&name, &query)),
+        HostRequest::Settings => HostAnswer::Listed(lumenna.settings(None)),
+        HostRequest::SetSetting { key, value } => wrote(lumenna.set_setting(&key, &value)),
+        HostRequest::Backup => HostAnswer::Saved(Box::new(lumenna.backup_file().map(|file| {
+            let said = spoken(&file.announcement, &file.notices);
+            (lumenna_app::SaveFile { name: file.name, bytes: file.bytes, kind: "application/octet-stream".to_owned() }, said)
+        }))),
+        HostRequest::Export(format) => HostAnswer::Saved(Box::new(lumenna.export(format, None, false).map(|exported| {
+            let name = lumenna_records::exports::export_name(format, Zoned::now().date());
+            let said = format!("Exported as {name}");
+            let bytes = exported.content.unwrap_or_default().into_bytes();
+            (lumenna_app::SaveFile { name, bytes, kind: "text/plain;charset=utf-8".to_owned() }, said)
+        }))),
+        HostRequest::Import { name, bytes } => {
+            let done = lumenna.import_bytes(&name, bytes).map(|imported| match imported {
+                lumenna_records::types::Imported::Export { done } => spoken(&done.announcement, &done.notices),
+                lumenna_records::types::Imported::Backup { done } => spoken(&done.announcement, &done.notices),
+            });
+            let after = arrival(lumenna).ok().map(|(arrival, _)| arrival);
+            HostAnswer::Imported(Box::new(done), after)
+        }
         HostRequest::Undo => wrote(lumenna.undo()),
         HostRequest::Redo => wrote(lumenna.redo()),
         HostRequest::Choices { action } => HostAnswer::Offered(lumenna.choices(action)),
@@ -98,6 +120,11 @@ pub fn answer(lumenna: &Lumenna, request: HostRequest) -> HostAnswer {
             HostAnswer::Applied(Box::new(applied), after)
         }
     }
+}
+
+/// A record's sentence, then anything else worth saying.
+fn spoken(announcement: &str, notices: &[String]) -> String {
+    std::iter::once(announcement).chain(notices.iter().map(String::as_str)).filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ")
 }
 
 /// The app and its store, together.
@@ -168,6 +195,7 @@ impl Session {
                         let said = request.operation;
                         shell.push(if said.heading { Shell::Heading(said.text) } else { Shell::Announce(said.text) });
                     }
+                    Effect::Save(request) => shell.push(Shell::Save(request.operation)),
                     Effect::Watch(mut request) => {
                         if let Ok((arrival, heads)) = arrival(&self.lumenna) {
                             self.sent = Some((heads, arrival.now.minute()));
@@ -180,7 +208,7 @@ impl Session {
                     Effect::Host(request) => {
                         let (operation, mut handle) = request.split();
                         let found = answer(&self.lumenna, operation);
-                        if let HostAnswer::Wrote(_, Some(_)) | HostAnswer::Applied(_, Some(_)) = &found
+                        if let HostAnswer::Wrote(_, Some(_)) | HostAnswer::Applied(_, Some(_)) | HostAnswer::Imported(_, Some(_)) = &found
                             && let Ok((_, heads)) = self.lumenna.snapshot()
                         {
                             // The app has the store as this write left it.

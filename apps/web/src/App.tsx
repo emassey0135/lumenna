@@ -181,7 +181,11 @@ export function App() {
 
   useCommand("new-task", () => setAdding(true), -1);
   useCommand("new-block", () => thenRun("Today", "new-block"), -1);
-  useCommand("settings", () => setSettingsOpen(true), -1);
+  const openSettings = () => {
+    setSettingsOpen(true);
+    void send({ Settings: "Open" });
+  };
+  useCommand("settings", openSettings, -1);
   useCommand(
     "sync-now",
     () =>
@@ -238,7 +242,7 @@ export function App() {
         <Button onPress={() => setAdding(true)}>New task</Button>
         <Button onPress={() => void undo(false)}>Undo</Button>
         <Button onPress={() => void undo(true)}>Redo</Button>
-        <Button onPress={() => setSettingsOpen(true)}>Settings</Button>
+        <Button onPress={openSettings}>Settings</Button>
         <Button onPress={() => setKeysOpen(true)}>Keyboard shortcuts</Button>
         {/* In the banner, so landmark navigation does not skip it. */}
         {notice && (
@@ -280,8 +284,12 @@ export function App() {
       </aside>
       <Settings
         isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
+        onClose={() => {
+          setSettingsOpen(false);
+          void send({ Settings: "Close" });
+        }}
         revision={revision}
+        settings={screen.settings}
         onChanged={changed}
         syncing={syncing}
         onPaired={() => {

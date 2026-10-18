@@ -31,26 +31,17 @@ import {
   Text,
   TextField,
 } from "react-aria-components";
-import { core } from "./core";
 import { DevicesPage } from "./Devices";
-import type { ExportChoice, Setting } from "./core";
+import type { Setting, SettingView, SettingsView } from "./core";
+import { sayAll, send } from "./session";
 import { remindersOn, setRemindersOn } from "./Reminders";
 import { say } from "./say";
-
-/** Offers `data` as a file to save, called `name`. */
-function download(name: string, data: BlobPart, type: string) {
-  const url = URL.createObjectURL(new Blob([data], { type }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = name;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
-}
 
 export function Settings(props: {
   isOpen: boolean;
   onClose: () => void;
   revision: number;
+  settings: SettingsView | undefined;
   onChanged: () => void;
   /** Whether this browser is keeping in sync. */
   syncing: boolean;
@@ -69,7 +60,7 @@ export function Settings(props: {
             <Tab id="export">Export and import</Tab>
           </TabList>
           <TabPanel id="planning">
-            <Planning revision={props.revision} />
+            <Planning settings={props.settings} />
           </TabPanel>
           <TabPanel id="devices">
             <DevicesPage revision={props.revision} syncing={props.syncing} onPaired={props.onPaired} />
@@ -78,7 +69,7 @@ export function Settings(props: {
             <Backups onChanged={props.onChanged} />
           </TabPanel>
           <TabPanel id="export">
-            <Exports onChanged={props.onChanged} />
+            <Exports settings={props.settings} onChanged={props.onChanged} />
           </TabPanel>
         </Tabs>
         <div className="buttons">
@@ -89,42 +80,19 @@ export function Settings(props: {
   );
 }
 
-function Planning(props: { revision: number }) {
-  const [settings, setSettings] = useState<Setting[]>([]);
+function Planning(props: { settings: SettingsView | undefined }) {
+  const all = props.settings?.settings ?? [];
+  const settings = all.filter((row) => row.setting.syncs);
   // Reminders on this device, which a browser keeps itself: the core's name and hint for it.
-  const [reminders, setReminders] = useState<Setting | undefined>();
+  const reminders = all.find((row) => row.setting.key === "reminders")?.setting;
   const [on, setOn] = useState(remindersOn());
-  // What is typed in a text field and not yet applied, by key.
-  const [typed, setTyped] = useState<Record<string, string>>({});
-  // What the core said is wrong with what was typed, shown at its field, by key.
-  const [problems, setProblems] = useState<Record<string, string>>({});
-  const [reload, setReload] = useState(0);
-
-  useEffect(() => {
-    void core.settings().then((all) => {
-      const shown = all.filter((setting) => setting.syncs);
-      setSettings(shown);
-      setReminders(all.find((setting) => setting.key === "reminders"));
-      setTyped((now) => ({
-        ...Object.fromEntries(shown.map((setting) => [setting.key, setting.value])),
-        // A refused line stays as typed, beside what was wrong with it.
-        ...Object.fromEntries(Object.keys(problems).map((key) => [key, now[key] ?? ""])),
-      }));
-    });
-  }, [props.revision, reload]);
 
   const set = async (key: string, value: string) => {
-    try {
-      say(await core.setSetting(key, value));
-      setProblems(({ [key]: _gone, ...rest }) => rest);
-    } catch (error) {
-      setProblems((now) => ({ ...now, [key]: (error as Error).message }));
-      say((error as Error).message);
-    }
-    setReload((r) => r + 1);
+    const turn = await send({ Settings: { Set: { key, value } } });
+    sayAll(turn.said);
   };
 
-  const control = (setting: Setting) => {
+  const control = ({ setting, typed, problem }: SettingView) => {
     const { key, title, value, hint } = setting;
     const options = setting.options ?? [];
     if (setting.kind === "toggle") {
@@ -160,34 +128,8 @@ function Planning(props: { revision: number }) {
         </Select>
       );
     }
-    const changed = () => (typed[key] ?? "") !== value;
     const description = hint || (setting.kind === "time" ? "A time, such as 8:00 or 22:30." : "");
-    return (
-      <TextField
-        key={key}
-        className="field"
-        value={typed[key] ?? ""}
-        isInvalid={problems[key] !== undefined}
-        validationBehavior="aria"
-        onChange={(text) => setTyped((now) => ({ ...now, [key]: text }))}
-        // Applied when the field is left, as the desktop apps' are.
-        onBlur={() => {
-          if (changed()) void set(key, typed[key] ?? "");
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && changed()) void set(key, typed[key] ?? "");
-        }}
-      >
-        <Label>{title}</Label>
-        <Input />
-        {description && (
-          <Text slot="description" className="quiet">
-            {description}
-          </Text>
-        )}
-        <FieldError>{problems[key]}</FieldError>
-      </TextField>
-    );
+    return <Line key={key} setting={setting} typed={typed} problem={problem} description={description} apply={set} />;
   };
 
   return (
@@ -215,6 +157,42 @@ function Planning(props: { revision: number }) {
   );
 }
 
+/** A setting that is a line: applied when it is left, as the desktop apps' are. */
+function Line(props: { setting: Setting; typed: string; problem?: string | null; description: string; apply: (key: string, value: string) => Promise<void> }) {
+  const { setting } = props;
+  // What the field shows, set at once as typed; the app keeps it too, and a refused line stays.
+  const [text, setText] = useState(props.typed);
+  useEffect(() => setText(props.typed), [props.typed]);
+  const changed = () => text !== setting.value;
+  return (
+    <TextField
+      className="field"
+      value={text}
+      isInvalid={props.problem !== undefined && props.problem !== null}
+      validationBehavior="aria"
+      onChange={(value) => {
+        setText(value);
+        void send({ Settings: { Type: { key: setting.key, value } } });
+      }}
+      onBlur={() => {
+        if (changed()) void props.apply(setting.key, text);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && changed()) void props.apply(setting.key, text);
+      }}
+    >
+      <Label>{setting.title}</Label>
+      <Input />
+      {props.description && (
+        <Text slot="description" className="quiet">
+          {props.description}
+        </Text>
+      )}
+      <FieldError>{props.problem}</FieldError>
+    </TextField>
+  );
+}
+
 /** A button that reads a file the person chooses, and says what reading it did. */
 function ReadFile(props: { label: string; accept: string; onChanged: () => void }) {
   const input = useRef<HTMLInputElement>(null);
@@ -232,12 +210,9 @@ function ReadFile(props: { label: string; accept: string; onChanged: () => void 
           const file = event.target.files?.[0];
           event.target.value = "";
           if (!file) return;
-          try {
-            say(await core.importFile(file.name, new Uint8Array(await file.arrayBuffer())));
-            props.onChanged();
-          } catch (error) {
-            say((error as Error).message);
-          }
+          const turn = await send({ Settings: { Import: { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) } } });
+          sayAll(turn.said);
+          props.onChanged();
         }}
       />
     </>
@@ -253,15 +228,7 @@ function Backups(props: { onChanged: () => void }) {
       </p>
       <div className="buttons">
         <Button
-          onPress={async () => {
-            try {
-              const file = await core.backup();
-              download(file.name, file.bytes as Uint8Array<ArrayBuffer>, "application/octet-stream");
-              say(file.said);
-            } catch (error) {
-              say((error as Error).message);
-            }
-          }}
+          onPress={async () => sayAll((await send({ Settings: "Backup" })).said)}
         >
           Download a backup
         </Button>
@@ -272,29 +239,14 @@ function Backups(props: { onChanged: () => void }) {
   );
 }
 
-function Exports(props: { onChanged: () => void }) {
-  const [choices, setChoices] = useState<ExportChoice[]>([]);
-
-  useEffect(() => {
-    void core.exportChoices().then(setChoices);
-  }, []);
-
+function Exports(props: { settings: SettingsView | undefined; onChanged: () => void }) {
+  const choices = props.settings?.exports ?? [];
   return (
     <>
       <p>An export is what is there now: no history, and nothing from the trash.</p>
       <div className="buttons stacked">
         {choices.map((choice) => (
-          <Button
-            key={choice.format}
-            onPress={async () => {
-              try {
-                download(choice.name, await core.exportContent(choice.format), "text/plain;charset=utf-8");
-                say(`Exported as ${choice.name}`);
-              } catch (error) {
-                say((error as Error).message);
-              }
-            }}
-          >
+          <Button key={choice.format} onPress={async () => sayAll((await send({ Settings: { Export: choice.format } })).said)}>
             {choice.label}
           </Button>
         ))}

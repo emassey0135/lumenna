@@ -34,6 +34,16 @@ export async function start(): Promise<void> {
   show(await core.screen());
 }
 
+/** Offers `data` as a file to save, called `name`. */
+function download(name: string, data: BlobPart, type: string) {
+  const url = URL.createObjectURL(new Blob([data], { type }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 let inFlight = 0;
 let whenSettled: (() => void)[] = [];
 
@@ -46,6 +56,7 @@ export async function send(event: Event): Promise<Said> {
   try {
     const turn = await core.send(event);
     show(turn.screen);
+    for (const file of turn.files) download(file.name, file.bytes as Uint8Array<ArrayBuffer>, file.kind);
     return turn;
   } finally {
     if (--inFlight === 0) {
@@ -169,7 +180,7 @@ export async function run(first: Event, form?: Form): Promise<Said> {
     turn = await send(answer ? { Answer: answer } : "Cancel");
     said.push(...turn.said);
   }
-  return { screen: turn.screen, said };
+  return { screen: turn.screen, said, files: [] };
 }
 
 /** Runs the first of `kinds` the row in hand offers, or says why it offers none. */

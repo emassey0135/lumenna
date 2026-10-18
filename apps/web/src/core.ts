@@ -15,6 +15,8 @@ export type {
   Asking,
   BlockFormView,
   DayMove,
+  SettingView,
+  SettingsView,
   ProposalView,
   Event,
   Choice,

@@ -1,6 +1,6 @@
 //! How paired devices and exports are named and described.
 
-use lumenna_host::{DeviceView, ExportFormat};
+use lumenna_host::DeviceView;
 
 /// A paired device, as its line in the list reads: "Kitchen Mac, macos, last synced 5
 /// minutes ago" — its name and platform, then the status the core words for every app.
@@ -16,31 +16,7 @@ pub fn ago(timestamp: &str, now: jiff::Timestamp) -> String {
     lumenna_host::words::ago(timestamp, now)
 }
 
-/// The exports Settings offers, with what each is for and the extension its file takes.
-#[derive(Debug, Clone, Copy)]
-pub struct Export {
-    /// What it writes.
-    pub format: ExportFormat,
-    /// Its button's text, plain: each toolkit marks the mnemonic its own way (`marked`).
-    pub label: &'static str,
-    /// The letter that is its mnemonic.
-    pub key: char,
-    /// The extension its file takes.
-    pub extension: &'static str,
-}
-
-/// The exports Settings offers, with what each is for.
-pub const EXPORTS: [Export; 4] = [
-    Export {
-        format: ExportFormat::Json,
-        label: "Export JSON, Complete, Can Be Imported...",
-        key: 'J',
-        extension: "json",
-    },
-    Export { format: ExportFormat::Markdown, label: "Export a Markdown Checklist...", key: 'M', extension: "md" },
-    Export { format: ExportFormat::Org, label: "Export an Org Outline...", key: 'O', extension: "org" },
-    Export { format: ExportFormat::Ics, label: "Export a Calendar File of Your Blocks...", key: 'C', extension: "ics" },
-];
+pub use lumenna_records::exports::{EXPORTS, Export};
 
 /// `text` with its mnemonic marked the way a toolkit marks one: `&` for Win32, `_` for GTK.
 /// The marker goes before the first `key`; a marker already in the text is doubled, so it
@@ -60,15 +36,12 @@ pub fn marked(text: &str, key: char, marker: char) -> String {
     out
 }
 
-/// The file name an export is offered under, dated: "Lumenna 2026-10-04.json".
-pub fn export_name(format: ExportFormat, today: jiff::civil::Date) -> String {
-    let extension = EXPORTS.iter().find(|e| e.format == format).map_or("txt", |e| e.extension);
-    format!("Lumenna {today}.{extension}")
-}
+pub use lumenna_records::exports::export_name;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lumenna_host::ExportFormat;
 
     fn device(this: bool, success: Option<&str>, error: Option<&str>) -> DeviceView {
         let mut view = DeviceView {

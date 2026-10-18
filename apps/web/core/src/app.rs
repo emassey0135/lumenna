@@ -31,6 +31,8 @@ pub struct Turn {
     pub view: ViewModel,
     /// What to say, in order.
     pub said: Vec<Saying>,
+    /// Files to save where the person keeps them: a backup, an export.
+    pub files: Vec<lumenna_app::SaveFile>,
 }
 
 /// The app over the store this worker holds.
@@ -45,10 +47,17 @@ fn turn(session: &Session, shell: &[Shell]) -> Turn {
         .filter_map(|s| match s {
             Shell::Announce(text) => Some(Saying { text: text.clone(), heading: false }),
             Shell::Heading(text) => Some(Saying { text: text.clone(), heading: true }),
-            Shell::Render => None,
+            Shell::Render | Shell::Save(_) => None,
         })
         .collect();
-    Turn { view: session.view(), said }
+    let files = shell
+        .iter()
+        .filter_map(|s| match s {
+            Shell::Save(file) => Some(file.clone()),
+            _ => None,
+        })
+        .collect();
+    Turn { view: session.view(), said, files }
 }
 
 #[wasm_bindgen]

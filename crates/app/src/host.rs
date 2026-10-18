@@ -98,6 +98,26 @@ pub enum HostRequest {
         /// Its query.
         query: String,
     },
+    /// Every setting, each describing itself.
+    Settings,
+    /// Apply a setting.
+    SetSetting {
+        /// The setting.
+        key: String,
+        /// Its new value.
+        value: String,
+    },
+    /// A backup taken now, as a file to save.
+    Backup,
+    /// What is there now, in a format, as a file to save.
+    Export(lumenna_records::types::ExportFormat),
+    /// Read a JSON export or a backup.
+    Import {
+        /// The file's name.
+        name: String,
+        /// Its contents.
+        bytes: Vec<u8>,
+    },
     /// Undo the last change made on this device.
     Undo,
     /// Redo the last change undone.
@@ -112,6 +132,12 @@ pub enum HostAnswer {
     Wrote(Box<Result<Change, LumennaError>>, Option<Arrival>),
     /// What a pick offers.
     Offered(Result<Choices, LumennaError>),
+    /// Every setting.
+    Listed(Result<lumenna_records::types::SettingList, LumennaError>),
+    /// A file to save, and what to say about it.
+    Saved(Box<Result<(crate::SaveFile, String), LumennaError>>),
+    /// What an import did, as said, and the store just after it.
+    Imported(Box<Result<String, LumennaError>>, Option<Arrival>),
     /// A proposal.
     Proposed(Box<Result<crate::proposal::Proposal, LumennaError>>),
     /// What applying a proposal made, and the store just after it.
