@@ -145,13 +145,7 @@ impl Lumenna {
     /// If no task matches `id`.
     pub fn show_task(&self, id: &str) -> Result<TaskShown> {
         let now = Zoned::now();
-        self.told(|store| {
-            let snapshot = repaired(store);
-            let id = resolve::task_id(&snapshot, id)?;
-            let task = snapshot.tasks.get(&id).ok_or(EditError::NotFound { kind: "task" })?;
-            let task = TaskDetail::of(task, &snapshot, &now);
-            Ok(TaskShown { announcement: task.title.clone(), notices: Vec::new(), task })
-        })
+        self.told(|store| crate::plan::task_shown(&repaired(store), id, &now))
     }
 
     /// Changes the fields of a task that `edit` sets.

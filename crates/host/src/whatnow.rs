@@ -13,36 +13,10 @@ use lumenna_core::snapshot::Snapshot;
 
 use crate::actions::{Choice, Choices};
 use crate::error::{LumennaError, Result};
-use crate::replan::minutes_of;
 use crate::types::Change;
 use crate::words::{count_line, duration, suggested_because};
 use crate::{Lumenna, repaired, resolve};
-
-/// Where now falls in today: in a block, or in the free time before the next one.
-enum Now {
-    /// A block under way, and the minutes left of it.
-    Block(Occurrence, u32),
-    /// Free time: its minutes until the next block or the day's end, and whether a block is next.
-    Free(u32, bool),
-}
-
-fn where_now(snapshot: &Snapshot, now: &Zoned) -> Result<Now> {
-    let at = minutes_of(now.time());
-    let mut day = snapshot.day(now.date())?;
-    day.sort_by_key(|o| o.start_time);
-    if let Some(current) = day.iter().find(|o| {
-        let start = minutes_of(o.start_time);
-        start <= at && at < start + i64::from(o.duration_mins)
-    }) {
-        let left = minutes_of(current.start_time) + i64::from(current.duration_mins) - at;
-        return Ok(Now::Block(current.clone(), u32::try_from(left).unwrap_or(0)));
-    }
-    let next = day.iter().map(|o| minutes_of(o.start_time)).filter(|start| *start > at).min();
-    // With nothing after, free time runs to the day's end, or past it to midnight.
-    let window = minutes_of(snapshot.settings.day_window.1);
-    let end = next.unwrap_or(if at < window { window } else { 24 * 60 });
-    Ok(Now::Free(u32::try_from(end - at).unwrap_or(0), next.is_some()))
-}
+use crate::plan::{Now, where_now};
 
 fn reference(snapshot: &Snapshot, occurrence: &Occurrence) -> BlockRef {
     match snapshot.series.get(&occurrence.series_id) {
@@ -51,14 +25,6 @@ fn reference(snapshot: &Snapshot, occurrence: &Occurrence) -> BlockRef {
     }
 }
 
-/// Whether today offers the question now: not inside a block that takes no tasks.
-pub(crate) fn offered(snapshot: &Snapshot, now: &Zoned) -> bool {
-    match where_now(snapshot, now) {
-        Ok(Now::Block(occurrence, _)) => occurrence.flags.accepts_tasks,
-        Ok(Now::Free(minutes, _)) => minutes >= SHORTEST_SITTING,
-        Err(_) => false,
-    }
-}
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {

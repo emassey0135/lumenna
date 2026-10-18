@@ -4,8 +4,6 @@
 //! never a process per keystroke.
 
 use jiff::Zoned;
-use lumenna_parse::complete::{self, complete};
-use lumenna_parse::quickadd::{Known, parse_quick_add};
 
 use crate::error::Result;
 use crate::types::{Completions, Preview, Syntax};
@@ -22,19 +20,7 @@ impl Lumenna {
     ///
     /// If the store cannot be read.
     pub fn complete_text(&self, text: &str, cursor: u32, syntax: Syntax) -> Result<Completions> {
-        let mut cursor = (cursor as usize).min(text.len());
-        // A cursor inside a character would split it; step back to where it starts.
-        while !text.is_char_boundary(cursor) {
-            cursor -= 1;
-        }
-        let syntax = match syntax {
-            Syntax::QuickAdd => complete::Syntax::QuickAdd,
-            Syntax::Filter => complete::Syntax::Filter,
-        };
-        self.told(|store| {
-            let snapshot = repaired(store);
-            Ok(Completions::of(&complete(text, cursor, syntax, &Known::from_snapshot(&snapshot))))
-        })
+        self.told(|store| Ok(lumenna_records::text::completions(&repaired(store), text, cursor, syntax)))
     }
 
     /// What a quick-add line would produce, without producing it.
@@ -46,10 +32,6 @@ impl Lumenna {
     /// If the store cannot be read.
     pub fn preview_task(&self, text: &str) -> Result<Preview> {
         let now = Zoned::now();
-        self.told(|store| {
-            let snapshot = repaired(store);
-            let parsed = parse_quick_add(text, &Known::from_snapshot(&snapshot));
-            Ok(Preview::of(&parsed.resolve(&snapshot, &now), &snapshot))
-        })
+        self.told(|store| Ok(lumenna_records::text::preview(&repaired(store), text, &now)))
     }
 }
