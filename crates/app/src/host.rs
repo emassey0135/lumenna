@@ -56,6 +56,13 @@ pub enum HostRequest {
         /// The line as typed, a place's own start included.
         text: String,
     },
+    /// Save a task's details: only what changed.
+    EditTask {
+        /// The task.
+        id: String,
+        /// What changed.
+        edit: lumenna_records::types::TaskEdit,
+    },
     /// Undo the last change made on this device.
     Undo,
     /// Redo the last change undone.

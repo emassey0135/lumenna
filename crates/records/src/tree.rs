@@ -43,3 +43,14 @@ pub fn in_tree_order(snapshot: &Snapshot) -> Vec<(&Project, u32)> {
     }
     ordered
 }
+
+/// The projects a task's Project field offers, in tree order: every one not archived, `id` its
+/// name as `task_edit` takes it.
+#[must_use]
+pub fn project_options(snapshot: &Snapshot) -> Vec<crate::Choice> {
+    in_tree_order(snapshot)
+        .into_iter()
+        .filter(|(project, _)| !project.archived)
+        .map(|(project, depth)| crate::Choice { id: project.name.clone(), title: project.name.clone(), depth, ..crate::Choice::default() })
+        .collect()
+}

@@ -10,74 +10,56 @@ import { useContext, useEffect, useRef, useState } from "react";
 import type { ContextType } from "react";
 import { Button, ComboBox, ComboBoxStateContext, Dialog, Heading, Input, Label, ListBox, ListBoxItem, Modal, Popover } from "react-aria-components";
 import type { Key } from "react-aria-components";
-import { core } from "./core";
-import { sayAll, send } from "./session";
+import type { ShownLine } from "./core";
+import { sayAll, send, typed } from "./session";
 
-/** What fits in one place on one line: `text` and `cursor` say which. */
-interface Offer {
-  text: string;
-  cursor: number;
-  start: number;
-  end: number;
-  candidates: { id: string; text: string; label: string }[];
-}
 
-export function QuickAdd(props: { prefix: string; isOpen: boolean; onClose: () => void; onAdded: () => void }) {
-  const [text, setText] = useState(props.prefix);
-  const [readback, setReadback] = useState("");
-  const [offer, setOffer] = useState<Offer>({ text: "", cursor: -1, start: 0, end: 0, candidates: [] });
+export function QuickAdd(props: { line: ShownLine | undefined; isOpen: boolean; onClose: () => void; onAdded: () => void }) {
+  // What the field shows, set at once as typed so the caret stays put; the app's line is the same
+  // a moment later. While typing is on its way, an answer for earlier typing is not shown.
+  const [text, setText] = useState(props.line?.text ?? "");
+  const pending = useRef(0);
+  const opened = useRef(false);
   // The combobox's own state, so Down can open the list once a fresh offer is in it.
   const combo = useRef<ContextType<typeof ComboBoxStateContext>>(null);
   const input = useRef<HTMLInputElement>(null);
   // The line a chosen completion makes, which replaces the item text React Aria would put in.
   const spliced = useRef<string | undefined>(undefined);
+  const line = props.line;
+  const offer = line?.offer ?? { start: 0, end: 0, candidates: [] };
+
+  // Opening starts the line with what the place adds; closing lets it go.
+  useEffect(() => {
+    if (props.isOpen && !opened.current) {
+      opened.current = true;
+      void send({ Typing: "Open" }).then((turn) => setText(turn.screen.line?.text ?? ""));
+    } else if (!props.isOpen && opened.current) {
+      opened.current = false;
+      void send({ Typing: "Close" });
+    }
+  }, [props.isOpen]);
 
   useEffect(() => {
-    if (props.isOpen) setText(props.prefix);
-  }, [props.isOpen, props.prefix]);
+    if (line && pending.current === 0) setText(line.text);
+  }, [line?.text]);
 
-  // The readback, as typed.
-  useEffect(() => {
-    let current = true;
-    void core.preview(text).then(
-      (preview) => {
-        if (!current) return;
-        setReadback(preview.readback);
-      },
-      (error: Error) => current && setReadback(error.message),
-    );
-    return () => {
-      current = false;
-    };
-  }, [text]);
-
-  /** What fits where the cursor is now. */
-  const offerAtCursor = async (): Promise<Offer> => {
-    const cursor = input.current?.selectionStart ?? text.length;
-    const found = await core.completions(text, cursor, "quick-add");
-    const fresh = {
-      text,
-      cursor,
-      start: found.start,
-      end: found.end,
-      candidates: found.candidates.map((candidate, index) => ({ id: String(index), ...candidate })),
-    };
-    setOffer(fresh);
-    return fresh;
+  /** Tells the app the line and where the cursor is now, which decides what fits. */
+  const tell = (value: string) => {
+    const cursor = input.current?.selectionStart ?? value.length;
+    pending.current++;
+    return typed(value, cursor).finally(() => pending.current--);
   };
 
-  useEffect(() => {
-    void offerAtCursor();
-  }, [text]);
-
   const choose = (key: Key | null) => {
-    const candidate = offer.candidates.find((c) => c.id === key);
-    if (!candidate) return;
-    const line = text.slice(0, offer.start) + candidate.text + text.slice(offer.end);
-    spliced.current = line;
-    setText(line);
-    const caret = offer.start + candidate.text.length;
-    requestAnimationFrame(() => input.current?.setSelectionRange(caret, caret));
+    const at = offer.candidates.findIndex((c) => c.id === key);
+    if (at < 0) return;
+    void send({ Typing: { Choose: at } }).then((turn) => {
+      const next = turn.screen.line;
+      if (!next) return;
+      spliced.current = next.text;
+      setText(next.text);
+      requestAnimationFrame(() => input.current?.setSelectionRange(next.cursor, next.cursor));
+    });
   };
 
   const add = async () => {
@@ -116,6 +98,7 @@ export function QuickAdd(props: { prefix: string; isOpen: boolean; onClose: () =
                 spliced.current = undefined;
               } else {
                 setText(value);
+                void tell(value);
               }
             }}
             selectedKey={null}
@@ -133,10 +116,10 @@ export function QuickAdd(props: { prefix: string; isOpen: boolean; onClose: () =
                 const state = combo.current;
                 if (event.key !== "ArrowDown" || !state || state.isOpen) return;
                 const cursor = input.current?.selectionStart ?? text.length;
-                if (offer.text === text && offer.cursor === cursor) return;
+                if (line && line.text === text && line.cursor === cursor && pending.current === 0) return;
                 event.preventDefault();
                 event.stopPropagation();
-                void offerAtCursor().then((fresh) => fresh.candidates.length > 0 && state.open("first", "manual"));
+                void tell(text).then((turn) => (turn.screen.line?.offer.candidates.length ?? 0) > 0 && state.open("first", "manual"));
               }}
             >
             <Input
@@ -144,13 +127,13 @@ export function QuickAdd(props: { prefix: string; isOpen: boolean; onClose: () =
               autoFocus
               onKeyUp={(event) => {
                 // A cursor moved without typing changes what fits.
-                if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) void offerAtCursor();
+                if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) void tell(text);
               }}
-              onClick={() => void offerAtCursor()}
+              onClick={() => void tell(text)}
             />
             </div>
             <Popover>
-              <ListBox>{(item: Offer["candidates"][number]) => <ListBoxItem textValue={item.label}>{item.label}</ListBoxItem>}</ListBox>
+              <ListBox>{(item: ShownLine["offer"]["candidates"][number]) => <ListBoxItem textValue={item.label}>{item.label}</ListBoxItem>}</ListBox>
             </Popover>
           </ComboBox>
           <p id="quick-add-hint" className="quiet">
@@ -158,7 +141,7 @@ export function QuickAdd(props: { prefix: string; isOpen: boolean; onClose: () =
           </p>
           <label htmlFor="quick-add-readback">Will add</label>
           <output id="quick-add-readback" className="readback" tabIndex={0}>
-            {readback}
+            {line?.readback ?? ""}
           </output>
           <div className="buttons">
             <Button onPress={props.onClose}>Cancel</Button>

@@ -68,6 +68,22 @@ export function settled(): Promise<void> {
   return new Promise<void>((resolve) => whenSettled.push(resolve)).then(drawn);
 }
 
+/** The quick-add line as typed, the cursor a UTF-16 offset: drawn, with what it will add. */
+export async function typed(text: string, cursor: number): Promise<Said> {
+  inFlight++;
+  try {
+    const turn = await core.typed(text, cursor);
+    show(turn.screen);
+    return turn;
+  } finally {
+    if (--inFlight === 0) {
+      const waiting = whenSettled;
+      whenSettled = [];
+      for (const resolve of waiting) resolve();
+    }
+  }
+}
+
 /** The screen as it is now, drawn. */
 export async function current(): Promise<Screen> {
   const now = await core.screen();

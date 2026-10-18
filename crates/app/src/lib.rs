@@ -13,8 +13,10 @@
 //! drawing ([`Effect::Render`]) and saying ([`Effect::Announce`]), each its platform's way.
 
 pub mod day;
+pub mod details;
 pub mod host;
 pub mod list;
+pub mod typing;
 mod view;
 
 use std::collections::BTreeSet;
@@ -27,6 +29,8 @@ use lumenna_records::{Action, ActionKind, Answer, Change, Choices, LumennaError,
 use serde::{Deserialize, Serialize};
 
 pub use day::{DayItem, DayKind, DayView};
+pub use details::{DetailsEvent, DetailsView};
+pub use typing::{LineView, Typing};
 pub use host::{Arrival, HostAnswer, HostRequest, Watch};
 pub use list::Item;
 pub use view::{Asking, ListView, ViewModel};
@@ -112,6 +116,10 @@ pub enum Event {
     Cancel,
     /// Move through the days, going to the day if another place is shown.
     Day(DayMove),
+    /// Something done in the details of the task in hand.
+    Details(DetailsEvent),
+    /// Something done in quick add.
+    Typing(Typing),
     /// Add a task from a quick-add line.
     QuickAdd(String),
     /// Undo the last change.
@@ -212,6 +220,10 @@ pub struct Model {
     pub day: Option<Date>,
     /// Whether today has been shown yet: the first time, it opens on now.
     pub day_opened: bool,
+    /// The details of the task in hand.
+    pub details: details::Details,
+    /// The quick-add line, while quick add is open.
+    pub line: Option<typing::Line>,
 }
 
 /// The rows a place shows, as its keys and their actions.
@@ -294,6 +306,30 @@ impl Model {
             }
             None => false,
         }
+    }
+
+    /// The task the details show: one asked for, else the task in hand — a list's row, or on
+    /// the day a sitting's task.
+    pub(crate) fn details_task(&self) -> Option<String> {
+        if let Some(task) = &self.details.shown {
+            return Some(task.clone());
+        }
+        let focus = self.focus.as_ref()?;
+        match self.place() {
+            Place::Blocks => None,
+            Place::Today => {
+                let view = self.day_view()?;
+                view.items.into_iter().find(|i| &i.key == focus)?.sitting.map(|s| s.task)
+            }
+            _ => Some(focus.clone()),
+        }
+    }
+
+    /// The task the details show, as the store has it.
+    pub(crate) fn details_shown(&self) -> Option<lumenna_records::types::TaskDetail> {
+        let store = self.store.as_ref()?;
+        let id = self.details_task()?;
+        lumenna_records::plan::task_shown(&store.snapshot, &id, &store.now).ok().map(|shown| shown.task)
     }
 
     /// The actions of the row in hand.
@@ -416,9 +452,16 @@ impl Lumenna {
             model.store = Some(store);
         }
         let adding = std::mem::take(&mut model.adding);
+        let saving = std::mem::take(&mut model.details.saving);
         match result {
             Ok(change) => {
                 model.open = None;
+                if saving {
+                    model.details.draft = None;
+                }
+                if adding {
+                    model.line = None;
+                }
                 // What it made is what the person works on next.
                 if let Some(task) = &change.task {
                     model.hold(&task.id);
@@ -439,6 +482,72 @@ impl Lumenna {
                 render().and(say(error.message()))
             }
         }
+    }
+
+    fn details(&self, event: DetailsEvent, model: &mut Model) -> Command<Effect, Event> {
+        match event {
+            DetailsEvent::Show(task) => {
+                model.details.shown = Some(task);
+                render()
+            }
+            DetailsEvent::Field { key, value } => {
+                let Some(task) = model.details_shown() else { return Command::done() };
+                let draft = match model.details.draft.take() {
+                    Some(draft) if draft.task == task.id => draft,
+                    // Typing begins: what saving will compare with is the task as it is now.
+                    _ => details::Draft {
+                        task: task.id.clone(),
+                        fields: lumenna_records::task_fields(task.clone()),
+                        original: task,
+                    },
+                };
+                let fields = details::set(draft.fields, &key, value);
+                model.details.draft = Some(details::Draft { fields, ..draft });
+                render()
+            }
+            DetailsEvent::Save => {
+                let Some(task) = model.details_shown() else { return Command::done() };
+                let (original, fields) = match &model.details.draft {
+                    Some(draft) if draft.task == task.id => (draft.original.clone(), draft.fields.clone()),
+                    _ => (task.clone(), lumenna_records::task_fields(task.clone())),
+                };
+                match lumenna_records::task_edit(original, fields) {
+                    None => {
+                        model.details.draft = None;
+                        render().and(say("Nothing changed"))
+                    }
+                    Some(edit) => {
+                        model.details.saving = true;
+                        host(HostRequest::EditTask { id: task.id, edit })
+                    }
+                }
+            }
+        }
+    }
+
+    fn typing(&self, event: Typing, model: &mut Model) -> Command<Effect, Event> {
+        match event {
+            Typing::Open => {
+                let text = model.place().quick_add_prefix();
+                let cursor = u32::try_from(text.len()).unwrap_or(u32::MAX);
+                model.line = Some(typing::Line { text, cursor });
+                model.add_refused = None;
+            }
+            Typing::Text { text, cursor } => model.line = Some(typing::Line { text, cursor }),
+            Typing::Choose(index) => {
+                let (Some(line), Some(store)) = (&model.line, &model.store) else { return Command::done() };
+                let offer = lumenna_records::text::completions(
+                    &store.snapshot,
+                    &line.text,
+                    line.cursor,
+                    lumenna_records::types::Syntax::QuickAdd,
+                );
+                let Some(candidate) = offer.candidates.get(index as usize) else { return Command::done() };
+                model.line = Some(typing::splice(line, offer.start, offer.end, &candidate.text));
+            }
+            Typing::Close => model.line = None,
+        }
+        render()
     }
 
     fn arrived(&self, store: Arrival, model: &mut Model) -> Command<Effect, Event> {
@@ -467,6 +576,7 @@ impl App for Lumenna {
                 model.position = 0;
                 model.open = None;
                 model.day = None;
+                model.details.shown = None;
                 // Today opens on now the first time; after that on its summary, as any day.
                 if first_today && let Some(view) = model.day_view() {
                     model.day_opened = true;
@@ -479,7 +589,8 @@ impl App for Lumenna {
             }
             Event::Focus(key) => {
                 model.hold(&key);
-                Command::done()
+                model.details.shown = None;
+                render()
             }
             Event::Filter(text) => {
                 model.filter = (!text.trim().is_empty()).then_some(text);
@@ -534,6 +645,8 @@ impl App for Lumenna {
                     }
                 }
             }
+            Event::Details(event) => self.details(event, model),
+            Event::Typing(event) => self.typing(event, model),
             Event::QuickAdd(text) => {
                 model.adding = true;
                 model.add_refused = None;

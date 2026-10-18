@@ -35,8 +35,6 @@ export function App() {
   const [revision, setRevision] = useState(0);
   const screen = useScreen();
   const place: Place = screen?.place ?? "Tasks";
-  // The task in hand on the day, which the details show; in a list it is the app's.
-  const [selected, setSelected] = useState<string | undefined>();
   const [adding, setAdding] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
@@ -96,7 +94,6 @@ export function App() {
     return () => clearInterval(timer);
   }, [ready]);
 
-  useEffect(() => setSelected(undefined), [place, screen?.focus]);
 
   // A write made outside the app (the day, the details, settings): the app takes it in now.
   const changed = () => {
@@ -259,10 +256,9 @@ export function App() {
           <Day
             screen={screen}
             onChanged={() => setRevision((r) => r + 1)}
-            onOpenTask={(id) => {
-              setSelected(id);
-              details.current?.focus();
-            }}
+            onOpenTask={(id) =>
+              void send({ Details: { Show: id } }).then(() => requestAnimationFrame(() => details.current?.focus()))
+            }
           />
         ) : place === "Blocks" ? (
           <Blocks screen={screen} onChanged={() => setRevision((r) => r + 1)} />
@@ -280,18 +276,7 @@ export function App() {
         )}
       </main>
       <aside aria-label="Task details">
-        <Details
-          ref={details}
-          id={
-            place === "Blocks"
-              ? undefined
-              : place === "Today"
-                ? (selected ?? screen.day?.items.find((item) => item.key === screen.focus)?.sitting?.task)
-                : (screen.focus ?? undefined)
-          }
-          revision={revision}
-          onChanged={changed}
-        />
+        <Details ref={details} screen={screen} onChanged={() => setRevision((r) => r + 1)} />
       </aside>
       <Settings
         isOpen={settingsOpen}
@@ -309,7 +294,7 @@ export function App() {
       <Prompts />
       <Proposals onChanged={changed} />
       <BlockForms />
-      <QuickAdd prefix={screen.quick_add} isOpen={adding} onClose={() => setAdding(false)} onAdded={() => setRevision((r) => r + 1)} />
+      <QuickAdd line={screen.line} isOpen={adding} onClose={() => setAdding(false)} onAdded={() => setRevision((r) => r + 1)} />
     </div>
   );
 }

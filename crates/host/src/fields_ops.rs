@@ -13,14 +13,7 @@ impl Lumenna {
     ///
     /// If the store cannot be read.
     pub fn project_options(&self) -> crate::Result<Vec<Choice>> {
-        self.with(|store| {
-            let snapshot = crate::repaired(store);
-            Ok(crate::tree::in_tree_order(&snapshot)
-                .into_iter()
-                .filter(|(project, _)| !project.archived)
-                .map(|(project, depth)| Choice { id: project.name.clone(), title: project.name.clone(), depth, ..Choice::default() })
-                .collect())
-        })
+        self.with(|store| Ok(crate::tree::project_options(&crate::repaired(store))))
     }
 }
 

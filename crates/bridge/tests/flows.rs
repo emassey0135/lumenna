@@ -1,6 +1,6 @@
 //! Whole flows through the app and a real store: events in, what is shown and said out.
 
-use lumenna_app::{DayMove, Event, Item, ViewModel};
+use lumenna_app::{DayMove, DetailsEvent, Event, Item, Typing, ViewModel};
 use lumenna_records::places::Place;
 use lumenna_bridge::{Session, Shell};
 use lumenna_host::Lumenna;
@@ -351,4 +351,57 @@ fn the_blocks_list_every_series_with_its_actions() {
     assert_eq!(items[0].row.title, "Gym");
     assert!(items[0].row.actions.iter().any(|a| a.kind == ActionKind::Delete));
     assert_eq!(app.view().focus, Some(items[0].row.id.clone()));
+}
+
+#[test]
+fn the_details_follow_the_task_in_hand_and_keep_typing_through_a_change_elsewhere() {
+    let mut app = App::new();
+    app.add("Write report");
+    let id = app.id_of("Write report");
+    let details = app.view().details.expect("the task in hand's details");
+    assert_eq!(details.fields.title, "Write report");
+    assert!(!details.dirty);
+
+    app.send(Event::Details(DetailsEvent::Field { key: "title".to_owned(), value: "Write the report".to_owned() }));
+    assert!(app.view().details.unwrap().dirty);
+    // Another device sets its priority meanwhile.
+    let elsewhere = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    elsewhere.edit_task(&id, lumenna_records::types::TaskEdit { priority: Some(1), ..Default::default() }).unwrap();
+    app.session.tick();
+    let details = app.view().details.unwrap();
+    assert_eq!(details.fields.title, "Write the report", "the typing is kept");
+
+    let shell = app.send(Event::Details(DetailsEvent::Save));
+    assert!(!said(&shell).is_empty());
+    let details = app.view().details.unwrap();
+    assert!(!details.dirty);
+    assert_eq!(details.task.title, "Write the report");
+    assert_eq!(details.fields.priority, 1, "the edit elsewhere holds: only the title was sent");
+}
+
+#[test]
+fn saving_details_with_nothing_changed_says_so() {
+    let mut app = App::new();
+    app.add("Write report");
+    let shell = app.send(Event::Details(DetailsEvent::Save));
+    assert_eq!(said(&shell), ["Nothing changed"]);
+}
+
+#[test]
+fn quick_add_reads_back_the_line_and_puts_a_completion_in_at_the_cursor() {
+    let mut app = App::new();
+    app.send(Event::Typing(Typing::Open));
+    assert_eq!(app.view().line.unwrap().text, "");
+    app.send(Event::Typing(Typing::Text { text: "Call Sam tomorrow p1".to_owned(), cursor: 20 }));
+    let line = app.view().line.unwrap();
+    assert!(line.readback.contains("Call Sam"), "{}", line.readback);
+    assert!(!line.has_errors);
+
+    app.send(Event::Typing(Typing::Text { text: "Call #Inb tomorrow".to_owned(), cursor: 9 }));
+    let line = app.view().line.unwrap();
+    let at = line.offer.candidates.iter().position(|c| c.text.contains("Inbox")).expect("the Inbox is offered");
+    app.send(Event::Typing(Typing::Choose(u32::try_from(at).unwrap())));
+    let line = app.view().line.unwrap();
+    assert!(line.text.starts_with("Call #Inbox"), "{}", line.text);
+    assert!(line.text.ends_with("tomorrow"));
 }

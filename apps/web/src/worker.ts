@@ -50,6 +50,7 @@ import type {
   Answer,
   DayItem,
   DayView,
+  DetailsView,
   Event,
   Item,
   ListView,
@@ -156,10 +157,26 @@ export interface ShownDay extends Omit<DayView, "items"> {
   items: ShownDayItem[];
 }
 
+/** The details as the page draws them: the task's state as a line. */
+export interface ShownDetails extends DetailsView {
+  state: string;
+}
+
+/** The quick-add line as the page draws it: offsets in UTF-16 units, as an input counts. */
+export interface ShownLine {
+  text: string;
+  cursor: number;
+  readback: string;
+  hasErrors: boolean;
+  offer: { start: number; end: number; candidates: { id: string; text: string; label: string }[] };
+}
+
 /** The view model as the page draws it. */
-export interface Screen extends Omit<ViewModel, "list" | "day"> {
+export interface Screen extends Omit<ViewModel, "list" | "day" | "details" | "line"> {
   list?: Shown;
   day?: ShownDay;
+  details?: ShownDetails;
+  line?: ShownLine;
 }
 
 /** A day's row as it reads. */
@@ -204,11 +221,29 @@ function screen(view: ViewModel): Screen {
     title: dayText(view.day.date),
     items: view.day.items.map((item) => ({ ...item, text: dayLine(item, view.day!.date, view.day!.summary) })),
   };
+  const details = view.details && { ...view.details, state: taskStateText(view.details.task) };
+  const line = view.line && {
+    text: view.line.text,
+    cursor: unitsAt(view.line.text, view.line.cursor),
+    readback: view.line.readback,
+    hasErrors: view.line.has_errors,
+    offer: {
+      start: unitsAt(view.line.text, view.line.offer.start),
+      end: unitsAt(view.line.text, view.line.offer.end),
+      candidates: view.line.offer.candidates.map((candidate, index) => ({
+        id: String(index),
+        text: candidate.text,
+        label: candidateText(candidate),
+      })),
+    },
+  };
   return {
     ...view,
     sidebar: view.sidebar.map((entry) => ("Group" in entry.kind ? { ...entry, text: sentenceCase(entry.text) } : entry)),
     list,
     day,
+    details,
+    line,
   };
 }
 
@@ -241,6 +276,10 @@ const api = {
 
   /** Runs what the person did through the app: what to draw, and what to say. */
   send: (event: Event): Said => turned(session().send(event)),
+
+  /** The quick-add line as typed, the cursor a UTF-16 offset as the input counts it. */
+  typed: (text: string, cursor: number): Said =>
+    turned(session().send({ Typing: { Text: { text, cursor: bytesAt(text, cursor) } } })),
 
   /** What changed elsewhere since, or a new minute: undefined when nothing did. */
   tick(): Said | undefined {

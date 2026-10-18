@@ -50,6 +50,7 @@ pub fn answer(lumenna: &Lumenna, request: HostRequest) -> HostAnswer {
     match request {
         HostRequest::Act { action, answer } => wrote(lumenna.act(action, answer)),
         HostRequest::AddTask { text } => wrote(lumenna.add_task(&text)),
+        HostRequest::EditTask { id, edit } => wrote(lumenna.edit_task(&id, edit)),
         HostRequest::Undo => wrote(lumenna.undo()),
         HostRequest::Redo => wrote(lumenna.redo()),
         HostRequest::Choices { action } => HostAnswer::Offered(lumenna.choices(action)),

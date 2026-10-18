@@ -7,7 +7,7 @@ use lumenna_records::{Action, Choices, LumennaError, Query, Question, Rows, list
 use serde::{Deserialize, Serialize};
 
 use crate::list::{self, Item};
-use crate::{DayView, Model};
+use crate::{DayView, DetailsView, LineView, Model};
 
 /// Everything on screen.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -36,6 +36,12 @@ pub struct ViewModel {
     /// Why the last quick-add line was refused, for the line to stay with it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub add_refused: Option<String>,
+    /// The details of the task in hand.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<DetailsView>,
+    /// The quick-add line, while quick add is open.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<LineView>,
 }
 
 /// A list of tasks as shown.
@@ -114,6 +120,31 @@ pub fn view(model: &Model) -> ViewModel {
         query: model.query(),
         add_refused: model.add_refused.clone(),
         day: (place == Place::Today).then(|| model.day_view()).flatten(),
+        details: model.details_shown().map(|task| {
+            let draft = model.details.draft.as_ref().filter(|d| d.task == task.id);
+            DetailsView {
+                fields: draft.map_or_else(|| lumenna_records::task_fields(task.clone()), |d| d.fields.clone()),
+                dirty: draft.is_some_and(|d| d.fields != lumenna_records::task_fields(d.original.clone())),
+                task,
+                form: lumenna_records::task_form(),
+                projects: lumenna_records::tree::project_options(&store.snapshot),
+            }
+        }),
+        line: model.line.as_ref().map(|line| {
+            let preview = lumenna_records::text::preview(&store.snapshot, &line.text, &store.now);
+            crate::typing::LineView {
+                text: line.text.clone(),
+                cursor: line.cursor,
+                readback: if line.text.trim().is_empty() { String::new() } else { crate::typing::readback(&preview) },
+                has_errors: line.text.trim().is_empty() || preview.has_errors,
+                offer: lumenna_records::text::completions(
+                    &store.snapshot,
+                    &line.text,
+                    line.cursor,
+                    lumenna_records::types::Syntax::QuickAdd,
+                ),
+            }
+        }),
         place: Some(place),
         list,
         focus: model.focus.clone(),
