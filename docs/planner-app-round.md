@@ -1,7 +1,7 @@
 # The planner's app round
 
-What every client now shows of the planner. The core is on master (369dec3, 492c9b6,
-995f2c1); CLAUDE.md's "Urgency and history" and the re-flow and day plan paragraphs say how
+What every client now shows of the planner. The core is on master (807d059, 80f5544,
+b653ed8); CLAUDE.md's "Urgency and history" and the re-flow and day plan paragraphs say how
 it behaves. **An app words nothing here itself**: every sentence, title and button is the
 core's. Follow each platform's own conventions for where things go.
 
@@ -98,7 +98,7 @@ on the Planning page after the day window and week start.
   `lumenna-f0` with SendMessage and carry on with the rest.
 - Update your app's CLAUDE.md section for anything non-obvious.
 
-## Second round (a01960e)
+## Second round (ffe43e9)
 
 Two more, on the screens and notifications built in the first round.
 

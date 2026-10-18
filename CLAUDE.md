@@ -1241,6 +1241,9 @@ with `lum`.
 - Sibling ordering is fractional indexing on a single LWW string, never a list CRDT.
 - Tests are named as the sentence they assert. Comments say *why*.
 - `missing_docs` and `clippy::all` are warnings at the workspace level. Keep them at zero.
+- **Run `git config core.hooksPath .githooks` once in every checkout.** Its `commit-msg` hook
+  strips any `Claude-Session:` line: links to the conversations that made commits do not
+  belong in this public history, which was rewritten once to remove 339 of them.
 
 ## Commands
 
