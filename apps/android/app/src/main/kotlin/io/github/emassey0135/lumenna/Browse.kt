@@ -1,5 +1,9 @@
 package io.github.emassey0135.lumenna
 
+import io.github.emassey0135.lumenna.app.SidebarKind
+import io.github.emassey0135.lumenna.app.SidebarGroup
+import io.github.emassey0135.lumenna.app.Place
+import io.github.emassey0135.lumenna.app.ActionKind
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
@@ -28,7 +32,6 @@ import androidx.compose.ui.semantics.collectionInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.emassey0135.lumenna.records.Action
-import io.github.emassey0135.lumenna.records.SidebarGroup
 import io.github.emassey0135.lumenna.records.labelReference
 import io.github.emassey0135.lumenna.records.projectReference
 
@@ -114,22 +117,24 @@ fun ItemListScreen(
     }
 }
 
-/** Every kind of thing there is to browse, with how many of each. */
+/** Every kind of thing there is to browse, with how many of each: the app's places. */
 @Composable
-fun BrowseScreen(core: Core, navigator: Navigator, changes: Long) {
-    fun count(n: UInt, noun: String) = if (n == 1u) "1 $noun" else "$n ${noun}s"
+fun BrowseScreen(core: Core, navigator: Navigator) {
+    val view by core.app.view.collectAsState()
+    val rows = placeRows(view?.sidebar.orEmpty())
+    fun count(n: Int, noun: String) = if (n == 1) "1 $noun" else "$n ${noun}s"
+    fun under(group: SidebarGroup) = rows.groupUnder(group).count { it.depth == 1 }
+    val trash = rows.firstOrNull { (it.entry.kind as? SidebarKind.Place)?.field0 == Place.Trash }
+    val items = listOf(
+        Item("projects", "Projects", count(rows.groupUnder(SidebarGroup.PROJECTS).size, "project")),
+        Item("labels", "Labels", count(under(SidebarGroup.LABELS), "label")),
+        Item("filters", "Saved filters", count(under(SidebarGroup.FILTERS), "filter")),
+        Item("blocks", "Blocks", ""),
+        Item("trash", "Trash", trash?.detail.orEmpty()),
+    )
     ItemListScreen(
-        "Browse", core, navigator, changes = changes,
-        load = {
-            val l = core.lumenna
-            listOf(
-                Item("projects", "Projects", count(l.listProjects().count, "project")),
-                Item("labels", "Labels", count(l.listLabels().count, "label")),
-                Item("filters", "Saved filters", count(l.listFilters().count, "filter")),
-                Item("blocks", "Blocks", count(l.listBlocks().count, "block")),
-                Item("trash", "Trash", count(l.listTasks("deleted").count, "task")),
-            ).let { Listing(it) }
-        },
+        "Browse", core, navigator, changes = 0L,
+        load = { Listing(items) },
         open = { item ->
             navigator.push(
                 when (item.key) {
@@ -137,81 +142,61 @@ fun BrowseScreen(core: Core, navigator: Navigator, changes: Long) {
                     "labels" -> Screen.Labels
                     "filters" -> Screen.Filters
                     "blocks" -> Screen.Blocks
-                    else -> Screen.Tasks(io.github.emassey0135.lumenna.app.Place.Trash)
+                    else -> Screen.Tasks(Place.Trash)
                 },
             )
         },
     )
 }
 
-/** The project tree, with weights. Depth is said where it changes. */
-@Composable
-fun ProjectsScreen(core: Core, navigator: Navigator, changes: Long) {
-    val prompt = rememberPrompter()
-    ItemListScreen(
-        "Projects", core, navigator, changes = changes,
-        load = {
-            val rows = core.lumenna.listProjects()
-            // The level is added as shown, against the row before it once folded.
-            val items = rows.rows.map { row ->
-                Item(
-                    row.title, row.title, (listOfNotNull(row.value) + row.state).joinToString(", "),
-                    row.depth.toInt(), RowSpeech.value(row, row.depth), row.actions,
-                )
-            }
-            Listing(items, rows.announcement, rows.empty)
-        },
-        addLabel = "Add project",
-        add = { core.addNew(SidebarGroup.PROJECTS, prompt) },
-        open = { item -> navigator.push(Screen.Tasks(io.github.emassey0135.lumenna.app.Place.Project(item.title))) },
-        openLabel = "Show its tasks",
-        actions = { item -> core.offered(item.actions, prompt) },
-    )
-    prompt.Host()
+/** The rows under a group's heading in the app's places, down to the next heading or place. */
+private fun List<PlaceRow>.groupUnder(group: SidebarGroup): List<PlaceRow> {
+    val heading = indexOfFirst { (it.entry.kind as? SidebarKind.Group)?.field0 == group }
+    if (heading < 0) return emptyList()
+    return drop(heading + 1).takeWhile { it.depth > 0 }
 }
+
+/**
+ * The places under one of the app's headings — the project tree, the labels, the saved
+ * filters — with the heading's own action (New Project, …) as the add button, and each one's
+ * actions the app's. Folding within it is the app's; the heading's own fold is the sidebar's.
+ */
+@Composable
+private fun GroupScreen(core: Core, navigator: Navigator, group: SidebarGroup, title: String, addLabel: String, openLabel: String) {
+    val app = core.app
+    val view by app.view.collectAsState()
+    val entries = view?.sidebar.orEmpty()
+    val all = placeRows(entries)
+    val heading = all.firstOrNull { (it.entry.kind as? SidebarKind.Group)?.field0 == group }
+    // Folded within the group as the app has it; the heading's own fold left out.
+    val rows = placeRows(all.groupUnder(group).map { it.entry.copy(depth = it.entry.depth - 1u) })
+    ScreenFrame(title, core, navigator, actions = {
+        heading?.entry?.actions?.firstOrNull { it.kind == ActionKind.NEW }?.let { new ->
+            IconButton(onClick = { app.send(ShellEvent.Perform(new)) }) { Icon(Icons.Filled.Add, contentDescription = addLabel) }
+        }
+    }) {
+        PlaceRows(
+            core, rows, version = entries,
+            open = { row -> (row.entry.kind as? SidebarKind.Place)?.field0?.let { place -> { navigator.push(Screen.Tasks(place)) } } },
+            openLabel = { openLabel },
+        )
+    }
+}
+
+/** The project tree. Depth is said where it changes. */
+@Composable
+fun ProjectsScreen(core: Core, navigator: Navigator) =
+    GroupScreen(core, navigator, SidebarGroup.PROJECTS, "Projects", "Add project", "Show its tasks")
 
 /** Labels: a first-class axis, with its own list. */
 @Composable
-fun LabelsScreen(core: Core, navigator: Navigator, changes: Long) {
-    val prompt = rememberPrompter()
-    ItemListScreen(
-        "Labels", core, navigator, changes = changes,
-        load = {
-            val rows = core.lumenna.listLabels()
-            rows.rows.map {
-                Item(it.title, it.title, (listOfNotNull(it.value) + it.state).joinToString(", "), actions = it.actions)
-            }.let { Listing(it, rows.announcement, rows.empty) }
-        },
-        addLabel = "Add label",
-        add = { core.addNew(SidebarGroup.LABELS, prompt) },
-        open = { item -> navigator.push(Screen.Tasks(io.github.emassey0135.lumenna.app.Place.Label(item.title))) },
-        openLabel = "Show the tasks wearing it",
-        actions = { item -> core.offered(item.actions, prompt) },
-    )
-    prompt.Host()
-}
+fun LabelsScreen(core: Core, navigator: Navigator) =
+    GroupScreen(core, navigator, SidebarGroup.LABELS, "Labels", "Add label", "Show the tasks wearing it")
 
 /** Saved filters: created, renamed, requeried, reordered and deleted, not only run. */
 @Composable
-fun FiltersScreen(core: Core, navigator: Navigator, changes: Long) {
-    val prompt = rememberPrompter()
-    val queries = remember(changes) { mutableMapOf<String, String>() }
-    ItemListScreen(
-        "Saved filters", core, navigator, changes = changes,
-        load = {
-            val filters = core.lumenna.listFilters()
-            queries.clear()
-            filters.filters.forEach { queries[it.name] = it.query }
-            Listing(filters.filters.map { Item(it.name, it.name, it.query, actions = it.actions) }, filters.announcement, filters.empty)
-        },
-        addLabel = "Add filter",
-        add = { core.addNew(SidebarGroup.FILTERS, prompt) },
-        open = { item -> navigator.push(Screen.Tasks(io.github.emassey0135.lumenna.app.Place.Filter(item.title, queries[item.key].orEmpty()))) },
-        openLabel = "Show its tasks",
-        actions = { item -> core.offered(item.actions, prompt) },
-    )
-    prompt.Host()
-}
+fun FiltersScreen(core: Core, navigator: Navigator) =
+    GroupScreen(core, navigator, SidebarGroup.FILTERS, "Saved filters", "Add filter", "Show its tasks")
 
 /**
  * Every block series, as the app lists them (its Blocks place): said as a task row is, when in
@@ -246,5 +231,4 @@ fun BlocksScreen(core: Core, navigator: Navigator) {
             }
         }, openLabel = "Edit every occurrence")
     }
-    AppQuestions(core) {}
 }

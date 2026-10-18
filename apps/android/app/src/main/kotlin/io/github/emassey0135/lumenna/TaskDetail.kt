@@ -160,7 +160,6 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
             }
         }
     }
-    AppQuestions(core) {}
 }
 
 /** A text field of the task form, by the core's key: where its value lives in the app's [TaskFields]. */

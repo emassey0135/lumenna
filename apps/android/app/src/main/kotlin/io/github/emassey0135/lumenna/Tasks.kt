@@ -161,7 +161,6 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
             },
         )
     }
-    AppQuestions(core) { action -> navigator.push(Screen.Task(action.target)) }
 }
 
 /** What a place is called before the app has shown it. */

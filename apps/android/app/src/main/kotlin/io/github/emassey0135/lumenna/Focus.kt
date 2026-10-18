@@ -103,6 +103,31 @@ fun rememberLanding(core: Core, keys: List<String>, state: LazyListState): RowFo
     return focus
 }
 
+/**
+ * A list whose rows the app does not hold in hand — the places — keeping focus on the row
+ * acted on: when [version] moves after a row's action (its turn has come), focus goes back to
+ * that row, or to the one now in its place, and then what the turn said is said.
+ */
+@Composable
+fun rememberHeldFocus(core: Core, keys: List<String>, state: LazyListState, version: Any?): RowFocus {
+    val focus = remember { RowFocus(core) }
+    val view = LocalView.current
+    LaunchedEffect(version) {
+        val (key, index) = focus.target ?: return@LaunchedEffect
+        focus.target = null
+        if (keys.isNotEmpty()) {
+            val place = keys.indexOf(key).takeIf { it >= 0 } ?: index.coerceIn(0, keys.lastIndex)
+            state.scrollToItem(place)
+            withFrameNanos {}
+            withFrameNanos {}
+            runCatching { focus.requester(keys[place]).requestFocus() }
+            view.moveAccessibilityFocus(keys[place])
+        }
+        core.release()
+    }
+    return focus
+}
+
 /** Which row a node is, so its node can be found in the accessibility tree. */
 val RowKey = SemanticsPropertyKey<String>("RowKey")
 var SemanticsPropertyReceiver.rowKey by RowKey

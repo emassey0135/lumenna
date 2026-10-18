@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
-import io.github.emassey0135.lumenna.records.Place
+import io.github.emassey0135.lumenna.app.Place
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.VerticalDivider
@@ -216,7 +216,7 @@ fun LumennaApp(
                         to == Tab.TODAY -> show(Destination.At(Place.Today), *screens)
                         to == Tab.SETTINGS -> show(Destination.Settings, *screens)
                         first == Screen.Blocks -> show(Destination.At(Place.Blocks))
-                        first is Screen.Tasks && first.place == io.github.emassey0135.lumenna.app.Place.Trash -> show(Destination.At(Place.Trash))
+                        first is Screen.Tasks && first.place == Place.Trash -> show(Destination.At(Place.Trash))
                         else -> show(Destination.At(Place.Tasks), *screens)
                     }
                     return
@@ -265,9 +265,13 @@ fun LumennaApp(
             Offer(Command.GO_TODAY) { go(Tab.TODAY) }
             Offer(Command.GO_TASKS) { go(Tab.TASKS) }
             Offer(Command.GO_BLOCKS) { go(Tab.BROWSE, Screen.Blocks) }
-            Offer(Command.GO_TRASH) { go(Tab.BROWSE, Screen.Tasks(io.github.emassey0135.lumenna.app.Place.Trash)) }
+            Offer(Command.GO_TRASH) { go(Tab.BROWSE, Screen.Tasks(Place.Trash)) }
             Offer(Command.SETTINGS) { go(Tab.SETTINGS) }
             Offer(Command.SYNC_NOW) { syncNow(core) }
+
+            // The app has one question open at a time, asked once over whatever is shown; a
+            // task's form is its details.
+            AppQuestions(core) { action -> Navigator(stack).push(Screen.Task(action.target)) }
 
             val split = wide && stack.size > 1
             // The tabs or the sidebar, then each pane shown: what F6 moves between, as on
@@ -312,7 +316,7 @@ fun LumennaApp(
                 Row(Modifier.padding(padding).fillMaxSize()) {
                     if (wide) {
                         Sidebar(
-                            core, changes, destination, choose = { show(it) },
+                            core, destination, choose = { show(it) },
                             modifier = Modifier.width(SidebarWidth).fillMaxHeight().region(0),
                         )
                         VerticalDivider()
@@ -410,10 +414,10 @@ private fun Screens(core: Core, navigator: Navigator, screen: Screen, changes: L
         is Screen.Task -> TaskDetailScreen(core, navigator, screen)
         is Screen.Day -> DayScreen(core, navigator, screen)
         Screen.BlockForm -> BlockFormScreen(core, navigator)
-        Screen.Browse -> BrowseScreen(core, navigator, changes)
-        Screen.Projects -> ProjectsScreen(core, navigator, changes)
-        Screen.Labels -> LabelsScreen(core, navigator, changes)
-        Screen.Filters -> FiltersScreen(core, navigator, changes)
+        Screen.Browse -> BrowseScreen(core, navigator)
+        Screen.Projects -> ProjectsScreen(core, navigator)
+        Screen.Labels -> LabelsScreen(core, navigator)
+        Screen.Filters -> FiltersScreen(core, navigator)
         Screen.Blocks -> BlocksScreen(core, navigator)
         Screen.Settings -> SettingsScreen(core, navigator, changes)
         Screen.Devices -> DevicesScreen(core, navigator, changes)

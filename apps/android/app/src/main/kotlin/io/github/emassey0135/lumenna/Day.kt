@@ -181,7 +181,6 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
             }
         }
     }
-    AppQuestions(core) { action -> navigator.push(Screen.Task(action.target)) }
 }
 
 /**
