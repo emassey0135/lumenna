@@ -12,7 +12,8 @@ import { Button, Input, Label, ListBox, ListBoxItem, Text, TextField } from "rea
 import type { Selection } from "react-aria-components";
 import { core } from "./core";
 import type { Action, PairingWords } from "./core";
-import { byKind, perform } from "./actions";
+import { byKind } from "./actions";
+import { run as runEvent, sayAll } from "./session";
 import { choose } from "./Prompts";
 import { say } from "./say";
 
@@ -103,10 +104,9 @@ export function DevicesPage(props: {
   };
 
   const run = async (action: Action) => {
-    const done = await perform(action);
-    if (!done) return;
-    if (action.kind === "unpair" && done.changed) setSelected(undefined);
-    say(done.said);
+    const turn = await runEvent({ Perform: action });
+    if (action.kind === "unpair") setSelected(undefined);
+    sayAll(turn.said);
     refresh();
   };
 

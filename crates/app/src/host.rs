@@ -91,6 +91,13 @@ pub enum HostRequest {
         /// The changes accepted, by position.
         accepted: Vec<usize>,
     },
+    /// A saved filter, from its two questions.
+    AddFilter {
+        /// Its name.
+        name: String,
+        /// Its query.
+        query: String,
+    },
     /// Undo the last change made on this device.
     Undo,
     /// Redo the last change undone.

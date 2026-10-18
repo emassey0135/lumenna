@@ -11,9 +11,9 @@
 // A browser has no device settings the core can keep (no file system), so whether reminders
 // are on in this browser is kept in its storage, under the core's name for the setting.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Button, Dialog, Heading, Modal } from "react-aria-components";
-import { perform } from "./actions";
+import { run, sayAll, send } from "./session";
 import { showReplan } from "./Proposal";
 import { core } from "./core";
 import type { Action, DueReminder, ReminderList } from "./core";
@@ -228,71 +228,41 @@ export function RemindersDue(props: { due: Due[]; onDealt: (id: string) => void;
 // A task's or block's own: what its Reminders action opens.
 // ---------------------------------------------------------------------------------------
 
-let open: ((request: { target: string; done: () => void }) => void) | undefined;
-
-/** Shows the reminders `action` (a Reminders action) is for, until closed. */
-export function showReminders(action: Action): Promise<void> {
-  return new Promise((done) => {
-    if (open) open({ target: action.target, done });
-    else done();
-  });
-}
-
-/** Where a list of reminders is shown: rendered once, in the app. */
-export function ReminderLists() {
-  const [request, setRequest] = useState<{ target: string; done: () => void } | undefined>();
-
-  useEffect(() => {
-    open = setRequest;
-    return () => {
-      open = undefined;
-    };
-  }, []);
-
-  const finish = () => {
-    request?.done();
-    setRequest(undefined);
-  };
-
+/** Where a task's or block's list of reminders is shown: rendered once, while the app has one open. */
+export function ReminderLists(props: { list: ReminderList | undefined }) {
+  const close = () => void send("CloseReminders");
   return (
-    <Modal isDismissable isOpen={request !== undefined} onOpenChange={(isOpen) => !isOpen && finish()}>
-      {request && <Reminders target={request.target} close={finish} />}
+    <Modal isDismissable isOpen={props.list !== undefined} onOpenChange={(isOpen) => !isOpen && close()}>
+      {props.list && <Reminders list={props.list} close={close} />}
     </Modal>
   );
 }
 
-function Reminders(props: { target: string; close: () => void }) {
-  const [list, setList] = useState<ReminderList | undefined>();
-  const [reload, setReload] = useState(0);
+function Reminders(props: { list: ReminderList; close: () => void }) {
+  const { list } = props;
   const adding = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    core.remindersOf(props.target).then(setList, (error: Error) => say(error.message));
-  }, [props.target, reload]);
-
-  const run = async (action: Action) => {
-    const done = await perform(action);
-    if (!done) return;
-    say(done.said);
+  const act = async (action: Action) => {
+    const turn = await run({ Perform: action });
+    sayAll(turn.said);
     if (action.kind === "new") void askToNotify();
-    setReload((r) => r + 1);
     // A removed reminder's button is gone: focus goes to adding one.
-    if (action.kind !== "new") setTimeout(() => adding.current?.querySelector("button")?.focus(), 0);
+    else setTimeout(() => adding.current?.querySelector("button")?.focus(), 0);
   };
 
   return (
     // Named by its heading, the core's count of what it has.
     <Dialog aria-labelledby="reminders-heading">
       <Heading slot="title" id="reminders-heading">
-        {list?.announcement ?? "Reminders"}
+        {list.announcement}
       </Heading>
-      {list && list.reminders.length > 0 && (
+      {list.reminders.length > 0 && (
         <ul className="reminders" aria-labelledby="reminders-heading">
           {list.reminders.map((reminder) => (
             <li key={reminder.id}>
               <span id={`reminder-${reminder.id}`}>{reminder.own ? reminder.words : `${reminder.words}, a default`}</span>
               {(reminder.actions ?? []).map((action) => (
-                <Button key={action.kind} aria-describedby={`reminder-${reminder.id}`} onPress={() => void run(action)}>
+                <Button key={action.kind} aria-describedby={`reminder-${reminder.id}`} onPress={() => void act(action)}>
                   {action.sentence ?? action.title}
                 </Button>
               ))}
@@ -301,8 +271,8 @@ function Reminders(props: { target: string; close: () => void }) {
         </ul>
       )}
       <div className="buttons" ref={adding}>
-        {(list?.actions ?? []).map((action) => (
-          <Button key={action.kind} onPress={() => void run(action)}>
+        {(list.actions ?? []).map((action) => (
+          <Button key={action.kind} onPress={() => void act(action)}>
             {action.sentence ?? action.title}
           </Button>
         ))}

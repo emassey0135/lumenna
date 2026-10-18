@@ -290,7 +290,7 @@ export function App() {
         }}
       />
       <KeyboardShortcuts isOpen={keysOpen} onClose={() => setKeysOpen(false)} />
-      <ReminderLists />
+      <ReminderLists list={screen.reminders} />
       <Prompts />
       <Proposals proposal={screen.proposal} onChanged={() => setRevision((r) => r + 1)} />
       <BlockForms form={screen.block_form} onChanged={() => setRevision((r) => r + 1)} />

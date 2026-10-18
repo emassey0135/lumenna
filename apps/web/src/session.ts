@@ -8,7 +8,6 @@ import { useSyncExternalStore } from "react";
 import { core } from "./core";
 import type { Action, ActionKind, Answer, Event, Said, Screen } from "./core";
 import { ask, choose, confirm, pick } from "./Prompts";
-import { showReminders } from "./Reminders";
 import { say } from "./say";
 
 let screen: Screen | undefined;
@@ -130,9 +129,7 @@ export async function run(first: Event, form?: Form): Promise<Said> {
         answer = { answer: "yes" };
         break;
       case "form":
-        // A task's or block's reminders are the same list wherever they are offered.
-        if (action?.kind === "reminders") await showReminders(action);
-        else if (action) await form?.(action);
+        if (action) await form?.(action);
         break;
       case "confirm":
         if (await confirm(question.title, question.message, await core.sentence(question.yes))) answer = { answer: "yes" };

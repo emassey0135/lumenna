@@ -523,3 +523,65 @@ fn closing_a_proposal_makes_nothing() {
     assert!(app.view().proposal.is_none());
     assert!(app.view().day.unwrap().items.iter().all(|i| i.sitting.is_none()));
 }
+
+fn sidebar_action(app: &App, place: &str, kind: ActionKind) -> lumenna_records::Action {
+    app.view()
+        .sidebar
+        .into_iter()
+        .find(|e| e.text.starts_with(place))
+        .and_then(|e| e.actions.into_iter().find(|a| a.kind == kind))
+        .expect("the place's action")
+}
+
+#[test]
+fn renaming_a_project_goes_to_it_and_deleting_it_goes_to_tasks() {
+    let mut app = App::new();
+    Lumenna::open(app.profile.to_str().unwrap()).unwrap().add_project("Work", None).unwrap();
+    app.session.tick();
+    app.send(Event::Perform(sidebar_action(&app, "Work", ActionKind::Rename)));
+    app.send(Event::Answer(Answer::Text { text: "Office".to_owned() }));
+    assert_eq!(app.view().place, Some(Place::Project("Office".to_owned())));
+    app.send(Event::Perform(sidebar_action(&app, "Office", ActionKind::Delete)));
+    app.send(Event::Answer(Answer::Picked { id: "keep".to_owned(), length: None }));
+    assert_eq!(app.view().place, Some(Place::Tasks));
+}
+
+#[test]
+fn a_new_saved_filter_asks_its_name_then_its_query_and_goes_to_it() {
+    let mut app = App::new();
+    let new = app
+        .view()
+        .sidebar
+        .into_iter()
+        .flat_map(|e| e.actions)
+        .find(|a| a.kind == ActionKind::New && a.subject == lumenna_records::Subject::Filter)
+        .unwrap();
+    app.send(Event::Perform(new));
+    let lumenna_records::Question::Text { label, .. } = app.view().asking.unwrap().question else { panic!() };
+    assert_eq!(label, "Name");
+    app.send(Event::Answer(Answer::Text { text: "Urgent".to_owned() }));
+    let lumenna_records::Question::Text { label, .. } = app.view().asking.unwrap().question else { panic!() };
+    assert_eq!(label, "Query");
+    app.send(Event::Answer(Answer::Text { text: "p1".to_owned() }));
+    assert_eq!(app.view().asking, None);
+    assert_eq!(app.view().place, Some(Place::Filter { name: "Urgent".to_owned(), query: "p1".to_owned() }));
+}
+
+#[test]
+fn a_blocks_reminders_list_keeps_a_phrase_it_cannot_read_in_its_question() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    app.send(Event::Open(Place::Blocks));
+    app.send(Event::Run(vec![ActionKind::Reminders]));
+    let list = app.view().reminders.expect("the list is open");
+    assert_eq!(list.announcement, "1 reminder, the defaults");
+    let add = list.actions[0].clone();
+    app.send(Event::Perform(add));
+    app.send(Event::Answer(Answer::Text { text: "when it feels right".to_owned() }));
+    assert!(app.view().asking.unwrap().refusal.unwrap().contains("is not a reminder"));
+    app.send(Event::Answer(Answer::Text { text: "10m after end".to_owned() }));
+    assert_eq!(app.view().asking, None);
+    assert_eq!(app.view().reminders.unwrap().announcement, "1 reminder");
+    app.send(Event::CloseReminders);
+    assert!(app.view().reminders.is_none());
+}

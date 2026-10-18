@@ -128,6 +128,8 @@ pub enum Event {
     Block(BlockEvent),
     /// Something done on a proposal's screen.
     Proposal(ProposalEvent),
+    /// Close the list of a task's or block's reminders.
+    CloseReminders,
     /// The clock this shell says times in, for the sentences the core composes whole.
     Clock(lumenna_records::proposals::TimeStyle),
     /// Add a task from a quick-add line.
@@ -166,6 +168,8 @@ pub enum Purpose {
     Action(Action),
     /// Which day to go to.
     GoToDay,
+    /// A new saved filter: its name first, then its query.
+    NewFilter(Option<String>),
     /// Which occurrences of a repeating block a change is for, before its form opens: the
     /// block, and its day as it is said ("Tomorrow").
     EditWhich(lumenna_records::types::PlanBlock, String),
@@ -183,18 +187,21 @@ pub struct Open {
     /// What was picked, for a pick that asks a second question once one is: how long a
     /// sitting is meant to take.
     pub picked: Option<String>,
+    /// The answer last given, a line typed or a choice's identifier: where a place renamed or
+    /// made is to be found.
+    pub answered: Option<String>,
 }
 
 impl Open {
     fn new(purpose: Purpose) -> Self {
-        Self { purpose, choices: None, refusal: None, picked: None }
+        Self { purpose, choices: None, refusal: None, picked: None, answered: None }
     }
 
     /// The action asking, if it is one.
     pub(crate) fn action(&self) -> Option<&Action> {
         match &self.purpose {
             Purpose::Action(action) => Some(action),
-            Purpose::GoToDay | Purpose::EditWhich(..) => None,
+            Purpose::GoToDay | Purpose::EditWhich(..) | Purpose::NewFilter(_) => None,
         }
     }
 
@@ -204,6 +211,10 @@ impl Open {
             Purpose::Action(_) if self.picked.is_some() => lumenna_records::length_question(),
             Purpose::Action(action) => action.question.clone(),
             Purpose::GoToDay => lumenna_records::go_to_day_question(),
+            Purpose::NewFilter(name) => {
+                let mut steps = lumenna_records::new_filter_questions();
+                if name.is_some() { steps.swap_remove(1) } else { steps.swap_remove(0) }
+            }
             Purpose::EditWhich(block, day) => Question::Choose {
                 title: format!("Change {}", block.title),
                 message: "Which occurrences?".to_owned(),
@@ -255,6 +266,8 @@ pub struct Model {
     pub style: Option<lumenna_records::proposals::TimeStyle>,
     /// Whether the proposal's screen last closed had made anything.
     pub proposal_made: bool,
+    /// The task or block whose reminders are listed, while the list is open.
+    pub reminders: Option<String>,
 }
 
 /// The rows a place shows, as its keys and their actions.
@@ -326,6 +339,26 @@ impl Model {
         }
     }
 
+    /// Goes to `place`, its rows from the top; Today opens on now the first time, after that
+    /// on its summary, as any day.
+    fn go(&mut self, place: Place) {
+        let first_today = place == Place::Today && !self.day_opened;
+        self.place = Some(place);
+        self.filter = None;
+        self.read = None;
+        self.focus = None;
+        self.position = 0;
+        self.day = None;
+        self.details.shown = None;
+        if first_today && let Some(view) = self.day_view() {
+            self.day_opened = true;
+            if let Some(key) = day::opening(&view) {
+                self.hold(&key);
+            }
+        }
+        self.settle();
+    }
+
     /// Puts `key` in hand, if it is shown.
     fn hold(&mut self, key: &str) -> bool {
         let Some(rows) = self.rows() else { return false };
@@ -390,6 +423,29 @@ impl Model {
 #[derive(Debug, Default)]
 pub struct Lumenna;
 
+/// Where a place renamed, made or removed is now, from the question that did it.
+fn after_place(open: &Open, store: &Arrival) -> Option<Place> {
+    let answered = open.answered.clone();
+    let filter_named = |name: &str| {
+        store.snapshot.saved_filters.values().find(|f| f.deleted_at.is_none() && f.name == name).map(|f| f.query.clone())
+    };
+    match &open.purpose {
+        Purpose::NewFilter(Some(name)) => Some(Place::Filter { name: name.clone(), query: answered? }),
+        Purpose::Action(action) => match (action.subject, action.kind) {
+            (Subject::Project | Subject::Label | Subject::Filter, ActionKind::Delete) => Some(Place::Tasks),
+            (Subject::Project, ActionKind::New | ActionKind::NewInside | ActionKind::Rename) => Some(Place::Project(answered?)),
+            (Subject::Label, ActionKind::New | ActionKind::Rename | ActionKind::MergeInto) => Some(Place::Label(answered?)),
+            (Subject::Filter, ActionKind::Rename) => {
+                let name = answered?;
+                Some(Place::Filter { query: filter_named(&name)?, name })
+            }
+            (Subject::Filter, ActionKind::ChangeQuery) => Some(Place::Filter { name: action.target.clone(), query: answered? }),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 
 fn say(text: impl Into<String>) -> Command<Effect, Event> {
     let text = text.into();
@@ -435,6 +491,16 @@ impl Lumenna {
             match (action.subject, action.kind) {
                 (Subject::Block, ActionKind::Edit) => return self.edit_block(&action, model),
                 (Subject::Series, ActionKind::Edit) => return self.series_form(&action.target, model),
+                // A saved filter's form is two questions, its name then its query.
+                (Subject::Filter, ActionKind::New) => {
+                    model.open = Some(Open::new(Purpose::NewFilter(None)));
+                    return render();
+                }
+                // A task's or block's reminders, a list of the app's.
+                (_, ActionKind::Reminders) => {
+                    model.reminders = Some(action.target.clone());
+                    return render();
+                }
                 // The day's two proposals are the app's screens over the host's proposing.
                 (Subject::Day, ActionKind::Replan) => return self.propose(proposal::Kind::Replan, model),
                 (Subject::Day, ActionKind::PlanDay) => return self.propose(proposal::Kind::PlanDay(action.target.clone()), model),
@@ -478,6 +544,20 @@ impl Lumenna {
                     }
                 }
             }
+            Purpose::NewFilter(None) => {
+                let Answer::Text { text } = answer else { return Command::done() };
+                if text.trim().is_empty() {
+                    open.refusal = Some("A saved filter needs a name.".to_owned());
+                    return render();
+                }
+                *open = Open::new(Purpose::NewFilter(Some(text.trim().to_owned())));
+                render()
+            }
+            Purpose::NewFilter(Some(name)) => {
+                let Answer::Text { text } = answer else { return Command::done() };
+                open.answered = Some(text.clone());
+                host(HostRequest::AddFilter { name, query: text })
+            }
             Purpose::EditWhich(block, _) => {
                 let Answer::Picked { id, .. } = answer else { return Command::done() };
                 model.open = None;
@@ -504,6 +584,11 @@ impl Lumenna {
                     open.refusal = None;
                     return render();
                 }
+                open.answered = match &answer {
+                    Answer::Text { text } => Some(text.trim().to_owned()),
+                    Answer::Picked { id, .. } => Some(id.clone()),
+                    Answer::Yes => None,
+                };
                 let answer = match (&open.picked, answer) {
                     (Some(id), Answer::Text { text }) => Answer::Picked { id: id.clone(), length: Some(text) },
                     (_, answer) => answer,
@@ -522,7 +607,11 @@ impl Lumenna {
         let block_saving = model.block_form.as_mut().is_some_and(|form| std::mem::take(&mut form.saving));
         match result {
             Ok(change) => {
-                model.open = None;
+                // A place renamed, made or removed: go to where it now is.
+                let after = model.open.take().and_then(|open| after_place(&open, model.store.as_ref()?));
+                if change.changed && let Some(place) = after {
+                    model.go(place);
+                }
                 if saving {
                     model.details.draft = None;
                 }
@@ -802,23 +891,8 @@ impl App for Lumenna {
             Event::Start => Command::stream_from_shell(Watch).then_send(Event::Arrived),
             Event::Arrived(store) => self.arrived(store, model),
             Event::Open(place) => {
-                let first_today = place == Place::Today && !model.day_opened;
-                model.place = Some(place);
-                model.filter = None;
-                model.read = None;
-                model.focus = None;
-                model.position = 0;
                 model.open = None;
-                model.day = None;
-                model.details.shown = None;
-                // Today opens on now the first time; after that on its summary, as any day.
-                if first_today && let Some(view) = model.day_view() {
-                    model.day_opened = true;
-                    if let Some(key) = day::opening(&view) {
-                        model.hold(&key);
-                    }
-                }
-                model.settle();
+                model.go(place);
                 render()
             }
             Event::Focus(key) => {
@@ -883,6 +957,10 @@ impl App for Lumenna {
             Event::Typing(event) => self.typing(event, model),
             Event::Block(event) => self.block(event, model),
             Event::Proposal(event) => self.proposal(event, model),
+            Event::CloseReminders => {
+                model.reminders = None;
+                render()
+            }
             Event::Clock(style) => {
                 model.style = Some(style);
                 Command::done()
