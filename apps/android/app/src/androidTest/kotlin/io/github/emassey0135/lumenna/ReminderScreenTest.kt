@@ -56,6 +56,7 @@ class ReminderScreenTest {
         instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
         directory = File(context.cacheDir, "test-${UUID.randomUUID()}")
         core = Core(directory)
+        rule.registerIdlingResource(stillApp(core))
         Clock.update(context)
         rule.enableAccessibilityChecks()
         rule.setContent {

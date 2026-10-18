@@ -48,6 +48,9 @@ class Core(
     val app: AppModel by lazy { AppModel(this, platform).also { appOpened = true } }
     private var appOpened = false
 
+    /** Whether the app is still, or not yet opened: what the tests wait on. */
+    val still: Boolean get() = !appOpened || app.still
+
     private val generation = MutableStateFlow(0L)
 
     /** Moves whenever the store changed, so every screen showing it reads it again. */

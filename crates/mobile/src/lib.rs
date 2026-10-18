@@ -14,6 +14,7 @@ mod device;
 mod events;
 mod words;
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -71,6 +72,8 @@ pub struct App {
     store: Store,
     network: NetworkHandle,
     outbox: Mutex<mpsc::Sender<Vec<Effect>>>,
+    /// What the app has left that the shell has not been handed yet, in batches.
+    unsent: Arc<AtomicUsize>,
 }
 
 #[export]
@@ -90,8 +93,10 @@ impl App {
         let stack = Arc::new(stack(&store, network));
         let (outbox, delivering) = mpsc::channel();
         let drawing = Arc::clone(&stack);
-        spawn("lumenna-shell", move || deliver(&delivering, &drawing, &*shell))?;
-        let app = App { lumenna, stack, store, network: handle, outbox: Mutex::new(outbox) };
+        let unsent = Arc::new(AtomicUsize::new(0));
+        let handed = Arc::clone(&unsent);
+        spawn("lumenna-shell", move || deliver(&delivering, &drawing, &*shell, &handed))?;
+        let app = App { lumenna, stack, store, network: handle, outbox: Mutex::new(outbox), unsent };
         app.send(ShellEvent::Start);
         Ok(app)
     }
@@ -100,10 +105,26 @@ impl App {
     pub fn send(&self, event: ShellEvent) {
         let outbox = self.outbox.lock().unwrap_or_else(PoisonError::into_inner).clone();
         let later = outbox.clone();
+        let counting = Arc::clone(&self.unsent);
+        // Counted before the app runs, so the app is never still between its answer and the
+        // batch it leaves reaching the outbox.
+        self.unsent.fetch_add(1, Ordering::SeqCst);
         let now = self.stack.update(event.into(), move |effects| {
-            let _ = later.send(effects);
+            counting.fetch_add(1, Ordering::SeqCst);
+            if later.send(effects).is_err() {
+                counting.fetch_sub(1, Ordering::SeqCst);
+            }
         });
-        let _ = outbox.send(now);
+        if outbox.send(now).is_err() {
+            self.unsent.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+
+    /// Whether the app is still: nothing with the store, and every turn handed to the shell.
+    /// A shell's tests wait on it, as a person waits for the screen to settle; a pairing or a
+    /// sync under way does not count, since those wait on other devices.
+    pub fn is_still(&self) -> bool {
+        self.store.busy().is_still() && self.unsent.load(Ordering::SeqCst) == 0
     }
 
     /// What to draw now.
@@ -143,15 +164,18 @@ fn spawn(name: &str, run: impl FnOnce() + Send + 'static) -> Result<(), LumennaE
 
 /// Hands the shell a turn for whatever the app has left, until the app is gone. What arrived
 /// together goes as one turn, so a burst of answers draws the view once.
-fn deliver(outbox: &mpsc::Receiver<Vec<Effect>>, stack: &Stack<Network>, shell: &dyn Shell) {
+fn deliver(outbox: &mpsc::Receiver<Vec<Effect>>, stack: &Stack<Network>, shell: &dyn Shell, unsent: &AtomicUsize) {
     let mut seq = 0;
     while let Ok(first) = outbox.recv() {
         let mut effects = first;
+        let mut batches = 1;
         while let Ok(more) = outbox.try_recv() {
             effects.extend(more);
+            batches += 1;
         }
         let left = self::shell(effects);
         if left.is_empty() {
+            unsent.fetch_sub(batches, Ordering::SeqCst);
             continue;
         }
         seq += 1;
@@ -166,5 +190,7 @@ fn deliver(outbox: &mpsc::Receiver<Vec<Effect>>, stack: &Stack<Network>, shell: 
             }
         }
         shell.turn(turn);
+        // Handed on: the shell counts it from here until it is drawn.
+        unsent.fetch_sub(batches, Ordering::SeqCst);
     }
 }

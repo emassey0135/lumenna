@@ -69,6 +69,7 @@ class LumennaTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         directory = File(context.cacheDir, "test-${UUID.randomUUID()}")
         core = Core(directory)
+        rule.registerIdlingResource(stillApp(core))
         Clock.update(context)
         rule.enableAccessibilityChecks()
         rule.setContent {

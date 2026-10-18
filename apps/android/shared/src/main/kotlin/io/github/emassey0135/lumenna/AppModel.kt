@@ -34,9 +34,19 @@ class AppModel(
     private val shown = MutableStateFlow<ViewModel?>(null)
     private var seq = 0u
 
+    /** Turns handed over and not yet drawn. */
+    private val waiting = java.util.concurrent.atomic.AtomicInteger(0)
+
     private val app = App(core.device, platform, object : Shell {
         override fun turn(turn: Turn) {
-            main.post { take(turn) }
+            waiting.incrementAndGet()
+            main.post {
+                try {
+                    take(turn)
+                } finally {
+                    waiting.decrementAndGet()
+                }
+            }
         }
     })
 
@@ -83,6 +93,12 @@ class AppModel(
 
     /** The app came to the front or left it: syncing runs only while it is in front. */
     fun inFront(inFront: Boolean) = app.inFront(inFront)
+
+    /**
+     * Whether the app is still: nothing with the store, and every turn drawn. The tests wait on
+     * it before every look at the screen, as Compose waits for its own work.
+     */
+    val still: Boolean get() = waiting.get() == 0 && app.isStill()
 
     private fun take(turn: Turn) {
         if (turn.seq <= seq) return

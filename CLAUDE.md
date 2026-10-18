@@ -1147,6 +1147,11 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
 - **The tests run Google's accessibility checks on every interaction**, on a store of their
   own (`Core(directory)`). Buttons scroll into view before a click: a click on an
   off-screen node lands on nothing.
+- **The tests wait on the app as Compose waits on itself** (`stillApp`, an idling resource
+  over `Core.still`: `App::is_still`, nothing with the store and every turn handed on, and no
+  turn posted to the main thread undrawn). A turn comes from the app's own thread, so without
+  it a test looked at the screen between pressing Add and the row arriving. A pairing or a sync
+  under way does not count.
 - **Material's text and outlined buttons are 40dp**, and a radio row is as tall as its
   padding: both failed the touch-target check. `Target` gives 48dp.
 - **A row is one node** (`ListRow`: `clearAndSetSemantics`, custom actions) with one

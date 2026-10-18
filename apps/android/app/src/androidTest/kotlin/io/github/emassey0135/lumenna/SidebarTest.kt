@@ -52,6 +52,7 @@ class SidebarTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         directory = File(context.cacheDir, "test-${UUID.randomUUID()}")
         core = Core(directory)
+        rule.registerIdlingResource(stillApp(core))
         Clock.update(context)
         val width = 1000.dp
         // Wider than a phone's screen, the density shrinks to fit, and with it every touch

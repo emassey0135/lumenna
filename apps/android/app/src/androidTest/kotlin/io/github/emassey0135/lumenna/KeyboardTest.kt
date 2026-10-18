@@ -61,6 +61,7 @@ class KeyboardTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         directory = File(context.cacheDir, "test-${UUID.randomUUID()}")
         core = Core(directory)
+        rule.registerIdlingResource(stillApp(core))
         Clock.update(context)
         // As with a keyboard attached: a key press takes Android out of touch mode, and only
         // then can buttons and tabs take focus.

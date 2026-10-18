@@ -54,6 +54,7 @@ class LargeTextTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         directory = File(context.cacheDir, "test-${UUID.randomUUID()}")
         core = Core(directory)
+        rule.registerIdlingResource(stillApp(core))
         Clock.update(context)
         core.device.addTask("call the bank about the mortgage renewal tomorrow at 3pm p1")
         core.device.addTask("essay")

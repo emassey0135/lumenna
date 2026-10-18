@@ -22,6 +22,7 @@ class NewTaskTest {
     fun aNewTaskRequestOpensQuickAddOverTheTaskList() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val core = Core(File(context.cacheDir, "test-${UUID.randomUUID()}"))
+        rule.registerIdlingResource(stillApp(core))
         val requests = MutableStateFlow(0L)
         rule.setContent { PhoneWidth { LumennaTheme { LumennaApp(core, requests) } } }
         requests.value = 1
