@@ -2968,6 +2968,7 @@ dependencies = [
  "lumenna-parse",
  "lumenna-records",
  "serde",
+ "serde_bytes",
  "tsify",
  "wasm-bindgen",
 ]
@@ -3028,6 +3029,7 @@ dependencies = [
  "directories",
  "jiff",
  "lumenna-host",
+ "lumenna-records",
  "serde",
  "tempfile",
  "tsify",
@@ -3153,6 +3155,7 @@ name = "lumenna-web"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
+ "futures",
  "jiff",
  "js-sys",
  "lumenna-app",
