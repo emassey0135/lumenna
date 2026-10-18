@@ -92,6 +92,8 @@ test("a task assigned from a block is a sitting beneath it, and Space times it",
   const sitting = day.getByRole("row", { name: /^Write report/ });
   await expect(sitting).toHaveAttribute("aria-level", "2");
   await expect(block).toHaveAccessibleName(/1 task assigned/);
+  // Focus is back on the block the task was assigned from before the person moves on.
+  await expect(block).toBeFocused();
   await sitting.focus();
   await page.keyboard.press("Space");
   await expect(sitting).toHaveAccessibleName(/in progress/);

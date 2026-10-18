@@ -5,14 +5,12 @@ import { useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { Button, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
-import { blockForm, freshBlock } from "./BlockForm";
-import { core } from "./core";
-import type { Action, ActionKind, Event, Screen } from "./core";
+import type { ActionKind, Event, Screen } from "./core";
 import { REMOVING } from "./actions";
 import { useCommand } from "./commands";
 import { landOn, rowKey } from "./landing";
 import { asksForMenu, RowMenu } from "./RowMenu";
-import { current, refresh, run, sayAll, send } from "./session";
+import { run, sayAll, send } from "./session";
 
 export function Blocks(props: { screen: Screen; onChanged: () => void }) {
   const list = props.screen.list;
@@ -31,39 +29,11 @@ export function Blocks(props: { screen: Screen; onChanged: () => void }) {
     props.onChanged();
   };
 
-  /** A write made by the block form: the app takes it in, the row named in hand. */
-  const wrote = async (said: string, key?: string) => {
-    await refresh();
-    const screen = key ? (await send({ Focus: key })).screen : await current();
-    await settle(screen.focus ?? undefined, [said]);
-  };
-
-  const add = async () => {
-    const saved = await blockForm({ kind: "add", date: "today", startFollowsDay: true }, await freshBlock(undefined, 60), "New block");
-    // A new series' row is listed under its first occurrence: focus goes to it once listed.
-    if (!saved) return;
-    await refresh();
-    const row = (await current()).list?.items.find((item) => item.row.id.split("@")[0] === saved.series);
-    await wrote(saved.said, row?.row.id);
-  };
-  useCommand("new-block", () => void add());
-
-  // Edit Block is the block form, over every occurrence.
-  const form = async (action: Action) => {
-    if (action.kind !== "edit") return;
-    try {
-      const { fields, rule } = await core.seriesFields(action.target);
-      // A rule is given exactly when the series repeats.
-      const heading = rule ? `Change ${fields.title}, every occurrence` : `Change ${fields.title}`;
-      const saved = await blockForm({ kind: "series", id: action.target }, fields, heading, rule);
-      if (saved) await wrote(saved.said, props.screen.focus ?? undefined);
-    } catch (error) {
-      sayAll([(error as Error).message]);
-    }
-  };
+  const add = () => void send({ Block: { New: { start: undefined, minutes: undefined } } });
+  useCommand("new-block", add);
 
   const act = async (event: Event) => {
-    const turn = await run(event, form);
+    const turn = await run(event);
     await settle(turn.screen.focus ?? undefined, turn.said);
   };
 
@@ -105,7 +75,7 @@ export function Blocks(props: { screen: Screen; onChanged: () => void }) {
         {items.length > 0 ? list?.readback : ""}
       </p>
       <div className="buttons">
-        <Button onPress={() => void add()}>Add block</Button>
+        <Button onPress={add}>Add block</Button>
         <RowMenu actions={inHand?.row.actions ?? []} onAction={(action) => void act({ Perform: action })} isOpen={menu} onOpenChange={setMenu} />
       </div>
       <div onKeyDownCapture={keys} onContextMenu={rightClick}>

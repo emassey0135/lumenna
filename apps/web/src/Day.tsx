@@ -14,16 +14,13 @@ import { useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { Button, Collection, Toolbar, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
-import { blockForm, freshBlock } from "./BlockForm";
-import { core } from "./core";
-import type { Action, ActionKind, DayMove, Event, PlanBlock, Screen, ShownDayItem } from "./core";
+import type { Action, ActionKind, DayMove, Event, Screen, ShownDayItem } from "./core";
 import { byKind, REMOVING } from "./actions";
 import { useCommand } from "./commands";
 import { landOn, rowKey } from "./landing";
-import { choose } from "./Prompts";
 import { showProposal } from "./Proposal";
 import { asksForMenu, RowMenu } from "./RowMenu";
-import { current, refresh, run, sayAll, send } from "./session";
+import { refresh, run, sayAll, send } from "./session";
 import { nest } from "./tree";
 import type { Node } from "./tree";
 
@@ -49,7 +46,6 @@ export function Day(props: {
   // to React Aria, which says "… selected" for each while the tree has focus.
   const selected = useMemo(() => (props.screen.focus ? [props.screen.focus] : []), [props.screen.focus]);
   const inHand = items.find((item) => item.key === props.screen.focus);
-  const date = day?.date ?? "";
 
   /** Focus where the app puts it, then what it said. */
   const settle = async (turn: { screen: Screen; said: string[] }, landing = true) => {
@@ -58,56 +54,9 @@ export function Day(props: {
     props.onChanged();
   };
 
-  /** A write made by this client's own forms: the app takes it in, the row named in hand. */
-  const wrote = async (said: string, key?: string) => {
-    await refresh();
-    const screen = key ? (await send({ Focus: key })).screen : await current();
-    await settle({ screen, said: [said] });
-  };
-
-  // Changes a block — asking "this day, or every day?" of a repeating one, never guessing.
-  const edit = async (block: PlanBlock) => {
-    let heading = `Change ${block.title}`;
-    let purpose: Parameters<typeof blockForm>[0] = { kind: "series", id: block.series };
-    if (block.repeats) {
-      const which = await choose(heading, "Which occurrences?", [`${day?.title ?? "This day"} only`, "Every occurrence"]);
-      if (which === undefined) return;
-      if (which === 0) {
-        purpose = { kind: "occurrence", series: block.series, date };
-        heading = `Change ${block.title}, this day only`;
-      } else {
-        heading = `Change ${block.title}, every occurrence`;
-      }
-    }
-    // One day alone starts from that day's block; every occurrence, from the series as it is
-    // rather than as this day shows it.
-    let fields;
-    let rule: string | undefined;
-    try {
-      if (purpose.kind === "series") ({ fields, rule } = await core.seriesFields(block.series));
-      else fields = await core.dayFields(block);
-    } catch (error) {
-      sayAll([(error as Error).message]);
-      return;
-    }
-    const saved = await blockForm(purpose, fields, heading, rule);
-    if (saved) await wrote(saved.said, `block:${block.id}`);
-  };
-
-  // From free time, at its start; otherwise when the core says a block on this day starts.
-  const addBlock = async (start?: string, minutes = 60) => {
-    const on = date || "today";
-    const fields = await freshBlock(start, Math.min(minutes, 720), on);
-    const saved = await blockForm({ kind: "add", date: on, startFollowsDay: start === undefined }, fields, "New block");
-    if (saved) await wrote(saved.said, saved.series ? `block:${saved.series}@${date}` : undefined);
-  };
-
-  /** The forms an action opens, which are this client's own. */
+  /** The forms an action opens that are still this client's own. */
   const form = async (action: Action) => {
-    const at = items.find((item) => item.actions.some((a) => a.kind === action.kind && a.target === action.target)) ?? inHand;
-    if (action.kind === "edit" && at?.block) await edit(at.block);
-    else if (action.kind === "add_block" && at?.free) await addBlock(action.other ?? at.free.start, at.free.minutes);
-    else if (action.kind === "edit_task") props.onOpenTask(action.target);
+    if (action.kind === "edit_task") props.onOpenTask(action.target);
     // The day's two proposals are this client's screens, over the core's words.
     else if (action.kind === "replan" || action.kind === "plan_day") {
       await showProposal(action.kind === "replan" ? { kind: "replan" } : { kind: "plan_day", date: action.target });
@@ -115,6 +64,8 @@ export function Day(props: {
       props.onChanged();
     }
   };
+
+  const addBlock = () => void send({ Block: { New: { start: undefined, minutes: undefined } } });
 
   /** Runs `event` through the app from this day, its forms the client's own. */
   const act = async (event: Event, landing = true) => settle(await run(event, form), landing);
@@ -126,7 +77,7 @@ export function Day(props: {
   useCommand("next-day", () => move("Next"));
   useCommand("go-to-day", () => move("Ask"));
   useCommand("go-to-now", () => move("Now"));
-  useCommand("new-block", () => void addBlock());
+  useCommand("new-block", addBlock);
 
   const onRow = async (key: string, kinds: ActionKind[]) => {
     await send({ Focus: key });
@@ -182,7 +133,7 @@ export function Day(props: {
           Next day
         </Button>
         <Button onPress={() => move("Ask")}>Go to day</Button>
-        <Button onPress={() => void addBlock()}>Add block</Button>
+        <Button onPress={addBlock}>Add block</Button>
         {/* The day's own actions, wherever focus is: its summary row offers them too. */}
         <RowMenu
           label="Day actions"

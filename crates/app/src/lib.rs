@@ -12,6 +12,7 @@
 //! ([`host::HostRequest`]) whose answer comes back as an event. What a shell does itself is
 //! drawing ([`Effect::Render`]) and saying ([`Effect::Announce`]), each its platform's way.
 
+pub mod blockform;
 pub mod day;
 pub mod details;
 pub mod host;
@@ -25,9 +26,10 @@ use crux_core::render::render;
 use crux_core::{App, Command};
 use jiff::civil::Date;
 use lumenna_records::places::Place;
-use lumenna_records::{Action, ActionKind, Answer, Change, Choices, LumennaError, Question, Subject, not_offered};
+use lumenna_records::{Action, ActionKind, Answer, Change, Choice, Choices, LumennaError, Question, Subject, not_offered};
 use serde::{Deserialize, Serialize};
 
+pub use blockform::{BlockEvent, BlockFormView};
 pub use day::{DayItem, DayKind, DayView};
 pub use details::{DetailsEvent, DetailsView};
 pub use typing::{LineView, Typing};
@@ -120,6 +122,8 @@ pub enum Event {
     Details(DetailsEvent),
     /// Something done in quick add.
     Typing(Typing),
+    /// Something done in the block form.
+    Block(BlockEvent),
     /// Add a task from a quick-add line.
     QuickAdd(String),
     /// Undo the last change.
@@ -154,6 +158,9 @@ pub enum Purpose {
     Action(Action),
     /// Which day to go to.
     GoToDay,
+    /// Which occurrences of a repeating block a change is for, before its form opens: the
+    /// block, and its day as it is said ("Tomorrow").
+    EditWhich(lumenna_records::types::PlanBlock, String),
 }
 
 /// A question open.
@@ -179,7 +186,7 @@ impl Open {
     pub(crate) fn action(&self) -> Option<&Action> {
         match &self.purpose {
             Purpose::Action(action) => Some(action),
-            Purpose::GoToDay => None,
+            Purpose::GoToDay | Purpose::EditWhich(..) => None,
         }
     }
 
@@ -189,6 +196,14 @@ impl Open {
             Purpose::Action(_) if self.picked.is_some() => lumenna_records::length_question(),
             Purpose::Action(action) => action.question.clone(),
             Purpose::GoToDay => lumenna_records::go_to_day_question(),
+            Purpose::EditWhich(block, day) => Question::Choose {
+                title: format!("Change {}", block.title),
+                message: "Which occurrences?".to_owned(),
+                answers: vec![
+                    Choice { id: "day".to_owned(), title: format!("{day} only"), ..Choice::default() },
+                    Choice { id: "every".to_owned(), title: "Every occurrence".to_owned(), ..Choice::default() },
+                ],
+            },
         }
     }
 }
@@ -224,6 +239,8 @@ pub struct Model {
     pub details: details::Details,
     /// The quick-add line, while quick add is open.
     pub line: Option<typing::Line>,
+    /// The block form, while it is open.
+    pub block_form: Option<blockform::Form>,
 }
 
 /// The rows a place shows, as its keys and their actions.
@@ -359,6 +376,7 @@ impl Model {
 #[derive(Debug, Default)]
 pub struct Lumenna;
 
+
 fn say(text: impl Into<String>) -> Command<Effect, Event> {
     let text = text.into();
     if text.is_empty() {
@@ -398,6 +416,21 @@ impl Lumenna {
             }
             _ => {}
         }
+        // The block form is the app's: changing a block, and a new one in free time.
+        if action.question == Question::Form {
+            match (action.subject, action.kind) {
+                (Subject::Block, ActionKind::Edit) => return self.edit_block(&action, model),
+                (Subject::Series, ActionKind::Edit) => return self.series_form(&action.target, model),
+                (Subject::FreeTime, ActionKind::AddBlock) => {
+                    let minutes = model.day_view().and_then(|view| {
+                        view.items.into_iter().find(|i| i.actions.iter().any(|a| a.kind == action.kind && a.target == action.target))?.free
+                    });
+                    let start = action.other.clone().or_else(|| minutes.as_ref().map(|f| f.start.clone()));
+                    return self.block(BlockEvent::New { start, minutes: minutes.map(|f| f.minutes) }, model);
+                }
+                _ => {}
+            }
+        }
         match &action.question {
             Question::Immediate => host(HostRequest::Act { action, answer: Answer::Yes }),
             Question::Pick { .. } => {
@@ -428,6 +461,22 @@ impl Lumenna {
                     }
                 }
             }
+            Purpose::EditWhich(block, _) => {
+                let Answer::Picked { id, .. } = answer else { return Command::done() };
+                model.open = None;
+                if id == "day" {
+                    let date = block.id.split('@').nth(1).unwrap_or_default().to_owned();
+                    model.block_form = Some(blockform::Form::change(
+                        blockform::Purpose::Occurrence { series: block.series.clone(), date },
+                        format!("Change {}, this day only", block.title),
+                        lumenna_records::day_block_fields(block),
+                        None,
+                    ));
+                    render()
+                } else {
+                    self.series_form(&block.series, model)
+                }
+            }
             Purpose::Action(action) => {
                 // A pick that asks how long: the length is asked once one is picked, and both
                 // go together.
@@ -453,6 +502,7 @@ impl Lumenna {
         }
         let adding = std::mem::take(&mut model.adding);
         let saving = std::mem::take(&mut model.details.saving);
+        let block_saving = model.block_form.as_mut().is_some_and(|form| std::mem::take(&mut form.saving));
         match result {
             Ok(change) => {
                 model.open = None;
@@ -461,6 +511,20 @@ impl Lumenna {
                 }
                 if adding {
                     model.line = None;
+                }
+                if block_saving {
+                    model.block_form = None;
+                    // What it made, or changed, is in hand: a new series under its first day.
+                    if let Some(series) = change.affected.blocks.first() {
+                        let key = model.rows().and_then(|rows| {
+                            rows.shown.into_iter().map(|(key, _)| key).find(|key| {
+                                key.strip_prefix("block:").unwrap_or(key).split('@').next() == Some(series.as_str())
+                            })
+                        });
+                        if let Some(key) = key {
+                            model.hold(&key);
+                        }
+                    }
                 }
                 // What it made is what the person works on next.
                 if let Some(task) = &change.task {
@@ -473,6 +537,10 @@ impl Lumenna {
                 model.settle();
                 if adding {
                     model.add_refused = Some(error.message().to_owned());
+                }
+                if block_saving && let Some(form) = &mut model.block_form {
+                    form.refusal = Some(error.message().to_owned());
+                    return render();
                 }
                 // A refused answer stays in its question, with the reason.
                 if let Some(open) = &mut model.open {
@@ -548,6 +616,108 @@ impl Lumenna {
             Typing::Close => model.line = None,
         }
         render()
+    }
+
+    /// Edit on a block: every occurrence of a series from the Blocks list; from the day, a
+    /// repeating block asks first which occurrences, never guessing.
+    fn edit_block(&self, action: &Action, model: &mut Model) -> Command<Effect, Event> {
+        let block = model.day_view().and_then(|view| {
+            view.items.into_iter().filter(|i| i.kind == DayKind::Block).find_map(|i| i.block.filter(|b| b.id == action.target))
+        });
+        match block {
+            Some(block) if block.repeats => {
+                let today = model.store.as_ref().map(|s| s.now.date());
+                let date = block.id.split('@').nth(1).and_then(|d| d.parse::<Date>().ok());
+                let day = match (date, today) {
+                    (Some(date), Some(today)) => lumenna_records::words::capitalised(&lumenna_core::time::day_words(date, today)),
+                    _ => "This day".to_owned(),
+                };
+                model.open = Some(Open::new(Purpose::EditWhich(block, day)));
+                render()
+            }
+            Some(block) => self.series_form(&block.series, model),
+            None => self.series_form(&action.target, model),
+        }
+    }
+
+    /// The form for every occurrence of the series `id`, from the series as it is.
+    fn series_form(&self, id: &str, model: &mut Model) -> Command<Effect, Event> {
+        let Some(store) = &model.store else { return Command::done() };
+        match lumenna_records::plan::block_shown(&store.snapshot, id) {
+            Ok(shown) => {
+                // A rule is given exactly when the series repeats.
+                let rule = shown.repeats.then(|| shown.rrule.clone()).flatten();
+                let heading =
+                    if shown.repeats { format!("Change {}, every occurrence", shown.title) } else { format!("Change {}", shown.title) };
+                let series = shown.id.clone();
+                model.block_form = Some(blockform::Form::change(
+                    blockform::Purpose::Series(series),
+                    heading,
+                    lumenna_records::block_fields(shown),
+                    rule,
+                ));
+                render()
+            }
+            Err(error) => say(error.message()),
+        }
+    }
+
+    fn block(&self, event: BlockEvent, model: &mut Model) -> Command<Effect, Event> {
+        let Some(store) = model.store.clone() else { return Command::done() };
+        match event {
+            BlockEvent::New { start, minutes } => {
+                // On the day shown, or today from anywhere else.
+                let date = if model.place() == Place::Today { model.day.map(|d| d.to_string()) } else { None }
+                    .unwrap_or_else(|| "today".to_owned());
+                let offered = lumenna_records::fields::new_block_start(&store.snapshot, Some(&date), &store.now)
+                    .unwrap_or_else(|_| "09:00".to_owned());
+                model.block_form = Some(blockform::Form::add(date, start, minutes.unwrap_or(60), offered));
+                render()
+            }
+            BlockEvent::Field { key, value } => {
+                if let Some(form) = &mut model.block_form {
+                    form.set(&key, value, &store.snapshot, &store.now);
+                }
+                render()
+            }
+            BlockEvent::Cancel => {
+                model.block_form = None;
+                render()
+            }
+            BlockEvent::Save => {
+                let Some(form) = &mut model.block_form else { return Command::done() };
+                let request = match &form.purpose {
+                    blockform::Purpose::Add { .. } => {
+                        lumenna_records::new_block(form.fields.clone(), Some(form.date.clone())).map(|block| Some(HostRequest::AddBlock(block)))
+                    }
+                    blockform::Purpose::Series(series) => lumenna_records::block_edit(form.initial.clone(), form.fields.clone())
+                        .map(|edit| edit.map(|edit| HostRequest::EditBlock { series: series.clone(), edit, scope: lumenna_records::types::BlockScope::Series })),
+                    blockform::Purpose::Occurrence { series, date } => {
+                        lumenna_records::block_edit(form.initial.clone(), form.fields.clone()).map(|edit| {
+                            edit.map(|edit| HostRequest::EditBlock {
+                                series: series.clone(),
+                                edit,
+                                scope: lumenna_records::types::BlockScope::Occurrence { date: date.clone() },
+                            })
+                        })
+                    }
+                };
+                match request {
+                    Err(error) => {
+                        form.refusal = Some(error.message().to_owned());
+                        render()
+                    }
+                    Ok(None) => {
+                        model.block_form = None;
+                        render().and(say("Nothing changed"))
+                    }
+                    Ok(Some(request)) => {
+                        form.saving = true;
+                        host(request)
+                    }
+                }
+            }
+        }
     }
 
     fn arrived(&self, store: Arrival, model: &mut Model) -> Command<Effect, Event> {
@@ -647,6 +817,7 @@ impl App for Lumenna {
             }
             Event::Details(event) => self.details(event, model),
             Event::Typing(event) => self.typing(event, model),
+            Event::Block(event) => self.block(event, model),
             Event::QuickAdd(text) => {
                 model.adding = true;
                 model.add_refused = None;

@@ -1,6 +1,6 @@
 //! Whole flows through the app and a real store: events in, what is shown and said out.
 
-use lumenna_app::{DayMove, DetailsEvent, Event, Item, Typing, ViewModel};
+use lumenna_app::{BlockEvent, DayMove, DetailsEvent, Event, Item, Typing, ViewModel};
 use lumenna_records::places::Place;
 use lumenna_bridge::{Session, Shell};
 use lumenna_host::Lumenna;
@@ -404,4 +404,81 @@ fn quick_add_reads_back_the_line_and_puts_a_completion_in_at_the_cursor() {
     let line = app.view().line.unwrap();
     assert!(line.text.starts_with("Call #Inbox"), "{}", line.text);
     assert!(line.text.ends_with("tomorrow"));
+}
+
+fn field(app: &mut App, key: &str, value: &str) {
+    app.send(Event::Block(BlockEvent::Field { key: key.to_owned(), value: value.to_owned() }));
+}
+
+#[test]
+fn a_new_block_is_added_from_its_form_and_is_in_hand_in_the_blocks_list() {
+    let mut app = App::new();
+    app.send(Event::Open(Place::Blocks));
+    app.send(Event::Block(BlockEvent::New { start: None, minutes: None }));
+    let form = app.view().block_form.expect("the form is open");
+    assert_eq!(form.heading, "New block");
+    assert_eq!(form.yes, "Add");
+    assert!(form.fields.iter().any(|f| f.key == "date"));
+    field(&mut app, "title", "Gym");
+    field(&mut app, "start", "07:00");
+    field(&mut app, "date", "tomorrow");
+    let shell = app.send(Event::Block(BlockEvent::Save));
+    assert!(app.view().block_form.is_none());
+    assert!(said(&shell).iter().any(|s| s.contains("Gym")), "{shell:?}");
+    assert_eq!(app.titles(), ["Gym"]);
+    assert_eq!(app.view().focus, Some(app.items()[0].row.id.clone()));
+}
+
+#[test]
+fn a_blocks_flags_follow_its_kind_and_a_length_that_does_not_read_is_refused_in_the_form() {
+    let mut app = App::new();
+    app.send(Event::Block(BlockEvent::New { start: None, minutes: None }));
+    assert!(app.view().block_form.unwrap().values.accepts_tasks);
+    field(&mut app, "kind", "break");
+    let values = app.view().block_form.unwrap().values;
+    assert!(!values.accepts_tasks);
+    assert_eq!(values.kind, "break");
+    field(&mut app, "title", "Lunch");
+    field(&mut app, "minutes", "soon");
+    app.send(Event::Block(BlockEvent::Save));
+    let form = app.view().block_form.expect("still open");
+    assert!(form.refusal.is_some());
+}
+
+#[test]
+fn a_new_blocks_start_follows_the_day_typed_until_the_person_sets_one() {
+    let mut app = App::new();
+    app.send(Event::Block(BlockEvent::New { start: None, minutes: None }));
+    field(&mut app, "date", "tomorrow");
+    assert_eq!(app.view().block_form.unwrap().values.start, "08:00");
+    field(&mut app, "start", "18:15");
+    field(&mut app, "date", "next week");
+    assert_eq!(app.view().block_form.unwrap().values.start, "18:15");
+}
+
+#[test]
+fn a_repeating_block_asks_which_occurrences_and_one_days_form_changes_that_day_alone() {
+    let mut app = App::new();
+    block(&mut app, "Standup", "09:00", "tomorrow", Some("every day"));
+    app.send(Event::Open(Place::Today));
+    app.send(Event::Day(DayMove::Next));
+    let key = day_keys(&app).into_iter().find(|k| k.starts_with("block:")).unwrap();
+    app.send(Event::Focus(key.clone()));
+    app.send(Event::Run(vec![ActionKind::Edit]));
+    let asking = app.view().asking.expect("which occurrences");
+    let lumenna_records::Question::Choose { answers, .. } = asking.question else { panic!() };
+    assert_eq!(answers[0].title, "Tomorrow only");
+    app.send(Event::Answer(Answer::Picked { id: "day".to_owned(), length: None }));
+    let form = app.view().block_form.expect("one day's form");
+    assert_eq!(form.heading, "Change Standup, this day only");
+    assert!(!form.fields.iter().any(|f| f.key == "repeat"));
+    assert_eq!(form.second_column, None);
+    field(&mut app, "minutes", "15");
+    app.send(Event::Block(BlockEvent::Save));
+    assert!(app.view().block_form.is_none());
+    let day = app.view().day.unwrap();
+    let block = day.items.iter().find(|i| i.key == key).and_then(|i| i.block.clone()).unwrap();
+    assert_eq!(block.duration_mins, 15);
+    assert!(block.changed_for_this_day);
+    assert_eq!(app.view().focus, Some(key));
 }

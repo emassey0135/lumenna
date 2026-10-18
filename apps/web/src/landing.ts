@@ -81,3 +81,8 @@ export function landOn(tree: HTMLElement | null, key: string | undefined): Promi
     requestAnimationFrame(step);
   });
 }
+
+/** Puts focus on the row `key` of the list in the main landmark, once it is drawn. */
+export function landInMain(key: string | undefined): Promise<void> {
+  return landOn(document.querySelector<HTMLElement>(".app > main [role='treegrid']"), key);
+}

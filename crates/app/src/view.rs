@@ -42,6 +42,9 @@ pub struct ViewModel {
     /// The quick-add line, while quick add is open.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line: Option<LineView>,
+    /// The block form, while it is open.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub block_form: Option<crate::BlockFormView>,
 }
 
 /// A list of tasks as shown.
@@ -130,6 +133,7 @@ pub fn view(model: &Model) -> ViewModel {
                 projects: lumenna_records::tree::project_options(&store.snapshot),
             }
         }),
+        block_form: model.block_form.as_ref().map(crate::blockform::Form::view),
         line: model.line.as_ref().map(|line| {
             let preview = lumenna_records::text::preview(&store.snapshot, &line.text, &store.now);
             crate::typing::LineView {

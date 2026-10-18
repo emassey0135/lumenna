@@ -79,7 +79,10 @@ export const Details = forwardRef<DetailsHandle, { screen: Screen; onChanged: ()
   const set = (key: keyof TaskFields, value: string | number) => {
     setFields({ ...fields, [key]: value });
     pending.current++;
-    void send({ Details: { Field: { key, value: String(value) } } }).finally(() => pending.current--);
+    void send({ Details: { Field: { key, value: String(value) } } }).then((turn) => {
+      // The last answer is the form as all the typing left it.
+      if (--pending.current === 0 && turn.screen.details) setFields(turn.screen.details.fields);
+    });
   };
 
   // Each field as the core describes it. The title is one line, so Enter saves; the project

@@ -47,7 +47,9 @@ export function QuickAdd(props: { line: ShownLine | undefined; isOpen: boolean; 
   const tell = (value: string) => {
     const cursor = input.current?.selectionStart ?? value.length;
     pending.current++;
-    return typed(value, cursor).finally(() => pending.current--);
+    return typed(value, cursor).finally(() => {
+      pending.current--;
+    });
   };
 
   const choose = (key: Key | null) => {

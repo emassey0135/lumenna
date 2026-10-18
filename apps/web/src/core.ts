@@ -13,6 +13,7 @@ export type {
   ActionKind,
   Answer,
   Asking,
+  BlockFormView,
   DayMove,
   Event,
   Choice,

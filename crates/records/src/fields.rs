@@ -356,3 +356,23 @@ pub fn proposal_words(kind: crate::ActionKind) -> ProposalWords {
         },
     }
 }
+
+/// When a new block on `date` (a date phrase, today when absent) starts unless the person says
+/// otherwise, `HH:MM`: today, the next whole hour, never before the day starts; any other day,
+/// when the day starts. A fixed 09:00 was over before most of the day was.
+///
+/// # Errors
+///
+/// If `date` cannot be read.
+pub fn new_block_start(snapshot: &lumenna_core::snapshot::Snapshot, date: Option<&str>, now: &jiff::Zoned) -> crate::Result<String> {
+    let day = crate::resolve::date(date, now)?;
+    let day_start = snapshot.settings.day_window.0;
+    let start = if day == now.date() {
+        // The hour after this one, or the last hour of the day once there is no next one today.
+        let next = jiff::civil::time((now.hour() + 1).min(23), 0, 0, 0);
+        next.max(day_start)
+    } else {
+        day_start
+    };
+    Ok(crate::words::time_text(start))
+}

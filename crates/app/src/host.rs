@@ -63,6 +63,17 @@ pub enum HostRequest {
         /// What changed.
         edit: lumenna_records::types::TaskEdit,
     },
+    /// Add a block from its form.
+    AddBlock(lumenna_records::types::NewBlock),
+    /// Save what changed in a block's form, to every occurrence or one day's.
+    EditBlock {
+        /// The series.
+        series: String,
+        /// What changed.
+        edit: lumenna_records::types::BlockEdit,
+        /// To which occurrences.
+        scope: lumenna_records::types::BlockScope,
+    },
     /// Undo the last change made on this device.
     Undo,
     /// Redo the last change undone.

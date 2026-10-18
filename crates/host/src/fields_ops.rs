@@ -28,16 +28,6 @@ impl Lumenna {
     /// If `date` cannot be read.
     pub fn new_block_start(&self, date: Option<String>) -> crate::Result<String> {
         let now = jiff::Zoned::now();
-        let day = crate::resolve::date(date.as_deref(), &now)?;
-        let day_start = self.with(|store| Ok(crate::repaired(store).settings.day_window.0))?;
-        let start = if day == now.date() {
-            // The hour after this one, or the last hour of the day once there is no next one
-            // today.
-            let next = jiff::civil::time((now.hour() + 1).min(23), 0, 0, 0);
-            next.max(day_start)
-        } else {
-            day_start
-        };
-        Ok(crate::words::time_text(start))
+        self.with(|store| lumenna_records::fields::new_block_start(&crate::repaired(store), date.as_deref(), &now))
     }
 }

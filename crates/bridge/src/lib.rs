@@ -51,6 +51,8 @@ pub fn answer(lumenna: &Lumenna, request: HostRequest) -> HostAnswer {
         HostRequest::Act { action, answer } => wrote(lumenna.act(action, answer)),
         HostRequest::AddTask { text } => wrote(lumenna.add_task(&text)),
         HostRequest::EditTask { id, edit } => wrote(lumenna.edit_task(&id, edit)),
+        HostRequest::AddBlock(block) => wrote(lumenna.add_block(block)),
+        HostRequest::EditBlock { series, edit, scope } => wrote(lumenna.edit_block(&series, edit, scope)),
         HostRequest::Undo => wrote(lumenna.undo()),
         HostRequest::Redo => wrote(lumenna.redo()),
         HostRequest::Choices { action } => HostAnswer::Offered(lumenna.choices(action)),
