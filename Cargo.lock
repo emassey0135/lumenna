@@ -3101,12 +3101,16 @@ dependencies = [
 name = "lumenna-desktop"
 version = "0.1.0"
 dependencies = [
+ "boltffi",
  "directories",
  "jiff",
+ "lumenna-app",
  "lumenna-host",
  "lumenna-records",
  "serde",
  "tempfile",
+ "tsify",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -3165,6 +3169,7 @@ dependencies = [
  "futures",
  "lumenna-app",
  "lumenna-bridge",
+ "lumenna-desktop",
  "lumenna-host",
  "lumenna-records",
 ]
