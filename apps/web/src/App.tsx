@@ -57,10 +57,17 @@ export function App() {
   }, []);
 
 
-  // The app takes in whatever moved — another tab, `lum`, a sync, a minute — and draws it.
+  // The app takes in whatever moved — another tab, `lum`, a sync, a minute — and draws it. One
+  // tick with the worker at a time: a clock that jumps (a laptop waking, a test's) fires a burst
+  // of these, and queued in front of a slow worker they held up everything sent after them.
   useEffect(() => {
     if (!ready) return;
-    const timer = setInterval(() => void refresh(), 1000);
+    let ticking = false;
+    const timer = setInterval(() => {
+      if (ticking) return;
+      ticking = true;
+      void refresh().finally(() => (ticking = false));
+    }, 1000);
     return () => clearInterval(timer);
   }, [ready]);
 

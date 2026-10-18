@@ -57,24 +57,20 @@ function focusDue(id: string): void {
 /**
  * Gives this browser's reminders while the tab is open: every twenty seconds, and on coming
  * back to the tab, the app looks for what came due since the last look, from when the tab
- * opened. What came due, what each says and which are still listed are the app's.
+ * opened. What came due, what each says and which are still listed are the app's, and so is
+ * taking looks asked for while one is under way as one after it: a look skipped here while
+ * another was on its way was lost, coming back to the tab included.
  */
 export function useDelivery(ready: boolean): void {
   useEffect(() => {
     if (!ready) return;
     // From when the tab opened: nothing is owed from before.
     let since = new Date().toISOString();
-    let asking = false;
-    const look = async () => {
-      if (asking) return;
-      asking = true;
+    const look = () => {
       const now = new Date().toISOString();
-      try {
-        if (remindersOn()) await send({ Due: { Look: { since, now } } });
-        since = now;
-      } finally {
-        asking = false;
-      }
+      const from = since;
+      since = now;
+      if (remindersOn()) void send({ Due: { Look: { since: from, now } } });
     };
     const timer = setInterval(() => void look(), 20_000);
     const back = () => {

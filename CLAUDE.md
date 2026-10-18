@@ -1349,7 +1349,10 @@ with `lum`.
   is applied one way (`apply`): drawn, its files saved, its notifications shown, focus landed
   if `landing` went up, then said, after focus so the move does not cut it off. Turns are
   numbered (`seq`), and an older screen is never drawn over a newer one. The one-second poll
-  ticks the store, for another tab's or process's writes and new minutes.
+  ticks the store, for another tab's or process's writes and new minutes, one tick at a time:
+  a clock that jumps fires a burst, and queued before a slow worker they held up what followed.
+  Reminders' looks are never skipped by the page; the app takes those asked for while one is
+  under way as one after it.
 - **Landing is judged against where focus was when the turn arrived**, never later: a turn can
   arrive while the person has already moved on. It lands on the main list's row in hand while
   focus is still on the same row of that list, or lost, or wherever React Aria put it when that
