@@ -22,7 +22,7 @@ use lumenna_app::{Effect, Notice, SaveFile, ViewModel};
 use lumenna_bridge::network::{Network, NetworkHandle};
 use lumenna_bridge::{Shell as Left, Stack, Store, shell, stack};
 use lumenna_host::{Lumenna, Reach};
-use lumenna_records::LumennaError;
+use lumenna_records::{Completions, LumennaError, Syntax};
 
 pub use events::ShellEvent;
 
@@ -64,6 +64,7 @@ pub trait Shell: Send + Sync {
 
 /// The app over one profile.
 pub struct App {
+    lumenna: Arc<Lumenna>,
     stack: Arc<Stack<Network>>,
     store: Store,
     network: NetworkHandle,
@@ -88,7 +89,7 @@ impl App {
         let (outbox, delivering) = mpsc::channel();
         let drawing = Arc::clone(&stack);
         spawn("lumenna-shell", move || deliver(&delivering, &drawing, &*shell))?;
-        let app = App { stack, store, network: handle, outbox: Mutex::new(outbox) };
+        let app = App { lumenna, stack, store, network: handle, outbox: Mutex::new(outbox) };
         app.send(ShellEvent::Start);
         Ok(app)
     }
@@ -112,6 +113,16 @@ impl App {
     /// calls this on a timer while it is in front, and when told the store changed.
     pub fn tick(&self) {
         self.store.tick();
+    }
+
+    /// What could go at `cursor` (UTF-8 bytes) in a line of `syntax` the shell has open outside
+    /// the app's own quick add: a filter. At keystroke rate, so straight from the store.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn complete(&self, text: String, cursor: u32, syntax: Syntax) -> Result<Completions, LumennaError> {
+        self.lumenna.complete_text(&text, cursor, syntax)
     }
 
     /// The app came to the front, or left it: syncing runs only while it is in front.

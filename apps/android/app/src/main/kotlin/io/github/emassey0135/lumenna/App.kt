@@ -263,8 +263,8 @@ fun LumennaApp(
                 go(Tab.TASKS)
                 shortcuts.filterAsked.value = true
             }
-            Offer(Command.UNDO) { core.change { it.undo() } }
-            Offer(Command.REDO) { core.change { it.redo() } }
+            Offer(Command.UNDO) { core.app.send(io.github.emassey0135.lumenna.app.ShellEvent.Undo) }
+            Offer(Command.REDO) { core.app.send(io.github.emassey0135.lumenna.app.ShellEvent.Redo) }
             Offer(Command.GO_TODAY) { go(Tab.TODAY) }
             Offer(Command.GO_TASKS) { go(Tab.TASKS) }
             Offer(Command.GO_BLOCKS) { go(Tab.BROWSE, Screen.Blocks) }
@@ -461,10 +461,10 @@ fun ScreenFrame(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { core.change { it.undo() } }) {
+                    IconButton(onClick = { core.app.send(io.github.emassey0135.lumenna.app.ShellEvent.Undo) }) {
                         Icon(Glyphs.undo, contentDescription = "Undo")
                     }
-                    IconButton(onClick = { core.change { it.redo() } }) {
+                    IconButton(onClick = { core.app.send(io.github.emassey0135.lumenna.app.ShellEvent.Redo) }) {
                         Icon(Glyphs.redo, contentDescription = "Redo")
                     }
                     actions()

@@ -1,5 +1,7 @@
 package io.github.emassey0135.lumenna
 
+import io.github.emassey0135.lumenna.app.Candidate
+import io.github.emassey0135.lumenna.app.Syntax
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -23,8 +25,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import io.github.emassey0135.lumenna.records.Candidate
-import io.github.emassey0135.lumenna.records.Syntax
 
 /**
  * A line in the quick-add or filter language, with what could go at the cursor offered as
@@ -50,9 +50,9 @@ fun CompletingField(
     // What could go at the cursor, and the span it would replace, in UTF-16 units.
     val offered: Pair<List<Candidate>, IntRange>? = remember(value.text, value.selection) {
         if (value.text.isBlank()) null
-        else core.attempt {
-            core.lumenna.completeText(value.text, TextOffsets.bytes(value.selection.end, value.text), syntax)
-        }?.let { found ->
+        else runCatching {
+            core.app.complete(value.text, TextOffsets.bytes(value.selection.end, value.text), syntax)
+        }.getOrNull()?.let { found ->
             found.candidates to (TextOffsets.utf16(found.start, value.text) until TextOffsets.utf16(found.end, value.text))
         }
     }

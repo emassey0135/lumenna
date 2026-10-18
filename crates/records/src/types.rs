@@ -1031,6 +1031,7 @@ impl Completions {
 }
 
 /// Which grammar is being typed, for completion.
+#[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[serde(rename_all = "kebab-case")]

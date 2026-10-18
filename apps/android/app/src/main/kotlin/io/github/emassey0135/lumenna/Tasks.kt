@@ -80,7 +80,7 @@ import io.github.emassey0135.lumenna.app.RowView
 import io.github.emassey0135.lumenna.app.ShellEvent
 import io.github.emassey0135.lumenna.records.ActionKind
 import io.github.emassey0135.lumenna.records.notOffered
-import io.github.emassey0135.lumenna.records.Syntax
+import io.github.emassey0135.lumenna.app.Syntax
 
 
 /**

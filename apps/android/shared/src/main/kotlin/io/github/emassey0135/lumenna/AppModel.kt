@@ -79,6 +79,9 @@ class AppModel(
         app.send(event)
     }
 
+    /** What could go at [cursor] (UTF-8 bytes) in a line of [syntax] outside the app's quick add: a filter. */
+    fun complete(text: String, cursor: UInt, syntax: io.github.emassey0135.lumenna.app.Syntax) = app.complete(text, cursor, syntax)
+
     /** Takes in a change made elsewhere, or a new minute. */
     fun tick() = app.tick()
 
