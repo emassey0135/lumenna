@@ -876,3 +876,43 @@ fn a_write_answered_after_the_person_moved_leaves_the_row_they_moved_to_in_hand(
     assert_eq!(view.list.unwrap().items.len(), 2, "Call Sam was added");
     assert_eq!(view.focus.as_deref(), Some(milk.as_str()), "the person moved to Buy milk after adding Call Sam");
 }
+
+#[test]
+fn looks_for_reminders_asked_for_while_one_is_with_the_host_go_as_one_after_it() {
+    use crux_core::Core;
+    use lumenna_app::{DueEvent, HostRequest};
+    let core: Core<lumenna_app::Lumenna> = Core::new();
+    let looks = |effects: &[Effect]| -> Vec<(String, Option<String>)> {
+        effects
+            .iter()
+            .filter_map(|effect| match effect {
+                Effect::Host(request) => match &request.operation {
+                    HostRequest::RemindersDue { since, now } => Some((since.clone(), now.clone())),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect()
+    };
+    let look = |since: &str, now: &str| Event::Due(DueEvent::Look { since: since.to_owned(), now: Some(now.to_owned()) });
+    let mut first = core.process_event(look("2030-01-15T08:00:00Z", "2030-01-15T08:01:00Z"));
+    assert_eq!(looks(&first), [("2030-01-15T08:00:00Z".to_owned(), Some("2030-01-15T08:01:00Z".to_owned()))]);
+    assert!(looks(&core.process_event(look("2030-01-15T08:01:00Z", "2030-01-15T08:02:00Z"))).is_empty(), "one at a time");
+    assert!(looks(&core.process_event(look("2030-01-15T08:02:00Z", "2030-01-15T08:03:00Z"))).is_empty());
+    let Some(Effect::Host(request)) = first.pop() else { panic!("a look with the host") };
+    let (_, mut handle) = request.split();
+    let found = lumenna_app::HostAnswer::Found(Ok(lumenna_records::reminders::DueReminders {
+        announcement: String::new(),
+        notices: Vec::new(),
+        due: Vec::new(),
+        missed: Vec::new(),
+        missed_summary: String::new(),
+        elsewhere: false,
+    }));
+    let next = core.resolve(&mut handle, found).unwrap();
+    assert_eq!(
+        looks(&next),
+        [("2030-01-15T08:01:00Z".to_owned(), Some("2030-01-15T08:03:00Z".to_owned()))],
+        "the two asked for meanwhile, as one",
+    );
+}

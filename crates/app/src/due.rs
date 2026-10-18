@@ -155,7 +155,17 @@ impl Lumenna {
 
     pub(crate) fn due(&self, event: DueEvent, model: &mut Model) -> Command<Effect, Event> {
         match event {
-            DueEvent::Look { since, now } => host(HostRequest::RemindersDue { since, now }),
+            // One look with the host at a time; those asked for meanwhile go as one after it,
+            // so a burst of them (a clock moved on, a tab come back) is not a queue of them.
+            DueEvent::Look { since, now } => {
+                if model.looking {
+                    let since = model.look_next.take().map_or(since, |(first, _)| first);
+                    model.look_next = Some((since, now));
+                    return Command::done();
+                }
+                model.looking = true;
+                host(HostRequest::RemindersDue { since, now })
+            }
             DueEvent::Dismiss(id) => self.deal(&id, Deal::Dismiss, model),
             DueEvent::Snooze(id) => self.deal(&id, Deal::Snooze, model),
             DueEvent::Carry(id) => self.deal(&id, Deal::Carry, model),
@@ -168,7 +178,15 @@ impl Lumenna {
     }
 
     pub(crate) fn found(&self, result: Result<lumenna_records::reminders::DueReminders, LumennaError>, model: &mut Model) -> Command<Effect, Event> {
-        let Ok(found) = result else { return Command::done() };
+        model.looking = false;
+        let next = match model.look_next.take() {
+            Some((since, now)) => {
+                model.looking = true;
+                host(HostRequest::RemindersDue { since, now })
+            }
+            None => Command::done(),
+        };
+        let Ok(found) = result else { return next };
         let mut said = Command::done();
         for item in arrived(&found) {
             if model.due.iter().any(|d| d.id == item.id) {
@@ -180,6 +198,6 @@ impl Lumenna {
             said = said.and(self::say(item.text.clone())).and(notice);
             model.due.push(item);
         }
-        render().and(said)
+        render().and(said).and(next)
     }
 }

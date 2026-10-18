@@ -65,6 +65,10 @@ pub struct Model {
     pub sync_asked: bool,
     /// Reminders due, not yet dealt with.
     pub due: Vec<due::Due>,
+    /// Whether a look for reminders due is with the host now.
+    pub looking: bool,
+    /// The looks asked for meanwhile, as one: the earliest `since`, and the latest moment.
+    pub look_next: Option<(String, Option<String>)>,
     /// An overrun warning whose Replan from Now is open: dismissed once something is replanned.
     pub replanning: Option<String>,
     /// Counted: each time the app moves focus itself, which is when a shell moves it.
