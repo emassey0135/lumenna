@@ -9,13 +9,15 @@
 import * as Comlink from "comlink";
 import { useSyncExternalStore } from "react";
 import { core } from "./core";
-import type { Event, Notice, Said, Screen } from "./core";
+import type { Event, HeldView, Notice, Said, Screen, Side } from "./core";
 import { landOn, rowOf } from "./landing";
 import { say } from "./say";
 
 let screen: Screen | undefined;
 let shownSeq = 0;
 let landed = 0;
+/** Each side list's landing, as last landed. */
+const landedSides: Record<Side, number> = { Sidebar: 0, Reminders: 0, Devices: 0 };
 /** A turn whose focus lands wherever focus is: a command that goes somewhere, Next Day. */
 let landAnywhere = false;
 const listeners = new Set<() => void>();
@@ -129,6 +131,54 @@ async function land(key: string | undefined, anywhere: boolean, before: Element 
   await landOn(tree, screen?.focus ?? key, free);
 }
 
+/** Each list beside the main one: its row in hand, the element it lives in, and its row by key
+ * (with nothing in hand, what focus goes to instead: a reminder list's Add Reminder). */
+function sides(s: Screen): [Side, HeldView, HTMLElement | null, (key: string | undefined) => HTMLElement | null][] {
+  const sidebar = document.querySelector<HTMLElement>(".app nav [role='treegrid']");
+  const reminders = document.querySelector<HTMLElement>("[data-list='reminders']");
+  const devices = document.querySelector<HTMLElement>("[data-list='devices']");
+  return [
+    ["Sidebar", s.sidebar_held, sidebar, (key) => (key ? sidebar?.querySelector<HTMLElement>(`[role="row"][data-key="${CSS.escape(key)}"]`) ?? null : null)],
+    [
+      "Reminders",
+      s.reminders_held,
+      reminders,
+      // A reminder's first button, or for one with none (a default) or none in hand, Add Reminder.
+      (key) =>
+        (key ? reminders?.querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"] button`) : null) ??
+        reminders?.querySelector<HTMLElement>("[data-adding] button") ??
+        null,
+    ],
+    ["Devices", s.devices_held, devices, (key) => (key ? devices?.querySelector<HTMLElement>(`[role="option"][data-key="${CSS.escape(key)}"]`) ?? null : null)],
+  ];
+}
+
+/**
+ * Puts focus on a side list's row in hand, if focus is still that list's to move: it was in the
+ * list when the turn arrived, or lost, or in a dialog the turn closes (a confirmation asked from
+ * a row), and has not been taken anywhere else since.
+ */
+async function landSide(within: () => HTMLElement | null, row: () => HTMLElement | null, before: Element | null) {
+  const fromDialog = Boolean(before?.closest('[role="dialog"], [role="alertdialog"]')) && !within()?.contains(before);
+  const free = () => {
+    const now = document.activeElement;
+    if (!now || now === document.body || now === before) return true;
+    if (fromDialog && opener && now === opener) return true;
+    return Boolean(within()?.contains(now));
+  };
+  if (!(before === null || before === document.body || within()?.contains(before) || fromDialog)) return;
+  for (let tries = 0; tries < 30 && fromDialog && dialogOpen(); tries++) await frame();
+  for (let tries = 0; tries < 20; tries++) {
+    if (!free()) return;
+    const found = row();
+    if (found) {
+      found.focus();
+      return;
+    }
+    await frame();
+  }
+}
+
 /** Applies a turn: draws it, saves its files, shows its notifications, lands focus if the app
  * moved it, then says what it says, after focus so the move does not cut it off. */
 async function apply(turn: Said) {
@@ -143,6 +193,13 @@ async function apply(turn: Said) {
     landAnywhere = false;
     if (!appDialog(s)) await land(s.focus ?? undefined, anywhere, before);
   }
+  for (const [side, held] of sides(s)) {
+    if (held.landing <= landedSides[side]) continue;
+    landedSides[side] = held.landing;
+    // The list and its row in hand as drawn by the time it lands: a later turn may have moved it.
+    const now = () => sides(screen ?? s).find(([named]) => named === side)!;
+    await landSide(() => now()[2], () => now()[3](now()[1].focus ?? undefined), before);
+  }
   for (const sentence of turn.said) say(sentence);
 }
 
@@ -151,6 +208,9 @@ export async function start(): Promise<void> {
   noteOpeners();
   const first = await core.screen();
   landed = first.landing;
+  landedSides.Sidebar = first.sidebar_held.landing;
+  landedSides.Reminders = first.reminders_held.landing;
+  landedSides.Devices = first.devices_held.landing;
   show(first);
   await core.listen(Comlink.proxy((turn: Said) => void apply(turn)));
 }

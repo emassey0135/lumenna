@@ -14,6 +14,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.key
+import io.github.emassey0135.lumenna.app.Side
 import io.github.emassey0135.lumenna.app.DevicesEvent
 import io.github.emassey0135.lumenna.app.PairEvent
 import io.github.emassey0135.lumenna.app.SaveFile
@@ -408,21 +409,23 @@ fun DevicesScreen(core: Core, navigator: Navigator) {
         val list = devices?.list
         val rows = list?.devices.orEmpty()
         val state = rememberLazyListState()
-        val focus = rememberHeldFocus(core, rows.map { it.nodeId }, state, rows)
+        val focus = rememberSideLanding(core, Side.DEVICES, rows.map { it.nodeId }, state)
+        val lines by app.lines.collectAsState()
         if (rows.isEmpty() && list != null) {
             Text(list.empty, Modifier.padding(16.dp), color = quiet())
         }
         LazyColumn(Modifier.fillMaxSize().semantics { collectionInfo = CollectionInfo(rows.size, 1) }, state = state) {
             itemsIndexed(rows, key = { _, device -> device.nodeId }) { index, device ->
                 // How syncing with it is going, as the core words it for every app.
-                val detail = (listOf(device.platform) + device.status).joinToString(", ")
+                val line = lines?.devices?.getOrNull(index)
+                val detail = line?.detail.orEmpty()
                 ListRow(
-                    title = device.name,
+                    title = line?.title ?: device.name,
                     detail = detail,
                     speech = detail,
                     index = index,
                     // The core's: Rename, and Unpair on every row but this device's own.
-                    actions = focus.actions(device.nodeId, index, app.rowActions(device.nodeId, device.actions)),
+                    actions = app.rowActions(device.nodeId, device.actions, side = Side.DEVICES),
                     open = null,
                     openLabel = "Open",
                     focus = focus.requester(device.nodeId),

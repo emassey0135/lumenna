@@ -120,7 +120,7 @@ private fun GroupScreen(core: Core, navigator: Navigator, group: SidebarGroup, t
         }
     }) {
         PlaceRows(
-            core, rows, version = entries,
+            core, rows,
             open = { row -> (row.entry.kind as? SidebarKind.Place)?.field0?.let { place -> { navigator.push(Screen.Tasks(place)) } } },
             openLabel = { openLabel },
         )

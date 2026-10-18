@@ -17,13 +17,14 @@ import { send } from "./session";
 import { nest } from "./tree";
 import type { Node } from "./tree";
 
-/** What identifies an entry across reloads: its kind, as written. */
-export function placeKey(place: Place): string {
-  return JSON.stringify({ Place: place });
+/** What identifies a place's entry across reloads. */
+export function placeKey(entries: SidebarEntry[], place: Place): string | undefined {
+  return entries.find((entry) => "Place" in entry.kind && JSON.stringify(entry.kind.Place) === JSON.stringify(place))?.key;
 }
 
+/** What identifies an entry across reloads: the app's key, which its row in hand is named by. */
 function key(entry: SidebarEntry): string {
-  return JSON.stringify(entry.kind);
+  return entry.key;
 }
 
 export function Sidebar(props: {
@@ -33,16 +34,16 @@ export function Sidebar(props: {
 }) {
   const entries = props.entries;
 
-  // The row in hand: the one focus was last on. Headings are never selected, so it is not
-  // the selection.
+  // The row a menu is open for. The row in hand is the app's (`sidebar_held`): each move here
+  // tells it, so a change made from a row leaves the row it says in hand.
   const [held, setHeld] = useState<string | undefined>();
   const [menu, setMenu] = useState(false);
   const tree = useRef<HTMLDivElement>(null);
 
   // The same keys while the place is the same: a new array is a new selection to React Aria,
   // which says "… selected" for each while the tree has focus.
-  const here = placeKey(props.place);
-  const selected = useMemo(() => [here], [here]);
+  const here = placeKey(entries, props.place);
+  const selected = useMemo(() => (here ? [here] : []), [here]);
   const nodes = useMemo(() => nest(entries, key, (entry) => entry.depth), [entries]);
   // What is folded is the app's: a row is open while it offers Collapse.
   const shown = useMemo(
@@ -104,7 +105,10 @@ export function Sidebar(props: {
         onContextMenu={rightClick}
         onFocusCapture={(event: FocusEvent) => {
           const k = rowKey(event);
-          if (k) setHeld(k);
+          if (k) {
+            setHeld(k);
+            void send({ Hold: ["Sidebar", k] });
+          }
         }}
       >
         <Tree

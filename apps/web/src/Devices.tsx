@@ -46,8 +46,10 @@ function browserName(): string {
 }
 
 /** Settings' Devices page: the paired devices, how syncing is going, and pairing. */
-export function DevicesPage(props: { devices: Screen["devices"] }) {
-  const [selected, setSelected] = useState<string | undefined>();
+export function DevicesPage(props: { devices: Screen["devices"]; held: Screen["devices_held"] }) {
+  // The device in hand is the app's (`devices_held`): choosing one tells it, and after an unpair
+  // it says which is in hand instead.
+  const selected = props.held.focus ?? undefined;
   const [words, setWords] = useState<PairingWords | undefined>();
   const devices = props.devices?.list?.devices ?? [];
   const pairing = props.devices?.pairing;
@@ -65,7 +67,6 @@ export function DevicesPage(props: { devices: Screen["devices"] }) {
 
   const run = async (action: Action) => {
     await send({ Perform: action });
-    if (action.kind === "unpair") setSelected(undefined);
   };
 
   const keys = (event: KeyboardEvent) => {
@@ -84,7 +85,7 @@ export function DevicesPage(props: { devices: Screen["devices"] }) {
       ) : (
         <>
           <p id="sync-status">{props.devices?.status ?? ""}</p>
-          <div onKeyDownCapture={keys}>
+          <div onKeyDownCapture={keys} data-list="devices">
             <ListBox
               aria-label="Paired devices"
               aria-describedby="devices-hint"
@@ -92,7 +93,8 @@ export function DevicesPage(props: { devices: Screen["devices"] }) {
               selectionMode="single"
               selectedKeys={selected ? [selected] : []}
               onSelectionChange={(keys: Selection) => {
-                if (keys !== "all") setSelected([...keys].map(String)[0]);
+                const [key] = keys === "all" ? [] : [...keys].map(String);
+                if (key) void send({ Hold: ["Devices", key] });
               }}
               renderEmptyState={() => <p className="quiet">{props.devices?.list?.empty ?? ""}</p>}
             >

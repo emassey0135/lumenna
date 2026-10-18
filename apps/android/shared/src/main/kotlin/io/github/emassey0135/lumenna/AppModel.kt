@@ -112,7 +112,8 @@ class AppModel(
     private fun take(turn: Turn) {
         if (turn.seq <= seq) return
         seq = turn.seq
-        val before = shown.value?.landing
+        val was = shown.value
+        val before = was?.landing
         if (opening && before != null && turn.view.landing > before) {
             opening = false
             quiet.value = turn.view.landing
@@ -121,8 +122,14 @@ class AppModel(
         worded.value = turn.lines
         // What follows the store — reminders' alarms — looks again, a moment after the last turn.
         core.moved()
-        // Focus moves first, then this is said: the list that lands releases it.
-        if (before != null && turn.view.landing > maxOf(before, quiet.value)) {
+        // Focus moves first, then this is said: the list that lands releases it — the main one,
+        // or a list beside it that the change was made from.
+        val sideLanded = was != null && (
+            turn.view.sidebarHeld.landing > was.sidebarHeld.landing ||
+                turn.view.remindersHeld.landing > was.remindersHeld.landing ||
+                turn.view.devicesHeld.landing > was.devicesHeld.landing
+            )
+        if (sideLanded || (before != null && turn.view.landing > maxOf(before, quiet.value))) {
             core.hold()
             // No list showing to land: say it anyway, a moment on.
             main.postDelayed({ core.release() }, 1500)

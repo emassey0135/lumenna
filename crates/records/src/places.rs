@@ -106,6 +106,8 @@ pub enum SidebarGroup {
 pub struct SidebarEntry {
     /// What it is.
     pub kind: SidebarKind,
+    /// What identifies it across a reload, so the row in hand stays put: [`SidebarEntry::key_of`].
+    pub key: String,
     /// The line as read: the name, then what is in it.
     pub text: String,
     /// Its name alone: "Work", "Projects".
@@ -125,12 +127,12 @@ impl SidebarEntry {
     /// A row: its line is its title, then what is in it.
     #[must_use]
     pub fn new(kind: SidebarKind, title: &str, detail: &str, depth: u32, actions: Vec<crate::actions::Action>) -> Self {
-        Self { text: line(title, detail), title: title.to_owned(), detail: detail.to_owned(), kind, depth, archived: false, actions }
+        Self { key: Self::key_of(&kind), text: line(title, detail), title: title.to_owned(), detail: detail.to_owned(), kind, depth, archived: false, actions }
     }
 
     /// What identifies it across a reload, so the selection stays put.
     pub fn key(&self) -> String {
-        Self::key_of(&self.kind)
+        self.key.clone()
     }
 
     /// What identifies a row of this kind, whether or not one is listed.

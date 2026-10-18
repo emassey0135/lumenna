@@ -9,6 +9,8 @@ import io.github.emassey0135.lumenna.app.Place
 import io.github.emassey0135.lumenna.app.ShellEvent
 import io.github.emassey0135.lumenna.app.SidebarEntry
 import io.github.emassey0135.lumenna.app.SidebarKind
+import io.github.emassey0135.lumenna.app.Side
+import io.github.emassey0135.lumenna.app.sidebarKey
 
 // What Android adds to the lines the core words (crates/desktop, through the turn's `lines`):
 // what a tree control would report by itself, which a Compose list does not.
@@ -22,8 +24,12 @@ fun option(choice: Choice, line: Line): Option = Option(choice.id, line.title, l
 /** A choice that is a name and what tells it apart: a project in the details' picker. */
 fun option(choice: Choice): Option = Option(choice.id, choice.title, choice.detail.orEmpty(), choice.depth.toInt(), choice.reason.orEmpty())
 
-/** The app's actions as a row's: each puts its row in hand, then runs. */
-fun AppModel.rowActions(row: String, actions: List<Action>, local: (Action) -> Boolean = { false }): List<RowAction> = actions.map { action ->
+/**
+ * The app's actions as a row's: each puts its row in hand, then runs. A row of a list beside
+ * the main one ([side]: the places, a reminder list, the devices) is held there instead, so the
+ * change lands back in that list.
+ */
+fun AppModel.rowActions(row: String, actions: List<Action>, local: (Action) -> Boolean = { false }, side: Side? = null): List<RowAction> = actions.map { action ->
     RowAction(
         action.name,
         action.kind,
@@ -31,7 +37,7 @@ fun AppModel.rowActions(row: String, actions: List<Action>, local: (Action) -> B
         action.subject,
         action.primary,
     ) {
-        send(ShellEvent.Focus(row))
+        send(if (side != null) ShellEvent.Hold(side, row) else ShellEvent.Focus(row))
         if (!local(action)) send(ShellEvent.Perform(action))
     }
 }
@@ -51,18 +57,8 @@ fun shownRows(items: List<Item>, lines: List<Line>): List<Pair<Item, Line?>> =
 /** A list row's speech after its title. */
 fun spoken(item: Item, line: Line?): String = spoken(line, item.row.expanded, item.level)
 
-/** What identifies a place's row across a reload: a project and a label can share a name. */
-fun placeKey(kind: SidebarKind): String = when (kind) {
-    is SidebarKind.Group -> "group:${kind.field0}"
-    is SidebarKind.Place -> placeKey(kind.field0)
-}
-
-fun placeKey(place: Place): String = when (place) {
-    is Place.Project -> "project:${place.field0}"
-    is Place.Label -> "label:${place.field0}"
-    is Place.Filter -> "filter:${place.name}"
-    else -> place.toString()
-}
+/** What identifies a place's row across a reload, as the app names its row in hand. */
+fun placeKey(place: Place): String = sidebarKey(SidebarKind.Place(place))
 
 /** One of the app's places as a row: its name, what is in it, and whether it is folded away. */
 data class PlaceRow(
@@ -92,6 +88,6 @@ fun placeRows(entries: List<SidebarEntry>): List<PlaceRow> {
             }
         }
         if (expanded == false && !hidden) hiddenBelow = entry.depth
-        PlaceRow(placeKey(entry.kind), entry, entry.title, entry.detail, entry.depth.toInt(), hidden, expanded)
+        PlaceRow(entry.key, entry, entry.title, entry.detail, entry.depth.toInt(), hidden, expanded)
     }
 }

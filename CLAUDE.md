@@ -181,6 +181,17 @@ the host directly until their turn (the `legacy` tag is the last commit before t
   when a turn wrote or moved the row in hand, and never for `Event::Focus`, the person's own
   move. A shell lands focus on the row in hand when the count goes up and leaves it alone
   otherwise, so focus never jumps because a sync or a minute redrew the list.
+- **The lists beside the main one have their rows in hand too** (`held.rs`: the sidebar, a
+  reminder list, the devices; `ViewModel::sidebar_held` and the like). A shell reports a move
+  there with `Event::Hold(side, key)` (a sidebar row by its entry's `key`, a reminder by `id`, a
+  device by `node_id`), and its row's actions are held there before they run. A change made
+  from one lands there, on the same row or the one now in its place, and the main list's row
+  moves on quietly; a place renamed, made or merged into from the sidebar takes the sidebar's
+  row with it. The side list stays where changes land only while the person goes on acting from
+  it (the action, its question, its answer); anything else they do hands landing back to the
+  main list.
+- **A shell follows the app's own moves between places**: when the app goes on from the place
+  shown (a rename, a merge, a delete), the screen showing it goes too.
 - **A shell's clock is the shell's**: it tells the app its clock (`Event::Clock`) for the
   sentences the core composes whole, and when to look for reminders and the moment it looks at.
   A shell whose clock is pinned for tests says the moment proposals are made against

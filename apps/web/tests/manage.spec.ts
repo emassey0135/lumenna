@@ -50,13 +50,18 @@ test("a project is made, renamed, and deleted keeping its tasks, from the sideba
   await placeMenu(page, /^Garden/, "Rename");
   await answer(page, "Rename Garden", "Allotment", "Rename");
   await expect(heading(page)).toHaveText("Allotment");
-  await places(page).getByRole("row", { name: /^Allotment/ }).focus();
+  // The sidebar's row in hand is the app's: the project, under its new name.
+  await expect(places(page).getByRole("row", { name: /^Allotment/ })).toBeFocused();
   await page.keyboard.press("Delete");
   const question = page.getByRole("alertdialog", { name: "Delete Allotment?" });
   await expect(question.getByRole("button", { name: "Cancel" })).toBeFocused();
   await question.getByRole("button", { name: "Delete and keep its tasks" }).click();
   await expect(places(page).getByRole("row", { name: /^Allotment/ })).toHaveCount(0);
   await expect(places(page).getByRole("row", { name: /^Inbox, 1 open task/ })).toBeVisible();
+  // Then the row now in its place, still in the sidebar.
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.getAttribute("role") === "row" && !!document.activeElement.closest("nav")))
+    .toBe(true);
 });
 
 test("a label and a saved filter are made and changed from the sidebar", async ({ page }) => {

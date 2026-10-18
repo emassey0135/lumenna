@@ -25,6 +25,7 @@ import io.github.emassey0135.lumenna.app.ShellEvent
 import io.github.emassey0135.lumenna.app.SidebarEntry
 import io.github.emassey0135.lumenna.app.SidebarGroup
 import io.github.emassey0135.lumenna.app.SidebarKind
+import io.github.emassey0135.lumenna.app.Side
 
 /** Somewhere a wide window's sidebar goes: one of the core's places, or Settings. */
 sealed interface Destination {
@@ -56,7 +57,6 @@ private fun key(destination: Destination): String = when (destination) {
 fun PlaceRows(
     core: Core,
     rows: List<PlaceRow>,
-    version: Any?,
     open: (PlaceRow) -> (() -> Unit)?,
     openLabel: (PlaceRow) -> String,
     selected: String? = null,
@@ -65,7 +65,7 @@ fun PlaceRows(
     val shown = rows.filter { !it.hidden }
     val state = rememberLazyListState()
     val keys = shown.map { it.key } + extra.map { it.first }
-    val focus = rememberHeldFocus(core, keys, state, version)
+    val focus = rememberSideLanding(core, Side.SIDEBAR, keys, state)
     LazyColumn(Modifier.fillMaxSize().semantics { collectionInfo = CollectionInfo(keys.size, 1) }, state = state) {
         itemsIndexed(shown, key = { _, row -> row.key }) { index, row ->
             val previous = if (index > 0) shown[index - 1].depth else 0
@@ -78,7 +78,7 @@ fun PlaceRows(
                     .joinToString(", "),
                 index = index,
                 depth = row.depth,
-                actions = focus.actions(row.key, index, core.app.rowActions(row.key, row.entry.actions)),
+                actions = core.app.rowActions(row.key, row.entry.actions, side = Side.SIDEBAR),
                 open = open(row),
                 openLabel = openLabel(row),
                 focus = focus.requester(row.key),
@@ -125,7 +125,7 @@ fun Sidebar(core: Core, current: Destination, choose: (Destination) -> Unit, mod
             modifier = Modifier.padding(16.dp).semantics { heading() },
         )
         PlaceRows(
-            core, placeRows(entries), version = entries,
+            core, placeRows(entries),
             // A heading is not somewhere to go: choosing it folds or unfolds it.
             open = { row ->
                 when (val kind = row.entry.kind) {

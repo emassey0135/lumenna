@@ -187,6 +187,7 @@ fun LumennaApp(
     val saved = rememberSaveableStateHolder()
     // The moment proposals are made against: a test's, or now.
     val plannerNow = LocalPlannerNow.current
+    val shownView by core.app.view.collectAsState()
     LaunchedEffect(plannerNow) { core.app.send(io.github.emassey0135.lumenna.app.ShellEvent.PlanFrom(plannerNow)) }
 
     // The core's sentence for each change, said politely: a snackbar is a live region, and
@@ -209,6 +210,24 @@ fun LumennaApp(
                 placeStack.clear()
                 placeStack.add(place.screen())
                 placeStack.addAll(screens)
+            }
+
+            // Where a place's action leads is the app's (renamed, made, merged, deleted): when the
+            // app moves on from the place shown, the screen goes with it. A move made here shows
+            // its place first, so it is not the app's to follow.
+            val appPlace = shownView?.place
+            var lastPlace by remember { mutableStateOf(appPlace) }
+            LaunchedEffect(appPlace) {
+                val was = lastPlace
+                lastPlace = appPlace
+                if (appPlace == null || was == null || was == appPlace) return@LaunchedEffect
+                val to = Destination.At(appPlace)
+                if (wide) {
+                    if ((destination as? Destination.At)?.place == was) show(to)
+                } else {
+                    val top = stack.lastOrNull()
+                    if (top is Screen.Tasks && top.place == was) stack[stack.lastIndex] = to.screen()
+                }
             }
 
             /** A tab at its root, with [screens] opened on it; wide, the sidebar's place for it. */

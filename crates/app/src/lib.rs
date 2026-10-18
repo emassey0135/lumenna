@@ -230,6 +230,26 @@ pub(crate) fn spoken(change: &Change) -> String {
     lumenna_records::words::spoken(&change.announcement, &change.notices)
 }
 
+impl Event {
+    /// Whether the person did it, rather than the store, the network or the shell's own clock.
+    fn is_the_persons(&self) -> bool {
+        !matches!(
+            self,
+            Event::Start
+                | Event::Arrived(_)
+                | Event::Answered(_)
+                | Event::SyncStarted(_)
+                | Event::Synced(_)
+                | Event::SyncStatus(_)
+                | Event::Pairing(_)
+                | Event::Clock(_)
+                | Event::Capitals(_)
+                | Event::PlanFrom(_)
+                | Event::Due(DueEvent::Look { .. })
+        )
+    }
+}
+
 impl App for Lumenna {
     type Event = Event;
     type Model = Model;
@@ -251,16 +271,18 @@ impl App for Lumenna {
         // answer comes back: then the row they moved to stays in hand, not the one the write
         // would have put there.
         let moved_since = wrote && model.moves > model.acted_at;
+        // A side list is where a change lands while the person goes on acting from it — a row's
+        // action, the question it asks, its answer — and anything else they do hands landing
+        // back to the main list.
         match &event {
-            Event::Focus(_) => {
-                model.moves += 1;
-                model.acting = None;
-            }
-            Event::Open(_) => {
-                model.acting = None;
-                model.acted_at = model.moves;
-            }
             Event::Hold(side, _) => model.acting = Some(*side),
+            Event::Perform(_) | Event::Answer(_) | Event::Cancel | Event::Run(_) => {}
+            other if other.is_the_persons() => model.acting = None,
+            _ => {}
+        }
+        match &event {
+            Event::Focus(_) => model.moves += 1,
+            Event::Hold(..) => {}
             Event::Arrived(_)
             | Event::Answered(_)
             | Event::SyncStarted(_)

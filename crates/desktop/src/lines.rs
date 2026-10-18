@@ -24,6 +24,8 @@ pub struct Lines {
     pub choices: Vec<Line>,
     /// Each paired device.
     pub devices: Vec<Line>,
+    /// Each reminder of the open reminder list: when it fires, and whether it is a default.
+    pub reminders: Vec<Line>,
     /// Each completion the quick-add line offers: "Work, project".
     pub candidates: Vec<String>,
     /// The task in hand's state, for its details.
@@ -104,6 +106,18 @@ pub fn lines(view: &ViewModel, clock: &dyn Clock) -> Lines {
             .as_ref()
             .and_then(|devices| devices.list.as_ref())
             .map(|list| list.devices.iter().map(crate::devices::parts).collect())
+            .unwrap_or_default(),
+        reminders: view
+            .reminders
+            .as_ref()
+            .map(|list| {
+                list.reminders
+                    .iter()
+                    .map(|reminder| {
+                        Line::of(speech::sentence(&reminder.words), if reminder.own { Vec::new() } else { vec!["a default".to_owned()] })
+                    })
+                    .collect()
+            })
             .unwrap_or_default(),
         candidates: view
             .line

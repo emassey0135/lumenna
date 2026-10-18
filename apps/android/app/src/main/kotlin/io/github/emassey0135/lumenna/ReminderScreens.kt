@@ -1,5 +1,6 @@
 package io.github.emassey0135.lumenna
 
+import io.github.emassey0135.lumenna.app.Side
 import io.github.emassey0135.lumenna.app.ShellEvent
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.semantics.collectionInfo
@@ -65,16 +66,18 @@ fun RemindersScreen(core: Core, navigator: Navigator) {
         )
         val rows = list.reminders
         val state = rememberLazyListState()
-        val focus = rememberHeldFocus(core, rows.map { it.id }, state, rows)
+        val focus = rememberSideLanding(core, Side.REMINDERS, rows.map { it.id }, state)
+        val lines by app.lines.collectAsState()
         LazyColumn(Modifier.fillMaxSize().semantics { collectionInfo = CollectionInfo(rows.size, 1) }, state = state) {
             itemsIndexed(rows, key = { _, reminder -> reminder.id }) { index, reminder ->
-                val detail = if (reminder.own) "" else "Default"
+                val line = lines?.reminders?.getOrNull(index)
+                val detail = line?.detail.orEmpty()
                 ListRow(
-                    title = reminder.words.replaceFirstChar { it.uppercase() },
+                    title = line?.title ?: reminder.words,
                     detail = detail,
                     speech = detail,
                     index = index,
-                    actions = focus.actions(reminder.id, index, app.rowActions(reminder.id, reminder.actions)),
+                    actions = app.rowActions(reminder.id, reminder.actions, side = Side.REMINDERS),
                     open = null,
                     openLabel = "Open",
                     focus = focus.requester(reminder.id),

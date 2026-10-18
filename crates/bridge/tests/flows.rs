@@ -653,6 +653,32 @@ fn renaming_a_project_goes_to_it_and_deleting_it_goes_to_tasks() {
 }
 
 #[test]
+fn a_change_made_from_the_sidebar_lands_there_on_the_row_now_in_its_place_not_in_the_main_list() {
+    let mut app = App::new();
+    let store = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    store.add_project("Garden", None).unwrap();
+    store.add_project("Work", None).unwrap();
+    app.session.tick();
+    let keys: Vec<String> = app.view().sidebar.iter().map(|e| e.key.clone()).collect();
+    let garden = app.view().sidebar.into_iter().find(|e| e.title == "Garden").unwrap();
+    let at = keys.iter().position(|k| *k == garden.key).unwrap();
+    app.send(Event::Hold(lumenna_app::Side::Sidebar, garden.key.clone()));
+    let (main, side) = (app.view().landing, app.view().sidebar_held.landing);
+    app.send(Event::Perform(sidebar_action(&app, "Garden", ActionKind::Delete)));
+    app.send(Event::Answer(Answer::Picked { id: "keep".to_owned(), length: None }));
+    let view = app.view();
+    assert!(view.sidebar.iter().all(|e| e.title != "Garden"));
+    // The row now where Garden was is in hand there, and focus is the sidebar's to move.
+    assert_eq!(view.sidebar_held.focus.as_deref(), Some(view.sidebar[at].key.as_str()));
+    assert!(view.sidebar_held.landing > side);
+    assert_eq!(view.landing, main, "the main list's row moved on quietly");
+    // Doing anything else hands landing back to the main list: a task added lands there.
+    app.send(Event::QuickAdd("Buy milk".to_owned()));
+    assert!(app.view().landing > main);
+    assert_eq!(app.view().sidebar_held.landing, view.sidebar_held.landing);
+}
+
+#[test]
 fn a_shell_that_writes_sentence_case_gets_its_headings_buttons_and_answers_in_it() {
     let mut app = App::new();
     Lumenna::open(app.profile.to_str().unwrap()).unwrap().add_project("Work", None).unwrap();

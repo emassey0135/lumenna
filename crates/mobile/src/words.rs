@@ -3,7 +3,7 @@
 
 use boltffi::export;
 use lumenna_app::Capitals;
-use lumenna_records::places::Place;
+use lumenna_records::places::{Place, SidebarKind};
 use lumenna_records::{ActionKind, Candidate, PairingWords, Subject};
 
 /// `text` in sentence case: for a platform whose convention it is, and for braille.
@@ -16,6 +16,12 @@ pub fn sentence_case(text: String) -> String {
 #[export]
 pub fn candidate_line(candidate: Candidate) -> String {
     lumenna_desktop::speech::candidate(&candidate)
+}
+
+/// What identifies a sidebar row of this kind, as the app names its row in hand.
+#[export]
+pub fn sidebar_key(kind: SidebarKind) -> String {
+    lumenna_records::places::SidebarEntry::key_of(&kind)
 }
 
 /// What a place is called before the app has shown it.

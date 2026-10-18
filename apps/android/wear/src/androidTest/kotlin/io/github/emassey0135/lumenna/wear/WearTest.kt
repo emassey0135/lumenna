@@ -305,7 +305,7 @@ class WearTest {
         press("Today")
         actOnMain("Deep work", "Reminders")
         said("1 reminder, the defaults").assertExists()
-        said("5 minutes before it starts, default").assertExists()
+        said("5 minutes before it starts, a default").assertExists()
         answers += "at end"
         press("Add reminder")
         assertEquals(listOf("New reminder for Deep work"), asked)

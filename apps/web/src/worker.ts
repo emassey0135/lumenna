@@ -23,6 +23,8 @@ import type {
   Event,
   Item,
   Lines,
+  ReminderList,
+  ReminderView,
   ListView,
   Turn,
   ViewModel,
@@ -134,7 +136,11 @@ export interface ShownAsking extends Asking {
 }
 
 /** The view model as the page draws it. */
-export interface Screen extends Omit<ViewModel, "list" | "day" | "details" | "line" | "devices" | "asking"> {
+/** A task's or block's reminders, each with the line it reads as. */
+export type ShownReminders = Omit<ReminderList, "reminders"> & { reminders: (ReminderView & { text: string })[] };
+
+export interface Screen extends Omit<ViewModel, "list" | "day" | "details" | "line" | "devices" | "asking" | "reminders"> {
+  reminders?: ShownReminders;
   asking?: ShownAsking;
   devices?: Omit<DevicesView, "list"> & { list?: Omit<DeviceList, "devices"> & { devices: ShownDevice[] } };
   list?: Shown;
@@ -204,7 +210,11 @@ function screen(view: ViewModel, lines: Lines): Screen {
       })),
     },
   };
-  return { ...view, list, day, details, line, devices, due, asking };
+  const reminders = view.reminders && {
+    ...view.reminders,
+    reminders: view.reminders.reminders.map((reminder, index) => ({ ...reminder, text: lines.reminders[index]?.text ?? reminder.words })),
+  };
+  return { ...view, list, day, details, line, devices, due, asking, reminders };
 }
 
 function turned(turn: Turn): Said {

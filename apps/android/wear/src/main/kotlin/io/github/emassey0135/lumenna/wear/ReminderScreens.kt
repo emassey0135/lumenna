@@ -35,15 +35,17 @@ fun RemindersScreen(core: Core, navigator: Navigator) {
     val app = core.app
     val view by app.view.collectAsState()
     val list = view?.reminders
+    val lines by app.lines.collectAsState()
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(list == null) { if (list != null) shown = true else if (shown) navigator.back() }
     DisposableEffect(Unit) { onDispose { if (app.view.value?.reminders != null) app.send(ShellEvent.CloseReminders) } }
     val ask = rememberNotificationAsk()
     WearList {
         item { Heading(list?.announcement?.replaceFirstChar { it.uppercase() } ?: "Reminders") }
-        list?.reminders.orEmpty().forEach { reminder ->
+        list?.reminders.orEmpty().forEachIndexed { index, reminder ->
             item {
-                val words = reminder.words.replaceFirstChar { it.uppercase() }
+                val line = lines?.reminders?.getOrNull(index)
+                val words = line?.title ?: reminder.words
                 if (reminder.own) {
                     val actions = app.rowActions(reminder.id, reminder.actions)
                     RowButton(words, actions = actions, onLongClick = { navigator.actions(words, actions) }) {
@@ -51,7 +53,7 @@ fun RemindersScreen(core: Core, navigator: Navigator) {
                     }
                 } else {
                     // A default is changed in Planning, so there is nothing to do to it here.
-                    Text("$words, default", Modifier.fillMaxWidth())
+                    Text(line?.text ?: words, Modifier.fillMaxWidth())
                 }
             }
         }

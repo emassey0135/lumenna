@@ -232,6 +232,7 @@ export function App() {
         }}
         settings={screen.settings}
         devices={screen.devices}
+        held={screen.devices_held}
       />
       <KeyboardShortcuts isOpen={keysOpen} onClose={() => setKeysOpen(false)} />
       <ReminderLists list={screen.reminders} />

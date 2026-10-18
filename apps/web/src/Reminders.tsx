@@ -14,7 +14,7 @@
 import { useEffect, useRef } from "react";
 import { Button, Dialog, Heading, Modal } from "react-aria-components";
 import { send } from "./session";
-import type { Action, Due, DueEvent, ReminderList } from "./core";
+import type { Action, Due, DueEvent, ShownReminders } from "./core";
 
 const ON = "lumenna:reminders";
 
@@ -136,7 +136,7 @@ export function RemindersDue(props: { due: Due[] }) {
 // ---------------------------------------------------------------------------------------
 
 /** Where a task's or block's list of reminders is shown: rendered once, while the app has one open. */
-export function ReminderLists(props: { list: ReminderList | undefined }) {
+export function ReminderLists(props: { list: ShownReminders | undefined }) {
   const close = () => void send("CloseReminders");
   return (
     <Modal isDismissable isOpen={props.list !== undefined} onOpenChange={(isOpen) => !isOpen && close()}>
@@ -145,28 +145,28 @@ export function ReminderLists(props: { list: ReminderList | undefined }) {
   );
 }
 
-function Reminders(props: { list: ReminderList; close: () => void }) {
+function Reminders(props: { list: ShownReminders; close: () => void }) {
   const { list } = props;
   const adding = useRef<HTMLDivElement>(null);
 
+  // Where focus goes after a reminder is removed is the app's (`reminders_held`): the one now
+  // in its place, else Add Reminder.
   const act = async (action: Action) => {
     await send({ Perform: action });
     if (action.kind === "new") void askToNotify();
-    // A removed reminder's button is gone: focus goes to adding one.
-    else setTimeout(() => adding.current?.querySelector("button")?.focus(), 0);
   };
 
   return (
     // Named by its heading, the core's count of what it has.
-    <Dialog aria-labelledby="reminders-heading">
+    <Dialog aria-labelledby="reminders-heading" data-list="reminders">
       <Heading slot="title" id="reminders-heading">
         {list.announcement}
       </Heading>
       {list.reminders.length > 0 && (
         <ul className="reminders" aria-labelledby="reminders-heading">
           {list.reminders.map((reminder) => (
-            <li key={reminder.id}>
-              <span id={`reminder-${reminder.id}`}>{reminder.own ? reminder.words : `${reminder.words}, a default`}</span>
+            <li key={reminder.id} data-key={reminder.id} onFocus={() => void send({ Hold: ["Reminders", reminder.id] })}>
+              <span id={`reminder-${reminder.id}`}>{reminder.text}</span>
               {(reminder.actions ?? []).map((action) => (
                 <Button key={action.kind} aria-describedby={`reminder-${reminder.id}`} onPress={() => void act(action)}>
                   {action.sentence ?? action.title}
@@ -176,7 +176,7 @@ function Reminders(props: { list: ReminderList; close: () => void }) {
           ))}
         </ul>
       )}
-      <div className="buttons" ref={adding}>
+      <div className="buttons" ref={adding} data-adding>
         {(list.actions ?? []).map((action) => (
           <Button key={action.kind} onPress={() => void act(action)}>
             {action.sentence ?? action.title}

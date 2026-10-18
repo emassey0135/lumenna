@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.DeviceConfigurationOverride
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.ForcedSize
@@ -132,6 +134,24 @@ class SidebarTest {
         place("Garden").performClick()
         rule.waitForIdle()
         place("Garden").assertIsSelected()
+    }
+
+    @Test
+    fun renamingTheProjectShownGoesToItUnderItsNewNameWithItsSidebarRowInHand() {
+        core.device.addProject("Garden", null)
+        rule.runOnIdle { core.changed() }
+        place("Garden").performClick()
+        rule.waitForIdle()
+        place("Garden").assertIsSelected()
+        act("Garden", "Rename")
+        rule.onNode(hasSetTextAction() and hasText("Garden")).performTextReplacement("Allotment")
+        rule.onNode(hasText("Rename") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Role)).performClick()
+        rule.waitForIdle()
+        // The window follows the app to the project under its new name, and the sidebar's row
+        // in hand, the app's, is the renamed project.
+        place("Allotment").assertIsSelected()
+        rule.onNode(hasText("Allotment") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)).assertExists()
+        place("Allotment").assertIsFocused()
     }
 
     @Test

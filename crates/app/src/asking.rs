@@ -269,10 +269,13 @@ impl Lumenna {
         match result {
             Ok(change) => {
                 // A place renamed, made or removed: go to where it now is.
-                let after = model.open.take().and_then(|open| after_place(&open, model.store.as_ref()?));
+                let open = model.open.take();
+                let deleted = open.as_ref().and_then(Open::action).is_some_and(|action| action.kind == ActionKind::Delete);
+                let after = open.and_then(|open| after_place(&open, model.store.as_ref()?));
                 if change.changed && let Some(place) = after {
-                    // From the sidebar, its row in hand follows the place to where it now is.
-                    if model.acting == Some(crate::Side::Sidebar) {
+                    // From the sidebar, its row in hand follows the place it acted on to where it
+                    // now is; a place deleted leaves the row now in its place in hand instead.
+                    if model.acting == Some(crate::Side::Sidebar) && !deleted {
                         let key = lumenna_records::places::SidebarEntry::key_of(&lumenna_records::places::SidebarKind::Place(place.clone()));
                         let keys = model.side_keys(crate::Side::Sidebar);
                         model.sidebar_held.hold(&key, &keys);

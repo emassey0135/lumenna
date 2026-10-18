@@ -43,6 +43,8 @@ export function Settings(props: {
   settings: SettingsView | undefined;
   /** The Devices page, as the app has it. */
   devices: Screen["devices"];
+  /** The devices list's row in hand. */
+  held: Screen["devices_held"];
 }) {
   return (
     <Modal isDismissable isOpen={props.isOpen} onOpenChange={(open) => !open && props.onClose()}>
@@ -59,7 +61,7 @@ export function Settings(props: {
             <Planning settings={props.settings} />
           </TabPanel>
           <TabPanel id="devices">
-            <DevicesPage devices={props.devices} />
+            <DevicesPage devices={props.devices} held={props.held} />
           </TabPanel>
           <TabPanel id="backups">
             <Backups />

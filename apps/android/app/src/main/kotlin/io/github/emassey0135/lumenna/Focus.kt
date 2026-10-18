@@ -17,30 +17,19 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.getOrNull
+import io.github.emassey0135.lumenna.app.Side
 
 /**
- * Where focus goes after a row's action changes the list: the same row if it is still
- * listed, else whichever now holds its place — not wherever a redraw happens to leave it.
- *
- * The row is given input focus, for a keyboard, and TalkBack's focus too — which does not
- * follow input focus under touch, so it is asked for explicitly. Then what the change did is
- * said, after the row rather than cut off by it, as on the iPhone.
+ * A list's rows' focus requesters, for landing on the row the app puts in hand: given input
+ * focus, for a keyboard, and TalkBack's too — which does not follow input focus under touch,
+ * so it is asked for explicitly. Then what the change did is said, after the row rather than
+ * cut off by it, as on the iPhone.
  */
-class RowFocus internal constructor(private val core: Core) {
-    internal var target: Pair<String, Int>? = null
+class RowFocus internal constructor() {
     private val requesters = HashMap<String, FocusRequester>()
 
     /** The row's own focus requester. */
     fun requester(key: String): FocusRequester = requesters.getOrPut(key) { FocusRequester() }
-
-    /** The row's actions, each noting the row before it runs, so focus can come back to it. */
-    fun actions(key: String, index: Int, actions: List<RowAction>): List<RowAction> = actions.map { action ->
-        action.copy {
-            target = key to index
-            core.hold()
-            action.run()
-        }
-    }
 }
 
 /**
@@ -50,7 +39,7 @@ class RowFocus internal constructor(private val core: Core) {
  */
 @Composable
 fun rememberLanding(core: Core, keys: List<String>, state: LazyListState): RowFocus {
-    val focus = remember { RowFocus(core) }
+    val focus = remember { RowFocus() }
     val view = LocalView.current
     val shown by core.app.view.collectAsState()
     val opened by core.app.opened.collectAsState()
@@ -73,19 +62,29 @@ fun rememberLanding(core: Core, keys: List<String>, state: LazyListState): RowFo
 }
 
 /**
- * A list whose rows the app does not hold in hand — the places — keeping focus on the row
- * acted on: when [version] moves after a row's action (its turn has come), focus goes back to
- * that row, or to the one now in its place, and then what the turn said is said.
+ * A list beside the main one — the places, a reminder list, the devices — on the app's row in
+ * hand for it ([side]): whenever the app moves that row itself (its `landing` goes up after a
+ * change made from the list), focus goes to it, input focus and TalkBack's, and then what the
+ * turn said is said. [keys] are the rows as now listed.
  */
 @Composable
-fun rememberHeldFocus(core: Core, keys: List<String>, state: LazyListState, version: Any?): RowFocus {
-    val focus = remember { RowFocus(core) }
+fun rememberSideLanding(core: Core, side: Side, keys: List<String>, state: LazyListState): RowFocus {
+    val focus = remember { RowFocus() }
     val view = LocalView.current
-    LaunchedEffect(version) {
-        val (key, index) = focus.target ?: return@LaunchedEffect
-        focus.target = null
-        if (keys.isNotEmpty()) {
-            val place = keys.indexOf(key).takeIf { it >= 0 } ?: index.coerceIn(0, keys.lastIndex)
+    val shown by core.app.view.collectAsState()
+    val held = shown?.let {
+        when (side) {
+            Side.SIDEBAR -> it.sidebarHeld
+            Side.REMINDERS -> it.remindersHeld
+            Side.DEVICES -> it.devicesHeld
+        }
+    }
+    val landing = held?.landing
+    val first = remember { landing }
+    LaunchedEffect(landing) {
+        if (landing == null || landing == first) return@LaunchedEffect
+        val place = held.focus?.let { keys.indexOf(it) }?.takeIf { it >= 0 }
+        if (place != null) {
             state.scrollToItem(place)
             withFrameNanos {}
             withFrameNanos {}
