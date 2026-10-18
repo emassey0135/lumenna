@@ -898,6 +898,16 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 - **Completion is a popup menu** on Down or Ctrl+Space. Items lead with the name so a letter
   finds them; the first is highlighted by a Down queued before the menu opens, marked with
   a reserved bit of the key data so the field swallows it if the menu does not take it.
+- **A list item's reason is its description, set twice** (`a11y::set_item_description`, on
+  the item's child id: `TVM_MAPHTREEITEMTOACCID` in a tree, index plus one in a list box):
+  as MSAA's `PROPID_ACC_DESCRIPTION`, which NVDA and JAWS read, and as UI Automation's
+  `HelpText`, which Narrator reads. UIA's proxy does not carry the MSAA one over. A pick's
+  `Choice::reason` and a proposal's sitting reasons go this way.
+- **Reminders are toasts** (`toast.rs`), under an app identity of their own
+  (`LUMENNA_APP_ID` for tests), their buttons the core's: Carry Forward and Replan where a
+  firing has them, then Dismiss and Snooze. Tests can read a shown toast's XML from the
+  notification history but cannot press its buttons, so what each button does is checked by
+  hand.
 - **UI tests** (`tests/ui.rs`) drive the real app and assert on UI Automation. They take the
   foreground, so they are ignored by default and take turns:
   `cargo test -p lumenna-windows --test ui -- --ignored`. A posted key needs the app active
