@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::actions::Choice;
 
 /// How a form field's value is shaped, so a client offers the control that fits.
+#[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -32,6 +33,7 @@ pub enum FieldKind {
 }
 
 /// One field of a form.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -301,6 +303,7 @@ mod tests {
 }
 
 /// Every word of a proposal's screen: Replan from Now's or Plan the Day's.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

@@ -389,13 +389,15 @@ jobs:
           java-version: 21
       # The runner has the Android SDK already; android-actions/setup-android fails asking for
       # the long-gone "tools" package.
-      - name: NDK, platform and cargo-ndk
+      - name: NDK, platform, cargo-ndk and BoltFFI
         run: |
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           # The platform's licence is asked for even when the others are accepted.
           yes | sdkmanager --licenses > /dev/null
           yes | sdkmanager "ndk;30.0.16248370" "platforms;android-37.0" > /dev/null
           cargo install cargo-ndk --locked
+          # The Crux app's library and its Kotlin (crates/mobile), at the version the crates use.
+          cargo install boltffi_cli --version 0.31.1 --locked
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
       - name: Build
         working-directory: apps/android

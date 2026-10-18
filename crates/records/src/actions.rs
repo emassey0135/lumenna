@@ -24,6 +24,7 @@ use crate::types::{CancelledBlock, PlanAssignment, PlanBlock, PlanItem, Rows};
 
 /// What an action does. Generic across what it is done to, so a key can mean one thing
 /// everywhere: Delete is [`ActionKind::Delete`] on whatever row has focus.
+#[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -130,6 +131,7 @@ pub enum ActionKind {
 }
 
 /// What an action is done to: with [`ActionKind`], what runs.
+#[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -161,6 +163,7 @@ pub enum Subject {
 }
 
 /// One thing that can be done, and what it asks first.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -192,6 +195,7 @@ pub struct Action {
 }
 
 /// What an action asks before it runs, which the client asks its own way.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -253,6 +257,7 @@ pub enum Question {
 }
 
 /// Something to choose.
+#[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -284,6 +289,7 @@ pub struct Choice {
 }
 
 /// What a picker offers.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -300,6 +306,7 @@ pub struct Choices {
 crate::announced!(Choices);
 
 /// The answer to an action's question.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

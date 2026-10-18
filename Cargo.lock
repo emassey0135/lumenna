@@ -554,6 +554,80 @@ dependencies = [
 ]
 
 [[package]]
+name = "boltffi"
+version = "0.31.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15bb38f198fcecec3a0845a01198df637bbbe21f927b642e73a54881df665c20"
+dependencies = [
+ "boltffi_core",
+ "boltffi_macros",
+]
+
+[[package]]
+name = "boltffi_ast"
+version = "0.31.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61e5bf26f14830edc8673d05a1e8d0bb44b6a533e6d01d99e411e02577ed6d5f"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "boltffi_binding"
+version = "0.31.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d39b74b304ca107ea1b1ef6d2d8d7c4b69a9bad7bf206cc047dd87174d29776"
+dependencies = [
+ "boltffi_ast",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "boltffi_core"
+version = "0.31.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d6ee6290de9493be873985f34baa4b75ecdede5a46be85eee28c8e058449288"
+dependencies = [
+ "boltffi_macros",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "boltffi_macros"
+version = "0.31.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3ae23a49821e96421a1973dfdf14e298b2626fad1da355d5644dbfa8bf71bcc"
+dependencies = [
+ "boltffi_ast",
+ "boltffi_binding",
+ "boltffi_scan",
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "rustc_lexer",
+ "serde",
+ "syn 2.0.119",
+ "toml",
+]
+
+[[package]]
+name = "boltffi_scan"
+version = "0.31.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c351cd73c32e7038e1abe3e08770618506de340fa9e5396cabe7dbce684730d"
+dependencies = [
+ "boltffi_ast",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 2.0.119",
+ "walkdir",
+]
+
+[[package]]
 name = "borsh"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2961,8 +3035,8 @@ checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
 name = "lumenna-app"
 version = "0.1.0"
 dependencies = [
+ "boltffi",
  "crux_core",
- "facet",
  "jiff",
  "lumenna-core",
  "lumenna-parse",
@@ -3083,6 +3157,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "lumenna-mobile"
+version = "0.1.0"
+dependencies = [
+ "boltffi",
+ "crux_core",
+ "futures",
+ "lumenna-app",
+ "lumenna-bridge",
+ "lumenna-host",
+ "lumenna-records",
+]
+
+[[package]]
 name = "lumenna-parse"
 version = "0.1.0"
 dependencies = [
@@ -3095,6 +3182,7 @@ dependencies = [
 name = "lumenna-records"
 version = "0.1.0"
 dependencies = [
+ "boltffi",
  "jiff",
  "lumenna-core",
  "lumenna-parse",
@@ -4435,6 +4523,15 @@ name = "rustc-hash"
 version = "2.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6b1e7f9a428571be2dc5bc0505c13fb6bf936822b894ec87abf8a08a4e51742d"
+
+[[package]]
+name = "rustc_lexer"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c86aae0c77166108c01305ee1a36a1e77289d7dc6ca0a3cd91ff4992de2d16a5"
+dependencies = [
+ "unicode-xid",
+]
 
 [[package]]
 name = "rustc_version"

@@ -15,6 +15,7 @@ use crate::model::Model;
 use crate::{Effect, Event, Lumenna, host, say};
 
 /// What the person does in Settings.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum SettingsEvent {
@@ -65,6 +66,7 @@ pub struct Settings {
 }
 
 /// One setting as shown.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct SettingView {
@@ -78,6 +80,7 @@ pub struct SettingView {
 }
 
 /// An export Settings offers.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ExportChoice {
@@ -90,6 +93,7 @@ pub struct ExportChoice {
 }
 
 /// Settings as shown.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct SettingsView {
@@ -100,6 +104,7 @@ pub struct SettingsView {
 }
 
 /// A file for the shell to save: a backup or an export.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct SaveFile {

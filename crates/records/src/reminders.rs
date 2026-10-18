@@ -17,6 +17,7 @@ pub const STALE_MINS: i64 = 5;
 pub const SNOOZE_MINS: u32 = 10;
 
 /// One firing, as a notification shows it.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -80,6 +81,7 @@ pub struct DueReminders {
 crate::announced!(DueReminders, ReminderList);
 
 /// One reminder a task or block has, its own or a default.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -103,6 +105,7 @@ pub struct ReminderView {
 }
 
 /// The reminders a task or block has.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

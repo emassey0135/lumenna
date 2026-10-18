@@ -12,8 +12,9 @@ description = "Lumenna's screens as a Crux app: what is open, what is in hand, w
 wasm = ["dep:tsify", "dep:wasm-bindgen", "lumenna-records/wasm"]
 
 [dependencies]
+# The view model and events marked for the Kotlin apps (crates/mobile).
+boltffi = "=0.31.1"
 crux_core = "0.20.0"
-facet = "=0.46.5"
 jiff.workspace = true
 lumenna-core.workspace = true
 lumenna-parse.workspace = true

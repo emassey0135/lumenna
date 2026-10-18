@@ -16,6 +16,7 @@ use crate::model::Model;
 use crate::{Effect, Event, Lumenna, host, proposal, say};
 
 /// What the person, or the shell's clock, does about reminders due.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum DueEvent {
@@ -39,6 +40,7 @@ pub enum DueEvent {
 }
 
 /// One reminder due, as listed.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Due {
@@ -67,6 +69,7 @@ pub struct Due {
 }
 
 /// A notification to show as the platform shows one.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Notice {

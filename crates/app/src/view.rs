@@ -1,5 +1,6 @@
 //! What each app draws: the model read into records.
 
+use lumenna_records::reminders::ReminderList;
 use jiff::Zoned;
 use lumenna_core::snapshot::Snapshot;
 use lumenna_records::places::{Place, SidebarEntry, sidebar};
@@ -10,6 +11,7 @@ use crate::list::{self, Item};
 use crate::{DayView, DetailsView, LineView, Model};
 
 /// Everything on screen.
+#[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ViewModel {
@@ -69,10 +71,11 @@ pub struct ViewModel {
     pub due: Vec<crate::Due>,
     /// A task's or block's reminders, while their list is open.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reminders: Option<lumenna_records::reminders::ReminderList>,
+    pub reminders: Option<ReminderList>,
 }
 
 /// A list of tasks as shown.
+#[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ListView {
@@ -94,6 +97,7 @@ pub struct ListView {
 }
 
 /// A question open.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Asking {

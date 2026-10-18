@@ -1,0 +1,3 @@
+# BoltFFI builds its binding metadata here, and packs into dist/ when run by hand.
+/target/
+/dist/

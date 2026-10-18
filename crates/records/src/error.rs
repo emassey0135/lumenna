@@ -6,6 +6,7 @@
 /// aloud — *"no project called 'Wrok' — did you mean 'Work'?"* — and a client's job is to say
 /// it, not to compose its own from a code. A typed variant earns its place only when a client
 /// would act differently on it; when one does, it is added here.
+#[boltffi::error]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Error))]
 pub enum LumennaError {

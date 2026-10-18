@@ -34,6 +34,7 @@ crates/host/    the command surface: the `Lumenna` object, one method per operat
 crates/app/     the Crux app: the screens' state (place, row in hand, folding, the question
                 open) as events in and view models out; every write an effect. No host.
 crates/bridge/  the app beside its store: Crux middleware answering the app's store effects.
+crates/mobile/  the app for the Kotlin apps through BoltFFI: `App`, the shell's events, its turns.
 crates/ffi/     the library the Swift and Kotlin apps link; re-exports surface over UniFFI.
 crates/sync/    Iroh endpoints, the document sync session, and pairing.
 crates/desktop/ what the Windows, GTK and web apps decide alike: row wording, flat rows as a
@@ -1104,6 +1105,20 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 `apps/android/`: Kotlin and Jetpack Compose over UniFFI's Kotlin bindings (JNA). Its README
 gives the toolchain. Three modules: `app` (the phone), `wear` (Wear OS) and `shared`.
 
+- **The screens are moving onto the Crux app** (`crates/mobile`, through BoltFFI): its library
+  (`liblumenna-mobile.so`) and Kotlin (`io.github.emassey0135.lumenna.app`) are built beside the
+  UniFFI core by `build-core.sh` (`boltffi pack android`, an overlay pointing its outputs into
+  the build directory), so the two run side by side, each on its own connection to the store,
+  while screens move one at a time. BoltFFI carries the records typed, by its own encoding, so
+  serde's shapes are no concern; `#[boltffi::data]` marks every record the view reaches.
+  Its scanner does not see a marker inside `cfg_attr`, so it is unconditional, and it resolves a
+  type of another crate only by that crate's root path or an import, never a path into its
+  modules. BoltFFI cannot leave a variant out, so the shell's events are `ShellEvent`, the
+  app's `Event` less what its own effects answer; an exhaustive match each way sorts a new one.
+  The network is the bridge's native middleware (`lumenna_bridge::network`, the `network`
+  feature): each request on a thread over the host's blocking sync, syncing only while the app
+  is in front (`App::in_front`), which is the platform's to say. Turns reach the Kotlin `Shell`
+  from one thread of the app's, in order, what arrived together as one.
 - **`shared` holds the core and what decides nothing about looks**: the core's build and
   bindings, `Core`, `Words` (clock, row speech, text offsets, completion), folding, the
   day's rows, `Asking.kt` (running the core's actions through an `Asker`, the dialogs on

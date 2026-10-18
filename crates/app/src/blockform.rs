@@ -22,6 +22,7 @@ use crate::model::Model;
 use crate::{DayKind, Effect, Event, Lumenna, host, say};
 
 /// What the person does in the block form.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum BlockEvent {
@@ -89,6 +90,7 @@ pub struct Form {
 }
 
 /// The form as shown.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct BlockFormView {

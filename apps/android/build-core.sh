@@ -64,3 +64,39 @@ case "$(uname)" in
 esac
 cargo run -q -p lumenna-ffi --features bindgen --bin uniffi-bindgen -- \
   generate --library "$HOST_LIB" --language kotlin --no-format --out-dir "$KOTLIN"
+
+# The Crux app through BoltFFI (crates/mobile), beside the UniFFI core while the screens move
+# over to it. BoltFFI builds the library per ABI, compiles its JNI glue into it, and writes its
+# Kotlin; an overlay points its outputs into this build's directories.
+BOLT="$(dirname "$KOTLIN")/boltffi"
+architectures=""
+for abi in $ABIS; do
+  case "$abi" in
+    arm64-v8a) architectures="$architectures\"arm64\", " ;;
+    x86_64) architectures="$architectures\"x86_64\", " ;;
+    armeabi-v7a) architectures="$architectures\"armv7\", " ;;
+  esac
+done
+# Its Kotlin afresh each time: a file it no longer writes would otherwise stay and redeclare.
+rm -rf "$BOLT/kotlin"
+mkdir -p "$BOLT"
+cat > "$BOLT/overlay.toml" <<EOF
+[targets.android]
+output = "$BOLT"
+architectures = [${architectures%, }]
+
+[targets.android.pack]
+output = "$JNI_LIBS"
+
+[targets.android.kotlin]
+output = "$BOLT/kotlin"
+EOF
+(cd "$ROOT/crates/mobile" && env -i HOME="$HOME" USER="${USER:-}" ${CARGO_HOME:+CARGO_HOME="$CARGO_HOME"} ${RUSTUP_HOME:+RUSTUP_HOME="$RUSTUP_HOME"} \
+  PATH="$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin" \
+  ANDROID_HOME="$SDK" ANDROID_NDK_HOME="$NDK" \
+  boltffi pack android $PROFILE_FLAG --quiet --overlay "$BOLT/overlay.toml")
+# Only the Kotlin: the JNI glue beside it is compiled into the library already.
+rm -rf "$KOTLIN/io/github/emassey0135/lumenna/app"
+mkdir -p "$KOTLIN/io/github/emassey0135/lumenna"
+cp -R "$BOLT/kotlin/io/github/emassey0135/lumenna/app" "$KOTLIN/io/github/emassey0135/lumenna/"
+

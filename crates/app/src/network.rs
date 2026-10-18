@@ -58,6 +58,7 @@ impl Operation for NetworkRequest {
 }
 
 /// What the person does on the Devices page.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum DevicesEvent {
@@ -70,6 +71,7 @@ pub enum DevicesEvent {
 }
 
 /// What the person does while pairing.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum PairEvent {
@@ -120,6 +122,7 @@ pub struct Devices {
 }
 
 /// The pairing screen as shown.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct PairingView {
@@ -143,6 +146,7 @@ pub struct PairingView {
 }
 
 /// The Devices page as shown.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct DevicesView {

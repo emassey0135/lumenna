@@ -16,6 +16,7 @@ use crate::model::Model;
 use crate::{DayMove, Effect, Event, Lumenna};
 
 /// What a row of the day is.
+#[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[serde(rename_all = "snake_case")]
@@ -35,6 +36,7 @@ pub enum DayKind {
 }
 
 /// Free time, as a row says it.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct FreeTime {
@@ -51,6 +53,7 @@ pub struct FreeTime {
 }
 
 /// Now, outside a block.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct NowRow {
@@ -61,6 +64,7 @@ pub struct NowRow {
 }
 
 /// One row of the day.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct DayItem {
@@ -119,6 +123,7 @@ impl DayItem {
 }
 
 /// A day, as shown.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct DayView {

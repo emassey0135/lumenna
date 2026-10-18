@@ -6,6 +6,7 @@ use lumenna_records::{Action, ActionKind, Question, RowView, Rows};
 use serde::{Deserialize, Serialize};
 
 /// One row of a list.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Item {

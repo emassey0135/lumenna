@@ -99,6 +99,7 @@ mod effects {
 }
 
 /// Moving through the days.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum DayMove {

@@ -9,6 +9,7 @@ use crate::model::Model;
 use crate::{Effect, Event, Lumenna};
 
 /// What the person does in quick add.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum Typing {
@@ -37,6 +38,7 @@ pub struct Line {
 }
 
 /// The line as shown, with what it will add and what fits at the cursor.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct LineView {

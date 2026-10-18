@@ -15,6 +15,7 @@ use crate::types::{BlockEdit, BlockShown, NewBlock, PlanAssignment, PlanBlock, T
 use crate::words::duration;
 
 /// A task's editable fields, as a form shows them: all text, apart from the priority.
+#[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -144,6 +145,7 @@ pub fn block_defaults(kind: String) -> Option<BlockDefaults> {
 }
 
 /// A block's editable fields, as a form shows them: all text, apart from the three flags.
+#[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

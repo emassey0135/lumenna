@@ -1,0 +1,12 @@
+# BoltFFI's configuration for the Kotlin apps. Gradle builds through
+# apps/android/build-core.sh, which writes its outputs into the build directory with an overlay.
+[package]
+name = "lumenna-mobile"
+
+[targets.android]
+min_sdk = 28
+architectures = ["arm64", "x86_64", "armv7"]
+
+[targets.android.kotlin]
+package = "io.github.emassey0135.lumenna.app"
+module_name = "LumennaApp"

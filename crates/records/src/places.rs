@@ -13,6 +13,7 @@ use crate::types::RowView;
 use crate::{label_reference, project_reference};
 
 /// Somewhere to go.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -72,6 +73,7 @@ impl Place {
 }
 
 /// What a sidebar row is.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -83,6 +85,7 @@ pub enum SidebarKind {
 }
 
 /// The sidebar's headings.
+#[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -96,6 +99,7 @@ pub enum SidebarGroup {
 }
 
 /// One sidebar row.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

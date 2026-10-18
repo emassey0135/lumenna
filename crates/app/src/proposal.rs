@@ -19,6 +19,7 @@ use crate::model::Model;
 use crate::{Effect, Event, Lumenna, host, say};
 
 /// What the person does on a proposal's screen.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum ProposalEvent {
@@ -149,6 +150,7 @@ impl Screen {
 }
 
 /// One change, as its line says it.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ChangeView {
@@ -162,6 +164,7 @@ pub struct ChangeView {
 }
 
 /// A proposal's screen as shown.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ProposalView {

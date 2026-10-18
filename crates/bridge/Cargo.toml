@@ -7,6 +7,11 @@ license.workspace = true
 repository.workspace = true
 description = "The app beside its store: the store's effects answered as Crux middleware, for every shell that runs the app in the same process as its store."
 
+[features]
+# The network answered natively, over the host's sync on threads: for the apps that run the app
+# in a process of their own. A browser answers it on its event loop instead.
+network = ["lumenna-host/sync"]
+
 [dependencies]
 crux_core = "=0.20.0"
 futures = { version = "0.3", default-features = false, features = ["std", "executor"] }

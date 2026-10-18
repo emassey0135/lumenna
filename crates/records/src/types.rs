@@ -302,6 +302,7 @@ impl Rows {
 }
 
 /// A filter query, read back.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -317,6 +318,7 @@ pub struct Query {
 }
 
 /// A name in a query that matches nothing.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -331,6 +333,7 @@ pub struct Unresolved {
 }
 
 /// One row, as its components.
+#[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -436,6 +439,7 @@ pub struct TaskShown {
 }
 
 /// Everything about one task.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -490,6 +494,7 @@ pub struct TaskDetail {
 }
 
 /// A task another task waits for.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -629,6 +634,7 @@ pub struct WorkBlock {
 }
 
 /// A repeating block that does not happen on one day because that day was cancelled.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -687,6 +693,7 @@ pub enum PlanItem {
 }
 
 /// One block on a day.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -806,6 +813,7 @@ pub fn repetition_phrase(rrule: &str, from_completion: bool) -> Option<String> {
 }
 
 /// One task assigned to a block for one sitting.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -914,6 +922,7 @@ pub struct SettingList {
 }
 
 /// One setting.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -941,6 +950,7 @@ pub struct Setting {
 }
 
 /// How a setting's value is shaped.
+#[boltffi::data]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -966,6 +976,7 @@ pub enum SettingKind {
 // ---------------------------------------------------------------------------------------
 
 /// What could be inserted where the cursor is.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -984,6 +995,7 @@ pub struct Completions {
 }
 
 /// One thing that could be inserted.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -1184,6 +1196,7 @@ pub struct RestoreDone {
 }
 
 /// The formats an export can take.
+#[boltffi::data]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -1553,6 +1566,7 @@ pub struct SyncReport {
 }
 
 /// One paired device, with how syncing with it last went.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -1607,6 +1621,7 @@ pub struct SyncStatus {
 }
 
 /// The paired devices.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

@@ -13,6 +13,9 @@
 //! work under way, so a shell or a test can wait until the app is still. No shell waits for it
 //! on the thread it draws on: each draws what the app leaves as it arrives.
 
+#[cfg(all(feature = "network", not(all(target_family = "wasm", target_os = "unknown"))))]
+pub mod network;
+
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 
 use crux_core::Core;

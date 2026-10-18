@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::types::Change;
 
 /// The clock a client says times in.
+#[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

@@ -15,6 +15,7 @@ use crate::model::Model;
 use crate::{Effect, Event, Lumenna, host, say};
 
 /// What the person does in the details.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum DetailsEvent {
@@ -54,6 +55,7 @@ pub struct Details {
 }
 
 /// The details as shown.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct DetailsView {
