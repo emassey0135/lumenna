@@ -256,7 +256,7 @@ class WearTest {
         }
         press("Settings")
         press("Devices and sync")
-        val words = io.github.emassey0135.lumenna.core.pairingWords("this watch", true)
+        val words = io.github.emassey0135.lumenna.records.pairingWords("this watch", true)
         answers += ""
         press(words.theirCode)
         assertEquals(listOf(words.theirCode), asked)
@@ -299,7 +299,7 @@ class WearTest {
         // Granted, so adding the first reminder asks nothing over the app.
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.uiAutomation.grantRuntimePermission(instrumentation.targetContext.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
-        core.lumenna.addBlock(io.github.emassey0135.lumenna.core.NewBlock(title = "Deep work", at = "9:00", minutes = 90u, date = "today", kind = "work", repeat = null))
+        core.lumenna.addBlock(io.github.emassey0135.lumenna.records.NewBlock(title = "Deep work", at = "9:00", minutes = 90u, date = "today", kind = "work", repeat = null))
         rule.runOnIdle { core.changed() }
         press("Today")
         actOnMain("Deep work", "Reminders")
@@ -329,7 +329,7 @@ class WearTest {
     // MARK: - The planner
 
     private fun block(title: String, date: String, at: String, minutes: UInt, kind: String = "work") =
-        core.lumenna.addBlock(io.github.emassey0135.lumenna.core.NewBlock(title = title, at = at, minutes = minutes, date = date, kind = kind, repeat = null))
+        core.lumenna.addBlock(io.github.emassey0135.lumenna.records.NewBlock(title = title, at = at, minutes = minutes, date = date, kind = kind, repeat = null))
 
     private fun checked(text: String): Boolean =
         shown(text, substring = true).fetchSemanticsNode().config.getOrNull(SemanticsProperties.ToggleableState) == androidx.compose.ui.state.ToggleableState.On
@@ -397,7 +397,7 @@ class WearTest {
         core.lumenna.addTask("write the chapter p1")
         rule.runOnIdle { core.changed() }
         press("Today")
-        press(core.lumenna.plan(null).actions.single { it.kind == io.github.emassey0135.lumenna.core.ActionKind.WHAT_NOW }.sentence)
+        press(core.lumenna.plan(null).actions.single { it.kind == io.github.emassey0135.lumenna.records.ActionKind.WHAT_NOW }.sentence)
         shown("write the chapter").assertExists()
         said("Suggested because").assertExists()
         press("write the chapter")
@@ -428,7 +428,7 @@ class WearTest {
     @Test
     fun anotherOptionOnTheReplanScreenIsProposedInPlace() {
         replannedDay()
-        val skip = core.lumenna.replan(io.github.emassey0135.lumenna.Clock.style, io.github.emassey0135.lumenna.core.ReplanPins(emptyList(), emptyList(), emptyList()), plannerNow.value).alternatives.first { it.sentence.startsWith("Skip Lunch today") }
+        val skip = core.lumenna.replan(io.github.emassey0135.lumenna.Clock.style, io.github.emassey0135.lumenna.records.ReplanPins(emptyList(), emptyList(), emptyList()), plannerNow.value).alternatives.first { it.sentence.startsWith("Skip Lunch today") }
         press("Today")
         press("Replan from now")
         said("Other options").assertExists()

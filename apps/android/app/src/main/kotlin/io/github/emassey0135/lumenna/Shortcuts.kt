@@ -7,7 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
-import io.github.emassey0135.lumenna.core.ActionKind
+import io.github.emassey0135.lumenna.records.ActionKind
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /** A key with the modifiers it needs, and no others. */

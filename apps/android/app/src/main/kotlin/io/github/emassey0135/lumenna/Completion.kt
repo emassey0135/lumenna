@@ -23,8 +23,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import io.github.emassey0135.lumenna.core.Candidate
-import io.github.emassey0135.lumenna.core.Syntax
+import io.github.emassey0135.lumenna.records.Candidate
+import io.github.emassey0135.lumenna.records.Syntax
 
 /**
  * A line in the quick-add or filter language, with what could go at the cursor offered as

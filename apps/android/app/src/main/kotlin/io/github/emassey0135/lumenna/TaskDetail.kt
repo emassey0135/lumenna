@@ -43,12 +43,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
-import io.github.emassey0135.lumenna.core.ActionKind
-import io.github.emassey0135.lumenna.core.FieldKind
-import io.github.emassey0135.lumenna.core.TaskDetail
-import io.github.emassey0135.lumenna.core.TaskFields
-import io.github.emassey0135.lumenna.core.taskEdit
-import io.github.emassey0135.lumenna.core.taskFields
+import io.github.emassey0135.lumenna.records.ActionKind
+import io.github.emassey0135.lumenna.records.FieldKind
+import io.github.emassey0135.lumenna.records.TaskDetail
+import io.github.emassey0135.lumenna.records.TaskFields
+import io.github.emassey0135.lumenna.records.taskEdit
+import io.github.emassey0135.lumenna.records.taskFields
 
 /**
  * One task, its fields edited and saved together.

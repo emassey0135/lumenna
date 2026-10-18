@@ -3,21 +3,21 @@ package io.github.emassey0135.lumenna
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import io.github.emassey0135.lumenna.core.BlockFields
-import io.github.emassey0135.lumenna.core.BlockScope
-import io.github.emassey0135.lumenna.core.FormField
-import io.github.emassey0135.lumenna.core.LumennaException
-import io.github.emassey0135.lumenna.core.TaskDetail
-import io.github.emassey0135.lumenna.core.TaskFields
-import io.github.emassey0135.lumenna.core.blockDefaults
-import io.github.emassey0135.lumenna.core.blockForm
-import io.github.emassey0135.lumenna.core.blockEdit
-import io.github.emassey0135.lumenna.core.blockFields
-import io.github.emassey0135.lumenna.core.dayBlockFields
-import io.github.emassey0135.lumenna.core.newBlock
-import io.github.emassey0135.lumenna.core.taskEdit
-import io.github.emassey0135.lumenna.core.taskForm
-import io.github.emassey0135.lumenna.core.unsayableRepeatNote
+import io.github.emassey0135.lumenna.records.BlockFields
+import io.github.emassey0135.lumenna.records.BlockScope
+import io.github.emassey0135.lumenna.records.FormField
+import io.github.emassey0135.lumenna.records.LumennaException
+import io.github.emassey0135.lumenna.records.TaskDetail
+import io.github.emassey0135.lumenna.records.TaskFields
+import io.github.emassey0135.lumenna.records.blockDefaults
+import io.github.emassey0135.lumenna.records.blockForm
+import io.github.emassey0135.lumenna.records.blockEdit
+import io.github.emassey0135.lumenna.records.blockFields
+import io.github.emassey0135.lumenna.records.dayBlockFields
+import io.github.emassey0135.lumenna.records.newBlock
+import io.github.emassey0135.lumenna.records.taskEdit
+import io.github.emassey0135.lumenna.records.taskForm
+import io.github.emassey0135.lumenna.records.unsayableRepeatNote
 
 // The task and block forms as the phone and the watch both edit them: each field and how
 // saving sends only what changed. What each field is called, takes and shows as an example is

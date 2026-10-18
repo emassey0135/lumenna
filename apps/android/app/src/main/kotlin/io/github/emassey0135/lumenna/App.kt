@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
-import io.github.emassey0135.lumenna.core.Place
+import io.github.emassey0135.lumenna.records.Place
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.VerticalDivider
@@ -24,7 +24,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onKeyEvent
-import io.github.emassey0135.lumenna.core.LumennaException
+import io.github.emassey0135.lumenna.records.LumennaException
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.RowScope
@@ -130,7 +130,7 @@ sealed interface Screen {
     data object ReminderSettings : Screen
 
     /** Replan from Now or Plan the Day, for a day: the core's proposal, to accept in part. */
-    data class Proposal(val kind: io.github.emassey0135.lumenna.core.ActionKind, val date: String) : Screen
+    data class Proposal(val kind: io.github.emassey0135.lumenna.records.ActionKind, val date: String) : Screen
 }
 
 /** The four tabs, as on the iPhone: each its own back stack. */
@@ -250,7 +250,7 @@ fun LumennaApp(
                     "block" -> if (reminder.occurrence == Clock.today() || reminder.occurrence.isEmpty()) go(Tab.TODAY)
                         else go(Tab.TODAY, Screen.Day(reminder.occurrence))
                     // An overrun's Replan button: the rest of today, worked out again.
-                    Reminders.REPLAN -> go(Tab.TODAY, Screen.Proposal(io.github.emassey0135.lumenna.core.ActionKind.REPLAN, Clock.today()))
+                    Reminders.REPLAN -> go(Tab.TODAY, Screen.Proposal(io.github.emassey0135.lumenna.records.ActionKind.REPLAN, Clock.today()))
                     else -> {}
                 }
             }

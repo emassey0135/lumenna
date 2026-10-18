@@ -38,7 +38,7 @@ class WatchLinkTest {
         // Each side's output is the other's input, as a channel's two ends.
         val (toWatch, watchReads) = pipe()
         val (toPhone, phoneReads) = pipe()
-        var watchResult: Result<io.github.emassey0135.lumenna.core.LinkSynced>? = null
+        var watchResult: Result<io.github.emassey0135.lumenna.records.LinkSynced>? = null
         val other = thread {
             watchResult = runCatching { watch.lumenna.syncOverLink(WatchLink.ChannelStreams(watchReads, toPhone), "Watch", "wearos") }
         }

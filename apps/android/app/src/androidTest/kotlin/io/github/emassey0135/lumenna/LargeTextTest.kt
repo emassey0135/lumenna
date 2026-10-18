@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import io.github.emassey0135.lumenna.core.MoveTarget
+import io.github.emassey0135.lumenna.records.MoveTarget
 import java.io.File
 import java.util.UUID
 import org.junit.After

@@ -17,12 +17,12 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import io.github.emassey0135.lumenna.core.Place
-import io.github.emassey0135.lumenna.core.SidebarGroup
-import io.github.emassey0135.lumenna.core.SidebarKind
-import io.github.emassey0135.lumenna.core.placeQuery
-import io.github.emassey0135.lumenna.core.placeQuickAddPrefix
-import io.github.emassey0135.lumenna.core.placeTitle
+import io.github.emassey0135.lumenna.records.Place
+import io.github.emassey0135.lumenna.records.SidebarGroup
+import io.github.emassey0135.lumenna.records.SidebarKind
+import io.github.emassey0135.lumenna.records.placeQuery
+import io.github.emassey0135.lumenna.records.placeQuickAddPrefix
+import io.github.emassey0135.lumenna.records.placeTitle
 
 /** Somewhere a wide window's sidebar goes: one of the core's places, or Settings. */
 sealed interface Destination {

@@ -12,7 +12,7 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::{gdk, glib};
 use lumenna_host::actions::{ActionKind, Answer, Subject};
-use lumenna_host::places::{self, Place, SidebarEntry, SidebarGroup, SidebarKind};
+use lumenna_host::places::{Place, SidebarEntry, SidebarGroup, SidebarKind};
 
 use crate::actions;
 use crate::tree::{Item, Tree};

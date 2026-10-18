@@ -1,13 +1,13 @@
 package io.github.emassey0135.lumenna
 
-import io.github.emassey0135.lumenna.core.Action
-import io.github.emassey0135.lumenna.core.BlockFields
-import io.github.emassey0135.lumenna.core.CancelledBlock
-import io.github.emassey0135.lumenna.core.Plan
-import io.github.emassey0135.lumenna.core.PlanAssignment
-import io.github.emassey0135.lumenna.core.PlanBlock
-import io.github.emassey0135.lumenna.core.PlanItem
-import io.github.emassey0135.lumenna.core.blockDefaults
+import io.github.emassey0135.lumenna.records.Action
+import io.github.emassey0135.lumenna.records.BlockFields
+import io.github.emassey0135.lumenna.records.CancelledBlock
+import io.github.emassey0135.lumenna.records.Plan
+import io.github.emassey0135.lumenna.records.PlanAssignment
+import io.github.emassey0135.lumenna.records.PlanBlock
+import io.github.emassey0135.lumenna.records.PlanItem
+import io.github.emassey0135.lumenna.records.blockDefaults
 
 // The day as rows, and how each reads, for the phone's day and the watch's alike.
 

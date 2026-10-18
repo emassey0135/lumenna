@@ -10,12 +10,12 @@ import android.os.Looper
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import io.github.emassey0135.lumenna.core.LumennaException
-import io.github.emassey0135.lumenna.core.PairedWith
+import io.github.emassey0135.lumenna.records.LumennaException
+import io.github.emassey0135.lumenna.records.PairedWith
 import io.github.emassey0135.lumenna.core.PairingPrompt
-import io.github.emassey0135.lumenna.core.PairingWords
-import io.github.emassey0135.lumenna.core.pairingWords
-import io.github.emassey0135.lumenna.core.Reach
+import io.github.emassey0135.lumenna.records.PairingWords
+import io.github.emassey0135.lumenna.records.pairingWords
+import io.github.emassey0135.lumenna.records.Reach
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread

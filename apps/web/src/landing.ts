@@ -6,23 +6,21 @@ export function rowKey(event: { target: EventTarget }): string | undefined {
   return (event.target as HTMLElement).closest<HTMLElement>('[role="row"]')?.dataset.key;
 }
 
+/** The key of the row holding `element`, if any. */
+export function rowOf(element: Element | null): string | undefined {
+  return element?.closest<HTMLElement>('[role="row"]')?.dataset.key;
+}
+
 /**
  * Puts focus on the row `key` once the tree has drawn it, or on the tree itself when nothing is
- * in hand. A React Aria tree builds its collection in a pass of its own, so the row can be a
- * frame or two behind the screen. Focus the person moves somewhere else meanwhile stays there.
+ * in hand, for as long as `free` says focus is still the app's to move. A React Aria tree builds
+ * its collection in a pass of its own, so the row can be a frame or two behind the screen.
  */
-export function landOn(tree: HTMLElement | null, key: string | undefined): Promise<void> {
-  const from = document.activeElement;
-  const fromRow = from?.closest<HTMLElement>('[role="row"]')?.dataset.key;
+export function landOn(tree: HTMLElement | null, key: string | undefined, free: () => boolean = () => true): Promise<void> {
   return new Promise((resolve) => {
     let tries = 0;
     const step = () => {
-      // Moved since by the person: to another row, or out of the list. A row drawn again is
-      // another element with the same key, which is not a move.
-      const now = document.activeElement;
-      const nowRow = now?.closest<HTMLElement>('[role="row"]')?.dataset.key;
-      const moved = tree?.contains(now) ? nowRow !== undefined && nowRow !== fromRow : now !== from && now !== document.body;
-      if (now && moved) {
+      if (!free()) {
         resolve();
         return;
       }

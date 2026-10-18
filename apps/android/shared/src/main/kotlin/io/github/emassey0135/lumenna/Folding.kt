@@ -65,10 +65,10 @@ fun foldAction(core: Core, row: Shown<*>, key: String, folding: MutableState<Set
  */
 data class RowAction(
     val name: String,
-    val kind: io.github.emassey0135.lumenna.core.ActionKind? = null,
+    val kind: io.github.emassey0135.lumenna.records.ActionKind? = null,
     val destructive: Boolean = false,
     /** What the core's action is done to, so a key with nothing to do here can say why. */
-    val subject: io.github.emassey0135.lumenna.core.Subject? = null,
+    val subject: io.github.emassey0135.lumenna.records.Subject? = null,
     /** Whether a row shows it by itself, before the rest (`Action.primary`). */
     val primary: Boolean = false,
     val run: () -> Unit,

@@ -1,12 +1,12 @@
 package io.github.emassey0135.lumenna
 
-import io.github.emassey0135.lumenna.core.Action
-import io.github.emassey0135.lumenna.core.ActionKind
-import io.github.emassey0135.lumenna.core.Answer
-import io.github.emassey0135.lumenna.core.Change
-import io.github.emassey0135.lumenna.core.Choice
-import io.github.emassey0135.lumenna.core.Question
-import io.github.emassey0135.lumenna.core.sentenceCase
+import io.github.emassey0135.lumenna.records.Action
+import io.github.emassey0135.lumenna.records.ActionKind
+import io.github.emassey0135.lumenna.records.Answer
+import io.github.emassey0135.lumenna.records.Change
+import io.github.emassey0135.lumenna.records.Choice
+import io.github.emassey0135.lumenna.records.Question
+import io.github.emassey0135.lumenna.records.sentenceCase
 
 // Running a row's actions, for the phone and the watch alike. Which actions a row has, their
 // names, what each asks and what a pick offers are the core's (`Action`, `Lumenna.choices`);

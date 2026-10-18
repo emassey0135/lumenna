@@ -1,7 +1,7 @@
 package io.github.emassey0135.lumenna
 
-import io.github.emassey0135.lumenna.core.Setting
-import io.github.emassey0135.lumenna.core.SettingKind
+import io.github.emassey0135.lumenna.records.Setting
+import io.github.emassey0135.lumenna.records.SettingKind
 
 // Settings as the phone's and the watch's screens show them. What each is called, how its
 // value is shaped, its options and what it does are the core's (`Setting`); which page it

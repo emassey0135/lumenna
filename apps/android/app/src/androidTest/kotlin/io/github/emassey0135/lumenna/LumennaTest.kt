@@ -29,12 +29,12 @@ import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import io.github.emassey0135.lumenna.core.NewBlock
-import io.github.emassey0135.lumenna.core.TaskEdit
+import io.github.emassey0135.lumenna.records.NewBlock
+import io.github.emassey0135.lumenna.records.TaskEdit
 import java.io.File
 import java.time.LocalDate
 import java.util.UUID
-import io.github.emassey0135.lumenna.core.MoveTarget
+import io.github.emassey0135.lumenna.records.MoveTarget
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -682,7 +682,7 @@ class LumennaTest {
         row("Devices and sync").performClick()
         rule.waitForIdle()
         press("Pair a device")
-        val words = io.github.emassey0135.lumenna.core.pairingWords("this phone", true)
+        val words = io.github.emassey0135.lumenna.records.pairingWords("this phone", true)
         button(io.github.emassey0135.lumenna.button(words.join))
         shows(words.needCode)
         rule.onNode(hasSetTextAction() and hasText(words.theirCode)).assert(
@@ -738,7 +738,7 @@ class LumennaTest {
         tab("Today")
         val offered = dayHeading().fetchSemanticsNode().config.getOrNull(SemanticsActions.CustomActions).orEmpty().map { it.label }
         assertEquals(core.lumenna.plan(null).actions.map { it.sentence }, offered)
-        val whatNow = core.lumenna.plan(null).actions.single { it.kind == io.github.emassey0135.lumenna.core.ActionKind.WHAT_NOW }.sentence
+        val whatNow = core.lumenna.plan(null).actions.single { it.kind == io.github.emassey0135.lumenna.records.ActionKind.WHAT_NOW }.sentence
         assertTrue(offered.toString(), offered.containsAll(listOf("Replan from now", whatNow, "End the day")))
         button(whatNow)
         // Why it is offered is its description, beneath its name.
@@ -762,7 +762,7 @@ class LumennaTest {
                 it.addBlock(NewBlock(title = title, at = at, minutes = minutes.toUInt(), date = "2026-05-06", kind = kind, repeat = null))
             }
         }
-        val expected = core.lumenna.replan(Clock.style, io.github.emassey0135.lumenna.core.ReplanPins(emptyList(), emptyList(), emptyList()), plannerNow.value)
+        val expected = core.lumenna.replan(Clock.style, io.github.emassey0135.lumenna.records.ReplanPins(emptyList(), emptyList(), emptyList()), plannerNow.value)
         tab("Today")
         button("Replan from now")
         // Said as it opens: the whole proposal in one sentence.
@@ -838,7 +838,7 @@ class LumennaTest {
     @Test
     fun anotherOptionOnTheReplanScreenIsProposedInPlaceAndSaid() {
         replannedDay()
-        val proposal = core.lumenna.replan(Clock.style, io.github.emassey0135.lumenna.core.ReplanPins(emptyList(), emptyList(), emptyList()), plannerNow.value)
+        val proposal = core.lumenna.replan(Clock.style, io.github.emassey0135.lumenna.records.ReplanPins(emptyList(), emptyList(), emptyList()), plannerNow.value)
         val skip = proposal.alternatives.first { it.sentence.startsWith("Skip Lunch today") }
         assertTrue(skip.sentence, skip.sentence.startsWith("Skip Lunch today"))
         tab("Today")

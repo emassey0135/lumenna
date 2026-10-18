@@ -20,11 +20,11 @@ import io.github.emassey0135.lumenna.folded
 import io.github.emassey0135.lumenna.levelChange
 import io.github.emassey0135.lumenna.rows
 import io.github.emassey0135.lumenna.actions
-import io.github.emassey0135.lumenna.core.ActionKind
+import io.github.emassey0135.lumenna.records.ActionKind
 import io.github.emassey0135.lumenna.words
-import io.github.emassey0135.lumenna.core.Plan
-import io.github.emassey0135.lumenna.core.Question
-import io.github.emassey0135.lumenna.core.goToDayQuestion
+import io.github.emassey0135.lumenna.records.Plan
+import io.github.emassey0135.lumenna.records.Question
+import io.github.emassey0135.lumenna.records.goToDayQuestion
 import io.github.emassey0135.lumenna.said
 import java.time.LocalDate
 

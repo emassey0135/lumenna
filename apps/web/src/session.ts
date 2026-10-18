@@ -10,7 +10,7 @@ import * as Comlink from "comlink";
 import { useSyncExternalStore } from "react";
 import { core } from "./core";
 import type { Event, Notice, Said, Screen } from "./core";
-import { landOn } from "./landing";
+import { landOn, rowOf } from "./landing";
 import { say } from "./say";
 
 let screen: Screen | undefined;
@@ -76,34 +76,57 @@ function appDialog(s: Screen): boolean {
   return Boolean(s.asking || s.block_form || s.proposal || s.reminders);
 }
 
+/** Where focus was when the last dialog opened: where React Aria gives it back as it closes. */
+let opener: Element | null = null;
+
+function noteOpeners() {
+  document.addEventListener("focusin", (event) => {
+    const into = (event.target as Element | null)?.closest('[role="dialog"], [role="alertdialog"]');
+    const from = event.relatedTarget as Element | null;
+    if (into && from && !from.closest('[role="dialog"], [role="alertdialog"]')) opener = from;
+  });
+}
+
+const mainTree = () => document.querySelector<HTMLElement>(".app > main [role='treegrid']");
+
 /**
- * Puts focus on the main list's row `key`, if focus is the list's to move: in that list, or lost
- * (a row removed under it), or coming back to it from a dialog this turn closed. Focus the person
- * has taken elsewhere — the details, the sidebar, a dialog of the page's own — stays.
+ * Puts focus on the main list's row `key` if focus is still the list's to move, judged against
+ * where it was when the turn arrived (`before`): on the same row of the list, lost (a row removed
+ * under it), or given back by a dialog the turn closed, to where that dialog was opened from.
+ * Focus the person has taken anywhere else since — another row, the details, the sidebar, a
+ * dialog of the page's own — stays, whenever they took it.
  */
-async function land(key: string | undefined, anywhere: boolean) {
+async function land(key: string | undefined, anywhere: boolean, before: Element | null) {
+  const inDialog = Boolean(before?.closest('[role="dialog"], [role="alertdialog"]'));
+  const beforeRow = mainTree()?.contains(before) ? rowOf(before) ?? "" : undefined;
+  const back = opener;
+  const free = () => {
+    if (anywhere) return true;
+    const now = document.activeElement;
+    if (!now || now === document.body) return true;
+    if (inDialog && (now === before || now === back || now.closest('[role="dialog"], [role="alertdialog"]'))) return true;
+    const tree = mainTree();
+    if (beforeRow === undefined || !tree?.contains(now)) return false;
+    // The same row, the list itself, or wherever React Aria put focus when the row went.
+    const gone = beforeRow !== "" && !tree.querySelector(`[role="row"][data-key="${CSS.escape(beforeRow)}"]`);
+    return now === tree || gone || (rowOf(now) ?? "") === beforeRow;
+  };
   // A dialog the turn closed leaves, and gives focus back where it was, first.
-  let closing = false;
-  for (let tries = 0; tries < 30 && dialogOpen(); tries++) {
-    closing = true;
-    await frame();
-  }
-  if (dialogOpen()) return;
+  for (let tries = 0; tries < 30 && dialogOpen(); tries++) await frame();
+  if (dialogOpen() || !free()) return;
   // React Aria gives focus back a frame after the dialog has gone.
-  if (closing) {
+  if (inDialog) {
     await frame();
     await frame();
   }
   // The place may have changed: its list is drawn a frame or two later.
-  let tree = document.querySelector<HTMLElement>(".app > main [role='treegrid']");
+  let tree = mainTree();
   for (let tries = 0; tries < 10 && !tree; tries++) {
     await frame();
-    tree = document.querySelector<HTMLElement>(".app > main [role='treegrid']");
+    tree = mainTree();
   }
-  const active = document.activeElement;
-  const lost = !active || active === document.body;
-  if (!anywhere && !closing && !lost && !tree?.contains(active)) return;
-  await landOn(tree, key);
+  // The row in hand now: a move the person reported since is the app's latest word.
+  await landOn(tree, screen?.focus ?? key, free);
 }
 
 /** Applies a turn: draws it, saves its files, shows its notifications, lands focus if the app
@@ -113,17 +136,19 @@ async function apply(turn: Said) {
   for (const file of turn.files) download(file.name, file.bytes as Uint8Array<ArrayBuffer>, file.kind);
   for (const notice of turn.notices) notify(notice);
   const s = turn.screen;
+  const before = document.activeElement;
   if (s.landing > landed) {
     landed = s.landing;
     const anywhere = landAnywhere;
     landAnywhere = false;
-    if (!appDialog(s)) await land(s.focus ?? undefined, anywhere);
+    if (!appDialog(s)) await land(s.focus ?? undefined, anywhere, before);
   }
   for (const sentence of turn.said) say(sentence);
 }
 
 /** Starts drawing, once the store is open, and listens for the turns the network brings. */
 export async function start(): Promise<void> {
+  noteOpeners();
   const first = await core.screen();
   landed = first.landing;
   show(first);

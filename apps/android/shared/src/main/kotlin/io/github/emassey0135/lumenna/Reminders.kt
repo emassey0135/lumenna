@@ -16,9 +16,9 @@ import android.provider.Settings
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import io.github.emassey0135.lumenna.core.DueReminder
+import io.github.emassey0135.lumenna.records.DueReminder
 import io.github.emassey0135.lumenna.core.Lumenna
-import io.github.emassey0135.lumenna.core.LumennaException
+import io.github.emassey0135.lumenna.records.LumennaException
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.CoroutineScope
@@ -107,7 +107,7 @@ interface ShownReminders {
  * missed. What was told is forgotten only once the core has taken it.
  */
 class ReminderCatchUp(private val lumenna: Lumenna, private val shown: ShownReminders) {
-    fun catchUp(): io.github.emassey0135.lumenna.core.DueReminders {
+    fun catchUp(): io.github.emassey0135.lumenna.records.DueReminders {
         val told = shown.all()
         val found = lumenna.remindersMissed(told.toList(), false)
         shown.forget(told)

@@ -121,6 +121,12 @@ JSON crosses the FFI.
   one, and UniFFI's class declared it twice. `LumennaError`'s field is `reason`.
 - `uniffi.toml` names the Swift module `LumennaCore`. Methods named after Swift keywords
   (`import`, `open`) come out backticked, and work.
+- **The records' UniFFI bindings are their own** (`crates/records/uniffi.toml`): UniFFI writes
+  each crate's apart, and two in one Kotlin package redeclare each other's helpers. So Kotlin
+  imports records from `io.github.emassey0135.lumenna.records` beside the host's `…core`, and
+  Swift compiles `LumennaRecords.swift` (its C half the module `LumennaRecordsFFI`, its map
+  joined to the host's in `Generated/include`) into the same app module as `LumennaCore.swift`,
+  which UniFFI's Swift across crates requires.
 
 ## The app
 
@@ -1322,11 +1328,16 @@ with `lum`.
   if `landing` went up, then said, after focus so the move does not cut it off. Turns are
   numbered (`seq`), and an older screen is never drawn over a newer one. The one-second poll
   ticks the store, for another tab's or process's writes and new minutes.
-- **Landing waits for a dialog the turn closed** to leave and give focus back, then lands on the
-  main list's row in hand if focus is the list's to move: in the list, lost, back from that
-  dialog, or after a command that goes somewhere (`send(event, { land: true })`). Focus the
-  person takes elsewhere while the row is still being drawn, out of the list or to another of
-  its rows, stays where they took it.
+- **Landing is judged against where focus was when the turn arrived**, never later: a turn can
+  arrive while the person has already moved on. It lands on the main list's row in hand while
+  focus is still on the same row of that list, or lost, or wherever React Aria put it when that
+  row went; or, for a turn that closed a dialog, given back to where the dialog was opened from
+  (`opener`, noted as each dialog takes focus); or after a command that goes somewhere
+  (`send(event, { land: true })`). Each frame it waits asks again, so a move to another row, the
+  details or the sidebar meanwhile stays where the person took it. It lands on the row in hand
+  in the latest screen, which a move reported since may have changed.
+- **Quick add opens at once and closes at once**: kept closed after Escape until asked for again,
+  so the app's late answer to opening it does not open it a second time.
 - **A form keeps its own value while its typing is on its way**, and takes the last answer's
   values once none is: an answer for earlier typing would otherwise undo later typing, and a
   kind's flags would never arrive.

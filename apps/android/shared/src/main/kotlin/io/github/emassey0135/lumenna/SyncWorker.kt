@@ -14,7 +14,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
-import io.github.emassey0135.lumenna.core.LumennaException
+import io.github.emassey0135.lumenna.records.LumennaException
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 

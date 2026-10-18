@@ -4,14 +4,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
-import io.github.emassey0135.lumenna.core.ActionKind
-import io.github.emassey0135.lumenna.core.DayPins
-import io.github.emassey0135.lumenna.core.DayPlan
-import io.github.emassey0135.lumenna.core.LumennaException
-import io.github.emassey0135.lumenna.core.ProposalWords
-import io.github.emassey0135.lumenna.core.Replan
-import io.github.emassey0135.lumenna.core.ReplanPins
-import io.github.emassey0135.lumenna.core.proposalWords
+import io.github.emassey0135.lumenna.records.ActionKind
+import io.github.emassey0135.lumenna.records.DayPins
+import io.github.emassey0135.lumenna.records.DayPlan
+import io.github.emassey0135.lumenna.records.LumennaException
+import io.github.emassey0135.lumenna.records.ProposalWords
+import io.github.emassey0135.lumenna.records.Replan
+import io.github.emassey0135.lumenna.records.ReplanPins
+import io.github.emassey0135.lumenna.records.proposalWords
 
 // Replan from Now and Plan the Day, for the phone and the watch alike: what the core proposes,
 // which of it is checked, and applying it. Every sentence is the core's; each app only shows
@@ -60,7 +60,7 @@ class ProposalModel(private val core: Core, val kind: ActionKind, private val da
      * Other ways through the rest of the day (a replan's alone), under the heading
      * [ProposalWords.others], each named by its sentence: "Skip Lunch today, …".
      */
-    val alternatives: List<io.github.emassey0135.lumenna.core.ReplanAlternative> get() = replan?.alternatives.orEmpty()
+    val alternatives: List<io.github.emassey0135.lumenna.records.ReplanAlternative> get() = replan?.alternatives.orEmpty()
 
     /** [ProposalWords.others] in sentence case; empty for Plan the Day, which has none. */
     val others: String get() = words.others.takeIf { it.isNotEmpty() }?.let(::button).orEmpty()
@@ -69,7 +69,7 @@ class ProposalModel(private val core: Core, val kind: ActionKind, private val da
      * Takes another option: the day proposed again with its pins, shown in place and said, as
      * after a partial apply. False if the core could not say, which is said instead.
      */
-    fun take(alternative: io.github.emassey0135.lumenna.core.ReplanAlternative): Boolean {
+    fun take(alternative: io.github.emassey0135.lumenna.records.ReplanAlternative): Boolean {
         refused = null
         val proposed = core.attempt { core.lumenna.replan(Clock.style, alternative.pins, now) } ?: return false
         replan = proposed

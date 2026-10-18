@@ -84,8 +84,10 @@ cargo run -q -p lumenna-ffi $FEATURES --features bindgen --bin uniffi-bindgen --
   generate --library "$HOST_TARGET/debug/liblumenna_ffi.dylib" \
   --language swift --out-dir "$GENERATED/bindings"
 
-# Swift imports the C half as the module LumennaCoreFFI (named in crates/host/uniffi.toml);
-# give its map the name Clang looks for in a directory on the import path.
+# Swift imports the C halves as the modules LumennaCoreFFI and LumennaRecordsFFI (named in
+# each crate's uniffi.toml); give their maps, as one, the name Clang looks for in a directory
+# on the import path.
 mkdir -p "$GENERATED/include"
-cp "$GENERATED/bindings/LumennaCoreFFI.h" "$GENERATED/include/"
-cp "$GENERATED/bindings/LumennaCoreFFI.modulemap" "$GENERATED/include/module.modulemap"
+cp "$GENERATED/bindings/LumennaCoreFFI.h" "$GENERATED/bindings/LumennaRecordsFFI.h" "$GENERATED/include/"
+cat "$GENERATED/bindings/LumennaCoreFFI.modulemap" "$GENERATED/bindings/LumennaRecordsFFI.modulemap" \
+  > "$GENERATED/include/module.modulemap"

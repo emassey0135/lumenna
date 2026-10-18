@@ -21,7 +21,7 @@ use super::controls::{self, rect};
 use super::tree::{Item, Tree};
 use super::view::Metrics;
 use super::actions;
-use lumenna_host::places::{self, Place, SidebarEntry, SidebarGroup, SidebarKind};
+use lumenna_host::places::{Place, SidebarEntry, SidebarGroup, SidebarKind};
 
 const TREE: u16 = 200;
 pub struct Sidebar {

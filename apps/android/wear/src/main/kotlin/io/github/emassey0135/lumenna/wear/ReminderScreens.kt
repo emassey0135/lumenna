@@ -19,8 +19,8 @@ import io.github.emassey0135.lumenna.perform
 import io.github.emassey0135.lumenna.reminders
 import io.github.emassey0135.lumenna.set
 import io.github.emassey0135.lumenna.settings
-import io.github.emassey0135.lumenna.core.Action
-import io.github.emassey0135.lumenna.core.ActionKind
+import io.github.emassey0135.lumenna.records.Action
+import io.github.emassey0135.lumenna.records.ActionKind
 
 /**
  * A task's or a block's reminders, as the phone shows them: the core's announcement as the

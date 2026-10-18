@@ -30,14 +30,14 @@ import io.github.emassey0135.lumenna.taskFormFields
 import io.github.emassey0135.lumenna.text
 import io.github.emassey0135.lumenna.withFlag
 import io.github.emassey0135.lumenna.withText
-import io.github.emassey0135.lumenna.core.FieldKind
+import io.github.emassey0135.lumenna.records.FieldKind
 import io.github.emassey0135.lumenna.perform
-import io.github.emassey0135.lumenna.core.ActionKind
-import io.github.emassey0135.lumenna.core.Syntax
-import io.github.emassey0135.lumenna.core.TaskDetail
-import io.github.emassey0135.lumenna.core.TaskFields
-import io.github.emassey0135.lumenna.core.taskEdit
-import io.github.emassey0135.lumenna.core.taskFields
+import io.github.emassey0135.lumenna.records.ActionKind
+import io.github.emassey0135.lumenna.records.Syntax
+import io.github.emassey0135.lumenna.records.TaskDetail
+import io.github.emassey0135.lumenna.records.TaskFields
+import io.github.emassey0135.lumenna.records.taskEdit
+import io.github.emassey0135.lumenna.records.taskFields
 
 /**
  * A field the system's input screen fills: its name, then what it holds, one TalkBack stop.

@@ -5,12 +5,12 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import io.github.emassey0135.lumenna.core.Action
-import io.github.emassey0135.lumenna.core.ActionKind
-import io.github.emassey0135.lumenna.core.Question
-import io.github.emassey0135.lumenna.core.Subject
-import io.github.emassey0135.lumenna.core.lengthQuestion
-import io.github.emassey0135.lumenna.core.newFilterQuestions
+import io.github.emassey0135.lumenna.records.Action
+import io.github.emassey0135.lumenna.records.ActionKind
+import io.github.emassey0135.lumenna.records.Question
+import io.github.emassey0135.lumenna.records.Subject
+import io.github.emassey0135.lumenna.records.lengthQuestion
+import io.github.emassey0135.lumenna.records.newFilterQuestions
 
 /**
  * The phone's way of asking an action's question: a dialog each, through a screen's [Prompter].
@@ -87,7 +87,7 @@ fun Core.offered(
     actions: List<Action>,
     prompt: Prompter,
     form: (Action) -> Unit = {},
-    done: (io.github.emassey0135.lumenna.core.Change) -> Unit = {},
+    done: (io.github.emassey0135.lumenna.records.Change) -> Unit = {},
 ): List<RowAction> = rowActions(actions, DialogAsker(this, prompt), { action ->
     if (action.subject == Subject.FILTER && action.kind == ActionKind.NEW) addFilter(this, prompt) else form(action)
 }, done)
@@ -114,9 +114,9 @@ fun addFilter(core: Core, prompt: Prompter) {
  * Adds a project, label or saved filter as its heading's own action does (`Lumenna.places`):
  * for a list's Add button, which is that heading's action in another place.
  */
-fun Core.addNew(group: io.github.emassey0135.lumenna.core.SidebarGroup, prompt: Prompter) {
+fun Core.addNew(group: io.github.emassey0135.lumenna.records.SidebarGroup, prompt: Prompter) {
     val heading = attempt { lumenna.places() }?.entries?.firstOrNull {
-        (it.kind as? io.github.emassey0135.lumenna.core.SidebarKind.Group)?.v1 == group
+        (it.kind as? io.github.emassey0135.lumenna.records.SidebarKind.Group)?.v1 == group
     }
     heading?.actions?.let { offered(it, prompt) }?.firstOrNull()?.run?.invoke()
 }

@@ -25,8 +25,8 @@ import io.github.emassey0135.lumenna.said
 import io.github.emassey0135.lumenna.sentence
 import io.github.emassey0135.lumenna.set
 import io.github.emassey0135.lumenna.settings
-import io.github.emassey0135.lumenna.core.Setting
-import io.github.emassey0135.lumenna.core.SettingKind
+import io.github.emassey0135.lumenna.records.Setting
+import io.github.emassey0135.lumenna.records.SettingKind
 import androidx.wear.compose.foundation.lazy.ScalingLazyListScope
 import androidx.wear.compose.material3.RadioButton
 
@@ -71,7 +71,7 @@ fun DevicesScreen(core: Core, navigator: Navigator, changes: Long) {
         core.syncNow { result ->
             result.fold(
                 { report -> core.changed(); core.say(sentence(report.announcement, report.peers.mapNotNull { peer -> peer.error?.let { "${peer.name}: $it" } })) },
-                { error -> core.say((error as? io.github.emassey0135.lumenna.core.LumennaException)?.let { io.github.emassey0135.lumenna.sentence(it.message.orEmpty(), emptyList()) } ?: error.message.orEmpty()) },
+                { error -> core.say((error as? io.github.emassey0135.lumenna.records.LumennaException)?.let { io.github.emassey0135.lumenna.sentence(it.message.orEmpty(), emptyList()) } ?: error.message.orEmpty()) },
             )
         }
     }

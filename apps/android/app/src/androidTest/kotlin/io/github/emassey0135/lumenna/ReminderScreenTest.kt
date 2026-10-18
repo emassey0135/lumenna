@@ -21,7 +21,7 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import io.github.emassey0135.lumenna.core.NewBlock
+import io.github.emassey0135.lumenna.records.NewBlock
 import java.io.File
 import java.util.UUID
 import org.junit.After

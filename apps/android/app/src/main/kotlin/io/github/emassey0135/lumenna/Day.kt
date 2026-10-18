@@ -52,23 +52,23 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import io.github.emassey0135.lumenna.core.ActionKind
-import io.github.emassey0135.lumenna.core.BlockFields
-import io.github.emassey0135.lumenna.core.BlockScope
-import io.github.emassey0135.lumenna.core.FieldKind
-import io.github.emassey0135.lumenna.core.Question
-import io.github.emassey0135.lumenna.core.goToDayQuestion
-import io.github.emassey0135.lumenna.core.LumennaException
-import io.github.emassey0135.lumenna.core.blockDefaults
-import io.github.emassey0135.lumenna.core.blockEdit
-import io.github.emassey0135.lumenna.core.blockFields
-import io.github.emassey0135.lumenna.core.dayBlockFields
-import io.github.emassey0135.lumenna.core.newBlock
-import io.github.emassey0135.lumenna.core.CancelledBlock
-import io.github.emassey0135.lumenna.core.Plan
-import io.github.emassey0135.lumenna.core.PlanAssignment
-import io.github.emassey0135.lumenna.core.PlanBlock
-import io.github.emassey0135.lumenna.core.PlanItem
+import io.github.emassey0135.lumenna.records.ActionKind
+import io.github.emassey0135.lumenna.records.BlockFields
+import io.github.emassey0135.lumenna.records.BlockScope
+import io.github.emassey0135.lumenna.records.FieldKind
+import io.github.emassey0135.lumenna.records.Question
+import io.github.emassey0135.lumenna.records.goToDayQuestion
+import io.github.emassey0135.lumenna.records.LumennaException
+import io.github.emassey0135.lumenna.records.blockDefaults
+import io.github.emassey0135.lumenna.records.blockEdit
+import io.github.emassey0135.lumenna.records.blockFields
+import io.github.emassey0135.lumenna.records.dayBlockFields
+import io.github.emassey0135.lumenna.records.newBlock
+import io.github.emassey0135.lumenna.records.CancelledBlock
+import io.github.emassey0135.lumenna.records.Plan
+import io.github.emassey0135.lumenna.records.PlanAssignment
+import io.github.emassey0135.lumenna.records.PlanBlock
+import io.github.emassey0135.lumenna.records.PlanItem
 
 /** What the day screen is asking. */
 private sealed interface DayAsk {
@@ -129,7 +129,7 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day, changes: Lon
             Icon(Icons.Filled.Add, contentDescription = "Add block")
         }
     }) {
-        val summary = plan.fold({ it.summary }, { (it as? io.github.emassey0135.lumenna.core.LumennaException)?.sentence.orEmpty() })
+        val summary = plan.fold({ it.summary }, { (it as? io.github.emassey0135.lumenna.records.LumennaException)?.sentence.orEmpty() })
         Text(
             summary,
             style = MaterialTheme.typography.bodyMedium,

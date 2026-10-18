@@ -61,13 +61,13 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import io.github.emassey0135.lumenna.core.ActionKind
-import io.github.emassey0135.lumenna.core.LumennaException
-import io.github.emassey0135.lumenna.core.notOffered
-import io.github.emassey0135.lumenna.core.Preview
-import io.github.emassey0135.lumenna.core.RowView
-import io.github.emassey0135.lumenna.core.Rows
-import io.github.emassey0135.lumenna.core.Syntax
+import io.github.emassey0135.lumenna.records.ActionKind
+import io.github.emassey0135.lumenna.records.LumennaException
+import io.github.emassey0135.lumenna.records.notOffered
+import io.github.emassey0135.lumenna.records.Preview
+import io.github.emassey0135.lumenna.records.RowView
+import io.github.emassey0135.lumenna.records.Rows
+import io.github.emassey0135.lumenna.records.Syntax
 
 
 /**

@@ -33,12 +33,16 @@ targets:
       - path: Generated/bindings/LumennaCore.swift
         optional: true
         group: Generated
+      - path: Generated/bindings/LumennaRecords.swift
+        optional: true
+        group: Generated
     preBuildScripts:
       - name: Build the Rust core
         script: '"$SRCROOT/build-core.sh"'
         basedOnDependencyAnalysis: false
         outputFiles:
           - $(SRCROOT)/Generated/bindings/LumennaCore.swift
+          - $(SRCROOT)/Generated/bindings/LumennaRecords.swift
     postBuildScripts:
       - name: Check the core is linked in, not loaded
         basedOnDependencyAnalysis: false
@@ -151,12 +155,16 @@ targets:
       - path: Generated/Watch/bindings/LumennaCore.swift
         optional: true
         group: Generated
+      - path: Generated/Watch/bindings/LumennaRecords.swift
+        optional: true
+        group: Generated
     preBuildScripts:
       - name: Build the Rust core
         script: '"$SRCROOT/build-core.sh"'
         basedOnDependencyAnalysis: false
         outputFiles:
           - $(SRCROOT)/Generated/Watch/bindings/LumennaCore.swift
+          - $(SRCROOT)/Generated/Watch/bindings/LumennaRecords.swift
     dependencies:
       - sdk: Security.framework
       - sdk: WatchConnectivity.framework
@@ -239,12 +247,16 @@ targets:
       - path: Generated/bindings/LumennaCore.swift
         optional: true
         group: Generated
+      - path: Generated/bindings/LumennaRecords.swift
+        optional: true
+        group: Generated
     preBuildScripts:
       - name: Build the Rust core
         script: '"$SRCROOT/build-core.sh"'
         basedOnDependencyAnalysis: false
         outputFiles:
           - $(SRCROOT)/Generated/bindings/LumennaCore.swift
+          - $(SRCROOT)/Generated/bindings/LumennaRecords.swift
     postBuildScripts:
       - name: Check the core is linked in, not loaded
         basedOnDependencyAnalysis: false

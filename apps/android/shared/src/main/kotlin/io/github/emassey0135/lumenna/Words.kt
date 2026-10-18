@@ -2,7 +2,7 @@ package io.github.emassey0135.lumenna
 
 import android.content.Context
 import android.text.format.DateFormat
-import io.github.emassey0135.lumenna.core.RowView
+import io.github.emassey0135.lumenna.records.RowView
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -24,9 +24,9 @@ object Clock {
     }
 
     /** The clock the core words a proposal's times in, as this device has its own. */
-    val style: io.github.emassey0135.lumenna.core.TimeStyle
-        get() = if (twentyFourHour) io.github.emassey0135.lumenna.core.TimeStyle.TWENTY_FOUR_HOUR
-        else io.github.emassey0135.lumenna.core.TimeStyle.TWELVE_HOUR
+    val style: io.github.emassey0135.lumenna.records.TimeStyle
+        get() = if (twentyFourHour) io.github.emassey0135.lumenna.records.TimeStyle.TWENTY_FOUR_HOUR
+        else io.github.emassey0135.lumenna.records.TimeStyle.TWELVE_HOUR
 
     /** `14:30` as this phone says it: "2:30 PM", or "14:30". */
     fun time(clock: String): String {
@@ -123,14 +123,14 @@ object TextOffsets {
 /** What could finish the end of a line the core reads, and the line with one chosen. */
 object Completing {
     /** The candidates for the end of `text`, and the span (in UTF-16 units) each would replace. */
-    fun offered(core: Core, text: String, syntax: io.github.emassey0135.lumenna.core.Syntax): Pair<List<io.github.emassey0135.lumenna.core.Candidate>, IntRange>? =
+    fun offered(core: Core, text: String, syntax: io.github.emassey0135.lumenna.records.Syntax): Pair<List<io.github.emassey0135.lumenna.records.Candidate>, IntRange>? =
         if (text.isBlank()) null
         else core.attempt { core.lumenna.completeText(text, TextOffsets.bytes(text.length, text), syntax) }?.let { found ->
             found.candidates to (TextOffsets.utf16(found.start, text) until TextOffsets.utf16(found.end, text))
         }
 
     /** `text` with `candidate` in place of `span`. */
-    fun insert(text: String, span: IntRange, candidate: io.github.emassey0135.lumenna.core.Candidate): String =
+    fun insert(text: String, span: IntRange, candidate: io.github.emassey0135.lumenna.records.Candidate): String =
         text.replaceRange(span.first, span.last + 1, candidate.text)
 }
 

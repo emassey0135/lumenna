@@ -18,12 +18,12 @@ import { send, typed } from "./session";
  * what is typed straight away goes into it: opened with `Typing::Open`, closed by the app once a
  * task is added from it, or by Cancel or Escape here. */
 export function QuickAdd(props: { line: ShownLine | undefined; opening: boolean; onClose: () => void }) {
-  // Closed at once, and kept closed until the app has let the line go: what is typed next
-  // belongs wherever focus goes back to, and a turn still on its way must not open it again.
+  // Closed at once, and kept closed until it is asked for again: what is typed next belongs
+  // wherever focus goes back to, and a turn still on its way must not open it again.
   const [closing, setClosing] = useState(false);
   useEffect(() => {
-    if (props.line === undefined || props.opening) setClosing(false);
-  }, [props.line === undefined, props.opening]);
+    if (props.opening) setClosing(false);
+  }, [props.opening]);
   const close = () => {
     setClosing(true);
     props.onClose();

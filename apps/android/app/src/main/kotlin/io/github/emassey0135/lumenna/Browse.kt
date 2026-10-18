@@ -22,10 +22,10 @@ import androidx.compose.ui.semantics.CollectionInfo
 import androidx.compose.ui.semantics.collectionInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import io.github.emassey0135.lumenna.core.Action
-import io.github.emassey0135.lumenna.core.SidebarGroup
-import io.github.emassey0135.lumenna.core.labelReference
-import io.github.emassey0135.lumenna.core.projectReference
+import io.github.emassey0135.lumenna.records.Action
+import io.github.emassey0135.lumenna.records.SidebarGroup
+import io.github.emassey0135.lumenna.records.labelReference
+import io.github.emassey0135.lumenna.records.projectReference
 
 /** One line of a list of things: what identifies it, how it reads, and how deep it sits. */
 data class Item(

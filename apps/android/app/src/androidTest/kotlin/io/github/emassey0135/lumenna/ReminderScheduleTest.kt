@@ -6,7 +6,7 @@ import android.app.NotificationManager
 import androidx.core.app.NotificationCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import io.github.emassey0135.lumenna.core.NewBlock
+import io.github.emassey0135.lumenna.records.NewBlock
 import java.io.File
 import java.time.Duration
 import java.time.Instant

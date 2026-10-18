@@ -26,18 +26,18 @@ import io.github.emassey0135.lumenna.RowSpeech
 import io.github.emassey0135.lumenna.folded
 import io.github.emassey0135.lumenna.levelChange
 import io.github.emassey0135.lumenna.detailOf
-import io.github.emassey0135.lumenna.core.ActionKind
-import io.github.emassey0135.lumenna.core.SidebarEntry
-import io.github.emassey0135.lumenna.core.Subject
-import io.github.emassey0135.lumenna.core.Place
-import io.github.emassey0135.lumenna.core.Question
-import io.github.emassey0135.lumenna.core.newFilterQuestions
+import io.github.emassey0135.lumenna.records.ActionKind
+import io.github.emassey0135.lumenna.records.SidebarEntry
+import io.github.emassey0135.lumenna.records.Subject
+import io.github.emassey0135.lumenna.records.Place
+import io.github.emassey0135.lumenna.records.Question
+import io.github.emassey0135.lumenna.records.newFilterQuestions
 import io.github.emassey0135.lumenna.said as asked
-import io.github.emassey0135.lumenna.core.SidebarGroup
-import io.github.emassey0135.lumenna.core.SidebarKind
-import io.github.emassey0135.lumenna.core.placeQuery
-import io.github.emassey0135.lumenna.core.placeQuickAddPrefix
-import io.github.emassey0135.lumenna.core.placeTitle
+import io.github.emassey0135.lumenna.records.SidebarGroup
+import io.github.emassey0135.lumenna.records.SidebarKind
+import io.github.emassey0135.lumenna.records.placeQuery
+import io.github.emassey0135.lumenna.records.placeQuickAddPrefix
+import io.github.emassey0135.lumenna.records.placeTitle
 import io.github.emassey0135.lumenna.sentence
 import io.github.emassey0135.lumenna.name
 import io.github.emassey0135.lumenna.button
@@ -261,4 +261,4 @@ fun ChooseScreen(screen: Screen.Choose) {
 }
 
 /** What a change said, for a sheet that has none of its own. */
-fun said(change: io.github.emassey0135.lumenna.core.Change) = sentence(change.announcement, change.notices)
+fun said(change: io.github.emassey0135.lumenna.records.Change) = sentence(change.announcement, change.notices)

@@ -8,11 +8,11 @@ import io.github.emassey0135.lumenna.button
 import io.github.emassey0135.lumenna.option
 import io.github.emassey0135.lumenna.rowActions
 import io.github.emassey0135.lumenna.RowAction
-import io.github.emassey0135.lumenna.core.Action
-import io.github.emassey0135.lumenna.core.ActionKind
-import io.github.emassey0135.lumenna.core.Change
-import io.github.emassey0135.lumenna.core.Question
-import io.github.emassey0135.lumenna.core.lengthQuestion
+import io.github.emassey0135.lumenna.records.Action
+import io.github.emassey0135.lumenna.records.ActionKind
+import io.github.emassey0135.lumenna.records.Change
+import io.github.emassey0135.lumenna.records.Question
+import io.github.emassey0135.lumenna.records.lengthQuestion
 import io.github.emassey0135.lumenna.said
 
 /**

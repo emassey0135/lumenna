@@ -13,7 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import io.github.emassey0135.lumenna.core.ActionKind
+import io.github.emassey0135.lumenna.records.ActionKind
 
 /**
  * A task's or a block's reminders, as the core lists them (`remindersOf`): its announcement as
@@ -79,6 +79,6 @@ fun rememberNotificationAsk(): () -> Unit {
 }
 
 /** Opens a task's or block's reminders for the core's Reminders action, else [form]. */
-fun Navigator.formOr(form: (io.github.emassey0135.lumenna.core.Action) -> Unit): (io.github.emassey0135.lumenna.core.Action) -> Unit = { action ->
+fun Navigator.formOr(form: (io.github.emassey0135.lumenna.records.Action) -> Unit): (io.github.emassey0135.lumenna.records.Action) -> Unit = { action ->
     if (action.kind == ActionKind.REMINDERS) push(Screen.Reminders(action.target)) else form(action)
 }

@@ -5,12 +5,12 @@ import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
 import android.system.Os
-import io.github.emassey0135.lumenna.core.Change
+import io.github.emassey0135.lumenna.records.Change
 import io.github.emassey0135.lumenna.core.Lumenna
-import io.github.emassey0135.lumenna.core.LumennaException
-import io.github.emassey0135.lumenna.core.Reach
+import io.github.emassey0135.lumenna.records.LumennaException
+import io.github.emassey0135.lumenna.records.Reach
 import io.github.emassey0135.lumenna.core.SyncListener
-import io.github.emassey0135.lumenna.core.SyncReport
+import io.github.emassey0135.lumenna.records.SyncReport
 import io.github.emassey0135.lumenna.core.SyncService
 import java.io.File
 import java.util.TimeZone

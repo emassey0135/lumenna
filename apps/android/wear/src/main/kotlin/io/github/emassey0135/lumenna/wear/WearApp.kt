@@ -36,7 +36,7 @@ import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import io.github.emassey0135.lumenna.BlockPurpose
 import io.github.emassey0135.lumenna.Option
 import io.github.emassey0135.lumenna.Core
-import io.github.emassey0135.lumenna.core.Place
+import io.github.emassey0135.lumenna.records.Place
 import kotlinx.coroutines.delay
 
 /** What can be shown: each screen of the app, and each list of choices it offers. */
@@ -51,8 +51,8 @@ sealed interface Screen {
          * list chosen from (the project) is a screen of its own, and the form's composition
          * does not outlive going to it.
          */
-        val shown = mutableStateOf<io.github.emassey0135.lumenna.core.TaskDetail?>(null)
-        val fields = mutableStateOf<io.github.emassey0135.lumenna.core.TaskFields?>(null)
+        val shown = mutableStateOf<io.github.emassey0135.lumenna.records.TaskDetail?>(null)
+        val fields = mutableStateOf<io.github.emassey0135.lumenna.records.TaskFields?>(null)
     }
     data class AddTask(val prefix: String) : Screen
     data class BlockForm(val purpose: BlockPurpose) : Screen
@@ -64,7 +64,7 @@ sealed interface Screen {
     /** Reminders on this watch. */
     data object ReminderSettings : Screen
     /** Replan from Now or Plan the Day, for a day: the core's proposal, to accept in part. */
-    data class Proposal(val kind: io.github.emassey0135.lumenna.core.ActionKind, val date: String) : Screen
+    data class Proposal(val kind: io.github.emassey0135.lumenna.records.ActionKind, val date: String) : Screen
     /** A list to choose one from: an action, a project, a task, a length. */
     data class Choose(val title: String, val message: String?, val choices: List<Option>, val chosen: (Option) -> Unit) : Screen
 }
@@ -170,7 +170,7 @@ fun WearApp(core: Core, entry: TextEntry? = null, opened: kotlinx.coroutines.flo
             "block" -> navigator.open(Screen.Day)
             // An overrun's Replan button: the rest of today, worked out again.
             io.github.emassey0135.lumenna.Reminders.REPLAN ->
-                navigator.open(Screen.Proposal(io.github.emassey0135.lumenna.core.ActionKind.REPLAN, io.github.emassey0135.lumenna.Clock.today()))
+                navigator.open(Screen.Proposal(io.github.emassey0135.lumenna.records.ActionKind.REPLAN, io.github.emassey0135.lumenna.Clock.today()))
         }
     }
     val changes by core.changes.collectAsState()

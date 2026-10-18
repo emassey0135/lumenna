@@ -10,7 +10,7 @@ import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.Wearable
 import com.google.android.gms.wearable.WearableListenerService
 import io.github.emassey0135.lumenna.core.LinkStream
-import io.github.emassey0135.lumenna.core.LinkSynced
+import io.github.emassey0135.lumenna.records.LinkSynced
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.Executors
