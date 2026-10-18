@@ -1,24 +1,29 @@
 //! The app itself, beside the store: events in, the view model and what to say out.
 //!
-//! The page sends what the person did; the session runs it, answering whatever it asks of the
-//! store here in the worker, and hands back what to draw and what to say. Nothing about which
-//! row is in hand, what is folded or which question is open is the page's.
-//!
-//! What reaches other devices — syncing, pairing — is answered later, on the browser's event
-//! loop (the runner here): each answer runs the app again, and what it leaves is pushed to the
-//! page through the listener it gave.
+//! The page sends what the person did; the app runs it over the bridge's middleware, which
+//! answers what it asks of the store on a task of its own here in the worker, and what reaches
+//! other devices — syncing, pairing — is this module's middleware, on the browser's event loop.
+//! Whatever the app leaves for the page, at once or after an answer, goes out one way: through
+//! the outbox, turned into a [`Turn`] and handed to the listener the page gave. Nothing about
+//! which row is in hand, what is folded or which question is open is the page's.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 
-use lumenna_app::{Event, NetworkAnswer, NetworkRequest, Notice, SaveFile, ViewModel};
-use lumenna_bridge::{Session, Shell};
-use lumenna_records::words::spoken;
+use crux_core::middleware::{EffectMiddleware, EffectResolver, Layer};
+use futures::StreamExt;
+use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
+use futures::channel::oneshot;
+use lumenna_app::{Effect, Event, NetworkAnswer, NetworkRequest, Notice, SaveFile, ViewModel};
+use lumenna_bridge::{Shell, Stack, Store, shell, stack};
 use lumenna_host::{Lumenna, Reach, SyncLoop};
+use lumenna_records::words::spoken;
 use serde::{Deserialize, Serialize};
 use tsify::{Ts, Tsify};
 use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::{future_to_promise, spawn_local};
 
 use crate::{Core, Out, js};
 
@@ -27,7 +32,7 @@ use crate::{Core, Out, js};
 #[derive(Default)]
 pub(crate) struct Syncing {
     pub(crate) running: RefCell<Option<SyncLoop>>,
-    pub(crate) cancelled: std::cell::Cell<bool>,
+    pub(crate) cancelled: Cell<bool>,
 }
 
 /// Something to say.
@@ -39,7 +44,7 @@ pub struct Saying {
     pub heading: bool,
 }
 
-/// What an event left for the page: the view model, and what to say once focus is where it
+/// What the app left for the page: the view model, and what to say once focus is where it
 /// puts it.
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 pub struct Turn {
@@ -51,24 +56,39 @@ pub struct Turn {
     pub files: Vec<SaveFile>,
     /// Notifications to show, as the browser shows them.
     pub notices: Vec<Notice>,
-    /// Counted: a reply and a push can reach the page in either order, and an older screen is
-    /// never drawn over a newer one.
+    /// Counted: an older screen is never drawn over a newer one.
     pub seq: u32,
 }
 
-/// What the app and its runner share: the session, the store, and how syncing is going.
+/// The network's requests, handed from the middleware to the runner on the event loop: the
+/// middleware must be `Send`, and what syncs here is not.
+struct Network(UnboundedSender<(NetworkRequest, EffectResolver<NetworkAnswer>)>);
+
+impl EffectMiddleware for Network {
+    type Op = NetworkRequest;
+
+    fn try_process_effect(&self, request: NetworkRequest, resolver: EffectResolver<NetworkAnswer>) {
+        let _ = self.0.unbounded_send((request, resolver));
+    }
+}
+
+/// What reaches the outbox: what the app left, or word that the store has nothing under way.
+enum Outgoing {
+    Effects(Vec<Effect>),
+    Still,
+}
+
+/// What the app, the outbox and the runner share.
 struct Inner {
-    session: RefCell<Session>,
-    lumenna: std::sync::Arc<Lumenna>,
-    syncing: Rc<Syncing>,
-    /// The page's listener, for what an answer from the network leaves.
+    stack: Stack<Network>,
+    store: Store,
+    outbox: UnboundedSender<Outgoing>,
+    /// The page's listener, for every turn.
     listener: RefCell<Option<js_sys::Function>>,
-    /// The pairing's question about the words, while it waits for the person.
-    confirm: RefCell<Option<futures::channel::oneshot::Sender<bool>>>,
-    /// What starting the app asked, held until the page listens.
-    start: RefCell<Vec<Shell>>,
+    /// Who waits for the app to be still.
+    waiting: RefCell<Vec<oneshot::Sender<()>>>,
     /// The last turn's number.
-    seq: std::cell::Cell<u32>,
+    seq: Cell<u32>,
 }
 
 /// The app over the store this worker holds.
@@ -77,60 +97,95 @@ pub struct App {
     inner: Rc<Inner>,
 }
 
-fn turn(session: &Session, shell: &[Shell], seq: u32) -> Turn {
-    let mut turn = Turn { view: session.view(), said: Vec::new(), files: Vec::new(), notices: Vec::new(), seq };
-    for s in shell {
-        match s {
-            Shell::Announce(text) => turn.said.push(Saying { text: text.clone(), heading: false }),
-            Shell::Heading(text) => turn.said.push(Saying { text: text.clone(), heading: true }),
-            Shell::Save(file) => turn.files.push(file.clone()),
-            Shell::Notify(notice) => turn.notices.push(notice.clone()),
-            Shell::Render | Shell::Network { .. } => {}
+impl Inner {
+    /// Where what the app leaves later goes: into the outbox, in the order it was left.
+    fn later(&self) -> impl Fn(Vec<Effect>) + Send + Sync + 'static {
+        let outbox = self.outbox.clone();
+        move |effects| {
+            let _ = outbox.unbounded_send(Outgoing::Effects(effects));
         }
     }
-    turn
-}
 
-impl Inner {
-    /// Hands the network what `shell` asks of it, and makes the turn it leaves.
-    fn handle(self: &Rc<Self>, shell: &[Shell]) -> Turn {
-        for s in shell {
-            if let Shell::Network { id, request } = s {
-                let inner = Rc::clone(self);
-                let (id, request) = (*id, request.clone());
-                wasm_bindgen_futures::spawn_local(async move { inner.run(id, request).await });
+    /// Runs `event`; what it leaves at once goes out after anything left before it.
+    fn send(&self, event: Event) {
+        let now = self.stack.update(event, self.later());
+        let _ = self.outbox.unbounded_send(Outgoing::Effects(now));
+    }
+
+    /// Once the store has nothing under way and the outbox has handed on everything before.
+    fn settled(&self) -> impl Future<Output = ()> + use<> {
+        let (still, settled) = oneshot::channel();
+        self.waiting.borrow_mut().push(still);
+        let _ = self.outbox.unbounded_send(Outgoing::Still);
+        async move {
+            let _ = settled.await;
+        }
+    }
+
+    /// The view as it stands, as a turn with nothing to say: what a reply carries.
+    fn current(&self) -> Turn {
+        Turn { view: self.stack.view(), said: Vec::new(), files: Vec::new(), notices: Vec::new(), seq: self.seq.get() }
+    }
+
+    /// Hands what the outbox holds to the page, a turn per batch, until the app is gone.
+    async fn deliver(self: Rc<Self>, mut outbox: UnboundedReceiver<Outgoing>) {
+        while let Some(out) = outbox.next().await {
+            match out {
+                Outgoing::Effects(effects) => self.push(&shell(effects)),
+                Outgoing::Still => {
+                    if self.store.busy().is_still() {
+                        for still in self.waiting.take() {
+                            let _ = still.send(());
+                        }
+                    }
+                }
             }
         }
-        let seq = self.seq.get() + 1;
-        self.seq.set(seq);
-        turn(&self.session.borrow(), shell, seq)
     }
 
-    /// Answers network request `id`, and pushes what it leaves to the page.
-    fn answer(self: &Rc<Self>, id: u64, answer: NetworkAnswer) {
-        let shell = self.session.borrow_mut().answer_network(id, answer);
-        self.push(&shell);
-    }
-
-    /// Pushes what `shell` leaves to the page, if anything.
-    fn push(self: &Rc<Self>, shell: &[Shell]) {
+    fn push(&self, shell: &[Shell]) {
         if shell.is_empty() {
             return;
         }
-        let turn = self.handle(shell);
+        let seq = self.seq.get() + 1;
+        self.seq.set(seq);
+        let mut turn = Turn { seq, ..self.current() };
+        for s in shell {
+            match s {
+                Shell::Announce(text) => turn.said.push(Saying { text: text.clone(), heading: false }),
+                Shell::Heading(text) => turn.said.push(Saying { text: text.clone(), heading: true }),
+                Shell::Save(file) => turn.files.push(file.clone()),
+                Shell::Notify(notice) => turn.notices.push(notice.clone()),
+                Shell::Render => {}
+            }
+        }
         let listener = self.listener.borrow().clone();
         if let (Some(listener), Ok(turn)) = (listener, js(&turn)) {
             let _ = listener.call1(&JsValue::NULL, &turn.into());
         }
     }
+}
 
-    /// What changed elsewhere since: a sync's arrivals.
-    fn tick(self: &Rc<Self>) {
-        let shell = self.session.borrow_mut().tick();
-        self.push(&shell);
+/// Answers the network's requests on the browser's event loop.
+struct Runner {
+    lumenna: Arc<Lumenna>,
+    store: Store,
+    syncing: Rc<Syncing>,
+    /// The pairing's question about the words, while it waits for the person.
+    confirm: RefCell<Option<oneshot::Sender<bool>>>,
+}
+
+impl Runner {
+    /// Takes each request as it comes, each on a task of its own: a pairing waits for minutes,
+    /// and the answer about its words comes in meanwhile.
+    async fn run(self: Rc<Self>, mut requests: UnboundedReceiver<(NetworkRequest, EffectResolver<NetworkAnswer>)>) {
+        while let Some((request, resolver)) = requests.next().await {
+            let runner = Rc::clone(&self);
+            spawn_local(async move { runner.answer(request, resolver).await });
+        }
     }
 
-    async fn run(self: Rc<Self>, id: u64, request: NetworkRequest) {
+    async fn answer(self: Rc<Self>, request: NetworkRequest, mut resolver: EffectResolver<NetworkAnswer>) {
         let answer = match request {
             NetworkRequest::StartSync => self.start_sync().await,
             NetworkRequest::SyncNow => self.sync_now().await,
@@ -141,7 +196,13 @@ impl Inner {
                     Err(error) => NetworkAnswer::Said(error.message().to_owned()),
                 }
             }
-            NetworkRequest::Pair { code, name } => self.pair(id, code, name).await,
+            NetworkRequest::Pair { code, name } => {
+                // A pairing answers more than once: its code, its words, how it ended.
+                let resolver = Rc::new(RefCell::new(resolver));
+                let answer = self.pair(Rc::clone(&resolver), code, name).await;
+                resolver.borrow_mut().resolve(answer);
+                return;
+            }
             NetworkRequest::Confirm(matched) => {
                 if let Some(answer) = self.confirm.borrow_mut().take() {
                     let _ = answer.send(matched);
@@ -153,34 +214,27 @@ impl Inner {
                 NetworkAnswer::Done
             }
         };
-        self.answer(id, answer);
+        resolver.resolve(answer);
     }
 
-    async fn start_sync(self: &Rc<Self>) -> NetworkAnswer {
+    async fn start_sync(&self) -> NetworkAnswer {
         if self.syncing.running.borrow().as_ref().is_some_and(SyncLoop::is_running) {
             return NetworkAnswer::Done;
         }
-        let weak = Rc::downgrade(self);
-        let started = self
-            .lumenna
-            .keep_in_sync(Reach::Internet, move || {
-                // What arrives is in the store already: the app takes it in.
-                if let Some(inner) = weak.upgrade() {
-                    inner.tick();
-                }
-            })
-            .await;
+        let store = self.store.clone();
+        // What arrives is in the store already: the app takes it in.
+        let started = self.lumenna.keep_in_sync(Reach::Internet, move || store.tick()).await;
         match started {
             Ok((handle, looping)) => {
                 *self.syncing.running.borrow_mut() = Some(handle);
-                wasm_bindgen_futures::spawn_local(looping);
+                spawn_local(looping);
                 NetworkAnswer::Done
             }
             Err(error) => NetworkAnswer::Said(error.message().to_owned()),
         }
     }
 
-    async fn sync_now(self: &Rc<Self>) -> NetworkAnswer {
+    async fn sync_now(&self) -> NetworkAnswer {
         let running = self.syncing.running.borrow().clone();
         let Some(handle) = running.filter(SyncLoop::is_running) else {
             return NetworkAnswer::Said("Sync is not running.".to_owned());
@@ -195,9 +249,14 @@ impl Inner {
         }
     }
 
-    async fn pair(self: &Rc<Self>, id: u64, code: Option<String>, name: String) -> NetworkAnswer {
+    async fn pair(
+        self: &Rc<Self>,
+        resolver: Rc<RefCell<EffectResolver<NetworkAnswer>>>,
+        code: Option<String>,
+        name: String,
+    ) -> NetworkAnswer {
         self.syncing.cancelled.set(false);
-        let showing = Rc::clone(self);
+        let showing = Rc::clone(&resolver);
         let asking = Rc::clone(self);
         let watching = Rc::clone(&self.syncing);
         let paired = self
@@ -207,16 +266,16 @@ impl Inner {
                 Reach::Internet,
                 name,
                 "web".to_owned(),
-                move |code| showing.answer(id, NetworkAnswer::Code(code)),
+                move |code| showing.borrow_mut().resolve(NetworkAnswer::Code(code)),
                 async move {
                     while !watching.cancelled.get() {
                         n0_future::time::sleep(Duration::from_millis(250)).await;
                     }
                 },
                 move |words| async move {
-                    let (answer, answered) = futures::channel::oneshot::channel();
+                    let (answer, answered) = oneshot::channel();
                     *asking.confirm.borrow_mut() = Some(answer);
-                    asking.answer(id, NetworkAnswer::Words(words));
+                    resolver.borrow_mut().resolve(NetworkAnswer::Words(words));
                     answered.await.unwrap_or(false)
                 },
             )
@@ -228,57 +287,83 @@ impl Inner {
     }
 }
 
-
 #[wasm_bindgen]
 impl Core {
-    /// The app, started over this store: it already has the store and shows the place it
-    /// starts in. What starting it asks of the network goes to the runner once a listener is
-    /// given.
+    /// The app, started over this store. It has the store once [`App::settled`] answers; what it
+    /// leaves before the page listens is not handed on, since the page draws the view it finds.
     pub fn app(&self) -> App {
-        let (session, start) = Session::new(std::sync::Arc::clone(&self.lumenna));
-        App {
-            inner: Rc::new(Inner {
-                session: RefCell::new(session),
-                lumenna: std::sync::Arc::clone(&self.lumenna),
-                syncing: Rc::clone(&self.syncing),
-                listener: RefCell::new(None),
-                confirm: RefCell::new(None),
-                start: RefCell::new(start),
-                seq: std::cell::Cell::new(0),
-            }),
-        }
+        let (store, worker) = Store::new(Arc::clone(&self.lumenna));
+        spawn_local(worker.run());
+        let (requests, asked) = unbounded();
+        let runner = Rc::new(Runner {
+            lumenna: Arc::clone(&self.lumenna),
+            store: store.clone(),
+            syncing: Rc::clone(&self.syncing),
+            confirm: RefCell::new(None),
+        });
+        spawn_local(runner.run(asked));
+        let (outbox, delivering) = unbounded();
+        let still = outbox.clone();
+        store.busy().when_still(move || {
+            let _ = still.unbounded_send(Outgoing::Still);
+        });
+        let inner = Rc::new(Inner {
+            stack: stack(&store, Network(requests)),
+            store,
+            outbox,
+            listener: RefCell::new(None),
+            waiting: RefCell::new(Vec::new()),
+            seq: Cell::new(0),
+        });
+        spawn_local(Rc::clone(&inner).deliver(delivering));
+        inner.send(Event::Start);
+        App { inner }
     }
 }
 
 #[wasm_bindgen]
 impl App {
-    /// Runs what the person did.
-    pub fn send(&self, event: Ts<Event>) -> Out<Turn> {
+    /// Runs what the person did. Every turn it leaves goes to the listener; the answer is the
+    /// view once the app is still, for a field that keeps its own value while typing is on its
+    /// way.
+    pub fn send(&self, event: Ts<Event>) -> Result<js_sys::Promise, JsError> {
         let event = event.to_rust()?;
-        let shell = self.inner.session.borrow_mut().send(event);
-        js(&self.inner.handle(&shell))
+        self.inner.send(event);
+        Ok(self.reply())
     }
 
     /// Takes in what changed elsewhere since: another tab, `lum`, a sync, a write made through
-    /// the store's own exports, or a new minute. Nothing when nothing did.
-    pub fn tick(&self) -> Result<Option<Ts<Turn>>, JsError> {
-        let shell = self.inner.session.borrow_mut().tick();
-        if shell.is_empty() {
-            return Ok(None);
-        }
-        Ok(Some(js(&self.inner.handle(&shell))?))
+    /// the store's own exports, or a new minute. What it leaves goes to the listener.
+    pub fn tick(&self) -> js_sys::Promise {
+        self.inner.store.tick();
+        self.reply()
+    }
+
+    /// Answers once the app is still: everything sent so far answered and handed on.
+    pub fn settled(&self) -> js_sys::Promise {
+        let settled = self.inner.settled();
+        future_to_promise(async move {
+            settled.await;
+            Ok(JsValue::UNDEFINED)
+        })
     }
 
     /// What to draw now.
     pub fn view(&self) -> Out<ViewModel> {
-        js(&self.inner.session.borrow().view())
+        js(&self.inner.stack.view())
     }
 
-    /// Gives what an answer from the network leaves to `listener`, a turn at a time; and
-    /// begins what starting the app asked of the network, such as keeping in sync.
+    /// Gives every turn from now on to `listener`.
     pub fn listen(&self, listener: js_sys::Function) {
         *self.inner.listener.borrow_mut() = Some(listener);
-        let start = std::mem::take(&mut *self.inner.start.borrow_mut());
-        self.inner.push(&start);
+    }
+
+    fn reply(&self) -> js_sys::Promise {
+        let settled = self.inner.settled();
+        let inner = Rc::clone(&self.inner);
+        future_to_promise(async move {
+            settled.await;
+            Ok(js(&inner.current())?.into())
+        })
     }
 }

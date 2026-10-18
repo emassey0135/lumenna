@@ -239,7 +239,7 @@ export function App() {
       />
       <Proposals proposal={screen.proposal} />
       <BlockForms form={screen.block_form} />
-      <QuickAdd line={screen.line} opening={opening} />
+      <QuickAdd line={screen.line} opening={opening} onClose={() => setOpening(false)} />
     </div>
   );
 }

@@ -13,11 +13,16 @@ export function rowKey(event: { target: EventTarget }): string | undefined {
  */
 export function landOn(tree: HTMLElement | null, key: string | undefined): Promise<void> {
   const from = document.activeElement;
+  const fromRow = from?.closest<HTMLElement>('[role="row"]')?.dataset.key;
   return new Promise((resolve) => {
     let tries = 0;
     const step = () => {
+      // Moved since by the person: to another row, or out of the list. A row drawn again is
+      // another element with the same key, which is not a move.
       const now = document.activeElement;
-      if (now !== from && now && now !== document.body && !tree?.contains(now)) {
+      const nowRow = now?.closest<HTMLElement>('[role="row"]')?.dataset.key;
+      const moved = tree?.contains(now) ? nowRow !== undefined && nowRow !== fromRow : now !== from && now !== document.body;
+      if (now && moved) {
         resolve();
         return;
       }

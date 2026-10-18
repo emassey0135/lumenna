@@ -17,9 +17,19 @@ import { send, typed } from "./session";
 /** Quick add, open while the app has a line, and from the moment it is asked for (`opening`), so
  * what is typed straight away goes into it: opened with `Typing::Open`, closed by the app once a
  * task is added from it, or by Cancel or Escape here. */
-export function QuickAdd(props: { line: ShownLine | undefined; opening: boolean }) {
-  const close = () => void send({ Typing: "Close" });
-  const open = props.line !== undefined || props.opening;
+export function QuickAdd(props: { line: ShownLine | undefined; opening: boolean; onClose: () => void }) {
+  // Closed at once, and kept closed until the app has let the line go: what is typed next
+  // belongs wherever focus goes back to, and a turn still on its way must not open it again.
+  const [closing, setClosing] = useState(false);
+  useEffect(() => {
+    if (props.line === undefined || props.opening) setClosing(false);
+  }, [props.line === undefined, props.opening]);
+  const close = () => {
+    setClosing(true);
+    props.onClose();
+    void send({ Typing: "Close" });
+  };
+  const open = !closing && (props.line !== undefined || props.opening);
   return (
     <Modal isDismissable isOpen={open} onOpenChange={(open) => !open && close()}>
       {open && <Line line={props.line} close={close} />}

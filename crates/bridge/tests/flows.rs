@@ -2,12 +2,39 @@
 
 use lumenna_app::{BlockEvent, DayMove, DetailsEvent, Event, Item, ProposalEvent, SettingsEvent, Typing, ViewModel};
 use lumenna_records::places::Place;
+use std::sync::{Arc, Mutex};
+
+use crux_core::middleware::{EffectMiddleware, EffectResolver};
+use lumenna_app::{NetworkAnswer, NetworkRequest};
 use lumenna_bridge::{Session, Shell};
 use lumenna_host::Lumenna;
 use lumenna_records::{ActionKind, Answer};
 
+/// A request of the network: its id, what it asks, and the way to answer it until answered.
+type Request = (u64, NetworkRequest, Option<EffectResolver<NetworkAnswer>>);
+
+/// What the network has been asked.
+#[derive(Clone, Default)]
+struct Asked(Arc<Mutex<Vec<Request>>>);
+
+/// The network, stood in for: it answers nothing until the test does.
+struct StandIn(Asked);
+
+impl EffectMiddleware for StandIn {
+    type Op = NetworkRequest;
+
+    fn try_process_effect(&self, request: NetworkRequest, resolver: EffectResolver<NetworkAnswer>) {
+        let mut asked = self.0.0.lock().unwrap();
+        let id = asked.len() as u64;
+        asked.push((id, request, Some(resolver)));
+    }
+}
+
 struct App {
-    session: Session,
+    session: Session<StandIn>,
+    asked: Asked,
+    /// How many of the network's requests the test has seen.
+    seen: usize,
     _dir: tempfile::TempDir,
     profile: std::path::PathBuf,
 }
@@ -17,9 +44,31 @@ impl App {
         let dir = tempfile::tempdir().unwrap();
         let profile = dir.path().join("profile");
         let lumenna = Lumenna::open(profile.to_str().unwrap()).unwrap();
-        let (session, shell) = Session::new(lumenna);
+        let asked = Asked::default();
+        let (session, shell) = Session::new(lumenna, StandIn(asked.clone()));
         assert_eq!(shell.first(), Some(&Shell::Render));
-        Self { session, _dir: dir, profile }
+        Self { session, asked, seen: 0, _dir: dir, profile }
+    }
+
+    /// What the network has been asked since the test last looked.
+    fn network(&mut self) -> Vec<(u64, NetworkRequest)> {
+        let asked = self.asked.0.lock().unwrap();
+        let new = asked[self.seen..].iter().map(|(id, request, _)| (*id, request.clone())).collect();
+        self.seen = asked.len();
+        new
+    }
+
+    /// Answers the network's request `id`, as the platform's runner would; a pairing's stream
+    /// stays open until it ends.
+    fn answer_network(&mut self, id: u64, answer: NetworkAnswer) -> Vec<Shell> {
+        let ends = !matches!(answer, NetworkAnswer::Code(_) | NetworkAnswer::Words(_));
+        let taken = self.asked.0.lock().unwrap()[id as usize].2.take();
+        let Some(mut resolver) = taken else { panic!("request {id} was answered already") };
+        resolver.resolve(answer);
+        if !ends {
+            self.asked.0.lock().unwrap()[id as usize].2 = Some(resolver);
+        }
+        self.session.settle()
     }
 
     fn send(&mut self, event: Event) -> Vec<Shell> {
@@ -53,7 +102,7 @@ fn said(shell: &[Shell]) -> Vec<&str> {
         .iter()
         .filter_map(|s| match s {
             Shell::Announce(text) | Shell::Heading(text) => Some(text.as_str()),
-            Shell::Render | Shell::Save(_) | Shell::Notify(_) | Shell::Network { .. } => None,
+            Shell::Render | Shell::Save(_) | Shell::Notify(_) => None,
         })
         .collect()
 }
@@ -151,7 +200,7 @@ fn collapsing_a_task_hides_its_subtasks_and_keeps_it_in_hand() {
 
 #[test]
 fn a_change_made_elsewhere_arrives_at_the_next_tick() {
-    let mut app = App::new();
+    let app = App::new();
     assert!(app.session.tick().is_empty(), "nothing moved");
     let elsewhere = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
     elsewhere.add_task("Call the bank").unwrap();
@@ -240,7 +289,7 @@ fn a_filter_typed_replaces_the_places_query_until_the_person_goes_elsewhere() {
 
 #[test]
 fn a_tick_after_a_change_has_been_taken_in_finds_nothing_new() {
-    let mut app = App::new();
+    let app = App::new();
     let elsewhere = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
     elsewhere
         .add_block(lumenna_host::NewBlock {
@@ -631,54 +680,48 @@ fn a_backup_and_an_export_are_files_to_save_and_an_export_imports_into_another_s
     assert_eq!(other.titles(), ["Write report"]);
 }
 
-fn network(shell: &[Shell]) -> Vec<(u64, lumenna_app::NetworkRequest)> {
-    shell
-        .iter()
-        .filter_map(|s| match s {
-            Shell::Network { id, request } => Some((*id, request.clone())),
-            _ => None,
-        })
-        .collect()
-}
-
 fn pair(app: &mut App, event: lumenna_app::PairEvent) -> Vec<Shell> {
     app.send(Event::Devices(lumenna_app::DevicesEvent::Pair(event)))
 }
 
 #[test]
 fn pairing_shows_its_code_then_asks_about_the_words_and_ends_closed() {
-    use lumenna_app::{NetworkAnswer, NetworkRequest, PairEvent};
+    use lumenna_app::PairEvent;
     let mut app = App::new();
     app.send(Event::Devices(lumenna_app::DevicesEvent::Show));
     pair(&mut app, PairEvent::Open("Test browser".to_owned()));
-    let shell = pair(&mut app, PairEvent::Wait);
-    let [(id, NetworkRequest::Pair { code: None, name })] = &network(&shell)[..] else { panic!("{shell:?}") };
+    app.network();
+    pair(&mut app, PairEvent::Wait);
+    let asked = app.network();
+    let [(id, NetworkRequest::Pair { code: None, name })] = &asked[..] else { panic!("{asked:?}") };
     let id = *id;
     assert_eq!(name, "Test browser");
-    app.session.answer_network(id, NetworkAnswer::Code("ab12".to_owned()));
+    app.answer_network(id, NetworkAnswer::Code("ab12".to_owned()));
     assert_eq!(app.view().devices.unwrap().pairing.unwrap().mine.as_deref(), Some("ab12"));
-    app.session.answer_network(id, NetworkAnswer::Words(vec!["adroitness".to_owned(), "tycoon".to_owned(), "village".to_owned()]));
+    app.answer_network(id, NetworkAnswer::Words(vec!["adroitness".to_owned(), "tycoon".to_owned(), "village".to_owned()]));
     assert_eq!(app.view().devices.unwrap().pairing.unwrap().words.map(|w| w.len()), Some(3));
-    let shell = pair(&mut app, PairEvent::Confirm(true));
-    assert!(matches!(network(&shell)[..], [(_, NetworkRequest::Confirm(true))]));
-    let shell = app.session.answer_network(id, NetworkAnswer::Paired(Ok("Paired with Kitchen Mac".to_owned())));
+    pair(&mut app, PairEvent::Confirm(true));
+    assert!(matches!(app.network()[..], [(_, NetworkRequest::Confirm(true))]));
+    let shell = app.answer_network(id, NetworkAnswer::Paired(Ok("Paired with Kitchen Mac".to_owned())));
     assert!(said(&shell).contains(&"Paired with Kitchen Mac"));
     assert!(app.view().devices.unwrap().pairing.is_none());
 }
 
 #[test]
 fn a_code_typed_while_waiting_gives_up_the_wait_and_then_dials_it() {
-    use lumenna_app::{NetworkAnswer, NetworkRequest, PairEvent};
+    use lumenna_app::PairEvent;
     let mut app = App::new();
     app.send(Event::Devices(lumenna_app::DevicesEvent::Show));
     pair(&mut app, PairEvent::Open("Test browser".to_owned()));
-    let wait = network(&pair(&mut app, PairEvent::Wait))[0].0;
+    app.network();
+    pair(&mut app, PairEvent::Wait);
+    let wait = app.network()[0].0;
     pair(&mut app, PairEvent::Code(" cd34 ".to_owned()));
-    let shell = pair(&mut app, PairEvent::Join);
-    assert!(matches!(network(&shell)[..], [(_, NetworkRequest::CancelPairing)]));
-    let shell = app.session.answer_network(wait, NetworkAnswer::Paired(Err("The pairing was given up.".to_owned())));
-    let dialled = network(&shell);
-    assert!(matches!(&dialled[..], [(_, NetworkRequest::Pair { code: Some(code), .. })] if code == "cd34"), "{shell:?}");
+    pair(&mut app, PairEvent::Join);
+    assert!(matches!(app.network()[..], [(_, NetworkRequest::CancelPairing)]));
+    app.answer_network(wait, NetworkAnswer::Paired(Err("The pairing was given up.".to_owned())));
+    let dialled = app.network();
+    assert!(matches!(&dialled[..], [(_, NetworkRequest::Pair { code: Some(code), .. })] if code == "cd34"), "{dialled:?}");
     assert!(app.view().devices.unwrap().pairing.unwrap().problem.is_none());
 }
 
@@ -726,4 +769,54 @@ fn focus_lands_when_the_app_moves_it_and_never_for_the_persons_own_move() {
     assert_eq!(app.view().landing, before, "the person moved there: nothing to land");
     app.send(Event::Run(vec![ActionKind::MarkDone]));
     assert!(app.view().landing > before, "the app put the next row in hand");
+}
+
+#[test]
+fn a_write_answered_after_the_person_moved_leaves_the_row_they_moved_to_in_hand() {
+    use crux_core::Core;
+    use lumenna_app::Effect;
+    // The core alone, answered by hand, so the write's answer can come after the move.
+    let dir = tempfile::tempdir().unwrap();
+    let lumenna = Lumenna::open(dir.path().join("profile").to_str().unwrap()).unwrap();
+    let core: Core<lumenna_app::Lumenna> = Core::new();
+    let mut held = Vec::new();
+    let run = |effects: Vec<Effect>, held: &mut Vec<Effect>| {
+        let mut effects = effects;
+        while !effects.is_empty() {
+            let mut next = Vec::new();
+            for effect in effects {
+                match effect {
+                    Effect::Watch(mut request) => {
+                        let (arrival, _) = lumenna_bridge::arrival(&lumenna).unwrap();
+                        next.extend(core.resolve(&mut request, arrival).unwrap());
+                    }
+                    Effect::Host(request) => held.push(Effect::Host(request)),
+                    _ => {}
+                }
+            }
+            effects = next;
+        }
+    };
+    let answer = |held: &mut Vec<Effect>| {
+        let mut effects = Vec::new();
+        for effect in held.drain(..) {
+            if let Effect::Host(request) = effect {
+                let (operation, mut handle) = request.split();
+                effects.extend(core.resolve(&mut handle, lumenna_bridge::answer(&lumenna, operation)).unwrap());
+            }
+        }
+        effects
+    };
+    run(core.process_event(Event::Start), &mut held);
+    run(core.process_event(Event::QuickAdd("Buy milk".to_owned())), &mut held);
+    let effects = answer(&mut held);
+    run(effects, &mut held);
+    run(core.process_event(Event::QuickAdd("Call Sam".to_owned())), &mut held);
+    let milk = core.view().list.unwrap().items.into_iter().find(|i| i.row.title == "Buy milk").unwrap().row.id;
+    run(core.process_event(Event::Focus(milk.clone())), &mut held);
+    let effects = answer(&mut held);
+    run(effects, &mut held);
+    let view = core.view();
+    assert_eq!(view.list.unwrap().items.len(), 2, "Call Sam was added");
+    assert_eq!(view.focus.as_deref(), Some(milk.as_str()), "the person moved to Buy milk after adding Call Sam");
 }

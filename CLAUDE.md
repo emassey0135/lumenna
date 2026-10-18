@@ -33,7 +33,7 @@ crates/host/    the command surface: the `Lumenna` object, one method per operat
                 store; re-exports records under the paths it always had.
 crates/app/     the Crux app: the screens' state (place, row in hand, folding, the question
                 open) as events in and view models out; every write an effect. No host.
-crates/bridge/  the app beside its store: a `Session` answering the app's host effects inline.
+crates/bridge/  the app beside its store: Crux middleware answering the app's store effects.
 crates/ffi/     the library the Swift and Kotlin apps link; re-exports surface over UniFFI.
 crates/sync/    Iroh endpoints, the document sync session, and pairing.
 crates/desktop/ what the Windows, GTK and web apps decide alike: row wording, flat rows as a
@@ -138,14 +138,23 @@ turn (the `legacy` tag is the last commit before the move).
   write left it; applying a proposal is one, since it checks the day has not moved. What only
   the host can answer is asked of it the same way: settings (some are a device's own),
   devices, reminders due (a device's own setting and key), backups and exports.
-- **`Session` answers the host's requests inline**, on the caller's thread: the web worker has
-  no threads for Crux's middleware, and SQLite answers in milliseconds. What reaches other
-  devices (`Effect::Network`: syncing, pairing) is not answered inline: the bridge hands it to
-  the platform's runner with an id (`Shell::Network`), which answers it when it can
-  (`Session::answer_network`), a pairing more than once. What is left for a shell is drawing,
-  saying (`Shell::Announce`, and `Heading` for a day newly shown, in the shell's own words for
-  the day), saving a file and showing a notification. `tick` takes in a change made
-  elsewhere, or a new minute.
+- **The store's effects are Crux middleware** (`crates/bridge`, Crux pinned at 0.20.0, whose
+  middleware is marked experimental): `Watching` (the `Watch` stream) and `Writing`
+  (`HostRequest`) hand both to one `StoreWorker`, which answers them in order off the caller's
+  thread, a thread of its own natively and a task on the event loop in a browser, and answers
+  every watch again when a `Store::tick` finds the heads or the minute moved. What reaches other
+  devices (`NetworkRequest`: syncing, pairing) is a third middleware, the platform's, since each
+  syncs on its own runtime (`bridge::stack` takes it); a pairing answers its request more than
+  once. A resolver must never be called inside `try_process_effect` (Crux asserts it): every
+  middleware hands its work on through a channel. What is left for a shell is drawing, saying
+  (`Shell::Announce`, and `Heading` for a day newly shown, in the shell's own words for the
+  day), saving a file and showing a notification: each batch the app leaves later arrives
+  through the layer's callback. `Busy` counts the store's work under way, so a shell can wait
+  until the app is still (`Session`, natively, waits on every call).
+- **The person can move on before a write is answered**: a write's answer that comes after an
+  `Event::Focus` the person made since they last acted leaves the row they moved to in hand
+  (`Model::moves`, `acted_at`), rather than pulling them to the row the write would have put
+  there.
 - **What every app decided for itself is the app's now**: the row in hand after a change (the
   same row, else whatever holds its place among the rows shown); folding, the sidebar's too
   (Expand and Collapse are row actions; a folded row comes marked `hidden`, for a tree control
@@ -167,7 +176,8 @@ turn (the `legacy` tag is the last commit before the move).
 - **A shell's clock is the shell's**: it tells the app its clock (`Event::Clock`) for the
   sentences the core composes whole, and when to look for reminders and the moment it looks at.
 - Flow tests are `crates/bridge/tests/flows.rs`: events in, view models and sentences out,
-  against a real store; a stand-in runner answers the network.
+  against a real store; a stand-in middleware takes the network's requests, and the test
+  answers them. One test drives the core by hand, to hold a write's answer back.
 
 ## The CLI
 
@@ -1302,17 +1312,20 @@ with `lum`.
   look at the page. The layout stacks to two columns below 64rem and one below 40rem.
 - **The app runs in the worker beside the store** (`core/src/app.rs`, `src/session.ts`). The
   page sends what the person did and draws the screen that comes back; the worker words it
-  (each row's line, the day's words, sentence case). The web core's runner answers the
-  network on the browser's event loop and pushes each turn to the page through the listener
-  it gave (`listen`). Every turn, reply or push, is applied one way (`apply`): drawn, its files
-  saved, its notifications shown, focus landed if `landing` went up, then said, after focus so
-  the move does not cut it off. Turns are numbered (`seq`): a push and a reply can reach the
-  page in either order, and an older screen is never drawn over a newer one. The one-second
-  poll takes in another tab's or process's writes and new minutes.
+  (each row's line, the day's words, sentence case). The store worker runs as a task, and the
+  network middleware hands each request to a runner on the browser's event loop
+  (`core/src/app.rs`). Whatever the app leaves, at once or later, goes through one outbox to
+  the listener the page gave (`listen`), a turn per batch; a call's reply is only the screen
+  once the app is still, with nothing to say, for a field that keeps its own value. Every turn
+  is applied one way (`apply`): drawn, its files saved, its notifications shown, focus landed
+  if `landing` went up, then said, after focus so the move does not cut it off. Turns are
+  numbered (`seq`), and an older screen is never drawn over a newer one. The one-second poll
+  ticks the store, for another tab's or process's writes and new minutes.
 - **Landing waits for a dialog the turn closed** to leave and give focus back, then lands on the
   main list's row in hand if focus is the list's to move: in the list, lost, back from that
   dialog, or after a command that goes somewhere (`send(event, { land: true })`). Focus the
-  person takes elsewhere while the row is still being drawn stays where they took it.
+  person takes elsewhere while the row is still being drawn, out of the list or to another of
+  its rows, stays where they took it.
 - **A form keeps its own value while its typing is on its way**, and takes the last answer's
   values once none is: an answer for earlier typing would otherwise undo later typing, and a
   kind's flags would never arrive.

@@ -69,6 +69,11 @@ pub struct Model {
     pub replanning: Option<String>,
     /// Counted: each time the app moves focus itself, which is when a shell moves it.
     pub landing: u32,
+    /// How many times the person has moved the row in hand themselves (`Event::Focus`).
+    pub moves: u64,
+    /// How many times they had moved it when they last did something: a write answered after
+    /// a later move leaves the row in hand where they moved it.
+    pub acted_at: u64,
     /// Sidebar rows folded away, by their key: a heading, or a project with projects inside.
     pub sidebar_folded: BTreeSet<String>,
 }

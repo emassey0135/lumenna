@@ -228,12 +228,32 @@ impl App for Lumenna {
         // the person reports moving, or a late answer would pull them back; always after a
         // write, whose rows a shell redraws.
         let before = model.focus.clone();
+        let place = model.place.clone();
         let reported = matches!(event, Event::Focus(_));
         let wrote = matches!(
             event,
             Event::Answered(HostAnswer::Wrote(..) | HostAnswer::Applied(..) | HostAnswer::Imported(..))
         );
+        // The store answers off the shell's thread, so the person can move on before a write's
+        // answer comes back: then the row they moved to stays in hand, not the one the write
+        // would have put there.
+        let moved_since = wrote && model.moves > model.acted_at;
+        match &event {
+            Event::Focus(_) => model.moves += 1,
+            Event::Arrived(_)
+            | Event::Answered(_)
+            | Event::SyncStarted(_)
+            | Event::Synced(_)
+            | Event::SyncStatus(_)
+            | Event::Pairing(_)
+            | Event::Clock(_) => {}
+            _ => model.acted_at = model.moves,
+        }
         let command = self.dispatch(event, model);
+        if moved_since && model.place == place && before.is_some() {
+            model.focus = before.clone();
+            model.settle();
+        }
         if !reported && (wrote || model.focus != before) {
             model.landing += 1;
         }

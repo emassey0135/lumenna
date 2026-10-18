@@ -113,10 +113,10 @@ async function apply(turn: Said) {
   for (const file of turn.files) download(file.name, file.bytes as Uint8Array<ArrayBuffer>, file.kind);
   for (const notice of turn.notices) notify(notice);
   const s = turn.screen;
-  const anywhere = landAnywhere;
-  landAnywhere = false;
   if (s.landing > landed) {
     landed = s.landing;
+    const anywhere = landAnywhere;
+    landAnywhere = false;
     if (!appDialog(s)) await land(s.focus ?? undefined, anywhere);
   }
   for (const sentence of turn.said) say(sentence);
@@ -136,9 +136,8 @@ let whenSettled: (() => void)[] = [];
 async function tracked(sending: Promise<Said>): Promise<Said> {
   inFlight++;
   try {
-    const turn = await sending;
-    void apply(turn);
-    return turn;
+    // Every turn it left has been applied as it came, through the listener.
+    return await sending;
   } finally {
     if (--inFlight === 0) {
       const waiting = whenSettled;
@@ -148,15 +147,12 @@ async function tracked(sending: Promise<Said>): Promise<Said> {
   }
 }
 
-/** Sends what the person did. Its turn is applied as every turn is; it is handed back too, for a
- * form that keeps its own value while typing is on its way. */
+/** Sends what the person did. Its turns are applied as every turn is; the screen once the app is
+ * still is handed back too, for a form that keeps its own value while typing is on its way. With
+ * `land`, the first landing it leads to puts focus in the list wherever focus is. */
 export function send(event: Event, options?: { land?: boolean }): Promise<Said> {
-  return tracked(
-    core.send(event).then((turn) => {
-      if (options?.land) landAnywhere = true;
-      return turn;
-    }),
-  );
+  if (options?.land) landAnywhere = true;
+  return tracked(core.send(event));
 }
 
 /** The quick-add line as typed, the cursor a UTF-16 offset. */
@@ -174,10 +170,8 @@ export function settled(): Promise<void> {
   return new Promise<void>((resolve) => whenSettled.push(resolve)).then(frame);
 }
 
-/** Takes in what another tab or process wrote, or a new minute; whether anything did. */
-export async function refresh(): Promise<boolean> {
-  const turn = await core.tick();
-  if (!turn) return false;
-  void apply(turn);
-  return true;
+/** Takes in what another tab or process wrote, or a new minute: what it leaves is applied as
+ * every turn is. */
+export function refresh(): Promise<void> {
+  return core.tick();
 }

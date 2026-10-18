@@ -89,7 +89,9 @@ async function opened(name: string): Promise<void> {
   app = core.app();
   // The clock the core's whole sentences say times in: this browser's.
   const hour12 = new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions().hour12;
-  app.send({ Clock: hour12 ? "twelve_hour" : "twenty_four_hour" });
+  void app.send({ Clock: hour12 ? "twelve_hour" : "twenty_four_hour" });
+  // Open once the app has the store.
+  await app.settled();
 }
 
 function session(): App {
@@ -315,26 +317,28 @@ const api = {
     return opening;
   },
 
-  /** Runs what the person did through the app: what to draw, and what to say. */
-  send: (event: Event): Said => turned(session().send(event)),
+  /**
+   * Runs what the person did through the app. Every turn it leaves — what to draw, what to say —
+   * goes to the listener; the answer is the screen once the app is still, with nothing to say.
+   */
+  send: async (event: Event): Promise<Said> => turned((await session().send(event)) as Turn),
 
   /** The quick-add line as typed, the cursor a UTF-16 offset as the input counts it. */
-  typed: (text: string, cursor: number): Said =>
-    turned(session().send({ Typing: { Text: { text, cursor: bytesAt(text, cursor) } } })),
+  typed: async (text: string, cursor: number): Promise<Said> =>
+    turned((await session().send({ Typing: { Text: { text, cursor: bytesAt(text, cursor) } } })) as Turn),
 
   /**
-   * Hands `listener` what an answer from the network leaves — a pairing's code and words, a
-   * round's report, a sync's arrivals — a turn at a time. A plain function that calls the
-   * page's: a Comlink proxy answers any property, `.call` included.
+   * Hands `listener` every turn the app leaves — for what the person did, a pairing's code and
+   * words, a round's report, a sync's arrivals — one at a time, in order. A plain function that
+   * calls the page's: a Comlink proxy answers any property, `.call` included.
    */
   listen(listener: (said: Said) => void): void {
     session().listen((turn: Turn) => void listener(turned(turn)));
   },
 
-  /** What changed elsewhere since, or a new minute: undefined when nothing did. */
-  tick(): Said | undefined {
-    const turn = session().tick();
-    return turn ? turned(turn) : undefined;
+  /** Takes in what changed elsewhere since, or a new minute; what it leaves goes to the listener. */
+  async tick(): Promise<void> {
+    await session().tick();
   },
 
   /** What to draw now. */

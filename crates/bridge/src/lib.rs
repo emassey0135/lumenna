@@ -1,22 +1,27 @@
-//! The app beside its store: the app's host effects answered by the host, in one loop.
+//! The app beside its store: the app's store effects answered by the host, as Crux middleware.
 //!
-//! A [`Session`] holds the Crux core and the open store. An event goes in; every effect the
-//! app asks of the host is answered here, at once, on the caller's thread, and what is left is
-//! the shell's: draw, and say. That is all a shell is handed ([`Shell`]).
+//! The app asks two things of the store: to watch it ([`Watch`], a stream answered at once and
+//! whenever the store moves) and to write or read what only the host can answer
+//! ([`HostRequest`]). Two middlewares take them, [`Watching`] and [`Writing`], and hand both to
+//! one [`StoreWorker`], which answers them in order off the caller's thread: a thread of its
+//! own natively, a task on the event loop in a browser. What reaches other devices is a third
+//! middleware, the platform's ([`stack`] takes it), since syncing runs on each platform's own
+//! runtime. What is left after all three is the shell's: draw, say, save a file, show a
+//! notification ([`Shell`]).
 //!
-//! One loop for every shell that runs the app in the same process as its store: the web
-//! worker, which has no threads for Crux's middleware, and the desktop apps, which link it.
-//! Operations are milliseconds against local SQLite, so answering inline never holds a frame.
-//! [`answer`] is the whole of what the host does for the app, and middleware for a shell that
-//! wants the host off its thread wraps the same function.
+//! [`answer`] is the whole of what the host does for the app. [`Busy`] counts the store's
+//! work under way, so a shell or a test can wait until the app is still; [`Session`] does that
+//! for a native caller that wants each event's whole outcome at once.
 
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 
 use crux_core::Core;
-use crux_core::Request;
+use crux_core::middleware::{EffectMiddleware, EffectResolver, HandleEffectLayer, Layer};
+use futures::StreamExt;
+use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use jiff::Zoned;
 use lumenna_app::proposal::{Applied, Proposal};
-use lumenna_app::{Arrival, Effect, Event, HostAnswer, HostRequest, NetworkAnswer, NetworkRequest, ViewModel, Watch};
+use lumenna_app::{Arrival, Effect, HostAnswer, HostRequest, NetworkRequest, Watch};
 use lumenna_host::Lumenna;
 use lumenna_records::words::spoken;
 use lumenna_store::ChangeHash;
@@ -35,14 +40,30 @@ pub enum Shell {
     Save(lumenna_app::SaveFile),
     /// Show this notification, as the platform shows one.
     Notify(lumenna_app::Notice),
-    /// Do this on the network, and answer it with [`Session::answer_network`] and its `id` when
-    /// it can be answered: a pairing more than once.
-    Network {
-        /// What answering it names.
-        id: u64,
-        /// What to do.
-        request: NetworkRequest,
-    },
+}
+
+/// What is left of `effects` for the shell, drawing once and first: everything the
+/// middlewares answer is gone by now.
+#[must_use]
+pub fn shell(effects: Vec<Effect>) -> Vec<Shell> {
+    let mut shell = Vec::new();
+    let mut draw = false;
+    for effect in effects {
+        match effect {
+            Effect::Render(_) => draw = true,
+            Effect::Announce(request) => {
+                let said = request.operation;
+                shell.push(if said.heading { Shell::Heading(said.text) } else { Shell::Announce(said.text) });
+            }
+            Effect::Save(request) => shell.push(Shell::Save(request.operation)),
+            Effect::Notify(request) => shell.push(Shell::Notify(request.operation)),
+            Effect::Watch(_) | Effect::Host(_) | Effect::Network(_) => {}
+        }
+    }
+    if draw {
+        shell.insert(0, Shell::Render);
+    }
+    shell
 }
 
 /// The store as it stands now, and the heads it was read at.
@@ -136,135 +157,252 @@ fn each(
 }
 
 
-/// The app and its store, together.
-pub struct Session {
-    core: Core<lumenna_app::Lumenna>,
-    lumenna: Arc<Lumenna>,
-    /// Every watch the app holds open, answered whenever the store moves.
-    watching: Vec<Request<Watch>>,
-    /// The heads last sent, and the minute: a tick sends again only when either moved.
-    sent: Option<(Vec<ChangeHash>, i8)>,
-    /// What the network has been asked and not finished answering, by id.
-    network: std::collections::BTreeMap<u64, Request<NetworkRequest>>,
-    /// The id the next network request gets.
-    next_id: u64,
+/// The store's work under way: what has been handed to the [`StoreWorker`] and not yet answered.
+/// The app is still when it is none: everything an event led to has been drawn and said, but for
+/// what waits on the network.
+#[derive(Clone, Default)]
+pub struct Busy(Arc<Count>);
+
+#[derive(Default)]
+struct Count {
+    under_way: Mutex<usize>,
+    still: Condvar,
+    hook: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
 }
 
-impl Session {
-    /// The app over this store, started: it is watching the store, and has it.
-    #[must_use]
-    pub fn new(lumenna: Arc<Lumenna>) -> (Self, Vec<Shell>) {
-        let mut session = Self {
-            core: Core::new(),
-            lumenna,
-            watching: Vec::new(),
-            sent: None,
-            network: std::collections::BTreeMap::new(),
-            next_id: 0,
-        };
-        let shell = session.send(Event::Start);
-        (session, shell)
+impl Busy {
+    fn start(&self) {
+        *self.0.under_way.lock().unwrap_or_else(PoisonError::into_inner) += 1;
     }
 
-    /// Runs an event, answering everything it asks of the host, and says what is left for the
-    /// shell.
-    pub fn send(&mut self, event: Event) -> Vec<Shell> {
-        let effects = self.core.process_event(event);
-        self.run(effects)
+    fn end(&self) {
+        let still = {
+            let mut under_way = self.0.under_way.lock().unwrap_or_else(PoisonError::into_inner);
+            *under_way = under_way.saturating_sub(1);
+            *under_way == 0
+        };
+        if still {
+            self.0.still.notify_all();
+            let hook = self.0.hook.lock().unwrap_or_else(PoisonError::into_inner).clone();
+            if let Some(hook) = hook {
+                hook();
+            }
+        }
+    }
+
+    /// Whether nothing is under way.
+    #[must_use]
+    pub fn is_still(&self) -> bool {
+        *self.0.under_way.lock().unwrap_or_else(PoisonError::into_inner) == 0
+    }
+
+    /// Calls `hook` each time the last of the work under way is answered, after what it led to
+    /// has been handed to the shell.
+    pub fn when_still(&self, hook: impl Fn() + Send + Sync + 'static) {
+        *self.0.hook.lock().unwrap_or_else(PoisonError::into_inner) = Some(Arc::new(hook));
+    }
+
+    /// Waits until nothing is under way. Never on a browser's one thread, which would wait for
+    /// itself.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    pub fn wait(&self) {
+        let mut under_way = self.0.under_way.lock().unwrap_or_else(PoisonError::into_inner);
+        while *under_way > 0 {
+            under_way = self.0.still.wait(under_way).unwrap_or_else(PoisonError::into_inner);
+        }
+    }
+}
+
+/// What the store worker is asked.
+enum Job {
+    Host(Box<HostRequest>, EffectResolver<HostAnswer>),
+    Watch(EffectResolver<Arrival>),
+    Tick,
+}
+
+/// The way to the store worker, shared by both middlewares and whoever says the store may have
+/// moved.
+#[derive(Clone)]
+pub struct Store {
+    jobs: UnboundedSender<Job>,
+    busy: Busy,
+}
+
+impl Store {
+    /// A store's way in, and the worker that answers it: run [`StoreWorker::run`] wherever the
+    /// platform runs work off the caller's thread.
+    #[must_use]
+    pub fn new(lumenna: Arc<Lumenna>) -> (Self, StoreWorker) {
+        let (jobs, inbox) = unbounded();
+        let busy = Busy::default();
+        let worker = StoreWorker { lumenna, inbox, watching: Vec::new(), sent: None, busy: busy.clone() };
+        (Self { jobs, busy }, worker)
+    }
+
+    /// The work under way.
+    #[must_use]
+    pub fn busy(&self) -> &Busy {
+        &self.busy
     }
 
     /// Looks for a change made elsewhere — `lum`, another app, a sync — or a new minute, and
     /// tells the app if there is one. A shell calls this on a timer, or when told the store
     /// changed.
-    pub fn tick(&mut self) -> Vec<Shell> {
-        let Ok((arrival, heads)) = arrival(&self.lumenna) else { return Vec::new() };
-        let minute = arrival.now.minute();
-        if self.sent.as_ref().is_some_and(|(sent, at)| *sent == heads && *at == minute) {
-            return Vec::new();
-        }
-        self.sent = Some((heads, minute));
-        let mut effects = Vec::new();
-        let mut watching = std::mem::take(&mut self.watching);
-        for handle in &mut watching {
-            if let Ok(more) = self.core.resolve(handle, arrival.clone()) {
-                effects.extend(more);
-            }
-        }
-        self.watching = watching;
-        self.run(effects)
+    pub fn tick(&self) {
+        self.send(Job::Tick);
     }
 
-    /// Answers the network request `id`; a pairing's stream is answered until it ends.
-    pub fn answer_network(&mut self, id: u64, answer: NetworkAnswer) -> Vec<Shell> {
-        let ends = !matches!(answer, NetworkAnswer::Code(_) | NetworkAnswer::Words(_));
-        let Some(mut request) = self.network.remove(&id) else { return Vec::new() };
-        let effects = self.core.resolve(&mut request, answer).unwrap_or_default();
-        if !ends {
-            self.network.insert(id, request);
+    fn send(&self, job: Job) {
+        self.busy.start();
+        if self.jobs.unbounded_send(job).is_err() {
+            self.busy.end();
         }
-        self.run(effects)
+    }
+}
+
+/// The middleware that watches the store for the app.
+pub struct Watching(Store);
+
+impl EffectMiddleware for Watching {
+    type Op = Watch;
+
+    fn try_process_effect(&self, _: Watch, resolver: EffectResolver<Arrival>) {
+        self.0.send(Job::Watch(resolver));
+    }
+}
+
+/// The middleware that answers the app's requests of the host.
+pub struct Writing(Store);
+
+impl EffectMiddleware for Writing {
+    type Op = HostRequest;
+
+    fn try_process_effect(&self, request: HostRequest, resolver: EffectResolver<HostAnswer>) {
+        self.0.send(Job::Host(Box::new(request), resolver));
+    }
+}
+
+/// Answers the store's jobs in the order they came, one at a time.
+pub struct StoreWorker {
+    lumenna: Arc<Lumenna>,
+    inbox: UnboundedReceiver<Job>,
+    /// Every watch the app holds open, answered whenever the store moves.
+    watching: Vec<EffectResolver<Arrival>>,
+    /// The heads last sent, and the minute: a tick sends again only when either moved.
+    sent: Option<(Vec<ChangeHash>, i8)>,
+    busy: Busy,
+}
+
+impl StoreWorker {
+    /// Answers jobs until every way in has gone.
+    pub async fn run(mut self) {
+        while let Some(job) = self.inbox.next().await {
+            self.answer(job);
+            self.busy.end();
+        }
+    }
+
+    fn answer(&mut self, job: Job) {
+        match job {
+            Job::Host(request, mut resolver) => {
+                let found = answer(&self.lumenna, *request);
+                if let HostAnswer::Wrote(_, Some(_)) | HostAnswer::Applied(_, Some(_)) | HostAnswer::Imported(_, Some(_)) = &found
+                    && let Ok((_, heads)) = self.lumenna.snapshot()
+                {
+                    // The app has the store as this write left it.
+                    self.sent = Some((heads, Zoned::now().minute()));
+                }
+                resolver.resolve(found);
+            }
+            Job::Watch(mut resolver) => {
+                if let Ok((arrival, heads)) = arrival(&self.lumenna) {
+                    self.sent = Some((heads, arrival.now.minute()));
+                    resolver.resolve(arrival);
+                }
+                self.watching.push(resolver);
+            }
+            Job::Tick => {
+                let Ok((arrival, heads)) = arrival(&self.lumenna) else { return };
+                let minute = arrival.now.minute();
+                if self.sent.as_ref().is_some_and(|(sent, at)| *sent == heads && *at == minute) {
+                    return;
+                }
+                self.sent = Some((heads, minute));
+                for resolver in &mut self.watching {
+                    resolver.resolve(arrival.clone());
+                }
+            }
+        }
+    }
+}
+
+/// The app with the store's middlewares and the platform's network under it.
+pub type Stack<N> = HandleEffectLayer<HandleEffectLayer<HandleEffectLayer<Core<lumenna_app::Lumenna>, Watching>, Writing>, N>;
+
+/// The app over `store`, the network answered by `network`.
+pub fn stack<N>(store: &Store, network: N) -> Stack<N>
+where
+    N: EffectMiddleware<Op = NetworkRequest> + 'static,
+{
+    Core::<lumenna_app::Lumenna>::new()
+        .handle_effects_using(Watching(store.clone()))
+        .handle_effects_using(Writing(store.clone()))
+        .handle_effects_using(network)
+}
+
+/// The app and its store for a native caller that wants each event's whole outcome at once:
+/// the store worker on a thread of its own, and every call waiting until the app is still.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+pub struct Session<N: EffectMiddleware<Op = NetworkRequest> + 'static> {
+    stack: Stack<N>,
+    store: Store,
+    /// What the app left for the shell after the call that led to it had returned.
+    later: Arc<Mutex<Vec<Effect>>>,
+}
+
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+impl<N: EffectMiddleware<Op = NetworkRequest> + 'static> Session<N> {
+    /// The app over this store, started: it is watching the store, and has it.
+    #[must_use]
+    pub fn new(lumenna: Arc<Lumenna>, network: N) -> (Self, Vec<Shell>) {
+        let (store, worker) = Store::new(lumenna);
+        std::thread::spawn(move || futures::executor::block_on(worker.run()));
+        let session = Self { stack: stack(&store, network), store, later: Arc::default() };
+        let shell = session.send(lumenna_app::Event::Start);
+        (session, shell)
+    }
+
+    /// Runs an event, and says what it left for the shell once the app is still.
+    pub fn send(&self, event: lumenna_app::Event) -> Vec<Shell> {
+        let now = self.stack.update(event, self.later());
+        self.settled(now)
+    }
+
+    /// Looks for a change made elsewhere, or a new minute ([`Store::tick`]).
+    pub fn tick(&self) -> Vec<Shell> {
+        self.store.tick();
+        self.settled(Vec::new())
+    }
+
+    /// What the app has left for the shell since, once it is still: after the network answered.
+    pub fn settle(&self) -> Vec<Shell> {
+        self.settled(Vec::new())
     }
 
     /// What to draw.
     #[must_use]
-    pub fn view(&self) -> ViewModel {
-        self.core.view()
+    pub fn view(&self) -> lumenna_app::ViewModel {
+        self.stack.view()
     }
 
-    fn run(&mut self, mut effects: Vec<Effect>) -> Vec<Shell> {
-        let mut shell = Vec::new();
-        while !effects.is_empty() {
-            let mut next = Vec::new();
-            for effect in effects {
-                match effect {
-                    Effect::Render(_) => {
-                        if shell.last() != Some(&Shell::Render) {
-                            shell.push(Shell::Render);
-                        }
-                    }
-                    Effect::Announce(request) => {
-                        let said = request.operation;
-                        shell.push(if said.heading { Shell::Heading(said.text) } else { Shell::Announce(said.text) });
-                    }
-                    Effect::Save(request) => shell.push(Shell::Save(request.operation)),
-                    Effect::Notify(request) => shell.push(Shell::Notify(request.operation)),
-                    Effect::Network(request) => {
-                        let id = self.next_id;
-                        self.next_id += 1;
-                        shell.push(Shell::Network { id, request: request.operation.clone() });
-                        self.network.insert(id, request);
-                    }
-                    Effect::Watch(mut request) => {
-                        if let Ok((arrival, heads)) = arrival(&self.lumenna) {
-                            self.sent = Some((heads, arrival.now.minute()));
-                            if let Ok(more) = self.core.resolve(&mut request, arrival) {
-                                next.extend(more);
-                            }
-                        }
-                        self.watching.push(request);
-                    }
-                    Effect::Host(request) => {
-                        let (operation, mut handle) = request.split();
-                        let found = answer(&self.lumenna, operation);
-                        if let HostAnswer::Wrote(_, Some(_)) | HostAnswer::Applied(_, Some(_)) | HostAnswer::Imported(_, Some(_)) = &found
-                            && let Ok((_, heads)) = self.lumenna.snapshot()
-                        {
-                            // The app has the store as this write left it.
-                            self.sent = Some((heads, Zoned::now().minute()));
-                        }
-                        if let Ok(more) = self.core.resolve(&mut handle, found) {
-                            next.extend(more);
-                        }
-                    }
-                }
-            }
-            effects = next;
-        }
-        // Drawing once, after everything else, is enough.
-        if let Some(at) = shell.iter().position(|s| *s == Shell::Render) {
-            shell.remove(at);
-            shell.insert(0, Shell::Render);
-        }
-        shell
+    fn later(&self) -> impl Fn(Vec<Effect>) + Send + Sync + 'static {
+        let later = Arc::clone(&self.later);
+        move |effects| later.lock().unwrap_or_else(PoisonError::into_inner).extend(effects)
+    }
+
+    fn settled(&self, mut effects: Vec<Effect>) -> Vec<Shell> {
+        self.store.busy().wait();
+        effects.append(&mut self.later.lock().unwrap_or_else(PoisonError::into_inner));
+        shell(effects)
     }
 }

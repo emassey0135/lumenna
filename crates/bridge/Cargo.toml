@@ -5,10 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "The app's host effects answered by the host: one loop, for every shell that runs the app beside its store."
+description = "The app beside its store: the store's effects answered as Crux middleware, for every shell that runs the app in the same process as its store."
 
 [dependencies]
-crux_core = "0.20.0"
+crux_core = "=0.20.0"
+futures = { version = "0.3", default-features = false, features = ["std", "executor"] }
 jiff.workspace = true
 lumenna-app = { path = "../app" }
 lumenna-host = { workspace = true, features = ["link"] }

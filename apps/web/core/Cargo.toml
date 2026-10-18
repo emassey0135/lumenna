@@ -16,6 +16,8 @@ lumenna-host = { path = "../../../crates/host", features = ["sync"] }
 # The screens' state, run beside the store in this worker.
 lumenna-app = { path = "../../../crates/app", features = ["wasm"] }
 lumenna-bridge = { path = "../../../crates/bridge" }
+# The app's middleware: the store's from the bridge, the network's here.
+crux_core = "=0.20.0"
 lumenna-records.workspace = true
 # Timers on the browser's event loop, for noticing a pairing given up.
 n0-future = "0.3"
