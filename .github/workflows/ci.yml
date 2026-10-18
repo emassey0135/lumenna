@@ -140,6 +140,14 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Playwright and axe
         run: npm run core:dev && npm test
+      # A failed test's trace (playwright.config.ts keeps it): what the page and the worker did,
+      # for a failure that only a runner shows.
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-test-results
+          path: apps/web/test-results
+          retention-days: 7
 
   mac:
     name: Mac app, Apple silicon and Intel
