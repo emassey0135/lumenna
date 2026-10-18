@@ -427,7 +427,7 @@ pub const fn name_kind(kind: NameKind) -> &'static str {
 // One task
 // ---------------------------------------------------------------------------------------
 
-/// One task, as [`show_task`](crate::Lumenna::show_task) returns it.
+/// One task, as `show_task` returns it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -619,7 +619,7 @@ pub struct WorkBlocks {
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct WorkBlock {
-    /// `<series>@<date>`, as [`assign`](crate::Lumenna::assign) takes it.
+    /// `<series>@<date>`, as `assign` takes it.
     pub id: String,
     /// Its day, as an ISO date.
     pub date: String,
@@ -643,7 +643,7 @@ pub struct WorkBlock {
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct CancelledBlock {
-    /// The series' identifier, for [`Lumenna::restore_occurrence`](crate::Lumenna::restore_occurrence).
+    /// The series' identifier, for `Lumenna::restore_occurrence`.
     pub series: String,
     /// Its name.
     pub title: String,
@@ -756,7 +756,7 @@ pub struct PlanBlock {
     pub actions: Vec<crate::actions::Action>,
 }
 
-/// One block series, as [`show_block`](crate::Lumenna::show_block) returns it — what an
+/// One block series, as `show_block` returns it — what an
 /// editor starts from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]

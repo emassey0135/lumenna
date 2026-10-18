@@ -54,8 +54,13 @@ macro_rules! from {
     };
 }
 
+#[cfg(feature = "store")]
+from!(lumenna_store::StoreError);
+
+#[cfg(feature = "sync")]
+from!(lumenna_sync::SyncError);
+
 from!(
-    lumenna_store::StoreError,
     lumenna_core::edit::EditError,
     lumenna_core::recur::RecurError,
     lumenna_parse::ParseError,

@@ -2822,6 +2822,7 @@ name = "lumenna-ffi"
 version = "0.1.0"
 dependencies = [
  "lumenna-host",
+ "lumenna-records",
  "tempfile",
  "uniffi",
 ]
@@ -2850,6 +2851,7 @@ dependencies = [
  "jiff",
  "lumenna-core",
  "lumenna-parse",
+ "lumenna-records",
  "lumenna-store",
  "lumenna-sync",
  "n0-future",
@@ -2871,6 +2873,23 @@ dependencies = [
  "jiff",
  "lumenna-core",
  "proptest",
+]
+
+[[package]]
+name = "lumenna-records"
+version = "0.1.0"
+dependencies = [
+ "jiff",
+ "lumenna-core",
+ "lumenna-parse",
+ "lumenna-store",
+ "lumenna-sync",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tsify",
+ "uniffi",
+ "wasm-bindgen",
 ]
 
 [[package]]

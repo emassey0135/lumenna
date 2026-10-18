@@ -8,7 +8,7 @@ use lumenna_core::row::{Role, Row, RowId};
 use lumenna_core::snapshot::Snapshot;
 
 use crate::error::{LumennaError, Result};
-use crate::resolve;
+use crate::resolve::{self, block_kind};
 use crate::tasks::{record, record_or};
 use crate::types::{
     Announced, BlockEdit, BlockScope, BlockShown, CancelledBlock, Change, NewBlock, Plan, PlanAssignment,
@@ -866,16 +866,6 @@ fn apply_extras(snapshot: &Snapshot, series: &mut BlockSeries, extras: &Extras<'
 /// row for every one would be noise.
 const FREE_THRESHOLD_MINS: i64 = 15;
 
-pub(crate) fn block_kind(word: &str) -> Result<BlockKind> {
-    match word.to_lowercase().as_str() {
-        "work" => Ok(BlockKind::Work),
-        "break" => Ok(BlockKind::Break),
-        "event" => Ok(BlockKind::Event),
-        other => Err(LumennaError::new(format!(
-            "'{other}' is not a block kind; use work, break, or event"
-        ))),
-    }
-}
 
 /// A repetition phrase — `every weekday` — as an RFC 5545 rule.
 /// A block's repetition as a rule. A block has no completion to count from, so `every!` is

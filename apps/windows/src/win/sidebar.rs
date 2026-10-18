@@ -44,7 +44,7 @@ impl Sidebar {
     /// Lists the places again, keeping the one shown selected without showing it again —
     /// which would throw away whatever the middle pane was doing.
     pub fn reload(&self, app: &App) {
-        let entries = places::sidebar(&app.core.lumenna);
+        let entries = lumenna_host::sidebar(&app.core.lumenna);
         let items = entries
             .iter()
             .map(|entry| Item { key: entry.key(), text: entry.text.clone(), depth: entry.depth, checked: None })

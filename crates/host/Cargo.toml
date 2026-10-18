@@ -9,15 +9,15 @@ description = "Lumenna's command surface: every operation once, typed, for every
 
 [features]
 # Swift and Kotlin bindings through UniFFI. Off for the CLI, which links this directly.
-uniffi = ["dep:uniffi"]
+uniffi = ["dep:uniffi", "lumenna-records/uniffi"]
 # Pairing and syncing over Iroh. On for every client that syncs; off leaves a surface
 # with no network code at all.
 # The watch's link to its phone, which needs no network of its own.
-link = ["dep:lumenna-sync"]
+link = ["dep:lumenna-sync", "lumenna-records/sync"]
 sync = ["link", "lumenna-sync/network", "dep:iroh", "dep:tokio", "dep:n0-future", "dep:serde_json"]
 # TypeScript types for the web client, derived from these records as UniFFI derives
 # Swift's: reshaping a record breaks the web build too.
-wasm = ["dep:tsify", "dep:wasm-bindgen"]
+wasm = ["dep:tsify", "dep:wasm-bindgen", "lumenna-records/wasm"]
 # The command surface over JSON-RPC, served on stdio, a Unix socket or a named pipe: by `lum
 # rpc`, the daemon, and the desktop apps while they hold this device's endpoint.
 rpc = ["sync"]
@@ -26,6 +26,7 @@ rpc = ["sync"]
 jiff.workspace = true
 lumenna-core.workspace = true
 lumenna-parse.workspace = true
+lumenna-records = { workspace = true, features = ["store"] }
 lumenna-store.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, optional = true }

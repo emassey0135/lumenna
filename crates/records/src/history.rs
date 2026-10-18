@@ -5,12 +5,12 @@ use jiff::Zoned;
 use lumenna_core::history::History;
 use lumenna_core::model::Task;
 use lumenna_core::snapshot::Snapshot;
-use lumenna_core::urgency::{Term, Urgency, urgency};
+use lumenna_core::urgency::{Term, Urgency};
 use serde::{Deserialize, Serialize};
 
-use crate::error::{LumennaError, Result};
+
 use crate::words::{count_line, duration};
-use crate::{Lumenna, repaired, resolve};
+
 
 /// One term of a task's urgency.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -119,12 +119,13 @@ fn term_words(term: Term, task: &Task, snapshot: &Snapshot, now: &Zoned) -> (&'s
     }
 }
 
-fn round(value: f32) -> f32 {
+/// A score as said: to one decimal place.
+pub fn round(value: f32) -> f32 {
     (value * 10.0).round() / 10.0
 }
 
 /// A task's urgency as words, largest term first.
-pub(crate) fn urgency_view(found: &Urgency, task: &Task, snapshot: &Snapshot, now: &Zoned) -> (Vec<UrgencyTerm>, String) {
+pub fn urgency_view(found: &Urgency, task: &Task, snapshot: &Snapshot, now: &Zoned) -> (Vec<UrgencyTerm>, String) {
     let mut terms: Vec<UrgencyTerm> = found
         .terms
         .iter()
@@ -145,35 +146,6 @@ pub(crate) fn urgency_view(found: &Urgency, task: &Task, snapshot: &Snapshot, no
     (terms, weight)
 }
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
-impl Lumenna {
-    /// A task's history and what makes up its urgency: asked for about one task, never said
-    /// unasked.
-    ///
-    /// # Errors
-    ///
-    /// If no task matches `id`.
-    pub fn task_history(&self, id: &str) -> Result<TaskHistory> {
-        let now = Zoned::now();
-        self.with(|store| {
-            store.load_all_years()?;
-            let snapshot = repaired(store);
-            let id = resolve::task_id(&snapshot, id)?;
-            let task = snapshot.tasks.get(&id).ok_or_else(|| LumennaError::new("that task is not here"))?;
-            let facts = snapshot.facts();
-            let found = urgency(&snapshot, &facts, task, &now, &snapshot.settings.urgency);
-            let (terms, weight) = urgency_view(&found, task, &snapshot, &now);
-            Ok(TaskHistory {
-                announcement: task.title.clone(),
-                notices: Vec::new(),
-                history: history_words(&lumenna_core::history::history(&snapshot, task, &now), now.date()),
-                urgency: round(found.score),
-                terms,
-                weight,
-            })
-        })
-    }
-}
 
 #[cfg(test)]
 mod tests {

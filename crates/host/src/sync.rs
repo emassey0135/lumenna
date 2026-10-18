@@ -64,12 +64,11 @@ const TICK: Duration = Duration::from_secs(1);
 /// not yet findable through the relay just after it started — otherwise waited minutes.
 const FIRST_RETRY: Duration = Duration::from_secs(5);
 
-impl From<Reach> for Network {
-    fn from(reach: Reach) -> Self {
-        match reach {
-            Reach::Internet => Self::Internet,
-            Reach::LocalOnly => Self::LocalOnly,
-        }
+/// The sync crate's network for a client's reach.
+fn network(reach: Reach) -> Network {
+    match reach {
+        Reach::Internet => Network::Internet,
+        Reach::LocalOnly => Network::LocalOnly,
     }
 }
 
@@ -267,7 +266,7 @@ impl Lumenna {
         };
         let store = self.shared();
         let results = runtime()?.block_on(async {
-            let node = Node::bind(store, reach.into()).await?;
+            let node = Node::bind(store, network(reach)).await?;
             // Answer while dialling, so two devices syncing at once still meet.
             let serving = node.clone();
             let server = tokio::spawn(async move { serving.serve().await });
@@ -382,7 +381,7 @@ impl Lumenna {
         let me = identity(&store, &known.unwrap_or(name), &platform)?;
 
         let paired = async {
-            let session = Invitation::open(reach.into(), peer.is_none()).await?;
+            let session = Invitation::open(network(reach), peer.is_none()).await?;
             if peer.is_none() {
                 show_code(session.code());
             }
@@ -592,7 +591,7 @@ pub async fn keep_in_sync<F: Fn()>(
     reach: Reach,
     changed: F,
 ) -> Result<(SyncLoop, impl Future<Output = ()> + use<F>)> {
-    let node = Node::bind(Arc::clone(&store), reach.into()).await?;
+    let node = Node::bind(Arc::clone(&store), network(reach)).await?;
     let (requests, asked) = tokio::sync::mpsc::channel(8);
     let (stop, stopping) = tokio::sync::watch::channel(false);
     Ok((SyncLoop { requests, stop: Arc::new(stop) }, run(node, store, changed, asked, stopping)))

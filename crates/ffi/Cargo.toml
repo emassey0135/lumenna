@@ -27,6 +27,7 @@ network = ["lumenna-host/sync", "lumenna-host/rpc"]
 
 [dependencies]
 lumenna-host = { path = "../host", features = ["uniffi", "link"] }
+lumenna-records = { workspace = true, features = ["uniffi"] }
 uniffi = "0.32"
 
 [dev-dependencies]

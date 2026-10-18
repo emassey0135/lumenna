@@ -15,6 +15,7 @@ pub use lumenna_host::*;
 // Without a reference from this crate, a linker may drop the surface's exported functions
 // from the library, since nothing here calls them.
 lumenna_host::uniffi_reexport_scaffolding!();
+lumenna_records::uniffi_reexport_scaffolding!();
 
 #[cfg(test)]
 mod tests {

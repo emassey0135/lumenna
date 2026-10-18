@@ -26,28 +26,25 @@
 //! git-style. Row numbers are a terminal affordance and the CLI resolves them before it
 //! calls in; here a bare number is refused rather than mistaken for a prefix.
 
-pub mod actions;
+mod actions_ops;
 pub mod day;
 mod durability;
-pub mod fields;
+mod fields_ops;
 #[cfg(feature = "link")]
 mod devices;
 #[cfg(any(unix, windows))]
 pub mod endpoint;
-mod error;
-mod form;
-pub mod history;
+mod history_ops;
 #[cfg(feature = "link")]
 mod link;
 mod organise;
-pub mod places;
+mod places_ops;
 mod planning;
 pub mod dayplan;
 mod carry;
 pub mod replan;
 mod whatnow;
 pub mod reminders;
-mod resolve;
 #[cfg(all(feature = "rpc", any(unix, windows)))]
 pub mod rpc;
 mod settings;
@@ -55,8 +52,11 @@ mod settings;
 mod sync;
 mod tasks;
 mod text;
-pub mod types;
-pub mod words;
+
+// The records, their actions and their words are a crate of their own, which the app builds
+// its view models from without a store; here under the paths they always had.
+pub use lumenna_records::{actions, fields, form, history, places, types, words};
+pub(crate) use lumenna_records::{announced, error, resolve, tree};
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -65,20 +65,21 @@ use lumenna_core::edit;
 use lumenna_core::snapshot::Snapshot;
 use lumenna_store::Store;
 
-pub use fields::{
+pub use lumenna_records::{
     unsayable_repeat_note, FieldKind, FormField, PairingWords, ProposalWords, block_form, pairing_words, proposal_words, sentence_case,
     task_form,
 };
-pub use history::{TaskHistory, UrgencyTerm};
+pub use lumenna_records::{TaskHistory, UrgencyTerm};
 pub use dayplan::{DayPins, DayPlan, DayPlanned, ProposedSitting};
 pub use replan::{Replan, ReplanAlternative, ReplanChange, ReplanFloor, ReplanPins, Replanned, TimeStyle};
 pub use reminders::{DueReminder, DueReminders, ReminderList, ReminderView};
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub use reminders::ReminderLock;
-pub use actions::{QUERY, go_to_day_question, length_question, new_filter_questions, not_offered, Action, ActionKind, Answer, Choice, Choices, Question, Subject};
+pub use lumenna_records::{QUERY, go_to_day_question, length_question, new_filter_questions, not_offered, Action, ActionKind, Answer, Choice, Choices, Question, Subject};
 pub use durability::{DEVICE_KEYS, cloud_warning};
-pub use error::{LumennaError, Result};
-pub use form::{parse_minutes, parse_weight, priorities, BlockDefaults, BlockFields, TaskFields, block_defaults, block_edit, block_fields, day_block_fields, new_block, label_reference, project_reference, sitting_status, task_edit, task_fields};
+pub use places_ops::sidebar;
+pub use lumenna_records::{LumennaError, Result};
+pub use lumenna_records::{parse_minutes, parse_weight, priorities, BlockDefaults, BlockFields, TaskFields, block_defaults, block_edit, block_fields, day_block_fields, new_block, label_reference, project_reference, sitting_status, task_edit, task_fields};
 pub use settings::{parse_every, parse_keep};
 #[cfg(feature = "link")]
 pub use link::PhoneLink;

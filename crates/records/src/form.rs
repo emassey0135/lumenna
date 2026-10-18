@@ -1,7 +1,7 @@
 //! What a client's forms share: a task's fields as text, what saving them sends, and the
 //! few phrases every client composes the same way.
 //!
-//! These are free functions rather than methods on [`Lumenna`](crate::Lumenna) because they
+//! These are free functions rather than methods on `Lumenna` because they
 //! need no store — only what an operation already returned — but they are rules all the same,
 //! and rules belong here rather than in each of eleven clients. The one that
 //! matters most is [`task_edit`]: a form that sends a field it did not change wins a
@@ -54,7 +54,7 @@ pub fn task_fields(task: TaskDetail) -> TaskFields {
     }
 }
 
-/// What saving `fields` over `task` sends to [`edit_task`](crate::Lumenna::edit_task), or
+/// What saving `fields` over `task` sends to `edit_task`, or
 /// nothing if no field changed.
 ///
 /// **Only the fields that changed.** Each field sent is written, and each write wins a
@@ -136,7 +136,7 @@ pub struct BlockDefaults {
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn block_defaults(kind: String) -> Option<BlockDefaults> {
-    let flags = crate::planning::block_kind(&kind).ok()?.default_flags();
+    let flags = crate::resolve::block_kind(&kind).ok()?.default_flags();
     Some(BlockDefaults {
         accepts_tasks: flags.accepts_tasks,
         counts_capacity: flags.counts_capacity,
@@ -217,7 +217,7 @@ pub fn day_block_fields(block: PlanBlock) -> BlockFields {
 }
 
 /// What saving `after` over `before` sends to
-/// [`edit_block`](crate::Lumenna::edit_block), or nothing if no field changed.
+/// `edit_block`, or nothing if no field changed.
 ///
 /// **Only the fields that changed**, as with a task. Changing the kind gives the
 /// block that kind's flags, so a flag is sent where it differs from the *new* kind's, not
@@ -264,7 +264,7 @@ pub fn block_edit(before: BlockFields, after: BlockFields) -> Result<Option<Bloc
     Ok((edit != BlockEdit::default()).then_some(edit))
 }
 
-/// What a new block's form sends to [`add_block`](crate::Lumenna::add_block), starting on
+/// What a new block's form sends to `add_block`, starting on
 /// `date` — a date phrase, today when absent. A flag the same as its kind's is left to the
 /// kind, and an empty field is left out.
 ///

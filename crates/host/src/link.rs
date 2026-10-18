@@ -11,16 +11,9 @@
 
 use std::sync::{Arc, Mutex, PoisonError};
 
-use lumenna_sync::SyncError;
 use lumenna_sync::exchange::Exchange;
 
-use crate::{Lumenna, LumennaError, Result};
-
-impl From<SyncError> for LumennaError {
-    fn from(error: SyncError) -> Self {
-        Self::new(error.to_string())
-    }
-}
+use crate::{Lumenna, Result};
 
 /// One side of the link between a watch and its phone.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Object))]

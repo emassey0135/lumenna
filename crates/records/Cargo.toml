@@ -1,0 +1,36 @@
+[package]
+name = "lumenna-records"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "What Lumenna tells a person, as records: rows, their actions and questions, forms, and the words, built from a snapshot with no store."
+
+[features]
+# Swift and Kotlin bindings through UniFFI, beside the host's.
+uniffi = ["dep:uniffi"]
+# TypeScript types for the web client.
+wasm = ["dep:tsify", "dep:wasm-bindgen"]
+# A store's errors as sentences, for the host, whose every operation reads the store.
+store = ["dep:lumenna-store"]
+# And a sync's, for the host's link and its Iroh endpoint.
+sync = ["store", "dep:lumenna-sync"]
+
+[dependencies]
+jiff.workspace = true
+lumenna-core.workspace = true
+lumenna-parse.workspace = true
+lumenna-store = { workspace = true, optional = true }
+lumenna-sync = { path = "../sync", optional = true, default-features = false }
+serde.workspace = true
+thiserror.workspace = true
+uniffi = { version = "0.32", optional = true }
+tsify = { version = "0.5", optional = true, default-features = false, features = ["js"] }
+wasm-bindgen = { version = "0.2", optional = true }
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

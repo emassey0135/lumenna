@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["apps/cli", "apps/gtk", "apps/web/core", "apps/windows", "crates/core", "crates/desktop", "crates/ffi", "crates/parse", "crates/store", "crates/host", "crates/sync"]
+members = ["apps/cli", "apps/gtk", "apps/web/core", "apps/windows", "crates/core", "crates/desktop", "crates/ffi", "crates/parse", "crates/store", "crates/host", "crates/records", "crates/sync"]
 
 [workspace.package]
 edition = "2024"
@@ -30,6 +30,7 @@ tempfile = "3"
 # the native SQLite is used.
 rusqlite = { version = "0.40", features = ["bundled"] }
 lumenna-core = { path = "crates/core" }
+lumenna-records = { path = "crates/records" }
 
 [workspace.lints.rust]
 missing_docs = "warn"

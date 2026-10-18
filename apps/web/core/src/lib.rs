@@ -20,7 +20,7 @@ mod reminders;
 mod sync;
 
 use clock::Browser;
-use lumenna_host::places::{self, Place, SidebarEntry};
+use lumenna_host::places::{Place, SidebarEntry};
 use lumenna_desktop::speech::{self, Clock};
 use lumenna_host::{
     Action, Answer, Choice, FormField, Lumenna, LumennaError, PairingWords, Question, Syntax, TaskDetail, TaskEdit, TaskFields,
@@ -361,7 +361,7 @@ impl Core {
     /// Every place, as the sidebar lists them: Today, Tasks, the project tree, labels, saved
     /// filters, Blocks, the trash.
     pub fn sidebar(&self) -> Out<Sidebar> {
-        out(Ok(Sidebar { entries: places::sidebar(&self.lumenna) }))
+        out(Ok(Sidebar { entries: lumenna_host::sidebar(&self.lumenna) }))
     }
 }
 
