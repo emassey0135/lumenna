@@ -1283,6 +1283,9 @@ with `lum`.
   refusal. Screens not moved yet write through the store and call `changed()`, which the app
   takes in at once (`refresh`); the one-second poll refreshes the app too, but reloads those
   screens only for another process's writes, or a reload under a test's focus lost it.
+- **A tree's `selectedKeys` is memoized by the key it holds**: React Aria says "… selected"
+  whenever it is handed a new selection while the tree has focus, and a fresh array each draw
+  said it five times after adding a block.
 - **A command key waits for what is on its way** (`settled`): going to a place is a round trip
   now, and a key pressed straight after Go to Trash acts in the trash. A deferred command keeps
   trying each frame for a moment while its screen cannot act yet (a day still loading).

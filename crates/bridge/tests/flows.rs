@@ -1,6 +1,7 @@
 //! Whole flows through the app and a real store: events in, what is shown and said out.
 
-use lumenna_app::{Event, Item, ViewModel};
+use lumenna_app::{DayMove, Event, Item, ViewModel};
+use lumenna_records::places::Place;
 use lumenna_bridge::{Session, Shell};
 use lumenna_host::Lumenna;
 use lumenna_records::{ActionKind, Answer};
@@ -51,7 +52,7 @@ fn said(shell: &[Shell]) -> Vec<&str> {
     shell
         .iter()
         .filter_map(|s| match s {
-            Shell::Announce(text) => Some(text.as_str()),
+            Shell::Announce(text) | Shell::Heading(text) => Some(text.as_str()),
             Shell::Render => None,
         })
         .collect()
@@ -110,7 +111,7 @@ fn a_pick_offers_what_the_host_says_and_a_refused_answer_stays_in_its_question()
     app.add("Buy milk");
     let shell = app.send(Event::Run(vec![ActionKind::MoveToProject]));
     let asking = app.view().asking.expect("the pick is open");
-    assert_eq!(asking.action.kind, ActionKind::MoveToProject);
+    assert_eq!(asking.action.map(|a| a.kind), Some(ActionKind::MoveToProject));
     let choices = asking.choices.expect("what it offers came back");
     assert!(said(&shell).contains(&choices.announcement.as_str()));
 
@@ -254,4 +255,100 @@ fn a_tick_after_a_change_has_been_taken_in_finds_nothing_new() {
     assert_eq!(app.session.tick(), [Shell::Render]);
     assert!(app.session.tick().is_empty());
     assert!(app.session.tick().is_empty());
+}
+
+fn block(app: &mut App, title: &str, at: &str, date: &str, repeat: Option<&str>) {
+    Lumenna::open(app.profile.to_str().unwrap())
+        .unwrap()
+        .add_block(lumenna_host::NewBlock {
+            title: title.to_owned(),
+            at: at.to_owned(),
+            minutes: 60,
+            date: Some(date.to_owned()),
+            kind: "work".to_owned(),
+            repeat: repeat.map(str::to_owned),
+            ..lumenna_host::NewBlock::default()
+        })
+        .unwrap();
+    app.session.tick();
+}
+
+fn day_keys(app: &App) -> Vec<String> {
+    app.view().day.unwrap().items.into_iter().filter(|i| !i.hidden).map(|i| i.key).collect()
+}
+
+#[test]
+fn today_opens_on_now_the_first_time() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    app.send(Event::Open(Place::Today));
+    let view = app.view();
+    let day = view.day.unwrap();
+    assert!(day.today);
+    let opening = day.items.iter().find(|i| i.kind == lumenna_app::DayKind::Now || i.block.as_ref().is_some_and(|b| b.when == "now"));
+    assert_eq!(view.focus, Some(opening.map_or_else(|| "summary".to_owned(), |i| i.key.clone())));
+    assert!(view.list.is_none());
+}
+
+#[test]
+fn the_next_day_is_shown_with_its_summary_in_hand_and_its_heading_said() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    app.send(Event::Open(Place::Today));
+    let shell = app.send(Event::Day(DayMove::Next));
+    let day = app.view().day.unwrap();
+    assert!(!day.today);
+    assert!(shell.iter().any(|s| matches!(s, Shell::Heading(summary) if summary.starts_with("1 block"))), "{shell:?}");
+    assert!(day_keys(&app).iter().any(|k| k.starts_with("block:")));
+    assert_eq!(app.view().focus.as_deref(), Some("summary"));
+    app.send(Event::Day(DayMove::Today));
+    assert!(app.view().day.unwrap().today);
+}
+
+#[test]
+fn go_to_day_asks_for_a_day_and_keeps_one_it_cannot_read_in_the_question() {
+    let mut app = App::new();
+    app.send(Event::Open(Place::Tasks));
+    app.send(Event::Day(DayMove::Ask));
+    let asking = app.view().asking.unwrap();
+    assert!(matches!(asking.question, lumenna_records::Question::Text { .. }));
+    app.send(Event::Answer(Answer::Text { text: "the twelfth of never".to_owned() }));
+    assert!(app.view().asking.unwrap().refusal.is_some());
+    app.send(Event::Answer(Answer::Text { text: "tomorrow".to_owned() }));
+    let view = app.view();
+    assert_eq!(view.asking, None);
+    assert_eq!(view.place, Some(Place::Today));
+    assert!(!view.day.unwrap().today);
+}
+
+#[test]
+fn a_block_with_a_sitting_folds_it_away() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    app.add("Write the report");
+    app.send(Event::Run(vec![ActionKind::PutInBlock]));
+    let id = app.view().asking.unwrap().choices.unwrap().choices[0].id.clone();
+    app.send(Event::Answer(Answer::Picked { id, length: None }));
+    app.send(Event::Answer(Answer::Text { text: String::new() }));
+    app.send(Event::Open(Place::Today));
+    app.send(Event::Day(DayMove::Next));
+    let keys = day_keys(&app);
+    let block = keys.iter().find(|k| k.starts_with("block:")).unwrap().clone();
+    assert!(keys.iter().any(|k| k.starts_with("sitting:")));
+    app.send(Event::Focus(block.clone()));
+    app.send(Event::Run(vec![ActionKind::Collapse]));
+    assert!(!day_keys(&app).iter().any(|k| k.starts_with("sitting:")));
+    assert_eq!(app.view().focus, Some(block));
+}
+
+#[test]
+fn the_blocks_list_every_series_with_its_actions() {
+    let mut app = App::new();
+    block(&mut app, "Gym", "07:00", "tomorrow", Some("every weekday"));
+    app.send(Event::Open(Place::Blocks));
+    let items = app.items();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].row.title, "Gym");
+    assert!(items[0].row.actions.iter().any(|a| a.kind == ActionKind::Delete));
+    assert_eq!(app.view().focus, Some(items[0].row.id.clone()));
 }

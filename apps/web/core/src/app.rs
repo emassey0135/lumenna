@@ -14,6 +14,15 @@ use wasm_bindgen::prelude::*;
 
 use crate::{Core, Out, js};
 
+/// Something to say.
+#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
+pub struct Saying {
+    /// The sentence; for a heading, the day's summary.
+    pub text: String,
+    /// Whether to say the day's heading, "<day>. <summary>", in this browser's words for the day.
+    pub heading: bool,
+}
+
 /// What an event left for the page: the view model, and what to say once focus is where it
 /// puts it.
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
@@ -21,7 +30,7 @@ pub struct Turn {
     /// What to draw.
     pub view: ViewModel,
     /// What to say, in order.
-    pub said: Vec<String>,
+    pub said: Vec<Saying>,
 }
 
 /// The app over the store this worker holds.
@@ -34,7 +43,8 @@ fn turn(session: &Session, shell: &[Shell]) -> Turn {
     let said = shell
         .iter()
         .filter_map(|s| match s {
-            Shell::Announce(text) => Some(text.clone()),
+            Shell::Announce(text) => Some(Saying { text: text.clone(), heading: false }),
+            Shell::Heading(text) => Some(Saying { text: text.clone(), heading: true }),
             Shell::Render => None,
         })
         .collect();

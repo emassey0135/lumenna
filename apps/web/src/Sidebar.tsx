@@ -42,6 +42,10 @@ export function Sidebar(props: {
   const [menu, setMenu] = useState(false);
   const tree = useRef<HTMLDivElement>(null);
 
+  // The same keys while the place is the same: a new array is a new selection to React Aria,
+  // which says "… selected" for each while the tree has focus.
+  const here = placeKey(props.place);
+  const selected = useMemo(() => [here], [here]);
   const nodes = useMemo(() => nest(entries, key, (entry) => entry.depth), [entries]);
   // Everything open at first; after that, as the person leaves it.
   const shown = expanded ?? new Set<Key>(parents(nodes));
@@ -150,7 +154,7 @@ export function Sidebar(props: {
           items={nodes}
           selectionMode="single"
           disallowEmptySelection
-          selectedKeys={[placeKey(props.place)]}
+          selectedKeys={selected}
           onSelectionChange={go}
           expandedKeys={shown}
           onExpandedChange={setExpanded}

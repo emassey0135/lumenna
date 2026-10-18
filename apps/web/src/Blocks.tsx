@@ -1,113 +1,87 @@
-// Every block series: its actions are the core's, in its menu; Enter changes one, Delete
-// deletes it. A series is changed whole here; one day of it is changed from the day.
+// Every block series, as the app lists them: its actions are the core's, in its menu; Enter
+// changes one, Delete deletes it, asking first; Add block makes one.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { Button, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
 import { blockForm, freshBlock } from "./BlockForm";
 import { core } from "./core";
-import type { Action, Line } from "./core";
-import { byKind, perform, REMOVING } from "./actions";
+import type { Action, ActionKind, Event, Screen } from "./core";
+import { REMOVING } from "./actions";
 import { useCommand } from "./commands";
-import { landOn, rowKey, useLanding } from "./landing";
+import { landOn, rowKey } from "./landing";
 import { asksForMenu, RowMenu } from "./RowMenu";
-import { say } from "./say";
+import { current, refresh, run, sayAll, send } from "./session";
 
-export function Blocks(props: { revision: number; onChanged: () => void }) {
-  const [lines, setLines] = useState<Line[]>([]);
-  const [readback, setReadback] = useState("");
-  const [empty, setEmpty] = useState("");
-  const [selected, setSelected] = useState<string | undefined>();
-  const [menu, setMenu] = useState(false);
+export function Blocks(props: { screen: Screen; onChanged: () => void }) {
+  const list = props.screen.list;
+  const items = useMemo(() => list?.items ?? [], [list]);
   const tree = useRef<HTMLDivElement>(null);
+  const [menu, setMenu] = useState(false);
+  // The same keys while the row in hand is the same: a new array each time is a new selection
+  // to React Aria, which says "… selected" for each while the tree has focus.
+  const selected = useMemo(() => (props.screen.focus ? [props.screen.focus] : []), [props.screen.focus]);
+  const inHand = items.find((item) => item.row.id === props.screen.focus);
 
-  useEffect(() => {
-    let current = true;
-    core.blocks().then(
-      (found) => {
-        if (!current) return;
-        setLines(found.lines);
-        setReadback(found.readback);
-        setEmpty(found.empty ?? "");
-      },
-      (error: Error) => current && setReadback(error.message),
-    );
-    return () => {
-      current = false;
-    };
-  }, [props.revision]);
-
-  const ids = useMemo(() => lines.map((line) => line.row.id), [lines]);
-  const land = useLanding(tree, ids, setSelected);
-  const line = (id: string | undefined) => lines.find((l) => l.row.id === id);
-
-  const changed = (said: string, keep: string | undefined, index: number) => {
-    land(keep, index);
+  /** Focus where the app puts it, then what it said. */
+  const settle = async (focus: string | undefined, said: string[]) => {
+    await landOn(tree.current, focus);
+    sayAll(said);
     props.onChanged();
-    say(said);
+  };
+
+  /** A write made by the block form: the app takes it in, the row named in hand. */
+  const wrote = async (said: string, key?: string) => {
+    await refresh();
+    const screen = key ? (await send({ Focus: key })).screen : await current();
+    await settle(screen.focus ?? undefined, [said]);
   };
 
   const add = async () => {
-    const saved = await blockForm(
-      { kind: "add", date: "today", startFollowsDay: true },
-      await freshBlock(undefined, 60),
-      "New block",
-    );
+    const saved = await blockForm({ kind: "add", date: "today", startFollowsDay: true }, await freshBlock(undefined, 60), "New block");
     // A new series' row is listed under its first occurrence: focus goes to it once listed.
     if (!saved) return;
-    added.current = saved.series;
-    props.onChanged();
-    if (!saved.series) say(saved.said);
-    else heard.current = saved.said;
+    await refresh();
+    const row = (await current()).list?.items.find((item) => item.row.id.split("@")[0] === saved.series);
+    await wrote(saved.said, row?.row.id);
   };
-  const added = useRef<string | undefined>(undefined);
-  const heard = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    const series = added.current;
-    const line = series && lines.find((l) => l.row.id.split("@")[0] === series);
-    if (!line) return;
-    added.current = undefined;
-    setSelected(line.row.id);
-    void landOn(tree.current, line.row.id).then(() => {
-      say(heard.current);
-      heard.current = undefined;
-    });
-  }, [lines]);
   useCommand("new-block", () => void add());
 
-
-  const edit = async (at: Line) => {
+  // Edit Block is the block form, over every occurrence.
+  const form = async (action: Action) => {
+    if (action.kind !== "edit") return;
     try {
-      const { fields, rule } = await core.seriesFields(at.row.id);
+      const { fields, rule } = await core.seriesFields(action.target);
       // A rule is given exactly when the series repeats.
       const heading = rule ? `Change ${fields.title}, every occurrence` : `Change ${fields.title}`;
-      const saved = await blockForm({ kind: "series", id: at.row.id }, fields, heading, rule);
-      if (saved) changed(saved.said, at.row.id, ids.indexOf(at.row.id));
+      const saved = await blockForm({ kind: "series", id: action.target }, fields, heading, rule);
+      if (saved) await wrote(saved.said, props.screen.focus ?? undefined);
     } catch (error) {
-      say((error as Error).message);
+      sayAll([(error as Error).message]);
     }
   };
 
-  // Runs one of a series' actions; Edit Block is the block form.
-  const run = async (at: Line, action: Action) => {
-    const done = await perform(action, () => edit(at));
-    if (done) changed(done.said, at.row.id, ids.indexOf(at.row.id));
+  const act = async (event: Event) => {
+    const turn = await run(event, form);
+    await settle(turn.screen.focus ?? undefined, turn.said);
+  };
+
+  const onRow = async (id: string, kinds: ActionKind[]) => {
+    await send({ Focus: id });
+    await act({ Run: kinds });
   };
 
   const keys = (event: KeyboardEvent) => {
-    const at = line(rowKey(event));
-    if (!at) return;
+    const id = rowKey(event);
+    if (!id || !items.some((item) => item.row.id === id)) return;
     if (asksForMenu(event)) {
       event.preventDefault();
-      setSelected(at.row.id);
-      setMenu(true);
+      void send({ Focus: id }).then(() => setMenu(true));
     } else if (event.key === "Delete") {
-      const action = byKind(at.row.actions, ...REMOVING);
-      if (!action) return;
       event.preventDefault();
       event.stopPropagation();
-      void run(at, action);
+      void onRow(id, REMOVING);
     }
   };
 
@@ -115,56 +89,43 @@ export function Blocks(props: { revision: number; onChanged: () => void }) {
     const id = rowKey(event);
     if (!id) return;
     event.preventDefault();
-    setSelected(id);
-    setMenu(true);
+    void send({ Focus: id }).then(() => setMenu(true));
   };
 
   const choose = (selection: Selection) => {
     if (selection === "all") return;
     const [key] = [...selection];
-    if (key !== undefined) setSelected(String(key));
+    if (key !== undefined) void send({ Focus: String(key) });
   };
 
   return (
     <>
       <h2>Blocks</h2>
       <p className="quiet" id="blocks-readback">
-        {readback}
+        {items.length > 0 ? list?.readback : ""}
       </p>
       <div className="buttons">
         <Button onPress={() => void add()}>Add block</Button>
-        <RowMenu
-          actions={line(selected)?.row.actions ?? []}
-          onAction={(action) => {
-            const at = line(selected);
-            if (at) void run(at, action);
-          }}
-          isOpen={menu}
-          onOpenChange={setMenu}
-        />
+        <RowMenu actions={inHand?.row.actions ?? []} onAction={(action) => void act({ Perform: action })} isOpen={menu} onOpenChange={setMenu} />
       </div>
       <div onKeyDownCapture={keys} onContextMenu={rightClick}>
         <Tree
           ref={tree}
           aria-label="Blocks"
           aria-describedby="blocks-readback"
-          items={lines.map((l) => ({ id: l.row.id, line: l }))}
+          items={items.map((item) => ({ id: item.row.id, item }))}
           selectionMode="single"
           selectionBehavior="replace"
           disallowEmptySelection
-          selectedKeys={selected ? [selected] : []}
+          selectedKeys={selected}
           onSelectionChange={choose}
-          onAction={(key: Key) => {
-            const at = line(String(key));
-            const action = byKind(at?.row.actions, "edit");
-            if (at && action) void run(at, action);
-          }}
-          renderEmptyState={() => <p className="quiet">{empty}</p>}
+          onAction={(key: Key) => void onRow(String(key), ["edit"])}
+          renderEmptyState={() => <p className="quiet">{list?.empty}</p>}
         >
-          {(item) => (
-            <TreeItem id={item.id} textValue={item.line.text}>
+          {(node) => (
+            <TreeItem id={node.id} textValue={node.item.text}>
               <TreeItemContent>
-                <div className="row">{item.line.text}</div>
+                <div className="row">{node.item.text}</div>
               </TreeItemContent>
             </TreeItem>
           )}

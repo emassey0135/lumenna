@@ -109,3 +109,24 @@ test("a row's check box marks it done at a click, and is no part of what a scree
   // As after Space: the task now in its place is the one in hand, not the one marked done.
   await expect(tasks.getByRole("row", { name: /^Call Sam/ })).toBeFocused();
 });
+
+test("the row in hand is not said to be selected again each time the screen is drawn", async ({ page }) => {
+  await open(page);
+  await page.getByRole("navigation", { name: "Places" }).getByRole("row", { name: /^Blocks/ }).click();
+  await page.getByRole("button", { name: "Add block" }).click();
+  const form = page.getByRole("dialog", { name: "New Block" });
+  await form.getByRole("textbox", { name: "Name", exact: true }).fill("Deep work");
+  await form.getByRole("textbox", { name: "Starts at" }).fill("9am");
+  await form.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(form).toBeHidden();
+  const row = page.getByRole("treegrid", { name: "Blocks" }).getByRole("row", { name: /^Deep work/ });
+  await row.focus();
+  // Each change, and each look at what the row offers, draws the screen again.
+  for (let i = 0; i < 3; i++) {
+    await page.keyboard.press("Shift+F10");
+    await page.keyboard.press("Escape");
+  }
+  await page.waitForTimeout(1000);
+  const said = (await page.locator("[data-live-announcer]").textContent()) ?? "";
+  expect(said.split("selected").length - 1).toBeLessThanOrEqual(1);
+});

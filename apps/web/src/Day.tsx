@@ -1,161 +1,68 @@
-// The planner: a day as it is lived, as a tree.
+// The planner: a day as it is lived, as a tree, as the app shows it (crates/app).
 //
 // The first row is the summary — what a glance at a timeline gives a sighted user. Then
 // blocks in time order with their sittings beneath them, free time as rows of its own, and
-// now as a position rather than a highlight. Opening the day puts it on now, not midnight.
+// now as a position rather than a highlight. Opening the day puts it on now, not midnight. Which
+// day is shown, which row is in hand and what is folded are the app's.
 //
 // Each row's actions are the core's, in its menu (the Menu key, Shift+F10, a right-click, or
 // Actions). On a sitting, Space runs its timer action (start, pause or resume) and Delete
 // unassigns it; on a block, Enter changes it and Delete deletes it; on free time, Enter adds a
 // block there; on a cancelled day, Enter restores it.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { Button, Collection, Toolbar, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
 import { blockForm, freshBlock } from "./BlockForm";
 import { core } from "./core";
-import type { Action, DayRow, PlanBlock } from "./core";
-import { askText, byKind, perform, REMOVING } from "./actions";
+import type { Action, ActionKind, DayMove, Event, PlanBlock, Screen, ShownDayItem } from "./core";
+import { byKind, REMOVING } from "./actions";
 import { useCommand } from "./commands";
-import { rowKey, useLanding } from "./landing";
+import { landOn, rowKey } from "./landing";
 import { choose } from "./Prompts";
 import { showProposal } from "./Proposal";
 import { asksForMenu, RowMenu } from "./RowMenu";
-import { say } from "./say";
+import { current, refresh, run, sayAll, send } from "./session";
+import { nest } from "./tree";
+import type { Node } from "./tree";
 
-interface Shown {
-  date: string;
-  title: string;
-  rows: DayRow[];
-  /** The day's own actions: Plan the Day, Replan from Now, What Should I Work On?, … */
-  actions: Action[];
-}
-
-/** Every row in the order the tree shows them, sittings after their block. */
-function flatten(rows: DayRow[]): DayRow[] {
-  return rows.flatMap((row) => [row, ...flatten(row.children)]);
-}
-
-/** An ISO date `days` days on, counted in the calendar rather than in hours. */
-function step(iso: string, days: number): string {
-  const [year, month, day] = iso.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day + days));
-  return date.toISOString().slice(0, 10);
-}
+/** What Space runs on a sitting: its timer. */
+const TIMING: ActionKind[] = ["start_timer", "pause_timer", "resume_timer"];
+/** What Enter runs: what a row is for. */
+const OPENING: ActionKind[] = ["edit", "edit_task", "add_block", "restore_day"];
 
 export function Day(props: {
-  revision: number;
+  screen: Screen;
   onChanged: () => void;
-  /** The task a selected sitting is for, which the details show. */
-  onSelectTask: (id: string | undefined) => void;
   /** Opens a task's details. */
   onOpenTask: (id: string) => void;
 }) {
-  // The day shown; undefined follows today, so the day moves on at midnight.
-  const [date, setDate] = useState<string | undefined>();
-  const [shown, setShown] = useState<Shown | undefined>();
-  const [problem, setProblem] = useState<string | undefined>();
-  const [selected, setSelected] = useState<string | undefined>();
-  const [collapsed, setCollapsed] = useState<Set<Key>>(new Set());
+  const day = props.screen.day;
+  const items = useMemo(() => day?.items ?? [], [day]);
+  const tree = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState(false);
   const [dayMenu, setDayMenu] = useState(false);
-  const [minute, setMinute] = useState(0);
-  const tree = useRef<HTMLDivElement>(null);
-  // Whether the day has opened on now yet: once, so coming back does not move the selection.
-  const landed = useRef(false);
-  // Whether to say the summary once the day being moved to is showing.
-  const announce = useRef(false);
-  // Whether to put focus on now once today is showing (Go to Now).
-  const toNow = useRef(false);
+  const nodes = useMemo(() => nest(items, (item) => item.key, (item) => item.depth), [items]);
+  const expanded = useMemo(() => new Set<Key>(items.filter((i) => i.expanded).map((i) => i.key)), [items]);
+  // The same keys while the row in hand is the same: a new array each time is a new selection
+  // to React Aria, which says "… selected" for each while the tree has focus.
+  const selected = useMemo(() => (props.screen.focus ? [props.screen.focus] : []), [props.screen.focus]);
+  const inHand = items.find((item) => item.key === props.screen.focus);
+  const date = day?.date ?? "";
 
-  // Today moves on with the clock: the now row, and which block is now.
-  useEffect(() => {
-    if (date !== undefined) return;
-    const timer = setInterval(() => setMinute((m) => m + 1), 60_000);
-    return () => clearInterval(timer);
-  }, [date]);
-
-  useEffect(() => {
-    let current = true;
-    core.day(date).then(
-      (day) => {
-        if (!current) return;
-        setShown(day);
-        setProblem(undefined);
-      },
-      (error: Error) => current && setProblem(error.message),
-    );
-    return () => {
-      current = false;
-    };
-  }, [date, props.revision, minute]);
-
-  const flat = useMemo(() => (shown ? flatten(shown.rows) : []), [shown]);
-  const keys = useMemo(() => flat.map((row) => row.key), [flat]);
-  const row = (key: string | undefined) => flat.find((r) => r.key === key);
-
-  const select = (key: string | undefined) => {
-    setSelected(key);
-    props.onSelectTask(row(key)?.sitting?.task);
-  };
-  const land = useLanding(tree, keys, select);
-
-  // The first time, the day opens on now; a new day opens on its summary, and says it.
-  useEffect(() => {
-    if (!shown) return;
-    if (!landed.current) {
-      landed.current = true;
-      const now = flat.find((r) => r.kind === "now" || (r.kind === "block" && r.block?.when === "now"));
-      select((now ?? flat[0])?.key);
-    } else if (selected === undefined || !keys.includes(selected)) {
-      select(flat[0]?.key);
-    }
-    if (toNow.current && date === undefined) {
-      toNow.current = false;
-      const now = flat.find((r) => r.kind === "now" || (r.kind === "block" && r.block?.when === "now"));
-      const at = now ?? flat[0];
-      if (at) {
-        select(at.key);
-        // Once the tree has drawn the row, which may take it a frame or two.
-        let tries = 0;
-        const focus = () => {
-          const found = tree.current?.querySelector<HTMLElement>(`[role="row"][data-key="${CSS.escape(at.key)}"]`);
-          if (found) found.focus();
-          else if (tries++ < 30) requestAnimationFrame(focus);
-        };
-        requestAnimationFrame(focus);
-      }
-      return;
-    }
-    if (announce.current) {
-      announce.current = false;
-      if (flat[0]) say(flat[0].text);
-    }
-  }, [shown]);
-
-  // Moves to another day, and says its summary: a new day is a new screen's worth.
-  const go = (to: string | undefined) => {
-    if (to === date) {
-      if (flat[0]) say(flat[0].text);
-      return;
-    }
-    setDate(to);
-    setSelected(undefined);
-    announce.current = true;
-  };
-
-  const today = shown?.date ?? "";
-
-  // From free time, at its start; otherwise when the core says a block on this day starts.
-  const addBlock = async (start?: string, minutes = 60) => {
-    const day = shown?.date ?? "today";
-    const fields = await freshBlock(start, Math.min(minutes, 720), day);
-    const saved = await blockForm({ kind: "add", date: day, startFollowsDay: start === undefined }, fields, "New block");
-    if (!saved) return;
-    land(saved.series ? `block:${saved.series}@${today}` : undefined, keys.indexOf(selected ?? ""));
+  /** Focus where the app puts it, then what it said. */
+  const settle = async (turn: { screen: Screen; said: string[] }, landing = true) => {
+    if (landing) await landOn(tree.current, turn.screen.focus ?? undefined);
+    sayAll(turn.said);
     props.onChanged();
-    say(saved.said);
+  };
+
+  /** A write made by this client's own forms: the app takes it in, the row named in hand. */
+  const wrote = async (said: string, key?: string) => {
+    await refresh();
+    const screen = key ? (await send({ Focus: key })).screen : await current();
+    await settle({ screen, said: [said] });
   };
 
   // Changes a block — asking "this day, or every day?" of a repeating one, never guessing.
@@ -163,10 +70,10 @@ export function Day(props: {
     let heading = `Change ${block.title}`;
     let purpose: Parameters<typeof blockForm>[0] = { kind: "series", id: block.series };
     if (block.repeats) {
-      const which = await choose(heading, "Which occurrences?", [`${shown?.title ?? "This day"} only`, "Every occurrence"]);
+      const which = await choose(heading, "Which occurrences?", [`${day?.title ?? "This day"} only`, "Every occurrence"]);
       if (which === undefined) return;
       if (which === 0) {
-        purpose = { kind: "occurrence", series: block.series, date: today };
+        purpose = { kind: "occurrence", series: block.series, date };
         heading = `Change ${block.title}, this day only`;
       } else {
         heading = `Change ${block.title}, every occurrence`;
@@ -180,182 +87,139 @@ export function Day(props: {
       if (purpose.kind === "series") ({ fields, rule } = await core.seriesFields(block.series));
       else fields = await core.dayFields(block);
     } catch (error) {
-      say((error as Error).message);
+      sayAll([(error as Error).message]);
       return;
     }
     const saved = await blockForm(purpose, fields, heading, rule);
-    if (!saved) return;
-    land(`block:${block.id}`, keys.indexOf(`block:${block.id}`));
-    props.onChanged();
-    say(saved.said);
+    if (saved) await wrote(saved.said, `block:${block.id}`);
   };
 
-  const goToDay = async () => {
-    const phrase = await askText((await core.ownQuestions()).go_to_day);
-    if (!phrase?.trim()) return;
-    try {
-      const day = await core.day(phrase);
-      go(day.date);
-    } catch (error) {
-      say((error as Error).message);
+  // From free time, at its start; otherwise when the core says a block on this day starts.
+  const addBlock = async (start?: string, minutes = 60) => {
+    const on = date || "today";
+    const fields = await freshBlock(start, Math.min(minutes, 720), on);
+    const saved = await blockForm({ kind: "add", date: on, startFollowsDay: start === undefined }, fields, "New block");
+    if (saved) await wrote(saved.said, saved.series ? `block:${saved.series}@${date}` : undefined);
+  };
+
+  /** The forms an action opens, which are this client's own. */
+  const form = async (action: Action) => {
+    const at = items.find((item) => item.actions.some((a) => a.kind === action.kind && a.target === action.target)) ?? inHand;
+    if (action.kind === "edit" && at?.block) await edit(at.block);
+    else if (action.kind === "add_block" && at?.free) await addBlock(action.other ?? at.free.start, at.free.minutes);
+    else if (action.kind === "edit_task") props.onOpenTask(action.target);
+    // The day's two proposals are this client's screens, over the core's words.
+    else if (action.kind === "replan" || action.kind === "plan_day") {
+      await showProposal(action.kind === "replan" ? { kind: "replan" } : { kind: "plan_day", date: action.target });
+      await refresh();
+      props.onChanged();
     }
   };
 
-  // The Day menu's commands, while the day is shown.
-  useCommand("previous-day", () => {
-    if (!shown) return false;
-    go(step(shown.date, -1));
-  });
-  useCommand("next-day", () => {
-    if (!shown) return false;
-    go(step(shown.date, 1));
-  });
-  useCommand("go-to-day", () => void goToDay());
-  useCommand("go-to-now", () => {
-    toNow.current = true;
-    if (date === undefined && shown) {
-      // Today is showing already: land on now at once.
-      setShown({ ...shown });
-    } else {
-      setDate(undefined);
-    }
-  });
+  /** Runs `event` through the app from this day, its forms the client's own. */
+  const act = async (event: Event, landing = true) => settle(await run(event, form), landing);
+
+  const move = (step: DayMove) => void act({ Day: step });
+
+  // The Day menu's commands: each goes to the day first, from wherever it is pressed.
+  useCommand("previous-day", () => move("Previous"));
+  useCommand("next-day", () => move("Next"));
+  useCommand("go-to-day", () => move("Ask"));
+  useCommand("go-to-now", () => move("Now"));
   useCommand("new-block", () => void addBlock());
 
-  // Runs one of a row's actions. The forms are this client's own: a block's, a new block's in
-  // free time, and the details of a sitting's task.
-  // `land` false leaves focus where it went back to: the Day actions button, not a row.
-  const run = async (at: DayRow, action: Action, landing = true) => {
-    const index = Math.max(0, keys.indexOf(at.key));
-    const done = await perform(action, async () => {
-      if (action.kind === "edit" && at.block) await edit(at.block);
-      else if (action.kind === "add_block" && at.free) await addBlock(action.other ?? at.free.start, at.free.minutes);
-      else if (action.kind === "edit_task") props.onOpenTask(action.target);
-      // The day's two proposals are this client's screens, over the core's words.
-      else if (action.kind === "replan" || action.kind === "plan_day") {
-        const of = action.kind === "replan" ? ({ kind: "replan" } as const) : ({ kind: "plan_day", date: action.target } as const);
-        // What was made is said by the screen as it is made.
-        return { said: "", changed: await showProposal(of) };
-      }
-    });
-    if (!done) return;
-    if (landing) land(at.key, index);
-    props.onChanged();
-    say(done.said);
-  };
-
-  // Enter: what a row is for.
-  const activate = (key: Key) => {
-    const at = row(String(key));
-    const action = byKind(at?.actions, "edit", "edit_task", "add_block", "restore_day");
-    if (at && action) void run(at, action);
+  const onRow = async (key: string, kinds: ActionKind[]) => {
+    await send({ Focus: key });
+    await act({ Run: kinds });
   };
 
   const keysDown = (event: KeyboardEvent) => {
-    const at = row(rowKey(event));
+    const key = rowKey(event);
+    const at = items.find((item) => item.key === key);
     if (!at) return;
     if (asksForMenu(event)) {
       event.preventDefault();
-      select(at.key);
-      setMenu(true);
+      void send({ Focus: at.key }).then(() => setMenu(true));
       return;
     }
-    const action =
-      event.key === " " && at.kind === "sitting"
-        ? byKind(at.actions, "start_timer", "pause_timer", "resume_timer")
-        : event.key === "Delete"
-          ? byKind(at.actions, ...REMOVING)
-          : undefined;
-    if (!action) return;
+    const kinds = event.key === " " && at.kind === "sitting" ? TIMING : event.key === "Delete" ? REMOVING : undefined;
+    if (!kinds) return;
     event.preventDefault();
     event.stopPropagation();
-    void run(at, action);
+    void onRow(at.key, kinds);
   };
 
   const rightClick = (event: MouseEvent) => {
     const key = rowKey(event);
     if (!key) return;
     event.preventDefault();
-    select(key);
-    setMenu(true);
+    void send({ Focus: key }).then(() => setMenu(true));
   };
 
   const chosen = (selection: Selection) => {
     if (selection === "all") return;
     const [key] = [...selection];
-    if (key !== undefined) select(String(key));
+    if (key !== undefined) void send({ Focus: String(key) });
   };
 
-  const expanded = useMemo(
-    () => new Set<Key>(flat.filter((r) => r.children.length > 0 && !collapsed.has(r.key)).map((r) => r.key)),
-    [flat, collapsed],
-  );
+  // Left and Right fold a block: its own Expand or Collapse, run through the app.
+  const fold = (open: Set<Key>) => {
+    const changed = items.find((item) => item.expanded !== undefined && item.expanded !== open.has(item.key));
+    const action = changed && byKind(changed.actions, "expand", "collapse");
+    if (action) void act({ Perform: action });
+  };
 
   return (
     <>
-      <h2>{shown?.title ?? "Today"}</h2>
+      <h2>{day?.title ?? "Today"}</h2>
       {/* A toolbar is one Tab stop, its buttons a press of the arrows apart (ARIA's toolbar pattern). */}
       <Toolbar className="buttons" aria-label="Day">
-        <Button isDisabled={!shown} onPress={() => shown && go(step(shown.date, -1))}>
+        <Button isDisabled={!day} onPress={() => move("Previous")}>
           Previous day
         </Button>
-        <Button onPress={() => go(undefined)}>Today</Button>
-        <Button isDisabled={!shown} onPress={() => shown && go(step(shown.date, 1))}>
+        <Button onPress={() => move("Today")}>Today</Button>
+        <Button isDisabled={!day} onPress={() => move("Next")}>
           Next day
         </Button>
-        <Button onPress={() => void goToDay()}>Go to day</Button>
+        <Button onPress={() => move("Ask")}>Go to day</Button>
         <Button onPress={() => void addBlock()}>Add block</Button>
         {/* The day's own actions, wherever focus is: its summary row offers them too. */}
         <RowMenu
           label="Day actions"
-          actions={shown?.actions ?? []}
-          onAction={(action) => {
-            const summary = flat[0];
-            if (summary) void run(summary, action, false);
-          }}
+          actions={day?.actions ?? []}
+          onAction={(action) => void act({ Perform: action }, false)}
           isOpen={dayMenu}
           onOpenChange={setDayMenu}
         />
-        <RowMenu
-          actions={row(selected)?.actions ?? []}
-          onAction={(action) => {
-            const at = row(selected);
-            if (at) void run(at, action);
-          }}
-          isOpen={menu}
-          onOpenChange={setMenu}
-        />
+        <RowMenu actions={inHand?.actions ?? []} onAction={(action) => void act({ Perform: action })} isOpen={menu} onOpenChange={setMenu} />
       </Toolbar>
-      {problem && <p role="alert">{problem}</p>}
       {/* Space and Delete are caught on the way down, before the tree takes Space for selection. */}
       <div onKeyDownCapture={keysDown} onContextMenu={rightClick}>
         <Tree
           ref={tree}
           aria-label="The day"
-          items={shown?.rows ?? []}
+          items={nodes}
           selectionMode="single"
           selectionBehavior="replace"
           disallowEmptySelection
-          selectedKeys={selected ? [selected] : []}
+          selectedKeys={selected}
           onSelectionChange={chosen}
           expandedKeys={expanded}
-          onExpandedChange={(open) =>
-            setCollapsed(new Set(flat.filter((r) => r.children.length > 0 && !open.has(r.key)).map((r) => r.key)))
-          }
-          onAction={activate}
+          onExpandedChange={fold}
+          onAction={(key) => void onRow(String(key), OPENING)}
         >
-          {function item(node: DayRow) {
+          {function item(node: Node<ShownDayItem>) {
             return (
-              <TreeItem id={node.key} textValue={node.text}>
+              <TreeItem id={node.id} textValue={node.item.text}>
                 <TreeItemContent>
                   {({ hasChildItems }) => (
-                    <div className={`row ${node.kind}`}>
+                    <div className={`row ${node.item.kind}`}>
                       {hasChildItems && (
                         <Button slot="chevron" className="chevron">
                           ›
                         </Button>
                       )}
-                      {node.text}
+                      {node.item.text}
                     </div>
                   )}
                 </TreeItemContent>

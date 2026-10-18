@@ -26,6 +26,9 @@ pub enum Shell {
     Render,
     /// Say this, once focus is where the view model puts it.
     Announce(String),
+    /// Say the day's heading, "<day>. <summary>", the day in the shell's own words: what a
+    /// day newly shown says. This is the summary.
+    Heading(String),
 }
 
 /// The store as it stands now, and the heads it was read at.
@@ -117,7 +120,10 @@ impl Session {
                             shell.push(Shell::Render);
                         }
                     }
-                    Effect::Announce(request) => shell.push(Shell::Announce(request.operation.text)),
+                    Effect::Announce(request) => {
+                        let said = request.operation;
+                        shell.push(if said.heading { Shell::Heading(said.text) } else { Shell::Announce(said.text) });
+                    }
                     Effect::Watch(mut request) => {
                         if let Ok((arrival, heads)) = arrival(&self.lumenna) {
                             self.sent = Some((heads, arrival.now.minute()));

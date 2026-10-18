@@ -48,6 +48,8 @@ import type {
   Action,
   ActionKind,
   Answer,
+  DayItem,
+  DayView,
   Event,
   Item,
   ListView,
@@ -143,9 +145,39 @@ export interface Shown extends Omit<ListView, "items"> {
   readback: string;
 }
 
+/** A row of the day, with the line a screen reader reads for it. */
+export interface ShownDayItem extends DayItem {
+  text: string;
+}
+
+/** The day as the page draws it: its heading in the browser's words, each row's line. */
+export interface ShownDay extends Omit<DayView, "items"> {
+  title: string;
+  items: ShownDayItem[];
+}
+
 /** The view model as the page draws it. */
-export interface Screen extends Omit<ViewModel, "list"> {
+export interface Screen extends Omit<ViewModel, "list" | "day"> {
   list?: Shown;
+  day?: ShownDay;
+}
+
+/** A day's row as it reads. */
+function dayLine(item: DayItem, date: string, summary: string): string {
+  switch (item.kind) {
+    case "summary":
+      return summaryText(date, summary);
+    case "block":
+      return item.block ? blockText(item.block) : "";
+    case "sitting":
+      return item.sitting ? sittingText(item.sitting) : "";
+    case "free":
+      return item.free ? freeText(item.free.title, item.free.details, item.free.start, item.free.end) : "";
+    case "now":
+      return item.now ? nowText(item.now.title, item.now.time) : "";
+    case "cancelled":
+      return item.cancelled ? cancelledText(item.cancelled) : "";
+  }
 }
 
 /** What an event left: the screen, and what to say once focus has landed. */
@@ -167,15 +199,25 @@ function screen(view: ViewModel): Screen {
       [],
     ),
   };
+  const day = view.day && {
+    ...view.day,
+    title: dayText(view.day.date),
+    items: view.day.items.map((item) => ({ ...item, text: dayLine(item, view.day!.date, view.day!.summary) })),
+  };
   return {
     ...view,
     sidebar: view.sidebar.map((entry) => ("Group" in entry.kind ? { ...entry, text: sentenceCase(entry.text) } : entry)),
     list,
+    day,
   };
 }
 
 function turned(turn: Turn): Said {
-  return { screen: screen(turn.view), said: turn.said };
+  const date = turn.view.day?.date;
+  return {
+    screen: screen(turn.view),
+    said: turn.said.map((saying) => (saying.heading && date ? summaryText(date, saying.text) : saying.text)),
+  };
 }
 
 /** A row and the line a screen reader reads for it. */

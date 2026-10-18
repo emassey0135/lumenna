@@ -10,17 +10,17 @@ import { Proposals } from "./Proposal";
 import { BlockForms } from "./BlockForm";
 import { Blocks } from "./Blocks";
 import { core } from "./core";
-import type { Place } from "./core";
+import type { DayMove, Place } from "./core";
 import { Day } from "./Day";
 import { KeyboardShortcuts, asksForKeys, commandFor } from "./Keys";
 import { defer, focusIn, movePane, runCommand, useCommand } from "./commands";
 import { Details } from "./Details";
 import type { DetailsHandle } from "./Details";
 import { QuickAdd } from "./QuickAdd";
-import { ReminderLists, RemindersDue, showReminders, useDelivery } from "./Reminders";
+import { ReminderLists, RemindersDue, useDelivery } from "./Reminders";
 import type { Due } from "./Reminders";
 import { say } from "./say";
-import { refresh, sayAll, send, settled, start, useScreen } from "./session";
+import { refresh, run, sayAll, send, settled, start, useScreen } from "./session";
 import { Settings } from "./Settings";
 import { Sidebar } from "./Sidebar";
 import { TaskList } from "./TaskList";
@@ -96,7 +96,7 @@ export function App() {
     return () => clearInterval(timer);
   }, [ready]);
 
-  useEffect(() => setSelected(undefined), [place]);
+  useEffect(() => setSelected(undefined), [place, screen?.focus]);
 
   // A write made outside the app (the day, the details, settings): the app takes it in now.
   const changed = () => {
@@ -206,10 +206,17 @@ export function App() {
   useCommand("go-trash", () => goTo("Trash"), -1);
   useCommand("next-pane", () => movePane(1), -1);
   useCommand("previous-pane", () => movePane(-1), -1);
-  for (const id of ["previous-day", "next-day", "go-to-now", "go-to-day"]) {
-    // eslint-disable-next-line react-hooks/rules-of-hooks -- a fixed list, called in the same order every time
-    useCommand(id, () => thenRun("Today", id), -1);
-  }
+  // The day's commands go to the day from any place: the app moves there itself.
+  const dayFrom = (step: DayMove) => () =>
+    void (async () => {
+      const turn = await run({ Day: step });
+      focusIn(".app > main", false);
+      sayAll(turn.said);
+    })();
+  useCommand("previous-day", dayFrom("Previous"), -1);
+  useCommand("next-day", dayFrom("Next"), -1);
+  useCommand("go-to-now", dayFrom("Now"), -1);
+  useCommand("go-to-day", dayFrom("Ask"), -1);
   for (const id of ["mark-done", "save-task", "put-in-block", "move-to-project"]) {
     // eslint-disable-next-line react-hooks/rules-of-hooks -- a fixed list, called in the same order every time
     useCommand(id, () => say("No task is selected."), -1);
@@ -250,25 +257,23 @@ export function App() {
       <main aria-label={screen.title}>
         {place === "Today" ? (
           <Day
-            revision={revision}
-            onChanged={changed}
-            onSelectTask={setSelected}
+            screen={screen}
+            onChanged={() => setRevision((r) => r + 1)}
             onOpenTask={(id) => {
               setSelected(id);
               details.current?.focus();
             }}
           />
         ) : place === "Blocks" ? (
-          <Blocks revision={revision} onChanged={changed} />
+          <Blocks screen={screen} onChanged={() => setRevision((r) => r + 1)} />
         ) : (
           <TaskList
             screen={screen}
             onOpen={() => details.current?.focus()}
             onForm={async (action) => {
-              // A task's or block's reminders are the same list wherever they are offered; any
-              // other form of a task's is its details, beside the list.
-              if (action.kind === "reminders") await showReminders(action);
-              else details.current?.focus();
+              // Any form of a task's is its details, beside the list.
+              void action;
+              details.current?.focus();
             }}
             onChanged={() => setRevision((r) => r + 1)}
           />
@@ -277,7 +282,13 @@ export function App() {
       <aside aria-label="Task details">
         <Details
           ref={details}
-          id={place === "Today" || place === "Blocks" ? selected : (screen.focus ?? undefined)}
+          id={
+            place === "Blocks"
+              ? undefined
+              : place === "Today"
+                ? (selected ?? screen.day?.items.find((item) => item.key === screen.focus)?.sitting?.task)
+                : (screen.focus ?? undefined)
+          }
           revision={revision}
           onChanged={changed}
         />

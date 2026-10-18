@@ -40,6 +40,9 @@ export function TaskList(props: { screen: Screen; onOpen: () => void; onForm: Fo
 
   const nodes = useMemo(() => nest(items, (item) => item.row.id, (item) => item.row.depth), [items]);
   const expanded = useMemo(() => new Set<Key>(items.filter((item) => item.row.expanded).map((item) => item.row.id)), [items]);
+  // The same keys while the row in hand is the same: a new array each time is a new selection
+  // to React Aria, which says "… selected" for each while the tree has focus.
+  const selected = useMemo(() => (screen.focus ? [screen.focus] : []), [screen.focus]);
   const inHand = items.find((item) => item.row.id === screen.focus);
 
   /** Runs `event` through the app from this list: focus where it lands, then what it said. */
@@ -152,7 +155,7 @@ export function TaskList(props: { screen: Screen; onOpen: () => void; onForm: Fo
           selectionMode="single"
           selectionBehavior="replace"
           disallowEmptySelection
-          selectedKeys={screen.focus ? [screen.focus] : []}
+          selectedKeys={selected}
           onSelectionChange={choose}
           expandedKeys={expanded}
           onExpandedChange={fold}

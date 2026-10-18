@@ -8,6 +8,7 @@ import { useSyncExternalStore } from "react";
 import { core } from "./core";
 import type { Action, ActionKind, Answer, Event, Said, Screen } from "./core";
 import { ask, choose, confirm, pick } from "./Prompts";
+import { showReminders } from "./Reminders";
 import { say } from "./say";
 
 let screen: Screen | undefined;
@@ -67,6 +68,13 @@ export function settled(): Promise<void> {
   return new Promise<void>((resolve) => whenSettled.push(resolve)).then(drawn);
 }
 
+/** The screen as it is now, drawn. */
+export async function current(): Promise<Screen> {
+  const now = await core.screen();
+  show(now);
+  return now;
+}
+
 /**
  * Takes in what changed elsewhere — another tab, `lum`, a sync, a write made outside the app —
  * and draws it if anything did. Whether it did.
@@ -106,7 +114,9 @@ export async function run(first: Event, form?: Form): Promise<Said> {
         answer = { answer: "yes" };
         break;
       case "form":
-        await form?.(action);
+        // A task's or block's reminders are the same list wherever they are offered.
+        if (action?.kind === "reminders") await showReminders(action);
+        else if (action) await form?.(action);
         break;
       case "confirm":
         if (await confirm(question.title, question.message, await core.sentence(question.yes))) answer = { answer: "yes" };

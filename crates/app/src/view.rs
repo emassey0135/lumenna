@@ -3,11 +3,11 @@
 use jiff::Zoned;
 use lumenna_core::snapshot::Snapshot;
 use lumenna_records::places::{Place, SidebarEntry, sidebar};
-use lumenna_records::{Action, Choices, LumennaError, Query, Question, Rows, length_question, lists};
+use lumenna_records::{Action, Choices, LumennaError, Query, Question, Rows, lists};
 use serde::{Deserialize, Serialize};
 
 use crate::list::{self, Item};
-use crate::Model;
+use crate::{DayView, Model};
 
 /// Everything on screen.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -21,8 +21,10 @@ pub struct ViewModel {
     pub place: Option<Place>,
     /// What the window and the list are called.
     pub title: String,
-    /// The list shown, for a place that lists tasks.
+    /// The list shown, for a place that lists tasks or blocks.
     pub list: Option<ListView>,
+    /// The day shown, on Today.
+    pub day: Option<DayView>,
     /// The row in hand, by identifier: where the shell puts focus when it changes.
     pub focus: Option<String>,
     /// The question an action is asking.
@@ -57,12 +59,13 @@ pub struct ListView {
     pub refusal: Option<String>,
 }
 
-/// An action's question, open.
+/// A question open.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct Asking {
-    /// The action asking.
-    pub action: Action,
+    /// The action asking, when it is a row's action that asks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<Action>,
     /// What to ask now: the action's question, or, once a pick that asks how long has its
     /// choice, how long.
     pub question: Question,
@@ -74,10 +77,11 @@ pub struct Asking {
     pub refusal: Option<String>,
 }
 
-/// The tasks a place lists under `query`, or `None` for a place that is not a list of tasks.
+/// The rows a place lists under `query`: tasks, or the block series; `None` for the day.
 pub fn listing(snapshot: &Snapshot, place: &Place, query: &str, now: &Zoned) -> Option<Result<Rows, LumennaError>> {
     match place {
-        Place::Today | Place::Blocks => None,
+        Place::Today => None,
+        Place::Blocks => Some(lumenna_records::plan::blocks(snapshot, now.date())),
         _ => Some(lists::tasks(snapshot, query, now)),
     }
 }
@@ -88,7 +92,9 @@ pub fn view(model: &Model) -> ViewModel {
         return ViewModel { place: Some(place.clone()), title: place.title(), ..ViewModel::default() };
     };
     // The rows of the last query that read; why the one typed does not, if it does not.
-    let refusal = lumenna_records::resolve::list_query(&store.snapshot, &model.query()).err().map(|e| e.message().to_owned());
+    let refusal = (place != Place::Blocks)
+        .then(|| lumenna_records::resolve::list_query(&store.snapshot, &model.query()).err().map(|e| e.message().to_owned()))
+        .flatten();
     let list = listing(&store.snapshot, &place, &model.shown_query(), &store.now).map(|found| match found {
         Ok(rows) => ListView {
             items: list::items(&rows, &model.folded),
@@ -107,12 +113,13 @@ pub fn view(model: &Model) -> ViewModel {
         quick_add: place.quick_add_prefix(),
         query: model.query(),
         add_refused: model.add_refused.clone(),
+        day: (place == Place::Today).then(|| model.day_view()).flatten(),
         place: Some(place),
         list,
         focus: model.focus.clone(),
         asking: model.open.as_ref().map(|open| Asking {
-            action: open.action.clone(),
-            question: if open.picked.is_some() { length_question() } else { open.action.question.clone() },
+            action: open.action().cloned(),
+            question: open.question(),
             choices: open.choices.clone(),
             refusal: open.refusal.clone(),
         }),
