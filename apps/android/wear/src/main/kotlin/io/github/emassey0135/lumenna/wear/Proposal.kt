@@ -20,8 +20,6 @@ import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import io.github.emassey0135.lumenna.Core
 import io.github.emassey0135.lumenna.LocalPlannerNow
-import io.github.emassey0135.lumenna.ProposalModel
-import io.github.emassey0135.lumenna.button
 
 /**
  * Replan from Now, or Plan the Day: the app's proposal, as the phone has it, said as the screen

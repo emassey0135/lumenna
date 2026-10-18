@@ -5,6 +5,3 @@ module_name = "LumennaCore"
 ffi_module_name = "LumennaCoreFFI"
 ffi_module_filename = "LumennaCoreFFI"
 generate_module_map = true
-
-[bindings.kotlin]
-package_name = "io.github.emassey0135.lumenna.core"

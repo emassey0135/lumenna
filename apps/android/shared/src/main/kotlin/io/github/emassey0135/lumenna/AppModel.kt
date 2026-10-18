@@ -5,7 +5,6 @@ import android.os.Looper
 import io.github.emassey0135.lumenna.app.App
 import io.github.emassey0135.lumenna.app.Shell
 import io.github.emassey0135.lumenna.app.ShellEvent
-import io.github.emassey0135.lumenna.app.TimeStyle
 import io.github.emassey0135.lumenna.app.Turn
 import io.github.emassey0135.lumenna.app.ViewModel
 import io.github.emassey0135.lumenna.app.SaveFile
@@ -35,7 +34,7 @@ class AppModel(
     private val shown = MutableStateFlow<ViewModel?>(null)
     private var seq = 0u
 
-    private val app = App(core.directory.absolutePath, platform, object : Shell {
+    private val app = App(core.device, platform, object : Shell {
         override fun turn(turn: Turn) {
             main.post { take(turn) }
         }
@@ -43,10 +42,7 @@ class AppModel(
 
     init {
         shown.value = app.view()
-        app.send(ShellEvent.Clock(Clock.appStyle))
-        // While screens still run on the UniFFI core, it syncs; the app's network keeps the
-        // request to and starts no second endpoint (`App::in_front`).
-        app.inFront(false)
+        app.send(ShellEvent.Clock(Clock.style))
         main.post(object : Runnable {
             // The app's minutes: what is now, what is due.
             override fun run() {
@@ -97,6 +93,8 @@ class AppModel(
             quiet.value = turn.view.landing
         }
         shown.value = turn.view
+        // What follows the store — reminders' alarms — looks again, a moment after the last turn.
+        core.moved()
         // Focus moves first, then this is said: the list that lands releases it.
         if (before != null && turn.view.landing > maxOf(before, quiet.value)) {
             core.hold()
@@ -110,7 +108,3 @@ class AppModel(
         }
     }
 }
-
-/** The clock the core words its whole sentences in, as this device has its own, for the app. */
-val Clock.appStyle: TimeStyle
-    get() = if (style == io.github.emassey0135.lumenna.records.TimeStyle.TWENTY_FOUR_HOUR) TimeStyle.TWENTY_FOUR_HOUR else TimeStyle.TWELVE_HOUR

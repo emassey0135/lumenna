@@ -29,12 +29,11 @@ import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import io.github.emassey0135.lumenna.records.NewBlock
-import io.github.emassey0135.lumenna.records.TaskEdit
+import io.github.emassey0135.lumenna.app.TaskEdit
 import java.io.File
 import java.time.LocalDate
 import java.util.UUID
-import io.github.emassey0135.lumenna.records.MoveTarget
+import io.github.emassey0135.lumenna.app.MoveTarget
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -148,13 +147,13 @@ class LumennaTest {
         rule.waitUntil(5_000) { rule.onAllNodes(titled(title)).fetchSemanticsNodes().isEmpty() }
     }
 
-    private fun seed(operation: (io.github.emassey0135.lumenna.core.Lumenna) -> Unit) {
-        operation(core.lumenna)
+    private fun seed(operation: (io.github.emassey0135.lumenna.app.Device) -> Unit) {
+        operation(core.device)
         rule.runOnIdle { core.changed() }
         rule.waitForIdle()
     }
 
-    private fun titles(query: String = ""): List<String> = core.lumenna.listTasks(query).rows.map { it.title }
+    private fun titles(query: String = ""): List<String> = core.device.listTasks(query).rows.map { it.title }
 
     // MARK: - Tasks
 
@@ -251,7 +250,7 @@ class LumennaTest {
         row("Projects").performClick()
         rule.waitForIdle()
         act("Home", "Move down")
-        assertEquals(listOf("Work", "Home"), core.lumenna.listProjects().rows.map { it.title }.filter { it != "Inbox" })
+        assertEquals(listOf("Work", "Home"), core.device.listProjects().rows.map { it.title }.filter { it != "Inbox" })
         row("Home").assertIsFocused()
     }
 
@@ -265,7 +264,7 @@ class LumennaTest {
         type("Weight", "1,5")
         button("Save")
         shows("is not a weight")
-        val home = { core.lumenna.listProjects().rows.first { it.title == "Home" }.value.orEmpty() }
+        val home = { core.device.listProjects().rows.first { it.title == "Home" }.value.orEmpty() }
         assertFalse("a typo is not taken as inherit", "weight" in home())
         replace("Weight", "1.5")
         button("Save")
@@ -280,7 +279,7 @@ class LumennaTest {
         seed { it.addTask("write report") }
         tab("Tasks")
         // In sentence case, as Material writes them: `Action.sentence`.
-        val offered = core.lumenna.listTasks("").rows.single().actions.map { it.sentence }
+        val offered = core.device.listTasks("").rows.single().actions.map { it.sentence }
         assertEquals(offered, actionsOf("write report"))
         assertEquals("Move to trash", offered.last())
     }
@@ -318,7 +317,7 @@ class LumennaTest {
 
     @Test
     fun todayMeansTodayWhereThePhoneIs() {
-        assertEquals(LocalDate.now().toString(), core.lumenna.plan(null).date)
+        assertEquals(LocalDate.now().toString(), core.device.plan(null).date)
         rule.onNode(hasText("Today") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)).assertExists()
     }
 
@@ -350,7 +349,7 @@ class LumennaTest {
     @Test
     fun editingATaskSavesOnlyWhatChanged() {
         seed { it.addTask("draft report") }
-        val id = core.lumenna.listTasks("").rows.single().id
+        val id = core.device.listTasks("").rows.single().id
         tab("Tasks")
         row("draft report").performClick()
         rule.waitForIdle()
@@ -358,7 +357,7 @@ class LumennaTest {
         // Another device moves the date while the title is being typed.
         seed { it.editTask(id, TaskEdit(null, "friday", null, null, null, null, null, null)) }
         press("Save")
-        val task = core.lumenna.showTask(id).task
+        val task = core.device.showTask(id).task
         assertEquals("draft the report", task.title)
         assertTrue("the other device's date stands: ${task.due}", task.due != null)
     }
@@ -371,7 +370,7 @@ class LumennaTest {
         rule.waitForIdle()
         type("Labels", "calls, @errands")
         press("Save")
-        assertEquals(listOf("calls", "errands"), core.lumenna.listTasks("").rows.single().let { core.lumenna.showTask(it.id).task.labels })
+        assertEquals(listOf("calls", "errands"), core.device.listTasks("").rows.single().let { core.device.showTask(it.id).task.labels })
     }
 
     @Test
@@ -402,7 +401,7 @@ class LumennaTest {
         rule.onNode(hasContentDescription("Reports, level 2")).performClick()
         rule.waitForIdle()
         press("Save")
-        val task = core.lumenna.showTask(core.lumenna.listTasks("").rows.single().id).task
+        val task = core.device.showTask(core.device.listTasks("").rows.single().id).task
         assertEquals("Reports", task.project)
     }
 
@@ -425,7 +424,7 @@ class LumennaTest {
     @Test
     fun aProjectTypedThatIsNoProjectIsNotKept() {
         seed { it.addTask("draft report") }
-        val before = core.lumenna.showTask(core.lumenna.listTasks("").rows.single().id).task.project
+        val before = core.device.showTask(core.device.listTasks("").rows.single().id).task.project
         tab("Tasks")
         row("draft report").performClick()
         rule.waitForIdle()
@@ -433,7 +432,7 @@ class LumennaTest {
         rule.onNode(hasText("No project matches")).assertExists()
         field("Project").performImeAction()
         press("Save")
-        assertEquals(before, core.lumenna.showTask(core.lumenna.listTasks("").rows.single().id).task.project)
+        assertEquals(before, core.device.showTask(core.device.listTasks("").rows.single().id).task.project)
     }
 
     @Test
@@ -447,7 +446,7 @@ class LumennaTest {
         })
         replace("Due", "2026-12-14")
         press("Save")
-        val task = core.lumenna.showTask(core.lumenna.listTasks("").rows.single().id).task
+        val task = core.device.showTask(core.device.listTasks("").rows.single().id).task
         assertEquals("2026-12-14", task.due)
         assertEquals("every monday", task.repetition)
     }
@@ -470,7 +469,7 @@ class LumennaTest {
 
     @Test
     fun theDaySaysWhatItHoldsAndShowsFreeTime() {
-        seed { it.addBlock(NewBlock(title = "Focus", at = "9:00", minutes = 90u, date = "today", kind = "work", repeat = null)) }
+        seed { it.addBlock(newBlock(title = "Focus", at = "9:00", minutes = 90u, date = "today", kind = "work", repeat = null)) }
         tab("Today")
         says("Focus", "work block")
         // Before the block and after it.
@@ -482,7 +481,7 @@ class LumennaTest {
     fun aTaskCanBeAssignedToABlockAndTimed() {
         seed {
             it.addTask("write the chapter")
-            it.addBlock(NewBlock(title = "All day", at = "00:00", minutes = 1440u, date = "today", kind = "work", repeat = null))
+            it.addBlock(newBlock(title = "All day", at = "00:00", minutes = 1440u, date = "today", kind = "work", repeat = null))
         }
         tab("Today")
         act("All day", "Assign a task", substring = true)
@@ -496,14 +495,14 @@ class LumennaTest {
         replace("Planned length", "")
         button("Save")
         says("write the chapter", "in progress")
-        assertEquals(null, core.lumenna.plan(null).blocks.single().assignments.single().plannedMins)
+        assertEquals(null, core.device.plan(null).blocks.single().assignments.single().plannedMins)
     }
 
     @Test
     fun aTimerStartsPausesResumesAndStops() {
         seed {
             it.addTask("write the chapter")
-            it.addBlock(NewBlock(title = "All day", at = "00:00", minutes = 1440u, date = "today", kind = "work", repeat = null))
+            it.addBlock(newBlock(title = "All day", at = "00:00", minutes = 1440u, date = "today", kind = "work", repeat = null))
         }
         tab("Today")
         act("All day", "Assign a task", substring = true)
@@ -525,9 +524,9 @@ class LumennaTest {
     fun aNewBlockStartsWhenTheCoreSaysAndFollowsTheDayUntilItsStartIsChosen() {
         tab("Today")
         press("Add block")
-        assertEquals(core.lumenna.newBlockStart(null), valueOf("Starts at"))
+        assertEquals(core.device.newBlockStart(null), valueOf("Starts at"))
         replace("Day", "in 3 days")
-        assertEquals(core.lumenna.newBlockStart("in 3 days"), valueOf("Starts at"))
+        assertEquals(core.device.newBlockStart("in 3 days"), valueOf("Starts at"))
         replace("Starts at", "7:15pm")
         replace("Day", "tomorrow")
         assertEquals("a start the person chose stays", "7:15pm", valueOf("Starts at"))
@@ -547,7 +546,7 @@ class LumennaTest {
         // The form's button is the core's word for what it does: a new block is added.
         press("Add")
         says("Train", "takes tasks")
-        val block = core.lumenna.plan(null).blocks.single()
+        val block = core.device.plan(null).blocks.single()
         assertTrue(block.acceptsTasks)
         assertEquals("break", block.kind)
     }
@@ -556,8 +555,8 @@ class LumennaTest {
     fun aTaskIsPutInABlockFromItsOwnPage() {
         seed {
             it.addTask("tidy the desk")
-            it.addBlock(NewBlock(title = "Chores", at = "10:00", minutes = 60u, date = "tomorrow", kind = "work", repeat = null))
-            it.addBlock(NewBlock(title = "Lunch", at = "12:00", minutes = 30u, date = "tomorrow", kind = "break", repeat = null))
+            it.addBlock(newBlock(title = "Chores", at = "10:00", minutes = 60u, date = "tomorrow", kind = "work", repeat = null))
+            it.addBlock(newBlock(title = "Lunch", at = "12:00", minutes = 30u, date = "tomorrow", kind = "break", repeat = null))
         }
         tab("Tasks")
         row("tidy the desk").performClick()
@@ -567,14 +566,14 @@ class LumennaTest {
         button("Tomorrow, ${Clock.time("10:00")} to ${Clock.time("11:00")}, Chores")
         type("Planned length", "30")
         button("Save")
-        val sitting = core.lumenna.plan("tomorrow").blocks.first { it.title == "Chores" }.assignments.single()
+        val sitting = core.device.plan("tomorrow").blocks.first { it.title == "Chores" }.assignments.single()
         assertEquals("tidy the desk", sitting.title)
         assertEquals(30u, sitting.plannedMins)
     }
 
     @Test
     fun aCancelledDayIsListedAndCanBePutBack() {
-        seed { it.addBlock(NewBlock(title = "Run", at = "7:00", minutes = 30u, date = "today", kind = "work", repeat = "every day")) }
+        seed { it.addBlock(newBlock(title = "Run", at = "7:00", minutes = 30u, date = "today", kind = "work", repeat = "every day")) }
         tab("Today")
         act("Run", "Cancel this day", substring = true)
         says("Run", "cancelled for this day")
@@ -584,7 +583,7 @@ class LumennaTest {
 
     @Test
     fun undoWorksFromTheDayToo() {
-        seed { it.addBlock(NewBlock(title = "Run", at = "7:00", minutes = 30u, date = "today", kind = "work", repeat = "every day")) }
+        seed { it.addBlock(newBlock(title = "Run", at = "7:00", minutes = 30u, date = "today", kind = "work", repeat = "every day")) }
         tab("Today")
         act("Run", "Cancel this day", substring = true)
         says("Run", "cancelled for this day")
@@ -629,12 +628,12 @@ class LumennaTest {
         type("Query", "p1")
         button("Add")
         row("Urgent").assertExists()
-        assertEquals("p1", core.lumenna.listFilters().filters.single().query)
+        assertEquals("p1", core.device.listFilters().filters.single().query)
     }
 
     @Test
     fun everyBlockIsListedUnderBrowseAndAsksBeforeDeleting() {
-        seed { it.addBlock(NewBlock(title = "Review", at = "16:00", minutes = 60u, date = "in 10 days", kind = "work", repeat = null)) }
+        seed { it.addBlock(newBlock(title = "Review", at = "16:00", minutes = 60u, date = "in 10 days", kind = "work", repeat = null)) }
         tab("Browse")
         row("Blocks").performClick()
         rule.waitForIdle()
@@ -642,7 +641,7 @@ class LumennaTest {
         shows("Delete Review?")
         button("Delete block")
         gone("Review")
-        assertEquals(0u, core.lumenna.listBlocks().count)
+        assertEquals(0u, core.device.listBlocks().count)
     }
 
     // MARK: - Settings
@@ -656,7 +655,7 @@ class LumennaTest {
         rule.waitForIdle()
         replace("Time", "9:30am")
         button("Set")
-        assertEquals("09:30", core.lumenna.settings("day-start").settings.single().value)
+        assertEquals("09:30", core.device.settings("day-start").settings.single().value)
     }
 
     @Test
@@ -667,7 +666,7 @@ class LumennaTest {
         rule.onNodeWithText("Devices and sync").assertExists()
         rule.onNodeWithContentDescription("Pair a device").assertExists()
         // This device's own row cannot unpair it: the core says which row is this device's.
-        val own = core.lumenna.syncStatus().devices.firstOrNull { it.thisDevice }
+        val own = core.device.syncStatus().devices.firstOrNull { it.thisDevice }
         if (own != null) assertEquals(listOf("Rename"), actionsOf(own.name))
     }
 
@@ -683,8 +682,8 @@ class LumennaTest {
         row("Devices and sync").performClick()
         rule.waitForIdle()
         press("Pair a device")
-        val words = io.github.emassey0135.lumenna.records.pairingWords("this phone", true)
-        button(io.github.emassey0135.lumenna.button(words.join))
+        val words = io.github.emassey0135.lumenna.app.pairingWords("this phone", true)
+        button(appButton(words.join))
         shows(words.needCode)
         rule.onNode(hasSetTextAction() and hasText(words.theirCode)).assert(
             SemanticsMatcher("left empty") { node ->
@@ -716,7 +715,7 @@ class LumennaTest {
         assertEquals(true, rule.onNode(full).fetchSemanticsNode().config.getOrNull(SemanticsProperties.Selected))
         rule.onNode(hasText("Terse") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)).performClick()
         rule.waitForIdle()
-        assertEquals("terse", core.lumenna.settings("verbosity").settings.single().value)
+        assertEquals("terse", core.device.settings("verbosity").settings.single().value)
     }
 
     // MARK: - The planner
@@ -734,19 +733,19 @@ class LumennaTest {
     fun theDaysOwnActionsAreOnItsHeadingAndWhatToWorkOnSaysWhyEachIsOffered() {
         seed {
             it.addTask("write the chapter p1")
-            it.addBlock(NewBlock(title = "All day", at = "00:00", minutes = 1440u, date = "today", kind = "work", repeat = null))
+            it.addBlock(newBlock(title = "All day", at = "00:00", minutes = 1440u, date = "today", kind = "work", repeat = null))
         }
         tab("Today")
         val offered = dayHeading().fetchSemanticsNode().config.getOrNull(SemanticsActions.CustomActions).orEmpty().map { it.label }
-        assertEquals(core.lumenna.plan(null).actions.map { it.sentence }, offered)
-        val whatNow = core.lumenna.plan(null).actions.single { it.kind == io.github.emassey0135.lumenna.records.ActionKind.WHAT_NOW }.sentence
+        assertEquals(core.device.plan(null).actions.map { it.sentence }, offered)
+        val whatNow = core.device.plan(null).actions.single { it.kind == io.github.emassey0135.lumenna.app.ActionKind.WHAT_NOW }.sentence
         assertTrue(offered.toString(), offered.containsAll(listOf("Replan from now", whatNow, "End the day")))
         button(whatNow)
         // Why it is offered is its description, beneath its name.
         shows("Suggested because")
         rule.onNode(hasText("write the chapter") and hasText("Suggested because", substring = true)).assertExists()
         button("write the chapter")
-        rule.waitUntil(5_000) { core.lumenna.plan(null).blocks.single().assignments.any { it.title == "write the chapter" } }
+        rule.waitUntil(5_000) { core.device.plan(null).blocks.single().assignments.any { it.title == "write the chapter" } }
     }
 
     @Test
@@ -755,15 +754,15 @@ class LumennaTest {
         // on when the test runs; a block under way today offers the action.
         plannerNow.value = "2026-05-06T10:40"
         seed {
-            it.addBlock(NewBlock(title = "All day", at = "00:00", minutes = 1440u, date = "today", kind = "work", repeat = null))
+            it.addBlock(newBlock(title = "All day", at = "00:00", minutes = 1440u, date = "today", kind = "work", repeat = null))
             for ((title, kind, at, minutes) in listOf(
                 listOf("Deep work", "work", "09:00", "120"), listOf("Lunch", "break", "10:30", "30"),
                 listOf("Review", "work", "11:00", "60"), listOf("Walk", "break", "12:00", "30"),
             )) {
-                it.addBlock(NewBlock(title = title, at = at, minutes = minutes.toUInt(), date = "2026-05-06", kind = kind, repeat = null))
+                it.addBlock(newBlock(title = title, at = at, minutes = minutes.toUInt(), date = "2026-05-06", kind = kind, repeat = null))
             }
         }
-        val expected = core.lumenna.replan(Clock.style, io.github.emassey0135.lumenna.records.ReplanPins(emptyList(), emptyList(), emptyList()), plannerNow.value)
+        val expected = core.device.replan(Clock.style, noPins, plannerNow.value)
         tab("Today")
         button("Replan from now")
         // Said as it opens: the whole proposal in one sentence.
@@ -781,7 +780,7 @@ class LumennaTest {
         assertTrue(rule.onAllNodes(hasText("Review moves from", substring = true) and SemanticsMatcher.keyIsDefined(SemanticsProperties.ToggleableState)).fetchSemanticsNodes().isEmpty())
         button("Make the changes checked")
         rule.waitUntil(5_000) { rule.onAllNodes(hasText("Make the changes checked")).fetchSemanticsNodes().isEmpty() }
-        val day = core.lumenna.plan("2026-05-06").blocks.associate { it.title to it.start }
+        val day = core.device.plan("2026-05-06").blocks.associate { it.title to it.start }
         assertEquals("11:00", day["Review"])
         assertEquals("12:00", day["Lunch"])
     }
@@ -789,8 +788,8 @@ class LumennaTest {
     @Test
     fun planTheDayGivesEachSittingItsReasonAndPlansAgainAroundOneTurnedDown() {
         seed {
-            it.addBlock(NewBlock(title = "Morning", at = "09:00", minutes = 30u, date = "tomorrow", kind = "work", repeat = null))
-            it.addBlock(NewBlock(title = "Afternoon", at = "14:00", minutes = 30u, date = "tomorrow", kind = "work", repeat = null))
+            it.addBlock(newBlock(title = "Morning", at = "09:00", minutes = 30u, date = "tomorrow", kind = "work", repeat = null))
+            it.addBlock(newBlock(title = "Afternoon", at = "14:00", minutes = 30u, date = "tomorrow", kind = "work", repeat = null))
             it.addTask("Report p1")
             it.addTask("Email p2")
             it.addTask("Filing p3")
@@ -807,7 +806,7 @@ class LumennaTest {
         rule.waitUntil(5_000) { rule.onAllNodes(hasText("Filing goes in Morning", substring = true)).fetchSemanticsNodes().isNotEmpty() }
         button("Plan the ones checked")
         rule.waitUntil(5_000) { rule.onAllNodes(hasText("Plan the ones checked")).fetchSemanticsNodes().isEmpty() }
-        val planned = core.lumenna.plan("tomorrow").blocks.associate { block -> block.title to block.assignments.map { it.title } }
+        val planned = core.device.plan("tomorrow").blocks.associate { block -> block.title to block.assignments.map { it.title } }
         assertEquals(mapOf("Morning" to listOf("Filing"), "Afternoon" to listOf("Email")), planned)
     }
 
@@ -817,7 +816,7 @@ class LumennaTest {
         tab("Tasks")
         row("draft the report").performClick()
         rule.waitForIdle()
-        val history = core.lumenna.showTask(core.lumenna.listTasks("").rows.single().id).task.history
+        val history = core.device.showTask(core.device.listTasks("").rows.single().id).task.history
         assertTrue("a task has a history from the day it is added", history.isNotEmpty())
         rule.onNode(hasText("History") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)).performScrollTo()
         history.forEach { line -> rule.onNode(hasText(line)).performScrollTo().assertExists() }
@@ -827,11 +826,11 @@ class LumennaTest {
     private fun replannedDay() {
         plannerNow.value = "2026-05-06T10:40"
         seed {
-            it.addBlock(NewBlock(title = "All day", at = "00:00", minutes = 1440u, date = "today", kind = "work", repeat = null))
+            it.addBlock(newBlock(title = "All day", at = "00:00", minutes = 1440u, date = "today", kind = "work", repeat = null))
             for ((title, kind, at, minutes) in listOf(
                 listOf("Deep work", "work", "09:00", "120"), listOf("Lunch", "break", "10:30", "30"), listOf("Review", "work", "11:00", "60"),
             )) {
-                it.addBlock(NewBlock(title = title, at = at, minutes = minutes.toUInt(), date = "2026-05-06", kind = kind, repeat = null))
+                it.addBlock(newBlock(title = title, at = at, minutes = minutes.toUInt(), date = "2026-05-06", kind = kind, repeat = null))
             }
         }
     }
@@ -839,19 +838,19 @@ class LumennaTest {
     @Test
     fun anotherOptionOnTheReplanScreenIsProposedInPlaceAndSaid() {
         replannedDay()
-        val proposal = core.lumenna.replan(Clock.style, io.github.emassey0135.lumenna.records.ReplanPins(emptyList(), emptyList(), emptyList()), plannerNow.value)
+        val proposal = core.device.replan(Clock.style, noPins, plannerNow.value)
         val skip = proposal.alternatives.first { it.sentence.startsWith("Skip Lunch today") }
         assertTrue(skip.sentence, skip.sentence.startsWith("Skip Lunch today"))
         tab("Today")
         button("Replan from now")
         rule.onNode(hasText("Other options") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)).assertExists()
         button(skip.sentence)
-        val taken = core.lumenna.replan(Clock.style, skip.pins, plannerNow.value)
+        val taken = core.device.replan(Clock.style, skip.pins, plannerNow.value)
         shows(taken.announcement)
         checkBox("Lunch is skipped").assertIsOn()
         assertTrue("nothing does better, so no other options", rule.onAllNodes(hasText("Other options")).fetchSemanticsNodes().isEmpty())
         button("Make the changes checked")
-        rule.waitUntil(5_000) { core.lumenna.plan("2026-05-06").blocks.none { it.title == "Lunch" } }
+        rule.waitUntil(5_000) { core.device.plan("2026-05-06").blocks.none { it.title == "Lunch" } }
     }
 
     @Test

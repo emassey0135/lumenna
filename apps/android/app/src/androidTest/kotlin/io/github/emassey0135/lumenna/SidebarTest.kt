@@ -135,7 +135,7 @@ class SidebarTest {
 
     @Test
     fun aLabelHasTheActionsBrowseGivesIt() {
-        core.lumenna.addLabel("calls")
+        core.device.addLabel("calls")
         rule.runOnIdle { core.changed() }
         rule.waitForIdle()
         val actions = place("calls").fetchSemanticsNode().config.getOrNull(SemanticsActions.CustomActions).orEmpty().map { it.label }

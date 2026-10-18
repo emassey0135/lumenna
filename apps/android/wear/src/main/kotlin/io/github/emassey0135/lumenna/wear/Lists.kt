@@ -32,16 +32,12 @@ import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 import io.github.emassey0135.lumenna.Option
 import io.github.emassey0135.lumenna.Core
-import io.github.emassey0135.lumenna.perform
 import io.github.emassey0135.lumenna.RowAction
-import io.github.emassey0135.lumenna.RowSpeech
-import io.github.emassey0135.lumenna.folded
 import io.github.emassey0135.lumenna.levelChange
 import io.github.emassey0135.lumenna.detailOf
 import io.github.emassey0135.lumenna.said as asked
 import io.github.emassey0135.lumenna.sentence
 import io.github.emassey0135.lumenna.name
-import io.github.emassey0135.lumenna.button
 
 /**
  * A screen's list: Wear's scaling list, which the rotary crown scrolls, with rows kept at

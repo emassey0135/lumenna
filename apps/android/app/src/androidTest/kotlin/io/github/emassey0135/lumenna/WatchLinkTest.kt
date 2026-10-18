@@ -34,22 +34,22 @@ class WatchLinkTest {
     @Test
     fun theFirstLinkPairsThePhoneAndTheWatchWithoutWordsAndSyncsATask() {
         val (phone, watch) = store() to store()
-        watch.lumenna.addTask("written on the watch")
+        watch.device.addTask("written on the watch")
         // Each side's output is the other's input, as a channel's two ends.
         val (toWatch, watchReads) = pipe()
         val (toPhone, phoneReads) = pipe()
-        var watchResult: Result<io.github.emassey0135.lumenna.records.LinkSynced>? = null
+        var watchResult: Result<io.github.emassey0135.lumenna.app.LinkSynced>? = null
         val other = thread {
-            watchResult = runCatching { watch.lumenna.syncOverLink(WatchLink.ChannelStreams(watchReads, toPhone), "Watch", "wearos") }
+            watchResult = runCatching { watch.device.syncOverLink(WatchLink.ChannelStreams(watchReads, toPhone), "Watch", "wearos") }
         }
-        val phoneResult = phone.lumenna.syncOverLink(WatchLink.ChannelStreams(phoneReads, toWatch), "Phone", "android")
+        val phoneResult = phone.device.syncOverLink(WatchLink.ChannelStreams(phoneReads, toWatch), "Phone", "android")
         other.join(30_000)
 
         assertTrue("the first link paired them", phoneResult.paired)
         assertTrue(watchResult!!.getOrThrow().paired)
-        assertEquals(listOf("written on the watch"), phone.lumenna.listTasks("").rows.map { it.title })
-        assertEquals(setOf("Phone", "Watch"), phone.lumenna.devices().devices.map { it.name }.toSet())
-        assertEquals("wearos", phone.lumenna.devices().devices.first { it.name == "Watch" }.platform)
+        assertEquals(listOf("written on the watch"), phone.device.listTasks("").rows.map { it.title })
+        assertEquals(setOf("Phone", "Watch"), phone.device.devices().devices.map { it.name }.toSet())
+        assertEquals("wearos", phone.device.devices().devices.first { it.name == "Watch" }.platform)
     }
 
     /**

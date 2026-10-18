@@ -1,13 +1,9 @@
 # Names the generated code goes by. The records are a crate of their own, so UniFFI writes
-# their bindings apart from the host's: in Kotlin a package of their own beside the host's,
-# since each crate's file declares the same helpers; in Swift a file and C module of their own (LumennaRecords.swift, LumennaRecordsFFI),
-# compiled into the same app module as LumennaCore.swift, which is what UniFFI's Swift
-# bindings across crates require.
+# their bindings apart from the host's: a Swift file and C module of their own
+# (LumennaRecords.swift, LumennaRecordsFFI), compiled into the same app module as
+# LumennaCore.swift, which is what UniFFI's Swift bindings across crates require.
 [bindings.swift]
 module_name = "LumennaRecords"
 ffi_module_name = "LumennaRecordsFFI"
 ffi_module_filename = "LumennaRecordsFFI"
 generate_module_map = true
-
-[bindings.kotlin]
-package_name = "io.github.emassey0135.lumenna.records"

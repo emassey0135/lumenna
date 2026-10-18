@@ -20,16 +20,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.Text
-import io.github.emassey0135.lumenna.BlockPurpose
 import io.github.emassey0135.lumenna.Option
 import io.github.emassey0135.lumenna.Clock
 import io.github.emassey0135.lumenna.Core
-import io.github.emassey0135.lumenna.DayRow
 import io.github.emassey0135.lumenna.RowAction
-import io.github.emassey0135.lumenna.folded
 import io.github.emassey0135.lumenna.levelChange
-import io.github.emassey0135.lumenna.rows
-import io.github.emassey0135.lumenna.actions
 import io.github.emassey0135.lumenna.words
 import io.github.emassey0135.lumenna.said
 import java.time.LocalDate

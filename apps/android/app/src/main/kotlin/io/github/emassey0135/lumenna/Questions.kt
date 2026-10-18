@@ -19,8 +19,7 @@ import io.github.emassey0135.lumenna.app.Question
 import io.github.emassey0135.lumenna.app.ShellEvent
 
 /**
- * The question the app has open, asked as the phone asks: a dialog each, the same ones the
- * UniFFI screens use. Which question is open, its words, what a pick offers and why an answer
+ * The question the app has open, asked as the phone asks: a dialog each. Which question is open, its words, what a pick offers and why an answer
  * was refused are the app's (`ViewModel.asking`); the dialog closes when the app closes it. A
  * task's form is its details, which [form] opens.
  */

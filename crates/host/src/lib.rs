@@ -88,7 +88,7 @@ pub use link::PhoneLink;
 #[cfg(feature = "sync")]
 pub use sync::{PairingPrompt, SyncListener, SyncLoop, keep_in_sync};
 #[cfg(all(feature = "sync", not(all(target_family = "wasm", target_os = "unknown"))))]
-pub use sync::SyncService;
+pub use sync::{LinkStream, SyncService};
 pub use types::*;
 
 #[cfg(feature = "uniffi")]

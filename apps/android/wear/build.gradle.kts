@@ -33,11 +33,6 @@ android {
     buildFeatures {
         compose = true
     }
-
-    packaging {
-        // JNA's own native libraries are found by name at run time.
-        jniLibs.useLegacyPackaging = true
-    }
 }
 
 dependencies {

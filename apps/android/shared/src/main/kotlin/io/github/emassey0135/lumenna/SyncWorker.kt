@@ -14,7 +14,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
-import io.github.emassey0135.lumenna.records.LumennaException
+import io.github.emassey0135.lumenna.app.LumennaError
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 
@@ -39,7 +39,7 @@ class SyncWorker(context: Context, parameters: WorkerParameters) : Worker(contex
         } catch (failure: ExecutionException) {
             when (failure.cause) {
                 // Another process is syncing this device already; nothing is lost.
-                is LumennaException.SyncElsewhere -> Result.success()
+                is LumennaError.SyncElsewhere -> Result.success()
                 // No network, a peer that would not answer: the next run tries again.
                 else -> Result.retry()
             }

@@ -1,5 +1,6 @@
 #!/bin/bash
-# Builds Lumenna's Rust core for Android and regenerates its Kotlin bindings.
+# Builds Lumenna's Rust core for Android — the app and the device's store, through BoltFFI
+# (crates/mobile) — and regenerates its Kotlin.
 #
 #   apps/android/build-core.sh <jniLibs dir> <kotlin dir> [debug|release]
 #
@@ -29,45 +30,13 @@ if [ ! -d "$NDK" ]; then
   exit 1
 fi
 
-cargo() {
-  env -i HOME="$HOME" USER="${USER:-}" ${CARGO_HOME:+CARGO_HOME="$CARGO_HOME"} ${RUSTUP_HOME:+RUSTUP_HOME="$RUSTUP_HOME"} \
-    PATH="$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin" \
-    ANDROID_HOME="$SDK" ANDROID_NDK_HOME="$NDK" \
-    cargo "$@"
-}
-
-cd "$ROOT"
 # arm64 for phones and watches, x86_64 for ChromeOS and the emulators on Intel machines and
 # CI, and 32-bit ARM for the many Wear OS watches whose Android is 32-bit; the phone's APK
 # leaves that one out (abiFilters). LUMENNA_ANDROID_ABIS narrows it for a quicker build.
 ABIS="${LUMENNA_ANDROID_ABIS:-arm64-v8a x86_64 armeabi-v7a}"
-for abi in $ABIS; do
-  case "$abi" in
-    arm64-v8a) triple=aarch64-linux-android ;;
-    x86_64) triple=x86_64-linux-android ;;
-    armeabi-v7a) triple=armv7-linux-androideabi ;;
-    *) echo "error: no Rust target for the Android ABI $abi" >&2; exit 1 ;;
-  esac
-  # The platform is the app's minSdk.
-  cargo ndk -t "$abi" --platform 28 build -p lumenna-ffi --lib $PROFILE_FLAG
-  # Only the core: `cargo ndk -o` would copy every shared library in the build, Iroh's own
-  # included, which nothing loads.
-  mkdir -p "$JNI_LIBS/$abi"
-  cp "$ROOT/target/$triple/${PROFILE}/liblumenna_ffi.so" "$JNI_LIBS/$abi/"
-done
 
-# The bindings come from the interface compiled into a host build of the same crate.
-cargo build -p lumenna-ffi --lib
-case "$(uname)" in
-  Darwin) HOST_LIB="$ROOT/target/debug/liblumenna_ffi.dylib" ;;
-  *) HOST_LIB="$ROOT/target/debug/liblumenna_ffi.so" ;;
-esac
-cargo run -q -p lumenna-ffi --features bindgen --bin uniffi-bindgen -- \
-  generate --library "$HOST_LIB" --language kotlin --no-format --out-dir "$KOTLIN"
-
-# The Crux app through BoltFFI (crates/mobile), beside the UniFFI core while the screens move
-# over to it. BoltFFI builds the library per ABI, compiles its JNI glue into it, and writes its
-# Kotlin; an overlay points its outputs into this build's directories.
+# The app through BoltFFI (crates/mobile): it builds the library per ABI, compiles its JNI glue
+# into it, and writes its Kotlin; an overlay points its outputs into this build's directories.
 BOLT="$(dirname "$KOTLIN")/boltffi"
 architectures=""
 for abi in $ABIS; do
@@ -95,8 +64,9 @@ EOF
   PATH="$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin" \
   ANDROID_HOME="$SDK" ANDROID_NDK_HOME="$NDK" \
   boltffi pack android $PROFILE_FLAG --quiet --overlay "$BOLT/overlay.toml")
-# Only the Kotlin: the JNI glue beside it is compiled into the library already.
-rm -rf "$KOTLIN/io/github/emassey0135/lumenna/app"
+# Only the Kotlin: the JNI glue beside it is compiled into the library already. What an
+# earlier build wrote there goes first, UniFFI's bindings and library of before BoltFFI included.
+rm -rf "$KOTLIN/io" "$JNI_LIBS"/*/liblumenna_ffi.so
 mkdir -p "$KOTLIN/io/github/emassey0135/lumenna"
 cp -R "$BOLT/kotlin/io/github/emassey0135/lumenna/app" "$KOTLIN/io/github/emassey0135/lumenna/"
 

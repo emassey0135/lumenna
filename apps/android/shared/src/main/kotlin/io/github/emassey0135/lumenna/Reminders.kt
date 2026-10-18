@@ -16,9 +16,9 @@ import android.provider.Settings
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import io.github.emassey0135.lumenna.records.DueReminder
-import io.github.emassey0135.lumenna.core.Lumenna
-import io.github.emassey0135.lumenna.records.LumennaException
+import io.github.emassey0135.lumenna.app.DueReminder
+import io.github.emassey0135.lumenna.app.Device
+import io.github.emassey0135.lumenna.app.LumennaError
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.CoroutineScope
@@ -65,7 +65,7 @@ interface Alarms {
  * set before and is no longer listed (dismissed, done, deleted, reminders turned off) is
  * cancelled.
  */
-class ReminderSchedule(private val lumenna: Lumenna, private val alarms: Alarms) {
+class ReminderSchedule(private val lumenna: Device, private val alarms: Alarms) {
     fun arm(now: Instant = Instant.now()): List<ReminderAlarm> {
         val upcoming = lumenna.upcomingReminders(now.plus(WINDOW).toString()).due
         val wanted = upcoming.take(MOST).mapNotNull { due ->
@@ -106,8 +106,8 @@ interface ShownReminders {
  * restart, so the core is told what this app did show, and the rest since it last asked was
  * missed. What was told is forgotten only once the core has taken it.
  */
-class ReminderCatchUp(private val lumenna: Lumenna, private val shown: ShownReminders) {
-    fun catchUp(): io.github.emassey0135.lumenna.records.DueReminders {
+class ReminderCatchUp(private val lumenna: Device, private val shown: ShownReminders) {
+    fun catchUp(): io.github.emassey0135.lumenna.app.DueReminders {
         val told = shown.all()
         val found = lumenna.remindersMissed(told.toList(), false)
         shown.forget(told)
@@ -231,9 +231,9 @@ object Reminders {
             // First what was missed — after a restart, everything since the last look but what
             // was shown — then the alarms, which cancel any for a firing now past.
             catchUp(context, core)
-            ReminderSchedule(core.lumenna, SystemAlarms(context)).arm()
+            ReminderSchedule(core.device, SystemAlarms(context)).arm()
             clearDealtWith(context, core)
-        } catch (_: LumennaException) {
+        } catch (_: LumennaError) {
             // The store could not say; the next change or start tries again.
         }
     }
@@ -272,7 +272,7 @@ object Reminders {
         val ours = shown.filter { it.tag.contains('@') && (it.store == null || it.store == core.directory.path) }
         if (ours.isEmpty()) return emptyList()
         val since = Instant.now().minus(Duration.ofDays(1)).toString()
-        val still = core.lumenna.remindersDue(since, null).let { it.due + it.missed }.map { "${it.key}@${it.occurrence}" }.toSet()
+        val still = core.device.remindersDue(since, null).let { it.due + it.missed }.map { "${it.key}@${it.occurrence}" }.toSet()
         return ours.map { it.tag }.filter { it !in still }
     }
 
@@ -283,7 +283,7 @@ object Reminders {
     fun fire(context: Context, core: Core, key: String, occurrence: String, at: String): DueReminder? {
         val moment = runCatching { Instant.parse(at) }.getOrNull() ?: return null
         val now = maxOf(Instant.now(), moment)
-        val found = core.attempt { core.lumenna.remindersDue(moment.minusSeconds(1).toString(), now.toString()) } ?: return null
+        val found = core.attempt { core.device.remindersDue(moment.minusSeconds(1).toString(), now.toString()) } ?: return null
         val match = { due: DueReminder -> due.key == key && due.occurrence == occurrence }
         val shown = found.due.firstOrNull(match)?.also { show(context, core, it, it.text) }
             ?: found.missed.firstOrNull(match)?.also { show(context, core, it, it.missed) }
@@ -297,7 +297,7 @@ object Reminders {
      * buttons, and the older ones as one summary.
      */
     private fun catchUp(context: Context, core: Core) {
-        val found = ReminderCatchUp(core.lumenna, SystemShown(context)).catchUp()
+        val found = ReminderCatchUp(core.device, SystemShown(context)).catchUp()
         found.due.forEach { show(context, core, it, it.text) }
         if (found.missedSummary.isNotEmpty() && notificationsAllowed(context)) {
             try {
@@ -326,7 +326,7 @@ object Reminders {
     /** The notification's Dismiss button: on every device, as soon as they hear of it. */
     fun dismiss(context: Context, core: Core, key: String, occurrence: String) {
         context.getSystemService(NotificationManager::class.java).cancel("$key@$occurrence", NOTIFICATION)
-        core.attempt { core.lumenna.dismissReminder(key, occurrence) }
+        core.attempt { core.device.dismissReminder(key, occurrence) }
         core.changed()
         arm(context, core)
     }
@@ -334,7 +334,7 @@ object Reminders {
     /** The notification's Snooze button: back in the core's ten minutes, on every device. */
     fun snooze(context: Context, core: Core, key: String, occurrence: String) {
         context.getSystemService(NotificationManager::class.java).cancel("$key@$occurrence", NOTIFICATION)
-        core.attempt { core.lumenna.snoozeReminder(key, occurrence, null) }
+        core.attempt { core.device.snoozeReminder(key, occurrence, null) }
         core.changed()
         arm(context, core)
     }
@@ -348,11 +348,11 @@ object Reminders {
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.cancel("$key@$occurrence", NOTIFICATION)
         val said = try {
-            val change = core.lumenna.carryRestForward("$target@$occurrence")
+            val change = core.device.carryRestForward("$target@$occurrence")
             core.changed()
             core.say(change)
             sentence(change.announcement, change.notices)
-        } catch (error: LumennaException) {
+        } catch (error: LumennaError) {
             core.say(error.sentence)
             error.sentence
         }
@@ -427,10 +427,10 @@ object Reminders {
                     setContentIntent(PendingIntent.getActivity(context, id.hashCode(), it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
                 }
             }
-            .addAction(0, button(due.dismiss), pressed(DISMISS))
-            .addAction(0, button(due.snooze), pressed(SNOOZE))
+            .addAction(0, appButton(due.dismiss), pressed(DISMISS))
+            .addAction(0, appButton(due.snooze), pressed(SNOOZE))
             // At a block's end with work left short, the text ends in the question this answers.
-            .apply { if (due.carry.isNotEmpty()) addAction(0, button(due.carry), pressed(CARRY)) }
+            .apply { if (due.carry.isNotEmpty()) addAction(0, appButton(due.carry), pressed(CARRY)) }
             // A block's work outrunning its time: Replan opens the app at Replan from Now.
             .apply {
                 if (due.replan.isNotEmpty()) {
@@ -442,7 +442,7 @@ object Reminders {
                         putExtra(OPEN_CANCEL, id)
                     }
                     replan?.let {
-                        addAction(0, button(due.replan), PendingIntent.getActivity(context, "replan $id".hashCode(), it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+                        addAction(0, appButton(due.replan), PendingIntent.getActivity(context, "replan $id".hashCode(), it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
                     }
                 }
             }

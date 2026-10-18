@@ -33,7 +33,6 @@ import androidx.wear.compose.material3.Text
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
-import io.github.emassey0135.lumenna.BlockPurpose
 import io.github.emassey0135.lumenna.Option
 import io.github.emassey0135.lumenna.Core
 import io.github.emassey0135.lumenna.app.Place

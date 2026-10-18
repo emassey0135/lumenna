@@ -131,7 +131,7 @@ class KeyboardTest {
     }
 
     private fun seed(title: String) {
-        core.lumenna.addTask(title)
+        core.device.addTask(title)
         rule.runOnIdle { core.changed() }
         rule.waitForIdle()
     }
@@ -157,7 +157,7 @@ class KeyboardTest {
         tab("Tasks").performClick()
         press(row("water the plants"), Key.K, ctrl = true)
         gone("water the plants")
-        assertTrue(core.lumenna.listTasks("completed").rows.any { it.title == "water the plants" })
+        assertTrue(core.device.listTasks("completed").rows.any { it.title == "water the plants" })
     }
 
     @Test
@@ -167,7 +167,7 @@ class KeyboardTest {
         tab("Tasks").performClick()
         press(row("old errand"), Key.Delete)
         gone("old errand")
-        assertTrue(core.lumenna.listTasks("deleted").rows.any { it.title == "old errand" })
+        assertTrue(core.device.listTasks("deleted").rows.any { it.title == "old errand" })
     }
 
     @Test
@@ -179,7 +179,7 @@ class KeyboardTest {
         rule.waitForIdle()
         press(row("Inbox"), Key.Delete)
         shows("The Inbox keeps its name")
-        assertTrue(core.lumenna.listProjects().rows.any { it.title == "Inbox" })
+        assertTrue(core.device.listProjects().rows.any { it.title == "Inbox" })
     }
 
     @Test

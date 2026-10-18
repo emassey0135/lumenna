@@ -31,9 +31,7 @@ import androidx.compose.ui.semantics.CollectionInfo
 import androidx.compose.ui.semantics.collectionInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import io.github.emassey0135.lumenna.records.Action
-import io.github.emassey0135.lumenna.records.labelReference
-import io.github.emassey0135.lumenna.records.projectReference
+import io.github.emassey0135.lumenna.app.Action
 
 /** One line of a list of things: what identifies it, how it reads, and how deep it sits. */
 data class Item(
@@ -73,9 +71,7 @@ fun ItemListScreen(
     val all = loaded.items
     // An empty list says what is empty, in the core's words, in place of its count.
     val count = if (all.isEmpty() && loaded.empty.isNotEmpty()) loaded.empty else loaded.said
-    val folding = rememberFolding()
-    val folds = folded(all, { it.depth }, { it.key }, folding.value)
-    val items = folds.map { it.item }
+    val items = all
     val state = rememberLazyListState()
     val focus = rememberRowFocus(core, items.map { it.key }, state)
     ScreenFrame(title, core, navigator, actions = {
@@ -97,13 +93,10 @@ fun ItemListScreen(
                 ListRow(
                     title = item.title,
                     detail = item.detail,
-                    // The level is said against the row shown before, which folding can change.
-                    speech = listOfNotNull(item.speech.ifEmpty { null }, folds[index].state, levelChange(folds, index))
-                        .joinToString(", "),
+                    speech = item.speech,
                     index = index,
                     depth = item.depth,
-                    actions = focus.actions(item.key, index, actions(item)) +
-                        listOfNotNull(foldAction(core, folds[index], item.key, folding)),
+                    actions = focus.actions(item.key, index, actions(item)),
                     open = open?.let { { it(item) } },
                     openLabel = openLabel,
                     focus = focus.requester(item.key),

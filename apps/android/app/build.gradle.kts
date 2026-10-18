@@ -14,9 +14,7 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // A phone's ABIs: the core is built for 32-bit ARM too, for watches (build-core.sh), and
-        // JNA ships its library for six more; without the filter the APK carried each, though
-        // nothing could run the app there.
+        // A phone's ABIs: the core is built for 32-bit ARM too, for watches (build-core.sh).
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 
@@ -28,11 +26,6 @@ android {
 
     buildFeatures {
         compose = true
-    }
-
-    packaging {
-        // JNA's own native libraries are found by name at run time.
-        jniLibs.useLegacyPackaging = true
     }
 }
 

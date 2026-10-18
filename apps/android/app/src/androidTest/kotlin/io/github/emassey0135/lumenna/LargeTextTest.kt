@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import io.github.emassey0135.lumenna.records.MoveTarget
+import io.github.emassey0135.lumenna.app.MoveTarget
 import java.io.File
 import java.util.UUID
 import org.junit.After
@@ -55,11 +55,11 @@ class LargeTextTest {
         directory = File(context.cacheDir, "test-${UUID.randomUUID()}")
         core = Core(directory)
         Clock.update(context)
-        core.lumenna.addTask("call the bank about the mortgage renewal tomorrow at 3pm p1")
-        core.lumenna.addTask("essay")
-        core.lumenna.addTask("outline the argument")
-        val rows = core.lumenna.listTasks("").rows
-        core.lumenna.moveTask(
+        core.device.addTask("call the bank about the mortgage renewal tomorrow at 3pm p1")
+        core.device.addTask("essay")
+        core.device.addTask("outline the argument")
+        val rows = core.device.listTasks("").rows
+        core.device.moveTask(
             rows.first { it.title == "outline the argument" }.id,
             MoveTarget.Parent(rows.first { it.title == "essay" }.id),
         )

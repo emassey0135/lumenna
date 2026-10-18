@@ -7,7 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
-import io.github.emassey0135.lumenna.records.ActionKind
+import io.github.emassey0135.lumenna.app.ActionKind
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /** A key with the modifiers it needs, and no others. */
@@ -76,13 +76,13 @@ enum class Command(val title: String, val place: Place, vararg val keys: Keys) {
 
 /**
  * The row's action a row command runs: by the core's kind, so Delete is Delete on whatever
- * row is in hand; folding, which is the app's, by name.
+ * row is in hand; folding too, which is among a row's actions.
  */
 fun Command.rowAction(actions: List<RowAction>): RowAction? = when (this) {
     Command.MARK_DONE -> actions.ofKind(ActionKind.MARK_DONE, ActionKind.MARK_NOT_DONE)
     Command.DELETE -> actions.ofKind(ActionKind.DELETE, ActionKind.DELETE_FOR_GOOD)
-    Command.EXPAND -> actions.firstOrNull { it.kind == null && it.name == "Expand" }
-    Command.COLLAPSE -> actions.firstOrNull { it.kind == null && it.name == "Collapse" }
+    Command.EXPAND -> actions.ofKind(ActionKind.EXPAND)
+    Command.COLLAPSE -> actions.ofKind(ActionKind.COLLAPSE)
     else -> null
 }
 

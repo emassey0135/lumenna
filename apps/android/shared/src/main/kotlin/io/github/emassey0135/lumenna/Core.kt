@@ -5,13 +5,10 @@ import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
 import android.system.Os
-import io.github.emassey0135.lumenna.records.Change
-import io.github.emassey0135.lumenna.core.Lumenna
-import io.github.emassey0135.lumenna.records.LumennaException
-import io.github.emassey0135.lumenna.records.Reach
-import io.github.emassey0135.lumenna.core.SyncListener
-import io.github.emassey0135.lumenna.records.SyncReport
-import io.github.emassey0135.lumenna.core.SyncService
+import io.github.emassey0135.lumenna.app.Change
+import io.github.emassey0135.lumenna.app.Device
+import io.github.emassey0135.lumenna.app.LumennaError
+import io.github.emassey0135.lumenna.app.SyncReport
 import java.io.File
 import java.util.TimeZone
 import java.util.concurrent.Executors
@@ -25,11 +22,10 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * The open store, for the whole app.
  *
- * Every operation is a method on [lumenna], generated from the Rust surface: this class adds
- * only what is about running on Android — where the profile lives, the time zone, syncing while
- * the app is in front, and saying what happened. Operations are milliseconds against a local
- * SQLite file, so they run on the main thread and a screen never shows a state the store has
- * moved past, as on the iPhone.
+ * The screens draw the app itself ([app], the Crux app through BoltFFI); what runs without them
+ * — reminders' alarms and receivers, a background round, the watch's link — asks [device], the
+ * same store. This class adds only what is about running on Android: where the profile lives,
+ * the time zone, syncing while the app is in front, and saying what happened.
  */
 class Core(
     /** Where the store lives: also what tells its notifications from another store's. */
@@ -37,17 +33,17 @@ class Core(
     /** What this device says it runs, in pairing: "android", or "wearos" on a watch. */
     val platform: String = "android",
 ) {
-    val lumenna: Lumenna
+    val device: Device
 
     init {
         useSystemTimeZone()
         directory.mkdirs()
-        lumenna = Lumenna.open(directory.absolutePath)
+        device = Device(directory.absolutePath)
     }
 
     /**
      * The app itself over this store (`AppModel`), opened on first use, on the main thread: the
-     * screens that have moved onto it draw its view and send it what the person does.
+     * screens draw its view and send it what the person does.
      */
     val app: AppModel by lazy { AppModel(this, platform).also { appOpened = true } }
     private var appOpened = false
@@ -62,11 +58,15 @@ class Core(
     /** What to say: a change's announcement, or why something failed. The app shows each. */
     val announcements: SharedFlow<String> = spoken.asSharedFlow()
 
-    /** Every screen showing the store reads it again. */
+    /** A write made outside the app — a receiver's, a test's — which the app takes in. */
     fun changed() {
-        generation.value += 1
-        // A write through the UniFFI core is another connection's to the app: it takes it in.
+        moved()
         if (appOpened) app.tick()
+    }
+
+    /** The store may have moved: what follows it (reminders' alarms) looks again. */
+    fun moved() {
+        generation.value += 1
     }
 
     /** Says [text], politely, after whatever is being said now. */
@@ -115,10 +115,11 @@ class Core(
     fun say(change: Change) = report(sentence(change.announcement, change.notices))
 
     /**
-     * Runs an operation that changes the store, then has every screen read it again and says
-     * what happened — or, if it failed, says why. Returns the change, or null on failure.
+     * Runs an operation on the store from outside the app — a receiver's, a test's seeding — then
+     * has the app take it in and says what happened, or why it failed. Returns the change, or
+     * null on failure.
      */
-    fun change(operation: (Lumenna) -> Change): Change? = attempt { operation(lumenna) }?.also {
+    fun change(operation: (Device) -> Change): Change? = attempt { operation(device) }?.also {
         changed()
         say(it)
     }
@@ -126,24 +127,25 @@ class Core(
     /** Runs [operation], saying why if it fails. */
     fun <T> attempt(operation: () -> T): T? = try {
         operation()
-    } catch (error: LumennaException) {
+    } catch (error: LumennaError) {
         say(error.sentence)
         null
     }
 
     private val syncThread = Executors.newSingleThreadExecutor { Thread(it, "lumenna-sync") }
-    private var sync: SyncService? = null
     private val main = Handler(Looper.getMainLooper())
 
     private var multicast: WifiManager.MulticastLock? = null
 
     /**
-     * Starts keeping this device in sync, for as long as the app is in front.
+     * Starts keeping this device in sync, for as long as the app is in front: the app's own
+     * network, told it is in front.
      *
      * Holds a multicast lock meanwhile, so local discovery hears the other devices: Android
      * drops multicast addressed to the phone unless some app holds one. It is not exclusive —
      * every app's mDNS keeps working, and the discovery socket shares port 5353 — and it is let
-     * go when the app leaves the front, so it costs battery only while Lumenna is open.
+     * go when the app leaves the front, so it costs battery only while Lumenna is open. Pairing
+     * happens only while the app is in front, so it holds the lock too.
      */
     fun startSyncing(context: Context) {
         if (multicast == null) {
@@ -153,49 +155,28 @@ class Core(
                 acquire()
             }
         }
-        syncThread.execute {
-            if (sync == null) {
-                sync = try {
-                    lumenna.startSync(Reach.INTERNET, Arrivals())
-                } catch (_: LumennaException) {
-                    null
-                }
-            }
-        }
+        app.inFront(true)
     }
 
     /** Stops syncing and lets go of the endpoint and the multicast lock. */
     fun stopSyncing() {
         multicast?.release()
         multicast = null
-        syncThread.execute {
-            sync?.stop()
-            sync = null
-        }
-    }
-
-    /** Syncs with every paired device now, off the main thread. */
-    fun syncNow(finished: (Result<SyncReport>) -> Unit) {
-        syncThread.execute {
-            val result = runCatching { sync?.syncNow() ?: lumenna.syncNow(Reach.INTERNET) }
-            main.post { finished(result) }
-        }
+        if (appOpened) app.inFront(false)
     }
 
     /**
-     * One round with every paired device, waiting for it: through the running service while
-     * the app is in front, else on an endpoint opened for the round. On the sync thread, so it
-     * follows a stop that is still letting go of the endpoint rather than racing it.
+     * One round with every paired device, waiting for it: through the running service while the
+     * app is in front, else on an endpoint opened for the round.
      */
-    fun syncRound(): SyncReport =
-        syncThread.submit(java.util.concurrent.Callable { sync?.syncNow() ?: lumenna.syncNow(Reach.INTERNET) }).get()
+    fun syncRound(): SyncReport = syncThread.submit(java.util.concurrent.Callable { device.syncNow() }).get()
 
     /** Takes a backup if one is due, off the main thread. */
     fun backUpIfDue() {
         syncThread.execute {
             try {
-                lumenna.backUpIfDue()
-            } catch (error: LumennaException) {
+                device.backUpIfDue()
+            } catch (error: LumennaError) {
                 main.post { say("The automatic backup failed. ${error.sentence}") }
             }
         }
@@ -203,13 +184,6 @@ class Core(
 
     /** Called when the app comes back, since the person may have travelled. */
     fun timeZoneMayHaveChanged() = useSystemTimeZone()
-
-    /** What a sync brought in: every screen reads the store again. */
-    private inner class Arrivals : SyncListener {
-        override fun changed() {
-            main.post { this@Core.changed() }
-        }
-    }
 
     companion object {
         /**
@@ -229,8 +203,11 @@ class Core(
 }
 
 /** The sentence the core wrote, which is already phrased to be read aloud. */
-val LumennaException.sentence: String
-    get() = message.orEmpty().replaceFirstChar { it.uppercase() }
+val LumennaError.sentence: String
+    get() = when (this) {
+        is LumennaError.Failed -> reason
+        is LumennaError.SyncElsewhere -> reason
+    }.replaceFirstChar { it.uppercase() }
 
 /** An announcement, then each notice. */
 fun sentence(announcement: String, notices: List<String>): String =

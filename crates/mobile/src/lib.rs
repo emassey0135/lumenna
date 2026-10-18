@@ -10,6 +10,7 @@
 //! The records cross typed, by BoltFFI's own encoding: no serialisation of ours, so the serde
 //! shapes `lum --json` and the RPC surface keep are no concern here.
 
+mod device;
 mod events;
 mod words;
 
@@ -24,6 +25,7 @@ use lumenna_bridge::{Shell as Left, Stack, Store, shell, stack};
 use lumenna_host::{Lumenna, Reach};
 use lumenna_records::{Completions, LumennaError, Syntax};
 
+pub use device::{Device, LinkStream};
 pub use events::ShellEvent;
 
 /// Something to say.
@@ -73,14 +75,14 @@ pub struct App {
 
 #[export]
 impl App {
-    /// Opens the profile in `directory` and starts the app over it: it watches the store, and
-    /// every turn goes to `shell`. `platform` is what this device says it runs, in pairing.
+    /// Starts the app over `device`'s store: it watches the store, and every turn goes to
+    /// `shell`. `platform` is what this device says it runs, in pairing.
     ///
     /// # Errors
     ///
-    /// If the profile cannot be opened.
-    pub fn new(directory: String, platform: String, shell: Arc<dyn Shell>) -> Result<App, LumennaError> {
-        let lumenna = Lumenna::open(&directory)?;
+    /// If a thread of the app's cannot be started.
+    pub fn new(device: &Device, platform: String, shell: Arc<dyn Shell>) -> Result<App, LumennaError> {
+        let lumenna = Arc::clone(&device.lumenna);
         let (store, worker) = Store::new(Arc::clone(&lumenna));
         spawn("lumenna-store", move || futures::executor::block_on(worker.run()))?;
         let network = Network::new(Arc::clone(&lumenna), store.clone(), Reach::Internet, platform);

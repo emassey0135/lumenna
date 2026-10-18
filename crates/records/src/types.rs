@@ -77,6 +77,7 @@ fn none<T>(list: &[T]) -> bool {
 // ---------------------------------------------------------------------------------------
 
 /// What a mutation did.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Change {
@@ -137,6 +138,7 @@ impl Change {
 }
 
 /// Identifiers a change touched, by kind.
+#[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Affected {
@@ -243,6 +245,7 @@ fn push<T: ToString>(into: &mut Vec<String>, before: Option<T>, after: Option<T>
 // ---------------------------------------------------------------------------------------
 
 /// A listing of rows, all of one kind.
+#[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Rows {
@@ -425,6 +428,7 @@ pub const fn name_kind(kind: NameKind) -> &'static str {
 // ---------------------------------------------------------------------------------------
 
 /// One task, as `show_task` returns it.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct TaskShown {
@@ -560,6 +564,7 @@ impl TaskDetail {
 // ---------------------------------------------------------------------------------------
 
 /// A day's blocks and what is assigned to them.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Plan {
@@ -654,6 +659,7 @@ pub struct CancelledBlock {
 }
 
 /// One row of a day's timeline.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[serde(tag = "item", rename_all = "snake_case")]
@@ -851,6 +857,7 @@ pub struct PlanAssignment {
 }
 
 /// A timer stopped, or minutes logged by hand.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Timer {
@@ -874,6 +881,7 @@ pub struct Timer {
 // ---------------------------------------------------------------------------------------
 
 /// The saved filters.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Filters {
@@ -892,6 +900,7 @@ pub struct Filters {
 }
 
 /// One saved filter. Stored as text, never as a resolved date range.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct FilterView {
@@ -909,6 +918,7 @@ pub struct FilterView {
 }
 
 /// Settings, in a fixed order.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct SettingList {
@@ -1148,6 +1158,7 @@ impl Preview {
 // ---------------------------------------------------------------------------------------
 
 /// Where a backup went.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct BackupDone {
@@ -1298,6 +1309,7 @@ pub enum Imported {
 // ---------------------------------------------------------------------------------------
 
 /// The fields of a task to change; `None` leaves one alone.
+#[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct TaskEdit {
@@ -1331,6 +1343,7 @@ pub struct TaskEdit {
 }
 
 /// Where to move a task.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum MoveTarget {
@@ -1440,6 +1453,7 @@ pub enum Direction {
 }
 
 /// A new block.
+#[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct NewBlock {
@@ -1516,6 +1530,7 @@ pub struct PairedWith {
 
 /// What syncing over a watch's own link to its phone did: pairing the two the first time,
 /// then reconciling the documents.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct LinkSynced {
@@ -1536,6 +1551,7 @@ pub struct LinkSynced {
 }
 
 /// How one device went in a sync round.
+#[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct PeerSync {
@@ -1554,6 +1570,7 @@ pub struct PeerSync {
 }
 
 /// A sync round with every paired device.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct SyncReport {
@@ -1605,6 +1622,7 @@ pub struct DeviceView {
 }
 
 /// How syncing is going, as words rather than an icon.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct SyncStatus {

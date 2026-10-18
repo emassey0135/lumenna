@@ -1,11 +1,10 @@
-//! Lumenna's core for the apps that link it: iOS and macOS in Swift, Android and Wear OS in
-//! Kotlin. UniFFI generates the bindings.
+//! Lumenna's core for the apps that link it: iOS, macOS and watchOS, in Swift. UniFFI generates
+//! the bindings. Android runs the Crux app instead (`crates/mobile`, through BoltFFI).
 //!
 //! There is nothing to define here. The surface — the `Lumenna` object, its operations, and
 //! the records they return — is `lumenna_host`, the same crate the command line calls, built
 //! with its `uniffi` feature. This crate exists to be the library an app links: a static one
-//! for the Apple targets, a dynamic one for Android and for `uniffi-bindgen` to read the
-//! interface out of.
+//! for the Apple targets, and a dynamic one for `uniffi-bindgen` to read the interface out of.
 //!
 //! So a Swift `try lumenna.addTask(text:)` and `lum task add` run the same function, and a
 //! record reshaped in Rust fails to compile in Swift rather than failing to decode at run time.

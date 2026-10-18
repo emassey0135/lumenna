@@ -19,6 +19,7 @@ pub enum TimeStyle {
 }
 
 /// One change of a proposal, said, with what applying it takes.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct ReplanChange {
@@ -43,6 +44,7 @@ pub struct ReplanChange {
 }
 
 /// What replanning the rest of today proposes.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Replan {
@@ -72,6 +74,7 @@ pub struct Replan {
 crate::announced!(Replan);
 
 /// Another way through the rest of the day.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct ReplanAlternative {
@@ -84,6 +87,7 @@ pub struct ReplanAlternative {
 
 /// What the person decided about the rest of today, which a proposal keeps to: each a
 /// block's series, or a sitting's identifier.
+#[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct ReplanPins {
@@ -103,6 +107,7 @@ pub struct ReplanPins {
 }
 
 /// A block let shorten below its own minimum, to as little as `minutes`.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct ReplanFloor {
@@ -131,6 +136,7 @@ pub struct Replanned {
 crate::announced!(Replanned);
 
 /// One sitting a day plan proposes.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct ProposedSitting {
@@ -148,6 +154,7 @@ pub struct ProposedSitting {
 }
 
 /// What planning a day proposes.
+#[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct DayPlan {
@@ -172,6 +179,7 @@ pub struct DayPlan {
 crate::announced!(DayPlan);
 
 /// What the person decided about a day's plan, which the next plan keeps to.
+#[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct DayPins {

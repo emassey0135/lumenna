@@ -1,5 +1,6 @@
 package io.github.emassey0135.lumenna.wear
 
+import io.github.emassey0135.lumenna.deviceName
 import io.github.emassey0135.lumenna.rowActions
 import io.github.emassey0135.lumenna.appButton
 import io.github.emassey0135.lumenna.app.pairingWords
@@ -27,16 +28,9 @@ import androidx.wear.compose.material3.Text
 import io.github.emassey0135.lumenna.Option
 import io.github.emassey0135.lumenna.Clock
 import io.github.emassey0135.lumenna.Core
-import io.github.emassey0135.lumenna.PairingSession
 import io.github.emassey0135.lumenna.RowAction
-import io.github.emassey0135.lumenna.backups
-import io.github.emassey0135.lumenna.button
-import io.github.emassey0135.lumenna.on
-import io.github.emassey0135.lumenna.planning
 import io.github.emassey0135.lumenna.said
 import io.github.emassey0135.lumenna.sentence
-import io.github.emassey0135.lumenna.set
-import io.github.emassey0135.lumenna.settings
 import androidx.wear.compose.foundation.lazy.ScalingLazyListScope
 import androidx.wear.compose.material3.RadioButton
 
@@ -75,7 +69,7 @@ fun PlanningScreen(core: Core) {
         all.filter { !it.setting.syncs && it.setting.key.startsWith("backup-") && it.setting.kind != SettingKind.FOLDER }.forEach { setting(core, it) }
         item {
             // Into this watch's backups, beside the others.
-            Button(onClick = { core.attempt { core.lumenna.backup(null) }?.let { core.say(sentence(it.announcement, it.notices)) } }, modifier = Modifier.fillMaxWidth(), label = { Text("Back up now") })
+            Button(onClick = { core.attempt { core.device.backup() }?.let { core.say(sentence(it.announcement, it.notices)) } }, modifier = Modifier.fillMaxWidth(), label = { Text("Back up now") })
         }
     }
 }
@@ -111,15 +105,9 @@ fun DevicesScreen(core: Core, navigator: Navigator) {
     }
 }
 
-/** A round with every paired device now, on the UniFFI core while it holds the endpoint. */
+/** A round with every paired device now: the app says how it went. */
 private fun syncNow(core: Core) {
-    core.say("Syncing")
-    core.syncNow { result ->
-        result.fold(
-            { report -> core.changed(); core.say(sentence(report.announcement, report.peers.mapNotNull { peer -> peer.error?.let { "${peer.name}: $it" } })) },
-            { error -> core.say(error.message.orEmpty()) },
-        )
-    }
+    core.app.send(ShellEvent.Devices(DevicesEvent.SyncNow))
 }
 
 /**
@@ -135,7 +123,7 @@ private fun PairingButtons(core: Core) {
     val pair = { event: PairEvent -> app.send(ShellEvent.Devices(DevicesEvent.Pair(event))) }
     val context = LocalContext.current
     val words = remember { pairingWords("this watch", true) }
-    LaunchedEffect(Unit) { pair(PairEvent.Open(PairingSession.deviceName(context))) }
+    LaunchedEffect(Unit) { pair(PairEvent.Open(deviceName(context))) }
     DisposableEffect(Unit) { onDispose { pair(PairEvent.Cancel) } }
     androidx.compose.foundation.layout.Column {
         Heading(appButton(words.title))

@@ -26,23 +26,10 @@ import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.RadioButton
 import androidx.wear.compose.material3.SwitchButton
 import androidx.wear.compose.material3.Text
-import io.github.emassey0135.lumenna.BlockFormModel
-import io.github.emassey0135.lumenna.BlockPurpose
 import io.github.emassey0135.lumenna.Option
 import io.github.emassey0135.lumenna.Clock
-import io.github.emassey0135.lumenna.Completing
 import io.github.emassey0135.lumenna.Core
-import io.github.emassey0135.lumenna.TaskField
-import io.github.emassey0135.lumenna.blockFormFields
-import io.github.emassey0135.lumenna.flag
-import io.github.emassey0135.lumenna.help
 import io.github.emassey0135.lumenna.name
-import io.github.emassey0135.lumenna.projectChoices
-import io.github.emassey0135.lumenna.taskFormFields
-import io.github.emassey0135.lumenna.text
-import io.github.emassey0135.lumenna.withFlag
-import io.github.emassey0135.lumenna.withText
-import io.github.emassey0135.lumenna.perform
 
 /**
  * A field the system's input screen fills: its name, then what it holds, one TalkBack stop.

@@ -1,19 +1,22 @@
 # Lumenna on Android
 
-Jetpack Compose over the Rust core, through UniFFI's Kotlin bindings and JNA. Four
+Jetpack Compose over the Crux app (`crates/mobile`), through BoltFFI's Kotlin bindings. Four
 tabs as on the iPhone — Today, Tasks, Browse, Settings — each with its own back stack, and
-every operation the core's: the app words what it returns and decides nothing else.
+every rule the core's: the screens draw what the app shows and send what the person did.
 
 ## Building
 
-Needs Android Studio's SDK (platform 37), an NDK, Rust's `aarch64-linux-android` target and
-`cargo-ndk`:
+Needs Android Studio's SDK (platform 37), an NDK, Rust's Android targets and BoltFFI's CLI
+at the version the crates use:
 
 ```
 sdkmanager "ndk;30.0.16248370"            # from the SDK's cmdline-tools
-rustup target add aarch64-linux-android
-cargo install cargo-ndk
+rustup target add aarch64-linux-android x86_64-linux-android armv7-linux-androideabi
+cargo install boltffi_cli --version 0.31.1 --locked
 ```
+
+`LUMENNA_ANDROID_ABIS=arm64-v8a` builds for one ABI only, for a quicker build onto an Arm
+emulator or phone.
 
 Then, with Android Studio's JDK:
 
@@ -24,15 +27,15 @@ export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 ./gradlew :app:connectedDebugAndroidTest    # the instrumented tests
 ```
 
-Gradle's `buildCore` task runs `build-core.sh` before every build: the core for Arm64, and the
-Kotlin bindings from a host build, both into `app/build/generated` — nothing generated is
-committed. Cargo does nothing when nothing changed. Android Studio opens this directory as an
+Gradle's `buildCore` task runs `build-core.sh` before every build: `boltffi pack android`
+builds the core for each ABI and writes its Kotlin, both into `shared/build/generated` —
+nothing generated is committed. Cargo does nothing when nothing changed. Android Studio opens this directory as an
 ordinary Gradle project.
 
 ## Accessibility
 
 - **A row is one TalkBack stop.** Its title is the description and everything else its state
-  ("done, due tomorrow, priority 1"), worded as the iPhone words it (`RowSpeech`). Depth is
+  ("done, due tomorrow, priority 1"), worded as the iPhone words it (`AppRowSpeech`). Depth is
   said where it changes ("level 2") and never left to indentation.
 - **Every action is a custom accessibility action**, named for what it does ("Mark Done",
   "Start Timer"), and the same actions are on a long press.

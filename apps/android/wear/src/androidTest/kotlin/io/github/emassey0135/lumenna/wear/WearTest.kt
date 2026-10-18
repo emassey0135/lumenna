@@ -127,7 +127,7 @@ class WearTest {
         assertEquals("the system's input screen is asked straight away", listOf("New task"), asked)
         said("priority 1").assertExists()
         press("Add")
-        assertEquals(listOf("call the bank"), core.lumenna.listTasks("").rows.map { it.title })
+        assertEquals(listOf("call the bank"), core.device.listTasks("").rows.map { it.title })
         press("Tasks")
         assertTrue(stateOf("call the bank").contains("due tomorrow"))
     }
@@ -145,21 +145,21 @@ class WearTest {
 
     @Test
     fun aTasksFieldIsAskedForAndSavedAsOnlyWhatChanged() {
-        core.lumenna.addTask("water plants")
+        core.device.addTask("water plants")
         core.changed()
         press("Tasks")
         press("water plants")
         answers += "water the plants"
         press("Title")
         press("Save")
-        assertEquals(listOf("water the plants"), core.lumenna.listTasks("").rows.map { it.title })
+        assertEquals(listOf("water the plants"), core.device.listTasks("").rows.map { it.title })
     }
 
     @Test
     fun aTasksProjectIsChosenFromAListOfTheProjectsEachSayingItsLevel() {
-        core.lumenna.addProject("Work", null)
-        core.lumenna.addProject("Reports", "Work")
-        core.lumenna.addTask("water plants")
+        core.device.addProject("Work", null)
+        core.device.addProject("Reports", "Work")
+        core.device.addTask("water plants")
         core.changed()
         press("Tasks")
         press("water plants")
@@ -168,17 +168,17 @@ class WearTest {
         said("level 2").assertExists()
         press("Reports")
         press("Save")
-        assertEquals("Reports", core.lumenna.showTask(core.lumenna.listTasks("").rows.single().id).task.project)
+        assertEquals("Reports", core.device.showTask(core.device.listTasks("").rows.single().id).task.project)
     }
 
     @Test
     fun aTasksActionsAreItsCustomActions() {
-        core.lumenna.addTask("water plants")
+        core.device.addTask("water plants")
         core.changed()
         press("Tasks")
         shown("water plants").performCustomAccessibilityActionWithLabel("Mark done")
         rule.waitForIdle()
-        assertTrue(core.lumenna.listTasks("").rows.isEmpty())
+        assertTrue(core.device.listTasks("").rows.isEmpty())
     }
 
     @Test
@@ -198,18 +198,18 @@ class WearTest {
 
     @Test
     fun aProjectsOwnActionsAreTheCoresAndRenameAsksTheInputScreen() {
-        core.lumenna.addProject("Work", null)
+        core.device.addProject("Work", null)
         rule.runOnIdle { core.changed() }
         press("Work", substring = true)
         answers += "Job"
         press("Rename")
         assertEquals(listOf("Rename Work"), asked)
-        assertTrue(core.lumenna.listProjects().rows.any { it.title == "Job" })
+        assertTrue(core.device.listProjects().rows.any { it.title == "Job" })
     }
 
     @Test
     fun aDeleteAsksFirstInTheCoresWords() {
-        core.lumenna.addLabel("calls")
+        core.device.addLabel("calls")
         rule.runOnIdle { core.changed() }
         press("calls", substring = true)
         press("Delete")
@@ -222,7 +222,7 @@ class WearTest {
         rule.onNode(hasContentDescription("Delete label") and hasClickAction()).performClick()
         rule.waitForIdle()
         rule.enableAccessibilityChecks()
-        assertTrue(core.lumenna.listLabels().rows.isEmpty())
+        assertTrue(core.device.listLabels().rows.isEmpty())
     }
 
     @Test
@@ -230,14 +230,14 @@ class WearTest {
         press("Settings")
         press("Devices and sync")
         shown("Sync now").assertExists()
-        val own = core.lumenna.syncStatus().devices.firstOrNull { it.thisDevice } ?: return
+        val own = core.device.syncStatus().devices.firstOrNull { it.thisDevice } ?: return
         val actions = shown(own.name).fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.CustomActions).orEmpty().map { it.label }
         assertEquals("this watch cannot unpair itself, and a row does not sync", listOf("Rename"), actions)
     }
 
     @Test
     fun aRowShowsItsPrimaryActionsFirst() {
-        core.lumenna.addTask("water plants")
+        core.device.addTask("water plants")
         core.changed()
         press("Tasks")
         val actions = shown("water plants").fetchSemanticsNode().config
@@ -256,7 +256,7 @@ class WearTest {
         }
         press("Settings")
         press("Devices and sync")
-        val words = io.github.emassey0135.lumenna.records.pairingWords("this watch", true)
+        val words = io.github.emassey0135.lumenna.app.pairingWords("this watch", true)
         answers += ""
         press(words.theirCode)
         assertEquals(listOf(words.theirCode), asked)
@@ -276,10 +276,10 @@ class WearTest {
     fun aNewBlockStartsWhenTheCoreSaysAndFollowsTheDay() {
         press("Today")
         press("Add block")
-        assertEquals(core.lumenna.newBlockStart(null), valueOf("Starts at"))
+        assertEquals(core.device.newBlockStart(null), valueOf("Starts at"))
         answers += "in 3 days"
         press("Day")
-        assertEquals(core.lumenna.newBlockStart("in 3 days"), valueOf("Starts at"))
+        assertEquals(core.device.newBlockStart("in 3 days"), valueOf("Starts at"))
     }
 
     /**
@@ -299,7 +299,7 @@ class WearTest {
         // Granted, so adding the first reminder asks nothing over the app.
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.uiAutomation.grantRuntimePermission(instrumentation.targetContext.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
-        core.lumenna.addBlock(io.github.emassey0135.lumenna.records.NewBlock(title = "Deep work", at = "9:00", minutes = 90u, date = "today", kind = "work", repeat = null))
+        core.device.addBlock(newBlock(title = "Deep work", at = "9:00", minutes = 90u, date = "today", kind = "work", repeat = null))
         rule.runOnIdle { core.changed() }
         press("Today")
         actOnMain("Deep work", "Reminders")
@@ -323,13 +323,13 @@ class WearTest {
         said("not allowed to set alarms for an exact time").assertExists()
         shown("Allow exact alarms").assertExists()
         press("Reminders on this device")
-        assertEquals("false", core.lumenna.settings("reminders").settings.single().value)
+        assertEquals("false", core.device.settings("reminders").settings.single().value)
     }
 
     // MARK: - The planner
 
     private fun block(title: String, date: String, at: String, minutes: UInt, kind: String = "work") =
-        core.lumenna.addBlock(io.github.emassey0135.lumenna.records.NewBlock(title = title, at = at, minutes = minutes, date = date, kind = kind, repeat = null))
+        core.device.addBlock(newBlock(title = title, at = at, minutes = minutes, date = date, kind = kind, repeat = null))
 
     private fun checked(text: String): Boolean =
         shown(text, substring = true).fetchSemanticsNode().config.getOrNull(SemanticsProperties.ToggleableState) == androidx.compose.ui.state.ToggleableState.On
@@ -339,7 +339,7 @@ class WearTest {
         block("All day", "today", "00:00", 1440u)
         rule.runOnIdle { core.changed() }
         press("Today")
-        val expected = core.lumenna.plan(null).actions.map { it.sentence }
+        val expected = core.device.plan(null).actions.map { it.sentence }
         val heading = rule.onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading) and hasText("Today. ", substring = true))
         assertEquals(expected, heading.fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.CustomActions).orEmpty().map { it.label })
         assertTrue(expected.toString(), "Replan from now" in expected)
@@ -368,14 +368,14 @@ class WearTest {
         assertTrue("the next proposal starts checked", checked("Walk moves from"))
         press("Make the changes checked")
         rule.waitUntil(5_000) { rule.onAllNodes(hasText("Make the changes checked")).fetchSemanticsNodes().isEmpty() }
-        assertEquals("12:00", core.lumenna.plan("2026-05-06").blocks.single { it.title == "Lunch" }.start)
+        assertEquals("12:00", core.device.plan("2026-05-06").blocks.single { it.title == "Lunch" }.start)
     }
 
     @Test
     fun planTheDayGivesEachSittingItsReasonAndPlansAgainAroundOneTurnedDown() {
         block("Morning", "tomorrow", "09:00", 30u)
         block("Afternoon", "tomorrow", "14:00", 30u)
-        listOf("Report p1", "Email p2", "Filing p3").forEach { core.lumenna.addTask(it) }
+        listOf("Report p1", "Email p2", "Filing p3").forEach { core.device.addTask(it) }
         rule.runOnIdle { core.changed() }
         press("Today")
         press("Next day")
@@ -387,30 +387,30 @@ class WearTest {
         shown("Filing goes in Morning", substring = true).assertExists()
         press("Plan the ones checked")
         rule.waitUntil(5_000) { rule.onAllNodes(hasText("Plan the ones checked")).fetchSemanticsNodes().isEmpty() }
-        val planned = core.lumenna.plan("tomorrow").blocks.associate { b -> b.title to b.assignments.map { it.title } }
+        val planned = core.device.plan("tomorrow").blocks.associate { b -> b.title to b.assignments.map { it.title } }
         assertEquals(mapOf("Morning" to listOf("Filing"), "Afternoon" to listOf("Email")), planned)
     }
 
     @Test
     fun whatToWorkOnSaysWhyEachIsOfferedBeneathItsName() {
         block("All day", "today", "00:00", 1440u)
-        core.lumenna.addTask("write the chapter p1")
+        core.device.addTask("write the chapter p1")
         rule.runOnIdle { core.changed() }
         press("Today")
-        press(core.lumenna.plan(null).actions.single { it.kind == io.github.emassey0135.lumenna.records.ActionKind.WHAT_NOW }.sentence)
+        press(core.device.plan(null).actions.single { it.kind == io.github.emassey0135.lumenna.app.ActionKind.WHAT_NOW }.sentence)
         shown("write the chapter").assertExists()
         said("Suggested because").assertExists()
         press("write the chapter")
-        rule.waitUntil(5_000) { core.lumenna.plan(null).blocks.single().assignments.any { it.title == "write the chapter" } }
+        rule.waitUntil(5_000) { core.device.plan(null).blocks.single().assignments.any { it.title == "write the chapter" } }
     }
 
     @Test
     fun aTasksScreenHasItsHistoryUnderAHeading() {
-        core.lumenna.addTask("draft the report")
+        core.device.addTask("draft the report")
         rule.runOnIdle { core.changed() }
         press("Tasks")
         press("draft the report")
-        val history = core.lumenna.showTask(core.lumenna.listTasks("").rows.single().id).task.history
+        val history = core.device.showTask(core.device.listTasks("").rows.single().id).task.history
         assertTrue(history.isNotEmpty())
         said("History").assertExists()
         history.forEach { said(it).assertExists() }
@@ -428,7 +428,7 @@ class WearTest {
     @Test
     fun anotherOptionOnTheReplanScreenIsProposedInPlace() {
         replannedDay()
-        val skip = core.lumenna.replan(io.github.emassey0135.lumenna.Clock.style, io.github.emassey0135.lumenna.records.ReplanPins(emptyList(), emptyList(), emptyList()), plannerNow.value).alternatives.first { it.sentence.startsWith("Skip Lunch today") }
+        val skip = core.device.replan(io.github.emassey0135.lumenna.Clock.style, noPins, plannerNow.value).alternatives.first { it.sentence.startsWith("Skip Lunch today") }
         press("Today")
         press("Replan from now")
         said("Other options").assertExists()

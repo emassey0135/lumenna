@@ -23,11 +23,6 @@ import androidx.wear.compose.material3.Text
 import io.github.emassey0135.lumenna.Core
 import io.github.emassey0135.lumenna.Reminders
 import io.github.emassey0135.lumenna.name
-import io.github.emassey0135.lumenna.on
-import io.github.emassey0135.lumenna.perform
-import io.github.emassey0135.lumenna.reminders
-import io.github.emassey0135.lumenna.set
-import io.github.emassey0135.lumenna.settings
 
 /**
  * A task's or a block's reminders: the app's list, as the phone shows it: the core's

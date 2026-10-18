@@ -6,8 +6,8 @@ import io.github.emassey0135.lumenna.app.Question
 import io.github.emassey0135.lumenna.app.ShellEvent
 import io.github.emassey0135.lumenna.app.sentenceCase
 
-// The words Asking.kt gives the UniFFI core's records, for the app's (crates/mobile), while
-// screens move onto the app: the two are one set of records generated twice.
+// How the app's records (crates/mobile) are worded on Android: the platform's capitals, this
+// device's clock, and every app's order for a line.
 
 /** An action's name in this platform's capitals: sentence case, as Material and Wear OS write. */
 val Action.name: String get() = sentence.ifEmpty { title }
@@ -21,7 +21,7 @@ val Question.Text.said: String get() = sentence.ifEmpty { title }
 /** A fixed button's words in sentence case. */
 fun appButton(text: String): String = sentenceCase(text)
 
-/** How a choice the app offers reads, as [option] reads the UniFFI core's. */
+/** How a choice the app offers reads: a block to pick "<day>, <start> to <end>, <title>", anything else its title and detail. */
 fun option(choice: Choice): Option {
     val date = choice.date
     val start = choice.start
@@ -33,26 +33,21 @@ fun option(choice: Choice): Option {
     }
 }
 
-/**
- * The app's actions as a row's: each puts its row in hand, then runs. [kind] and [subject] are
- * the UniFFI core's while lists share `RowAction` with screens still on it; the two enums name
- * the same variants.
- */
+/** The app's actions as a row's: each puts its row in hand, then runs. */
 fun AppModel.rowActions(row: String, actions: List<Action>, local: (Action) -> Boolean = { false }): List<RowAction> = actions.map { action ->
     RowAction(
         action.name,
-        io.github.emassey0135.lumenna.records.ActionKind.valueOf(action.kind.name),
+        action.kind,
         action.destructive,
-        io.github.emassey0135.lumenna.records.Subject.valueOf(action.subject.name),
+        action.subject,
         action.primary,
     ) {
         send(ShellEvent.Focus(row))
-        // An action whose screen is not yet the app's opens the shell's own (`local`).
         if (!local(action)) send(ShellEvent.Perform(action))
     }
 }
 
-/** How an app row is said, as [RowSpeech] says the UniFFI core's: the title, then everything else. */
+/** How an app row is said: the title, then everything else. */
 object AppRowSpeech {
     /** When the row is due, its time in this phone's clock, then the rest of its value. */
     fun details(row: io.github.emassey0135.lumenna.app.RowView): String? {
@@ -78,22 +73,12 @@ object AppRowSpeech {
     }
 }
 
-/** A place of the UniFFI core's as the app's, for screens on the app opened from those not yet. */
-fun io.github.emassey0135.lumenna.records.Place.toApp(): io.github.emassey0135.lumenna.app.Place = when (this) {
-    io.github.emassey0135.lumenna.records.Place.Today -> io.github.emassey0135.lumenna.app.Place.Today
-    io.github.emassey0135.lumenna.records.Place.Tasks -> io.github.emassey0135.lumenna.app.Place.Tasks
-    is io.github.emassey0135.lumenna.records.Place.Project -> io.github.emassey0135.lumenna.app.Place.Project(v1)
-    is io.github.emassey0135.lumenna.records.Place.Label -> io.github.emassey0135.lumenna.app.Place.Label(v1)
-    is io.github.emassey0135.lumenna.records.Place.Filter -> io.github.emassey0135.lumenna.app.Place.Filter(name, query)
-    io.github.emassey0135.lumenna.records.Place.Blocks -> io.github.emassey0135.lumenna.app.Place.Blocks
-    io.github.emassey0135.lumenna.records.Place.Trash -> io.github.emassey0135.lumenna.app.Place.Trash
-}
 
 /**
- * What a day row says: its first line, then the rest, in every app's order (as [words] says
- * the UniFFI core's): a block "<start> to <end>, <title>, <details>"; a sitting "<title>,
- * <details>"; free time "<title>, <details>, <start> to <end>"; now "<title>, <time>"; a
- * cancelled day "<start>, <title>, <details>". The clock is this device's.
+ * What a day row says: its first line, then the rest, in every app's order: a block "<start>
+ * to <end>, <title>, <details>"; a sitting "<title>, <details>"; free time "<title>,
+ * <details>, <start> to <end>"; now "<title>, <time>"; a cancelled day "<start>, <title>,
+ * <details>". The clock is this device's.
  */
 fun words(item: io.github.emassey0135.lumenna.app.DayItem): Pair<String, List<String>> {
     item.sitting?.let { return it.title to it.details }

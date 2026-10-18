@@ -9,8 +9,8 @@ import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.ChannelClient
 import com.google.android.gms.wearable.Wearable
 import com.google.android.gms.wearable.WearableListenerService
-import io.github.emassey0135.lumenna.core.LinkStream
-import io.github.emassey0135.lumenna.records.LinkSynced
+import io.github.emassey0135.lumenna.app.LinkStream
+import io.github.emassey0135.lumenna.app.LinkSynced
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.Executors
@@ -68,7 +68,7 @@ object WatchLink {
         val channels = Wearable.getChannelClient(context)
         val input = Tasks.await(channels.getInputStream(channel), 10, TimeUnit.SECONDS)
         val output = Tasks.await(channels.getOutputStream(channel), 10, TimeUnit.SECONDS)
-        val synced: LinkSynced = core.lumenna.syncOverLink(ChannelStreams(input, output), PairingSession.deviceName(context), platform)
+        val synced: LinkSynced = core.device.syncOverLink(ChannelStreams(input, output), deviceName(context), platform)
         main.post {
             if (synced.changed || synced.paired) core.changed()
             // Pairing is worth saying; a sync over the link is not, any more than an Iroh round.

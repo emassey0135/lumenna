@@ -326,7 +326,7 @@ fun BackupsScreen(core: Core, navigator: Navigator) {
             Button(
                 modifier = Target.padding(16.dp),
                 // Into this device's backups, beside the others: the app's backup is a file to keep elsewhere.
-                onClick = { core.attempt { core.lumenna.backup(null) }?.let { core.say(sentence(it.announcement, it.notices)) } },
+                onClick = { core.attempt { core.device.backup() }?.let { core.say(sentence(it.announcement, it.notices)) } },
             ) { Text("Back up now") }
             Text(
                 "These settings are this device's own. Restore a backup from Export and import.",
@@ -449,7 +449,7 @@ fun PairingScreen(core: Core, navigator: Navigator) {
     val app = core.app
     val context = LocalContext.current
     val view by app.view.collectAsState()
-    val name = remember { PairingSession.deviceName(context) }
+    val name = remember { deviceName(context) }
     LaunchedEffect(Unit) {
         app.send(ShellEvent.Devices(DevicesEvent.Show))
         app.send(ShellEvent.Devices(DevicesEvent.Pair(PairEvent.Open(name))))

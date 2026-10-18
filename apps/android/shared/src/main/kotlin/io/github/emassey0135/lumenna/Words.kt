@@ -2,7 +2,6 @@ package io.github.emassey0135.lumenna
 
 import android.content.Context
 import android.text.format.DateFormat
-import io.github.emassey0135.lumenna.records.RowView
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -24,9 +23,9 @@ object Clock {
     }
 
     /** The clock the core words a proposal's times in, as this device has its own. */
-    val style: io.github.emassey0135.lumenna.records.TimeStyle
-        get() = if (twentyFourHour) io.github.emassey0135.lumenna.records.TimeStyle.TWENTY_FOUR_HOUR
-        else io.github.emassey0135.lumenna.records.TimeStyle.TWELVE_HOUR
+    val style: io.github.emassey0135.lumenna.app.TimeStyle
+        get() = if (twentyFourHour) io.github.emassey0135.lumenna.app.TimeStyle.TWENTY_FOUR_HOUR
+        else io.github.emassey0135.lumenna.app.TimeStyle.TWELVE_HOUR
 
     /** `14:30` as this phone says it: "2:30 PM", or "14:30". */
     fun time(clock: String): String {
@@ -67,46 +66,6 @@ object Clock {
     }
 }
 
-/**
- * How a row is spoken, assembled from the components the core sends — as the iPhone
- * says it, so the two read alike.
- *
- * The core sends components rather than a sentence because speech and braille compose them
- * differently; this is the speech half. TalkBack reads a row's description, then its state,
- * so the title — what a person is scanning for — comes first and is never abbreviated.
- */
-object RowSpeech {
-    /** The title, verbatim. */
-    fun label(row: RowView): String = row.title
-
-    /**
-     * When the row is due, its time in this phone's clock, then the rest of its value: "due
-     * tomorrow at 3:00 PM, priority 1".
-     */
-    fun details(row: RowView): String? {
-        val due = row.due?.let { due -> row.dueTime?.let { "$due at ${Clock.time(it)}" } ?: due }
-        return listOfNotNull(due, row.value).joinToString(", ").ifEmpty { null }
-    }
-
-    /**
-     * Everything after the title: done or not, the due date, notable states, and the level.
-     *
-     * The level is said only where it changes from the row before: "level 2" on every
-     * subtask is noise, and indentation, which is how a sighted reader gets it, says nothing.
-     */
-    fun value(row: RowView, previousDepth: UInt?, fold: String? = null): String {
-        val parts = mutableListOf<String>()
-        if (row.checked == true) parts += "done"
-        details(row)?.let { parts += it }
-        // `ready` is true of almost every task; saying it everywhere buries the states that
-        // mean something.
-        parts += row.state.filter { it != "ready" }
-        if (fold != null) parts += fold else if (row.expanded != null) parts += "has subtasks"
-        if (row.depth != (previousDepth ?: 0u)) parts += "level ${row.depth + 1u}"
-        return parts.joinToString(", ")
-    }
-}
-
 /** The core counts text in UTF-8 bytes, as Rust strings do; Kotlin counts UTF-16 units. */
 object TextOffsets {
     /** A UTF-16 offset as the byte offset the core wants. */
@@ -120,17 +79,4 @@ object TextOffsets {
     }
 }
 
-/** What could finish the end of a line the core reads, and the line with one chosen. */
-object Completing {
-    /** The candidates for the end of `text`, and the span (in UTF-16 units) each would replace. */
-    fun offered(core: Core, text: String, syntax: io.github.emassey0135.lumenna.records.Syntax): Pair<List<io.github.emassey0135.lumenna.records.Candidate>, IntRange>? =
-        if (text.isBlank()) null
-        else core.attempt { core.lumenna.completeText(text, TextOffsets.bytes(text.length, text), syntax) }?.let { found ->
-            found.candidates to (TextOffsets.utf16(found.start, text) until TextOffsets.utf16(found.end, text))
-        }
-
-    /** `text` with `candidate` in place of `span`. */
-    fun insert(text: String, span: IntRange, candidate: io.github.emassey0135.lumenna.records.Candidate): String =
-        text.replaceRange(span.first, span.last + 1, candidate.text)
-}
 

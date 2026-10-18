@@ -21,7 +21,6 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import io.github.emassey0135.lumenna.records.NewBlock
 import java.io.File
 import java.util.UUID
 import org.junit.After
@@ -106,15 +105,15 @@ class ReminderScreenTest {
         rule.waitUntil(5_000) { rule.onAllNodes(hasText(text, substring = true, ignoreCase = true)).fetchSemanticsNodes().isNotEmpty() }
     }
 
-    private fun seed(operation: (io.github.emassey0135.lumenna.core.Lumenna) -> Unit) {
-        operation(core.lumenna)
+    private fun seed(operation: (io.github.emassey0135.lumenna.app.Device) -> Unit) {
+        operation(core.device)
         rule.runOnIdle { core.changed() }
         rule.waitForIdle()
     }
 
     @Test
     fun aBlocksRemindersAreItsDefaultsUntilOneOfItsOwnIsAddedAndRemoved() {
-        seed { it.addBlock(NewBlock(title = "Deep work", at = "9:00", minutes = 90u, date = "today", kind = "work", repeat = null)) }
+        seed { it.addBlock(newBlock(title = "Deep work", at = "9:00", minutes = 90u, date = "today", kind = "work", repeat = null)) }
         tab("Today")
         act("Deep work", "Reminders", substring = true)
         rule.onNode(isHeading() and hasText("1 reminder, the defaults")).assertExists()
@@ -153,8 +152,8 @@ class ReminderScreenTest {
         rule.waitForIdle()
         rule.onNode(hasText("Reminders on this device") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch)).performClick()
         rule.waitForIdle()
-        assertEquals("false", core.lumenna.settings("reminders").settings.single().value)
-        assertEquals("Reminders are off on this device", core.lumenna.upcomingReminders("2100-01-01T00:00:00Z").announcement)
+        assertEquals("false", core.device.settings("reminders").settings.single().value)
+        assertEquals("Reminders are off on this device", core.device.upcomingReminders("2100-01-01T00:00:00Z").announcement)
     }
 
     @Test
@@ -190,6 +189,6 @@ class ReminderScreenTest {
         field("Reminders for a block").assertExists()
         replace("Reminders for a block", "10m before start, at end")
         button("Set")
-        assertEquals("10m before start, at end", core.lumenna.settings("default-block-reminders").settings.single().value)
+        assertEquals("10m before start, at end", core.device.settings("default-block-reminders").settings.single().value)
     }
 }

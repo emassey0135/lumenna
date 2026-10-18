@@ -34,15 +34,16 @@ crates/host/    the command surface: the `Lumenna` object, one method per operat
 crates/app/     the Crux app: the screens' state (place, row in hand, folding, the question
                 open) as events in and view models out; every write an effect. No host.
 crates/bridge/  the app beside its store: Crux middleware answering the app's store effects.
-crates/mobile/  the app for the Kotlin apps through BoltFFI: `App`, the shell's events, its turns.
-crates/ffi/     the library the Swift and Kotlin apps link; re-exports surface over UniFFI.
+crates/mobile/  the app for Android through BoltFFI: `App`, the shell's events, its turns, and
+                `Device`, the store for what runs without the screens.
+crates/ffi/     the library the Swift apps link; re-exports surface over UniFFI.
 crates/sync/    Iroh endpoints, the document sync session, and pairing.
 crates/desktop/ what the Windows, GTK and web apps decide alike: row wording, flat rows as a
                 tree, work-block choices, device wording, the profile.
 apps/cli/       `lum`, and `lum rpc` for clients that cannot link Rust.
 apps/btspeak/   the BTSpeak app, in Python, over `lum rpc`.
 apps/emacs/     the Emacs client, in Elisp, over `lum rpc` or the profile's socket.
-apps/android/   Jetpack Compose over the generated Kotlin bindings: the phone (app/), Wear OS
+apps/android/   Jetpack Compose over the Crux app's Kotlin bindings: the phone (app/), Wear OS
                 (wear/), and what they share (shared/).
 apps/apple/     the iOS and macOS apps over the generated Swift bindings, Shared/ between them.
 apps/windows/   the Win32 app, linking the surface directly.
@@ -55,8 +56,8 @@ apps/web/       the web client: the core in WASM (core/), TypeScript and React A
 `crates/host` is every operation, once, typed. `Lumenna` holds the open store; its
 methods take text identifiers and plain records and return records (`types.rs`). The CLI
 calls it, `lum rpc` serialises what it returns, the desktop apps link it, and UniFFI
-exports it unchanged to Swift and Kotlin (the `uniffi` feature, built by `crates/ffi`). No
-JSON crosses the FFI.
+exports it unchanged to Swift (the `uniffi` feature, built by `crates/ffi`). No JSON crosses
+the FFI.
 
 - **Every returned record carries `announcement` and `notices`** (the `Announced` trait).
   The announcement is one composed sentence, and only because the core wrote it: an
@@ -123,17 +124,15 @@ JSON crosses the FFI.
 - `uniffi.toml` names the Swift module `LumennaCore`. Methods named after Swift keywords
   (`import`, `open`) come out backticked, and work.
 - **The records' UniFFI bindings are their own** (`crates/records/uniffi.toml`): UniFFI writes
-  each crate's apart, and two in one Kotlin package redeclare each other's helpers. So Kotlin
-  imports records from `io.github.emassey0135.lumenna.records` beside the host's `…core`, and
-  Swift compiles `LumennaRecords.swift` (its C half the module `LumennaRecordsFFI`, its map
+  each crate's apart, so Swift compiles `LumennaRecords.swift` (its C half the module `LumennaRecordsFFI`, its map
   joined to the host's in `Generated/include`) into the same app module as `LumennaCore.swift`,
   which UniFFI's Swift across crates requires.
 
 ## The app
 
 `crates/app` is the screens as a Crux 0.20 app; `crates/bridge` runs it beside a store. The
-web is drawn from it entirely; the other clients still call the host directly until their
-turn (the `legacy` tag is the last commit before the move).
+web, the Android phone and Wear OS are drawn from it entirely; the other clients still call
+the host directly until their turn (the `legacy` tag is the last commit before the move).
 
 - **The app never depends on the host.** It holds the snapshot the host last sent (`Watch`, a
   stream answered at once and on every change) and works out from it, with `lumenna-records`,
@@ -1104,14 +1103,19 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 
 ## The Android app
 
-`apps/android/`: Kotlin and Jetpack Compose over UniFFI's Kotlin bindings (JNA). Its README
-gives the toolchain. Three modules: `app` (the phone), `wear` (Wear OS) and `shared`.
+`apps/android/`: Kotlin and Jetpack Compose over the Crux app (`crates/mobile`), through
+BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` (the phone),
+`wear` (Wear OS) and `shared`.
 
-- **The screens are moving onto the Crux app** (`crates/mobile`, through BoltFFI): its library
-  (`liblumenna-mobile.so`) and Kotlin (`io.github.emassey0135.lumenna.app`) are built beside the
-  UniFFI core by `build-core.sh` (`boltffi pack android`, an overlay pointing its outputs into
-  the build directory), so the two run side by side, each on its own connection to the store,
-  while screens move one at a time. BoltFFI carries the records typed, by its own encoding, so
+- **Every screen draws the app's view model and sends it what the person did**
+  (`ShellEvent`), as the web does; UniFFI and JNA are gone from Android. One library
+  (`liblumenna-mobile.so`) and its Kotlin (`io.github.emassey0135.lumenna.app`) come from
+  `build-core.sh` (`boltffi pack android`, an overlay pointing its outputs into the build
+  directory). What runs without the screens — reminders' alarms and receivers, `SyncWorker`,
+  the watch's link, backups — calls `Device` (`crates/mobile/src/device.rs`), the host's
+  operations of the same names over the one connection the `App` runs on; so do the tests, to
+  seed and check the store. BoltFFI's records have no defaults, so the tests seed blocks
+  through `newBlock` (`Seeds.kt`). BoltFFI carries the records typed, by its own encoding, so
   serde's shapes are no concern; `#[boltffi::data]` marks every record the view reaches.
   Its scanner does not see a marker inside `cfg_attr`, so it is unconditional, and it resolves a
   type of another crate only by that crate's root path or an import, never a path into its
@@ -1122,21 +1126,22 @@ gives the toolchain. Three modules: `app` (the phone), `wear` (Wear OS) and `sha
   is in front (`App::in_front`), which is the platform's to say. Turns reach the Kotlin `Shell`
   from one thread of the app's, in order, what arrived together as one.
 - **`shared` holds the core and what decides nothing about looks**: the core's build and
-  bindings, `Core`, `Words` (clock, row speech, text offsets, completion), folding, the
-  day's rows, `Asking.kt` (running the core's actions through an `Asker`, the dialogs on
-  the phone and lists and the input screen on the watch), the settings as each page lists
-  them (`SettingRows.kt`), the task and block forms' fields and saving
-  (`TaskField`, `BlockFormModel`), pairing (`PairingSession`) and `SyncWorker` (through
-  `CoreHolder`, which each app's Application is). A screen in either app shows and runs
-  these; neither decides them.
+  bindings, `Core` (the `Device` and, over it, the app), `AppModel` (turns taken on the main
+  thread in order, speech held while a list lands), `AppWords.kt` and `Words.kt` (this
+  platform's capitals and clock over the app's records: a row's speech, a day row's line, a
+  place's), `RowAction`, reminders' alarms, the watch's link and `SyncWorker` (through
+  `CoreHolder`, which each app's Application is). What is in hand, what is folded, which
+  question is open, the forms, settings, pairing and proposals are the app's; each app draws
+  them, the questions once at its root (`AppQuestions`, `WearQuestions`).
   A shared file must not be named like one of the phone's in the same package: both
   compile to one `…Kt` class, and the dex keeps only one (a shared `Settings.kt` hid the
   phone's `SettingsScreen`).
 
-- **Gradle builds the core itself**: `buildCore<Variant>` runs `build-core.sh`. Only
-  `liblumenna_ffi.so` is copied; `cargo ndk -o` would also copy Iroh's shared libraries,
-  which nothing loads. Arm64 and x86_64 (Googlebooks have both, and the emulator is x86_64), and
-  `abiFilters` keeps JNA's six others out of the APK; minSdk 28. Both are 16 KB aligned.
+- **Gradle builds the core itself**: `buildCore<Variant>` runs `build-core.sh`, whose
+  `boltffi pack android` builds one library per ABI with its JNI glue compiled in; only the
+  Kotlin beside it is copied. The phone takes Arm64 and x86_64 (Googlebooks have both, and
+  CI's emulator is x86_64), the watch 32-bit ARM too (`abiFilters`); minSdk 28. Every library
+  is 16 KB aligned, which CI checks. `LUMENNA_ANDROID_ABIS` narrows the build.
 - **Espresso is pinned to 3.7**: Compose's test library brings 3.5, which calls an
   `InputManager` method Android 17 removed.
 - **The tests run Google's accessibility checks on every interaction**, on a store of their
@@ -1147,10 +1152,10 @@ gives the toolchain. Three modules: `app` (the phone), `wear` (Wear OS) and `sha
 - **A row is one node** (`ListRow`: `clearAndSetSemantics`, custom actions) with one
   description, the title first. As a separate state description, the rest was said before
   the title. `RowTitle` carries the title alone, for tests to find a row by.
-- **Nested lists fold** (`Folding.kt`): everything starts expanded, and a row with
-  something under it has Collapse or Expand among its actions and says which it is. The
-  level is said against the row shown before, after folding. The iPhone does the same
-  (`Folding.swift`, as a swipe action).
+- **Nested lists fold, as the app folds them**: everything starts expanded, and a row with
+  something under it has the app's Collapse or Expand among its actions and says which it
+  is. The level is the app's, said against the row shown before, after folding. The iPhone
+  does the same (`Folding.swift`, as a swipe action).
 - **TalkBack does not follow input focus under touch.** `RowFocus` gives the row input focus,
   then performs the accessibility-focus action through the view's
   `AccessibilityNodeProvider`, found by the `RowKey` property; the announcement is held
@@ -1169,7 +1174,7 @@ gives the toolchain. Three modules: `app` (the phone), `wear` (Wear OS) and `sha
 - **A wide window has the desktop apps' sidebar** (`Sidebar.kt`, from `Lumenna.places`,
   plus Settings) from 840dp, with a stack of its own for the place chosen; headings and
   project trees fold with Expand and Collapse actions, and a heading's or place's actions
-  are the core's, run as Browse runs them (`Asker.kt`). Between 600 and 840dp the tabs
+  are the app's, run as Browse runs them. Between 600 and 840dp the tabs
   are a rail. `LumennaTest` and `NewTaskTest` show the app at a phone's width (`PhoneWidth`),
   so they run on the desktop-sized emulator too; `SidebarTest` and `KeyboardTest` are the
   wide window's.
@@ -1222,7 +1227,7 @@ gives the toolchain. Three modules: `app` (the phone), `wear` (Wear OS) and `sha
   is `ReminderReceiver`'s too: it runs `carryRestForward("<target>@<occurrence>")` and says the
   change in a quiet notification of its own (tag `carried`, no `@`, so arming does not take it
   for a firing), since the app may not be open to say it.
-- **The planner's screens are shared** (`shared/Proposals.kt`, `ProposalModel`): Replan from
+- **The planner's screens are the app's proposal** (`Proposal.kt` in each app): Replan from
   Now and Plan the Day, which the day's own actions (`Plan.actions`, on the day's heading as
   custom actions and as buttons) open. The proposal is said on opening; after a partial apply
   the core's `next` is the screen's list until it is empty. `LocalPlannerNow` fixes the

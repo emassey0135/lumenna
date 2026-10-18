@@ -24,7 +24,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onKeyEvent
-import io.github.emassey0135.lumenna.records.LumennaException
+import io.github.emassey0135.lumenna.app.LumennaError
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.RowScope
@@ -401,15 +401,9 @@ private fun FocusRequester.tryFocus() {
     runCatching { requestFocus() }
 }
 
-/** A round with every paired device now, saying how it went. */
+/** A round with every paired device now: the app says how it went. */
 fun syncNow(core: Core) {
-    core.say("Syncing")
-    core.syncNow { result ->
-        result.fold(
-            { core.changed(); core.say(sentence(it.announcement, it.notices)) },
-            { core.say((it as? LumennaException)?.sentence ?: it.message.orEmpty()) },
-        )
-    }
+    core.app.send(io.github.emassey0135.lumenna.app.ShellEvent.Devices(io.github.emassey0135.lumenna.app.DevicesEvent.SyncNow))
 }
 
 @Composable
