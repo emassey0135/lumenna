@@ -157,13 +157,15 @@ struct MacTaskListScreen: View {
                     }
                 }
             }
-            // One element, said as the phone says it: the title, then the rest of its line, the
-            // same on a row with subtasks as on one without. The level and whether it is expanded
-            // are the outline's own to report.
+            // One element named by its whole line, as the phone says it: the title, then the rest.
+            // Not the title with the rest as its value: VoiceOver reads a static text's value in
+            // place of its name, so a row without subtasks was said as "subtask" alone; a row
+            // with them is the disclosure row, named by this. The level and whether it is
+            // expanded are the outline's own to report. Found by its title (the identifier).
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(row.row.title)
-            .accessibilityValue(detail)
+            .accessibilityLabel(row.line?.text ?? row.row.title)
             .accessibilityAddTraits(.isStaticText)
+            .accessibilityIdentifier(row.row.title)
         }
     }
 }
