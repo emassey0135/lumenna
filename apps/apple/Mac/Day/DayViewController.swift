@@ -221,8 +221,8 @@ final class DayViewController: NSViewController {
         super.viewDidAppear()
         // Once SwiftUI has laid the list out: SwiftUI's own focus, asked for as the app
         // launches, went nowhere.
-        DispatchQueue.main.async { [weak self] in
-            guard let self, let outline = self.outline else { return }
+        view.whenOutline { [weak self] outline in
+            guard let self else { return }
             if self.clicks == nil { self.clicks = FocusOnClick(outline) }
             if self.keys == nil {
                 self.keys = ListKeys(outline) { [weak self] key in

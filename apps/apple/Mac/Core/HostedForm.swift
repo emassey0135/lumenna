@@ -149,4 +149,18 @@ extension NSView {
     var firstOutline: NSOutlineView? {
         (self as? NSOutlineView) ?? subviews.lazy.compactMap(\.firstOutline).first
     }
+
+    /// Hands on the outline inside this view once SwiftUI has made it, looking each 50
+    /// milliseconds for up to five seconds: on a slow machine it was not there a turn after the
+    /// list appeared, and the list never took a click's focus or a key.
+    func whenOutline(_ then: @escaping (NSOutlineView) -> Void, tries: Int = 100) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + (tries == 100 ? 0 : 0.05)) { [weak self] in
+            guard let self else { return }
+            if let outline = self.firstOutline {
+                then(outline)
+            } else if tries > 0 {
+                self.whenOutline(then, tries: tries - 1)
+            }
+        }
+    }
 }

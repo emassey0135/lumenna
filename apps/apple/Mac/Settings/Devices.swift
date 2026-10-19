@@ -175,8 +175,8 @@ final class DevicesViewController: NSViewController {
 
     override func viewDidAppear() {
         super.viewDidAppear()
-        DispatchQueue.main.async { [weak self] in
-            guard let self, let outline = self.view.firstOutline else { return }
+        view.whenOutline { [weak self] outline in
+            guard let self else { return }
             if self.clicks == nil { self.clicks = FocusOnClick(outline) }
             if self.keys == nil { self.keys = ListKeys(outline) { [screen = self.screen] in screen?.key($0) ?? false } }
         }
