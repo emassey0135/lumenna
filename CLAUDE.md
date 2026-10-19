@@ -951,10 +951,12 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   VoiceOver, VOCR (Control-Command S, P, L, I; Shift-Control-Command more) and macOS
   (Control-Command Q, F, D, Space).
 - **The core has a record called `Timer`**, so Foundation's is named in full.
-- **A stepper that stands for something says it** (`LengthStepper`): AppKit's says its
-  number, which VoiceOver reads as a percentage of its range, and SwiftUI's
-  `accessibilityValue` on it is ignored. An `NSStepper` subclass overrides
-  `accessibilityValue` and posts the change.
+- **Every stepper says what it stands for** (`SpokenStepper`: the block's length, a number
+  setting): AppKit's and SwiftUI's say their number as a percentage of the range ("9.1%"), and
+  SwiftUI's `accessibilityValue` on one is ignored. An `NSStepper` subclass overrides
+  `accessibilityValue`, posts the change and names itself. Never inside a SwiftUI
+  accessibility group or `LabeledContent` with only hidden text beside it: SwiftUI does not
+  count an AppKit control as its group's child, and the audit finds the mismatch.
 - **SwiftUI form controls go inside `Named`/`Labelled`**: on macOS a `LabeledContent`. A
   bare `TextField("Title", …)` showed its name as separate text and left the field unnamed;
   a bare `Toggle` was an unnamed switch. On iOS the opposite (see `NamedRow`). A growing

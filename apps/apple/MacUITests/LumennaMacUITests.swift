@@ -574,6 +574,19 @@ final class LumennaMacUITests: XCTestCase {
         sheetButton("Cancel")
     }
 
+    func testASettingsNumberStepperSaysItsNumberAndFollowsAChange() {
+        XCTAssertTrue(window.waitForExistence(timeout: 10))
+        app.typeKey(",", modifierFlags: .command)
+        let settings = app.windows["settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.toolbars.buttons["Backups"].click()
+        let stepper = settings.steppers["Backups kept"]
+        XCTAssertTrue(stepper.waitForExistence(timeout: 5), settings.debugDescription)
+        XCTAssertEqual(stepper.value as? String, "10", "the stepper says the number, not a percentage")
+        stepper.incrementArrows.firstMatch.click()
+        XCTAssertEqual(stepper.value as? String, "11", "and follows a change")
+    }
+
     func testABreakSetApartTakesTasksAndSpacePausesAndResumesASitting() {
         place("Tasks")
         addTask("read")

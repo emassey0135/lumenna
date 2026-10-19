@@ -313,3 +313,60 @@ struct FieldHint: ViewModifier {
         }
     }
 }
+
+#if os(macOS)
+/// A stepper telling VoiceOver what its number stands for, in words: the block's length ("1
+/// hour, 5 minutes"), the backups kept ("10"). AppKit's says its number as a percentage of its
+/// range ("9.1%"), SwiftUI's said the same before its name and value together, and SwiftUI's own
+/// accessibility value on either is ignored; the text beside it is not read again when it
+/// changes. Named here, as `Named` cannot name an AppKit control.
+struct SpokenStepper: NSViewRepresentable {
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+    let step: Int
+    let name: String
+    let spoken: (Int) -> String
+
+    init(value: Binding<Int>, in range: ClosedRange<Int>, step: Int = 1, name: String, spoken: @escaping (Int) -> String) {
+        _value = value
+        self.range = range
+        self.step = step
+        self.name = name
+        self.spoken = spoken
+    }
+
+    func makeNSView(context: Context) -> Spoken {
+        let stepper = Spoken()
+        stepper.minValue = Double(range.lowerBound)
+        stepper.maxValue = Double(range.upperBound)
+        stepper.increment = Double(step)
+        stepper.valueWraps = false
+        stepper.target = context.coordinator
+        stepper.action = #selector(Coordinator.stepped(_:))
+        stepper.setAccessibilityLabel(name)
+        return stepper
+    }
+
+    func updateNSView(_ stepper: Spoken, context: Context) {
+        context.coordinator.value = $value
+        stepper.integerValue = value
+        stepper.spoken = spoken(value)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(value: $value) }
+
+    final class Coordinator: NSObject {
+        var value: Binding<Int>
+        init(value: Binding<Int>) { self.value = value }
+        @objc func stepped(_ stepper: NSStepper) { value.wrappedValue = stepper.integerValue }
+    }
+
+    final class Spoken: NSStepper {
+        var spoken = "" {
+            didSet { if spoken != oldValue { NSAccessibility.post(element: self, notification: .valueChanged) } }
+        }
+
+        override func accessibilityValue() -> Any? { spoken }
+    }
+}
+#endif

@@ -157,12 +157,25 @@ struct SettingControl: View {
         case .time:
             NamedDatePicker(setting.title, selection: model.time(setting.key), displayedComponents: .hourAndMinute)
         case .number:
-            Stepper(value: Binding(
+            let number = Binding(
                 get: { Int(model.values[setting.key] ?? "") ?? 1 },
                 set: { model.set(setting.key, String($0)) }
-            ), in: 1...100) {
+            )
+            #if os(macOS)
+            // The stepper says its name and number, one stop; the text beside it is for sight.
+            // SwiftUI's said "9.1%" before them. Not in `Named`: SwiftUI does not count an
+            // AppKit control as a child of its own group, which the audit finds.
+            HStack {
+                Text(setting.title).accessibilityHidden(true)
+                Spacer()
+                Text(model.values[setting.key] ?? "").accessibilityHidden(true)
+                SpokenStepper(value: number, in: 1...100, name: setting.title) { String($0) }
+            }
+            #else
+            Stepper(value: number, in: 1...100) {
                 Text("\(setting.title): \(model.values[setting.key] ?? "")")
             }
+            #endif
         case .folder:
             #if os(macOS)
             Named(setting.title) {
