@@ -69,7 +69,12 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
         show(.supplementary)
         // Lying over the place, as in portrait, the sidebar goes once a place is chosen, as
         // Mail's does; otherwise it stays over what was chosen, and over what is tapped next.
-        if !isCollapsed && displayMode != .twoBesideSecondary { hide(.primary) }
+        // A turn later: hidden in the turn its row was tapped in, the SwiftUI row's pressed
+        // highlight was left animating in a column no longer shown, and UI tests under load
+        // waited a minute a step for the app to be still.
+        if !isCollapsed && displayMode != .twoBesideSecondary {
+            DispatchQueue.main.async { [weak self] in self?.hide(.primary) }
+        }
         if let then { DispatchQueue.main.async { then(screen) } }
     }
 

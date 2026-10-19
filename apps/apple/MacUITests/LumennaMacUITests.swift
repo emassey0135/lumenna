@@ -252,7 +252,7 @@ final class LumennaMacUITests: XCTestCase {
 
     /// An empty code field asks for a code rather than reading the clipboard; Command-V is
     /// how a copied code gets in.
-    func testAnEmptyCodeAsksForOneAndReadsNothingFromTheClipboard() {
+    func testAnEmptyCodeAsksForOneAndReadsNothingFromTheClipboard() throws {
         XCTAssertTrue(window.waitForExistence(timeout: 10))
         let pasteboard = NSPasteboard.general
         let saved = pasteboard.string(forType: .string)
@@ -272,6 +272,7 @@ final class LumennaMacUITests: XCTestCase {
         pair.click()
         let entry = app.sheets.textFields["Code from the other device"]
         XCTAssertTrue(entry.waitForExistence(timeout: 5), app.debugDescription)
+        try audit("pairing")
 
         app.sheets.buttons["Pair Using This Code"].firstMatch.click()
         let asked = app.staticTexts["Type or paste the code the other device shows."]

@@ -817,9 +817,12 @@ Swift. `cd apps/apple && xcodegen` makes the project from `project.yml`; the `.x
   app opens it and held in its own hand: on iOS an `AppListViewController`
   (`RemindersViewController`), whose Add Reminder in the bar asks the app's Text question,
   again with the reason when refused, and whose own reminders swipe Remove Reminder.
-- **Pairing is by code on iOS**: local discovery of others needs Apple's multicast
-  entitlement. `PairingPrompt` blocks the pairing thread on a semaphore while the words are
-  asked on the main thread.
+- **Pairing follows the app's pairing once for every Apple app** (`Shared/Screens/PairingModel`):
+  the status, this device's code, and the three words, asked in the platform's own alert,
+  whose safe answer, No, is the one a stray Return gives. The Mac draws it in SwiftUI
+  (`PairingScreen`); the iPhone and iPad in UIKit, for the system's Paste button beside the
+  code field: SwiftUI's `PasteButton` is 34 points tall whatever size is asked, under the touch
+  target, and UIKit's `UIPasteControl` hosted in SwiftUI got the tap and never pasted.
 - **Stock controls unless there is a reason**, and each in `FormParts.swift` has one:
   `NamedRow` (the field carries the name and the visible name is hidden, as UIKit forms do;
   combining the row lost the text-field role), `example(_:)` placeholders and

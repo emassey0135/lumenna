@@ -114,8 +114,14 @@ class AppListViewController: UIViewController {
     func draw() {
         guard isViewLoaded, let (rows, count) = rows() else { return }
         items = rows
-        if state.items != rows { state.items = rows }
-        if state.header != count { state.header = count }
+        // Unanimated, as the UIKit list applied its changes: a list animating its rows in a
+        // sidebar being hidden left UI tests under load waiting a minute a step for the app.
+        var now = Transaction()
+        now.disablesAnimations = true
+        withTransaction(now) {
+            if state.items != rows { state.items = rows }
+            if state.header != count { state.header = count }
+        }
         reselect()
         let (focus, landing) = held
         let land = landed.map { landing > $0 } ?? false
@@ -127,7 +133,11 @@ class AppListViewController: UIViewController {
 
     /// Selects `selectedKey`, if it is shown.
     func reselect() {
-        if state.selected != selectedKey { state.selected = selectedKey }
+        guard state.selected != selectedKey else { return }
+        // At once, not animated: the sidebar's selection moves as its column is hidden.
+        var now = Transaction()
+        now.disablesAnimations = true
+        withTransaction(now) { state.selected = selectedKey }
     }
 
     /// Runs one of a row's actions, the app's: held where this list holds its rows, then run.

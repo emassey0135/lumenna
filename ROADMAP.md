@@ -215,6 +215,11 @@ The core's `complete` works everywhere; what is missing is how each app offers i
   - ⌘F never reaches the app in the simulator; try it on a real iPad too.
   - On the 11-inch iPad simulator in portrait, the first ⌘, after launch opens the system's
     Settings app instead of ours (the menu bar does replace that item); try a real iPad.
+  - Since the lists became SwiftUI, a test under load (CI, or three simulators at once) now
+    and then taps a sidebar place a second after showing the sidebar, and the app never says
+    its animations are done: every step after waits a minute, and the test runs out of time.
+    The app is idle (a spindump shows no work); alone it never happens. Unanimated list updates
+    and hiding the sidebar a turn later made it rarer, not gone. Find what is left animating.
   - In CI the iPad suite takes over half an hour on the runner and times out where it
     passes locally, so its job reports without blocking: make it fit the runner (fewer
     simulator round trips, or splitting it across jobs), then make it block again.
