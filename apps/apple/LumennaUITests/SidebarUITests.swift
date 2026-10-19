@@ -44,13 +44,19 @@ final class SidebarUITests: XCTestCase {
         app.cells.matching(NSPredicate(format: "label == %@", title)).firstMatch
     }
 
-    /// Runs one of a row's actions: a swipe action, as VoiceOver lists it. A part swipe:
-    /// across a narrow sidebar row, a whole one runs the first action itself.
+    /// Runs one of a row's actions: a swipe action, as VoiceOver lists it. A part swipe, slow
+    /// and held at its end: across a narrow sidebar row, a whole one runs the first action
+    /// itself, and on a slow runner a quick one now and then revealed nothing. Tried again then.
     private func act(_ row: XCUIElement, _ action: String) {
-        row.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
-            .press(forDuration: 0.05, thenDragTo: row.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5)))
         let button = app.buttons[action].firstMatch
-        XCTAssertTrue(button.waitForExistence(timeout: 5), "\(action) is among the row's actions")
+        for _ in 0..<3 where !button.exists {
+            row.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).press(
+                forDuration: 0.05, thenDragTo: row.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5)),
+                withVelocity: .slow, thenHoldForDuration: 0.3
+            )
+            _ = button.waitForExistence(timeout: 3)
+        }
+        XCTAssertTrue(button.exists, "\(action) is among the row's actions")
         button.tap()
     }
 
