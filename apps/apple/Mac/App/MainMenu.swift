@@ -1,4 +1,5 @@
 import AppKit
+import LumennaApp
 
 /// The menu bar. Everything the app does is here, with its shortcut: the menu bar is
 /// how a Mac user — and a VoiceOver user especially, with VO-M — finds what an app can do.
@@ -118,7 +119,7 @@ enum MainMenu {
         return menu
     }
 
-    /// The Day menu's own part: the day's actions (`Plan.actions`), the core's, in its order,
+    /// The Day menu's own part: the day's actions (`DayView.actions`), the app's, in its order,
     /// after what moves through days. Rebuilt each time the menu opens, since they change with
     /// the day and the time.
     final class DayMenu: NSObject, NSMenuDelegate {
@@ -170,16 +171,12 @@ enum MainMenu {
             return true
         }
 
-        private var pending: ActionKind?
+        private var pending: LumennaApp.ActionKind?
 
         @objc private func runPending(_ sender: Any?) {
             guard let kind = pending, let app = AppDelegate.shared else { return }
             pending = nil
-            if let action = app.dayActions.first(kind) {
-                app.performDay(action)
-            } else {
-                Announcer.say(notOffered(kind: kind, subject: .day, thisDevice: false))
-            }
+            app.runDay(kind)
         }
     }
 

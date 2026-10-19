@@ -36,6 +36,8 @@ final class AppBlockFormModel: ObservableObject {
 
     /// Whether the fields are being set from the app's, not typed.
     private var following = false
+    /// Whether the app's values are waiting for the app to be still.
+    private var filling = false
     private var observer: NSObjectProtocol?
 
     init(core: Core) {
@@ -83,7 +85,17 @@ final class AppBlockFormModel: ObservableObject {
         heading = form.heading
         yes = form.yes
         failure = form.refusal
-        guard core.app.isStill else { return }
+        guard !filling else { return }
+        filling = true
+        core.app.whenStill { [weak self] in
+            self?.filling = false
+            self?.fill()
+        }
+    }
+
+    /// The app's values, into the form's, once nothing is on its way.
+    private func fill() {
+        guard let form = core.app.view.blockForm else { return }
         following = true
         defer { following = false }
         if fields != form.values { fields = form.values }

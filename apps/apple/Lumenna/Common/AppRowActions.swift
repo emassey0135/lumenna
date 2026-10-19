@@ -98,29 +98,6 @@ struct AppRowActions {
     }
 }
 
-extension AppModel {
-    /// What running one of a row's actions sends: the row in hand, then the action. A row of a
-    /// list beside the main one (`side`: the places, a reminder list, the devices) is held
-    /// there instead, so the change lands back in that list.
-    func run(_ action: LumennaApp.Action, on key: String, side: LumennaApp.Side? = nil) {
-        if let side {
-            send(.hold(field0: side, field1: key))
-        } else {
-            send(.focus(key))
-        }
-        send(.perform(action))
-    }
-
-    /// A row's speech after its title: its line's detail, whether what is under it is folded
-    /// away, and the level where it changes from the row shown before — what a tree control
-    /// would say by itself, and a list cell does not.
-    static func spoken(detail: String?, expanded: Bool?, level: String?) -> String {
-        [detail.flatMap { $0.isEmpty ? nil : $0 }, expanded.map { $0 ? "expanded" : "collapsed" }, level]
-            .compactMap { $0 }
-            .joined(separator: ", ")
-    }
-}
-
 extension UIViewController {
     /// Opens the app's own form for `action` (`Question.form`), asked for by the app's question
     /// open: a task's details, a reminder list. Beside the list on iPad, pushed on iPhone.

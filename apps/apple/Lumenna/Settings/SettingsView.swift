@@ -1,3 +1,4 @@
+import LumennaApp
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
@@ -8,21 +9,30 @@ import UniformTypeIdentifiers
 /// Pages rather than one long form: a VoiceOver user reaches backups without swiping through
 /// every weekday, and a page pushed over the tab bar hides it, so no row is ever read through
 /// its glass — which the accessibility audit, rightly, cannot tell from unreadable text.
-final class SettingsViewController: ItemListViewController {
+final class SettingsViewController: AppListViewController {
     init(core: Core) {
         super.init(core: core, title: "Settings")
     }
 
-    override func load() throws -> (items: [Item], count: String) {
-        ([
-            Item(key: "devices", title: "Devices and Sync", detail: try core.lumenna.syncStatus().announcement),
-            Item(key: "planning", title: "Planning", detail: "The day, the week, completing subtasks, announcements"),
-            Item(key: "backups", title: "Backups", detail: "On this device only"),
-            Item(key: "export", title: "Export and Import", detail: "JSON, Markdown, org, calendar"),
+    // Each page has its own; this list is somewhere to go.
+    override var offersUndo: Bool { false }
+
+    override func appear() {
+        // How syncing is going, the network's, for the Devices row.
+        core.app.send(.devices(.show))
+    }
+
+    override func rows() -> (items: [AppItem], count: String)? {
+        let status = core.app.view.devices?.status ?? ""
+        return ([
+            AppItem(key: "devices", title: "Devices and Sync", detail: status.isEmpty ? nil : status),
+            AppItem(key: "planning", title: "Planning", detail: "The day, the week, completing subtasks, announcements"),
+            AppItem(key: "backups", title: "Backups", detail: "On this device only"),
+            AppItem(key: "export", title: "Export and Import", detail: "JSON, Markdown, org, calendar"),
         ], "")
     }
 
-    override func open(_ item: Item) {
+    override func open(_ item: AppItem) {
         let next: UIViewController = switch item.key {
         case "devices": DevicesViewController(core: core)
         case "planning": SettingsPageViewController(core: core, page: .planning)
@@ -68,18 +78,20 @@ final class SettingsPageViewController: UIHostingController<SettingsView> {
 }
 
 extension SettingsModel: UIDocumentPickerDelegate {
-    /// Writes an export to a file named for the day and offers it to share — AirDrop, Files,
-    /// Mail. It holds the present state only, nothing from the trash.
-    func export(_ format: ExportFormat) {
-        let file = FileManager.default.temporaryDirectory.appendingPathComponent(Self.exportName(format))
-        do {
-            let done = try core.lumenna.export(format: format, path: file.path, replace: true)
-            Announcer.say(done.announcement, notices: done.notices)
-            let share = UIActivityViewController(activityItems: [file], applicationActivities: nil)
-            share.popoverPresentationController?.sourceView = host?.view
-            host?.present(share, animated: true)
-        } catch {
-            failure = error.sentence
+    /// Writes an export, as the app makes it, to a file named for the day and offers it to
+    /// share — AirDrop, Files, Mail. It holds the present state only, nothing from the trash.
+    func export(_ format: LumennaApp.ExportFormat) {
+        exporting(format) { [weak self] made in
+            guard let self else { return }
+            let file = FileManager.default.temporaryDirectory.appendingPathComponent(made.name)
+            do {
+                try Data(made.bytes).write(to: file)
+                let share = UIActivityViewController(activityItems: [file], applicationActivities: nil)
+                share.popoverPresentationController?.sourceView = self.host?.view
+                self.host?.present(share, animated: true)
+            } catch {
+                self.failure = error.localizedDescription
+            }
         }
     }
 
@@ -92,11 +104,7 @@ extension SettingsModel: UIDocumentPickerDelegate {
 
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         guard let url = urls.first else { return }
-        do {
-            imported(try core.lumenna.import(path: url.path))
-        } catch {
-            failure = error.sentence
-        }
+        importFile(at: url)
     }
 }
 

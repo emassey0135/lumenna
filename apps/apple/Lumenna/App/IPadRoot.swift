@@ -207,41 +207,20 @@ extension UIViewController {
     }
 
     /// ⌘Z where no screen of its own answers. In a text field with typing to undo, the
-    /// typing is what goes; otherwise the last change to the store.
+    /// typing is what goes; otherwise the last change to the store, the app's.
     func undoInStore(_ core: Core) {
         if let typing = UIResponder.editingWithUndo, typing.canUndo { typing.undo(); return }
-        storeChange(core) { try $0.undo() }
+        core.app.send(.undo)
     }
 
     func redoInStore(_ core: Core) {
         if let typing = UIResponder.editingWithUndo, typing.canRedo { typing.redo(); return }
-        storeChange(core) { try $0.redo() }
+        core.app.send(.redo)
     }
 
-    private func storeChange(_ core: Core, _ operation: (Lumenna) throws -> Change) {
-        do {
-            let change = try operation(core.lumenna)
-            NotificationCenter.default.post(name: Core.changed, object: nil)
-            Announcer.say(change.announcement, notices: change.notices)
-        } catch {
-            showFailure(error.sentence)
-        }
-    }
-
-    /// A round with every paired device now, saying how it went.
+    /// A round with every paired device now: the app says it is syncing, then how it went.
     func syncAndSay(_ core: Core) {
-        Announcer.say("Syncing")
-        core.syncNow { [weak self] result in
-            switch result {
-            case let .success(report):
-                NotificationCenter.default.post(name: Core.changed, object: nil)
-                Announcer.say(report.announcement, notices: report.peers.compactMap { peer in
-                    peer.error.map { "\(peer.name): \($0)" }
-                })
-            case let .failure(error):
-                self?.showFailure(error.sentence)
-            }
-        }
+        core.app.send(.devices(.syncNow))
     }
 }
 

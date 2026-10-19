@@ -1,8 +1,12 @@
 import AppKit
 import LumennaApp
 
-/// The one main window: a sidebar of places, the list for the place chosen, and the
-/// chosen task's details — three panes in an `NSSplitViewController`, as Mail has them.
+/// The one main window: a sidebar of places, the list for the place shown, and the details of
+/// the task in hand — three panes in an `NSSplitViewController`, as Mail has them.
+///
+/// The panes follow the app: the middle one shows the app's place (`ViewModel.place`), so a
+/// place renamed, merged or deleted from the sidebar takes the window with it, and the right
+/// one the task the app has in hand (`ViewModel.details`).
 ///
 /// F6 and Shift-F6 move between the panes. Neither AppKit nor any other toolkit provides that
 /// for free, and a VoiceOver user otherwise reaches the detail pane by interacting
@@ -13,6 +17,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private(set) var sidebar: SidebarViewController!
     private let content = ContainerViewController(placeholder: "", name: "List")
     private let detail = ContainerViewController(placeholder: "No task selected", name: "Task details")
+    private var questions: AppQuestions?
+    private var sheets: AppSheets?
+    private var observer: NSObjectProtocol?
+    /// The place the middle pane shows.
+    private var shown: LumennaApp.Place?
 
     init(core: Core) {
         self.core = core
@@ -29,7 +38,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         super.init(window: window)
         window.delegate = self
 
-        sidebar = SidebarViewController(core: core) { [weak self] place in self?.show(place) }
+        sidebar = SidebarViewController(core: core)
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
         sidebarItem.minimumThickness = 180
         let contentItem = NSSplitViewItem(contentListWithViewController: content)
@@ -47,66 +56,70 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             window.setContentSize(NSSize(width: 1100, height: 700))
             window.center()
         }
-        sidebar.select(.today)
-        // The app's questions, as sheets on this window, and the forms they open.
+        // The app's questions, as sheets on this window, and the forms they open: a task's
+        // details are the pane beside the list.
         questions = AppQuestions(app: core.app, asker: window) { [weak self] action in
-            guard let self else { return }
             switch action.kind {
-            case .reminders: self.window?.openReminders(of: action.target)
-            case .editTask: self.showTask(action.target)
-            case .edit where action.subject == .task: self.showTask(action.target)
+            case .editTask, .edit where action.subject == .task: self?.showDetails()
             default: break
             }
         }
+        // The screens the app opens by itself: the block form, a proposal, a reminder list.
+        sheets = AppSheets(core: core, window: window)
+        observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: core.app, queue: .main) { [weak self] _ in
+            self?.follow()
+        }
+        if core.app.view.place == nil { core.app.send(.open(.today)) }
+        follow()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    private var questions: AppQuestions?
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+    }
 
     // MARK: - Places
 
-    /// Shows a place in the middle pane, and clears the detail pane until something is chosen.
-    func show(_ place: Place) {
-        let controller: NSViewController
-        switch place {
-        case .today:
-            controller = DayViewController(core: core, window: self)
-        case .tasks:
-            controller = TaskListViewController(core: core, window: self, title: "Tasks")
-        case let .project(name):
-            controller = TaskListViewController(
-                core: core, window: self, title: name,
-                query: projectReference(name: name), quickAddPrefix: projectReference(name: name) + " "
-            )
-        case let .label(name):
-            controller = TaskListViewController(
-                core: core, window: self, title: name,
-                query: labelReference(name: name), quickAddPrefix: labelReference(name: name) + " "
-            )
-        case let .filter(name, query):
-            controller = TaskListViewController(core: core, window: self, title: name, query: query)
-        case .blocks:
-            controller = BlocksViewController(core: core, window: self)
-        case .trash:
-            controller = TaskListViewController(core: core, window: self, title: "Trash", query: "deleted", mode: .trash)
+    /// Goes to `place`, as choosing it in the sidebar does.
+    func go(_ place: LumennaApp.Place) {
+        core.app.send(.open(place))
+    }
+
+    /// The panes as the app has them: the place shown in the middle, the task in hand beside it.
+    private func follow() {
+        let view = core.app.view
+        if let place = view.place, place != shown {
+            shown = place
+            let controller: NSViewController = switch place {
+            case .today: DayViewController(core: core, window: self)
+            case .blocks: BlocksViewController(core: core)
+            default: TaskListViewController(core: core, window: self, place: place)
+            }
+            content.show(controller)
         }
-        content.show(controller)
-        window?.title = controller.title ?? "Lumenna"
-        showTask(nil)
+        window?.title = view.place == .today ? core.app.lines.dayTitle : view.title
+        showTask(view.details?.task.id)
     }
 
     /// The task in the detail pane, or none.
-    func showTask(_ id: String?) {
+    private func showTask(_ id: String?) {
         guard let id else {
             detail.show(nil)
             return
         }
         // The same task stays as it is — it reads changes itself — so focus in the pane is
-        // not thrown away when the list reloads around a change made there.
+        // not thrown away when the list redraws around a change made there.
         if (detail.current as? TaskDetailViewController)?.taskID == id { return }
-        detail.show(TaskDetailViewController(core: core, id: id, window: self))
+        detail.show(TaskDetailViewController(core: core, id: id))
+    }
+
+    /// Goes to the details of the task in hand: Return on a row, its Edit Details.
+    func showDetails() {
+        follow()
+        guard let pane = detail.current?.preferredFirstResponder else { return }
+        window?.makeFirstResponder(pane)
     }
 
     /// The list in the middle pane, if it is a task list — what the Task menu acts on.

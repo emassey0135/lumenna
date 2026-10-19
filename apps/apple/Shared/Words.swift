@@ -20,12 +20,17 @@ enum CompletionText {
     /// `text` with `candidate` in place of the bytes from `start` to `end` (the core counts
     /// UTF-8 bytes), and a space after it so the next word can follow.
     static func insert(_ candidate: Candidate, into text: String, start: UInt32, end: UInt32) -> (text: String, cursor: Int) {
+        insert(candidate.text, into: text, start: start, end: end)
+    }
+
+    /// `text` with `inserted` in place of the bytes from `start` to `end`, and a space after it.
+    static func insert(_ candidate: String, into text: String, start: UInt32, end: UInt32) -> (text: String, cursor: Int) {
         let bytes = Array(text.utf8)
         let from = min(Int(start), bytes.count)
         let to = min(max(Int(end), from), bytes.count)
         let before = String(decoding: bytes[..<from], as: UTF8.self)
         let after = String(decoding: bytes[to...], as: UTF8.self)
-        let inserted = candidate.text + (after.hasPrefix(" ") ? "" : " ")
+        let inserted = candidate + (after.hasPrefix(" ") ? "" : " ")
         return (before + inserted + after, (before + inserted).utf16.count)
     }
 }

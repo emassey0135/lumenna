@@ -1,41 +1,40 @@
+import LumennaApp
 import SwiftUI
 import UserNotifications
 
-/// A task's or block's reminders, the core's list (`remindersOf`), as the Mac and the watch
-/// show them; the iPhone's is a UIKit list (`RemindersViewController`). The heading says how
-/// many and whether they are the defaults; each reads as the core words it; its own offer
-/// Remove Reminder; Add Reminder takes a phrase the core reads, and a refused one stays in its
-/// field with the core's reason.
+/// A task's or block's reminders, the app's open list (`ViewModel.reminders`), as the Mac and
+/// the watch show them; the iPhone's is a UIKit list (`RemindersViewController`). The heading
+/// says how many and whether they are the defaults; each reads as the core words it; its own
+/// offer Remove Reminder; Add Reminder takes a phrase the core reads, and a refused one stays in
+/// its field with the app's reason. Held in the reminder list's hand, so a change lands here.
 final class RemindersModel: ObservableObject {
     let core: Core
-    let target: String
-    @Published private(set) var list: ReminderList?
+    @Published private(set) var list: LumennaApp.ReminderList?
     /// The phrase being typed for Add Reminder.
     @Published var typed = ""
-    /// The core's reason it refused the phrase, shown with the field.
+    /// The app's reason it refused the phrase, shown with the field.
     @Published var problem: String?
     @Published var failure: String?
     /// An action asking to be confirmed first.
-    @Published var confirming: Action?
+    @Published var confirming: LumennaApp.Action?
     /// Whether the person turned Lumenna's notifications off, said under the list.
     @Published private(set) var silenced = false
+    /// Closes the list's screen once the app has put it away; set by whoever shows it.
+    var close: () -> Void = {}
     private var observer: NSObjectProtocol?
 
-    init(core: Core, target: String) {
+    init(core: Core) {
         self.core = core
-        self.target = target
-        load()
-        observer = NotificationCenter.default.addObserver(forName: Core.changed, object: nil, queue: .main) { [weak self] _ in
-            self?.load()
+        list = core.app.view.reminders
+        observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: core.app, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            self.list = self.core.app.view.reminders
+            if self.list == nil { self.close() }
         }
     }
 
-    func load() {
-        do {
-            list = try core.lumenna.remindersOf(target: target)
-        } catch {
-            failure = error.sentence
-        }
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
     }
 
     /// Someone looking at reminders wants them shown: the moment to ask, if never asked.
@@ -45,50 +44,57 @@ final class RemindersModel: ObservableObject {
         }
     }
 
-    /// Add Reminder, the list's own action.
-    var adding: Action? { list?.actions.first }
-    var question: TextQuestion? { adding.flatMap { TextQuestion($0.question) } }
+    /// Puts the list away in the app.
+    func done() {
+        core.app.send(.closeReminders)
+    }
 
+    /// Add Reminder, the list's own action.
+    var adding: LumennaApp.Action? { list?.actions.first }
+
+    /// Add Reminder's line: its title, the field's name and hint, and its button.
+    var question: (title: String, label: String, hint: String, yes: String)? {
+        guard case let .text(title, label, _, hint, _, yes, _) = adding?.question else { return nil }
+        return (title, label, hint, yes)
+    }
+
+    /// Adds the phrase typed, answering the app's Add Reminder at once: a phrase it refuses
+    /// stays in the field with why, the question put away again, so it is not asked over it.
     func add() {
         guard let adding else { return }
-        do {
-            let change = try core.lumenna.act(action: adding, answer: .text(text: typed))
+        core.app.send(.perform(adding))
+        core.app.send(.answer(.text(text: typed)))
+        if let refusal = core.app.current.view.asking?.refusal {
+            core.app.send(.cancel)
+            problem = refusal
+            Announcer.say(refusal)
+        } else {
             typed = ""
             problem = nil
-            changed(change)
-        } catch {
-            problem = error.sentence
-            Announcer.say(error.sentence)
         }
     }
 
-    /// One of a reminder's actions, the core's: Remove Reminder.
-    func run(_ action: Action, confirmed: Bool = false) {
+    /// One of a reminder's actions, the app's: Remove Reminder, confirmed here first when it
+    /// asks to be.
+    func run(_ action: LumennaApp.Action, on reminder: String, confirmed: Bool = false) {
         if case .confirm = action.question, !confirmed {
             confirming = action
+            confirmingReminder = reminder
             return
         }
-        do {
-            changed(try core.lumenna.act(action: action, answer: .yes))
-        } catch {
-            failure = error.sentence
-        }
+        core.app.send(.hold(field0: .reminders, field1: reminder))
+        core.app.send(.perform(action))
+        if case .confirm = action.question { core.app.send(.answer(.yes)) }
     }
 
-    private func changed(_ change: Change) {
-        load()
-        // Every view reads the store again and the reminders are scheduled anew.
-        NotificationCenter.default.post(name: Core.changed, object: nil)
-        Announcer.say(change.announcement, notices: change.notices)
-    }
+    /// The reminder `confirming` is for.
+    private(set) var confirmingReminder = ""
 }
 
 struct RemindersForm: View {
     @ObservedObject var model: RemindersModel
-    /// Closes the Mac's sheet.
-    var done: () -> Void = {}
     #if !os(macOS)
-    @State private var offered: ReminderView?
+    @State private var offered: LumennaApp.ReminderView?
     #endif
 
     var body: some View {
@@ -128,7 +134,7 @@ struct RemindersForm: View {
             }
             #if os(macOS)
             Section {
-                Button("Done", action: done).keyboardShortcut(.cancelAction)
+                Button("Done") { model.done() }.keyboardShortcut(.cancelAction)
             }
             #endif
         }
@@ -144,7 +150,9 @@ struct RemindersForm: View {
             presenting: model.confirming
         ) { action in
             if case let .confirm(_, _, yes) = action.question {
-                Button(yes, role: action.destructive ? .destructive : nil) { model.run(action, confirmed: true) }
+                Button(yes, role: action.destructive ? .destructive : nil) {
+                    model.run(action, on: model.confirmingReminder, confirmed: true)
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: { action in
@@ -153,14 +161,14 @@ struct RemindersForm: View {
         #if !os(macOS)
         .confirmationDialog(offered?.words ?? "", isPresented: Binding(get: { offered != nil }, set: { if !$0 { offered = nil } }), presenting: offered) { reminder in
             ForEach(reminder.actions, id: \.self) { action in
-                Button(action.title, role: action.destructive ? .destructive : nil) { model.run(action) }
+                Button(action.title, role: action.destructive ? .destructive : nil) { model.run(action, on: reminder.id) }
             }
         }
         #endif
         .modifier(FailureAlert(failure: $model.failure))
     }
 
-    @ViewBuilder private func field(_ question: TextQuestion) -> some View {
+    @ViewBuilder private func field(_ question: (title: String, label: String, hint: String, yes: String)) -> some View {
         #if os(macOS)
         TextField(question.label, text: $model.typed)
         #else
@@ -172,13 +180,13 @@ struct RemindersForm: View {
 
     /// A reminder: its words, and "Default" for one of the defaults. One of its own offers its
     /// actions: on the Mac as buttons beside it, on the watch when tapped.
-    @ViewBuilder private func row(_ reminder: ReminderView) -> some View {
+    @ViewBuilder private func row(_ reminder: LumennaApp.ReminderView) -> some View {
         let spoken = reminder.own ? reminder.words : "\(reminder.words), Default"
         #if os(macOS)
         // A Mac form's row: the words, "Default" beneath for a default, the buttons beside.
         LabeledContent {
             ForEach(reminder.actions, id: \.self) { action in
-                Button(action.title) { model.run(action) }
+                Button(action.title) { model.run(action, on: reminder.id) }
                     .accessibilityLabel("\(action.title), \(reminder.words)")
             }
         } label: {

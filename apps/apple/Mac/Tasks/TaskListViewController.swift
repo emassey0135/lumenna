@@ -1,20 +1,27 @@
 import AppKit
+import LumennaApp
 
-/// A task row as the outline holds it: the core's row, and the rows beneath it.
+/// A task row as the outline holds it: the app's row and its line, and the rows beneath it.
 final class TaskNode {
-    let row: RowView
+    let item: LumennaApp.Item
+    let line: LumennaApp.Line?
     var children: [TaskNode] = []
 
-    init(_ row: RowView) { self.row = row }
+    init(_ item: LumennaApp.Item, line: LumennaApp.Line?) {
+        self.item = item
+        self.line = line
+    }
 
-    /// The flat, depth-first rows the core sends, as a tree: a row's parent is the nearest
+    var row: LumennaApp.RowView { item.row }
+
+    /// The flat, depth-first rows the app sends, as a tree: a row's parent is the nearest
     /// shallower row above it. One whose parent was filtered out sits at the top.
-    static func tree(_ rows: [RowView]) -> [TaskNode] {
+    static func tree(_ rows: [(LumennaApp.Item, LumennaApp.Line?)]) -> [TaskNode] {
         var top: [TaskNode] = []
         var chain: [TaskNode] = []
-        for row in rows {
-            let node = TaskNode(row)
-            while let last = chain.last, last.row.depth >= row.depth { chain.removeLast() }
+        for (item, line) in rows {
+            let node = TaskNode(item, line: line)
+            while let last = chain.last, last.row.depth >= item.row.depth { chain.removeLast() }
             if let parent = chain.last { parent.children.append(node) } else { top.append(node) }
             chain.append(node)
         }
@@ -22,55 +29,60 @@ final class TaskNode {
     }
 }
 
-/// Tasks, with the filter above them, as an outline.
+/// A place's tasks, with the filter above them, or the trash, as an outline: the app's list
+/// (`ViewModel.list`).
 ///
 /// `NSOutlineView` is the reason this app is AppKit: Finder's and Mail's outline,
-/// whose level, position and expansion VoiceOver reports without help. After a change, the
-/// selection — which is VoiceOver's focus here — is put on a row chosen deterministically:
-/// the same task if it is still listed, else whatever now holds its place.
+/// whose level, position and expansion VoiceOver reports without help. What is listed, what is
+/// folded, the row in hand after a change — the same task if it is still listed, else whatever
+/// now holds its place — and what each row offers are the app's. The selection is the row in
+/// hand, which is VoiceOver's focus here; it is scrolled to only when the app moved it
+/// (`ViewModel.landing`), so a sync or a new minute redraws without moving anything.
 final class TaskListViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
-    enum Mode {
-        case tasks
-        /// The trash: restore, or delete from the trash.
-        case trash
-    }
-
     let core: Core
     private weak var main: MainWindowController?
-    let mode: Mode
-    private let quickAddPrefix: String
-    private let initialQuery: String
+    /// The place this list shows.
+    let place: LumennaApp.Place
+    var trash: Bool { place == .trash }
     private var nodes: [TaskNode] = []
-    private var rows: [RowView] = []
-    private var collapsed: Set<String> = []
     let outline = TaskOutline()
     private lazy var filter = CompletingField(core: core, syntax: .filter, name: "Filter")
     private let readback = NSTextField(wrappingLabelWithString: "")
+    /// Whether the outline is being set from the app's, not moved by the person.
+    private var following = false
+    /// The landing count this list last moved the selection for.
+    private var landed: UInt32?
+    private var observer: NSObjectProtocol?
 
-    init(core: Core, window: MainWindowController, title: String, query: String = "", mode: Mode = .tasks, quickAddPrefix: String = "") {
+    init(core: Core, window: MainWindowController, place: LumennaApp.Place) {
         self.core = core
         main = window
-        self.mode = mode
-        self.quickAddPrefix = quickAddPrefix
-        initialQuery = query
+        self.place = place
         super.init(nibName: nil, bundle: nil)
-        self.title = title
+        title = core.app.view.title
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+    }
+
     override func loadView() {
-        filter.stringValue = initialQuery
+        filter.stringValue = core.app.view.query
         filter.placeholderString = "#Work & overdue, or search: words"
-        filter.changed = { [weak self] in self?.reload() }
+        filter.changed = { [weak self] in
+            guard let self else { return }
+            self.core.app.send(.filter(self.filter.stringValue))
+        }
         filter.submitted = { [weak self] in
             guard let self else { return }
             // Typing is silent; finishing the filter says what it found, then goes to it.
             Announcer.say(self.readback.stringValue)
             self.view.window?.makeFirstResponder(self.outline)
         }
-        filter.isHidden = mode == .trash
+        filter.isHidden = trash
         readback.textColor = .quietLabel
         readback.font = .preferredFont(forTextStyle: .subheadline)
 
@@ -108,8 +120,12 @@ final class TaskListViewController: NSViewController, NSOutlineViewDataSource, N
         header.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         scroll.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         view = stack
-        NotificationCenter.default.addObserver(self, selector: #selector(storeChanged), name: Core.changed, object: nil)
-        reload()
+        observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: core.app, queue: .main) { [weak self] _ in
+            self?.draw()
+        }
+        // Opening the place is not the app moving focus: VoiceOver says the list itself.
+        landed = core.app.view.landing
+        draw()
     }
 
     override var preferredFirstResponder: NSView? { outline }
@@ -117,56 +133,52 @@ final class TaskListViewController: NSViewController, NSOutlineViewDataSource, N
     override func viewDidAppear() {
         super.viewDidAppear()
         view.window?.makeFirstResponder(outline)
-        if outline.selectedRow < 0, outline.numberOfRows > 0 {
-            outline.selectRowIndexes([0], byExtendingSelection: false)
+    }
+
+    // MARK: - Showing the app's list
+
+    /// Draws the app's list while the app shows this place: every row, those folded away
+    /// inside their collapsed parents, the row in hand selected.
+    private func draw() {
+        let shown = core.app.view
+        guard shown.place == place, let list = shown.list else { return }
+        let lines = core.app.lines
+        readback.stringValue = lines.readback
+        let worded = list.items.enumerated().map { index, item in (item, index < lines.list.count ? lines.list[index] : nil) }
+        following = true
+        defer { following = false }
+        if list.items != drawn?.items || lines.list != drawn?.lines {
+            drawn = (list.items, lines.list)
+            nodes = TaskNode.tree(worded)
+            outline.reloadData()
+            fold(nodes)
         }
-    }
-
-    // MARK: - Showing the store
-
-    @objc private func storeChanged() {
-        reload(focusing: selectedID, near: outline.selectedRow, saying: nil)
-    }
-
-    /// Lists again. A filter still being typed may not read yet; then the old rows stay and
-    /// the readback says what is wrong with it.
-    func reload() {
-        do {
-            let listing = try core.lumenna.listTasks(query: filter.stringValue)
-            rows = listing.rows
-            nodes = TaskNode.tree(listing.rows)
-            // With nothing listed, what is empty, in the core's words: "The trash is empty."
-            var said = [listing.rows.isEmpty && !listing.empty.isEmpty ? listing.empty : listing.announcement] + listing.notices
-            if let understood = listing.query?.description, mode == .tasks {
-                said.insert(understood, at: 0)
+        let land = landed.map { shown.landing > $0 } ?? false
+        landed = shown.landing
+        guard let focus = shown.focus, let row = row(of: focus) else { return }
+        if outline.selectedRow != row { outline.selectRowIndexes([row], byExtendingSelection: false) }
+        if land {
+            outline.scrollRowToVisible(row)
+            // A change made from a sheet comes back to the list, as the app moved the row in
+            // hand; focus elsewhere in the window stays where it is.
+            if let window = view.window, window.firstResponder == nil || window.firstResponder === window {
+                window.makeFirstResponder(outline)
             }
-            readback.stringValue = said.joined(separator: ". ")
-        } catch {
-            readback.stringValue = error.sentence
         }
-        outline.reloadData()
-        expand(nodes)
     }
 
-    private func expand(_ nodes: [TaskNode]) {
+    /// The rows and lines last drawn, so a redraw that changes nothing leaves the outline alone.
+    private var drawn: (items: [LumennaApp.Item], lines: [LumennaApp.Line])?
+
+    private func fold(_ nodes: [TaskNode]) {
         for node in nodes where !node.children.isEmpty {
-            if !collapsed.contains(node.row.id) { outline.expandItem(node) }
-            expand(node.children)
+            if node.row.expanded == false {
+                outline.collapseItem(node)
+            } else {
+                outline.expandItem(node)
+                fold(node.children)
+            }
         }
-    }
-
-    /// Reloads, puts the selection — VoiceOver's focus — somewhere predictable, and says what
-    /// happened.
-    func reload(focusing id: String?, near index: Int?, saying change: Change?) {
-        reload()
-        let target = id.flatMap { id in row(of: id) } ?? index.map { min($0, outline.numberOfRows - 1) }
-        if let target, target >= 0 {
-            outline.selectRowIndexes([target], byExtendingSelection: false)
-            outline.scrollRowToVisible(target)
-        } else {
-            main?.showTask(nil)
-        }
-        if let change { Announcer.say(change.announcement, notices: change.notices) }
     }
 
     private func row(of id: String) -> Int? {
@@ -190,31 +202,36 @@ final class TaskListViewController: NSViewController, NSOutlineViewDataSource, N
         !((item as? TaskNode)?.children.isEmpty ?? true)
     }
 
-    func outlineViewItemDidCollapse(_ notification: Notification) {
-        if let node = notification.userInfo?["NSObject"] as? TaskNode { collapsed.insert(node.row.id) }
-    }
+    /// Folded or unfolded by the person: the row's own Collapse or Expand, the app's.
+    func outlineViewItemDidCollapse(_ notification: Notification) { folded(notification, .collapse) }
+    func outlineViewItemDidExpand(_ notification: Notification) { folded(notification, .expand) }
 
-    func outlineViewItemDidExpand(_ notification: Notification) {
-        if let node = notification.userInfo?["NSObject"] as? TaskNode { collapsed.remove(node.row.id) }
+    private func folded(_ notification: Notification, _ kind: LumennaApp.ActionKind) {
+        guard !following, let node = notification.userInfo?["NSObject"] as? TaskNode,
+              let action = node.row.actions.first(where: { $0.kind == kind }) else { return }
+        core.app.run(action, on: node.row.id)
     }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let node = item as? TaskNode else { return nil }
         let cell = TaskCell()
-        cell.show(node.row, trash: mode == .trash) { [weak self] in
-            if let done = node.row.actions.first(.markDone, .markNotDone) { self?.perform(done, on: node.row) }
+        cell.show(node.row, line: node.line, trash: trash) { [weak self] in
+            if let done = node.row.actions.first(where: { [.markDone, .markNotDone].contains($0.kind) }) {
+                self?.perform(done, on: node.row)
+            }
         }
         return cell
     }
 
+    /// The person moved to a row: the app's row in hand, whose details show beside it.
     func outlineViewSelectionDidChange(_ notification: Notification) {
-        guard mode == .tasks else { return }
-        main?.showTask(selectedID)
+        guard !following, let id = selectedID else { return }
+        core.app.send(.focus(id))
     }
 
     @objc private func openDetail() {
-        guard mode == .tasks, selectedID != nil else { return }
-        main?.nextPane(nil)
+        guard !trash, selectedID != nil else { return }
+        main?.showDetails()
     }
 
     /// Keys on the outline itself, each the row's own action of that kind: Space marks it
@@ -222,46 +239,37 @@ final class TaskListViewController: NSViewController, NSOutlineViewDataSource, N
     /// trash.
     private func key(_ key: TaskOutline.Key) -> Bool {
         guard let row = selectedNode?.row else { return false }
-        let action: Action? = switch key {
-        case .space: row.actions.first(.markDone, .markNotDone, .restore)
-        case .delete: row.actions.first(.delete, .deleteForGood)
-        case .returnKey: nil
+        let kinds: [LumennaApp.ActionKind] = switch key {
+        case .space: [.markDone, .markNotDone, .restore]
+        case .delete: [.delete, .deleteForGood]
+        case .returnKey: []
         }
         if key == .returnKey {
             openDetail()
-        } else if let action {
+        } else if let action = row.actions.first(where: { kinds.contains($0.kind) }) {
             perform(action, on: row)
         } else {
             // Why not, in the core's words: silence would leave the key a guess.
-            Announcer.say(notOffered(kind: key == .space ? .markDone : .delete, subject: .task, thisDevice: false))
+            Announcer.say(LumennaApp.notOffered(kind: key == .space ? .markDone : .delete, subject: .task, thisDevice: false))
         }
         return true
     }
 
     // MARK: - Doing things
 
-    /// After an action: reloads with the selection on `id`, or near where it was, and says
-    /// what happened.
-    func acted(_ change: Change, focusing id: String?) {
-        reload(focusing: id, near: outline.selectedRow, saying: change)
-    }
-
-    /// Runs a row's action, the core's.
-    func perform(_ action: Action, on row: RowView) {
-        guard let window = view.window else { return }
-        TaskActions(core: core, window: window, list: self, openDetail: { [weak self] in self?.openDetail() })
-            .perform(action, on: row.id)
+    /// Runs a row's action, the app's: the row in hand, then the action, whose question the
+    /// window's `AppQuestions` asks.
+    func perform(_ action: LumennaApp.Action, on row: LumennaApp.RowView) {
+        core.app.run(action, on: row.id)
     }
 
     func addTask() {
-        guard mode == .tasks, let window = view.window else { return }
-        QuickAddSheet.present(on: window, core: core, initial: quickAddPrefix) { [weak self] change in
-            self?.reload(focusing: change.task?.id, near: nil, saying: change)
-        }
+        guard !trash, let window = view.window else { return }
+        QuickAddSheet.present(on: window, core: core)
     }
 
     func focusFilter() {
-        guard mode == .tasks else { return }
+        guard !trash else { return }
         view.window?.makeFirstResponder(filter)
     }
 
@@ -324,23 +332,23 @@ final class TaskCell: NSTableCellView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    func show(_ row: RowView, trash: Bool, toggled: @escaping () -> Void) {
+    func show(_ row: LumennaApp.RowView, line: LumennaApp.Line?, trash: Bool, toggled: @escaping () -> Void) {
         self.toggled = toggled
         let done = row.checked == true
         check.state = done ? .on : .off
         check.isHidden = trash
         check.setAccessibilityLabel(done ? "Done, \(row.title)" : "Mark \(row.title) done")
-        var detail = RowSpeech.details(row).map { [$0] } ?? []
-        detail += row.state.filter { $0 != "ready" }
-        lines.show(title: row.title, detail: detail.joined(separator: ", "), warning: row.state.contains("overdue"))
+        // The rest of the app's line beneath the title: when, and the notable states.
+        let detail = line?.detail ?? ""
+        lines.show(title: row.title, detail: detail, warning: row.state.contains("overdue"))
         lines.title.attributedStringValue = NSAttributedString(
             string: row.title,
             attributes: done ? [.strikethroughStyle: NSUnderlineStyle.single.rawValue] : [:]
         )
-        // Said as the phone says it: the title, then done, the date and the states. The level
-        // is the outline's own to report.
-        setAccessibilityLabel(RowSpeech.label(row))
-        setAccessibilityValueDescription(RowSpeech.value(row, previousDepth: row.depth))
+        // Said as the phone says it: the title, then the rest of its line. The level and
+        // whether it is expanded are the outline's own to report.
+        setAccessibilityLabel(row.title)
+        setAccessibilityValueDescription(detail)
     }
 
     @objc private func toggle() {

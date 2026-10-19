@@ -3,7 +3,7 @@ import WatchConnectivity
 
 /// Syncing with the iPhone over WatchConnectivity: the watch's only way to its other devices.
 ///
-/// The watch starts every exchange (`PhoneLink`), message by message with a reply to each,
+/// The watch starts every exchange (`Device.linkStart`), message by message with a reply to each,
 /// until the two stores agree. A message from the watch wakes the iPhone app in the
 /// background, so neither needs to be open; the reverse is not so, so the phone only nudges
 /// the watch, while its app is open, to start one. It runs when the app opens, after each
@@ -41,7 +41,7 @@ final class PhoneSync: NSObject, ObservableObject {
         }
         do {
             running = true
-            send(try core.link.start(), over: session)
+            send(try core.app.device.linkStart(), over: session)
         } catch {
             finish("Could not sync with the iPhone. \(error.sentence)")
         }
@@ -58,11 +58,11 @@ final class PhoneSync: NSObject, ObservableObject {
     private func take(_ reply: Data, over session: WCSession) {
         guard let core else { return }
         do {
-            if let next = try core.link.take(reply: reply) {
+            if let next = try core.app.device.linkTake(reply: reply) {
                 send(next, over: session)
                 return
             }
-            if core.link.tookIn() {
+            if core.app.device.linkTookIn() {
                 NotificationCenter.default.post(name: Core.changed, object: nil, userInfo: [Core.fromPhone: true])
             }
             finish("Synced with the iPhone at \(Date.now.formatted(date: .omitted, time: .shortened))")

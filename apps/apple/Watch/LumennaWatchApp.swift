@@ -50,12 +50,12 @@ final class Opened: ObservableObject {
             let core = try WatchCore()
             self.core = core
             reason = ""
-            let responder = ReminderResponder(lumenna: core.lumenna) { reminded in
+            let responder = ReminderResponder(device: core.app.device) { reminded in
                 NotificationCenter.default.post(name: Opened.reminded, object: reminded)
             }
             UNUserNotificationCenter.current().delegate = responder
             self.responder = responder
-            let reminders = ReminderSchedule(lumenna: core.lumenna)
+            let reminders = ReminderSchedule(device: core.app.device)
             reminders.follow()
             reminders.rearm(catchingUp: true)
             self.reminders = reminders

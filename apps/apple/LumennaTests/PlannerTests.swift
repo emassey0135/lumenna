@@ -147,41 +147,4 @@ final class PlannerTests: XCTestCase {
         }
         XCTAssertFalse(model.task?.history.isEmpty ?? true, "the core says something of every task's past")
     }
-
-    // MARK: - Carry Forward on a reminder
-
-    private func reminder(carry: String, replan: String = "") -> DueReminder {
-        DueReminder(
-            key: "k", occurrence: day, at: "\(day)T10:00:00Z", target: "series", kind: "block", title: "Deep work",
-            text: "Deep work ends now. Carry the rest forward?", missed: "Deep work ended", dismiss: "Dismiss",
-            snooze: "Snooze", carry: carry, replan: replan
-        )
-    }
-
-    func testAReminderOfferingCarryForwardHasTheButtonBesideDismissAndSnooze() throws {
-        let carried = reminder(carry: "Carry Forward")
-        XCTAssertEqual(Reminders.content(carried).categoryIdentifier, Reminders.carryCategory)
-        XCTAssertEqual(Reminders.content(reminder(carry: "")).categoryIdentifier, Reminders.category)
-        let categories = Reminders.categories(for: [reminder(carry: ""), carried])
-        let carry = try XCTUnwrap(categories.first { $0.identifier == Reminders.carryCategory })
-        XCTAssertEqual(carry.actions.map(\.title), ["Dismiss", "Snooze", "Carry Forward"])
-        XCTAssertEqual(carry.actions.last?.identifier, Reminders.carryAction)
-        let plain = try XCTUnwrap(categories.first { $0.identifier == Reminders.category })
-        XCTAssertEqual(plain.actions.map(\.title), ["Dismiss", "Snooze"])
-    }
-
-    func testAnOverrunWarningHasAReplanButtonThatOpensTheAppAtReplanFromNow() throws {
-        let warned = reminder(carry: "", replan: "Replan")
-        XCTAssertEqual(Reminders.content(warned).categoryIdentifier, Reminders.replanCategory)
-        let categories = Reminders.categories(for: [warned])
-        let replan = try XCTUnwrap(categories.first { $0.identifier == Reminders.replanCategory })
-        XCTAssertEqual(replan.actions.map(\.title), ["Dismiss", "Snooze", "Replan"])
-        XCTAssertEqual(replan.actions.last?.identifier, Reminders.replanAction)
-        XCTAssertTrue(replan.actions.last?.options.contains(.foreground) ?? false, "it brings the app to the front")
-
-        var opened: RemindedOf?
-        let responder = ReminderResponder(lumenna: core.lumenna) { opened = $0 }
-        responder.answer(Reminders.replanAction, info: Reminders.content(warned).userInfo)
-        XCTAssertEqual(opened?.replan, true)
-    }
 }

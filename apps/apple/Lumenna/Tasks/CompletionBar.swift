@@ -1,3 +1,4 @@
+import LumennaApp
 import UIKit
 
 /// Suggestions for what is being typed, above the keyboard.
@@ -7,14 +8,14 @@ import UIKit
 /// first in the bar, and a VoiceOver user meets it before the candidates.
 final class CompletionBar: UIInputView {
     private let core: Core
-    private let syntax: Syntax
+    private let syntax: LumennaApp.Syntax
     private weak var field: (UIView & UITextInput)?
     private let stack = UIStackView()
-    private var current: Completions?
+    private var current: LumennaApp.Completions?
 
     /// `field` is a text field or a text view; whoever owns it calls [`update`] when its text
     /// or selection changes.
-    init(core: Core, syntax: Syntax, field: UIView & UITextInput) {
+    init(core: Core, syntax: LumennaApp.Syntax, field: UIView & UITextInput) {
         self.core = core
         self.syntax = syntax
         self.field = field
@@ -48,7 +49,7 @@ final class CompletionBar: UIInputView {
     @objc func update() {
         guard let field, let text = Self.text(of: field) else { return }
         let cursor = Self.byteOffset(of: field.selectedTextRange?.start, in: field, text: text)
-        current = try? core.lumenna.completeText(text: text, cursor: cursor, syntax: syntax)
+        current = try? core.app.complete(text, cursor: cursor, syntax: syntax)
         redraw()
     }
 
@@ -70,17 +71,17 @@ final class CompletionBar: UIInputView {
                 configuration: configuration,
                 primaryAction: UIAction { [weak self] _ in self?.insert(candidate) }
             )
-            // "project Work", not "#Work": the sigil is punctuation VoiceOver may skip.
-            button.accessibilityLabel = candidate.label
+            // "Work, project", not "#Work": the sigil is punctuation VoiceOver may skip.
+            button.accessibilityLabel = LumennaApp.candidateLine(candidate: candidate)
             stack.addArrangedSubview(button)
         }
     }
 
     /// Puts a candidate in place of the text it replaces, with a space after it so typing
     /// carries on.
-    private func insert(_ candidate: Candidate) {
+    private func insert(_ candidate: LumennaApp.Candidate) {
         guard let field, let text = Self.text(of: field), let current else { return }
-        let (replaced, cursor) = CompletionText.insert(candidate, into: text, start: current.start, end: current.end)
+        let (replaced, cursor) = CompletionText.insert(candidate.text, into: text, start: current.start, end: current.end)
         switch field {
         case let field as UITextField:
             field.text = replaced

@@ -1,4 +1,5 @@
 import UIKit
+import LumennaApp
 import UserNotifications
 import XCTest
 @testable import Lumenna
@@ -38,19 +39,17 @@ final class ReminderScheduleTests: XCTestCase {
     private func block(_ title: String, inMinutes minutes: Int) throws -> (series: String, start: Date) {
         let start = Date().addingTimeInterval(TimeInterval(minutes * 60))
         let parts = Calendar.current.dateComponents([.hour, .minute], from: start)
-        let fields = BlockFields(
-            title: title, start: String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0), minutes: "30", kind: "work",
-            acceptsTasks: true, countsCapacity: true, anchored: false, repeat: "", until: "", minMinutes: "",
-            taskFilter: "", colour: "", notes: ""
-        )
-        _ = try core.lumenna.addBlock(block: try newBlock(fields: fields, date: Clock.isoDay(start)))
+        _ = try core.lumenna.addBlock(block: .init(
+            title: title, at: String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0), minutes: 30,
+            date: Clock.isoDay(start), kind: "work", repeat: nil
+        ))
         let series = try XCTUnwrap(core.lumenna.plan(date: Clock.isoDay(start)).blocks.first { $0.title == title }?.series)
         return (series, start)
     }
 
     /// Re-arms and waits for it to finish.
     private func rearm() {
-        let schedule = ReminderSchedule(lumenna: core.lumenna, centre: centre)
+        let schedule = ReminderSchedule(device: core.app.device, centre: centre)
         let done = expectation(description: "re-armed")
         schedule.rearm { done.fulfill() }
         wait(for: [done], timeout: 5)
@@ -109,9 +108,10 @@ final class ReminderScheduleTests: XCTestCase {
     func testOnlyTheEarliestSixtyStillToComeAreScheduled() {
         let now = Date()
         let due = (-5..<70).map { minutes in
-            DueReminder(
+            LumennaApp.DueReminder(
                 key: "key\(minutes)", occurrence: "2026-10-10", at: Reminders.rfc3339(now.addingTimeInterval(TimeInterval(minutes * 60 + 30))),
-                target: "t", kind: "block", title: "T", text: "T starts", missed: "T started", dismiss: "Dismiss", snooze: "Snooze"
+                target: "t", kind: "block", title: "T", text: "T starts", missed: "T started", dismiss: "Dismiss", snooze: "Snooze",
+                carry: "", replan: ""
             )
         }.reversed()
         let requests = Reminders.requests(Array(due), after: now)
@@ -123,7 +123,7 @@ final class ReminderScheduleTests: XCTestCase {
         try block("Deep work", inMinutes: 60)
         rearm()
         let request = try XCTUnwrap(centre.scheduled.first)
-        ReminderResponder(lumenna: core.lumenna) { _ in }.answer(Reminders.dismissAction, info: request.content.userInfo)
+        ReminderResponder(device: core.app.device) { _ in }.answer(Reminders.dismissAction, info: request.content.userInfo)
         centre.scheduled = []
         rearm()
         XCTAssertTrue(centre.scheduled.isEmpty, "dismissed, on every device")
@@ -133,7 +133,7 @@ final class ReminderScheduleTests: XCTestCase {
         try block("Deep work", inMinutes: 60)
         rearm()
         let request = try XCTUnwrap(centre.scheduled.first)
-        ReminderResponder(lumenna: core.lumenna) { _ in }.answer(Reminders.snoozeAction, info: request.content.userInfo)
+        ReminderResponder(device: core.app.device) { _ in }.answer(Reminders.snoozeAction, info: request.content.userInfo)
         centre.scheduled = []
         rearm()
         let again = try XCTUnwrap(centre.scheduled.first)
@@ -147,7 +147,7 @@ final class ReminderScheduleTests: XCTestCase {
         rearm()
         let request = try XCTUnwrap(centre.scheduled.first)
         var opened: RemindedOf?
-        ReminderResponder(lumenna: core.lumenna) { opened = $0 }.answer(UNNotificationDefaultActionIdentifier, info: request.content.userInfo)
+        ReminderResponder(device: core.app.device) { opened = $0 }.answer(UNNotificationDefaultActionIdentifier, info: request.content.userInfo)
         XCTAssertEqual(opened?.kind, "block")
         XCTAssertEqual(opened?.target, series)
         XCTAssertEqual(opened?.day, Clock.isoDay(start), "the occurrence's day")
@@ -156,7 +156,7 @@ final class ReminderScheduleTests: XCTestCase {
     func testAProcessThatRunsShowsWhatCameDueOnceAndThenNothingMore() throws {
         try block("Deep work", inMinutes: 60)
         let fire = try XCTUnwrap(Reminders.moment(core.lumenna.upcomingReminders(until: Reminders.rfc3339(Date().addingTimeInterval(3 * 3600))).due[0].at))
-        let delivery = ReminderDelivery(lumenna: core.lumenna, centre: centre)
+        let delivery = ReminderDelivery(device: core.app.device, centre: centre)
         XCTAssertTrue(delivery.deliver(now: Reminders.rfc3339(fire.addingTimeInterval(-120))).isEmpty, "nothing owed from before it ran")
         let shown = delivery.deliver(now: Reminders.rfc3339(fire.addingTimeInterval(60)))
         XCTAssertEqual(shown.map(\.content.title), ["Deep work"])
@@ -181,7 +181,7 @@ final class ReminderScheduleTests: XCTestCase {
         // said in the summary. Both after the window last handed over ended.
         try block("Stand-up", inMinutes: 2)
         try block("Deep work", inMinutes: -25)
-        let schedule = ReminderSchedule(lumenna: core.lumenna, centre: centre)
+        let schedule = ReminderSchedule(device: core.app.device, centre: centre)
         XCTAssertTrue(schedule.catchUp().isEmpty, "the first time, nothing is owed")
         let hoursAgo = { (hours: Double) in Reminders.rfc3339(Date().addingTimeInterval(-hours * 3600)) }
         // As if last armed two hours ago, for a window that ran out an hour ago.
@@ -198,7 +198,7 @@ final class ReminderScheduleTests: XCTestCase {
 
     func testAFiringWithinTheArmedWindowIsTheSystemsToShowAndNotCaughtUp() throws {
         try block("Stand-up", inMinutes: 2)
-        let schedule = ReminderSchedule(lumenna: core.lumenna, centre: centre)
+        let schedule = ReminderSchedule(device: core.app.device, centre: centre)
         schedule.catchUp()
         let hoursAgo = { (hours: Double) in Reminders.rfc3339(Date().addingTimeInterval(-hours * 3600)) }
         try deviceSettings(["reminders-caught-up": hoursAgo(2), "reminders-armed-until": hoursAgo(-40)])
@@ -206,7 +206,7 @@ final class ReminderScheduleTests: XCTestCase {
     }
 
     func testOneEditReArmsOnceAndReArmingCausesNoMore() throws {
-        let schedule = ReminderSchedule(lumenna: core.lumenna, centre: centre)
+        let schedule = ReminderSchedule(device: core.app.device, centre: centre)
         schedule.follow()
         try block("Deep work", inMinutes: 60)
         NotificationCenter.default.post(name: Core.changed, object: nil)
@@ -214,5 +214,44 @@ final class ReminderScheduleTests: XCTestCase {
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 3))
         XCTAssertEqual(schedule.rearms, 1, "one edit, one re-arm, and nothing after")
         XCTAssertEqual(centre.scheduled.count, 1)
+    }
+
+    // MARK: - Carry Forward on a reminder
+
+    private let day = "2026-05-06"
+
+    private func reminder(carry: String, replan: String = "") -> LumennaApp.DueReminder {
+        LumennaApp.DueReminder(
+            key: "k", occurrence: day, at: "\(day)T10:00:00Z", target: "series", kind: "block", title: "Deep work",
+            text: "Deep work ends now. Carry the rest forward?", missed: "Deep work ended", dismiss: "Dismiss",
+            snooze: "Snooze", carry: carry, replan: replan
+        )
+    }
+
+    func testAReminderOfferingCarryForwardHasTheButtonBesideDismissAndSnooze() throws {
+        let carried = reminder(carry: "Carry Forward")
+        XCTAssertEqual(Reminders.content(carried).categoryIdentifier, Reminders.carryCategory)
+        XCTAssertEqual(Reminders.content(reminder(carry: "")).categoryIdentifier, Reminders.category)
+        let categories = Reminders.categories(for: [reminder(carry: ""), carried])
+        let carry = try XCTUnwrap(categories.first { $0.identifier == Reminders.carryCategory })
+        XCTAssertEqual(carry.actions.map(\.title), ["Dismiss", "Snooze", "Carry Forward"])
+        XCTAssertEqual(carry.actions.last?.identifier, Reminders.carryAction)
+        let plain = try XCTUnwrap(categories.first { $0.identifier == Reminders.category })
+        XCTAssertEqual(plain.actions.map(\.title), ["Dismiss", "Snooze"])
+    }
+
+    func testAnOverrunWarningHasAReplanButtonThatOpensTheAppAtReplanFromNow() throws {
+        let warned = reminder(carry: "", replan: "Replan")
+        XCTAssertEqual(Reminders.content(warned).categoryIdentifier, Reminders.replanCategory)
+        let categories = Reminders.categories(for: [warned])
+        let replan = try XCTUnwrap(categories.first { $0.identifier == Reminders.replanCategory })
+        XCTAssertEqual(replan.actions.map(\.title), ["Dismiss", "Snooze", "Replan"])
+        XCTAssertEqual(replan.actions.last?.identifier, Reminders.replanAction)
+        XCTAssertTrue(replan.actions.last?.options.contains(.foreground) ?? false, "it brings the app to the front")
+
+        var opened: RemindedOf?
+        let responder = ReminderResponder(device: core.app.device) { opened = $0 }
+        responder.answer(Reminders.replanAction, info: Reminders.content(warned).userInfo)
+        XCTAssertEqual(opened?.replan, true)
     }
 }

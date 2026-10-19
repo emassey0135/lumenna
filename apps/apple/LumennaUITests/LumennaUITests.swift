@@ -417,6 +417,10 @@ final class LumennaUITests: XCTestCase {
 
     func testTheDaySaysWhatItHoldsAndShowsFreeTime() throws {
         tab("Today")
+        // Tomorrow, whose new block starts when the day starts and leaves free time around it
+        // whenever the test runs: today's starts at the next hour, which near midnight is the
+        // end of the day.
+        app.buttons["Next Day"].tap()
         app.buttons["Add block"].tap()
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
@@ -426,10 +430,10 @@ final class LumennaUITests: XCTestCase {
         // A new block's form adds, under the app's Add.
         app.buttons["Add"].tap()
 
-        let summary = app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Today. 1 block'"))
+        let summary = app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Tomorrow. 1 block'"))
         XCTAssertTrue(summary.firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(cell(containing: "Deep work").exists)
-        XCTAssertTrue(cell(containing: "Free,").exists, "free time is a row")
+        XCTAssertTrue(cell(containing: "Free").exists, "free time is a row")
         try audit()
     }
 
@@ -468,7 +472,7 @@ final class LumennaUITests: XCTestCase {
             turned = XCTWaiter.wait(for: [expectation(for: on, evaluatedWith: takes)], timeout: 3) == .completed
         }
         XCTAssertTrue(turned, "Takes tasks was not turned on")
-        app.buttons["Save"].tap()
+        app.buttons["Add"].tap()
 
         let block = app.cells.containing(NSPredicate(format: "value CONTAINS 'takes tasks'")).firstMatch
         XCTAssertTrue(block.waitForExistence(timeout: 5), "the details say what differs from the kind")
@@ -512,7 +516,7 @@ final class LumennaUITests: XCTestCase {
         name.typeText("Writing")
         // Its own start, not the form's next hour: the same whenever the test runs.
         setStart((hour: "11", minute: "00", period: "PM"))
-        app.buttons["Save"].tap()
+        app.buttons["Add"].tap()
 
         let block = cell(containing: "Writing")
         XCTAssertTrue(block.waitForExistence(timeout: 5))

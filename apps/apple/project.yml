@@ -39,9 +39,10 @@ targetTemplates:
         script: '"$SRCROOT/build-core.sh"'
         basedOnDependencyAnalysis: false
         # What it makes, which the framework links and compiles: named, or Xcode looks for the
-        # library before the script has built it.
+        # library and the Swift before the script has made them, as on a fresh checkout.
         outputFiles:
           - $(RUST_LIB_DIR)/liblumenna_mobile.a
+          - $(APP_SWIFT)
     settings:
       base:
         PRODUCT_NAME: LumennaApp
@@ -75,6 +76,7 @@ targets:
     settings:
       base:
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/App/include
+        APP_SWIFT: $(SRCROOT)/Generated/App/swift/LumennaMobileBoltFFI.swift
         "RUST_LIB_DIR[sdk=iphonesimulator*]": $(SRCROOT)/../../target/aarch64-apple-ios-sim/$(RUST_PROFILE)
         "RUST_LIB_DIR[sdk=iphoneos*]": $(SRCROOT)/../../target/aarch64-apple-ios/$(RUST_PROFILE)
         "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
@@ -93,6 +95,7 @@ targets:
     settings:
       base:
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/App/include
+        APP_SWIFT: $(SRCROOT)/Generated/App/swift/LumennaMobileBoltFFI.swift
         # Every architecture built, joined by build-core.sh: Apple silicon and Intel.
         RUST_LIB_DIR: $(SRCROOT)/../../target/universal-apple-darwin/$(RUST_PROFILE)
 
@@ -108,6 +111,7 @@ targets:
     settings:
       base:
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/Watch/App/include
+        APP_SWIFT: $(SRCROOT)/Generated/Watch/App/swift/LumennaMobileBoltFFI.swift
         "RUST_LIB_DIR[sdk=watchsimulator*]": $(SRCROOT)/../../target/aarch64-apple-watchos-sim/$(RUST_PROFILE)
         "RUST_LIB_DIR[sdk=watchos*]": $(SRCROOT)/../../target/aarch64-apple-watchos/$(RUST_PROFILE)
         "EXCLUDED_ARCHS[sdk=watchsimulator*]": x86_64

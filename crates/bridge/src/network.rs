@@ -28,6 +28,13 @@ struct Inner {
     platform: String,
     /// The sync service while it runs.
     service: Mutex<Option<Arc<SyncService>>>,
+    /// What this process says it is, when it serves the command surface while it holds the
+    /// endpoint.
+    #[cfg(feature = "rpc")]
+    serving: Mutex<Option<Serving>>,
+    /// The command surface, served while the sync service runs.
+    #[cfg(feature = "rpc")]
+    commands: Mutex<Option<Arc<lumenna_host::rpc::CommandServer>>>,
     /// Whether the app asked to keep in sync, which holds while it is away from the front.
     wanted: AtomicBool,
     /// Whether the app is in front: syncing runs only then.
@@ -48,6 +55,10 @@ impl Network {
             reach,
             platform,
             service: Mutex::new(None),
+            #[cfg(feature = "rpc")]
+            serving: Mutex::new(None),
+            #[cfg(feature = "rpc")]
+            commands: Mutex::new(None),
             wanted: AtomicBool::new(false),
             in_front: AtomicBool::new(true),
             confirm: Mutex::new(None),
@@ -60,6 +71,16 @@ impl Network {
     pub fn handle(&self) -> NetworkHandle {
         NetworkHandle(Arc::clone(&self.0))
     }
+}
+
+/// What a process serving the command surface says of itself to its clients.
+#[cfg(feature = "rpc")]
+#[derive(Clone, Debug)]
+pub struct Serving {
+    /// What a client is told is answering, such as "Lumenna for Mac".
+    pub app: String,
+    /// What a pairing asked for over it says this device is called.
+    pub device_name: String,
 }
 
 /// What the shell tells the network itself: the platform's lifecycle, which the app does not know.
@@ -77,10 +98,19 @@ impl NetworkHandle {
                 if inner.wanted.load(Ordering::Relaxed) {
                     let _ = inner.start();
                 }
-            } else if let Some(service) = inner.lock_service().take() {
-                service.stop();
+            } else {
+                inner.stop();
             }
         });
+    }
+
+    /// Serves the command surface at the profile's address whenever the sync service runs, as
+    /// `serving` says: the resident app is then the device's daemon.
+    #[cfg(feature = "rpc")]
+    pub fn serve(&self, serving: Serving) {
+        *self.0.serving.lock().unwrap_or_else(PoisonError::into_inner) = Some(serving);
+        let inner = Arc::clone(&self.0);
+        std::thread::spawn(move || inner.serve());
     }
 }
 
@@ -140,7 +170,32 @@ impl Inner {
             .start_sync(self.reach, Arc::new(Arrivals(self.store.clone())))
             .map_err(|error| error.message().to_owned())?;
         *self.lock_service() = Some(service);
+        #[cfg(feature = "rpc")]
+        self.serve();
         Ok(())
+    }
+
+    /// Stops the sync service, after the command surface it was serving.
+    fn stop(&self) {
+        #[cfg(feature = "rpc")]
+        if let Some(commands) = self.commands.lock().unwrap_or_else(PoisonError::into_inner).take() {
+            commands.stop();
+        }
+        if let Some(service) = self.lock_service().take() {
+            service.stop();
+        }
+    }
+
+    /// Serves the command surface over the sync service, if both are asked for and it is not
+    /// served already.
+    #[cfg(feature = "rpc")]
+    fn serve(&self) {
+        let Some(serving) = self.serving.lock().unwrap_or_else(PoisonError::into_inner).clone() else { return };
+        let Some(service) = self.lock_service().clone() else { return };
+        let mut commands = self.commands.lock().unwrap_or_else(PoisonError::into_inner);
+        if commands.is_none() {
+            *commands = Some(self.lumenna.serve_commands(service, serving.app, serving.device_name, self.platform.clone()));
+        }
     }
 
     fn answer(self: Arc<Self>, request: NetworkRequest, mut resolver: EffectResolver<NetworkAnswer>) {

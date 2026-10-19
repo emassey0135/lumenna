@@ -1,3 +1,4 @@
+import LumennaApp
 import Foundation
 import UserNotifications
 
@@ -42,7 +43,7 @@ enum Reminders {
 
     /// The firing's own identifier, the same on every device: what a scheduled notification
     /// is replaced by, and how the watch knows the phone's is the same one.
-    static func identifier(_ reminder: DueReminder) -> String {
+    static func identifier(_ reminder: LumennaApp.DueReminder) -> String {
         "\(prefix)\(reminder.key) \(reminder.occurrence)"
     }
 
@@ -61,7 +62,7 @@ enum Reminders {
 
     /// What the notification says: the target's name as its title, the core's whole message
     /// as its body, so a screen reader reads all of it and nothing rests on a sound or a look.
-    static func content(_ reminder: DueReminder) -> UNMutableNotificationContent {
+    static func content(_ reminder: LumennaApp.DueReminder) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = reminder.title
         content.body = reminder.text
@@ -77,7 +78,7 @@ enum Reminders {
 
     /// The category, its buttons worded by the core. Every reminder's words are the same, so
     /// any one of them names them.
-    static func category(for reminder: DueReminder) -> UNNotificationCategory {
+    static func category(for reminder: LumennaApp.DueReminder) -> UNNotificationCategory {
         UNNotificationCategory(
             identifier: category,
             actions: [
@@ -90,7 +91,7 @@ enum Reminders {
     }
 
     /// The carry category: the same buttons, then the core's Carry Forward.
-    static func carryCategory(for reminder: DueReminder) -> UNNotificationCategory {
+    static func carryCategory(for reminder: LumennaApp.DueReminder) -> UNNotificationCategory {
         UNNotificationCategory(
             identifier: carryCategory,
             actions: [
@@ -105,7 +106,7 @@ enum Reminders {
 
     /// The replan category: the same buttons, then the core's Replan, which brings the app to
     /// the front, since what it opens is a screen.
-    static func replanCategory(for reminder: DueReminder) -> UNNotificationCategory {
+    static func replanCategory(for reminder: LumennaApp.DueReminder) -> UNNotificationCategory {
         UNNotificationCategory(
             identifier: replanCategory,
             actions: [
@@ -119,15 +120,15 @@ enum Reminders {
     }
 
     /// The last reminder seen offering Replan, for the same reason as `lastCarried`.
-    private static var lastReplanned: DueReminder?
+    private static var lastReplanned: LumennaApp.DueReminder?
 
     /// A reminder that offered Carry Forward, last seen: what names the carry category's
     /// buttons when what is handed over now has none, since setting the categories replaces
     /// them all, and a carry notification already shown still needs its button.
-    private static var lastCarried: DueReminder?
+    private static var lastCarried: LumennaApp.DueReminder?
 
     /// Every category these reminders need, and the carry one once any has offered it.
-    static func categories(for due: [DueReminder]) -> Set<UNNotificationCategory> {
+    static func categories(for due: [LumennaApp.DueReminder]) -> Set<UNNotificationCategory> {
         if let carried = due.first(where: { !$0.carry.isEmpty }) { lastCarried = carried }
         if let replanned = due.first(where: { !$0.replan.isEmpty }) { lastReplanned = replanned }
         var categories = Set<UNNotificationCategory>()
@@ -139,7 +140,7 @@ enum Reminders {
 
     /// What to hand a system that schedules: each firing still to come, at its moment, the
     /// earliest `most`. One due now or past has fired already, or will not be scheduled late.
-    static func requests(_ due: [DueReminder], after now: Date) -> [UNNotificationRequest] {
+    static func requests(_ due: [LumennaApp.DueReminder], after now: Date) -> [UNNotificationRequest] {
         let calendar = Calendar.current
         return due
             .compactMap { reminder in moment(reminder.at).map { (reminder, $0) } }
@@ -228,7 +229,7 @@ extension UNUserNotificationCenter: NotificationCentre {
 
 /// Keeps the system's pending notifications to what the core says fires next (iOS, watchOS).
 final class ReminderSchedule {
-    private let lumenna: Lumenna
+    private let device: LumennaApp.Device
     private let centre: NotificationCentre
     private let now: () -> Date
     private var queued = false
@@ -237,8 +238,8 @@ final class ReminderSchedule {
     /// caused another would keep the app from ever going idle.
     private(set) var rearms = 0
 
-    init(lumenna: Lumenna, centre: NotificationCentre = UNUserNotificationCenter.current(), now: @escaping () -> Date = Date.init) {
-        self.lumenna = lumenna
+    init(device: LumennaApp.Device, centre: NotificationCentre = UNUserNotificationCenter.current(), now: @escaping () -> Date = Date.init) {
+        self.device = device
         self.centre = centre
         self.now = now
     }
@@ -274,13 +275,13 @@ final class ReminderSchedule {
     }
 
     /// What the core says was missed; asked anywhere but the main thread when re-arming.
-    private func missed() -> DueReminders? {
-        try? lumenna.remindersMissed(shown: [], kept: true)
+    private func missed() -> LumennaApp.DueReminders? {
+        try? device.remindersMissed(shown: [], kept: true)
     }
 
     /// Hands what was missed to the notification center, on the main thread.
     @discardableResult
-    private func show(_ found: DueReminders?) -> [UNNotificationRequest] {
+    private func show(_ found: LumennaApp.DueReminders?) -> [UNNotificationRequest] {
         guard let found else { return [] }
         let requests = ReminderDelivery.requests(found)
         if !found.due.isEmpty { centre.useCategories(Reminders.categories(for: found.due)) }
@@ -297,13 +298,13 @@ final class ReminderSchedule {
     /// store, after every change, and the main thread must never wait on it, nor on the
     /// sync queue, which this never touches. One re-arm at a time, in order.
     func rearm(asking: Bool = false, catchingUp: Bool = false, then done: @escaping () -> Void = {}) {
-        let lumenna = lumenna
+        let device = device
         let now = now()
         rearms += 1
         work.async { [weak self] in
             let missed = catchingUp ? self?.missed() : nil
             let until = Reminders.rfc3339(now.addingTimeInterval(Reminders.window))
-            let upcoming = try? lumenna.upcomingReminders(until: until)
+            let upcoming = try? device.upcomingReminders(until: until)
             // What is handed over is the notification center's to do, quickly, on the main
             // thread, where its answers come back too.
             DispatchQueue.main.async {
@@ -314,7 +315,7 @@ final class ReminderSchedule {
         }
     }
 
-    private func arm(_ upcoming: DueReminders, now: Date, asking: Bool, then done: @escaping () -> Void) {
+    private func arm(_ upcoming: LumennaApp.DueReminders, now: Date, asking: Bool, then done: @escaping () -> Void) {
         let centre = centre
         let requests = Reminders.requests(upcoming.due, after: now)
         if !upcoming.due.isEmpty { centre.useCategories(Reminders.categories(for: upcoming.due)) }
@@ -341,9 +342,10 @@ final class ReminderSchedule {
 /// Gives reminders as they come due, for a process that runs (the Mac): while it holds the
 /// device's right to (`takeReminders`), every 20 seconds and on coming to the front.
 final class ReminderDelivery {
-    private let lumenna: Lumenna
+    private let device: LumennaApp.Device
     private let centre: NotificationCentre
-    private var lock: ReminderLock?
+    /// Whether this process has the device's right to give reminders, as the last look found.
+    private var holding = false
     private var last: Date?
     // Foundation's, named in full: the core has a record called `Timer` too.
     private var timer: Foundation.Timer?
@@ -351,8 +353,8 @@ final class ReminderDelivery {
     /// How often to ask again for the right while another process holds it.
     static let waiting: TimeInterval = 5
 
-    init(lumenna: Lumenna, centre: NotificationCentre = UNUserNotificationCenter.current()) {
-        self.lumenna = lumenna
+    init(device: LumennaApp.Device, centre: NotificationCentre = UNUserNotificationCenter.current()) {
+        self.device = device
         self.centre = centre
     }
 
@@ -366,7 +368,8 @@ final class ReminderDelivery {
     func stop() {
         timer?.invalidate()
         timer = nil
-        lock = nil
+        device.letGoOfReminders()
+        holding = false
         if let observer { NotificationCenter.default.removeObserver(observer) }
     }
 
@@ -378,7 +381,7 @@ final class ReminderDelivery {
         observer = NotificationCenter.default.addObserver(forName: Core.changed, object: nil, queue: .main) { [weak self] note in
             guard let self, Reminders.isOwnEdit(note) else { return }
             let until = Reminders.rfc3339(Date().addingTimeInterval(Reminders.window))
-            guard let upcoming = try? lumenna.upcomingReminders(until: until), !upcoming.due.isEmpty else { return }
+            guard let upcoming = try? device.upcomingReminders(until: until), !upcoming.due.isEmpty else { return }
             Reminders.askIfUndecided(centre) { [weak self] in self?.now() }
         }
     }
@@ -387,14 +390,15 @@ final class ReminderDelivery {
     func now() { tick(force: true) }
 
     private func tick(force: Bool) {
-        if !force, lock != nil, let last, Date().timeIntervalSince(last) < Self.every { return }
+        if !force, holding, let last, Date().timeIntervalSince(last) < Self.every { return }
         centre.authorization { [weak self] status in
             guard let self else { return }
             // Without permission nothing would be shown, so the right is left for another
             // process (`lum notify`) that can say them; given later, it starts where it last
             // stopped, with what was missed in one summary.
             guard [.authorized, .provisional].contains(status) else {
-                lock = nil
+                device.letGoOfReminders()
+                holding = false
                 return
             }
             deliver(now: nil)
@@ -405,8 +409,11 @@ final class ReminderDelivery {
     /// was handed to the notification center.
     @discardableResult
     func deliver(now: String?) -> [UNNotificationRequest] {
-        if lock == nil { lock = (try? lumenna.takeReminders()) ?? nil }
-        guard let lock, let found = try? lumenna.deliverReminders(lock: lock, now: now) else { return [] }
+        // The right is the device's to give one process at a time: taken here when free, and
+        // while another holds it, nothing is given.
+        guard let found = try? device.deliverReminders(now: now) else { return [] }
+        holding = !found.elsewhere
+        guard holding else { return [] }
         last = Date()
         let requests = Self.requests(found)
         if !found.due.isEmpty { centre.useCategories(Reminders.categories(for: found.due)) }
@@ -415,7 +422,7 @@ final class ReminderDelivery {
     }
 
     /// Each firing shown now, then what was missed as one notification of its own.
-    static func requests(_ found: DueReminders) -> [UNNotificationRequest] {
+    static func requests(_ found: LumennaApp.DueReminders) -> [UNNotificationRequest] {
         var requests = found.due.map { reminder in
             UNNotificationRequest(identifier: Reminders.identifier(reminder), content: Reminders.content(reminder), trigger: nil)
         }
@@ -443,11 +450,11 @@ struct RemindedOf {
 /// when it is chosen. Set as the notification center's delegate before launching finishes,
 /// so a button pressed while the app was not running reaches it.
 final class ReminderResponder: NSObject, UNUserNotificationCenterDelegate {
-    private let lumenna: Lumenna
+    private let device: LumennaApp.Device
     private let open: (RemindedOf) -> Void
 
-    init(lumenna: Lumenna, open: @escaping (RemindedOf) -> Void) {
-        self.lumenna = lumenna
+    init(device: LumennaApp.Device, open: @escaping (RemindedOf) -> Void) {
+        self.device = device
         self.open = open
     }
 
@@ -476,13 +483,13 @@ final class ReminderResponder: NSObject, UNUserNotificationCenterDelegate {
     func answer(_ action: String, info: [AnyHashable: Any]) {
         guard let key = info["key"] as? String, let occurrence = info["occurrence"] as? String else { return }
         do {
-            let change: Change
+            let change: LumennaApp.Change
             switch action {
-            case Reminders.dismissAction: change = try lumenna.dismissReminder(key: key, occurrence: occurrence)
-            case Reminders.snoozeAction: change = try lumenna.snoozeReminder(key: key, occurrence: occurrence, minutes: nil)
+            case Reminders.dismissAction: change = try device.dismissReminder(key: key, occurrence: occurrence)
+            case Reminders.snoozeAction: change = try device.snoozeReminder(key: key, occurrence: occurrence, minutes: nil)
             case Reminders.carryAction:
                 guard let target = info["target"] as? String else { return }
-                change = try lumenna.carryRestForward(block: "\(target)@\(occurrence)")
+                change = try device.carryRestForward(block: "\(target)@\(occurrence)")
             case Reminders.replanAction:
                 open(RemindedOf(kind: info["kind"] as? String ?? "block", target: info["target"] as? String ?? "", day: occurrence, replan: true))
                 return

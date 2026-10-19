@@ -1,49 +1,39 @@
 import AppKit
+import LumennaApp
 
-/// One row of the day as an outline item.
+/// One row of the day as an outline item: the app's row and its line, and a block's sittings.
 final class DayNode {
-    enum Kind {
-        case block(PlanBlock)
-        case sitting(PlanAssignment, in: PlanBlock)
-        case free(start: String, end: String, minutes: UInt32, title: String, details: [String], actions: [Action])
-        case now(time: String, title: String)
-        /// A repeating block cancelled for this day alone, so the day can be put back.
-        case cancelled(CancelledBlock)
-    }
-
-    let kind: Kind
+    let item: LumennaApp.DayItem
+    let line: LumennaApp.Line?
     var children: [DayNode] = []
 
-    init(_ kind: Kind) { self.kind = kind }
-
-    /// What identifies it across a reload, for keeping the selection.
-    var key: String {
-        switch kind {
-        case let .block(block): "block:\(block.id)"
-        case let .sitting(sitting, _): "sitting:\(sitting.id)"
-        case let .free(start, _, _, _, _, _): "free:\(start)"
-        case .now: "now"
-        case let .cancelled(block): "cancelled:\(block.series)"
-        }
+    init(_ item: LumennaApp.DayItem, line: LumennaApp.Line?) {
+        self.item = item
+        self.line = line
     }
+
+    var key: String { item.key }
 }
 
-/// The planner: a day as it is lived, as an outline.
+/// The planner: a day as it is lived, as an outline — the app's day (`ViewModel.day`).
 ///
 /// Blocks in time order with their sittings beneath them, free time as rows of its own, and
-/// now as a position rather than a highlight. The summary above says what a glance at a
-/// timeline would. Opening on today puts the selection — VoiceOver's focus — on now.
+/// now as a position rather than a highlight. The heading above says what a glance at a
+/// timeline would. The day shown, moving between days, the row in hand and folding, and every
+/// row's actions and their forms are the app's; opening on today puts the selection —
+/// VoiceOver's focus — on now.
 final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
     private let core: Core
     private weak var main: MainWindowController?
-    /// The day shown, as an ISO date; `nil` follows today.
-    private var day: String?
-    private(set) var plan: Plan?
     private var nodes: [DayNode] = []
     let outline = TaskOutline()
     private let summary = HeadingLabel(wrappingLabelWithString: "")
-    private var landedOnNow = false
-    /// The day's own actions (`Plan.actions`), the core's: a pull-down beside the day's
+    /// Whether the outline is being set from the app's, not moved by the person.
+    private var following = false
+    /// The landing count this day last moved the selection for.
+    private var landed: UInt32?
+    private var observer: NSObjectProtocol?
+    /// The day's own actions (`DayView.actions`), the app's: a pull-down beside the day's
     /// buttons, and the Day menu's.
     private let dayActionsButton: NSPopUpButton = {
         let button = NSPopUpButton(frame: .zero, pullsDown: true)
@@ -60,6 +50,10 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+    }
 
     override func loadView() {
         summary.font = .preferredFont(forTextStyle: .subheadline)
@@ -107,8 +101,13 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         header.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         scroll.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         view = stack
-        NotificationCenter.default.addObserver(self, selector: #selector(storeChanged), name: Core.changed, object: nil)
-        reload()
+        observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: core.app, queue: .main) { [weak self] _ in
+            self?.draw()
+        }
+        // Opening the day is not the app moving focus, though now is in hand: the selection
+        // goes there without a landing.
+        landed = core.app.view.landing
+        draw()
     }
 
     override var preferredFirstResponder: NSView? { outline }
@@ -116,70 +115,63 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
     override func viewDidAppear() {
         super.viewDidAppear()
         view.window?.makeFirstResponder(outline)
-        // Opening the day lands on now, not at midnight. Once, so coming back from
-        // elsewhere does not move the selection from where the person left it.
-        if !landedOnNow {
-            landedOnNow = true
-            goToNow(announcing: false)
-        }
     }
 
     // MARK: - Rows
 
-    @objc private func storeChanged() {
-        reload(keeping: selected?.key, near: outline.selectedRow)
-    }
-
-    private func reload() {
-        do {
-            let plan = try core.lumenna.plan(date: day)
-            self.plan = plan
-            title = Clock.spokenDay(plan.date)
-            main?.window?.title = title ?? "Today"
-            summary.stringValue = "\(Clock.spokenDay(plan.date)). \(plan.summary)"
-            offerDayActions(plan)
+    /// Draws the app's day while it is shown: every row, sittings folded away inside their
+    /// collapsed block, the row in hand selected.
+    private func draw() {
+        let shown = core.app.view
+        guard shown.place == .today, let day = shown.day else { return }
+        let lines = core.app.lines
+        let worded = day.items.enumerated().map { index, item in (item, index < lines.day.count ? lines.day[index] : nil) }
+        // The day's heading, as every app says it: "<day>. <summary>".
+        summary.stringValue = worded.first { $0.0.kind == .summary }?.1?.text ?? lines.dayTitle
+        title = lines.dayTitle
+        offerDayActions(day)
+        following = true
+        defer { following = false }
+        if day.items != drawn?.items || lines.day != drawn?.lines {
+            drawn = (day.items, lines.day)
             var nodes: [DayNode] = []
-            for item in plan.timeline {
-                switch item {
-                case let .block(row):
-                    guard let block = plan.blocks.first(where: { $0.row == row }) else { continue }
-                    let node = DayNode(.block(block))
-                    node.children = block.assignments.map { DayNode(.sitting($0, in: block)) }
+            for (item, line) in worded where item.kind != .summary {
+                let node = DayNode(item, line: line)
+                if item.depth > 0, let block = nodes.last {
+                    block.children.append(node)
+                } else {
                     nodes.append(node)
-                case let .free(start, end, minutes, title, details, actions):
-                    nodes.append(DayNode(.free(start: start, end: end, minutes: minutes, title: title, details: details, actions: actions)))
-                case let .now(time, title):
-                    nodes.append(DayNode(.now(time: time, title: title)))
                 }
             }
-            nodes += plan.cancelled.map { DayNode(.cancelled($0)) }
             self.nodes = nodes
-        } catch {
-            summary.stringValue = error.sentence
+            outline.reloadData()
+            for node in nodes where !node.children.isEmpty {
+                if node.item.expanded == false { outline.collapseItem(node) } else { outline.expandItem(node) }
+            }
         }
-        outline.reloadData()
-        outline.expandItem(nil, expandChildren: true)
+        let land = landed.map { shown.landing > $0 } ?? false
+        landed = shown.landing
+        guard let focus = shown.focus, let row = row(of: focus) else { return }
+        if outline.selectedRow != row { outline.selectRowIndexes([row], byExtendingSelection: false) }
+        if land {
+            outline.scrollRowToVisible(row)
+            if let window = view.window, window.firstResponder == nil || window.firstResponder === window {
+                window.makeFirstResponder(outline)
+            }
+        }
     }
 
-    private func reload(keeping key: String?, near index: Int?, saying change: Change? = nil) {
-        reload()
-        let target = key.flatMap { key in
-            (0..<outline.numberOfRows).first { (outline.item(atRow: $0) as? DayNode)?.key == key }
-        } ?? index.map { min($0, outline.numberOfRows - 1) }
-        if let target, target >= 0 {
-            outline.selectRowIndexes([target], byExtendingSelection: false)
-            outline.scrollRowToVisible(target)
-        }
-        if let change { Announcer.say(change.announcement, notices: change.notices) }
+    /// The rows and lines last drawn, so a redraw that changes nothing leaves the outline alone.
+    private var drawn: (items: [LumennaApp.DayItem], lines: [LumennaApp.Line])?
+
+    private func row(of key: String) -> Int? {
+        (0..<outline.numberOfRows).first { (outline.item(atRow: $0) as? DayNode)?.key == key }
     }
 
     var selected: DayNode? { outline.item(atRow: outline.selectedRow) as? DayNode }
 
     /// The task a selected sitting is for: what the Task menu acts on from the day.
-    var selectedTaskID: String? {
-        if case let .sitting(sitting, _) = selected?.kind { return sitting.task }
-        return nil
-    }
+    var selectedTaskID: String? { selected?.item.sitting?.task }
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         (item as? DayNode)?.children.count ?? nodes.count
@@ -193,50 +185,50 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         !((item as? DayNode)?.children.isEmpty ?? true)
     }
 
+    /// Folded or unfolded by the person: the block's own Collapse or Expand, the app's.
+    func outlineViewItemDidCollapse(_ notification: Notification) { folded(notification, .collapse) }
+    func outlineViewItemDidExpand(_ notification: Notification) { folded(notification, .expand) }
+
+    private func folded(_ notification: Notification, _ kind: LumennaApp.ActionKind) {
+        guard !following, let node = notification.userInfo?["NSObject"] as? DayNode,
+              let action = node.item.actions.first(where: { $0.kind == kind }) else { return }
+        perform(action, on: node)
+    }
+
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let node = item as? DayNode else { return nil }
         let cell = TwoLineCell()
-        var label: String
-        var value: [String] = []
-        switch node.kind {
-        case let .block(block):
-            label = "\(Clock.time(block.start)) to \(Clock.time(block.end)), \(block.title)"
-            // The core words the details for every app.
-            value = block.details
-        case let .sitting(sitting, _):
-            label = sitting.title
-            value = sitting.details
-        case let .free(start, end, _, title, details, _):
-            // "<title>, <details>, <start> to <end>", the core's words in every app's order.
-            label = ([title] + details).joined(separator: ", ")
-            value = ["\(Clock.time(start)) to \(Clock.time(end))"]
-        case let .now(time, title):
-            label = "\(title), \(Clock.time(time))"
-            cell.title.font = .preferredFont(forTextStyle: .headline)
-        case let .cancelled(block):
-            label = "\(Clock.time(block.start)), \(block.title)"
-            value = block.details
-        }
-        cell.show(title: label, detail: value.joined(separator: ", "))
-        cell.setAccessibilityLabel(label)
-        cell.setAccessibilityValueDescription(value.joined(separator: ", "))
+        // The line is the core's, in every app's order and this Mac's clock.
+        let title = node.line?.title ?? ""
+        let detail = node.line?.detail ?? ""
+        cell.show(title: title, detail: detail)
+        if node.item.kind == .now { cell.title.font = .preferredFont(forTextStyle: .headline) }
+        cell.setAccessibilityLabel(title)
+        cell.setAccessibilityValueDescription(detail)
         return cell
     }
 
+    /// The person moved to a row: the app's row in hand, a sitting's task shown beside it.
     func outlineViewSelectionDidChange(_ notification: Notification) {
-        if let task = selectedTaskID { main?.showTask(task) } else { main?.showTask(nil) }
+        guard !following, let key = selected?.key else { return }
+        core.app.send(.focus(key))
     }
 
     // MARK: - Keys and activation
 
+    /// Return, or a double click: a block's Edit, a sitting's task's details, free time's Add
+    /// Block, a cancelled day's actions.
     @objc private func activate() {
         guard let node = selected else { return }
-        switch node.kind {
-        case let .block(block): edit(block)
-        case .sitting: main?.nextPane(nil)
-        case let .free(start, _, minutes, _, _, _): addBlock(at: start, minutes: minutes)
-        case let .cancelled(block): restore(block)
-        case .now: break
+        switch node.item.kind {
+        case .block: run([.edit], on: node)
+        case .sitting: main?.showDetails()
+        case .free: run([.addBlock], on: node)
+        case .cancelled:
+            view.window?.choose(node.line?.text ?? "", actions: node.item.actions.map { action in
+                (action.title, { [weak self] in self?.perform(action, on: node) })
+            })
+        case .now, .summary: break
         }
     }
 
@@ -245,20 +237,17 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
     /// deletes a block — each also in the row's menu.
     private func key(_ key: TaskOutline.Key) -> Bool {
         guard let node = selected else { return false }
-        let actions = actions(for: node)
-        let action: Action? = switch key {
-        case .returnKey: nil
-        case .space: actions.first(.startTimer, .resumeTimer, .pauseTimer)
-        case .delete: actions.first(.delete, .unassign)
+        let kinds: [LumennaApp.ActionKind] = switch key {
+        case .returnKey: []
+        case .space: [.startTimer, .resumeTimer, .pauseTimer]
+        case .delete: [.delete, .unassign]
         }
         if key == .returnKey {
             activate()
-        } else if let action {
-            perform(action, on: node)
-        } else {
+        } else if !run(kinds, on: node) {
             // Why not, in the core's words: silence would leave the key a guess.
-            let subject: Subject = if case .sitting = node.kind { .sitting } else { .block }
-            Announcer.say(notOffered(kind: key == .space ? .startTimer : .delete, subject: subject, thisDevice: false))
+            let subject: LumennaApp.Subject = node.item.kind == .sitting ? .sitting : .block
+            Announcer.say(LumennaApp.notOffered(kind: key == .space ? .startTimer : .delete, subject: subject, thisDevice: false))
         }
         return true
     }
@@ -268,234 +257,109 @@ final class DayViewController: NSViewController, NSOutlineViewDataSource, NSOutl
         let clicked = outline.clickedRow >= 0 ? outline.clickedRow : outline.selectedRow
         guard let node = outline.item(atRow: clicked) as? DayNode else { return }
         if outline.selectedRow != clicked { outline.selectRowIndexes([clicked], byExtendingSelection: false) }
-        menu.add(actions(for: node)) { [weak self] action in self?.perform(action, on: node) }
-    }
-
-    /// What can be done to a row, the core's.
-    private func actions(for node: DayNode) -> [Action] {
-        switch node.kind {
-        case let .block(block): block.actions
-        case let .sitting(sitting, _): sitting.actions
-        case let .free(_, _, _, _, _, actions): actions
-        case let .cancelled(block): block.actions
-        case .now: []
-        }
+        menu.add(node.item.actions) { [weak self] action in self?.perform(action, on: node) }
     }
 
     // MARK: - Doing things
 
-    /// Runs a row's action: asks its question, then keeps the selection on the row, or near
-    /// where it was, and says what happened. The forms are this screen's.
-    private func perform(_ action: Action, on node: DayNode) {
-        guard let window = view.window else { return }
-        let key = node.key
-        let index = outline.selectedRow
-        window.run(action, core: core, form: { [weak self] action in self?.form(action, on: node) }) { [weak self] change, _ in
-            self?.reload(keeping: key, near: index, saying: change)
-        }
+    /// Runs a row's action, the app's: the row in hand, then the action, whose question and
+    /// form the window asks and opens.
+    private func perform(_ action: LumennaApp.Action, on node: DayNode) {
+        core.app.run(action, on: node.key)
     }
 
-    private func form(_ action: Action, on node: DayNode) {
-        switch (action.kind, node.kind) {
-        case let (.edit, .block(block)): edit(block)
-        case let (.addBlock, .free(start, _, minutes, _, _, _)): addBlock(at: action.other ?? start, minutes: minutes)
-        case (.editTask, _): main?.showTask(action.target); main?.nextPane(nil)
-        default: break
-        }
+    /// The row's action of one of these kinds, if it has one.
+    @discardableResult
+    private func run(_ kinds: [LumennaApp.ActionKind], on node: DayNode) -> Bool {
+        guard let action = node.item.actions.first(where: { kinds.contains($0.kind) }) else { return false }
+        perform(action, on: node)
+        return true
     }
 
     // MARK: - The day's own actions
 
     /// Replan from Now, as the overrun warning's Replan opens it: today, the sheet over it.
     func openReplan() {
-        goToNow(announcing: false)
-        guard let window = view.window else { return }
-        do {
-            try ProposalModel(core: core, kind: .replan).present(on: window)
-        } catch {
-            window.showFailure(error.sentence)
-        }
+        core.app.send(.day(.now))
+        core.app.send(.proposal(.replan))
     }
 
-    private func offerDayActions(_ plan: Plan) {
+    private func offerDayActions(_ day: LumennaApp.DayView) {
         let menu = NSMenu()
         // A pull-down shows its first item as its title.
         menu.addItem(NSMenuItem(title: "Day Actions", action: nil, keyEquivalent: ""))
-        menu.add(plan.actions) { [weak self] action in self?.performDay(action) }
+        menu.add(day.actions) { [weak self] action in self?.core.app.send(.perform(action)) }
         dayActionsButton.menu = menu
-        dayActionsButton.isHidden = plan.actions.isEmpty
+        dayActionsButton.isHidden = day.actions.isEmpty
     }
 
     /// The day's actions as the pull-down offers them, for tests.
     var dayActionTitles: [String] { dayActionsButton.itemArray.dropFirst().map(\.title) }
 
-    /// Runs one of the day's actions: Plan the Day and Replan from Now open their sheet, the
-    /// rest ask their question here. The selection stays on its row, or near where it was.
-    func performDay(_ action: Action) {
-        guard let window = view.window else { return }
-        let key = selected?.key
-        let index = outline.selectedRow
-        window.run(action, core: core, form: { [weak self] action in
-            guard let self else { return }
-            do {
-                try ProposalModel(core: self.core, action: action)?.present(on: window)
-            } catch {
-                window.showFailure(error.sentence)
-            }
-        }) { [weak self] change, _ in
-            self?.reload(keeping: key, near: index, saying: change)
-        }
-    }
-
-    /// Return on a cancelled day: its Restore This Day.
-    private func restore(_ block: CancelledBlock) {
-        guard let node = selected, let action = block.actions.first(.restoreDay) else { return }
-        perform(action, on: node)
-    }
-
-    /// Asks "this day, or every day?" of a repeating block — never guessed.
-    private func edit(_ block: PlanBlock) {
-        guard let window = view.window else { return }
-        let key = "block:\(block.id)"
-        let saved: (Change) -> Void = { [weak self] change in self?.reload(keeping: key, near: nil, saying: change) }
-        let series = { [weak self] in
-            guard let self else { return }
-            do {
-                try BlockFormModel.series(core: self.core, id: block.series).present(on: window, saved: saved)
-            } catch {
-                window.showFailure(error.sentence)
-            }
-        }
-        guard block.repeats, let date = plan?.date else {
-            series()
-            return
-        }
-        window.choose("Change \(block.title)", message: "Which occurrences?", actions: [
-            ("\(Clock.spokenDay(date)) Only", { [weak self] in
-                guard let self else { return }
-                BlockFormModel.occurrence(core: self.core, block: block, day: date).present(on: window, saved: saved)
-            }),
-            ("Every Occurrence", { DispatchQueue.main.async(execute: series) }),
-        ])
-    }
-
-    func addBlock(at start: String? = nil, minutes: UInt32? = nil) {
-        guard let window = view.window else { return }
-        let day = plan.flatMap { try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse($0.date) } ?? .now
-        BlockFormModel(
-            core: core, purpose: .add, start: start, minutes: Int(min(minutes ?? 60, 720)), day: day
-        ).present(on: window) { [weak self] change in
-            self?.reload(keeping: nil, near: nil, saying: change)
-        }
-    }
-
     // MARK: - Moving through days
 
-    @objc func previousDay(_ sender: Any?) { step(-1) }
-    @objc func nextDay(_ sender: Any?) { step(1) }
-    @objc func goToToday(_ sender: Any?) { goToNow(announcing: true) }
-    @objc func newBlock(_ sender: Any?) { addBlock() }
+    @objc func previousDay(_ sender: Any?) { core.app.send(.day(.previous)) }
+    @objc func nextDay(_ sender: Any?) { core.app.send(.day(.next)) }
+    /// Today, on now: the app puts now in hand and says the day.
+    @objc func goToToday(_ sender: Any?) { core.app.send(.day(.now)) }
+    @objc func newBlock(_ sender: Any?) { core.app.send(.block(.new(start: nil, minutes: nil))) }
 
-    private var shownDate: Date {
-        plan.flatMap { try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse($0.date) } ?? .now
-    }
-
-    private func step(_ days: Int) {
-        guard let next = Calendar.current.date(byAdding: .day, value: days, to: shownDate) else { return }
-        show(next)
-    }
-
-    private func show(_ date: Date) {
-        showDay(iso: Clock.isoDay(date))
-    }
-
-    private func showDay(iso: String) {
-        day = iso == Clock.isoDay(.now) ? nil : iso
-        reload()
-        // A new day is a new screen's worth: say it, and start at its top.
-        if outline.numberOfRows > 0 { outline.selectRowIndexes([0], byExtendingSelection: false) }
-        Announcer.say(summary.stringValue)
-    }
-
-    /// A reminder's block, chosen in Notification Center: its day, with the block selected.
+    /// A reminder's block, chosen in Notification Center: its day, with the block in hand.
     func show(day iso: String, series: String) {
-        day = iso == Clock.isoDay(.now) ? nil : iso
-        reload()
-        let index = (0..<outline.numberOfRows).first { row in
-            if case let .block(block) = (outline.item(atRow: row) as? DayNode)?.kind { return block.series == series }
-            return false
-        }
-        if let index {
-            outline.selectRowIndexes([index], byExtendingSelection: false)
-            outline.scrollRowToVisible(index)
+        guard goTo(iso) == nil else { return }
+        if let block = core.app.current.view.day?.items.first(where: { $0.kind == .block && $0.block?.series == series }) {
+            core.app.send(.focus(block.key))
             view.window?.makeFirstResponder(outline)
-        } else {
-            Announcer.say(summary.stringValue)
         }
     }
 
-    /// "Go to now": today, on the now row or the block happening now.
-    private func goToNow(announcing: Bool) {
-        day = nil
-        reload()
-        let index = (0..<outline.numberOfRows).first { row in
-            switch (outline.item(atRow: row) as? DayNode)?.kind {
-            case .now: true
-            case let .block(block): block.when == "now"
-            default: false
-            }
-        }
-        if let index {
-            outline.selectRowIndexes([index], byExtendingSelection: false)
-            outline.scrollRowToVisible(index)
-        } else if outline.numberOfRows > 0 {
-            outline.selectRowIndexes([0], byExtendingSelection: false)
-        }
-        if announcing { Announcer.say(summary.stringValue) }
+    /// Goes to the day named, as Go to Day's answer: nil if the app read it, else why not, the
+    /// question put away again.
+    private func goTo(_ named: String) -> String? {
+        core.app.send(.day(.ask))
+        core.app.send(.answer(.text(text: named)))
+        guard let refusal = core.app.current.view.asking?.refusal else { return nil }
+        core.app.send(.cancel)
+        return refusal
     }
 
     @objc func goToDay(_ sender: Any?) { askDay(typed: "", problem: nil) }
 
-    /// The core's question, answered by typing a day ("next friday", "12 October") or with
-    /// the system's calendar. A day the core cannot read asks again, saying why, with what was
+    /// The app's Go to Day, answered by typing a day ("next friday", "12 October") or with
+    /// the system's calendar. A day the app cannot read asks again, saying why, with what was
     /// typed still there.
     private func askDay(typed: String, problem: String?) {
-        guard let window = view.window else { return }
-        let question = TextQuestion.goToDay
+        guard let window = view.window,
+              case let .text(title, label, _, hint, _, yes, _) = LumennaApp.goToDayQuestion() else { return }
         let alert = NSAlert()
-        alert.messageText = question.title
-        alert.informativeText = [problem, question.hint].compactMap { $0 }.joined(separator: "\n\n")
+        alert.messageText = title
+        alert.informativeText = [problem, hint].compactMap { $0 }.joined(separator: "\n\n")
         let field = NSTextField(string: typed)
-        field.placeholderString = question.label
-        field.setAccessibilityLabel(question.label)
-        field.setAccessibilityHelp(question.hint)
+        field.placeholderString = label
+        field.setAccessibilityLabel(label)
+        field.setAccessibilityHelp(hint)
         let picker = NSDatePicker()
         picker.datePickerStyle = .clockAndCalendar
         picker.datePickerElements = .yearMonthDay
-        picker.dateValue = shownDate
+        picker.dateValue = core.app.view.day.flatMap { try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse($0.date) } ?? .now
         picker.sizeToFit()
-        picker.setAccessibilityLabel(question.label)
+        picker.setAccessibilityLabel(label)
         let stack = NSStackView(views: [field, picker])
         stack.orientation = .vertical
         stack.alignment = .leading
         field.widthAnchor.constraint(equalToConstant: max(picker.frame.width, 240)).isActive = true
         stack.frame = NSRect(x: 0, y: 0, width: max(picker.frame.width, 240), height: picker.frame.height + 32)
         alert.accessoryView = stack
-        alert.addButton(withTitle: question.yes)
+        alert.addButton(withTitle: yes)
         alert.addButton(withTitle: "Cancel")
         alert.window.initialFirstResponder = field
         alert.beginSheetModal(for: window) { [weak self] response in
             guard let self, response == .alertFirstButtonReturn else { return }
             let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             let named = text.isEmpty ? Clock.isoDay(picker.dateValue) : text
-            do {
-                // The core reads the day; the one it found is kept, so the days step from it.
-                let found = try self.core.lumenna.plan(date: named).date
-                self.showDay(iso: found)
-            } catch {
-                DispatchQueue.main.async { self.askDay(typed: text, problem: error.sentence) }
+            if let refusal = self.goTo(named) {
+                DispatchQueue.main.async { self.askDay(typed: text, problem: refusal) }
             }
         }
     }
-
 }

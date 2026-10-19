@@ -1,6 +1,8 @@
 import AppKit
+import LumennaApp
 
-/// Pairing this Mac with another of the person's devices.
+/// Pairing this Mac with another of the person's devices: the app's pairing
+/// (`ViewModel.devices.pairing`), which runs it and says each step.
 ///
 /// On one network the two find each other: both wait, and DNS-SD does the rest. Anywhere
 /// else, one shows a code and the other enters it. Either way both show the same three words,
@@ -8,30 +10,34 @@ import AppKit
 final class PairingSheet: NSViewController {
     private let core: Core
     /// Every sentence and button, the core's.
-    private static let words = pairingWords(thisDevice: "this Mac", local: true)
-    private var words: PairingWords { Self.words }
+    private let words = LumennaApp.pairingWords(thisDevice: "this Mac", local: true, capitals: .title)
     private let status = NSTextField(wrappingLabelWithString: "")
     private let code = NSTextField(wrappingLabelWithString: "")
     private let entry = NSTextField()
-    private var prompt: MacPrompt?
-    /// A code entered while waiting, to join with once the wait has ended.
-    private var nextCode: String?
-    private var wait: NSButton!
-    private var enter: NSButton!
     private var copyCode: NSButton!
+    private var observer: NSObjectProtocol?
+    /// The words asked about, so they are asked once.
+    private var askedWords: [String]?
+    /// Whether a pairing began here, so its end closes the sheet.
+    private var began = false
 
     private init(core: Core) {
         self.core = core
         super.init(nibName: nil, bundle: nil)
-        title = Self.words.title
+        title = words.title
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+    }
+
     static func present(on window: NSWindow, core: Core) {
-        let sheet = NSWindow(contentViewController: PairingSheet(core: core))
-        sheet.title = words.title
+        let screen = PairingSheet(core: core)
+        let sheet = NSWindow(contentViewController: screen)
+        sheet.title = screen.words.title
         window.beginSheet(sheet)
     }
 
@@ -45,8 +51,8 @@ final class PairingSheet: NSViewController {
         // could tell it would, and it sent whatever happened to be copied.
         entry.setAccessibilityLabel(words.theirCode)
 
-        wait = NSButton(title: words.wait, target: self, action: #selector(waitForOther))
-        enter = NSButton(title: words.join, target: self, action: #selector(pairWithCode))
+        let wait = NSButton(title: words.wait, target: self, action: #selector(waitForOther))
+        let enter = NSButton(title: words.join, target: self, action: #selector(pairWithCode))
         copyCode = NSButton(title: words.copyCode, target: self, action: #selector(copyTheCode))
         copyCode.isHidden = true
         let close = NSButton(title: "Cancel", target: self, action: #selector(cancel))
@@ -62,9 +68,17 @@ final class PairingSheet: NSViewController {
         }
         stack.widthAnchor.constraint(equalToConstant: 480).isActive = true
         view = stack
+        if core.app.view.devices == nil { core.app.send(.devices(.show)) }
+        core.app.send(.devices(.pair(.open(Host.current().localizedName ?? "Mac"))))
+        observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: core.app, queue: .main) { [weak self] _ in
+            self?.follow()
+        }
     }
 
-    @objc private func waitForOther() { start(code: nil) }
+    @objc private func waitForOther() {
+        began = true
+        core.app.send(.devices(.pair(.wait)))
+    }
 
     /// Copies this Mac's code, which only Copy Code does.
     @objc private func copyTheCode() {
@@ -73,81 +87,58 @@ final class PairingSheet: NSViewController {
         Announcer.say(words.copied)
     }
 
-    /// Pairs with the code typed or pasted in.
+    /// Pairs with the code typed or pasted in. A code entered while this Mac waits means the
+    /// person chose the other way: the app gives up the wait and joins with the code once it has
+    /// ended.
     @objc private func pairWithCode() {
         let given = entry.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !given.isEmpty else {
             view.window?.showFailure(words.needCode)
             return
         }
-        // A code entered while this Mac waits to be found means the person chose the other
-        // way: give up the wait, and join with the code once it has ended.
-        if let waiting = prompt {
-            nextCode = given
-            enter.isEnabled = false
-            say(words.switching)
-            waiting.cancel()
-            return
-        }
-        start(code: given)
+        began = true
+        core.app.send(.devices(.pair(.code(given))))
+        core.app.send(.devices(.pair(.join)))
     }
 
-    private func start(code given: String?) {
-        guard prompt == nil else { return }
-        let prompt = MacPrompt(screen: self)
-        self.prompt = prompt
-        wait.isEnabled = false
-        enter.isEnabled = given == nil
-        say(given == nil ? words.opening : words.connecting)
-        let lumenna = core.lumenna
-        let name = Host.current().localizedName ?? "Mac"
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = Result {
-                try lumenna.pair(code: given, reach: .internet, name: name, platform: "macos", prompt: prompt)
+    /// The app's pairing, onto the sheet: what it is doing, this Mac's code, the words to
+    /// compare; closed once it has paired, which the app says.
+    private func follow() {
+        guard let pairing = core.app.view.devices?.pairing else {
+            if began {
+                began = false
+                endSheet()
             }
-            DispatchQueue.main.async { self?.finished(result) }
-        }
-    }
-
-    private func say(_ text: String) {
-        status.stringValue = text
-        Announcer.say(text)
-    }
-
-    private func finished(_ result: Result<PairedWith, Error>) {
-        prompt = nil
-        wait.isEnabled = true
-        enter.isEnabled = true
-        if let next = nextCode {
-            nextCode = nil
-            code.isHidden = true
-            copyCode.isHidden = true
-            start(code: next)
             return
         }
-        switch result {
-        case let .success(paired):
-            NotificationCenter.default.post(name: Core.changed, object: nil)
-            endSheet()
-            Announcer.say(paired.announcement, notices: paired.notices)
-        case let .failure(error):
-            code.isHidden = true
-            copyCode.isHidden = true
-            say(error.sentence)
+        let text: String
+        if let problem = pairing.problem {
+            text = problem
+        } else if pairing.mine != nil {
+            text = words.waiting
+        } else if pairing.running {
+            text = pairing.waiting ? words.opening : words.connecting
+        } else {
+            text = words.intro
+        }
+        if status.stringValue != text {
+            status.stringValue = text
+            if pairing.problem != nil || pairing.mine != nil { Announcer.say(text) }
+        }
+        // Copied only when asked, by Copy Code: the clipboard is the person's.
+        code.stringValue = pairing.mine ?? ""
+        code.isHidden = pairing.mine == nil
+        copyCode.isHidden = pairing.mine == nil
+        if let three = pairing.words, three != askedWords {
+            askedWords = three
+            ask(three) { [weak self] yes in self?.core.app.send(.devices(.pair(.confirm(yes)))) }
+        } else if pairing.words == nil {
+            askedWords = nil
         }
     }
 
-    /// Shows this Mac's code, to read out, or copy with Copy Code.
-    fileprivate func show(code text: String) {
-        code.stringValue = text
-        code.isHidden = false
-        copyCode.isHidden = false
-        // Copied only when asked, by Copy Code: the clipboard is the person's.
-        say(words.waiting)
-    }
-
-    /// Asks whether the words match. The pairing thread waits for the answer.
-    fileprivate func ask(_ words: [String], answer: @escaping (Bool) -> Void) {
+    /// Asks whether the words match. The pairing waits for the answer.
+    private func ask(_ words: [String], answer: @escaping (Bool) -> Void) {
         guard let window = view.window else {
             answer(false)
             return
@@ -162,59 +153,21 @@ final class PairingSheet: NSViewController {
         alert.beginSheetModal(for: window) { [weak self] response in
             let yes = response == .alertSecondButtonReturn
             // What happens next is said while the devices finish, in the core's words.
-            self?.say(yes ? said.finishing : said.refusing)
+            self?.status.stringValue = yes ? said.finishing : said.refusing
             answer(yes)
         }
     }
 
+    /// Giving up ends the wait for the other device, then the screen.
     @objc private func cancel() {
-        // Giving up ends the wait for the other device.
-        prompt?.cancel()
+        began = false
+        core.app.send(.devices(.pair(.cancel)))
+        core.app.send(.devices(.pair(.cancel)))
         endSheet()
     }
 
     private func endSheet() {
         guard let sheet = view.window, let parent = sheet.sheetParent else { return }
         parent.endSheet(sheet)
-    }
-}
-
-/// The pairing's questions, asked on the main thread while the pairing thread waits.
-private final class MacPrompt: PairingPrompt, @unchecked Sendable {
-    private weak var screen: PairingSheet?
-    private let lock = NSLock()
-    private var cancelled = false
-
-    init(screen: PairingSheet) {
-        self.screen = screen
-    }
-
-    func cancel() {
-        lock.withLock { cancelled = true }
-    }
-
-    func showCode(code: String) {
-        DispatchQueue.main.async { [weak self] in self?.screen?.show(code: code) }
-    }
-
-    func confirm(words: [String]) -> Bool {
-        let answered = DispatchSemaphore(value: 0)
-        var matched = false
-        DispatchQueue.main.async { [weak self] in
-            guard let screen = self?.screen else {
-                answered.signal()
-                return
-            }
-            screen.ask(words) { yes in
-                matched = yes
-                answered.signal()
-            }
-        }
-        answered.wait()
-        return matched
-    }
-
-    func isCancelled() -> Bool {
-        lock.withLock { cancelled }
     }
 }

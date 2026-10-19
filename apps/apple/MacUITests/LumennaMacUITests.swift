@@ -102,7 +102,8 @@ final class LumennaMacUITests: XCTestCase {
             XCTAssertTrue(app.datePickers[picker].exists, "no \(picker) picker: \(app.debugDescription)")
         }
         enter("Deep work", into: name)
-        app.buttons["Save"].click()
+        // A new block's form adds, under the app's Add.
+        app.buttons["Add"].click()
         let day = window.outlines["The day"]
         XCTAssertTrue(
             day.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Deep work'")).firstMatch
@@ -467,7 +468,7 @@ final class LumennaMacUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         enter(name, into: field)
         if let repeating { enter(repeating, into: app.textFields["Repeats"]) }
-        sheetButton("Save")
+        sheetButton("Add")
         XCTAssertTrue(app.sheets.firstMatch.waitForNonExistence(timeout: 5))
     }
 
@@ -547,7 +548,7 @@ final class LumennaMacUITests: XCTestCase {
         XCTAssertTrue(takes.waitForExistence(timeout: 5))
         XCTAssertEqual(takes.value as? Int, 0, "a break takes no tasks until set apart")
         takes.click()
-        sheetButton("Save")
+        sheetButton("Add")
         XCTAssertTrue(app.sheets.firstMatch.waitForNonExistence(timeout: 5))
 
         let day = window.outlines["The day"]

@@ -1,4 +1,5 @@
 import AppKit
+import LumennaApp
 import ServiceManagement
 import SwiftUI
 import UniformTypeIdentifiers
@@ -82,21 +83,22 @@ extension SettingsModel {
         }
     }
 
-    /// Writes an export where the person chooses. It holds the present state only, nothing
-    /// from the trash.
-    func export(_ format: ExportFormat) {
+    /// Writes an export, as the app makes it, where the person chooses. It holds the present
+    /// state only, nothing from the trash.
+    func export(_ format: LumennaApp.ExportFormat) {
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = Self.exportName(format)
+        panel.nameFieldStringValue = exportName(format)
         panel.canCreateDirectories = true
         guard let window else { return }
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
-            do {
-                // The panel already asked about replacing an existing file.
-                let done = try self.core.lumenna.export(format: format, path: url.path, replace: true)
-                Announcer.say(done.announcement, notices: done.notices)
-            } catch {
-                self.failure = error.sentence
+            self.exporting(format) { made in
+                do {
+                    // The panel already asked about replacing an existing file.
+                    try Data(made.bytes).write(to: url)
+                } catch {
+                    self.failure = error.localizedDescription
+                }
             }
         }
     }
@@ -109,13 +111,10 @@ extension SettingsModel {
         guard let window else { return }
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
-            do {
-                self.imported(try self.core.lumenna.import(path: url.path))
-            } catch {
-                self.failure = error.sentence
-            }
+            self.importFile(at: url)
         }
     }
+
 }
 
 struct GeneralSettings: View {

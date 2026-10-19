@@ -27,7 +27,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
             watchLink = WatchLink(core: core)
             // Before launching finishes, so a reminder's button pressed while the app was not
             // running reaches it.
-            let responder = ReminderResponder(lumenna: core.lumenna) { reminded in
+            let responder = ReminderResponder(device: core.app.device) { reminded in
                 if reminded.replan {
                     Self.root?.openReplan?()
                 } else {
@@ -36,7 +36,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
             }
             UNUserNotificationCenter.current().delegate = responder
             self.responder = responder
-            let reminders = ReminderSchedule(lumenna: core.lumenna)
+            let reminders = ReminderSchedule(device: core.app.device)
             reminders.follow()
             reminders.rearm(catchingUp: true)
             Self.reminders = reminders

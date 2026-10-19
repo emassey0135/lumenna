@@ -63,7 +63,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) {
-        core?.startSyncing()
+        // The app keeps this device in sync while it is in front.
+        core?.app.inFront(true)
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {

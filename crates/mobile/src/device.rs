@@ -12,7 +12,7 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
 use boltffi::export;
-use lumenna_host::{Lumenna, ReminderLock};
+use lumenna_host::{Lumenna, PhoneLink, ReminderLock};
 #[cfg(feature = "network")]
 use lumenna_host::Reach;
 use lumenna_records::proposals::{DayPins, DayPlan, Replan, ReplanPins, TimeStyle};
@@ -60,6 +60,8 @@ pub struct Device {
     pub(crate) lumenna: Arc<Lumenna>,
     /// The right to give this device's reminders, while this process holds it.
     reminders: Mutex<Option<Arc<ReminderLock>>>,
+    /// The Apple Watch's exchange with its phone, on either side of it.
+    link: Arc<PhoneLink>,
 }
 
 #[export]
@@ -70,7 +72,8 @@ impl Device {
     ///
     /// If the profile cannot be opened.
     pub fn new(directory: String) -> Result<Device, LumennaError> {
-        Ok(Device { lumenna: Lumenna::open(&directory)?, reminders: Mutex::new(None) })
+        let lumenna = Lumenna::open(&directory)?;
+        Ok(Device { link: PhoneLink::new(lumenna.clone()), lumenna, reminders: Mutex::new(None) })
     }
 
     // The services.
@@ -138,6 +141,43 @@ impl Device {
     /// A number that moves when another connection has written.
     pub fn outside_version(&self) -> Result<i64, LumennaError> {
         self.lumenna.outside_version()
+    }
+
+    /// Starts an exchange with the phone, from an Apple Watch: the first message to send.
+    /// Whatever exchange was under way is dropped, here and, on reading this, on the phone.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn link_start(&self) -> Result<Vec<u8>, LumennaError> {
+        self.link.start()
+    }
+
+    /// Takes the phone's reply to the last message sent, on an Apple Watch, and gives the next
+    /// message to send, or nothing when the two stores agree.
+    ///
+    /// # Errors
+    ///
+    /// If the reply does not read, or the store refuses what it brought.
+    pub fn link_take(&self, reply: Vec<u8>) -> Result<Option<Vec<u8>>, LumennaError> {
+        self.link.take(reply)
+    }
+
+    /// Answers a message from the Apple Watch, on its phone: takes in what it brought, and
+    /// gives the reply to send back.
+    ///
+    /// # Errors
+    ///
+    /// If the message does not read, or the store refuses what it brought.
+    pub fn link_answer(&self, message: Vec<u8>) -> Result<Vec<u8>, LumennaError> {
+        self.link.answer(message)
+    }
+
+    /// Whether anything came in over the watch's link since this was last asked: it arrived on
+    /// this device's own connection, which `outside_version` does not count, and the app ticks
+    /// to take it in.
+    pub fn link_took_in(&self) -> bool {
+        self.link.took_in()
     }
 
     // What the tests seed and check the store with.

@@ -1,21 +1,22 @@
 import AppKit
+import LumennaApp
 
 /// A text field that offers what could be typed next, through the system's own
 /// completion: Option-Escape or F5 as in any Mac text field, and by itself after a `#` or `@`,
 /// where a name is the only thing that can follow.
 ///
-/// The core says what goes at the cursor and which span it replaces, in UTF-8 bytes; AppKit
+/// The app says what goes at the cursor and which span it replaces, in UTF-8 bytes; AppKit
 /// completes the word it thinks is partial, in UTF-16. The two are reconciled here.
 final class CompletingField: NSTextField, NSTextFieldDelegate {
     private let core: Core
-    private let syntax: Syntax
+    private let syntax: LumennaApp.Syntax
     /// Called after every change to the text, typed or completed.
     var changed: (() -> Void)?
     /// Called on Return.
     var submitted: (() -> Void)?
     private var completing = false
 
-    init(core: Core, syntax: Syntax, name: String) {
+    init(core: Core, syntax: LumennaApp.Syntax, name: String) {
         self.core = core
         self.syntax = syntax
         super.init(frame: .zero)
@@ -50,7 +51,7 @@ final class CompletingField: NSTextField, NSTextFieldDelegate {
     ) -> [String] {
         let text = textView.string
         let cursor = TextOffsets.bytes(textView.selectedRange().location, in: text)
-        guard let found = try? core.lumenna.completeText(text: text, cursor: cursor, syntax: syntax),
+        guard let found = try? core.app.complete(text, cursor: cursor, syntax: syntax),
               !found.candidates.isEmpty else { return [] }
         // What AppKit will replace, against what the core would: drop from each candidate
         // whatever lies before AppKit's range, such as the `#` it does not count as the word.

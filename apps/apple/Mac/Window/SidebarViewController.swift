@@ -1,22 +1,16 @@
 import AppKit
+import LumennaApp
 
-// Somewhere to go in the main window is the core's `Place`, which every sidebar shares.
-
-/// One row of the sidebar: one of the core's entries (`Lumenna.places`).
+/// One row of the sidebar: one of the app's entries (`ViewModel.sidebar`).
 final class SidebarNode {
-    let entry: SidebarEntry
-    let title: String
-    let detail: String?
+    let entry: LumennaApp.SidebarEntry
     var children: [SidebarNode] = []
 
-    init(_ entry: SidebarEntry) {
+    init(_ entry: LumennaApp.SidebarEntry) {
         self.entry = entry
-        // The core's title, then what is in it.
-        title = entry.title
-        detail = entry.detail.isEmpty ? nil : entry.detail
     }
 
-    var place: Place? {
+    var place: LumennaApp.Place? {
         if case let .place(place) = entry.kind { return place }
         return nil
     }
@@ -25,31 +19,39 @@ final class SidebarNode {
         if case .group = entry.kind { return true }
         return false
     }
+
+    /// Whether it folds: Expand or Collapse is among its actions, the app's.
+    var folds: Bool { entry.actions.contains { [.expand, .collapse].contains($0.kind) } }
 }
 
 /// The places: Today, Tasks, the project tree, labels, saved filters, blocks, the trash.
 ///
 /// A source list, as Mail's mailboxes are, because that is the outline VoiceOver and the
-/// keyboard know best on a Mac. The places are the core's (`Lumenna.places`), as every
-/// sidebar has them; projects nest as they do in the store. What a project, label or filter
-/// can have done to it is its actions, the core's, in its context menu, which VoiceOver
-/// opens with VO-Shift-M; a heading's is its New.
+/// keyboard know best on a Mac. The places, which of them are folded, and what a project,
+/// label or filter can have done to it are the app's (`ViewModel.sidebar`), as every sidebar
+/// has them; its actions are in its context menu, which VoiceOver opens with VO-Shift-M, and a
+/// heading's is its New. Its rows are held in the sidebar's hand, so a change made here lands
+/// here; the place selected is the one the window shows.
 final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
     private let core: Core
-    private let chose: (Place) -> Void
     let outline = NSOutlineView()
     private var roots: [SidebarNode] = []
-    private var selected: Place = .today
+    /// Whether the outline is being set from the app's, not moved by the person.
+    private var following = false
+    private var observer: NSObjectProtocol?
 
-    init(core: Core, chose: @escaping (Place) -> Void) {
+    init(core: Core) {
         self.core = core
-        self.chose = chose
         super.init(nibName: nil, bundle: nil)
         title = "Places"
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+    }
 
     override func loadView() {
         let column = NSTableColumn(identifier: .init("place"))
@@ -70,22 +72,37 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
         view = scroll
-        NotificationCenter.default.addObserver(self, selector: #selector(reload), name: Core.changed, object: nil)
-        reload()
+        observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: core.app, queue: .main) { [weak self] _ in
+            self?.draw()
+        }
+        draw()
     }
 
     override var preferredFirstResponder: NSView? { outline }
 
-    // MARK: - Building
+    // MARK: - Drawing
 
-    @objc func reload() {
-        roots = Self.tree(core.lumenna.places().entries.map(SidebarNode.init))
-        outline.reloadData()
-        expandAll(roots)
+    /// The app's places, folded as the app has them, the place shown selected. Drawn again
+    /// only when they changed, so a minute or a sync does not make VoiceOver read the row again.
+    private func draw() {
+        let view = core.app.view
+        let entries = view.sidebar
+        let folded = view.sidebarFolded
+        if entries != drawn?.entries || folded != drawn?.folded {
+            drawn = (entries, folded)
+            roots = Self.tree(entries.map(SidebarNode.init))
+            following = true
+            outline.reloadData()
+            fold(roots, folded: Set(folded))
+            following = false
+        }
         reselect()
     }
 
-    /// The flat, depth-first entries the core sends, as a tree: an entry's parent is the
+    /// What was drawn last.
+    private var drawn: (entries: [LumennaApp.SidebarEntry], folded: [String])?
+
+    /// The flat, depth-first entries the app sends, as a tree: an entry's parent is the
     /// nearest shallower one above it.
     private static func tree(_ nodes: [SidebarNode]) -> [SidebarNode] {
         var top: [SidebarNode] = []
@@ -98,41 +115,35 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         return top
     }
 
-    private func expandAll(_ nodes: [SidebarNode]) {
+    private func fold(_ nodes: [SidebarNode], folded: Set<String>) {
         for node in nodes where !node.children.isEmpty {
-            outline.expandItem(node)
-            expandAll(node.children)
+            if folded.contains(node.entry.key) {
+                outline.collapseItem(node)
+            } else {
+                outline.expandItem(node)
+                fold(node.children, folded: folded)
+            }
         }
     }
 
-    private func node(for place: Place, in nodes: [SidebarNode]? = nil) -> SidebarNode? {
+    private func node(where matches: (SidebarNode) -> Bool, in nodes: [SidebarNode]? = nil) -> SidebarNode? {
         for node in nodes ?? roots {
-            if node.place == place { return node }
-            if let found = self.node(for: place, in: node.children) { return found }
+            if matches(node) { return node }
+            if let found = self.node(where: matches, in: node.children) { return found }
         }
         return nil
     }
 
-    /// Selects a place, and shows it.
-    func select(_ place: Place) {
-        selected = place
-        reselect()
-        chose(place)
-    }
-
-    /// Keeps the selection on the same place across a reload, without showing it again —
-    /// which would throw away whatever the middle pane was doing.
+    /// Keeps the selection on the place the window shows.
     private func reselect() {
-        guard let node = node(for: selected) else { return }
+        guard let place = core.app.view.place, let node = node(where: { $0.place == place }) else { return }
         let row = outline.row(forItem: node)
         if row >= 0, outline.selectedRow != row {
-            ignoringSelection = true
+            following = true
             outline.selectRowIndexes([row], byExtendingSelection: false)
-            ignoringSelection = false
+            following = false
         }
     }
-
-    private var ignoringSelection = false
 
     // MARK: - Outline
 
@@ -152,10 +163,21 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         !((item as? SidebarNode)?.isGroup ?? true)
     }
 
+    /// Folded or unfolded by the person, with the arrow keys or the disclosure triangle: the
+    /// row's own Collapse or Expand, the app's, which remembers it.
+    func outlineViewItemDidCollapse(_ notification: Notification) { folded(notification, .collapse) }
+    func outlineViewItemDidExpand(_ notification: Notification) { folded(notification, .expand) }
+
+    private func folded(_ notification: Notification, _ kind: LumennaApp.ActionKind) {
+        guard !following, let node = notification.userInfo?["NSObject"] as? SidebarNode,
+              let action = node.entry.actions.first(where: { $0.kind == kind }) else { return }
+        core.app.run(action, on: node.entry.key, side: .sidebar)
+    }
+
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let node = item as? SidebarNode else { return nil }
         let cell = NSTableCellView()
-        let title = NSTextField(labelWithString: node.title)
+        let title = NSTextField(labelWithString: node.entry.title)
         title.lineBreakMode = .byTruncatingTail
         if node.isGroup {
             // Ordinary rows, not source-list group rows, which macOS draws dimmed whatever
@@ -175,18 +197,20 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         ])
         // The counts and states are for VoiceOver and the tooltip; a source list is too
         // narrow for a second line.
-        if let detail = node.detail, !detail.isEmpty {
+        let detail = node.entry.detail
+        if !detail.isEmpty {
             cell.setAccessibilityValueDescription(detail)
             cell.toolTip = detail
         }
         return cell
     }
 
+    /// A place chosen: held in the sidebar's hand, and shown.
     func outlineViewSelectionDidChange(_ notification: Notification) {
-        guard !ignoringSelection, let node = outline.item(atRow: outline.selectedRow) as? SidebarNode,
-              let place = node.place, place != selected else { return }
-        selected = place
-        chose(place)
+        guard !following, let node = outline.item(atRow: outline.selectedRow) as? SidebarNode,
+              let place = node.place, place != core.app.view.place else { return }
+        core.app.send(.hold(field0: .sidebar, field1: node.entry.key))
+        core.app.send(.open(place))
     }
 
     // MARK: - Context menus
@@ -195,80 +219,21 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         menu.removeAllItems()
         let row = outline.clickedRow >= 0 ? outline.clickedRow : outline.selectedRow
         guard let node = outline.item(atRow: row) as? SidebarNode else { return }
-        menu.add(node.entry.actions) { [weak self] action in self?.perform(action) }
-    }
-
-    private var window: NSWindow? { view.window }
-
-    /// Runs one of a place's actions, the core's. When it renamed the place shown, or made a
-    /// new one, it goes there; when it removed the place shown, to Tasks.
-    private func perform(_ action: Action) {
-        guard let window else { return }
-        let shown = selected
-        window.run(action, core: core, form: { [weak self] _ in self?.newFilter() }) { [weak self] change, answer in
-            guard let self else { return }
-            self.reload()
-            if change.changed {
-                let wasShown = placeTitle(place: shown) == action.target
-                if let name = ActionRun.name(after: action, answer: answer), let place = self.place(action.subject, named: name) {
-                    if action.kind != .mergeInto || wasShown { self.select(place) }
-                } else if action.kind == .delete, wasShown {
-                    self.select(.tasks)
-                } else if wasShown, let place = self.place(action.subject, named: action.target), place != shown {
-                    // Changed in place, as a saved filter's query is: shown again as it now is.
-                    self.select(place)
-                }
-            }
-            Announcer.say(change.announcement, notices: change.notices)
+        menu.add(node.entry.actions) { [weak self] action in
+            self?.core.app.run(action, on: node.entry.key, side: .sidebar)
         }
-    }
-
-    /// The place of `subject`'s kind called `name`, once the sidebar holds it again.
-    private func place(_ subject: Subject, named name: String, in nodes: [SidebarNode]? = nil) -> Place? {
-        for node in nodes ?? roots {
-            switch (subject, node.place) {
-            case (.project, .project(name)?), (.label, .label(name)?): return node.place
-            case let (.filter, .filter(filter, _)?) where filter == name: return node.place
-            default: if let found = place(subject, named: name, in: node.children) { return found }
-            }
-        }
-        return nil
     }
 
     /// The heading's New, from the File menu.
-    private func runNew(under group: SidebarGroup) {
-        guard let heading = roots.first(where: { $0.entry.kind == .group(group) }),
-              let action = heading.entry.actions.first(.new) else { return }
-        perform(action)
+    private func runNew(under group: LumennaApp.SidebarGroup) {
+        guard let heading = node(where: { if case let .group(found) = $0.entry.kind { found == group } else { false } }),
+              let action = heading.entry.actions.first(where: { $0.kind == .new }) else { return }
+        core.app.run(action, on: heading.entry.key, side: .sidebar)
     }
 
     @objc func newProject() { runNew(under: .projects) }
     @objc func newLabel() { runNew(under: .labels) }
     @objc func newSavedFilter() { runNew(under: .filters) }
-
-    /// New Saved Filter, the app's own form: a name, then a query.
-    private func newFilter() {
-        // The core's two questions: the name, then the query.
-        let steps = TextQuestion.newFilter
-        guard steps.count == 2 else { return }
-        let (named, queried) = (steps[0], steps[1])
-        window?.askForText(named.title, message: named.hint, placeholder: named.label, action: named.yes) { [weak self] name in
-            // A sheet cannot open while the last is still closing.
-            DispatchQueue.main.async {
-                self?.window?.askForText(queried.title, message: queried.hint, placeholder: queried.label, action: queried.yes) { query in
-                    guard let self else { return }
-                    do {
-                        let change = try self.core.lumenna.addFilter(name: name, query: query)
-                        self.reload()
-                        self.select(.filter(name: name, query: query))
-                        Announcer.say(change.announcement, notices: change.notices)
-                    } catch {
-                        self.window?.showFailure(error.sentence)
-                    }
-                }
-            }
-        }
-    }
 }
 
 /// A menu item that runs a closure, for menus built from a list of actions.

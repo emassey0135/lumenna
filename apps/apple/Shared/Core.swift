@@ -158,10 +158,10 @@ final class Core {
 
     /// Takes a backup if one is due, off the main thread; `failed` hears why not.
     func backUpIfDue(failed: @escaping (String) -> Void) {
-        let lumenna = self.lumenna
+        let device = app.device
         DispatchQueue.global(qos: .utility).async {
             do {
-                _ = try lumenna.backUpIfDue()
+                _ = try device.backUpIfDue()
             } catch {
                 DispatchQueue.main.async { failed("The automatic backup failed. \(error.sentence)") }
             }

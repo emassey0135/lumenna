@@ -80,7 +80,7 @@ struct RootView: View {
                 if questions.asking == nil {
                     questions.asking = AppQuestions(app: core.app, asker: asker) { action in
                         if action.kind == .reminders {
-                            asker.show(RemindersForm(model: RemindersModel(core: core, target: action.target)).navigationTitle("Reminders"))
+                            asker.show(SurfaceRemindersForm(model: SurfaceRemindersModel(core: core, target: action.target)).navigationTitle("Reminders"))
                         } else if action.subject == .task {
                             remindedTask = TaskOpened(id: action.target)
                         }

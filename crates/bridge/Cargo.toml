@@ -11,6 +11,10 @@ description = "The app beside its store: the store's effects answered as Crux mi
 # The network answered natively, over the host's sync on threads: for the apps that run the app
 # in a process of their own. A browser answers it on its event loop instead.
 network = ["lumenna-host/sync"]
+# The command surface served at the profile's address while the network holds the device's
+# endpoint, as the daemon would: for a resident desktop app (the Mac's), so Emacs and the
+# BTSpeak app reach it.
+rpc = ["network", "lumenna-host/rpc"]
 
 [dependencies]
 crux_core = "=0.20.0"

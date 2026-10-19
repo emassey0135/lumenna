@@ -1,3 +1,4 @@
+import LumennaApp
 import SwiftUI
 #if os(iOS)
 import UIKit
@@ -5,10 +6,12 @@ import UIKit
 import AppKit
 #endif
 
-/// The settings core keeps, as the Apple apps edit them. Getting files in and out is
+/// The settings, as the app has them open (`ViewModel.settings`) — some sync, some are this
+/// device's own — edited by the Apple apps. Applying one is the app's, which says what changed or
+/// why not, and keeps a refused line beside its reason (`problem`). Getting files in and out is
 /// each platform's own — a share sheet and a document picker on iOS, save and open panels on
-/// macOS — in an extension beside each app; everything else is here. A watch has nowhere to
-/// save a file or pick one, so backups and exports are the phone's.
+/// macOS — in an extension beside each app; everything else is here. A watch has nowhere to save
+/// a file or pick one, so backups and exports are the phone's.
 final class SettingsModel: NSObject, ObservableObject {
     let core: Core
     #if os(iOS)
@@ -21,50 +24,47 @@ final class SettingsModel: NSObject, ObservableObject {
     @Published var values: [String: String] = [:]
     /// Every setting as the core describes it — its name, its control, what it can be, whether
     /// it syncs — in the core's order.
-    @Published var settings: [Setting] = []
+    @Published var settings: [LumennaApp.Setting] = []
+    /// Why a line was refused, by its key, the app's.
+    @Published private(set) var problems: [String: String] = [:]
+    /// The exports offered, the app's: each format's button and the file it is named.
+    @Published private(set) var exports: [LumennaApp.ExportChoice] = []
     @Published var failure: String?
+    private var observer: NSObjectProtocol?
 
     init(core: Core) {
         self.core = core
         super.init()
+        observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: core.app, queue: .main) { [weak self] _ in
+            self?.follow()
+        }
         load()
-        NotificationCenter.default.addObserver(self, selector: #selector(storeChanged), name: Core.changed, object: nil)
     }
 
-    @objc private func storeChanged() { load() }
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+    }
 
+    /// Opens the settings in the app, which asks the store for them: as a page appears.
     func load() {
-        do {
-            settings = try core.lumenna.settings(key: nil).settings
-            values = Dictionary(uniqueKeysWithValues: settings.map { ($0.key, $0.value) })
-        } catch {
-            failure = error.sentence
-        }
+        core.app.send(.settings(.open))
+        follow()
+    }
+
+    /// The app's settings, into the controls.
+    private func follow() {
+        guard let shown = core.app.view.settings else { return }
+        settings = shown.settings.map(\.setting)
+        values = Dictionary(shown.settings.map { ($0.setting.key, $0.setting.value) }, uniquingKeysWith: { first, _ in first })
+        problems = Dictionary(shown.settings.compactMap { setting in setting.problem.map { (setting.setting.key, $0) } }, uniquingKeysWith: { first, _ in first })
+        exports = shown.exports
     }
 
     func set(_ key: String, _ value: String) {
-        if let problem = commit(key, value) { failure = problem }
-    }
-
-    /// Sets `key`, returning the core's reason when it refuses the value: a line's refusal is
-    /// shown with its field rather than as an alert.
-    @discardableResult
-    func commit(_ key: String, _ value: String) -> String? {
-        guard values[key] != value else { return nil }
-        var problem: String?
-        do {
-            let change = try core.lumenna.setSetting(key: key, value: value)
-            Announcer.say(change.announcement, notices: change.notices)
-            // Every view reads the store again, and reminders are scheduled anew: the
-            // defaults, the all-day hour and whether reminders are on all change what fires.
-            NotificationCenter.default.post(name: Core.changed, object: nil)
-            // Turning reminders on is a moment to ask to show them, if never asked.
-            if key == "reminders", value == "true" { Reminders.askIfUndecided() }
-        } catch {
-            problem = error.sentence
-        }
-        load()
-        return problem
+        guard values[key] != value else { return }
+        core.app.send(.settings(.set(key: key, value: value)))
+        // Turning reminders on is a moment to ask to show them, if never asked.
+        if key == "reminders", value == "true" { Reminders.askIfUndecided() }
     }
 
     func binding(_ key: String) -> Binding<String> {
@@ -87,33 +87,36 @@ final class SettingsModel: NSObject, ObservableObject {
         )
     }
 
+    /// A backup now, beside the automatic ones, in this device's backup folder.
     func backUpNow() {
         do {
-            let done = try core.lumenna.backup(to: nil)
+            let done = try core.app.device.backup()
             Announcer.say(done.announcement, notices: done.notices)
         } catch {
             failure = error.sentence
         }
     }
 
-    /// The file name an export of `format` gets, dated.
-    static func exportName(_ format: ExportFormat) -> String {
-        let suffix = switch format {
-        case .json: "json"
-        case .markdown: "md"
-        case .org: "org"
-        case .ics: "ics"
-        }
-        return "Lumenna \(Clock.isoDay(.now)).\(suffix)"
+    /// The file name an export of `format` gets, the app's, dated.
+    func exportName(_ format: LumennaApp.ExportFormat) -> String {
+        exports.first { $0.format == format }?.name ?? "Lumenna"
     }
 
-    /// Says what an import did and tells every view to read the store again.
-    func imported(_ result: Imported) {
-        switch result {
-        case let .export(done): Announcer.say(done.announcement, notices: done.notices)
-        case let .backup(done): Announcer.say(done.announcement, notices: done.notices)
+    /// Asks the app for an export of `format`, handing its file to `saved` once it is made.
+    func exporting(_ format: LumennaApp.ExportFormat, saved: @escaping (LumennaApp.SaveFile) -> Void) {
+        core.app.nextFile(saved)
+        core.app.send(.settings(.export(format)))
+    }
+
+    /// Reads a JSON export or a backup the person chose; the app tells them apart by its name,
+    /// and says what it added.
+    func importFile(at url: URL) {
+        do {
+            let bytes = try Data(contentsOf: url)
+            core.app.send(.settings(.import(name: url.lastPathComponent, bytes: bytes)))
+        } catch {
+            failure = error.localizedDescription
         }
-        NotificationCenter.default.post(name: Core.changed, object: nil)
     }
 }
 
@@ -136,7 +139,7 @@ struct SettingsPage: ViewModifier {
 /// a section of its own; the rest sit in the section around them.
 struct SettingControl: View {
     @ObservedObject var model: SettingsModel
-    let setting: Setting
+    let setting: LumennaApp.Setting
 
     var body: some View {
         control.modifier(SettingHint(text: setting.kind == .choice ? "" : setting.hint))
@@ -215,10 +218,12 @@ private struct SettingHint: ViewModifier {
 /// typed. A refusal stays with its field, in the core's words, and is said.
 struct LineSetting: View {
     @ObservedObject var model: SettingsModel
-    let setting: Setting
+    let setting: LumennaApp.Setting
     @State private var text = ""
-    @State private var problem: String?
     @FocusState private var focused: Bool
+
+    /// Why the line was refused, the app's, which it has said.
+    private var problem: String? { model.problems[setting.key] }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -272,34 +277,26 @@ struct LineSetting: View {
     }
 
     private func commit() {
-        guard text != model.values[setting.key] else {
-            problem = nil
-            return
-        }
-        problem = model.commit(setting.key, text)
-        if let problem {
-            Announcer.say(problem)
-        } else {
-            text = model.values[setting.key] ?? text
-        }
+        guard text != model.values[setting.key] else { return }
+        model.set(setting.key, text)
     }
 }
 
 extension SettingsModel {
     /// The settings that sync, of `kinds`, in the core's order.
-    func synced(_ kinds: [SettingKind]) -> [Setting] {
+    func synced(_ kinds: [LumennaApp.SettingKind]) -> [LumennaApp.Setting] {
         settings.filter { $0.syncs && kinds.contains($0.kind) }
     }
 
     /// What reminders are given, in the core's order: the defaults and the all-day hour,
     /// which sync, then whether this device gives them at all, which is its own.
-    var reminderSettings: [Setting] {
+    var reminderSettings: [LumennaApp.Setting] {
         settings.filter { $0.key.contains("reminder") && ($0.syncs || $0.key == "reminders") }
     }
 
     /// This device's backup settings: what the core keeps apart from what syncs, but the clock,
     /// which the Apple apps take from the system.
-    func backups(_ kinds: [SettingKind]) -> [Setting] {
+    func backups(_ kinds: [LumennaApp.SettingKind]) -> [LumennaApp.Setting] {
         settings.filter { !$0.syncs && $0.key.hasPrefix("backup-") && kinds.contains($0.kind) }
     }
 }
@@ -367,10 +364,10 @@ struct ExportSettings: View {
     var body: some View {
         Form {
             Section {
-                Button("Export JSON, Complete, Can Be Imported…") { model.export(.json) }
-                Button("Export a Markdown Checklist…") { model.export(.markdown) }
-                Button("Export an Org Outline…") { model.export(.org) }
-                Button("Export a Calendar File of Your Blocks…") { model.export(.ics) }
+                // Each format's button, the app's words.
+                ForEach(model.exports, id: \.name) { choice in
+                    Button(choice.label + "…") { model.export(choice.format) }
+                }
                 Button("Import or Restore…") { model.importFile() }
             } header: {
                 FormParts.heading("Export and Import")

@@ -1,11 +1,16 @@
 import AppKit
+import LumennaApp
 
-/// Paired devices and how syncing is going, in words rather than an icon.
+/// Paired devices and how syncing is going, in words rather than an icon: the app's Devices
+/// page (`ViewModel.devices`), held in its own hand, so a rename or an unpairing lands back here.
 final class DevicesViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
     private let core: Core
-    private var devices: [DeviceView] = []
+    private var devices: [(device: LumennaApp.DeviceView, line: LumennaApp.Line?)] = []
     private let status = NSTextField(wrappingLabelWithString: "")
     private let table = BlocksTable()
+    /// Whether the table is being set from the app's, not moved by the person.
+    private var following = false
+    private var observer: NSObjectProtocol?
 
     init(core: Core) {
         self.core = core
@@ -16,6 +21,10 @@ final class DevicesViewController: NSViewController, NSTableViewDataSource, NSTa
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+    }
+
     override func loadView() {
         let column = NSTableColumn(identifier: .init("device"))
         table.addTableColumn(column)
@@ -24,8 +33,8 @@ final class DevicesViewController: NSViewController, NSTableViewDataSource, NSTa
         table.delegate = self
         table.usesAutomaticRowHeights = true
         table.setAccessibilityLabel("Paired devices")
-        table.deleted = { [weak self] in self?.unpairSelected() }
-        table.returned = { [weak self] in self?.renameSelected() }
+        table.deleted = { [weak self] in self?.run(.unpair) }
+        table.returned = { [weak self] in self?.run(.rename) }
         let menu = NSMenu()
         menu.delegate = self
         table.menu = menu
@@ -52,76 +61,89 @@ final class DevicesViewController: NSViewController, NSTableViewDataSource, NSTa
         scroll.heightAnchor.constraint(equalToConstant: 200).isActive = true
         stack.widthAnchor.constraint(equalToConstant: 520).isActive = true
         view = stack
-        NotificationCenter.default.addObserver(self, selector: #selector(reload), name: Core.changed, object: nil)
-        reload()
-    }
-
-    @objc private func reload() {
-        do {
-            let sync = try core.lumenna.syncStatus()
-            devices = sync.devices
-            status.stringValue = ([sync.announcement] + sync.notices).joined(separator: ". ")
-        } catch {
-            status.stringValue = error.sentence
+        observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: core.app, queue: .main) { [weak self] _ in
+            self?.draw()
         }
-        table.reloadData()
     }
 
-    /// Its platform, then how syncing with it is going, as the core words it for every app.
-    private static func detail(_ device: DeviceView) -> String {
-        ([device.platform] + device.status).joined(separator: ", ")
+    override func viewWillAppear() {
+        super.viewWillAppear()
+        // Lists the devices, and asks the network how syncing is going.
+        core.app.send(.devices(.show))
+        draw()
+    }
+
+    private func draw() {
+        guard let page = core.app.view.devices else { return }
+        let lines = core.app.lines.devices
+        let listed = (page.list?.devices ?? []).enumerated().map { index, device in
+            (device: device, line: index < lines.count ? lines[index] : nil)
+        }
+        let empty = page.list.map { $0.devices.isEmpty ? $0.empty : "" } ?? ""
+        status.stringValue = [page.status, empty].filter { !$0.isEmpty }.joined(separator: ". ")
+        following = true
+        defer { following = false }
+        if listed.map(\.device) != devices.map(\.device) || listed.map(\.line) != devices.map(\.line) {
+            devices = listed
+            table.reloadData()
+        }
+        let held = core.app.view.devicesHeld
+        if let focus = held.focus, let row = devices.firstIndex(where: { $0.device.nodeId == focus }), table.selectedRow != row {
+            table.selectRowIndexes([row], byExtendingSelection: false)
+        }
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { devices.count }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let cell = TwoLineCell()
-        let detail = Self.detail(devices[row])
-        cell.show(title: devices[row].name, detail: detail)
-        cell.setAccessibilityLabel(devices[row].name)
+        // Its platform, then how syncing with it is going, as the core words it for every app.
+        let shown = devices[row]
+        let title = shown.line?.title ?? shown.device.name
+        let detail = shown.line?.detail ?? ""
+        cell.show(title: title, detail: detail)
+        cell.setAccessibilityLabel(title)
         cell.setAccessibilityValueDescription(detail)
         return cell
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        guard !following, let device = selected else { return }
+        core.app.send(.hold(field0: .devices, field1: device.nodeId))
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let clicked = table.clickedRow >= 0 ? table.clickedRow : table.selectedRow
-        guard clicked >= 0 else { return }
+        guard clicked >= 0, clicked < devices.count else { return }
         table.selectRowIndexes([clicked], byExtendingSelection: false)
-        menu.add(devices[clicked].actions) { [weak self] action in self?.perform(action) }
-    }
-
-    private var selected: DeviceView? {
-        table.selectedRow >= 0 && table.selectedRow < devices.count ? devices[table.selectedRow] : nil
-    }
-
-    // The buttons and keys are the selected device's own actions of those kinds: this
-    // device's row has no Unpair, so its button does nothing there.
-    @objc private func renameSelected() {
-        guard let device = selected else { return }
-        if let action = device.actions.first(.rename) { perform(action) } else { said(.rename, device) }
-    }
-
-    @objc private func unpairSelected() {
-        guard let device = selected else { return }
-        if let action = device.actions.first(.unpair) { perform(action) } else { said(.unpair, device) }
-    }
-
-    /// Why the device does not offer `kind`, in the core's words.
-    private func said(_ kind: ActionKind, _ device: DeviceView) {
-        view.window?.showFailure(notOffered(kind: kind, subject: .device, thisDevice: device.thisDevice))
-    }
-
-    private func perform(_ action: Action) {
-        view.window?.run(action, core: core) { [weak self] change, _ in
-            self?.reload()
-            Announcer.say(change.announcement, notices: change.notices)
+        let device = devices[clicked].device
+        menu.add(device.actions) { [weak self] action in
+            self?.core.app.run(action, on: device.nodeId, side: .devices)
         }
     }
 
+    private var selected: LumennaApp.DeviceView? {
+        table.selectedRow >= 0 && table.selectedRow < devices.count ? devices[table.selectedRow].device : nil
+    }
+
+    // The buttons and keys are the selected device's own actions of those kinds: this
+    // device's row has no Unpair, so its button says why there.
+    @objc private func renameSelected() { run(.rename) }
+    @objc private func unpairSelected() { run(.unpair) }
+
+    private func run(_ kind: LumennaApp.ActionKind) {
+        guard let device = selected else { return }
+        if let action = device.actions.first(where: { $0.kind == kind }) {
+            core.app.run(action, on: device.nodeId, side: .devices)
+        } else {
+            view.window?.showFailure(LumennaApp.notOffered(kind: kind, subject: .device, thisDevice: device.thisDevice))
+        }
+    }
+
+    /// The app says it is syncing, then how the round went.
     @objc func syncNow() {
-        Announcer.say("Syncing")
-        AppDelegate.shared?.syncNow { [weak self] in self?.reload() }
+        core.app.send(.devices(.syncNow))
     }
 
     @objc private func pair() {

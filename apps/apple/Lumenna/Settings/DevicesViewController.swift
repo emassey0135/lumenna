@@ -1,48 +1,43 @@
+import LumennaApp
 import UIKit
 
-/// Paired devices and how syncing is going, in words rather than an icon.
-final class DevicesViewController: ItemListViewController {
+/// Paired devices and how syncing is going, in words rather than an icon: the app's Devices
+/// page (`ViewModel.devices`), held in its own hand, so a rename or an unpairing lands back here.
+final class DevicesViewController: AppListViewController {
     init(core: Core) {
         super.init(core: core, title: "Devices")
     }
 
-    override func load() throws -> (items: [Item], count: String) {
-        let status = try core.lumenna.syncStatus()
-        let items = status.devices.map { device -> Item in
+    override var side: LumennaApp.Side? { .devices }
+
+    override func appear() {
+        // Lists the devices, and asks the network how syncing is going.
+        core.app.send(.devices(.show))
+    }
+
+    override func rows() -> (items: [AppItem], count: String)? {
+        guard let devices = core.app.view.devices else { return nil }
+        let lines = core.app.lines.devices
+        let listed = (devices.list?.devices ?? []).enumerated().map { index, device in
             // How syncing with it is going, as the core words it for every app.
-            let detail = [device.platform] + device.status
-            return Item(key: device.nodeId, title: device.name, detail: detail.joined(separator: ", "), actions: device.actions)
+            let line = index < lines.count ? lines[index] : nil
+            return AppItem(key: device.nodeId, title: line?.title ?? device.name, detail: line.flatMap { $0.detail.isEmpty ? nil : $0.detail }, actions: device.actions)
         }
         // Sync Now as the first row: in the navigation bar beside Add it crowds the title
         // until it is clipped at large text sizes.
-        let syncNow = Item(key: "sync-now", title: "Sync Now", detail: nil)
-        return ([syncNow] + items, status.announcement)
+        let syncNow = AppItem(key: "sync-now", title: "Sync Now")
+        let empty = devices.list.map { $0.devices.isEmpty ? $0.empty : "" } ?? ""
+        return ([syncNow] + listed, [devices.status, empty].filter { !$0.isEmpty }.joined(separator: ". "))
     }
 
-    override func open(_ item: Item) {
-        if item.key == "sync-now" {
-            syncNow()
-        }
+    override func open(_ item: AppItem) {
+        // The app says it is syncing, then how the round went.
+        if item.key == "sync-now" { core.app.send(.devices(.syncNow)) }
     }
 
     override var addTitle: String? { "Pair a device" }
 
     override func add() {
         navigationController?.pushViewController(PairingViewController(core: core), animated: true)
-    }
-
-    private func syncNow() {
-        Announcer.say("Syncing")
-        core.syncNow { [weak self] result in
-            switch result {
-            case let .success(report):
-                Announcer.say(report.announcement, notices: report.peers.compactMap { peer in
-                    peer.error.map { "\(peer.name): \($0)" }
-                })
-                self?.reload()
-            case let .failure(error):
-                self?.showFailure(error.sentence)
-            }
-        }
     }
 }

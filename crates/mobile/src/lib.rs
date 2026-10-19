@@ -191,6 +191,18 @@ impl App {
     }
 }
 
+#[cfg(feature = "rpc")]
+#[export]
+impl App {
+    /// Serves the command surface at the profile's address whenever this device's sync runs
+    /// here, as the daemon would, so Emacs and the BTSpeak app reach a resident app: `app` is
+    /// what a client is told is answering ("Lumenna for Mac"), `device_name` what a pairing
+    /// asked for over it calls this device.
+    pub fn serve_commands(&self, app: String, device_name: String) {
+        self.network.serve(lumenna_bridge::network::Serving { app, device_name });
+    }
+}
+
 fn spawn(name: &str, run: impl FnOnce() + Send + 'static) -> Result<(), LumennaError> {
     std::thread::Builder::new()
         .name(name.to_owned())

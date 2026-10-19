@@ -1,4 +1,5 @@
 import AppKit
+import LumennaApp
 import UserNotifications
 
 /// The Mac app: resident in the menu bar, syncing for as long as it runs, with
@@ -39,13 +40,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             quickAdd: { [weak self] in self?.quickAdd?.show() }
         )
         // Resident, so it gives reminders itself as they come due, as `lum notify` would.
-        let responder = ReminderResponder(lumenna: core.lumenna) { [weak self] reminded in self?.open(reminded) }
+        let responder = ReminderResponder(device: core.app.device) { [weak self] reminded in self?.open(reminded) }
         UNUserNotificationCenter.current().delegate = responder
         self.responder = responder
-        reminders = ReminderDelivery(lumenna: core.lumenna)
+        reminders = ReminderDelivery(device: core.app.device)
         reminders?.follow()
         reminders?.start()
-        core.startSyncing()
         core.watchForOtherProcesses()
         backUp()
         // Resident for days at a time, so a backup that falls due while it runs is taken:
@@ -55,7 +55,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationWillTerminate(_ notification: Notification) {
         reminders?.stop()
-        core?.stopSyncing(waiting: true)
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -113,25 +112,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     // MARK: - Sync
 
+    /// One round with every paired device, on this app's own endpoint: the app says how it
+    /// went.
     @objc func syncNowFromMenu(_ sender: Any?) {
         Announcer.say("Syncing")
-        syncNow {}
-    }
-
-    /// One round with every paired device, on this app's own endpoint.
-    func syncNow(then finished: @escaping () -> Void) {
-        core.syncNow { [weak self] result in
-            switch result {
-            case let .success(report):
-                Announcer.say(report.announcement, notices: report.notices + report.peers.compactMap { peer in
-                    peer.error.map { "\(peer.name): \($0)" }
-                })
-                NotificationCenter.default.post(name: Core.changed, object: nil)
-            case let .failure(error):
-                (NSApp.keyWindow ?? self?.main?.window)?.showFailure(error.sentence)
-            }
-            finished()
-        }
+        core.app.send(.devices(.syncNow))
     }
 
     // MARK: - Undo and redo, of the store
@@ -143,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             editing.undo()
             return
         }
-        changeStore { try $0.undo() }
+        core.app.send(.undo)
     }
 
     @objc func redoChange(_ sender: Any?) {
@@ -151,21 +136,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             editing.redo()
             return
         }
-        changeStore { try $0.redo() }
+        core.app.send(.redo)
     }
 
     private var editingUndoManager: UndoManager? {
         (NSApp.keyWindow?.firstResponder as? NSTextView)?.undoManager
-    }
-
-    private func changeStore(_ operation: (Lumenna) throws -> Change) {
-        do {
-            let change = try operation(core.lumenna)
-            NotificationCenter.default.post(name: Core.changed, object: nil)
-            Announcer.say(change.announcement, notices: change.notices)
-        } catch {
-            (NSApp.keyWindow ?? main?.window)?.showFailure(error.sentence)
-        }
     }
 
     // MARK: - Places and the selected task
@@ -175,9 +150,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func goToBlocks(_ sender: Any?) { go(.blocks) }
     @objc func goToTrash(_ sender: Any?) { go(.trash) }
 
-    private func go(_ place: Place) {
+    private func go(_ place: LumennaApp.Place) {
         showMainWindow(nil)
-        main?.sidebar.select(place)
+        if core.app.view.place != place { main?.go(place) }
     }
 
     /// A reminder chosen in Notification Center: its task, or its block on its day.
@@ -191,35 +166,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         if reminded.kind == "task" {
             go(.tasks)
-            main?.showTask(reminded.target)
-            main?.nextPane(nil)
+            core.app.send(.focus(reminded.target))
+            main?.showDetails()
         } else {
             go(.today)
             main?.day?.show(day: reminded.day, series: reminded.target)
         }
     }
 
+    /// New Task: quick add, on the list shown, else from wherever the window is.
     @objc func newTask(_ sender: Any?) {
         showMainWindow(nil)
-        if let list = main?.taskList, list.mode == .tasks {
+        if let list = main?.taskList, !list.trash {
             list.addTask()
         } else if let window = main?.window {
-            QuickAddSheet.present(on: window, core: core) { change in
-                Announcer.say(change.announcement, notices: change.notices)
-            }
+            QuickAddSheet.present(on: window, core: core)
         }
     }
 
+    /// New Block: the app's block form, on the day shown or, from anywhere else, today.
     @objc func newBlock(_ sender: Any?) {
         showMainWindow(nil)
-        if let day = main?.day {
-            day.addBlock()
-        } else if let window = main?.window {
-            BlockFormModel(core: core, purpose: .add).present(on: window) { change in
-                NotificationCenter.default.post(name: Core.changed, object: nil)
-                Announcer.say(change.announcement, notices: change.notices)
-            }
-        }
+        core.app.send(.block(.new(start: nil, minutes: nil)))
     }
 
     @objc func newProject(_ sender: Any?) { showMainWindow(nil); main?.sidebar.newProject() }
@@ -231,16 +199,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         main?.taskList?.focusFilter()
     }
 
-    /// The task the Task menu acts on: the one selected in a task list, or a sitting's task
-    /// in the day.
-    private var selectedTask: TaskDetail? {
-        guard let id = main?.taskList?.selectedID ?? main?.day?.selectedTaskID else { return nil }
-        return try? core.lumenna.showTask(id: id).task
-    }
-
-    /// Each Task menu command is the selected task's own action of that kind, so the menu
-    /// never offers what the task's actions do not.
-    private static func kinds(_ command: Selector?) -> [ActionKind] {
+    /// Each Task menu command is the in-hand task's own action of that kind — a task row's,
+    /// or the task's in the details beside a sitting — so the menu never offers what the
+    /// task's actions do not.
+    private static func kinds(_ command: Selector?) -> [LumennaApp.ActionKind] {
         switch command {
         case #selector(toggleDone(_:)): [.markDone, .markNotDone]
         case #selector(putInBlock(_:)): [.putInBlock]
@@ -252,15 +214,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    private func action(for command: Selector?) -> (TaskDetail, Action)? {
+    /// The task in hand's action for a Task menu command, and the row it is run on.
+    private func action(for command: Selector?) -> (key: String, action: LumennaApp.Action)? {
         let kinds = Self.kinds(command)
-        guard let task = selectedTask, let action = task.actions.first(where: { kinds.contains($0.kind) }) else { return nil }
-        return (task, action)
+        let view = core.app.view
+        if view.place != .today, view.place != .blocks, let focus = view.focus,
+           let row = view.list?.items.first(where: { $0.row.id == focus })?.row,
+           let action = row.actions.first(where: { kinds.contains($0.kind) }) {
+            return (row.id, action)
+        }
+        if let details = view.details, let action = details.task.actions.first(where: { kinds.contains($0.kind) }) {
+            return (view.focus ?? details.task.id, action)
+        }
+        return nil
     }
 
     private func perform(_ command: Selector) {
-        guard let window = main?.window, let (task, action) = action(for: command) else { return }
-        TaskActions(core: core, window: window, list: main?.taskList).perform(action, on: task.id)
+        guard let (key, action) = action(for: command) else { return }
+        core.app.run(action, on: key)
     }
 
     @objc func toggleDone(_ sender: Any?) { perform(#selector(toggleDone(_:))) }
@@ -275,28 +246,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func previousDay(_ sender: Any?) { main?.day?.previousDay(sender) }
     @objc func nextDay(_ sender: Any?) { main?.day?.nextDay(sender) }
     @objc func goToNow(_ sender: Any?) {
-        if main?.day == nil { go(.today) } else { main?.day?.goToToday(sender) }
+        go(.today)
+        main?.day?.goToToday(sender)
     }
     @objc func goToDay(_ sender: Any?) {
-        if main?.day == nil { go(.today) }
+        go(.today)
         main?.day?.goToDay(sender)
     }
 
-    /// The day's own actions for the Day menu: the day shown's, else today's, which go to the
-    /// day first.
-    var dayActions: [Action] {
-        main?.day?.plan?.actions ?? (try? core.lumenna.plan(date: nil).actions) ?? []
+    /// The day's own actions for the Day menu: the day shown's, else none until it is shown;
+    /// their keys go to the day first (`DayMenu`).
+    var dayActions: [LumennaApp.Action] {
+        core.app.view.place == .today ? core.app.view.day?.actions ?? [] : []
     }
 
-    /// One of the day's actions, from the Day menu: on the day shown, else on today's.
-    func performDay(_ action: Action) {
-        if main?.day == nil { go(.today) }
-        main?.day?.performDay(action)
+    /// One of the day's actions, from the Day menu.
+    func performDay(_ action: LumennaApp.Action) {
+        core.app.send(.perform(action))
+    }
+
+    /// The day's action of `kind`, from its key with the menu closed: today first, from
+    /// anywhere else, then that action, or why the day has none, in the core's words.
+    func runDay(_ kind: LumennaApp.ActionKind) {
+        go(.today)
+        if let action = core.app.current.view.day?.actions.first(where: { $0.kind == kind }) {
+            core.app.send(.perform(action))
+        } else {
+            Announcer.say(LumennaApp.notOffered(kind: kind, subject: .day, thisDevice: false))
+        }
     }
 
     @objc func backUpNow(_ sender: Any?) {
         do {
-            let done = try core.lumenna.backup(to: nil)
+            let done = try core.app.device.backup()
             Announcer.say(done.announcement, notices: done.notices)
         } catch {
             main?.window?.showFailure(error.sentence)

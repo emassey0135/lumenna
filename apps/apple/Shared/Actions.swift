@@ -177,27 +177,3 @@ struct TextQuestion {
     /// The name, then the query.
     static var newFilter: [TextQuestion] { newFilterQuestions().compactMap(TextQuestion.init) }
 }
-
-/// The keys of the day's own commands, Command-Option and a letter, the same on the Mac and
-/// the iPad: Plan the Day and Replan from Now, the two a person reaches for mid-day. The rest
-/// are menu items only. Not Control-Option, which is VoiceOver's.
-enum DayKeys {
-    static let planDay = "p"
-    static let replan = "r"
-
-    static func key(for kind: ActionKind) -> String? {
-        switch kind {
-        case .planDay: planDay
-        case .replan: replan
-        default: nil
-        }
-    }
-
-    static func kind(for key: String) -> ActionKind? {
-        switch key {
-        case planDay: .planDay
-        case replan: .replan
-        default: nil
-        }
-    }
-}

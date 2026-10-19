@@ -22,7 +22,6 @@ final class WatchCore: ObservableObject {
     /// The Crux app over the same store, on a connection of its own, which the screens are
     /// moving onto (`AppModel`).
     let app: AppModel
-    let link: PhoneLink
     /// Moves after anything changes the store, so every SwiftUI view showing it reads it again.
     @Published private(set) var generation = 0
     /// Something that could not be done, in the core's words, for an alert.
@@ -41,7 +40,6 @@ final class WatchCore: ObservableObject {
         let directory = try WatchCore.profileDirectory()
         lumenna = try Lumenna.open(directory: directory.path)
         app = try AppModel(directory: directory, platform: "watchos")
-        link = PhoneLink(lumenna: lumenna)
         phone = PhoneSync(core: self)
         // Every change, whoever made it — this file, or a shared form, which posts the
         // notification itself — redraws and goes to the phone.

@@ -33,6 +33,8 @@ final class TaskDetailModel: NSObject, ObservableObject {
 
     /// Whether the fields are being set from the app's, not typed.
     private var following = false
+    /// Whether the app's fields are waiting for the app to be still.
+    private var filling = false
     /// Whether the task was asked to go to the trash, to leave once it has.
     private var trashing = false
     private var observer: NSObjectProtocol?
@@ -71,7 +73,17 @@ final class TaskDetailModel: NSObject, ObservableObject {
         guard let details else { return }
         task = details.task
         projects = details.projects
-        guard core.app.isStill else { return }
+        guard !filling else { return }
+        filling = true
+        core.app.whenStill { [weak self] in
+            self?.filling = false
+            self?.fill()
+        }
+    }
+
+    /// The app's fields, into the form's, once nothing is on its way.
+    private func fill() {
+        guard let details = core.app.view.details, details.task.id == id else { return }
         let fields = details.fields
         following = true
         defer { following = false }

@@ -35,7 +35,8 @@ enum BackgroundSync {
         try? BGTaskScheduler.shared.submit(request)
     }
 
-    /// Leaving the front: syncs once in the time iOS grants, then lets go of the endpoint.
+    /// Leaving the front: syncs once in the time iOS grants, then the app lets go of the
+    /// endpoint.
     static func leaving(_ core: Core) {
         var task = UIBackgroundTaskIdentifier.invalid
         let end = {
@@ -45,15 +46,19 @@ enum BackgroundSync {
         }
         task = UIApplication.shared.beginBackgroundTask(withName: "Sync on leaving") {
             // Out of time: whatever the round had not sent goes at the next one.
-            core.stopSyncing()
+            core.app.inFront(false)
             end()
         }
-        // The round and the stop both run on the sync queue; the background task ends once
-        // they have, without the main thread waiting on either.
-        core.syncNow { _ in
-            // What the round brought in may fire before the app is next opened.
-            AppDelegate.reminders?.rearm()
-            core.stopSyncing(then: end)
+        // The round runs off the main thread, on the app's own sync service; then it stops.
+        let device = core.app.device
+        DispatchQueue.global(qos: .utility).async {
+            _ = try? device.syncNow()
+            DispatchQueue.main.async {
+                // What the round brought in may fire before the app is next opened.
+                AppDelegate.reminders?.rearm()
+                core.app.inFront(false)
+                end()
+            }
         }
         schedule()
     }
@@ -72,15 +77,21 @@ enum BackgroundSync {
             task.setTaskCompleted(success: success)
         }
         task.expirationHandler = { finish(false) }
-        core.syncNow { result in
-            if case .success = result {
-                NotificationCenter.default.post(name: Core.changed, object: core)
+        // A round of its own, on an endpoint opened for it: the app is not in front.
+        let device = core.app.device
+        DispatchQueue.global(qos: .utility).async {
+            let synced = (try? device.syncNow()) != nil
+            DispatchQueue.main.async {
+                if synced {
+                    core.app.tick()
+                    NotificationCenter.default.post(name: Core.changed, object: core)
+                }
+                // Re-armed before the task ends, whatever the round did: a refresh is also what
+                // carries the two-day window forward while the app is not opened.
+                let reminders = AppDelegate.reminders
+                guard let reminders else { return finish(synced) }
+                reminders.rearm(catchingUp: true) { finish(synced) }
             }
-            // Re-armed before the task ends, whatever the round did: a refresh is also what
-            // carries the two-day window forward while the app is not opened.
-            let reminders = AppDelegate.reminders
-            guard let reminders else { return finish((try? result.get()) != nil) }
-            reminders.rearm(catchingUp: true) { finish((try? result.get()) != nil) }
         }
     }
 }

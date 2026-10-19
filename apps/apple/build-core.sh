@@ -111,7 +111,9 @@ boltffi() {
 }
 APP_GENERATED="$GENERATED/App"
 mkdir -p "$APP_GENERATED/include"
-APP_FEATURES=()
+# With the command surface the Mac serves (`App.serveCommands`), whose Swift the phone shares;
+# the watch's has no network at all.
+APP_FEATURES=(--cargo-arg=--features=rpc)
 [ -n "$WATCH" ] && APP_FEATURES=(--cargo-arg=--no-default-features)
 (cd "$ROOT/crates/mobile" && boltffi generate swift -q -o "$APP_GENERATED/swift" ${APP_FEATURES[@]+"${APP_FEATURES[@]}"})
 cp "$APP_GENERATED/swift/boltffi.h" "$APP_GENERATED/include/"
