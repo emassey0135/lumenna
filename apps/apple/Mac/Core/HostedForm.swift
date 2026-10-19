@@ -143,3 +143,10 @@ extension NSOutlineView {
         moved(shown[selectedRow])
     }
 }
+
+extension NSView {
+    /// The first outline inside this view: AppKit's own, under a SwiftUI `List`.
+    var firstOutline: NSOutlineView? {
+        (self as? NSOutlineView) ?? subviews.lazy.compactMap(\.firstOutline).first
+    }
+}
