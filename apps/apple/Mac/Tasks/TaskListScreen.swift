@@ -181,10 +181,12 @@ func taskList(core: Core, window: MainWindowController, place: LumennaApp.Place)
         : TaskListViewController(core: core, window: window, place: place)
 }
 
-/// The SwiftUI list in the main window's middle pane.
-final class TaskListHostingController: NSHostingController<MacTaskListScreen>, MacTaskListing {
+/// The SwiftUI list in the main window's middle pane, hosted by a view that steps out of
+/// VoiceOver's tree (`FlatHostingView`): left as a group, it was a nameless one around the list.
+final class TaskListHostingController: NSViewController, MacTaskListing {
     private let core: Core
     private let model: TaskListModel
+    private let screen: MacTaskListScreen
     var place: LumennaApp.Place { model.place }
     var trash: Bool { model.trash }
 
@@ -192,12 +194,17 @@ final class TaskListHostingController: NSHostingController<MacTaskListScreen>, M
         self.core = core
         let model = TaskListModel(core: core, place: place)
         self.model = model
-        super.init(rootView: MacTaskListScreen(model: model, details: { [weak window] in window?.showDetails() }))
+        screen = MacTaskListScreen(model: model, details: { [weak window] in window?.showDetails() })
+        super.init(nibName: nil, bundle: nil)
         title = model.title
     }
 
     @available(*, unavailable)
-    required dynamic init?(coder: NSCoder) { fatalError("not used") }
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func loadView() {
+        view = FlatHostingView(rootView: screen)
+    }
 
     override func viewWillAppear() {
         super.viewWillAppear()
