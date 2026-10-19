@@ -385,6 +385,29 @@ final class LumennaMacUITests: XCTestCase {
         XCTAssertTrue(title.contains("\(day) \(month)") || title.contains("\(month) \(day)"), title)
     }
 
+    /// A task with a subtask is a row the outline folds, by its own disclosure triangle, which
+    /// runs the app's Collapse and Expand: whichever list draws the tasks, AppKit's or the
+    /// SwiftUI trial's, the outline is AppKit's, which reports a row's level and expansion to
+    /// VoiceOver itself.
+    func testATaskWithASubtaskFoldsInTheOutline() throws {
+        place("Tasks")
+        addTask("essay")
+        addTask("outline")
+        // The Task menu, which runs the in-hand task's own action.
+        let tasks = window.outlines["Tasks"]
+        tasks.staticTexts["outline"].click()
+        app.menuBars.menuBarItems["Task"].click()
+        app.menuBars.menuItems["Make Subtask Of…"].click()
+        pick("essay", with: "Move")
+        let triangle = tasks.disclosureTriangles.firstMatch
+        XCTAssertTrue(triangle.waitForExistence(timeout: 5), "essay folds: \(tasks.debugDescription)")
+        XCTAssertTrue(tasks.staticTexts["outline"].exists, "expanded to begin with")
+        triangle.click()
+        XCTAssertTrue(tasks.staticTexts["outline"].waitForNonExistence(timeout: 5), "collapsing hides the subtask")
+        triangle.click()
+        XCTAssertTrue(tasks.staticTexts["outline"].waitForExistence(timeout: 5), "expanding shows it again")
+    }
+
     // MARK: - Organising, from the sidebar
 
     func testAProjectIsMadeRenamedArchivedAndDeletedFromTheSidebar() {
