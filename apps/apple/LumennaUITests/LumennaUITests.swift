@@ -736,7 +736,7 @@ final class LumennaUITests: XCTestCase {
         tab("Settings")
         reveal("Devices and Sync").tap()
         app.buttons["Pair a device"].tap()
-        let entry = app.textViews["Code from the other device"]
+        let entry = app.textFields["Code from the other device"]
         XCTAssertTrue(entry.waitForExistence(timeout: 5))
 
         app.buttons["Pair Using This Code"].tap()
@@ -750,7 +750,9 @@ final class LumennaUITests: XCTestCase {
         let paste = app.buttons["Paste"]
         XCTAssertTrue(paste.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(paste.isHittable)
-        XCTAssertGreaterThanOrEqual(paste.frame.height, 44)
+        // Its touch target judged by Apple's own check, which knows the area a finger can
+        // hit; the frame XCUITest reports is what is drawn.
+        try audit(.hitRegion, "pairing, its Paste button")
         XCTAssertEqual(paste.frame.midY, entry.frame.midY, accuracy: entry.frame.height, "not beside the field")
         let pasted = NSPredicate(format: "value == %@", copied)
         paste.tap()
@@ -768,7 +770,7 @@ final class LumennaUITests: XCTestCase {
         tab("Settings")
         cell(containing: "Devices and Sync").tap()
         app.buttons["Pair a device"].tap()
-        let entry = app.textViews["Code from the other device"]
+        let entry = app.textFields["Code from the other device"]
         XCTAssertTrue(entry.waitForExistence(timeout: 5))
         // Pasted with the system's Paste button, as a code sent from the other device arrives.
         UIPasteboard.general.string = code

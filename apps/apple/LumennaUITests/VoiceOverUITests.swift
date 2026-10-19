@@ -96,7 +96,7 @@ final class VoiceOverUITests: XCTestCase {
         let pair = app.buttons["Pair a device"]
         XCTAssertTrue(pair.waitForExistence(timeout: 10))
         pair.tap()
-        XCTAssertTrue(app.textViews["Code from the other device"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["Code from the other device"].waitForExistence(timeout: 5))
         try voiceOver.enable()
         try move(to: "Code from the other device")
         let said = try voiceOver.moveForward().utterance
