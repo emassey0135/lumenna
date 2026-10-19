@@ -458,10 +458,15 @@ final class LumennaUITests: XCTestCase {
             usleep(150_000)
         }
         XCTAssertEqual(takes.value as? String, "0", "a break takes no tasks until set apart")
-        takes.switches.firstMatch.tap()
+        // Tapped again while it stays off: a tap that lands as the form still glides only stops
+        // the glide, and the switch is left as it was.
         let on = NSPredicate(format: "value == '1'")
-        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: on, evaluatedWith: takes)], timeout: 3), .completed,
-                       "Takes tasks was not turned on")
+        var turned = false
+        for _ in 0..<3 where !turned {
+            takes.switches.firstMatch.tap()
+            turned = XCTWaiter.wait(for: [expectation(for: on, evaluatedWith: takes)], timeout: 3) == .completed
+        }
+        XCTAssertTrue(turned, "Takes tasks was not turned on")
         app.buttons["Save"].tap()
 
         let block = app.cells.containing(NSPredicate(format: "value CONTAINS 'takes tasks'")).firstMatch

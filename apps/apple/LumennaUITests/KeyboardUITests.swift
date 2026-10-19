@@ -74,14 +74,19 @@ final class KeyboardUITests: XCTestCase {
     }
 
     func testCommandFPutsTheFilterInHand() throws {
-        // In the iPad simulator ⌘F never reaches the app: no responder is asked to do
-        // anything with it, where ⌘3 is. Filter Tasks is still in the Edit menu.
-        try XCTSkipIf(pad, "iPadOS keeps ⌘F from the app in the simulator")
+        // The simulator keeps ⌘F from the app: on iPad always, and on iPhone from the app's
+        // second launch on, so after any other test. No responder is asked about it, where ⌘3
+        // is, and no setting of the app's changes that. What the command does is
+        // `KeyboardCommandTests`'.
+        #if targetEnvironment(simulator)
+        throw XCTSkip("the simulator keeps ⌘F from the app")
+        #else
         tab("Today")
         press("f")
         let filter = app.textViews["Filter"]
         let focused = expectation(for: NSPredicate(format: "hasKeyboardFocus == true"), evaluatedWith: filter)
         wait(for: [focused], timeout: 10)
+        #endif
     }
 
     func testCommandThreeAndFourOpenBlocksAndTheTrash() {
