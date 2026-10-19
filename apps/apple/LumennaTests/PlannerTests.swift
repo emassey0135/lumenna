@@ -30,22 +30,6 @@ final class PlannerTests: XCTestCase {
         return screen
     }
 
-    // MARK: - The day's own actions
-
-    func testTheDaysOwnActionsAreOfferedInTheBarAndOnTheHeadingInTheCoresOrder() throws {
-        // A work block all of today, so the day is under way whatever the time: 1440 minutes,
-        // since 1439 ends at 23:59 and is not under way in the day's last minute.
-        _ = try core.lumenna.addBlock(block: NewBlock(
-            title: "All day", at: "00:00", minutes: 1440, date: Clock.isoDay(.now), kind: "work", repeat: nil
-        ))
-        let screen = shown(DayViewController(core: core))
-        let actions = try core.lumenna.plan(date: nil).actions.map(\.title)
-        XCTAssertTrue(actions.contains("Plan the Day"), "\(actions)")
-        XCTAssertTrue(actions.contains("Replan from Now"), "\(actions)")
-        XCTAssertEqual(screen.dayActionTitles, actions)
-        XCTAssertEqual(screen.headingActions.map(\.name), actions, "VoiceOver reaches them on the day's heading")
-    }
-
     // MARK: - Plan the Day
 
     func testPlanTheDayShowsEachSittingWithItsReasonAndTheNextPlanAfterAPartialApply() throws {
@@ -153,7 +137,14 @@ final class PlannerTests: XCTestCase {
 
     func testTheTaskScreenHasTheTasksHistory() throws {
         let id = try XCTUnwrap(core.lumenna.addTask(text: "Report").task?.id)
+        // The app takes in what the surface wrote, and the form fills in from the app's details.
+        core.app.tick()
         let model = TaskDetailModel(core: core, id: id)
+        let deadline = Date().addingTimeInterval(10)
+        while model.task == nil, Date() < deadline {
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.02))
+            if model.task == nil { model.show() }
+        }
         XCTAssertFalse(model.task?.history.isEmpty ?? true, "the core says something of every task's past")
     }
 

@@ -1,3 +1,4 @@
+import LumennaApp
 import UIKit
 
 /// The iPhone's top level: the day, the tasks, everything else to browse, and settings.
@@ -34,6 +35,22 @@ final class RootTabs: UITabBarController, CommandActions {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// The app's questions, asked over whatever is in front, and the forms they open, over the
+    /// tab shown.
+    private lazy var asker = PhoneAsker(core: core, from: self)
+    private var questions: AppQuestions?
+    private var sheets: AppSheets?
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        sheets = AppSheets(core: core, root: self)
+        questions = AppQuestions(app: core.app, asker: asker) { [weak self] action in
+            guard let self else { return }
+            let shown = (self.selectedViewController as? UINavigationController)?.topViewController ?? self
+            shown.openForm(action, core: self.core)
+        }
+    }
 
     /// The tab at `index`, at its root, then `then` once it is in the window: a screen not
     /// yet shown can neither present nor take focus.

@@ -34,14 +34,18 @@ final class TaskDetailViewController: UIHostingController<TaskDetailView>, TaskF
 
     override var canBecomeFirstResponder: Bool { true }
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        // Back from another screen, which may have shown another task's details.
+        model.show()
+    }
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         takeKeyboardCommands()
     }
 
     // MARK: - TaskFormHost
-
-    var asker: ActionAsking { PhoneAsker(core: core, from: self) }
 
     func trashed() {
         closeBeside()

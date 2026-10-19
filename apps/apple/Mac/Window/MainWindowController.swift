@@ -1,4 +1,5 @@
 import AppKit
+import LumennaApp
 
 /// The one main window: a sidebar of places, the list for the place chosen, and the
 /// chosen task's details — three panes in an `NSSplitViewController`, as Mail has them.
@@ -47,10 +48,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             window.center()
         }
         sidebar.select(.today)
+        // The app's questions, as sheets on this window, and the forms they open.
+        questions = AppQuestions(app: core.app, asker: window) { [weak self] action in
+            guard let self else { return }
+            switch action.kind {
+            case .reminders: self.window?.openReminders(of: action.target)
+            case .editTask: self.showTask(action.target)
+            case .edit where action.subject == .task: self.showTask(action.target)
+            default: break
+            }
+        }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    private var questions: AppQuestions?
 
     // MARK: - Places
 

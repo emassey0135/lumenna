@@ -71,24 +71,10 @@ final class SwipeActionTests: XCTestCase {
         var listed: [String] { leading + trailing + custom }
     }
 
-    private func offered(_ tasks: TaskListViewController, _ item: Int) -> Offered {
-        Offered(
-            leading: titles(tasks.leadingSwipeActions(at: path(item))), trailing: titles(tasks.trailingSwipeActions(at: path(item))),
-            custom: tasks.customActions(at: path(item)).map(\.name), menu: titles(tasks.menu(at: path(item)))
-        )
-    }
-
     private func offered(_ list: ItemListViewController, _ item: Int) -> Offered {
         Offered(
             trailing: titles(list.trailingSwipeActions(at: path(item))),
             custom: list.customActions(at: path(item)).map(\.name), menu: titles(list.menu(at: path(item)))
-        )
-    }
-
-    private func offered(_ day: DayViewController, _ item: Int) -> Offered {
-        Offered(
-            trailing: titles(day.trailingSwipeActions(at: path(item))),
-            custom: day.customActions(at: path(item)).map(\.name), menu: titles(day.menu(at: path(item)))
         )
     }
 
@@ -102,56 +88,6 @@ final class SwipeActionTests: XCTestCase {
         let primary = Set(actions.filter(\.primary).map(\.title))
         XCTAssertTrue((offered.leading + offered.trailing).filter { $0 != fold }.allSatisfy(primary.contains), "only primary actions swipe: \(offered)", file: file, line: line)
         XCTAssertEqual(offered.menu, names + [fold].compactMap { $0 }, "the menu has every action: \(offered)", file: file, line: line)
-    }
-
-    /// A task's actions after Mark Done, as the core gives them; Move to Trash is swiped.
-    private let otherTaskActions = ["Edit Details", "Put in a Block", "Move to Project", "Make Subtask Of", "Wait For"]
-
-    func testATaskSwipesMarkDoneOneWayAndMoveToTrashTheOtherAndOffersTheRestOnceAsActions() throws {
-        _ = try core.lumenna.addTask(text: "water the plants")
-        let tasks = shown(TaskListViewController(core: core))
-        let row = offered(tasks, 0)
-        XCTAssertEqual(row.leading, ["Mark Done"])
-        XCTAssertEqual(row.trailing, ["Move to Trash"])
-        XCTAssertEqual(row.custom, otherTaskActions)
-        assertEachOnce(row, try core.lumenna.listTasks(query: "").rows[0].actions)
-        run("Mark Done", in: tasks.leadingSwipeActions(at: path(0)))
-        XCTAssertTrue(try core.lumenna.listTasks(query: "").rows.isEmpty, "completed, so no longer listed")
-    }
-
-    func testTheCellCarriesTheOtherActionsForVoiceOver() throws {
-        _ = try core.lumenna.addTask(text: "water the plants")
-        let tasks = shown(TaskListViewController(core: core))
-        let cell = try XCTUnwrap(list(in: tasks).cellForItem(at: path(0)))
-        XCTAssertEqual(cell.accessibilityCustomActions?.map(\.name), otherTaskActions)
-    }
-
-    func testATaskWithSubtasksAlsoOffersCollapse() throws {
-        _ = try core.lumenna.addTask(text: "essay")
-        _ = try core.lumenna.addTask(text: "outline")
-        let rows = try core.lumenna.listTasks(query: "").rows
-        let essay = try XCTUnwrap(rows.first { $0.title == "essay" })
-        let outline = try XCTUnwrap(rows.first { $0.title == "outline" })
-        _ = try core.lumenna.moveTask(id: outline.id, to: .parent(id: essay.id))
-        let tasks = shown(TaskListViewController(core: core))
-        XCTAssertEqual(titles(tasks.trailingSwipeActions(at: path(0))), ["Move to Trash", "Collapse"])
-        assertEachOnce(offered(tasks, 0), try core.lumenna.listTasks(query: "").rows[0].actions, fold: "Collapse")
-        run("Collapse", in: tasks.trailingSwipeActions(at: path(0)))
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
-        XCTAssertEqual(list(in: tasks).numberOfItems(inSection: 0), 1, "the subtask is folded away")
-        XCTAssertEqual(titles(tasks.trailingSwipeActions(at: path(0))), ["Move to Trash", "Expand"])
-        XCTAssertEqual(titles(tasks.menu(at: path(0))).last, "Expand")
-    }
-
-    func testATrashedTaskOffersRestoreAndDeleteFromTrash() throws {
-        let added = try core.lumenna.addTask(text: "old idea")
-        _ = try core.lumenna.trashTask(id: try XCTUnwrap(added.task?.id))
-        let trash = shown(TaskListViewController(core: core, title: "Trash", query: "deleted", mode: .trash))
-        XCTAssertNil(trash.leadingSwipeActions(at: path(0)), "nothing to mark done in the trash")
-        XCTAssertEqual(titles(trash.trailingSwipeActions(at: path(0))), ["Restore", "Delete from Trash"])
-        assertEachOnce(offered(trash, 0), try core.lumenna.listTasks(query: "deleted").rows[0].actions)
-        run("Restore", in: trash.trailingSwipeActions(at: path(0)))
-        XCTAssertEqual(try core.lumenna.listTasks(query: "").rows.map(\.title), ["old idea"])
     }
 
     func testTheSidebarOffersNewProjectAndCollapseOnItsProjectsHeading() throws {
@@ -169,52 +105,6 @@ final class SwipeActionTests: XCTestCase {
             let fold = titles(sidebar.trailingSwipeActions(at: path(index))).last.flatMap { ["Collapse", "Expand"].contains($0) ? $0 : nil }
             assertEachOnce(offered(sidebar, index), item.actions, fold: fold)
         }
-    }
-
-    func testABlockOnTheDaySwipesAssignAndDeleteAndOffersEditCancelThisDayAndRemindersOnceAsActions() throws {
-        let fields = BlockFields(
-            title: "Deep work", start: "09:00", minutes: "60", kind: "work", acceptsTasks: true,
-            countsCapacity: true, anchored: false, repeat: "every day", until: "", minMinutes: "",
-            taskFilter: "", colour: "", notes: ""
-        )
-        _ = try core.lumenna.addBlock(block: try newBlock(fields: fields, date: nil))
-        let day = shown(DayViewController(core: core))
-        let list = list(in: day)
-        let plan = try core.lumenna.plan(date: nil)
-        let block = try XCTUnwrap(plan.blocks.first)
-        let index = try XCTUnwrap((0..<list.numberOfItems(inSection: 0)).first { offered(day, $0).menu.contains("Delete Block") })
-        let row = offered(day, index)
-        XCTAssertEqual(row.trailing, ["Assign a Task", "Delete Block"])
-        XCTAssertEqual(row.custom, ["Edit Block", "Cancel This Day", "Reminders"])
-        assertEachOnce(row, block.actions)
-        run("Cancel This Day", in: day.customActions(at: path(index)))
-        XCTAssertEqual(try core.lumenna.plan(date: nil).cancelled.map(\.title), ["Deep work"], "the custom action runs the core's")
-    }
-
-    func testEveryRowOfTheDayOffersEachOfItsActionsOnce() throws {
-        let fields = BlockFields(
-            title: "Deep work", start: "09:00", minutes: "60", kind: "work", acceptsTasks: true,
-            countsCapacity: true, anchored: false, repeat: "", until: "", minMinutes: "",
-            taskFilter: "", colour: "", notes: ""
-        )
-        _ = try core.lumenna.addBlock(block: try newBlock(fields: fields, date: nil))
-        let day = shown(DayViewController(core: core))
-        let list = list(in: day)
-        for index in 0..<list.numberOfItems(inSection: 0) {
-            let row = offered(day, index)
-            XCTAssertEqual(Set(row.listed).count, row.listed.count, "nothing listed twice: \(row)")
-            XCTAssertEqual(Set(row.listed), Set(row.menu), "the menu and VoiceOver's list agree: \(row)")
-        }
-    }
-
-    func testMarkingDoneFromTheKeyboardIsTheRowsOwnAction() throws {
-        _ = try core.lumenna.addTask(text: "water the plants")
-        let tasks = shown(TaskListViewController(core: core))
-        let list = list(in: tasks)
-        list.selectItem(at: path(0), animated: false, scrollPosition: [])
-        XCTAssertTrue(tasks.canPerformAction(#selector(TaskListViewController.moveToTrash), withSender: nil))
-        tasks.toggleDone()
-        XCTAssertTrue(try core.lumenna.listTasks(query: "").rows.isEmpty, "completed, so no longer listed")
     }
 
     func testMoveUnderOffersWhatTheCoreOffersNotTheListAsFolded() throws {

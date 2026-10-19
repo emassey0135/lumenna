@@ -1,35 +1,28 @@
+import LumennaApp
 import UIKit
 
-/// The planner: a day as it is lived, as a list.
+/// The planner: a day as it is lived, as a list — the app's day (`ViewModel.day`).
 ///
 /// Blocks in time order with their sittings beneath them, free time as rows of its own, and
-/// now as a position rather than a highlight. The summary above says what a glance at a
-/// timeline would. Opening on today puts VoiceOver on now, not on midnight.
+/// now as a position rather than a highlight. The heading above says what a glance at a
+/// timeline would. The day shown, moving between days, what is in hand and folded, and every
+/// row's actions and their forms are the app's; opening on today puts VoiceOver on now, not on
+/// midnight.
 final class DayViewController: UIViewController, UICollectionViewDelegate {
-    private enum Row: Hashable {
-        case block(PlanBlock)
-        case sitting(PlanAssignment, in: PlanBlock)
-        case free(start: String, end: String, minutes: UInt32, title: String, details: [String], actions: [Action])
-        case now(time: String, title: String)
-        /// A repeating block cancelled for this day alone, so the day can be put back.
-        case cancelled(CancelledBlock)
-    }
-
     private let core: Core
-    /// The day shown, as an ISO date; `nil` follows today.
-    private var day: String?
-    private var plan: Plan?
-    /// Every row of the day, and those shown once folded.
-    private var listed: [Row] = []
-    private var shown: [Folding.Shown<Row>] = []
-    private var rows: [Row] = []
-    private var folding = Folding()
+    /// The rows shown, not folded away, each with its line.
+    private var rows: [(item: LumennaApp.DayItem, line: LumennaApp.Line?)] = []
+    /// The app's landing count this screen last moved focus for.
+    private var landed: UInt32?
+    /// The row in hand when this screen last showed the day, to put back when it opens again.
+    private var lastInHand: String?
     private var collectionView: UICollectionView!
-    private var dataSource: UICollectionViewDiffableDataSource<Int, Row>!
+    private var dataSource: UICollectionViewDiffableDataSource<Int, String>!
     private let summary = UILabel()
     private var landedOnNow = false
+    private var observer: NSObjectProtocol?
     private weak var dayButtons: UIStackView?
-    /// The day's own actions (`Plan.actions`): Plan the Day, Replan from Now, End the Day.
+    /// The day's own actions (`DayView.actions`): Plan the Day, Replan from Now, End the Day.
     /// Among the day's buttons, not in the navigation bar: beside Add and Undo there, it
     /// crowded the title until the audit found it clipped in the iPad's narrow column.
     private lazy var dayMenu: UIButton = {
@@ -47,6 +40,13 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+    }
+
+    /// Whether the app is showing the day: only then is its day this screen's.
+    private var here: Bool { core.app.view.place == .today }
+
     // MARK: - Building
 
     override func viewDidLoad() {
@@ -63,9 +63,9 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         // Moving through days, under the summary rather than in a bottom toolbar, which the
         // floating tab bar would cover.
         let days = UIStackView(arrangedSubviews: [
-            dayButton("Previous Day") { [weak self] in self?.step(-1) },
-            dayButton("Now") { [weak self] in self?.showNow() },
-            dayButton("Next Day") { [weak self] in self?.step(1) },
+            dayButton("Previous Day") { [weak self] in self?.move(.previous) },
+            dayButton("Now") { [weak self] in self?.move(.now) },
+            dayButton("Next Day") { [weak self] in self?.move(.next) },
             dayButton("Go to Day") { [weak self] in self?.chooseDay() },
             dayMenu,
         ])
@@ -95,11 +95,12 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
 
-        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, Row> { [weak self] cell, path, row in
-            self?.configure(cell, row, at: path.item)
+        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, String> { [weak self] cell, _, key in
+            guard let self, let row = self.rows.first(where: { $0.item.key == key }) else { return }
+            self.configure(cell, row.item, line: row.line)
         }
-        dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) { view, path, row in
-            view.dequeueConfiguredReusableCell(using: cell, for: path, item: row)
+        dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) { view, path, key in
+            view.dequeueConfiguredReusableCell(using: cell, for: path, item: key)
         }
 
         let add = UIBarButtonItem(systemItem: .add, primaryAction: UIAction { [weak self] _ in self?.addBlock() })
@@ -111,7 +112,9 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
             .undo { [weak self] in self?.undoChange() },
             .redo { [weak self] in self?.redoChange() },
         ]
-        NotificationCenter.default.addObserver(self, selector: #selector(storeChanged), name: Core.changed, object: nil)
+        observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: core.app, queue: .main) { [weak self] _ in
+            self?.draw()
+        }
     }
 
     /// Side by side while the three fit, one above another once the text is too large for
@@ -148,18 +151,29 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
         if let selected = collectionView.indexPathsForSelectedItems?.first {
             collectionView.deselectItem(at: selected, animated: animated)
         }
-        reload()
+        show()
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         takeKeyboardCommands()
-        // Opening the day lands on now, not at midnight. Once, so coming back from a
-        // detail does not move focus away from where the person was.
+        // Opening the day lands on now, not at midnight, which the app puts in hand. Once, so
+        // coming back from a detail does not move focus away from where the person was.
         if !landedOnNow {
             landedOnNow = true
-            showNow(announcing: false)
+            if let focus = core.app.view.focus { land(on: focus) }
         }
+    }
+
+    /// Makes the day the app's place, unless it is already: coming back from a task's details
+    /// keeps the day shown and the row in hand.
+    private func show() {
+        if !here {
+            core.app.send(.open(.today))
+            if let lastInHand { core.app.send(.focus(lastInHand)) }
+            landed = nil
+        }
+        draw()
     }
 
     private func dayButton(_ title: String, action: @escaping () -> Void) -> UIButton {
@@ -177,260 +191,106 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
 
     // MARK: - Rows
 
-    @objc private func storeChanged() {
-        reload()
-    }
-
-    private func reload(then finished: (() -> Void)? = nil) {
-        do {
-            let plan = try core.lumenna.plan(date: day)
-            self.plan = plan
-            title = Clock.spokenDay(plan.date)
-            // The day's heading, as every app says it: "<day>. <summary>".
-            summary.text = "\(Clock.spokenDay(plan.date)). \(plan.summary)"
-            offerDayActions(plan)
-            listed = plan.timeline.flatMap { item -> [Row] in
-                switch item {
-                case let .block(row):
-                    guard let block = plan.blocks.first(where: { $0.row == row }) else { return [] }
-                    return [.block(block)] + block.assignments.map { .sitting($0, in: block) }
-                case let .free(start, end, minutes, title, details, actions):
-                    return [.free(start: start, end: end, minutes: minutes, title: title, details: details, actions: actions)]
-                case let .now(time, title):
-                    return [.now(time: time, title: title)]
-                }
-            } + plan.cancelled.map { .cancelled($0) }
-        } catch {
-            summary.text = error.sentence
-        }
-        apply(then: finished)
-    }
-
-    /// Shows the day's rows as folded.
-    private func apply(then finished: (() -> Void)? = nil) {
-        shown = folding.shown(listed, depth: depth, key: foldKey)
-        rows = shown.map(\.item)
-        var snapshot = NSDiffableDataSourceSnapshot<Int, Row>()
+    /// Draws the app's day while it is shown, each row redrawn in place, and moves VoiceOver to
+    /// the row in hand when the app moved it.
+    private func draw() {
+        guard isViewLoaded, here, let day = core.app.view.day else { return }
+        let view = core.app.view
+        let lines = core.app.lines
+        title = lines.dayTitle
+        let worded = day.items.enumerated().map { index, item in (item, index < lines.day.count ? lines.day[index] : nil) }
+        // The day's heading, as every app says it: "<day>. <summary>".
+        summary.text = worded.first { $0.0.kind == .summary }?.1?.text ?? lines.dayTitle
+        offerDayActions(day)
+        rows = worded.filter { !$0.0.hidden && $0.0.kind != .summary }
+        lastInHand = view.focus
+        var snapshot = NSDiffableDataSourceSnapshot<Int, String>()
         snapshot.appendSections([0])
-        snapshot.appendItems(rows)
+        snapshot.appendItems(rows.map(\.item.key))
         // A block's fold state is in its value, so every row is redrawn.
-        snapshot.reconfigureItems(rows)
-        dataSource.apply(snapshot, animatingDifferences: false, completion: finished)
-    }
-
-    /// What identifies a row across a reload, for folding and for keeping focus on it: only
-    /// a block has anything under it.
-    private func foldKey(_ row: Row) -> String {
-        switch row {
-        case let .block(block): "block:\(block.id)"
-        case let .sitting(sitting, _): "sitting:\(sitting.id)"
-        case let .free(start, _, _, _, _, _): "free:\(start)"
-        case .now: "now"
-        case let .cancelled(block): "cancelled:\(block.series)"
+        snapshot.reconfigureItems(rows.map(\.item.key))
+        let landing = view.landing
+        let land = landed.map { landing > $0 } ?? false
+        landed = landing
+        dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
+            guard land, let self, let focus = view.focus else { return }
+            self.land(on: focus)
         }
     }
 
-    /// Folds or unfolds the block `key`, keeping VoiceOver on it.
-    private func fold(_ key: String, saying said: String) {
-        folding.toggle(key)
-        apply { [weak self] in
-            guard let self, let index = self.rows.firstIndex(where: { self.foldKey($0) == key }) else { return }
-            let path = IndexPath(item: index, section: 0)
-            UIAccessibility.post(notification: .layoutChanged, argument: self.collectionView.cellForItem(at: path))
-            Announcer.say(said)
-        }
-    }
-
-    private func depth(_ row: Row) -> Int {
-        if case .sitting = row { return 1 }
-        return 0
-    }
-
-    private func configure(_ cell: UICollectionViewListCell, _ row: Row, at index: Int) {
-        var content = UIListContentConfiguration.subtitleCell()
-        content.textProperties.numberOfLines = 0
-        content.secondaryTextProperties.numberOfLines = 0
-        content.secondaryTextProperties.color = .quietLabel
-        content.imageProperties.preferredSymbolConfiguration = UIImage.SymbolConfiguration(textStyle: .body)
-        var label: String
-        var value: [String] = []
-        switch row {
-        case let .block(block):
-            label = "\(Clock.time(block.start)) to \(Clock.time(block.end)), \(block.title)"
-            // The core words the details for every app.
-            value = block.details
-            content.text = label
-            content.secondaryText = value.joined(separator: ", ")
-            content.image = UIImage(systemName: block.when == "now" ? "clock.fill" : "clock")
-            cell.accessories = [.disclosureIndicator(displayed: .always)]
-        case let .sitting(sitting, _):
-            label = sitting.title
-            value = sitting.details
-            content.text = label
-            content.secondaryText = value.joined(separator: ", ")
-            content.image = UIImage(systemName: sitting.running ? "timer" : sitting.status == "paused" ? "pause.circle" : "circle.dashed")
-            content.directionalLayoutMargins.leading += 24
-            cell.accessories = [.disclosureIndicator(displayed: .always)]
-        case let .free(start, end, _, title, details, _):
-            // "<title>, <details>, <start> to <end>", the core's words in every app's order.
-            label = ([title] + details).joined(separator: ", ")
-            value = ["\(Clock.time(start)) to \(Clock.time(end))"]
-            content.text = label
-            content.secondaryText = value[0]
-            content.textProperties.color = .quietLabel
-            cell.accessories = []
-        case let .now(time, title):
-            label = "\(title), \(Clock.time(time))"
-            content.text = label
-            content.textProperties.font = .preferredFont(forTextStyle: .headline)
-            content.image = UIImage(systemName: "arrowtriangle.right.fill")
-            content.imageProperties.tintColor = .warningLabel
-            cell.accessories = []
-        case let .cancelled(block):
-            label = "\(Clock.time(block.start)), \(block.title)"
-            value = block.details
-            content.text = label
-            content.secondaryText = value.joined(separator: ", ")
-            content.textProperties.color = .quietLabel
-            content.image = UIImage(systemName: "xmark.circle")
-            cell.accessories = [.disclosureIndicator(displayed: .always)]
-        }
-        if index < shown.count, let fold = shown[index].state {
-            value.append(fold)
-        }
-        // Depth is said where it changes: indentation alone says nothing in speech.
-        let previous = index > 0 && index - 1 < rows.count ? depth(rows[index - 1]) : 0
-        if depth(row) != previous {
-            value.append("level \(depth(row) + 1)")
-        }
-        cell.contentConfiguration = content
-        cell.isAccessibilityElement = true
-        cell.accessibilityLabel = label
-        cell.accessibilityValue = value.joined(separator: ", ")
-        cell.accessibilityTraits = {
-            if case .now = row { return .staticText }
-            return .button
-        }()
-        // Only what is not swiped, which UIKit adds to the swipe actions.
-        cell.accessibilityCustomActions = rowActions(for: row).customActions
-    }
-
-    // MARK: - Actions
-
-    /// What can be done to a row, the core's: its swipe actions, which VoiceOver lists as
-    /// actions. Asking and running them is `ActionRun`'s; the forms are this screen's.
-    private func actions(for row: Row) -> [Action] {
-        switch row {
-        case let .block(block): block.actions
-        case let .sitting(sitting, _): sitting.actions
-        case let .free(_, _, _, _, _, actions): actions
-        case let .cancelled(block): block.actions
-        case .now: []
-        }
-    }
-
-    private func perform(_ action: Action, on row: Row) {
-        let key = foldKey(row)
-        let index = rows.firstIndex(of: row)
-        run(action, core: core, form: { [weak self] action in self?.form(action, on: row) }) { [weak self] change, _ in
-            self?.changed(change, keeping: key, near: index)
-        }
-    }
-
-    /// The forms an action opens: a block's, a new block in free time, a sitting's task.
-    private func form(_ action: Action, on row: Row) {
-        switch (action.kind, row) {
-        case let (.edit, .block(block)): edit(block)
-        case let (.addBlock, .free(start, _, minutes, _, _, _)): addBlock(at: action.other ?? start, minutes: minutes)
-        case (.editTask, _): showBeside(TaskDetailViewController(core: core, id: action.target))
-        default: break
-        }
-    }
-
-    /// After a change: reloads with focus on the same row if it is still there, or on
-    /// whatever now holds its place, and says what happened behind the focus change.
-    private func changed(_ change: Change, keeping key: String?, near index: Int?) {
-        reload { [weak self] in
-            guard let self else { return }
-            let target = key.flatMap { key in self.rows.firstIndex { self.foldKey($0) == key } }
-                ?? index.map { min($0, self.rows.count - 1) }
-            if let target, target >= 0 {
-                self.focus(IndexPath(item: target, section: 0))
-            }
-            Announcer.say(change.announcement, notices: change.notices)
-        }
-    }
-
-    /// Runs a change made here, not through a row's action: undo and redo.
-    private func change(focusing row: Row?, _ operation: () throws -> Change) {
-        do {
-            changed(try operation(), keeping: row.map(foldKey), near: row.flatMap { rows.firstIndex(of: $0) })
-        } catch {
-            showFailure(error.sentence)
-        }
-    }
-
-    private func focus(_ path: IndexPath) {
+    /// Puts VoiceOver on the row `key`, scrolled into view.
+    private func land(on key: String) {
+        guard let index = rows.firstIndex(where: { $0.item.key == key }) else { return }
+        let path = IndexPath(item: index, section: 0)
         collectionView.scrollToItem(at: path, at: .centeredVertically, animated: false)
         collectionView.layoutIfNeeded()
         UIAccessibility.post(notification: .layoutChanged, argument: collectionView.cellForItem(at: path))
     }
 
-    /// Asks "this day, or every day?" of a repeating block — never guessed.
-    private func edit(_ block: PlanBlock) {
-        guard block.repeats, let date = plan?.date else {
-            presentForm(series: block)
-            return
+    private func configure(_ cell: UICollectionViewListCell, _ item: LumennaApp.DayItem, line: LumennaApp.Line?) {
+        var content = UIListContentConfiguration.subtitleCell()
+        content.textProperties.numberOfLines = 0
+        content.secondaryTextProperties.numberOfLines = 0
+        content.secondaryTextProperties.color = .quietLabel
+        content.imageProperties.preferredSymbolConfiguration = UIImage.SymbolConfiguration(textStyle: .body)
+        // The line is the core's, in every app's order and this device's clock.
+        content.text = line?.title
+        content.secondaryText = line.flatMap { $0.detail.isEmpty ? nil : $0.detail }
+        cell.accessories = []
+        switch item.kind {
+        case .block:
+            content.image = UIImage(systemName: item.block?.when == "now" ? "clock.fill" : "clock")
+            cell.accessories = [.disclosureIndicator(displayed: .always)]
+        case .sitting:
+            let sitting = item.sitting
+            content.image = UIImage(systemName: sitting?.running == true ? "timer" : sitting?.status == "paused" ? "pause.circle" : "circle.dashed")
+            content.directionalLayoutMargins.leading += 24
+            cell.accessories = [.disclosureIndicator(displayed: .always)]
+        case .free:
+            content.textProperties.color = .quietLabel
+        case .now:
+            content.textProperties.font = .preferredFont(forTextStyle: .headline)
+            content.image = UIImage(systemName: "arrowtriangle.right.fill")
+            content.imageProperties.tintColor = .warningLabel
+        case .cancelled:
+            content.textProperties.color = .quietLabel
+            content.image = UIImage(systemName: "xmark.circle")
+            cell.accessories = [.disclosureIndicator(displayed: .always)]
+        case .summary:
+            break
         }
-        choose("Change \(block.title)", message: "Which occurrences?", actions: [
-            ("\(Clock.spokenDay(date)) Only", { [weak self] in self?.presentForm(occurrence: block, day: date) }),
-            ("Every Occurrence", { [weak self] in self?.presentForm(series: block) }),
-        ])
+        cell.contentConfiguration = content
+        cell.isAccessibilityElement = true
+        cell.accessibilityLabel = line?.title
+        cell.accessibilityValue = AppModel.spoken(detail: line?.detail, expanded: item.expanded, level: item.level)
+        cell.accessibilityTraits = item.kind == .now ? .staticText : .button
+        // Only what is not swiped, which UIKit adds to the swipe actions.
+        cell.accessibilityCustomActions = rowActions(for: item).customActions
     }
 
-    private func presentForm(series block: PlanBlock) {
-        do {
-            presentBlockForm(try .series(core: core, id: block.series, saved: saved(focusing: .block(block))))
-        } catch {
-            showFailure(error.sentence)
-        }
+    // MARK: - Actions
+
+    private func perform(_ action: LumennaApp.Action, on item: LumennaApp.DayItem) {
+        core.app.run(action, on: item.key)
     }
 
-    private func presentForm(occurrence block: PlanBlock, day: String) {
-        presentBlockForm(.occurrence(core: core, block: block, day: day, saved: saved(focusing: .block(block))))
-    }
-
-    /// After a form saves: reload, keep focus on the row edited, and say what changed.
-    private func saved(focusing row: Row) -> (Change) -> Void {
-        { [weak self] change in self?.change(focusing: row) { change } }
-    }
-
-    private func addBlock(at start: String? = nil, minutes: UInt32? = nil) {
-        let day = plan.flatMap { try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse($0.date) } ?? .now
-        let model = BlockFormModel(
-            core: core,
-            purpose: .add,
-            start: start,
-            minutes: Int(min(minutes ?? 60, 720)),
-            day: day
-        ) { [weak self] change in
-            self?.reload { Announcer.say(change.announcement, notices: change.notices) }
-        }
-        presentBlockForm(model)
+    /// The row's action of one of these kinds, if it has one.
+    private func run(_ kinds: LumennaApp.ActionKind..., on item: LumennaApp.DayItem) {
+        if let action = item.actions.first(where: { kinds.contains($0.kind) }) { perform(action, on: item) }
     }
 
     // MARK: - The day's own actions
 
-    /// The day's actions, the core's, in its order: a menu in the bar, and the heading's
-    /// actions for VoiceOver, where the day is.
-    private func offerDayActions(_ plan: Plan) {
-        let run = { [weak self] (action: Action) in self?.performDay(action) }
-        dayMenu.menu = UIMenu(title: Clock.spokenDay(plan.date), children: plan.actions.map { action in
+    /// The day's actions, the app's, in its order: a menu among the day's buttons, and the
+    /// heading's actions for VoiceOver, where the day is.
+    private func offerDayActions(_ day: LumennaApp.DayView) {
+        let run = { [weak self] (action: LumennaApp.Action) in self?.core.app.send(.perform(action)) }
+        dayMenu.menu = UIMenu(title: core.app.lines.dayTitle, children: day.actions.map { action in
             UIAction(title: action.title, attributes: action.destructive ? .destructive : []) { _ in run(action) }
         })
-        dayMenu.isHidden = plan.actions.isEmpty
+        dayMenu.isHidden = day.actions.isEmpty
         summary.isAccessibilityElement = true
-        summary.accessibilityCustomActions = plan.actions.map { action in
+        summary.accessibilityCustomActions = day.actions.map { action in
             UIAccessibilityCustomAction(name: action.title) { _ in
                 run(action)
                 return true
@@ -443,123 +303,88 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     /// The heading's actions, as VoiceOver lists them.
     var headingActions: [UIAccessibilityCustomAction] { summary.accessibilityCustomActions ?? [] }
 
-    /// Runs one of the day's actions: Plan the Day and Replan from Now open their screen,
-    /// the rest ask their question here. Focus stays where it was, or near it.
-    func performDay(_ action: Action) {
-        let focused = UIAccessibility.voiceOverView.flatMap { view in
-            sequence(first: view, next: \.superview).first { $0 is UICollectionViewCell } as? UICollectionViewCell
-        }
-        let index = focused.flatMap { collectionView.indexPath(for: $0) }?.item
-        let key = index.flatMap { $0 < rows.count ? foldKey(rows[$0]) : nil }
-        run(action, core: core, form: { [weak self] action in
-            guard let self else { return }
-            self.presentProposal(for: action, core: self.core)
-        }) { [weak self] change, _ in
-            self?.changed(change, keeping: key, near: index)
-        }
-    }
-
     /// Replan from Now, as the overrun warning's Replan opens it: today, the screen over it.
     func openReplan() {
-        showNow(announcing: false)
-        do {
-            presentProposal(try ProposalModel(core: core, kind: .replan))
-        } catch {
-            showFailure(error.sentence)
-        }
+        show()
+        core.app.send(.day(.now))
+        core.app.send(.proposal(.replan))
     }
 
     // MARK: - Moving through days
 
-    private func step(_ days: Int) {
-        let current = plan.flatMap { try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse($0.date) } ?? .now
-        guard let next = Calendar.current.date(byAdding: .day, value: days, to: current) else { return }
-        day = Calendar.current.isDateInToday(next) ? nil : Clock.isoDay(next)
-        reload { [weak self] in
-            guard let self else { return }
-            // A new day is a new screen's worth: say it, and start at its top.
-            UIAccessibility.post(notification: .screenChanged, argument: self.summary)
-        }
-    }
-
-    /// "Go to now": today, on the now row or the block happening now.
-    private func showNow(announcing: Bool = true) {
-        day = nil
-        reload { [weak self] in
-            guard let self else { return }
-            let index = self.rows.firstIndex {
-                switch $0 {
-                case .now: return true
-                case let .block(block): return block.when == "now"
-                default: return false
-                }
-            }
-            if let index {
-                self.focus(IndexPath(item: index, section: 0))
-            } else if announcing {
-                UIAccessibility.post(notification: .screenChanged, argument: self.summary)
-            }
-        }
+    private func move(_ step: LumennaApp.DayMove) {
+        show()
+        // The app says the day newly shown, "<day>. <summary>", and puts now in hand for Now.
+        core.app.send(.day(step))
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt path: IndexPath) {
-        guard let row = dataSource.itemIdentifier(for: path) else { return }
-        switch row {
-        case let .block(block): edit(block)
-        case let .sitting(sitting, _):
-            showBeside(TaskDetailViewController(core: core, id: sitting.task))
-        case let .free(start, _, minutes, _, _, _): addBlock(at: start, minutes: minutes)
-        case let .cancelled(block):
+        guard let key = dataSource.itemIdentifier(for: path), let item = rows.first(where: { $0.item.key == key })?.item else { return }
+        switch item.kind {
+        case .block: run(.edit, on: item)
+        case .sitting:
+            if let task = item.sitting?.task {
+                core.app.send(.focus(item.key))
+                showBeside(TaskDetailViewController(core: core, id: task))
+            }
+        case .free: run(.addBlock, on: item)
+        case .cancelled:
             collectionView.deselectItem(at: path, animated: true)
-            choose(([Clock.time(block.start), block.title] + block.details).joined(separator: ", "), actions: actions(for: row).map { action in
-                (action.title, { [weak self] in self?.perform(action, on: row) })
+            let line = rows.first { $0.item.key == key }?.line?.text ?? ""
+            choose(line, actions: item.actions.map { action in
+                (action.title, { [weak self] in self?.perform(action, on: item) })
             })
-        case .now: collectionView.deselectItem(at: path, animated: true)
+        case .now, .summary: collectionView.deselectItem(at: path, animated: true)
         }
     }
 
     /// A reminder's block, chosen in Notification Center: its day, with VoiceOver on it.
     func show(day iso: String, series: String) {
-        day = iso == Clock.isoDay(.now) ? nil : iso
-        reload { [weak self] in
-            guard let self else { return }
-            let index = rows.firstIndex {
-                if case let .block(block) = $0 { return block.series == series }
-                return false
-            }
-            if let index {
-                focus(IndexPath(item: index, section: 0))
-            } else {
-                UIAccessibility.post(notification: .screenChanged, argument: summary)
-            }
+        show()
+        goTo(iso)
+        if let block = core.app.current.view.day?.items.first(where: { $0.kind == .block && $0.block?.series == series }) {
+            core.app.send(.focus(block.key))
+            DispatchQueue.main.async { [weak self] in self?.land(on: block.key) }
         }
     }
+
+    /// Goes to the day named, as Go to Day's answer: true if the core read it, else the day's
+    /// question stays closed and why is `goToRefusal`.
+    @discardableResult
+    private func goTo(_ named: String) -> Bool {
+        core.app.send(.day(.ask))
+        core.app.send(.answer(.text(text: named)))
+        if let refusal = core.app.current.view.asking?.refusal {
+            core.app.send(.cancel)
+            goToRefusal = refusal
+            return false
+        }
+        return true
+    }
+
+    private var goToRefusal: String?
 
     // MARK: - Undo, and going to a day
 
     @objc func undoChange() {
         if let typing = UIResponder.editingWithUndo, typing.canUndo { typing.undo(); return }
-        change(focusing: nil) { try core.lumenna.undo() }
+        core.app.send(.undo)
     }
 
     @objc func redoChange() {
         if let typing = UIResponder.editingWithUndo, typing.canRedo { typing.redo(); return }
-        change(focusing: nil) { try core.lumenna.redo() }
+        core.app.send(.redo)
     }
 
+    /// Go to Day: a day typed in the core's words, or the system's calendar. The app reads it,
+    /// as the answer to its own Go to Day; a day it cannot read stays in the sheet with why.
     private func chooseDay() {
-        let current = plan.flatMap { try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse($0.date) } ?? .now
-        let picker = DayPickerViewController(showing: current) { [weak self] named in
+        let shown = core.app.view.day.flatMap { try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse($0.date) } ?? .now
+        let picker = DayPickerViewController(showing: shown) { [weak self] named in
             guard let self else { return {} }
-            // The core reads the day, typed or picked; the day it found is the one kept, so
-            // the previous and next days step from it.
-            let found = try self.core.lumenna.plan(date: named).date
-            return {
-                self.day = found == Clock.isoDay(.now) ? nil : found
-                self.reload {
-                    UIAccessibility.post(notification: .screenChanged, argument: self.summary)
-                }
-            }
+            self.show()
+            guard self.goTo(named) else { throw DayRefused(sentence: self.goToRefusal ?? "") }
+            return {}
         }
         present(UINavigationController(rootViewController: picker), animated: true)
     }
@@ -569,11 +394,14 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     // The Day menu's commands, and New Block on the day shown (`KeyboardCommands`).
     override var canBecomeFirstResponder: Bool { true }
 
-    @objc func previousDay() { step(-1) }
-    @objc func nextDay() { step(1) }
-    @objc func goToNow() { showNow() }
+    @objc func previousDay() { move(.previous) }
+    @objc func nextDay() { move(.next) }
+    @objc func goToNow() { move(.now) }
     @objc func goToDay() { chooseDay() }
-    @objc func newBlock() { addBlock() }
+    @objc func newBlock() {
+        show()
+        core.app.send(.block(.new(start: nil, minutes: nil)))
+    }
     // The day's own actions, from the Day menu: the day shown's of each kind.
     @objc func planTheDay() { runDay(.planDay) }
     @objc func replanFromNow() { runDay(.replan) }
@@ -582,51 +410,61 @@ final class DayViewController: UIViewController, UICollectionViewDelegate {
     @objc func clearTheDay() { runDay(.clearDay) }
 
     /// The day's action of `kind`, or why the day has none, in the core's words.
-    func runDay(_ kind: ActionKind) {
-        // Read again first: the day's actions change with the time, and a screen just chosen
-        // by a command has not yet appeared to read it.
+    func runDay(_ kind: LumennaApp.ActionKind) {
+        // A screen just chosen by a command has not yet appeared to open the day.
         loadViewIfNeeded()
-        reload()
-        if let action = plan?.actions.first(kind) {
-            performDay(action)
+        show()
+        if let action = core.app.current.view.day?.actions.first(where: { $0.kind == kind }) {
+            core.app.send(.perform(action))
         } else {
-            Announcer.say(notOffered(kind: kind, subject: .day, thisDevice: false))
+            Announcer.say(LumennaApp.notOffered(kind: kind, subject: .day, thisDevice: false))
         }
     }
+
+    /// Add Block, in the bar.
+    private func addBlock() {
+        newBlock()
+    }
+}
+
+/// A day the core could not read, its sentence for the Go to Day sheet to show.
+private struct DayRefused: LocalizedError {
+    let sentence: String
+    var errorDescription: String? { sentence }
 }
 
 // The row's actions, apart from the layout that asks for them, so a test can ask too.
 extension DayViewController {
-    /// The row's actions as the day offers them (`RowActions`), with Expand or Collapse.
-    private func rowActions(for row: Row) -> RowActions {
-        let fold = rows.firstIndex(of: row).flatMap { index in
-            index < shown.count
-                ? folding.action(for: shown[index], key: foldKey(row)) { [weak self] key, said in self?.fold(key, saying: said) }
-                : nil
-        }
-        return RowActions(actions: actions(for: row), fold: fold) { [weak self] action in self?.perform(action, on: row) }
+    /// The row's actions as the day offers them (`AppRowActions`), Expand or Collapse among them.
+    private func rowActions(for item: LumennaApp.DayItem) -> AppRowActions {
+        AppRowActions(actions: item.actions) { [weak self] action in self?.perform(action, on: item) }
+    }
+
+    private func item(at path: IndexPath) -> LumennaApp.DayItem? {
+        guard let key = dataSource.itemIdentifier(for: path) else { return nil }
+        return rows.first { $0.item.key == key }?.item
     }
 
     /// What a trailing swipe on the row at `path` offers: the primary actions, then Expand or
     /// Collapse.
     func trailingSwipeActions(at path: IndexPath) -> UISwipeActionsConfiguration? {
-        dataSource.itemIdentifier(for: path).flatMap { rowActions(for: $0).trailingSwipe() }
+        item(at: path).flatMap { rowActions(for: $0).trailingSwipe() }
     }
 
     /// The cell's other actions, for VoiceOver, Switch Control and Full Keyboard Access.
     func customActions(at path: IndexPath) -> [UIAccessibilityCustomAction] {
-        dataSource.itemIdentifier(for: path).map { rowActions(for: $0).customActions } ?? []
+        item(at: path).map { rowActions(for: $0).customActions } ?? []
     }
 
     /// What a long press on the row at `path` offers: every action.
     func menu(at path: IndexPath) -> UIMenu? {
-        dataSource.itemIdentifier(for: path).flatMap { rowActions(for: $0).menu }
+        item(at: path).flatMap { rowActions(for: $0).menu }
     }
 
     func collectionView(
         _ collectionView: UICollectionView, contextMenuConfigurationForItemsAt paths: [IndexPath], point: CGPoint
     ) -> UIContextMenuConfiguration? {
-        guard paths.count == 1, let row = dataSource.itemIdentifier(for: paths[0]) else { return nil }
-        return rowActions(for: row).contextMenu
+        guard paths.count == 1, let item = item(at: paths[0]) else { return nil }
+        return rowActions(for: item).contextMenu
     }
 }

@@ -1,132 +1,116 @@
+import LumennaApp
 import SwiftUI
 
-/// What only the platform can do for the task form: ask the questions of the task's actions
-/// in its own way, and leave once the task has gone to the trash.
+/// What only the platform can do for the task form: leave once the task has gone to the
+/// trash. Its actions' questions are the window's (`AppQuestions`).
 protocol TaskFormHost: AnyObject {
-    /// Who asks an action's question.
-    var asker: ActionAsking { get }
     /// The task went to the trash.
     func trashed()
 }
 
-/// One task as stored, and its fields as edited — the model the Apple apps' task forms share.
+/// One task's details, the app's (`ViewModel.details`) — the model the Apple apps' task forms
+/// share. The app holds the task, the fields as typed and what saving sends: each field goes to
+/// it as the person changes it, and Save sends only what changed, since a field sent unchanged
+/// would win a last-write-wins race and revert another device's edit to it. The fields follow
+/// the app's, unless typing is still on its way, which an answer for earlier typing would undo.
 final class TaskDetailModel: NSObject, ObservableObject {
     let core: Core
     let id: String
     weak var host: TaskFormHost?
 
-    @Published private(set) var task: TaskDetail?
-    @Published var title = ""
-    @Published var due = ""
-    @Published var repetition = ""
-    @Published var priority: UInt8 = 4
-    @Published var estimate = ""
-    @Published var project = ""
-    @Published var notes = ""
-    @Published var labels = ""
-    /// What the Project field offers, the core's, in tree order.
-    @Published private(set) var projects: [Choice] = []
+    @Published private(set) var task: LumennaApp.TaskDetail?
+    @Published var title = "" { didSet { typed("title", title) } }
+    @Published var due = "" { didSet { typed("due", due) } }
+    @Published var repetition = "" { didSet { typed("repeat", repetition) } }
+    @Published var priority: UInt8 = 4 { didSet { typed("priority", String(priority)) } }
+    @Published var estimate = "" { didSet { typed("estimate", estimate) } }
+    @Published var project = "" { didSet { typed("project", project) } }
+    @Published var notes = "" { didSet { typed("notes", notes) } }
+    @Published var labels = "" { didSet { typed("labels", labels) } }
+    /// What the Project field offers, the app's, in tree order.
+    @Published private(set) var projects: [LumennaApp.Choice] = []
     @Published var failure: String?
+
+    /// Whether the fields are being set from the app's, not typed.
+    private var following = false
+    /// Whether the task was asked to go to the trash, to leave once it has.
+    private var trashing = false
+    private var observer: NSObjectProtocol?
 
     init(core: Core, id: String) {
         self.core = core
         self.id = id
         super.init()
-        load()
-        NotificationCenter.default.addObserver(self, selector: #selector(storeChanged), name: Core.changed, object: nil)
-    }
-
-    /// Another device, another process, or this app elsewhere changed the store. The fields
-    /// follow unless the person is part way through editing them, which would lose their
-    /// typing.
-    @objc private func storeChanged() {
-        if !hasChanges { load() }
-    }
-
-    /// Reads the task again and resets the fields to it.
-    func load() {
-        do {
-            let shown = try core.lumenna.showTask(id: id)
-            task = shown.task
-            let fields = taskFields(task: shown.task)
-            title = fields.title
-            due = fields.due
-            repetition = fields.repeat
-            priority = fields.priority
-            estimate = fields.estimate
-            project = fields.project
-            notes = fields.notes
-            labels = fields.labels
-            var options = (try? core.lumenna.projectOptions()) ?? []
-            // An archived project is not offered, but a task still in one shows it.
-            if !fields.project.isEmpty, !options.contains(where: { $0.id == fields.project }) {
-                options.insert(Choice(id: fields.project, title: fields.project, depth: 0, detail: nil, date: nil, start: nil, end: nil), at: 0)
-            }
-            projects = options
-        } catch {
-            task = nil
+        observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: core.app, queue: .main) { [weak self] _ in
+            self?.follow()
         }
+        show()
     }
 
-    /// The form's fields as the core compares them.
-    private var fields: TaskFields {
-        TaskFields(
-            title: title, due: due, repeat: repetition, priority: priority, estimate: estimate,
-            project: project, labels: labels, notes: notes
-        )
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
     }
 
-    /// What saving would send, or nil if nothing changed. The core decides (`taskEdit`), as
-    /// it does for every client: a field sent unchanged would win a last-write-wins race and
-    /// revert another device's edit to it.
-    private var edit: TaskEdit? {
-        task.flatMap { taskEdit(task: $0, fields: fields) }
+    /// Asks the app for this task's details: as the form opens, and as it comes back to the
+    /// front, since another screen may have shown another task's.
+    func show() {
+        core.app.send(.details(.show(id)))
+        follow()
     }
 
-    var hasChanges: Bool { edit != nil }
-
-    /// Sends only the fields that changed.
-    func save() {
-        guard let edit else {
-            Announcer.say("Nothing changed")
+    /// The app's details of this task, into the fields: unless typing is still on its way.
+    private func follow() {
+        guard let details = core.app.view.details, details.task.id == id else {
+            // Gone to the trash, as asked: the form leaves.
+            if trashing, task != nil {
+                trashing = false
+                host?.trashed()
+            }
             return
         }
-        change { try $0.editTask(id: self.id, edit: edit) }
+        task = details.task
+        projects = details.projects
+        guard core.app.isStill else { return }
+        let fields = details.fields
+        following = true
+        defer { following = false }
+        if title != fields.title { title = fields.title }
+        if due != fields.due { due = fields.due }
+        if repetition != fields.repeat { repetition = fields.repeat }
+        if priority != fields.priority { priority = fields.priority }
+        if estimate != fields.estimate { estimate = fields.estimate }
+        if project != fields.project { project = fields.project }
+        if notes != fields.notes { notes = fields.notes }
+        if labels != fields.labels { labels = fields.labels }
     }
 
-    /// Runs a change, reads the task again, tells every view showing the store, and says
-    /// what happened.
-    func change(_ operation: (Lumenna) throws -> Change) {
-        do {
-            let change = try operation(core.lumenna)
-            load()
-            NotificationCenter.default.post(name: Core.changed, object: nil)
-            Announcer.say(change.announcement, notices: change.notices)
-        } catch {
-            failure = error.sentence
-        }
+    /// A field the person changed, to the app.
+    private func typed(_ key: String, _ value: String) {
+        guard !following, task != nil else { return }
+        core.app.send(.details(.field(key: key, value: value)))
     }
 
-    /// Runs one of the task's actions, the core's: after Move to Trash the form leaves.
-    func run(_ action: Action) {
-        guard let host else { return }
-        ActionRun.run(action, on: core.lumenna, asking: host.asker, form: { _ in }) { [weak self] change, _ in
-            guard let self else { return }
-            self.load()
-            NotificationCenter.default.post(name: Core.changed, object: nil)
-            Announcer.say(change.announcement, notices: change.notices)
-            if action.kind == .delete, change.changed { self.host?.trashed() }
-        }
+    var hasChanges: Bool { core.app.view.details?.dirty == true }
+
+    /// Sends only the fields that changed; the app says if nothing did.
+    func save() {
+        core.app.send(.details(.save))
+    }
+
+    /// Runs one of the task's actions, the app's: after Move to Trash the form leaves.
+    func run(_ action: LumennaApp.Action) {
+        if action.kind == .delete { trashing = true }
+        core.app.send(.perform(action))
     }
 
     /// Mark Done or Mark Not Done, as a key asks.
     func toggleDone() {
-        if let action = task?.actions.first(.markDone, .markNotDone) { run(action) }
+        if let action = task?.actions.first(where: { [.markDone, .markNotDone].contains($0.kind) }) { run(action) }
     }
 
     /// Move to Trash, as a key asks.
     func trash() {
-        if let action = task?.actions.first(.delete) { run(action) }
+        if let action = task?.actions.first(where: { $0.kind == .delete }) { run(action) }
     }
 }
 
@@ -142,7 +126,7 @@ struct TaskDetailView: View {
         }
     }
 
-    private func form(_ task: TaskDetail) -> some View {
+    private func form(_ task: LumennaApp.TaskDetail) -> some View {
         Form {
             // Each field's name, hint and example are the core's, as in every app.
             Section {
@@ -214,7 +198,7 @@ struct TaskDetailView: View {
     }
 
     /// An action's name on its button: on the Mac, one that asks something ends in "…".
-    private static func title(_ action: Action) -> String {
+    private static func title(_ action: LumennaApp.Action) -> String {
         #if os(macOS)
         action.asks ? action.title + "…" : action.title
         #else
@@ -280,7 +264,7 @@ struct TaskDetailView: View {
 struct ProjectChoices: View {
     @Environment(\.dismiss) private var dismiss
     let name: String
-    let choices: [Choice]
+    let choices: [LumennaApp.Choice]
     @Binding var selection: String
 
     var body: some View {
@@ -306,7 +290,7 @@ struct ProjectChoices: View {
     }
 
     /// A project's name, then its level where that differs from the one before it.
-    static func spoken(_ choices: [Choice], _ index: Int) -> String {
+    static func spoken(_ choices: [LumennaApp.Choice], _ index: Int) -> String {
         let choice = choices[index]
         let previous = index > 0 ? choices[index - 1].depth : 0
         return choice.depth != previous ? "\(choice.title), level \(choice.depth + 1)" : choice.title

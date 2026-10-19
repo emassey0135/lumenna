@@ -19,6 +19,9 @@ final class WatchCore: ObservableObject {
     static let fromPhone = "fromPhone"
 
     let lumenna: Lumenna
+    /// The Crux app over the same store, on a connection of its own, which the screens are
+    /// moving onto (`AppModel`).
+    let app: AppModel
     let link: PhoneLink
     /// Moves after anything changes the store, so every SwiftUI view showing it reads it again.
     @Published private(set) var generation = 0
@@ -26,12 +29,18 @@ final class WatchCore: ObservableObject {
     @Published var failure: String?
     private(set) var phone: PhoneSync!
     private var observer: NSObjectProtocol?
+    // Foundation's, named in full: the core has a record called `Timer` too.
+    private var watcher: Foundation.Timer?
+    /// How far the app's connection had written at the last look.
+    private var seenOutside: Int64?
 
     init() throws {
         // jiff finds the zone through TZ or /etc/localtime, and the sandbox is no place to
         // rely on the second.
         setenv("TZ", TimeZone.current.identifier, 1)
-        lumenna = try Lumenna.open(directory: try WatchCore.profileDirectory().path)
+        let directory = try WatchCore.profileDirectory()
+        lumenna = try Lumenna.open(directory: directory.path)
+        app = try AppModel(directory: directory, platform: "watchos")
         link = PhoneLink(lumenna: lumenna)
         phone = PhoneSync(core: self)
         // Every change, whoever made it — this file, or a shared form, which posts the
@@ -40,6 +49,14 @@ final class WatchCore: ObservableObject {
             guard let self else { return }
             generation += 1
             if note.userInfo?[Self.fromPhone] == nil { phone.syncNow() }
+        }
+        // What the app's connection writes is another connection's write to this one, which
+        // posts nothing: noticed once a second, it redraws and goes to the phone as any change.
+        seenOutside = try? lumenna.outsideVersion()
+        watcher = Foundation.Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self, let outside = try? self.lumenna.outsideVersion(), outside != self.seenOutside else { return }
+            self.seenOutside = outside
+            self.changed()
         }
     }
 

@@ -1,28 +1,33 @@
+import LumennaApp
 import UIKit
 
-/// Adding a task the way it would be said.
+/// Adding a task the way it would be said: the app's quick-add line (`ViewModel.line`), which
+/// starts with what the place shown adds (`#Work ` in a project's list).
 ///
 /// The readback under the field is what a sighted user gets from inline highlighting: what will
 /// be saved, with the date resolved. It updates as the text changes but is not spoken until the
-/// task is added, when the same sentence is the announcement.
+/// task is added, when the app says the same sentence and puts the task in hand.
 
 final class QuickAddViewController: UIViewController {
     private let core: Core
-    private let added: (Change) -> Void
 
     private let field = LineEntry(name: "New task")
     private let readback = UILabel()
     private lazy var completions = CompletionBar(core: core, syntax: .quickAdd, field: field)
     private var addButton: UIBarButtonItem!
 
-    private let initial: String
+    private var observer: NSObjectProtocol?
+    /// Whether the line was added, so closing does not also put it away.
+    private var addedLine = false
 
-    init(core: Core, initial: String = "", added: @escaping (Change) -> Void) {
+    init(core: Core) {
         self.core = core
-        self.initial = initial
-        self.added = added
         super.init(nibName: nil, bundle: nil)
         title = "New Task"
+    }
+
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
     }
 
     @available(*, unavailable)
@@ -36,6 +41,7 @@ final class QuickAddViewController: UIViewController {
     // `presentationControllerDidDismiss`.
     override func dismiss(animated: Bool, completion: (() -> Void)? = nil) {
         let closed = self.closed
+        closeLine()
         super.dismiss(animated: animated) {
             completion?()
             closed()
@@ -82,15 +88,20 @@ final class QuickAddViewController: UIViewController {
         addButton.style = .done
         addButton.isEnabled = false
         navigationItem.rightBarButtonItem = addButton
+        observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: core.app, queue: .main) { [weak self] _ in
+            self?.drawReadback()
+        }
+        // The line opens with what the place adds.
+        core.app.send(.typing(.open))
+        if let line = core.app.current.view.line, !line.text.isEmpty {
+            field.text = line.text
+            textChanged()
+        }
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         navigationController?.presentationController?.delegate = self
-        if field.text.isEmpty && !initial.isEmpty {
-            field.text = initial
-            field.delegate?.textViewDidChange?(field)
-        }
         field.becomeFirstResponder()
     }
 
@@ -98,24 +109,30 @@ final class QuickAddViewController: UIViewController {
         let text = field.text ?? ""
         completions.update()
         addButton.isEnabled = !text.trimmingCharacters(in: .whitespaces).isEmpty
-        guard addButton.isEnabled, let preview = try? core.lumenna.previewTask(text: text) else {
-            readback.text = nil
-            return
-        }
-        // Everything worth saying before confirming, errors included: there is no squiggle
-        // under the text, so this is the only channel.
-        readback.text = ([preview.announcement] + preview.diagnostics.map(\.message))
-            .joined(separator: ". ")
+        let cursor = field.selectedRange.location == NSNotFound ? text.utf16.count : field.selectedRange.location
+        let bytes = String(text.utf16.prefix(cursor)).map { $0.utf8.count } ?? text.utf8.count
+        core.app.send(.typing(.text(text: text, cursor: UInt32(bytes))))
+    }
+
+    /// What the line will add, the app's: everything worth saying before confirming, errors
+    /// included, since there is no squiggle under the text, so this is the only channel.
+    private func drawReadback() {
+        let line = core.app.view.line
+        readback.text = addButton.isEnabled ? line?.readback : nil
     }
 
     private func add() {
-        do {
-            let change = try core.lumenna.addTask(text: field.text ?? "")
-            let added = self.added
-            dismiss(animated: true) { added(change) }
-        } catch {
-            showFailure(error.sentence)
-        }
+        addedLine = true
+        // The app adds it, says what it added and puts it in hand in the list.
+        core.app.send(.quickAdd(field.text ?? ""))
+        dismiss(animated: true)
+    }
+
+    /// Puts the line away in the app, unless it was added.
+    private func closeLine() {
+        guard !addedLine else { return }
+        addedLine = true
+        core.app.send(.typing(.close))
     }
 
     override var keyCommands: [UIKeyCommand]? {
@@ -129,6 +146,7 @@ final class QuickAddViewController: UIViewController {
 
 extension QuickAddViewController: UIAdaptivePresentationControllerDelegate {
     func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        closeLine()
         closed()
     }
 }

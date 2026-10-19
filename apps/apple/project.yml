@@ -220,6 +220,13 @@ targets:
         group: Shared
       - path: Shared/Actions.swift
         group: Shared
+      # The Crux app, which the screens are moving onto, and the questions it asks.
+      - path: Shared/AppModel.swift
+        group: Shared
+      - path: Shared/AppQuestions.swift
+        group: Shared
+      - path: Shared/Bridging.swift
+        group: Shared
       # Reminders as the system's notifications, scheduled as the phone schedules them.
       - path: Shared/Reminders.swift
         group: Shared

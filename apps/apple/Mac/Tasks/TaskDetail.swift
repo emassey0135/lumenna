@@ -28,9 +28,6 @@ final class TaskDetailViewController: HostedForm<TaskDetailView>, TaskFormHost {
 
     // MARK: - TaskFormHost
 
-    /// The task's actions ask their questions as sheets on this window.
-    var asker: ActionAsking { view.window ?? NSApp.mainWindow ?? NSWindow() }
-
     func trashed() {
         // The list moves to whatever now holds the task's place, and this pane follows it.
     }

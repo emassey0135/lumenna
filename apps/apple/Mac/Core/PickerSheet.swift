@@ -22,31 +22,38 @@ final class PickerSheet: NSViewController, NSTableViewDataSource, NSTableViewDel
     private let items: [PickerItem]
     private var shown: [PickerItem]
     private let chosen: (PickerItem) -> Void
+    private let cancelled: () -> Void
     /// The default button, named for what it does: the core's ("Move", "Assign").
     private let yes: String
     private let table = NSTableView()
     private let search = NSSearchField()
     private let count = NSTextField(labelWithString: "")
 
-    private init(title: String, items: [PickerItem], yes: String, chosen: @escaping (PickerItem) -> Void) {
+    private init(title: String, items: [PickerItem], yes: String, chosen: @escaping (PickerItem) -> Void, cancelled: @escaping () -> Void) {
         titleText = title
         self.yes = yes
         self.items = items
         shown = items
         self.chosen = chosen
+        self.cancelled = cancelled
         super.init(nibName: nil, bundle: nil)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    /// Shows the sheet on `window`. An empty list says so instead.
-    static func present(on window: NSWindow, title: String, items: [PickerItem], yes: String, chosen: @escaping (PickerItem) -> Void) {
+    /// Shows the sheet on `window`; `cancelled` hears it closed without a choice. An empty list
+    /// says so instead.
+    static func present(
+        on window: NSWindow, title: String, items: [PickerItem], yes: String,
+        chosen: @escaping (PickerItem) -> Void, cancelled: @escaping () -> Void = {}
+    ) {
         guard !items.isEmpty else {
             window.showFailure("There is nothing to choose from.", title: title)
+            cancelled()
             return
         }
-        let sheet = PickerSheet(title: title, items: items, yes: yes, chosen: chosen)
+        let sheet = PickerSheet(title: title, items: items, yes: yes, chosen: chosen, cancelled: cancelled)
         let host = NSWindow(contentViewController: sheet)
         host.title = title
         window.beginSheet(host)
@@ -173,7 +180,8 @@ final class PickerSheet: NSViewController, NSTableViewDataSource, NSTableViewDel
     }
 
     @objc private func cancel() {
-        close {}
+        let cancelled = self.cancelled
+        close { cancelled() }
     }
 
     private func close(then: @escaping () -> Void) {

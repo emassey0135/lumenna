@@ -1,12 +1,19 @@
+import LumennaApp
 import SwiftUI
 
 /// The places, as every app's sidebar has them, from the core: Today, Tasks, the projects,
 /// labels and saved filters, Blocks and Trash. Then Undo, Redo, and syncing with the iPhone.
+/// The app's questions, kept for as long as the root is shown.
+final class Questions: ObservableObject {
+    var asking: AppQuestions?
+}
+
 struct RootView: View {
     @EnvironmentObject private var core: WatchCore
     @EnvironmentObject private var phone: PhoneSync
     @State private var adding = false
     @StateObject private var asker: WatchAsker
+    @StateObject private var questions = Questions()
     @State private var folding = Folding()
     /// What a reminder chosen in its notification is about: its task, or the day.
     @State private var remindedTask: TaskOpened?
@@ -65,8 +72,20 @@ struct RootView: View {
             .sheet(isPresented: $adding) {
                 QuickAddView(prefix: "")
             }
-            .sheet(item: $asker.asked) { asked in
+            .sheet(item: $asker.asked, onDismiss: { asker.dismissed() }) { asked in
                 NavigationStack { asked.view }
+            }
+            .onAppear {
+                // The app's questions, asked here as sheets, and the forms they open.
+                if questions.asking == nil {
+                    questions.asking = AppQuestions(app: core.app, asker: asker) { action in
+                        if action.kind == .reminders {
+                            asker.show(RemindersForm(model: RemindersModel(core: core, target: action.target)).navigationTitle("Reminders"))
+                        } else if action.subject == .task {
+                            remindedTask = TaskOpened(id: action.target)
+                        }
+                    }
+                }
             }
             .alert("Could not do that", isPresented: failed) {
                 Button("OK") { core.failure = nil }

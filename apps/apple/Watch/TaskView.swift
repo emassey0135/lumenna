@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// One task, in the form the iPhone and the Mac edit it with (`Shared/Forms/TaskForm.swift`):
-/// every field, saved as only what changed, then what can be done to it, the core's. What
-/// only the watch does is ask their questions, as sheets.
+/// every field, saved as only what changed, then what can be done to it, the core's, its
+/// questions asked by the root as sheets.
 struct TaskView: View {
     @EnvironmentObject private var core: WatchCore
     let id: String
@@ -14,26 +14,21 @@ struct TaskView: View {
     /// The model is made once the store is in hand, which a view's initialiser does not have.
     private struct Hosted: View {
         @StateObject private var model: TaskDetailModel
-        @StateObject private var asker: WatchAsker
-        @State private var host: TaskSheets
+        @State private var host = TaskSheets()
         @Environment(\.dismiss) private var dismiss
 
         init(core: WatchCore, id: String) {
             _model = StateObject(wrappedValue: TaskDetailModel(core: core, id: id))
-            let asker = WatchAsker(core: core)
-            _asker = StateObject(wrappedValue: asker)
-            _host = State(initialValue: TaskSheets(asker: asker))
         }
 
         var body: some View {
+            // The task's actions' questions are the root's sheets (`AppQuestions`).
             TaskDetailView(model: model)
                 .navigationTitle("Task")
                 .onAppear {
                     model.host = host
                     host.left = { dismiss() }
-                }
-                .sheet(item: $asker.asked) { asked in
-                    NavigationStack { asked.view }
+                    model.show()
                 }
         }
     }
@@ -41,12 +36,7 @@ struct TaskView: View {
 
 /// The watch's answers to what the task form asks of its platform.
 final class TaskSheets: TaskFormHost {
-    let asker: ActionAsking
     var left: () -> Void = {}
-
-    init(asker: WatchAsker) {
-        self.asker = asker
-    }
 
     func trashed() {
         left()

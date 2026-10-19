@@ -11,6 +11,9 @@ final class Core {
     static let changed = Notification.Name("LumennaCoreChanged")
 
     let lumenna: Lumenna
+    /// The Crux app over the same store, on a connection of its own, which the screens are
+    /// moving onto (`AppModel`).
+    let app: AppModel
     private var sync: SyncService?
     /// The command surface this app serves while it holds the endpoint (macOS).
     private var commands: CommandServer?
@@ -24,6 +27,11 @@ final class Core {
         Core.useSystemTimeZone()
         let directory = try Core.profileDirectory()
         lumenna = try Lumenna.open(directory: directory.path)
+        #if os(macOS)
+        app = try AppModel(directory: directory, platform: "macos")
+        #else
+        app = try AppModel(directory: directory, platform: "ios")
+        #endif
     }
 
     /// Where the store lives. A UI test names a fresh one, so every run starts empty.
@@ -128,8 +136,9 @@ final class Core {
     }
 
     /// Notices what another process — `lum`, the daemon — wrote to the store, once a second,
-    /// as `lum rpc` does: SQLite has no way to be told of another process's commit. Only a
-    /// Mac has those other processes.
+    /// as `lum rpc` does: SQLite has no way to be told of another process's commit. A Mac has
+    /// those other processes; every app has the Crux app's connection beside this one while the
+    /// screens move onto it, whose writes come the same way.
     ///
     /// By `outsideVersion`, not by asking `refresh` whether it took anything in: every
     /// operation and the sync loop refresh too, and whichever came first after `lum` wrote

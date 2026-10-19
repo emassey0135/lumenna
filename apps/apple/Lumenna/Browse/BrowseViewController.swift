@@ -33,7 +33,7 @@ final class BrowseViewController: ItemListViewController {
         case "labels": next = LabelsViewController(core: core)
         case "filters": next = FiltersViewController(core: core)
         case "blocks": next = BlocksViewController(core: core)
-        default: next = TaskListViewController(core: core, title: "Trash", query: "deleted", mode: .trash)
+        default: next = TaskListViewController(core: core, place: .trash)
         }
         navigationController?.pushViewController(next, animated: true)
     }
@@ -82,12 +82,7 @@ final class ProjectsViewController: ItemListViewController {
 
     override func open(_ item: Item) {
         navigationController?.pushViewController(
-            TaskListViewController(
-                core: core,
-                title: item.title,
-                query: projectReference(name: item.title),
-                quickAddPrefix: projectReference(name: item.title) + " "
-            ),
+            TaskListViewController(core: core, place: .project(item.title)),
             animated: true
         )
     }
@@ -113,12 +108,7 @@ final class LabelsViewController: ItemListViewController {
 
     override func open(_ item: Item) {
         navigationController?.pushViewController(
-            TaskListViewController(
-                core: core,
-                title: item.title,
-                query: labelReference(name: item.title),
-                quickAddPrefix: labelReference(name: item.title) + " "
-            ),
+            TaskListViewController(core: core, place: .label(item.title)),
             animated: true
         )
     }
@@ -149,7 +139,7 @@ final class FiltersViewController: ItemListViewController {
 
     override func open(_ item: Item) {
         navigationController?.pushViewController(
-            TaskListViewController(core: core, title: item.title, query: queries[item.key] ?? ""),
+            TaskListViewController(core: core, place: .filter(name: item.title, query: queries[item.key] ?? "")),
             animated: true
         )
     }

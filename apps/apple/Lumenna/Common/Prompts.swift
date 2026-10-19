@@ -181,3 +181,61 @@ extension UIBarButtonItem {
         return item
     }
 }
+
+/// The app's questions (`AppQuestions`), asked as the surface's are: the system's alerts and
+/// action sheets, and the picker sheet, each saying when it was cancelled.
+extension PhoneAsker: QuestionAsking {
+    func confirm(title: String, message: String, yes: String, destructive: Bool, answered: @escaping (Bool) -> Void) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answered(false) })
+        alert.addAction(UIAlertAction(title: yes, style: destructive ? .destructive : .default) { _ in answered(true) })
+        present(alert) { answered(false) }
+    }
+
+    func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, answered: @escaping (String?) -> Void) {
+        let message = [problem, hint.isEmpty ? nil : hint].compactMap { $0 }.joined(separator: "\n\n")
+        let alert = UIAlertController(title: title, message: message.isEmpty ? nil : message, preferredStyle: .alert)
+        alert.addTextField { field in
+            field.text = initial
+            field.placeholder = label
+            field.accessibilityLabel = label
+            field.autocapitalizationType = .sentences
+            field.clearButtonMode = .whileEditing
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answered(nil) })
+        let answer = UIAlertAction(title: yes, style: .default) { [weak alert] _ in
+            answered(alert?.textFields?.first?.text ?? "")
+        }
+        alert.addAction(answer)
+        // Return answers, as in the system's own text alerts; what it does is never destructive.
+        alert.preferredAction = answer
+        present(alert) { answered(nil) }
+    }
+
+    func pick(title: String, offered: [Offered], anotherDay: String?, yes: String, answered: @escaping (Picked) -> Void) {
+        guard let front else { return answered(.cancelled) }
+        var items = offered.map { Item(key: $0.id, title: $0.title, detail: $0.detail, depth: $0.depth, reason: $0.reason) }
+        // Another day's blocks, after the week's.
+        if let anotherDay { items.append(Item(key: ChoicePicker.anotherDay, title: anotherDay)) }
+        let picker = ChoicePicker(core: core, title: title, items: items, chosen: { id in
+            answered(id == ChoicePicker.anotherDay ? .anotherDay : .chose(id))
+        }, cancelled: { answered(.cancelled) })
+        front.present(UINavigationController(rootViewController: picker), animated: true)
+    }
+
+    func choose(title: String, message: String, answers: [(id: String, title: String)], destructive: Bool, answered: @escaping (String?) -> Void) {
+        let sheet = UIAlertController(title: title, message: message, preferredStyle: .actionSheet)
+        for answer in answers {
+            sheet.addAction(UIAlertAction(title: answer.title, style: destructive ? .destructive : .default) { _ in answered(answer.id) })
+        }
+        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answered(nil) })
+        sheet.popoverPresentationController?.sourceView = front?.view
+        present(sheet) { answered(nil) }
+    }
+
+    /// Presents `alert` over whatever is in front, or says it was cancelled when nothing is.
+    private func present(_ alert: UIAlertController, otherwise: () -> Void) {
+        guard let front else { return otherwise() }
+        front.present(alert, animated: true)
+    }
+}

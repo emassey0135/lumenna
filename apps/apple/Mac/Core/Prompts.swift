@@ -190,8 +190,13 @@ extension NSWindow: ActionAsking {
 
     /// A task's or block's reminders, as a sheet on this window (`Shared/Forms/ReminderList.swift`).
     func openReminders(_ action: Action) {
+        openReminders(of: action.target)
+    }
+
+    /// The reminders of the task or block `target`, as a sheet on this window.
+    func openReminders(of target: String) {
         guard let core = AppDelegate.shared?.core else { return }
-        let model = RemindersModel(core: core, target: action.target)
+        let model = RemindersModel(core: core, target: target)
         let sheet = NSWindow(contentViewController: NSViewController())
         let host = HostedForm("Reminders", rootView: RemindersForm(model: model) { [weak self, weak sheet] in
             if let sheet { self?.endSheet(sheet) }
@@ -215,6 +220,72 @@ extension NSMenu {
         for action in actions {
             if action.destructive, !items.isEmpty, items.last?.isSeparatorItem == false { addItem(.separator()) }
             addItem(ClosureMenuItem(title: action.asks ? action.title + "…" : action.title) { run(action) })
+        }
+    }
+}
+
+/// The app's questions (`AppQuestions`), asked as the surface's are: sheets on the window, each
+/// saying when it was cancelled.
+extension NSWindow: QuestionAsking {
+    func confirm(title: String, message: String, yes: String, destructive: Bool, answered: @escaping (Bool) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        let go = alert.addButton(withTitle: yes)
+        go.hasDestructiveAction = destructive
+        let cancel = alert.addButton(withTitle: "Cancel")
+        // Cancel is the default, so a stray Return does nothing.
+        go.keyEquivalent = ""
+        cancel.keyEquivalent = "\r"
+        alert.beginSheetModal(for: self) { response in
+            let yes = response == .alertFirstButtonReturn
+            DispatchQueue.main.async { answered(yes) }
+        }
+    }
+
+    func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, answered: @escaping (String?) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = [problem, hint.isEmpty ? nil : hint].compactMap { $0 }.joined(separator: "\n\n")
+        let field = NSTextField(string: initial)
+        field.placeholderString = label
+        field.setAccessibilityLabel(label)
+        field.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
+        alert.accessoryView = field
+        alert.addButton(withTitle: yes)
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: self) { response in
+            let text = response == .alertFirstButtonReturn ? field.stringValue : nil
+            DispatchQueue.main.async { answered(text) }
+        }
+    }
+
+    func pick(title: String, offered: [Offered], anotherDay: String?, yes: String, answered: @escaping (Picked) -> Void) {
+        var items = offered.map { PickerItem(key: $0.id, title: $0.title, detail: $0.detail, depth: Int($0.depth), reason: $0.reason) }
+        // Another day's blocks, after the week's; asking, so it ends in "…" as the Mac's menus say.
+        if let anotherDay { items.append(PickerItem(key: Self.anotherDay, title: anotherDay + "…")) }
+        PickerSheet.present(on: self, title: title, items: items, yes: yes, chosen: { item in
+            answered(item.key == Self.anotherDay ? .anotherDay : .chose(item.key))
+        }, cancelled: { answered(.cancelled) })
+    }
+
+    /// The key of the picker's row that asks for another day's blocks.
+    private static let anotherDay = "\u{0}another-day"
+
+    func choose(title: String, message: String, answers: [(id: String, title: String)], destructive: Bool, answered: @escaping (String?) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        for answer in answers {
+            alert.addButton(withTitle: answer.title).hasDestructiveAction = destructive
+        }
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: self) { response in
+            let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+            let id = index >= 0 && index < answers.count ? answers[index].id : nil
+            DispatchQueue.main.async { answered(id) }
         }
     }
 }

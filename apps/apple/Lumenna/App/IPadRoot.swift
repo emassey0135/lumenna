@@ -1,3 +1,4 @@
+import LumennaApp
 import UIKit
 
 /// The iPad's top level, as the Mac's window is: the places in a sidebar, the place chosen
@@ -30,6 +31,21 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    /// The app's questions, asked over whatever is in front, and the forms they open, beside
+    /// the place shown.
+    private lazy var asker = PhoneAsker(core: core, from: self)
+    private var questions: AppQuestions?
+    private var sheets: AppSheets?
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        sheets = AppSheets(core: core, root: self)
+        questions = AppQuestions(app: core.app, asker: asker) { [weak self] action in
+            guard let self else { return }
+            (self.list.topViewController ?? self).openForm(action, core: self.core)
+        }
+    }
+
     /// Whether something is open beside the place.
     private(set) var hasOpen = false
 
@@ -55,12 +71,8 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
         case .today: return day
         case .tasks: return tasks
         case .blocks: return BlocksViewController(core: core)
-        case .trash: return TaskListViewController(core: core, title: "Trash", query: placeQuery(place: place), mode: .trash)
-        case .project, .label, .filter:
-            return TaskListViewController(
-                core: core, title: placeTitle(place: place), query: placeQuery(place: place),
-                quickAddPrefix: placeQuickAddPrefix(place: place)
-            )
+        case .trash, .project, .label, .filter:
+            return TaskListViewController(core: core, place: LumennaApp.Place(place))
         }
     }
 
@@ -112,7 +124,7 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
     @objc func endTheDay() { onToday(.endDay) }
     @objc func clearTheDay() { onToday(.clearDay) }
 
-    private func onToday(_ kind: ActionKind) {
+    private func onToday(_ kind: LumennaApp.ActionKind) {
         show(.place(.today)) { ($0 as? DayViewController)?.runDay(kind) }
     }
 

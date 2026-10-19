@@ -5,6 +5,8 @@ import SwiftUI
 final class WatchAsker: ObservableObject, ActionAsking {
     @Published var asked: Asked?
     private let core: WatchCore
+    /// What to do if the sheet shown for one of the app's questions goes without an answer.
+    private var gone: (() -> Void)?
 
     init(core: WatchCore) {
         self.core = core
@@ -82,6 +84,105 @@ final class WatchAsker: ObservableObject, ActionAsking {
         show(ChoicePrompt(title: title, choices: ordered.map { action in
             (action.title, { [weak self] in self?.run(action, form: form) })
         } + extra))
+    }
+}
+
+/// The app's questions (`AppQuestions`), each a sheet as the surface's are. A sheet that goes
+/// without an answer — swiped away, or Cancel — says so: the view showing `asked` calls
+/// `dismissed` as its sheet closes.
+extension WatchAsker: QuestionAsking {
+    /// Shows `view` for one of the app's questions, `gone` its answer if it closes unanswered.
+    private func ask(_ view: some View, gone: @escaping () -> Void) {
+        self.gone = gone
+        show(view)
+    }
+
+    /// The sheet closed: answered already, or not, which `gone` says.
+    func dismissed() {
+        let gone = self.gone
+        self.gone = nil
+        gone?()
+    }
+
+    func confirm(title: String, message: String, yes: String, destructive: Bool, answered: @escaping (Bool) -> Void) {
+        let reply = Once(answered)
+        // Cancel first: what cannot be undone is never the first thing under a finger.
+        ask(ChoicePrompt(title: title, message: message, cancel: true, choices: [(yes, { reply(true) })]), gone: { reply(false) })
+    }
+
+    func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, answered: @escaping (String?) -> Void) {
+        let reply = Once(answered)
+        let message = [problem, hint.isEmpty ? nil : hint].compactMap { $0 }.joined(separator: " ")
+        ask(TextPrompt(title, message: message.isEmpty ? nil : message, initial: initial, placeholder: label, action: yes, allowsEmpty: true) { text in
+            reply(text)
+        }, gone: { reply(nil) })
+    }
+
+    // A watch's pick is a list of buttons, each answering by itself: no button names the answer.
+    func pick(title: String, offered: [Offered], anotherDay: String?, yes: String, answered: @escaping (Picked) -> Void) {
+        let reply = Once(answered)
+        ask(OfferedPrompt(title: title, offered: offered, anotherDay: anotherDay, picked: { reply($0) }), gone: { reply(.cancelled) })
+    }
+
+    func choose(title: String, message: String, answers: [(id: String, title: String)], destructive: Bool, answered: @escaping (String?) -> Void) {
+        let reply = Once(answered)
+        ask(ChoicePrompt(title: title, message: message, choices: answers.map { answer in (answer.title, { reply(answer.id) }) }), gone: { reply(nil) })
+    }
+}
+
+/// An answer given once: a choice and the sheet closing after it are one answer, not two.
+private final class Once<Answer> {
+    private var answer: ((Answer) -> Void)?
+
+    init(_ answer: @escaping (Answer) -> Void) {
+        self.answer = answer
+    }
+
+    func callAsFunction(_ given: Answer) {
+        let answer = self.answer
+        self.answer = nil
+        answer?(given)
+    }
+}
+
+/// One of what the app offers, as it words it, each a button, then another day's where it
+/// offers that. A tree's depth is said where it changes, never by indentation.
+private struct OfferedPrompt: View {
+    @Environment(\.dismiss) private var dismiss
+    let title: String
+    let offered: [Offered]
+    let anotherDay: String?
+    let picked: (Picked) -> Void
+
+    var body: some View {
+        List {
+            ForEach(Array(offered.enumerated()), id: \.offset) { index, choice in
+                let previous = index > 0 ? offered[index - 1].depth : 0
+                let level = choice.depth != previous ? "level \(choice.depth + 1)" : nil
+                Button {
+                    picked(.chose(choice.id))
+                    dismiss()
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(choice.title)
+                        // Why it is offered, the core's: a line beneath, and the hint.
+                        if let reason = choice.reason {
+                            Text(reason).font(.footnote).foregroundStyle(Color.quietLabel)
+                        }
+                    }
+                }
+                .accessibilityLabel(choice.title)
+                .accessibilityValue([choice.detail, level].compactMap { $0 }.joined(separator: ", "))
+                .accessibilityHint(choice.reason ?? "")
+            }
+            if let anotherDay {
+                Button(anotherDay) {
+                    picked(.anotherDay)
+                    dismiss()
+                }
+            }
+        }
+        .navigationTitle(title)
     }
 }
 

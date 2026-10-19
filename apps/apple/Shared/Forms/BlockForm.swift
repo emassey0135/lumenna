@@ -327,7 +327,7 @@ struct BlockForm: View {
 /// The length's stepper, telling VoiceOver the length it stands for. AppKit's says its number,
 /// which VoiceOver reads as a percentage of its range, and the text beside it is not read
 /// again when it changes; SwiftUI's own accessibility value on it is ignored.
-private struct LengthStepper: NSViewRepresentable {
+struct LengthStepper: NSViewRepresentable {
     @Binding var minutes: Int
 
     func makeNSView(context: Context) -> Spoken {
