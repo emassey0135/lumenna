@@ -326,10 +326,15 @@ final class LumennaUITests: XCTestCase {
                 let element = issue.element.map { "\($0.elementType.rawValue) '\($0.label)' \($0.frame)" }
                 let finding = "\(issue.compactDescription) — \(issue.detailedDescription) [\(element ?? "unnamed element")]"
                 issues.append(finding)
-                if issue.auditType == .contrast { lookAgain = true }
-                // Printed as well: with AUDIT_ATTACH the audit fails the test itself, before the
-                // assertion below can say which element it was.
                 print("AUDIT \(screen): \(finding)")
+                // A contrast finding on the first look is looked at again before anything
+                // fails: CI's AUDIT_ATTACH failed the test on it at once.
+                if issue.auditType == .contrast, wait == 1.0 {
+                    lookAgain = true
+                    return true
+                }
+                // With AUDIT_ATTACH the audit fails the test itself, attaching what it found,
+                // before the assertion below can say which element it was.
                 return ProcessInfo.processInfo.environment["AUDIT_ATTACH"] == nil
             }
         }
