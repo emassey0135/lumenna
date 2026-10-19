@@ -221,6 +221,14 @@ targets:
       # differences beside theirs (FormParts.swift).
       - path: Shared/Forms
         group: Shared
+      # The lists and the day as the app has them, and how a row's actions are split, the
+      # phone's and the Mac's too.
+      - path: Shared/Screens/TaskListModel.swift
+        group: Shared
+      - path: Shared/Screens/DayModel.swift
+        group: Shared
+      - path: Shared/Screens/AppRowActions.swift
+        group: Shared
     dependencies:
       - target: LumennaAppWatch
       - sdk: Security.framework

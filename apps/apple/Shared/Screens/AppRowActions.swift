@@ -1,8 +1,7 @@
 import LumennaApp
-import UIKit
 
-/// A row's actions as the iPhone and iPad offer them, from the app's list, each once — the same
-/// rules as `RowActions`, over the app's actions:
+/// A row's actions as the iPhone, the iPad and the watch offer them, from the app's list, each
+/// once — the same rules as `RowActions`, over the app's actions:
 ///
 /// - the `primary` ones, and Expand or Collapse, as swipe actions, which SwiftUI also offers to
 ///   VoiceOver, Switch Control and Full Keyboard Access as the row's actions;
@@ -46,35 +45,5 @@ struct AppRowActions {
     /// The first of these kinds: what a key or a menu command does to the row in hand.
     func first(_ kinds: LumennaApp.ActionKind...) -> LumennaApp.Action? {
         actions.first { kinds.contains($0.kind) }
-    }
-}
-
-extension UIViewController {
-    /// Opens the app's own form for `action` (`Question.form`), asked for by the app's question
-    /// open: a task's details, a reminder list. Beside the list on iPad, pushed on iPhone.
-    func openForm(_ action: LumennaApp.Action, core: Core) {
-        switch action.kind {
-        case .reminders:
-            openReminders(of: action.target, core: core)
-        case .edit where action.subject == .task, .editTask:
-            showBeside(TaskDetailViewController(core: core, id: action.target))
-        default:
-            break
-        }
-    }
-}
-
-
-extension UIAccessibility {
-    /// The view VoiceOver is on, or the view its element is inside: VoiceOver can report an
-    /// element that is not a view (the iPad's did, for a list cell), found through its
-    /// containers. Taken as only a view, ⌘K on the iPad did nothing to VoiceOver's row.
-    static var voiceOverView: UIView? {
-        var current = focusedElement(using: .notificationVoiceOver)
-        for _ in 0..<8 {
-            if let view = current as? UIView { return view }
-            current = (current as? UIAccessibilityElement)?.accessibilityContainer
-        }
-        return nil
     }
 }

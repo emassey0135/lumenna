@@ -702,9 +702,13 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
 
 ## The iOS app
 
-`apps/apple/`: a UIKit shell with SwiftUI forms, drawing the Crux app through BoltFFI's
-Swift. `cd apps/apple && xcodegen` makes the project from `project.yml`; the `.xcodeproj` and
-`Generated/` are not committed.
+`apps/apple/`: SwiftUI screens in a UIKit shell (the tab bar, the iPad's columns, navigation,
+the keyboard's commands), drawing the Crux app through BoltFFI's Swift. What the screens show
+is followed once for every Apple app in `Shared/Screens` (`TaskListModel`, `DayModel`,
+`PairingModel`, the row actions' split `AppRowActions`, the Mac's `Outline` of nested rows),
+and drawn by each platform its own way. UIKit stays for quick add, whose completion needs the
+cursor's place, which a SwiftUI field gives only from iOS 18. `cd apps/apple && xcodegen` makes
+the project from `project.yml`; the `.xcodeproj` and `Generated/` are not committed.
 
 - **Every screen draws the app's view and sends it what the person did**, as Android and the
   web do. `AppModel` (`Shared/`) holds the app over its `Device`, takes each turn on the main
@@ -903,9 +907,12 @@ Swift. `cd apps/apple && xcodegen` makes the project from `project.yml`; the `.x
 
 ## The macOS app
 
-`apps/apple/Mac/`: AppKit, with SwiftUI only for leaf forms. `Shared/` holds what both
-Apple apps compile, including **`Shared/Forms/`, the task, block and settings forms**; each
-app supplies only presentation. Where the platforms need different answers it is an
+`apps/apple/Mac/`: SwiftUI screens in an AppKit window (the split view, the menus, sheets,
+alerts), AppKit beneath each list's outline, which is where its focus, clicks and keys are
+taken. AppKit stays for quick add, as on the iPhone, and for the pick sheet, whose search field
+keeps focus while the arrows move through the list and say each choice. `Shared/` holds what
+the Apple apps compile, including **`Shared/Forms/`, the task, block and settings forms**, and
+`Shared/Screens`, what the screens follow; each app supplies only presentation. Where the platforms need different answers it is an
 `#if os` in `FormParts.swift` (`Named`, `Labelled`, `ChoiceSection`) or at the one row
 that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 
@@ -1035,6 +1042,9 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   `WatchCore` is the forms' `Core` (a typealias), its `app` the same `AppModel`, and the watch
   has an `Announcer`. Backups and exports stay on the phone: a watch cannot save or pick a
   file. `Shared/Clock.swift` and `Words.swift` are shared too; the watch's core is its own.
+- **The watch's lists and day follow the phone's models** (`TaskListModel`, `DayModel`): what
+  is listed, the row in hand put back on returning, the filter, and VoiceOver taken to a row
+  the app moved, its swipes split by the phone's `AppRowActions`.
 - **A row's actions are the app's, run once for every Apple app** (`AppModel.run`: the row in
   hand, or held in a side list, then the action), their questions `AppQuestions`' (alerts and
   a `ChoicePicker` on iOS, sheets on the Mac and, one at a time, a `WatchAsker`'s on the

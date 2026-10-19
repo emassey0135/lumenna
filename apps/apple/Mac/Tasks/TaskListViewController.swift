@@ -19,12 +19,7 @@ struct MacTaskListScreen: View {
     @FocusState private var listFocused: Bool
     @FocusState private var filterFocused: Bool
 
-    /// A row and the rows beneath it.
-    struct Node: Identifiable {
-        let row: TaskListModel.Row
-        var children: [Node] = []
-        var id: String { row.id }
-    }
+    typealias Node = OutlineNode<TaskListModel.Row>
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -112,43 +107,14 @@ struct MacTaskListScreen: View {
         if let row = model.inHand { model.run([.edit], on: row, saying: .edit) }
     }
 
-    /// The rows as the outline shows them, in its order: depth first, inside expanded rows only.
+    /// The rows as the outline shows them, in its order.
     var shown: [String] {
-        func walk(_ nodes: [Node]) -> [String] {
-            nodes.flatMap { node in [node.id] + (node.row.row.expanded == false ? [] : walk(node.children)) }
-        }
-        return walk(Self.tree(model.rows))
+        Outline.shown(Self.tree(model.rows)) { $0.row.expanded != false }
     }
 
-    /// The flat, depth-first rows the app sends, as a tree: a row's parent is the nearest
-    /// shallower row above it. One whose parent was filtered out sits at the top.
+    /// The app's rows as a tree, nested by depth.
     static func tree(_ rows: [TaskListModel.Row]) -> [Node] {
-        var top: [Node] = []
-        // The chain of open parents, as paths into `top`.
-        var chain: [(depth: UInt32, path: [Int])] = []
-        for row in rows {
-            while let last = chain.last, last.depth >= row.row.depth { chain.removeLast() }
-            let node = Node(row: row)
-            if let parent = chain.last {
-                var path = parent.path
-                let index = Self.append(node, at: path, in: &top)
-                path.append(index)
-                chain.append((row.row.depth, path))
-            } else {
-                top.append(node)
-                chain.append((row.row.depth, [top.count - 1]))
-            }
-        }
-        return top
-    }
-
-    private static func append(_ node: Node, at path: [Int], in nodes: inout [Node]) -> Int {
-        guard let first = path.first else { return 0 }
-        if path.count == 1 {
-            nodes[first].children.append(node)
-            return nodes[first].children.count - 1
-        }
-        return append(node, at: Array(path.dropFirst()), in: &nodes[first].children)
+        Outline.tree(rows, id: \.id, depth: \.row.depth)
     }
 
     /// A row, and inside a disclosure group the rows beneath it, folded by its own action.

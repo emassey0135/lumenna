@@ -103,13 +103,13 @@ struct RootView: View {
             }
             .navigationTitle("Lumenna")
             .navigationDestination(for: LumennaApp.Place.self) { place in
-                PlaceView(place: place)
+                PlaceView(core: core, place: place)
             }
             .navigationDestination(item: $remindedTask) { task in
                 TaskView(id: task.id)
             }
             .navigationDestination(item: $remindedDay) { place in
-                PlaceView(place: place)
+                PlaceView(core: core, place: place)
             }
             .onReceive(NotificationCenter.default.publisher(for: Opened.reminded)) { note in
                 guard let reminded = note.object as? RemindedOf else { return }
@@ -205,13 +205,16 @@ struct RootView: View {
 
 /// What a place opens to: the day for Today, the block list for Blocks, else its tasks.
 struct PlaceView: View {
+    /// Handed in, not observed: rebuilt on every turn of the app, the place shown was never
+    /// pushed.
+    let core: WatchCore
     let place: LumennaApp.Place
 
     var body: some View {
         switch place {
-        case .today: DayView()
-        case .blocks: BlockListView()
-        default: TaskListView(place: place)
+        case .today: DayView(core: core)
+        case .blocks: BlockListView(core: core)
+        default: TaskListView(core: core, place: place)
         }
     }
 }

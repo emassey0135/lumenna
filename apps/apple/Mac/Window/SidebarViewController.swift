@@ -80,12 +80,7 @@ struct SidebarScreen: View {
     @ObservedObject var model: SidebarModel
 
     /// An entry and the entries beneath it.
-    struct Node: Identifiable {
-        let entry: LumennaApp.SidebarEntry
-        var children: [Node] = []
-        var id: String { entry.key }
-        var group: Bool { if case .group = entry.kind { true } else { false } }
-    }
+    typealias Node = OutlineNode<LumennaApp.SidebarEntry>
 
     var body: some View {
         List(selection: Binding(get: { model.shown }, set: { if let key = $0 { model.choose(key) } })) {
@@ -97,33 +92,9 @@ struct SidebarScreen: View {
         .accessibilityLabel("Places")
     }
 
-    /// The flat, depth-first entries the app sends, as a tree: an entry's parent is the
-    /// nearest shallower one above it.
+    /// The app's entries as a tree, nested by depth.
     static func tree(_ entries: [LumennaApp.SidebarEntry]) -> [Node] {
-        var top: [Node] = []
-        var chain: [(depth: UInt32, path: [Int])] = []
-        for entry in entries {
-            while let last = chain.last, last.depth >= entry.depth { chain.removeLast() }
-            let node = Node(entry: entry)
-            if let parent = chain.last {
-                var path = parent.path
-                path.append(append(node, at: path, in: &top))
-                chain.append((entry.depth, path))
-            } else {
-                top.append(node)
-                chain.append((entry.depth, [top.count - 1]))
-            }
-        }
-        return top
-    }
-
-    private static func append(_ node: Node, at path: [Int], in nodes: inout [Node]) -> Int {
-        guard let first = path.first else { return 0 }
-        if path.count == 1 {
-            nodes[first].children.append(node)
-            return nodes[first].children.count - 1
-        }
-        return append(node, at: Array(path.dropFirst()), in: &nodes[first].children)
+        Outline.tree(entries, id: \.key, depth: \.depth)
     }
 
     /// An entry, and inside a disclosure group the entries beneath it, folded by its own action.
@@ -150,7 +121,7 @@ struct SidebarScreen: View {
         private var group: some View {
             DisclosureGroup(isExpanded: Binding(get: { !model.folded.contains(node.id) }, set: { open in
                 let kind: LumennaApp.ActionKind = open ? .expand : .collapse
-                if let fold = node.entry.actions.first(where: { $0.kind == kind }) { model.run(fold, on: node.entry) }
+                if let fold = node.row.actions.first(where: { $0.kind == kind }) { model.run(fold, on: node.row) }
             })) {
                 ForEach(node.children) { child in
                     AnyView(NodeView(node: child, model: model))
@@ -171,7 +142,7 @@ struct SidebarScreen: View {
         @ObservedObject var model: SidebarModel
 
         var body: some View {
-            let entry = node.entry
+            let entry = node.row
             let name = model.names[entry.key] ?? entry.text
             HStack {
                 Text(entry.title)
@@ -245,4 +216,9 @@ final class ClosureMenuItem: NSMenuItem {
     required init(coder: NSCoder) { fatalError("not used") }
 
     @objc private func runAction() { run() }
+}
+
+extension OutlineNode where Row == LumennaApp.SidebarEntry {
+    /// Whether it is a heading (Projects, Labels, Saved Filters), never a place.
+    var group: Bool { if case .group = row.kind { true } else { false } }
 }

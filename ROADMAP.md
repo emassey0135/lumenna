@@ -261,6 +261,9 @@ Both have every view and work with the phone away, each with a whole store of it
   - **Complications** through WidgetKit, and the running timer on the watch face.
   - **Later, if it matters**: syncing far from the phone through a relay of our own that the
     watch polls over plain HTTPS, the one networking watchOS allows.
+  - **Quick add's UI test** (`testQuickAddReadsBackThenTheTaskIsListedAndOpens`) finds no
+    readback saying "priority 1" after the line is entered, and failed before the lists moved
+    onto the phone's models too: find whether the readback or the test is wrong.
 - **Wear OS** is built (`apps/android/wear`): a standalone full peer over the phone's shared
   module, pairing and syncing itself. Still to come: on the real watch, rotary scrolling with
   TalkBack and pairing over the network; tiles and complications, with the widgets.

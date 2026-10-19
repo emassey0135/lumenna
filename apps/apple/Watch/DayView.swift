@@ -9,52 +9,68 @@ import SwiftUI
 struct DayView: View {
     @EnvironmentObject private var core: WatchCore
     @EnvironmentObject private var asker: WatchAsker
+    @StateObject private var model: DayModel
+    @AccessibilityFocusState private var spoken: String?
+
+    init(core: WatchCore) {
+        _model = StateObject(wrappedValue: DayModel(core: core))
+    }
 
     var body: some View {
-        _ = core.generation
-        let view = core.app.view
-        let lines = core.app.lines
-        let day = view.place == .today ? view.day : nil
-        let rows: [(item: LumennaApp.DayItem, line: LumennaApp.Line?)] = (day?.items ?? []).enumerated()
-            .map { index, item in (item, index < lines.day.count ? lines.day[index] : nil) }
-            .filter { !$0.item.hidden }
-        return List {
-            if let day {
-                ForEach(rows, id: \.item.key) { row in
-                    rowView(row.item, line: row.line, in: day)
-                }
+        List {
+            if !model.heading.isEmpty { heading }
+            ForEach(model.shown) { row in
+                rowView(row.item, line: row.line)
+                    .accessibilityFocused($spoken, equals: row.id)
             }
             Section {
                 Button("Add Block") { core.app.send(.block(.new(start: nil, minutes: nil))) }
-                Button("Previous Day") { core.app.send(.day(.previous)) }
-                if day?.today == false { Button("Today") { core.app.send(.day(.now)) } }
-                Button("Next Day") { core.app.send(.day(.next)) }
+                Button("Previous Day") { model.move(.previous) }
+                if core.app.view.day?.today == false { Button("Today") { model.move(.now) } }
+                Button("Next Day") { model.move(.next) }
                 Button("Go to Day") {
-                    asker.show(DayChoice(day: day.flatMap { Self.date($0.date) } ?? .now))
+                    asker.show(DayChoice(model: model, day: model.date.flatMap(Self.date) ?? .now))
                 }
             }
         }
-        .navigationTitle(day != nil ? lines.dayTitle : "Day")
-        .onAppear {
-            if core.app.view.place != .today { core.app.send(.open(.today)) }
+        .navigationTitle(model.title)
+        // Today opening on now, unless the app shows the day already.
+        .onAppear { model.appear() }
+        .onChange(of: model.landed?.count) { _, _ in
+            // The app moved the row in hand: VoiceOver goes there, once the row is drawn.
+            guard let key = model.landed?.key else { return }
+            DispatchQueue.main.async { spoken = key }
+        }
+        .onChange(of: spoken) { _, key in
+            if let key { model.moved(to: key) }
+        }
+    }
+
+    /// The day's heading, as every app says it: "<day>. <summary>". Tapped, it offers the
+    /// day's own actions, the app's, as a row offers its own.
+    @ViewBuilder private var heading: some View {
+        if model.actions.isEmpty {
+            Text(model.heading).font(.footnote)
+        } else {
+            Button {
+                // In the order every row's are offered: what removes something last.
+                let ordered = model.actions.filter { !$0.destructive } + model.actions.filter(\.destructive)
+                asker.show(ChoicePrompt(title: model.title, choices: ordered.map { action in
+                    (action.title, { [model] in model.perform(action) })
+                }))
+            } label: { Text(model.heading).font(.footnote) }
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("day.heading")
         }
     }
 
     @ViewBuilder
-    private func rowView(_ item: LumennaApp.DayItem, line: LumennaApp.Line?, in day: LumennaApp.DayView) -> some View {
+    private func rowView(_ item: LumennaApp.DayItem, line: LumennaApp.Line?) -> some View {
         let text = line?.text ?? ""
         let value = AppModel.spoken(detail: nil, expanded: item.expanded, level: item.level)
         switch item.kind {
         case .summary:
-            // The day's heading, as every app says it: "<day>. <summary>". Tapped, it offers
-            // the day's own actions, the app's, as a row offers its own.
-            if day.actions.isEmpty {
-                Text(text).font(.footnote)
-            } else {
-                Button { asker.offer(core.app.lines.dayTitle, day.actions, on: item.key) } label: { Text(text).font(.footnote) }
-                    .accessibilityAddTraits(.isHeader)
-                    .accessibilityIdentifier("day.heading")
-            }
+            EmptyView()
         case .now:
             Text(text).font(.headline)
         case .sitting:
@@ -84,8 +100,8 @@ struct DayView: View {
 /// ("next friday", "12 October") from the system's input screen, or a date picker, then Go —
 /// the answer to the app's Go to Day.
 private struct DayChoice: View {
-    @EnvironmentObject private var core: WatchCore
     @Environment(\.dismiss) private var dismiss
+    let model: DayModel
     @State var day: Date
     @State private var typed = ""
     @State private var problem: String?
@@ -121,10 +137,7 @@ private struct DayChoice: View {
     /// saying why.
     private func goTo(_ text: String) {
         let named = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        core.app.send(.day(.ask))
-        core.app.send(.answer(.text(text: named.isEmpty ? Clock.isoDay(day) : named)))
-        if let refusal = core.app.current.view.asking?.refusal {
-            core.app.send(.cancel)
+        if let refusal = model.goTo(named.isEmpty ? Clock.isoDay(day) : named) {
             problem = refusal
             Announcer.say(refusal)
             return

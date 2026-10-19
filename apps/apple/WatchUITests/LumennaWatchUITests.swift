@@ -63,7 +63,7 @@ final class LumennaWatchUITests: XCTestCase {
             case (false, _): XCUIDevice.shared.rotateDigitalCrown(delta: upward ? -0.15 : 0.15)
             }
         }
-        XCTAssertTrue(element.exists, "never scrolled to \(element)")
+        XCTAssertTrue(element.exists, "never scrolled to \(element) in:\n\(app.debugDescription)")
         return element
     }
 

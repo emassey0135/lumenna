@@ -21,11 +21,7 @@ struct MacDayScreen: View {
     @FocusState private var listFocused: Bool
 
     /// A row and the sittings beneath it.
-    struct Node: Identifiable {
-        let row: DayModel.Row
-        var children: [DayModel.Row] = []
-        var id: String { row.id }
-    }
+    typealias Node = OutlineNode<DayModel.Row>
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -79,23 +75,13 @@ struct MacDayScreen: View {
 
     /// Blocks with the sittings beneath them; every other row stands alone.
     static func tree(_ rows: [DayModel.Row]) -> [Node] {
-        var nodes: [Node] = []
-        for row in rows {
-            if row.item.kind == .sitting, !nodes.isEmpty {
-                nodes[nodes.count - 1].children.append(row)
-            } else {
-                nodes.append(Node(row: row))
-            }
-        }
-        return nodes
+        Outline.tree(rows, id: \.id) { $0.item.kind == .sitting ? 1 : 0 }
     }
 
     /// The rows as the outline shows them, in its order: each block, then its sittings while it
     /// is expanded.
     var shown: [String] {
-        Self.tree(model.rows).flatMap { node in
-            [node.id] + (node.row.item.expanded == false ? [] : node.children.map(\.id))
-        }
+        Outline.shown(Self.tree(model.rows)) { $0.item.expanded != false }
     }
 
     @ViewBuilder private func nodeView(_ node: Node) -> some View {
@@ -106,7 +92,7 @@ struct MacDayScreen: View {
                 model.run([open ? .expand : .collapse], on: node.row.item)
             })) {
                 ForEach(node.children) { child in
-                    label(child).tag(child.id)
+                    label(child.row).tag(child.id)
                 }
             } label: {
                 label(node.row)
