@@ -14,6 +14,8 @@ final class VoiceOverUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchEnvironment["LUMENNA_TEST_PROFILE"] = UUID().uuidString
+        // Nothing left animating for XCUITest to wait on (`AppDelegate`).
+        app.launchEnvironment["LUMENNA_NO_ANIMATIONS"] = "1"
         app.launch()
     }
 

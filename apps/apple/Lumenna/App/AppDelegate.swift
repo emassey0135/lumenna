@@ -18,6 +18,12 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        // Under UI tests, nothing animates: under load, an animation left unfinished as the
+        // iPad's sidebar was hidden had XCUITest wait a minute a step for the app to be still,
+        // though the app was idle; and the audit judged text still fading in.
+        if ProcessInfo.processInfo.environment["LUMENNA_NO_ANIMATIONS"] != nil {
+            UIView.setAnimationsEnabled(false)
+        }
         // A refresh task's handler has to be registered before launching finishes.
         BackgroundSync.register()
         // At launch, since a message from the watch is what starts the app in the background.

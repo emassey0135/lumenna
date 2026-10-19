@@ -895,7 +895,9 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   minutes: one waiting forever held a whole run.
 - **The iPad's menu bar is invisible to XCUITest while hidden**, so the keyboard tests
   (`KeyboardUITests`) prove it by its keys: on iPad they exist only there.
-- **A UI test names a fresh store** through `LUMENNA_TEST_PROFILE`.
+- **A UI test names a fresh store** through `LUMENNA_TEST_PROFILE`, and turns animations off
+  (`LUMENNA_NO_ANIMATIONS`): under load, something left animating as the iPad's sidebar hid had
+  XCUITest wait a minute a step for an idle app, and the audit judged text still fading in.
 - **Run UI tests with `-collect-test-diagnostics never`**, or any failure hangs xcodebuild
   for ten minutes collecting simulator diagnostics:
 

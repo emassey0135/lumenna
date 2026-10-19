@@ -10,6 +10,8 @@ final class LumennaUITests: XCTestCase {
         app = XCUIApplication()
         // A fresh store for every test, in the app's temporary directory.
         app.launchEnvironment["LUMENNA_TEST_PROFILE"] = UUID().uuidString
+        // Nothing left animating for XCUITest to wait on (`AppDelegate`).
+        app.launchEnvironment["LUMENNA_NO_ANIMATIONS"] = "1"
         app.launch()
         // The app opens on the day; most of these tests are about tasks.
         tab("Tasks")
