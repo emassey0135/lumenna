@@ -223,12 +223,14 @@ targets:
         group: Shared
       # The lists and the day as the app has them, and how a row's actions are split, the
       # phone's and the Mac's too.
-      - path: Shared/Screens/TaskListModel.swift
+      # Through their folder, so each file sits in one group: added by path into Shared, each
+      # was a child of two groups, which Xcode 27.2 refuses to read.
+      - path: Shared/Screens
         group: Shared
-      - path: Shared/Screens/DayModel.swift
-        group: Shared
-      - path: Shared/Screens/AppRowActions.swift
-        group: Shared
+        includes:
+          - TaskListModel.swift
+          - DayModel.swift
+          - AppRowActions.swift
     dependencies:
       - target: LumennaAppWatch
       - sdk: Security.framework

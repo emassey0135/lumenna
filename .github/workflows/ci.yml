@@ -171,14 +171,7 @@ jobs:
         run: cargo install boltffi_cli --version 0.31.1 --locked
       - name: Newest Xcode, and XcodeGen
         run: |
-          # The newest released Xcode, never a beta: Xcode 27.2 beta 2 on the runner could not read
-          # the generated project. By its versioned name: Xcode.app there links to the beta.
-          xcode=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
-          ls -ld /Applications/Xcode*.app
-          sudo xcode-select -s "${xcode:-/Applications/Xcode.app}"
-          xcodebuild -version
-          # An Xcode new to the runner can fail to read a project until its first launch is done.
-          sudo xcodebuild -runFirstLaunch
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
           brew install xcodegen
       - name: Build
         working-directory: apps/apple
@@ -203,14 +196,7 @@ jobs:
         run: cargo install boltffi_cli --version 0.31.1 --locked
       - name: Newest Xcode, and XcodeGen
         run: |
-          # The newest released Xcode, never a beta: Xcode 27.2 beta 2 on the runner could not read
-          # the generated project. By its versioned name: Xcode.app there links to the beta.
-          xcode=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
-          ls -ld /Applications/Xcode*.app
-          sudo xcode-select -s "${xcode:-/Applications/Xcode.app}"
-          xcodebuild -version
-          # An Xcode new to the runner can fail to read a project until its first launch is done.
-          sudo xcodebuild -runFirstLaunch
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
           brew install xcodegen
       - name: UI tests
         working-directory: apps/apple
@@ -241,14 +227,7 @@ jobs:
         run: cargo install boltffi_cli --version 0.31.1 --locked
       - name: Newest Xcode, and XcodeGen
         run: |
-          # The newest released Xcode, never a beta: Xcode 27.2 beta 2 on the runner could not read
-          # the generated project. By its versioned name: Xcode.app there links to the beta.
-          xcode=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
-          ls -ld /Applications/Xcode*.app
-          sudo xcode-select -s "${xcode:-/Applications/Xcode.app}"
-          xcodebuild -version
-          # An Xcode new to the runner can fail to read a project until its first launch is done.
-          sudo xcodebuild -runFirstLaunch
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
           brew install xcodegen
       - name: A watch simulator
         # The newest Apple Watch the runtime has, downloading watchOS if the runner lacks it.
@@ -299,14 +278,7 @@ jobs:
         run: cargo install boltffi_cli --version 0.31.1 --locked
       - name: Newest Xcode, and XcodeGen
         run: |
-          # The newest released Xcode, never a beta: Xcode 27.2 beta 2 on the runner could not read
-          # the generated project. By its versioned name: Xcode.app there links to the beta.
-          xcode=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
-          ls -ld /Applications/Xcode*.app
-          sudo xcode-select -s "${xcode:-/Applications/Xcode.app}"
-          xcodebuild -version
-          # An Xcode new to the runner can fail to read a project until its first launch is done.
-          sudo xcodebuild -runFirstLaunch
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
           xcodebuild -version
           brew install xcodegen
       - name: Build for testing
@@ -347,14 +319,7 @@ jobs:
       TEST_RUNNER_AUDIT_ATTACH: "1"
     steps:
       - name: Newest Xcode
-        # The newest released Xcode, never a beta, as the build's.
-        run: |
-          xcode=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
-          ls -ld /Applications/Xcode*.app
-          sudo xcode-select -s "${xcode:-/Applications/Xcode.app}"
-          xcodebuild -version
-          # An Xcode new to the runner can fail to read a project until its first launch is done.
-          sudo xcodebuild -runFirstLaunch
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
       - uses: actions/download-artifact@v4
         with:
           name: ios-products
@@ -396,14 +361,7 @@ jobs:
       TEST_RUNNER_AUDIT_ATTACH: "1"
     steps:
       - name: Newest Xcode
-        # The newest released Xcode, never a beta, as the build's.
-        run: |
-          xcode=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
-          ls -ld /Applications/Xcode*.app
-          sudo xcode-select -s "${xcode:-/Applications/Xcode.app}"
-          xcodebuild -version
-          # An Xcode new to the runner can fail to read a project until its first launch is done.
-          sudo xcodebuild -runFirstLaunch
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
       - uses: actions/download-artifact@v4
         with:
           name: ios-products
