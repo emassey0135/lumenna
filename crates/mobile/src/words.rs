@@ -3,8 +3,8 @@
 
 use boltffi::export;
 use lumenna_app::Capitals;
-use lumenna_records::places::{Place, SidebarKind};
-use lumenna_records::{ActionKind, Candidate, PairingWords, Subject};
+use lumenna_records::places::{Place, SidebarGroup, SidebarKind};
+use lumenna_records::{ActionKind, Candidate, PairingWords, Question, Subject};
 
 /// `text` in sentence case: for a platform whose convention it is, and for braille.
 #[export]
@@ -22,6 +22,19 @@ pub fn candidate_line(candidate: Candidate) -> String {
 #[export]
 pub fn sidebar_key(kind: SidebarKind) -> String {
     lumenna_records::places::SidebarEntry::key_of(&kind)
+}
+
+/// The question Go to Day asks, for a shell asking for a day itself: another day's blocks in
+/// a pick ([`lumenna_app::Event::PickFrom`]).
+#[export]
+pub fn go_to_day_question() -> Question {
+    lumenna_records::go_to_day_question()
+}
+
+/// What a sidebar group's own list says with nothing in it: "No labels.".
+#[export]
+pub fn group_empty(group: SidebarGroup) -> String {
+    group.empty()
 }
 
 /// What a place is called before the app has shown it.

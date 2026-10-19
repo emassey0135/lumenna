@@ -80,6 +80,21 @@ pub struct DueReminders {
 
 crate::announced!(DueReminders, ReminderList);
 
+impl DueReminders {
+    /// Nothing given, since another process on this device gives reminders: ask again soon.
+    #[must_use]
+    pub fn elsewhere() -> Self {
+        Self {
+            announcement: "Another app on this device gives reminders".to_owned(),
+            notices: Vec::new(),
+            due: Vec::new(),
+            missed: Vec::new(),
+            missed_summary: String::new(),
+            elsewhere: true,
+        }
+    }
+}
+
 /// One reminder a task or block has, its own or a default.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

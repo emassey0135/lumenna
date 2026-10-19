@@ -212,6 +212,6 @@ pub fn filters(snapshot: &Snapshot) -> Result<Filters> {
                 actions: crate::actions::filter(snapshot, saved),
             })
             .collect(),
-        empty: "No saved filters. A filter's query is kept here under a name.".to_owned(),
+        empty: crate::places::SidebarGroup::Filters.empty(),
     })
 }

@@ -707,14 +707,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
             }
             match held.clone() {
                 Some(lock) => Response::new(l.deliver_reminders(lock, maybe_text(params, "now"))?),
-                None => Response::new(crate::DueReminders {
-                    announcement: "Another app on this device gives reminders".to_owned(),
-                    notices: Vec::new(),
-                    due: Vec::new(),
-                    missed: Vec::new(),
-                    missed_summary: String::new(),
-                    elsewhere: true,
-                }),
+                None => Response::new(crate::DueReminders::elsewhere()),
             }
         }
         "reminder.due" => Response::new(l.reminders_due(text_of(params, "since")?, maybe_text(params, "now"))?),

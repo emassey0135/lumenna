@@ -2,19 +2,21 @@
 
 The device *is* the screen reader, so there is no accessibility API to map onto: speech and
 braille are the entire output layer, and `/BTSpeak/Python/BTSpeak/dialogs.py` has already
-made every accessibility decision, consistently, device-wide. This app is a client of that
-library and of `lum rpc`, and almost nothing else.
+made every accessibility decision, consistently, device-wide. This app draws the Crux app
+(`crates/app`, the one Android and the web run) with that library, and almost nothing else.
 
 ## Running it
 
 ```
+./build-core.sh
 python3 __main__.py
 ```
 
-`lum` is found on `PATH`, or else in the checkout the app runs from (`target/release`, then
-`target/debug`), so a git clone with `cargo build` done needs nothing else. The device is
-aarch64 Linux, so the ordinary Linux build runs here unmodified — no cross-compilation, no
-separate target.
+`build-core.sh` builds the core as a Python extension (`crates/mobile` through BoltFFI's
+Python target, `boltffi pack python`) and unpacks it into `native/`, which is not committed.
+It needs `boltffi` (`cargo install boltffi_cli --version 0.31.1`) and a Python of 3.10 or
+later with `pip`; the device has both, and builds it for itself, since it is aarch64 Linux.
+`PYTHON` names another interpreter, and `--debug` builds without optimising.
 
 From the User menu: an item whose action is `run python3 <checkout>/apps/btspeak/__main__.py`,
 added with the device's own `BTSpeak.user_menu.add_item` (BT Code's "add to User menu" does
@@ -45,34 +47,39 @@ Restoring it matters more than setting it: the context and the flag are device-w
 `finally` covers every exit except `SIGKILL`, which nothing can.
 
 The one thing this changes elsewhere: with self-voice on, printing to the terminal is
-silence. So the startup failure — no `lum` on `PATH`, the likeliest first-run problem — is
-said in a dialog rather than printed to stderr, and the spawned server's stderr goes to
-`rpc.log` in the profile directory rather than onto the screen the app is drawing.
+silence. So the startup failure — a core not built yet, the likeliest first-run problem — is
+said in a dialog rather than printed to stderr.
 
 BT Code already has an option to add an app to the user menu, so this does not write a
 `~/BTSpeak/user.menu` line itself. Nor does it have a `.menu` file in `/BTSpeak/Menus/`:
 that is for apps shipped *with* the device, and this one is installed by the person using it.
 
-## What it talks to
+## What it runs
 
-`lum rpc` — the typed command surface over JSON-RPC on stdio. `connect.py` looks for the
-sync daemon's socket first and spawns a server if nothing answers. `lum daemon install`, run once from a shell, sets the
-daemon up as a system service; until then the app spawns its own server, which works but does
-not sync in the background — *Devices and sync* says which it is.
+The app and the store run in this process (`core.py`): the screens' state — which row is in
+hand after a change, what is folded, the question open, what a form starts from and what
+saving sends, the proposals, pairing — is the app's, and each change it makes arrives as a
+turn, on a thread of its own, that the menus take in when they wake (`session.py`). A screen
+here draws what the app shows, in the core's lines worded in this device's clock, and sends
+what the person did.
+
+Syncing runs while the app does. `lum daemon install`, run once from a shell, sets the daemon
+up as a system service to sync while it is closed; the app then waits its turn for the
+device's endpoint, and *Devices and sync* asks the daemon for a round.
 
 Nothing here parses a date, computes a state, or decides what completing a task does to its
-subtasks. That is all core's, so that every client behaves alike and none can drift.
+subtasks. That is all the core's, so that every client behaves alike and none can drift.
 
 ## Files
 
 | | |
 | --- | --- |
-| `client.py` | JSON-RPC over a reader and a writer. A thread sorts replies from notifications. |
-| `connect.py` | Socket, or a spawned `lum rpc`. |
-| `rows.py` | Rows to menu items: level markers, folding, and composing a line from components. |
-| `session.py` | What every menu shares: the client, live rebuilding, and how a reply is said. |
-| `actions.py` | Each row's actions, the core's, as its context menu, letters and delete keys; their questions asked with the device's dialogs and done through `act`. |
-| `menus.py` | The contract check and the main menu. |
+| `build-core.sh` | Builds the core into `native/`. |
+| `core.py` | The store and the app in this process: the turns, this device's clock and dates. |
+| `rows.py` | The app's rows as menu items: the level where it changes, folding, the device's clock. |
+| `session.py` | What every menu shares: sending to the app, live rebuilding, and what is said. |
+| `actions.py` | Each row's actions, the core's, as its context menu, letters and delete keys; what the app opens answered with the device's dialogs. |
+| `menus.py` | The main menu. |
 | `tasks.py` | Task lists, what can be done to one task, quick add, and the trash. |
 | `day.py` | The planner — blocks, sittings, free time and now, and the day's own actions — and the block series. |
 | `proposals.py` | Replan from now and Plan the day: the core's proposal, checked and made. |
@@ -90,8 +97,7 @@ action of its kind (`actions.KEYS`), so it does nothing a row does not offer; th
 delete keys delete; left and right fold. The main menu lists the core's places; settings
 and priorities are worded as the core describes them.
 
-No third-party Python. The client is one stdlib file; a dependency to build
-`{"jsonrpc": "2.0", …}` would be more surface than it saves. `dialogs` comes from the device.
+No third-party Python beside the core. `dialogs` comes from the device.
 
 ## Two things worth knowing before changing it
 
@@ -114,23 +120,25 @@ worth doing once the rest is in daily use.
 python3 -m unittest discover -s tests
 ```
 
-`test_rows.py` is pure. `test_client.py` drives a real `lum rpc`, and skips itself if the
-binary has not been built. `test_menus.py` drives the menus themselves against a real
-server: `tests/btspeak_stub.py` stands in for the device's `dialogs` and plays a script — open
-this row, choose that, type this — failing at once if the app asks for something else, so
-each test reads as the conversation a person would have. Pairing is among them, against a
-second server.
+The tests need the core built (`build-core.sh`, with `PYTHON` naming a Python of 3.10 or
+later) and `lum` (`cargo build -p lumenna-cli`). `test_menus.py` and `test_reminders.py` drive
+the menus against the app over a real store (`tests/harness.py`), and seed and check that store
+through `lum rpc` (`tests/client.py`), as another process on the device would read it:
+`tests/btspeak_stub.py` stands in for the device's `dialogs` and plays a script — open this
+row, choose that, type this — failing at once if the app asks for something else, so each
+test reads as the conversation a person would have. Pairing is among them, against a second
+store. Every test runs in UTC, at fixed moments where the hour matters.
 
 ## Reminders
 
 `reminders.py` is a small resident service, apart from the sync daemon, because delivery
 belongs to whatever process owns an output and the daemon owns none. Every twenty seconds it
-asks `reminder.deliver` what came due and gives each: the notification sound, then
+asks the core what came due (`Device::deliver_reminders`) and gives each: the notification sound, then
 `host.say()` and `brl.push_message()`, so a reminder reaches the display too. What fires, its
 words, and remembering what was given — so a restart does not say the day again, and what
 came while it was stopped is one summary — are the core's; there is no reminder logic here.
-`reminder.deliver` gives the right to one connection on the device, so the service and any
-other app never both say one.
+The right to give them is one process's on the device, so the service and any other app never
+both say one.
 
 It is laid out as the device's own services are: the code in `/BTSpeak/Services/`, the unit
 in `/BTSpeak/Systemd/`, the toggle in `/BTSpeak/Settings/lumenna-reminders.values` (off lets

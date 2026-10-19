@@ -187,6 +187,27 @@ impl Lumenna {
         }
     }
 
+    pub(crate) fn pick_from(&self, day: &str, model: &mut Model) -> Command<Effect, Event> {
+        let Some(store) = &model.store else { return Command::done() };
+        let Some(open) = &mut model.open else { return Command::done() };
+        let Some(task) = open.action().filter(|action| action.kind == ActionKind::PutInBlock).map(|action| action.target.clone()) else {
+            return Command::done();
+        };
+        match lumenna_records::choices::blocks_for(&store.snapshot, Some(&task), Some(day), Some(1), &store.now) {
+            Ok(choices) => {
+                let said = choices.announcement.clone();
+                open.refusal = None;
+                open.choices = Some(choices);
+                render().and(say(said))
+            }
+            // A day that does not read stays a question, with why.
+            Err(error) => {
+                open.refusal = Some(error.message().to_owned());
+                render()
+            }
+        }
+    }
+
     pub(crate) fn answer(&self, answer: Answer, model: &mut Model) -> Command<Effect, Event> {
         let Some(open) = &mut model.open else { return Command::done() };
         match open.purpose.clone() {

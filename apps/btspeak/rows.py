@@ -1,20 +1,13 @@
-"""Turning rows into menu items.
+"""Turning the app's rows into menu items.
 
-The server sends components — `role`, `depth`, `index`, `count`, `state`, `title`, `value` —
-and never a sentence, because speech and braille compose them differently. This file is
-where the composing happens for this device.
+The app sends each row's line already worded in this device's clock (`Lines`), the level where
+it changes against the row shown before, and whether what is under a row is folded away; it
+folds, too, through each row's Expand and Collapse. This file only joins those for the menu.
 
 **One caveat shapes everything here.** `DynamicMenuDialog.draw()` sets `content_text` and
 `content_braille` from the same string, so with the stock library speech and braille cannot
-diverge. There are two ways round it: put a compact level marker in the title, or
-subclass the dialog and override the selection branch of `draw()`. This uses the marker. If the marker turns out to grate in speech, the subclass is about
-twenty lines and `InteractiveSearchDialog` extends `ChoiceDialog`, so it is an intended
-pattern rather than a hack.
-
-**Depth is never indentation**, which does not work in speech. The
-level is announced *when it changes*, which is what a screen-reader tree view does, and
-costs nothing here because titles may be callables — so the marker is computed against the
-row above at the moment it is drawn, and stays right as branches collapse.
+diverge. So the level is a compact marker in the line, said only where it changes, which is what
+a screen-reader tree view does: depth is never indentation, which says nothing in speech.
 """
 
 from __future__ import annotations
@@ -68,179 +61,51 @@ def clock(hhmm: str) -> str:
     return time.strftime(_time_format(), (2000, 1, 1, hour, minute, 0, 5, 1, -1)).strip()
 
 
-def due(row: dict) -> str:
-    """When a row is due, its time in the device's clock: "due tomorrow at 3:00 PM"."""
-    words = row.get("due")
-    if not words:
-        return ""
-    at = row.get("due_time")
-    return f"{words} at {clock(at)}" if at else words
+class Row:
+    """One row a menu shows: its key in the app, its line, what can be done to it, and the
+    record it stands for (a task's `RowView`, a day's `DayItem`, a sidebar entry, a device)."""
+
+    def __init__(self, key: str, line: str, actions=(), record=None, *, level=None, expanded=None,
+                 title: str = "", hint=None) -> None:
+        self.key = key
+        self.line = line
+        self.actions = list(actions)
+        self.record = record
+        self.level = level
+        self.expanded = expanded
+        self.title = title or line
+        self.hint = hint
+
+    def said(self) -> str:
+        """The line as read: the level where it changes, the line, and whether what is under
+        it is folded away — the one thing that cannot be found out without pressing a key."""
+        parts = [self.level or "", self.line]
+        if self.expanded is not None:
+            parts.append("expanded" if self.expanded else "collapsed")
+        return ", ".join(part for part in parts if part)
 
 
-def describe(row: dict, with_role: bool = False) -> str:
-    """One row, as a line to speak and to braille.
+def items(rows, on_select=None, fold=None) -> list:
+    """Menu items for `rows`, each carrying its row.
 
-    The title is never abbreviated — braille users get everything speech users get.
-    Only the surroundings are compressed.
+    `fold(row, open)` runs the row's own Expand or Collapse, the app's: left and right are
+    already bound to left-arrow/Dot7 and right-arrow/Dot8 on this device, so folding needs no
+    key handling of its own, and `+` and `-` are offered as well, because that is what a tree
+    view is expected to answer to. First-letter navigation goes by the title alone, so a level
+    marker in front of it does not hide it.
     """
-    parts = [row.get("title", "")]
-    if with_role:
-        parts.append(row.get("role", ""))
-    if row.get("checked") is True:
-        parts.append("done")
-    parts.append(due(row))
-    value = row.get("value")
-    if value:
-        parts.append(value)
-    parts.extend(row.get("state", []))
-    return ", ".join(part for part in parts if part)
-
-
-class Tree:
-    """A flat list of rows, read as a tree.
-
-    The projection flattens depth-first and carries `depth`, so a row's parent is the nearest
-    row above it that is shallower. That is enough to collapse a branch, and it means the
-    client needs no second shape for what the server already sent.
-
-    A task whose parent was filtered out appears at top level rather than vanishing, which is
-    the projection's choice and the right one — so a tree here may be several trees.
-
-    **Every row's title is recomputed on every redraw**, because the level marker depends on
-    what is folded. Walking up the list to find parents and visible neighbours each time made
-    a redraw cost grow with the cube of the list, which a Raspberry Pi feels at a few hundred
-    tasks. So parents are found once, in one pass, and what is visible is worked out once per
-    set of folded rows and reused until that set changes.
-    """
-
-    def __init__(self, rows: list[dict]) -> None:
-        self.rows = rows
-        self.collapsed: set[str] = set()
-        self._parents = self._find_parents(rows)
-        self._layout_for: frozenset[str] | None = None
-        self._visible: list[bool] = []
-        self._previous: list[int | None] = []
-
-    @staticmethod
-    def _find_parents(rows: list[dict]) -> list[int | None]:
-        """Each row's parent, by keeping the chain of open ancestors as the list is read."""
-        parents: list[int | None] = []
-        chain: list[int] = []
-        for index, row in enumerate(rows):
-            depth = row.get("depth", 0)
-            while chain and rows[chain[-1]].get("depth", 0) >= depth:
-                chain.pop()
-            parents.append(chain[-1] if chain else None)
-            chain.append(index)
-        return parents
-
-    def _layout(self) -> None:
-        """Works out visibility and reading order for the current set of folded rows.
-
-        Keyed on the set itself rather than on calls to `collapse` and `expand`, so that
-        changing `collapsed` directly still takes effect.
-        """
-        key = frozenset(self.collapsed)
-        if key == self._layout_for:
-            return
-        self._layout_for = key
-        visible: list[bool] = []
-        previous: list[int | None] = []
-        last_visible: int | None = None
-        for index in range(len(self.rows)):
-            parent = self._parents[index]
-            # Parents come first in the list, so theirs is already known.
-            shown = parent is None or (visible[parent] and not self.is_collapsed(parent))
-            visible.append(shown)
-            previous.append(last_visible)
-            if shown:
-                last_visible = index
-        self._visible = visible
-        self._previous = previous
-
-    def parent_of(self, index: int) -> int | None:
-        """The row this one sits under, if any."""
-        return self._parents[index]
-
-    def has_children(self, index: int) -> bool:
-        """Whether anything sits under this row."""
-        below = index + 1
-        if below >= len(self.rows):
-            return False
-        return self.rows[below].get("depth", 0) > self.rows[index].get("depth", 0)
-
-    def is_collapsed(self, index: int) -> bool:
-        return self.rows[index].get("id", "") in self.collapsed
-
-    def visible(self, index: int) -> bool:
-        """Whether every ancestor is expanded."""
-        self._layout()
-        return self._visible[index]
-
-    def collapse(self, index: int) -> str:
-        """Folds a branch away, or steps out to the parent if there is nothing to fold."""
-        if self.has_children(index) and not self.is_collapsed(index):
-            self.collapsed.add(self.rows[index]["id"])
-            return f"collapsed, {self.rows[index].get('title', '')}"
-        return ""
-
-    def expand(self, index: int) -> str:
-        """Unfolds a branch."""
-        if self.has_children(index) and self.is_collapsed(index):
-            self.collapsed.discard(self.rows[index]["id"])
-            return f"expanded, {self.rows[index].get('title', '')}"
-        return ""
-
-    def toggle(self, index: int) -> str:
-        return self.expand(index) or self.collapse(index)
-
-    def previous_visible(self, index: int) -> int | None:
-        """The row that will be read before this one."""
-        self._layout()
-        return self._previous[index]
-
-    def title_for(self, index: int) -> str:
-        """The line for one row, level marker and all.
-
-        The marker appears only where the level differs from the row above, so a flat list
-        never mentions levels at all and a deep one says "level 3" once rather than on every
-        line. Whether a branch is foldable is worth saying every time: it is the one thing
-        the user cannot discover without pressing a key.
-        """
-        row = self.rows[index]
-        line = describe(row)
-        if self.has_children(index):
-            line = f"{line}, {'collapsed' if self.is_collapsed(index) else 'expanded'}"
-
-        depth = row.get("depth", 0)
-        above = self.previous_visible(index)
-        if depth and (above is None or self.rows[above].get("depth", 0) != depth):
-            line = f"level {depth + 1}, {line}"
-        return line
-
-    def items(self, on_select=None) -> list[dialogs.DynamicMenuItem]:
-        """Menu items for every row, foldable where a row has children, each carrying its row.
-
-        `left` and `right` are already bound to left-arrow/Dot7 and right-arrow/Dot8 on this
-        device, so folding needs no key handling of its own. `+` and `-` are offered
-        as well, because that is what a tree view is expected to answer to. First-letter
-        navigation goes by the title alone, so a level marker in front of it does not hide it.
-        """
-        items = []
-        for index, row in enumerate(self.rows):
-            item = dialogs.DynamicMenuItem(
-                title=(lambda index=index: self.title_for(index)),
-                action=(lambda index=index: on_select(self.rows[index])) if on_select else None,
-                left=(lambda index=index: self.collapse(index)),
-                right=(lambda index=index: self.expand(index)),
-                dependency=(lambda index=index: self.visible(index)),
-                hotkeys={
-                    "+": (lambda index=index: self.expand(index)),
-                    "-": (lambda index=index: self.collapse(index)),
-                },
-                hint=row.get("hint"),
-                navigation_title=row.get("title", ""),
-            )
-            item.row = row
-            items.append(item)
-        return items
+    made = []
+    for row in rows:
+        foldable = fold is not None and row.expanded is not None
+        item = dialogs.DynamicMenuItem(
+            title=row.said(),
+            action=(lambda row=row: on_select(row)) if on_select else None,
+            left=(lambda row=row: fold(row, False)) if foldable else None,
+            right=(lambda row=row: fold(row, True)) if foldable else None,
+            hotkeys={"+": (lambda row=row: fold(row, True)), "-": (lambda row=row: fold(row, False))} if foldable else {},
+            hint=row.hint,
+            navigation_title=row.title,
+        )
+        item.row = row
+        made.append(item)
+    return made

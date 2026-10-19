@@ -1,5 +1,6 @@
 //! The device's store, for what runs without the app's screens: reminders' alarms and their
-//! receivers, a background sync, the watch's link to its phone, backups. The [`App`] runs over
+//! receivers, a resident service giving reminders (BTSpeak's), a background sync, the watch's
+//! link to its phone, backups. The [`App`] runs over
 //! the same [`Device`], so the two share one connection and one sync service.
 //!
 //! Each method is the host's operation of the same name, typed through BoltFFI. Those after
@@ -8,10 +9,10 @@
 //!
 //! [`App`]: crate::App
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use boltffi::export;
-use lumenna_host::{Lumenna, Reach};
+use lumenna_host::{Lumenna, Reach, ReminderLock};
 use lumenna_records::proposals::{DayPins, DayPlan, Replan, ReplanPins, TimeStyle};
 use lumenna_records::reminders::DueReminders;
 use lumenna_records::{
@@ -50,6 +51,8 @@ impl lumenna_host::LinkStream for Carried {
 /// This device's store, opened.
 pub struct Device {
     pub(crate) lumenna: Arc<Lumenna>,
+    /// The right to give this device's reminders, while this process holds it.
+    reminders: Mutex<Option<Arc<ReminderLock>>>,
 }
 
 #[export]
@@ -60,7 +63,7 @@ impl Device {
     ///
     /// If the profile cannot be opened.
     pub fn new(directory: String) -> Result<Device, LumennaError> {
-        Ok(Device { lumenna: Lumenna::open(&directory)? })
+        Ok(Device { lumenna: Lumenna::open(&directory)?, reminders: Mutex::new(None) })
     }
 
     // The services.
@@ -73,6 +76,26 @@ impl Device {
     /// What came due after `since` until `now` (RFC 3339; now when none).
     pub fn reminders_due(&self, since: String, now: Option<String>) -> Result<DueReminders, LumennaError> {
         self.lumenna.reminders_due(since, now)
+    }
+
+    /// What came due since this device last gave reminders, for a process that gives them as
+    /// they come (BTSpeak's service): it takes the right to give them, one process at a time,
+    /// and keeps it until [`Device::let_go_of_reminders`]. While another process has it,
+    /// nothing is given and `elsewhere` says so, so ask again soon.
+    pub fn deliver_reminders(&self, now: Option<String>) -> Result<DueReminders, LumennaError> {
+        let mut held = self.reminders.lock().unwrap_or_else(PoisonError::into_inner);
+        if held.is_none() {
+            *held = self.lumenna.take_reminders()?;
+        }
+        match held.as_ref() {
+            Some(lock) => self.lumenna.deliver_reminders(Arc::clone(lock), now),
+            None => Ok(DueReminders::elsewhere()),
+        }
+    }
+
+    /// Lets go of the right to give reminders, for another process to take.
+    pub fn let_go_of_reminders(&self) {
+        *self.reminders.lock().unwrap_or_else(PoisonError::into_inner) = None;
     }
 
     /// What was missed while nothing ran, `shown` being what the platform showed (`key@occurrence`).

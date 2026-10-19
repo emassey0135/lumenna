@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Lumenna's reminders on BTSpeak: a small resident service, apart from the sync daemon.
 
-It holds the right to give this device's reminders (`reminder.deliver`, over `lum rpc` or the
-daemon's socket), asks every twenty seconds what came due, and gives each: the device's
+It opens the store itself, through the core the app runs (`core.py`), holds the right to give
+this device's reminders (`Device::deliver_reminders`), asks every twenty seconds what came due, and gives each: the device's
 notification sound, then the words spoken (`host.say`) and on the braille display
 (`brl.push_message`). Everything else is the core's — when each fires, what it says, that a
 restart does not say the day again (it remembers when it last gave reminders), that what came
@@ -27,8 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from client import Disconnected, LumennaError  # noqa: E402
-from connect import connect  # noqa: E402
+from core import LumennaError, native, profile_directory, refused  # noqa: E402
 
 #: How often to ask what came due, in seconds.
 INTERVAL = 20
@@ -81,29 +80,36 @@ def braille(text: str) -> None:
     """Nothing more: `say` has shown it on the display already."""
 
 
+def open_store():
+    """This device's store, through the core."""
+    try:
+        return native().Device(str(profile_directory()))
+    except Exception as error:  # noqa: BLE001 - the core's refusal
+        raise LumennaError(refused(error)) from error
+
+
 class Giver:
-    """One process's giving of reminders: a connection holding the right, and what it says.
+    """One process's giving of reminders: the store, holding the right, and what it says.
 
     `now`, when given, is a function of nothing giving the moment to deliver at (RFC 3339),
     for tests; the service leaves it out and the core takes now.
     """
 
-    def __init__(self, open_client=connect, on=enabled, sound=chime, speak=say, show=braille, now=None) -> None:
-        self._open = open_client
+    def __init__(self, open_store=open_store, on=enabled, sound=chime, speak=say, show=braille, now=None) -> None:
+        self._open = open_store
         self._on = on
         self._sound = sound
         self._speak = speak
         self._show = show
         self._now = now
-        self.client = None
+        self.device = None
         #: Whether another process on the device gave reminders when last asked.
         self.elsewhere = False
 
     def let_go(self) -> None:
-        """Closes the connection, which lets go of the right to give reminders."""
-        if self.client is not None:
-            self.client.close()
-            self.client = None
+        """Lets go of the right to give reminders, for another process to take."""
+        if self.device is not None:
+            self.device.let_go_of_reminders()
 
     def once(self) -> list[str]:
         """Asks what came due and gives it; what was given, in order."""
@@ -111,20 +117,18 @@ class Giver:
             self.let_go()
             self.elsewhere = False
             return []
-        if self.client is None:
-            self.client = self._open()
-        params = {"now": self._now()} if self._now else {}
+        if self.device is None:
+            self.device = self._open()
         try:
-            found = self.client.call("reminder.deliver", **params)
-        except Disconnected:
-            self.client = None
-            return []
+            found = self.device.deliver_reminders(self._now() if self._now else None)
+        except Exception as error:  # noqa: BLE001 - the core's refusal
+            raise LumennaError(refused(error)) from error
         # Said to no one: the other process gives them, and this one waits its turn.
-        self.elsewhere = bool(found.get("elsewhere"))
+        self.elsewhere = bool(found.elsewhere)
         given = []
-        if found.get("missed_summary"):
-            given.append(found["missed_summary"])
-        given.extend(reminder["text"] for reminder in found.get("due", []))
+        if found.missed_summary:
+            given.append(found.missed_summary)
+        given.extend(reminder.text for reminder in found.due)
         for text in given:
             self._sound()
             self._speak(text)

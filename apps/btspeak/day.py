@@ -1,36 +1,58 @@
 """The day and its blocks.
 
-The timeline has no visual metaphor here, and blocks as a time-ordered list lose
-nothing. What a timeline shows by empty space becomes a row: free time between blocks,
-and now. Sittings sit under their block as a second level, so the same folding works.
+The timeline has no visual metaphor here, and blocks as a time-ordered list lose nothing.
+What a timeline shows by empty space is a row of the app's: free time between blocks, and now.
+Sittings sit under their block as a second level, folded as the app folds them. Every line is
+the core's, in this device's clock; the day shown, moving between days and today opening on
+now are the app's.
 """
 
 from __future__ import annotations
 
-import datetime
-
 from BTSpeak import dialogs
 
 import actions
-from actions import spoken_day
-from client import LumennaError
-from rows import Tree, clock, describe
-from session import Command, Flag, Session, choose, empty_then, heading, live_menu, row_item, screen
-import proposals  # noqa: F401 - registers Replan from now's and Plan the day's screens
+from actions import K, L
+from rows import Row, items
+from session import Command, Session, empty_then, heading, live_menu, screen
+import proposals  # noqa: F401 - Replan from now's and Plan the day's screen
 import tasks
 
 
 #: A block form's yes-or-no fields, as a choice.
 YES_NO = {"yes": "Yes", "no": "No"}
 
-#: The fields a new block is asked for; the rest start as its kind's own or empty, and are
-#: changed by editing it.
-NEW = ("title", "date", "start", "minutes", "kind", "repeat")
-
 
 # ---------------------------------------------------------------------------------------
 # The planner
 # ---------------------------------------------------------------------------------------
+
+
+def day_rows(session: Session) -> list[Row]:
+    """The day's rows, not folded away, each with its line: blocks with their sittings, free
+    time, now, what was cancelled for the day. The day's heading is the screen's title."""
+    view, lines = session.view(), session.lines()
+    if view.day is None:
+        return []
+    rows = []
+    for index, item in enumerate(view.day.items):
+        if item.hidden or item.kind == L.DayKind.SUMMARY:
+            continue
+        line = lines.day[index].text if index < len(lines.day) else ""
+        rows.append(Row(item.key, line, item.actions, item, level=item.level, expanded=item.expanded))
+    return rows
+
+
+def day_heading(session: Session) -> str:
+    """The day as every app heads it: "<day>. <summary>", the core's line."""
+    view, lines = session.view(), session.lines()
+    if view.day is None:
+        return "Today"
+    return next(
+        (lines.day[i].text for i, item in enumerate(view.day.items)
+         if item.kind == L.DayKind.SUMMARY and i < len(lines.day)),
+        lines.day_title,
+    )
 
 
 def day_plan(session: Session) -> str:
@@ -41,133 +63,69 @@ def day_plan(session: Session) -> str:
     Dot 7); the day's own actions, moving between days and adding a block are on the main
     menu (M-Chord), and on their keys.
     """
-    shown = {"date": "", "plan": {}, "heading": ""}
-    moved = Flag()
 
-    def turn(to: str) -> str:
-        shown["date"] = to
-        moved.set()
-        return ""
-
-    def step(days: int) -> str:
-        current = shown["plan"].get("date")
-        if not current:
-            return ""
-        return turn((datetime.date.fromisoformat(current) + datetime.timedelta(days=days)).isoformat())
-
-    def go_to() -> str:
-        day = actions.ask_line(session, "form.go_to_day")
-        day = day.strip() if day else ""
-        return turn(day) if day else ""
+    def move(step) -> str:
+        said = session.send(L.ShellEventDay(step))
+        # Go to Day asks which; the app's question.
+        return actions.joined(said, actions.follow(session))
 
     def build():
-        try:
-            plan = session.call("plan", date=shown["date"]) if shown["date"] else session.call("plan")
-        except LumennaError as error:
-            # A day that does not read leaves the last one shown.
-            shown["date"] = shown["plan"].get("date", "")
-            return error.message
-        shown["plan"] = plan
-        shown["heading"] = f"{spoken_day(plan['date'])}. {plan.get('summary') or plan.get('announcement', '')}"
-        return Tree(plan_rows(plan)).items()
+        session.show(L.PlaceToday())
+        return items(day_rows(session), fold=lambda row, open_: actions.fold(session, row, open_))
 
-    def date() -> str:
-        return shown["plan"].get("date", "")
-
-    # Opening the day lands on now, not at midnight — so the first build decides where.
-    rows = plan_rows(session.call("plan"))
-    now = next(
-        (i for i, row in enumerate(rows) if row["role"] == "now" or row.get("when") == "now"),
-        0,
-    )
     with screen("lumenna-day"):
         live_menu(
-            session, build, lambda: shown["heading"], default=now, moved=moved,
+            session, build, lambda: day_heading(session),
             main=lambda row: plan_main(session, row),
             context=lambda rows: actions.commands(session, rows),
             app=lambda: [
-                *day_commands(session, shown["plan"]),
-                Command("Add a block", lambda _: add_block(session, date=date() or "today"), key="a"),
-                Command("Previous day", lambda _: step(-1), key="p"),
-                Command("Next day", lambda _: step(1), key="n"),
-                Command("Go to a day", lambda _: go_to(), key="g"),
-                Command("Today", lambda _: turn(""), key="t"),
+                *day_commands(session),
+                Command("Add a block", lambda _: add_block(session), key="a"),
+                Command("Previous day", lambda _: move(L.DayMove.PREVIOUS), key="p"),
+                Command("Next day", lambda _: move(L.DayMove.NEXT), key="n"),
+                Command("Go to a day", lambda _: move(L.DayMove.ASK), key="g"),
+                Command("Today", lambda _: move(L.DayMove.TODAY), key="t"),
                 *tasks.undo_commands(session),
             ],
             empty="Nothing planned.",
             app_title="Day menu",
+            focus=lambda: session.view().focus,
         )
     return ""
 
 
-def day_commands(session: Session, plan: dict) -> list[Command]:
-    """What can be done to the day shown itself, the plan's own actions in the core's order,
+def day_commands(session: Session) -> list[Command]:
+    """What can be done to the day shown itself, the day's own actions in the core's order,
     first on the Day menu: Plan the day, Replan from now, What should I work on?, End the day,
     Clear the rest of the day."""
+    day = session.view().day
     return [
         Command(actions.named(action), lambda _, action=action: actions.act(session, action),
-                key=actions.DAY_KEYS.get(action["kind"], ""))
-        for action in plan.get("actions", [])
+                key=actions.DAY_KEYS.get(action.kind, ""))
+        for action in (day.actions if day is not None else [])
     ]
 
 
-def plan_rows(plan: dict) -> list[dict]:
-    """The timeline as rows: blocks with their sittings, free time, now, and what was
-    cancelled for the day, each said the way the phone says it."""
-    blocks = {block["row"]: block for block in plan.get("blocks", [])}
-    timeline = plan.get("timeline") or [{"item": "block", "row": row} for row in blocks]
-    rows: list[dict] = []
-    for item in timeline:
-        if item["item"] == "block" and item["row"] in blocks:
-            block = blocks[item["row"]]
-            # The core words the details for every app.
-            state = list(block.get("details", []))
-            rows.append({
-                "id": block["id"], "role": "block", "depth": 0, "block": block,
-                "when": block.get("when", ""),
-                "title": f"{clock(block['start'])} to {clock(block['end'])}, {block['title']}",
-                "state": state, "actions": block.get("actions", []),
-            })
-            for sitting in block.get("assignments", []):
-                state = list(sitting.get("details", []))
-                rows.append({
-                    "id": sitting["id"], "role": "assignment", "depth": 1,
-                    "sitting": sitting, "block": block,
-                    "title": sitting["title"], "state": state, "actions": sitting.get("actions", []),
-                })
-        elif item["item"] == "free":
-            # "<title>, <details>, <start> to <end>", in every app's order.
-            rows.append({
-                "id": f"free@{item['start']}", "role": "free", "depth": 0, "free": item,
-                "title": ", ".join([item["title"], *item.get("details", [])]),
-                "value": f"{clock(item['start'])} to {clock(item['end'])}",
-                "actions": item.get("actions", []),
-            })
-        elif item["item"] == "now":
-            rows.append({"id": "now", "role": "now", "depth": 0, "title": f"{item['title']}, {clock(item['time'])}"})
-    for cancelled in plan.get("cancelled", []):
-        rows.append({
-            "id": f"cancelled@{cancelled['series']}", "role": "cancelled", "depth": 0,
-            "cancelled": cancelled,
-            "title": f"{clock(cancelled['start'])}, {cancelled['title']}",
-            "state": list(cancelled.get("details", [])), "actions": cancelled.get("actions", []),
-        })
-    return rows
-
-
-def plan_main(session: Session, row: dict) -> str:
+def plan_main(session: Session, row: Row) -> str:
     """What Enter does on a row of the day: edits a block, shows a sitting's task, adds a
     block in free time, puts a cancelled day back — each the row's own action."""
-    role = row["role"]
-    if role == "block":
-        return actions.run_kind(session, row, "edit")
-    if role == "assignment":
-        return tasks.show(session, {"id": row["sitting"]["task"]})
-    if role == "free":
-        return actions.run_kind(session, row, "add_block")
-    if role == "cancelled":
-        return actions.run_kind(session, row, "restore_day")
-    return describe(row)
+    kind = row.record.kind
+    if kind == L.DayKind.BLOCK:
+        return actions.run_kind(session, row, K.EDIT)
+    if kind == L.DayKind.SITTING:
+        return tasks.show(session, Row(row.record.sitting.task, ""))
+    if kind == L.DayKind.FREE:
+        return actions.run_kind(session, row, K.ADD_BLOCK)
+    if kind == L.DayKind.CANCELLED:
+        return actions.run_kind(session, row, K.RESTORE_DAY)
+    return row.line
+
+
+def add_block(session: Session) -> str:
+    """One block, once or repeating, in the app's block form: it starts when the core says for
+    its day — today the next whole hour, another day when the day starts."""
+    session.send(L.ShellEventBlock(L.BlockEventNew(None, None)))
+    return actions.follow(session)
 
 
 # ---------------------------------------------------------------------------------------
@@ -180,178 +138,70 @@ def blocks(session: Session) -> str:
     state = {"heading": "Blocks"}
 
     def build():
-        listing = session.call("block.list")
-        state["heading"] = heading("Blocks", listing)
-        state["empty"] = listing.get("empty", "")
-        return [row_item(row, describe(row)) for row in listing.get("rows", [])]
+        session.show(L.PlaceBlocks())
+        rows = tasks.list_rows(session)
+        state["heading"] = heading("Blocks", tasks.readback(session), bool(rows))
+        return items(rows)
 
     with screen("lumenna-day"):
         live_menu(
             session, build, lambda: state["heading"],
-            main=lambda row: actions.run_kind(session, row, "edit"),
+            main=lambda row: actions.run_kind(session, row, K.EDIT),
             context=lambda rows: actions.commands(session, rows),
             app=[Command("Add a block", lambda _: add_block(session), key="a"), *tasks.undo_commands(session)],
-            empty=empty_then(state, "Press a to add one."),
+            empty=empty_then(lambda: tasks.readback(session), "Press a to add one."),
             app_title="Blocks menu",
+            focus=lambda: session.view().focus,
         )
     return ""
 
 
 # ---------------------------------------------------------------------------------------
-# The block form, on the core's rules: the fields it starts from (`form.block_fields`,
-# `form.day_block_fields`), a kind's own settings (`form.block_defaults`), and what saving
-# sends (`form.block_edit`, `form.new_block`).
+# The block form: the app's (`ViewModel::block_form`), filled in with the device's form.
 # ---------------------------------------------------------------------------------------
 
 
-def value(session: Session, method: str, **params):
-    """What a form function computes from `params`."""
-    return session.call(method, **params).get("value")
+def value_of(form, key: str):
+    """What the form shows in field `key`: the day it is for, or one of its values."""
+    return form.date if key == "date" else getattr(form.values, key, "")
 
 
-def block_form(session: Session) -> dict:
-    """The block form's fields as the core words them (`form.block_form`), by key, in order."""
-    return {field["key"]: field for field in session.words("form.block_form")}
-
-
-def toggles(session: Session) -> list[str]:
-    """The block's settings a kind brings with it: the form's on-or-off fields."""
-    return [key for key, field in block_form(session).items() if field["kind"] == "toggle"]
-
-
-def block_fields(session: Session, before: dict, keys, repeats: bool = True, hints=None) -> list:
-    """The block form's fields among `keys`, in the core's order and words, starting from
-    `before`; an on-or-off one as a choice of yes or no, and one shown only while the
-    block repeats left out of one that does not. `hints` says something else under a
-    field than its own hint: Repeats' note for a rule its words cannot say."""
-    fields = []
-    for key, field in block_form(session).items():
-        if (hints or {}).get(key):
-            field = {**field, "hint": hints[key]}
-        if key not in keys or (field.get("repeating_only") and not repeats):
-            continue
-        if field["kind"] == "toggle":
-            fields.append(dialogs.InputField(
-                key=key, prompt=field["label"], field_type="choice", choices=YES_NO,
-                default_text="yes" if before.get(key) else "no",
-            ))
-        else:
-            fields.append(tasks.form_field(field, str(before.get(key, ""))))
-    return fields
-
-
-def with_kind(session: Session, before: dict, after: dict) -> dict:
-    """`after`, its settings brought by its kind where the kind changed and they did not, as
-    a form's check boxes go back to a new kind's own."""
-    if after["kind"] != before["kind"]:
-        defaults = value(session, "form.block_defaults", kind=after["kind"]) or {}
-        for key in toggles(session):
-            if after[key] == before[key] and key in defaults:
-                after[key] = defaults[key]
-    return after
-
-
-def answered(before: dict, answers: dict) -> dict:
-    """The form's fields after it was filled in: text as typed, yes or no as a flag."""
-    after = dict(before)
-    for key, typed in answers.items():
-        if key in before:
-            after[key] = typed == "yes" if isinstance(before[key], bool) else typed
-    return after
-
-
-def add_block(session: Session, date: str = "today", at: str | None = None, minutes: int = 60) -> str:
-    """One block, once or repeating. Without `at` it starts when the core says for its day
-    (`form.new_block_start`): today the next whole hour, another day when the day starts."""
-    try:
-        offered = at or value(session, "form.new_block_start", date=date)
-    except LumennaError as error:
-        return error.message
-    start = {"title": "", "date": date, "start": offered, "minutes": str(minutes), "kind": "work", "repeat": ""}
-    answers = dialogs.request_form(block_fields(session, start, NEW, repeats=False))
-    if answers is None:
-        return ""
-    try:
-        # The day changed and the start was left as offered: it starts when that day's would.
-        if at is None and answers["date"] != date and answers["start"] == offered:
-            answers = {**answers, "start": value(session, "form.new_block_start", date=answers["date"])}
-        defaults = value(session, "form.block_defaults", kind=answers["kind"]) or {}
-        fields = {
-            "title": answers["title"], "start": answers["start"], "minutes": answers["minutes"],
-            "kind": answers["kind"], "repeat": answers["repeat"],
-            "until": "", "min_minutes": "", "task_filter": "", "colour": "", "notes": "",
-            **{key: bool(defaults.get(key)) for key in toggles(session)},
-        }
-        block = value(session, "form.new_block", fields=fields, date=answers["date"])
-    except LumennaError as error:
-        return error.message
-    return session.write("block.add", **{k: v for k, v in block.items() if v is not None})
-
-
-def block_scope(block: dict, date: str) -> dict | None:
-    """Which days a change to `block` means: asked of a repeating one, never guessed.
-    None when the person cancelled."""
-    if not block.get("repeats"):
-        return {"all": True}
-    scope = choose({"day": f"{spoken_day(date)} only", "all": "Every occurrence"}, "Change which?")
-    if scope is None:
-        return None
-    return {"all": True} if scope == "all" else {"date": date}
-
-
-def edit_block(session: Session, block: dict) -> str:
-    """Asks "this day, or every day?" of a repeating block — never guessed."""
-    date = block["id"].split("@")[-1]
-    scope = block_scope(block, date)
-    if scope is None:
-        return ""
-    if scope.get("all"):
-        return edit_series(session, block["series"])
-    try:
-        before = value(session, "form.day_block_fields", block=block)
-    except LumennaError as error:
-        return error.message
-    # Only what one day of a repeating block can change, as the form marks it.
-    one_day = [key for key, field in block_form(session).items() if field.get("one_day")]
-    return save_block(session, block["series"], before, block_fields(session, before, one_day), {"date": date})
-
-
-def edit_series(session: Session, series: str) -> str:
-    """The form for every occurrence of a block."""
-    try:
-        shown = session.call("block.show", id=series)
-        before = value(session, "form.block_fields", block=shown)
-    except LumennaError as error:
-        return error.message
-    every = [key for key in block_form(session) if key != "date"]
-    # A rule the words cannot say leaves Repeats empty; the core's note says why.
-    note = value(session, "form.unsayable_repeat_note", block=shown)
-    fields = block_fields(session, before, every, repeats=bool(shown.get("repeats")), hints={"repeat": note})
-    return save_block(session, series, before, fields, {"all": True})
-
-
-def save_block(session: Session, series: str, before: dict, fields: list, scope: dict) -> str:
-    """Asks the form, then sends what the core says changed."""
-    answers = dialogs.request_form(fields)
-    if answers is None:
-        return ""
-    after = with_kind(session, before, answered(before, answers))
-    try:
-        edit = value(session, "form.block_edit", before=before, after=after)
-    except LumennaError as error:
-        return error.message
-    if not edit:
-        return "Nothing changed"
-    return session.write("block.edit", id=series, **{k: v for k, v in edit.items() if v is not None}, **scope)
-
-
-def free_time_form(session: Session, action: dict, row=None) -> str:
-    """A block added in free time: its day and start from the free time, its length up to
-    the free time's end, at most twelve hours."""
-    free = (row or {}).get("free") or {}
-    return add_block(session, date=action["target"], at=action.get("other"), minutes=min(free.get("minutes", 60), 720))
-
-
-actions.FORMS[("block", "edit")] = lambda session, action, row: edit_block(session, row["block"])
-actions.FORMS[("series", "edit")] = lambda session, action, row: edit_series(session, action["target"])
-actions.FORMS[("free_time", "add_block")] = free_time_form
+def block_form(session: Session) -> str:
+    """The block form the app has open — a new block, a block changed for one day or every
+    day, a block in free time — asked with the device's form. Each field changed is sent as
+    typed, then saved; the app sends only what changed, brings a kind's own settings with it,
+    and moves a start left as offered to the day typed. A refused form is asked again with the
+    app's sentence. What was said."""
+    while True:
+        form = session.view().block_form
+        if form is None:
+            return ""
+        if form.refusal:
+            dialogs.show_message(form.refusal)
+        fields = []
+        for field in form.fields:
+            value = value_of(form, field.key)
+            if field.kind == L.FieldKind.TOGGLE:
+                fields.append(dialogs.InputField(
+                    key=field.key, prompt=field.label, field_type="choice", choices=YES_NO,
+                    default_text="yes" if value else "no",
+                ))
+            else:
+                fields.append(tasks.form_field(field, str(value)))
+        answers = dialogs.request_form(fields)
+        if answers is None:
+            return session.send(L.ShellEventBlock(L.BlockEventCancel()))
+        for field in form.fields:
+            typed = answers.get(field.key)
+            before = value_of(form, field.key)
+            if field.kind == L.FieldKind.TOGGLE:
+                # Sent as the app takes a toggle.
+                typed = None if typed is None else "true" if typed == "yes" else "false"
+                shown = "true" if before else "false"
+            else:
+                shown = str(before)
+            if typed is not None and typed != shown:
+                session.send(L.ShellEventBlock(L.BlockEventField(field.key, str(typed))))
+        said = session.send(L.ShellEventBlock(L.BlockEventSave()))
+        if session.view().block_form is None:
+            return said

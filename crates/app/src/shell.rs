@@ -36,6 +36,8 @@ pub enum ShellEvent {
     Run(Vec<ActionKind>),
     /// The answer to the question open.
     Answer(Answer),
+    /// The open pick offers another day's blocks.
+    PickFrom(String),
     /// Leave the question open unanswered.
     Cancel,
     /// Move through the days.
@@ -83,6 +85,7 @@ impl From<ShellEvent> for Event {
             ShellEvent::Run(kinds) => Event::Run(kinds),
             ShellEvent::Answer(answer) => Event::Answer(answer),
             ShellEvent::Cancel => Event::Cancel,
+            ShellEvent::PickFrom(day) => Event::PickFrom(day),
             ShellEvent::Day(step) => Event::Day(step),
             ShellEvent::Details(event) => Event::Details(event),
             ShellEvent::Typing(event) => Event::Typing(event),
@@ -117,6 +120,7 @@ impl TryFrom<Event> for ShellEvent {
             Event::Run(kinds) => ShellEvent::Run(kinds),
             Event::Answer(answer) => ShellEvent::Answer(answer),
             Event::Cancel => ShellEvent::Cancel,
+            Event::PickFrom(day) => ShellEvent::PickFrom(day),
             Event::Day(step) => ShellEvent::Day(step),
             Event::Details(event) => ShellEvent::Details(event),
             Event::Typing(event) => ShellEvent::Typing(event),

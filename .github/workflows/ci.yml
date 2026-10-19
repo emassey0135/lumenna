@@ -1,6 +1,6 @@
 # Builds and tests everything, on every push and pull request: the Rust workspace on Linux,
 # macOS and Windows, each on x86_64 and arm64; the GTK and Windows apps' UI tests; the
-# BTSpeak and Emacs clients against a real `lum rpc`; the web client in a browser; the Apple
+# BTSpeak client on the app in-process and the Emacs client against a real `lum rpc`; the web client in a browser; the Apple
 # apps; and Android for both its ABIs. Several sessions work on this repository at once,
 # and this is what catches one breaking another.
 #
@@ -107,6 +107,11 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y emacs-nox
       - name: Build lum
         run: cargo build -p lumenna-cli
+      - name: BoltFFI
+        run: cargo install boltffi_cli --version 0.31.1 --locked
+      - name: The BTSpeak app's core, as a Python extension
+        working-directory: apps/btspeak
+        run: ./build-core.sh --debug
       - name: BTSpeak app
         working-directory: apps/btspeak
         run: PATH="$GITHUB_WORKSPACE/target/debug:$PATH" python3 -m unittest discover -s tests

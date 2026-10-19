@@ -1,8 +1,9 @@
-"""The app: the main menu, and the check that the server is one this app understands.
+"""The app: the main menu.
 
-Everything reachable here goes through `lum rpc`'s typed surface. Nothing parses prose,
-nothing computes a due date, nothing decides what completing a task does to its subtasks —
-that is all core's, so that every client behaves alike and none can drift.
+Everything reachable here is the Crux app's, run in this process beside the store (`core.py`).
+Nothing parses prose, nothing computes a due date, nothing decides what completing a task does
+to its subtasks, which row is in hand after a change or what a question offers: that is all the
+core's and the app's, so that every client behaves alike and none can drift.
 
 The menus themselves live beside this file: `tasks.py`, `day.py` for the planner and blocks,
 `organise.py` for projects, labels and filters, and `preferences.py` for settings, devices
@@ -28,7 +29,8 @@ from __future__ import annotations
 
 from BTSpeak import dialogs
 
-from client import Disconnected
+from actions import L
+from core import Core, LumennaError
 from session import Session, live_menu
 import day
 import organise
@@ -37,90 +39,74 @@ import reminder_lists
 import tasks
 
 
-#: The JSON shapes this app was written against. The server reports its own; if they
-#: disagree, one of the two is guessing, and a client that does not know the number should
-#: refuse rather than guess.
-CONTRACT = 1
-
-#: Methods this app calls that a server from before them would not answer. Asked for at the
-#: start, so an old `lum` is a sentence then rather than a failure halfway through a pairing.
-NEEDS = ("pair", "pair.confirm", "block.show", "act", "choices", "places", "form.task_edit", "form.not_offered",
-         "form.project_reference", "form.task_form", "form.block_form", "form.pairing_words", "form.sentence_case",
-         "reminder.list", "reminder.due", "reminder.dismiss", "reminder.snooze")
-
-
-def run(client) -> int:
-    """Checks the server is one we understand, then hands over to the main menu."""
+def run(core: Core) -> int:
+    """Waits for the store, then hands over to the main menu."""
+    session = Session(core)
     try:
-        server = client.call("initialize")
-    except Disconnected as error:
-        dialogs.show_message(f"Could not start Lumenna. {error.message}")
-        return 1
-
-    if server.get("contract") != CONTRACT:
-        dialogs.show_message(
-            f"This app speaks version {CONTRACT} of Lumenna's data format and the installed "
-            f"`lum` speaks version {server.get('contract')}. Update whichever is older; "
-            "guessing at the difference would be worse than stopping."
-        )
-        return 1
-    missing = [method for method in NEEDS if method not in server.get("methods", NEEDS)]
-    if missing:
-        dialogs.show_message(
-            f"The installed `lum` is older than this app and cannot {', '.join(missing)}. "
-            "Update it to use everything here."
-        )
-
-    session = Session(client)
-    try:
-        main_menu(session)
-    except Disconnected as error:
+        session.ready()
+    except LumennaError as error:
         dialogs.show_message(error.message)
         return 1
+    core.back_up_while_running()
+    # Syncing runs while the app does, beside the daemon or in its place.
+    core.app.in_front(True)
+    try:
+        main_menu(session)
+    finally:
+        core.app.in_front(False)
     return 0
 
 
-#: Each of the core's places by name: the letter that opens it, and the screen it opens.
-PLACES = {
-    "Today": ("t", day.day_plan),
-    "Tasks": ("k", tasks.task_list),
-    "Projects": ("p", organise.projects),
-    "Labels": ("l", organise.labels),
-    "Filters": ("f", organise.saved_filters),
-    "Blocks": ("b", day.blocks),
-    "Trash": ("x", tasks.trash),
-}
-
-
-def place_name(entry: dict) -> str:
-    """What a top-level place is: its name, or its heading's group."""
-    kind = entry.get("kind", {})
-    place = kind.get("Place") if isinstance(kind, dict) else None
-    return kind.get("Group") if isinstance(kind, dict) and "Group" in kind else (place if isinstance(place, str) else "")
+def opens(entry):
+    """The letter and screen for one of the sidebar's top-level rows, or None for one this app
+    does not show."""
+    kind = entry.kind
+    if isinstance(kind, L.SidebarKindGroup):
+        return {
+            L.SidebarGroup.PROJECTS: ("p", organise.projects),
+            L.SidebarGroup.LABELS: ("l", organise.labels),
+            L.SidebarGroup.FILTERS: ("f", organise.saved_filters),
+        }.get(kind.field_0)
+    place = kind.field_0
+    if isinstance(place, L.PlaceToday):
+        return "t", day.day_plan
+    if isinstance(place, L.PlaceTasks):
+        return "k", tasks.task_list
+    if isinstance(place, L.PlaceBlocks):
+        return "b", day.blocks
+    if isinstance(place, L.PlaceTrash):
+        return "x", tasks.trash
+    return None
 
 
 def main_menu(session: Session) -> None:
-    """The core's places, as every app's sidebar lists them, one level down — each project,
+    """The app's places, as every app's sidebar lists them, one level down — each project,
     label and filter is in its own list — then what this app adds: adding a task, undo and
-    redo, syncing, settings."""
+    redo, reminders, syncing, settings."""
     item = dialogs.DynamicMenuItem
 
     def build():
         places = []
-        for entry in session.call("places").get("entries", []):
-            name = place_name(entry)
-            if entry.get("depth", 0) == 0 and name in PLACES:
-                key, opens = PLACES[name]
-                places.append(item(title=session.sentence(entry["text"]), shortcut=key, action=lambda opens=opens: opens(session)))
+        for entry in session.view().sidebar:
+            found = opens(entry) if entry.depth == 0 else None
+            if found is not None:
+                key, screen = found
+                places.append(item(title=entry.text, shortcut=key, action=lambda screen=screen: screen(session)))
         # The task list sits beside adding a task, as it always has here.
         at = next((i + 1 for i, it in enumerate(places) if it.shortcut == "k"), len(places))
-        places.insert(at, item(title="Add a task", shortcut="a", action=lambda: tasks.add_task(session)))
+        places.insert(at, item(title="Add a task", shortcut="a", action=lambda: add_task(session)))
         return places + [
-            item(title="Undo", shortcut="u", action=lambda: session.write("undo")),
-            item(title="Redo", shortcut="y", action=lambda: session.write("redo")),
+            item(title="Undo", shortcut="u", action=lambda: session.send(L.ShellEventUndo())),
+            item(title="Redo", shortcut="y", action=lambda: session.send(L.ShellEventRedo())),
             item(title="Reminders", shortcut="r", action=lambda: reminder_lists.due(session)),
             item(title="Sync now", shortcut="n", action=lambda: preferences.sync_now(session)),
             item(title="Settings", shortcut="s", action=lambda: preferences.settings(session)),
         ]
 
     live_menu(session, build, "Lumenna")
+
+
+def add_task(session: Session) -> str:
+    """A task added from the main menu goes in the Inbox, as the task list's own would."""
+    session.show(L.PlaceTasks())
+    return tasks.add_task(session, session.view().quick_add)

@@ -116,6 +116,10 @@ pub struct Asking {
     /// Why the last answer was refused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refusal: Option<String>,
+    /// Whether the pick can offer another day's blocks instead of the week's
+    /// ([`crate::Event::PickFrom`]): Put in a Block.
+    #[serde(default)]
+    pub another_day: bool,
 }
 
 /// The rows a place lists under `query`: tasks, or the block series; `None` for the day.
@@ -236,6 +240,7 @@ fn shown(model: &Model) -> ViewModel {
             question: open.question(),
             choices: open.choices.clone(),
             refusal: open.refusal.clone(),
+            another_day: open.picked.is_none() && open.action().is_some_and(|action| action.kind == lumenna_records::ActionKind::PutInBlock),
         }),
     }
 }

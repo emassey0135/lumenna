@@ -95,6 +95,18 @@ pub enum SidebarGroup {
     Filters,
 }
 
+impl SidebarGroup {
+    /// What the group's list says with nothing in it, as its listing says it.
+    #[must_use]
+    pub fn empty(self) -> String {
+        match self {
+            Self::Projects => "No projects.".to_owned(),
+            Self::Labels => "No labels.".to_owned(),
+            Self::Filters => "No saved filters. A filter's query is kept here under a name.".to_owned(),
+        }
+    }
+}
+
 /// One sidebar row.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

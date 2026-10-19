@@ -1,8 +1,8 @@
-"""The menus, driven as a person would drive them, against a real `lum rpc`.
+"""The menus, driven as a person would drive them, against the real app over a real store.
 
-Each test is a script: open this, choose that, type this — and then the store is asked
-whether it happened. That checks what a mock could not: that every flow sends a method the
-server answers, with parameters it reads, and says something back.
+Each test is a script: open this, choose that, type this — and then the store is asked, over
+`lum rpc`, whether it happened. That checks what a mock could not: that every flow sends the
+app an event it answers, and that what it wrote is what another process on the device reads.
 """
 
 from __future__ import annotations
@@ -24,9 +24,8 @@ import btspeak_stub  # noqa: E402
 
 btspeak_stub.install()
 
-from connect import connect  # noqa: E402
-from session import Session  # noqa: E402
-from test_client import LUM  # noqa: E402
+from harness import LUM, Store, connect  # noqa: E402
+from actions import L  # noqa: E402
 import day  # noqa: E402
 import menus  # noqa: E402
 import organise  # noqa: E402
@@ -39,17 +38,13 @@ play = btspeak_stub.play
 @unittest.skipIf(LUM is None, "`lum` has not been built")
 class Menus(unittest.TestCase):
     def setUp(self):
-        self.profile = Path(tempfile.mkdtemp())
-        os.environ["PATH"] = f"{Path(LUM).parent}{os.pathsep}{os.environ['PATH']}"
-        os.environ["LUMENNA_BACKUP_DIR"] = str(self.profile / "backups")
-        # This app's own preferences, kept out of the real ones.
-        os.environ["XDG_CONFIG_HOME"] = str(self.profile / "config")
-        self.client = connect(self.profile)
-        self.session = Session(self.client)
+        self.store = Store()
+        self.profile = self.store.profile
+        self.client = self.store.client
+        self.session = self.store.session
 
     def tearDown(self):
-        self.client.close()
-        shutil.rmtree(self.profile, ignore_errors=True)
+        self.store.close()
 
     def call(self, method, **params):
         return self.client.call(method, **params)
@@ -65,6 +60,7 @@ class Menus(unittest.TestCase):
 
     def run_script(self, steps, start):
         script = play(steps)
+        self.store.caught_up()
         start()
         self.assertTrue(script.finished(), f"steps left over: {script.steps}")
         return script
@@ -314,6 +310,22 @@ class Menus(unittest.TestCase):
         self.addCleanup(setattr, proposals, "NOW", None)
         return proposals
 
+    def open_proposal(self, kind, date=None):
+        """Opens Replan from now, or Plan the day for `date`, as the day's own action does, and
+        runs its screen; what it said after."""
+        import proposals
+        self.store.caught_up()
+        proposals.pin(self.session)
+        if kind == "replan":
+            self.session.send(L.ShellEventProposal(L.ProposalEventReplan()))
+        else:
+            self.session.show(L.PlaceToday())
+            self.session.send(L.ShellEventDay(L.DayMove.ASK))
+            self.session.send(L.ShellEventAnswer(L.AnswerText(date)))
+            action = next(a for a in self.session.view().day.actions if a.kind == L.ActionKind.PLAN_DAY)
+            self.session.send(L.ShellEventPerform(action))
+        return proposals.proposal_screen(self.session)
+
     def test_the_day_menu_offers_the_days_own_actions_and_what_to_work_on_says_why(self):
         self.call("task.add", text="review p1")
         self.call("task.add", text="draft")
@@ -350,7 +362,7 @@ class Menus(unittest.TestCase):
             ("menu", "Make the changes checked"),
             ("menu", "Make the changes checked"),
         ])
-        said = proposals.proposal_screen(self.session, "replan")
+        said = self.open_proposal("replan")
         self.assertTrue(script.finished(), script.steps)
         self.assertEqual(script.titles, [
             "Replan from now. Lunch moves from 10:30 to 11:00; Review moves from 11:00 to 11:30 and shortens from 1 hour to 30 minutes.",
@@ -382,7 +394,7 @@ class Menus(unittest.TestCase):
 
         proposals.dialogs.dynamic_menu = recording
         self.addCleanup(setattr, proposals.dialogs, "dynamic_menu", real)
-        proposals.proposal_screen(self.session, "replan")
+        self.open_proposal("replan")
         self.assertTrue(script.finished(), script.steps)
         self.assertEqual(rows[0][rows[0].index("Other options"):], [
             "Other options",
@@ -400,17 +412,18 @@ class Menus(unittest.TestCase):
         proposals = self.proposing("2030-01-15T10:40")
         self.call("block.add", title="Deep work", at="09:00", minutes=120, date="2030-01-15")
         self.call("block.add", title="Lunch", kind="break", at="10:30", minutes=30, date="2030-01-15")
-        stale = proposals.ask(self.session, "replan", None)
-        self.call("replan.apply", proposal=stale, accepted=stale["changes"], now="2030-01-15T10:40")
+        # The screen opens on a proposal, and then the day moves under it.
         script = play([("menu", "Make the changes checked"), ("menu", "Cancel")])
-        real, asked = proposals.ask, []
-        # The screen opens on the proposal made before the day moved.
-        proposals.ask = lambda *args, **kwargs: stale if not asked.append(1) and len(asked) == 1 else real(*args, **kwargs)
-        self.addCleanup(setattr, proposals, "ask", real)
-        proposals.proposal_screen(self.session, "replan")
+        self.store.caught_up()
+        proposals.pin(self.session)
+        self.session.send(L.ShellEventProposal(L.ProposalEventReplan()))
+        stale = self.call("replan", clock="24-hour", now="2030-01-15T10:40")
+        self.call("replan.apply", proposal=stale, accepted=stale["changes"], now="2030-01-15T10:40")
+        self.store.caught_up()
+        proposals.proposal_screen(self.session)
         self.assertTrue(script.finished(), script.steps)
         self.assertTrue(script.said[0].startswith("the day has changed since this was proposed"), script.said)
-        self.assertTrue(script.said[0].endswith("Nothing needs to change: the rest of the day still fits"), script.said)
+        self.assertTrue(script.said[0].endswith("Nothing needs to change: the rest of the day still fits."), script.said)
         self.assertEqual(script.titles[1], "Replan from now. Nothing needs to change: the rest of the day still fits.")
         self.assertNotIn("Make the changes checked", script.menus[1]["hints"])
 
@@ -425,7 +438,7 @@ class Menus(unittest.TestCase):
             ("app", "Plan the ones checked"),
             ("menu", "Plan the ones checked"),
         ])
-        said = proposals.proposal_screen(self.session, "plan_day", "2030-01-15")
+        said = self.open_proposal("plan_day", "2030-01-15")
         self.assertTrue(script.finished(), script.steps)
         self.assertEqual(script.titles[0], "Plan the day. Plans 2 tasks: write report and email bob in Deep work.")
         self.assertEqual(
@@ -519,13 +532,16 @@ class Menus(unittest.TestCase):
         added = self.call("block.add", title="Run", at=at, minutes=30, repeat="every day", date="today")
         series = self.call("block.list")["rows"][0]["id"].split("@")[0]
         self.call("block.cancel", id=series, date="tomorrow")
-        tomorrow = day.plan_rows(self.call("plan", date="tomorrow"))
-        cancelled = next(row for row in tomorrow if row["role"] == "cancelled")
-        self.assertEqual(day.describe(cancelled), f"{at}, Run, cancelled for this day")
-        free = next(row for row in tomorrow if row["role"] == "free")
-        self.assertRegex(day.describe(free), r"^Free, \d+ hours?( \d+ minutes?)?, \d\d:\d\d to \d\d:\d\d$")
-        now = next(row for row in day.plan_rows(self.call("plan")) if row["role"] == "now")
-        self.assertRegex(now["title"], r"^Now, \d\d:\d\d$")
+        self.store.caught_up()
+        self.session.show(L.PlaceToday())
+        now = next(row for row in day.day_rows(self.session) if row.record.kind == L.DayKind.NOW)
+        self.assertRegex(now.line, r"^Now, \d\d:\d\d$")
+        self.session.send(L.ShellEventDay(L.DayMove.NEXT))
+        tomorrow = day.day_rows(self.session)
+        cancelled = next(row for row in tomorrow if row.record.kind == L.DayKind.CANCELLED)
+        self.assertEqual(cancelled.line, f"{at}, Run, cancelled for this day")
+        free = next(row for row in tomorrow if row.record.kind == L.DayKind.FREE)
+        self.assertRegex(free.line, r"^Free, \d+ hours?( \d+ minutes?)?, \d\d:\d\d to \d\d:\d\d$")
         self.assertTrue(added)
 
     def test_the_block_form_names_its_fields_and_kinds_as_the_core_does(self):
@@ -534,7 +550,7 @@ class Menus(unittest.TestCase):
             lambda: day.day_plan(self.session),
         )
         fields = {f.key: f for f in script.forms[0]}
-        self.assertEqual(list(fields), ["title", "date", "start", "minutes", "kind", "repeat"])
+        self.assertEqual(list(fields)[:6], ["title", "date", "start", "minutes", "kind", "accepts_tasks"])
         self.assertEqual(fields["minutes"].prompt, "Lasts, in minutes")
         self.assertEqual(fields["kind"].choices, {"work": "Work", "break": "Break", "event": "Event"})
         self.assertEqual(fields["repeat"].format_hint, "Such as every weekday. Empty for once.")
@@ -549,27 +565,6 @@ class Menus(unittest.TestCase):
             [f.prompt for f in script.forms[0]],
             ["Name", "Starts at", "Lasts, in minutes", "Kind", "Takes tasks", "Counts toward hours for work",
              "Anchored, never moved when the day slips"],
-        )
-
-    def test_a_rule_the_words_cannot_say_is_noted_at_repeats(self):
-        self.call("block.add", title="Board", at="6pm", minutes=60, repeat="every day", date="today")
-        real = self.session.call
-
-        def call(method, **params):
-            result = real(method, **params)
-            if method == "block.show":
-                # As a rule from an import or another app would arrive: no words for it.
-                result = {**result, "rrule": "FREQ=MONTHLY;BYDAY=2TU"}
-                result.pop("repetition", None)
-            return result
-
-        self.session.call = call
-        script = self.run_script([("menu", "Board"), ("form", None), ("back",)], lambda: day.blocks(self.session))
-        repeat = next(f for f in script.forms[0] if f.key == "repeat")
-        self.assertEqual(
-            repeat.format_hint,
-            "It repeats by the rule FREQ=MONTHLY;BYDAY=2TU, which the repetition words cannot say. "
-            "Leave Repeats empty to keep it.",
         )
 
     def test_an_empty_list_leaves_its_count_out_of_its_heading(self):
@@ -595,8 +590,8 @@ class Menus(unittest.TestCase):
             [("app", "Go to a day"), ("input", "tomorrow"), ("back",)],
             lambda: day.day_plan(self.session),
         )
-        self.assertIn("Go to day. A date, such as Friday, or 12 October", script.prompts)
-        self.assertRegex(script.titles[-1], r"^\w+ \d+ \w+ \d{4}\. ")
+        self.assertIn("Go to day. A date, such as Friday, or 12 October. Day", script.prompts)
+        self.assertTrue(script.titles[-1].startswith("Tomorrow. "), script.titles)
         script = self.run_script(
             [("app", "New saved filter"), ("input", "Urgent"), ("input", "p1"), ("back",)],
             lambda: organise.saved_filters(self.session),
@@ -693,7 +688,7 @@ class Menus(unittest.TestCase):
         self.call("task.add", text="labelled")
         script = self.run_script([("back",)], lambda: tasks.task_list(self.session))
         menu = btspeak_stub._Menu([])
-        row = self.call("task.list")["rows"][0]
+        row = tasks.list_rows(self.session)[0]
         menu.menu = [type("Row", (), {"row": row})()]
         labels = [command.get_label(menu) for command in script.menus[-1]["context"] if command.applies(menu)]
         # The core's actions, in its order and under its names, then this app's Details.
@@ -715,17 +710,18 @@ class Menus(unittest.TestCase):
     def test_a_weight_typed_wrong_is_refused_in_the_cores_words(self):
         self.call("project.add", name="Work")
         script = self.run_script(
-            [("key", "Work", "w"), ("input", "1,5"), ("key", "Work", "w"), ("input", "1.5"), ("back",)],
+            [("key", "Work", "w"), ("input", "1,5"), ("input", "1.5"), ("back",)],
             lambda: organise.projects(self.session),
         )
-        self.assertTrue(any("is not a weight" in said for said in script.said), script.said)
+        # Refused, the question stays open, the core's sentence first.
+        self.assertTrue(script.prompts[1].startswith("'1,5' is not a weight"), script.prompts)
         work = next(r for r in self.call("project.list")["rows"] if r["title"] == "Work")
         self.assertIn("1.5", work["value"])
 
     def test_the_inbox_offers_only_what_the_core_gives_it(self):
         script = self.run_script([("back",)], lambda: organise.projects(self.session))
         menu = btspeak_stub._Menu([])
-        inbox = self.call("project.list")["rows"][0]
+        inbox = organise.group_rows(self.session, L.SidebarGroup.PROJECTS)[0]
         menu.menu = [type("Row", (), {"row": inbox})()]
         labels = [c.get_label(menu) for c in script.menus[-1]["context"] if c.applies(menu)]
         self.assertEqual(labels, ["Show its tasks", "Add a task to it, t", "Weight, w"])

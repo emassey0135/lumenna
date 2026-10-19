@@ -1,4 +1,4 @@
-"""A JSON-RPC client for `lum rpc`.
+"""A JSON-RPC client for `lum rpc`, which the tests seed and check the store through.
 
 Stdlib only: the protocol is a request object, a reply object and a notification object, and
 a library that supplied those would leave the framing and the demultiplexing — which is all

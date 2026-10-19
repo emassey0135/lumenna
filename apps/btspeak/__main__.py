@@ -6,17 +6,15 @@ Run it directly — `python3 __main__.py` — or add it to the user menu from BT
 what puts it on the device's own menu tree. It does not write a menu entry itself: that is
 BT Code's job and it already does it.
 
-The device is aarch64 Linux, so the ordinary Linux build of `lum` runs here unmodified; this
-needs it on `PATH` and nothing else. No third-party Python: the whole client is one file, and
-a dependency to build a JSON-RPC envelope would be more surface than it saves.
+The core runs in this process: `build-core.sh` builds it from the checkout, as a Python
+extension beside this file, and the device is aarch64 Linux, which builds it for itself.
 """
 
 import sys
 
 from BTSpeak import dialogs, host
 
-from client import LumennaError
-from connect import connect
+from core import Core, LumennaError
 from menus import run
 from session import HELP
 
@@ -37,20 +35,17 @@ def main() -> int:
     runs next.
     """
     host.push_app_context("lumenna", help_dir=HELP, self_voice=True)
-    client = None
     try:
         try:
-            client = connect()
+            core = Core()
         except LumennaError as error:
             # Said in a dialog rather than printed: with self-voice on, nothing is reading
             # the screen, so a print here would be silence. This is also the failure most
-            # likely to happen on a first run, when `lum` is not on PATH yet.
+            # likely to happen on a first run, before the core is built.
             dialogs.show_message(f"Lumenna could not start. {error.message}")
             return 1
-        return run(client)
+        return run(core)
     finally:
-        if client is not None:
-            client.close()
         host.pop_app_context()
 
 

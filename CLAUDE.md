@@ -34,16 +34,16 @@ crates/host/    the command surface: the `Lumenna` object, one method per operat
 crates/app/     the Crux app: the screens' state (place, row in hand, folding, the question
                 open) as events in and view models out; every write an effect. No host.
 crates/bridge/  the app beside its store: Crux middleware answering the app's store effects.
-crates/mobile/  the app for Android through BoltFFI: `App`, its turns, and `Device`, the store
-                for what runs without the screens. The web's is apps/web/core, through BoltFFI
-                too; the shell's events (`ShellEvent`) are the app crate's, for both.
+crates/mobile/  the app for Android and BTSpeak through BoltFFI: `App`, its turns, and `Device`,
+                the store for what runs without the screens. The web's is apps/web/core,
+                through BoltFFI too; the shell's events (`ShellEvent`) are the app crate's.
 crates/ffi/     the library the Swift apps link; re-exports surface over UniFFI.
 crates/sync/    Iroh endpoints, the document sync session, and pairing.
 crates/desktop/ what the Windows, GTK and web apps decide alike: row wording, flat rows as a
                 tree, work-block choices, device wording, the profile; with `app`, the app's
                 view worded line by line (`lines`) for the web and Android.
 apps/cli/       `lum`, and `lum rpc` for clients that cannot link Rust.
-apps/btspeak/   the BTSpeak app, in Python, over `lum rpc`.
+apps/btspeak/   the BTSpeak app, in Python, over the app in-process (crates/mobile).
 apps/emacs/     the Emacs client, in Elisp, over `lum rpc` or the profile's socket.
 apps/android/   Jetpack Compose over the Crux app's Kotlin bindings: the phone (app/), Wear OS
                 (wear/), and what they share (shared/).
@@ -133,7 +133,7 @@ the FFI.
 ## The app
 
 `crates/app` is the screens as a Crux 0.20 app; `crates/bridge` runs it beside a store. The
-web, the Android phone and Wear OS are drawn from it entirely; the other clients still call
+web, the Android phone, Wear OS and BTSpeak are drawn from it entirely; the other clients still call
 the host directly until their turn (the `legacy` tag is the last commit before the move).
 
 - **The app never depends on the host.** It holds the snapshot the host last sent (`Watch`, a
@@ -236,8 +236,8 @@ real profile.
 
 ## The RPC server
 
-The surface over JSON-RPC (`crates/host/src/rpc`, the `rpc` feature), for Emacs and the
-BTSpeak app. `lum rpc` serves it on stdio to one client. Whichever process holds the
+The surface over JSON-RPC (`crates/host/src/rpc`, the `rpc` feature), for Emacs, and for the
+BTSpeak tests to seed and check a store. `lum rpc` serves it on stdio to one client. Whichever process holds the
 device's sync endpoint — `lum`'s daemon, or the Mac, GTK or Windows app — serves it at the
 profile's address (`surface::endpoint`: `<profile>/lumenna.sock`, or on Windows a named
 pipe named from the profile's path) to any number of clients, for as long as it holds the
@@ -508,9 +508,10 @@ surface's `reminders.rs` words them and answers the apps.
   showed (`<key>@<occurrence>`) and the rest since the last ask was missed.
 - **Who delivers, per client**: the resident desktop apps through `deliver_reminders`; iOS,
   watchOS, Android and Wear OS by scheduling `upcoming_reminders`; `lum notify` on a console;
-  Emacs's `lumenna-reminders-mode` and BTSpeak's resident service (`reminders.py`, its unit
-  and toggle in `system/`, installed only from its Settings, after asking) through
-  `reminder.deliver`, whose `elsewhere` says another process has it, so ask again soon. The
+  Emacs's `lumenna-reminders-mode` through `reminder.deliver` and BTSpeak's resident service
+  (`reminders.py`, its unit and toggle in `system/`, installed only from its Settings, after
+  asking) through `Device::deliver_reminders`, whose `elsewhere` says another process has it,
+  so ask again soon. The
   web's one tab delivers through `reminders_due` with a "since" of its own, and keeps
   "Reminders on this device" in local storage: a browser has no device-settings file.
 - **Dismissing and snoozing write a `ReminderAck`**, which syncs: best effort, since a sleeping
@@ -608,48 +609,63 @@ Kept apart in code, commands and wording, because confusing them is how someone 
 
 ## The BTSpeak app
 
-`apps/btspeak/`: Python, on the device's own `dialogs` library, talking to `lum rpc`. The
-library is only on a BTSpeak (`/BTSpeak/Python/BTSpeak/`); elsewhere the tests run on
-`tests/btspeak_stub.py`, with `target/debug` on `PATH` for `lum`.
+`apps/btspeak/`: Python, on the device's own `dialogs` library, drawing the Crux app, which runs
+in the same process beside the store: `crates/mobile` built by BoltFFI's Python target
+(`build-core.sh`, `boltffi pack python`, needing Python 3.10 or later with pip) into `native/`,
+not committed. The library is only on a BTSpeak (`/BTSpeak/Python/BTSpeak/`); elsewhere the
+tests run on `tests/btspeak_stub.py`, with the core built and `target/debug` on `PATH` for
+`lum`. On the Mac the system's Python is 3.9: build and test with a newer one (`PYTHON=…`).
 
-- **A client and almost nothing else.** No date parsing, no computed states. `rows.py` is
-  the only file that decides anything, and only about folding.
+- **A shell and nothing else.** No date parsing, no computed states, no folding of its own:
+  each screen sends what the person did (`Session.send`, which waits until the app is still and
+  says what it said) and draws `view()` with the core's `lines()`. Turns arrive on the app's
+  thread (`core.py`) and queue; a menu wakes on them (`restless`), and what the app said that no
+  action asked for is said as it settles. Seeing another process's writes is `tick`, every five
+  seconds.
 - **A row's context menu is its `actions`** (`actions.py`): the rows' actions merged into
   one list of commands that keeps each row's order, each offered where its row has it, a
   letter per kind (`KEYS`), the delete keys for `Delete`/`Unassign`/`Unpair`; a letter the
-  row does not offer says `form.not_offered`'s sentence. Questions are
-  the device's dialogs; forms (task, block, new filter) register in `actions.FORMS`.
+  row does not offer says the core's `not_offered`. Running one puts the row in hand (`Focus`,
+  or `Hold` for a side list's row) and performs it; `follow` then answers whatever the app
+  opens, one after another, with the device's dialogs: a question (a refusal staying in it), the
+  block form, a proposal, a reminder list. The task form registers in `actions.FORMS`.
 - **Speech and braille come from one string** with the stock library
   (`DynamicMenuDialog.draw()`), so components are flattened at the last step. A subclass is
   the fallback if they must diverge.
-- **Depth is never indentation**: it says nothing in speech. The level is announced only
-  where it *changes*, against the previous *visible* row, so folding keeps it right.
-- **Our own writes do not come back as `lumenna/changed`**, so `Session` tracks its own
-  edits and ORs them with the push.
+- **Depth is never indentation**: it says nothing in speech. The app says the level only where
+  it *changes*, against the previous *visible* row, so folding keeps it right.
+- **A menu reopens on the app's row in hand** (`live_menu`'s `focus`), and is drawn after it is
+  built, the arrival flag cleared then: building sends (a place opened), and a flag left set
+  drew every screen twice.
 - **Completion is offered after the line is entered.** `InputDialog` has no hook and Tab is
   form navigation; inline needs a subclass.
 - **`main()` pushes an app context** (`host.push_app_context("lumenna", self_voice=True)`,
   popped in a `finally`). The device takes its braille table from the app it believes is in
   front; without the push, BT Code's `.py` table made every menu computer braille. The push
   and pop are device-wide. `# blazie-flags: self-voice` on line 2 of `__main__.py` is for
-  the menu launcher. With self-voice on, printing is silence, so startup errors are dialogs
-  and the server's stderr goes to `rpc.log`.
+  the menu launcher. With self-voice on, printing is silence, so startup errors are dialogs.
 - **It is a line in `~/BTSpeak/user.menu`**, added with `user_menu.add_item`, not a `.menu`
-  file. `connect.find_lum` finds `lum` in the checkout's `target/`, since a menu launch's
-  `PATH` lacks it.
+  file.
+- **The app syncs while it runs** (`App::in_front`), waiting its turn for the endpoint while the
+  daemon holds it, and takes the automatic backups, hourly, as `lum rpc` did.
 - **The day's own actions lead the Day menu**: `live_menu`'s `app` may be a function, read
   after `build`, so the menu offers what the plan shown offers (`day.day_commands`).
 - **A choice's reason is its row's hint.** `request_choice` has no description, so a pick
   whose choices carry a `reason` is a `dynamic_menu` instead (`session.choose(hints=…)`),
   the device saying each hint after the row; a pick without reasons stays a choice dialog.
-- **Replan from now and Plan the day are one menu** (`proposals.py`): rows toggled by Enter
-  with callable titles, the title the whole proposal (said as it opens, not again after an
-  apply, whose announcement already says the next). A `Flag` rebuilds it on the next
-  proposal; it never exits on `session.restless()`, which its own apply sets.
-  `proposals.NOW` fixes the moment for tests.
+  Put in a Block adds Another day, which asks the core's Go to Day question and sends
+  `PickFrom`: the app offers that day's blocks in the same pick.
+- **Replan from now and Plan the day are one menu** (`proposals.py`) over the app's proposal:
+  rows toggled by Enter with callable titles, so checking rewords a row in place, the title the
+  whole proposal (said as it opens, not again after an apply, whose announcement already says
+  the next). It is drawn again only for a new proposal or a refusal (`shown`).
+  `proposals.NOW` fixes the moment for tests (`PlanFrom`, sent before every action).
 - **Carry Forward at a block's end and Replan on an overrun are the Reminders screen's**
-  (`f`, `carry_rest`; `p`, the Replan from now screen): the service has no keys, and only
-  says the text, which already ends in the question or says the overrun.
+  (`f`, `p`, the app's due list): the service has no keys, and only says the text, which
+  already ends in the question or says the overrun.
+- **The tests seed and check the store over `lum rpc`** (`tests/client.py`, `harness.py`), as
+  another process would, and `tick` the app before each script. They run in UTC: the core
+  reads the zone once per process, so a test cannot set its own.
 
 ## The Emacs client
 

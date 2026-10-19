@@ -8,7 +8,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from connect import profile_directory  # noqa: E402
+from core import profile_directory  # noqa: E402
 
 
 class FindingTheProfile(unittest.TestCase):
@@ -41,14 +41,3 @@ class FindingTheProfile(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
-
-class FindingLum(unittest.TestCase):
-    def test_lum_is_found_in_the_checkout_when_it_is_not_on_path(self):
-        from connect import find_lum
-
-        root = Path(__file__).resolve().parents[3]
-        built = [root / "target" / b / "lum" for b in ("release", "debug")]
-        if not any(path.exists() for path in built):
-            self.skipTest("`lum` has not been built")
-        with mock.patch("shutil.which", return_value=None):
-            self.assertIn(Path(find_lum()), built)

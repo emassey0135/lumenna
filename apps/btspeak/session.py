@@ -1,4 +1,4 @@
-"""What every menu shares: the client, whether the store moved, and how a result is said.
+"""What every menu shares: the app, what it last showed, and what it said.
 
 Kept apart from `menus.py` so that the menus for tasks, the day, organising and settings can
 each use it without importing one another.
@@ -7,90 +7,175 @@ each use it without importing one another.
 from __future__ import annotations
 
 import contextlib
+import queue
+import time
 from pathlib import Path
 
 from BTSpeak import dialogs, host
 
-from client import LumennaError
+from core import Core, LumennaError, native
 
 
-#: How often a menu wakes to notice that the store changed underneath it.
+#: How often a menu wakes to notice that the app has something new to show.
 #:
-#: Polling the store would cost battery, so changes are pushed instead. This is the cheap
-#: half of both: the push has already arrived and set a flag, and this only decides how
-#: long a stale list can sit on screen. One second is what the dialog library itself uses
-#: whenever any item has an idle or hint handler, so it is the device's own normal.
+#: The app's turns arrive on a thread of its own and set a flag; this only decides how long a
+#: stale list can sit on screen. One second is what the dialog library itself uses whenever any
+#: item has an idle or hint handler, so it is the device's own normal.
 REFRESH = 1
 
+#: How often the store is asked whether another process wrote, or a minute turned: what the
+#: daemon's sync brings in, `lum` from a shell, the day's "now".
+TICK = 5.0
 
-def spoken(result: dict) -> str:
-    """A reply as one thing to say: the announcement, then anything worth adding.
 
-    Notices are part of the answer — "new label errands", "kept the title, changed since" —
-    so they are said with it rather than dropped.
-    """
-    parts = [result.get("announcement", "")] + list(result.get("notices", []))
-    return ". ".join(part for part in parts if part)
+def sentences(*parts: str) -> str:
+    """What several things said, as one thing to say: each its own sentence, ended once."""
+    parts = [part.strip() for part in parts if part and part.strip()]
+    if len(parts) == 1:
+        return parts[0]
+    return " ".join(part if part.endswith((".", "?", "!")) else f"{part}." for part in parts)
 
 
 class Session:
-    """A client, plus the bookkeeping the menus share."""
+    """The app, as every menu reaches it.
 
-    def __init__(self, client) -> None:
-        self.client = client
-        self.dirty = False
-        self._words: dict = {}
+    `send` runs what the person did and waits until the app is still, then hands back what it
+    said, for the menu to say; the view it left is `view()`, its lines `lines()`. A turn the
+    app leaves at any other time — a sync's arrivals, a pairing's words — marks the screen
+    restless, so the menu shown is rebuilt from it.
+    """
 
-    def words(self, method: str, **params):
-        """What a form function of the core says, asked once: a form's fields
-        (`form.task_form`, `form.block_form`), pairing's sentences, a button in sentence case.
-        They are the core's fixed words, so they never change while the app runs."""
-        key = (method, tuple(sorted(params.items())))
-        if key not in self._words:
-            self._words[key] = self.call(method, **params).get("value")
-        return self._words[key]
+    def __init__(self, core: Core) -> None:
+        self.core = core
+        self.app = core.app
+        self.device = core.device
+        self.lumenna = native()
+        self._view = None
+        self._lines = None
+        #: Files the app made for the person to keep — an export — not yet saved.
+        self.files: list = []
+        self._shown = None
+        #: What the app said that nothing has said yet.
+        self._unsaid: list[str] = []
+        #: Whether a reminder list is open, so an action run from it does not open it again.
+        self.reminders_open = False
+        self._ticked = time.monotonic()
+        import rows  # here: rows reads the device's settings
+
+        self.send(
+            self.lumenna.ShellEventClock(
+                self.lumenna.TimeStyle.TWELVE_HOUR if rows.twelve_hour() else self.lumenna.TimeStyle.TWENTY_FOUR_HOUR
+            ),
+            # Every capital costs a braille cell, and the device's own menus are in sentence case.
+            self.lumenna.ShellEventCapitals(self.lumenna.Capitals.SENTENCE),
+        )
+
+    # -- turns ------------------------------------------------------------------------
+
+    def _take(self) -> None:
+        """Takes in what has arrived since last asked: the view and lines it leaves, files to
+        save, and what it said, kept until it is said."""
+        while True:
+            try:
+                turn = self.core.turns.get_nowait()
+            except queue.Empty:
+                break
+            self._view, self._lines = turn.view, turn.lines
+            self.files.extend(turn.files)
+            self._unsaid.extend(turn.said)
+
+    def _said_since(self, mark: int) -> str:
+        """What the app said after `mark`, taken off what is left to say."""
+        said = self._unsaid[mark:]
+        del self._unsaid[mark:]
+        return sentences(*said)
+
+    def send(self, *events) -> str:
+        """Runs `events` through the app in order, and says what it said, as one sentence each."""
+        self._take()
+        mark = len(self._unsaid)
+        for event in events:
+            self.app.send(event)
+        self.core.still()
+        self._take()
+        return self._said_since(mark)
+
+    def wait_said(self, timeout: float) -> str:
+        """Waits up to `timeout` seconds for the app to say something unprompted — what reaches
+        other devices answers later than `send` waits — and says it."""
+        deadline = time.monotonic() + timeout
+        self._take()
+        while not self._unsaid and time.monotonic() < deadline:
+            time.sleep(0.05)
+            self._take()
+        return self._said_since(0)
+
+    def view(self):
+        """What the app shows now."""
+        self._take()
+        if self._view is None:
+            self._view, self._lines = self.app.view(), self.app.lines()
+        return self._view
+
+    def lines(self):
+        """The view's lines, in this device's clock."""
+        self.view()
+        return self._lines
+
+    def ready(self) -> None:
+        """Waits for the store to arrive: there is nothing to show until it has."""
+        deadline = time.monotonic() + 30
+        while not self.view().ready:
+            if time.monotonic() > deadline:
+                raise LumennaError("Lumenna's store did not open")
+            self.core.still()
+            time.sleep(0.01)
+
+    def tick(self) -> str:
+        """Takes in what another process wrote, or a new minute, and says what it said."""
+        self.app.tick()
+        return self.send()
+
+    def show(self, place, query: str | None = None) -> None:
+        """Makes `place` the one the app shows, with `query` typed over it: a screen opening, or
+        coming back from one opened from it."""
+        wanted = (place, query)
+        if self._shown != wanted or self.view().place != place:
+            self.send(self.lumenna.ShellEventOpen(place))
+            if query is not None:
+                self.send(self.lumenna.ShellEventFilter(query))
+            self._shown = wanted
 
     def sentence(self, text: str) -> str:
-        """Fixed text — a button, an answer — in sentence case, as the core writes it: every
-        capital costs a braille cell, and the device's own menus are in sentence case."""
-        return self.words("form.sentence_case", text=text) if text else text
+        """Fixed text — a button, an answer — in sentence case, as the core writes it."""
+        return self.lumenna.sentence_case(text) if text else text
 
-    def call(self, method: str, **params):
-        """Calls, and turns a refusal into something worth hearing.
-
-        Every message the server sends is written to be spoken — the text is the only
-        channel, there being no squiggle to point at — so it is passed through rather
-        than wrapped in something of ours.
-        """
-        return self.client.call(method, **params)
-
-    def write(self, method: str, **params) -> str:
-        """Calls something that changes the store, and says what it did — or why not."""
-        try:
-            result = self.call(method, **params)
-        except LumennaError as error:
-            return error.message
-        self.wrote()
-        return spoken(result)
-
-    def wrote(self) -> None:
-        """Records that this app changed something.
-
-        Our own writes do not come back as `lumenna/changed`: `data_version` does not move
-        for the connection that wrote, which is the point of that pragma. So a list refreshes
-        after our edits because we say so, and after anyone else's because the server does.
-        """
-        self.dirty = True
+    # -- the screen's freshness ----------------------------------------------------------
 
     def restless(self) -> bool:
-        """Whether anything has changed under whatever is on screen."""
-        return self.dirty or self.client.changed.is_set()
+        """Whether the app has shown something new since the screen was drawn."""
+        if time.monotonic() - self._ticked > TICK:
+            self._ticked = time.monotonic()
+            self.app.tick()
+        return self.core.arrived.is_set()
 
     def settle(self) -> bool:
-        """Whether to rebuild, clearing the reason."""
-        changed = self.dirty or self.client.take_changed()
-        self.dirty = False
+        """Whether to rebuild, clearing the reason. What the app said unprompted meanwhile — a
+        sync's report, a pairing's end — is said now."""
+        changed = self.core.arrived.is_set()
+        self.core.arrived.clear()
+        self._take()
+        for text in self._unsaid:
+            announce(text)
+        self._unsaid.clear()
         return changed
+
+
+def announce(text: str) -> None:
+    """Something the app said that no action of the person's asked for: spoken and brailled
+    as the device's own services say things, without a dialog in the way."""
+    if text:
+        host.say_brl(text)
 
 
 class Command:
@@ -119,13 +204,6 @@ class Command:
         return self.label(row) if callable(self.label) else self.label
 
 
-def row_item(row, title=None, action=None, **fields) -> dialogs.DynamicMenuItem:
-    """A menu row carrying the data it stands for, which the commands are given."""
-    item = dialogs.DynamicMenuItem(title=title if title is not None else row["title"], action=action, **fields)
-    item.row = row
-    return item
-
-
 def row_of(item):
     """The data a menu row stands for, or None for a row that stands for nothing — the line
     an empty list shows in place of rows."""
@@ -134,11 +212,11 @@ def row_of(item):
 
 def live_menu(
     session: Session, build, title, default: int = 0, moved=None, *,
-    main=None, context=(), app=(), empty="Nothing here", app_title: str = "",
+    main=None, context=(), app=(), empty="Nothing here", app_title: str = "", focus=None, until=None,
 ) -> None:
     """A menu rebuilt whenever the store moves, reopened where the cursor was.
 
-    `build()` returns the rows (`row_item`s), or a string to say instead of opening at all.
+    `build()` returns the rows (menu items carrying a `row`, `rows.items`), or a string to say instead of opening at all.
     `main(row)` is what Enter does on a row; `context` and `app` are `Command`s for the two
     menus, and `context` may be a function of the rows giving them, for commands that are the
     rows' own actions (`actions.commands`); `app` may be a function of nothing, read after
@@ -147,11 +225,19 @@ def live_menu(
     after `build`. `moved`, when
     given, is another reason to rebuild — the day changing under the planner — and is cleared
     here. Losing your place in a list when it refreshes is the sort of thing that makes a UI
-    unusable without sight, so the selection is kept by position.
+    unusable without sight: `focus()`, when given, is the key of the row the app has in hand,
+    which the menu reopens on — the same row after a change, else the one now in its place, as
+    the app keeps it — and otherwise the selection is kept by position. `until()`, when given,
+    closes the menu once it holds: the app has put away what the menu shows.
     """
     selection = default
     while True:
         items = build()
+        # What arrived before this draw, building it included, is in what it draws.
+        session.settle()
+        if focus is not None and not isinstance(items, str):
+            held = focus()
+            selection = next((i for i, item in enumerate(items) if getattr(row_of(item), "key", None) == held), selection)
         if isinstance(items, str):
             if items:
                 dialogs.show_message(items)
@@ -163,7 +249,7 @@ def live_menu(
         choice = dialogs.dynamic_menu(
             items,
             title=heading,
-            exit_condition=lambda: session.restless() or bool(moved and moved()),
+            exit_condition=lambda: session.restless() or bool(moved and moved()) or bool(until and until()),
             refresh_interval=REFRESH,
             default=min(selection, max(len(items) - 1, 0)),
             context_menu=context_commands(here),
@@ -173,6 +259,9 @@ def live_menu(
             empty_message=empty() if callable(empty) else empty,
         )
         nudged = bool(moved and moved(clear=True))
+        if until is not None and until():
+            session.settle()
+            return
         if not session.settle() and not nudged:
             # The menu closed because the user left it, not because anything moved.
             return
@@ -312,33 +401,14 @@ def ask(prompt: str, default: str = "") -> str | None:
     return text.strip()
 
 
-def heading(title: str, listing: dict, rows=None) -> str:
-    """A list's heading: its title, then the listing's count, unless the list is empty and
-    the core has a sentence for that, which the empty list says instead — once."""
-    rows = listing.get("rows", []) if rows is None else rows
-    if not rows and listing.get("empty"):
-        return title
-    return ", ".join(part for part in (title, listing.get("announcement", "")) if part)
+def heading(title: str, readback: str, shown: bool) -> str:
+    """A list's heading: its title, then what the list says of itself (the core's readback:
+    the query understood, the count, its notices), unless nothing is listed, which the empty
+    list says instead, once."""
+    return ", ".join(part for part in (title, readback if shown else "") if part)
 
 
-def empty_then(state: dict, then: str = ""):
-    """What an empty list says: the listing's own words, which `build` keeps in
-    `state["empty"]`, then what this screen adds, such as the key that adds one."""
-    return lambda: " ".join(part for part in (state.get("empty", ""), then) if part)
-
-
-class Flag:
-    """A reason to rebuild a menu that is not the store moving: the planner turning to
-    another day, say. Called with `clear=True` it answers and resets."""
-
-    def __init__(self) -> None:
-        self._set = False
-
-    def set(self) -> None:
-        self._set = True
-
-    def __call__(self, clear: bool = False) -> bool:
-        was = self._set
-        if clear:
-            self._set = False
-        return was
+def empty_then(said, then: str = ""):
+    """What an empty list says: the list's own words (`said()`, the core's readback), then
+    what this screen adds, such as the key that adds one."""
+    return lambda: sentences(said(), then)

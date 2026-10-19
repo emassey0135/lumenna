@@ -2,23 +2,27 @@
 
 Laid out as the phone lays it out: planning settings that sync, this device's backups, the
 devices it syncs with, and export and import. Each setting is offered the way its value is
-shaped — a choice where there are only a few, a line of text where core reads a phrase — and
-core validates every one of them, so nothing here does.
+shaped — a choice where there are only a few, a line of text where the core reads a phrase —
+and the core checks every one of them, so nothing here does. The settings, the devices and
+pairing are the app's (`ViewModel::settings`, `devices`), opened as their pages open and put
+away as they close.
 """
 
 from __future__ import annotations
 
-import datetime
-import queue
+import contextlib
+import time
 from pathlib import Path
 
 from BTSpeak import clipboard, dialogs
 
 import actions
+from actions import L
+from core import refused
 import options
 import reminder_lists
-from client import LumennaError
-from session import REFRESH, Command, Session, ask, choose, confirm, live_menu, row_item, screen, spoken
+from rows import Row, items
+from session import REFRESH, Command, Session, choose, confirm, live_menu, screen
 from tasks import undo_commands
 
 
@@ -26,15 +30,19 @@ from tasks import undo_commands
 #: own, and this device has its Time Format.
 NOT_HERE = {"clock"}
 
+#: How long a sync round may take before it is given up on: a device that cannot be reached
+#: takes a while to give up on.
+SYNC_FOR = 180
 
-def planning(setting: dict) -> bool:
+
+def planning(setting) -> bool:
     """Whether a setting is on the Planning page: those that sync to every device."""
-    return bool(setting.get("syncs"))
+    return setting.syncs
 
 
-def on_this_device(setting: dict) -> bool:
+def on_this_device(setting) -> bool:
     """Whether a setting is on the Backups page: this device's own."""
-    return not setting.get("syncs") and setting["key"] not in NOT_HERE and setting["key"] not in reminder_lists.KEYS
+    return not setting.syncs and setting.key not in NOT_HERE and setting.key not in reminder_lists.KEYS
 
 
 def read_back_title() -> str:
@@ -48,9 +56,22 @@ def toggle_read_back() -> str:
     return "A task is read back before it is added" if on else "A task is added as soon as it is entered"
 
 
+@contextlib.contextmanager
+def opened(session: Session):
+    """The app's settings, open while a page is shown: opened here unless a page opened them."""
+    if session.view().settings is not None:
+        yield
+        return
+    session.send(L.ShellEventSettings(L.SettingsEventOpen()))
+    try:
+        yield
+    finally:
+        session.send(L.ShellEventSettings(L.SettingsEventClose()))
+
+
 def settings(session: Session) -> str:
     """A short list of pages, as on the phone, and this app's own preference."""
-    items = [
+    menu = [
         dialogs.DynamicMenuItem(title="Planning", shortcut="p", action=lambda: setting_page(session, "Planning", planning)),
         dialogs.DynamicMenuItem(title="Devices and sync", shortcut="d", action=lambda: devices(session)),
         dialogs.DynamicMenuItem(title="Reminders, on this device", shortcut="m", action=lambda: reminder_lists.settings_page(session)),
@@ -58,35 +79,35 @@ def settings(session: Session) -> str:
         dialogs.DynamicMenuItem(title="Export and import", shortcut="e", action=lambda: export_import(session)),
         dialogs.DynamicMenuItem(title=lambda *_: read_back_title(), shortcut="r", action=toggle_read_back),
     ]
-    with screen("lumenna-settings"):
-        dialogs.dynamic_menu(items, title="Settings")
+    with screen("lumenna-settings"), opened(session):
+        dialogs.dynamic_menu(menu, title="Settings")
     return ""
 
 
-def current_settings(session: Session) -> dict:
-    return {s["key"]: s["value"] for s in session.call("config.get").get("settings", [])}
+def shown_settings(session: Session) -> list:
+    """Every setting as the app shows it, once the host has said."""
+    view = session.view().settings
+    return view.settings if view is not None else []
 
 
 def setting_items(session: Session, which) -> list:
     """The settings `which` keeps, one row each, said as the core names them."""
-    items = []
-    for setting in session.call("config.get").get("settings", []):
+    made = []
+    for shown in shown_settings(session):
+        setting = shown.setting
         if not which(setting):
             continue
-        named = {o["id"]: o["title"] for o in setting.get("options", [])}
-        items.append(
-            row_item(
-                setting,
-                f"{setting['title']}, {named.get(setting['value'], setting['value'])}",
-                action=(lambda setting=setting: change_setting(session, setting)),
-            )
-        )
-    return items
+        named = {option.id: option.title for option in setting.options}
+        made.append(dialogs.DynamicMenuItem(
+            title=f"{setting.title}, {named.get(setting.value, setting.value)}",
+            action=lambda key=setting.key: change_setting(session, key),
+        ))
+    return made
 
 
 def setting_page(session: Session, title: str, which) -> str:
     """Settings, one per row: Enter changes one."""
-    with screen("lumenna-settings"):
+    with screen("lumenna-settings"), opened(session):
         live_menu(
             session, lambda: setting_items(session, which), title,
             app=undo_commands(session), app_title=f"{title} menu",
@@ -95,21 +116,29 @@ def setting_page(session: Session, title: str, which) -> str:
 
 
 #: What a line of text takes, for a setting typed rather than chosen, by its kind.
-TAKES = {"time": "a time such as 9am or 14:30", "number": "a whole number"}
+TAKES = {L.SettingKind.TIME: "a time such as 9am or 14:30", L.SettingKind.NUMBER: "a whole number"}
 
 
-def change_setting(session: Session, setting: dict) -> str:
+def setting_of(session: Session, key: str):
+    return next((shown for shown in shown_settings(session) if shown.setting.key == key), None)
+
+
+def change_setting(session: Session, key: str) -> str:
     """A choice where the setting has options; else a line of text, which the core reads and
     checks. The device has a date dialog but no time one, so a time is typed as said."""
-    value = setting["value"]
-    options = {o["id"]: o["title"] for o in setting.get("options", [])}
-    said = ". ".join(part for part in (setting["title"], setting.get("hint", "")) if part)
-    if options:
-        chosen = choose(options, said, default=value)
+    shown = setting_of(session, key)
+    if shown is None:
+        return ""
+    setting = shown.setting
+    value = setting.value
+    offered = {option.id: option.title for option in setting.options}
+    said = ". ".join(part for part in (setting.title, setting.hint) if part)
+    if offered:
+        chosen = choose(offered, said, default=value)
         if chosen is None or chosen == value:
             return ""
-        return session.write("config.set", key=setting["key"], value=chosen)
-    takes = TAKES.get(setting.get("kind", ""))
+        return session.send(L.ShellEventSettings(L.SettingsEventSet(key, chosen)))
+    takes = TAKES.get(setting.kind)
     asked = f"{said}, {takes}" if takes else said
     # Saved when entered. One the core refuses is asked again, its sentence first and the
     # line as typed, as a refused field stays in its dialog.
@@ -118,13 +147,12 @@ def change_setting(session: Session, setting: dict) -> str:
         chosen = dialogs.request_input(f"{wrong}. {asked}" if wrong else asked, default_text=typed)
         if chosen is None or chosen == value:
             return ""
-        try:
-            result = session.call("config.set", key=setting["key"], value=chosen)
-        except LumennaError as error:
-            wrong, typed = error.message, chosen
+        made = session.send(L.ShellEventSettings(L.SettingsEventSet(key, chosen)))
+        shown = setting_of(session, key)
+        if shown is not None and shown.problem:
+            wrong, typed = shown.problem, chosen
             continue
-        session.wrote()
-        return spoken(result)
+        return made
 
 
 # ---------------------------------------------------------------------------------------
@@ -132,199 +160,196 @@ def change_setting(session: Session, setting: dict) -> str:
 # ---------------------------------------------------------------------------------------
 
 
-def device_line(device: dict) -> str:
-    """One device as a sentence: what it is, and how syncing with it last went — the status
-    the core words for every app. Words rather than a symbol, which
-    a screen reader may not say."""
-    return ", ".join([device["name"], device["platform"], *device.get("status", [])])
+def device_rows(session: Session) -> list[Row]:
+    """The paired devices, each said as the core lines it: what it is, and how syncing with
+    it last went. Words rather than a symbol, which a screen reader may not say."""
+    view, lines = session.view().devices, session.lines().devices
+    listed = view.list.devices if view is not None and view.list is not None else []
+    made = []
+    for index, device in enumerate(listed):
+        line = lines[index].text if index < len(lines) else device.name
+        row = Row(device.node_id, line, device.actions, device, title=device.name)
+        row.side = L.Side.DEVICES
+        made.append(row)
+    return made
 
 
 def devices(session: Session) -> str:
     """How syncing is going, device by device, and pairing another."""
     state = {"heading": "Devices and sync"}
+    session.send(L.ShellEventDevices(L.DevicesEventShow()))
 
     def build():
-        status = session.call("sync.status")
-        state["heading"] = spoken(status)
-        if status.get("devices") and not status.get("running"):
-            # The daemon is what syncs in the background here, and setting it up
-            # asks for an administrator, which nothing in a menu can do.
-            state["heading"] += (
-                ". To keep in sync in the background, run lum daemon install once from a shell"
-            )
-        return [row_item(device, device_line(device), navigation_title=device["name"]) for device in status.get("devices", [])]
+        view = session.view().devices
+        rows = device_rows(session)
+        state["heading"] = view.status if view is not None and view.status else "Devices and sync"
+        return items(rows)
 
     with screen("lumenna-settings"):
         live_menu(
             session, build, lambda: state["heading"],
-            main=lambda device: actions.run_kind(session, device, "rename"),
+            main=lambda row: actions.run_kind(session, row, actions.K.RENAME),
             context=lambda rows: actions.commands(session, rows),
             app=[
                 Command("Sync now", lambda _: sync_now(session), key="s"),
                 Command("Pair a device", lambda _: pair(session), key="p"),
             ],
-            # The status line already says nothing is paired; the empty list adds only the key.
+            # The status heading already says nothing is paired; the empty list adds only the key.
             empty="Press p to pair one.",
             app_title="Devices menu",
+            focus=lambda: session.view().devices_held.focus,
         )
     return ""
 
 
 def sync_now(session: Session) -> str:
-    """One round with every paired device — through the daemon when it runs, as it should
-    on this device."""
-    try:
-        # A device that cannot be reached takes a while to give up on, longer than the
-        # client's usual wait.
-        with dialogs.activity("Syncing"):
-            report = session.client.begin("sync").result(timeout=180)
-    except LumennaError as error:
-        return error.message
-    session.wrote()
-    lines = [spoken(report)]
-    for peer in report.get("peers", []):
-        if peer.get("error"):
-            lines.append(f"{peer['name']}: not synced, {peer['error']}")
-        elif peer.get("changed"):
-            lines.append(f"{peer['name']}: brought in {', '.join(peer['changed'])}")
-        else:
-            lines.append(f"{peer['name']}: synced, nothing new from it")
-    return ". ".join(lines)
+    """One round with every paired device, through whatever on this device holds the sync
+    endpoint (the daemon, as it should be here); the app says how it went once it has."""
+    session.send(L.ShellEventDevices(L.DevicesEventSyncNow()))
+    with dialogs.activity("Syncing"):
+        return session.wait_said(SYNC_FOR)
 
 
-def pairing_words(session: Session, name: str = "this device") -> dict:
-    """Pairing's sentences and buttons, the core's (`form.pairing_words`): on this network
-    the device finds the other by itself, through Avahi."""
-    return session.words("form.pairing_words", this_device=name, local=True)
+def pairing_words(session: Session, name: str = "this device"):
+    """Pairing's sentences and buttons, the core's: on this network the device finds the
+    other by itself, through Avahi."""
+    return L.pairing_words(name, True, L.Capitals.SENTENCE)
 
 
 def ask_code(session: Session) -> str | None:
     """The other device's code, as typed or pasted into the field. Nothing is taken from the
     clipboard unasked, as in every other client. None if cancelled; empty if none was given."""
     words = pairing_words(session)
-    text = dialogs.request_input(words["their_code"], default_text="")
+    text = dialogs.request_input(words.their_code, default_text="")
     if text is None:
         return None
     return text.strip().replace(" ", "")
 
 
+def pairing_view(session: Session):
+    view = session.view().devices
+    return view.pairing if view is not None else None
+
+
 def pair(session: Session) -> str:
     """Pairs with another of the person's devices, comparing three words on both.
 
-    The pairing runs in the server and talks through notifications: the code to give the
-    other device while this one waits, then the words. This shows each as it arrives and
-    answers with `pair.confirm`, so the menu stays responsive the whole time.
+    The app runs the pairing and shows each step as it comes: the code to give the other device
+    while this one waits, then the words, answered here. The menu stays responsive the whole
+    time.
     """
     words = pairing_words(session)
-    how = choose(
-        {"wait": session.sentence(words["wait"]), "code": session.sentence(words["join"])},
-        f"{session.sentence(words['title'])}. {words['intro_sentence']}",
-    )
+    how = choose({"wait": words.wait, "code": words.join}, f"{words.title}. {words.intro_sentence}")
     if how is None:
         return ""
-    params = {}
+    code = None
     if how == "code":
         code = ask_code(session)
         if code is None:
             return ""
         if not code:
-            return words["need_code"]
-        params["code"] = code
-    return run_pairing(session, params)
+            return words.need_code
+    if session.view().devices is None:
+        # Pairing is the Devices page's, wherever it is asked for.
+        session.send(L.ShellEventDevices(L.DevicesEventShow()))
+    session.send(L.ShellEventDevices(L.DevicesEventPair(L.PairEventOpen("this device"))))
+    if code:
+        session.send(
+            L.ShellEventDevices(L.DevicesEventPair(L.PairEventCode(code))),
+            L.ShellEventDevices(L.DevicesEventPair(L.PairEventJoin())),
+        )
+    else:
+        session.send(L.ShellEventDevices(L.DevicesEventPair(L.PairEventWait())))
+    return pairing_screen(session)
 
 
-def run_pairing(session: Session, params: dict) -> str:
-    """One pairing, waiting to be found or joining by `params["code"]`. While waiting, a
-    code can be typed instead: the wait is given up and the code joined once it has ended."""
-    client = session.client
-    while not client.pairing.empty():
-        client.pairing.get_nowait()
-    pending = client.begin("pair", **params)
+def pairing_screen(session: Session) -> str:
+    """The pairing the app has under way, until it ends: what is said at its end."""
     words = pairing_words(session)
-    shown = {
-        "status": words["connecting"] if params else words["opening"],
-        "code": "",
-        "cancel": False,
-        "instead": None,
-    }
+
+    def send(event) -> str:
+        return session.send(L.ShellEventDevices(L.DevicesEventPair(event)))
+
+    def status() -> str:
+        pairing = pairing_view(session)
+        if pairing is None:
+            return ""
+        if pairing.problem:
+            return pairing.problem
+        if pairing.mine:
+            # Enter on the line shows the code alone, to read a character at a time.
+            return f"{words.waiting} {words.my_code}: {pairing.mine}"
+        return words.opening if pairing.waiting else words.connecting
 
     def read_code() -> str:
-        if shown["code"]:
-            dialogs.view_lines([shown["code"]])
+        pairing = pairing_view(session)
+        if pairing is not None and pairing.mine:
+            dialogs.view_lines([pairing.mine])
         return ""
 
     def copy_code() -> str:
         # Only when asked: the Blazie clipboard is the desktop's too, and the person's own.
-        clipboard.copy(shown["code"], False)
-        dialogs.show_message(words["copied"])
+        pairing = pairing_view(session)
+        if pairing is not None and pairing.mine:
+            clipboard.copy(pairing.mine, False)
+            dialogs.show_message(words.copied)
         return ""
-
-    def cancel(menu) -> None:
-        shown["cancel"] = True
-        menu.close()
 
     def code_instead(menu) -> None:
         code = ask_code(session)
         if code:
-            shown["instead"] = code
+            send(L.PairEventCode(code))
+            send(L.PairEventJoin())
             menu.close()
         elif code is not None:
-            dialogs.show_message(words["need_code"])
+            dialogs.show_message(words.need_code)
 
+    left = {"now": False}
+
+    def cancel(menu) -> None:
+        left["now"] = True
+        menu.close()
+
+    said = ""
     while True:
-        items = [
-            dialogs.DynamicMenuItem(title=lambda: shown["status"], action=read_code),
-            *([dialogs.DynamicMenuItem(title=session.sentence(words["copy_code"]), action=copy_code)] if shown["code"] else []),
-            *([] if params else [dialogs.DynamicMenuItem(title=session.sentence(words["join"]), action=code_instead)]),
-            dialogs.DynamicMenuItem(title="Cancel", action=cancel),
-        ]
-        choice = dialogs.dynamic_menu(
-            items,
-            title=session.sentence(words["title"]),
-            exit_condition=lambda: pending.done() or not client.pairing.empty(),
-            refresh_interval=REFRESH,
-        )
-        if pending.done():
-            break
-        try:
-            event = client.pairing.get_nowait()
-        except queue.Empty:
-            event = None
-        if event is None:
-            # The person left, chose to cancel, or typed the other device's code instead.
-            if choice is None or shown["cancel"] or shown["instead"]:
-                try:
-                    client.call("pair.cancel")
-                except LumennaError:
-                    pass  # It ended on its own in the meantime.
-                if shown["instead"]:
-                    try:
-                        pending.result(timeout=60)
-                    except LumennaError:
-                        pass  # The wait, given up.
-                    dialogs.show_message(words["switching"], wait=False)
-                    return run_pairing(session, {"code": shown["instead"]})
-                break
-            continue
-        if event.get("code"):
-            shown["code"] = event["code"]
-            named = pairing_words(session, event.get("name") or "this device")
-            # Enter on the line shows the code alone, to read a character at a time.
-            shown["status"] = f"{named['waiting']} {named['my_code']}: {event['code']}"
-        elif event.get("words"):
+        pairing = pairing_view(session)
+        if pairing is None:
+            # Paired: what the app said of it is what is said after the screen.
+            return said or session.wait_said(0)
+        if pairing.words:
             matched = dialogs.request_confirmation(
-                f"{session.sentence(words['match_title'])} {words['match_message']} {', '.join(event['words'])}",
-                default=False,
+                f"{words.match_title}. {words.match_message} {', '.join(pairing.words)}", default=False,
             )
-            client.call("pair.confirm", match=matched)
-            shown["status"] = words["finishing"] if matched else words["refusing"]
-
-    try:
-        paired = pending.result(timeout=60)
-    except LumennaError as error:
-        return error.message
-    session.wrote()
-    return spoken(paired)
+            send(L.PairEventConfirm(bool(matched)))
+            continue
+        if not pairing.running and not pairing.problem:
+            # Nothing under way and nothing went wrong: the screen was let go of.
+            send(L.PairEventCancel())
+            return ""
+        session.settle()
+        menu = [
+            dialogs.DynamicMenuItem(title=lambda *_: status(), action=read_code),
+            *([dialogs.DynamicMenuItem(title=words.copy_code, action=copy_code)] if pairing.mine else []),
+            *([dialogs.DynamicMenuItem(title=words.join, action=code_instead)] if pairing.waiting and pairing.running else []),
+            dialogs.DynamicMenuItem(title=session.sentence("Cancel"), action=cancel),
+        ]
+        choice = dialogs.dynamic_menu(menu, title=words.title, exit_condition=session.restless, refresh_interval=REFRESH)
+        if session.restless():
+            continue
+        if left["now"] or choice is None:
+            # Given up: the pairing under way first, then, once it has stopped, the screen.
+            if pairing_view(session) is not None and pairing_view(session).running:
+                send(L.PairEventCancel())
+                deadline = time.monotonic() + 60
+                while pairing_view(session) is not None and pairing_view(session).running and time.monotonic() < deadline:
+                    session.wait_said(1)
+            if pairing_view(session) is not None:
+                send(L.PairEventCancel())
+            session.settle()
+            return ""
+        if pairing_view(session) is not None and not pairing_view(session).running:
+            # It ended in a problem, said on the status line; Cancel or leaving puts it away.
+            continue
 
 
 # ---------------------------------------------------------------------------------------
@@ -335,14 +360,14 @@ def run_pairing(session: Session, params: dict) -> str:
 def backups(session: Session) -> str:
     """This device's backups: how often, how many, where — and one now, or one merged in."""
 
-    with screen("lumenna-settings"):
+    with screen("lumenna-settings"), opened(session):
         live_menu(
             session,
             lambda: setting_items(session, on_this_device),
             "Backups. A backup holds your whole history, including every task you deleted, so the "
             "store can be rebuilt from it. It stays on this device",
             app=[
-                Command("Back up now", lambda _: session.write("backup"), key="b"),
+                Command("Back up now", lambda _: back_up(session), key="b"),
                 Command("Restore from a backup", lambda _: restore(session), key="r"),
             ],
             app_title="Backups menu",
@@ -350,32 +375,42 @@ def backups(session: Session) -> str:
     return ""
 
 
+def back_up(session: Session) -> str:
+    """A backup now, beside the automatic ones."""
+    try:
+        return session.device.backup().announcement
+    except Exception as error:  # noqa: BLE001 - the core's refusal
+        return refused(error)
+
+
+def setting_value(session: Session, key: str) -> str:
+    shown = setting_of(session, key)
+    return shown.setting.value if shown is not None else ""
+
+
 def restore(session: Session) -> str:
     """Merges a backup in. Nothing in the store is lost; a task deleted since stays deleted."""
-    start = current_settings(session).get("backup-dir") or str(Path.home())
+    start = setting_value(session, "backup-dir") or str(Path.home())
     if not Path(start).is_dir():
         start = str(Path.home())
     chosen = dialogs.request_file(start, ["lumbak"], prompt="Restore which backup?")
     if chosen is None:
         return ""
-    return session.write("restore", file=str(chosen))
-
-
-FORMATS = {
-    "json": ("JSON, complete, can be imported", "json"),
-    "markdown": ("Markdown checklist", "md"),
-    "org": ("Org outline", "org"),
-    "ics": ("Calendar file of your blocks", "ics"),
-}
+    return import_path(session, Path(chosen))
 
 
 def export_import(session: Session) -> str:
-    items = [
+    with opened(session):
+        return _export_import(session)
+
+
+def _export_import(session: Session) -> str:
+    menu = [
         dialogs.DynamicMenuItem(title="Export", action=lambda: export(session)),
         dialogs.DynamicMenuItem(title="Import an export, or restore a backup", action=lambda: import_file(session)),
     ]
     dialogs.dynamic_menu(
-        items,
+        menu,
         title="Export and import. An export is what you have now, with nothing from the trash. "
         "Importing adds what this device lacks and removes nothing",
     )
@@ -383,26 +418,52 @@ def export_import(session: Session) -> str:
 
 
 def export(session: Session) -> str:
-    """Writes the current state to a file in a folder of the person's choosing."""
-    format = choose({key: label for key, (label, _) in FORMATS.items()}, "Export as")
-    if format is None:
+    """Writes the current state to a file in a folder of the person's choosing, named as the
+    app names it."""
+    with opened(session):
+        return _export(session)
+
+
+def _export(session: Session) -> str:
+    view = session.view().settings
+    offered = view.exports if view is not None else []
+    if not offered:
         return ""
+    index = choose({i: choice.label for i, choice in enumerate(offered)}, "Export as")
+    if index is None:
+        return ""
+    picked = offered[index]
     folder = dialogs.request_directory(str(Path.home()), prompt="Save it in which folder?")
     if folder is None:
         return ""
-    name = f"Lumenna {datetime.date.today().isoformat()}.{FORMATS[format][1]}"
-    path = Path(folder) / name
-    force = False
-    if path.exists():
-        if not confirm(f"{name} is already there. Replace it?"):
-            return ""
-        force = True
-    return session.write("export", format=format, output=str(path), force=force)
+    path = Path(folder) / picked.name
+    if path.exists() and not confirm(f"{picked.name} is already there. Replace it?"):
+        return ""
+    session.files.clear()
+    said = session.send(L.ShellEventSettings(L.SettingsEventExport(picked.format)))
+    if not session.files:
+        return said
+    made = session.files.pop()
+    try:
+        path.write_bytes(bytes(made.bytes))
+    except OSError as error:
+        return f"{made.name} could not be saved: {error.strerror or error}"
+    return said or f"Saved {path}"
 
 
 def import_file(session: Session) -> str:
-    """Reads a JSON export or a backup; core tells them apart."""
+    """Reads a JSON export or a backup; the core tells them apart."""
     chosen = dialogs.request_file(str(Path.home()), ["json", "lumbak"], prompt="Import which file?")
     if chosen is None:
         return ""
-    return session.write("import", file=str(chosen))
+    return import_path(session, Path(chosen))
+
+
+def import_path(session: Session, path: Path) -> str:
+    """Reads `path` into the store: the app tells an export from a backup by its name."""
+    try:
+        contents = path.read_bytes()
+    except OSError as error:
+        return f"{path.name} could not be read: {error.strerror or error}"
+    with opened(session):
+        return session.send(L.ShellEventSettings(L.SettingsEventImport(path.name, contents)))

@@ -1,5 +1,5 @@
 """Reminders: the resident service, the app's screens, and installing the service — against a
-real `lum rpc`, at fixed moments in 2030 in UTC, so nothing depends on when the tests run."""
+real store, at fixed moments in 2030 in UTC, so nothing depends on when the tests run."""
 
 from __future__ import annotations
 
@@ -18,9 +18,8 @@ import btspeak_stub  # noqa: E402
 
 btspeak_stub.install()
 
-from connect import connect  # noqa: E402
-from session import Session  # noqa: E402
-from test_client import LUM  # noqa: E402
+from harness import LUM, Store  # noqa: E402
+from actions import L  # noqa: E402
 import day  # noqa: E402
 import preferences  # noqa: E402
 import reminder_lists  # noqa: E402
@@ -35,46 +34,36 @@ STARTS = "Deep work starts in 5 minutes — nothing assigned yet"
 @unittest.skipIf(LUM is None, "`lum` has not been built")
 class Reminders(unittest.TestCase):
     def setUp(self):
-        self.profile = Path(tempfile.mkdtemp())
-        self.saved = {key: os.environ.get(key) for key in ("PATH", "TZ", "LUMENNA_PROFILE", "LUMENNA_BACKUP_DIR", "XDG_CONFIG_HOME")}
-        os.environ["PATH"] = f"{Path(LUM).parent}{os.pathsep}{os.environ['PATH']}"
-        os.environ["TZ"] = "UTC"
-        os.environ["LUMENNA_PROFILE"] = str(self.profile)
-        os.environ["LUMENNA_BACKUP_DIR"] = str(self.profile / "backups")
-        os.environ["XDG_CONFIG_HOME"] = str(self.profile / "config")
+        self.store = Store()
+        self.profile = self.store.profile
+        self.client = self.store.client
+        self.session = self.store.session
         self.ran = []
         service.RUN = self.ran.append
         reminder_lists.ROOT = self.profile / "root"
         reminder_lists.NOW = None
         btspeak_stub.given.clear()
-        self.client = connect(self.profile)
-        self.session = Session(self.client)
         self.client.call("block.add", title="Deep work", at="9:00", minutes=60, date="2030-01-15")
         self.givers = []
 
     def tearDown(self):
         for giver in self.givers:
             giver.let_go()
-        self.client.close()
         service.RUN = service._run
         reminder_lists.ROOT = Path("/")
         reminder_lists.NOW = None
-        for key, value in self.saved.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
-        shutil.rmtree(self.profile, ignore_errors=True)
+        self.store.close()
 
     def giver(self, at: dict, on=lambda: True):
         # The sound file the device plays, recorded rather than played.
         reminders.play = lambda path: btspeak_stub.given.append(("sound", Path(path).stem))
-        giver = reminders.Giver(open_client=lambda: connect(self.profile), on=on, now=lambda: at["now"])
+        giver = reminders.Giver(open_store=lambda: L.Device(str(self.profile)), on=on, now=lambda: at["now"])
         self.givers.append(giver)
         return giver
 
     def run_script(self, steps, start):
         script = play(steps)
+        self.store.caught_up()
         start()
         self.assertTrue(script.finished(), f"steps left over: {script.steps}")
         return script
@@ -111,7 +100,6 @@ class Reminders(unittest.TestCase):
         self.assertEqual(giver.pause(), reminders.INTERVAL)
         on["on"] = False
         self.assertEqual(giver.once(), [])
-        self.assertIsNone(giver.client)
         free = self.client.call("reminder.deliver", now="2030-01-15T08:52:00Z")
         self.assertNotEqual(free["announcement"], "Another app on this device gives reminders")
         self.assertNotIn("elsewhere", free)
@@ -147,7 +135,7 @@ class Reminders(unittest.TestCase):
             lambda: reminder_lists.due(self.session),
         )
         self.assertIn("Dismissed", script.said)
-        self.assertEqual(script.titles, ["Reminders, 1 reminder", "Reminders"])
+        self.assertEqual(script.titles, ["Reminders", "Reminders"])
         self.assertEqual(script.menus[-1]["empty"], "Nothing has come due.")
 
     def test_what_came_due_is_snoozed_by_its_letter(self):
@@ -201,9 +189,10 @@ class Reminders(unittest.TestCase):
             [("context", overrun, "Replan"), ("menu", "Cancel"), ("key", overrun, "p"), ("menu", "Cancel"), ("back",)],
             lambda: reminder_lists.due(self.session),
         )
-        self.assertEqual(script.titles[0], "Reminders, 1 reminder")
-        self.assertTrue(script.titles[1].startswith("Replan from now. "), script.titles)
-        self.assertTrue(script.titles[2].startswith("Replan from now. "), script.titles)
+        self.assertEqual(script.titles[0], "Reminders")
+        replans = [title for title in script.titles if title.startswith("Replan from now. ")]
+        self.assertEqual(len(replans), 2, script.titles)
+        self.assertNotIn("Nothing needs to change", replans[0])
 
     def test_replan_where_a_reminder_does_not_offer_it_says_why(self):
         reminder_lists.NOW = lambda: datetime.datetime(2030, 1, 15, 9, 0, tzinfo=datetime.timezone.utc)
