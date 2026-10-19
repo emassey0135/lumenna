@@ -3114,7 +3114,6 @@ name = "lumenna-ffi"
 version = "0.1.0"
 dependencies = [
  "lumenna-host",
- "lumenna-mobile",
  "lumenna-records",
  "tempfile",
  "uniffi",

@@ -11,6 +11,12 @@
 //! shapes `lum --json` and the RPC surface keep are no concern here.
 
 mod device;
+// The surface's UniFFI exports, kept in this library for the Apple apps (the `uniffi` feature).
+#[cfg(feature = "uniffi")]
+lumenna_host::uniffi_reexport_scaffolding!();
+#[cfg(feature = "uniffi")]
+lumenna_records::uniffi_reexport_scaffolding!();
+
 #[cfg(not(feature = "network"))]
 mod offline;
 pub mod words;

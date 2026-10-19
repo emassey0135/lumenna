@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Lumenna's core for Swift: the surface through UniFFI, and the app through BoltFFI."
+description = "UniFFI's binding generator for the surface, which the Apple apps link from crates/mobile."
 
 [lib]
 name = "lumenna_ffi"
@@ -23,13 +23,10 @@ default = ["network"]
 bindgen = ["uniffi/cli"]
 # Sync over Iroh and the command surface's socket. Every app has it but the Apple Watch's,
 # which syncs through its phone over the link alone: watchOS allows no sockets.
-network = ["lumenna-host/sync", "lumenna-host/rpc", "lumenna-mobile/network"]
+network = ["lumenna-host/sync", "lumenna-host/rpc"]
 
 [dependencies]
 lumenna-host = { path = "../host", features = ["uniffi", "link"] }
-# The Crux app through BoltFFI, in the same library while the Apple apps' screens move onto it:
-# two Rust static libraries in one binary would each bring the standard library.
-lumenna-mobile = { path = "../mobile", default-features = false }
 lumenna-records = { workspace = true, features = ["uniffi"] }
 uniffi = "0.32"
 

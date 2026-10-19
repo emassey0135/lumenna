@@ -1,4 +1,4 @@
-# BoltFFI's configuration for the Kotlin apps. Gradle builds through
+# BoltFFI's configuration for the Kotlin apps and the Apple apps. Gradle builds through
 # apps/android/build-core.sh, which writes its outputs into the build directory with an overlay.
 [package]
 name = "lumenna-mobile"
@@ -10,3 +10,9 @@ architectures = ["arm64", "x86_64", "armv7"]
 [targets.android.kotlin]
 package = "io.github.emassey0135.lumenna.app"
 module_name = "LumennaApp"
+
+# The Apple apps': apps/apple/build-core.sh generates the Swift into apps/apple/Generated/App,
+# which the LumennaApp framework compiles, its C half the module LumennaAppFFI.
+[targets.apple.swift]
+module_name = "LumennaApp"
+ffi_module_name = "LumennaAppFFI"
