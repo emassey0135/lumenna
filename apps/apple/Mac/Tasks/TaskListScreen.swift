@@ -123,6 +123,9 @@ struct MacTaskListScreen: View {
                 } label: {
                     RowLabel(row: node.row, model: model)
                 }
+                // A disclosure group makes its label a heading, which no other row is ("Test,
+                // heading, expanded"): a task with subtasks is a row like any other.
+                .accessibilityRemoveTraits(.isHeader)
                 .tag(node.id)
             }
         }
@@ -157,14 +160,13 @@ struct MacTaskListScreen: View {
                     }
                 }
             }
-            // One element named by its whole line, as the phone says it: the title, then the rest.
-            // Not the title with the rest as its value: VoiceOver reads a static text's value in
-            // place of its name, so a row without subtasks was said as "subtask" alone; a row
-            // with them is the disclosure row, named by this. The level and whether it is
-            // expanded are the outline's own to report. Found by its title (the identifier).
-            .accessibilityElement(children: .ignore)
+            // A group named by its whole line, as the phone says it: the title, then the rest
+            // ("Test2, subtask, level 1"). As static text VoiceOver said its value alone and no
+            // level or expansion; named by the title with the rest as its value, a row without
+            // subtasks was said as "subtask". The level and whether it is expanded are the
+            // outline's own to report. Found by its title (the identifier).
+            .accessibilityElement(children: .contain)
             .accessibilityLabel(row.line?.text ?? row.row.title)
-            .accessibilityAddTraits(.isStaticText)
             .accessibilityIdentifier(row.row.title)
         }
     }

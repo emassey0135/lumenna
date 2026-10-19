@@ -932,6 +932,18 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   own caption and braille panels. Also excused: the Touch Bar, SwiftUI pop-ups' "Action is
   missing", and a "Parent/Child mismatch" with no element.
 - UI tests need macOS to have authorized UI automation for Xcode once.
+- **What VoiceOver says can be heard without listening**: with "Allow VoiceOver to be
+  controlled with AppleScript" on, `tell application "VoiceOver" to return content of last
+  phrase` gives the last thing it said. Interact with a list by VO-Shift-Down
+  (`key code 125 using {control down, option down, shift down}` through System Events), then
+  the arrows step its rows. The accessibility tree itself (roles, names, values, a row's
+  `AXDisclosureLevel`) is read with `AXUIElementCopyAttributeValue`, which needs the terminal
+  to have Accessibility permission. The tree alone does not say what VoiceOver will speak: a
+  row whose element is static text was said by its value, without its level or expansion.
+- **The SwiftUI task list on trial** (`Mac/Tasks/TaskListScreen.swift`, `LUMENNA_SWIFTUI`) is
+  AppKit's own outline underneath: rows, their levels and disclosure triangles are reported
+  natively. A row is a group named by its whole line; the check box is a pointer's alone; a
+  disclosure group's label, which SwiftUI makes a heading, has the heading taken off.
 
 ## The Apple Watch app
 
