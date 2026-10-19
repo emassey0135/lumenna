@@ -279,51 +279,59 @@ final class LumennaUITests: XCTestCase {
     ) throws {
         var issues: [String] = []
         // Once SwiftUI's fades have finished: a task's title just added, in the full text
-        // colour, failed contrast on the SE as it faded in, and a count as it changed.
-        Thread.sleep(forTimeInterval: 1)
-        try app.performAccessibilityAudit(for: types) { issue in
-            // The keyboard's predictive-text cells are the system's, not this app's, and
-            // nothing here can label them.
-            if issue.detailedDescription.contains("TUIPredictionViewCell") {
-                return true
+        // colour, failed contrast as it faded in, on the SE here and on CI's slower iPhone a
+        // second later still. So a contrast finding is looked at again, once, two seconds on:
+        // a fade under way is not what anyone reads, and text that fails at rest fails both.
+        var lookAgain = true
+        for wait in [1.0, 2.0] where lookAgain {
+            issues = []
+            lookAgain = false
+            Thread.sleep(forTimeInterval: wait)
+            try app.performAccessibilityAudit(for: types) { issue in
+                // The keyboard's predictive-text cells are the system's, not this app's, and
+                // nothing here can label them.
+                if issue.detailedDescription.contains("TUIPredictionViewCell") {
+                    return true
+                }
+                // Text a scrolling form's edge cuts through, half drawn, or scrolled under the bar:
+                // the audit measures it against whatever lies outside the form — on iPad the dimmed
+                // page around a sheet — or the bar's blur. Only contrast, only an element cut that
+                // way: the same text shown whole is judged elsewhere (the settings pages' captions).
+                if issue.auditType == .contrast, let element = issue.element, self.cutByAScrollEdge(element.frame) {
+                    return true
+                }
+                if issue.judgesAPadRowNotItsText { return true }
+                // SwiftUI text is reported as only *partly* scaling — captions, and once even a
+                // stock button — though `testSettingsPagesAtTheLargestTextSize` keeps screenshots
+                // of every form page at the largest size showing it at full size. Only that
+                // variant, only on SwiftUI's nodes: "unsupported" outright, or on a UIKit element,
+                // still fails.
+                if namedRows, issue.compactDescription == "Potentially inaccessible text" {
+                    return true
+                }
+                if issue.auditType == .dynamicType,
+                   issue.compactDescription.contains("partially"),
+                   issue.detailedDescription.contains("SwiftUI") {
+                    return true
+                }
+                // The same finding against a `NamedRow`'s hidden name, which the audit sees drawn
+                // but cannot resolve to an element: reported with no element, so its description
+                // names no SwiftUI node, beside the "Potentially inaccessible text" above, and only
+                // in some runs (the Planning page on iPad passed at 69fbcb7 and failed at the same
+                // commit an hour later). Only on those screens, only with no element.
+                if namedRows, issue.element == nil, issue.auditType == .dynamicType,
+                   issue.compactDescription.contains("partially") {
+                    return true
+                }
+                let element = issue.element.map { "\($0.elementType.rawValue) '\($0.label)' \($0.frame)" }
+                let finding = "\(issue.compactDescription) — \(issue.detailedDescription) [\(element ?? "unnamed element")]"
+                issues.append(finding)
+                if issue.auditType == .contrast { lookAgain = true }
+                // Printed as well: with AUDIT_ATTACH the audit fails the test itself, before the
+                // assertion below can say which element it was.
+                print("AUDIT \(screen): \(finding)")
+                return ProcessInfo.processInfo.environment["AUDIT_ATTACH"] == nil
             }
-            // Text a scrolling form's edge cuts through, half drawn, or scrolled under the bar:
-            // the audit measures it against whatever lies outside the form — on iPad the dimmed
-            // page around a sheet — or the bar's blur. Only contrast, only an element cut that
-            // way: the same text shown whole is judged elsewhere (the settings pages' captions).
-            if issue.auditType == .contrast, let element = issue.element, self.cutByAScrollEdge(element.frame) {
-                return true
-            }
-            if issue.judgesAPadRowNotItsText { return true }
-            // SwiftUI text is reported as only *partly* scaling — captions, and once even a
-            // stock button — though `testSettingsPagesAtTheLargestTextSize` keeps screenshots
-            // of every form page at the largest size showing it at full size. Only that
-            // variant, only on SwiftUI's nodes: "unsupported" outright, or on a UIKit element,
-            // still fails.
-            if namedRows, issue.compactDescription == "Potentially inaccessible text" {
-                return true
-            }
-            if issue.auditType == .dynamicType,
-               issue.compactDescription.contains("partially"),
-               issue.detailedDescription.contains("SwiftUI") {
-                return true
-            }
-            // The same finding against a `NamedRow`'s hidden name, which the audit sees drawn
-            // but cannot resolve to an element: reported with no element, so its description
-            // names no SwiftUI node, beside the "Potentially inaccessible text" above, and only
-            // in some runs (the Planning page on iPad passed at 69fbcb7 and failed at the same
-            // commit an hour later). Only on those screens, only with no element.
-            if namedRows, issue.element == nil, issue.auditType == .dynamicType,
-               issue.compactDescription.contains("partially") {
-                return true
-            }
-            let element = issue.element.map { "\($0.elementType.rawValue) '\($0.label)' \($0.frame)" }
-            let finding = "\(issue.compactDescription) — \(issue.detailedDescription) [\(element ?? "unnamed element")]"
-            issues.append(finding)
-            // Printed as well: with AUDIT_ATTACH the audit fails the test itself, before the
-            // assertion below can say which element it was.
-            print("AUDIT \(screen): \(finding)")
-            return ProcessInfo.processInfo.environment["AUDIT_ATTACH"] == nil
         }
         XCTAssertTrue(issues.isEmpty, "\(screen)\n" + issues.joined(separator: "\n"))
     }

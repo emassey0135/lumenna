@@ -61,6 +61,9 @@ final class LumennaMacUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         enter(text, into: field)
         app.buttons["Add"].click()
+        // Closed before anything else: a click on a row while the sheet was still going was
+        // lost, and the key after it acted on the task just added.
+        XCTAssertTrue(app.sheets.firstMatch.waitForNonExistence(timeout: 5), "quick add closes once the task is added")
     }
 
     func testTheAppOpensOnTheDay() {

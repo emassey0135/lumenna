@@ -830,7 +830,10 @@ Swift. `cd apps/apple && xcodegen` makes the project from `project.yml`; the `.x
   `.warningLabel`. The colours have Increase Contrast variants.
 - **The audits collect every issue and fail once** (`audit()`), a second after the screen
   settles and never while a sheet or alert is closing: under its fading dimming, black text on
-  white failed contrast (`add` waits for quick add to close). Exemptions, all narrow:
+  white failed contrast (`add` waits for quick add to close, as the Mac tests' `addTask` does,
+  where a click while it closed was lost). A contrast finding is looked at again, once, two
+  seconds on: a task's title fading in failed on CI's slower iPhone; text that fails at rest
+  fails both looks. Exemptions, all narrow:
   "potentially inaccessible text" on `NamedRow` screens, the keyboard's
   `TUIPredictionViewCell`, contrast on text under a navigation bar or the soft scroll edge
   just beneath it (the line at the top of a SwiftUI list failed there on the SE and the iPad
