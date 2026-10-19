@@ -195,7 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func newFilter(_ sender: Any?) { showMainWindow(nil); main?.sidebar.newSavedFilter() }
 
     @objc func focusFilter(_ sender: Any?) {
-        if main?.taskList == nil { go(.tasks) }
+        if main?.taskList?.filters != true { go(.tasks) }
         main?.taskList?.focusFilter()
     }
 

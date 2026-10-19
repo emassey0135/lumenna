@@ -1,4 +1,5 @@
 import LumennaApp
+import SwiftUI
 import UIKit
 
 /// A plain list drawn from the app, with the task list's focus rules: the app keeps the row in
@@ -7,14 +8,13 @@ import UIKit
 /// alone. What it lists, folded, and what each row offers are the app's.
 ///
 /// Subclasses say which part of the app's view they list and where they are held; this does the
-/// rest. The surface's `ItemListViewController` stays for the lists not yet moved.
-class AppListViewController: UIViewController, UICollectionViewDelegate {
+/// rest, in SwiftUI (`AppListScreen`) inside a UIKit controller, which keeps the bars, the
+/// keyboard's commands and what is pushed from it.
+class AppListViewController: UIViewController {
     let core: Core
     /// The rows shown.
     private(set) var items: [AppItem] = []
-    private var collectionView: UICollectionView!
-    private var dataSource: UICollectionViewDiffableDataSource<Int, String>!
-    private let header = UILabel()
+    private let state = AppListState()
     private var observer: NSObjectProtocol?
     /// The landing count this list last moved focus for.
     private var landed: UInt32?
@@ -68,56 +68,17 @@ class AppListViewController: UIViewController, UICollectionViewDelegate {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
-        var configuration = UICollectionLayoutListConfiguration(appearance: isSidebar ? .sidebar : .insetGrouped)
-        configuration.headerMode = isSidebar ? .none : .supplementary
-        configuration.trailingSwipeActionsConfigurationProvider = { [weak self] path in self?.trailingSwipeActions(at: path) }
-        collectionView = UICollectionView(
-            frame: view.bounds,
-            collectionViewLayout: UICollectionViewCompositionalLayout.list(using: configuration)
+        let screen = AppListScreen(
+            state: state, sidebar: isSidebar,
+            actions: { [weak self] item in self?.rowActions(for: item) ?? AppRowActions(actions: [], run: { _ in }) },
+            open: { [weak self] item in self?.open(item) }
         )
-        collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        collectionView.delegate = self
-        view.addSubview(collectionView)
-
-        let sidebar = isSidebar
-        let cell = UICollectionView.CellRegistration<UICollectionViewListCell, String> { [weak self] cell, _, key in
-            guard let self, let item = self.items.first(where: { $0.key == key }) else { return }
-            var content = sidebar
-                ? (item.heading ? UIListContentConfiguration.sidebarHeader() : .sidebarSubtitleCell())
-                : UIListContentConfiguration.subtitleCell()
-            content.text = item.title
-            content.textProperties.numberOfLines = 0
-            let lines = [item.detail, item.reason].compactMap { $0 }.filter { !$0.isEmpty }
-            content.secondaryText = lines.isEmpty ? nil : lines.joined(separator: "\n")
-            content.secondaryTextProperties.color = .quietLabel
-            content.secondaryTextProperties.numberOfLines = 0
-            content.directionalLayoutMargins.leading += CGFloat(item.depth) * 20
-            if sidebar { content.textProperties.color = .label }
-            cell.contentConfiguration = content
-            cell.accessories = sidebar ? [] : [.disclosureIndicator(displayed: .always)]
-            // Said explicitly. Left to itself the cell's label is its text and its detail
-            // together, so a value of the detail says it twice.
-            cell.isAccessibilityElement = true
-            cell.accessibilityLabel = item.title
-            cell.accessibilityValue = item.spoken ?? item.detail
-            cell.accessibilityHint = item.reason
-            cell.accessibilityTraits = item.heading ? [.header, .button] : .button
-            // Only what is not swiped, which UIKit adds to the swipe actions.
-            cell.accessibilityCustomActions = self.rowActions(for: item).customActions
-        }
-        let headerRegistration = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
-            elementKind: UICollectionView.elementKindSectionHeader
-        ) { [weak self] header, _, _ in
-            var content = header.defaultContentConfiguration()
-            content.text = self?.header.text
-            header.contentConfiguration = content
-        }
-        dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) { collectionView, path, key in
-            collectionView.dequeueConfiguredReusableCell(using: cell, for: path, item: key)
-        }
-        dataSource.supplementaryViewProvider = { collectionView, _, path in
-            collectionView.dequeueConfiguredReusableSupplementary(using: headerRegistration, for: path)
-        }
+        let host = UIHostingController(rootView: screen)
+        addChild(host)
+        host.view.frame = view.bounds
+        host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.addSubview(host.view)
+        host.didMove(toParent: self)
         if offersUndo {
             navigationItem.leftItemsSupplementBackButton = true
             navigationItem.leftBarButtonItems = [
@@ -137,9 +98,6 @@ class AppListViewController: UIViewController, UICollectionViewDelegate {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        if selectedKey == nil, let selected = collectionView.indexPathsForSelectedItems?.first {
-            collectionView.deselectItem(at: selected, animated: animated)
-        }
         appear()
         // Coming to the front is not the app moving focus: VoiceOver says the screen itself.
         landed = nil
@@ -156,30 +114,20 @@ class AppListViewController: UIViewController, UICollectionViewDelegate {
     func draw() {
         guard isViewLoaded, let (rows, count) = rows() else { return }
         items = rows
-        header.text = count
-        var snapshot = NSDiffableDataSourceSnapshot<Int, String>()
-        snapshot.appendSections([0])
-        snapshot.appendItems(items.map(\.key))
-        snapshot.reconfigureItems(items.map(\.key))
-        snapshot.reloadSections([0])
+        if state.items != rows { state.items = rows }
+        if state.header != count { state.header = count }
+        reselect()
         let (focus, landing) = held
         let land = landed.map { landing > $0 } ?? false
         landed = landing
-        dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
-            guard let self else { return }
-            self.reselect()
-            guard land, let focus, let index = self.items.firstIndex(where: { $0.key == focus }) else { return }
-            let path = IndexPath(item: index, section: 0)
-            self.collectionView.scrollToItem(at: path, at: .centeredVertically, animated: false)
-            self.collectionView.layoutIfNeeded()
-            UIAccessibility.post(notification: .layoutChanged, argument: self.collectionView.cellForItem(at: path))
+        if land, let focus, rows.contains(where: { $0.key == focus }) {
+            state.landed = (focus, (state.landed?.count ?? 0) + 1)
         }
     }
 
     /// Selects `selectedKey`, if it is shown.
     func reselect() {
-        guard let key = selectedKey, let index = items.firstIndex(where: { $0.key == key }) else { return }
-        collectionView.selectItem(at: IndexPath(item: index, section: 0), animated: false, scrollPosition: [])
+        if state.selected != selectedKey { state.selected = selectedKey }
     }
 
     /// Runs one of a row's actions, the app's: held where this list holds its rows, then run.
@@ -187,9 +135,9 @@ class AppListViewController: UIViewController, UICollectionViewDelegate {
         core.app.run(action, on: item.key, side: side)
     }
 
-    func collectionView(_ collectionView: UICollectionView, didSelectItemAt path: IndexPath) {
-        guard let key = dataSource.itemIdentifier(for: path), let item = items.first(where: { $0.key == key }) else { return }
-        open(item)
+    /// The item's actions as the list offers them (`AppRowActions`), Expand or Collapse among them.
+    func rowActions(for item: AppItem) -> AppRowActions {
+        AppRowActions(actions: item.actions) { [weak self] action in self?.perform(action, on: item) }
     }
 
     /// Undoes this device's last change to the store, wherever it was made.
@@ -212,38 +160,133 @@ class AppListViewController: UIViewController, UICollectionViewDelegate {
     }
 }
 
-// The row's actions, apart from the layout that asks for them, so a test can ask too.
-extension AppListViewController {
-    /// The item's actions as the list offers them (`AppRowActions`), Expand or Collapse among them.
-    func rowActions(for item: AppItem) -> AppRowActions {
-        AppRowActions(actions: item.actions) { [weak self] action in self?.perform(action, on: item) }
+/// What an `AppListViewController` shows, for its SwiftUI list.
+final class AppListState: ObservableObject {
+    @Published var items: [AppItem] = []
+    /// The line over the rows: how many, or the app's words for none.
+    @Published var header = ""
+    /// The row kept selected, as the sidebar keeps the place shown.
+    @Published var selected: String?
+    /// The row the app moved focus to, each time it moves it: a new `count` is a new move.
+    @Published var landed: (key: String, count: Int)?
+}
+
+/// The list itself: each row says its title, then the rest of its line, its folding and its
+/// level, and why it is offered as its hint; its primary actions and folding swipe from the
+/// trailing edge, the rest are accessibility actions, and all of them are in its context menu.
+struct AppListScreen: View {
+    @ObservedObject var state: AppListState
+    let sidebar: Bool
+    let actions: (AppItem) -> AppRowActions
+    let open: (AppItem) -> Void
+    @AccessibilityFocusState private var spoken: String?
+
+    var body: some View {
+        ScrollViewReader { scroller in
+            List {
+                // A row of its own, as the task list's readback is: as a section's header, in
+                // any colour, the audit measured it against what lies behind the list and
+                // failed its contrast.
+                if !state.header.isEmpty {
+                    Section {
+                        FormParts.caption(state.header)
+                    }
+                }
+                Section {
+                    ForEach(state.items, id: \.key) { item in
+                        row(item).id(item.key)
+                    }
+                }
+            }
+            .styled(sidebar ? .sidebar : .insetGrouped)
+            .onChange(of: state.landed?.count) { _, _ in
+                // The app moved the row in hand: VoiceOver goes there, once it is on screen.
+                guard let key = state.landed?.key else { return }
+                scroller.scrollTo(key, anchor: .center)
+                DispatchQueue.main.async { spoken = key }
+            }
+        }
     }
 
-    private func item(at path: IndexPath) -> AppItem? {
-        guard let key = dataSource.itemIdentifier(for: path) else { return nil }
-        return items.first { $0.key == key }
+    /// What VoiceOver says of a row: its title as its name; the rest of its line, its folding
+    /// and its level as its value; why it is offered as its hint, never part of its name.
+    static func speech(of item: AppItem) -> (label: String, value: String, hint: String) {
+        (item.title, item.spoken ?? item.detail ?? "", item.reason ?? "")
     }
 
-    /// What a trailing swipe on the row at `path` offers: the primary actions, then Expand or
-    /// Collapse.
-    func trailingSwipeActions(at path: IndexPath) -> UISwipeActionsConfiguration? {
-        item(at: path).flatMap { rowActions(for: $0).trailingSwipe() }
+    /// The lines beneath the title: the detail, then why it is offered.
+    static func lines(of item: AppItem) -> [String] {
+        [item.detail, item.reason].compactMap { $0 }.filter { !$0.isEmpty }
     }
 
-    /// The cell's other actions, for VoiceOver, Switch Control and Full Keyboard Access.
-    func customActions(at path: IndexPath) -> [UIAccessibilityCustomAction] {
-        item(at: path).map { rowActions(for: $0).customActions } ?? []
+    private func row(_ item: AppItem) -> some View {
+        let split = actions(item)
+        let speech = Self.speech(of: item)
+        let selected = state.selected == item.key
+        return Button { open(item) } label: {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.title)
+                        .font(sidebar && item.heading ? .headline : .body)
+                    ForEach(Self.lines(of: item), id: \.self) { line in
+                        Text(line)
+                            .font(.subheadline)
+                            .foregroundStyle(Color.quietLabel)
+                    }
+                }
+                Spacer(minLength: 0)
+                if !sidebar {
+                    Image(systemName: "chevron.forward")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Color.quietLabel)
+                        .accessibilityHidden(true)
+                }
+            }
+            // Depth shown by indentation, for sight only; VoiceOver hears it in words, where it
+            // changes.
+            .padding(.leading, CGFloat(item.depth) * 20)
+            .contentShape(Rectangle())
+        }
+        .foregroundStyle(Color.primary)
+        .listRowBackground(selected ? Color.lumennaTint.opacity(0.2) : nil)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(speech.label)
+        .accessibilityValue(speech.value)
+        .accessibilityHint(speech.hint)
+        .accessibilityAddTraits(item.heading ? [.isHeader, .isButton] : .isButton)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityFocused($spoken, equals: item.key)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            ForEach(split.trailing, id: \.self) { action in
+                Button(action.title, role: action.destructive ? .destructive : nil) { split.run(action) }
+                    .tint([.expand, .collapse].contains(action.kind) ? Color.lumennaTint : nil)
+            }
+        }
+        .accessibilityActions {
+            // Only what is not swiped: SwiftUI offers the swipe actions to VoiceOver already.
+            ForEach(split.others, id: \.self) { action in
+                Button(action.title) { split.run(action) }
+            }
+        }
+        .contextMenu {
+            ForEach(split.actions, id: \.self) { action in
+                Button(action.title, role: action.destructive ? .destructive : nil) { split.run(action) }
+            }
+        }
     }
+}
 
-    /// What a long press on the row at `path` offers: every action.
-    func menu(at path: IndexPath) -> UIMenu? {
-        item(at: path).flatMap { rowActions(for: $0).menu }
-    }
+/// A list style chosen at run time: the sidebar's look or a list's.
+private enum AnyListStyle {
+    case sidebar, insetGrouped
+}
 
-    func collectionView(
-        _ collectionView: UICollectionView, contextMenuConfigurationForItemsAt paths: [IndexPath], point: CGPoint
-    ) -> UIContextMenuConfiguration? {
-        guard paths.count == 1, let item = item(at: paths[0]) else { return nil }
-        return rowActions(for: item).contextMenu
+private extension View {
+    @ViewBuilder
+    func styled(_ style: AnyListStyle) -> some View {
+        switch style {
+        case .sidebar: listStyle(.sidebar)
+        case .insetGrouped: listStyle(.insetGrouped)
+        }
     }
 }

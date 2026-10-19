@@ -10,8 +10,6 @@ final class LumennaUITests: XCTestCase {
         app = XCUIApplication()
         // A fresh store for every test, in the app's temporary directory.
         app.launchEnvironment["LUMENNA_TEST_PROFILE"] = UUID().uuidString
-        // The SwiftUI trial's lists, when the run asks for them (TEST_RUNNER_LUMENNA_SWIFTUI).
-        app.launchEnvironment["LUMENNA_SWIFTUI"] = ProcessInfo.processInfo.environment["LUMENNA_SWIFTUI"]
         app.launch()
         // The app opens on the day; most of these tests are about tasks.
         tab("Tasks")
@@ -48,7 +46,7 @@ final class LumennaUITests: XCTestCase {
             return
         }
         // A hidden sidebar's rows still exist, off the screen: only one that can be tapped will do.
-        let place = app.cells.matching(NSPredicate(format: "label == %@", name)).firstMatch
+        let place = app.row(name)
         if !(place.waitForExistence(timeout: 2) && place.isHittable) { app.buttons["Show Sidebar"].firstMatch.tap() }
         place.tap()
     }
@@ -116,21 +114,15 @@ final class LumennaUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText(text)
         app.buttons["Add"].tap()
+        // Closed, its dimming gone, before anything is judged: an audit just after found the
+        // list's text under contrast as the dimming faded.
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5), "quick add closes once the task is added")
     }
 
-    private func row(_ title: String) -> XCUIElement {
-        // A UIKit list's row is its cell; the SwiftUI trial's task rows are buttons in theirs.
-        app.descendants(matching: .any).matching(NSPredicate(
-            format: "label == %@ AND (elementType == %d OR elementType == %d)", title,
-            XCUIElement.ElementType.cell.rawValue, XCUIElement.ElementType.button.rawValue
-        )).firstMatch
-    }
+    private func row(_ title: String) -> XCUIElement { app.row(title) }
 
-    /// Whether the run is the SwiftUI trial's (`LUMENNA_SWIFTUI`).
-    private var trial: Bool { ProcessInfo.processInfo.environment["LUMENNA_SWIFTUI"] != nil }
-
-    /// The filter field: a text view in UIKit's list, a text field in the SwiftUI trial's.
-    private var filterField: XCUIElement { trial ? app.textFields["Filter"] : app.textViews["Filter"] }
+    /// The filter field, SwiftUI's.
+    private var filterField: XCUIElement { app.textFields["Filter"] }
 
     func testAddingATaskReadsItBackAndListsIt() {
         app.buttons["Add task"].tap()
@@ -262,7 +254,7 @@ final class LumennaUITests: XCTestCase {
     /// from VoiceOver on purpose — the field carries the name — and which the audit reports
     /// as possibly inaccessible text. Only that finding, only on those screens.
     /// Whether a scroll view's edge cuts through `frame`, part inside and part outside, or it
-    /// has scrolled under a navigation bar, which blurs it.
+    /// lies under a navigation bar or its scroll edge, which blurs it.
     private func cutByAScrollEdge(_ frame: CGRect) -> Bool {
         let scrolling = app.collectionViews.allElementsBoundByIndex + app.scrollViews.allElementsBoundByIndex
             + app.tables.allElementsBoundByIndex
@@ -270,8 +262,13 @@ final class LumennaUITests: XCTestCase {
             let visible = view.frame.intersection(frame)
             return !visible.isNull && visible.height > 0 && visible.height < frame.height - 1
         }
+        // The bar's own frame, and the soft scroll edge beneath it, which blurs and dims what
+        // is under it whether scrolled or not: the line at the top of a SwiftUI list failed
+        // there on the SE and the iPad and passed on the larger iPhone.
         let underABar = app.navigationBars.allElementsBoundByIndex.contains { bar in
-            let under = bar.frame.intersection(frame)
+            var edge = bar.frame
+            edge.size.height += 24
+            let under = edge.intersection(frame)
             return !under.isNull && under.height > 0
         }
         return cut || underABar
@@ -281,6 +278,9 @@ final class LumennaUITests: XCTestCase {
         _ types: XCUIAccessibilityAuditType = .all, _ screen: String = "", namedRows: Bool = false
     ) throws {
         var issues: [String] = []
+        // Once SwiftUI's fades have finished: a task's title just added, in the full text
+        // colour, failed contrast on the SE as it faded in, and a count as it changed.
+        Thread.sleep(forTimeInterval: 1)
         try app.performAccessibilityAudit(for: types) { issue in
             // The keyboard's predictive-text cells are the system's, not this app's, and
             // nothing here can label them.
@@ -294,6 +294,7 @@ final class LumennaUITests: XCTestCase {
             if issue.auditType == .contrast, let element = issue.element, self.cutByAScrollEdge(element.frame) {
                 return true
             }
+            if issue.judgesAPadRowNotItsText { return true }
             // SwiftUI text is reported as only *partly* scaling — captions, and once even a
             // stock button — though `testSettingsPagesAtTheLargestTextSize` keeps screenshots
             // of every form page at the largest size showing it at full size. Only that
@@ -490,7 +491,7 @@ final class LumennaUITests: XCTestCase {
         XCTAssertTrue(block.waitForExistence(timeout: 5), "the details say what differs from the kind")
         reveal(actionsOf: block)
         app.buttons["Assign a Task"].tap()
-        app.cells.matching(NSPredicate(format: "label == 'read the paper'")).firstMatch.tap()
+        app.row("read the paper").tap()
         XCTAssertTrue(app.alerts["Planned Length"].waitForExistence(timeout: 5))
         press(alertButton: "Save")
 
@@ -534,11 +535,11 @@ final class LumennaUITests: XCTestCase {
         XCTAssertTrue(block.waitForExistence(timeout: 5))
         reveal(actionsOf: block)
         app.buttons["Assign a Task"].tap()
-        app.cells.matching(NSPredicate(format: "label == 'write the chapter'")).firstMatch.tap()
+        app.row("write the chapter").tap()
         XCTAssertTrue(app.alerts["Planned Length"].waitForExistence(timeout: 5), "asks how long, and can be left empty")
         press(alertButton: "Save")
 
-        let sitting = app.cells.matching(NSPredicate(format: "label == 'write the chapter'")).firstMatch
+        let sitting = app.row("write the chapter")
         XCTAssertTrue(sitting.waitForExistence(timeout: 5))
         reveal(actionsOf: sitting)
         app.buttons["Start Timer"].tap()
@@ -572,7 +573,7 @@ final class LumennaUITests: XCTestCase {
     func testABrowseRowSaysItsNameOnceAndItsCountOnce() throws {
         try XCTSkipIf(pad, "the iPad makes projects, labels and filters from its sidebar (SidebarUITests)")
         tab("Browse")
-        let projects = app.cells.matching(NSPredicate(format: "label == 'Projects'")).firstMatch
+        let projects = app.row("Projects")
         XCTAssertTrue(projects.waitForExistence(timeout: 5), "the label is the name alone")
         XCTAssertEqual(projects.value as? String, "1 project", "the count, once")
     }
@@ -926,7 +927,7 @@ final class LumennaUITests: XCTestCase {
         addBlock("Standup", repeating: "every day")
         tab("Browse")
         cell(containing: "Blocks").tap()
-        let standup = cell(containing: "Standup")
+        let standup = row("Standup")
         XCTAssertTrue(standup.waitForExistence(timeout: 5))
         XCTAssertTrue((standup.value as? String)?.contains("every day") == true, "\(standup.value ?? "")")
         try audit()
@@ -945,7 +946,7 @@ final class LumennaUITests: XCTestCase {
         addBlock("Focus")
         reveal(actionsOf: cell(containing: "Focus"))
         app.buttons["Assign a Task"].tap()
-        app.cells.matching(NSPredicate(format: "label == 'draft'")).firstMatch.tap()
+        app.row("draft").tap()
         let minutes = app.alerts.textFields["Planned length"]
         XCTAssertTrue(minutes.waitForExistence(timeout: 5))
         minutes.typeText("45m")
@@ -960,7 +961,7 @@ final class LumennaUITests: XCTestCase {
         length.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 6))
         press(alertButton: "Save")
         XCTAssertTrue(planned.waitForNonExistence(timeout: 5))
-        XCTAssertTrue(app.cells.matching(NSPredicate(format: "label == 'draft'")).firstMatch.exists)
+        XCTAssertTrue(app.row("draft").exists)
     }
 
     func testUndoIsOfferedOnBrowseScreensToo() throws {
@@ -969,7 +970,7 @@ final class LumennaUITests: XCTestCase {
         cell(containing: "Projects").tap()
         app.buttons["Add project"].tap()
         answer("Work", with: "Add")
-        let work = app.cells.matching(NSPredicate(format: "label == 'Work'")).firstMatch
+        let work = app.row("Work")
         XCTAssertTrue(work.waitForExistence(timeout: 5))
         app.navigationBars.buttons["Undo"].tap()
         XCTAssertTrue(work.waitForNonExistence(timeout: 5), "undone without leaving Browse")
@@ -1000,7 +1001,7 @@ final class LumennaUITests: XCTestCase {
         // The task's page hides the tab bar; back to the list first.
         goBack()
         tab("Today")
-        XCTAssertTrue(app.cells.matching(NSPredicate(format: "label == 'draft'")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.row("draft").waitForExistence(timeout: 5))
     }
 
     // MARK: - The planner
@@ -1028,6 +1029,6 @@ final class LumennaUITests: XCTestCase {
         try audit(.all, "plan the day")
         app.buttons["Plan the Ones Checked"].tap()
         XCTAssertTrue(app.navigationBars["Plan the Day"].waitForNonExistence(timeout: 5), "nothing more to plan, so it closes")
-        XCTAssertTrue(app.cells.matching(NSPredicate(format: "label == 'write the report'")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.row("write the report").waitForExistence(timeout: 5))
     }
 }

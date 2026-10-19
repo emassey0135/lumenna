@@ -3,9 +3,10 @@ import UIKit
 import XCTest
 @testable import Lumenna
 
-/// The task list over the app: each row's swipe actions, custom actions and menu, asked for
-/// and run directly, as VoiceOver offers them, without a swipe having to land. The store is
-/// seeded through the device, and the app takes that in.
+/// The task list over the app: each row's actions as the list offers them (its swipes, its
+/// other accessibility actions, its menu: `TaskListScreen.actions`), asked for and run
+/// directly, without a swipe having to land. What VoiceOver lists of them is the VoiceOver UI
+/// tests'. The store is seeded through the device, and the app takes that in.
 @MainActor
 final class TaskListTests: XCTestCase {
     private var core: Core!
@@ -16,42 +17,6 @@ final class TaskListTests: XCTestCase {
         core = try Core()
     }
 
-    /// `screen` loaded and laid out.
-    private func shown<Screen: UIViewController>(_ screen: Screen) -> Screen {
-        screen.loadViewIfNeeded()
-        screen.view.frame = CGRect(x: 0, y: 0, width: 400, height: 900)
-        screen.beginAppearanceTransition(true, animated: false)
-        screen.endAppearanceTransition()
-        screen.view.layoutIfNeeded()
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
-        return screen
-    }
-
-    private func list(in screen: UIViewController) -> UICollectionView {
-        func find(_ view: UIView) -> UICollectionView? {
-            (view as? UICollectionView) ?? view.subviews.lazy.compactMap(find).first
-        }
-        return find(screen.view)!
-    }
-
-    private func titles(_ configuration: UISwipeActionsConfiguration?) -> [String] {
-        configuration?.actions.compactMap(\.title) ?? []
-    }
-
-    private func titles(_ menu: UIMenu?) -> [String] {
-        menu?.children.map(\.title) ?? []
-    }
-
-    /// Runs the action called `title`, as VoiceOver's action does.
-    private func run(_ title: String, in configuration: UISwipeActionsConfiguration?) {
-        guard let action = configuration?.actions.first(where: { $0.title == title }) else {
-            return XCTFail("no action called \(title) among \(titles(configuration))")
-        }
-        action.handler(action, UIView()) { _ in }
-    }
-
-    private func path(_ item: Int) -> IndexPath { IndexPath(item: item, section: 0) }
-
     /// What a row offers, each way: its swipes, its other accessibility actions, its menu.
     private struct Offered {
         var leading: [String] = []
@@ -60,7 +25,7 @@ final class TaskListTests: XCTestCase {
         var menu: [String]
 
         /// What VoiceOver, Switch Control and Full Keyboard Access list: the swipes, and the
-        /// custom actions UIKit adds to them.
+        /// accessibility actions SwiftUI adds to them.
         var listed: [String] { leading + trailing + custom }
     }
 
@@ -73,23 +38,41 @@ final class TaskListTests: XCTestCase {
         } while !(core.app.isStill && until()) && Date() < deadline
     }
 
-    /// The task list of `place` shown, once the app has taken in what was seeded and listed it.
-    private func shownTasks(_ place: LumennaApp.Place = .tasks) -> TaskListViewController {
+    /// The task list of `place`, opened as its screen opens it, once the app has taken in what
+    /// was seeded and listed it.
+    private func shownTasks(_ place: LumennaApp.Place = .tasks) -> TaskListModel {
         core.app.tick()
         settle()
-        let tasks = shown(TaskListViewController(core: core, place: place))
-        settle { core.app.view.place == place && list(in: tasks).numberOfItems(inSection: 0) == shownItems.count }
+        let tasks = TaskListModel(core: core, place: place)
+        tasks.appear()
+        settle { core.app.view.place == place && tasks.shown.count == shownItems.count }
         return tasks
     }
 
     /// The app's rows shown, not folded away.
     private var shownItems: [LumennaApp.Item] { (core.app.view.list?.items ?? []).filter { !$0.hidden } }
 
-    private func offered(_ tasks: TaskListViewController, _ item: Int) -> Offered {
-        Offered(
-            leading: titles(tasks.leadingSwipeActions(at: path(item))), trailing: titles(tasks.trailingSwipeActions(at: path(item))),
-            custom: tasks.customActions(at: path(item)).map(\.name), menu: titles(tasks.menu(at: path(item)))
+    /// The row's actions as the list splits them, each run as the list runs it.
+    private func split(_ tasks: TaskListModel, _ item: Int) -> AppRowActions {
+        let row = tasks.shown[item].row
+        return TaskListScreen.actions(of: row) { [weak tasks] action in tasks?.run(action, on: row) }
+    }
+
+    private func offered(_ tasks: TaskListModel, _ item: Int) -> Offered {
+        let split = split(tasks, item)
+        return Offered(
+            leading: split.leading.map(\.title), trailing: split.trailing.map(\.title),
+            custom: split.others.map(\.title), menu: split.actions.map(\.title)
         )
+    }
+
+    /// Runs the row's action called `title`, as VoiceOver's action does.
+    private func run(_ title: String, _ tasks: TaskListModel, _ item: Int) {
+        let split = split(tasks, item)
+        guard let action = split.actions.first(where: { $0.title == title }) else {
+            return XCTFail("no action called \(title) among \(split.actions.map(\.title))")
+        }
+        split.run(action)
     }
 
     private func assertEachOnce(_ offered: Offered, _ actions: [LumennaApp.Action], file: StaticString = #filePath, line: UInt = #line) {
@@ -113,16 +96,9 @@ final class TaskListTests: XCTestCase {
         XCTAssertEqual(row.trailing, ["Move to Trash"])
         XCTAssertEqual(row.custom, otherTaskActions)
         assertEachOnce(row, shownItems[0].row.actions)
-        run("Mark Done", in: tasks.leadingSwipeActions(at: path(0)))
+        run("Mark Done", tasks, 0)
         settle()
         XCTAssertTrue(try core.app.device.listTasks(query: "").rows.isEmpty, "completed, so no longer listed")
-    }
-
-    func testTheCellCarriesTheOtherActionsForVoiceOver() throws {
-        _ = try core.app.device.addTask(text: "water the plants")
-        let tasks = shownTasks()
-        let cell = try XCTUnwrap(list(in: tasks).cellForItem(at: path(0)))
-        XCTAssertEqual(cell.accessibilityCustomActions?.map(\.name), otherTaskActions)
     }
 
     func testATaskWithSubtasksAlsoOffersCollapse() throws {
@@ -133,36 +109,40 @@ final class TaskListTests: XCTestCase {
         let outline = try XCTUnwrap(rows.first { $0.title == "outline" })
         _ = try core.app.device.moveTask(id: outline.id, to: .parent(id: essay.id))
         let tasks = shownTasks()
-        XCTAssertEqual(titles(tasks.trailingSwipeActions(at: path(0))), ["Move to Trash", "Collapse"])
+        XCTAssertEqual(offered(tasks, 0).trailing, ["Move to Trash", "Collapse"])
         assertEachOnce(offered(tasks, 0), shownItems[0].row.actions)
-        run("Collapse", in: tasks.trailingSwipeActions(at: path(0)))
-        settle { list(in: tasks).numberOfItems(inSection: 0) == 1 }
-        XCTAssertEqual(list(in: tasks).numberOfItems(inSection: 0), 1, "the subtask is folded away")
-        XCTAssertEqual(titles(tasks.trailingSwipeActions(at: path(0))), ["Move to Trash", "Expand"])
-        XCTAssertEqual(titles(tasks.menu(at: path(0))).last, "Expand")
+        run("Collapse", tasks, 0)
+        settle { tasks.shown.count == 1 }
+        XCTAssertEqual(tasks.shown.count, 1, "the subtask is folded away")
+        XCTAssertEqual(offered(tasks, 0).trailing, ["Move to Trash", "Expand"])
+        XCTAssertEqual(offered(tasks, 0).menu.last, "Expand")
     }
 
     func testATrashedTaskOffersRestoreAndDeleteFromTrash() throws {
         let added = try core.app.device.addTask(text: "old idea")
         _ = try core.app.device.trashTask(id: try XCTUnwrap(added.task?.id))
         let trash = shownTasks(.trash)
-        XCTAssertNil(trash.leadingSwipeActions(at: path(0)), "nothing to mark done in the trash")
-        XCTAssertEqual(titles(trash.trailingSwipeActions(at: path(0))), ["Restore", "Delete from Trash"])
+        XCTAssertTrue(offered(trash, 0).leading.isEmpty, "nothing to mark done in the trash")
+        XCTAssertEqual(offered(trash, 0).trailing, ["Restore", "Delete from Trash"])
         assertEachOnce(offered(trash, 0), shownItems[0].row.actions)
-        run("Restore", in: trash.trailingSwipeActions(at: path(0)))
+        run("Restore", trash, 0)
         settle()
         XCTAssertEqual(try core.app.device.listTasks(query: "").rows.map(\.title), ["old idea"])
     }
 
     func testMarkingDoneFromTheKeyboardIsTheRowsOwnAction() throws {
         _ = try core.app.device.addTask(text: "water the plants")
-        let tasks = shownTasks()
-        let list = list(in: tasks)
-        list.selectItem(at: path(0), animated: false, scrollPosition: [])
+        core.app.tick()
+        settle()
+        let tasks = TaskListViewController(core: core, place: .tasks)
+        tasks.loadViewIfNeeded()
+        tasks.beginAppearanceTransition(true, animated: false)
+        tasks.endAppearanceTransition()
+        // The first row is in hand as soon as the list opens: the Task menu's commands act on it.
+        settle { core.app.view.list?.items.isEmpty == false && core.app.view.focus != nil }
         XCTAssertTrue(tasks.canPerformAction(#selector(TaskListViewController.moveToTrash), withSender: nil))
         tasks.toggleDone()
         settle()
         XCTAssertTrue(try core.app.device.listTasks(query: "").rows.isEmpty, "completed, so no longer listed")
     }
-
 }

@@ -206,24 +206,6 @@ jobs:
             CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never \
             -resultBundlePath "$RUNNER_TEMP/mac.xcresult" \
             -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 300 test
-      # The SwiftUI task list on trial (LUMENNA_SWIFTUI): the task list's own tests again over it,
-      # reported apart, never failing the job, until it is judged.
-      - name: The SwiftUI trial's task list
-        if: always()
-        continue-on-error: true
-        working-directory: apps/apple
-        env:
-          TEST_RUNNER_LUMENNA_SWIFTUI: "1"
-        run: |
-          T=LumennaMacUITests/LumennaMacUITests
-          xcodebuild -project Lumenna.xcodeproj -scheme LumennaMac -destination 'platform=macOS' \
-            CODE_SIGNING_ALLOWED=NO -collect-test-diagnostics never \
-            -resultBundlePath "$RUNNER_TEMP/mac-swiftui.xcresult" \
-            -test-timeouts-enabled YES -default-test-execution-time-allowance 180 test-without-building \
-            -only-testing:$T/testAddingATaskListsItAndSpaceCompletesIt -only-testing:$T/testTheDetailPaneEditsTheSelectedTask \
-            -only-testing:$T/testTheMainWindowPassesAnAccessibilityAudit -only-testing:$T/testATrashedTaskIsRestoredAndAnotherErasedFromTheTrash \
-            -only-testing:$T/testATasksTitleSavesOnReturnAndItsProjectIsChosenFromItsProjects -only-testing:$T/testASavedFilterIsMadeRequeriedAndDeleted \
-            -only-testing:$T/testATaskWithASubtaskFoldsInTheOutline
       - name: Test results, when a test failed
         if: failure()
         uses: actions/upload-artifact@v4

@@ -12,8 +12,6 @@ final class LumennaMacUITests: XCTestCase {
         app = XCUIApplication()
         // A fresh store for every test, in the app's temporary directory.
         app.launchEnvironment["LUMENNA_TEST_PROFILE"] = profile
-        // The SwiftUI trial's lists, when the run asks for them (TEST_RUNNER_LUMENNA_SWIFTUI).
-        app.launchEnvironment["LUMENNA_SWIFTUI"] = ProcessInfo.processInfo.environment["LUMENNA_SWIFTUI"]
         app.launchEnvironment["LUMENNA_BACKUP_DIR"] = backups.path
         // No sync: on a fresh Mac, as CI's is, listening brings macOS's local-network and
         // incoming-connection prompts up over the window, which then has neither focus nor
@@ -34,7 +32,7 @@ final class LumennaMacUITests: XCTestCase {
     private var window: XCUIElement { app.windows["main"] }
 
     private func place(_ name: String) {
-        window.outlines["Places"].staticTexts[name].click()
+        sidebarRow(name).click()
     }
 
     /// Puts text in a field by pasting it, then restores the clipboard.
@@ -137,6 +135,15 @@ final class LumennaMacUITests: XCTestCase {
             // only with no element.
             if issue.element == nil, issue.compactDescription == "Parent/Child mismatch" { return true }
             if let sheetFrame, let frame = issue.element?.frame, !sheetFrame.insetBy(dx: -1, dy: -1).contains(frame) { return true }
+            // A contrast finding SwiftUI reports with no element, only its text: judged as the
+            // rest are, by where that text is, when it is in the dimmed window behind an open
+            // sheet ("No task selected") and not in the sheet.
+            if issue.auditType == .contrast, issue.element == nil, sheet.exists,
+               let said = issue.detailedDescription.components(separatedBy: "Contrast failed for ").last
+                   ?? issue.compactDescription.components(separatedBy: "Contrast failed for ").last,
+               case let saying = NSPredicate(format: "value == %@ OR label == %@", said, said),
+               !sheet.staticTexts.matching(saying).firstMatch.exists,
+               self.window.staticTexts.matching(saying).firstMatch.exists { return true }
             // Contrast is judged on a Retina screen. CI's Mac has a 1x display, where the
             // audit failed plain black labels ("Day", "Kind") on the block form's light grey:
             // text drawn at 1x is mostly antialiased edge, and measures low.
@@ -146,9 +153,10 @@ final class LumennaMacUITests: XCTestCase {
             // only under a window VoiceOver owns.
             if issue.auditType == .contrast, let frame = issue.element?.frame,
                voiceOverPanels.contains(where: { $0.intersects(frame) }) { return true }
-            // SwiftUI's pop-up menus answer VoiceOver's press but not the audit's question
-            // about it; only that finding, only on pop-ups.
-            if issue.element?.elementType == .popUpButton, issue.compactDescription == "Action is missing" { return true }
+            // SwiftUI's pop-up menus and menu buttons (the day's Day Actions) answer VoiceOver's
+            // press (AXPress opens them) but not the audit's question about it; only that
+            // finding, only on those.
+            if [.popUpButton, .menuButton].contains(issue.element?.elementType), issue.compactDescription == "Action is missing" { return true }
             // Only that service's window and what fills it, only for having no description.
             if issue.compactDescription == "Element has no description", let frame = issue.element?.frame,
                siriPanels.contains(where: { $0.insetBy(dx: -1, dy: -1).contains(frame) }) { return true }
@@ -279,7 +287,8 @@ final class LumennaMacUITests: XCTestCase {
 
     /// A row of the sidebar, by its name.
     private func sidebarRow(_ name: String) -> XCUIElement {
-        window.outlines["Places"].staticTexts[name]
+        // By its identifier, the title: its text says its whole line ("Inbox, 3 tasks").
+        window.outlines["Places"].descendants(matching: .any).matching(identifier: name).firstMatch
     }
 
     /// Opens a row's context menu and chooses an item from it — what VO-Shift-M does.
@@ -328,8 +337,12 @@ final class LumennaMacUITests: XCTestCase {
         button.click()
     }
 
+    /// The first element saying `words`: a static text, or a SwiftUI row that is one element
+    /// named by its line (a block with sittings, whose disclosure group's label has no texts
+    /// inside it).
     private func text(containing words: String, in parent: XCUIElement? = nil) -> XCUIElement {
-        (parent ?? window).staticTexts.matching(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", words, words)).firstMatch
+        (parent ?? window).descendants(matching: .any)
+            .matching(NSPredicate(format: "value CONTAINS %@ OR label CONTAINS %@", words, words)).firstMatch
     }
 
     func testATasksTitleSavesOnReturnAndItsProjectIsChosenFromItsProjects() {
@@ -386,9 +399,8 @@ final class LumennaMacUITests: XCTestCase {
     }
 
     /// A task with a subtask is a row the outline folds, by its own disclosure triangle, which
-    /// runs the app's Collapse and Expand: whichever list draws the tasks, AppKit's or the
-    /// SwiftUI trial's, the outline is AppKit's, which reports a row's level and expansion to
-    /// VoiceOver itself.
+    /// runs the app's Collapse and Expand. The list is SwiftUI's and the outline AppKit's
+    /// underneath, which reports a row's level and expansion to VoiceOver itself.
     func testATaskWithASubtaskFoldsInTheOutline() throws {
         place("Tasks")
         addTask("essay")
@@ -596,13 +608,14 @@ final class LumennaMacUITests: XCTestCase {
         XCTAssertTrue(text(containing: "worked", in: day).waitForExistence(timeout: 5))
     }
 
-    func testTheBlockListEditsEveryOccurrenceAndAsksBeforeDeleting() {
+    func testTheBlockListEditsEveryOccurrenceAndAsksBeforeDeleting() throws {
         place("Blocks")
         addBlock("Standup", repeating: "every day")
-        let blocks = window.tables["Blocks"]
+        let blocks = window.outlines["Blocks"]
         let standup = blocks.staticTexts["Standup"]
         XCTAssertTrue(standup.waitForExistence(timeout: 5))
         XCTAssertTrue(text(containing: "every day", in: blocks).exists, "said in words")
+        try audit("blocks")
         standup.doubleClick()
         XCTAssertEqual(app.textFields["Repeats"].value as? String, "every day")
         sheetButton("Cancel")

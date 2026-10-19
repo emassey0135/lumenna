@@ -96,8 +96,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             shown = place
             let controller: NSViewController = switch place {
             case .today: DayViewController(core: core, window: self)
-            case .blocks: BlocksViewController(core: core)
-            default: Lumenna.taskList(core: core, window: self, place: place)
+            default: TaskListViewController(core: core, window: self, place: place)
             }
             content.show(controller)
         }
@@ -125,13 +124,36 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// The list in the middle pane, if it is a task list — what the Task menu acts on.
-    var taskList: MacTaskListing? { content.current as? MacTaskListing }
+    var taskList: TaskListViewController? { content.current as? TaskListViewController }
     var day: DayViewController? { content.current as? DayViewController }
+
+    /// Whether the window has been shown before: the first time, focus starts in the list.
+    private var opened = false
+
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        guard !opened else { return }
+        opened = true
+        focusList(tries: 20)
+    }
+
+    /// Puts focus in the middle pane's list once SwiftUI has made it: left to AppKit, the
+    /// window's first focus is the first list it finds, the sidebar's.
+    private func focusList(tries: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self, let window = self.window else { return }
+            if let list = self.content.current?.preferredFirstResponder as? NSOutlineView {
+                window.makeFirstResponder(list)
+            } else if tries > 0 {
+                self.focusList(tries: tries - 1)
+            }
+        }
+    }
 
     // MARK: - Panes (F6)
 
     private var panes: [NSView] {
-        [sidebar.outline, content.current?.preferredFirstResponder, detail.current?.preferredFirstResponder]
+        [sidebar.preferredFirstResponder, content.current?.preferredFirstResponder, detail.current?.preferredFirstResponder]
             .compactMap { $0 }
     }
 

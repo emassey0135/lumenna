@@ -12,8 +12,6 @@ final class SidebarUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchEnvironment["LUMENNA_TEST_PROFILE"] = UUID().uuidString
-        // The SwiftUI trial's lists, when the run asks for them (TEST_RUNNER_LUMENNA_SWIFTUI).
-        app.launchEnvironment["LUMENNA_SWIFTUI"] = ProcessInfo.processInfo.environment["LUMENNA_SWIFTUI"]
         app.launch()
         showSidebar()
     }
@@ -41,7 +39,7 @@ final class SidebarUITests: XCTestCase {
     }
 
     private func place(_ title: String) -> XCUIElement {
-        app.cells.matching(NSPredicate(format: "label == %@", title)).firstMatch
+        app.row(title)
     }
 
     /// Runs one of a row's actions: a swipe action, as VoiceOver lists it. A part swipe, slow
@@ -62,10 +60,14 @@ final class SidebarUITests: XCTestCase {
 
     private func audit() throws {
         var issues: [String] = []
+        // Once SwiftUI's fades have finished, as in the other audits: the day's heading failed
+        // contrast as it changed.
+        Thread.sleep(forTimeInterval: 1)
         try app.performAccessibilityAudit { issue in
             // As in the other audits: SwiftUI's partly-scaling text, never a UIKit cell's.
             if issue.auditType == .dynamicType, issue.compactDescription.contains("partially"),
                issue.detailedDescription.contains("SwiftUI") { return true }
+            if issue.judgesAPadRowNotItsText { return true }
             issues.append("\(issue.compactDescription) — \(issue.detailedDescription) [\(issue.element.map { "\($0.label) \($0.frame)" } ?? "unnamed")]")
             return true
         }
@@ -107,7 +109,7 @@ final class SidebarUITests: XCTestCase {
         XCTAssertTrue(line.waitForExistence(timeout: 5))
         line.typeText("dig the beds")
         app.buttons["Add"].tap()
-        // A UIKit list's row is its cell; the SwiftUI trial's task rows are buttons in theirs.
+        // A UIKit list's row is its cell; the task list's, SwiftUI's, a button in its cell.
         let task = app.descendants(matching: .any).matching(NSPredicate(
             format: "label == 'dig the beds' AND (elementType == %d OR elementType == %d)",
             XCUIElement.ElementType.cell.rawValue, XCUIElement.ElementType.button.rawValue
@@ -135,6 +137,8 @@ final class SidebarUITests: XCTestCase {
         field.typeText("p1")
         app.alerts.buttons["Add"].tap()
         XCTAssertTrue(place("Urgent").waitForExistence(timeout: 5))
+        // The question gone, its dimming with it, before the audit judges what was under it.
+        XCTAssertTrue(app.alerts.firstMatch.waitForNonExistence(timeout: 5))
         try audit()
         // A label's own actions are offered on it, as in Browse on the iPhone.
         act(place("calls"), "Rename")

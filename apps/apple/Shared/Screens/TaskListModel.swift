@@ -1,7 +1,7 @@
 import Foundation
 import LumennaApp
 
-/// A place's tasks as the app lists them (`ViewModel.list`), for a SwiftUI list: every row with
+/// A place's tasks, or every block series, as the app lists them (`ViewModel.list`), for a SwiftUI list: every row with
 /// its line, those folded away marked, the row in hand, and each time the app moves it.
 ///
 /// The app decides what is listed and folded, which row is in hand after a change and what each
@@ -20,6 +20,12 @@ final class TaskListModel: ObservableObject {
     /// The place this list shows.
     let place: LumennaApp.Place
     var trash: Bool { place == .trash }
+    /// Whether this is the Blocks list, every block series, rather than tasks.
+    var blocks: Bool { place == .blocks }
+    /// Whether the list has a filter above it: the trash and the blocks have none.
+    var filters: Bool { !trash && !blocks }
+    /// What a row here is, for saying why it has no action of a kind.
+    var subject: LumennaApp.Subject { blocks ? .block : .task }
     /// Every row, those folded away included (`hidden`): a tree draws them inside their
     /// collapsed parents, a flat list leaves them out.
     @Published private(set) var rows: [Row] = []
@@ -30,6 +36,8 @@ final class TaskListModel: ObservableObject {
     @Published private(set) var focus: String?
     /// The row the app moved focus to, each time it moves it: a new `count` is a new move.
     @Published private(set) var landed: (key: String, count: Int)?
+    /// Whether the filter is wanted in hand (Filter Tasks), until the field has taken focus.
+    @Published var filterWanted = false
     /// The filter as typed, sent to the app as it changes.
     @Published var filter = "" {
         didSet { if !following, filter != oldValue { core.app.send(.filter(filter)) } }
@@ -86,7 +94,7 @@ final class TaskListModel: ObservableObject {
         if title != view.title { title = view.title }
         if focus != view.focus { focus = view.focus }
         lastInHand = view.focus
-        if !trash, filter != view.query, core.app.isStill {
+        if filters, filter != view.query, core.app.isStill {
             following = true
             filter = view.query
             following = false
@@ -103,6 +111,9 @@ final class TaskListModel: ObservableObject {
     func moved(to id: String) {
         guard here, id != core.app.view.focus else { return }
         core.app.send(.focus(id))
+        // In hand here at once: a key pressed straight after the move acts on this row, not on
+        // the one the app's next turn has yet to replace.
+        focus = id
     }
 
     /// Runs one of a row's actions, the app's: the row in hand, then the action, whose question
@@ -116,7 +127,7 @@ final class TaskListModel: ObservableObject {
         if let action = row.actions.first(where: { kinds.contains($0.kind) }) {
             run(action, on: row)
         } else {
-            Announcer.say(LumennaApp.notOffered(kind: kind, subject: .task, thisDevice: false))
+            Announcer.say(LumennaApp.notOffered(kind: kind, subject: subject, thisDevice: false))
         }
     }
 

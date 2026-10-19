@@ -7,7 +7,7 @@ final class DevicesViewController: NSViewController, NSTableViewDataSource, NSTa
     private let core: Core
     private var devices: [(device: LumennaApp.DeviceView, line: LumennaApp.Line?)] = []
     private let status = NSTextField(wrappingLabelWithString: "")
-    private let table = BlocksTable()
+    private let table = DevicesTable()
     /// Whether the table is being set from the app's, not moved by the person.
     private var following = false
     private var observer: NSObjectProtocol?
@@ -149,5 +149,23 @@ final class DevicesViewController: NSViewController, NSTableViewDataSource, NSTa
     @objc private func pair() {
         guard let window = view.window else { return }
         PairingSheet.present(on: window, core: core)
+    }
+}
+
+/// A table that answers Return and Delete itself.
+final class DevicesTable: NSTableView {
+    var returned: (() -> Void)?
+    var deleted: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty else {
+            super.keyDown(with: event)
+            return
+        }
+        switch event.keyCode {
+        case 36, 76: returned?()
+        case 51, 117: deleted?()
+        default: super.keyDown(with: event)
+        }
     }
 }

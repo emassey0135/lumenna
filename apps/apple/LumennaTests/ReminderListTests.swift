@@ -41,7 +41,7 @@ final class ReminderListTests: XCTestCase {
         list.view.layoutIfNeeded()
         settle { !list.items.isEmpty }
         XCTAssertEqual(list.items.map(\.title), ["5 minutes before it starts"])
-        XCTAssertNil(list.trailingSwipeActions(at: IndexPath(item: 0, section: 0)), "a default cannot be removed alone")
+        XCTAssertEqual(list.rowActions(for: list.items[0]).trailing, [], "a default cannot be removed alone")
 
         // Add Reminder asks for a phrase, the app's question, answered here as a person would.
         list.add()
@@ -49,7 +49,7 @@ final class ReminderListTests: XCTestCase {
         core.app.send(.answer(.text(text: "at end")))
         settle { list.items.first?.title == "When it ends" }
         XCTAssertEqual(list.items.map(\.title), ["When it ends"])
-        let swipes = list.trailingSwipeActions(at: IndexPath(item: 0, section: 0))?.actions.compactMap(\.title)
+        let swipes = list.rowActions(for: list.items[0]).trailing.map(\.title)
         XCTAssertEqual(swipes, ["Remove Reminder"])
     }
 }

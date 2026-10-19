@@ -62,3 +62,84 @@ private func firstScrollView(in view: NSView) -> NSScrollView? {
     }
     return nil
 }
+
+extension NSView {
+    /// Makes this view first responder when focus is nowhere: as the window opens, or when the
+    /// pane it was in was replaced. A list coming into the middle pane as the person moves
+    /// through the sidebar leaves them there; taking focus, it stopped the arrows at the first
+    /// place they came to.
+    func takeFocusIfNowhere() {
+        guard let window else { return }
+        let current = window.firstResponder
+        let nowhere = current == nil || current === window || (current as? NSView)?.window !== window
+        if nowhere { window.makeFirstResponder(self) }
+    }
+}
+
+/// Gives a view focus as the mouse goes down on it, before AppKit handles the click: a SwiftUI
+/// list's own outline does not take focus for a click on the row already selected, so Space
+/// after it went to the sidebar, and a recognizer that gave it on the click's end came after a
+/// key pressed straight away.
+final class FocusOnClick {
+    private weak var view: NSView?
+    private var monitor: Any?
+
+    init(_ view: NSView) {
+        self.view = view
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let view = self?.view, let window = view.window, event.window === window,
+                  window.firstResponder !== view else { return event }
+            let point = view.convert(event.locationInWindow, from: nil)
+            if view.bounds.contains(point) { window.makeFirstResponder(view) }
+            return event
+        }
+    }
+
+    deinit {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+    }
+}
+
+/// The keys a list answers on its row in hand.
+enum ListKey { case space, delete, returnKey }
+
+/// Space, Delete and Return on a list, taken as AppKit hands them to the window while the
+/// list's outline, or a view inside it, is first responder. SwiftUI's own key handlers waited on its focus, which
+/// follows the first responder a moment later: a key pressed straight after a click was lost.
+final class ListKeys {
+    private weak var view: NSView?
+    private var monitor: Any?
+
+    /// `handle` answers whether it took the key.
+    init(_ view: NSView, handle: @escaping (ListKey) -> Bool) {
+        self.view = view
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let view = self?.view, let window = view.window, event.window === window,
+                  let responder = window.firstResponder as? NSView, responder.isDescendant(of: view),
+                  event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
+            else { return event }
+            let key: ListKey? = switch event.keyCode {
+            case 49: .space
+            case 36, 76: .returnKey
+            case 51, 117: .delete
+            default: nil
+            }
+            guard let key, handle(key) else { return event }
+            return nil
+        }
+    }
+
+    deinit {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+    }
+}
+
+extension NSOutlineView {
+    /// Hands `moved` the row AppKit has selected, among `shown`, the rows as the outline shows
+    /// them, when they agree in number: SwiftUI tells its selection a moment after AppKit's
+    /// changes, so a key pressed straight after a click acted on the row before it.
+    func inHand(shown: [String], moved: (String) -> Void) {
+        guard numberOfRows == shown.count, selectedRow >= 0, selectedRow < shown.count else { return }
+        moved(shown[selectedRow])
+    }
+}

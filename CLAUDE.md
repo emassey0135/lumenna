@@ -733,11 +733,27 @@ Swift. `cd apps/apple && xcodegen` makes the project from `project.yml`; the `.x
   launch. A post-build phase fails the build on any `liblumenna_ffi` reference. A launch is
   not proof it ran: check the process is alive, or the crash logs.
 - **Iroh needs `SystemConfiguration` and `Network`** linked.
-- **The cell owns what VoiceOver says**: every list cell sets its own label (the title) and
+- **A row owns what VoiceOver says**: every list row sets its own label (the title) and
   value (the rest of the app's line, whether it is folded, and the level where it changes:
-  `AppModel.spoken`); left alone, a cell says its secondary text twice.
-- **Rows are `UIListContentConfiguration`, not SwiftUI**: hosted `Text` failed the audit for
-  Dynamic Type and clipping. SwiftUI stays for forms.
+  `AppModel.spoken`), its children ignored; left alone, a row says its secondary text twice.
+- **The screens are moving to SwiftUI, one at a time**, each judged by the audits, every
+  test and what VoiceOver says, as the one before it was. The task list, Blocks (the same
+  screen: no filter, a row's tap its Edit Block) and the day are done
+  (`TaskListViewController` and `DayViewController`, each a `UIHostingController` over its
+  SwiftUI screen and the shared `TaskListModel` or `DayModel`): their rows keep the UIKit
+  lists' speech and action split (`AppRowActions`:
+  Mark Done swiped from the leading edge, the other primary actions and folding from the
+  trailing, the rest accessibility actions, all in the context menu), and VoiceOver goes to
+  the row in hand through `@AccessibilityFocusState` only when `landing` went up. Every other
+  list (Browse, the iPad's sidebar, a reminder list, Devices, Settings, a pick) is an
+  `AppListViewController`, a UIKit controller holding the SwiftUI `AppListScreen`, its
+  subclasses saying only what they list and where it is held. Hosted `Text` in a UIKit cell
+  failed the audit for Dynamic Type and clipping, where a SwiftUI `List` passes. A SwiftUI
+  row is a button in its cell, so a UI test finds a row by its title with `app.row`.
+  A SwiftUI field's first responder is SwiftUI's own text view, its name on SwiftUI's element,
+  so focus is given through `@FocusState` (`TaskListModel.filterWanted`), never by finding a
+  view. A model takes the person's own move into `focus` at once (`moved(to:)`), so a key
+  pressed straight after acts on that row, not the one the app's next turn has yet to replace.
 - **Text entry wraps** (`LineEntry`): a one-line field scrolls sideways at large sizes and
   the audit flags it as clipped.
 - **A SwiftUI `TextField`'s title is only a placeholder**: with text in it, VoiceOver never
@@ -746,7 +762,8 @@ Swift. `cd apps/apple && xcodegen` makes the project from `project.yml`; the `.x
   position; the core's announcement is queued behind the focus change so neither cuts the
   other off. This holds on every platform.
 - **A row's primary actions are its swipe actions; the rest are its custom actions**, and
-  all of them are in its long-press menu. UIKit offers swipe actions to VoiceOver, Switch
+  all of them are in its long-press menu. A trailing swipe never runs its first action by
+  itself (`allowsFullSwipe: false`): on the SE a test's swipe did, and the first can be Delete. UIKit offers swipe actions to VoiceOver, Switch
   Control and Full Keyboard Access and *adds* custom actions to them, so an action in both
   would be listed twice: each is in exactly one. Eight swipe actions did not fit on a phone
   row. A swipe action's title is its spoken name ("Mark Done", not "Done").
@@ -811,9 +828,15 @@ Swift. `cd apps/apple && xcodegen` makes the project from `project.yml`; the `.x
 - **The tint is `UIColor.lumennaTint`** (system blue is about 4:1 on white), on the window
   **and with `.tint` on every SwiftUI form**, whose accent ignores the window's. Red text is
   `.warningLabel`. The colours have Increase Contrast variants.
-- **The audits collect every issue and fail once** (`audit()`). Exemptions, all narrow:
+- **The audits collect every issue and fail once** (`audit()`), a second after the screen
+  settles and never while a sheet or alert is closing: under its fading dimming, black text on
+  white failed contrast (`add` waits for quick add to close). Exemptions, all narrow:
   "potentially inaccessible text" on `NamedRow` screens, the keyboard's
-  `TUIPredictionViewCell`, and "partially unsupported" Dynamic Type on SwiftUI nodes (the
+  `TUIPredictionViewCell`, contrast on text under a navigation bar or the soft scroll edge
+  just beneath it (the line at the top of a SwiftUI list failed there on the SE and the iPad
+  only), contrast the audit judges of a SwiftUI text on the iPad by its whole row's frame
+  (`judgesAPadRowNotItsText`: the task list's count failed so in pure black), and "partially
+  unsupported" Dynamic Type on SwiftUI nodes (the
   audit reports it even for a stock button), or with no element at all on a `NamedRow` screen,
   where it comes and goes on the iPad between runs of one build (likely a row's hidden name). To see an unnamed finding, run with
   `AUDIT_ATTACH=1` and `xcrun xcresulttool export attachments`.
@@ -883,9 +906,25 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   are one device with one store. The app ticks once a second, taking in what `lum` wrote.
 - **The window follows the app**: the middle pane shows the app's place, so a place renamed,
   merged or deleted takes the window with it, and the right pane the details of the task in
-  hand, which follow the row in hand. Every list is an `NSOutlineView` (or a table) over the
-  app's rows: the selection is the row in hand, scrolled to only when the app moved it, and
-  folding there is the row's own Expand or Collapse.
+  hand, which follow the row in hand. Every list is an outline (or a table) over the app's
+  rows: the selection is the row in hand, scrolled to only when the app moved it, and folding
+  there is the row's own Expand or Collapse. The task list is SwiftUI's `List`, rows nested in
+  disclosure groups, which is AppKit's outline underneath, reporting levels and expansion
+  itself; so are Blocks (the same screen, its Return and double click Edit Block), the day
+  and the sidebar (`SidebarScreen`, whose headings keep the heading trait and are never
+  selected, and whose rows' context menus are their own, a heading's included). The rest are
+  still AppKit tables, moving to SwiftUI one at a time.
+  **A SwiftUI list takes focus through its own `NSOutlineView`** (`preferredFirstResponder`,
+  for F6): the window gives it to the middle pane's list once SwiftUI has made it, as it first
+  opens, since SwiftUI's `@FocusState` asked then went nowhere and AppKit's own first choice
+  was the sidebar; a list coming into the pane takes it only when focus is nowhere
+  (`takeFocusIfNowhere`), or arrowing through the sidebar, which opens each place, pulled
+  focus out of it at the first place. A click anywhere on a list gives it focus as the mouse
+  goes down (`FocusOnClick`, an event monitor): a click on the row already selected did not,
+  and a recognizer's, at the click's end, came after a key pressed straight away. Space,
+  Delete and Return are taken the same way (`ListKeys`) while the outline or a view in it is
+  first responder, never by SwiftUI's `onKeyPress`, which waits on SwiftUI's focus, a moment
+  behind the first responder.
 - **Resident in the menu bar, and the device's sync process.** No daemon is needed or used:
   the app's network middleware syncs for as long as it runs and, while it holds the endpoint,
   serves the command surface at the profile's address (`App.serveCommands`, the bridge's `rpc`
@@ -898,8 +937,8 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   sheet, shared with the watch: its Add Reminder answers the app's question itself, a refusal
   kept in its field with the app's reason.
 - **The Day menu ends in the day's own actions**, rebuilt as it opens (`MainMenu.DayMenu`):
-  the day shown's, else today's, which goes to the day first; also a pull-down beside the
-  day's buttons. Plan the Day and Replan from Now have Command-Option-P and -R (`DayKeys`,
+  the day shown's, else today's, which goes to the day first; also a Day Actions menu beside
+  the day's buttons. Plan the Day and Replan from Now have Command-Option-P and -R (`DayKeys`,
   the iPad's too), answered by `DayMenu.menuHasKeyEquivalent` with the menu closed; that
   stops AppKit looking through the menu's items, so it matches the fixed ones (Command-[)
   itself. The proposal screen is a `HostedForm` sheet with its own Cancel and default
@@ -930,7 +969,9 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 - **The Mac audit judges only the window in front** (or the open sheet): dimmed windows
   fail contrast without being what anyone reads. It also skips contrast under VoiceOver's
   own caption and braille panels. Also excused: the Touch Bar, SwiftUI pop-ups' "Action is
-  missing", and a "Parent/Child mismatch" with no element.
+  missing" (and a menu button's: the day's Day Actions, which AXPress opens), a "Parent/Child
+  mismatch" with no element, and a contrast finding with no element whose text is in the
+  dimmed window behind an open sheet and not in the sheet.
 - UI tests need macOS to have authorized UI automation for Xcode once.
 - **What VoiceOver says can be heard without listening**: with "Allow VoiceOver to be
   controlled with AppleScript" on, `tell application "VoiceOver" to return content of last
@@ -940,10 +981,17 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   `AXDisclosureLevel`) is read with `AXUIElementCopyAttributeValue`, which needs the terminal
   to have Accessibility permission. The tree alone does not say what VoiceOver will speak: a
   row whose element is static text was said by its value, without its level or expansion.
-- **The SwiftUI task list on trial** (`Mac/Tasks/TaskListScreen.swift`, `LUMENNA_SWIFTUI`) is
-  AppKit's own outline underneath: rows, their levels and disclosure triangles are reported
-  natively. A row is a group named by its whole line; the check box is a pointer's alone; a
-  disclosure group's label, which SwiftUI makes a heading, has the heading taken off.
+- **A SwiftUI list row is a group named by its whole line** (`MacTaskListScreen`): as static
+  text VoiceOver said its value alone and no level or expansion. The check box is a pointer's
+  alone, as the web's; a disclosure group's label, which SwiftUI makes a heading, has the
+  heading taken off; the hosting view steps out of the tree (`FlatHostingView`), or it is a
+  nameless group the audit finds. A row holding one text is read by that text, not the
+  row's name, so the sidebar's text says the whole line itself (`accessibilityRepresentation`),
+  with its folding and level in words, as the iPad's (`AppModel.sidebarItems`): hidden, the row
+  was said with "group" after it. No tooltip on a row: VoiceOver read it as the row's help,
+  saying the count twice. A selection turned off on a disclosure group is off for everything
+  in it, so a heading's is turned off on its label. Tests find a sidebar row by its
+  identifier, the title.
 
 ## The Apple Watch app
 

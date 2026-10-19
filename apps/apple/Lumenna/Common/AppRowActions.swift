@@ -4,10 +4,10 @@ import UIKit
 /// A row's actions as the iPhone and iPad offer them, from the app's list, each once — the same
 /// rules as `RowActions`, over the app's actions:
 ///
-/// - the `primary` ones, and Expand or Collapse, as swipe actions, which UIKit also offers to
+/// - the `primary` ones, and Expand or Collapse, as swipe actions, which SwiftUI also offers to
 ///   VoiceOver, Switch Control and Full Keyboard Access as the row's actions;
-/// - the rest as the cell's accessibility custom actions, which UIKit adds to the swipe actions
-///   rather than replacing them, so between the two every action is listed once;
+/// - the rest as the row's accessibility actions, which are added to the swipe actions rather
+///   than replacing them, so between the two every action is listed once;
 /// - all of them, in the app's order, in the menu a long press (or a secondary click) opens.
 ///
 /// Running one is the app's: `run` puts the row in hand and sends the action.
@@ -43,58 +43,9 @@ struct AppRowActions {
         return actions.filter { !swiped.contains($0) }
     }
 
-    func leadingSwipe() -> UISwipeActionsConfiguration? {
-        let swipes = leading.map(swipe)
-        return swipes.isEmpty ? nil : UISwipeActionsConfiguration(actions: swipes)
-    }
-
-    func trailingSwipe() -> UISwipeActionsConfiguration? {
-        let swipes = trailing.map(swipe)
-        return swipes.isEmpty ? nil : UISwipeActionsConfiguration(actions: swipes)
-    }
-
-    /// The cell's custom actions: every action not swiped.
-    var customActions: [UIAccessibilityCustomAction] {
-        others.map { action in
-            UIAccessibilityCustomAction(name: action.title) { _ in
-                run(action)
-                return true
-            }
-        }
-    }
-
-    /// The long-press menu: every action, in the app's order.
-    var menu: UIMenu? {
-        let items: [UIMenuElement] = actions.map { action in
-            UIAction(title: action.title, attributes: action.destructive ? .destructive : []) { _ in run(action) }
-        }
-        return items.isEmpty ? nil : UIMenu(children: items)
-    }
-
-    /// The menu as a collection view's context menu asks for it.
-    var contextMenu: UIContextMenuConfiguration? {
-        guard let menu else { return nil }
-        return UIContextMenuConfiguration(actionProvider: { _ in menu })
-    }
-
     /// The first of these kinds: what a key or a menu command does to the row in hand.
     func first(_ kinds: LumennaApp.ActionKind...) -> LumennaApp.Action? {
         actions.first { kinds.contains($0.kind) }
-    }
-
-    /// A swipe action for one of the app's actions: its spoken name, shown as destructive when it
-    /// removes something.
-    private func swipe(_ action: LumennaApp.Action) -> UIContextualAction {
-        let swipe = UIContextualAction(style: action.destructive ? .destructive : .normal, title: action.title) { _, _, finished in
-            run(action)
-            finished(true)
-        }
-        switch action.kind {
-        case .markDone, .markNotDone: swipe.backgroundColor = .systemGreen
-        case .expand, .collapse: swipe.backgroundColor = .lumennaTint
-        default: break
-        }
-        return swipe
     }
 }
 

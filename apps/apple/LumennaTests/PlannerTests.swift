@@ -145,16 +145,12 @@ final class PlannerTests: XCTestCase {
         let reason = "Suggested because priority 1."
         let item = AppItem(key: "a", title: "Report", detail: "Inbox", reason: reason)
         let picker = shown(ChoicePicker(core: core, title: "Assign a Task", items: [item], chosen: { _ in }, cancelled: {}))
-        func find(_ view: UIView) -> UICollectionView? {
-            (view as? UICollectionView) ?? view.subviews.lazy.compactMap(find).first
-        }
-        let list = try XCTUnwrap(find(picker.view))
-        list.layoutIfNeeded()
-        let cell = try XCTUnwrap(list.cellForItem(at: IndexPath(item: 0, section: 0)) as? UICollectionViewListCell)
-        XCTAssertEqual(cell.accessibilityLabel, "Report")
-        XCTAssertEqual(cell.accessibilityHint, reason)
-        let content = try XCTUnwrap(cell.contentConfiguration as? UIListContentConfiguration)
-        XCTAssertEqual(content.secondaryText, "Inbox\n\(reason)")
+        let shown = try XCTUnwrap(picker.items.first)
+        let speech = AppListScreen.speech(of: shown)
+        XCTAssertEqual(speech.label, "Report")
+        XCTAssertEqual(speech.hint, reason)
+        XCTAssertFalse(speech.value.contains(reason), "never said as its line")
+        XCTAssertEqual(AppListScreen.lines(of: shown), ["Inbox", reason])
     }
 
     // MARK: - A task's history

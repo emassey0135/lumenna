@@ -12,8 +12,6 @@ final class KeyboardUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchEnvironment["LUMENNA_TEST_PROFILE"] = UUID().uuidString
-        // The SwiftUI trial's lists, when the run asks for them (TEST_RUNNER_LUMENNA_SWIFTUI).
-        app.launchEnvironment["LUMENNA_SWIFTUI"] = ProcessInfo.processInfo.environment["LUMENNA_SWIFTUI"]
         app.launch()
     }
 
@@ -37,7 +35,7 @@ final class KeyboardUITests: XCTestCase {
             return
         }
         // A hidden sidebar's rows still exist, off the screen: only one that can be tapped will do.
-        let place = app.cells.matching(NSPredicate(format: "label == %@", name)).firstMatch
+        let place = app.row(name)
         if !(place.waitForExistence(timeout: 2) && place.isHittable) { app.buttons["Show Sidebar"].firstMatch.tap() }
         place.tap()
     }
@@ -47,7 +45,7 @@ final class KeyboardUITests: XCTestCase {
     }
 
     private func row(_ title: String) -> XCUIElement {
-        // A UIKit list's row is its cell; the SwiftUI trial's task rows are buttons in theirs.
+        // A UIKit list's row is its cell; the task list's, SwiftUI's, a button in its cell.
         app.descendants(matching: .any).matching(NSPredicate(
             format: "label == %@ AND (elementType == %d OR elementType == %d)", title,
             XCUIElement.ElementType.cell.rawValue, XCUIElement.ElementType.button.rawValue
@@ -89,7 +87,7 @@ final class KeyboardUITests: XCTestCase {
         #else
         tab("Today")
         press("f")
-        let filter = ProcessInfo.processInfo.environment["LUMENNA_SWIFTUI"] != nil ? app.textFields["Filter"] : app.textViews["Filter"]
+        let filter = app.textFields["Filter"]
         let focused = expectation(for: NSPredicate(format: "hasKeyboardFocus == true"), evaluatedWith: filter)
         wait(for: [focused], timeout: 10)
         #endif

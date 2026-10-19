@@ -14,8 +14,6 @@ final class VoiceOverUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchEnvironment["LUMENNA_TEST_PROFILE"] = UUID().uuidString
-        // The SwiftUI trial's lists, when the run asks for them (TEST_RUNNER_LUMENNA_SWIFTUI).
-        app.launchEnvironment["LUMENNA_SWIFTUI"] = ProcessInfo.processInfo.environment["LUMENNA_SWIFTUI"]
         app.launch()
     }
 
@@ -64,7 +62,7 @@ final class VoiceOverUITests: XCTestCase {
         // (on the SE, and on a slow runner's iPhone). So press until the row has gone, which
         // is what the key does; a press that found nothing changed nothing, so pressing again
         // completes only the one row.
-        let completed = app.cells.matching(NSPredicate(format: "label == 'call the bank'")).firstMatch
+        let completed = app.row("call the bank")
         for _ in 0..<5 {
             app.typeKey("k", modifierFlags: .command)
             if completed.waitForNonExistence(timeout: 2) { break }
@@ -88,7 +86,7 @@ final class VoiceOverUITests: XCTestCase {
         } else {
             // The iPad's sidebar, shown first where it starts hidden. Not ⌘,: on the 11-inch
             // iPad in portrait the first ⌘, after launch went to the system's Settings app.
-            let place = app.cells.matching(NSPredicate(format: "label == 'Settings'")).firstMatch
+            let place = app.row("Settings")
             if !(place.waitForExistence(timeout: 2) && place.isHittable) { app.buttons["Show Sidebar"].firstMatch.tap() }
             place.tap()
         }

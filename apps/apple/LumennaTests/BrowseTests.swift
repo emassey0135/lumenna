@@ -27,31 +27,6 @@ final class BrowseTests: XCTestCase {
         return screen
     }
 
-    private func list(in screen: UIViewController) -> UICollectionView {
-        func find(_ view: UIView) -> UICollectionView? {
-            (view as? UICollectionView) ?? view.subviews.lazy.compactMap(find).first
-        }
-        return find(screen.view)!
-    }
-
-    private func titles(_ configuration: UISwipeActionsConfiguration?) -> [String] {
-        configuration?.actions.compactMap(\.title) ?? []
-    }
-
-    private func titles(_ menu: UIMenu?) -> [String] {
-        menu?.children.map(\.title) ?? []
-    }
-
-    /// Runs the action called `title`, as VoiceOver's action does.
-    private func run(_ title: String, in configuration: UISwipeActionsConfiguration?) {
-        guard let action = configuration?.actions.first(where: { $0.title == title }) else {
-            return XCTFail("no action called \(title) among \(titles(configuration))")
-        }
-        action.handler(action, UIView()) { _ in }
-    }
-
-    private func path(_ item: Int) -> IndexPath { IndexPath(item: item, section: 0) }
-
     /// What a row offers, each way: its swipes, its other accessibility actions, its menu.
     private struct Offered {
         var leading: [String] = []
@@ -73,10 +48,13 @@ final class BrowseTests: XCTestCase {
         } while !(core.app.isStill && until()) && Date() < deadline
     }
 
+    /// The row's actions as the list splits them (`AppRowActions`): its swipes, its other
+    /// accessibility actions, its context menu.
     private func offered(_ list: AppListViewController, _ item: Int) -> Offered {
-        Offered(
-            trailing: titles(list.trailingSwipeActions(at: path(item))),
-            custom: list.customActions(at: path(item)).map(\.name), menu: titles(list.menu(at: path(item)))
+        let split = list.rowActions(for: list.items[item])
+        return Offered(
+            leading: split.leading.map(\.title), trailing: split.trailing.map(\.title),
+            custom: split.others.map(\.title), menu: split.actions.map(\.title)
         )
     }
 
@@ -105,7 +83,7 @@ final class BrowseTests: XCTestCase {
         settle { sidebar.items.contains { $0.title == "calls" } }
         let keys = sidebar.items.map(\.key)
         let projects = try XCTUnwrap(keys.firstIndex(of: LumennaApp.sidebarKey(kind: .group(.projects))))
-        XCTAssertEqual(titles(sidebar.trailingSwipeActions(at: path(projects))), ["New Project", "Collapse"])
+        XCTAssertEqual(offered(sidebar, projects).trailing, ["New Project", "Collapse"])
         let calls = try XCTUnwrap(sidebar.items.firstIndex { $0.title == "calls" })
         let label = offered(sidebar, calls)
         XCTAssertEqual(label.trailing, ["Rename", "Delete"], "a label's primary actions, the core's")

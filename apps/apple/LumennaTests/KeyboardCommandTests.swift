@@ -50,7 +50,9 @@ final class KeyboardCommandTests: XCTestCase {
         var field: UIView?
         for _ in 0..<50 where field == nil {
             settle(0.1)
-            field = (UIResponder.first as? LineEntry).flatMap { $0.accessibilityLabel == "Filter" ? $0 : nil }
+            // The Tasks tab's one text field, SwiftUI's, whose name is on SwiftUI's own element.
+            let tasks = root.selectedViewController?.view
+            field = (UIResponder.first as? UIView).flatMap { ($0 is UITextView || $0 is UITextField) && tasks.map($0.isDescendant) == true ? $0 : nil }
         }
         XCTAssertEqual(root.selectedIndex, 1)
         XCTAssertNotNil(field, "the Filter is first responder")

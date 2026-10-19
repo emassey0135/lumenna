@@ -9,14 +9,14 @@ import UIKit
 final class RootTabs: UITabBarController, CommandActions {
     private let core: Core
     private let day: DayViewController
-    private let tasks: UIViewController & TaskListing
+    private let tasks: TaskListViewController
     private let browse: BrowseViewController
     private let settings: SettingsViewController
 
     init(core: Core) {
         self.core = core
         day = DayViewController(core: core)
-        tasks = taskList(core: core)
+        tasks = TaskListViewController(core: core, place: .tasks)
         browse = BrowseViewController(core: core)
         settings = SettingsViewController(core: core)
         super.init(nibName: nil, bundle: nil)

@@ -1,47 +1,210 @@
 import AppKit
 import LumennaApp
+import SwiftUI
 
-/// One row of the sidebar: one of the app's entries (`ViewModel.sidebar`).
-final class SidebarNode {
-    let entry: LumennaApp.SidebarEntry
-    var children: [SidebarNode] = []
-
-    init(_ entry: LumennaApp.SidebarEntry) {
-        self.entry = entry
-    }
-
-    var place: LumennaApp.Place? {
-        if case let .place(place) = entry.kind { return place }
-        return nil
-    }
-
-    var isGroup: Bool {
-        if case .group = entry.kind { return true }
-        return false
-    }
-
-    /// Whether it folds: Expand or Collapse is among its actions, the app's.
-    var folds: Bool { entry.actions.contains { [.expand, .collapse].contains($0.kind) } }
-}
-
-/// The places: Today, Tasks, the project tree, labels, saved filters, blocks, the trash.
-///
-/// A source list, as Mail's mailboxes are, because that is the outline VoiceOver and the
-/// keyboard know best on a Mac. The places, which of them are folded, and what a project,
-/// label or filter can have done to it are the app's (`ViewModel.sidebar`), as every sidebar
-/// has them; its actions are in its context menu, which VoiceOver opens with VO-Shift-M, and a
-/// heading's is its New. Its rows are held in the sidebar's hand, so a change made here lands
-/// here; the place selected is the one the window shows.
-final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
-    private let core: Core
-    let outline = NSOutlineView()
-    private var roots: [SidebarNode] = []
-    /// Whether the outline is being set from the app's, not moved by the person.
-    private var following = false
+/// The sidebar's entries as the window shows them (`ViewModel.sidebar`), and the place shown.
+final class SidebarModel: ObservableObject {
+    let core: Core
+    @Published private(set) var entries: [LumennaApp.SidebarEntry] = []
+    /// The entries the app has folded.
+    @Published private(set) var folded: Set<String> = []
+    /// What each row is named: its line, whether it is expanded, and its level where that
+    /// changes from the row shown before (`AppModel.sidebarItems`, as the iPad says them), which
+    /// the outline reports but VoiceOver, reading the row's text, does not say.
+    @Published private(set) var names: [String: String] = [:]
+    /// The key of the place the window shows, kept selected.
+    @Published private(set) var shown: String?
     private var observer: NSObjectProtocol?
 
     init(core: Core) {
         self.core = core
+        observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: core.app, queue: .main) { [weak self] _ in
+            self?.draw()
+        }
+        draw()
+    }
+
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+    }
+
+    /// Drawn again only when they changed, so a minute or a sync does not make VoiceOver read
+    /// the row again.
+    private func draw() {
+        let view = core.app.view
+        if entries != view.sidebar { entries = view.sidebar }
+        let folded = Set(view.sidebarFolded)
+        if self.folded != folded { self.folded = folded }
+        var names: [String: String] = [:]
+        for item in core.app.sidebarItems() {
+            names[item.key] = [item.title, item.spoken].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+        }
+        if self.names != names { self.names = names }
+        let shown = view.place.map { LumennaApp.sidebarKey(kind: .place($0)) }
+        if self.shown != shown { self.shown = shown }
+    }
+
+    /// A place chosen: held in the sidebar's hand, and shown.
+    func choose(_ key: String) {
+        guard let entry = entries.first(where: { $0.key == key }), case let .place(place) = entry.kind,
+              place != core.app.view.place else { return }
+        core.app.send(.hold(field0: .sidebar, field1: key))
+        core.app.send(.open(place))
+        // Selected here at once: the app's turn that shows it has yet to come.
+        shown = key
+    }
+
+    /// One of an entry's actions, the app's, held in the sidebar's hand first.
+    func run(_ action: LumennaApp.Action, on entry: LumennaApp.SidebarEntry) {
+        core.app.run(action, on: entry.key, side: .sidebar)
+    }
+
+    /// The heading's New, from the File menu.
+    func runNew(under group: LumennaApp.SidebarGroup) {
+        guard let heading = entries.first(where: { if case let .group(found) = $0.kind { found == group } else { false } }),
+              let action = heading.actions.first(where: { $0.kind == .new }) else { return }
+        run(action, on: heading)
+    }
+}
+
+/// The places: Today, Tasks, the project tree, labels, saved filters, blocks, the trash.
+///
+/// A source list, as Mail's mailboxes are, in SwiftUI, which is AppKit's outline underneath, so
+/// VoiceOver hears each row's level and expansion from it. The places, which of them are
+/// folded, and what a project, label or filter can have done to it are the app's
+/// (`ViewModel.sidebar`), as every sidebar has them; its actions are in its context menu, which
+/// VoiceOver opens with VO-Shift-M, and a heading's is its New. Its rows are held in the
+/// sidebar's hand, so a change made here lands here; the place selected is the one the window
+/// shows. A heading is never selected: the arrow keys pass over it.
+struct SidebarScreen: View {
+    @ObservedObject var model: SidebarModel
+
+    /// An entry and the entries beneath it.
+    struct Node: Identifiable {
+        let entry: LumennaApp.SidebarEntry
+        var children: [Node] = []
+        var id: String { entry.key }
+        var group: Bool { if case .group = entry.kind { true } else { false } }
+    }
+
+    var body: some View {
+        List(selection: Binding(get: { model.shown }, set: { if let key = $0 { model.choose(key) } })) {
+            ForEach(Self.tree(model.entries)) { node in
+                NodeView(node: node, model: model)
+            }
+        }
+        .listStyle(.sidebar)
+        .accessibilityLabel("Places")
+    }
+
+    /// The flat, depth-first entries the app sends, as a tree: an entry's parent is the
+    /// nearest shallower one above it.
+    static func tree(_ entries: [LumennaApp.SidebarEntry]) -> [Node] {
+        var top: [Node] = []
+        var chain: [(depth: UInt32, path: [Int])] = []
+        for entry in entries {
+            while let last = chain.last, last.depth >= entry.depth { chain.removeLast() }
+            let node = Node(entry: entry)
+            if let parent = chain.last {
+                var path = parent.path
+                path.append(append(node, at: path, in: &top))
+                chain.append((entry.depth, path))
+            } else {
+                top.append(node)
+                chain.append((entry.depth, [top.count - 1]))
+            }
+        }
+        return top
+    }
+
+    private static func append(_ node: Node, at path: [Int], in nodes: inout [Node]) -> Int {
+        guard let first = path.first else { return 0 }
+        if path.count == 1 {
+            nodes[first].children.append(node)
+            return nodes[first].children.count - 1
+        }
+        return append(node, at: Array(path.dropFirst()), in: &nodes[first].children)
+    }
+
+    /// An entry, and inside a disclosure group the entries beneath it, folded by its own action.
+    private struct NodeView: View {
+        let node: Node
+        @ObservedObject var model: SidebarModel
+
+        var body: some View {
+            if node.children.isEmpty, node.group {
+                // A heading with nothing under it yet (no labels, no saved filters).
+                Row(node: node, model: model).selectionDisabled()
+            } else if node.children.isEmpty {
+                Row(node: node, model: model).tag(node.id)
+            } else if node.group {
+                // A heading stays one: Projects, Labels and Saved Filters are what VoiceOver's
+                // heading keys move between.
+                group
+            } else {
+                // A project with subprojects is a place like any other.
+                group.accessibilityRemoveTraits(.isHeader).tag(node.id)
+            }
+        }
+
+        private var group: some View {
+            DisclosureGroup(isExpanded: Binding(get: { !model.folded.contains(node.id) }, set: { open in
+                let kind: LumennaApp.ActionKind = open ? .expand : .collapse
+                if let fold = node.entry.actions.first(where: { $0.kind == kind }) { model.run(fold, on: node.entry) }
+            })) {
+                ForEach(node.children) { child in
+                    AnyView(NodeView(node: child, model: model))
+                }
+            } label: {
+                // A heading is never selected, so the arrows pass over it; only its label: set
+                // on the group, the places under it could not be chosen either.
+                Row(node: node, model: model).selectionDisabled(node.group)
+            }
+        }
+    }
+
+    /// One entry: its title, and its count or state for VoiceOver, since a source list is too
+    /// narrow for a second line; its actions its context menu. No tooltip: VoiceOver read one
+    /// as the row's help, saying the count twice.
+    private struct Row: View {
+        let node: Node
+        @ObservedObject var model: SidebarModel
+
+        var body: some View {
+            let entry = node.entry
+            let name = model.names[entry.key] ?? entry.text
+            HStack {
+                Text(entry.title)
+                    .font(node.group ? .subheadline.weight(.semibold) : .body)
+                    .foregroundStyle(Color.primary)
+                    .lineLimit(1)
+                    // VoiceOver reads a row's one text, not the row's name: the text says the
+                    // whole line. Hidden instead, the row was said with "group" after it.
+                    .accessibilityRepresentation { Text(name) }
+                Spacer(minLength: 0)
+            }
+                // A group named by its whole line ("Work, 3 tasks, expanded, level 2"), as the task
+                // list's rows are: as a name and a value, VoiceOver said the value alone, and as
+                // static text, nothing of the outline. Found by its title.
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(name)
+                .accessibilityIdentifier(entry.title)
+                .contextMenu {
+                    ForEach(entry.actions, id: \.self) { action in
+                        Button(action.asks ? action.title + "…" : action.title) { model.run(action, on: entry) }
+                    }
+                }
+        }
+    }
+}
+
+/// The SwiftUI sidebar in the window's first pane, hosted by a view that steps out of
+/// VoiceOver's tree (`FlatHostingView`).
+final class SidebarViewController: NSViewController {
+    private let model: SidebarModel
+
+    init(core: Core) {
+        model = SidebarModel(core: core)
         super.init(nibName: nil, bundle: nil)
         title = "Places"
     }
@@ -49,191 +212,23 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    deinit {
-        if let observer { NotificationCenter.default.removeObserver(observer) }
-    }
-
     override func loadView() {
-        let column = NSTableColumn(identifier: .init("place"))
-        outline.addTableColumn(column)
-        outline.outlineTableColumn = column
-        outline.headerView = nil
-        outline.style = .sourceList
-        outline.dataSource = self
-        outline.delegate = self
-        outline.usesAutomaticRowHeights = true
-        outline.floatsGroupRows = false
-        outline.setAccessibilityLabel("Places")
-        let menu = NSMenu()
-        menu.delegate = self
-        outline.menu = menu
-        let scroll = NSScrollView()
-        scroll.documentView = outline
-        scroll.hasVerticalScroller = true
-        scroll.drawsBackground = false
-        view = scroll
-        observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: core.app, queue: .main) { [weak self] _ in
-            self?.draw()
+        view = FlatHostingView(rootView: SidebarScreen(model: model))
+    }
+
+    /// The list's own outline, AppKit's under SwiftUI's `List`: where F6 goes.
+    var outline: NSView? {
+        func find(_ view: NSView) -> NSOutlineView? {
+            (view as? NSOutlineView) ?? view.subviews.lazy.compactMap(find).first
         }
-        draw()
+        return isViewLoaded ? find(view) : nil
     }
 
-    override var preferredFirstResponder: NSView? { outline }
+    override var preferredFirstResponder: NSView? { outline ?? view }
 
-    // MARK: - Drawing
-
-    /// The app's places, folded as the app has them, the place shown selected. Drawn again
-    /// only when they changed, so a minute or a sync does not make VoiceOver read the row again.
-    private func draw() {
-        let view = core.app.view
-        let entries = view.sidebar
-        let folded = view.sidebarFolded
-        if entries != drawn?.entries || folded != drawn?.folded {
-            drawn = (entries, folded)
-            roots = Self.tree(entries.map(SidebarNode.init))
-            following = true
-            outline.reloadData()
-            fold(roots, folded: Set(folded))
-            following = false
-        }
-        reselect()
-    }
-
-    /// What was drawn last.
-    private var drawn: (entries: [LumennaApp.SidebarEntry], folded: [String])?
-
-    /// The flat, depth-first entries the app sends, as a tree: an entry's parent is the
-    /// nearest shallower one above it.
-    private static func tree(_ nodes: [SidebarNode]) -> [SidebarNode] {
-        var top: [SidebarNode] = []
-        var chain: [SidebarNode] = []
-        for node in nodes {
-            while let last = chain.last, last.entry.depth >= node.entry.depth { chain.removeLast() }
-            if let parent = chain.last { parent.children.append(node) } else { top.append(node) }
-            chain.append(node)
-        }
-        return top
-    }
-
-    private func fold(_ nodes: [SidebarNode], folded: Set<String>) {
-        for node in nodes where !node.children.isEmpty {
-            if folded.contains(node.entry.key) {
-                outline.collapseItem(node)
-            } else {
-                outline.expandItem(node)
-                fold(node.children, folded: folded)
-            }
-        }
-    }
-
-    private func node(where matches: (SidebarNode) -> Bool, in nodes: [SidebarNode]? = nil) -> SidebarNode? {
-        for node in nodes ?? roots {
-            if matches(node) { return node }
-            if let found = self.node(where: matches, in: node.children) { return found }
-        }
-        return nil
-    }
-
-    /// Keeps the selection on the place the window shows.
-    private func reselect() {
-        guard let place = core.app.view.place, let node = node(where: { $0.place == place }) else { return }
-        let row = outline.row(forItem: node)
-        if row >= 0, outline.selectedRow != row {
-            following = true
-            outline.selectRowIndexes([row], byExtendingSelection: false)
-            following = false
-        }
-    }
-
-    // MARK: - Outline
-
-    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-        (item as? SidebarNode)?.children.count ?? roots.count
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        (item as? SidebarNode)?.children[index] ?? roots[index]
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
-        !((item as? SidebarNode)?.children.isEmpty ?? true)
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
-        !((item as? SidebarNode)?.isGroup ?? true)
-    }
-
-    /// Folded or unfolded by the person, with the arrow keys or the disclosure triangle: the
-    /// row's own Collapse or Expand, the app's, which remembers it.
-    func outlineViewItemDidCollapse(_ notification: Notification) { folded(notification, .collapse) }
-    func outlineViewItemDidExpand(_ notification: Notification) { folded(notification, .expand) }
-
-    private func folded(_ notification: Notification, _ kind: LumennaApp.ActionKind) {
-        guard !following, let node = notification.userInfo?["NSObject"] as? SidebarNode,
-              let action = node.entry.actions.first(where: { $0.kind == kind }) else { return }
-        core.app.run(action, on: node.entry.key, side: .sidebar)
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
-        guard let node = item as? SidebarNode else { return nil }
-        let cell = NSTableCellView()
-        let title = NSTextField(labelWithString: node.entry.title)
-        title.lineBreakMode = .byTruncatingTail
-        if node.isGroup {
-            // Ordinary rows, not source-list group rows, which macOS draws dimmed whatever
-            // colour is asked for — under contrast on the sidebar's material. The full text
-            // colour, and weight to set the heading apart.
-            title.font = .systemFont(ofSize: NSFont.preferredFont(forTextStyle: .subheadline).pointSize, weight: .semibold)
-            title.textColor = .labelColor
-        }
-        title.translatesAutoresizingMaskIntoConstraints = false
-        cell.addSubview(title)
-        cell.textField = title
-        NSLayoutConstraint.activate([
-            title.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
-            title.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor, constant: -2),
-            title.topAnchor.constraint(equalTo: cell.topAnchor, constant: 3),
-            title.bottomAnchor.constraint(equalTo: cell.bottomAnchor, constant: -3),
-        ])
-        // The counts and states are for VoiceOver and the tooltip; a source list is too
-        // narrow for a second line.
-        let detail = node.entry.detail
-        if !detail.isEmpty {
-            cell.setAccessibilityValueDescription(detail)
-            cell.toolTip = detail
-        }
-        return cell
-    }
-
-    /// A place chosen: held in the sidebar's hand, and shown.
-    func outlineViewSelectionDidChange(_ notification: Notification) {
-        guard !following, let node = outline.item(atRow: outline.selectedRow) as? SidebarNode,
-              let place = node.place, place != core.app.view.place else { return }
-        core.app.send(.hold(field0: .sidebar, field1: node.entry.key))
-        core.app.send(.open(place))
-    }
-
-    // MARK: - Context menus
-
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
-        let row = outline.clickedRow >= 0 ? outline.clickedRow : outline.selectedRow
-        guard let node = outline.item(atRow: row) as? SidebarNode else { return }
-        menu.add(node.entry.actions) { [weak self] action in
-            self?.core.app.run(action, on: node.entry.key, side: .sidebar)
-        }
-    }
-
-    /// The heading's New, from the File menu.
-    private func runNew(under group: LumennaApp.SidebarGroup) {
-        guard let heading = node(where: { if case let .group(found) = $0.entry.kind { found == group } else { false } }),
-              let action = heading.entry.actions.first(where: { $0.kind == .new }) else { return }
-        core.app.run(action, on: heading.entry.key, side: .sidebar)
-    }
-
-    @objc func newProject() { runNew(under: .projects) }
-    @objc func newLabel() { runNew(under: .labels) }
-    @objc func newSavedFilter() { runNew(under: .filters) }
+    @objc func newProject() { model.runNew(under: .projects) }
+    @objc func newLabel() { model.runNew(under: .labels) }
+    @objc func newSavedFilter() { model.runNew(under: .filters) }
 }
 
 /// A menu item that runs a closure, for menus built from a list of actions.

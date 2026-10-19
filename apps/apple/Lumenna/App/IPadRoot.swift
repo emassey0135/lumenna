@@ -11,7 +11,7 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
     let list = UINavigationController()
     // Kept, so coming back to them finds them as they were left.
     private lazy var day = DayViewController(core: core)
-    private lazy var tasks = taskList(core: core)
+    private lazy var tasks = TaskListViewController(core: core, place: .tasks)
     private var empty = "No task open"
 
     init(core: Core) {
@@ -78,9 +78,8 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
         switch place {
         case .today: return day
         case .tasks: return tasks
-        case .blocks: return BlocksViewController(core: core)
-        case .trash, .project, .label, .filter:
-            return taskList(core: core, place: place)
+        case .blocks, .trash, .project, .label, .filter:
+            return TaskListViewController(core: core, place: place)
         }
     }
 
@@ -110,12 +109,12 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
     override var canBecomeFirstResponder: Bool { true }
 
     /// The Home Screen's New Task, and ⌘N.
-    @objc func newTask() { show(.place(.tasks)) { ($0 as? TaskListing)?.addTask() } }
+    @objc func newTask() { show(.place(.tasks)) { ($0 as? TaskListViewController)?.addTask() } }
     @objc func newBlock() { show(.place(.today)) { ($0 as? DayViewController)?.newBlock() } }
     @objc func newProject() { sidebar.newProject() }
     @objc func newLabel() { sidebar.newLabel() }
     @objc func newFilter() { sidebar.newFilter() }
-    @objc func filterTasks() { show(.place(.tasks)) { ($0 as? TaskListing)?.focusFilter() } }
+    @objc func filterTasks() { show(.place(.tasks)) { ($0 as? TaskListViewController)?.focusFilter() } }
     @objc func goToToday() { show(.place(.today)) }
     @objc func goToTasks() { show(.place(.tasks)) }
     @objc func goToBlocks() { show(.place(.blocks)) }
