@@ -70,7 +70,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: core.app, queue: .main) { [weak self] _ in
             self?.follow()
         }
-        if core.app.view.place == nil { core.app.send(.open(.today)) }
+        // The window opens on the day, as it always has: the app's own first place is Tasks.
+        core.app.send(.open(.today))
         follow()
     }
 

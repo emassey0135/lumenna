@@ -47,10 +47,11 @@ final class KeyboardUITests: XCTestCase {
     }
 
     private func row(_ title: String) -> XCUIElement {
-        // The SwiftUI trial's task rows are buttons in their cells, labelled as the cells are.
-        let trial = ProcessInfo.processInfo.environment["LUMENNA_SWIFTUI"] != nil
-        let rows = trial ? app.cells.buttons : app.cells
-        return rows.matching(NSPredicate(format: "label == %@", title)).firstMatch
+        // A UIKit list's row is its cell; the SwiftUI trial's task rows are buttons in theirs.
+        app.descendants(matching: .any).matching(NSPredicate(
+            format: "label == %@ AND (elementType == %d OR elementType == %d)", title,
+            XCUIElement.ElementType.cell.rawValue, XCUIElement.ElementType.button.rawValue
+        )).firstMatch
     }
 
     private func add(_ text: String) {

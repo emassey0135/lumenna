@@ -221,6 +221,9 @@ struct LineSetting: View {
     let setting: LumennaApp.Setting
     @State private var text = ""
     @FocusState private var focused: Bool
+    /// Whether a line was just committed, so its reading back replaces it though the field
+    /// keeps focus, as a Mac's does after Return.
+    @State private var committed = false
 
     /// Why the line was refused, the app's, which it has said.
     private var problem: String? { model.problems[setting.key] }
@@ -246,7 +249,8 @@ struct LineSetting: View {
         .onAppear { text = model.values[setting.key] ?? setting.value }
         .onChange(of: focused) { _, now in if !now { commit() } }
         .onChange(of: model.values[setting.key]) { _, value in
-            if !focused, problem == nil { text = value ?? "" }
+            if !focused || committed, problem == nil { text = value ?? "" }
+            committed = false
         }
         #if os(watchOS)
         // A watch's line comes whole from the system's input screen, with no keystrokes and
@@ -278,6 +282,7 @@ struct LineSetting: View {
 
     private func commit() {
         guard text != model.values[setting.key] else { return }
+        committed = true
         model.set(setting.key, text)
     }
 }

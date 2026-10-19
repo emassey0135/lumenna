@@ -101,7 +101,12 @@ final class SidebarUITests: XCTestCase {
         XCTAssertTrue(line.waitForExistence(timeout: 5))
         line.typeText("dig the beds")
         app.buttons["Add"].tap()
-        XCTAssertTrue(app.cells.matching(NSPredicate(format: "label == 'dig the beds'")).firstMatch.waitForExistence(timeout: 5))
+        // A UIKit list's row is its cell; the SwiftUI trial's task rows are buttons in theirs.
+        let task = app.descendants(matching: .any).matching(NSPredicate(
+            format: "label == 'dig the beds' AND (elementType == %d OR elementType == %d)",
+            XCUIElement.ElementType.cell.rawValue, XCUIElement.ElementType.button.rawValue
+        )).firstMatch
+        XCTAssertTrue(task.waitForExistence(timeout: 5))
         // ⌘Z just after quick add closes does not reach the list on iPad yet (ROADMAP); it does
         // from the list itself (KeyboardUITests).
     }
