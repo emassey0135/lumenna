@@ -171,7 +171,9 @@ jobs:
         run: cargo install boltffi_cli --version 0.31.1 --locked
       - name: Newest Xcode, and XcodeGen
         run: |
-          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          # The newest released Xcode, never a beta: Xcode 27.2 beta 2 on the runner could not read
+          # the generated project.
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | grep -vi beta | sort -V | tail -1)"
           brew install xcodegen
       - name: Build
         working-directory: apps/apple
@@ -196,7 +198,9 @@ jobs:
         run: cargo install boltffi_cli --version 0.31.1 --locked
       - name: Newest Xcode, and XcodeGen
         run: |
-          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          # The newest released Xcode, never a beta: Xcode 27.2 beta 2 on the runner could not read
+          # the generated project.
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | grep -vi beta | sort -V | tail -1)"
           brew install xcodegen
       - name: UI tests
         working-directory: apps/apple
@@ -227,7 +231,9 @@ jobs:
         run: cargo install boltffi_cli --version 0.31.1 --locked
       - name: Newest Xcode, and XcodeGen
         run: |
-          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          # The newest released Xcode, never a beta: Xcode 27.2 beta 2 on the runner could not read
+          # the generated project.
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | grep -vi beta | sort -V | tail -1)"
           brew install xcodegen
       - name: A watch simulator
         # The newest Apple Watch the runtime has, downloading watchOS if the runner lacks it.
@@ -278,7 +284,9 @@ jobs:
         run: cargo install boltffi_cli --version 0.31.1 --locked
       - name: Newest Xcode, and XcodeGen
         run: |
-          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          # The newest released Xcode, never a beta: Xcode 27.2 beta 2 on the runner could not read
+          # the generated project.
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | grep -vi beta | sort -V | tail -1)"
           xcodebuild -version
           brew install xcodegen
       - name: Build for testing
@@ -319,7 +327,8 @@ jobs:
       TEST_RUNNER_AUDIT_ATTACH: "1"
     steps:
       - name: Newest Xcode
-        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+        # The newest released Xcode, never a beta, as the build's.
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | grep -vi beta | sort -V | tail -1)"
       - uses: actions/download-artifact@v4
         with:
           name: ios-products
@@ -361,7 +370,8 @@ jobs:
       TEST_RUNNER_AUDIT_ATTACH: "1"
     steps:
       - name: Newest Xcode
-        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+        # The newest released Xcode, never a beta, as the build's.
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | grep -vi beta | sort -V | tail -1)"
       - uses: actions/download-artifact@v4
         with:
           name: ios-products
