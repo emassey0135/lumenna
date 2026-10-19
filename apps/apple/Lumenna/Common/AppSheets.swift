@@ -36,20 +36,25 @@ final class AppProposalViewController: UIHostingController<AppProposalForm> {
     required dynamic init?(coder: NSCoder) { fatalError("not used") }
 }
 
-/// The screens the app opens by itself — the block form, a proposal — shown over whatever is
-/// in front when the app opens one, and closed when the app lets it go. One per window, at its
-/// root, beside `AppQuestions`.
+/// The screens the app opens by itself — the block form, a proposal, a reminder list — shown
+/// when the app opens one, and closed when the app lets it go. One per window, at its root,
+/// beside `AppQuestions`.
 final class AppSheets {
     private let core: Core
     private weak var root: UIViewController?
     private weak var blockForm: UIViewController?
     private weak var proposal: UIViewController?
+    private weak var reminders: UIViewController?
+    /// Shows a reminder list where the window shows what was opened from a list: pushed, or
+    /// beside it on iPad.
+    private let showReminders: (UIViewController) -> Void
     private var observer: NSObjectProtocol?
     /// What each sheet swiped away tells the app: it was put away.
     private let blockGone: SheetGone
     private let proposalGone: SheetGone
 
-    init(core: Core, root: UIViewController) {
+    init(core: Core, root: UIViewController, showReminders: @escaping (UIViewController) -> Void) {
+        self.showReminders = showReminders
         blockGone = SheetGone { core.app.send(.block(.cancel)) }
         proposalGone = SheetGone { core.app.send(.proposal(.close)) }
         self.core = core
@@ -82,6 +87,11 @@ final class AppSheets {
             blockForm = navigation
             front?.present(navigation, animated: true)
             navigation.presentationController?.delegate = blockGone
+        }
+        if view.reminders != nil, reminders == nil {
+            let list = RemindersViewController(core: core)
+            reminders = list
+            showReminders(list)
         }
         if view.proposal != nil, proposal == nil {
             let model = AppProposalModel(core: core)

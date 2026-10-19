@@ -180,7 +180,8 @@ final class VoiceOverUITests: XCTestCase {
         let repeats = app.textFields["Repeats"]
         repeats.tap()
         repeats.typeText("every day")
-        app.buttons["Save"].tap()
+        // A new block's form adds, under the app's Add.
+        app.buttons["Add"].tap()
         try voiceOver.enable()
         try move(to: "Deep work", within: 30)
         let offered = actionsOffered()

@@ -96,6 +96,17 @@ pub enum SidebarGroup {
 }
 
 impl SidebarGroup {
+    /// How many of the group's places there are, in words: "no projects", "1 label".
+    #[must_use]
+    pub fn count(self, count: usize) -> String {
+        let noun = match self {
+            Self::Projects => "project",
+            Self::Labels => "label",
+            Self::Filters => "filter",
+        };
+        crate::words::count_line(count, noun)
+    }
+
     /// What the group's list says with nothing in it, as its listing says it.
     #[must_use]
     pub fn empty(self) -> String {
@@ -238,7 +249,10 @@ pub fn sidebar(snapshot: &Snapshot, now: &Zoned) -> Vec<SidebarEntry> {
         entries.push(entry);
     }
 
-    entries.push(place(Place::Blocks, "", 0));
+    // How many block series, as the trash says how many tasks: a list of places that does not
+    // show them beneath (the iPhone's Browse) says what is in each.
+    let blocks = crate::plan::blocks(snapshot, now.date()).map(|r| r.announcement).unwrap_or_default();
+    entries.push(place(Place::Blocks, &blocks, 0));
     let trashed = crate::lists::tasks(snapshot, "deleted", now).map(|r| r.announcement).unwrap_or_default();
     entries.push(place(Place::Trash, &trashed, 0));
     entries

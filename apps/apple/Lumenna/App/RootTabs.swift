@@ -44,7 +44,11 @@ final class RootTabs: UITabBarController, CommandActions {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        sheets = AppSheets(core: core, root: self)
+        sheets = AppSheets(core: core, root: self) { [weak self] list in
+            guard let self else { return }
+            let shown = (self.selectedViewController as? UINavigationController)?.topViewController ?? self
+            shown.showBeside(list)
+        }
         questions = AppQuestions(app: core.app, asker: asker) { [weak self] action in
             guard let self else { return }
             let shown = (self.selectedViewController as? UINavigationController)?.topViewController ?? self
@@ -68,23 +72,23 @@ final class RootTabs: UITabBarController, CommandActions {
     /// adds to, from wherever the app was.
     @objc func newTask() { select(1) { $0.tasks.addTask() } }
     @objc func newBlock() { select(0) { $0.day.newBlock() } }
-    @objc func newProject() { openFromBrowse("projects") { ($0 as? ProjectsViewController)?.add() } }
-    @objc func newLabel() { openFromBrowse("labels") { ($0 as? LabelsViewController)?.add() } }
-    @objc func newFilter() { openFromBrowse("filters") { ($0 as? FiltersViewController)?.add() } }
+    @objc func newProject() { openFromBrowse(.group(.projects)) { ($0 as? PlacesViewController)?.add() } }
+    @objc func newLabel() { openFromBrowse(.group(.labels)) { ($0 as? PlacesViewController)?.add() } }
+    @objc func newFilter() { openFromBrowse(.group(.filters)) { ($0 as? PlacesViewController)?.add() } }
 
-    /// Browse's list `key`, then `then` on it.
-    private func openFromBrowse(_ key: String, then: ((UIViewController) -> Void)? = nil) {
+    /// One of Browse's places, then `then` on its screen.
+    private func openFromBrowse(_ kind: LumennaApp.SidebarKind, then: ((UIViewController) -> Void)? = nil) {
         select(2) { tabs in
-            tabs.browse.open(Item(key: key, title: key))
-            if let shown = tabs.browse.navigationController?.topViewController { then?(shown) }
+            let shown = tabs.browse.show(kind)
+            then?(shown)
         }
     }
 
     @objc func filterTasks() { select(1) { $0.tasks.focusFilter() } }
     @objc func goToToday() { select(0) }
     @objc func goToTasks() { select(1) }
-    @objc func goToBlocks() { openFromBrowse("blocks") }
-    @objc func goToTrash() { openFromBrowse("trash") }
+    @objc func goToBlocks() { openFromBrowse(.place(.blocks)) }
+    @objc func goToTrash() { openFromBrowse(.place(.trash)) }
     @objc func showSettings() { select(3) }
     @objc func undoChange() { undoInStore(core) }
     @objc func redoChange() { redoInStore(core) }

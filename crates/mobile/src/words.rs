@@ -31,6 +31,12 @@ pub fn go_to_day_question() -> Question {
     lumenna_records::go_to_day_question()
 }
 
+/// How many places a sidebar group holds, in words: "no projects", "1 label".
+#[export]
+pub fn group_count(group: SidebarGroup, count: u32) -> String {
+    group.count(count as usize)
+}
+
 /// What a sidebar group's own list says with nothing in it: "No labels.".
 #[export]
 pub fn group_empty(group: SidebarGroup) -> String {

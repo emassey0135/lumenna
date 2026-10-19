@@ -423,7 +423,8 @@ final class LumennaUITests: XCTestCase {
         try audit(.all, "block form", namedRows: true)
         name.tap()
         name.typeText("Deep work")
-        app.buttons["Save"].tap()
+        // A new block's form adds, under the app's Add.
+        app.buttons["Add"].tap()
 
         let summary = app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Today. 1 block'"))
         XCTAssertTrue(summary.firstMatch.waitForExistence(timeout: 5))
@@ -836,7 +837,8 @@ final class LumennaUITests: XCTestCase {
             repeats.tap()
             repeats.typeText(repeating)
         }
-        app.buttons["Save"].tap()
+        // A new block's form adds, under the app's Add.
+        app.buttons["Add"].tap()
         XCTAssertTrue(cell(containing: title).waitForExistence(timeout: 5))
     }
 
@@ -997,7 +999,8 @@ final class LumennaUITests: XCTestCase {
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
         name.typeText("Writing")
-        app.buttons["Save"].tap()
+        // A new block's form adds, under the app's Add.
+        app.buttons["Add"].tap()
         XCTAssertTrue(cell(containing: "Writing").waitForExistence(timeout: 5))
 
         app.buttons["Day Actions"].tap()

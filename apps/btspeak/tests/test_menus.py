@@ -726,6 +726,15 @@ class Menus(unittest.TestCase):
         labels = [c.get_label(menu) for c in script.menus[-1]["context"] if c.applies(menu)]
         self.assertEqual(labels, ["Show its tasks", "Add a task to it, t", "Weight, w"])
 
+    def test_collapsing_a_project_hides_what_is_under_it_and_keeps_it(self):
+        self.call("project.add", name="Work")
+        self.call("project.add", name="Reports", parent="Work")
+        self.run_script([("menu", "Work", "left"), ("back",)], lambda: organise.projects(self.session))
+        titles = [row.title for row in organise.group_rows(self.session, L.SidebarGroup.PROJECTS)]
+        self.assertEqual(titles, ["Inbox", "Work"])
+        work = next(row for row in organise.group_rows(self.session, L.SidebarGroup.PROJECTS) if row.title == "Work")
+        self.assertTrue(work.said().endswith("collapsed"), work.said())
+
     def test_a_letter_a_row_does_not_offer_says_why_in_the_cores_words(self):
         self.call("project.add", name="Work")
         script = self.run_script([("key", "Inbox", "r"), ("back",)], lambda: organise.projects(self.session))

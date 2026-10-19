@@ -15,19 +15,28 @@ import tasks
 
 
 def group_rows(session: Session, group) -> list[Row]:
-    """The places under `group`'s heading in the app's sidebar, without those folded away, each
-    said with its level where that changes against the row shown before."""
+    """The places under `group`'s heading in the app's sidebar, without those folded away under
+    a collapsed one, each said with its level where that changes against the row shown before."""
     view = session.view()
+    # The rows the app has collapsed: what is deeper under each is left out.
     folded = set(view.sidebar_folded)
     rows: list[Row] = []
     under = False
     previous = 0
+    hidden_below = None
     for entry in view.sidebar:
         if entry.depth == 0:
             under = isinstance(entry.kind, L.SidebarKindGroup) and entry.kind.field_0 == group
+            hidden_below = None
             continue
-        if not under or entry.key in folded:
+        if not under:
             continue
+        if hidden_below is not None:
+            if entry.depth > hidden_below:
+                continue
+            hidden_below = None
+        if entry.key in folded:
+            hidden_below = entry.depth
         depth = entry.depth - 1
         kinds = {action.kind for action in entry.actions}
         expanded = True if actions.K.COLLAPSE in kinds else False if actions.K.EXPAND in kinds else None

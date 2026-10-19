@@ -60,14 +60,15 @@ final class TaskDetailModel: NSObject, ObservableObject {
 
     /// The app's details of this task, into the fields: unless typing is still on its way.
     private func follow() {
-        guard let details = core.app.view.details, details.task.id == id else {
-            // Gone to the trash, as asked: the form leaves.
-            if trashing, task != nil {
-                trashing = false
-                host?.trashed()
-            }
+        let details = core.app.view.details.flatMap { $0.task.id == id ? $0 : nil }
+        // Gone to the trash, as asked — the app shows another task's details, or this one's
+        // as trashed: the form leaves.
+        if trashing, task != nil, details == nil || details?.task.state.contains("deleted") == true {
+            trashing = false
+            host?.trashed()
             return
         }
+        guard let details else { return }
         task = details.task
         projects = details.projects
         guard core.app.isStill else { return }

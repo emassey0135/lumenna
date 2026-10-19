@@ -522,7 +522,7 @@ fn a_new_block_is_added_from_its_form_and_is_in_hand_in_the_blocks_list() {
     app.send(Event::Open(Place::Blocks));
     app.send(Event::Block(BlockEvent::New { start: None, minutes: None }));
     let form = app.view().block_form.expect("the form is open");
-    assert_eq!(form.heading, "New block");
+    assert_eq!(form.heading, "New Block");
     assert_eq!(form.yes, "Add");
     assert!(form.fields.iter().any(|f| f.key == "date"));
     field(&mut app, "title", "Gym");

@@ -53,6 +53,11 @@ pub(crate) fn in_sentence_case(view: &mut ViewModel) {
         }
     }
     if let Some(form) = &mut view.block_form {
+        // A new block's heading is fixed words; a change's names the block, which keeps its
+        // own capitals, after fixed words already in sentence case.
+        if form.fields.iter().any(|field| field.key == "date") {
+            form.heading = sentence_case(std::mem::take(&mut form.heading));
+        }
         form.yes = sentence_case(std::mem::take(&mut form.yes));
     }
 }

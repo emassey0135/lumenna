@@ -133,7 +133,8 @@ final class KeyboardUITests: XCTestCase {
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
         name.typeText("Writing")
-        app.buttons["Save"].tap()
+        // A new block's form adds, under the app's Add.
+        app.buttons["Add"].tap()
         XCTAssertTrue(app.cells.containing(NSPredicate(format: "label CONTAINS 'Writing'")).firstMatch.waitForExistence(timeout: 5))
         press("p", [.command, .option])
         XCTAssertTrue(planning.waitForExistence(timeout: 5), "the day shown has a block to fill")

@@ -1,55 +1,52 @@
+import LumennaApp
 import UIKit
 import UserNotifications
 
-/// A task's or block's reminders, the core's list (`remindersOf`): the heading says how many
-/// and whether they are the defaults, each reminder reads as the core words it, its own offer
-/// Remove Reminder as a swipe, and Add Reminder asks for a phrase the core reads, asked again
-/// with the core's reason when it refuses one.
-final class RemindersViewController: ItemListViewController {
-    private let target: String
-    private var adding: Action?
+/// A task's or block's reminders, the app's open list (`ViewModel.reminders`): the heading says
+/// how many and whether they are the defaults, each reminder reads as the core words it, its own
+/// offer Remove Reminder as a swipe, and Add Reminder asks for a phrase the core reads, asked
+/// again with the core's reason when it refuses one. Held in the reminder list's hand, so a
+/// change lands back here; leaving it closes it in the app.
+final class RemindersViewController: AppListViewController {
     /// Whether the person turned Lumenna's notifications off in Settings, said in the heading:
     /// otherwise a reminder set here would seem to do nothing.
     private var silenced = false
 
-    init(core: Core, target: String) {
-        self.target = target
+    init(core: Core) {
         super.init(core: core, title: "Reminders")
-        adding = (try? core.lumenna.remindersOf(target: target))?.actions.first
         hidesBottomBarWhenPushed = true
     }
 
-    override func load() throws -> (items: [Item], count: String) {
-        let list = try core.lumenna.remindersOf(target: target)
-        adding = list.actions.first
-        let items = list.reminders.map { reminder in
-            Item(key: reminder.id, title: reminder.words, detail: reminder.own ? nil : "Default", actions: reminder.actions)
+    override var side: LumennaApp.Side? { .reminders }
+
+    override func rows() -> (items: [AppItem], count: String)? {
+        guard let list = core.app.view.reminders else { return nil }
+        let lines = core.app.lines.reminders
+        let items = list.reminders.enumerated().map { index, reminder in
+            let line = index < lines.count ? lines[index] : nil
+            return AppItem(
+                key: reminder.id, title: line?.title ?? reminder.words,
+                detail: line.flatMap { $0.detail.isEmpty ? nil : $0.detail }, actions: reminder.actions
+            )
         }
         let off = silenced ? "Notifications for Lumenna are off in Settings, so these are not shown" : nil
         return (items, ([list.announcement] + [off].compactMap { $0 }).joined(separator: ". "))
     }
 
-    override var addTitle: String? { adding?.title ?? "Add Reminder" }
+    override var addTitle: String? { "Add Reminder" }
 
+    /// The list's Add Reminder, the app's: a phrase, asked by the window's questions.
     override func add() {
-        guard let adding else { return }
-        run(adding, core: core) { [weak self] change, _ in
-            NotificationCenter.default.post(name: Core.changed, object: nil)
-            self?.reload(saying: change)
-        }
+        guard let adding = core.app.view.reminders?.actions.first else { return }
+        core.app.send(.perform(adding))
     }
 
     /// A reminder of its own offers its actions when tapped too, as its swipe does.
-    override func open(_ item: Item) {
+    override func open(_ item: AppItem) {
         guard !item.actions.isEmpty else { return }
         choose(item.title, actions: item.actions.map { action in
             (action.title, { [weak self] in self?.perform(action, on: item) })
         })
-    }
-
-    override func acted(_ action: Action, on item: Item, answer: Answer, change: Change) {
-        NotificationCenter.default.post(name: Core.changed, object: nil)
-        super.acted(action, on: item, answer: answer, change: change)
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -58,13 +55,21 @@ final class RemindersViewController: ItemListViewController {
         Reminders.askIfUndecided { [weak self] in self?.checkSilenced() }
     }
 
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        // Left, not covered by a question: the list is put away in the app.
+        if isMovingFromParent || isBeingDismissed || navigationController?.isBeingDismissed == true {
+            core.app.send(.closeReminders)
+        }
+    }
+
     private func checkSilenced() {
         UNUserNotificationCenter.current().authorization { [weak self] status in
             guard let self else { return }
             let silenced = status == .denied
             guard silenced != self.silenced else { return }
             self.silenced = silenced
-            reload()
+            draw()
         }
     }
 }
@@ -79,7 +84,7 @@ extension UIViewController {
     /// The reminder list of the task or block `target`: pushed over a task's details, else
     /// beside the list it was asked from.
     func openReminders(of target: String, core: Core) {
-        let reminders = RemindersViewController(core: core, target: target)
+        let reminders = RemindersViewController(core: core)
         if self is TaskDetailViewController, let navigation = navigationController {
             navigation.pushViewController(reminders, animated: true)
         } else {

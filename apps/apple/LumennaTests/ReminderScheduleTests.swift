@@ -215,22 +215,4 @@ final class ReminderScheduleTests: XCTestCase {
         XCTAssertEqual(schedule.rearms, 1, "one edit, one re-arm, and nothing after")
         XCTAssertEqual(centre.scheduled.count, 1)
     }
-
-    func testABlocksReminderListShowsTheDefaultThenItsOwnWhichSwipesRemove() throws {
-        let (series, _) = try block("Deep work", inMinutes: 120)
-        let list = RemindersViewController(core: core, target: series)
-        list.loadViewIfNeeded()
-        list.view.frame = CGRect(x: 0, y: 0, width: 400, height: 900)
-        list.beginAppearanceTransition(true, animated: false)
-        list.endAppearanceTransition()
-        list.view.layoutIfNeeded()
-        XCTAssertEqual(list.items.map(\.title), ["5 minutes before it starts"])
-        XCTAssertNil(list.trailingSwipeActions(at: IndexPath(item: 0, section: 0)), "a default cannot be removed alone")
-        let add = try XCTUnwrap(core.lumenna.remindersOf(target: series).actions.first)
-        _ = try core.lumenna.act(action: add, answer: .text(text: "at end"))
-        list.reload()
-        XCTAssertEqual(list.items.map(\.title), ["when it ends"])
-        let swipes = list.trailingSwipeActions(at: IndexPath(item: 0, section: 0))?.actions.compactMap(\.title)
-        XCTAssertEqual(swipes, ["Remove Reminder"])
-    }
 }

@@ -135,7 +135,7 @@ impl Form {
         let fields = fresh(start, minutes.min(720));
         Self {
             purpose: Purpose::Add { start_follows_day },
-            heading: "New block".to_owned(),
+            heading: "New Block".to_owned(),
             initial: fields.clone(),
             fields,
             date,

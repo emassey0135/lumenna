@@ -39,7 +39,15 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        sheets = AppSheets(core: core, root: self)
+        sheets = AppSheets(core: core, root: self) { [weak self] list in
+            guard let self else { return }
+            // Over a task's page, which is already the thing open; beside the list otherwise.
+            if let open = self.viewController(for: .secondary) as? UINavigationController, open.topViewController is TaskDetailViewController {
+                open.pushViewController(list, animated: true)
+            } else {
+                (self.list.topViewController ?? self).showBeside(list)
+            }
+        }
         questions = AppQuestions(app: core.app, asker: asker) { [weak self] action in
             guard let self else { return }
             (self.list.topViewController ?? self).openForm(action, core: self.core)
@@ -72,7 +80,7 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
         case .tasks: return tasks
         case .blocks: return BlocksViewController(core: core)
         case .trash, .project, .label, .filter:
-            return TaskListViewController(core: core, place: LumennaApp.Place(place))
+            return TaskListViewController(core: core, place: place)
         }
     }
 
