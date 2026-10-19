@@ -11,7 +11,7 @@
 //! shapes `lum --json` and the RPC surface keep are no concern here.
 
 mod device;
-mod words;
+pub mod words;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
