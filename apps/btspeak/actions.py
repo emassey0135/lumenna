@@ -201,7 +201,7 @@ def ask_pick(session: Session, asking, question, wrong: str) -> str:
     lines = session.lines().choices
     options = {choice.id: (lines[i].text if i < len(lines) else choice.title) for i, choice in enumerate(offered)}
     if asking.another_day:
-        options[ANOTHER_DAY] = "Another day"
+        options[ANOTHER_DAY] = asking.another_day
     picked = choose(options, prompt(wrong, question.title or named(asking.action)),
                     hints={choice.id: choice.reason for choice in offered})
     if picked is None:

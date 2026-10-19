@@ -31,6 +31,9 @@ pub(crate) fn in_sentence_case(view: &mut ViewModel) {
     }
     if let Some(asking) = &mut view.asking {
         asking.question = question(std::mem::replace(&mut asking.question, Question::Immediate), asking.action.as_ref());
+        if let Some(day) = &mut asking.another_day {
+            *day = sentence_case(std::mem::take(day));
+        }
     }
     if let Some(proposal) = &mut view.proposal {
         let words = &mut proposal.words;
