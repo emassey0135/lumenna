@@ -34,20 +34,21 @@ crates/host/    the command surface: the `Lumenna` object, one method per operat
 crates/app/     the Crux app: the screens' state (place, row in hand, folding, the question
                 open) as events in and view models out; every write an effect. No host.
 crates/bridge/  the app beside its store: Crux middleware answering the app's store effects.
-crates/mobile/  the app for Android and BTSpeak through BoltFFI: `App`, its turns, and `Device`,
-                the store for what runs without the screens. The web's is apps/web/core,
-                through BoltFFI too; the shell's events (`ShellEvent`) are the app crate's.
-crates/ffi/     the library the Swift apps link; re-exports surface over UniFFI.
+crates/ffi/     the app for the Apple apps, Android and BTSpeak through BoltFFI: `App`, its
+                turns, and `Device`, the store for what runs without the screens. The web's is
+                apps/web/core, through BoltFFI too; the shell's events (`ShellEvent`) are the
+                app crate's.
 crates/sync/    Iroh endpoints, the document sync session, and pairing.
 crates/desktop/ what the Windows, GTK and web apps decide alike: row wording, flat rows as a
                 tree, work-block choices, device wording, the profile; with `app`, the app's
                 view worded line by line (`lines`) for the web and Android.
 apps/cli/       `lum`, and `lum rpc` for clients that cannot link Rust.
-apps/btspeak/   the BTSpeak app, in Python, over the app in-process (crates/mobile).
+apps/btspeak/   the BTSpeak app, in Python, over the app in-process (crates/ffi).
 apps/emacs/     the Emacs client, in Elisp, over `lum rpc` or the profile's socket.
 apps/android/   Jetpack Compose over the Crux app's Kotlin bindings: the phone (app/), Wear OS
                 (wear/), and what they share (shared/).
-apps/apple/     the iOS and macOS apps over the generated Swift bindings, Shared/ between them.
+apps/apple/     the iOS, macOS and watchOS apps over the Crux app's Swift bindings, Shared/
+                between them.
 apps/windows/   the Win32 app, linking the surface directly.
 apps/gtk/       the Linux app, GTK 4, linking the surface directly.
 apps/web/       the web client: the core in WASM (core/), TypeScript and React Aria over it.
@@ -57,9 +58,9 @@ apps/web/       the web client: the core in WASM (core/), TypeScript and React A
 
 `crates/host` is every operation, once, typed. `Lumenna` holds the open store; its
 methods take text identifiers and plain records and return records (`types.rs`). The CLI
-calls it, `lum rpc` serialises what it returns, the desktop apps link it, and UniFFI
-exports it unchanged to Swift (the `uniffi` feature, built by `crates/ffi`). No JSON crosses
-the FFI.
+calls it, `lum rpc` serialises what it returns, the Windows and GTK apps link it, and the
+bridge answers the Crux app's writes with it; `Device` (`crates/ffi`) exports what runs
+without the screens over BoltFFI. No JSON crosses the FFI.
 
 - **Every returned record carries `announcement` and `notices`** (the `Announced` trait).
   The announcement is one composed sentence, and only because the core wrote it: an
@@ -119,22 +120,17 @@ the FFI.
   refused. Row numbers are the CLI's: `Profile::row` turns them into identifiers first.
 - **Every method refreshes first** (`Lumenna::with`), so an answer is never staler than the
   last change on disk.
-- **Reshaping a record breaks `--json`, `lum rpc`, and the Swift and Kotlin types at
+- **Reshaping a record breaks `--json`, `lum rpc`, and the Swift, Kotlin and Python types at
   once.** That is the point: they cannot drift apart.
 - **A surface error's field must not be called `message`**: Kotlin exceptions already have
-  one, and UniFFI's class declared it twice. `LumennaError`'s field is `reason`.
-- `uniffi.toml` names the Swift module `LumennaCore`. Methods named after Swift keywords
-  (`import`, `open`) come out backticked, and work.
-- **The records' UniFFI bindings are their own** (`crates/records/uniffi.toml`): UniFFI writes
-  each crate's apart, so Swift compiles `LumennaRecords.swift` (its C half the module `LumennaRecordsFFI`, its map
-  joined to the host's in `Generated/include`) into the same app module as `LumennaCore.swift`,
-  which UniFFI's Swift across crates requires.
+  one, and a generated class would declare it twice. `LumennaError`'s field is `reason`.
 
 ## The app
 
 `crates/app` is the screens as a Crux 0.20 app; `crates/bridge` runs it beside a store. The
-web, the Android phone, Wear OS and BTSpeak are drawn from it entirely; the other clients still call
-the host directly until their turn (the `legacy` tag is the last commit before the move).
+web, the Android phone, Wear OS, BTSpeak and the iPhone, iPad, Mac and Apple Watch are drawn
+from it entirely; the Windows and GTK apps, the CLI and Emacs still call the host directly
+until their turn (the `legacy` tag is the last commit before the move).
 
 - **The app never depends on the host.** It holds the snapshot the host last sent (`Watch`, a
   stream answered at once and on every change) and works out from it, with `lumenna-records`,
@@ -610,7 +606,7 @@ Kept apart in code, commands and wording, because confusing them is how someone 
 ## The BTSpeak app
 
 `apps/btspeak/`: Python, on the device's own `dialogs` library, drawing the Crux app, which runs
-in the same process beside the store: `crates/mobile` built by BoltFFI's Python target
+in the same process beside the store: `crates/ffi` built by BoltFFI's Python target
 (`build-core.sh`, `boltffi pack python`, needing Python 3.10 or later with pip) into `native/`,
 not committed. The library is only on a BTSpeak (`/BTSpeak/Python/BTSpeak/`); elsewhere the
 tests run on `tests/btspeak_stub.py`, with the core built and `target/debug` on `PATH` for
@@ -706,22 +702,40 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
 
 ## The iOS app
 
-`apps/apple/`: a UIKit shell with SwiftUI forms over the generated `LumennaCore.swift`.
-`cd apps/apple && xcodegen` makes the project from `project.yml`; the `.xcodeproj` and
+`apps/apple/`: a UIKit shell with SwiftUI forms, drawing the Crux app through BoltFFI's
+Swift. `cd apps/apple && xcodegen` makes the project from `project.yml`; the `.xcodeproj` and
 `Generated/` are not committed.
 
+- **Every screen draws the app's view and sends it what the person did**, as Android and the
+  web do. `AppModel` (`Shared/`) holds the app over its `Device`, takes each turn on the main
+  thread in order and posts `AppModel.shown`; a screen draws `view` with the turn's `lines`,
+  opens its place as it comes to the front unless the app shows it already, and moves
+  VoiceOver only when `landing` went up. The app's questions are `AppQuestions`, asked through
+  each platform's `QuestionAsking` at each window's root; what the app opens by itself (the
+  block form, a proposal, a reminder list) is `AppSheets` (the watch's `WatchScreens`). A form
+  takes the app's values only once the app is still (`AppModel.whenStill`): an answer for
+  earlier typing would undo later typing, and the last turn's notice can come while a tick is
+  under way.
+- **The generated Swift is a framework of its own** (`LumennaApp`, one per platform, embedded
+  in its app): BoltFFI emits a crate's exports only when it is the crate being built, so
+  `crates/ffi` is the library, force-loaded into the framework, and the app, its tests and the
+  framework share one core in the process. As a module of its own, its names (`Locale`,
+  `Action`) do not shadow Foundation's; code names them `LumennaApp.Action`.
 - **Xcode builds the core itself**: `build-core.sh` builds `lumenna-ffi` in a clean
-  environment (Xcode's SDK variables break Cargo's host build scripts), then regenerates the
-  bindings from a host build. It must pass `IPHONEOS_DEPLOYMENT_TARGET` through, or C
-  objects target the SDK's own version; heed that linker warning.
+  environment (Xcode's SDK variables break Cargo's host build scripts), the Mac's and the
+  phone's with the `rpc` feature, then has BoltFFI generate the Swift (`Generated/App`, the
+  watch's `Generated/Watch/App`). What it makes is named as the build phase's output, or a
+  fresh checkout looks for the Swift before the phase has run. It must pass
+  `IPHONEOS_DEPLOYMENT_TARGET` through, or C objects target the SDK's own version; heed that
+  linker warning.
 - **The core is linked statically, by the `.a`'s full path.** `-llumenna_ffi` picks the
   dylib Cargo builds beside it, which works in the simulator and crashes on a phone at
   launch. A post-build phase fails the build on any `liblumenna_ffi` reference. A launch is
   not proof it ran: check the process is alive, or the crash logs.
 - **Iroh needs `SystemConfiguration` and `Network`** linked.
-- **The cell owns what VoiceOver says**: every list cell sets its own label and value from
-  row components (`RowSpeech`); left alone, a cell says its secondary text twice. Depth is
-  said only where it changes.
+- **The cell owns what VoiceOver says**: every list cell sets its own label (the title) and
+  value (the rest of the app's line, whether it is folded, and the level where it changes:
+  `AppModel.spoken`); left alone, a cell says its secondary text twice.
 - **Rows are `UIListContentConfiguration`, not SwiftUI**: hosted `Text` failed the audit for
   Dynamic Type and clipping. SwiftUI stays for forms.
 - **Text entry wraps** (`LineEntry`): a one-line field scrolls sideways at large sizes and
@@ -742,8 +756,11 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
 - **`TZ` is set from `TimeZone.current`** at launch and on returning to the foreground: jiff
   finds the zone through `TZ` or `/etc/localtime`, and the sandbox is no place to rely on
   the second.
-- **Operations run on the main thread**: milliseconds against local SQLite, and a view never
-  shows a state the store has moved past. The automatic backup is the exception.
+- **`Core.changed` is what follows a change outside the screens** (reminders re-armed, the
+  watch told): `Core` looks at the store's heads once a second (`Device.heads`, which move
+  for the app's own writes too) and posts it, marked `arrived` unless the person did
+  something in the last three seconds. The app ticks once a second itself, taking in what
+  another process wrote.
 - **Background sync** (`BackgroundSync`): a round in the time `beginBackgroundTask` grants
   on leaving, and a `BGAppRefreshTask` whenever iOS chooses. A refresh launches the app with
   no scene, so the `Core` is the app delegate's, one per process. Apple's simulated launch
@@ -771,18 +788,18 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
 - **The day's own actions** (`Plan.actions`) are a Day Actions menu button among the day's
   buttons (in the navigation bar it crowded the title, which the iPad's narrow column clipped)
   and the heading's custom actions, which make the heading at least 44 points tall: an element with
-  actions fails the audit's hit area. Replan from Now and Plan the Day open one SwiftUI
-  screen for all three apps (`Shared/Forms/ProposalForm.swift`, `ProposalModel`): each change
+  actions fails the audit's hit area. Replan from Now and Plan the Day are one SwiftUI
+  screen for all three apps (`Shared/Forms/AppProposalForm.swift`, the app's proposal): each change
   a toggle named by its sentence, its reason and the core's `item` its hint, and after a
   partial apply the core's `next` in its place until nothing is proposed. On iPad it is full
   screen: as a form sheet, the day's rows half under it failed the audit as cut-off text. A
   refusal is shown on the screen and the proposal asked for again with the same pins. The clock it asks in is
   `Clock.style`, the locale's. Its other options (`Replan.alternatives`) are buttons under
   `others`, each proposing again with its pins in place. A pick's `Choice.reason` is its second line and its hint.
-- **A Reminders list is an `ItemListViewController`** (`RemindersViewController`): Add Reminder
-  in the bar asks the core's Text question, again with the reason when refused; an own
-  reminder swipes Remove Reminder. `ActionRun` opens it for `ActionKind.reminders` through the
-  asker (`openReminders`), so every screen offering the action opens the same list.
+- **A Reminders list is the app's** (`ViewModel.reminders`), opened by `AppSheets` when the
+  app opens it and held in its own hand: on iOS an `AppListViewController`
+  (`RemindersViewController`), whose Add Reminder in the bar asks the app's Text question,
+  again with the reason when refused, and whose own reminders swipe Remove Reminder.
 - **Pairing is by code on iOS**: local discovery of others needs Apple's multicast
   entitlement. `PairingPrompt` blocks the pairing thread on a semaphore while the words are
   asked on the main thread.
@@ -811,9 +828,9 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
   through its containers when VoiceOver's element is not a view, as the iPad's is:
   `UIAccessibility.voiceOverView`), else the one open beside the list; the task open beside a list answers them itself.
 - **The iPad is the Mac's layout, not the iPhone's tabs** (`IPadRoot`, three columns): the
-  core's places in a sidebar (`SidebarViewController`, from `Lumenna.places`, plus
+  app's places in a sidebar (`SidebarViewController`, from `ViewModel.sidebar`, plus
   Settings), the place chosen, and what was opened from it (`showBeside`, which pushes on
-  iPhone and in a narrow window). The sidebar is an `ItemListViewController`, so headings
+  iPhone and in a narrow window). The sidebar is an `AppListViewController`, so headings
   and project trees fold with Expand and Collapse actions and say which they are; a
   project's, label's or filter's actions are its own, the core's, as in Browse. A screen
   chosen by a command acts a turn later: it is not in the window until then.
@@ -823,8 +840,10 @@ real `lum rpc`, answering the minibuffer by rebinding the reading functions:
 - **⌘F never reaches the app in the iPad simulator**: no responder is asked about it, where
   ⌘3 is. Filter Tasks stays on ⌘F in the Edit menu, and its test skips on iPad.
 - **Three layers of iOS tests.** `LumennaTests` (unit tests hosted in the app) asks each
-  list for its swipe actions, custom actions and menu (`RowActions`) and runs them: what
-  VoiceOver offers as a row's actions, with no gesture to land, so they block in CI.
+  list for its swipe actions, custom actions and menu (`AppRowActions`) and runs them: what
+  VoiceOver offers as a row's actions, with no gesture to land, so they block in CI. They seed
+  the store through `core.app.device` (`newBlock`, in `Seeds.swift`, since BoltFFI's records
+  have no defaults), tick the app to take it in, and wait on `core.app.isStill`.
   `VoiceOverUITests` turns VoiceOver on (`XCUIVoiceOverService`, iOS 27) and checks what it
   says, acting through the keyboard commands, which act on VoiceOver's row; its output
   carries a hint's first word only ("Actions"). VO-Command-Down Arrow steps the actions
@@ -861,14 +880,23 @@ app supplies only presentation. Where the platforms need different answers it is
 that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 
 - **Not sandboxed, and shares `lum`'s profile**: the app and the command line on one Mac
-  are one device with one store. `Core` compares `outsideVersion` once a second.
-- **Resident in the menu bar, and the device's sync process.** No daemon is needed or used.
+  are one device with one store. The app ticks once a second, taking in what `lum` wrote.
+- **The window follows the app**: the middle pane shows the app's place, so a place renamed,
+  merged or deleted takes the window with it, and the right pane the details of the task in
+  hand, which follow the row in hand. Every list is an `NSOutlineView` (or a table) over the
+  app's rows: the selection is the row in hand, scrolled to only when the app moved it, and
+  folding there is the row's own Expand or Collapse.
+- **Resident in the menu bar, and the device's sync process.** No daemon is needed or used:
+  the app's network middleware syncs for as long as it runs and, while it holds the endpoint,
+  serves the command surface at the profile's address (`App.serveCommands`, the bridge's `rpc`
+  feature), as the daemon would. `LUMENNA_NO_SYNC` (the UI tests') keeps it from both.
 - **The resident app delivers reminders** (`ReminderDelivery`): while it holds
   `take_reminders`, `deliver_reminders` every 20 seconds and on becoming active, each shown at
   once through `UNUserNotificationCenter` with the iPhone's category, the missed summary as one
   of its own. Without notification permission it lets the right go, for a process that can say
   them. The Reminders list is the shared SwiftUI form (`Shared/Forms/ReminderList.swift`) in a
-  sheet, shared with the watch.
+  sheet, shared with the watch: its Add Reminder answers the app's question itself, a refusal
+  kept in its field with the app's reason.
 - **The Day menu ends in the day's own actions**, rebuilt as it opens (`MainMenu.DayMenu`):
   the day shown's, else today's, which goes to the day first; also a pull-down beside the
   day's buttons. Plan the Day and Replan from Now have Command-Option-P and -R (`DayKeys`,
@@ -912,14 +940,16 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 - **No Iroh on the watch.** watchOS allows low-level networking only inside an audio session
   (TN3135), and that includes sockets and even `URLSessionWebSocketTask`; the simulator does
   not enforce it, so a build that syncs there proves nothing. The core is built without
-  `lumenna-ffi`'s `network` feature, with bindings of its own (`Generated/Watch/`, from a host
-  build in `target/watch-host`).
-- **A whole store, synced through the phone** (`PhoneLink`, `lumenna-sync`'s `exchange`):
-  every document in each message, over WatchConnectivity's message and reply. The watch
-  starts every exchange, since its message wakes the iPhone app and the reverse needs the
-  watch app open; the phone only nudges an open watch app when its store changes. The iPhone
-  app (`WatchLink`) answers on the operations' own connection, so its own sync carries what
-  the watch wrote to every other device. The watch is not in the device list: trust is the
+  `lumenna-ffi`'s `network` feature (the app's network a stand-in, `offline.rs`, saying the
+  watch syncs through its phone), with bindings of its own (`Generated/Watch/App`, generated
+  in `target/watch-host`).
+- **A whole store, synced through the phone** (`Device.linkStart` and `linkTake` on the
+  watch, `linkAnswer` on the phone: `lumenna-sync`'s `exchange`): every document in each
+  message, over WatchConnectivity's message and reply. The watch starts every exchange, since
+  its message wakes the iPhone app and the reverse needs the watch app open, and starts one
+  whenever its store's heads move; the phone only nudges an open watch app when its store
+  changes. Each answers on its app's own connection, so the phone's sync carries what the
+  watch wrote to every other device. The watch is not in the device list: trust is the
   system's pairing of watch and phone.
 - **The watch schedules its own reminders**, from its own store, as the iPhone does
   (`ReminderSchedule`, re-armed at launch, on becoming active, after each change and on a
@@ -933,20 +963,17 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 - **The phone's forms are the watch's** (`Shared/Forms`: task, block, planning settings),
   with its own answers beside the others' in `FormParts.swift`: the iPhone's wherever its
   SwiftUI behaves the same, else the name always above the field and Save in the form. So
-  `WatchCore` is the forms' `Core` (a typealias), posting `Core.changed`, and the watch has
-  an `Announcer`; every change posted goes to the phone, unless it came from there
-  (`Core.fromPhone`). Backups and exports stay on the phone: a watch cannot save or pick a
-  file. `Shared/Clock.swift`, `RowSpeech.swift` and `Words.swift` are shared too; the
-  watch's core is its own, since `Shared/Core.swift` starts Iroh. The generated bindings are
-  in the app's own module, so a watch type named like a core record clashes with it.
-- **A row's actions are the core's, run once for every Apple app** (`Shared/Actions.swift`,
-  `ActionRun`): it asks an action's question through the app's `ActionAsking` (alerts and a
-  `ChoicePicker` on iOS, sheets on the Mac, a `WatchAsker`'s sheets on the watch), sends the
-  answer to `act`, and hands back the change; a pick offers `choices`. Keys and menu
-  commands run the row's action of that kind, and say `notOffered` when it has none; on the
-  Mac a menu item that asks ends in "…". Settings screens and the priority picker are built
-  from the core's descriptions (`Setting.kind`, `priorities()`). Folding is
-  `Shared/Folding.swift`, its UIKit swipe action an iOS extension.
+  `WatchCore` is the forms' `Core` (a typealias), its `app` the same `AppModel`, and the watch
+  has an `Announcer`. Backups and exports stay on the phone: a watch cannot save or pick a
+  file. `Shared/Clock.swift` and `Words.swift` are shared too; the watch's core is its own.
+- **A row's actions are the app's, run once for every Apple app** (`AppModel.run`: the row in
+  hand, or held in a side list, then the action), their questions `AppQuestions`' (alerts and
+  a `ChoicePicker` on iOS, sheets on the Mac and, one at a time, a `WatchAsker`'s on the
+  watch, each sheet's closing without an answer its own cancel). Keys and menu commands run
+  the row's action of that kind, and say `notOffered` when it has none; on the Mac a menu
+  item that asks ends in "…". Settings screens and the priority picker are built from the
+  core's descriptions (`Setting.kind`, `priorities()`). Folding is the app's, by each row's
+  Expand and Collapse.
 - **The device list builds without Iroh** (`crates/host/src/devices.rs`): the watch is in
   no list and syncs with no device directly, so nothing is "this device" and a device's
   status says only its version (`device_status(…, direct: false)`).
@@ -1095,8 +1122,8 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   property holds, so Orca reads "Control+N Alt+N". Alt+N does nothing; the letter alone works
   in an open menu. Only dropping the mnemonic removes it.
 - **A text view keeps Tab**; `prompts::leaves_on_tab` steps it out of the focus chain.
-- **The sidebar's places are the surface's** (`surface::places`, `Lumenna.places`), shared
-  by Windows, GTK, the web, the Mac, the iPad and Android.
+- **The sidebar's places are the surface's** (`surface::places`, `Lumenna.places`, the
+  app's `ViewModel.sidebar`), shared by Windows, GTK, the web, the Mac, the iPad and Android.
 - **A sidebar entry carries its `title` and `detail`** beside its one line (`text`), so a sidebar
   that shows two lines never cuts the line apart; `SidebarEntry::key_of` names a row by its kind
   alone.
@@ -1147,16 +1174,16 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 
 ## The Android app
 
-`apps/android/`: Kotlin and Jetpack Compose over the Crux app (`crates/mobile`), through
+`apps/android/`: Kotlin and Jetpack Compose over the Crux app (`crates/ffi`), through
 BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` (the phone),
 `wear` (Wear OS) and `shared`.
 
 - **Every screen draws the app's view model and sends it what the person did**
   (`ShellEvent`), as the web does; UniFFI and JNA are gone from Android. One library
-  (`liblumenna-mobile.so`) and its Kotlin (`io.github.emassey0135.lumenna.app`) come from
+  (`liblumenna-ffi.so`) and its Kotlin (`io.github.emassey0135.lumenna.app`) come from
   `build-core.sh` (`boltffi pack android`, an overlay pointing its outputs into the build
   directory). What runs without the screens — reminders' alarms and receivers, `SyncWorker`,
-  the watch's link, backups — calls `Device` (`crates/mobile/src/device.rs`), the host's
+  the watch's link, backups — calls `Device` (`crates/ffi/src/device.rs`), the host's
   operations of the same names over the one connection the `App` runs on; so do the tests, to
   seed and check the store. BoltFFI's records have no defaults, so the tests seed blocks
   through `newBlock` (`Seeds.kt`). BoltFFI carries the records typed, by its own encoding, so
@@ -1205,7 +1232,7 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
 - **Nested lists fold, as the app folds them**: everything starts expanded, and a row with
   something under it has the app's Collapse or Expand among its actions and says which it
   is. The level is the app's, said against the row shown before, after folding. The iPhone
-  does the same (`Folding.swift`, as a swipe action).
+  does the same, as a swipe action.
 - **TalkBack does not follow input focus under touch.** `RowFocus` gives the row input focus,
   then performs the accessibility-focus action through the view's
   `AccessibilityNodeProvider`, found by the `RowKey` property; the announcement is held

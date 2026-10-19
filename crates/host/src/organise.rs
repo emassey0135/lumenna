@@ -14,7 +14,6 @@ use crate::types::{Announced, Change, Direction, Filters, Rows, Weight};
 use crate::{Lumenna, repaired};
 
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     // -----------------------------------------------------------------------------------
     // Projects
@@ -313,7 +312,6 @@ impl Lumenna {
     }
 }
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// Moves a project under another, or to the top level when `parent` is absent.
     ///

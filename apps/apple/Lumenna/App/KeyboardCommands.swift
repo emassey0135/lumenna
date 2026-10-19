@@ -1,3 +1,4 @@
+import LumennaApp
 import UIKit
 
 /// What a keyboard command asks for. Each travels up the responder chain from what has
@@ -118,7 +119,7 @@ enum KeyboardCommands {
     }
 
     /// The action kind each of the day's commands runs.
-    static func dayKind(_ selector: Selector) -> ActionKind? {
+    static func dayKind(_ selector: Selector) -> LumennaApp.ActionKind? {
         switch selector {
         case #selector(CommandActions.planTheDay): .planDay
         case #selector(CommandActions.replanFromNow): .replan

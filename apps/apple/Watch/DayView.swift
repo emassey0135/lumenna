@@ -1,233 +1,98 @@
+import LumennaApp
 import SwiftUI
 
-/// The day as lived: its summary, then each block with the sittings in it, the free time
-/// between, where now falls, and what is cancelled for the day, as the phone's day lists
-/// them. Tapping a row offers its actions, the core's, as the phone's swipe actions do: a
-/// watch's row has room for few. A block with sittings folds, as on the phone. Going
-/// to another day, and a new block, are buttons at the foot.
+/// The day as lived, the app's day (`ViewModel.day`): its heading, then each block with the
+/// sittings in it, the free time between, where now falls, and what is cancelled for the day,
+/// each as the core words its line. Tapping a row offers its actions, the app's, as the
+/// phone's swipe actions do: a watch's row has room for few. A block with sittings folds, by
+/// its own Expand or Collapse. Going to another day, and a new block, are buttons at the foot.
 struct DayView: View {
     @EnvironmentObject private var core: WatchCore
-    /// The day shown, or nil for today, which follows midnight.
-    @State private var chosen: Date?
-    /// A sitting's task, opened by its Edit Task Details.
-    @State private var opened: TaskOpened?
-    @StateObject private var asker: WatchAsker
-    @State private var form: BlockFormModel?
-    @State private var folding = Folding()
-
-    init(core: WatchCore) {
-        _asker = StateObject(wrappedValue: WatchAsker(core: core))
-    }
-
-    /// A row of the day, as folding sees it.
-    private enum Row {
-        case block(PlanBlock)
-        case sitting(PlanAssignment, in: PlanBlock)
-        case free(start: String, end: String, minutes: UInt32, title: String, details: [String], actions: [Action])
-        case now(time: String, title: String)
-
-        var depth: Int {
-            if case .sitting = self { return 1 }
-            return 0
-        }
-
-        /// Only a block has anything under it.
-        var key: String {
-            switch self {
-            case let .block(block): "block:\(block.id)"
-            case let .sitting(sitting, _): "sitting:\(sitting.id)"
-            case let .free(start, _, _, _, _, _): "free:\(start)"
-            case .now: "now"
-            }
-        }
-    }
+    @EnvironmentObject private var asker: WatchAsker
 
     var body: some View {
-        let plan = day
-        let shown = plan.map { folding.shown(rows($0), depth: \.depth, key: \.key) } ?? []
-        List {
-            if let plan {
-                // The day's heading, as every app says it: "<day>. <summary>". Tapped, it
-                // offers the day's own actions, the core's, as a row offers its own.
-                let heading = plan.summary.isEmpty ? plan.announcement : "\(Clock.spokenDay(plan.date)). \(plan.summary)"
-                if plan.actions.isEmpty {
-                    Text(heading).font(.footnote)
-                } else {
-                    Button { offerDay(plan) } label: { Text(heading).font(.footnote) }
-                        .accessibilityAddTraits(.isHeader)
-                        .accessibilityIdentifier("day.heading")
-                }
-                ForEach(Array(shown.enumerated()), id: \.element.item.key) { _, row in
-                    rowView(row, in: plan)
-                }
-                ForEach(plan.cancelled, id: \.series) { block in
-                    button(([Clock.time(block.start), block.title] + block.details).joined(separator: ", ")) {
-                        asker.offer(block.title, block.actions)
-                    }
+        _ = core.generation
+        let view = core.app.view
+        let lines = core.app.lines
+        let day = view.place == .today ? view.day : nil
+        let rows: [(item: LumennaApp.DayItem, line: LumennaApp.Line?)] = (day?.items ?? []).enumerated()
+            .map { index, item in (item, index < lines.day.count ? lines.day[index] : nil) }
+            .filter { !$0.item.hidden }
+        return List {
+            if let day {
+                ForEach(rows, id: \.item.key) { row in
+                    rowView(row.item, line: row.line, in: day)
                 }
             }
             Section {
-                Button("Add Block") { addBlock(on: plan) }
-                Button("Previous Day") { step(-1, from: plan) }
-                if chosen != nil { Button("Today") { chosen = nil } }
-                Button("Next Day") { step(1, from: plan) }
+                Button("Add Block") { core.app.send(.block(.new(start: nil, minutes: nil))) }
+                Button("Previous Day") { core.app.send(.day(.previous)) }
+                if day?.today == false { Button("Today") { core.app.send(.day(.now)) } }
+                Button("Next Day") { core.app.send(.day(.next)) }
                 Button("Go to Day") {
-                    asker.show(DayChoice(day: chosen ?? .now, read: { try core.lumenna.plan(date: $0).date }) { chosen = $0 })
+                    asker.show(DayChoice(day: day.flatMap { Self.date($0.date) } ?? .now))
                 }
             }
         }
-        .navigationTitle(plan.map { Clock.spokenDay($0.date) } ?? "Day")
-        // One sheet for every question, and one for the block form: a third sheet on the
-        // same view kept the form from showing.
-        .sheet(item: $asker.asked) { asked in
-            NavigationStack { asked.view }
-        }
-        .navigationDestination(item: $opened) { opened in
-            TaskView(id: opened.id)
-        }
-        .sheet(item: $form) { model in
-            BlockSheet(model: model)
-        }
-    }
-
-    private var day: Plan? {
-        _ = core.generation
-        return core.read { try core.lumenna.plan(date: Clock.isoDay(chosen ?? .now)) }
-    }
-
-    /// The timeline as rows: blocks with their sittings under them, free time, now.
-    private func rows(_ plan: Plan) -> [Row] {
-        plan.timeline.flatMap { item -> [Row] in
-            switch item {
-            case let .block(number):
-                guard let block = plan.blocks.first(where: { $0.row == number }) else { return [] }
-                return [.block(block)] + block.assignments.map { .sitting($0, in: block) }
-            case let .free(start, end, minutes, title, details, actions):
-                return [.free(start: start, end: end, minutes: minutes, title: title, details: details, actions: actions)]
-            case let .now(time, title): return [.now(time: time, title: title)]
-            }
+        .navigationTitle(day != nil ? lines.dayTitle : "Day")
+        .onAppear {
+            if core.app.view.place != .today { core.app.send(.open(.today)) }
         }
     }
 
     @ViewBuilder
-    private func rowView(_ row: Folding.Shown<Row>, in plan: Plan) -> some View {
-        switch row.item {
-        case let .block(block):
-            // The time and title, then the details the core words for every app, then
-            // whether its sittings are folded away.
-            let text = ([("\(Clock.time(block.start)) to \(Clock.time(block.end)), \(block.title)")] + block.details + [row.state].compactMap { $0 })
-                .joined(separator: ", ")
-            button(text, heading: true) {
-                let fold = Folding.action(for: row)
-                asker.offer(
-                    block.title, block.actions,
-                    extra: fold.map { fold in [(fold.title, { toggle(row.item.key, saying: fold.said) })] } ?? [],
-                    form: { _ in edit(block, on: plan.date) }
-                )
+    private func rowView(_ item: LumennaApp.DayItem, line: LumennaApp.Line?, in day: LumennaApp.DayView) -> some View {
+        let text = line?.text ?? ""
+        let value = AppModel.spoken(detail: nil, expanded: item.expanded, level: item.level)
+        switch item.kind {
+        case .summary:
+            // The day's heading, as every app says it: "<day>. <summary>". Tapped, it offers
+            // the day's own actions, the app's, as a row offers its own.
+            if day.actions.isEmpty {
+                Text(text).font(.footnote)
+            } else {
+                Button { asker.offer(core.app.lines.dayTitle, day.actions, on: item.key) } label: { Text(text).font(.footnote) }
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("day.heading")
             }
-        case let .sitting(sitting, _):
-            button(([sitting.title] + sitting.details).joined(separator: ", ")) {
-                asker.offer(sitting.title, sitting.actions, form: { action in
-                    if action.kind == .editTask { later { opened = TaskOpened(id: action.target) } }
-                })
-            }
-            .padding(.leading, 8)
-        case let .free(start, end, minutes, title, details, actions):
-            // "<title>, <details>, <start> to <end>", the core's words in every app's order.
-            button(([title] + details + ["\(Clock.time(start)) to \(Clock.time(end))"]).joined(separator: ", ")) {
-                asker.offer(title, actions, form: { action in
-                    addBlock(on: plan, at: action.other ?? start, minutes: minutes)
-                })
-            }
-        case let .now(time, title):
-            Text("\(title), \(Clock.time(time))").font(.headline)
+        case .now:
+            Text(text).font(.headline)
+        case .sitting:
+            Button { offer(item, line: line) } label: { Text(text) }
+                .accessibilityValue(value)
+                .padding(.leading, 8)
+        case .block:
+            Button { offer(item, line: line) } label: { Text(text) }
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityValue(value)
+        case .free, .cancelled:
+            Button { offer(item, line: line) } label: { Text(text) }
         }
     }
 
-    /// A row that offers its actions when tapped.
-    private func button(_ text: String, heading: Bool = false, actions: @escaping () -> Void) -> some View {
-        Button(action: actions) { Text(text) }
-            .accessibilityAddTraits(heading ? .isHeader : [])
+    /// A row's actions, offered when it is tapped: a sitting's Edit Task Details opens its task.
+    private func offer(_ item: LumennaApp.DayItem, line: LumennaApp.Line?) {
+        asker.offer(line?.title ?? "", item.actions, on: item.key)
     }
 
-    /// The day's own actions; Plan the Day and Replan from Now open their screen, the shared
-    /// one (`Shared/Forms/ProposalForm.swift`).
-    private func offerDay(_ plan: Plan) {
-        asker.offer(Clock.spokenDay(plan.date), plan.actions, form: { action in
-            do {
-                guard let model = try ProposalModel(core: core, action: action) else { return }
-                model.close = { [weak asker] in asker?.asked = nil }
-                asker.show(ProposalForm(model: model).navigationTitle(model.words.title))
-            } catch {
-                core.failure = error.sentence
-            }
-        })
-    }
-
-    private func toggle(_ key: String, saying said: String) {
-        folding.toggle(key)
-        Announcer.say(said)
-    }
-
-    /// Does something once the sheet in front has closed, so the two do not collide.
-    private func later(_ run: @escaping () -> Void) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: run)
-    }
-
-    private func step(_ days: Int, from plan: Plan?) {
-        let from = plan.flatMap { try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse($0.date) } ?? .now
-        let next = Calendar.current.date(byAdding: .day, value: days, to: from) ?? from
-        chosen = Calendar.current.isDateInToday(next) ? nil : next
-    }
-
-    /// Asks "this day, or every day?" of a repeating block — never guessed.
-    private func edit(_ block: PlanBlock, on date: String) {
-        let series = {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                form = core.read { try BlockFormModel.series(core: core, id: block.series, saved: saved) }
-            }
-        }
-        guard block.repeats else { return series() }
-        asker.show(ChoicePrompt(title: "Change \(block.title)", message: "Which occurrences?", choices: [
-            ("\(Clock.spokenDay(date)) Only", {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    form = .occurrence(core: core, block: block, day: date, saved: saved)
-                }
-            }),
-            ("Every Occurrence", series),
-        ]))
-    }
-
-    private func addBlock(on plan: Plan?, at start: String? = nil, minutes: UInt32? = nil) {
-        let day = plan.flatMap { try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse($0.date) } ?? .now
-        let model = BlockFormModel(
-            core: core, purpose: .add, start: start, minutes: Int(min(minutes ?? 60, 720)), day: day, saved: saved
-        )
-        if start == nil {
-            form = model
-        } else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { form = model }
-        }
-    }
-
-    /// After a form saves: every view reads the store again, and what changed is said.
-    private func saved(_ change: Change) {
-        core.changed()
-        Announcer.say(change.announcement, notices: change.notices)
+    static func date(_ iso: String) -> Date? {
+        try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse(iso)
     }
 }
 
 /// A day to go to, chosen as the phone chooses one: a day said or typed in the core's words
-/// ("next friday", "12 October") from the system's input screen, or a date picker, then Go.
+/// ("next friday", "12 October") from the system's input screen, or a date picker, then Go —
+/// the answer to the app's Go to Day.
 private struct DayChoice: View {
+    @EnvironmentObject private var core: WatchCore
     @Environment(\.dismiss) private var dismiss
     @State var day: Date
-    /// The core's reading of a day named: its ISO date.
-    let read: (String) throws -> String
-    let chosen: (Date?) -> Void
     @State private var typed = ""
     @State private var problem: String?
-    private let question = TextQuestion.goToDay
+    private let question: (title: String, label: String, hint: String, yes: String) = {
+        if case let .text(title, label, _, hint, _, yes, _) = LumennaApp.goToDayQuestion() { return (title, label, hint, yes) }
+        return ("Go to Day", "Day", "", "Go")
+    }()
 
     var body: some View {
         List {
@@ -252,18 +117,18 @@ private struct DayChoice: View {
         .navigationTitle(question.title)
     }
 
-    /// The day typed if there is one, else the picker's. A day the core cannot read stays
-    /// here, saying why.
+    /// The day typed if there is one, else the picker's. A day the app cannot read stays here,
+    /// saying why.
     private func goTo(_ text: String) {
         let named = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        do {
-            let iso = try read(named.isEmpty ? Clock.isoDay(day) : named)
-            guard let date = try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse(iso) else { return }
-            dismiss()
-            chosen(Calendar.current.isDateInToday(date) ? nil : date)
-        } catch {
-            problem = error.sentence
-            Announcer.say(error.sentence)
+        core.app.send(.day(.ask))
+        core.app.send(.answer(.text(text: named.isEmpty ? Clock.isoDay(day) : named)))
+        if let refusal = core.app.current.view.asking?.refusal {
+            core.app.send(.cancel)
+            problem = refusal
+            Announcer.say(refusal)
+            return
         }
+        dismiss()
     }
 }

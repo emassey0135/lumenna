@@ -151,7 +151,7 @@ final class LumennaWatchUITests: XCTestCase {
             XCTAssertTrue(row.exists || reveal(row, form: true).exists, "no \(picker) picker: \(app.debugDescription)")
         }
         type("Deep work", into: name)
-        reveal(app.buttons["Save"], form: true).tap()
+        reveal(app.buttons["blockForm.save"], form: true).tap()
         let block = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Deep work'")).firstMatch
         XCTAssertTrue(block.waitForExistence(timeout: 5) || reveal(block).exists)
     }
@@ -169,7 +169,7 @@ final class LumennaWatchUITests: XCTestCase {
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         type("Writing", into: name)
-        reveal(app.buttons["Save"], form: true).tap()
+        reveal(app.buttons["blockForm.save"], form: true).tap()
         let heading = app.buttons["day.heading"]
         XCTAssertTrue(heading.waitForExistence(timeout: 5) || reveal(heading, upward: true).exists)
         reveal(heading, upward: true).tap()
@@ -192,7 +192,7 @@ final class LumennaWatchUITests: XCTestCase {
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         type("Deep work", into: name)
-        reveal(app.buttons["Save"], form: true).tap()
+        reveal(app.buttons["blockForm.save"], form: true).tap()
         let block = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Deep work'")).firstMatch
         XCTAssertTrue(block.waitForExistence(timeout: 5) || reveal(block).exists)
         reveal(block).tap()

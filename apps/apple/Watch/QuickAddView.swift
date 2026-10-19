@@ -1,52 +1,69 @@
+import LumennaApp
 import SwiftUI
 
-/// Quick add: one line, read back by the core before anything is saved, as on every app.
-/// Dictation, Scribble and the keyboard all come with the text field.
+/// Quick add: the app's quick-add line (`ViewModel.line`), read back by the core before
+/// anything is saved, as on every app. Dictation, Scribble and the keyboard all come with the
+/// text field.
 struct QuickAddView: View {
     @EnvironmentObject private var core: WatchCore
     @Environment(\.dismiss) private var dismiss
-    @State private var text: String
-
-    /// `prefix` starts the line, as on the phone: the place's project or label, there to be
-    /// seen and changed.
-    init(prefix: String) {
-        _text = State(initialValue: prefix)
-    }
+    /// Whether the line starts empty, whatever the place shown adds: from the places.
+    var fresh = false
+    @State private var text = ""
+    /// Whether the line was added or put away, so it is put away once.
+    @State private var closed = false
+    @State private var refused: String?
 
     var body: some View {
-        let readback = preview
-        List {
+        _ = core.generation
+        let line = core.app.view.line
+        return List {
             // Named explicitly: with text in it, a field's title gives way to the text.
             TextField("Task", text: $text)
                 .accessibilityLabel("Task")
+                .onChange(of: text) { _, text in typed(text) }
             // After the line is entered, what could finish its last word, beside it.
             CompletionOffer(text: $text, syntax: .quickAdd)
-            switch readback {
-            case let .success(readback):
-                // What will be saved, before anything is: a misheard date is caught here.
-                Text(readback.announcement.prefix(1).uppercased() + readback.announcement.dropFirst())
-                    .font(.footnote)
-                ForEach(readback.notices, id: \.self) { notice in
-                    Text(notice).font(.footnote).foregroundStyle(Color.quietLabel)
-                }
-            case let .failure(error):
-                // Why the line cannot be read yet, in the core's words, as the phone says it.
-                Text(error.sentence).font(.footnote).foregroundStyle(Color.warningLabel)
-            case nil:
-                EmptyView()
+            if let refused {
+                Text(refused).font(.footnote).foregroundStyle(Color.warningLabel)
+            } else if let readback = line?.readback, !blank {
+                // What will be saved, before anything is, the errors with it: a misheard date
+                // is caught here.
+                Text(readback).font(.footnote)
             }
-            Button("Add") {
-                if core.act({ try core.lumenna.addTask(text: line) }) { dismiss() }
-            }
-            .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
+            Button("Add") { add() }
+                .disabled(blank)
         }
         .navigationTitle("New Task")
+        .onAppear {
+            // The line opens with what the place shown adds, there to be seen and changed.
+            core.app.send(.typing(.open))
+            text = fresh ? "" : core.app.current.view.line?.text ?? ""
+            typed(text)
+        }
+        .onDisappear {
+            guard !closed else { return }
+            closed = true
+            core.app.send(.typing(.close))
+        }
     }
 
-    private var line: String { text }
+    private var blank: Bool { text.trimmingCharacters(in: .whitespaces).isEmpty }
 
-    private var preview: Result<Preview, Error>? {
-        guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-        return Result { try core.lumenna.previewTask(text: line) }
+    private func typed(_ text: String) {
+        refused = nil
+        core.app.send(.typing(.text(text: text, cursor: UInt32(text.utf8.count))))
+    }
+
+    /// The app adds it and says what it added; a line it refuses stays here with why.
+    private func add() {
+        core.app.send(.quickAdd(text))
+        if let refusal = core.app.current.view.addRefused {
+            refused = refusal
+            Announcer.say(refusal)
+            return
+        }
+        closed = true
+        dismiss()
     }
 }

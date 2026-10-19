@@ -61,7 +61,6 @@ fn merged(description: String, edits: Vec<Edit>) -> Edit {
     Edit { description, changes: edits.into_iter().flat_map(|e| e.changes).collect() }
 }
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// Ends the block under way now (`<series>@<date>`): that day of it is as long as it has
     /// run, a minute at least.

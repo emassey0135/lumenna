@@ -151,7 +151,6 @@ pub(crate) fn offer_words(offers: &[Offer], today: jiff::civil::Date) -> Option<
     Some(format!("{}.{question}", listed(&parts)))
 }
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// Carries the rest of every sitting `block` (`<series>@<date>`) left short to the next
     /// block that takes its task, as its end offered: each old sitting marked as moved on.

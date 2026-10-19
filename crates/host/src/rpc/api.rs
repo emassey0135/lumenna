@@ -1,7 +1,7 @@
 //! What one command produced, as `lum --json` and every RPC server carry it.
 //!
 //! The operations and the records they return are `lumenna_host`'s — the same ones the
-//! phone apps get through UniFFI. What is here is the envelope a terminal and a pipe need on
+//! apps get through BoltFFI. What is here is the envelope a terminal and a pipe need on
 //! top: the contract version, a `result` tag a reader can dispatch on, and whether text mode
 //! should stay quiet. Every payload carries its own `announcement` and `notices`, so a
 //! [`Response`] has nothing to compose.

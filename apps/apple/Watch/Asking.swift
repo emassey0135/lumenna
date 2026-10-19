@@ -1,53 +1,51 @@
+import LumennaApp
 import SwiftUI
 
-/// How the watch asks an action's questions (`ActionRun`): each a sheet of its own, as the
-/// phone's alerts and pickers are. A view holds one and shows its `asked`.
-final class WatchAsker: ObservableObject, ActionAsking {
+/// How the watch asks the app's questions (`AppQuestions`): each a sheet of its own, as the
+/// phone's alerts and pickers are. The root holds one and shows its `asked`.
+final class WatchAsker: ObservableObject {
     @Published var asked: Asked?
     private let core: WatchCore
-    /// What to do if the sheet shown for one of the app's questions goes without an answer.
-    private var gone: (() -> Void)?
+    /// The sheet shown, which `dismissed` hears close.
+    private var showing: Asked?
+    /// What to show once the sheet in front has gone.
+    private var next: Asked?
 
     init(core: WatchCore) {
         self.core = core
     }
 
-    /// Shows `view`, once the sheet in front has closed, so the two do not collide.
-    func show(_ view: some View) {
-        let shown = AnyView(view)
-        if asked == nil {
-            asked = Asked(shown)
+    /// Shows `view`, once the sheet in front has closed, so the two do not collide. `gone` is
+    /// what its closing without an answer means — Cancel, or the sheet swiped away.
+    func show(_ view: some View, gone: (() -> Void)? = nil) {
+        let shown = Asked(view, gone: gone)
+        if asked == nil, showing == nil {
+            showing = shown
+            asked = shown
         } else {
+            next = shown
             asked = nil
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.asked = Asked(shown) }
         }
     }
 
-    func askConfirm(title: String, message: String, yes: String, destructive: Bool, then: @escaping () -> Void) {
-        // Cancel first: what cannot be undone is never the first thing under a finger.
-        show(ChoicePrompt(title: title, message: message, cancel: true, choices: [(yes, then)]))
+    /// Closes the sheet shown, its closing meaning nothing: the app let it go.
+    func close() {
+        showing?.gone = nil
+        asked = nil
     }
 
-    func askText(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, then: @escaping (String) -> Void) {
-        let message = [problem, hint.isEmpty ? nil : hint].compactMap { $0 }.joined(separator: " ")
-        show(TextPrompt(title, message: message.isEmpty ? nil : message, initial: initial, placeholder: label, action: yes, allowsEmpty: true, done: then))
-    }
-
-    // A watch's pick is a list of buttons, each answering by itself: no button names the answer.
-    func askPick(title: String, choices: [Choice], yes: String, then: @escaping (Choice) -> Void) {
-        show(PickPrompt(title: title, choices: choices, chosen: then))
-    }
-
-    func askChoose(title: String, message: String, answers: [Choice], then: @escaping (Choice) -> Void) {
-        show(ChoicePrompt(title: title, message: message, choices: answers.map { answer in (answer.title, { then(answer) }) }))
-    }
-
-    /// From the lengths a sitting usually takes, or none: quicker on a watch than typing.
-    func askLength(hint: String, then: @escaping (String) -> Void) {
-        let title = if case let .text(title, _, _, _, _, _, _) = lengthQuestion() { title } else { "Planned Length" }
-        show(LengthChoice(title: title, without: "No Planned Length") { minutes in
-            then(minutes.map { "\($0)m" } ?? "")
-        })
+    /// The sheet closed: answered already, or not, which its `gone` says; then whatever waits.
+    func dismissed() {
+        let closed = showing
+        showing = nil
+        closed?.gone?()
+        guard let next else { return }
+        self.next = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            guard let self, self.asked == nil, self.showing == nil else { return }
+            self.showing = next
+            self.asked = next
+        }
     }
 
     func tell(title: String, _ sentence: String) {
@@ -55,34 +53,18 @@ final class WatchAsker: ObservableObject, ActionAsking {
         core.failure = sentence
     }
 
-    func fail(_ sentence: String) {
-        asked = nil
-        core.failure = sentence
-    }
-
-    /// A task's or block's reminders, the form the Mac shows too (`Shared/Forms/ReminderList.swift`).
-    func openReminders(_ action: Action) {
-        show(SurfaceRemindersForm(model: SurfaceRemindersModel(core: core, target: action.target)).navigationTitle("Reminders"))
-    }
-
-    /// Runs one of the core's actions; a form opens through `form`. What changed redraws every
-    /// view, goes to the phone, and is said.
-    func run(_ action: Action, form: (Action) -> Void = { _ in }, done: @escaping (Change) -> Void = { _ in }) {
-        ActionRun.run(action, on: core.lumenna, asking: self, form: form) { [weak self] change, _ in
-            self?.core.changed()
-            Announcer.say(change.announcement, notices: change.notices)
-            done(change)
-        }
-    }
-
-    /// A row's actions offered when it is tapped, with any of the row's own after them: the
-    /// row's primary ones first, as the phone swipes them, then the rest in the core's order,
-    /// and whatever removes something last, never the first thing under a finger.
-    func offer(_ title: String, _ actions: [Action], extra: [(String, () -> Void)] = [], form: @escaping (Action) -> Void = { _ in }) {
+    /// A row's actions, the app's, offered when it is tapped, with any of the row's own after
+    /// them: the row's primary ones first, as the phone swipes them, then the rest in the app's
+    /// order, and whatever removes something last, never the first thing under a finger. Each
+    /// runs on the row `key`, held where `side` says.
+    func offer(
+        _ title: String, _ actions: [LumennaApp.Action], on key: String, side: LumennaApp.Side? = nil,
+        extra: [(String, () -> Void)] = []
+    ) {
         let kept = actions.filter { !$0.destructive }
         let ordered = kept.filter(\.primary) + kept.filter { !$0.primary } + actions.filter(\.destructive)
         show(ChoicePrompt(title: title, choices: ordered.map { action in
-            (action.title, { [weak self] in self?.run(action, form: form) })
+            (action.title, { [weak self] in self?.core.app.run(action, on: key, side: side) })
         } + extra))
     }
 }
@@ -93,15 +75,7 @@ final class WatchAsker: ObservableObject, ActionAsking {
 extension WatchAsker: QuestionAsking {
     /// Shows `view` for one of the app's questions, `gone` its answer if it closes unanswered.
     private func ask(_ view: some View, gone: @escaping () -> Void) {
-        self.gone = gone
-        show(view)
-    }
-
-    /// The sheet closed: answered already, or not, which `gone` says.
-    func dismissed() {
-        let gone = self.gone
-        self.gone = nil
-        gone?()
+        show(view, gone: gone)
     }
 
     func confirm(title: String, message: String, yes: String, destructive: Bool, answered: @escaping (Bool) -> Void) {
@@ -180,40 +154,6 @@ private struct OfferedPrompt: View {
                     picked(.anotherDay)
                     dismiss()
                 }
-            }
-        }
-        .navigationTitle(title)
-    }
-}
-
-/// One of what the core offers for an action, each a button. A tree's depth is said where it
-/// changes, as the watch's lists say it, never by indentation.
-private struct PickPrompt: View {
-    @Environment(\.dismiss) private var dismiss
-    let title: String
-    let choices: [Choice]
-    let chosen: (Choice) -> Void
-
-    var body: some View {
-        List {
-            ForEach(Array(choices.enumerated()), id: \.offset) { index, choice in
-                let previous = index > 0 ? choices[index - 1].depth : 0
-                let level = choice.depth != previous ? "level \(choice.depth + 1)" : nil
-                Button {
-                    dismiss()
-                    chosen(choice)
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(choice.shownTitle)
-                        // Why it is offered, the core's: a line beneath, and the hint.
-                        if let reason = choice.reason {
-                            Text(reason).font(.footnote).foregroundStyle(Color.quietLabel)
-                        }
-                    }
-                }
-                .accessibilityLabel(choice.shownTitle)
-                .accessibilityValue([choice.shownDetail, level].compactMap { $0 }.joined(separator: ", "))
-                .accessibilityHint(choice.reason ?? "")
             }
         }
         .navigationTitle(title)

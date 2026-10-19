@@ -46,6 +46,9 @@ final class AppQuestions {
     /// Opens the app's own form for an action that asks one (`Question.form`): a task's
     /// details, a reminder list.
     private let form: (LumennaApp.Action) -> Void
+    /// The questions a screen answers itself, which this leaves alone: the reminder list's Add
+    /// Reminder on the Mac and the watch, whose field is the list's own.
+    var answeredElsewhere: (LumennaApp.Asking) -> Bool = { _ in false }
     /// Whether a question is being asked and not yet answered.
     private var asking = false
     /// What was typed into the last line asked, for asking it again when refused.
@@ -71,7 +74,7 @@ final class AppQuestions {
     func update() {
         guard !asking, let asker, app.view.asking != nil else { return }
         let (view, lines) = app.current
-        guard let open = view.asking else { return }
+        guard let open = view.asking, !answeredElsewhere(open) else { return }
         let action = open.action
         let cancel = { [app] in app.send(.cancel) }
         let answer = { [app] (given: LumennaApp.Answer) in app.send(.answer(given)) }

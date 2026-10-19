@@ -7,7 +7,6 @@ use crate::error::{LumennaError, Result};
 use crate::history::{TaskHistory, history_words, round, urgency_view};
 use crate::{Lumenna, repaired, resolve};
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// A task's history and what makes up its urgency: asked for about one task, never said
     /// unasked.

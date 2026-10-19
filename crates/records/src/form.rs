@@ -17,7 +17,6 @@ use crate::words::duration;
 /// A task's editable fields, as a form shows them: all text, apart from the priority.
 #[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct TaskFields {
     /// The title.
     pub title: String,
@@ -39,7 +38,6 @@ pub struct TaskFields {
 }
 
 /// A task's fields as a form starts from them.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn task_fields(task: TaskDetail) -> TaskFields {
     TaskFields {
@@ -62,7 +60,6 @@ pub fn task_fields(task: TaskDetail) -> TaskFields {
 /// what the form merely showed would revert someone else's change. Spacing around a field is
 /// not a change; a field emptied means "none"; an emptied project is not a move, since a task
 /// is always in one; a leading `@` typed on a label name out of habit is dropped.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn task_edit(task: TaskDetail, fields: TaskFields) -> Option<TaskEdit> {
     let before = task_fields(task);
@@ -91,14 +88,12 @@ fn label_names(text: &str) -> Vec<String> {
 
 /// A project as a filter or a quick-add line names it: `#Work`, or `#"Home Office"`. What a
 /// project's task list queries, and what a task added there starts with.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn project_reference(name: String) -> String {
     quoted("#", &name)
 }
 
 /// A label as a filter or a quick-add line names it: `@calls`, or `@"deep work"`.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn label_reference(name: String) -> String {
     quoted("@", &name)
@@ -107,7 +102,6 @@ pub fn label_reference(name: String) -> String {
 /// A sitting's status with its planned length beside it: "planned for 45 minutes" before it
 /// starts, then "worked" and "45 minutes planned", so the two never read as "planned,
 /// planned".
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn sitting_status(sitting: PlanAssignment) -> Vec<String> {
     match sitting.planned_mins {
@@ -120,7 +114,6 @@ pub fn sitting_status(sitting: PlanAssignment) -> Vec<String> {
 /// The settings a kind of block has unless a block sets them apart: what a block
 /// form's check buttons start from, and go back to when the kind is changed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct BlockDefaults {
     /// Whether tasks can be put in it.
     pub accepts_tasks: bool,
@@ -132,7 +125,6 @@ pub struct BlockDefaults {
 
 /// What a kind of block — `work`, `break` or `event` — has unless set apart, or `None` for a
 /// word that is not a kind.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn block_defaults(kind: String) -> Option<BlockDefaults> {
     let flags = crate::resolve::block_kind(&kind).ok()?.default_flags();
@@ -146,7 +138,6 @@ pub fn block_defaults(kind: String) -> Option<BlockDefaults> {
 /// A block's editable fields, as a form shows them: all text, apart from the three flags.
 #[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct BlockFields {
     /// What it is called.
     pub title: String,
@@ -178,7 +169,6 @@ pub struct BlockFields {
 }
 
 /// A block's fields as the form for every occurrence starts from them.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn block_fields(block: BlockShown) -> BlockFields {
     BlockFields {
@@ -200,7 +190,6 @@ pub fn block_fields(block: BlockShown) -> BlockFields {
 
 /// One day's block as the form for that day alone starts from it: its time, length, title,
 /// kind and flags, which are all one day can change. The rest stays empty and unchanged.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn day_block_fields(block: PlanBlock) -> BlockFields {
     BlockFields {
@@ -227,7 +216,6 @@ pub fn day_block_fields(block: PlanBlock) -> BlockFields {
 /// # Errors
 ///
 /// If the length or the shortest length is not a whole number of minutes.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn block_edit(before: BlockFields, after: BlockFields) -> Result<Option<BlockEdit>> {
     let changed = |now: &str, was: &str| now.trim() != was.trim();
     let text = |now: &str, was: &str| changed(now, was).then(|| now.trim().to_owned());
@@ -270,7 +258,6 @@ pub fn block_edit(before: BlockFields, after: BlockFields) -> Result<Option<Bloc
 /// # Errors
 ///
 /// If the length or the shortest length is not a whole number of minutes.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn new_block(fields: BlockFields, date: Option<String>) -> Result<NewBlock> {
     let given = |text: &str| Some(text.trim().to_owned()).filter(|t| !t.is_empty());
     let defaults = block_defaults(fields.kind.clone());
@@ -302,13 +289,11 @@ fn whole_minutes(text: &str, what: &str) -> Result<u32> {
 /// # Errors
 ///
 /// If it is none of those.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn parse_minutes(text: String) -> Result<u32> {
     crate::resolve::minutes(&text)
 }
 
 /// The priorities a task can have, as a form offers them: `id` is the number.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn priorities() -> Vec<crate::actions::Choice> {
     [(1, "Priority 1, highest"), (2, "Priority 2"), (3, "Priority 3"), (4, "Priority 4, none")]
@@ -324,7 +309,6 @@ pub fn priorities() -> Vec<crate::actions::Choice> {
 /// # Errors
 ///
 /// If it is neither.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn parse_weight(text: String) -> Result<Weight> {
     let text = text.trim();
     if text.eq_ignore_ascii_case("inherit") {

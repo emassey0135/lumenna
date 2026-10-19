@@ -1,6 +1,6 @@
 # Lumenna on Android
 
-Jetpack Compose over the Crux app (`crates/mobile`), through BoltFFI's Kotlin bindings. Four
+Jetpack Compose over the Crux app (`crates/ffi`), through BoltFFI's Kotlin bindings. Four
 tabs as on the iPhone — Today, Tasks, Browse, Settings — each with its own back stack, and
 every rule the core's: the screens draw what the app shows and send what the person did.
 

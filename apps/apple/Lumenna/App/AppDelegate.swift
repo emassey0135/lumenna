@@ -23,7 +23,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         // At launch, since a message from the watch is what starts the app in the background.
         if case let .success(core) = AppDelegate.core {
             // What the Crux app's connection writes, the screens still on the surface redraw for.
-            core.watchForOtherProcesses()
+            core.watchForChanges()
             watchLink = WatchLink(core: core)
             // Before launching finishes, so a reminder's button pressed while the app was not
             // running reaches it.

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds Lumenna's core for the BTSpeak app: the Crux app and the device's store, through
-# BoltFFI's Python target (crates/mobile), as a CPython extension for the Python that runs it,
+# BoltFFI's Python target (crates/ffi), as a CPython extension for the Python that runs it,
 # unpacked into native/ beside the app. Build output, not committed.
 #
 #   apps/btspeak/build-core.sh [--debug]
@@ -30,7 +30,7 @@ module_name = "lumenna_app"
 output = "$BOLT/wheels"
 interpreters = ["$PYTHON"]
 TOML
-(cd "$ROOT/crates/mobile" && boltffi pack python $RELEASE --overlay "$BOLT/overlay.toml")
+(cd "$ROOT/crates/ffi" && boltffi pack python $RELEASE --overlay "$BOLT/overlay.toml")
 
 # The wheel's package, unpacked where the app finds it (core.py), in place of the last.
 rm -rf "$APP/native"

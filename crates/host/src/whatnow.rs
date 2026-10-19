@@ -16,7 +16,6 @@ use crate::{Lumenna, repaired, resolve};
 use crate::plan::{Now, where_now};
 
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// What to work on now, best first, as the day's What Should I Work On? offers it. `now`
     /// is for tests, a local date and time.

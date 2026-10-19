@@ -1,22 +1,6 @@
 import LumennaApp
 import UIKit
 
-/// One row of a list drawn from the app: what identifies it to the app (the key it is held
-/// by), how it reads, and what can be done to it, the app's.
-struct AppItem: Hashable {
-    var key: String
-    var title: String
-    var detail: String?
-    var depth: UInt32 = 0
-    /// What VoiceOver says after the title: the detail, then folding and the level.
-    var spoken: String?
-    /// A heading over the items under it, as the sidebar's Projects and Labels are.
-    var heading = false
-    var actions: [LumennaApp.Action] = []
-    /// Why it is offered, a line beneath and VoiceOver's hint, never its name.
-    var reason: String?
-}
-
 /// A plain list drawn from the app, with the task list's focus rules: the app keeps the row in
 /// hand after a change — the same row, else whatever holds its place — and when it moved it
 /// (its landing count went up) VoiceOver goes there; a redraw for anything else leaves focus
@@ -261,49 +245,5 @@ extension AppListViewController {
     ) -> UIContextMenuConfiguration? {
         guard paths.count == 1, let item = item(at: paths[0]) else { return nil }
         return rowActions(for: item).contextMenu
-    }
-}
-
-extension AppModel {
-    /// The sidebar's rows as a list shows them, not folded away, each saying its detail, whether
-    /// it is folded and, against the row shown before, its level — what a tree would say itself.
-    /// `under` limits them to one heading's places, a level up.
-    func sidebarItems(under group: LumennaApp.SidebarGroup? = nil) -> [AppItem] {
-        // The rows the app has collapsed: what is deeper under each is left out.
-        let folded = Set(view.sidebarFolded)
-        var items: [AppItem] = []
-        var inside = group == nil
-        var previous: UInt32 = 0
-        var hiddenBelow: UInt32?
-        for entry in view.sidebar {
-            if let group {
-                if entry.depth == 0 {
-                    if case let .group(heading) = entry.kind { inside = heading == group } else { inside = false }
-                    hiddenBelow = nil
-                    continue
-                }
-                guard inside else { continue }
-            }
-            if let below = hiddenBelow {
-                if entry.depth > below { continue }
-                hiddenBelow = nil
-            }
-            if folded.contains(entry.key) { hiddenBelow = entry.depth }
-            let depth = group == nil ? entry.depth : entry.depth - 1
-            let expanded: Bool? = entry.actions.contains { $0.kind == .collapse } ? true
-                : entry.actions.contains { $0.kind == .expand } ? false : nil
-            let level = depth != previous ? "level \(depth + 1)" : nil
-            previous = depth
-            var item = AppItem(key: entry.key, title: entry.title, detail: entry.detail.isEmpty ? nil : entry.detail, depth: depth, actions: entry.actions)
-            item.spoken = AppModel.spoken(detail: entry.detail, expanded: expanded, level: level)
-            if case .group = entry.kind { item.heading = true }
-            items.append(item)
-        }
-        return items
-    }
-
-    /// The sidebar entry held by `key`.
-    func sidebarEntry(_ key: String) -> LumennaApp.SidebarEntry? {
-        view.sidebar.first { $0.key == key }
     }
 }

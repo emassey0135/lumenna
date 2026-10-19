@@ -9,7 +9,6 @@ use crate::error::Result;
 use crate::types::{Completions, Preview, Syntax};
 use crate::{Lumenna, repaired};
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// What could be inserted at `cursor`, a UTF-8 byte offset into `text`.
     ///

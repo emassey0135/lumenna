@@ -10,6 +10,8 @@ final class LumennaUITests: XCTestCase {
         app = XCUIApplication()
         // A fresh store for every test, in the app's temporary directory.
         app.launchEnvironment["LUMENNA_TEST_PROFILE"] = UUID().uuidString
+        // The SwiftUI trial's lists, when the run asks for them (TEST_RUNNER_LUMENNA_SWIFTUI).
+        app.launchEnvironment["LUMENNA_SWIFTUI"] = ProcessInfo.processInfo.environment["LUMENNA_SWIFTUI"]
         app.launch()
         // The app opens on the day; most of these tests are about tasks.
         tab("Tasks")
@@ -117,8 +119,16 @@ final class LumennaUITests: XCTestCase {
     }
 
     private func row(_ title: String) -> XCUIElement {
-        app.cells.matching(NSPredicate(format: "label == %@", title)).firstMatch
+        // The SwiftUI trial's task rows are buttons in their cells, labelled as the cells are.
+        let rows = trial ? app.cells.buttons : app.cells
+        return rows.matching(NSPredicate(format: "label == %@", title)).firstMatch
     }
+
+    /// Whether the run is the SwiftUI trial's (`LUMENNA_SWIFTUI`).
+    private var trial: Bool { ProcessInfo.processInfo.environment["LUMENNA_SWIFTUI"] != nil }
+
+    /// The filter field: a text view in UIKit's list, a text field in the SwiftUI trial's.
+    private var filterField: XCUIElement { trial ? app.textFields["Filter"] : app.textViews["Filter"] }
 
     func testAddingATaskReadsItBackAndListsIt() {
         app.buttons["Add task"].tap()
@@ -176,7 +186,7 @@ final class LumennaUITests: XCTestCase {
     func testAFilterSaysHowItWasUnderstood() {
         add("urgent thing p1")
         add("other thing")
-        let filter = app.textViews["Filter"]
+        let filter = filterField
         filter.tap()
         filter.typeText("p1")
         let readback = app.staticTexts.containing(NSPredicate(format: "label CONTAINS '1 task'"))

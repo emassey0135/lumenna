@@ -1,30 +1,29 @@
+import LumennaApp
 import UIKit
 
-/// Choosing one of what the core offers for an action (`Lumenna.choices`): a task to wait
-/// for or go under, a project, a label, a work block. In a sheet, as a list with the task
-/// list's look: a tree's depth is indentation for sight, and said in words where it changes.
-final class ChoicePicker: ItemListViewController {
-    private let offered: [Item]
+/// Choosing one of what the app offers for an action (`Asking.choices`): a task to wait for or
+/// go under, a project, a label, a work block. In a sheet, as a list with the task list's look:
+/// a tree's depth is indentation for sight, and said in words where it changes. Why each is
+/// offered is its second line and its hint.
+final class ChoicePicker: AppListViewController {
+    private let offered: [AppItem]
     private let count: String
     private let chosen: (String) -> Void
     private let cancelled: () -> Void
     /// Whether the sheet was closed by a choice, not by Cancel or a swipe down.
     private var answered = false
 
-    /// The surface's choices, worded here.
-    convenience init(core: Core, title: String, choices: [Choice], chosen: @escaping (Choice) -> Void) {
-        let items = choices.map { choice in
-            Item(key: choice.id, title: choice.shownTitle, detail: choice.shownDetail, depth: choice.depth, reason: choice.reason)
-        }
-        self.init(core: core, title: title, items: items, chosen: { id in
-            if let choice = choices.first(where: { $0.id == id }) { chosen(choice) }
-        }, cancelled: {})
-    }
-
     /// What the app offers, as it words it, and the app's "another day" as a row of its own at
     /// the foot, keyed `ChoicePicker.anotherDay`.
-    init(core: Core, title: String, items: [Item], chosen: @escaping (String) -> Void, cancelled: @escaping () -> Void) {
-        self.offered = items
+    init(core: Core, title: String, items: [AppItem], chosen: @escaping (String) -> Void, cancelled: @escaping () -> Void) {
+        var previous: UInt32 = 0
+        offered = items.map { item in
+            var item = item
+            let level = item.depth != previous ? "level \(item.depth + 1)" : nil
+            previous = item.depth
+            item.spoken = AppModel.spoken(detail: item.detail, expanded: nil, level: level)
+            return item
+        }
         let choices = items.filter { $0.key != Self.anotherDay }.count
         count = choices == 1 ? "1 choice" : "\(choices) choices"
         self.chosen = chosen
@@ -36,6 +35,8 @@ final class ChoicePicker: ItemListViewController {
     static let anotherDay = "\u{0}another-day"
 
     override var offersUndo: Bool { false }
+    /// A pick's rows are its own: the app moves nothing in it.
+    override var held: (focus: String?, landing: UInt32) { (nil, 0) }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -53,18 +54,13 @@ final class ChoicePicker: ItemListViewController {
         }
     }
 
-    override func load() throws -> (items: [Item], count: String) {
+    override func rows() -> (items: [AppItem], count: String)? {
         (offered, count)
     }
 
-    override func open(_ item: Item) {
+    override func open(_ item: AppItem) {
         answered = true
         let chosen = self.chosen
         dismiss(animated: true) { chosen(item.key) }
-    }
-
-    static func present(from presenter: UIViewController, core: Core, title: String, choices: [Choice], chosen: @escaping (Choice) -> Void) {
-        let picker = ChoicePicker(core: core, title: title, choices: choices, chosen: chosen)
-        presenter.present(UINavigationController(rootViewController: picker), animated: true)
     }
 }

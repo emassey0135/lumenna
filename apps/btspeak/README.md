@@ -12,7 +12,7 @@ made every accessibility decision, consistently, device-wide. This app draws the
 python3 __main__.py
 ```
 
-`build-core.sh` builds the core as a Python extension (`crates/mobile` through BoltFFI's
+`build-core.sh` builds the core as a Python extension (`crates/ffi` through BoltFFI's
 Python target, `boltffi pack python`) and unpacks it into `native/`, which is not committed.
 It needs `boltffi` (`cargo install boltffi_cli --version 0.31.1`) and a Python of 3.10 or
 later with `pip`; the device has both, and builds it for itself, since it is aarch64 Linux.

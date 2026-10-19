@@ -12,6 +12,8 @@ final class LumennaMacUITests: XCTestCase {
         app = XCUIApplication()
         // A fresh store for every test, in the app's temporary directory.
         app.launchEnvironment["LUMENNA_TEST_PROFILE"] = profile
+        // The SwiftUI trial's lists, when the run asks for them (TEST_RUNNER_LUMENNA_SWIFTUI).
+        app.launchEnvironment["LUMENNA_SWIFTUI"] = ProcessInfo.processInfo.environment["LUMENNA_SWIFTUI"]
         app.launchEnvironment["LUMENNA_BACKUP_DIR"] = backups.path
         // No sync: on a fresh Mac, as CI's is, listening brings macOS's local-network and
         // incoming-connection prompts up over the window, which then has neither focus nor

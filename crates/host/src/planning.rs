@@ -18,7 +18,6 @@ use crate::{Lumenna, repaired};
 
 pub use lumenna_records::plan::WORK_BLOCK_DAYS;
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// The work blocks a task could go in, over `days` days from `from`: what putting
     /// a task in a block offers from the task itself, rather than from a day. `from` is a date

@@ -246,7 +246,6 @@ impl Lumenna {
 }
 
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// The reminders that came due after `since` (RFC 3339) up to `now` (now when absent):
     /// what a running process asks each time it looks. Those from more than a few minutes
@@ -429,14 +428,12 @@ impl Lumenna {
 /// Mac app and `lum notify`, say) would each say every one. Dropped, it lets another take
 /// over.
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 #[derive(Debug)]
 pub struct ReminderLock {
     _file: std::fs::File,
 }
 
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// Takes the right to give this device's reminders, or `None` while another process
     /// holds it; ask again now and then, as a sync service waits its turn.

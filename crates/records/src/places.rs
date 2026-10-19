@@ -15,7 +15,6 @@ use crate::{label_reference, project_reference};
 /// Somewhere to go.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum Place {
     /// The day planner.
     Today,
@@ -74,7 +73,6 @@ impl Place {
 /// What a sidebar row is.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum SidebarKind {
     /// Somewhere to go.
     Place(Place),
@@ -85,7 +83,6 @@ pub enum SidebarKind {
 /// The sidebar's headings.
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum SidebarGroup {
     /// The project tree.
     Projects,
@@ -121,7 +118,6 @@ impl SidebarGroup {
 /// One sidebar row.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct SidebarEntry {
     /// What it is.
     pub kind: SidebarKind,
@@ -172,7 +168,6 @@ pub fn line(title: &str, detail: &str) -> String {
 
 /// The sidebar, for an app that cannot call [`sidebar`] itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Places {
     /// How many places there are, in a sentence.
     pub announcement: String,
@@ -187,21 +182,18 @@ crate::announced!(Places);
 
 
 /// What a place is called while it is shown.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn place_title(place: &Place) -> String {
     place.title()
 }
 
 /// The query a task list for a place starts from.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn place_query(place: &Place) -> String {
     place.query()
 }
 
 /// What a new task typed in a place starts with.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn place_quick_add_prefix(place: &Place) -> String {
     place.quick_add_prefix()

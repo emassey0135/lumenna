@@ -1,4 +1,5 @@
 import Foundation
+import LumennaApp
 
 /// Times and durations as a person says them, in their own locale.
 ///
@@ -33,7 +34,7 @@ enum Clock {
 
     /// The clock this device says times in, for what the core words with times in it (a
     /// proposal's sentences): the locale's, or the person's own 24-hour setting.
-    static var style: TimeStyle {
+    static var style: LumennaApp.TimeStyle {
         let format = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: .current) ?? ""
         return format.contains("a") ? .twelveHour : .twentyFourHour
     }

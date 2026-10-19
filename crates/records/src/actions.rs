@@ -26,7 +26,6 @@ use crate::types::{CancelledBlock, PlanAssignment, PlanBlock, PlanItem, Rows};
 /// everywhere: Delete is [`ActionKind::Delete`] on whatever row has focus.
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[serde(rename_all = "snake_case")]
 pub enum ActionKind {
     /// Complete a task.
@@ -132,7 +131,6 @@ pub enum ActionKind {
 /// What an action is done to: with [`ActionKind`], what runs.
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[serde(rename_all = "snake_case")]
 pub enum Subject {
     /// A task, by identifier.
@@ -163,7 +161,6 @@ pub enum Subject {
 /// One thing that can be done, and what it asks first.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Action {
     /// What it does.
     pub kind: ActionKind,
@@ -194,7 +191,6 @@ pub struct Action {
 /// What an action asks before it runs, which the client asks its own way.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[serde(tag = "ask", rename_all = "snake_case")]
 pub enum Question {
     /// Nothing: it runs at once, answered [`Answer::Yes`].
@@ -255,7 +251,6 @@ pub enum Question {
 /// Something to choose.
 #[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Choice {
     /// What [`Answer::Picked`] sends back.
     pub id: String,
@@ -279,14 +274,12 @@ pub struct Choice {
     /// Why it is offered where it is, for its description: "Suggested because overdue by
     /// 2 days, priority 1, and its estimate of 30 minutes fits the 35 minutes left."
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub reason: Option<String>,
 }
 
 /// What a picker offers.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Choices {
     /// How many there are; or, when there are none, why, which is all a client says.
     pub announcement: String,
@@ -302,7 +295,6 @@ crate::announced!(Choices);
 /// The answer to an action's question.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[serde(tag = "answer", rename_all = "snake_case")]
 pub enum Answer {
     /// Go ahead: an immediate action, or a confirmation.
@@ -726,7 +718,6 @@ fn sentenced(mut question: Question) -> Question {
 }
 
 /// What Go to Day asks, in every client that has it.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn go_to_day_question() -> Question {
     let Question::Text { title, label, initial, hint, optional, sentence, .. } =
@@ -738,7 +729,6 @@ pub fn go_to_day_question() -> Question {
 }
 
 /// What a new saved filter asks, in two steps: its name, then its query.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn new_filter_questions() -> Vec<Question> {
     let step = |label: &str, hint: &str, yes: &str| {
@@ -753,7 +743,6 @@ pub fn new_filter_questions() -> Vec<Question> {
 }
 
 /// What a pick with a [`Question::Pick::length`] asks once something is picked.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn length_question() -> Question {
     let Question::Text { title, label, initial, hint, optional, sentence, .. } =
@@ -819,7 +808,6 @@ pub fn device(name: &str, node_id: &str, this_device: bool) -> Vec<Action> {
 
 /// Why a row does not offer `kind`, for a key or a menu command pressed on it anyway:
 /// silence would leave a screen-reader user guessing. `this_device` is a device row's own.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn not_offered(kind: ActionKind, subject: Subject, this_device: bool) -> String {
     match (subject, kind) {

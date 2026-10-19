@@ -34,12 +34,10 @@ use crate::{Lumenna, SyncService};
 /// The command surface served at this profile's address, for as long as it lives or until
 /// stopped: what a desktop app runs beside its sync, so Emacs and the BTSpeak app reach the
 /// app as they would the daemon.
-#[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub struct CommandServer {
     endpoint: Mutex<Option<Endpoint>>,
 }
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl CommandServer {
     /// Stops serving, and gives the address up.
     pub fn stop(&self) {
@@ -50,7 +48,6 @@ impl CommandServer {
     }
 }
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// Serves the command surface at this profile's address while `service` holds the
     /// device's endpoint, answering a `sync` with a round on it. `app` is what a client is

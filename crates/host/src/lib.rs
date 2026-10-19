@@ -9,9 +9,11 @@
 //! # Every client, one definition
 //!
 //! - **The command line** links this crate and renders what it returns (`apps/cli`).
-//! - **iOS, macOS, Android and Wear OS** get the same object through UniFFI (the `uniffi`
-//!   feature, built by `crates/ffi`): a Swift `Lumenna` class whose methods return Swift
-//!   structs, checked by the compiler on both sides. Nothing crosses the boundary as JSON.
+//! - **The Windows and GTK apps** link it directly.
+//! - **The Apple apps, Android, Wear OS, the web and BTSpeak** run the Crux app
+//!   (`crates/app`), whose writes the bridge answers with these operations, and reach what
+//!   runs without the screens through the device (`crates/ffi`), both over BoltFFI: typed
+//!   records, checked by the compiler on both sides. Nothing crosses the boundary as JSON.
 //! - **Emacs and the BTSpeak app**, which cannot link Rust, reach it over `lum rpc`, which
 //!   serialises these same records. The JSON-RPC layer is an adapter over this crate, not
 //!   the definition of the surface.
@@ -91,9 +93,6 @@ pub use sync::{PairingPrompt, SyncListener, SyncLoop, keep_in_sync};
 pub use sync::{LinkStream, SyncService};
 pub use types::*;
 
-#[cfg(feature = "uniffi")]
-uniffi::setup_scaffolding!();
-
 /// The version of the shapes in [`types`], as `--json` and `lum rpc` carry them: a
 /// compatibility contract. Bumped when a shape changes in a way a reader could not survive.
 pub const CONTRACT: u32 = 1;
@@ -101,7 +100,6 @@ pub const CONTRACT: u32 = 1;
 /// One open store, and everything that can be done with it.
 ///
 /// Safe to share between threads: each operation takes the store for as long as it runs.
-#[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub struct Lumenna {
     // Shared, so that a sync endpoint can work on the same connection the operations do:
     // what it brings in is visible at once, and what they write it can see to send on.
@@ -120,7 +118,6 @@ pub struct Lumenna {
     merged: std::sync::atomic::AtomicBool,
 }
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// Opens the profile in `directory`, creating it if this is the first run.
     ///
@@ -130,7 +127,6 @@ impl Lumenna {
     /// # Errors
     ///
     /// If the directory cannot be created or the store cannot be opened.
-    #[cfg_attr(feature = "uniffi", uniffi::constructor)]
     pub fn open(directory: &str) -> Result<Arc<Self>> {
         Self::open_at(Path::new(directory)).map(Arc::new)
     }
@@ -169,6 +165,18 @@ impl Lumenna {
         let mut store = self.store();
         store.refresh()?;
         Ok(store.outside_version()?)
+    }
+
+    /// The store's heads as one word, which moves for every write, this connection's own
+    /// included: for something sharing the connection that must notice those too, as the watch
+    /// does to send what it wrote to its phone. [`outside_version`](Self::outside_version)
+    /// moves only for other connections'.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn heads(&self) -> Result<String> {
+        self.with(|store| Ok(store.version().iter().map(ToString::to_string).collect::<Vec<_>>().join(" ")))
     }
 
     /// The profile directory.

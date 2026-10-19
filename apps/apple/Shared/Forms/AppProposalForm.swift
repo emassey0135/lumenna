@@ -5,8 +5,6 @@ import SwiftUI
 /// to check or leave, what fits nowhere, the other options. Every word is the core's, and every
 /// rule the app's: what is proposed, the checks, what applying makes and what it proposes next,
 /// and what to say. The screen closes when the app lets it go.
-///
-/// The surface's `ProposalModel` stays for the screens not yet moved onto the app.
 final class AppProposalModel: ObservableObject {
     let core: Core
     /// Closes the screen; set by whoever presents it.

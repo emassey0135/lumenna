@@ -13,7 +13,6 @@ use crate::{Lumenna, repaired, resolve};
 pub use lumenna_records::proposals::{DayPins, DayPlan, DayPlanned, ProposedSitting};
 
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// What planning `date` (a date phrase; today when absent) proposes: each work block still
     /// to come given the tasks it is suggested, until their estimates fill it. Nothing changes

@@ -1,32 +1,24 @@
 import Foundation
 
-/// The open store, for the whole app — shared by the iOS and macOS apps.
-///
-/// Every operation is a method on `lumenna`, generated from the Rust surface: this class adds
-/// only what is about running on an Apple platform — where the profile lives, the time zone,
-/// syncing while the app runs, and backups. Operations are milliseconds against a local SQLite
-/// file, so they run on the main thread and a view never shows a state the store has moved past.
+/// The open store, for the whole app — shared by the iOS and macOS apps: the Crux app over it
+/// (`AppModel`), which every screen draws, and what is about running on an Apple platform —
+/// where the profile lives, the time zone, noticing the store change, and backups.
 final class Core {
-    /// Posted after anything changes the store, so every view showing it reloads.
+    /// Posted on the main thread after the store changes, for what follows it outside the
+    /// screens: reminders re-armed, the watch told. Its `userInfo` holds `arrived` when it came
+    /// from elsewhere — a sync, another process — rather than from what the person just did.
     static let changed = Notification.Name("LumennaCoreChanged")
 
-    let lumenna: Lumenna
-    /// The Crux app over the same store, on a connection of its own, which the screens are
-    /// moving onto (`AppModel`).
+    /// The Crux app over the store, which every screen draws.
     let app: AppModel
-    private var sync: SyncService?
-    /// The command surface this app serves while it holds the endpoint (macOS).
-    private var commands: CommandServer?
-    private let syncQueue = DispatchQueue(label: "lumenna.sync")
     // Foundation's, named in full: the core has a record called `Timer` too.
     private var watcher: Foundation.Timer?
-    /// How far other processes' writes had got at the last look.
-    private var seenOutside: Int64?
+    /// The store's heads at the last look.
+    private var seenHeads: String?
 
     init() throws {
         Core.useSystemTimeZone()
         let directory = try Core.profileDirectory()
-        lumenna = try Lumenna.open(directory: directory.path)
         #if os(macOS)
         app = try AppModel(directory: directory, platform: "macos")
         #else
@@ -75,84 +67,18 @@ final class Core {
         Core.useSystemTimeZone()
     }
 
-    /// Starts keeping this device in sync. On iOS, for as long as the app is in front;
-    /// on macOS, for as long as it runs, which is what makes the resident app the device's
-    /// sync process with no daemon or service to set up.
-    func startSyncing() {
-        // The UI tests' copy: syncing would listen on the network, and on a fresh machine
-        // macOS then asks about local networks and incoming connections, over the window
-        // under test.
-        if ProcessInfo.processInfo.environment["LUMENNA_NO_SYNC"] != nil { return }
-        let lumenna = self.lumenna
-        syncQueue.async { [weak self] in
-            guard let self, self.sync == nil else { return }
-            self.sync = try? lumenna.startSync(reach: .internet, listener: Arrivals())
-            #if os(macOS)
-            // While this app holds the device's endpoint it answers the command surface, as
-            // the daemon would, so Emacs and the BTSpeak app reach it. A client's writes come
-            // through a store connection of its own, which `outsideVersion` already notices.
-            if let sync = self.sync {
-                self.commands = lumenna.serveCommands(
-                    service: sync, app: "Lumenna for Mac",
-                    deviceName: Host.current().localizedName ?? "Mac", platform: "macos"
-                )
-            }
-            #endif
-        }
-    }
-
-    /// Stops syncing, letting go of the endpoint — before returning, when `waiting`, as the
-    /// app must when it quits. `then` runs on the main thread once it has stopped.
-    ///
-    /// Never wait from the main thread while the app runs: the sync queue may be opening the
-    /// endpoint or dialling a device that does not answer, and the app froze until it was
-    /// done (seen as the iPad's UI tests hanging after the app was sent away and back).
-    func stopSyncing(waiting: Bool = false, then done: (() -> Void)? = nil) {
-        let stop = { [weak self] in
-            self?.commands?.stop()
-            self?.commands = nil
-            self?.sync?.stop()
-            self?.sync = nil
-        }
-        if waiting {
-            syncQueue.sync(execute: stop)
-            done?()
-        } else {
-            syncQueue.async {
-                stop()
-                if let done { DispatchQueue.main.async(execute: done) }
-            }
-        }
-    }
-
-    /// Syncs with every paired device now, off the main thread: on this app's own endpoint
-    /// while it syncs, or on one opened for the round.
-    func syncNow(then finished: @escaping (Result<SyncReport, Error>) -> Void) {
-        let lumenna = self.lumenna
-        syncQueue.async { [weak self] in
-            let result = Result { try self?.sync?.syncNow() ?? lumenna.syncNow(reach: .internet) }
-            DispatchQueue.main.async { finished(result) }
-        }
-    }
-
-    /// Notices what another process — `lum`, the daemon — wrote to the store, once a second,
-    /// as `lum rpc` does: SQLite has no way to be told of another process's commit. A Mac has
-    /// those other processes; every app has the Crux app's connection beside this one while the
-    /// screens move onto it, whose writes come the same way.
-    ///
-    /// By `outsideVersion`, not by asking `refresh` whether it took anything in: every
-    /// operation and the sync loop refresh too, and whichever came first after `lum` wrote
-    /// would have had the answer, leaving the change unseen. Not by `version` either, which
-    /// moves for the app's own edits as well — they redraw as they are made, and a second
-    /// redraw a moment later lands on whatever the person has opened next. A sync's arrivals
-    /// are announced by `Arrivals`.
-    func watchForOtherProcesses() {
+    /// Notices the store change, once a second, by its heads, which move for every write:
+    /// the app's own, a sync's, another process's (`lum`, Emacs over the Mac's socket). The
+    /// screens redraw from the app's own turns; this is for what follows a change outside them.
+    /// A change soon after the person did something is theirs; any other arrived.
+    func watchForChanges() {
         guard watcher == nil else { return }
-        seenOutside = try? lumenna.outsideVersion()
+        seenHeads = try? app.device.heads()
         watcher = Foundation.Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            guard let self, let outside = try? self.lumenna.outsideVersion(), outside != self.seenOutside else { return }
-            self.seenOutside = outside
-            NotificationCenter.default.post(name: Core.changed, object: nil)
+            guard let self, let heads = try? self.app.device.heads(), heads != self.seenHeads else { return }
+            self.seenHeads = heads
+            let own = Date().timeIntervalSince(self.app.lastSent) < 3
+            NotificationCenter.default.post(name: Core.changed, object: nil, userInfo: own ? nil : ["arrived": true])
         }
     }
 
@@ -165,16 +91,6 @@ final class Core {
             } catch {
                 DispatchQueue.main.async { failed("The automatic backup failed. \(error.sentence)") }
             }
-        }
-    }
-}
-
-/// What a sync brought in: every view showing the store reads it again. Marked as arrived,
-/// so it is not taken for the person's own edit (`Reminders.isOwnEdit`).
-private final class Arrivals: SyncListener {
-    func changed() {
-        DispatchQueue.main.async {
-            NotificationCenter.default.post(name: Core.changed, object: nil, userInfo: ["arrived": true])
         }
     }
 }

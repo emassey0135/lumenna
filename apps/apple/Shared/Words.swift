@@ -1,4 +1,5 @@
 import Foundation
+import LumennaApp
 
 /// The core counts text in UTF-8 bytes, as Rust strings do; Apple's text APIs count UTF-16.
 enum TextOffsets {
@@ -19,11 +20,6 @@ enum TextOffsets {
 enum CompletionText {
     /// `text` with `candidate` in place of the bytes from `start` to `end` (the core counts
     /// UTF-8 bytes), and a space after it so the next word can follow.
-    static func insert(_ candidate: Candidate, into text: String, start: UInt32, end: UInt32) -> (text: String, cursor: Int) {
-        insert(candidate.text, into: text, start: start, end: end)
-    }
-
-    /// `text` with `inserted` in place of the bytes from `start` to `end`, and a space after it.
     static func insert(_ candidate: String, into text: String, start: UInt32, end: UInt32) -> (text: String, cursor: Int) {
         let bytes = Array(text.utf8)
         let from = min(Int(start), bytes.count)
@@ -38,10 +34,10 @@ enum CompletionText {
 extension Error {
     /// The sentence the core wrote, which is already phrased to be read aloud.
     var sentence: String {
-        if let error = self as? LumennaError {
+        if let error = self as? LumennaApp.LumennaError {
             let message: String
             switch error {
-            case let .Failed(text), let .SyncElsewhere(text): message = text
+            case let .failed(text), let .syncElsewhere(text): message = text
             }
             return message.prefix(1).uppercased() + message.dropFirst()
         }

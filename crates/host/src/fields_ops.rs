@@ -4,7 +4,6 @@
 use crate::Lumenna;
 use crate::actions::Choice;
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// The projects the task form's Project field offers, in tree order: every one not
     /// archived, `id` its name as `task_edit` takes it.
@@ -17,7 +16,6 @@ impl Lumenna {
     }
 }
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// When a new block on `date` (a date phrase, today when absent) starts unless the person
     /// says otherwise, `HH:MM`: today, the next whole hour, never before the day starts; any

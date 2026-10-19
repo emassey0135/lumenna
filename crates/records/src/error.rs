@@ -8,12 +8,11 @@
 /// would act differently on it; when one does, it is added here.
 #[boltffi::error]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Error))]
 pub enum LumennaError {
     /// The operation failed; the reason says why.
     ///
-    /// Not called `message`: Kotlin's exceptions already have a `message`, and UniFFI's
-    /// generated class would declare it twice. Kotlin reads the sentence as `message` anyway.
+    /// Not called `message`: Kotlin's exceptions already have a `message`, and a generated
+    /// class would declare it twice. Kotlin reads the sentence as `message` anyway.
     #[error("{reason}")]
     Failed {
         /// What went wrong.

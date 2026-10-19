@@ -32,7 +32,6 @@ pub(crate) fn record_or(store: &mut Store, change: &Edit, otherwise: &str) -> Re
     record(store, change)
 }
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// Adds a task written the way it would be said: a title, and optionally a date phrase,
     /// `p1` to `p4`, `#project`, `@label` and an estimate like `45m`.

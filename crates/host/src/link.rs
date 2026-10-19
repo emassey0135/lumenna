@@ -16,7 +16,6 @@ use lumenna_sync::exchange::Exchange;
 use crate::{Lumenna, Result};
 
 /// One side of the link between a watch and its phone.
-#[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub struct PhoneLink {
     lumenna: Arc<Lumenna>,
     exchange: Mutex<Exchange>,
@@ -29,11 +28,9 @@ impl std::fmt::Debug for PhoneLink {
     }
 }
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl PhoneLink {
     /// A link over `lumenna`'s own store connection, so what arrives is what its operations
     /// read next.
-    #[cfg_attr(feature = "uniffi", uniffi::constructor)]
     #[must_use]
     pub fn new(lumenna: Arc<Lumenna>) -> Arc<Self> {
         Arc::new(Self { lumenna, exchange: Mutex::new(Exchange::new()), took_in: false.into() })

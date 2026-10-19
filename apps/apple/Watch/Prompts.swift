@@ -1,13 +1,14 @@
+import LumennaApp
 import SwiftUI
 
-/// What could go at the end of a line the core reads — a project, a label, a date word —
+/// What could go at the end of a line the app reads — a project, a label, a date word —
 /// offered once the line is entered, as the BTSpeak app offers it: on a watch the line is
 /// typed or dictated on the system's own input screen, which takes no suggestions. Choosing
 /// one puts it in place of what it completes.
 struct CompletionOffer: View {
     @EnvironmentObject private var core: WatchCore
     @Binding var text: String
-    let syntax: Syntax
+    let syntax: LumennaApp.Syntax
 
     var body: some View {
         if let offered, !offered.candidates.isEmpty {
@@ -23,13 +24,13 @@ struct CompletionOffer: View {
         }
     }
 
-    private var offered: Completions? {
+    private var offered: LumennaApp.Completions? {
         guard !text.isEmpty else { return nil }
-        return try? core.lumenna.completeText(text: text, cursor: UInt32(text.utf8.count), syntax: syntax)
+        return try? core.app.complete(text, cursor: UInt32(text.utf8.count), syntax: syntax)
     }
 
-    static func insert(_ candidate: Candidate, into text: String, at offered: Completions) -> String {
-        CompletionText.insert(candidate, into: text, start: offered.start, end: offered.end).text
+    static func insert(_ candidate: LumennaApp.Candidate, into text: String, at offered: LumennaApp.Completions) -> String {
+        CompletionText.insert(candidate.text, into: text, start: offered.start, end: offered.end).text
     }
 }
 
@@ -41,7 +42,7 @@ struct TextPrompt: View {
     var message: String?
     var placeholder = ""
     var action = "Save"
-    var syntax: Syntax?
+    var syntax: LumennaApp.Syntax?
     /// Whether an empty line is handed on: the core's questions take it, and refuse it
     /// themselves where they must.
     var allowsEmpty = false
@@ -50,7 +51,7 @@ struct TextPrompt: View {
 
     init(
         _ title: String, message: String? = nil, initial: String = "", placeholder: String = "",
-        action: String = "Save", syntax: Syntax? = nil, allowsEmpty: Bool = false, done: @escaping (String) -> Void
+        action: String = "Save", syntax: LumennaApp.Syntax? = nil, allowsEmpty: Bool = false, done: @escaping (String) -> Void
     ) {
         self.allowsEmpty = allowsEmpty
         self.title = title
@@ -113,11 +114,14 @@ struct ChoicePrompt: View {
 }
 
 /// A sheet to show: a prompt or a choice, built when it is asked for.
-struct Asked: Identifiable {
+final class Asked: Identifiable {
     let id = UUID()
     let view: AnyView
+    /// What its closing without an answer means, if anything.
+    var gone: (() -> Void)?
 
-    init(_ view: some View) {
+    init(_ view: some View, gone: (() -> Void)? = nil) {
         self.view = AnyView(view)
+        self.gone = gone
     }
 }

@@ -38,5 +38,3 @@ pub use form::{parse_minutes, parse_weight, priorities, BlockDefaults, BlockFiel
 pub use history::{TaskHistory, UrgencyTerm};
 pub use types::*;
 
-#[cfg(feature = "uniffi")]
-uniffi::setup_scaffolding!();

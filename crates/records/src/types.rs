@@ -10,7 +10,7 @@
 //! line from `role`, `state`, `title` and `value`.
 //!
 //! These are a compatibility contract twice over: the JSON `lum --json` and `lum rpc` write,
-//! and the Swift and Kotlin types UniFFI generates. Renaming a field breaks both.
+//! and the Swift, Kotlin and Python types BoltFFI generates. Renaming a field breaks both.
 
 use lumenna_core::State;
 use lumenna_core::edit::{Change as CoreChange, Edit};
@@ -79,7 +79,6 @@ fn none<T>(list: &[T]) -> bool {
 /// What a mutation did.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Change {
     /// What happened, in a sentence.
     pub announcement: String,
@@ -140,7 +139,6 @@ impl Change {
 /// Identifiers a change touched, by kind.
 #[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Affected {
     /// Tasks.
     #[serde(default, skip_serializing_if = "none")]
@@ -247,7 +245,6 @@ fn push<T: ToString>(into: &mut Vec<String>, before: Option<T>, after: Option<T>
 /// A listing of rows, all of one kind.
 #[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Rows {
     /// The count line — *"17 tasks"*.
     pub announcement: String,
@@ -307,7 +304,6 @@ impl Rows {
 /// A filter query, read back.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Query {
     /// The query as it was written.
     pub text: String,
@@ -322,7 +318,6 @@ pub struct Query {
 /// A name in a query that matches nothing.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Unresolved {
     /// `project` or `label`.
     pub kind: String,
@@ -336,7 +331,6 @@ pub struct Unresolved {
 /// One row, as its components.
 #[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct RowView {
     /// Its position in this listing, counting from one — what `lum task done 3` takes.
     pub row: u32,
@@ -427,7 +421,6 @@ pub const fn name_kind(kind: NameKind) -> &'static str {
 /// One task, as `show_task` returns it.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct TaskShown {
     /// Its title, which is all there is to announce.
     pub announcement: String,
@@ -442,7 +435,6 @@ pub struct TaskShown {
 /// Everything about one task.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct TaskDetail {
     /// The full identifier.
     pub id: String,
@@ -496,7 +488,6 @@ pub struct TaskDetail {
 /// A task another task waits for.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Dependency {
     /// The full identifier.
     pub id: String,
@@ -561,7 +552,6 @@ impl TaskDetail {
 /// A day's blocks and what is assigned to them.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Plan {
     /// The day and how many blocks it holds.
     pub announcement: String,
@@ -594,7 +584,6 @@ pub struct Plan {
 
 /// The work blocks a task could be put in, from a task itself rather than from a day.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct WorkBlocks {
     /// How many there are, and over how many days.
     pub announcement: String,
@@ -612,7 +601,6 @@ pub struct WorkBlocks {
 /// One work block occurrence, as a chooser lists it. Components, not a line: how a day and a
 /// time are said is the platform's.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct WorkBlock {
     /// `<series>@<date>`, as `assign` takes it.
     pub id: String,
@@ -636,7 +624,6 @@ pub struct WorkBlock {
 /// A repeating block that does not happen on one day because that day was cancelled.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct CancelledBlock {
     /// The series' identifier, for `Lumenna::restore_occurrence`.
     pub series: String,
@@ -655,7 +642,6 @@ pub struct CancelledBlock {
 /// One row of a day's timeline.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[serde(tag = "item", rename_all = "snake_case")]
 pub enum PlanItem {
     /// A block, by its position in [`Plan::blocks`] counting from one.
@@ -695,7 +681,6 @@ pub enum PlanItem {
 /// One block on a day.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct PlanBlock {
     /// Its position among blocks, counting from one.
     pub row: u32,
@@ -754,7 +739,6 @@ pub struct PlanBlock {
 /// One block series, as `show_block` returns it — what an
 /// editor starts from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct BlockShown {
     /// Its name.
     pub announcement: String,
@@ -814,7 +798,6 @@ pub fn repetition_phrase(rrule: &str, from_completion: bool) -> Option<String> {
 /// One task assigned to a block for one sitting.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct PlanAssignment {
     /// Its position among assignments across the whole day, counting from one — so
     /// `lum start 1` works straight after `lum plan`.
@@ -851,7 +834,6 @@ pub struct PlanAssignment {
 /// A timer stopped, or minutes logged by hand.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Timer {
     /// What happened, in a sentence.
     pub announcement: String,
@@ -875,7 +857,6 @@ pub struct Timer {
 /// The saved filters.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Filters {
     /// How many there are, in a sentence.
     pub announcement: String,
@@ -894,7 +875,6 @@ pub struct Filters {
 /// One saved filter. Stored as text, never as a resolved date range.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct FilterView {
     /// Its position, counting from one.
     pub row: u32,
@@ -912,7 +892,6 @@ pub struct FilterView {
 /// Settings, in a fixed order.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct SettingList {
     /// How many, or the one value asked for.
     pub announcement: String,
@@ -926,7 +905,6 @@ pub struct SettingList {
 /// One setting.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Setting {
     /// Its name, as `lum config get` takes it.
     pub key: String,
@@ -953,7 +931,6 @@ pub struct Setting {
 /// How a setting's value is shaped.
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[serde(rename_all = "snake_case")]
 pub enum SettingKind {
     /// On or off: `true` or `false`.
@@ -978,7 +955,6 @@ pub enum SettingKind {
 /// What could be inserted where the cursor is.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Completions {
     /// How many candidates there are, said before the list.
     pub announcement: String,
@@ -996,7 +972,6 @@ pub struct Completions {
 /// One thing that could be inserted.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Candidate {
     /// The text to put in, sigil included where one applies.
     pub text: String,
@@ -1031,7 +1006,6 @@ impl Completions {
 /// Which grammar is being typed, for completion.
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[serde(rename_all = "kebab-case")]
 pub enum Syntax {
     /// A quick-add line.
@@ -1042,7 +1016,6 @@ pub enum Syntax {
 
 /// What a quick-add line would produce, without producing it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Preview {
     /// The readback: what would be saved, with the resolved date — the sentence that stands in
     /// for a sighted user's inline highlighting.
@@ -1084,7 +1057,6 @@ pub struct Preview {
 
 /// Something worth saying about a span of the input.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Diagnostic {
     /// `error` or `notice`. An error stops the add; a notice does not.
     pub severity: String,
@@ -1148,7 +1120,6 @@ impl Preview {
 /// Where a backup went.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct BackupDone {
     /// Where it went, in a sentence.
     pub announcement: String,
@@ -1164,7 +1135,6 @@ pub struct BackupDone {
 /// A backup as a file's contents, for a client that saves it itself — the browser, as a
 /// download.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct BackupFile {
     /// What was backed up, in a sentence.
     pub announcement: String,
@@ -1179,7 +1149,6 @@ pub struct BackupFile {
 
 /// What a restore did.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct RestoreDone {
     /// What came in, in a sentence.
     pub announcement: String,
@@ -1198,7 +1167,6 @@ pub struct RestoreDone {
 /// The formats an export can take.
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[serde(rename_all = "lowercase")]
 pub enum ExportFormat {
     /// Everything current, structured — the one that imports back.
@@ -1239,7 +1207,6 @@ impl ExportFormat {
 
 /// An export.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct Exported {
     /// What was exported, in a sentence.
     pub announcement: String,
@@ -1258,7 +1225,6 @@ pub struct Exported {
 
 /// What an import of an export did, in records.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct ImportDone {
     /// What came in, in a sentence.
     pub announcement: String,
@@ -1277,7 +1243,6 @@ pub struct ImportDone {
 
 /// What reading a file in did: it was an export, or it was a backup.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum Imported {
     /// A JSON export, imported record by record.
     Export {
@@ -1298,7 +1263,6 @@ pub enum Imported {
 /// The fields of a task to change; `None` leaves one alone.
 #[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct TaskEdit {
     /// A new title.
     #[serde(default)]
@@ -1332,7 +1296,6 @@ pub struct TaskEdit {
 /// Where to move a task.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum MoveTarget {
     /// Under another task, joining its project.
     Parent {
@@ -1350,7 +1313,6 @@ pub enum MoveTarget {
 
 /// A project's weight: its own, or inherited.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum Weight {
     /// Take the parent's again.
     Inherit,
@@ -1363,7 +1325,6 @@ pub enum Weight {
 
 /// The fields of a block to change; `None` leaves one alone.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct BlockEdit {
     /// What to call it.
     #[serde(default)]
@@ -1383,42 +1344,33 @@ pub struct BlockEdit {
     pub repeat: Option<String>,
     /// New notes; empty clears them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub notes: Option<String>,
     /// Whether tasks can be put in it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub accepts_tasks: Option<bool>,
     /// Whether it counts toward the hours available for work.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub counts_capacity: Option<bool>,
     /// Whether it is fixed in time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub anchored: Option<bool>,
     /// How short re-flow may make it, in minutes; `0` returns it to the kind's default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub min_minutes: Option<u32>,
     /// A filter scoping which tasks are offered for it; empty clears it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub task_filter: Option<String>,
     /// The last day it happens, as a date phrase; `none` makes it repeat for good.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub until: Option<String>,
     /// A colour, by name; empty clears it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub colour: Option<String>,
 }
 
 /// Which occurrences a change to a block applies to — asked of a repeating block every
 /// time, never guessed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum BlockScope {
     /// Every occurrence: the series itself.
     Series,
@@ -1431,7 +1383,6 @@ pub enum BlockScope {
 
 /// Which way to move something in its list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum Direction {
     /// One place earlier.
     Up,
@@ -1442,7 +1393,6 @@ pub enum Direction {
 /// A new block.
 #[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct NewBlock {
     /// What to call it.
     pub title: String,
@@ -1460,37 +1410,29 @@ pub struct NewBlock {
     pub repeat: Option<String>,
     /// Notes about the block.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub notes: Option<String>,
     /// Whether tasks can be put in it; the kind's default when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub accepts_tasks: Option<bool>,
     /// Whether it counts toward the hours available for work; the kind's default when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub counts_capacity: Option<bool>,
     /// Whether it is fixed in time, never moved when the day slips; the kind's default when
     /// absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub anchored: Option<bool>,
     /// How short re-flow may make it, in minutes; the kind's default when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub min_minutes: Option<u32>,
     /// A filter scoping which tasks are offered for it, such as `#Work`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub task_filter: Option<String>,
     /// The last day a repeating block happens, as a date phrase; it repeats for good when
     /// absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub until: Option<String>,
     /// A colour, by name. Presentation only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "uniffi", uniffi(default = None))]
     pub colour: Option<String>,
 }
 
@@ -1500,7 +1442,6 @@ pub struct NewBlock {
 
 /// The device a pairing joined.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct PairedWith {
     /// Who, and how much came across.
     pub announcement: String,
@@ -1519,7 +1460,6 @@ pub struct PairedWith {
 /// then reconciling the documents.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct LinkSynced {
     /// Who, and whether this paired them.
     pub announcement: String,
@@ -1540,7 +1480,6 @@ pub struct LinkSynced {
 /// How one device went in a sync round.
 #[boltffi::data]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct PeerSync {
     /// What it is called.
     pub name: String,
@@ -1559,7 +1498,6 @@ pub struct PeerSync {
 /// A sync round with every paired device.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct SyncReport {
     /// How many were reached.
     pub announcement: String,
@@ -1573,7 +1511,6 @@ pub struct SyncReport {
 /// One paired device, with how syncing with it last went.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct DeviceView {
     /// What it is called.
     pub name: String,
@@ -1610,7 +1547,6 @@ pub struct DeviceView {
 /// How syncing is going, as words rather than an icon.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct SyncStatus {
     /// Whether it is running, and with how many devices.
     pub announcement: String,
@@ -1628,7 +1564,6 @@ pub struct SyncStatus {
 /// The paired devices.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct DeviceList {
     /// How many.
     pub announcement: String,
@@ -1644,7 +1579,6 @@ pub struct DeviceList {
 
 /// Which networks syncing may use.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum Reach {
     /// Anywhere: a relay and the address lookup service, so devices on different networks
     /// find each other.

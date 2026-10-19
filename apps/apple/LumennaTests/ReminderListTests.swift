@@ -23,7 +23,7 @@ final class ReminderListTests: XCTestCase {
 
     func testABlocksReminderListShowsTheDefaultThenItsOwnWhichSwipesRemove() throws {
         // Tomorrow, so its reminder is still to come whenever the test runs.
-        _ = try core.lumenna.addBlock(block: NewBlock(title: "Deep work", at: "09:00", minutes: 30, date: "tomorrow", kind: "work", repeat: nil))
+        _ = try core.app.device.addBlock(block: newBlock(title: "Deep work", at: "09:00", minutes: 30, date: "tomorrow", kind: "work", repeat: nil))
         core.app.tick()
         settle()
         core.app.send(.open(.blocks))

@@ -39,11 +39,11 @@ final class ReminderScheduleTests: XCTestCase {
     private func block(_ title: String, inMinutes minutes: Int) throws -> (series: String, start: Date) {
         let start = Date().addingTimeInterval(TimeInterval(minutes * 60))
         let parts = Calendar.current.dateComponents([.hour, .minute], from: start)
-        _ = try core.lumenna.addBlock(block: .init(
+        _ = try core.app.device.addBlock(block: newBlock(
             title: title, at: String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0), minutes: 30,
             date: Clock.isoDay(start), kind: "work", repeat: nil
         ))
-        let series = try XCTUnwrap(core.lumenna.plan(date: Clock.isoDay(start)).blocks.first { $0.title == title }?.series)
+        let series = try XCTUnwrap(core.app.device.plan(date: Clock.isoDay(start)).blocks.first { $0.title == title }?.series)
         return (series, start)
     }
 
@@ -99,7 +99,7 @@ final class ReminderScheduleTests: XCTestCase {
         rearm()
         centre.pending = centre.scheduled.map(\.identifier)
         centre.scheduled = []
-        _ = try core.lumenna.setSetting(key: "reminders", value: "false")
+        _ = try core.app.device.setSetting(key: "reminders", value: "false")
         rearm()
         XCTAssertTrue(centre.scheduled.isEmpty)
         XCTAssertEqual(centre.cancelled, centre.pending)
@@ -155,7 +155,7 @@ final class ReminderScheduleTests: XCTestCase {
 
     func testAProcessThatRunsShowsWhatCameDueOnceAndThenNothingMore() throws {
         try block("Deep work", inMinutes: 60)
-        let fire = try XCTUnwrap(Reminders.moment(core.lumenna.upcomingReminders(until: Reminders.rfc3339(Date().addingTimeInterval(3 * 3600))).due[0].at))
+        let fire = try XCTUnwrap(Reminders.moment(core.app.device.upcomingReminders(until: Reminders.rfc3339(Date().addingTimeInterval(3 * 3600))).due[0].at))
         let delivery = ReminderDelivery(device: core.app.device, centre: centre)
         XCTAssertTrue(delivery.deliver(now: Reminders.rfc3339(fire.addingTimeInterval(-120))).isEmpty, "nothing owed from before it ran")
         let shown = delivery.deliver(now: Reminders.rfc3339(fire.addingTimeInterval(60)))

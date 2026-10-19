@@ -3,7 +3,6 @@
 use crate::places::{Places, SidebarEntry};
 use crate::Lumenna;
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// Every place a sidebar lists ([`sidebar`]).
     #[must_use]

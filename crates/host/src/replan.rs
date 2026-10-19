@@ -40,7 +40,6 @@ pub(crate) fn now_or(given: Option<&str>) -> Result<Zoned> {
 
 
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// What replanning the rest of today proposes, said in `style`'s clock: nothing changes
     /// until [`Lumenna::apply_replan`]. `pins` are what the person decided: blocks kept or

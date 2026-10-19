@@ -1,7 +1,7 @@
 """Lumenna's core, in this process: the store and the Crux app beside it, through BoltFFI.
 
 The core is a CPython extension (`lumenna_app`) that `build-core.sh` builds from
-`crates/mobile` and unpacks into `native/` beside this file, the same core Android runs. The
+`crates/ffi` and unpacks into `native/` beside this file, the same core Android runs. The
 app holds everything a screen used to decide — which row is in hand, what is folded, which
 question is open, what a form starts from and what saving sends, the proposals, pairing — and
 words every line in this device's clock. A screen here draws what it shows and sends what the

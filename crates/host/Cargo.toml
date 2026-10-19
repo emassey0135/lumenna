@@ -8,8 +8,6 @@ repository.workspace = true
 description = "Lumenna's command surface: every operation once, typed, for every client."
 
 [features]
-# Swift and Kotlin bindings through UniFFI. Off for the CLI, which links this directly.
-uniffi = ["dep:uniffi", "lumenna-records/uniffi"]
 # Pairing and syncing over Iroh. On for every client that syncs; off leaves a surface
 # with no network code at all.
 # The watch's link to its phone, which needs no network of its own.
@@ -28,7 +26,6 @@ lumenna-store.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, optional = true }
 thiserror.workspace = true
-uniffi = { version = "0.32", optional = true }
 lumenna-sync = { path = "../sync", optional = true, default-features = false }
 iroh = { version = "1.3", optional = true }
 n0-future = { version = "0.3", optional = true }

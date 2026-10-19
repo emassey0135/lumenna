@@ -6,9 +6,6 @@ import SwiftUI
 /// brings with it, a start that follows the day chosen until the person sets one, and what
 /// saving sends — only what changed — are all the app's; each field goes to it as the person
 /// changes it. The form closes when the app lets it go.
-///
-/// The surface's `BlockFormModel` stays for the screens not yet moved onto the app, and goes
-/// with them.
 final class AppBlockFormModel: ObservableObject {
     let core: Core
     /// Closes the form; set by whoever presents it, since SwiftUI's `dismiss` does not reach
@@ -231,8 +228,10 @@ struct AppBlockForm: View {
                     .keyboardShortcut(.defaultAction)
             }
             #elseif os(watchOS)
-            // A watch's sheet has its own close button, and no bar button for Save.
+            // A watch's sheet has its own close button, and no bar button for Save. Found by
+            // tests by its identifier: the length stepper's increment is called Add too.
             Button(model.yes) { model.save() }
+                .accessibilityIdentifier("blockForm.save")
             #endif
         }
         #if os(macOS)
@@ -283,3 +282,46 @@ struct AppBlockForm: View {
         #endif
     }
 }
+
+#if os(macOS)
+/// The length's stepper, telling VoiceOver the length it stands for. AppKit's says its number,
+/// which VoiceOver reads as a percentage of its range, and the text beside it is not read
+/// again when it changes; SwiftUI's own accessibility value on it is ignored.
+struct LengthStepper: NSViewRepresentable {
+    @Binding var minutes: Int
+
+    func makeNSView(context: Context) -> Spoken {
+        let stepper = Spoken()
+        stepper.minValue = 1
+        stepper.maxValue = 720
+        stepper.increment = 5
+        stepper.valueWraps = false
+        stepper.target = context.coordinator
+        stepper.action = #selector(Coordinator.stepped(_:))
+        stepper.setAccessibilityLabel("Length")
+        return stepper
+    }
+
+    func updateNSView(_ stepper: Spoken, context: Context) {
+        context.coordinator.minutes = $minutes
+        stepper.integerValue = minutes
+        stepper.spoken = Clock.length(UInt32(max(minutes, 0)))
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(minutes: $minutes) }
+
+    final class Coordinator: NSObject {
+        var minutes: Binding<Int>
+        init(minutes: Binding<Int>) { self.minutes = minutes }
+        @objc func stepped(_ stepper: NSStepper) { minutes.wrappedValue = stepper.integerValue }
+    }
+
+    final class Spoken: NSStepper {
+        var spoken = "" {
+            didSet { if spoken != oldValue { NSAccessibility.post(element: self, notification: .valueChanged) } }
+        }
+
+        override func accessibilityValue() -> Any? { spoken }
+    }
+}
+#endif

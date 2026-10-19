@@ -14,7 +14,6 @@ use crate::words::{count_line, duration};
 
 /// One term of a task's urgency.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct UrgencyTerm {
     /// `due`, `priority`, `age`, `started`, `blocking`, `blocked`, `assigned_today`.
     pub term: String,
@@ -26,7 +25,6 @@ pub struct UrgencyTerm {
 
 /// A task's history and what makes up its urgency.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct TaskHistory {
     /// Its title.
     pub announcement: String,

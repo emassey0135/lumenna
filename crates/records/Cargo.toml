@@ -8,8 +8,6 @@ repository.workspace = true
 description = "What Lumenna tells a person, as records: rows, their actions and questions, forms, and the words, built from a snapshot with no store."
 
 [features]
-# Swift and Kotlin bindings through UniFFI, beside the host's.
-uniffi = ["dep:uniffi"]
 # A store's errors as sentences, for the host, whose every operation reads the store.
 store = ["dep:lumenna-store"]
 # And a sync's, for the host's link and its Iroh endpoint.
@@ -23,8 +21,7 @@ lumenna-store = { workspace = true, optional = true }
 lumenna-sync = { path = "../sync", optional = true, default-features = false }
 serde.workspace = true
 thiserror.workspace = true
-uniffi = { version = "0.32", optional = true }
-# The records the Crux app's view reaches, marked for Android's Kotlin (crates/mobile) and the
+# The records the Crux app's view reaches, marked for Android's Kotlin (crates/ffi) and the
 # web's TypeScript (apps/web/core). Unconditional: BoltFFI's scanner does not see its marker
 # inside cfg_attr.
 boltffi = "=0.31.1"

@@ -1,17 +1,13 @@
 import Foundation
 import LumennaApp
 
-/// The app itself (crates/app, through crates/mobile and BoltFFI), over this device's store:
+/// The app itself (crates/app, through crates/ffi and BoltFFI), over this device's store:
 /// what the screens draw, and where they send what the person does.
 ///
 /// What is in hand, what is folded, which question is open and what to say are the app's; a
 /// screen draws `view` with `lines` and sends events, and decides none of them. Every turn the
 /// app leaves comes in on a thread of the app's own and is taken on the main thread, in order:
 /// drawn — each screen showing it is told (`AppModel.shown`) — then said.
-///
-/// While the screens move onto it, it runs beside the surface (`Core.lumenna`), each on a
-/// connection of its own: what the surface writes it takes in on `Core.changed`, and what it
-/// writes the surface sees as another process's write (`Core.watchForOtherProcesses`).
 final class AppModel {
     /// Posted on the main thread once a turn is in `view`, for every screen showing it to draw.
     static let shown = Notification.Name("LumennaAppShown")
@@ -56,12 +52,11 @@ final class AppModel {
             app.serveCommands(app: "Lumenna for Mac", deviceName: Host.current().localizedName ?? "Mac")
         }
         #endif
-        // What the surface writes, the app takes in; and the minutes, for what is now and due.
+        // What a sync, the watch or another process wrote, the app takes in; and the minutes,
+        // for what is now and due. A tick only looks whether the store or the minute moved.
         NotificationCenter.default.addObserver(forName: Core.changed, object: nil, queue: .main) { [weak self] _ in
             self?.app.tick()
         }
-        // Once a second while screens still write through the surface, not all of which say so:
-        // a tick only looks whether the store or the minute moved.
         minutes = Foundation.Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             self?.app.tick()
         }
@@ -69,8 +64,12 @@ final class AppModel {
 
     /// Sends what the person did.
     func send(_ event: LumennaApp.ShellEvent) {
+        lastSent = Date()
         app.send(event: event)
     }
+
+    /// When the person last did something, for telling their changes from arrivals.
+    private(set) var lastSent = Date.distantPast
 
     /// What could go at `cursor` (UTF-8 bytes) in a line of `syntax` outside the app's own quick
     /// add: a filter.
@@ -216,5 +215,71 @@ enum DayKeys {
         case replan: .replan
         default: nil
         }
+    }
+}
+
+/// One row of a list drawn from the app: what identifies it to the app (the key it is held
+/// by), how it reads, and what can be done to it, the app's.
+struct AppItem: Hashable {
+    var key: String
+    var title: String
+    var detail: String?
+    var depth: UInt32 = 0
+    /// What VoiceOver says after the title: the detail, then folding and the level.
+    var spoken: String?
+    /// Whether what is under it is shown, for a row with something under it.
+    var expanded: Bool?
+    /// "level 2", where the level changes from the row shown before.
+    var level: String?
+    /// A heading over the items under it, as the sidebar's Projects and Labels are.
+    var heading = false
+    var actions: [LumennaApp.Action] = []
+    /// Why it is offered, a line beneath and VoiceOver's hint, never its name.
+    var reason: String?
+}
+
+extension AppModel {
+    /// The sidebar's rows as a list shows them, not folded away, each saying its detail, whether
+    /// it is folded and, against the row shown before, its level — what a tree would say itself.
+    /// `under` limits them to one heading's places, a level up.
+    func sidebarItems(under group: LumennaApp.SidebarGroup? = nil) -> [AppItem] {
+        // The rows the app has collapsed: what is deeper under each is left out.
+        let folded = Set(view.sidebarFolded)
+        var items: [AppItem] = []
+        var inside = group == nil
+        var previous: UInt32 = 0
+        var hiddenBelow: UInt32?
+        for entry in view.sidebar {
+            if let group {
+                if entry.depth == 0 {
+                    if case let .group(heading) = entry.kind { inside = heading == group } else { inside = false }
+                    hiddenBelow = nil
+                    continue
+                }
+                guard inside else { continue }
+            }
+            if let below = hiddenBelow {
+                if entry.depth > below { continue }
+                hiddenBelow = nil
+            }
+            if folded.contains(entry.key) { hiddenBelow = entry.depth }
+            let depth = group == nil ? entry.depth : entry.depth - 1
+            let expanded: Bool? = entry.actions.contains { $0.kind == .collapse } ? true
+                : entry.actions.contains { $0.kind == .expand } ? false : nil
+            let level = depth != previous ? "level \(depth + 1)" : nil
+            previous = depth
+            var item = AppItem(key: entry.key, title: entry.title, detail: entry.detail.isEmpty ? nil : entry.detail, depth: depth, actions: entry.actions)
+            item.spoken = AppModel.spoken(detail: entry.detail, expanded: expanded, level: level)
+            item.expanded = expanded
+            item.level = level
+            if case .group = entry.kind { item.heading = true }
+            items.append(item)
+        }
+        return items
+    }
+
+    /// The sidebar entry held by `key`.
+    func sidebarEntry(_ key: String) -> LumennaApp.SidebarEntry? {
+        view.sidebar.first { $0.key == key }
     }
 }

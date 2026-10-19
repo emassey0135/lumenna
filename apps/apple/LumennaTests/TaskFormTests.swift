@@ -21,9 +21,9 @@ final class TaskFormTests: XCTestCase {
         } while !(core.app.isStill && until()) && Date() < deadline
     }
 
-    /// The form of a task added through the surface, once the app has its details.
+    /// The form of a task added through the device, once the app has its details.
     private func form(_ text: String) throws -> TaskDetailModel {
-        let id = try XCTUnwrap(core.lumenna.addTask(text: text).task?.id)
+        let id = try XCTUnwrap(core.app.device.addTask(text: text).task?.id)
         core.app.tick()
         settle()
         let model = TaskDetailModel(core: core, id: id)
@@ -32,7 +32,7 @@ final class TaskFormTests: XCTestCase {
     }
 
     func testAProjectChosenAndSavedIsTheTasksProject() throws {
-        _ = try core.lumenna.addProject(name: "Work", parent: nil)
+        _ = try core.app.device.addProject(name: "Work", parent: nil)
         let model = try form("draft")
         settle { model.projects.contains { $0.id == "Work" } }
         XCTAssertEqual(model.projects.map(\.id), ["Inbox", "Work"])
@@ -41,7 +41,7 @@ final class TaskFormTests: XCTestCase {
         model.save()
         settle()
         let id = try XCTUnwrap(model.task?.id)
-        XCTAssertEqual(try core.lumenna.showTask(id: id).task.project, "Work")
+        XCTAssertEqual(try core.app.device.showTask(id: id).task.project, "Work")
         XCTAssertEqual(model.project, "Work", "the form shows what was saved")
     }
 
@@ -52,7 +52,7 @@ final class TaskFormTests: XCTestCase {
         model.save()
         settle()
         let id = try XCTUnwrap(model.task?.id)
-        let saved = try core.lumenna.showTask(id: id).task
+        let saved = try core.app.device.showTask(id: id).task
         XCTAssertEqual(saved.title, "water the plants")
         XCTAssertEqual(saved.priority, 2, "what was not typed stays")
     }

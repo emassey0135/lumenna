@@ -1,10 +1,10 @@
+import LumennaApp
 import UIKit
-import UserNotifications
 import XCTest
 @testable import Lumenna
 
-/// The planner as the Apple apps show it: the day's own actions, the proposal screens, a
-/// choice's reason, a task's history, and Carry Forward on a reminder.
+/// The planner as the Apple apps show it: the proposal screens over the app, a choice's reason,
+/// and a task's history.
 @MainActor
 final class PlannerTests: XCTestCase {
     private var core: Core!
@@ -16,8 +16,16 @@ final class PlannerTests: XCTestCase {
         core = try Core()
     }
 
-    private func block(_ title: String, kind: String = "work", at: String, minutes: UInt32) throws {
-        _ = try core.lumenna.addBlock(block: NewBlock(title: title, at: at, minutes: minutes, date: day, kind: kind, repeat: nil))
+    private func block(_ title: String, kind: String = "work", at: String, minutes: UInt32, date: String? = nil) throws {
+        _ = try core.app.device.addBlock(block: newBlock(title: title, at: at, minutes: minutes, date: date ?? day, kind: kind))
+    }
+
+    /// Waits for the app to be still and `until` to hold, as a person waits for the screen.
+    private func settle(until: () -> Bool = { true }) {
+        let deadline = Date().addingTimeInterval(10)
+        repeat {
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.02))
+        } while !(core.app.isStill && until()) && Date() < deadline
     }
 
     private func shown<Screen: UIViewController>(_ screen: Screen) -> Screen {
@@ -30,36 +38,57 @@ final class PlannerTests: XCTestCase {
         return screen
     }
 
+    /// Replan from Now against a moment on `day`, as an overrun's button opens it.
+    private func replan(at time: String) -> AppProposalModel {
+        // What was seeded, taken in first.
+        core.app.tick()
+        settle()
+        core.app.send(.planFrom("\(day)T\(time)"))
+        core.app.send(.proposal(.replan))
+        settle { core.app.view.proposal?.ready == true }
+        return AppProposalModel(core: core)
+    }
+
     // MARK: - Plan the Day
 
     func testPlanTheDayShowsEachSittingWithItsReasonAndTheNextPlanAfterAPartialApply() throws {
-        try block("Morning", at: "09:00", minutes: 30)
-        try block("Afternoon", at: "14:00", minutes: 30)
-        for task in ["Report p1", "Email p2", "Filing p3"] { _ = try core.lumenna.addTask(text: task) }
-        let model = try ProposalModel(core: core, kind: .planDay(day), now: "\(day)T08:00")
-        XCTAssertEqual(model.words.title, "Plan the Day")
-        XCTAssertEqual(model.announcement, "Plans 2 tasks: Report in Morning and Email in Afternoon.")
-        XCTAssertEqual(model.items.count, 2)
-        XCTAssertEqual(model.items[0].reason, "Suggested because priority 1.")
-        XCTAssertEqual(model.checked, [true, true], "everything checked to begin with")
+        // Tomorrow, so its blocks are still to come whenever the test runs.
+        try block("Morning", at: "09:00", minutes: 30, date: "tomorrow")
+        try block("Afternoon", at: "14:00", minutes: 30, date: "tomorrow")
+        for task in ["Report p1", "Email p2", "Filing p3"] { _ = try core.app.device.addTask(text: task) }
+        core.app.tick()
+        settle()
+        core.app.send(.open(.today))
+        core.app.send(.day(.next))
+        settle { core.app.view.day?.actions.contains { $0.kind == .planDay } == true }
+        let plan = try XCTUnwrap(core.app.view.day?.actions.first { $0.kind == .planDay })
+        core.app.send(.perform(plan))
+        settle { core.app.view.proposal?.ready == true }
+        let model = AppProposalModel(core: core)
         var closed = false
         model.close = { closed = true }
-        var applied: [Change] = []
-        model.applied = { applied.append($0) }
+        XCTAssertEqual(model.title, "Plan the Day")
+        XCTAssertEqual(model.proposal?.announcement, "Plans 2 tasks: Report in Morning and Email in Afternoon.")
+        let changes = try XCTUnwrap(model.proposal?.changes)
+        XCTAssertEqual(changes.count, 2)
+        XCTAssertEqual(changes[0].reason, "Suggested because priority 1.")
+        XCTAssertEqual(changes.map(\.checked), [true, true], "everything checked to begin with")
 
         // Report turned down, Email taken: the core plans again around it, and the screen
         // shows that plan rather than closing.
         model.binding(0).wrappedValue = false
+        settle { model.proposal?.changes.first?.checked == false }
         model.apply()
-        XCTAssertEqual(applied.count, 1)
+        settle { model.proposal?.changes.count == 1 }
         XCTAssertFalse(closed, "a next plan is shown")
-        XCTAssertEqual(model.items.map(\.sentence).count, 1)
-        XCTAssertTrue(model.items[0].sentence.hasPrefix("Filing"), model.items[0].sentence)
-        XCTAssertEqual(model.checked, [true])
+        let next = try XCTUnwrap(model.proposal?.changes)
+        XCTAssertEqual(next.count, 1)
+        XCTAssertTrue(next[0].sentence.hasPrefix("Filing"), next[0].sentence)
+        XCTAssertEqual(next.map(\.checked), [true])
 
         model.apply()
+        settle { closed }
         XCTAssertTrue(closed, "nothing more proposed, so the screen closes")
-        XCTAssertEqual(applied.count, 2)
     }
 
     // MARK: - Replan from Now
@@ -67,60 +96,55 @@ final class PlannerTests: XCTestCase {
     func testReplanSaysItsProposalInTheDevicesClockAndAStaleOneIsShownAndAskedAgain() throws {
         try block("Deep work", at: "09:00", minutes: 120)
         try block("Lunch", kind: "break", at: "10:30", minutes: 30)
-        let now = "\(day)T10:40"
-        let model = try ProposalModel(core: core, kind: .replan, now: now)
-        XCTAssertEqual(model.words.title, "Replan from Now")
+        let model = replan(at: "10:40")
+        XCTAssertEqual(model.title, "Replan from Now")
         let lunch = Clock.style == .twelveHour ? "Lunch moves from 10:30 AM to 11:00 AM." : "Lunch moves from 10:30 to 11:00."
-        XCTAssertEqual(model.announcement, lunch)
-        XCTAssertEqual(model.items.count, 1)
+        XCTAssertEqual(model.proposal?.announcement, lunch)
+        XCTAssertEqual(model.proposal?.changes.count, 1)
 
         // Made elsewhere meanwhile: this proposal is stale, said on the screen, and the
         // screen asks again, which now proposes nothing.
-        let other = try core.lumenna.replan(style: .twentyFourHour, pins: ReplanPins(keep: [], skip: [], sittings: []), now: now)
-        _ = try core.lumenna.applyReplan(proposal: other, accepted: other.changes, now: now)
+        let now = "\(day)T10:40"
+        let other = try core.app.device.replan(style: .twentyFourHour, pins: LumennaApp.ReplanPins(keep: [], skip: [], sittings: [], floors: []), now: now)
+        _ = try core.app.device.applyReplan(proposal: other, accepted: other.changes, now: now)
         model.apply()
-        XCTAssertNotNil(model.problem)
-        XCTAssertTrue(model.items.isEmpty, "asked again: \(model.items)")
+        settle { model.proposal?.refusal != nil }
+        XCTAssertNotNil(model.proposal?.refusal)
+        XCTAssertTrue(model.proposal?.changes.isEmpty ?? false, "asked again: \(String(describing: model.proposal?.changes))")
     }
 
     func testReplanOffersOtherOptionsAndTakingOneShowsItsProposalInPlace() throws {
         try block("Deep work", at: "09:00", minutes: 120)
         try block("Lunch", kind: "break", at: "10:30", minutes: 30)
         try block("Review", at: "11:00", minutes: 60)
-        let model = try ProposalModel(core: core, kind: .replan, now: "\(day)T10:40")
-        XCTAssertEqual(model.words.others, "Other options")
+        let model = replan(at: "10:40")
+        XCTAssertEqual(model.proposal?.words.others, "Other options")
+        let others = try XCTUnwrap(model.proposal?.others)
         // Shortening Lunch below its minimum costs less than skipping it, so it comes first.
-        XCTAssertTrue(model.alternatives.first?.sentence.hasPrefix("Let Lunch shorten") == true)
-        let skip = try XCTUnwrap(model.alternatives.first { $0.sentence.hasPrefix("Skip Lunch today") })
-        XCTAssertEqual(skip.sentence, "Skip Lunch today, your only break left today. Then nothing else needs to change.")
-        XCTAssertEqual(model.alternatives.count, 3)
-        model.choose(skip)
-        XCTAssertNil(model.problem)
-        XCTAssertEqual(model.announcement, "Lunch is skipped today.")
-        XCTAssertEqual(model.items.count, 1, "the skip is the change to make")
-        XCTAssertEqual(model.checked, [true])
-        XCTAssertTrue(model.alternatives.isEmpty, "so no Other options heading")
-    }
-
-    func testPlanTheDayHasNoOtherOptions() throws {
-        let model = try ProposalModel(core: core, kind: .planDay(day), now: "\(day)T08:00")
-        XCTAssertTrue(model.words.others.isEmpty)
-        XCTAssertTrue(model.alternatives.isEmpty)
+        XCTAssertTrue(others.first?.hasPrefix("Let Lunch shorten") == true, "\(others)")
+        let skip = try XCTUnwrap(others.firstIndex { $0.hasPrefix("Skip Lunch today") })
+        XCTAssertEqual(others[skip], "Skip Lunch today, your only break left today. Then nothing else needs to change.")
+        XCTAssertEqual(others.count, 3)
+        model.take(skip)
+        settle { model.proposal?.announcement == "Lunch is skipped today." }
+        XCTAssertNil(model.proposal?.refusal)
+        XCTAssertEqual(model.proposal?.announcement, "Lunch is skipped today.")
+        XCTAssertEqual(model.proposal?.changes.map(\.checked), [true], "the skip is the change to make")
+        XCTAssertTrue(model.proposal?.others.isEmpty ?? false, "so no Other options heading")
     }
 
     func testReplanWithNothingToChangeSaysSoAndOffersNoApply() throws {
-        let model = try ProposalModel(core: core, kind: .replan, now: "\(day)T10:40")
-        XCTAssertTrue(model.items.isEmpty)
-        XCTAssertEqual(model.announcement, model.replan?.announcement)
-        XCTAssertFalse(model.words.nothing.isEmpty)
+        let model = replan(at: "10:40")
+        XCTAssertTrue(model.proposal?.changes.isEmpty ?? false)
+        XCTAssertFalse(model.proposal?.words.nothing.isEmpty ?? true)
     }
 
     // MARK: - A choice's reason
 
     func testAChoicesReasonIsItsDescriptionAndSecondLineNeverItsName() throws {
         let reason = "Suggested because priority 1."
-        let choice = Choice(id: "a", title: "Report", depth: 0, detail: "Inbox", date: nil, start: nil, end: nil, reason: reason)
-        let picker = shown(ChoicePicker(core: core, title: "Assign a Task", choices: [choice]) { _ in })
+        let item = AppItem(key: "a", title: "Report", detail: "Inbox", reason: reason)
+        let picker = shown(ChoicePicker(core: core, title: "Assign a Task", items: [item], chosen: { _ in }, cancelled: {}))
         func find(_ view: UIView) -> UICollectionView? {
             (view as? UICollectionView) ?? view.subviews.lazy.compactMap(find).first
         }
@@ -136,15 +160,10 @@ final class PlannerTests: XCTestCase {
     // MARK: - A task's history
 
     func testTheTaskScreenHasTheTasksHistory() throws {
-        let id = try XCTUnwrap(core.lumenna.addTask(text: "Report").task?.id)
-        // The app takes in what the surface wrote, and the form fills in from the app's details.
+        let id = try XCTUnwrap(core.app.device.addTask(text: "Report").task?.id)
         core.app.tick()
         let model = TaskDetailModel(core: core, id: id)
-        let deadline = Date().addingTimeInterval(10)
-        while model.task == nil, Date() < deadline {
-            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.02))
-            if model.task == nil { model.show() }
-        }
+        settle { model.task != nil }
         XCTAssertFalse(model.task?.history.isEmpty ?? true, "the core says something of every task's past")
     }
 }

@@ -420,7 +420,7 @@ jobs:
           # The platform's licence is asked for even when the others are accepted.
           yes | sdkmanager --licenses > /dev/null
           yes | sdkmanager "ndk;30.0.16248370" "platforms;android-37.0" > /dev/null
-          # The core and its Kotlin (crates/mobile), at the version the crates use.
+          # The core and its Kotlin (crates/ffi), at the version the crates use.
           cargo install boltffi_cli --version 0.31.1 --locked
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
       - name: Build

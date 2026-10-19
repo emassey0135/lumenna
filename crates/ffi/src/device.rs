@@ -15,7 +15,7 @@ use boltffi::export;
 use lumenna_host::{Lumenna, PhoneLink, ReminderLock};
 #[cfg(feature = "network")]
 use lumenna_host::Reach;
-use lumenna_records::proposals::{DayPins, DayPlan, Replan, ReplanPins, TimeStyle};
+use lumenna_records::proposals::{DayPins, DayPlan, Replan, ReplanChange, ReplanPins, TimeStyle};
 use lumenna_records::reminders::DueReminders;
 use lumenna_records::{
     BackupDone, Change, DeviceList, Filters, LumennaError, MoveTarget, NewBlock, Plan, Rows, SettingList, TaskEdit,
@@ -180,6 +180,16 @@ impl Device {
         self.link.took_in()
     }
 
+    /// The store's heads as one word, which moves for every write, this device's app's own
+    /// included: the watch sends what it wrote to its phone when it moves.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn heads(&self) -> Result<String, LumennaError> {
+        self.lumenna.heads()
+    }
+
     // What the tests seed and check the store with.
 
     /// Adds a task from a quick-add line.
@@ -295,6 +305,15 @@ impl Device {
     /// The rest of today worked out again, against `now` if given.
     pub fn replan(&self, style: TimeStyle, pins: ReplanPins, now: Option<String>) -> Result<Replan, LumennaError> {
         self.lumenna.replan(style, pins, now)
+    }
+
+    /// Makes the changes `accepted` of a replan, against `now` if given: the change made.
+    ///
+    /// # Errors
+    ///
+    /// If the day no longer matches the proposal, or the store refuses the change.
+    pub fn apply_replan(&self, proposal: Replan, accepted: Vec<ReplanChange>, now: Option<String>) -> Result<Change, LumennaError> {
+        self.lumenna.apply_replan(proposal, accepted, now).map(|replanned| replanned.change)
     }
 
     /// A whole day's plan, proposed.

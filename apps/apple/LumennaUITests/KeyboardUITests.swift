@@ -12,6 +12,8 @@ final class KeyboardUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchEnvironment["LUMENNA_TEST_PROFILE"] = UUID().uuidString
+        // The SwiftUI trial's lists, when the run asks for them (TEST_RUNNER_LUMENNA_SWIFTUI).
+        app.launchEnvironment["LUMENNA_SWIFTUI"] = ProcessInfo.processInfo.environment["LUMENNA_SWIFTUI"]
         app.launch()
     }
 
@@ -45,7 +47,10 @@ final class KeyboardUITests: XCTestCase {
     }
 
     private func row(_ title: String) -> XCUIElement {
-        app.cells.matching(NSPredicate(format: "label == %@", title)).firstMatch
+        // The SwiftUI trial's task rows are buttons in their cells, labelled as the cells are.
+        let trial = ProcessInfo.processInfo.environment["LUMENNA_SWIFTUI"] != nil
+        let rows = trial ? app.cells.buttons : app.cells
+        return rows.matching(NSPredicate(format: "label == %@", title)).firstMatch
     }
 
     private func add(_ text: String) {
@@ -83,7 +88,7 @@ final class KeyboardUITests: XCTestCase {
         #else
         tab("Today")
         press("f")
-        let filter = app.textViews["Filter"]
+        let filter = ProcessInfo.processInfo.environment["LUMENNA_SWIFTUI"] != nil ? app.textFields["Filter"] : app.textViews["Filter"]
         let focused = expectation(for: NSPredicate(format: "hasKeyboardFocus == true"), evaluatedWith: filter)
         wait(for: [focused], timeout: 10)
         #endif

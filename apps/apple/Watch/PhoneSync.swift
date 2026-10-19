@@ -7,8 +7,8 @@ import WatchConnectivity
 /// until the two stores agree. A message from the watch wakes the iPhone app in the
 /// background, so neither needs to be open; the reverse is not so, so the phone only nudges
 /// the watch, while its app is open, to start one. It runs when the app opens, after each
-/// change made here, when the phone comes into reach, when the phone says it changed, and
-/// when asked.
+/// change made here (the store's heads moving), when the phone comes into reach, when the
+/// phone says it changed, and when asked.
 final class PhoneSync: NSObject, ObservableObject {
     /// How the last attempt went, said in the settings row.
     @Published private(set) var status = "Not synced with the iPhone yet"
@@ -62,6 +62,8 @@ final class PhoneSync: NSObject, ObservableObject {
                 send(next, over: session)
                 return
             }
+            // What the phone brought is not sent back; the app takes it in.
+            core.synced()
             if core.app.device.linkTookIn() {
                 NotificationCenter.default.post(name: Core.changed, object: nil, userInfo: [Core.fromPhone: true])
             }

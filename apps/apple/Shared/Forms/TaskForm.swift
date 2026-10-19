@@ -29,6 +29,8 @@ final class TaskDetailModel: NSObject, ObservableObject {
     @Published var labels = "" { didSet { typed("labels", labels) } }
     /// What the Project field offers, the app's, in tree order.
     @Published private(set) var projects: [LumennaApp.Choice] = []
+    /// The fields as the core words them: each one's name, what it takes and an example.
+    @Published private(set) var form: [LumennaApp.FormField] = []
     @Published var failure: String?
 
     /// Whether the fields are being set from the app's, not typed.
@@ -73,6 +75,7 @@ final class TaskDetailModel: NSObject, ObservableObject {
         guard let details else { return }
         task = details.task
         projects = details.projects
+        if form != details.form { form = details.form }
         guard !filling else { return }
         filling = true
         core.app.whenStill { [weak self] in
@@ -129,7 +132,7 @@ final class TaskDetailModel: NSObject, ObservableObject {
 
 struct TaskDetailView: View {
     @ObservedObject var model: TaskDetailModel
-    private let words = FormWords.task
+    private var words: FormWords { FormWords(model.form) }
 
     var body: some View {
         if let task = model.task {

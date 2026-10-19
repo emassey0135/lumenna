@@ -58,20 +58,29 @@ final class RemindersModel: ObservableObject {
         return (title, label, hint, yes)
     }
 
-    /// Adds the phrase typed, answering the app's Add Reminder at once: a phrase it refuses
-    /// stays in the field with why, the question put away again, so it is not asked over it.
+    /// Adds the phrase typed, answering the app's Add Reminder itself (`AppQuestions` leaves it
+    /// to the list: `answersItself`): once the app is still, a phrase it refused stays in the
+    /// field with why, the question put away again.
     func add() {
         guard let adding else { return }
         core.app.send(.perform(adding))
         core.app.send(.answer(.text(text: typed)))
-        if let refusal = core.app.current.view.asking?.refusal {
-            core.app.send(.cancel)
-            problem = refusal
-            Announcer.say(refusal)
-        } else {
-            typed = ""
-            problem = nil
+        core.app.whenStill { [weak self] in
+            guard let self else { return }
+            if let refusal = self.core.app.view.asking?.refusal {
+                self.core.app.send(.cancel)
+                self.problem = refusal
+                Announcer.say(refusal)
+            } else {
+                self.typed = ""
+                self.problem = nil
+            }
         }
+    }
+
+    /// Whether `asking` is the list's own Add Reminder, which it answers itself.
+    static func answersItself(_ asking: LumennaApp.Asking) -> Bool {
+        asking.action?.subject == .reminder && asking.action?.kind == .new
     }
 
     /// One of a reminder's actions, the app's: Remove Reminder, confirmed here first when it
@@ -126,8 +135,9 @@ struct RemindersForm: View {
                             .foregroundStyle(Color.warningLabel)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    Button(question.yes) { model.add() }
-                        .accessibilityLabel(adding.title)
+                    // Named by the action, Add Reminder, not its question's bare Add: on the watch a
+                    // button's own text wins over any label given it.
+                    Button(adding.title) { model.add() }
                 } header: {
                     FormParts.heading(question.title)
                 }

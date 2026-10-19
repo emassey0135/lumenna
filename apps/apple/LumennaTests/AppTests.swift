@@ -2,9 +2,8 @@ import Foundation
 import LumennaApp
 import XCTest
 
-/// The Crux app, through BoltFFI's Swift, in the same process as the surface's UniFFI: the
-/// screens move onto it one at a time, so the two run side by side, each on its own connection
-/// to the store.
+/// The Crux app, through BoltFFI's Swift, started over a store of its own by hand, as every
+/// screen's `AppModel` starts it.
 final class AppTests: XCTestCase {
     /// Turns as the app hands them on, from a thread of its own.
     private final class Turns: LumennaApp.Shell, @unchecked Sendable {
@@ -18,7 +17,7 @@ final class AppTests: XCTestCase {
         var last: Turn? { lock.withLock { turns.last } }
     }
 
-    /// This device's times and dates, as the screens will hand them to the app.
+    /// This device's times and dates, as the screens hand them to the app.
     private final class Writing: LumennaApp.Locale {
         func time(hour: Int8, minute: Int8) -> String { String(format: "%02d:%02d", hour, minute) }
 
@@ -27,7 +26,7 @@ final class AppTests: XCTestCase {
         }
     }
 
-    func testTheAppStartsBesideTheSurfaceAndListsThePlaces() throws {
+    func testTheAppStartsAndListsThePlaces() throws {
         let profile = FileManager.default.temporaryDirectory.appendingPathComponent("app-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: profile) }
         let device = try Device(directory: profile.path)

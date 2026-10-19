@@ -14,7 +14,6 @@ use crate::types::{Announced, Change, Setting, SettingList};
 use crate::words::{count_line, time_text};
 use crate::{DEVICE_KEYS, Lumenna, cloud_warning, repaired};
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// Every setting, in a fixed order — or the one named by `key`. The device's own settings
     /// come last.

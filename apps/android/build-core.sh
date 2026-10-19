@@ -1,6 +1,6 @@
 #!/bin/bash
 # Builds Lumenna's Rust core for Android — the app and the device's store, through BoltFFI
-# (crates/mobile) — and regenerates its Kotlin.
+# (crates/ffi) — and regenerates its Kotlin.
 #
 #   apps/android/build-core.sh <jniLibs dir> <kotlin dir> [debug|release]
 #
@@ -35,7 +35,7 @@ fi
 # leaves that one out (abiFilters). LUMENNA_ANDROID_ABIS narrows it for a quicker build.
 ABIS="${LUMENNA_ANDROID_ABIS:-arm64-v8a x86_64 armeabi-v7a}"
 
-# The app through BoltFFI (crates/mobile): it builds the library per ABI, compiles its JNI glue
+# The app through BoltFFI (crates/ffi): it builds the library per ABI, compiles its JNI glue
 # into it, and writes its Kotlin; an overlay points its outputs into this build's directories.
 BOLT="$(dirname "$KOTLIN")/boltffi"
 architectures=""
@@ -60,13 +60,13 @@ output = "$JNI_LIBS"
 [targets.android.kotlin]
 output = "$BOLT/kotlin"
 EOF
-(cd "$ROOT/crates/mobile" && env -i HOME="$HOME" USER="${USER:-}" ${CARGO_HOME:+CARGO_HOME="$CARGO_HOME"} ${RUSTUP_HOME:+RUSTUP_HOME="$RUSTUP_HOME"} \
+(cd "$ROOT/crates/ffi" && env -i HOME="$HOME" USER="${USER:-}" ${CARGO_HOME:+CARGO_HOME="$CARGO_HOME"} ${RUSTUP_HOME:+RUSTUP_HOME="$RUSTUP_HOME"} \
   PATH="$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin" \
   ANDROID_HOME="$SDK" ANDROID_NDK_HOME="$NDK" \
   boltffi pack android $PROFILE_FLAG --quiet --overlay "$BOLT/overlay.toml")
 # Only the Kotlin: the JNI glue beside it is compiled into the library already. What an
-# earlier build wrote there goes first, UniFFI's bindings and library of before BoltFFI included.
-rm -rf "$KOTLIN/io" "$JNI_LIBS"/*/liblumenna_ffi.so
+# earlier build wrote there goes first, the library of before the crate was renamed included.
+rm -rf "$KOTLIN/io" "$JNI_LIBS"/*/liblumenna-mobile.so
 mkdir -p "$KOTLIN/io/github/emassey0135/lumenna"
 cp -R "$BOLT/kotlin/io/github/emassey0135/lumenna/app" "$KOTLIN/io/github/emassey0135/lumenna/"
 

@@ -46,7 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         reminders = ReminderDelivery(device: core.app.device)
         reminders?.follow()
         reminders?.start()
-        core.watchForOtherProcesses()
+        core.watchForChanges()
         backUp()
         // Resident for days at a time, so a backup that falls due while it runs is taken:
         // it checks hourly, as `lum rpc` does.

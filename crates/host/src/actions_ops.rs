@@ -46,7 +46,6 @@ fn timer(timer: crate::types::Timer) -> Change {
     }
 }
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// What a [`Question::Pick`] offers for `action`, in order: never a task as its own
     /// parent or a project inside itself, never a wait that would close a cycle.
@@ -187,7 +186,6 @@ fn resolve_archived(lumenna: &Lumenna, name: &str) -> Result<bool> {
     lumenna.with(|store| Ok(resolve::project(&repaired(store), name)?.archived))
 }
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// What Put in a Block offers from another day: `days` days of work blocks from `from`
     /// (a date phrase), but for those already over. [`Lumenna::choices`] offers this week's.

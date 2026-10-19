@@ -1,3 +1,4 @@
+import LumennaApp
 import SwiftUI
 
 /// The pieces the Apple apps' forms are built from: the iPhone's, the Mac's and the watch's.
@@ -272,27 +273,24 @@ struct FailureAlert: ViewModifier {
 
 // MARK: - The forms' words
 
-/// A form's fields as the core words them (`taskForm()`, `blockForm()`): each field's name,
-/// what it takes and an example, the same in every app. The controls are the platform's.
+/// A form's fields as the core words them (`DetailsView.form`): each field's name, what it
+/// takes and an example, the same in every app. The controls are the platform's.
 struct FormWords {
-    private let fields: [String: FormField]
+    private let fields: [String: LumennaApp.FormField]
 
-    init(_ fields: [FormField]) {
+    init(_ fields: [LumennaApp.FormField]) {
         self.fields = Dictionary(fields.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
-    static let task = FormWords(taskForm())
-    static let block = FormWords(blockForm())
-
     /// The field `key`; one the core does not describe reads as its key, so a mistake shows.
-    subscript(_ key: String) -> FormField {
-        fields[key] ?? FormField(key: key, label: key, hint: "", example: "", kind: .line, options: [], repeatingOnly: false, oneDay: false)
+    subscript(_ key: String) -> LumennaApp.FormField {
+        fields[key] ?? LumennaApp.FormField(key: key, label: key, hint: "", example: "", kind: .line, options: [], repeatingOnly: false, oneDay: false)
     }
 }
 
 /// A text field for one of the core's form fields: its name, its example as the placeholder,
 /// and what it takes as its hint.
-func namedField(_ field: FormField, text: Binding<String>, axis: Axis = .horizontal) -> some View {
+func namedField(_ field: LumennaApp.FormField, text: Binding<String>, axis: Axis = .horizontal) -> some View {
     namedField(field.label, text: text, example: field.example, axis: axis).modifier(FieldHint(field.hint))
 }
 

@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * The app itself (crates/app, through crates/mobile and BoltFFI), over this device's store:
+ * The app itself (crates/app, through crates/ffi and BoltFFI), over this device's store:
  * what the screens draw, and where they send what the person does.
  *
  * What is in hand, what is folded, which question is open and what to say are the app's; a

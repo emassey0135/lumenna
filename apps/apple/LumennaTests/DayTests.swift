@@ -5,7 +5,7 @@ import XCTest
 
 /// The day over the app: each row's swipe actions, custom actions and menu, and the day's own
 /// actions, asked for and run directly, as VoiceOver offers them. The store is seeded through
-/// the surface beside it, and the app takes that in.
+/// the device, and the app takes that in.
 @MainActor
 final class DayTests: XCTestCase {
     private var core: Core!
@@ -73,7 +73,7 @@ final class DayTests: XCTestCase {
         } while !(core.app.isStill && until()) && Date() < deadline
     }
 
-    /// The day shown, once the app has taken in what was written through the surface.
+    /// The day shown, once the app has taken in what was seeded.
     private func shownDay() -> DayViewController {
         core.app.tick()
         settle()
@@ -95,7 +95,7 @@ final class DayTests: XCTestCase {
     }
 
     private func block(repeating: String?) throws {
-        _ = try core.lumenna.addBlock(block: NewBlock(
+        _ = try core.app.device.addBlock(block: newBlock(
             title: "Deep work", at: "09:00", minutes: 60, date: nil, kind: "work", repeat: repeating
         ))
     }
@@ -112,7 +112,7 @@ final class DayTests: XCTestCase {
         let cancel = try XCTUnwrap(day.customActions(at: path(index)).first { $0.name == "Cancel This Day" })
         _ = cancel.actionHandler?(cancel)
         settle()
-        XCTAssertEqual(try core.lumenna.plan(date: nil).cancelled.map(\.title), ["Deep work"], "the custom action runs the app's")
+        XCTAssertEqual(try core.app.device.plan(date: nil).cancelled.map(\.title), ["Deep work"], "the custom action runs the app's")
     }
 
     func testEveryRowOfTheDayOffersEachOfItsActionsOnce() throws {
@@ -128,7 +128,7 @@ final class DayTests: XCTestCase {
     func testTheDaysOwnActionsAreOfferedInTheBarAndOnTheHeadingInTheCoresOrder() throws {
         // A work block all of today, so the day is under way whatever the time: 1440 minutes,
         // since 1439 ends at 23:59 and is not under way in the day's last minute.
-        _ = try core.lumenna.addBlock(block: NewBlock(
+        _ = try core.app.device.addBlock(block: newBlock(
             title: "All day", at: "00:00", minutes: 1440, date: Clock.isoDay(.now), kind: "work", repeat: nil
         ))
         let screen = shownDay()

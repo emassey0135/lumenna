@@ -5,7 +5,7 @@ import XCTest
 
 /// The places over the app — the iPad's sidebar and Browse's lists — each row's swipe actions,
 /// custom actions and menu asked for directly, as VoiceOver offers them. The store is seeded
-/// through the surface beside it, and the app takes that in.
+/// through the device, and the app takes that in.
 @MainActor
 final class BrowseTests: XCTestCase {
     private var core: Core!
@@ -80,7 +80,7 @@ final class BrowseTests: XCTestCase {
         )
     }
 
-    /// `list` shown once the app has taken in what the surface wrote and its rows are drawn.
+    /// `list` shown once the app has taken in what was seeded and its rows are drawn.
     private func shownList<List: AppListViewController>(_ list: List) -> List {
         core.app.tick()
         settle()
@@ -100,7 +100,7 @@ final class BrowseTests: XCTestCase {
     }
 
     func testTheSidebarOffersNewProjectAndCollapseOnItsProjectsHeading() throws {
-        _ = try core.lumenna.addLabel(name: "calls")
+        _ = try core.app.device.addLabel(name: "calls")
         let sidebar = shownList(SidebarViewController(core: core) { _ in })
         settle { sidebar.items.contains { $0.title == "calls" } }
         let keys = sidebar.items.map(\.key)
@@ -116,9 +116,9 @@ final class BrowseTests: XCTestCase {
     }
 
     func testMoveUnderOffersWhatTheCoreOffersNotTheListAsFolded() throws {
-        _ = try core.lumenna.addProject(name: "Work", parent: nil)
-        _ = try core.lumenna.addProject(name: "Reports", parent: "Work")
-        _ = try core.lumenna.addProject(name: "Home", parent: nil)
+        _ = try core.app.device.addProject(name: "Work", parent: nil)
+        _ = try core.app.device.addProject(name: "Reports", parent: "Work")
+        _ = try core.app.device.addProject(name: "Home", parent: nil)
         let projects = shownList(PlacesViewController(core: core, group: .projects, title: "Projects"))
         settle { projects.items.contains { $0.title == "Reports" } }
         let index = try XCTUnwrap(projects.items.firstIndex { $0.title == "Work" })

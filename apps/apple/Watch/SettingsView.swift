@@ -1,3 +1,4 @@
+import LumennaApp
 import SwiftUI
 
 /// The settings that sync, in the form the iPhone and the Mac show them
@@ -22,52 +23,49 @@ struct SettingsView: View {
         var body: some View {
             List {
                 NavigationLink("Planning") { PlanningSettings(model: model).navigationTitle("Planning") }
-                NavigationLink("Devices") { DevicesView(core: core) }
+                NavigationLink("Devices") { DevicesView() }
             }
         }
     }
 }
 
-/// The paired devices, as the phone lists them, from the synced list: the watch is not one of
-/// them and syncs with none directly, so each says only its platform and version. Each
-/// offers its actions, the core's, when tapped; pairing a new one is the phone's.
+/// The paired devices, as the phone lists them: the app's Devices page, from the synced list.
+/// The watch is not one of them and syncs with none directly, so each says only its platform
+/// and version, and the page says the watch syncs through its phone. Each offers its actions,
+/// the app's, when tapped; pairing a new one is the phone's.
 struct DevicesView: View {
     @EnvironmentObject private var core: WatchCore
-    @StateObject private var asker: WatchAsker
-
-    init(core: WatchCore) {
-        _asker = StateObject(wrappedValue: WatchAsker(core: core))
-    }
+    @EnvironmentObject private var asker: WatchAsker
 
     var body: some View {
-        let listed: DeviceList? = {
-            _ = core.generation
-            return core.read { try core.lumenna.devices() }
-        }()
-        List {
+        _ = core.generation
+        let page = core.app.view.devices
+        let lines = core.app.lines.devices
+        let devices = page?.list?.devices ?? []
+        return List {
             Text("This watch syncs through your iPhone. Pair a new device from the iPhone.")
                 .font(.footnote)
-            if let listed, listed.devices.isEmpty {
-                Text(listed.empty)
+            if let list = page?.list, list.devices.isEmpty {
+                Text(list.empty)
             }
-            ForEach(listed?.devices ?? [], id: \.nodeId) { device in
+            ForEach(Array(devices.enumerated()), id: \.element.nodeId) { index, device in
+                let line = index < lines.count ? lines[index] : nil
+                let title = line?.title ?? device.name
+                let detail = line?.detail ?? ""
                 Button {
-                    asker.offer(device.name, device.actions)
+                    asker.offer(title, device.actions, on: device.nodeId, side: .devices)
                 } label: {
                     VStack(alignment: .leading) {
-                        Text(device.name)
-                        Text(([device.platform] + device.status).joined(separator: ", "))
-                            .font(.footnote).foregroundStyle(Color.quietLabel)
+                        Text(title)
+                        Text(detail).font(.footnote).foregroundStyle(Color.quietLabel)
                     }
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(device.name)
-                    .accessibilityValue(([device.platform] + device.status).joined(separator: ", "))
+                    .accessibilityLabel(title)
+                    .accessibilityValue(detail)
                 }
             }
         }
         .navigationTitle("Devices")
-        .sheet(item: $asker.asked) { asked in
-            NavigationStack { asked.view }
-        }
+        .onAppear { core.app.send(.devices(.show)) }
     }
 }

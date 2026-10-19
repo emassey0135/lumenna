@@ -5,33 +5,28 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "UniFFI's binding generator for the surface, which the Apple apps link from crates/mobile."
+description = "The Crux app and the device's services for the Kotlin apps, through BoltFFI."
 
 [lib]
-name = "lumenna_ffi"
-# A static library for the Apple targets, a dynamic one for the host so that
-# `uniffi-bindgen` can read the interface out of it, and an ordinary one for tests.
-crate-type = ["staticlib", "cdylib", "lib"]
-
-[[bin]]
-name = "uniffi-bindgen"
-path = "src/bin/uniffi-bindgen.rs"
-required-features = ["bindgen"]
+crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
 default = ["network"]
-bindgen = ["uniffi/cli"]
-# Sync over Iroh and the command surface's socket. Every app has it but the Apple Watch's,
-# which syncs through its phone over the link alone: watchOS allows no sockets.
-network = ["lumenna-host/sync", "lumenna-host/rpc"]
+# Pairing and syncing over Iroh. Every app has it but the Apple Watch's, which syncs through its
+# phone over the link alone: watchOS allows no sockets.
+network = ["lumenna-bridge/network", "lumenna-host/sync"]
+# The command surface over JSON-RPC, served while this device's endpoint is held: the Mac's.
+rpc = ["network", "lumenna-bridge/rpc", "lumenna-host/rpc"]
 
 [dependencies]
-lumenna-host = { path = "../host", features = ["uniffi", "link"] }
-lumenna-records = { workspace = true, features = ["uniffi"] }
-uniffi = "0.32"
-
-[dev-dependencies]
-tempfile.workspace = true
+boltffi = "=0.31.1"
+crux_core = "=0.20.0"
+futures = { version = "0.3", default-features = false, features = ["std", "executor"] }
+lumenna-app = { path = "../app" }
+lumenna-bridge = { path = "../bridge" }
+lumenna-desktop = { path = "../desktop", features = ["app"] }
+lumenna-host = { workspace = true, features = ["link"] }
+lumenna-records.workspace = true
 
 [lints]
 workspace = true

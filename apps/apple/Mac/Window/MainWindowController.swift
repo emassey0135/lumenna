@@ -64,6 +64,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             default: break
             }
         }
+        questions?.answeredElsewhere = RemindersModel.answersItself
         // The screens the app opens by itself: the block form, a proposal, a reminder list.
         sheets = AppSheets(core: core, window: window)
         observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: core.app, queue: .main) { [weak self] _ in
@@ -95,7 +96,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let controller: NSViewController = switch place {
             case .today: DayViewController(core: core, window: self)
             case .blocks: BlocksViewController(core: core)
-            default: TaskListViewController(core: core, window: self, place: place)
+            default: Lumenna.taskList(core: core, window: self, place: place)
             }
             content.show(controller)
         }
@@ -123,7 +124,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// The list in the middle pane, if it is a task list — what the Task menu acts on.
-    var taskList: TaskListViewController? { content.current as? TaskListViewController }
+    var taskList: MacTaskListing? { content.current as? MacTaskListing }
     var day: DayViewController? { content.current as? DayViewController }
 
     // MARK: - Panes (F6)

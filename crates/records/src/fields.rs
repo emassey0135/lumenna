@@ -12,7 +12,6 @@ use crate::actions::Choice;
 /// How a form field's value is shaped, so a client offers the control that fits.
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[serde(rename_all = "snake_case")]
 pub enum FieldKind {
     /// A line of text, read by the core: a date, a repetition, a duration, names.
@@ -34,7 +33,6 @@ pub enum FieldKind {
 /// One field of a form.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct FormField {
     /// Which field of [`TaskFields`](crate::TaskFields) or [`BlockFields`](crate::BlockFields)
     /// it is, by its field name; `date` for a new block's day.
@@ -75,7 +73,6 @@ fn field(key: &str, label: &str, kind: FieldKind, hint: &str, example: &str) -> 
 }
 
 /// The task form's fields, in order.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn task_form() -> Vec<FormField> {
     use FieldKind as K;
@@ -109,7 +106,6 @@ pub fn task_form() -> Vec<FormField> {
 
 
 /// The block form's fields, in order. `date` is a new block's day; an edit has none.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn block_form() -> Vec<FormField> {
     use FieldKind as K;
@@ -150,7 +146,6 @@ pub fn block_form() -> Vec<FormField> {
 
 /// What the block form says under Repeats when the block repeats by a rule the repetition
 /// words cannot say, so the field starts empty and saving leaves the rule alone.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn unsayable_repeat_note(block: crate::BlockShown) -> Option<String> {
     let rule = block.rrule.filter(|_| block.repetition.is_none())?;
@@ -161,7 +156,6 @@ pub fn unsayable_repeat_note(block: crate::BlockShown) -> Option<String> {
 /// device is the client's: how it calls itself where it finds the other by itself.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct PairingWords {
     /// The screen's title.
     pub title: String,
@@ -208,7 +202,6 @@ pub struct PairingWords {
 /// The pairing screen's words. `this_device` is how the device calls itself ("this Mac",
 /// "this PC", "this phone"); `local` whether it can be found on the network by itself, which a
 /// browser cannot.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn pairing_words(this_device: String, local: bool) -> PairingWords {
     let waiting = if local {
@@ -253,7 +246,6 @@ pub fn pairing_words(this_device: String, local: bool) -> PairingWords {
 /// Text with no one's own words in it — a button, a fixed title — in sentence case, for a
 /// platform whose convention it is (Material, the web) and for braille, where every capital
 /// costs a cell. Never for a task's title or a name, whose capitals are their own.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn sentence_case(text: String) -> String {
     // An acronym keeps its capitals: "JSON" is a name, not a word. So does "I", and "I'm".
@@ -303,7 +295,6 @@ mod tests {
 /// Every word of a proposal's screen: Replan from Now's or Plan the Day's.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct ProposalWords {
     /// The screen's title.
     pub title: String,
@@ -322,13 +313,11 @@ pub struct ProposalWords {
     /// The heading over other options (Replan's `alternatives`), each a button that asks again
     /// with its pins. Empty where a screen has none.
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    #[cfg_attr(feature = "uniffi", uniffi(default = ""))]
     pub others: String,
 }
 
 /// The words of `kind`'s screen: [`ActionKind::Replan`](crate::ActionKind::Replan) or
 /// [`ActionKind::PlanDay`](crate::ActionKind::PlanDay); any other kind has Replan's.
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 #[must_use]
 pub fn proposal_words(kind: crate::ActionKind) -> ProposalWords {
     match kind {

@@ -73,7 +73,6 @@ fn network(reach: Reach) -> Network {
 }
 
 /// What a pairing asks the person, through whatever the client has — a terminal, a dialog.
-#[cfg_attr(feature = "uniffi", uniffi::export(with_foreign))]
 pub trait PairingPrompt: Send + Sync {
     /// The code to give the other device, when this one is the one waiting to be found.
     fn show_code(&self, code: String);
@@ -87,7 +86,6 @@ pub trait PairingPrompt: Send + Sync {
 }
 
 /// What a running [`SyncService`] tells its client.
-#[cfg_attr(feature = "uniffi", uniffi::export(with_foreign))]
 pub trait SyncListener: Send + Sync {
     /// Something arrived from another device, or how syncing with one went has changed;
     /// whatever shows the store or the devices should read them again.
@@ -113,13 +111,12 @@ fn runtime() -> Result<tokio::runtime::Runtime> {
 /// already trusts: a Wear OS watch's Data Layer channel to its phone. Blocking calls, made off
 /// the app's main thread.
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-#[cfg_attr(feature = "uniffi", uniffi::export(with_foreign))]
 pub trait LinkStream: Send + Sync {
     /// Up to `max` bytes, waiting for some; empty once the stream has ended.
     fn read(&self, max: u32) -> Vec<u8>;
     /// Writes all of `bytes`; false if the stream has closed.
     fn write(&self, bytes: Vec<u8>) -> bool;
-    /// Done writing. Not `close`: UniFFI's Kotlin objects already have one.
+    /// Done writing. Not `close`: a generated Kotlin object already has one.
     fn finish(&self);
 }
 
@@ -202,7 +199,6 @@ fn outcomes(report: &SyncReport) -> Outcomes {
 }
 
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// Pairs this device with another of the person's.
     ///
@@ -314,7 +310,6 @@ impl Lumenna {
     }
 }
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// How syncing is going, given whether this device's endpoint is running — what
     /// [`sync_status`](Self::sync_status) asks the lock file, and a browser knows of its own
@@ -438,7 +433,6 @@ impl Lumenna {
 }
 
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// Syncs over `stream`, a link to the paired phone or watch that the platform already
     /// trusts (`lumenna_sync::introduce`): the first time, pairs the two without words, which
@@ -608,7 +602,6 @@ const STANDBY: Duration = Duration::from_secs(5);
 /// app opened while the daemon ran still syncs once the daemon is gone. Until then its
 /// rounds are asked of the holder.
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub struct SyncService {
     /// The loop's handle, once this service holds the endpoint.
     handle: Arc<Mutex<Option<SyncLoop>>>,
@@ -618,7 +611,6 @@ pub struct SyncService {
 }
 
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl SyncService {
     /// Syncs with every paired device now: on this service's endpoint, or, while another
     /// process holds it, by asking that process.

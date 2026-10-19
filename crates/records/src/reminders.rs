@@ -19,7 +19,6 @@ pub const SNOOZE_MINS: u32 = 10;
 /// One firing, as a notification shows it.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct DueReminder {
     /// The reminder, for dismissing or snoozing it: its own identifier, or a default's.
     pub key: String,
@@ -44,19 +43,16 @@ pub struct DueReminder {
     /// At a block's end with work left short: the button that carries it forward
     /// ([`Lumenna::carry_rest_forward`] of `target@occurrence`). Empty when there is none.
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    #[cfg_attr(feature = "uniffi", uniffi(default = ""))]
     pub carry: String,
     /// When a block's planned work outruns its time: the button that opens Replan from Now.
     /// Empty when there is none.
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    #[cfg_attr(feature = "uniffi", uniffi(default = ""))]
     pub replan: String,
 }
 
 /// What reminders to give now, or over a while.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct DueReminders {
     /// How many, or why none.
     pub announcement: String,
@@ -98,7 +94,6 @@ impl DueReminders {
 /// One reminder a task or block has, its own or a default.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct ReminderView {
     /// Its identifier: what removing it takes. A default's cannot be removed alone.
     pub id: String,
@@ -121,7 +116,6 @@ pub struct ReminderView {
 /// The reminders a task or block has.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct ReminderList {
     /// How many, and whether they are its own or the defaults.
     pub announcement: String,

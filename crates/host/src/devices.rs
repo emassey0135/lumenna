@@ -18,7 +18,6 @@ pub(crate) const NO_DEVICES: &str = "No devices are paired yet. Pair one to sync
 use crate::words::count_line;
 use crate::{Lumenna, repaired};
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// The paired devices, this one first.
     ///

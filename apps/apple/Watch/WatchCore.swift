@@ -4,25 +4,23 @@ import SwiftUI
 /// The shared forms' name for the open store (`Shared/Forms`): on the watch, this one.
 typealias Core = WatchCore
 
-/// The watch's open store and its link to the iPhone.
+/// The watch's open store, the app over it, and its link to the iPhone.
 ///
 /// The watch keeps a whole store of its own and every view works on it with the phone away.
 /// It runs no Iroh endpoint — watchOS allows no sockets outside an audio session — so it
 /// syncs only with its iPhone, over WatchConnectivity (`PhoneSync`), and the phone passes
-/// what it wrote on to every other device. Operations are milliseconds against local SQLite,
-/// so they run on the main thread, as on the phone.
+/// what it wrote on to every other device. Every screen draws the app's view (`AppModel`) and
+/// sends it what the person did.
 final class WatchCore: ObservableObject {
-    /// Posted after anything changes the store, as on the phone and the Mac: every view
-    /// showing it reads it again, and what the watch wrote goes to the phone.
+    /// Posted after anything changes the store from outside the app, as on the phone and the
+    /// Mac: the app takes it in.
     static let changed = Notification.Name("LumennaCoreChanged")
     /// In a change's `userInfo` when it came from the phone, which need not hear it back.
     static let fromPhone = "fromPhone"
 
-    let lumenna: Lumenna
-    /// The Crux app over the same store, on a connection of its own, which the screens are
-    /// moving onto (`AppModel`).
+    /// The Crux app over the store, which every screen draws.
     let app: AppModel
-    /// Moves after anything changes the store, so every SwiftUI view showing it reads it again.
+    /// Moves with every turn of the app, so every SwiftUI view showing it draws it again.
     @Published private(set) var generation = 0
     /// Something that could not be done, in the core's words, for an alert.
     @Published var failure: String?
@@ -30,32 +28,32 @@ final class WatchCore: ObservableObject {
     private var observer: NSObjectProtocol?
     // Foundation's, named in full: the core has a record called `Timer` too.
     private var watcher: Foundation.Timer?
-    /// How far the app's connection had written at the last look.
-    private var seenOutside: Int64?
+    /// The store's heads at the last look, or as the last exchange with the phone left them.
+    private var seenHeads: String?
 
     init() throws {
         // jiff finds the zone through TZ or /etc/localtime, and the sandbox is no place to
         // rely on the second.
         setenv("TZ", TimeZone.current.identifier, 1)
         let directory = try WatchCore.profileDirectory()
-        lumenna = try Lumenna.open(directory: directory.path)
         app = try AppModel(directory: directory, platform: "watchos")
         phone = PhoneSync(core: self)
-        // Every change, whoever made it — this file, or a shared form, which posts the
-        // notification itself — redraws and goes to the phone.
-        observer = NotificationCenter.default.addObserver(forName: Self.changed, object: nil, queue: .main) { [weak self] note in
-            guard let self else { return }
-            generation += 1
-            if note.userInfo?[Self.fromPhone] == nil { phone.syncNow() }
+        observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: app, queue: .main) { [weak self] _ in
+            self?.generation += 1
         }
-        // What the app's connection writes is another connection's write to this one, which
-        // posts nothing: noticed once a second, it redraws and goes to the phone as any change.
-        seenOutside = try? lumenna.outsideVersion()
+        // What the app writes goes to the phone: its heads move with every write, looked at
+        // once a second, as cheap as reading them.
+        seenHeads = try? app.device.heads()
         watcher = Foundation.Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            guard let self, let outside = try? self.lumenna.outsideVersion(), outside != self.seenOutside else { return }
-            self.seenOutside = outside
-            self.changed()
+            guard let self, let heads = try? self.app.device.heads(), heads != self.seenHeads else { return }
+            self.seenHeads = heads
+            self.phone.syncNow()
         }
+    }
+
+    /// The store as an exchange with the phone left it: what it brought is not sent back.
+    func synced() {
+        seenHeads = try? app.device.heads()
     }
 
     /// Where the store lives: Application Support, or a fresh one a UI test names.
@@ -69,46 +67,7 @@ final class WatchCore: ObservableObject {
         )
         return support.appendingPathComponent("lumenna", isDirectory: true)
     }
-
-    /// The store changed here.
-    func changed() {
-        NotificationCenter.default.post(name: Self.changed, object: nil)
-    }
-
-    /// Runs an operation a person asked for: says the core's announcement, redraws, and
-    /// sends the change to the phone. Returns whether it ran.
-    @discardableResult
-    func act(_ operation: () throws -> some Announced) -> Bool {
-        do {
-            let result = try operation()
-            changed()
-            Announcer.say(result.announcement, notices: result.notices)
-            return true
-        } catch {
-            failure = error.sentence
-            return false
-        }
-    }
-
-    /// Reads something, saying why not if it cannot be read.
-    func read<T>(_ query: () throws -> T) -> T? {
-        do {
-            return try query()
-        } catch {
-            failure = error.sentence
-            return nil
-        }
-    }
 }
-
-/// The records an operation returns, each with the core's sentence about what it did.
-protocol Announced {
-    var announcement: String { get }
-    var notices: [String] { get }
-}
-
-extension Change: Announced {}
-extension Timer: Announced {}
 
 /// Saying what happened: every change of state is announced, not left to be noticed. The
 /// shared forms call it as the phone's.

@@ -1,41 +1,13 @@
-import SwiftUI
+import LumennaApp
 import UIKit
 
-/// The block editor: the shared form (`Shared/Forms/BlockForm.swift`), in a navigation
-/// sheet with Cancel and Save in its bar.
-final class BlockFormViewController: UIHostingController<BlockForm> {
-    init(model: BlockFormModel) {
-        super.init(rootView: BlockForm(model: model))
-        title = model.heading
-        // UIKit buttons, Save always enabled: a disabled one fails contrast, and saving a
-        // block with no name says why it cannot.
-        navigationItem.leftBarButtonItem = UIBarButtonItem(
-            systemItem: .cancel, primaryAction: UIAction { _ in model.close() }
-        )
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            title: "Save", primaryAction: UIAction { _ in model.save() }
-        )
-        navigationItem.rightBarButtonItem?.style = .done
-    }
-
-    @available(*, unavailable)
-    required dynamic init?(coder: NSCoder) { fatalError("not used") }
-}
-
-extension UIViewController {
-    /// Shows a block form in a sheet of its own, closing it when it saves or is cancelled.
-    func presentBlockForm(_ model: BlockFormModel) {
-        let form = BlockFormViewController(model: model)
-        let navigation = UINavigationController(rootViewController: form)
-        model.close = { [weak navigation] in navigation?.dismiss(animated: true) }
-        present(navigation, animated: true)
-    }
-}
-
 /// Choosing a day to go to: a day typed in the core's words ("next friday", "12 October"),
-/// or the system's own calendar, in a sheet.
+/// or the system's own calendar, in a sheet — the app's Go to Day, its words the core's.
 final class DayPickerViewController: UIViewController {
-    private let question = TextQuestion.goToDay
+    private let question: (title: String, label: String, hint: String, yes: String) = {
+        if case let .text(title, label, _, hint, _, yes, _) = LumennaApp.goToDayQuestion() { return (title, label, hint, yes) }
+        return ("Go to Day", "Day", "", "Go")
+    }()
     private let picker = UIDatePicker()
     private lazy var entry = LineEntry(name: question.label)
     private let hint = UILabel()

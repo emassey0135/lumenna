@@ -23,7 +23,6 @@ use crate::{Lumenna, repaired};
 pub const DEVICE_KEYS: &[&str] = &["backup-dir", "backup-keep", "backup-every", "clock", "reminders"];
 
 
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl Lumenna {
     /// Backs up the whole store now, history included — into the configured directory, or
     /// `to` if given.

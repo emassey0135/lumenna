@@ -55,7 +55,7 @@ final class BrowseViewController: AppListViewController {
         switch kind {
         case let .group(group): next = PlacesViewController(core: core, group: group, title: title)
         case .place(.blocks): next = BlocksViewController(core: core)
-        case let .place(place): next = TaskListViewController(core: core, place: place)
+        case let .place(place): next = taskList(core: core, place: place)
         }
         navigationController?.pushViewController(next, animated: true)
         return next
@@ -107,7 +107,7 @@ final class PlacesViewController: AppListViewController {
     override func open(_ item: AppItem) {
         guard case let .place(place) = core.app.sidebarEntry(item.key)?.kind else { return }
         core.app.send(.hold(field0: .sidebar, field1: item.key))
-        navigationController?.pushViewController(TaskListViewController(core: core, place: place), animated: true)
+        navigationController?.pushViewController(taskList(core: core, place: place), animated: true)
     }
 }
 
