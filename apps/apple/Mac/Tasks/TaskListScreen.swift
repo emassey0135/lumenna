@@ -153,9 +153,11 @@ struct MacTaskListScreen: View {
                     }
                 }
             }
-            // Said as the phone says it: the title, then the rest of its line. The level and
-            // whether it is expanded are the outline's own to report.
-            .accessibilityElement(children: .combine)
+            // Said as the phone says it: the title, then the rest of its line, the check box a
+            // control inside it as in the AppKit cell; combined, the row became a check box named
+            // by its title and the line was lost. The level and whether it is expanded are the
+            // outline's own to report.
+            .accessibilityElement(children: .contain)
             .accessibilityLabel(row.row.title)
             .accessibilityValue(detail)
         }
