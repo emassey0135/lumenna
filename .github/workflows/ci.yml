@@ -172,8 +172,9 @@ jobs:
       - name: Newest Xcode, and XcodeGen
         run: |
           # The newest released Xcode, never a beta: Xcode 27.2 beta 2 on the runner could not read
-          # the generated project.
-          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | grep -vi beta | sort -V | tail -1)"
+          # the generated project. By its versioned name: Xcode.app there links to the beta.
+          xcode=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
+          sudo xcode-select -s "${xcode:-/Applications/Xcode.app}"
           brew install xcodegen
       - name: Build
         working-directory: apps/apple
@@ -199,8 +200,9 @@ jobs:
       - name: Newest Xcode, and XcodeGen
         run: |
           # The newest released Xcode, never a beta: Xcode 27.2 beta 2 on the runner could not read
-          # the generated project.
-          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | grep -vi beta | sort -V | tail -1)"
+          # the generated project. By its versioned name: Xcode.app there links to the beta.
+          xcode=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
+          sudo xcode-select -s "${xcode:-/Applications/Xcode.app}"
           brew install xcodegen
       - name: UI tests
         working-directory: apps/apple
@@ -232,8 +234,9 @@ jobs:
       - name: Newest Xcode, and XcodeGen
         run: |
           # The newest released Xcode, never a beta: Xcode 27.2 beta 2 on the runner could not read
-          # the generated project.
-          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | grep -vi beta | sort -V | tail -1)"
+          # the generated project. By its versioned name: Xcode.app there links to the beta.
+          xcode=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
+          sudo xcode-select -s "${xcode:-/Applications/Xcode.app}"
           brew install xcodegen
       - name: A watch simulator
         # The newest Apple Watch the runtime has, downloading watchOS if the runner lacks it.
@@ -285,8 +288,9 @@ jobs:
       - name: Newest Xcode, and XcodeGen
         run: |
           # The newest released Xcode, never a beta: Xcode 27.2 beta 2 on the runner could not read
-          # the generated project.
-          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | grep -vi beta | sort -V | tail -1)"
+          # the generated project. By its versioned name: Xcode.app there links to the beta.
+          xcode=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
+          sudo xcode-select -s "${xcode:-/Applications/Xcode.app}"
           xcodebuild -version
           brew install xcodegen
       - name: Build for testing
@@ -328,7 +332,9 @@ jobs:
     steps:
       - name: Newest Xcode
         # The newest released Xcode, never a beta, as the build's.
-        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | grep -vi beta | sort -V | tail -1)"
+        run: |
+          xcode=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
+          sudo xcode-select -s "${xcode:-/Applications/Xcode.app}"
       - uses: actions/download-artifact@v4
         with:
           name: ios-products
@@ -371,7 +377,9 @@ jobs:
     steps:
       - name: Newest Xcode
         # The newest released Xcode, never a beta, as the build's.
-        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | grep -vi beta | sort -V | tail -1)"
+        run: |
+          xcode=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
+          sudo xcode-select -s "${xcode:-/Applications/Xcode.app}"
       - uses: actions/download-artifact@v4
         with:
           name: ios-products
