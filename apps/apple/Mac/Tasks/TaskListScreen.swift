@@ -138,11 +138,15 @@ struct MacTaskListScreen: View {
             let detail = row.line?.detail ?? ""
             HStack(alignment: .top, spacing: 6) {
                 if !model.trash {
+                    // For a pointer alone, as the web's is: Space and the row's menu mark it done
+                    // for everyone else, and its line says "completed" in words. Left in, the
+                    // check box was said before the title, and differently on a row with
+                    // subtasks than on one without.
                     Toggle(isOn: Binding(get: { done }, set: { _ in
                         model.run([.markDone, .markNotDone], on: row.row, saying: .markDone)
                     })) { EmptyView() }
                     .toggleStyle(.checkbox)
-                    .accessibilityLabel(done ? "Done, \(row.row.title)" : "Mark \(row.row.title) done")
+                    .accessibilityHidden(true)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(row.row.title).strikethrough(done)
@@ -153,13 +157,13 @@ struct MacTaskListScreen: View {
                     }
                 }
             }
-            // Said as the phone says it: the title, then the rest of its line, the check box a
-            // control inside it as in the AppKit cell; combined, the row became a check box named
-            // by its title and the line was lost. The level and whether it is expanded are the
-            // outline's own to report.
-            .accessibilityElement(children: .contain)
+            // One element, said as the phone says it: the title, then the rest of its line, the
+            // same on a row with subtasks as on one without. The level and whether it is expanded
+            // are the outline's own to report.
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel(row.row.title)
             .accessibilityValue(detail)
+            .accessibilityAddTraits(.isStaticText)
         }
     }
 }
