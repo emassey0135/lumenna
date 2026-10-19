@@ -10,14 +10,20 @@ description = "The Crux app and the device's services for the Kotlin apps, throu
 [lib]
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+default = ["network"]
+# Pairing and syncing over Iroh. Every app has it but the Apple Watch's, which syncs through its
+# phone over the link alone: watchOS allows no sockets.
+network = ["lumenna-bridge/network", "lumenna-host/sync"]
+
 [dependencies]
 boltffi = "=0.31.1"
 crux_core = "=0.20.0"
 futures = { version = "0.3", default-features = false, features = ["std", "executor"] }
 lumenna-app = { path = "../app" }
-lumenna-bridge = { path = "../bridge", features = ["network"] }
+lumenna-bridge = { path = "../bridge" }
 lumenna-desktop = { path = "../desktop", features = ["app"] }
-lumenna-host = { workspace = true, features = ["sync"] }
+lumenna-host = { workspace = true, features = ["link"] }
 lumenna-records.workspace = true
 
 [lints]

@@ -11,6 +11,8 @@
 //! shapes `lum --json` and the RPC surface keep are no concern here.
 
 mod device;
+#[cfg(not(feature = "network"))]
+mod offline;
 pub mod words;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -20,14 +22,19 @@ use std::sync::{Arc, Mutex, PoisonError};
 use boltffi::{data, export};
 use crux_core::middleware::Layer;
 use lumenna_app::{Effect, Notice, SaveFile, ViewModel};
+#[cfg(feature = "network")]
 use lumenna_bridge::network::{Network, NetworkHandle};
+#[cfg(not(feature = "network"))]
+use offline::{Network, NetworkHandle};
 use lumenna_bridge::{Shell as Left, Stack, Store, shell, stack};
 use lumenna_host::{Lumenna, Reach};
 use lumenna_desktop::lines::{Lines, lines};
 use lumenna_desktop::speech::{self, Clock, Spoken};
 use lumenna_records::{Completions, LumennaError, Syntax};
 
-pub use device::{Device, LinkStream};
+pub use device::Device;
+#[cfg(feature = "network")]
+pub use device::LinkStream;
 pub use lumenna_app::ShellEvent;
 
 /// What the shell's locale writes: a time of day and a date. Saying a day — "Today",

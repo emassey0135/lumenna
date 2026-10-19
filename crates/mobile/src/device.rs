@@ -12,15 +12,20 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
 use boltffi::export;
-use lumenna_host::{Lumenna, Reach, ReminderLock};
+use lumenna_host::{Lumenna, ReminderLock};
+#[cfg(feature = "network")]
+use lumenna_host::Reach;
 use lumenna_records::proposals::{DayPins, DayPlan, Replan, ReplanPins, TimeStyle};
 use lumenna_records::reminders::DueReminders;
 use lumenna_records::{
-    BackupDone, Change, DeviceList, Filters, LinkSynced, LumennaError, MoveTarget, NewBlock, Plan, Rows, SettingList,
-    SyncReport, SyncStatus, TaskEdit, TaskShown, Timer,
+    BackupDone, Change, DeviceList, Filters, LumennaError, MoveTarget, NewBlock, Plan, Rows, SettingList, TaskEdit,
+    TaskShown, Timer,
 };
+#[cfg(feature = "network")]
+use lumenna_records::{LinkSynced, SyncReport, SyncStatus};
 
 /// A stream of bytes to another device, which the platform carries: the watch's link to its phone.
+#[cfg(feature = "network")]
 #[export]
 pub trait LinkStream: Send + Sync {
     /// Up to `max` bytes, waiting for some; empty once the stream has ended.
@@ -32,8 +37,10 @@ pub trait LinkStream: Send + Sync {
 }
 
 /// A [`LinkStream`] of the platform's, as the host reads one.
+#[cfg(feature = "network")]
 struct Carried(Arc<dyn LinkStream>);
 
+#[cfg(feature = "network")]
 impl lumenna_host::LinkStream for Carried {
     fn read(&self, max: u32) -> Vec<u8> {
         self.0.read(max)
@@ -116,21 +123,6 @@ impl Device {
     /// Carries every sitting a block's occurrence left short to its next block.
     pub fn carry_rest_forward(&self, block: String) -> Result<Change, LumennaError> {
         self.lumenna.carry_rest_forward(&block)
-    }
-
-    /// A round with every paired device now: on the sync service the app started, if it runs.
-    pub fn sync_now(&self) -> Result<SyncReport, LumennaError> {
-        self.lumenna.sync_now(Reach::Internet)
-    }
-
-    /// How syncing is going, and the devices.
-    pub fn sync_status(&self) -> Result<SyncStatus, LumennaError> {
-        self.lumenna.sync_status()
-    }
-
-    /// Syncs with the device at the other end of `stream`, introducing the two the first time.
-    pub fn sync_over_link(&self, stream: Arc<dyn LinkStream>, device_name: String, platform: String) -> Result<LinkSynced, LumennaError> {
-        self.lumenna.sync_over_link(Arc::new(Carried(stream)), &device_name, &platform)
     }
 
     /// Takes the automatic backup if one is due, saying where it went.
@@ -268,5 +260,25 @@ impl Device {
     /// A whole day's plan, proposed.
     pub fn propose_day_plan(&self, date: Option<String>, style: TimeStyle, pins: DayPins, now: Option<String>) -> Result<DayPlan, LumennaError> {
         self.lumenna.propose_day_plan(date, style, pins, now)
+    }
+}
+
+/// What reaches other devices, where this build has a network: not the Apple Watch's.
+#[cfg(feature = "network")]
+#[export]
+impl Device {
+    /// A round with every paired device now: on the sync service the app started, if it runs.
+    pub fn sync_now(&self) -> Result<SyncReport, LumennaError> {
+        self.lumenna.sync_now(Reach::Internet)
+    }
+
+    /// How syncing is going, and the devices.
+    pub fn sync_status(&self) -> Result<SyncStatus, LumennaError> {
+        self.lumenna.sync_status()
+    }
+
+    /// Syncs with the device at the other end of `stream`, introducing the two the first time.
+    pub fn sync_over_link(&self, stream: Arc<dyn LinkStream>, device_name: String, platform: String) -> Result<LinkSynced, LumennaError> {
+        self.lumenna.sync_over_link(Arc::new(Carried(stream)), &device_name, &platform)
     }
 }

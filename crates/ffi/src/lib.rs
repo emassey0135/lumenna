@@ -1,5 +1,7 @@
 //! Lumenna's core for the apps that link it: iOS, macOS and watchOS, in Swift. UniFFI generates
-//! the bindings. Android runs the Crux app instead (`crates/mobile`, through BoltFFI).
+//! the bindings. Android runs the Crux app instead (`crates/mobile`, through BoltFFI), and the
+//! Apple apps' screens are moving onto it: its exports are in this library too, as
+//! [`app`], so both run side by side, each on its own connection, from one static library.
 //!
 //! There is nothing to define here. The surface — the `Lumenna` object, its operations, and
 //! the records they return — is `lumenna_host`, the same crate the command line calls, built
@@ -10,6 +12,9 @@
 //! record reshaped in Rust fails to compile in Swift rather than failing to decode at run time.
 
 pub use lumenna_host::*;
+
+/// The Crux app, through BoltFFI: its Swift is generated from `crates/mobile` itself.
+pub use lumenna_mobile as app;
 
 // Without a reference from this crate, a linker may drop the surface's exported functions
 // from the library, since nothing here calls them.
