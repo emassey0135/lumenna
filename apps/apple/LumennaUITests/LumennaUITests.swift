@@ -353,7 +353,7 @@ final class LumennaUITests: XCTestCase {
     func testGoToDayTakesATypedDayAndSaysOneItCannotRead() throws {
         tab("Today")
         app.buttons["Go to Day"].tap()
-        let field = app.textViews["Day"]
+        let field = app.textFields["Day"]
         XCTAssertTrue(field.waitForExistence(timeout: 5), "no Day field in:\n\(app.debugDescription)")
         // Contrast and touch targets only: the system's own inline calendar fails the Dynamic
         // Type and text checks by itself, its day numbers fixed in size.
