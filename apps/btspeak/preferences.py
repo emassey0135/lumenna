@@ -34,6 +34,9 @@ NOT_HERE = {"clock"}
 #: takes a while to give up on.
 SYNC_FOR = 180
 
+#: How long the Devices page waits for the network to say how syncing is going, in seconds.
+STATUS_FOR = 5
+
 
 def planning(setting) -> bool:
     """Whether a setting is on the Planning page: those that sync to every device."""
@@ -178,6 +181,14 @@ def devices(session: Session) -> str:
     """How syncing is going, device by device, and pairing another."""
     state = {"heading": "Devices and sync"}
     session.send(L.ShellEventDevices(L.DevicesEventShow()))
+    # How syncing is going comes from the network, which answers later than the store: waited
+    # for a moment, so the heading the page opens with is not replaced as it is read.
+    deadline = time.monotonic() + STATUS_FOR
+    while time.monotonic() < deadline:
+        view = session.view().devices
+        if view is not None and view.status:
+            break
+        time.sleep(0.05)
 
     def build():
         view = session.view().devices
