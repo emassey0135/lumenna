@@ -37,9 +37,6 @@ const NEXT: u16 = 502;
 const ADD: u16 = 503;
 const TREE: u16 = 504;
 
-/// The day heading's key in the app: the row whose actions are the day's own.
-const SUMMARY: &str = "summary";
-
 pub struct DayView {
     buttons: [HWND; 4],
     pub tree: Tree,
@@ -124,24 +121,10 @@ impl DayView {
         }
     }
 
-    /// The day's own action of `kind`, from the Day menu: run as the summary row runs it, or
-    /// why the day shown has none.
+    /// The day's own action of `kind`, from the Day menu: run by the app, or why the day shown
+    /// has none, whatever row is in hand.
     pub fn act_on_day(&self, app: &App, kind: ActionKind) {
-        // As the app holds it now: the day may have been opened just before.
-        let view = app.crux.view();
-        let offered = view.day.map(|day| day.actions).unwrap_or_else(|| self.actions.borrow().clone());
-        match actions::of_kind(&offered, &[kind]) {
-            Some(action) => app.crux.send(ShellEvent::Perform(action)),
-            // The day's own actions are its heading's, so the app says why it lacks one there;
-            // then the row in hand goes back to the one selected, which the menu leaves alone.
-            None => {
-                app.crux.send(ShellEvent::Focus(SUMMARY.to_owned()));
-                app.crux.send(ShellEvent::Run(vec![kind]));
-                if let Some(focus) = view.focus.filter(|focus| focus != SUMMARY) {
-                    app.crux.send(ShellEvent::Focus(focus));
-                }
-            }
-        }
+        app.crux.send(ShellEvent::RunDay(vec![kind]));
     }
 
     /// The selected row's action of one of `kinds`, if it has one: what a key means here.
