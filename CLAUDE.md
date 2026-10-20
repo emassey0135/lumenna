@@ -1306,7 +1306,9 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
 - **The app's open question is asked once the app is still** (`asking.rs`, polled every 50 ms
   from a turn that has one): straight after an answer it is still open while the write is
   under way. A refusal is said, then a line is asked again with what was typed. A pick says how
-  many it offers as it opens: that is the app's.
+  many it offers as it opens, and Put in a Block's ends in the app's Another Day: both the app's.
+  A key a row lacks is the app's to refuse too: `Run` after a side list's `Hold`, `RunDay` for
+  the day's own actions, `Details(Run)` for the details' task; nothing here words a refusal.
 - **The clock setting reaches the app's thread as a number** (`clock::Locale::twelve`, kept
   from GSettings' change signal): the app's `Locale` is called off the main thread, where a
   `gio::Settings` cannot go.

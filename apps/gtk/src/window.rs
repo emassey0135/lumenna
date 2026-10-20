@@ -27,7 +27,7 @@ use crate::clock::Locale;
 use crate::core::Event;
 use crate::detail::Detail;
 use crate::sidebar::Sidebar;
-use lumenna_records::{Action, ActionKind, Subject};
+use lumenna_records::ActionKind;
 use crate::day::DayView;
 use crate::tasks::TaskList;
 use crate::prompts;
@@ -584,13 +584,6 @@ impl App {
         }
     }
 
-    /// What can be done to the task the details show — the task in hand, a sitting's task, or
-    /// the one kept while focus is in the details: what the Task menu's commands look among
-    /// away from a task list's row.
-    fn task_actions_in_hand(&self) -> Vec<Action> {
-        self.model.view().details.as_ref().map(|details| details.task.actions.clone()).unwrap_or_default()
-    }
-
     fn add_actions(self: &Rc<Self>) {
         let simple = |name: &str, run: fn(&Rc<App>)| {
             let action = gio::SimpleAction::new(name, None);
@@ -673,11 +666,8 @@ impl App {
                 if app.day().is_none() {
                     app.go(Place::Today, true);
                 }
-                let actions = app.model.current().0.day.map(|day| day.actions).unwrap_or_default();
-                match actions.into_iter().find(|action| action.kind == kind) {
-                    Some(action) => crate::asking::run(app, action, "summary"),
-                    None => app.say(&lumenna_records::not_offered(kind, lumenna_records::Subject::Day, false)),
-                }
+                // The day's own action, whatever row is in hand, or why the day has none.
+                app.model.send(lumenna_ffi::ShellEvent::RunDay(vec![kind]));
             });
         };
         day_command("plan-day", ActionKind::PlanDay);
@@ -693,15 +683,9 @@ impl App {
                 if !app.detail.has_focus() && app.task_list().is_some() {
                     return app.model.send(lumenna_ffi::ShellEvent::Run(kinds.to_vec()));
                 }
-                let actions = app.task_actions_in_hand();
-                match crate::actions::find(&actions, kinds) {
-                    Some(action) => app.model.send(lumenna_ffi::ShellEvent::Perform(action.clone())),
-                    // A task in hand that does not offer it says why; with none, nothing to say.
-                    None if !actions.is_empty() => {
-                        app.say(&lumenna_records::not_offered(kinds[0], Subject::Task, false));
-                    }
-                    None => {}
-                }
+                // Elsewhere, the task the details show, a sitting's in the day: the app runs it, or
+                // says why it has none.
+                app.model.send(lumenna_ffi::ShellEvent::Details(lumenna_app::DetailsEvent::Run(kinds.to_vec())));
             });
         };
         // The selected row's details or form: a task's details, a block's form.

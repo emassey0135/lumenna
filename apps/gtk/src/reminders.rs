@@ -17,7 +17,7 @@ use gtk::{gdk, gio, glib};
 use lumenna_app::Side;
 use lumenna_ffi::ShellEvent;
 use lumenna_records::reminders::{DueReminder, ReminderList};
-use lumenna_records::{Action, ActionKind, Change, LumennaError, Subject};
+use lumenna_records::{Action, ActionKind, Change, LumennaError};
 
 use crate::actions;
 use crate::tree::{Item, Landing, Tree};
@@ -325,16 +325,15 @@ impl List {
         self.landing.land(&self.tree, &self.window, held.focus.as_deref(), held.landing, rebuilt);
     }
 
-    /// Runs one of a reminder's actions, held there so what it changes lands there.
+    /// Runs one of a reminder's actions, held there so what it changes lands there; one the
+    /// reminder lacks is refused by the app, which says why.
     fn act_on_selected(&self, kinds: &[ActionKind]) {
         let shown = self.shown.borrow().clone();
-        let reminder = self.tree.selected().and_then(|index| shown.as_ref().and_then(|list| list.reminders.get(index).cloned()));
-        match reminder.as_ref().and_then(|r| actions::find(&r.actions, kinds).map(|action| (r.id.clone(), action.clone()))) {
-            Some((key, action)) => run(&key, action),
-            None => {
-                say(&lumenna_records::not_offered(kinds[0], Subject::Reminder, false));
-            }
-        }
+        let Some(reminder) = self.tree.selected().and_then(|index| shown.as_ref().and_then(|list| list.reminders.get(index).cloned())) else {
+            return;
+        };
+        send(ShellEvent::Hold(Side::Reminders, reminder.id));
+        send(ShellEvent::Run(kinds.to_vec()));
     }
 }
 
@@ -392,11 +391,8 @@ fn build(app: &App) -> Rc<List> {
         add.connect_clicked(move |_| {
             let Some(list) = weak.upgrade() else { return };
             let action = list.shown.borrow().as_ref().and_then(|shown| actions::find(&shown.actions, &[ActionKind::New]).cloned());
-            match action {
-                Some(action) => send(ShellEvent::Perform(action)),
-                None => {
-                    say(&lumenna_records::not_offered(ActionKind::New, Subject::Reminder, false));
-                }
+            if let Some(action) = action {
+                send(ShellEvent::Perform(action));
             }
         });
     }

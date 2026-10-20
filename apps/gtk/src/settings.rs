@@ -18,7 +18,7 @@ use gtk::{gdk, gio, glib};
 use lumenna_app::devices::marked;
 use lumenna_app::{DevicesEvent, Side, SettingsEvent, SettingsView};
 use lumenna_ffi::ShellEvent;
-use lumenna_records::{ActionKind, ExportFormat, Setting, SettingKind, Subject};
+use lumenna_records::{ActionKind, ExportFormat, Setting, SettingKind};
 
 use crate::prompts;
 use crate::tree::{Item, Landing, Tree};
@@ -300,9 +300,7 @@ pub fn draw(app: &App) {
     }
     if let Some(devices) = &view.devices {
         open.devices.draw(app, devices, &view.devices_held);
-        crate::pairing::draw(app, devices.pairing.as_ref(), &open.window);
-    } else {
-        crate::pairing::draw(app, None, &open.window);
+        crate::pairing::draw(app, devices.pairing.as_ref(), &devices.words, &open.window);
     }
 }
 
@@ -695,18 +693,11 @@ impl DevicesPage {
     }
 
     /// Runs the chosen device's action of `kind`, held there so what it changes lands there. A
-    /// device the core offers no such action for (Unpair on this one) says why.
+    /// device without one (Unpair on this one) is refused by the app, which says why.
     fn act(&self, app: &App, kind: ActionKind) {
         let Some(device) = self.list.selected().and_then(|index| self.devices.borrow().get(index).cloned()) else { return };
-        match device.actions.iter().find(|action| action.kind == kind) {
-            Some(action) => {
-                app.model.send(ShellEvent::Hold(Side::Devices, device.node_id.clone()));
-                app.model.send(ShellEvent::Perform(action.clone()));
-            }
-            None => {
-                say(&lumenna_records::not_offered(kind, Subject::Device, device.this_device));
-            }
-        }
+        app.model.send(ShellEvent::Hold(Side::Devices, device.node_id.clone()));
+        app.model.send(ShellEvent::Run(vec![kind]));
     }
 }
 

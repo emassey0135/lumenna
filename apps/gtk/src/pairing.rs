@@ -20,11 +20,6 @@ use lumenna_records::PairingWords;
 use crate::prompts;
 use crate::window::{App, spawn};
 
-/// The pairing screen's words, the core's: how the device calls itself is the one thing here.
-fn words() -> PairingWords {
-    lumenna_records::pairing_words("this computer".to_owned(), true)
-}
-
 fn send(event: PairEvent) {
     if let Some(app) = crate::window::app() {
         app.model.send(ShellEvent::Devices(DevicesEvent::Pair(event)));
@@ -51,6 +46,8 @@ struct Dialog {
     shown_code: Cell<bool>,
     /// Whether a pairing was running when last drawn.
     running: Cell<bool>,
+    /// The screen's words, the app's, as this computer is called in them.
+    words: PairingWords,
 }
 
 thread_local! {
@@ -61,7 +58,7 @@ thread_local! {
 pub fn say(text: &str) -> bool {
     let Some(dialog) = OPEN.with_borrow(Clone::clone) else { return false };
     // The need for a code is told in an alert of its own.
-    if text == words().need_code {
+    if text == dialog.words.need_code {
         return true;
     }
     dialog.status.set_label(text);
@@ -70,7 +67,7 @@ pub fn say(text: &str) -> bool {
 }
 
 /// Draws the pairing screen the app has open, over `parent`.
-pub fn draw(app: &App, view: Option<&lumenna_app::network::PairingView>, parent: &gtk::Window) {
+pub fn draw(app: &App, view: Option<&lumenna_app::network::PairingView>, words: &PairingWords, parent: &gtk::Window) {
     let open = OPEN.with_borrow(Clone::clone);
     match (view, open) {
         (None, None) => {}
@@ -80,7 +77,7 @@ pub fn draw(app: &App, view: Option<&lumenna_app::network::PairingView>, parent:
         }
         (Some(view), open) => {
             let dialog = open.unwrap_or_else(|| {
-                let dialog = build(parent);
+                let dialog = build(parent, words.clone());
                 OPEN.set(Some(Rc::clone(&dialog)));
                 dialog.window.present();
                 prompts::focus_on(&dialog.wait);
@@ -123,7 +120,7 @@ impl Dialog {
             self.wait.grab_focus();
         }
         // The need for a code is told, then the person is back at the field for it.
-        let need = words().need_code;
+        let need = self.words.need_code.clone();
         let told = self.problem.replace(view.problem.clone());
         if view.problem.as_deref() == Some(need.as_str()) && told.as_deref() != Some(need.as_str()) {
             let dialog = Rc::clone(self);
@@ -140,7 +137,7 @@ impl Dialog {
             let dialog = Rc::clone(self);
             let three = three.clone();
             spawn(async move {
-                let said = words();
+                let said = &dialog.words;
                 let detail = format!("{} {}.", said.match_message, three.join(", "));
                 let matched = prompts::yes_or_no(&dialog.window, &said.match_title, &detail, &said.match_no, &said.match_yes).await;
                 send(PairEvent::Confirm(matched));
@@ -157,8 +154,7 @@ impl Dialog {
     }
 }
 
-fn build(parent: &gtk::Window) -> Rc<Dialog> {
-    let words = words();
+fn build(parent: &gtk::Window, words: PairingWords) -> Rc<Dialog> {
     let intro = gtk::Label::builder().label(&words.intro).wrap(true).xalign(0.0).build();
     let wait = gtk::Button::with_mnemonic(&marked(&words.wait, 'W', '_'));
     let my_code = gtk::Entry::builder().editable(false).visible(false).build();
@@ -219,6 +215,7 @@ fn build(parent: &gtk::Window) -> Rc<Dialog> {
         problem: RefCell::new(None),
         shown_code: Cell::new(false),
         running: Cell::new(false),
+        words,
     });
     wait.connect_clicked(|_| send(PairEvent::Wait));
     {
@@ -226,7 +223,7 @@ fn build(parent: &gtk::Window) -> Rc<Dialog> {
         copy_code.connect_clicked(move |_| {
             if let Some(dialog) = weak.upgrade() {
                 dialog.my_code.clipboard().set_text(&dialog.my_code.text());
-                say(&self::words().copied);
+                say(&dialog.words.copied);
             }
         });
     }

@@ -128,6 +128,26 @@ class TaskListTest(unittest.TestCase):
         self.assertEqual(self.session.said(), ["2 projects", "Moved Buy milk"])
         self.assertIn("Buy milk", self.session.lum("task", "list", '#Reports'))
 
+    def test_another_day_in_put_in_a_block_offers_that_days_blocks_in_the_same_pick(self):
+        self.session.lum("block", "add", "Errands", "--at", "10:00", "--minutes", "60", "--date", "tomorrow")
+        self.session.press("Control+2", wait=1.5)
+        self.session.said()
+        self.session.press("Control+b")
+        self.session.wait_for_window("Put Buy milk in a block")
+        # The app's own last choice, after the blocks it offers.
+        self.session.press("Down")
+        self.assertEqual(self.session.focus(), "[tree item] 'Another Day' level 1 2 of 2")
+        self.session.press("Return")
+        # Which day is the app's question, asked as any other.
+        self.session.wait_for_window("Go to Day")
+        self.assertEqual(self.session.focus(), "[text] 'Day'")
+        self.session.said()
+        self.session.type("tomorrow")
+        self.session.press("Return")
+        # The same pick, offering that day's blocks.
+        self.session.wait_for_window("Put Buy milk in a block")
+        self.assertEqual(self.session.focus(), "[tree item] 'Tomorrow, 10:00 AM to 11:00 AM, Errands' level 1 1 of 2")
+
     def test_f6_goes_through_the_places_the_list_and_the_details(self):
         self.session.press("F6")
         self.assertEqual(self.session.focus(), "[text] 'Title'")

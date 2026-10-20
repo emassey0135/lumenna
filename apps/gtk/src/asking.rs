@@ -90,7 +90,8 @@ fn ask(app: &Rc<App>, open: Asking, worded: Vec<String>) {
         Question::Pick { title, yes, .. } => {
             // What a pick offers comes with the question once the app has worked it out.
             let Some(offered) = open.choices.clone() else { return };
-            let mut options: Vec<(String, u32, String)> = offered
+            // Put in a Block's ends in the app's Another Day, picked like any other.
+            let options: Vec<(String, u32, String)> = offered
                 .choices
                 .iter()
                 .enumerate()
@@ -99,26 +100,17 @@ fn ask(app: &Rc<App>, open: Asking, worded: Vec<String>) {
                     (text, choice.depth, choice.reason.clone().unwrap_or_default())
                 })
                 .collect();
-            if let Some(another) = &open.another_day {
-                options.push((another.clone(), 0, String::new()));
-            }
             if options.is_empty() {
                 app.model.send(ShellEvent::Cancel);
                 return;
             }
             let refusal = open.refusal.clone();
             asking(app, async move |app: Rc<App>| {
-                // A day for another day's blocks that did not read, said before the pick again.
                 if let Some(refusal) = refusal {
                     prompts::tell(&window, &refusal).await;
                 }
-                let Some(index) = prompts::pick(&window, &title, "C_hoices", &options, &yes).await else {
-                    return answer(&app, None);
-                };
-                match offered.choices.get(index) {
-                    Some(choice) => answer(&app, Some(Answer::Picked { id: choice.id.clone(), length: None })),
-                    None => another_day(&app, &window).await,
-                }
+                let picked = prompts::pick(&window, &title, "C_hoices", &options, &yes).await.and_then(|index| offered.choices.get(index));
+                answer(&app, picked.map(|choice| Answer::Picked { id: choice.id.clone(), length: None }));
             });
         }
         Question::Choose { title, message, answers } => {
@@ -147,18 +139,6 @@ fn answer(app: &App, given: Option<Answer>) {
         Some(answer) => ShellEvent::Answer(answer),
         None => ShellEvent::Cancel,
     });
-}
-
-/// Which day's blocks a pick should offer instead, in the core's words for asking a day: the
-/// pick stays open, offering that day's blocks, and is asked again as it comes.
-async fn another_day(app: &App, window: &gtk::Window) {
-    let question = lumenna_records::go_to_day_question();
-    let day = crate::actions::ask_text(window, &question, None).await;
-    ASKING.set(false);
-    match day.map(|day| day.trim().to_owned()).filter(|day| !day.is_empty()) {
-        Some(day) => app.model.send(ShellEvent::PickFrom(day)),
-        None => app.model.send(ShellEvent::Cancel),
-    }
 }
 
 /// Runs one of a row's actions through the app: the row in hand, then the action. A task's

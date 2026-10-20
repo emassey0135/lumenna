@@ -37,6 +37,7 @@ impl Model {
         app.send(ShellEvent::Clock(clock.style()));
         // Title Case, as GNOME writes buttons and menus.
         app.send(ShellEvent::Capitals(Capitals::Title));
+        app.send(ShellEvent::PairingAs { called: "this computer".to_owned(), nearby: true });
         app.send(ShellEvent::PlanFrom(crate::clock::pinned_now()));
         Ok(Self { device, app, view: RefCell::new(view), lines: RefCell::new(lines), seq: Cell::new(0) })
     }

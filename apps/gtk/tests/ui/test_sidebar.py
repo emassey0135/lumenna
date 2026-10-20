@@ -104,6 +104,14 @@ class SidebarTest(unittest.TestCase):
         self.session.press("Delete", wait=1)
         self.assertEqual(self.session.active_window(), "Tasks – Lumenna")
 
+    def test_delete_on_the_inbox_says_why_it_stays(self):
+        self.go_to("Inbox")
+        self.session.said()
+        self.session.press("Delete", wait=1)
+        # The app's refusal, in the core's words; the Inbox is still there and still in hand.
+        self.assertEqual(self.session.said(), ["The Inbox keeps its name and its place; only its order and weight change."])
+        self.assertIn("'Inbox", self.session.focus())
+
 
 if __name__ == "__main__":
     unittest.main()

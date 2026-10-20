@@ -15,7 +15,7 @@ use gtk::prelude::*;
 use gtk::{gdk, glib};
 use lumenna_ffi::ShellEvent;
 use lumenna_records::places::{Place, SidebarEntry, SidebarGroup, SidebarKind};
-use lumenna_records::{Action, ActionKind, Subject};
+use lumenna_records::{Action, ActionKind};
 use lumenna_app::Side;
 
 use crate::actions;
@@ -66,16 +66,12 @@ impl Sidebar {
                 let Some(entry) = sidebar.entries.borrow().get(index).cloned() else { return glib::Propagation::Stop };
                 match actions::find(&entry.actions, actions::DELETE) {
                     Some(action) => run(&app, action.clone(), &entry.key),
-                    // The Inbox says why it stays; a fixed place or a heading has nothing to say.
+                    // The Inbox is refused by the app, which says why it stays; a fixed place or a
+                    // heading has nothing to say.
                     None => {
-                        let subject = match &entry.kind {
-                            SidebarKind::Place(Place::Project(_)) => Some(Subject::Project),
-                            SidebarKind::Place(Place::Label(_)) => Some(Subject::Label),
-                            SidebarKind::Place(Place::Filter { .. }) => Some(Subject::Filter),
-                            _ => None,
-                        };
-                        if let Some(subject) = subject {
-                            app.say(&lumenna_records::not_offered(ActionKind::Delete, subject, false));
+                        if matches!(&entry.kind, SidebarKind::Place(Place::Project(_) | Place::Label(_) | Place::Filter { .. })) {
+                            app.model.send(ShellEvent::Hold(Side::Sidebar, entry.key.clone()));
+                            app.model.send(ShellEvent::Run(actions::DELETE.to_vec()));
                         }
                     }
                 }

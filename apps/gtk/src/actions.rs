@@ -8,7 +8,6 @@ use gtk::gio;
 use gtk::prelude::*;
 use lumenna_records::{Action, ActionKind, Question, Subject};
 
-use crate::prompts;
 use crate::window::{App, spawn};
 
 /// What a key does on whatever row has focus: one meaning everywhere.
@@ -51,13 +50,6 @@ pub fn menu_running(actions: &[Action], run: Rc<dyn Fn(Action)>) -> (gio::Menu, 
     menu.append_section(None, &keeping);
     menu.append_section(None, &removing);
     (menu, group)
-}
-
-/// Asks a line of text as the core words the question, starting from `typed` if given:
-/// what was typed before, when the answer was refused.
-pub async fn ask_text(window: &gtk::Window, question: &Question, typed: Option<&str>) -> Option<String> {
-    let Question::Text { title, label, initial, hint, yes, .. } = question else { return None };
-    prompts::ask(window, title, label, hint, typed.unwrap_or(initial), yes).await
 }
 
 /// Opens what a form the app hands back opens here: a task's details.
