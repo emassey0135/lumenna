@@ -216,6 +216,19 @@ fn typing_in_the_details_is_kept_through_a_change_elsewhere_and_saving_sends_onl
 
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn a_details_field_with_focus_takes_a_change_made_elsewhere_once_nothing_is_typed() {
+    let app = App::launch(|lumenna| add(lumenna, "Buy milk"));
+    app.post(&[GO_TASKS, "home", "f6"]);
+    assert!(app.focus().starts_with("Edit 'Title:'"), "{}", app.focus());
+    let store = app.store();
+    let id = store.list_tasks("").unwrap().rows[0].id.clone();
+    store.edit_task(&id, lumenna_host::TaskEdit { title: Some("Buy oat milk".to_owned()), ..Default::default() }).unwrap();
+    let taken = automation::wait(Duration::from_secs(5), || app.focus().contains("value='Buy oat milk'").then_some(()));
+    assert!(taken.is_some(), "the field shows the change: {}", app.focus());
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn f6_goes_round_the_panes() {
     let app = App::launch(|lumenna| add(lumenna, "Buy milk"));
     app.post(&[GO_TASKS, "f6"]);
@@ -652,79 +665,56 @@ fn lum() -> std::path::PathBuf {
 
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
-fn lum_rpc_reaches_the_running_app_through_its_pipe_and_the_app_shows_what_it_added() {
+fn unpaired_the_app_holds_no_endpoint_so_lum_rpc_answers_itself_and_the_app_shows_what_it_added() {
     use std::io::{BufRead, BufReader, Write};
 
+    // Nothing paired: the app keeps nothing in sync, so it neither holds the endpoint nor
+    // serves the pipe, and the firewall asks nothing until the first pairing.
     let app = App::launch(|_| {});
-    let started = std::time::Instant::now();
-    // The app serves once its sync service holds the endpoint; until then lum serves itself.
-    let (mut rpc, mut replies, answer) = loop {
-        let mut rpc = Command::new(lum())
-            .arg("rpc")
-            .env("LUMENNA_PROFILE", app.profile.path())
-            .env("LUMENNA_BACKUP_DIR", app.profile.path().with_extension("backups"))
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .spawn()
-            .expect("lum runs");
-        let mut replies = BufReader::new(rpc.stdout.take().unwrap());
-        writeln!(rpc.stdin.as_mut().unwrap(), r#"{{"jsonrpc":"2.0","id":1,"method":"initialize"}}"#).unwrap();
-        let mut answer = String::new();
-        replies.read_line(&mut answer).unwrap();
-        if answer.contains(r#""process":"Lumenna for Windows""#) || started.elapsed() > Duration::from_secs(20) {
-            break (rpc, replies, answer);
-        }
-        let _ = rpc.kill();
-        let _ = rpc.wait();
-        std::thread::sleep(Duration::from_millis(500));
-    };
-    assert!(answer.contains(r#""process":"Lumenna for Windows""#), "the app answers, not lum: {answer}");
-    writeln!(rpc.stdin.as_mut().unwrap(), r#"{{"jsonrpc":"2.0","id":2,"method":"task.add","params":{{"text":"Sent through the pipe"}}}}"#).unwrap();
+    std::thread::sleep(Duration::from_secs(2));
+    assert!(lumenna_host::endpoint::connect(app.profile.path()).is_none(), "an unpaired app serves no pipe");
+    let mut rpc = Command::new(lum())
+        .arg("rpc")
+        .env("LUMENNA_PROFILE", app.profile.path())
+        .env("LUMENNA_BACKUP_DIR", app.profile.path().with_extension("backups"))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("lum runs");
+    let mut replies = BufReader::new(rpc.stdout.take().unwrap());
+    writeln!(rpc.stdin.as_mut().unwrap(), r#"{{"jsonrpc":"2.0","id":1,"method":"initialize"}}"#).unwrap();
+    let mut answer = String::new();
+    replies.read_line(&mut answer).unwrap();
+    assert!(answer.contains(r#""process":"lum rpc""#), "lum answers itself: {answer}");
+    writeln!(rpc.stdin.as_mut().unwrap(), r#"{{"jsonrpc":"2.0","id":2,"method":"task.add","params":{{"text":"Sent through lum"}}}}"#).unwrap();
     let mut added = String::new();
     replies.read_line(&mut added).unwrap();
-    assert!(added.contains("Sent through the pipe"), "{added}");
-    // A client whose input ends is answered, then lum rpc ends with it: the relay tells the
-    // app the client has gone, as a pipe has no half-close to say it.
+    assert!(added.contains("Sent through lum"), "{added}");
     drop(rpc.stdin.take());
-    let (ended, exited) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let _ = ended.send(rpc.wait());
-    });
-    assert!(exited.recv_timeout(Duration::from_secs(10)).is_ok(), "lum rpc ends when its input does");
-    // Another connection's write, which the app's poll redraws for within a second or so.
+    let _ = rpc.wait();
+    // Another process's write, which the app takes in within a second or so.
     app.post(&[GO_TASKS]);
     automation::wait(Duration::from_secs(5), || {
-        app.automation.dump(app.window, 6).iter().any(|l| l.contains("TreeItem 'Sent through the pipe")).then_some(())
+        app.automation.dump(app.window, 6).iter().any(|l| l.contains("TreeItem 'Sent through lum")).then_some(())
     })
-    .expect("the app lists the task lum added through it");
+    .expect("the app lists the task lum added");
 }
 
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
-fn lum_sync_runs_its_round_on_the_running_app() {
+fn unpaired_lum_sync_says_it_is_not_paired_without_finding_the_app() {
     let app = App::launch(|_| {});
-    // The app answers at its pipe only while it holds the endpoint, and then lum cannot run a
-    // round of its own: a round lum reports is the app's.
-    automation::wait(Duration::from_secs(20), || lumenna_host::endpoint::connect(app.profile.path()).map(drop))
-        .expect("the app serves its pipe");
-    let started = std::time::Instant::now();
-    loop {
-        let output = Command::new(lum())
-            .arg("sync")
-            .env("LUMENNA_PROFILE", app.profile.path())
-            .env("LUMENNA_BACKUP_DIR", app.profile.path().with_extension("backups"))
-            .output()
-            .expect("lum runs");
-        let said = String::from_utf8_lossy(&output.stdout).to_string() + &String::from_utf8_lossy(&output.stderr);
-        // Not paired with anything, so the app's round reaches nobody, and says so.
-        if output.status.success() && said.contains("not paired") {
-            break;
-        }
-        assert!(started.elapsed() < Duration::from_secs(20), "lum sync did not get a round from the app: {said}");
-        std::thread::sleep(Duration::from_millis(500));
-    }
+    std::thread::sleep(Duration::from_secs(2));
+    let output = Command::new(lum())
+        .arg("sync")
+        .env("LUMENNA_PROFILE", app.profile.path())
+        .env("LUMENNA_BACKUP_DIR", app.profile.path().with_extension("backups"))
+        .output()
+        .expect("lum runs");
+    let said = String::from_utf8_lossy(&output.stdout).to_string() + &String::from_utf8_lossy(&output.stderr);
+    assert!(said.contains("not paired"), "{said}");
+    assert!(lumenna_host::endpoint::connect(app.profile.path()).is_none(), "the app holds no endpoint");
 }
-
 /// Checks the window in front fits its screen's work area, and that nothing directly in it
 /// lies outside it or over anything else: what Text size at its largest would break.
 /// The work area of the screen `window` is on.

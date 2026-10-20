@@ -1,29 +1,29 @@
-//! Pairing this PC with another of the person's devices.
+//! Pairing this PC with another of the person's devices, drawn from the app's pairing
+//! (`view.devices.pairing`): the code shown, the code typed, the words to compare and how it
+//! went are the app's, and the pairing itself runs on the app's network.
 //!
 //! On one network the two find each other: both wait, and DNS-SD does the rest. Anywhere
 //! else, one shows a code and the other enters it. Either way both show the same three words,
 //! and only if the person says they match on both does anything get paired — the one
-//! mechanism for every platform. The pairing runs on a thread of its own and asks its
-//! questions back through this dialog, as the Mac's sheet does.
+//! mechanism for every platform. What the app says while the dialog is open goes to its own
+//! status line.
 
 use std::cell::{Cell, RefCell};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{RecvTimeoutError, Sender, channel};
-use std::sync::Arc;
-use std::time::Duration;
+use std::rc::Rc;
 
-use lumenna_host::{Lumenna, LumennaError, PairedWith, PairingPrompt, PairingWords, Reach, pairing_words};
-use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+use lumenna_app::network::PairingView;
+use lumenna_app::{DevicesEvent, PairEvent};
+use lumenna_ffi::ShellEvent;
+use lumenna_host::{PairingWords, pairing_words};
+use windows::Win32::Foundation::HWND;
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
-use windows::Win32::UI::WindowsAndMessaging::{
-    BS_PUSHBUTTON, ES_AUTOHSCROLL, ES_READONLY, IDCANCEL, WM_APP, WS_BORDER, WS_TABSTOP,
-};
+use windows::Win32::UI::WindowsAndMessaging::{BS_PUSHBUTTON, EN_CHANGE, ES_AUTOHSCROLL, ES_READONLY, EndDialog, IDCANCEL, WS_BORDER, WS_TABSTOP};
 
+use super::app::{self, App};
 use super::controls;
-use super::core::{Poster, sentence, taken};
 use super::dialog::{self, Class, Dialog, Template};
 use super::{a11y, prompts, system};
-use crate::{devices, speech};
+use crate::devices;
 
 const WAIT: u16 = 101;
 const MY_CODE: u16 = 102;
@@ -33,87 +33,77 @@ const WITH_CODE: u16 = 105;
 const COPY: u16 = 106;
 const STATUS: u16 = 199;
 
-/// The code to give the other device: a boxed `String`.
-const WM_PAIR_CODE: u32 = WM_APP + 20;
-/// The words to compare: a boxed `(Vec<String>, Sender<bool>)`.
-const WM_PAIR_WORDS: u32 = WM_APP + 21;
-/// The pairing ended: a boxed `Result<PairedWith, String>`.
-const WM_PAIR_DONE: u32 = WM_APP + 22;
-
-struct Pairing {
-    lumenna: Arc<Lumenna>,
+/// The pairing dialog, while it is open.
+pub struct Pairing {
+    hwnd: Cell<HWND>,
+    status: Cell<HWND>,
     /// Every sentence and button, the core's; the access keys are this dialog's.
     words: PairingWords,
-    /// Set when the person gives up, which ends the wait for the other device.
-    cancelled: RefCell<Option<Arc<AtomicBool>>>,
-    running: Cell<bool>,
-    /// Whether the pairing running is waiting to be found, rather than dialling a code.
-    waiting: Cell<bool>,
-    /// A code entered while waiting: the wait is given up, and this is dialled once it ends.
-    then: RefCell<Option<String>>,
-    paired: RefCell<Option<PairedWith>>,
+    /// The words last asked about, so each set is asked once.
+    asked: RefCell<Option<Vec<String>>>,
+    /// Whether the app has closed it, or the person has.
+    closed: Cell<bool>,
 }
 
 impl Pairing {
-    fn say(&self, hwnd: HWND, text: &str) {
-        let status = dialog::item(hwnd, STATUS);
-        controls::set_text(status, text);
-        a11y::changed(status);
-    }
-
-    /// Shows this device's code, with its label and Copy Code, or hides them.
-    fn show_code(&self, hwnd: HWND, shown: bool) {
-        for id in [MY_CODE_LABEL, MY_CODE, COPY] {
-            controls::show(dialog::item(hwnd, id), shown);
-        }
-    }
-
-    fn start(&self, hwnd: HWND, code: Option<String>) {
-        if self.running.replace(true) {
+    /// Draws the app's pairing as it now is, or closes the dialog when the app has closed it:
+    /// paired, which is then said where it goes next.
+    pub fn draw(&self, app: &App, view: Option<&PairingView>) {
+        let hwnd = self.hwnd.get();
+        if hwnd.is_invalid() || self.closed.get() {
             return;
         }
-        // Focus somewhere that stays: a disabled button that had it leaves it nowhere.
-        controls::focus(dialog::item(hwnd, IDCANCEL.0 as u16));
-        controls::enable(dialog::item(hwnd, WAIT), false);
-        // While waiting, a code can still be entered: it gives up the wait and dials. One
-        // pairing runs at a time, so while dialling there is nothing more to enter.
-        self.waiting.set(code.is_none());
-        controls::enable(dialog::item(hwnd, WITH_CODE), code.is_none());
-        self.say(hwnd, if code.is_none() { &self.words.opening } else { &self.words.connecting });
-        let cancelled = Arc::new(AtomicBool::new(false));
-        *self.cancelled.borrow_mut() = Some(Arc::clone(&cancelled));
-        let window = Poster::new(hwnd);
-        let prompt = Arc::new(Prompt { window, cancelled });
-        let lumenna = Arc::clone(&self.lumenna);
-        std::thread::spawn(move || {
-            let result = lumenna
-                .pair(code, Reach::Internet, system::computer_name(), "windows".to_owned(), prompt)
-                .map_err(|error: LumennaError| sentence(&error));
-            window.send(WM_PAIR_DONE, result);
-        });
-    }
-
-    /// Pairs with the code typed or pasted in. An empty field is never read as the clipboard:
-    /// nobody could tell it would be, and it would send whatever happened to be copied.
-    fn with_code(&self, hwnd: HWND) {
-        let field = dialog::item(hwnd, THEIR_CODE);
-        let code = controls::text(field).trim().to_owned();
-        if code.is_empty() {
-            prompts::fail(hwnd, &self.words.need_code);
-            controls::focus(field);
-            return;
-        }
-        if self.running.get() {
-            if self.waiting.get() {
-                *self.then.borrow_mut() = Some(code);
-                if let Some(cancelled) = self.cancelled.borrow().as_ref() {
-                    cancelled.store(true, Ordering::Relaxed);
-                }
-                self.say(hwnd, &self.words.switching);
+        let Some(view) = view else {
+            self.closed.set(true);
+            app.closing_live(self.status.get());
+            unsafe {
+                let _ = EndDialog(hwnd, 1);
             }
             return;
+        };
+        // This device's code, while it waits to be dialled.
+        let mine = view.mine.clone().unwrap_or_default();
+        let code = dialog::item(hwnd, MY_CODE);
+        if controls::text(code) != mine {
+            controls::set_text(code, &mine);
+            if !mine.is_empty() {
+                controls::focus(code);
+            }
         }
-        self.start(hwnd, Some(code));
+        for id in [MY_CODE_LABEL, MY_CODE, COPY] {
+            controls::show(dialog::item(hwnd, id), view.mine.is_some());
+        }
+        // While waiting, a code can still be entered: it gives up the wait and dials. One
+        // pairing runs at a time, so while dialling there is nothing more to enter.
+        let wait = !view.running;
+        let join = !view.running || view.waiting;
+        let focus = controls::focused();
+        if (!wait && focus == dialog::item(hwnd, WAIT)) || (!join && focus == dialog::item(hwnd, WITH_CODE)) {
+            // Somewhere that stays: a disabled button that had focus leaves it nowhere.
+            controls::focus(dialog::item(hwnd, IDCANCEL.0 as u16));
+        }
+        controls::enable(dialog::item(hwnd, WAIT), wait);
+        controls::enable(dialog::item(hwnd, WITH_CODE), join);
+        // The words to compare, asked once each, over the dialog.
+        if let Some(words) = &view.words
+            && self.asked.borrow().as_ref() != Some(words)
+        {
+            *self.asked.borrow_mut() = Some(words.clone());
+            let said = self.words.clone();
+            let words = words.clone();
+            app.defer(move |_| {
+                let message = format!("{} {}.", said.match_message, words.join(", "));
+                let answers = [said.match_yes.as_str(), said.match_no.as_str()];
+                let matched = prompts::choose(hwnd, &said.match_title, &message, &answers, false) == Some(0);
+                app::send(ShellEvent::Devices(DevicesEvent::Pair(PairEvent::Confirm(matched))));
+            });
+        }
+    }
+
+    fn say(&self, text: &str) {
+        let status = self.status.get();
+        controls::set_text(status, text);
+        a11y::changed(status);
     }
 }
 
@@ -137,128 +127,60 @@ impl Dialog for Pairing {
     }
 
     fn init(&self, hwnd: HWND) -> bool {
-        a11y::make_live(dialog::item(hwnd, STATUS));
+        self.hwnd.set(hwnd);
+        let status = dialog::item(hwnd, STATUS);
+        self.status.set(status);
+        a11y::make_live(status);
+        app::with(|app| app.open_live(status));
         // This device's code shows once there is one.
-        self.show_code(hwnd, false);
+        for id in [MY_CODE_LABEL, MY_CODE, COPY] {
+            controls::show(dialog::item(hwnd, id), false);
+        }
         false
     }
 
-    fn command(&self, hwnd: HWND, id: u16, _code: u16) -> Option<isize> {
+    fn command(&self, hwnd: HWND, id: u16, code: u16) -> Option<isize> {
+        let pair = |event| app::send(ShellEvent::Devices(DevicesEvent::Pair(event)));
         match id {
-            WAIT => self.start(hwnd, None),
-            WITH_CODE => self.with_code(hwnd),
+            WAIT => pair(PairEvent::Wait),
+            // An empty field is never read as the clipboard: nobody could tell it would be, and
+            // it would send whatever happened to be copied. The app says what is wanted.
+            WITH_CODE => pair(PairEvent::Join),
+            THEIR_CODE if u32::from(code) == EN_CHANGE => pair(PairEvent::Code(controls::text(dialog::item(hwnd, THEIR_CODE)))),
             COPY => {
+                // Copied only when asked for: the clipboard is the person's.
                 let code = controls::text(dialog::item(hwnd, MY_CODE));
                 if system::copy(hwnd, &code) {
-                    self.say(hwnd, &self.words.copied);
+                    self.say(&self.words.copied);
                 }
             }
             id if i32::from(id) == IDCANCEL.0 => {
-                if let Some(cancelled) = self.cancelled.borrow().as_ref() {
-                    cancelled.store(true, Ordering::Relaxed);
-                }
+                self.closed.set(true);
                 return Some(0);
             }
             _ => {}
         }
         None
     }
-
-    fn message(&self, hwnd: HWND, message: u32, _wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
-        match message {
-            WM_PAIR_CODE => {
-                let code: String = unsafe { taken(lparam) };
-                controls::set_text(dialog::item(hwnd, MY_CODE), &code);
-                self.show_code(hwnd, true);
-                controls::focus(dialog::item(hwnd, MY_CODE));
-                // Copied only when asked for, with Copy Code: the clipboard is the person's.
-                self.say(hwnd, &self.words.waiting);
-            }
-            WM_PAIR_WORDS => {
-                let (words, answer): (Vec<String>, Sender<bool>) = unsafe { taken(lparam) };
-                let said = &self.words;
-                let message = format!("{} {}.", said.match_message, words.join(", "));
-                let answers = [said.match_yes.as_str(), said.match_no.as_str()];
-                let chosen = prompts::choose(hwnd, &said.match_title, &message, &answers, false);
-                let matched = chosen == Some(0);
-                self.say(hwnd, if matched { &said.finishing } else { &said.refusing });
-                let _ = answer.send(matched);
-            }
-            WM_PAIR_DONE => {
-                let result: Result<PairedWith, String> = unsafe { taken(lparam) };
-                self.running.set(false);
-                let then = self.then.borrow_mut().take();
-                match result {
-                    Ok(paired) => {
-                        *self.paired.borrow_mut() = Some(paired);
-                        unsafe {
-                            let _ = windows::Win32::UI::WindowsAndMessaging::EndDialog(hwnd, 1);
-                        }
-                    }
-                    // The wait was given up for a code entered meanwhile: dial it now.
-                    Err(_) if then.is_some() => {
-                        self.show_code(hwnd, false);
-                        self.start(hwnd, then);
-                    }
-                    Err(message) => {
-                        self.show_code(hwnd, false);
-                        controls::enable(dialog::item(hwnd, WAIT), true);
-                        controls::enable(dialog::item(hwnd, WITH_CODE), true);
-                        controls::focus(dialog::item(hwnd, WAIT));
-                        self.say(hwnd, &message);
-                    }
-                }
-            }
-            _ => return None,
-        }
-        Some(0)
-    }
 }
 
-/// The pairing's questions, asked through the dialog while the pairing thread waits.
-struct Prompt {
-    window: Poster,
-    cancelled: Arc<AtomicBool>,
-}
-
-impl PairingPrompt for Prompt {
-    fn show_code(&self, code: String) {
-        self.window.send(WM_PAIR_CODE, code);
-    }
-
-    fn confirm(&self, words: Vec<String>) -> bool {
-        let (answer, answered) = channel();
-        if !self.window.send(WM_PAIR_WORDS, (words, answer)) {
-            return false;
-        }
-        // Waits for the person, but not past their giving up: a dialog closed meanwhile never
-        // answers.
-        loop {
-            match answered.recv_timeout(Duration::from_millis(250)) {
-                Ok(matched) => return matched,
-                Err(RecvTimeoutError::Timeout) if !self.cancelled.load(Ordering::Relaxed) => {}
-                Err(_) => return false,
-            }
-        }
-    }
-
-    fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::Relaxed)
-    }
-}
-
-/// Runs the pairing dialog, and returns what was said of the device paired, if one was.
-pub fn run(owner: HWND, lumenna: Arc<Lumenna>) -> Option<String> {
-    let pairing = Pairing {
-        lumenna,
+/// Runs the pairing dialog over `owner` until the app has paired or the person gives up.
+pub fn run(app: &App, owner: HWND) {
+    let name = system::computer_name();
+    app.crux.send(ShellEvent::Devices(DevicesEvent::Pair(PairEvent::Open(name))));
+    let pairing = Rc::new(Pairing {
+        hwnd: Cell::new(HWND::default()),
+        status: Cell::new(HWND::default()),
         words: pairing_words("this PC".to_owned(), true),
-        cancelled: RefCell::new(None),
-        running: Cell::new(false),
-        waiting: Cell::new(false),
-        then: RefCell::new(None),
-        paired: RefCell::new(None),
-    };
-    dialog::run(Some(owner), &pairing);
-    let paired = pairing.paired.into_inner()?;
-    Some(speech::announcement(&paired.announcement, &paired.notices))
+        asked: RefCell::new(None),
+        closed: Cell::new(false),
+    });
+    app.open_pairing(Some(Rc::clone(&pairing)));
+    dialog::run(Some(owner), &*pairing);
+    app.open_pairing(None);
+    // Given up by the person: the pairing under way, or else the screen.
+    if app.crux.view().devices.is_some_and(|devices| devices.pairing.is_some()) {
+        app.crux.send(ShellEvent::Devices(DevicesEvent::Pair(PairEvent::Cancel)));
+    }
+    app.close_live(pairing.status.get());
 }

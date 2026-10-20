@@ -222,44 +222,47 @@ impl Detail {
     }
 
     /// Draws the app's details of the task in hand, or none.
-    pub fn draw(&self, view: &ViewModel, lines: &Lines) {
+    pub fn draw(&self, view: &ViewModel, lines: &Lines, still: bool) -> bool {
         let Some(details) = &view.details else {
+            // Never hide the control that has focus: focus would go nowhere, and the task stays
+            // shown, as it was, until focus leaves.
+            if self.fields.iter().any(|f| f.control == controls::focused()) {
+                return false;
+            }
             if self.shown.replace(None).is_some() {
-                // Never hide the control that has focus: focus would go nowhere.
-                if self.fields.iter().any(|f| f.control == controls::focused()) {
-                    return;
-                }
                 self.show_fields(false);
             }
-            return;
+            return false;
         };
         let other = self.task_id().as_deref() != Some(details.task.id.as_str());
         if other {
             self.show_fields(true);
         }
         self.filling.set(true);
-        self.fill(details, lines, other);
+        let held = self.fill(details, lines, other || still);
         self.filling.set(false);
         *self.shown.borrow_mut() = Some(details.task.clone());
+        held
     }
 
-    fn fill(&self, details: &DetailsView, lines: &Lines, other: bool) {
+    fn fill(&self, details: &DetailsView, lines: &Lines, still: bool) -> bool {
+        let mut held = false;
         let fields = &details.fields;
         let task = &details.task;
-        typed_if_changed(self.title, &fields.title, other);
-        typed_if_changed(self.due, &fields.due, other);
-        typed_if_changed(self.repeat, &fields.repeat, other);
+        held |= controls::write_typed(self.title, &fields.title, still);
+        held |= controls::write_typed(self.due, &fields.due, still);
+        held |= controls::write_typed(self.repeat, &fields.repeat, still);
         let position = priorities().iter().position(|p| p.id == fields.priority.to_string());
         if usize::try_from(controls::send(self.priority, CB_GETCURSEL, 0, 0)).ok() != position {
             controls::send(self.priority, CB_SETCURSEL, position.unwrap_or(usize::MAX), 0);
         }
-        typed_if_changed(self.estimate, &fields.estimate, other);
+        held |= controls::write_typed(self.estimate, &fields.estimate, still);
         if *self.projects.borrow() != details.projects || self.chosen_project() != fields.project {
             self.fill_projects(&details.projects, &fields.project);
         }
-        typed_if_changed(self.labels, &fields.labels, other);
+        held |= controls::write_typed(self.labels, &fields.labels, still);
         // An edit control's lines end in CR LF.
-        typed_if_changed(self.notes, &fields.notes.replace("\r\n", "\n").replace('\n', "\r\n"), other);
+        held |= controls::write_typed(self.notes, &fields.notes.replace("\r\n", "\n").replace('\n', "\r\n"), still);
         let waits: Vec<&str> = task.depends.iter().map(|other| other.title.as_str()).collect();
         let had: Vec<String> = self.shown.borrow().as_ref().map(|t| t.depends.iter().map(|d| d.title.clone()).collect()).unwrap_or_default();
         if had != waits || self.task_id().as_deref() != Some(task.id.as_str()) {
@@ -289,6 +292,7 @@ impl Detail {
                 }
             }
         }
+        held
     }
 
     /// The projects to choose from, in tree order, the task's own chosen. A subproject says
@@ -417,15 +421,6 @@ impl Detail {
         for (row, chunk) in self.buttons.chunks(3).enumerate() {
             row_of_buttons(chunk, gap, y + row as i32 * (m.button + m.px(6)), inner, m);
         }
-    }
-}
-
-/// Writes a field the person types in, as [set_if_changed] does, but never the one they are
-/// typing in while the task stays the same: a turn can come from typing a moment old, and
-/// writing it back would undo what was typed since.
-fn typed_if_changed(control: HWND, text: &str, other: bool) {
-    if other || controls::focused() != control {
-        set_if_changed(control, text);
     }
 }
 

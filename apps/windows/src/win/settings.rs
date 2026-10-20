@@ -1,31 +1,40 @@
-//! Settings, in Windows' own shape: a property sheet of pages, opened with
-//! Ctrl+Comma — General, Planning, Devices, Backups, and Export and Import, as on the Mac.
+//! Settings, in Windows' own shape: a property sheet of pages, opened with Ctrl+Comma —
+//! General, Planning, Devices, Backups, and Export and Import, as on the Mac — drawn from the
+//! app's Settings and Devices (`view.settings`, `view.devices`).
 //!
 //! Like the Mac's, every page applies a change as it is made; a text field, when it is left.
-//! Each page has its own status line, a polite live region, for what a change did: the main
-//! window's is behind the sheet.
+//! What each setting is called, what it takes and what it can be are the core's; what it holds,
+//! what was typed and why a line was refused are the app's. Each page has its own status line,
+//! a polite live region, where what the app says goes while the sheet is open: the main
+//! window's is behind it. What is this PC's alone — opening at sign-in, the shortcuts from
+//! anywhere — is the window's own.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
+use std::collections::BTreeMap;
+use std::rc::Rc;
 
-use lumenna_host::{ActionKind, ExportFormat, Imported, Setting, Subject, not_offered};
+use lumenna_app::lines::Lines;
+use lumenna_app::settings::SettingsEvent;
+use lumenna_app::{DevicesEvent, Side, ViewModel};
+use lumenna_ffi::ShellEvent;
+use lumenna_host::{ActionKind, ExportFormat, Setting, Subject, not_offered};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::Controls::{
     HKM_GETHOTKEY, HKM_SETHOTKEY, HOTKEYF_ALT, HOTKEYF_CONTROL, HOTKEYF_SHIFT, NMHDR, PSN_APPLY, PSN_KILLACTIVE,
-    PSN_RESET,
+    PSN_RESET, PSN_SETACTIVE,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{VK_DELETE, VK_F2};
 use windows::Win32::UI::WindowsAndMessaging::{
-    BN_CLICKED, BS_AUTOCHECKBOX, BS_GROUPBOX, BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL,
-    CB_RESETCONTENT, CB_SETCURSEL, CBN_SELCHANGE, CBS_DROPDOWNLIST, EN_KILLFOCUS, ES_AUTOHSCROLL, ES_MULTILINE,
-    ES_NUMBER, ES_READONLY, GetParent, IDCANCEL, IDOK, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL,
-    LBN_SELCHANGE, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_WANTKEYBOARDINPUT, PostMessageW, WM_DESTROY, WM_NOTIFY, WM_VKEYTOITEM, WS_BORDER, WS_TABSTOP,
-    WS_VSCROLL,
+    BN_CLICKED, BS_AUTOCHECKBOX, BS_GROUPBOX, BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL,
+    CBN_SELCHANGE, CBS_DROPDOWNLIST, EN_CHANGE, EN_KILLFOCUS, ES_AUTOHSCROLL, ES_MULTILINE, ES_NUMBER, ES_READONLY,
+    GetParent, IDCANCEL, IDOK, LB_ADDSTRING, LB_GETCURSEL, LB_GETCOUNT, LB_RESETCONTENT, LB_SETCURSEL, LBN_SELCHANGE,
+    LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_WANTKEYBOARDINPUT, WM_NOTIFY, WM_VKEYTOITEM, WS_BORDER, WS_TABSTOP, WS_VSCROLL,
 };
 use windows::core::HSTRING;
 
-use super::app::App;
-use super::core::{Poster, WM_SAY, WM_STORE_CHANGED, sentence, said};
+use super::app::{self, App};
+use super::core::sentence;
 use super::dialog::{self, Class, Dialog, Template};
 use super::{a11y, actions, controls, pairing, prompts, shortcuts, system};
 use crate::devices;
@@ -49,33 +58,108 @@ pub enum Page {
     Export = 4,
 }
 
-/// Opens Settings on a page.
-pub fn show(app: &App, page: Page) {
-    let general = General { app };
-    let planning = Planning { app, known: RefCell::new(Vec::new()) };
-    let devices = Devices { app, list: RefCell::new(Vec::new()) };
-    let backups = Backups { app, known: RefCell::new(Vec::new()) };
-    let export = Export { app };
-    let pages: [&dyn Dialog; 5] = [&general, &planning, &devices, &backups, &export];
-    dialog::sheet(app.main, "Settings", &pages, page as usize);
+/// The sheet, while it is open.
+pub struct Sheet {
+    general: General,
+    planning: Planning,
+    devices: Devices,
+    backups: Backups,
+    export: Export,
+    /// The status line of the page in front, where what the app says goes.
+    live: Cell<HWND>,
+    /// The refusal last said of each line, so each is said once.
+    refused: RefCell<BTreeMap<String, String>>,
 }
 
-/// Reads a file in — a JSON export or a backup, the core tells which — and says what it did.
-/// From the menu bar, where the main window says it.
-pub fn import(app: &App, owner: HWND, title: &str, types: &[(&str, &str)]) -> Option<String> {
-    let path = system::open_file(owner, title, types)?;
-    match app.core.lumenna.import(&path.display().to_string()) {
-        Ok(imported) => {
-            app.store_changed();
-            Some(match imported {
-                Imported::Export { done } => speech::announcement(&done.announcement, &done.notices),
-                Imported::Backup { done } => speech::announcement(&done.announcement, &done.notices),
-            })
+impl Sheet {
+    /// A page came to the front: what the app says goes to its status line now.
+    fn front(&self, app: &App, page: HWND) {
+        let status = dialog::item(page, STATUS);
+        let was = self.live.replace(status);
+        if was.is_invalid() {
+            app.open_live(status);
+        } else {
+            app.move_live(was, status);
         }
-        Err(error) => {
-            prompts::fail(owner, &sentence(&error));
-            None
+    }
+
+    /// Draws the app's Settings and Devices on whichever pages exist: a property sheet makes a
+    /// page the first time it is shown.
+    pub fn draw(&self, app: &App, view: &ViewModel, lines: &Lines, still: bool) {
+        let settings: Vec<(Setting, String)> = view
+            .settings
+            .as_ref()
+            .map(|s| s.settings.iter().map(|shown| (shown.setting.clone(), shown.typed.clone())).collect())
+            .unwrap_or_default();
+        if !settings.is_empty() {
+            self.general.draw(&settings);
+            self.planning.draw(&settings, still);
+            self.backups.draw(&settings, still);
         }
+        self.devices.draw(app, view, lines);
+        // A line refused stays as typed, and why is said once, over the sheet.
+        let problems: Vec<(String, String)> = view
+            .settings
+            .iter()
+            .flat_map(|s| &s.settings)
+            .filter_map(|shown| shown.problem.clone().map(|problem| (shown.setting.key.clone(), problem)))
+            .collect();
+        let mut refused = self.refused.borrow_mut();
+        refused.retain(|key, _| problems.iter().any(|(k, _)| k == key));
+        for (key, problem) in problems {
+            if refused.get(&key) != Some(&problem) {
+                refused.insert(key, problem.clone());
+                let owner = sheet(self.live.get());
+                app.defer(move |_| prompts::fail(owner, &speech::sentence(&problem)));
+            }
+        }
+    }
+}
+
+/// Opens Settings on a page.
+pub fn show(app: &App, page: Page) {
+    app.crux.send(ShellEvent::Settings(SettingsEvent::Open));
+    let described = app.described_settings();
+    let open = Rc::new(Sheet {
+        general: General { hwnd: Cell::new(HWND::default()), described: described.clone() },
+        planning: Planning { hwnd: Cell::new(HWND::default()), described: described.clone() },
+        devices: Devices { hwnd: Cell::new(HWND::default()), list: RefCell::new(Vec::new()), landing: Cell::new(0) },
+        backups: Backups { hwnd: Cell::new(HWND::default()), described },
+        export: Export,
+        live: Cell::new(HWND::default()),
+        refused: RefCell::new(BTreeMap::new()),
+    });
+    app.open_settings(Some(Rc::clone(&open)));
+    let pages: [&dyn Dialog; 5] = [&open.general, &open.planning, &open.devices, &open.backups, &open.export];
+    dialog::sheet(app.main, "Settings", &pages, page as usize);
+    app.open_settings(None);
+    app.crux.send(ShellEvent::Settings(SettingsEvent::Close));
+    let live = open.live.get();
+    if !live.is_invalid() {
+        app.close_live(live);
+    }
+}
+
+/// Asks the app to read in a file — a JSON export or a backup, the core tells which — and
+/// say what it did.
+pub fn import(owner: HWND, title: &str, types: &[(&str, &str)]) {
+    let Some(path) = system::open_file(owner, title, types) else { return };
+    let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    match std::fs::read(&path) {
+        Ok(bytes) => app::send(ShellEvent::Settings(SettingsEvent::Import { name, bytes })),
+        Err(error) => prompts::fail(owner, &format!("Lumenna could not read {}. {error}.", path.display())),
+    }
+}
+
+/// Saves a file the app made — an export — where the person chooses.
+pub fn save(owner: HWND, file: &lumenna_app::SaveFile) {
+    let extension = file.name.rsplit('.').next().unwrap_or("txt").to_owned();
+    let pattern = format!("*.{extension}");
+    let kind = format!("{} files", extension.to_uppercase());
+    let Some(path) = system::save_file(owner, "Save", &file.name, &[(&kind, &pattern)]) else { return };
+    // The dialog already asked about replacing a file that was there.
+    if let Err(error) = std::fs::write(&path, &file.bytes) {
+        prompts::fail(owner, &format!("Lumenna could not save {}. {error}.", path.display()));
     }
 }
 
@@ -95,7 +179,7 @@ fn page(title: &str) -> Template {
     Template::page(title, WIDTH, HEIGHT).item(Class::Static, "", STATUS, SS_NOPREFIX.0, 7, HEIGHT - 30, WIDTH - 14, 24)
 }
 
-/// Says something on a page's status line.
+/// Says something on a page's status line: what the window, not the app, has to say.
 fn say(page: HWND, text: &str) {
     let status = dialog::item(page, STATUS);
     controls::set_text(status, &speech::sentence(text));
@@ -107,54 +191,50 @@ fn sheet(page: HWND) -> HWND {
     unsafe { GetParent(page).unwrap_or(page) }
 }
 
-/// Every setting, as the core describes it: its name, its value and what it can be.
-fn values(app: &App) -> Vec<Setting> {
-    app.core.lumenna.settings(None).map(|s| s.settings).unwrap_or_default()
+fn value(known: &[(Setting, String)], key: &str) -> String {
+    known.iter().find(|(s, _)| s.key == key).map(|(s, _)| s.value.clone()).unwrap_or_default()
 }
 
-fn value(known: &[Setting], key: &str) -> String {
-    known.iter().find(|s| s.key == key).map(|s| s.value.clone()).unwrap_or_default()
+/// What a setting's field shows: as typed, or its value.
+fn typed(known: &[(Setting, String)], key: &str) -> String {
+    known.iter().find(|(s, _)| s.key == key).map(|(_, typed)| typed.clone()).unwrap_or_default()
 }
 
 /// A setting's name as a control's label: the core's title, with `letter` as its access key
 /// and, before a field, a colon.
-fn titled(known: &[Setting], key: &str, letter: char, colon: bool) -> String {
-    let title = known.iter().find(|s| s.key == key).map_or(key, |s| s.title.as_str());
+fn titled(described: &[Setting], key: &str, letter: char, colon: bool) -> String {
+    let title = described.iter().find(|s| s.key == key).map_or(key, |s| s.title.as_str());
     format!("{}{}", devices::marked(title, letter, '&'), if colon { ":" } else { "" })
 }
 
-/// Fills a drop-down list with a setting's options, the value selected. A value set
-/// elsewhere that is not among them is listed as itself, since it is still the value.
-fn fill_options(combo: HWND, known: &[Setting], key: &str) {
-    let Some(setting) = known.iter().find(|s| s.key == key) else { return };
+/// Fills a drop-down list with a setting's options, the value selected, where what it shows
+/// differs. A value set elsewhere that is not among them is listed as itself, since it is still
+/// the value.
+fn fill_options(combo: HWND, known: &[(Setting, String)], key: &str) {
+    let Some((setting, _)) = known.iter().find(|(s, _)| s.key == key) else { return };
     let mut names: Vec<&str> = setting.options.iter().map(|o| o.title.as_str()).collect();
     let mut position = setting.options.iter().position(|o| o.id == setting.value);
     if position.is_none() && !setting.value.is_empty() {
         names.push(&setting.value);
         position = Some(names.len() - 1);
     }
-    fill_combo(combo, &names, position);
+    let count = controls::send(combo, windows::Win32::UI::WindowsAndMessaging::CB_GETCOUNT, 0, 0);
+    if usize::try_from(count).ok() != Some(names.len()) {
+        fill_combo(combo, &names, position);
+    } else if selected(combo) != position {
+        controls::send(combo, CB_SETCURSEL, position.unwrap_or(usize::MAX), 0);
+    }
 }
 
 /// The value chosen in a setting's drop-down list, if it is one of its options.
-fn chosen_option(combo: HWND, known: &[Setting], key: &str) -> Option<String> {
-    let setting = known.iter().find(|s| s.key == key)?;
+fn chosen_option(combo: HWND, described: &[Setting], key: &str) -> Option<String> {
+    let setting = described.iter().find(|s| s.key == key)?;
     setting.options.get(selected(combo)?).map(|o| o.id.clone())
 }
 
-/// Changes a setting and says so; on a failure says why and returns false.
-fn set(app: &App, page: HWND, key: &str, to: &str) -> bool {
-    match app.core.lumenna.set_setting(key, to) {
-        Ok(change) => {
-            say(page, &speech::announcement(&change.announcement, &change.notices));
-            app.store_changed();
-            true
-        }
-        Err(error) => {
-            prompts::fail(sheet(page), &sentence(&error));
-            false
-        }
-    }
+/// Changes a setting, as the app does: it says what that did, or why not.
+fn set(key: &str, to: &str) {
+    app::send(ShellEvent::Settings(SettingsEvent::Set { key: key.to_owned(), value: to.to_owned() }));
 }
 
 fn fill_combo(combo: HWND, items: &[&str], selected: Option<usize>) {
@@ -170,12 +250,53 @@ fn selected(combo: HWND) -> Option<usize> {
     usize::try_from(controls::send(combo, CB_GETCURSEL, 0, 0)).ok()
 }
 
+/// The code of a page notification, if `message` is one.
+fn notification(message: u32, lparam: LPARAM) -> Option<u32> {
+    (message == WM_NOTIFY).then(|| unsafe { &*(lparam.0 as *const NMHDR) }.code)
+}
+
 /// Whether a page notification asks the page to finish what is being typed: leaving the page,
 /// or closing the sheet either way.
-fn finishing(message: u32, lparam: LPARAM) -> bool {
-    message == WM_NOTIFY && {
-        let code = unsafe { &*(lparam.0 as *const NMHDR) }.code;
-        code == PSN_KILLACTIVE || code == PSN_APPLY || code == PSN_RESET
+fn finishing(code: Option<u32>) -> bool {
+    code.is_some_and(|code| code == PSN_KILLACTIVE || code == PSN_APPLY || code == PSN_RESET)
+}
+
+/// A page came to the front: what the app says goes to its status line.
+fn fronted(page: HWND) {
+    app::with(|app| {
+        if let Some(open) = app.settings_open() {
+            open.front(app, page);
+        }
+    });
+}
+
+/// The lines typed into fields of `typed` (control, key): sent as typed, so the app keeps them
+/// through a redraw, and applied when the field is left if they differ from the value.
+struct Typed;
+
+impl Typed {
+    fn typed(page: HWND, fields: &[(u16, &str)], id: u16, code: u32) -> bool {
+        let Some((_, key)) = fields.iter().find(|(field, _)| *field == id) else { return false };
+        let field = dialog::item(page, id);
+        match code {
+            EN_CHANGE if controls::focused() == field => {
+                app::send(ShellEvent::Settings(SettingsEvent::Type { key: (*key).to_owned(), value: controls::text(field) }));
+            }
+            EN_KILLFOCUS => Self::commit(page, &[(id, key)]),
+            _ => {}
+        }
+        true
+    }
+
+    /// Applies each field of `fields` whose text differs from the setting's value.
+    fn commit(page: HWND, fields: &[(u16, &str)]) {
+        let known = app::current_settings();
+        for (id, key) in fields {
+            let text = controls::text(dialog::item(page, *id)).trim().to_owned();
+            if !known.is_empty() && text != value(&known, key) {
+                set(key, &text);
+            }
+        }
     }
 }
 
@@ -194,11 +315,24 @@ const CHANGE: u16 = 120;
 const TOGGLE: u16 = 130;
 const REMINDERS: u16 = 140;
 
-struct General<'a> {
-    app: &'a App,
+struct General {
+    hwnd: Cell<HWND>,
+    described: Vec<Setting>,
 }
 
-impl General<'_> {
+impl General {
+    fn draw(&self, known: &[(Setting, String)]) {
+        let page = self.hwnd.get();
+        if page.is_invalid() {
+            return;
+        }
+        let on = value(known, "reminders") == "true";
+        let reminders = dialog::item(page, REMINDERS);
+        if controls::checked(reminders) != on {
+            controls::check(reminders, on);
+        }
+    }
+
     fn show_shortcuts(&self, page: HWND) {
         for (index, kind) in Kind::ALL.into_iter().enumerate() {
             let index = index as u16;
@@ -211,16 +345,16 @@ impl General<'_> {
         }
     }
 
-    fn change(&self, page: HWND, kind: Kind) {
+    fn change(&self, app: &App, page: HWND, kind: Kind) {
         // While the keys are chosen, pressing the current ones must reach the field, not
         // summon the window.
-        shortcuts::unregister_all(self.app.main);
+        shortcuts::unregister_all(app.main);
         let recorder = Recorder { kind, chosen: RefCell::new(None) };
         dialog::run(Some(sheet(page)), &recorder);
         let chosen = recorder.chosen.into_inner();
-        shortcuts::register_all(self.app.main);
+        shortcuts::register_all(app.main);
         if let Some(shortcut) = chosen {
-            match shortcuts::change(self.app.main, kind, Some(shortcut)) {
+            match shortcuts::change(app.main, kind, Some(shortcut)) {
                 Ok(said) => say(page, &said),
                 Err(why) => prompts::fail(sheet(page), &why),
             }
@@ -228,9 +362,9 @@ impl General<'_> {
         }
     }
 
-    fn toggle(&self, page: HWND, kind: Kind) {
+    fn toggle(&self, app: &App, page: HWND, kind: Kind) {
         let to = if shortcuts::current(kind).is_some() { None } else { Some(kind.standard()) };
-        match shortcuts::change(self.app.main, kind, to) {
+        match shortcuts::change(app.main, kind, to) {
             Ok(said) => say(page, &said),
             Err(why) => prompts::fail(sheet(page), &why),
         }
@@ -238,9 +372,8 @@ impl General<'_> {
     }
 }
 
-impl Dialog for General<'_> {
+impl Dialog for General {
     fn template(&self) -> Template {
-        let known = values(self.app);
         let mut template = page("General")
             .item(Class::Button, "&Open Lumenna when you sign in to Windows", AT_SIGN_IN, BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0, 7, 7, 238, 10)
             .item(
@@ -253,7 +386,7 @@ impl Dialog for General<'_> {
                 238,
                 26,
             )
-            .item(Class::Button, &titled(&known, "reminders", 'R', false), REMINDERS, BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0, 7, 50, 238, 10)
+            .item(Class::Button, &titled(&self.described, "reminders", 'R', false), REMINDERS, BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0, 7, 50, 238, 10)
             .item(Class::Button, "Shortcuts from anywhere", u16::MAX, BS_GROUPBOX as u32, 7, 64, 238, 92);
         for (index, kind) in Kind::ALL.into_iter().enumerate() {
             let y = 76 + index as i16 * 38;
@@ -269,13 +402,15 @@ impl Dialog for General<'_> {
     }
 
     fn init(&self, page: HWND) -> bool {
+        self.hwnd.set(page);
         a11y::make_live(dialog::item(page, STATUS));
         controls::check(dialog::item(page, AT_SIGN_IN), sign_in::on());
-        let known = values(self.app);
         let reminders = dialog::item(page, REMINDERS);
-        controls::check(reminders, value(&known, "reminders") == "true");
-        if let Some(hint) = known.iter().find(|s| s.key == "reminders").map(|s| &s.hint).filter(|h| !h.is_empty()) {
-            a11y::set_description(reminders, hint);
+        if let Some(setting) = self.described.iter().find(|s| s.key == "reminders") {
+            controls::check(reminders, setting.value == "true");
+            if !setting.hint.is_empty() {
+                a11y::set_description(reminders, &setting.hint);
+            }
         }
         for (index, kind) in Kind::ALL.into_iter().enumerate() {
             a11y::set_name(dialog::item(page, CHANGE + index as u16), &format!("Change the shortcut for {}", kind.name()));
@@ -288,10 +423,10 @@ impl Dialog for General<'_> {
         if u32::from(code) != BN_CLICKED {
             return None;
         }
-        match id {
+        app::with(|app| match id {
             AT_SIGN_IN => {
                 let on = controls::checked(dialog::item(page, AT_SIGN_IN));
-                if sign_in::set(on, self.app.core.lumenna.path()) {
+                if sign_in::set(on, app.core.lumenna.path()) {
                     say(page, if on { "Lumenna opens when you sign in" } else { "Lumenna no longer opens when you sign in" });
                 } else {
                     prompts::fail(sheet(page), "Windows would not change what starts when you sign in.");
@@ -300,13 +435,18 @@ impl Dialog for General<'_> {
             }
             REMINDERS => {
                 let on = controls::checked(dialog::item(page, REMINDERS));
-                if !set(self.app, page, "reminders", if on { "true" } else { "false" }) {
-                    controls::check(dialog::item(page, REMINDERS), !on);
-                }
+                set("reminders", if on { "true" } else { "false" });
             }
-            id if (CHANGE..CHANGE + 2).contains(&id) => self.change(page, Kind::ALL[usize::from(id - CHANGE)]),
-            id if (TOGGLE..TOGGLE + 2).contains(&id) => self.toggle(page, Kind::ALL[usize::from(id - TOGGLE)]),
+            id if (CHANGE..CHANGE + 2).contains(&id) => self.change(app, page, Kind::ALL[usize::from(id - CHANGE)]),
+            id if (TOGGLE..TOGGLE + 2).contains(&id) => self.toggle(app, page, Kind::ALL[usize::from(id - TOGGLE)]),
             _ => {}
+        });
+        None
+    }
+
+    fn message(&self, page: HWND, message: u32, _wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
+        if notification(message, lparam) == Some(PSN_SETACTIVE) {
+            fronted(page);
         }
         None
     }
@@ -436,43 +576,35 @@ const TYPED: [(u16, &str); 6] = [
 ];
 const CHOICES: [(u16, &str); 3] = [(VERBOSITY, "verbosity"), (WEEK_START, "week-start"), (TASK_ORDER, "task-order")];
 
-struct Planning<'a> {
-    app: &'a App,
-    known: RefCell<Vec<Setting>>,
+struct Planning {
+    hwnd: Cell<HWND>,
+    described: Vec<Setting>,
 }
 
-impl Planning<'_> {
-    fn load(&self, page: HWND) {
-        let known = values(self.app);
-        controls::check(dialog::item(page, CASCADE), value(&known, "cascade-complete-subtasks") == "true");
+impl Planning {
+    fn draw(&self, known: &[(Setting, String)], still: bool) {
+        let page = self.hwnd.get();
+        if page.is_invalid() {
+            return;
+        }
+        let cascade = dialog::item(page, CASCADE);
+        let on = value(known, "cascade-complete-subtasks") == "true";
+        if controls::checked(cascade) != on {
+            controls::check(cascade, on);
+        }
         for (id, key) in TYPED {
-            controls::set_text(dialog::item(page, id), &value(&known, key));
+            controls::write_typed(dialog::item(page, id), &typed(known, key), still);
         }
         for (id, key) in CHOICES {
-            fill_options(dialog::item(page, id), &known, key);
+            fill_options(dialog::item(page, id), known, key);
         }
-        *self.known.borrow_mut() = known;
-    }
-
-    /// A typed field, when it is left: written if it changed, and put back if it does not read.
-    fn commit_typed(&self, page: HWND) {
-        for (id, key) in TYPED {
-            let field = dialog::item(page, id);
-            let typed = controls::text(field).trim().to_owned();
-            let was = value(&self.known.borrow(), key);
-            if typed != was && !set(self.app, page, key, &typed) {
-                controls::set_text(field, &was);
-            }
-        }
-        self.load(page);
     }
 }
 
-impl Dialog for Planning<'_> {
+impl Dialog for Planning {
     fn template(&self) -> Template {
         // The names are the core's; where each goes, and its access key, are this page's.
-        let known = values(self.app);
-        let name = |key, letter, colon| titled(&known, key, letter, colon);
+        let name = |key, letter, colon| titled(&self.described, key, letter, colon);
         page("Planning")
             .item(Class::Button, &name("cascade-complete-subtasks", 'C', false), CASCADE, BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0, 7, 7, 238, 10)
             .item(Class::Static, &name("day-start", 's', true), u16::MAX, 0, 7, 24, 110, 9)
@@ -497,42 +629,47 @@ impl Dialog for Planning<'_> {
     }
 
     fn init(&self, page: HWND) -> bool {
+        self.hwnd.set(page);
         a11y::make_live(dialog::item(page, STATUS));
-        let known = values(self.app);
         for (id, key) in TYPED.iter().chain(&CHOICES) {
-            if let Some(hint) = known.iter().find(|s| s.key == *key).map(|s| &s.hint).filter(|h| !h.is_empty()) {
+            if let Some(hint) = self.described.iter().find(|s| s.key == *key).map(|s| &s.hint).filter(|h| !h.is_empty()) {
                 a11y::set_description(dialog::item(page, *id), hint);
             }
         }
-        self.load(page);
+        // As described, until the app's own settings arrive.
+        let known: Vec<(Setting, String)> = self.described.iter().map(|s| (s.clone(), s.value.clone())).collect();
+        self.draw(&known, true);
         false
     }
 
     fn command(&self, page: HWND, id: u16, code: u16) -> Option<isize> {
         let code = u32::from(code);
+        if Typed::typed(page, &TYPED, id, code) {
+            return None;
+        }
         match (id, code) {
             (CASCADE, BN_CLICKED) => {
                 let on = controls::checked(dialog::item(page, CASCADE));
-                set(self.app, page, "cascade-complete-subtasks", if on { "true" } else { "false" });
-                self.load(page);
+                set("cascade-complete-subtasks", if on { "true" } else { "false" });
             }
             (id, CBN_SELCHANGE) if CHOICES.iter().any(|(c, _)| *c == id) => {
                 let key = CHOICES.iter().find(|(c, _)| *c == id).map_or("", |(_, k)| *k);
-                let chosen = chosen_option(dialog::item(page, id), &self.known.borrow(), key);
-                if let Some(chosen) = chosen {
-                    set(self.app, page, key, &chosen);
+                if let Some(chosen) = chosen_option(dialog::item(page, id), &self.described, key) {
+                    set(key, &chosen);
                 }
-                self.load(page);
             }
-            (id, EN_KILLFOCUS) if TYPED.iter().any(|(t, _)| *t == id) => self.commit_typed(page),
             _ => {}
         }
         None
     }
 
     fn message(&self, page: HWND, message: u32, _wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
-        if finishing(message, lparam) {
-            self.commit_typed(page);
+        let code = notification(message, lparam);
+        if code == Some(PSN_SETACTIVE) {
+            fronted(page);
+        }
+        if finishing(code) {
+            Typed::commit(page, &TYPED);
             return Some(0);
         }
         None
@@ -550,31 +687,50 @@ const PAIR: u16 = 303;
 const RENAME: u16 = 304;
 const UNPAIR: u16 = 305;
 
-struct Devices<'a> {
-    app: &'a App,
+struct Devices {
+    hwnd: Cell<HWND>,
     list: RefCell<Vec<lumenna_host::DeviceView>>,
+    /// The landing count of the list's row in hand when last drawn.
+    landing: Cell<u32>,
 }
 
-impl Devices<'_> {
-    fn load(&self, page: HWND) {
-        match self.app.core.lumenna.sync_status() {
-            Ok(status) => {
-                let text = speech::sentence(&speech::announcement(&status.announcement, &status.notices));
-                controls::set_text(dialog::item(page, SYNC_STATUS), &text);
-                let list = dialog::item(page, DEVICES);
-                let kept = usize::try_from(controls::send(list, LB_GETCURSEL, 0, 0)).unwrap_or(0);
-                controls::send(list, LB_RESETCONTENT, 0, 0);
-                let now = jiff::Timestamp::now();
-                for device in &status.devices {
-                    let text = HSTRING::from(devices::line(device, now));
-                    controls::send(list, LB_ADDSTRING, 0, text.as_ptr() as isize);
-                }
-                controls::send(list, LB_SETCURSEL, kept.min(status.devices.len().saturating_sub(1)), 0);
-                *self.list.borrow_mut() = status.devices;
-                self.offer(page);
-            }
-            Err(error) => controls::set_text(dialog::item(page, SYNC_STATUS), &sentence(&error)),
+impl Devices {
+    /// Draws the app's Devices page: how syncing is going, and the devices, the row in hand
+    /// the app's.
+    fn draw(&self, app: &App, view: &ViewModel, lines: &Lines) {
+        let page = self.hwnd.get();
+        let Some(shown) = view.devices.as_ref().filter(|_| !page.is_invalid()) else { return };
+        let status = dialog::item(page, SYNC_STATUS);
+        let said = speech::sentence(&shown.status);
+        if controls::text(status) != said {
+            controls::set_text(status, &said);
         }
+        let devices = shown.list.as_ref().map(|list| list.devices.clone()).unwrap_or_default();
+        let list = dialog::item(page, DEVICES);
+        let texts: Vec<String> = lines.devices.iter().map(|line| line.text.clone()).collect();
+        let same = *self.list.borrow() == devices
+            && usize::try_from(controls::send(list, LB_GETCOUNT, 0, 0)).ok() == Some(texts.len());
+        if !same {
+            let kept = usize::try_from(controls::send(list, LB_GETCURSEL, 0, 0)).unwrap_or(0);
+            controls::send(list, LB_RESETCONTENT, 0, 0);
+            for text in &texts {
+                let text = HSTRING::from(text.as_str());
+                controls::send(list, LB_ADDSTRING, 0, text.as_ptr() as isize);
+            }
+            controls::send(list, LB_SETCURSEL, kept.min(texts.len().saturating_sub(1)), 0);
+            *self.list.borrow_mut() = devices;
+        }
+        // Where a change made from the list lands: the same device, or the one in its place.
+        let held = &view.devices_held;
+        if held.landing != self.landing.replace(held.landing)
+            && let Some(at) = held.focus.as_ref().and_then(|key| self.list.borrow().iter().position(|d| &d.node_id == key))
+        {
+            controls::send(list, LB_SETCURSEL, at, 0);
+            if controls::lost(app.main) || controls::focused().is_invalid() {
+                controls::focus(list);
+            }
+        }
+        self.offer(page);
     }
 
     fn chosen(&self, page: HWND) -> Option<lumenna_host::DeviceView> {
@@ -582,17 +738,15 @@ impl Devices<'_> {
         self.list.borrow().get(index).cloned()
     }
 
-    /// The chosen device's action of `kind`, as the core offers it: a device cannot unpair
-    /// itself, so its own row has no Unpair.
+    /// The chosen device's action of `kind`, as the app's: a device cannot unpair itself, so
+    /// its own row has no Unpair.
     fn act(&self, page: HWND, kind: ActionKind) {
         let Some(device) = self.chosen(page) else { return };
         let Some(action) = actions::of_kind(&device.actions, &[kind]) else {
             return say(page, &not_offered(kind, Subject::Device, device.this_device));
         };
-        if let Some((change, _)) = actions::run(self.app, sheet(page), &action, || {}) {
-            self.load(page);
-            say(page, &speech::announcement(&change.announcement, &change.notices));
-        }
+        app::send(ShellEvent::Hold(Side::Devices, device.node_id));
+        app::send(ShellEvent::Perform(action));
     }
 
     /// Rename and Unpair as the chosen device offers them. The button with focus stays as it
@@ -608,11 +762,11 @@ impl Devices<'_> {
         }
     }
 }
-impl Dialog for Devices<'_> {
+
+impl Dialog for Devices {
     fn template(&self) -> Template {
         let list = (LBS_NOTIFY | LBS_NOINTEGRALHEIGHT | LBS_WANTKEYBOARDINPUT) as u32 | WS_VSCROLL.0 | WS_BORDER.0 | WS_TABSTOP.0;
         let status = READ_ONLY | ES_MULTILINE as u32 | WS_VSCROLL.0;
-        
         page("Devices")
             .item(Class::Static, "S&ync status:", u16::MAX, 0, 7, 7, 238, 9)
             .item(Class::Edit, "", SYNC_STATUS, status, 7, 17, 238, 28)
@@ -625,15 +779,20 @@ impl Dialog for Devices<'_> {
     }
 
     fn init(&self, page: HWND) -> bool {
+        self.hwnd.set(page);
         a11y::make_live(dialog::item(page, STATUS));
         a11y::set_description(dialog::item(page, DEVICES), "Delete unpairs the selected device, and F2 renames it.");
-        self.load(page);
-        self.app.devices_page.set(Some(page));
+        self.offer(page);
+        // The devices and how syncing is going, as the app finds them.
+        app::send(ShellEvent::Devices(DevicesEvent::Show));
         false
     }
 
     fn command(&self, page: HWND, id: u16, code: u16) -> Option<isize> {
         if id == DEVICES && u32::from(code) == LBN_SELCHANGE {
+            if let Some(device) = self.chosen(page) {
+                app::send(ShellEvent::Hold(Side::Devices, device.node_id));
+            }
             self.offer(page);
             return None;
         }
@@ -641,18 +800,8 @@ impl Dialog for Devices<'_> {
             return None;
         }
         match id {
-            SYNC_NOW => {
-                say(page, "Syncing");
-                // The round's result comes back to this page, which says it.
-                self.app.core.sync_now(Poster::new(page));
-            }
-            PAIR => {
-                if let Some(said) = pairing::run(sheet(page), self.app.core.lumenna.clone()) {
-                    self.load(page);
-                    self.app.store_changed();
-                    say(page, &said);
-                }
-            }
+            SYNC_NOW => app::send(ShellEvent::Devices(DevicesEvent::SyncNow)),
+            PAIR => app::with(|app| pairing::run(app, sheet(page))),
             RENAME => self.act(page, ActionKind::Rename),
             UNPAIR => self.act(page, ActionKind::Unpair),
             _ => {}
@@ -661,27 +810,11 @@ impl Dialog for Devices<'_> {
     }
 
     fn message(&self, page: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
+        if notification(message, lparam) == Some(PSN_SETACTIVE) {
+            fronted(page);
+            return None;
+        }
         match message {
-            WM_SAY => {
-                let text = unsafe { said(lparam) };
-                self.load(page);
-                say(page, &text);
-                Some(0)
-            }
-            // From the app (`devices_changed`): the rest of the window has been redrawn.
-            WM_STORE_CHANGED if wparam.0 == FROM_APP => {
-                self.load(page);
-                Some(0)
-            }
-            WM_STORE_CHANGED => {
-                self.load(page);
-                self.app.store_changed();
-                Some(0)
-            }
-            WM_DESTROY => {
-                self.app.devices_page.set(None);
-                None
-            }
             // Delete in the list unpairs, as it removes in every other list.
             // F2 renames, as in Explorer.
             WM_VKEYTOITEM if controls::low_word(wparam.0) == VK_F2.0 => {
@@ -698,17 +831,6 @@ impl Dialog for Devices<'_> {
     }
 }
 
-/// Marks a `WM_STORE_CHANGED` the app sent the Devices page, so the page does not send it
-/// back.
-const FROM_APP: usize = 1;
-
-/// Has the open Devices page read the store again.
-pub fn devices_changed(page: HWND) {
-    unsafe {
-        let _ = PostMessageW(Some(page), WM_STORE_CHANGED, WPARAM(FROM_APP), LPARAM(0));
-    }
-}
-
 // ---------------------------------------------------------------------------------------
 // Backups: this device's alone
 // ---------------------------------------------------------------------------------------
@@ -720,37 +842,34 @@ const CHOOSE: u16 = 403;
 const BACK_UP: u16 = 404;
 const RESTORE: u16 = 405;
 
-struct Backups<'a> {
-    app: &'a App,
-    known: RefCell<Vec<Setting>>,
+const KEPT: [(u16, &str); 1] = [(KEEP, "backup-keep")];
+
+struct Backups {
+    hwnd: Cell<HWND>,
+    described: Vec<Setting>,
 }
 
-impl Backups<'_> {
-    fn load(&self, page: HWND) {
-        let known = values(self.app);
-        fill_options(dialog::item(page, EVERY), &known, "backup-every");
-        controls::set_text(dialog::item(page, KEEP), &value(&known, "backup-keep"));
-        controls::set_text(dialog::item(page, FOLDER), &value(&known, "backup-dir"));
-        *self.known.borrow_mut() = known;
-    }
-
-    fn commit_keep(&self, page: HWND) {
-        let field = dialog::item(page, KEEP);
-        let typed = controls::text(field).trim().to_owned();
-        let was = value(&self.known.borrow(), "backup-keep");
-        if typed != was && !set(self.app, page, "backup-keep", &typed) {
-            controls::set_text(field, &was);
+impl Backups {
+    fn draw(&self, known: &[(Setting, String)], still: bool) {
+        let page = self.hwnd.get();
+        if page.is_invalid() {
+            return;
         }
-        self.load(page);
+        fill_options(dialog::item(page, EVERY), known, "backup-every");
+        controls::write_typed(dialog::item(page, KEEP), &typed(known, "backup-keep"), still);
+        let folder = dialog::item(page, FOLDER);
+        let dir = value(known, "backup-dir");
+        if controls::text(folder) != dir {
+            controls::set_text(folder, &dir);
+        }
     }
 }
 
-impl Dialog for Backups<'_> {
+impl Dialog for Backups {
     fn template(&self) -> Template {
         // The names and what backups are are the core's; where each goes is this page's.
-        let known = values(self.app);
-        let name = |key, letter| titled(&known, key, letter, true);
-        let footer = known.iter().find(|s| s.key == "backup-every").map(|s| s.hint.clone()).unwrap_or_default();
+        let name = |key, letter| titled(&self.described, key, letter, true);
+        let footer = self.described.iter().find(|s| s.key == "backup-every").map(|s| s.hint.clone()).unwrap_or_default();
         page("Backups")
             .item(Class::Static, &name("backup-every", 'A'), u16::MAX, 0, 7, 7, 120, 9)
             .item(Class::ComboBox, "", EVERY, LIST, 7, 17, 120, 70)
@@ -765,47 +884,49 @@ impl Dialog for Backups<'_> {
     }
 
     fn init(&self, page: HWND) -> bool {
+        self.hwnd.set(page);
         a11y::make_live(dialog::item(page, STATUS));
-        self.load(page);
+        let known: Vec<(Setting, String)> = self.described.iter().map(|s| (s.clone(), s.value.clone())).collect();
+        self.draw(&known, true);
         false
     }
 
     fn command(&self, page: HWND, id: u16, code: u16) -> Option<isize> {
         let code = u32::from(code);
+        if Typed::typed(page, &KEPT, id, code) {
+            return None;
+        }
         match (id, code) {
             (EVERY, CBN_SELCHANGE) => {
-                let chosen = chosen_option(dialog::item(page, EVERY), &self.known.borrow(), "backup-every");
-                if let Some(chosen) = chosen {
-                    set(self.app, page, "backup-every", &chosen);
+                if let Some(chosen) = chosen_option(dialog::item(page, EVERY), &self.described, "backup-every") {
+                    set("backup-every", &chosen);
                 }
-                self.load(page);
             }
-            (KEEP, EN_KILLFOCUS) => self.commit_keep(page),
             (CHOOSE, BN_CLICKED) => {
-                let current = value(&self.known.borrow(), "backup-dir");
+                let current = controls::text(dialog::item(page, FOLDER));
                 let start = std::path::PathBuf::from(&current);
                 if let Some(folder) = system::choose_folder(sheet(page), "Back Up Here", Some(&start)) {
-                    set(self.app, page, "backup-dir", &folder.display().to_string());
-                    self.load(page);
+                    set("backup-dir", &folder.display().to_string());
                 }
             }
-            (BACK_UP, BN_CLICKED) => match self.app.core.lumenna.backup(None) {
-                Ok(done) => say(page, &speech::announcement(&done.announcement, &done.notices)),
+            // Into this device's backups, as the automatic ones are.
+            (BACK_UP, BN_CLICKED) => app::with(|app| match app.back_up() {
+                Ok(said) => say(page, &said),
                 Err(error) => prompts::fail(sheet(page), &sentence(&error)),
-            },
-            (RESTORE, BN_CLICKED) => {
-                if let Some(said) = import(self.app, sheet(page), "Restore from a Backup", &BACKUPS) {
-                    say(page, &said);
-                }
-            }
+            }),
+            (RESTORE, BN_CLICKED) => import(sheet(page), "Restore from a Backup", &BACKUPS),
             _ => {}
         }
         None
     }
 
     fn message(&self, page: HWND, message: u32, _wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
-        if finishing(message, lparam) {
-            self.commit_keep(page);
+        let code = notification(message, lparam);
+        if code == Some(PSN_SETACTIVE) {
+            fronted(page);
+        }
+        if finishing(code) {
+            Typed::commit(page, &KEPT);
             return Some(0);
         }
         None
@@ -819,27 +940,9 @@ impl Dialog for Backups<'_> {
 const EXPORT: u16 = 500;
 const IMPORT: u16 = 510;
 
-struct Export<'a> {
-    app: &'a App,
-}
+struct Export;
 
-impl Export<'_> {
-    fn export(&self, page: HWND, format: ExportFormat) {
-        let today = jiff::Zoned::now().date();
-        let name = devices::export_name(format, today);
-        let extension = name.rsplit('.').next().unwrap_or("txt").to_owned();
-        let pattern = format!("*.{extension}");
-        let kind = format!("{} files", format.word());
-        let Some(path) = system::save_file(sheet(page), "Export", &name, &[(&kind, &pattern)]) else { return };
-        // The dialog already asked about replacing a file that was there.
-        match self.app.core.lumenna.export(format, Some(path.display().to_string()), true) {
-            Ok(done) => say(page, &speech::announcement(&done.announcement, &done.notices)),
-            Err(error) => prompts::fail(sheet(page), &sentence(&error)),
-        }
-    }
-}
-
-impl Dialog for Export<'_> {
+impl Dialog for Export {
     fn template(&self) -> Template {
         let mut template = page("Export and Import");
         for (index, export) in devices::EXPORTS.iter().enumerate() {
@@ -861,12 +964,19 @@ impl Dialog for Export<'_> {
         if u32::from(code) != BN_CLICKED {
             return None;
         }
+        // The app makes the export, which is then saved where the person chooses.
         if let Some(export) = id.checked_sub(EXPORT).and_then(|i| devices::EXPORTS.get(usize::from(i))) {
-            self.export(page, export.format);
-        } else if id == IMPORT
-            && let Some(said) = import(self.app, sheet(page), "Import or Restore", &IMPORTABLE)
-        {
-            say(page, &said);
+            let format: ExportFormat = export.format;
+            app::send(ShellEvent::Settings(SettingsEvent::Export(format)));
+        } else if id == IMPORT {
+            import(sheet(page), "Import or Restore", &IMPORTABLE);
+        }
+        None
+    }
+
+    fn message(&self, page: HWND, message: u32, _wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
+        if notification(message, lparam) == Some(PSN_SETACTIVE) {
+            fronted(page);
         }
         None
     }

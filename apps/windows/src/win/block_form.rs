@@ -138,10 +138,11 @@ impl Form {
     }
 
     /// Draws the app's form as it now is, or closes the dialog when the app has closed it.
-    pub fn draw(&self, app: &App, view: Option<&BlockFormView>) {
+    /// Returns whether it held back the field being typed in, for once the app is `still`.
+    pub fn draw(&self, app: &App, view: Option<&BlockFormView>, still: bool) -> bool {
         let hwnd = self.hwnd.get();
         if hwnd.is_invalid() {
-            return;
+            return false;
         }
         let Some(view) = view else {
             if !self.closed.replace(true) {
@@ -149,9 +150,9 @@ impl Form {
                     let _ = EndDialog(hwnd, 1);
                 }
             }
-            return;
+            return false;
         };
-        self.fill(hwnd, view);
+        let typing = self.fill(hwnd, view, still);
         // A refusal is said once, after this turn, over the form, which stays as typed.
         let refusal = view.refusal.clone();
         if refusal.is_some() && *self.refused.borrow() != refusal {
@@ -162,12 +163,14 @@ impl Form {
         } else if refusal.is_none() {
             self.refused.replace(None);
         }
+        typing
     }
 
     /// The fields as the app holds them: which are shown, and what each holds, written only
     /// where it differs, so the caret in a field being typed in stays put.
-    fn fill(&self, hwnd: HWND, view: &BlockFormView) {
+    fn fill(&self, hwnd: HWND, view: &BlockFormView, still: bool) -> bool {
         self.filling.set(true);
+        let mut typing = false;
         for (key, id, _) in FIELDS {
             if !self.has(key) {
                 continue;
@@ -201,16 +204,11 @@ impl Form {
                         controls::check(control, held == "true");
                     }
                 }
-                // Never the field being typed in: a turn can come from typing a moment old, and
-                // writing it back would undo what was typed since.
-                _ => {
-                    if controls::text(control) != held && control != controls::focused() {
-                        controls::set_text(control, &held);
-                    }
-                }
+                _ => typing |= controls::write_typed(control, &held, still),
             }
         }
         self.filling.set(false);
+        typing
     }
 
     /// What a control now holds, as the app takes it: a flag as `true` or `false`, the kind as
@@ -331,7 +329,7 @@ impl Dialog for Form {
                 controls::cue(control, &field.example);
             }
         }
-        self.fill(hwnd, &self.first);
+        self.fill(hwnd, &self.first, true);
         false
     }
 

@@ -107,6 +107,27 @@ pub fn focused() -> HWND {
     unsafe { GetFocus() }
 }
 
+/// Writes the app's value into a field the person types in, where it differs. The field with
+/// focus is written only once the app is `still`: before then a turn can come from typing a
+/// moment old, and writing it back would undo what was typed since. Returns whether it held
+/// the field back, to be written once the app is still.
+pub fn write_typed(control: HWND, text: &str, still: bool) -> bool {
+    if self::text(control) == text {
+        return false;
+    }
+    let typing = control == focused();
+    if typing && !still {
+        return true;
+    }
+    set_text(control, text);
+    if typing {
+        // The caret where typing would go on, not at the start.
+        let end = text.encode_utf16().count();
+        send(control, windows::Win32::UI::Controls::EM_SETSEL, end, end as isize);
+    }
+    false
+}
+
 /// Whether focus is lost in `main` while it is in front: on nothing, on the window or a pane
 /// itself, where a screen reader finds nothing, or on a control no longer shown.
 pub fn lost(main: HWND) -> bool {

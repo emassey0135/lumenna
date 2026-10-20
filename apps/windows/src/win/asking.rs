@@ -17,7 +17,7 @@ use crate::speech;
 pub fn ask(app: &App) {
     let view = app.crux.view();
     let Some(asking) = view.asking else { return };
-    let owner = app.main;
+    let owner = app.owner();
     if let Some(refusal) = &asking.refusal {
         prompts::fail(owner, &speech::sentence(refusal));
     }

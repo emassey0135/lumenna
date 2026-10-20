@@ -41,10 +41,10 @@ use super::asking;
 use super::block_form;
 use super::blocks::BlockList;
 use super::clock::Formats;
-use super::proposal;
+use super::{pairing, proposal, system};
 use super::shell::{Relay, WM_TURN};
 use super::controls::{self, rect};
-use super::core::{Core, Poster, WM_SAY, WM_STORE_CHANGED, said, taken};
+use super::core::{Core, Poster, WM_SAY, said, taken};
 use super::toast::{Answered, Toasts, WM_REMINDER};
 use super::dark;
 use super::day::DayView;
@@ -73,6 +73,9 @@ const WM_DEFERRED: u32 = WM_APP + 3;
 const TIMER_REFRESH: usize = 1;
 /// Looks every 50 milliseconds whether the app is still, to ask the question it has open.
 const TIMER_ASK: usize = 2;
+/// Looks every 50 milliseconds whether the app is still, to write the field being typed in
+/// where the app's value differs.
+const TIMER_SETTLE: usize = 3;
 
 /// Something to do once the notification being handled has returned.
 type Deferred = Box<dyn FnOnce(&App)>;
@@ -147,9 +150,10 @@ pub struct App {
     minute: Cell<i64>,
     /// What another process had written by the last tick (`Lumenna::outside_version`).
     version: Cell<i64>,
-    /// The Settings sheet's Devices page while it is open, which reads the store again when
-    /// a sync round changes how a device is going, not only when one brings data in.
-    pub devices_page: Cell<Option<HWND>>,
+    /// The Settings sheet, while it is open.
+    settings: RefCell<Option<Rc<settings::Sheet>>>,
+    /// The pairing dialog, while it is open.
+    pairing: RefCell<Option<Rc<pairing::Pairing>>>,
     icon: HICON,
     taskbar_created: u32,
     /// Windows' notifications, for reminders; `None` where it has none to give.
@@ -207,6 +211,15 @@ pub fn run() {
     app.start(arguments.background);
     message_loop(&app);
     APP.with(|slot| slot.borrow_mut().take());
+}
+
+/// Every setting as the app holds it this moment, with what its field shows: empty until the
+/// app has them.
+pub fn current_settings() -> Vec<(lumenna_host::Setting, String)> {
+    app()
+        .and_then(|app| app.crux.view().settings)
+        .map(|settings| settings.settings.into_iter().map(|shown| (shown.setting, shown.typed)).collect())
+        .unwrap_or_default()
 }
 
 /// Runs `then` with the window, from a dialog that holds no reference to it.
@@ -331,8 +344,10 @@ impl App {
         crux.send(ShellEvent::Clock(proposal::style()));
         // Title Case, as Windows writes its buttons and menus.
         crux.send(ShellEvent::Capitals(Capitals::Title));
-        // The app's network waits while this window's own service keeps the device in sync.
-        crux.in_front(false);
+        // Resident, so in front for as long as it runs: the device's sync process once another
+        // device is paired, which then answers the command surface at the profile's pipe, as
+        // the daemon would, so Emacs and the BTSpeak app reach it.
+        crux.serve_commands("Lumenna for Windows".to_owned(), system::computer_name());
         let app = Rc::new(Self {
             core,
             crux,
@@ -359,7 +374,8 @@ impl App {
             last_focus: Cell::new(HWND::default()),
             minute: Cell::new(0),
             version: Cell::new(outside),
-            devices_page: Cell::new(None),
+            settings: RefCell::new(None),
+            pairing: RefCell::new(None),
             icon,
             taskbar_created: tray::taskbar_created(),
             toasts: Toasts::new(),
@@ -383,9 +399,7 @@ impl App {
         }
         tray::add_icon(self.main, self.icon);
         let taken = shortcuts::register_all(self.main);
-        let poster = Poster::new(self.main);
-        self.core.start_syncing(poster);
-        self.core.back_up_if_due(poster);
+        self.core.back_up_if_due(Poster::new(self.main));
         self.give_reminders();
         if !taken.is_empty() {
             self.say(&shortcut::taken(&taken, shortcuts::another_copy_open(self.main)));
@@ -419,6 +433,13 @@ impl App {
     /// closes, since a dialog in front hides the window's.
     pub fn open_live(&self, status: HWND) {
         self.live.borrow_mut().push(Live { status, closing: false, after: Vec::new() });
+    }
+
+    /// The dialog showing `status` now says through `to`: a property sheet's page turned.
+    pub fn move_live(&self, status: HWND, to: HWND) {
+        if let Some(live) = self.live.borrow_mut().iter_mut().find(|live| live.status == status) {
+            live.status = to;
+        }
     }
 
     /// The dialog showing `status` is closing: what the app says now is said once it has gone.
@@ -467,9 +488,6 @@ impl App {
     /// The store changed — here, in another process, or from another device. Everything
     /// showing it reads it again, keeping its selection, and the app takes it in.
     pub fn store_changed(&self) {
-        if let Some(page) = self.devices_page.get() {
-            settings::devices_changed(page);
-        }
         self.follow_store();
         self.crux.tick();
     }
@@ -499,7 +517,8 @@ impl App {
         let now = self.crux.view();
         self.follow(now.place.clone());
         self.sidebar.draw(self, &turn.view);
-        self.detail.draw(&turn.view, &turn.lines);
+        let still = self.crux.is_still();
+        let mut typing = self.detail.draw(&turn.view, &turn.lines, still);
         let list = self.task_list().filter(|list| turn.view.place.as_ref() == Some(&list.place));
         if let Some(list) = &list {
             list.draw(self, &turn.view, &turn.lines, landed);
@@ -514,11 +533,27 @@ impl App {
         self.follow_store();
         let form = self.block_form.borrow().clone();
         if let Some(form) = &form {
-            form.draw(self, now.block_form.as_ref());
+            typing |= form.draw(self, now.block_form.as_ref(), still);
         }
         let screen = self.proposal.borrow().clone();
         if let Some(screen) = &screen {
             screen.draw(self, now.proposal.as_ref());
+        }
+        if let Some(sheet) = self.settings_open() {
+            sheet.draw(self, &now, &self.crux.lines(), still);
+        }
+        let pairing = self.pairing.borrow().clone();
+        if let Some(pairing) = pairing {
+            pairing.draw(self, now.devices.as_ref().and_then(|devices| devices.pairing.as_ref()));
+        }
+        if typing {
+            unsafe {
+                let _ = SetTimer(Some(self.main), TIMER_SETTLE, 50, None);
+            }
+        }
+        // An export the app made, saved where the person chooses, once this turn is drawn.
+        for file in turn.files {
+            self.defer(move |app| settings::save(app.owner(), &file));
         }
         let opens = (turn.view.block_form.is_some() && form.is_none()) || (turn.view.proposal.is_some() && screen.is_none());
         if (turn.view.asking.is_some() || opens) && !self.asking.get() {
@@ -537,6 +572,8 @@ impl App {
             .into_iter()
             .filter(|said| !(folded && (said == "Expanded" || said == "Collapsed")))
             .filter(|said| opening.as_ref() != Some(said))
+            // Each a sentence, as the window has always said them.
+            .map(|said| speech::sentence(&said))
             .collect();
         self.say(&said.join(" "));
     }
@@ -575,6 +612,56 @@ impl App {
             proposal::run(self, screen);
         }
         self.asking.set(false);
+    }
+
+    /// Once the app is still, the field being typed in takes the app's value where it differs:
+    /// a change from elsewhere, or the app's own correction of what was typed.
+    fn settle_typing(&self) {
+        if !self.crux.is_still() {
+            return;
+        }
+        unsafe {
+            let _ = KillTimer(Some(self.main), TIMER_SETTLE);
+        }
+        let now = self.crux.view();
+        self.detail.draw(&now, &self.crux.lines(), true);
+        let form = self.block_form.borrow().clone();
+        if let Some(form) = form {
+            form.draw(self, now.block_form.as_ref(), true);
+        }
+    }
+
+    /// The pairing dialog opens, or closes.
+    pub fn open_pairing(&self, pairing: Option<Rc<pairing::Pairing>>) {
+        *self.pairing.borrow_mut() = pairing;
+    }
+
+    /// Settings opens, or closes.
+    pub fn open_settings(&self, sheet: Option<Rc<settings::Sheet>>) {
+        *self.settings.borrow_mut() = sheet;
+    }
+
+    /// Settings, while it is open.
+    pub fn settings_open(&self) -> Option<Rc<settings::Sheet>> {
+        self.settings.borrow().clone()
+    }
+
+    /// Every setting as the core describes it — its name, what it takes, what it can be — for
+    /// a settings page to lay itself out by before the app's own arrive.
+    pub fn described_settings(&self) -> Vec<lumenna_host::Setting> {
+        self.device.settings(None).map(|list| list.settings).unwrap_or_default()
+    }
+
+    /// Takes a backup now, into this device's backups, as the automatic ones are; says where.
+    pub fn back_up(&self) -> Result<String> {
+        let done = self.device.backup()?;
+        Ok(speech::sentence(&speech::announcement(&done.announcement, &done.notices)))
+    }
+
+    /// What dialogs this window opens are owned by: the dialog in front, else the window.
+    pub fn owner(&self) -> HWND {
+        let status = self.live.borrow().last().map(|live| live.status);
+        status.map_or(self.main, |status| unsafe { GetAncestor(status, GA_ROOT) })
     }
 
     /// The proposal screen's dialog opens, or closes.
@@ -844,7 +931,6 @@ impl App {
         }
         shortcuts::unregister_all(self.main);
         tray::remove_icon(self.main);
-        self.core.stop_syncing();
         unsafe {
             let _ = DestroyWindow(self.main);
         }
@@ -976,21 +1062,14 @@ impl App {
             menu::NEW_PROJECT => self.sidebar.add(self, SidebarGroup::Projects),
             menu::NEW_LABEL => self.sidebar.add(self, SidebarGroup::Labels),
             menu::NEW_FILTER => self.sidebar.add(self, SidebarGroup::Filters),
-            menu::SYNC_NOW => {
-                self.say("Syncing");
-                self.core.sync_now(Poster::new(self.main));
-            }
-            menu::BACK_UP => match self.core.lumenna.backup(None) {
-                Ok(done) => self.say(&speech::sentence(&speech::announcement(&done.announcement, &done.notices))),
+            menu::SYNC_NOW => self.crux.send(ShellEvent::Devices(lumenna_app::DevicesEvent::SyncNow)),
+            menu::BACK_UP => match self.back_up() {
+                Ok(said) => self.say(&said),
                 Err(error) => self.fail(&sentence(&error)),
             },
             menu::SETTINGS => settings::show(self, Page::General),
             menu::EXPORT_IMPORT => settings::show(self, Page::Export),
-            menu::RESTORE_BACKUP => {
-                if let Some(said) = settings::import(self, self.main, "Restore from a Backup", &settings::BACKUPS) {
-                    self.say(&said);
-                }
-            }
+            menu::RESTORE_BACKUP => settings::import(self.main, "Restore from a Backup", &settings::BACKUPS),
             menu::CLOSE_WINDOW => self.hide_window(),
             menu::EXIT => self.exit(),
 
@@ -1378,9 +1457,9 @@ unsafe extern "system" fn main_procedure(hwnd: HWND, message: u32, wparam: WPARA
                 return LRESULT(0);
             }
             WM_TIMER if wparam.0 == TIMER_ASK => app.ask_when_still(),
+            WM_TIMER if wparam.0 == TIMER_SETTLE => app.settle_typing(),
             WM_TIMER => app.on_timer(),
             WM_TURN => app.take_turn(taken(lparam)),
-            WM_STORE_CHANGED => app.store_changed(),
             WM_SAY => app.say(&said(lparam)),
             WM_REMINDER => app.reminder_answered(taken(lparam)),
             WM_DEFERRED => {

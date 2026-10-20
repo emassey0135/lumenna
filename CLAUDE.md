@@ -1124,8 +1124,19 @@ own. Everything Win32 is in `src/win/` behind `cfg(windows)`.
   one the tree made, since the tree reports the state itself.
 - **Times and dates are Windows' own** (`clock.rs`: `GetTimeFormatEx`, and the locale's long
   date with its year taken out where the app leaves it out), handed to the app as its `Locale`.
-- **The app's network waits** (`in_front(false)`) while `Core`'s sync service keeps the device
-  in sync and serves the pipe, until Settings and the Devices page move.
+- **Syncing is the app's network's**, as on the Mac: resident, so in front for as long as it
+  runs, with `serve_commands("Lumenna for Windows", …)`. The app asks to keep in sync once
+  another device is paired, and only then holds the endpoint and serves the pipe; unpaired,
+  `lum rpc` answers on its own and `lum sync` says it is not paired.
+- **Settings is a property sheet over the app's Settings and Devices** (`settings.rs`): each
+  page draws `view.settings` and `view.devices` once it exists (a sheet makes a page the first
+  time it is shown), a page coming to the front taking the app's sayings to its status line.
+  A line is sent as typed (`SettingsEvent::Type`) and applied when left; a refusal is said
+  once, the line kept as typed. Rename and Unpair hold the device first (`Hold`). Back Up Now
+  is the device's own backup (`Device::backup`); an export the app makes is saved where the
+  person chooses, and an import is read and handed to the app. Pairing (`pairing.rs`) is a
+  dialog over `view.devices.pairing`, on the app's network. What is this PC's alone, opening at
+  sign-in and the shortcuts from anywhere, stays the window's.
 
 - **Building on ARM64 Windows needs clang on `PATH`** for `ring`: Visual Studio's
   `VC\Tools\Llvm\ARM64\bin`. The manifest is embedded by the MSVC linker from `build.rs`.
@@ -1162,7 +1173,8 @@ own. Everything Win32 is in `src/win/` behind `cfg(windows)`.
   `LumennaMain-`) is named rather than "another program". `--no-shortcuts` leaves them to
   another copy.
 - **One instance per profile** (a mutex and window class named from the profile path). The
-  first launch triggers the firewall prompt, since the sync endpoint listens.
+  first pairing triggers the firewall prompt, since the sync endpoint then listens; an
+  unpaired app listens on nothing.
 - **Completion is a popup menu** on Down or Ctrl+Space. Items lead with the name so a letter
   finds them; the first is highlighted by a Down queued before the menu opens, marked with
   a reserved bit of the key data so the field swallows it if the menu does not take it.
