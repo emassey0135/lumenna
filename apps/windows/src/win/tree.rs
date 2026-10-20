@@ -6,12 +6,11 @@
 //! `count`, `expanded` and `checked` become the tree's structure rather than words.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashSet;
 
 use windows::Win32::Foundation::{HWND, LPARAM, POINT, RECT};
 use windows::Win32::Graphics::Gdi::{ClientToScreen, InvalidateRect, ScreenToClient};
 use windows::Win32::UI::Controls::{
-    HTREEITEM, NMTREEVIEWW, SetWindowTheme, TVE_COLLAPSE, TVE_EXPAND, TVGN_CARET, TVHITTESTINFO,
+    HTREEITEM, SetWindowTheme, TVE_COLLAPSE, TVE_EXPAND, TVGN_CARET, TVHITTESTINFO,
     TVI_LAST, TVM_HITTEST,
     TVI_ROOT, TVIF_PARAM, TVIF_STATE, TVIF_TEXT, TVINSERTSTRUCTW, TVINSERTSTRUCTW_0,
     TVIS_STATEIMAGEMASK, TVITEMEXW, TVM_DELETEITEM, TVM_ENSUREVISIBLE, TVM_EXPAND,
@@ -39,7 +38,7 @@ pub struct Item {
     /// Whether its checkbox is checked; `None` for a row with no checkbox.
     pub checked: Option<bool>,
     /// Whether what is under it is shown, where the app folds the list; `None` for a tree
-    /// that folds by itself, remembering what the person collapsed.
+    /// whose rows all stay open.
     pub expanded: Option<bool>,
 }
 
@@ -48,7 +47,6 @@ pub struct Tree {
     pub hwnd: HWND,
     items: RefCell<Vec<Item>>,
     handles: RefCell<Vec<HTREEITEM>>,
-    collapsed: RefCell<HashSet<String>>,
     busy: Cell<bool>,
 }
 
@@ -80,7 +78,6 @@ impl Tree {
             hwnd,
             items: RefCell::new(Vec::new()),
             handles: RefCell::new(Vec::new()),
-            collapsed: RefCell::new(HashSet::new()),
             busy: Cell::new(false),
         }
     }
@@ -150,14 +147,11 @@ impl Tree {
                 let handle = controls::send(self.hwnd, TVM_INSERTITEMW, 0, &raw const insert as isize);
                 handles.push(HTREEITEM(handle));
             }
-            // As the app folds it, or else expanded unless the person collapsed it, which is
-            // remembered by key across reloads; only once its children are in, since an item
+            // As the app folds it, else expanded; only once its children are in, since an item
             // without any cannot open.
-            let collapsed = self.collapsed.borrow().clone();
             for (index, has_children) in outline::has_children(&parents).into_iter().enumerate() {
                 if has_children {
-                    let expanded = items[index].expanded.unwrap_or_else(|| !collapsed.contains(&items[index].key));
-                    let action = if expanded { TVE_EXPAND } else { TVE_COLLAPSE };
+                    let action = if items[index].expanded.unwrap_or(true) { TVE_EXPAND } else { TVE_COLLAPSE };
                     controls::send(self.hwnd, TVM_EXPAND, action.0 as usize, handles[index].0);
                 }
             }
@@ -241,20 +235,6 @@ impl Tree {
         let Some(handle) = self.handles.borrow().get(index).copied() else { return };
         let child = controls::send(self.hwnd, TVM_MAPHTREEITEMTOACCID, handle.0 as usize, 0);
         a11y::set_item_description(self.hwnd, child as u32, description);
-    }
-
-    /// Remembers what the person collapsed, so a reload keeps it so.
-    pub fn expansion_changed(&self, notice: &NMTREEVIEWW) {
-        if let Some(index) = self.index_of_handle(notice.itemNew.hItem) {
-            let Some(key) = self.key(index) else { return };
-            let expanded = notice.itemNew.state.0 & windows::Win32::UI::Controls::TVIS_EXPANDED.0 != 0;
-            let mut collapsed = self.collapsed.borrow_mut();
-            if expanded {
-                collapsed.remove(&key);
-            } else {
-                collapsed.insert(key);
-            }
-        }
     }
 
     /// The row under a point on screen, for a context menu opened with the mouse — which, in

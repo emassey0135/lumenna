@@ -279,6 +279,22 @@ fn delete_in_the_sidebar_asks_before_deleting_a_project() {
 
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn a_project_renamed_from_the_sidebar_is_shown_under_its_new_name_its_row_still_in_hand() {
+    let app = App::launch(|lumenna| {
+        lumenna.add_project("Garden", None).unwrap();
+    });
+    // Today, Tasks, Projects, Inbox, Garden.
+    app.post(&["f6", "home", "down", "down", "down", "down", "f2"]);
+    assert!(app.front().iter().any(|l| l.contains("Edit") && l.contains("FOCUSED")), "F2 asks for the name: {:#?}", app.front());
+    app.post(&["text:Allotment", "enter"]);
+    let renamed = automation::wait(Duration::from_secs(5), || app.focus().contains("TreeItem 'Allotment").then_some(()));
+    assert!(renamed.is_some(), "the sidebar's row in hand follows the rename: {}", app.focus());
+    let lines = app.automation.dump(app.window, 6);
+    assert!(lines.iter().any(|l| l.trim_start().starts_with("Tree 'Allotment'")), "the list shown is the project's: {lines:#?}");
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn the_keyboard_opens_a_rows_context_menu() {
     let app = App::launch(|lumenna| add(lumenna, "Buy milk"));
     app.post(&[GO_TASKS, "home", "context"]);

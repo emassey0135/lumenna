@@ -1,18 +1,21 @@
-//! The places: Today, Tasks, the projects as
-//! they nest, labels, saved filters, Blocks, the trash.
+//! The places: Today, Tasks, the projects as they nest, labels, saved filters, Blocks, the
+//! trash, drawn from the app's view (`view.sidebar`), with its row in hand (`sidebar_held`) and
+//! its folding.
 //!
 //! A tree view like every list here, so a subproject's level is the control's to report.
 //! Moving through it shows each place in the middle pane, as Explorer's folder tree does.
 //! What a project, label, filter or heading can have done to it is the core's, offered in its
-//! context menu; Delete runs a row's Delete.
+//! context menu and run as the app's, the row held first so the change lands back here; Delete
+//! runs a row's Delete and F2 its Rename.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 
-use lumenna_host::actions::heading;
-use lumenna_host::{Action, ActionKind, Answer, Subject, new_filter_questions};
+use lumenna_app::{Side, ViewModel};
+use lumenna_ffi::ShellEvent;
+use lumenna_host::{Action, ActionKind};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{
-    NMHDR, NMTREEVIEWW, NMTVKEYDOWN, TVN_ITEMEXPANDEDW, TVN_KEYDOWN, TVN_SELCHANGEDW,
+    NMHDR, NMTREEVIEWW, NMTVKEYDOWN, TVIS_EXPANDED, TVN_ITEMEXPANDEDW, TVN_KEYDOWN, TVN_SELCHANGEDW,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{VK_DELETE, VK_F2};
 
@@ -27,13 +30,23 @@ const TREE: u16 = 200;
 pub struct Sidebar {
     pub tree: Tree,
     entries: RefCell<Vec<SidebarEntry>>,
-    /// The place shown, by key.
-    current: RefCell<String>,
+    /// The place shown when the sidebar was last drawn, by key.
+    shown: RefCell<String>,
+    /// The landing count of the sidebar's row in hand when last drawn.
+    landing: Cell<u32>,
+    /// A row the tree itself just folded or unfolded, which the tree has already said.
+    pub folded_by_tree: Cell<bool>,
 }
 
 impl Sidebar {
     pub fn create(pane: HWND) -> Self {
-        Self { tree: Tree::create(pane, TREE, "Places", false), entries: RefCell::new(Vec::new()), current: RefCell::new(String::new()) }
+        Self {
+            tree: Tree::create(pane, TREE, "Places", false),
+            entries: RefCell::new(Vec::new()),
+            shown: RefCell::new(String::new()),
+            landing: Cell::new(0),
+            folded_by_tree: Cell::new(false),
+        }
     }
 
     pub fn layout(&self, width: i32, height: i32, m: Metrics) {
@@ -41,29 +54,45 @@ impl Sidebar {
         controls::place(self.tree.hwnd, rect(gap, gap, width - gap, height - 2 * gap));
     }
 
-    /// Lists the places again, keeping the one shown selected without showing it again —
-    /// which would throw away whatever the middle pane was doing.
-    pub fn reload(&self, app: &App) {
-        let entries = lumenna_host::sidebar(&app.core.lumenna);
-        let items = entries
-            .iter()
-            .map(|entry| Item { key: entry.key(), text: entry.text.clone(), depth: entry.depth, checked: None, expanded: None })
-            .collect();
-        *self.entries.borrow_mut() = entries;
-        if self.tree.set(items) {
-            let current = self.current.borrow().clone();
-            if let Some(index) = self.tree.index_of(&current) {
-                self.tree.select_quietly(index);
-            }
+    /// Draws the app's sidebar. The selection moves to the row the app holds when it moved it
+    /// (a place renamed, made or deleted), to the place shown when another was opened, and
+    /// otherwise stays where the person left it.
+    pub fn draw(&self, app: &App, view: &ViewModel) {
+        if !view.ready {
+            return;
         }
-    }
-
-    /// Selects a place, as going there from the menu does.
-    pub fn select(&self, place: &Place) {
-        let key = place_key(place);
-        *self.current.borrow_mut() = key.clone();
-        if let Some(index) = self.tree.index_of(&key) {
+        let items = view
+            .sidebar
+            .iter()
+            .map(|entry| Item {
+                key: entry.key(),
+                text: entry.text.clone(),
+                depth: entry.depth,
+                checked: None,
+                expanded: fold(entry).map(|kind| kind == ActionKind::Collapse),
+            })
+            .collect();
+        *self.entries.borrow_mut() = view.sidebar.clone();
+        let rebuilt = self.tree.set(items);
+        let place = view.place.as_ref().map(place_key).unwrap_or_default();
+        let opened = *self.shown.borrow() != place;
+        *self.shown.borrow_mut() = place.clone();
+        let held = &view.sidebar_held;
+        let landed = held.landing != self.landing.replace(held.landing);
+        let target = if landed {
+            held.focus.clone()
+        } else if opened {
+            Some(place)
+        } else if rebuilt {
+            held.focus.clone().or(Some(place))
+        } else {
+            None
+        };
+        if let Some(index) = target.and_then(|key| self.tree.index_of(&key)) {
             self.tree.select_quietly(index);
+        }
+        if landed && controls::lost(app.main) {
+            controls::focus(self.tree.hwnd);
         }
     }
 
@@ -78,24 +107,32 @@ impl Sidebar {
         }
         match header.code {
             TVN_SELCHANGEDW if !self.tree.busy() => {
-                if let Some(SidebarEntry { kind: SidebarKind::Place(place), .. }) = self.selected() {
-                    let key = place_key(&place);
-                    if *self.current.borrow() != key {
-                        *self.current.borrow_mut() = key;
+                if let Some(entry) = self.selected() {
+                    app.crux.send(ShellEvent::Hold(Side::Sidebar, entry.key()));
+                    if let SidebarKind::Place(place) = entry.kind
+                        && *self.shown.borrow() != place_key(&place)
+                    {
                         app.show_place(place);
                     }
                 }
                 Some(0)
             }
-            TVN_ITEMEXPANDEDW => {
-                self.tree.expansion_changed(unsafe { &*(lparam.0 as *const NMTREEVIEWW) });
+            TVN_ITEMEXPANDEDW if !self.tree.busy() => {
+                // Folding is the app's: the tree's own Left, Right or click is its Expand or
+                // Collapse.
+                let notice = unsafe { &*(lparam.0 as *const NMTREEVIEWW) };
+                let kind = if notice.itemNew.state.0 & TVIS_EXPANDED.0 != 0 { ActionKind::Expand } else { ActionKind::Collapse };
+                let entry = self.tree.index_of_handle(notice.itemNew.hItem).and_then(|i| self.entries.borrow().get(i).cloned());
+                if let Some(action) = entry.and_then(|entry| actions::of_kind(&entry.actions, &[kind])) {
+                    self.folded_by_tree.set(true);
+                    app.crux.send(ShellEvent::Perform(action));
+                }
                 Some(0)
             }
             TVN_KEYDOWN => {
                 // Delete and F2 do what they do in Explorer: the row's own Delete, asking first
-                // as the context menu's does, and its Rename. After the notification returns,
-                // since either rebuilds the tree. Where there is none, as for the Inbox, the
-                // core says why.
+                // as the context menu's does, and its Rename. Where there is none, as for the
+                // Inbox, the core says why.
                 let key = unsafe { &*(lparam.0 as *const NMTVKEYDOWN) }.wVKey;
                 let kind = match key {
                     k if k == VK_DELETE.0 => ActionKind::Delete,
@@ -104,7 +141,7 @@ impl Sidebar {
                 };
                 if let Some(entry) = self.selected() {
                     match actions::of_kind(&entry.actions, &[kind]) {
-                        Some(action) => app.defer(move |app| app.sidebar.act(app, &entry, &action)),
+                        Some(action) => self.act(app, &entry, action),
                         None => actions::say_not_offered(app, &entry.actions, kind),
                     }
                 }
@@ -128,71 +165,36 @@ impl Sidebar {
         let items: Vec<(u16, &str)> = items.iter().map(|(id, text)| (*id, text.as_str())).collect();
         let at = point.unwrap_or_else(|| self.tree.menu_point(index));
         if let Some(action) = app.popup(&items, at).and_then(|command| actions::chosen(&entry.actions, command)) {
-            self.act(app, &entry, &action);
+            self.act(app, &entry, action);
         }
         true
     }
 
     /// Adds a project, label or saved filter, as its heading's New does: for the File menu.
     pub fn add(&self, app: &App, group: SidebarGroup) {
-        let entry = SidebarEntry::new(SidebarKind::Group(group), "", "", 0, Vec::new());
-        if let Some(action) = heading(group).into_iter().next() {
-            self.act(app, &entry, &action);
+        let key = SidebarEntry::key_of(&SidebarKind::Group(group));
+        let entry = self.entries.borrow().iter().find(|entry| entry.key() == key).cloned();
+        // A heading's own action comes first, before its folding.
+        if let Some(entry) = entry
+            && let Some(action) = entry.actions.first().cloned()
+        {
+            self.act(app, &entry, action);
         }
     }
 
-    /// Runs one of a row's actions, says what it did, and — when it renamed or removed the
-    /// place, or made a new one — goes there, or to Tasks.
-    fn act(&self, app: &App, entry: &SidebarEntry, action: &Action) {
-        let Some((change, answer)) = actions::run(app, app.main, action, || self.new_filter(app)) else { return };
-        let query = match &entry.kind {
-            SidebarKind::Place(Place::Filter { query, .. }) => query.clone(),
-            _ => String::new(),
-        };
-        let then = match (action.subject, action.kind, answer) {
-            (_, ActionKind::Delete, _) => Some(Place::Tasks),
-            (Subject::Project, ActionKind::Rename | ActionKind::New | ActionKind::NewInside, Answer::Text { text }) => {
-                Some(Place::Project(text))
-            }
-            (Subject::Label, ActionKind::Rename | ActionKind::New, Answer::Text { text }) => Some(Place::Label(text)),
-            (Subject::Label, ActionKind::MergeInto, Answer::Picked { id, .. }) => Some(Place::Label(id)),
-            (Subject::Filter, ActionKind::Rename, Answer::Text { text }) => Some(Place::Filter { name: text, query }),
-            (Subject::Filter, ActionKind::ChangeQuery, Answer::Text { text }) => {
-                Some(Place::Filter { name: action.target.clone(), query: text })
-            }
-            _ => None,
-        };
-        if let Some(place) = then.filter(|_| change.changed) {
-            app.go(place, false);
-        }
-        app.say_change(&change);
-    }
-
-    /// A new saved filter: the app's own form, a name and then its query.
-    fn new_filter(&self, app: &App) {
-        let questions = new_filter_questions();
-        let (Some(naming), Some(querying)) = (questions.first(), questions.get(1)) else { return };
-        let Some(name) = actions::ask(app.main, naming, "").filter(|n| !n.is_empty()) else { return };
-        let mut typed = String::new();
-        while let Some(query) = actions::ask(app.main, querying, &typed) {
-            match app.core.lumenna.add_filter(&name, &query) {
-                Ok(change) => {
-                    app.store_changed();
-                    if change.changed {
-                        app.go(Place::Filter { name: name.clone(), query }, false);
-                    }
-                    app.say_change(&change);
-                    return;
-                }
-                Err(error) => {
-                    app.fail(&super::core::sentence(&error));
-                    typed = query;
-                }
-            }
-        }
+    /// Runs one of a row's actions as the app's, the row held first: what it renames, makes or
+    /// removes, the app goes to, and the window with it.
+    fn act(&self, app: &App, entry: &SidebarEntry, action: Action) {
+        app.crux.send(ShellEvent::Hold(Side::Sidebar, entry.key()));
+        app.crux.send(ShellEvent::Perform(action));
     }
 }
 
-fn place_key(place: &Place) -> String {
+/// The Expand or Collapse a row offers, when something is under it.
+fn fold(entry: &SidebarEntry) -> Option<ActionKind> {
+    entry.actions.iter().map(|action| action.kind).find(|kind| matches!(kind, ActionKind::Expand | ActionKind::Collapse))
+}
+
+pub fn place_key(place: &Place) -> String {
     SidebarEntry::key_of(&SidebarKind::Place(place.clone()))
 }

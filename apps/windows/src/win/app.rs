@@ -341,7 +341,6 @@ impl App {
     /// Shows the window on Today — unless started in the background, at sign-in, when it
     /// waits in the notification area — and starts what runs beside it.
     fn start(&self, background: bool) {
-        self.sidebar.reload(self);
         self.go(Place::Today, true);
         unsafe {
             if !background {
@@ -416,7 +415,6 @@ impl App {
             return;
         }
         *self.heads.borrow_mut() = heads;
-        self.sidebar.reload(self);
         if let Some(content) = self.content() {
             content.view().reload(self);
         }
@@ -430,6 +428,15 @@ impl App {
             return;
         }
         let landed = turn.view.landing != self.landing.replace(turn.view.landing);
+        // Where the app went by itself — a place renamed, merged or deleted — the window goes
+        // too. Judged by where the app is now: a turn made before the person opened a place
+        // still names the one they left.
+        if let Some(now) = self.crux.view().place
+            && self.place_shown().as_ref() != Some(&now)
+        {
+            self.present(now);
+        }
+        self.sidebar.draw(self, &turn.view);
         let list = self.task_list().filter(|list| turn.view.place.as_ref() == Some(&list.place));
         if let Some(list) = &list {
             list.draw(self, &turn.view, &turn.lines, landed);
@@ -441,7 +448,7 @@ impl App {
             }
         }
         // The tree says a row it folded itself is expanded or collapsed.
-        let folded = list.is_some_and(|list| list.folded_by_tree.replace(false));
+        let folded = list.is_some_and(|list| list.folded_by_tree.replace(false)) | self.sidebar.folded_by_tree.replace(false);
         let said: Vec<String> =
             turn.said.into_iter().filter(|said| !(folded && (said == "Expanded" || said == "Collapsed"))).collect();
         self.say(&said.join(" "));
@@ -514,10 +521,18 @@ impl App {
         }
     }
 
-    /// Goes to a place: selects it in the sidebar, shows it, and — when `focus` — moves
-    /// focus into it.
+    /// The place the middle pane shows.
+    fn place_shown(&self) -> Option<Place> {
+        Some(match self.content()? {
+            Content::Tasks(list) => list.place.clone(),
+            Content::Day(_) => Place::Today,
+            Content::Blocks(_) => Place::Blocks,
+        })
+    }
+
+    /// Goes to a place: shows it, the sidebar following, and — when `focus` — moves focus
+    /// into it.
     pub fn go(&self, place: Place, focus: bool) {
-        self.sidebar.select(&place);
         self.show_place(place);
         if focus
             && let Some(content) = self.content() {
@@ -525,8 +540,14 @@ impl App {
             }
     }
 
-    /// Shows a place in the middle pane, and clears the details until something is chosen.
+    /// Opens a place: the app goes there, and the middle pane shows it.
     pub fn show_place(&self, place: Place) {
+        self.crux.send(ShellEvent::Open(place.clone()));
+        self.present(place);
+    }
+
+    /// Shows a place in the middle pane, and clears the details until something is chosen.
+    fn present(&self, place: Place) {
         // Out of the slot before its windows go, so the notifications their destruction
         // sends find no view to reach.
         let old = self.content.borrow_mut().take();
@@ -539,8 +560,6 @@ impl App {
             }
         }
         self.detail.show(self, None);
-        // The app's place follows the window's, until the sidebar is drawn from it.
-        self.crux.send(ShellEvent::Open(place.clone()));
         let pane = self.panes[1];
         let content = match &place {
             Place::Today => Content::Day(DayView::create(self, pane)),
