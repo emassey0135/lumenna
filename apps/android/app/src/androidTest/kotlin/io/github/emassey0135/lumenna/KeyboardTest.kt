@@ -39,6 +39,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import android.view.KeyEvent
+import org.junit.Assert.assertEquals
 import org.junit.runner.RunWith
 
 /**
@@ -135,6 +137,19 @@ class KeyboardTest {
         core.device.addTask(title)
         rule.runOnIdle { core.changed() }
         rule.waitForIdle()
+    }
+
+    @Test
+    fun everyCommandBoundTakesItsKeysAndNameFromTheSharedTable() {
+        // A command Android binds by the shared table's identifier finds it there: one whose
+        // identifier changed would have no key at all, and nothing would say so.
+        for (command in Command.entries) {
+            assertTrue("${command.name} has no key", command.keys.isNotEmpty())
+            assertTrue("${command.name} has no name", command.title.isNotEmpty() && command.title != command.name)
+        }
+        assertEquals(Keys(KeyEvent.KEYCODE_N, ctrl = true, shift = true), Command.NEW_BLOCK.keys.single())
+        assertEquals(listOf(Keys(KeyEvent.KEYCODE_F10, shift = true), Keys(KeyEvent.KEYCODE_MENU)), Command.ACTIONS.keys)
+        assertEquals("Mark done or not done", Command.MARK_DONE.title)
     }
 
     @Test

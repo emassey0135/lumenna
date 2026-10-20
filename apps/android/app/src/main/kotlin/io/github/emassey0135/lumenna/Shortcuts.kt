@@ -8,6 +8,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import io.github.emassey0135.lumenna.app.ActionKind
+import io.github.emassey0135.lumenna.app.KeyCommand
+import io.github.emassey0135.lumenna.app.keyboardShortcuts
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /** A key with the modifiers it needs, and no others. */
@@ -20,7 +22,36 @@ data class Keys(val code: Int, val ctrl: Boolean = false, val shift: Boolean = f
     val modifiers: Int get() = (if (ctrl) KeyEvent.META_CTRL_ON else 0) or (if (shift) KeyEvent.META_SHIFT_ON else 0)
 }
 
-private fun ctrl(code: Int, shift: Boolean = false) = Keys(code, ctrl = true, shift = shift)
+/**
+ * The keyboard commands every desktop app shares (`lumenna_desktop::keys`, through the core), by
+ * their identifiers: the keys Windows, GTK and the web bind, and their names, so a keyboard on
+ * Android does what it does there, and the system's shortcuts helper says so.
+ */
+private val shared: Map<String, KeyCommand> by lazy { keyboardShortcuts().flatMap { it.commands }.associateBy { it.id } }
+
+/** A key as the shared table writes it ("Ctrl+Shift+N", "Shift+F10"), in Android's terms. */
+internal fun keysOf(written: String): Keys? {
+    val parts = written.split("+")
+    val ctrl = "Ctrl" in parts.dropLast(1)
+    val shift = "Shift" in parts.dropLast(1)
+    val code = when (val key = parts.last()) {
+        "Comma" -> KeyEvent.KEYCODE_COMMA
+        "Page Up" -> KeyEvent.KEYCODE_PAGE_UP
+        "Page Down" -> KeyEvent.KEYCODE_PAGE_DOWN
+        // A PC keyboard's Delete, not Backspace (KEYCODE_DEL).
+        "Delete" -> KeyEvent.KEYCODE_FORWARD_DEL
+        "Enter" -> KeyEvent.KEYCODE_ENTER
+        "Space" -> KeyEvent.KEYCODE_SPACE
+        "Applications key" -> KeyEvent.KEYCODE_MENU
+        else -> when {
+            key.length == 1 && key[0] in 'A'..'Z' -> KeyEvent.KEYCODE_A + (key[0] - 'A')
+            key.length == 1 && key[0] in '0'..'9' -> KeyEvent.KEYCODE_0 + (key[0] - '0')
+            key.startsWith("F") && key.drop(1).toIntOrNull() in 1..12 -> KeyEvent.KEYCODE_F1 + (key.drop(1).toInt() - 1)
+            else -> return null
+        }
+    }
+    return Keys(code, ctrl = ctrl, shift = shift)
+}
 
 /** Where a command is listed in the system's keyboard shortcuts helper. */
 enum class Place(val title: String) {
@@ -34,35 +65,38 @@ enum class Place(val title: String) {
  * between devices keeps the keys they know. Ctrl, not Alt: TalkBack's keyboard commands are
  * on Alt, or on Search, which Android also reserves for the system.
  */
-enum class Command(val title: String, val place: Place, vararg val keys: Keys) {
-    NEW_TASK("New task", Place.APP, ctrl(KeyEvent.KEYCODE_N)),
-    NEW_BLOCK("New block", Place.APP, ctrl(KeyEvent.KEYCODE_N, shift = true)),
-    FILTER("Filter tasks", Place.APP, ctrl(KeyEvent.KEYCODE_F)),
-    UNDO("Undo", Place.APP, ctrl(KeyEvent.KEYCODE_Z)),
-    REDO("Redo", Place.APP, ctrl(KeyEvent.KEYCODE_Y), ctrl(KeyEvent.KEYCODE_Z, shift = true)),
-    GO_TODAY("Today", Place.APP, ctrl(KeyEvent.KEYCODE_1)),
-    GO_TASKS("Tasks", Place.APP, ctrl(KeyEvent.KEYCODE_2)),
-    GO_BLOCKS("Blocks", Place.APP, ctrl(KeyEvent.KEYCODE_3)),
-    GO_TRASH("Trash", Place.APP, ctrl(KeyEvent.KEYCODE_4)),
-    SETTINGS("Settings", Place.APP, ctrl(KeyEvent.KEYCODE_COMMA)),
-    SYNC_NOW("Sync now", Place.APP, Keys(KeyEvent.KEYCODE_F5)),
-    NEXT_PANE("Next pane", Place.APP, Keys(KeyEvent.KEYCODE_F6)),
-    PREVIOUS_PANE("Previous pane", Place.APP, Keys(KeyEvent.KEYCODE_F6, shift = true)),
-    SAVE("Save changes", Place.APP, ctrl(KeyEvent.KEYCODE_S)),
-
-    PREVIOUS_DAY("Previous day", Place.DAY, ctrl(KeyEvent.KEYCODE_PAGE_UP)),
-    NEXT_DAY("Next day", Place.DAY, ctrl(KeyEvent.KEYCODE_PAGE_DOWN)),
-    GO_TO_NOW("Go to now", Place.DAY, ctrl(KeyEvent.KEYCODE_T)),
-    GO_TO_DAY("Go to day", Place.DAY, ctrl(KeyEvent.KEYCODE_G)),
-
-    // A row's own: each runs the focused row's action of that kind (`ListRow`), so a key does
-    // exactly what the row's action list offers, and nothing a row does not.
-    MARK_DONE("Mark done or not done", Place.ROW, ctrl(KeyEvent.KEYCODE_K)),
-    DELETE("Delete", Place.ROW, Keys(KeyEvent.KEYCODE_FORWARD_DEL)),
-    ACTIONS("Actions", Place.ROW, Keys(KeyEvent.KEYCODE_F10, shift = true), Keys(KeyEvent.KEYCODE_MENU)),
-    EXPAND("Expand", Place.ROW, Keys(KeyEvent.KEYCODE_DPAD_RIGHT)),
-    COLLAPSE("Collapse", Place.ROW, Keys(KeyEvent.KEYCODE_DPAD_LEFT)),
+enum class Command(val id: String?, val place: Place, private val own: List<Keys> = emptyList(), private val ownTitle: String? = null) {
+    NEW_TASK("new-task", Place.APP),
+    NEW_BLOCK("new-block", Place.APP),
+    FILTER("filter", Place.APP),
+    UNDO("undo", Place.APP),
+    REDO("redo", Place.APP),
+    GO_TODAY("go-today", Place.APP),
+    GO_TASKS("go-tasks", Place.APP),
+    GO_BLOCKS("go-blocks", Place.APP),
+    GO_TRASH("go-trash", Place.APP),
+    SETTINGS("settings", Place.APP),
+    SYNC_NOW("sync-now", Place.APP),
+    NEXT_PANE("next-pane", Place.APP),
+    PREVIOUS_PANE("previous-pane", Place.APP),
+    SAVE("save-task", Place.APP),
+    PREVIOUS_DAY("previous-day", Place.DAY),
+    NEXT_DAY("next-day", Place.DAY),
+    GO_TO_NOW("go-to-now", Place.DAY),
+    GO_TO_DAY("go-to-day", Place.DAY),
+    MARK_DONE("mark-done", Place.ROW),
+    DELETE("delete", Place.ROW),
+    ACTIONS("actions", Place.ROW),
+    // Android's own: a tree control's folding keys, which a Compose list does not give.
+    EXPAND(null, Place.ROW, listOf(Keys(KeyEvent.KEYCODE_DPAD_RIGHT)), "Expand"),
+    COLLAPSE(null, Place.ROW, listOf(Keys(KeyEvent.KEYCODE_DPAD_LEFT)), "Collapse"),
     ;
+
+    /** What it is called, in the shared table's words. */
+    val title: String by lazy { id?.let { shared[it]?.title } ?: ownTitle ?: name }
+
+    /** The keys that run it: the shared table's, read as Android's key codes. */
+    val keys: List<Keys> by lazy { id?.let { shared[it]?.keys?.mapNotNull(::keysOf) } ?: own }
 
     fun matches(event: KeyEvent) = keys.any { it.matches(event) }
 

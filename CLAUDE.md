@@ -161,7 +161,9 @@ until their turn (the `legacy` tag is the last commit before the move).
   (`Model::moves`, `acted_at`), rather than pulling them to the row the write would have put
   there.
 - **What every app decided for itself is the app's now**: the row in hand after a change (the
-  same row, else whatever holds its place among the rows shown); folding, the sidebar's too
+  same row, else whatever holds its place among the rows shown); a place gone back to, which
+  opens on the row in hand and the filter it was left with (`Model::left`), and the place shown
+  opened again, which keeps both; folding, the sidebar's too
   (Expand and Collapse are row actions; a folded row comes marked `hidden`, for a tree control
   that folds by itself); the question open, a refusal staying in it, a pick's length asked
   once one is picked; where a place's action leads (renamed, made, deleted); a new saved
@@ -1324,7 +1326,9 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   `AccessibilityNodeProvider`, found by the `RowKey` property; the announcement is held
   (`Core.hold`/`release`) until then. The test of it is skipped unless TalkBack is on.
   Compose sends accessibility events only while a screen reader runs.
-- **Keyboard commands are the Windows and GTK apps' keys** (`Shortcuts.kt`), on Ctrl:
+- **Keyboard commands are the Windows and GTK apps' keys**, taken from the core's shared table
+  (`keyboard_shortcuts()`, `lumenna_desktop::keys`) by each command's id, keys and name both;
+  only the folding arrows are Android's own (`Shortcuts.kt`). On Ctrl:
   TalkBack's are on Alt or Search. A screen offers a command while shown (`Offer`), the
   newest winning, and the system's shortcuts helper (Meta+/) lists what is offered now. A
   row's own commands (Ctrl+K, Delete, Shift+F10) run its action of that `ActionKind`

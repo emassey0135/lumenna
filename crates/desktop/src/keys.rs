@@ -1,5 +1,7 @@
-//! The keyboard commands the desktop apps share — Windows, GTK, and Android with a keyboard —
-//! for each app's keyboard help to list, so the help and the keys cannot drift apart.
+//! The keyboard commands the desktop apps share — Windows, GTK, the web, and Android with a
+//! keyboard — for each app to bind and its keyboard help to list, so neither the keys nor the
+//! help can drift apart between them. Android and the web take them across the FFI
+//! ([`grouped`]).
 //!
 //! Keys are written as a person reads them, "Ctrl+Shift+N"; each app binds them in its own
 //! toolkit's terms and adds what only it has (F2 on Windows, say). A command is named by an
@@ -96,6 +98,67 @@ pub const SHARED: &[Shortcut] = &[
 /// The shared keys of `group`, in order.
 pub fn in_group(group: Group) -> impl Iterator<Item = &'static Shortcut> {
     SHARED.iter().filter(move |shortcut| shortcut.group == group)
+}
+
+/// One command and its keys, as an app across the FFI takes them: Android's and the web's.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyCommand {
+    /// What the app matches its own binding to: "undo".
+    pub id: String,
+    /// What it does, in the app's capitals: "Mark done or not done".
+    pub title: String,
+    /// The keys as a person reads them, the first the one to show; any others also work.
+    pub keys: Vec<String>,
+}
+
+/// One heading of the keyboard help, and its commands in order.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyGroup {
+    /// Which group: "file", "edit", "view", "task", "day", "lists", "help".
+    pub id: String,
+    /// Its heading: "In a list".
+    pub title: String,
+    /// Its commands, in the order a help lists them.
+    pub commands: Vec<KeyCommand>,
+}
+
+impl Group {
+    /// The group's identifier, for an app across the FFI.
+    #[must_use]
+    pub fn id(self) -> &'static str {
+        match self {
+            Group::File => "file",
+            Group::Edit => "edit",
+            Group::View => "view",
+            Group::Task => "task",
+            Group::Day => "day",
+            Group::Lists => "lists",
+            Group::Help => "help",
+        }
+    }
+}
+
+/// Every shared command, grouped as the menus are, its titles in sentence case where the app
+/// writes that (Android, the web) and Title Case otherwise.
+#[must_use]
+pub fn grouped(sentence: bool) -> Vec<KeyGroup> {
+    let cased = |text: &str| if sentence { lumenna_records::fields::sentence_case(text.to_owned()) } else { text.to_owned() };
+    Group::ALL
+        .iter()
+        .map(|&group| KeyGroup {
+            id: group.id().to_owned(),
+            title: cased(group.title()),
+            commands: in_group(group)
+                .map(|shortcut| KeyCommand {
+                    id: shortcut.id.to_owned(),
+                    title: cased(shortcut.title),
+                    keys: shortcut.keys.iter().map(|&key| key.to_owned()).collect(),
+                })
+                .collect(),
+        })
+        .collect()
 }
 
 #[cfg(test)]

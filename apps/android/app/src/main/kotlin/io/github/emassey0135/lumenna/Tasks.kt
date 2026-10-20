@@ -105,6 +105,12 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
     val trash = screen.place == Place.Trash
     FollowReminders(core, navigator)
     var filter by rememberSaveable(screen, stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
+    // The app's filter, once nothing typed is on its way: coming back to a place, the app puts
+    // back the filter it was left with, and the field shows it. While typing, the field's own.
+    val query = here?.query
+    LaunchedEffect(query) {
+        if (query != null && query != filter.text && app.still) filter = TextFieldValue(query, TextRange(query.length))
+    }
 
     val field = remember { FocusRequester() }
     if (!trash) {

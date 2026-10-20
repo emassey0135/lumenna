@@ -1,6 +1,6 @@
 //! Everything the screens hold, and how the rows of whatever is shown are found again.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use crux_core::Command;
 use crux_core::render::render;
@@ -35,6 +35,8 @@ pub struct Model {
     pub adding: bool,
     /// Why the last quick-add line was refused: the line stays, to be put right.
     pub add_refused: Option<String>,
+    /// What each place left held, put back when it opens again (`Model::go`).
+    pub left: HashMap<Place, Left>,
     /// The day shown, when it is not today; today follows the clock.
     pub day: Option<Date>,
     /// Whether today has been shown yet: the first time, it opens on now.
@@ -166,15 +168,23 @@ impl Model {
         }
     }
 
-    /// Goes to `place`, its rows from the top; Today opens on now the first time, after that
-    /// on its summary, as any day.
+    /// Goes to `place`. One left before opens again as it was left, its row in hand and its
+    /// filter put back, so going to Today and back to a project returns to the same task;
+    /// otherwise its rows from the top. Today opens on now the first time, after that on the row
+    /// it was left on, or its summary, as any day, and always on today. Going to the place
+    /// shown keeps its row in hand and its filter.
     pub(crate) fn go(&mut self, place: Place) {
+        if let Some(from) = self.place.clone() {
+            let left = Left { focus: self.focus.clone(), position: self.position, filter: self.filter.clone(), read: self.read.clone() };
+            self.left.insert(from, left);
+        }
+        let kept = self.left.remove(&place).unwrap_or_default();
         let first_today = place == Place::Today && !self.day_opened;
         self.place = Some(place);
-        self.filter = None;
-        self.read = None;
-        self.focus = None;
-        self.position = 0;
+        self.filter = kept.filter;
+        self.read = kept.read;
+        self.focus = kept.focus;
+        self.position = kept.position;
         self.day = None;
         self.details.shown = None;
         if first_today && let Some(view) = self.day_view() {
@@ -244,4 +254,17 @@ impl Model {
         let summary = self.day_view().map(|view| view.summary).unwrap_or_default();
         render().and(Command::notify_shell(Announce { text: summary, heading: true }).into())
     }
+}
+
+/// What a place held when the person left it: the row in hand, where it was, and the filter.
+#[derive(Debug, Default, Clone)]
+pub struct Left {
+    /// The row in hand.
+    pub focus: Option<String>,
+    /// Where it was in the rows shown, for whatever takes its place if it has gone since.
+    pub position: usize,
+    /// The filter typed above the list.
+    pub filter: Option<String>,
+    /// The last filter typed that read.
+    pub read: Option<String>,
 }

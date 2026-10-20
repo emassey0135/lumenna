@@ -36,8 +36,6 @@ final class DayModel: ObservableObject {
 
     /// The app's landing count at the last look.
     private var landing: UInt32?
-    /// The row in hand when this day was last shown, to put back when it opens again.
-    private var lastInHand: String?
     private var observer: NSObjectProtocol?
 
     init(core: Core) {
@@ -54,13 +52,12 @@ final class DayModel: ObservableObject {
     /// Whether the app is showing the day: only then is its day this screen's.
     var here: Bool { core.app.view.place == .today }
 
-    /// Makes the day the app's place, unless it is already: coming back from a task's details
-    /// keeps the day shown and the row in hand. Opening is the screen coming to the front, which
+    /// Makes the day the app's place, unless it is already. Coming back to it finds the row in
+    /// hand it was left with: the app keeps it. Opening is the screen coming to the front, which
     /// VoiceOver says itself: no landing.
     func appear() {
         if !here {
             core.app.send(.open(.today))
-            if let lastInHand { core.app.send(.focus(lastInHand)) }
             landing = nil
         }
         draw()
@@ -82,7 +79,6 @@ final class DayModel: ObservableObject {
         if actions != day.actions { actions = day.actions }
         if date != day.date { date = day.date }
         if focus != view.focus { focus = view.focus }
-        lastInHand = view.focus
         let moved = landing.map { view.landing > $0 } ?? false
         landing = view.landing
         if moved, let key = view.focus { landed = (key, (landed?.count ?? 0) + 1) }

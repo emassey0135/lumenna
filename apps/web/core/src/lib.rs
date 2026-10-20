@@ -11,8 +11,10 @@
 //! may use: this module is loaded by the app's worker, never by the page itself.
 
 use std::path::Path;
+// Imported, not named by its path: BoltFFI finds another crate's type only so.
+use lumenna_desktop::keys::KeyGroup;
 
-use boltffi::{data, export};
+use boltffi::export;
 use lumenna_host::Lumenna;
 use lumenna_records::{LumennaError, PairingWords};
 
@@ -54,66 +56,10 @@ pub fn sentence_case(text: String) -> String {
     lumenna_host::sentence_case(text)
 }
 
-/// One keyboard command the desktop apps share (`lumenna_desktop::keys`), in the web's
-/// sentence case.
-#[data]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Shortcut {
-    /// What the web matches its own binding to: "undo".
-    pub id: String,
-    /// What it does: "Mark done or not done".
-    pub title: String,
-    /// The keys as a person reads them, the first the one to show.
-    pub keys: Vec<String>,
-}
-
-/// One heading of the keyboard help, and its commands in order.
-#[data]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ShortcutGroup {
-    /// Which group: "file", "edit", "view", "task", "day", "lists", "help".
-    pub id: String,
-    /// Its heading: "In a list".
-    pub title: String,
-    /// Its commands, in the order a help lists them.
-    pub shortcuts: Vec<Shortcut>,
-}
-
-/// The keyboard help's groups.
-#[data]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Shortcuts {
-    /// Every group, in the menus' order, then lists, then help.
-    pub groups: Vec<ShortcutGroup>,
-}
-
-/// The keyboard commands every desktop app shares, grouped as their menus are, so the web's
-/// help names a command as theirs do. The web lists only those it binds, and adds its own.
+/// The keyboard commands every desktop app shares (`lumenna_desktop::keys`), grouped as their
+/// menus are, in the web's sentence case, so the web's help names a command as theirs do. The
+/// web lists only those it binds, and adds its own.
 #[export]
-pub fn keyboard_shortcuts() -> Shortcuts {
-    use lumenna_desktop::keys::{self, Group};
-    let groups = Group::ALL
-        .iter()
-        .map(|&group| ShortcutGroup {
-            id: match group {
-                Group::File => "file",
-                Group::Edit => "edit",
-                Group::View => "view",
-                Group::Task => "task",
-                Group::Day => "day",
-                Group::Lists => "lists",
-                Group::Help => "help",
-            }
-            .to_owned(),
-            title: lumenna_host::sentence_case(group.title().to_owned()),
-            shortcuts: keys::in_group(group)
-                .map(|shortcut| Shortcut {
-                    id: shortcut.id.to_owned(),
-                    title: lumenna_host::sentence_case(shortcut.title.to_owned()),
-                    keys: shortcut.keys.iter().map(|&key| key.to_owned()).collect(),
-                })
-                .collect(),
-        })
-        .collect();
-    Shortcuts { groups }
+pub fn keyboard_shortcuts() -> Vec<KeyGroup> {
+    lumenna_desktop::keys::grouped(true)
 }

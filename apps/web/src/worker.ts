@@ -29,7 +29,7 @@ import type {
   ReminderView,
   Turn,
   ViewModel,
-  ShortcutGroup,
+  KeyGroup,
   PairingWords,
 } from "./core/lumenna_web.js";
 import { Capitals, TimeStyle } from "./core/lumenna_web.js";
@@ -268,7 +268,7 @@ const api = {
   sentence: (text: string): string => sentenceCase(text),
 
   /** The keyboard commands the desktop apps share, grouped as their menus are, in sentence case. */
-  keyboardShortcuts: (): ShortcutGroup[] => keyboardShortcuts().groups,
+  keyboardShortcuts: (): KeyGroup[] => keyboardShortcuts(),
 };
 
 export type Api = typeof api;

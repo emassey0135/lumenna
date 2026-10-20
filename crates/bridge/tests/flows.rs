@@ -345,6 +345,28 @@ fn a_filter_typed_replaces_the_places_query_until_the_person_goes_elsewhere() {
 }
 
 #[test]
+fn a_place_gone_back_to_has_the_row_in_hand_and_the_filter_it_was_left_with() {
+    use lumenna_records::places::Place;
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.add("Call the bank p1");
+    app.add("Write to the council p1");
+    app.send(Event::Open(Place::Tasks));
+    app.send(Event::Filter("p1".to_owned()));
+    let council = app.id_of("Write to the council");
+    app.send(Event::Focus(council.clone()));
+    app.send(Event::Open(Place::Today));
+    assert_ne!(app.view().place, Some(Place::Tasks));
+    app.send(Event::Open(Place::Tasks));
+    assert_eq!(app.view().query, "p1", "the filter it was left with");
+    assert_eq!(app.titles(), ["Call the bank", "Write to the council"]);
+    assert_eq!(app.view().focus, Some(council), "and the row in hand");
+    // Opening the place shown again, as a screen coming back to the front does, keeps both.
+    app.send(Event::Open(Place::Tasks));
+    assert_eq!(app.view().query, "p1");
+}
+
+#[test]
 fn a_tick_after_a_change_has_been_taken_in_finds_nothing_new() {
     let app = App::new();
     let elsewhere = Lumenna::open(app.profile.to_str().unwrap()).unwrap();

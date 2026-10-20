@@ -47,8 +47,6 @@ final class TaskListModel: ObservableObject {
     private var following = false
     /// The app's landing count at the last look.
     private var landing: UInt32?
-    /// The row in hand when this list last showed its place, to put back when it opens again.
-    private var lastInHand: String?
     private var observer: NSObjectProtocol?
 
     init(core: Core, place: LumennaApp.Place) {
@@ -67,15 +65,13 @@ final class TaskListModel: ObservableObject {
     /// Whether the app is showing this list's place: only then is its list this one's.
     var here: Bool { core.app.view.place == place }
 
-    /// Makes this list's place the app's, unless it is already: coming back from a task's
-    /// details keeps the row in hand and the filter, and coming back from another place opens
-    /// this one again with them. Opening is the list coming to the front, which VoiceOver says
-    /// itself: no landing.
+    /// Makes this list's place the app's, unless it is already. Coming back to it, from a
+    /// task's details or another place, finds the row in hand and the filter it was left with:
+    /// the app keeps them. Opening is the list coming to the front, which VoiceOver says itself:
+    /// no landing.
     func appear() {
         if !here {
             core.app.send(.open(place))
-            if !filter.isEmpty { core.app.send(.filter(filter)) }
-            if let lastInHand { core.app.send(.focus(lastInHand)) }
             landing = nil
         }
         draw()
@@ -93,7 +89,6 @@ final class TaskListModel: ObservableObject {
         if readback != lines.readback { readback = lines.readback }
         if title != view.title { title = view.title }
         if focus != view.focus { focus = view.focus }
-        lastInHand = view.focus
         if filters, filter != view.query, core.app.isStill {
             following = true
             filter = view.query

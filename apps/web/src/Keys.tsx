@@ -11,7 +11,7 @@
 import { useEffect, useState } from "react";
 import { Button, Dialog, Heading, Modal } from "react-aria-components";
 import { core } from "./core";
-import type { ShortcutGroup } from "./core";
+import type { KeyGroup } from "./core";
 
 /**
  * The key the web uses for each shared command, by the table's id, where it differs from the
@@ -55,11 +55,11 @@ export const WEB: Record<string, string[]> = {
 const NOT_ON_THE_WEB = new Set(["quit"]);
 
 /** The web's own keys: a group of the table's, or one of its own, and what goes in it. */
-const OWN: ShortcutGroup[] = [
+const OWN: KeyGroup[] = [
   {
     id: "lists",
     title: "",
-    shortcuts: [
+    commands: [
       { id: "expand", title: "Expand the row", keys: ["Right arrow"] },
       { id: "collapse", title: "Collapse the row", keys: ["Left arrow"] },
     ],
@@ -67,7 +67,7 @@ const OWN: ShortcutGroup[] = [
   {
     id: "dialogs",
     title: "In a dialog",
-    shortcuts: [
+    commands: [
       { id: "complete", title: "Offer what could go at the cursor, in quick add", keys: ["Down arrow"] },
       { id: "close-dialog", title: "Close the dialog", keys: ["Escape"] },
     ],
@@ -125,13 +125,13 @@ export function commandFor(event: KeyboardEvent): string | undefined {
  * web uses for it, and the web's own keys added to the group they belong to, a group of the
  * web's own placed before Help.
  */
-export function listed(shared: ShortcutGroup[]): ShortcutGroup[] {
+export function listed(shared: KeyGroup[]): KeyGroup[] {
   const groups = shared.map((group) => {
-    const own = OWN.find((o) => o.id === group.id)?.shortcuts ?? [];
+    const own = OWN.find((o) => o.id === group.id)?.commands ?? [];
     return {
       ...group,
-      shortcuts: [
-        ...group.shortcuts
+      commands: [
+        ...group.commands
           .filter((s) => !NOT_ON_THE_WEB.has(s.id))
           .map((s) => ({ ...s, keys: WEB[s.id] ?? s.keys })),
         ...own,
@@ -141,7 +141,7 @@ export function listed(shared: ShortcutGroup[]): ShortcutGroup[] {
   const help = groups.findIndex((group) => group.id === "help");
   const added = OWN.filter((own) => !shared.some((group) => group.id === own.id));
   groups.splice(help < 0 ? groups.length : help, 0, ...added);
-  return groups.filter((group) => group.shortcuts.length > 0);
+  return groups.filter((group) => group.commands.length > 0);
 }
 
 /** Whether a key press is "?" outside a text field or a dialog: the help's own key. */
@@ -154,7 +154,7 @@ export function asksForKeys(event: KeyboardEvent): boolean {
 }
 
 export function KeyboardShortcuts(props: { isOpen: boolean; onClose: () => void }) {
-  const [groups, setGroups] = useState<ShortcutGroup[]>([]);
+  const [groups, setGroups] = useState<KeyGroup[]>([]);
 
   useEffect(() => {
     if (props.isOpen && groups.length === 0) void core.keyboardShortcuts().then((shared) => setGroups(listed(shared)));
@@ -175,7 +175,7 @@ export function KeyboardShortcuts(props: { isOpen: boolean; onClose: () => void 
                 </tr>
               </thead>
               <tbody>
-                {group.shortcuts.map((shortcut) => (
+                {group.commands.map((shortcut) => (
                   <tr key={shortcut.id}>
                     <td>{shortcut.keys.map(spoken).join(" or ")}</td>
                     <td>{shortcut.title}</td>

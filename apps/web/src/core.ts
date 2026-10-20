@@ -39,8 +39,8 @@ export type {
   PlanAssignment,
   PlanBlock,
   RowView,
-  Shortcut,
-  ShortcutGroup,
+  KeyCommand,
+  KeyGroup,
   TaskDetail,
   TaskFields,
 } from "./core/lumenna_web.js";
