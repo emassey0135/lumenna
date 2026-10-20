@@ -1,37 +1,40 @@
-//! The day's two proposals, Replan from Now and Plan the Day: the app's own screen for the
-//! day's `Question::Form` actions of those kinds. Nothing changes until the person applies
-//! what they left checked.
+//! The day's two proposals, Replan from Now and Plan the Day, drawn from the app's proposal
+//! screen (`view.proposal`): what is proposed, what is checked, applying, the other options and
+//! what comes next are the app's. Nothing changes until the person applies what they left
+//! checked.
 //!
-//! The screen says the whole proposal when it opens (its announcement, on the live status
+//! The screen says the whole proposal when it opens (its announcement, on its own live status
 //! line), then lists each change or sitting as a checked row of a checkbox tree, a sitting's
 //! reason as the row's description and beside the list. What fits nowhere is plain lines
-//! under the core's heading. Applying makes the rows still checked; the core then proposes
+//! under the core's heading. Applying makes the rows still checked; the app then proposes
 //! again around what was turned down, and while that proposes anything the screen shows it.
 //! Replan from Now offers the core's other options too, a button each under its heading:
-//! taking one shows the proposal it stands for in place.
+//! taking one shows the proposal it stands for in place. While the screen is open, what the
+//! app says goes to its status line: the main window's is hidden behind it.
 //! Every word here is the core's (`proposal_words`).
 
 use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 
-use lumenna_host::{
-    ActionKind, Change, DayPins, DayPlan, ProposalWords, Replan, ReplanAlternative, ReplanPins, Result, TimeStyle, proposal_words,
-};
+use lumenna_app::{ProposalEvent, ProposalView};
+use lumenna_ffi::ShellEvent;
+use lumenna_host::{ProposalWords, TimeStyle};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::Controls::{
-    NMHDR, TVN_SELCHANGEDW, TVS_DISABLEDRAGDROP, TVS_NOHSCROLL, TVS_SHOWSELALWAYS,
+    NM_TVSTATEIMAGECHANGING, NMHDR, NMTVSTATEIMAGECHANGING, TVN_SELCHANGEDW, TVS_DISABLEDRAGDROP, TVS_NOHSCROLL,
+    TVS_SHOWSELALWAYS,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    BN_CLICKED, BS_DEFPUSHBUTTON, BS_MULTILINE, BS_PUSHBUTTON, ES_AUTOVSCROLL, ES_MULTILINE, ES_READONLY, IDCANCEL, IDOK, PostMessageW, WM_APP,
-    WM_NOTIFY, WS_BORDER, WS_TABSTOP, WS_VSCROLL,
+    BN_CLICKED, BS_DEFPUSHBUTTON, BS_MULTILINE, BS_PUSHBUTTON, ES_AUTOVSCROLL, ES_MULTILINE, ES_READONLY, EndDialog, IDCANCEL,
+    IDOK, PostMessageW, WM_APP, WM_NOTIFY, WS_BORDER, WS_TABSTOP, WS_VSCROLL,
 };
 
-use super::app::App;
+use super::app::{self, App};
 use super::clock::Locale;
-use super::core::sentence;
 use super::dialog::{self, Class, Dialog, Template};
 use super::tree::{Item, Tree};
-use super::{a11y, controls, prompts};
+use super::{a11y, controls};
 use crate::speech::{self, Clock};
 
 const STATUS: u16 = 100;
@@ -51,228 +54,128 @@ const OTHER_COUNT: u16 = 3;
 /// unheard.
 const WM_OPENED: u32 = WM_APP + 1;
 
-/// What is proposed: the rest of today, or a day's plan.
-#[derive(Clone)]
-enum Proposed {
-    Replan(Replan),
-    Day(DayPlan),
-}
-
-impl Proposed {
-    fn said(&self) -> String {
-        let (announcement, notices) = match self {
-            Self::Replan(replan) => (&replan.announcement, &replan.notices),
-            Self::Day(plan) => (&plan.announcement, &plan.notices),
-        };
-        speech::sentence(&speech::announcement(announcement, notices))
-    }
-
-    /// Each row: what it says, and why, where the core says why.
-    fn rows(&self) -> Vec<(String, String)> {
-        match self {
-            Self::Replan(replan) => replan.changes.iter().map(|c| (c.sentence.clone(), String::new())).collect(),
-            Self::Day(plan) => plan.sittings.iter().map(|s| (s.sentence.clone(), s.reason.clone().unwrap_or_default())).collect(),
-        }
-    }
-
-    /// Other ways through the rest of today; a day's plan has none.
-    fn others(&self) -> &[ReplanAlternative] {
-        match self {
-            Self::Replan(replan) => &replan.alternatives,
-            Self::Day(_) => &[],
-        }
-    }
-
-    /// The proposal an other option stands for: the rest of today asked again with its pins.
-    fn take(&self, app: &App, index: usize) -> Option<Result<Self>> {
-        let Self::Replan(replan) = self else { return None };
-        let option = replan.alternatives.get(index)?;
-        Some(app.core.lumenna.replan(replan.style, option.pins.clone(), None).map(Self::Replan))
-    }
-
-    fn unfit(&self) -> &[String] {
-        match self {
-            Self::Replan(replan) => &replan.unplaceable,
-            Self::Day(plan) => &plan.unfit,
-        }
-    }
-
-    /// Makes the rows at `checked`, and what the core proposes next.
-    fn apply(&self, app: &App, checked: &[usize]) -> Result<(String, Change, Self)> {
-        let lumenna = &app.core.lumenna;
-        match self {
-            Self::Replan(replan) => {
-                let accepted = checked.iter().filter_map(|i| replan.changes.get(*i).cloned()).collect();
-                let done = lumenna.apply_replan(replan.clone(), accepted, None)?;
-                Ok((done.announcement, done.change, Self::Replan(done.next)))
-            }
-            Self::Day(plan) => {
-                let accepted = checked.iter().filter_map(|i| plan.sittings.get(*i).cloned()).collect();
-                let done = lumenna.apply_day_plan(plan.clone(), accepted, None)?;
-                Ok((done.announcement, done.change, Self::Day(done.next)))
-            }
-        }
-    }
-
-    /// The same proposal asked again of the day as it is now, keeping what was decided.
-    fn again(&self, app: &App) -> Result<Self> {
-        let lumenna = &app.core.lumenna;
-        Ok(match self {
-            Self::Replan(replan) => Self::Replan(lumenna.replan(replan.style, replan.pins.clone(), None)?),
-            Self::Day(plan) => {
-                Self::Day(lumenna.propose_day_plan(Some(plan.date.clone()), plan.style, plan.pins.clone(), None)?)
-            }
-        })
-    }
-}
-
-struct Screen<'a> {
-    app: &'a App,
+/// The screen open, while it is.
+pub struct Screen {
+    hwnd: Cell<HWND>,
     words: ProposalWords,
-    proposed: RefCell<Proposed>,
+    /// What it was first drawn from, until the dialog exists.
+    first: ProposalView,
     list: RefCell<Option<Tree>>,
-    /// Counts the proposals shown, so each one's rows are new rows, checked afresh.
+    /// The proposal last drawn, by the app's count: a new one is a new list.
     shown: Cell<u32>,
-    /// What was last applied, said on the main window once the screen closes.
-    applied: RefCell<Option<String>>,
+    /// Each row's reason, as last drawn.
+    reasons: RefCell<Vec<String>>,
+    /// Whether the app has closed it.
+    closed: Cell<bool>,
+    /// Its status line, which outlives nothing: kept to say where it went once it has gone.
+    status: Cell<HWND>,
 }
 
-impl Screen<'_> {
-    fn say(&self, hwnd: HWND, text: &str) {
-        let status = dialog::item(hwnd, STATUS);
-        controls::set_text(status, text);
-        a11y::changed(status);
+impl Screen {
+    /// Draws the app's screen as it now is, or closes the dialog when the app has closed it:
+    /// what the app says as it closes is said on the window once it has gone.
+    pub fn draw(&self, app: &App, view: Option<&ProposalView>) {
+        let hwnd = self.hwnd.get();
+        if hwnd.is_invalid() {
+            return;
+        }
+        match view {
+            Some(view) => self.fill(hwnd, view),
+            None => {
+                if !self.closed.replace(true) {
+                    app.closing_live(self.status.get());
+                    unsafe {
+                        let _ = EndDialog(hwnd, 1);
+                    }
+                }
+            }
+        }
     }
 
-    /// Shows the proposal held: its rows all checked, or the core's words for nothing to do.
-    fn fill(&self, hwnd: HWND) {
-        let proposed = self.proposed.borrow().clone();
-        let rows = proposed.rows();
-        let generation = self.shown.get() + 1;
-        self.shown.set(generation);
-        let said = proposed.said();
-        controls::set_text(dialog::item(hwnd, ANNOUNCED), &said);
-        let any = !rows.is_empty();
-        let others = proposed.others();
-        let unfit = proposed.unfit().join("\r\n");
-        let reasons = rows.iter().any(|(_, reason)| !reason.is_empty());
+    /// Shows a proposal: a new one as a new list, its rows as checked as the app has them, or
+    /// the core's words for nothing to do.
+    fn fill(&self, hwnd: HWND, view: &ProposalView) {
+        let new = self.shown.replace(view.shown) != view.shown;
+        let any = !view.changes.is_empty();
+        let unfit = view.unfit.join("\r\n");
+        let reasons: Vec<String> = view.changes.iter().map(|change| change.reason.clone().unwrap_or_default()).collect();
+        let has_reasons = reasons.iter().any(|reason| !reason.is_empty());
         let mut shown = vec![
             (LIST, any),
             (HINT, any),
             (IDOK.0 as u16, any),
-            (REASON, any && reasons),
+            (REASON, any && has_reasons),
             (NOTHING, !any),
             (UNFIT_LABEL, !unfit.is_empty()),
             (UNFIT, !unfit.is_empty()),
-            (OTHERS_LABEL, !others.is_empty()),
+            (OTHERS_LABEL, !view.others.is_empty()),
         ];
-        shown.extend((0..OTHER_COUNT).map(|i| (OTHERS + i, usize::from(i) < others.len())));
+        shown.extend((0..OTHER_COUNT).map(|i| (OTHERS + i, usize::from(i) < view.others.len())));
         // Focus first leaves whatever is about to be hidden, or it would go nowhere.
         let focused = controls::focused();
         if shown.iter().any(|(id, visible)| !visible && dialog::item(hwnd, *id) == focused) {
             controls::focus(dialog::item(hwnd, if any { LIST } else { IDCANCEL.0 as u16 }));
         }
+        let announced = speech::sentence(&view.announcement);
+        set_if_changed(dialog::item(hwnd, ANNOUNCED), &announced);
         if let Some(tree) = self.list.borrow().as_ref() {
-            let items = rows
+            let items = view
+                .changes
                 .iter()
                 .enumerate()
-                .map(|(index, (text, _))| Item { key: format!("{generation}:{index}"), text: text.clone(), depth: 0, checked: Some(true), expanded: None })
+                .map(|(index, change)| Item {
+                    key: format!("{}:{index}", view.shown),
+                    text: change.sentence.clone(),
+                    depth: 0,
+                    checked: Some(change.checked),
+                    expanded: None,
+                })
                 .collect();
             tree.set(items);
-            for (index, (_, reason)) in rows.iter().enumerate().filter(|(_, (_, reason))| !reason.is_empty()) {
-                tree.describe(index, reason);
-            }
-            if any {
-                tree.select_quietly(0);
+            if new {
+                for (index, reason) in reasons.iter().enumerate().filter(|(_, reason)| !reason.is_empty()) {
+                    tree.describe(index, reason);
+                }
+                if any {
+                    tree.select_quietly(0);
+                }
             }
         }
-        for (index, option) in others.iter().enumerate().take(usize::from(OTHER_COUNT)) {
+        *self.reasons.borrow_mut() = reasons;
+        for (index, option) in view.others.iter().enumerate().take(usize::from(OTHER_COUNT)) {
             // Named by the whole option, which a button's text is; an ampersand is its own.
-            controls::set_text(dialog::item(hwnd, OTHERS + index as u16), &option.sentence.replace('&', "&&"));
+            set_if_changed(dialog::item(hwnd, OTHERS + index as u16), &option.replace('&', "&&"));
         }
         for (id, visible) in shown {
             controls::show(dialog::item(hwnd, id), visible);
         }
         // The core's words for nothing to do, unless the announcement already is them.
-        let nothing = if said.trim_end_matches('.') == self.words.nothing.trim_end_matches('.') { "" } else { &self.words.nothing };
-        controls::set_text(dialog::item(hwnd, NOTHING), nothing);
-        controls::set_text(dialog::item(hwnd, UNFIT), &unfit);
+        let nothing = if announced.trim_end_matches('.') == self.words.nothing.trim_end_matches('.') { "" } else { &self.words.nothing };
+        set_if_changed(dialog::item(hwnd, NOTHING), nothing);
+        set_if_changed(dialog::item(hwnd, UNFIT), &unfit);
         self.show_reason(hwnd);
+        // A new proposal after one was applied or another option taken: on it, in the list.
+        if new && view.shown > 1 {
+            controls::focus(dialog::item(hwnd, if any { LIST } else { IDCANCEL.0 as u16 }));
+        }
     }
 
     /// The chosen row's reason, beside the list.
     fn show_reason(&self, hwnd: HWND) {
         let index = self.list.borrow().as_ref().and_then(Tree::selected);
-        let rows = self.proposed.borrow().rows();
-        let reason = index.and_then(|i| rows.get(i)).map(|(_, reason)| reason.clone()).unwrap_or_default();
-        controls::set_text(dialog::item(hwnd, REASON), &reason);
-    }
-
-    /// Makes what is checked. While the core proposes more, the screen shows that; once it
-    /// proposes nothing the screen closes. A proposal the day has moved past is refused, and
-    /// asked again.
-    fn apply(&self, hwnd: HWND) -> Option<isize> {
-        let checked: Vec<usize> = {
-            let list = self.list.borrow();
-            let tree = list.as_ref()?;
-            (0..tree.len()).filter(|index| tree.is_checked(*index)).collect()
-        };
-        let proposed = self.proposed.borrow().clone();
-        match proposed.apply(self.app, &checked) {
-            Ok((announcement, change, next)) => {
-                if change.changed {
-                    self.app.store_changed();
-                }
-                let done = next.rows().is_empty();
-                *self.proposed.borrow_mut() = next;
-                if done {
-                    *self.applied.borrow_mut() = Some(announcement);
-                    return Some(1);
-                }
-                self.fill(hwnd);
-                if let Some(tree) = self.list.borrow().as_ref() {
-                    controls::focus(tree.hwnd);
-                }
-                self.say(hwnd, &announcement);
-            }
-            Err(error) => {
-                prompts::fail(hwnd, &sentence(&error));
-                match proposed.again(self.app) {
-                    Ok(again) => {
-                        *self.proposed.borrow_mut() = again;
-                        self.fill(hwnd);
-                        self.say(hwnd, &self.proposed.borrow().said());
-                    }
-                    Err(error) => {
-                        prompts::fail(hwnd, &sentence(&error));
-                        return Some(0);
-                    }
-                }
-            }
-        }
-        None
-    }
-
-    /// Takes the other option at `index`: its proposal shown in place, and said.
-    fn take(&self, hwnd: HWND, index: usize) {
-        let taken = self.proposed.borrow().take(self.app, index);
-        match taken {
-            Some(Ok(proposed)) => {
-                *self.proposed.borrow_mut() = proposed;
-                self.fill(hwnd);
-                // On what is proposed now: the button pressed stands for something else, or
-                // nothing.
-                let any = !self.proposed.borrow().rows().is_empty();
-                controls::focus(dialog::item(hwnd, if any { LIST } else { IDCANCEL.0 as u16 }));
-                self.say(hwnd, &self.proposed.borrow().said());
-            }
-            Some(Err(error)) => prompts::fail(hwnd, &sentence(&error)),
-            None => {}
-        }
+        let reason = index.and_then(|i| self.reasons.borrow().get(i).cloned()).unwrap_or_default();
+        set_if_changed(dialog::item(hwnd, REASON), &reason);
     }
 }
 
-impl Dialog for Screen<'_> {
+/// Writes a control's text only when it differs.
+fn set_if_changed(control: HWND, text: &str) {
+    if controls::text(control) != text {
+        controls::set_text(control, text);
+    }
+}
+
+impl Dialog for Screen {
     fn template(&self) -> Template {
         let button = BS_PUSHBUTTON as u32 | WS_TABSTOP.0;
         let tree = (TVS_SHOWSELALWAYS | TVS_DISABLEDRAGDROP | TVS_NOHSCROLL) | WS_BORDER.0 | WS_TABSTOP.0;
@@ -300,13 +203,16 @@ impl Dialog for Screen<'_> {
     }
 
     fn init(&self, hwnd: HWND) -> bool {
+        self.hwnd.set(hwnd);
         a11y::make_live(dialog::item(hwnd, STATUS));
+        self.status.set(dialog::item(hwnd, STATUS));
+        app::with(|app| app.open_live(self.status.get()));
         let tree = Tree::adopt(dialog::item(hwnd, LIST), &self.words.title, true);
         // What leaving a row unchecked does, said with the button that acts on the rest.
         a11y::set_description(dialog::item(hwnd, IDOK.0 as u16), &self.words.hint);
         *self.list.borrow_mut() = Some(tree);
-        self.fill(hwnd);
-        let first = if self.proposed.borrow().rows().is_empty() { IDCANCEL.0 as u16 } else { LIST };
+        self.fill(hwnd, &self.first);
+        let first = if self.first.changes.is_empty() { IDCANCEL.0 as u16 } else { LIST };
         controls::focus(dialog::item(hwnd, first));
         unsafe {
             let _ = PostMessageW(Some(hwnd), WM_OPENED, WPARAM(0), LPARAM(0));
@@ -314,13 +220,20 @@ impl Dialog for Screen<'_> {
         true
     }
 
-    fn command(&self, hwnd: HWND, id: u16, code: u16) -> Option<isize> {
+    fn command(&self, _hwnd: HWND, id: u16, code: u16) -> Option<isize> {
         match i32::from(id) {
-            id if id == IDOK.0 => self.apply(hwnd),
-            id if id == IDCANCEL.0 => Some(0),
+            id if id == IDOK.0 => {
+                app::send(ShellEvent::Proposal(ProposalEvent::Apply));
+                None
+            }
+            id if id == IDCANCEL.0 => {
+                self.closed.set(true);
+                app::send(ShellEvent::Proposal(ProposalEvent::Close));
+                Some(0)
+            }
             _ => {
                 if let Some(index) = id.checked_sub(OTHERS).filter(|i| *i < OTHER_COUNT && u32::from(code) == BN_CLICKED) {
-                    self.take(hwnd, usize::from(index));
+                    app::send(ShellEvent::Proposal(ProposalEvent::Take(u32::from(index))));
                 }
                 None
             }
@@ -330,13 +243,29 @@ impl Dialog for Screen<'_> {
     fn message(&self, hwnd: HWND, message: u32, _wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
         match message {
             WM_OPENED => {
-                self.say(hwnd, &self.proposed.borrow().said());
+                let status = dialog::item(hwnd, STATUS);
+                controls::set_text(status, &speech::sentence(&self.first.announcement));
+                a11y::changed(status);
                 Some(0)
             }
             WM_NOTIFY => {
                 let header = unsafe { &*(lparam.0 as *const NMHDR) };
-                if header.idFrom == usize::from(LIST) && header.code == TVN_SELCHANGEDW {
-                    self.show_reason(hwnd);
+                if header.idFrom != usize::from(LIST) {
+                    return None;
+                }
+                let list = self.list.borrow();
+                let tree = list.as_ref()?;
+                match header.code {
+                    TVN_SELCHANGEDW => self.show_reason(hwnd),
+                    // Space or a click on a row's box, which the tree flips itself.
+                    NM_TVSTATEIMAGECHANGING if !tree.busy() => {
+                        let notice = unsafe { &*(lparam.0 as *const NMTVSTATEIMAGECHANGING) };
+                        if let Some(index) = tree.index_of_handle(notice.hti) {
+                            let on = !tree.is_checked(index);
+                            app::send(ShellEvent::Proposal(ProposalEvent::Check { index: index as u32, on }));
+                        }
+                    }
+                    _ => {}
                 }
                 None
             }
@@ -350,33 +279,20 @@ pub fn style() -> TimeStyle {
     if Locale.time("13:00").contains("13") { TimeStyle::TwentyFourHour } else { TimeStyle::TwelveHour }
 }
 
-fn show(app: &App, kind: ActionKind, proposed: Result<Proposed>) {
-    let proposed = match proposed {
-        Ok(proposed) => proposed,
-        Err(error) => return prompts::fail(app.main, &sentence(&error)),
-    };
-    let screen = Screen {
-        app,
-        words: proposal_words(kind),
-        proposed: RefCell::new(proposed),
+/// Runs the app's open proposal screen as a dialog until the app closes it or the person does.
+pub fn run(app: &App, view: ProposalView) {
+    let screen = Rc::new(Screen {
+        hwnd: Cell::new(HWND::default()),
+        words: view.words.clone(),
+        first: view,
         list: RefCell::new(None),
         shown: Cell::new(0),
-        applied: RefCell::new(None),
-    };
-    dialog::run(Some(app.main), &screen);
-    if let Some(applied) = screen.applied.into_inner() {
-        app.say(&applied);
-    }
-}
-
-/// Replan from Now: the rest of today, worked out again from now.
-pub fn replan(app: &App) {
-    let proposed = app.core.lumenna.replan(style(), ReplanPins::default(), None).map(Proposed::Replan);
-    show(app, ActionKind::Replan, proposed);
-}
-
-/// Plan the Day: `date`'s work blocks still to come, each given its most urgent tasks.
-pub fn plan_day(app: &App, date: &str) {
-    let proposed = app.core.lumenna.propose_day_plan(Some(date.to_owned()), style(), DayPins::default(), None).map(Proposed::Day);
-    show(app, ActionKind::PlanDay, proposed);
+        reasons: RefCell::new(Vec::new()),
+        closed: Cell::new(false),
+        status: Cell::new(HWND::default()),
+    });
+    app.open_proposal(Some(Rc::clone(&screen)));
+    dialog::run(Some(app.main), &*screen);
+    app.open_proposal(None);
+    app.close_live(screen.status.get());
 }

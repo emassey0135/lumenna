@@ -80,6 +80,14 @@ type Deferred = Box<dyn FnOnce(&App)>;
 /// The icon chosen from the keyboard: `NIN_SELECT | NINF_KEY`, which the bindings lack.
 const NIN_KEYSELECT: u32 = windows::Win32::UI::Shell::NIN_SELECT | 1;
 
+/// A dialog's own status line, while the dialog is in front.
+struct Live {
+    status: HWND,
+    /// Closed by the app this turn: what it says now waits for the dialog to go.
+    closing: bool,
+    after: Vec<String>,
+}
+
 /// The view in the middle pane.
 #[derive(Clone)]
 pub enum Content {
@@ -116,6 +124,11 @@ pub struct App {
     pub typed: RefCell<String>,
     /// The app's block form, while its dialog is open.
     block_form: RefCell<Option<Rc<block_form::Form>>>,
+    /// The app's proposal screen, while its dialog is open.
+    proposal: RefCell<Option<Rc<proposal::Screen>>>,
+    /// The status lines of the dialogs open in front, the frontmost last: where what the app
+    /// says goes.
+    live: RefCell<Vec<Live>>,
     pub main: HWND,
     accelerators: HACCEL,
     font: Cell<HFONT>,
@@ -194,6 +207,13 @@ pub fn run() {
     app.start(arguments.background);
     message_loop(&app);
     APP.with(|slot| slot.borrow_mut().take());
+}
+
+/// Runs `then` with the window, from a dialog that holds no reference to it.
+pub fn with(then: impl FnOnce(&App)) {
+    if let Some(app) = app() {
+        then(&app);
+    }
 }
 
 /// Sends what the person did to the app, from a dialog that holds no reference to the window.
@@ -323,6 +343,8 @@ impl App {
             asking: Cell::new(false),
             typed: RefCell::new(String::new()),
             block_form: RefCell::new(None),
+            proposal: RefCell::new(None),
+            live: RefCell::new(Vec::new()),
             main,
             accelerators: menu::accelerators(),
             font: Cell::new(HFONT::default()),
@@ -374,13 +396,47 @@ impl App {
     // Saying, failing, changing
     // -------------------------------------------------------------------------------------
 
-    /// Writes a sentence on the status line, which reads it out.
+    /// Writes a sentence on the status line, which reads it out: the proposal screen's own
+    /// while it is open, since a dialog in front hides the window's.
     pub fn say(&self, text: &str) {
         if text.is_empty() {
             return;
         }
-        controls::set_text(self.status, text);
-        a11y::changed(self.status);
+        let status = {
+            let mut live = self.live.borrow_mut();
+            match live.last_mut() {
+                // Closing: said where it goes next, once the dialog has gone.
+                Some(top) if top.closing => return top.after.push(text.to_owned()),
+                Some(top) => top.status,
+                None => self.status,
+            }
+        };
+        controls::set_text(status, text);
+        a11y::changed(status);
+    }
+
+    /// A dialog with a status line of its own opens: what the app says goes there until it
+    /// closes, since a dialog in front hides the window's.
+    pub fn open_live(&self, status: HWND) {
+        self.live.borrow_mut().push(Live { status, closing: false, after: Vec::new() });
+    }
+
+    /// The dialog showing `status` is closing: what the app says now is said once it has gone.
+    pub fn closing_live(&self, status: HWND) {
+        if let Some(live) = self.live.borrow_mut().iter_mut().find(|live| live.status == status) {
+            live.closing = true;
+        }
+    }
+
+    /// The dialog showing `status` has gone: what was said as it closed is said where it goes
+    /// next.
+    pub fn close_live(&self, status: HWND) {
+        let after = {
+            let mut live = self.live.borrow_mut();
+            let Some(at) = live.iter().position(|live| live.status == status) else { return };
+            live.remove(at).after
+        };
+        self.say(&after.join(" "));
     }
 
     /// Says what a change did, and anything else worth saying.
@@ -438,7 +494,10 @@ impl App {
             return;
         }
         let landed = turn.view.landing != self.landing.replace(turn.view.landing);
-        self.follow_place();
+        // What the app holds this moment, ahead of any turn still queued: where it is, and
+        // which of its dialogs are open.
+        let now = self.crux.view();
+        self.follow(now.place.clone());
         self.sidebar.draw(self, &turn.view);
         self.detail.draw(&turn.view, &turn.lines);
         let list = self.task_list().filter(|list| turn.view.place.as_ref() == Some(&list.place));
@@ -455,19 +514,30 @@ impl App {
         self.follow_store();
         let form = self.block_form.borrow().clone();
         if let Some(form) = &form {
-            form.draw(self, self.crux.view().block_form.as_ref());
+            form.draw(self, now.block_form.as_ref());
         }
-        if (turn.view.asking.is_some() || (turn.view.block_form.is_some() && form.is_none())) && !self.asking.get() {
+        let screen = self.proposal.borrow().clone();
+        if let Some(screen) = &screen {
+            screen.draw(self, now.proposal.as_ref());
+        }
+        let opens = (turn.view.block_form.is_some() && form.is_none()) || (turn.view.proposal.is_some() && screen.is_none());
+        if (turn.view.asking.is_some() || opens) && !self.asking.get() {
             unsafe {
                 let _ = SetTimer(Some(self.main), TIMER_ASK, 50, None);
             }
         }
-        // The tree says a row it folded itself is expanded or collapsed.
+        // The tree says a row it folded itself is expanded or collapsed; a proposal about to
+        // open is said by its screen, once it is up.
         let folded = list.is_some_and(|list| list.folded_by_tree.replace(false))
             | day.is_some_and(|day| day.folded_by_tree.replace(false))
             | self.sidebar.folded_by_tree.replace(false);
-        let said: Vec<String> =
-            turn.said.into_iter().filter(|said| !(folded && (said == "Expanded" || said == "Collapsed"))).collect();
+        let opening = turn.view.proposal.as_ref().filter(|_| screen.is_none()).map(|p| p.announcement.clone());
+        let said: Vec<String> = turn
+            .said
+            .into_iter()
+            .filter(|said| !(folded && (said == "Expanded" || said == "Collapsed")))
+            .filter(|said| opening.as_ref() != Some(said))
+            .collect();
         self.say(&said.join(" "));
     }
 
@@ -475,7 +545,11 @@ impl App {
     /// goes too. Judged by where the app is now: a turn made before the person opened a place
     /// still names the one they left.
     fn follow_place(&self) {
-        if let Some(now) = self.crux.view().place
+        self.follow(self.crux.view().place);
+    }
+
+    fn follow(&self, place: Option<Place>) {
+        if let Some(now) = place
             && self.place_shown().as_ref() != Some(&now)
         {
             self.present(now);
@@ -492,12 +566,20 @@ impl App {
             let _ = KillTimer(Some(self.main), TIMER_ASK);
         }
         self.asking.set(true);
-        if self.crux.view().asking.is_some() {
+        let now = self.crux.view();
+        if now.asking.is_some() {
             asking::ask(self);
-        } else if let Some(form) = self.crux.view().block_form.filter(|_| self.block_form.borrow().is_none()) {
+        } else if let Some(form) = now.block_form.filter(|_| self.block_form.borrow().is_none()) {
             block_form::run(self, form);
+        } else if let Some(screen) = now.proposal.filter(|_| self.proposal.borrow().is_none()) {
+            proposal::run(self, screen);
         }
         self.asking.set(false);
+    }
+
+    /// The proposal screen's dialog opens, or closes.
+    pub fn open_proposal(&self, screen: Option<Rc<proposal::Screen>>) {
+        *self.proposal.borrow_mut() = screen;
     }
 
     /// The block form's dialog opens, or closes.
@@ -1195,13 +1277,9 @@ impl App {
             // Today's own Replan from Now, as the Day menu runs it, once the window is in front.
             Answered::Replan => {
                 self.show_window();
-                self.go(Place::Today, true);
                 self.crux.send(ShellEvent::Day(DayMove::Now));
-                self.defer(|app| {
-                    if let Some(day) = app.day() {
-                        day.act_on_day(app, ActionKind::Replan);
-                    }
-                });
+                self.follow_place();
+                self.crux.send(ShellEvent::Proposal(lumenna_app::ProposalEvent::Replan));
             }
         }
     }

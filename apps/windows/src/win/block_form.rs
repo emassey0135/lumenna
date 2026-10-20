@@ -201,8 +201,10 @@ impl Form {
                         controls::check(control, held == "true");
                     }
                 }
+                // Never the field being typed in: a turn can come from typing a moment old, and
+                // writing it back would undo what was typed since.
                 _ => {
-                    if controls::text(control) != held {
+                    if controls::text(control) != held && control != controls::focused() {
                         controls::set_text(control, &held);
                     }
                 }

@@ -238,28 +238,28 @@ impl Detail {
             self.show_fields(true);
         }
         self.filling.set(true);
-        self.fill(details, lines);
+        self.fill(details, lines, other);
         self.filling.set(false);
         *self.shown.borrow_mut() = Some(details.task.clone());
     }
 
-    fn fill(&self, details: &DetailsView, lines: &Lines) {
+    fn fill(&self, details: &DetailsView, lines: &Lines, other: bool) {
         let fields = &details.fields;
         let task = &details.task;
-        set_if_changed(self.title, &fields.title);
-        set_if_changed(self.due, &fields.due);
-        set_if_changed(self.repeat, &fields.repeat);
+        typed_if_changed(self.title, &fields.title, other);
+        typed_if_changed(self.due, &fields.due, other);
+        typed_if_changed(self.repeat, &fields.repeat, other);
         let position = priorities().iter().position(|p| p.id == fields.priority.to_string());
         if usize::try_from(controls::send(self.priority, CB_GETCURSEL, 0, 0)).ok() != position {
             controls::send(self.priority, CB_SETCURSEL, position.unwrap_or(usize::MAX), 0);
         }
-        set_if_changed(self.estimate, &fields.estimate);
+        typed_if_changed(self.estimate, &fields.estimate, other);
         if *self.projects.borrow() != details.projects || self.chosen_project() != fields.project {
             self.fill_projects(&details.projects, &fields.project);
         }
-        set_if_changed(self.labels, &fields.labels);
+        typed_if_changed(self.labels, &fields.labels, other);
         // An edit control's lines end in CR LF.
-        set_if_changed(self.notes, &fields.notes.replace("\r\n", "\n").replace('\n', "\r\n"));
+        typed_if_changed(self.notes, &fields.notes.replace("\r\n", "\n").replace('\n', "\r\n"), other);
         let waits: Vec<&str> = task.depends.iter().map(|other| other.title.as_str()).collect();
         let had: Vec<String> = self.shown.borrow().as_ref().map(|t| t.depends.iter().map(|d| d.title.clone()).collect()).unwrap_or_default();
         if had != waits || self.task_id().as_deref() != Some(task.id.as_str()) {
@@ -417,6 +417,15 @@ impl Detail {
         for (row, chunk) in self.buttons.chunks(3).enumerate() {
             row_of_buttons(chunk, gap, y + row as i32 * (m.button + m.px(6)), inner, m);
         }
+    }
+}
+
+/// Writes a field the person types in, as [set_if_changed] does, but never the one they are
+/// typing in while the task stays the same: a turn can come from typing a moment old, and
+/// writing it back would undo what was typed since.
+fn typed_if_changed(control: HWND, text: &str, other: bool) {
+    if other || controls::focused() != control {
+        set_if_changed(control, text);
     }
 }
 

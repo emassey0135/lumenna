@@ -1095,7 +1095,9 @@ own. Everything Win32 is in `src/win/` behind `cfg(windows)`.
   rows and folding), the block form (`block_form.rs`: a dialog over `view.block_form`, every
   field typed sent as `BlockEvent::Field`, the fields that show only while a block repeats
   shown and hidden as the app says, closed when the app's form is, judged by `crux.view()`
-  since a turn queued before it opened has none) and the details (`detail.rs`: the
+  since a turn queued before it opened has none), the proposals (`proposal.rs`: Replan from
+  Now and Plan the Day, a dialog over `view.proposal`, its checks, Apply and other options the
+  app's) and the details (`detail.rs`: the
   task in hand's, a sitting's on the day; typing goes to the app as it happens, and a field is
   written only when the app's value differs from what it shows, so the caret stays put).
   **The middle pane shows the app's place**: opening one sends `Open`, and where the app goes
@@ -1107,6 +1109,11 @@ own. Everything Win32 is in `src/win/` behind `cfg(windows)`.
   menu run the row's action as the app's (`Run`, `Perform`), only `Question::Form` staying the
   window's (the details, reminders). The selection moves only when `view.landing` goes up or
   the rows were rebuilt; focus goes into the tree on landing only when it is lost.
+- **A field being typed in is never written from a turn** (the details, the block form):
+  a turn can come from typing a moment old, and writing it back undid what was typed since.
+- **What the app says goes to the status line of the dialog in front** (`App::open_live`), a
+  dialog hiding the window's: a proposal's screen, a settings page, pairing. What it says as
+  the app closes that dialog is said where it goes next, once the dialog has gone.
 - **The app's open question is asked once the app is still** (`asking.rs`, polled every 50 ms
   from a turn that has one): straight after an answer the question is still open while the
   write is under way, and asking then would ask it twice. A refusal is said, then a line is
