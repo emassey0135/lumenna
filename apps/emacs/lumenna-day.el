@@ -118,9 +118,15 @@ the day's own actions: Plan the Day, Replan from Now and the rest.
 A day that does not offer it says the app's sentence."
   (let* ((heading (lumenna--day-heading))
          (action (seq-find (lambda (a) (equal (plist-get a :kind) kind)) (append (plist-get heading :actions) nil))))
+    ;; The day's own: run whatever row is in hand, which stays where it is.
     (if action
-        (lumenna-act action heading)
-      (lumenna--refuse heading (list kind)))))
+        (progn (setq lumenna--acting (format "day/%s" kind))
+               (lumenna-send (list :RunDay (vector kind)))
+               (lumenna--follow))
+      (let ((lumenna--heard (list 'heard)))
+        (lumenna-send (list :RunDay (vector kind)))
+        (lumenna--settle)
+        (user-error "%s" (string-join (or (cdr lumenna--heard) '("Nothing to do here")) " "))))))
 
 (defun lumenna-day-plan ()
   "Plan the day shown: each work block still to come given its most urgent tasks."

@@ -1201,3 +1201,19 @@ fn the_details_run_the_task_they_show_and_refuse_what_it_lacks() {
     app.send(Event::Details(DetailsEvent::Run(vec![ActionKind::MarkDone])));
     assert!(app.view().details.unwrap().task.state.iter().any(|s| s == "done" || s == "completed"), "the task shown, done");
 }
+
+#[test]
+fn a_days_own_action_runs_whatever_row_is_in_hand_and_moves_none() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    app.send(Event::Open(Place::Today));
+    app.send(Event::Day(DayMove::Next));
+    let block = day_keys(&app).into_iter().find(|k| k.starts_with("block:")).unwrap();
+    app.send(Event::Focus(block.clone()));
+    app.send(Event::RunDay(vec![ActionKind::PlanDay]));
+    assert!(app.view().proposal.is_some(), "Plan the Day, from a block's row");
+    assert_eq!(app.view().focus, Some(block), "and the block stays in hand");
+    app.send(Event::Proposal(lumenna_app::ProposalEvent::Close));
+    let shell = app.send(Event::RunDay(vec![ActionKind::EndDay]));
+    assert!(said(&shell).iter().any(|s| s.contains("does not apply")), "a day not today has no End the Day: {shell:?}");
+}

@@ -269,11 +269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// anywhere else, then that action, or why the day has none, in the core's words.
     func runDay(_ kind: LumennaApp.ActionKind) {
         go(.today)
-        if let action = core.app.current.view.day?.actions.first(where: { $0.kind == kind }) {
-            core.app.send(.perform(action))
-        } else {
-            core.app.refuse([kind], on: "summary")
-        }
+        core.app.send(.runDay([kind]))
     }
 
     @objc func backUpNow(_ sender: Any?) {

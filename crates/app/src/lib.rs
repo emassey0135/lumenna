@@ -185,6 +185,9 @@ pub enum Event {
     Cancel,
     /// Move through the days, going to the day if another place is shown.
     Day(DayMove),
+    /// Run the first of these kinds the day shown offers of its own (Plan the Day, Replan from
+    /// Now, …), or say why it has none, whatever row is in hand.
+    RunDay(Vec<ActionKind>),
     /// A block's day, the block in hand: where a reminder of it opens.
     ShowBlock {
         /// Its series: a reminder's `target`.
@@ -454,6 +457,10 @@ impl Lumenna {
                 render()
             }
             Event::Day(step) => self.day_move(step, model),
+            Event::RunDay(kinds) => {
+                let actions = model.day_view().map(|day| day.actions).unwrap_or_default();
+                self.run_among(&actions, &kinds, lumenna_records::Subject::Day, model)
+            }
             Event::ShowBlock { series, date } => self.show_block(&series, &date, model),
             Event::Details(event) => self.details(event, model),
             Event::Typing(event) => self.typing(event, model),

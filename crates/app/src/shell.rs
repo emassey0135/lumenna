@@ -42,6 +42,9 @@ pub enum ShellEvent {
     Cancel,
     /// Move through the days.
     Day(DayMove),
+    /// Run the first of these kinds the day shown offers of its own (Plan the Day, Replan from
+    /// Now, …), or say why it has none, whatever row is in hand.
+    RunDay(Vec<ActionKind>),
     /// A block's day, the block in hand: where a reminder of it opens.
     ShowBlock {
         /// Its series: a reminder's `target`.
@@ -102,6 +105,7 @@ impl From<ShellEvent> for Event {
             ShellEvent::Cancel => Event::Cancel,
             ShellEvent::PickFrom(day) => Event::PickFrom(day),
             ShellEvent::Day(step) => Event::Day(step),
+            ShellEvent::RunDay(kinds) => Event::RunDay(kinds),
             ShellEvent::ShowBlock { series, date } => Event::ShowBlock { series, date },
             ShellEvent::Details(event) => Event::Details(event),
             ShellEvent::Typing(event) => Event::Typing(event),
@@ -139,6 +143,7 @@ impl TryFrom<Event> for ShellEvent {
             Event::Cancel => ShellEvent::Cancel,
             Event::PickFrom(day) => ShellEvent::PickFrom(day),
             Event::Day(step) => ShellEvent::Day(step),
+            Event::RunDay(kinds) => ShellEvent::RunDay(kinds),
             Event::ShowBlock { series, date } => ShellEvent::ShowBlock { series, date },
             Event::Details(event) => ShellEvent::Details(event),
             Event::Typing(event) => ShellEvent::Typing(event),

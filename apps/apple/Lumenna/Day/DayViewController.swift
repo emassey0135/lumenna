@@ -300,14 +300,10 @@ final class DayViewController: UIHostingController<DayScreen> {
     @objc func endTheDay() { runDay(.endDay) }
     @objc func clearTheDay() { runDay(.clearDay) }
 
-    /// The day's action of `kind`, or why the day has none, in the core's words.
+    /// The day's action of `kind`, or the app says why the day has none, whatever row is in hand.
     func runDay(_ kind: LumennaApp.ActionKind) {
         model.appear()
-        if let action = core.app.current.view.day?.actions.first(where: { $0.kind == kind }) {
-            core.app.send(.perform(action))
-        } else {
-            core.app.refuse([kind], on: "summary")
-        }
+        core.app.send(.runDay([kind]))
     }
 }
 
