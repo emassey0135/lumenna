@@ -737,3 +737,48 @@ impl Tree {
         }
     }
 }
+
+/// When focus goes to the row the app has in hand: when the app moved it
+/// (`ViewModel::landing` went up) and focus is in the tree or nowhere, or once a tree gone to
+/// from a key has rows. Otherwise a redraw — for a sync, a minute — leaves focus where it is,
+/// putting the selection back only where a rebuild lost it.
+#[derive(Default)]
+pub struct Landing {
+    /// The landing count last drawn.
+    landed: Cell<Option<u32>>,
+    /// Whether focus goes into the tree once it has rows.
+    wanted: Cell<bool>,
+}
+
+impl Landing {
+    /// Moves focus into `tree` now, and again once it has drawn rows if it has none yet: the
+    /// rows may come after the tree is shown.
+    pub fn want(&self, tree: &Tree) {
+        tree.focus();
+        if self.landed.get().is_none() || tree.len() == 0 {
+            self.wanted.set(true);
+        }
+    }
+
+    /// Puts the selection and, when it is the app's to move, focus on `focus`, after `tree` was
+    /// given the rows of a turn whose landing count is `landing`; `rebuilt` is what `Tree::set`
+    /// said.
+    pub fn land(&self, tree: &Tree, window: &gtk::Window, focus: Option<&str>, landing: u32, rebuilt: bool) {
+        let moved = self.landed.replace(Some(landing)).is_some_and(|landed| landed != landing);
+        let wanted = self.wanted.get();
+        match focus.and_then(|focus| tree.index_of(focus)) {
+            Some(index) => {
+                let here = tree.has_focus() || gtk::prelude::GtkWindowExt::focus(window).is_none();
+                if (wanted || moved) && here {
+                    self.wanted.set(false);
+                    tree.select_quietly(index);
+                    tree.focus();
+                } else if rebuilt || tree.selected().is_none() {
+                    tree.select_quietly(index);
+                }
+            }
+            None if wanted => tree.focus(),
+            None => {}
+        }
+    }
+}

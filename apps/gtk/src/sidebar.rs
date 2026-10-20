@@ -1,18 +1,22 @@
 //! The places: Today, Tasks, the projects as they nest, labels, saved filters, Blocks, the
-//! trash.
+//! trash. The app's sidebar (`ViewModel::sidebar`), drawn.
 //!
 //! A tree like every list here, so a subproject's level is the tree's to report. Moving
 //! through it shows each place in the middle pane, as Files' sidebar does; Enter goes into it.
-//! What a project, label, filter or heading can have done to it is the core's (`actions`),
-//! offered in its context menu; Delete runs its Delete.
+//! What a project, label, filter or heading can have done to it is the core's, offered in its
+//! context menu; Delete runs its Delete, Left and Right its Collapse and Expand. The row in hand
+//! is the app's (`sidebar_held`), so a change made here lands here; where an action leads — a
+//! place renamed, made or deleted — is the app's too, and the middle pane follows it.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gdk, glib};
-use lumenna_host::actions::{ActionKind, Answer, Subject};
-use lumenna_host::places::{Place, SidebarEntry, SidebarGroup, SidebarKind};
+use lumenna_ffi::ShellEvent;
+use lumenna_records::places::{Place, SidebarEntry, SidebarGroup, SidebarKind};
+use lumenna_records::{Action, ActionKind, Subject};
+use lumenna_app::Side;
 
 use crate::actions;
 use crate::tree::{Item, Tree};
@@ -21,22 +25,28 @@ use crate::window::App;
 pub struct Sidebar {
     pub tree: Rc<Tree>,
     entries: RefCell<Vec<SidebarEntry>>,
-    /// The place shown, by key.
-    current: RefCell<String>,
+    /// The app's landing count for the sidebar last drawn: focus moves when it goes up.
+    landed: Cell<Option<u32>>,
 }
 
 impl Sidebar {
     pub fn new() -> Rc<Self> {
-        let sidebar = Rc::new(Self { tree: Tree::new("Places"), entries: RefCell::new(Vec::new()), current: RefCell::new(String::new()) });
+        let sidebar = Rc::new(Self { tree: Tree::new("Places"), entries: RefCell::new(Vec::new()), landed: Cell::new(None) });
         let weak = Rc::downgrade(&sidebar);
-        sidebar.tree.connect_selected(move |_| {
+        sidebar.tree.connect_selected(move |index| {
             let (Some(sidebar), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
-            if let Some(SidebarEntry { kind: SidebarKind::Place(place), .. }) = sidebar.selected() {
-                let key = place_key(&place);
-                if *sidebar.current.borrow() != key {
-                    *sidebar.current.borrow_mut() = key;
-                    app.show_place(place);
-                }
+            let Some(entry) = index.and_then(|index| sidebar.entries.borrow().get(index).cloned()) else { return };
+            let (held, place) = {
+                let view = app.model.view();
+                (view.sidebar_held.focus.clone(), view.place.clone())
+            };
+            if held.as_deref() != Some(entry.key.as_str()) {
+                app.model.send(ShellEvent::Hold(Side::Sidebar, entry.key.clone()));
+            }
+            if let SidebarKind::Place(chosen) = entry.kind
+                && place.as_ref() != Some(&chosen)
+            {
+                app.show_place(chosen);
             }
         });
         let weak = Rc::downgrade(&sidebar);
@@ -53,19 +63,19 @@ impl Sidebar {
             };
             // Delete here does what it does in every other list: the row's own Delete.
             if matches!(key, gdk::Key::Delete | gdk::Key::KP_Delete) && modifiers.is_empty() {
-                let entry = sidebar.entries.borrow().get(index).cloned();
-                let subject = match entry.as_ref().map(|entry| &entry.kind) {
-                    Some(SidebarKind::Place(Place::Project(_))) => Some(Subject::Project),
-                    Some(SidebarKind::Place(Place::Label(_))) => Some(Subject::Label),
-                    Some(SidebarKind::Place(Place::Filter { .. })) => Some(Subject::Filter),
-                    _ => None,
-                };
-                match entry.as_ref().and_then(|entry| actions::find(&entry.actions, actions::DELETE)) {
-                    Some(action) => actions::run(&app, action.clone(), entry.as_ref().map(after)),
+                let Some(entry) = sidebar.entries.borrow().get(index).cloned() else { return glib::Propagation::Stop };
+                match actions::find(&entry.actions, actions::DELETE) {
+                    Some(action) => run(&app, action.clone(), &entry.key),
                     // The Inbox says why it stays; a fixed place or a heading has nothing to say.
                     None => {
+                        let subject = match &entry.kind {
+                            SidebarKind::Place(Place::Project(_)) => Some(Subject::Project),
+                            SidebarKind::Place(Place::Label(_)) => Some(Subject::Label),
+                            SidebarKind::Place(Place::Filter { .. }) => Some(Subject::Filter),
+                            _ => None,
+                        };
                         if let Some(subject) = subject {
-                            app.say(&lumenna_host::actions::not_offered(ActionKind::Delete, subject, false));
+                            app.say(&lumenna_records::not_offered(ActionKind::Delete, subject, false));
                         }
                     }
                 }
@@ -77,34 +87,79 @@ impl Sidebar {
         sidebar.tree.connect_menu(move |index, point| {
             let (Some(sidebar), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
             let Some(entry) = sidebar.entries.borrow().get(index).cloned() else { return };
-            if entry.actions.is_empty() {
+            // Folding is Left and Right's, as in every tree; the menu holds what the row is for.
+            let offered: Vec<Action> =
+                entry.actions.iter().filter(|a| !matches!(a.kind, ActionKind::Expand | ActionKind::Collapse)).cloned().collect();
+            if offered.is_empty() {
                 return;
             }
-            let (menu, group) = actions::menu(&entry.actions, Some(after(&entry)));
+            let key = entry.key.clone();
+            let (menu, group) = actions::menu_running(
+                &offered,
+                Rc::new(move |action| {
+                    if let Some(app) = crate::window::app() {
+                        run(&app, action, &key);
+                    }
+                }),
+            );
             app.popup(&menu, sidebar.tree.view.upcast_ref(), point, Some(&group));
+        });
+        let weak = Rc::downgrade(&sidebar);
+        sidebar.tree.connect_fold(move |index, expand| {
+            let (Some(sidebar), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
+            let Some(entry) = sidebar.entries.borrow().get(index).cloned() else { return };
+            let kind = if expand { ActionKind::Expand } else { ActionKind::Collapse };
+            if let Some(action) = entry.actions.iter().find(|action| action.kind == kind) {
+                crate::window::QUIET_FOLD.set(true);
+                run(&app, action.clone(), &entry.key);
+            }
         });
         sidebar
     }
 
-    /// Lists the places again, keeping the one shown selected without showing it again —
-    /// which would throw away whatever the middle pane was doing.
-    pub fn reload(&self, app: &App) {
-        let entries = lumenna_host::sidebar(&app.core.lumenna);
-        let items = entries.iter().map(|entry| Item { key: entry.key(), text: entry.text.clone(), depth: entry.depth, ..Default::default() }).collect();
-        *self.entries.borrow_mut() = entries;
-        if self.tree.set(items) {
-            let current = self.current.borrow().clone();
-            if let Some(index) = self.tree.index_of(&current) {
+    /// Draws the places the app last left. Focus moves to the row in hand only when the app
+    /// moved it and focus is here; otherwise the place shown is the row selected.
+    pub fn draw(&self, app: &App) {
+        let view = app.model.view();
+        if !view.ready {
+            return;
+        }
+        let items = view
+            .sidebar
+            .iter()
+            .map(|entry| Item {
+                key: entry.key.clone(),
+                text: entry.text.clone(),
+                depth: entry.depth,
+                expanded: entry.actions.iter().find_map(|action| match action.kind {
+                    ActionKind::Collapse => Some(true),
+                    ActionKind::Expand => Some(false),
+                    _ => None,
+                }),
+                ..Default::default()
+            })
+            .collect();
+        *self.entries.borrow_mut() = view.sidebar.clone();
+        let rebuilt = self.tree.set(items);
+        let held = &view.sidebar_held;
+        let first = self.landed.get().is_none();
+        let moved = self.landed.replace(Some(held.landing)).is_some_and(|landed| landed != held.landing);
+        // The window opens before the places come, its focus on their empty pane: the first
+        // places drawn take it, as they did when they were there from the start.
+        let focus = gtk::prelude::GtkWindowExt::focus(&app.window);
+        if first && focus.as_ref().is_none_or(|focus| focus == self.tree.widget.upcast_ref::<gtk::Widget>()) {
+            self.tree.focus();
+        }
+        let shown = view.place.as_ref().map(place_key);
+        if self.tree.has_focus() {
+            if let Some(index) = held.focus.as_deref().and_then(|key| self.tree.index_of(key))
+                && (moved || rebuilt)
+            {
                 self.tree.select_quietly(index);
             }
-        }
-    }
-
-    /// Selects a place, as going there from the menu does.
-    pub fn select(&self, place: &Place) {
-        let key = place_key(place);
-        *self.current.borrow_mut() = key.clone();
-        if let Some(index) = self.tree.index_of(&key) {
+        } else if let Some(index) = shown.as_deref().and_then(|key| self.tree.index_of(key))
+            && self.tree.selected() != Some(index)
+        {
             self.tree.select_quietly(index);
         }
     }
@@ -115,48 +170,19 @@ impl Sidebar {
     }
 }
 
-/// Where to go once one of `entry`'s actions is done: to the place it renamed, merged into or
-/// made, or to Tasks from one it deleted. Anything else stays put.
-fn after(entry: &SidebarEntry) -> actions::After {
-    let place = match &entry.kind {
-        SidebarKind::Place(place) => Some(place.clone()),
-        SidebarKind::Group(_) => None,
-    };
-    Rc::new(move |app, action, answer| {
-        let text = match answer {
-            Answer::Text { text } => Some(text.clone()),
-            Answer::Picked { id, .. } => Some(id.clone()),
-            Answer::Yes => None,
-        };
-        let then = match (action.subject, action.kind, text) {
-            (_, ActionKind::Delete, _) => Some(Place::Tasks),
-            (Subject::Project, ActionKind::Rename | ActionKind::New | ActionKind::NewInside, Some(name)) => {
-                Some(Place::Project(name))
-            }
-            (Subject::Label, ActionKind::Rename | ActionKind::New | ActionKind::MergeInto, Some(name)) => {
-                Some(Place::Label(name))
-            }
-            (Subject::Filter, ActionKind::Rename, Some(name)) => match &place {
-                Some(Place::Filter { query, .. }) => Some(Place::Filter { name, query: query.clone() }),
-                _ => None,
-            },
-            (Subject::Filter, ActionKind::ChangeQuery, Some(query)) => match &place {
-                Some(Place::Filter { name, .. }) => Some(Place::Filter { name: name.clone(), query }),
-                _ => None,
-            },
-            _ => None,
-        };
-        if let Some(then) = then {
-            app.go(then, false);
-        }
-    })
+/// Runs one of a sidebar row's actions through the app: held there first, so what it changes
+/// lands back in the sidebar.
+fn run(app: &App, action: Action, key: &str) {
+    app.model.send(ShellEvent::Hold(Side::Sidebar, key.to_owned()));
+    app.model.send(ShellEvent::Perform(action));
 }
 
 /// What the File menu's New Project, New Label and New Saved Filter run: the heading's own.
 pub fn new_in(app: &Rc<App>, group: SidebarGroup) {
-    let entry = SidebarEntry::new(SidebarKind::Group(group), "", "", 0, lumenna_host::actions::heading(group));
-    if let Some(action) = entry.actions.first() {
-        actions::run(app, action.clone(), Some(after(&entry)));
+    let key = SidebarEntry::key_of(&SidebarKind::Group(group));
+    let action = app.model.view().sidebar.iter().find(|entry| entry.key == key).and_then(|entry| entry.actions.first().cloned());
+    if let Some(action) = action {
+        run(app, action, &key);
     }
 }
 

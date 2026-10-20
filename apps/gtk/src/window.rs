@@ -64,7 +64,7 @@ impl Content {
     fn reload(&self, app: &App) {
         match self {
             Self::Tasks(list) => list.draw(app),
-            Self::Day(day) => day.reload(app),
+            Self::Day(day) => day.draw(app),
             Self::Blocks(blocks) => blocks.reload(app),
         }
     }
@@ -87,7 +87,8 @@ pub struct App {
     content_slot: gtk::Box,
     content: RefCell<Option<Content>>,
     pub detail: Rc<Detail>,
-    minute: Cell<i64>,
+    /// Whether focus goes into the middle pane once the app has gone to the place it shows.
+    focus_on_show: Cell<bool>,
     /// Settings' Devices page, while it is open, to hear how a sync went.
     pub devices_page: RefCell<Option<std::rc::Weak<crate::settings::Devices>>>,
     /// What another process had written by the last tick (`Lumenna::outside_version`).
@@ -284,7 +285,7 @@ impl App {
             content_slot,
             content: RefCell::new(None),
             detail,
-            minute: Cell::new(0),
+            focus_on_show: Cell::new(false),
             outside: Cell::new(0),
             devices_page: RefCell::new(None),
         });
@@ -307,12 +308,10 @@ impl App {
     fn start(self: &Rc<Self>, background: bool, shortcuts: bool) {
         // Resident: closing the window does not end the app.
         std::mem::forget(self.application.hold());
-        self.sidebar.reload(self);
         self.go(Place::Today, false);
         if !background {
             self.show_window();
         }
-        self.minute.set(jiff::Timestamp::now().as_second() / 60);
         self.outside.set(self.core.lumenna.outside_version().unwrap_or(0));
         glib::timeout_add_seconds_local(1, || {
             if let Some(app) = app() {
@@ -366,13 +365,6 @@ impl App {
         {
             self.store_changed();
         }
-        let minute = jiff::Timestamp::now().as_second() / 60;
-        if minute != self.minute.get() {
-            self.minute.set(minute);
-            if let Some(day) = self.day() {
-                day.minute(self);
-            }
-        }
     }
 
     // -------------------------------------------------------------------------------------
@@ -422,7 +414,6 @@ impl App {
     /// showing it reads it again, keeping its selection.
     pub fn store_changed(&self) {
         self.model.tick();
-        self.sidebar.reload(self);
         if let Some(content) = self.content() {
             content.reload(self);
         }
@@ -470,8 +461,13 @@ impl App {
 
     /// Draws what the app last left on every screen drawn from it, and asks what it has open.
     fn draw(self: &Rc<Self>) {
+        self.follow_place();
+        self.sidebar.draw(self);
         if let Some(list) = self.task_list() {
             list.draw(self);
+        }
+        if let Some(day) = self.day() {
+            day.draw(self);
         }
         crate::asking::update(self);
     }
@@ -510,10 +506,9 @@ impl App {
         self.window.set_title(Some(&format!("{title} – Lumenna")));
     }
 
-    /// Goes to a place: selects it in the sidebar, shows it, and — when `focus` — moves
-    /// focus into it.
+    /// Goes to a place: shows it, and — when `focus` — moves focus into it. The sidebar
+    /// selects it as it draws.
     pub fn go(&self, place: Place, focus: bool) {
-        self.sidebar.select(&place);
         self.show_place(place);
         if focus {
             self.focus_content();
@@ -523,6 +518,54 @@ impl App {
     /// Shows a place in the middle pane, and clears the details until something is chosen.
     pub fn show_place(&self, place: Place) {
         self.model.send(lumenna_ffi::ShellEvent::Open(place.clone()));
+        self.set_content(place);
+    }
+
+    /// The place the middle pane shows.
+    fn content_place(&self) -> Option<Place> {
+        match self.content()? {
+            Content::Tasks(list) => Some(list.place.clone()),
+            Content::Day(_) => Some(Place::Today),
+            Content::Blocks(_) => Some(Place::Blocks),
+        }
+    }
+
+    /// Follows the app to a place it went on to by itself — a place renamed, made or deleted —
+    /// as the app holds it now: a turn made before the person last went somewhere still names
+    /// where they were.
+    fn follow_place(&self) {
+        let Some(place) = self.model.view().place.clone() else { return };
+        if self.content_place().as_ref() == Some(&place) {
+            return;
+        }
+        if self.model.current().0.place.as_ref() == Some(&place) {
+            self.set_content(place);
+            if self.focus_on_show.take() {
+                self.focus_content();
+            }
+        }
+    }
+
+    /// Moves through the days, going to the day first from another place, focus with it.
+    fn day_move(&self, step: lumenna_app::DayMove) {
+        if self.day().is_none() {
+            self.focus_on_show.set(true);
+        }
+        self.model.send(lumenna_ffi::ShellEvent::Day(step));
+    }
+
+    /// Shows a block's day with the block in hand, as a reminder of it opens it.
+    pub fn show_block(&self, series: &str, date: &str) {
+        match self.day() {
+            Some(day) => day.focus(),
+            None => self.focus_on_show.set(true),
+        }
+        self.model.send(lumenna_ffi::ShellEvent::ShowBlock { series: series.to_owned(), date: date.to_owned() });
+    }
+
+    /// Puts a place's view in the middle pane, and clears the details until something is
+    /// chosen.
+    fn set_content(&self, place: Place) {
         let content = match &place {
             Place::Today => Content::Day(DayView::new()),
             Place::Blocks => Content::Blocks(BlockList::new()),
@@ -542,6 +585,7 @@ impl App {
     pub fn focus_content(&self) {
         match self.content() {
             Some(Content::Tasks(list)) => list.focus(),
+            Some(Content::Day(day)) => day.focus(),
             Some(content) => content.tree().focus(),
             None => {}
         }
@@ -738,31 +782,21 @@ impl App {
                 spawn(async move { crate::actions::add_block(&app, "today", None, 60).await });
             }
         });
-        // The day's commands go to Today first, from anywhere.
-        let on_day = |name: &str, run: fn(&Rc<App>, &Rc<DayView>)| {
-            simple_with(self, name, move |app| {
-                if app.day().is_none() {
-                    app.go(Place::Today, true);
-                }
-                if let Some(day) = app.day() {
-                    run(app, &day);
-                }
-            });
-        };
-        on_day("previous-day", |app, day| day.step(app, -1));
-        on_day("next-day", |app, day| day.step(app, 1));
-        on_day("go-to-now", |app, day| day.go_to_now(app, true));
-        on_day("go-to-day", |app, day| day.ask_for_day(app));
+        // The day's commands go to Today first, from anywhere: the app's to do.
+        simple("previous-day", |app| app.day_move(lumenna_app::DayMove::Previous));
+        simple("next-day", |app| app.day_move(lumenna_app::DayMove::Next));
+        simple("go-to-now", |app| app.day_move(lumenna_app::DayMove::Now));
+        simple("go-to-day", |app| app.day_move(lumenna_app::DayMove::Ask));
         // The day's own actions, on the day shown: Plan the Day, Replan from Now and the rest.
         let day_command = |name: &str, kind: ActionKind| {
             simple_with(self, name, move |app| {
                 if app.day().is_none() {
                     app.go(Place::Today, true);
                 }
-                let Some(day) = app.day() else { return };
-                match day.day_actions().into_iter().find(|action| action.kind == kind) {
-                    Some(action) => crate::actions::run(app, action, None),
-                    None => app.say(&lumenna_host::actions::not_offered(kind, Subject::Day, false)),
+                let actions = app.model.current().0.day.map(|day| day.actions).unwrap_or_default();
+                match actions.into_iter().find(|action| action.kind == kind) {
+                    Some(action) => crate::asking::run(app, action, "summary"),
+                    None => app.say(&lumenna_records::not_offered(kind, lumenna_records::Subject::Day, false)),
                 }
             });
         };
@@ -795,11 +829,13 @@ impl App {
             if app.task_list().is_some() {
                 return app.model.send(lumenna_ffi::ShellEvent::Run(vec![ActionKind::Edit, ActionKind::EditTask]));
             }
+            if let Some(day) = app.day() {
+                let key = app.model.view().focus.clone().unwrap_or_default();
+                return crate::asking::run_kind(app, &day.selected_actions(), &[ActionKind::Edit, ActionKind::EditTask], &key);
+            }
             let actions = match app.content() {
-                Some(Content::Tasks(list)) => list.selected().map(|row| row.actions).unwrap_or_default(),
-                Some(Content::Day(day)) => day.selected_actions(),
                 Some(Content::Blocks(blocks)) => blocks.selected_actions(),
-                None => Vec::new(),
+                _ => Vec::new(),
             };
             if let Some(action) = crate::actions::find(&actions, &[ActionKind::Edit, ActionKind::EditTask]) {
                 crate::actions::run(app, action.clone(), None);

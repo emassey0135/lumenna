@@ -159,10 +159,22 @@ async fn another_day(app: &App, window: &gtk::Window) {
 }
 
 /// Runs one of a row's actions through the app: the row in hand, then the action. A form the
-/// app does not draw here yet is still the GTK app's own.
+/// app draws on a screen not yet drawn from it here is still the GTK app's own; a task's
+/// details are opened from the app's question.
 pub fn run(app: &Rc<App>, action: Action, on: &str) {
-    if action.question == Question::Form && !matches!(action.kind, lumenna_records::ActionKind::Edit | lumenna_records::ActionKind::EditTask) {
+    let details = action.subject == lumenna_records::Subject::Task
+        && matches!(action.kind, lumenna_records::ActionKind::Edit | lumenna_records::ActionKind::EditTask);
+    if action.question == Question::Form && !details {
         return crate::actions::run(app, action, None);
     }
     app.model.run(action, on);
+}
+
+/// Runs the first of `kinds` the row `on` offers among `actions`, as a key that means one thing
+/// on every row does; one it offers none of goes to the app, which says why.
+pub fn run_kind(app: &Rc<App>, actions: &[Action], kinds: &[lumenna_records::ActionKind], on: &str) {
+    match crate::actions::find(actions, kinds) {
+        Some(action) => run(app, action.clone(), on),
+        None => app.model.send(ShellEvent::Run(kinds.to_vec())),
+    }
 }

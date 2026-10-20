@@ -1211,13 +1211,29 @@ moved still call `lumenna-host` directly (`Core`), on a connection of their own.
 
 - **The app's turns go to GTK's main thread** (`model.rs`, `glib::MainContext::invoke`) and
   are taken in order (`window::take`): the screens drawn from the app draw, then what the turn
-  says is said. Drawn from it so far: the task list (`tasks.rs`). Its rows, readback, filter
+  says is said. Drawn from it so far: the task list (`tasks.rs`), the sidebar
+  (`sidebar.rs`) and the day (`day.rs`). The task list's rows, readback, filter
   (put back on returning to a place), row in hand and folding are the app's: a move sends
   `Focus`; Space, Delete, Enter and the Task menu send `Run`; its menu and Left and Right (the
   row's Collapse and Expand, `Tree::connect_fold`, `Item::expanded`) run the row's action. The
   app's "Expanded" or "Collapsed" after a fold the tree asked for is not said: the tree item
   reports its state. Only `Question::Form` stays the window's (the details, reminders).
-- **Focus moves only when `view.landing` goes up** (or the place was gone to from a key), and
+- **The sidebar is the app's places** (`view.sidebar`, `sidebar_held`): a move holds the row
+  (`Hold(Side::Sidebar, …)`) and opens a place; a row's actions are held there and performed,
+  so a change made there lands there; Left and Right are its Collapse and Expand. Where an
+  action leads (a place renamed, made, deleted) is the app's: the middle pane follows the
+  app's place (`window::follow_place`), as the app holds it now, since a turn made before the
+  person last went somewhere still names where they were. The window opens before the places
+  come, so the first drawn take focus from their empty pane.
+- **The day is the app's** (`view.day`, `lines.day`, `lines.day_title` as the window's
+  title): which day is shown, today opening on now, and the day's moves (`Day`: Previous,
+  Next, Now, Ask for Go to Day, its question asked as any other) and a reminder's block
+  (`ShowBlock`). Enter runs the row's Enter kind (`asking::run_kind`), so free time's Add Block
+  and a block's Edit still open the window's block form until it moves; the day's own actions
+  run from the Day menu over `view.day.actions`, Replan and Plan the Day still the window's
+  screens.
+- **Focus moves only when `view.landing` goes up** (`tree::Landing`, shared by every list drawn
+  from the app; or once a list gone to from a key has rows), and
   only if focus is in the list or nowhere; a rebuild for a sync or a minute puts the selection
   back without moving focus.
 - **The app's open question is asked once the app is still** (`asking.rs`, polled every 50 ms

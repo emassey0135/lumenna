@@ -225,7 +225,8 @@ class AllDayTest(unittest.TestCase, DayActions):
         self.assertTrue(focus.get_description().startswith("Suggested because"), focus.get_description())
         self.session.tab_to("Start")
         self.session.press("Return", wait=1)
-        self.assertEqual(len(self.session.said()), 1)
+        # What the pick offers, said as it opens, then what starting did.
+        self.assertEqual(len(self.session.said()), 2)
 
     def test_a_tasks_history_is_under_its_own_heading_in_its_details(self):
         self.session.press("Control+2", wait=1)

@@ -18,7 +18,7 @@ use lumenna_host::places::Place;
 use lumenna_records::{ActionKind, RowView};
 
 use crate::actions;
-use crate::tree::{Item, Tree};
+use crate::tree::{Item, Landing, Tree};
 use crate::window::App;
 
 pub struct TaskList {
@@ -30,10 +30,8 @@ pub struct TaskList {
     pub tree: Rc<Tree>,
     /// The rows as last drawn.
     rows: RefCell<Vec<Row>>,
-    /// The app's landing count last drawn: focus moves when it goes up.
-    landed: Cell<Option<u32>>,
-    /// Whether focus goes into the list once it is drawn: the place was gone to from a key.
-    focus_wanted: Cell<bool>,
+    /// When focus goes to the row in hand.
+    landing: Landing,
     /// Whether the filter's text is being put back from the app, not typed.
     setting: Cell<bool>,
     /// A task added here, to land on once the list shows it.
@@ -75,8 +73,7 @@ impl TaskList {
             readback,
             tree,
             rows: RefCell::new(Vec::new()),
-            landed: Cell::new(None),
-            focus_wanted: Cell::new(false),
+            landing: Landing::default(),
             setting: Cell::new(false),
             landing_on: RefCell::new(None),
         });
@@ -208,9 +205,6 @@ impl TaskList {
             .collect();
         *self.rows.borrow_mut() = list.items.clone();
         let rebuilt = self.tree.set(items);
-        let moved = self.landed.replace(Some(view.landing)).is_some_and(|landed| landed != view.landing);
-        // Wanted until a row takes it: the list may be drawn empty before the store's rows come.
-        let wanted = self.focus_wanted.get();
         let landing_on = self.landing_on.borrow().clone();
         if let Some(id) = landing_on
             && let Some(index) = self.tree.index_of(&id)
@@ -218,17 +212,8 @@ impl TaskList {
             self.landing_on.take();
             self.tree.select(index);
             self.tree.focus();
-        } else if let Some(index) = view.focus.as_deref().and_then(|focus| self.tree.index_of(focus)) {
-            let here = self.tree.has_focus() || gtk::prelude::GtkWindowExt::focus(&app.window).is_none();
-            if (wanted || moved) && here {
-                self.focus_wanted.set(false);
-                self.tree.select_quietly(index);
-                self.tree.focus();
-            } else if rebuilt || self.tree.selected().is_none() {
-                self.tree.select_quietly(index);
-            }
-        } else if wanted {
-            self.tree.focus();
+        } else {
+            self.landing.land(&self.tree, app.window.upcast_ref(), view.focus.as_deref(), view.landing, rebuilt);
         }
         if !self.trash {
             app.detail.follow(app, view.focus.as_deref());
@@ -256,10 +241,7 @@ impl TaskList {
 
     /// Moves focus into the list once it is drawn, or now if it is.
     pub fn focus(&self) {
-        self.tree.focus();
-        if self.landed.get().is_none() || self.tree.len() == 0 {
-            self.focus_wanted.set(true);
-        }
+        self.landing.want(&self.tree);
     }
 
     /// Puts focus in the filter, all of it selected so typing replaces it.
