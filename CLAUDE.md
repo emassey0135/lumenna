@@ -169,7 +169,8 @@ until their turn (the `legacy` tag is the last commit before the move).
   (Expand and Collapse are row actions; a folded row comes marked `hidden`, for a tree control
   that folds by itself); the question open, a refusal staying in it, a pick's length asked
   once one is picked; where a place's action leads (renamed, made, deleted); a new saved
-  filter's two questions; the day shown, Go to Day, and today opening on now; the details'
+  filter's two questions; the day shown, Go to Day, and today opening on now; a reminder's
+  block shown on its day, in hand (`ShowBlock`); the details'
   draft, kept through a change elsewhere and saved as only what changed; the quick-add line
   and a completion spliced into it; the block form, asking which occurrences of a repeating
   block first; the proposal screens, checks, partial applies and other options; settings, a

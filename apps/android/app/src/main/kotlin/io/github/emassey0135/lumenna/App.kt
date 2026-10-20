@@ -68,10 +68,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.StateFlow
 
+/** A block's day, as a reminder names it: its series and the occurrence's date. */
+data class BlockOn(val series: String, val date: String)
+
 /** Somewhere to be: what a tab's back stack holds. */
 sealed interface Screen {
-    /** The day planner, on a date; today when null. */
-    data class Day(val date: String? = null) : Screen
+    /** The day planner: a reminder's block on its day, else today. */
+    data class Day(val block: BlockOn? = null) : Screen
 
     /** A place's tasks, as the app lists them: every open task, a project's, the trash. */
     data class Tasks(val place: io.github.emassey0135.lumenna.app.Place = io.github.emassey0135.lumenna.app.Place.Tasks) : Screen
@@ -264,8 +267,8 @@ fun LumennaApp(
                 val reminder = tapped?.second
                 when (reminder?.kind) {
                     "task" -> go(Tab.TASKS, Screen.Task(reminder.target))
-                    "block" -> if (reminder.occurrence == Clock.today() || reminder.occurrence.isEmpty()) go(Tab.TODAY)
-                        else go(Tab.TODAY, Screen.Day(reminder.occurrence))
+                    "block" -> if (reminder.occurrence.isEmpty()) go(Tab.TODAY)
+                        else go(Tab.TODAY, Screen.Day(BlockOn(reminder.target, reminder.occurrence)))
                     // An overrun's Replan button: the rest of today, worked out again.
                     Reminders.REPLAN -> {
                         go(Tab.TODAY)

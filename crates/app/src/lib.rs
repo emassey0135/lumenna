@@ -155,6 +155,13 @@ pub enum Event {
     Cancel,
     /// Move through the days, going to the day if another place is shown.
     Day(DayMove),
+    /// A block's day, the block in hand: where a reminder of it opens.
+    ShowBlock {
+        /// Its series: a reminder's `target`.
+        series: String,
+        /// Its day, `YYYY-MM-DD`: a reminder's `occurrence`.
+        date: String,
+    },
     /// Something done in the details of the task in hand.
     Details(DetailsEvent),
     /// Something done in quick add.
@@ -350,6 +357,7 @@ impl Lumenna {
                 render()
             }
             Event::Day(step) => self.day_move(step, model),
+            Event::ShowBlock { series, date } => self.show_block(&series, &date, model),
             Event::Details(event) => self.details(event, model),
             Event::Typing(event) => self.typing(event, model),
             Event::Block(event) => self.block(event, model),

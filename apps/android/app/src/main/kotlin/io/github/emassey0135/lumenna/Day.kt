@@ -59,7 +59,6 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import io.github.emassey0135.lumenna.app.Action
 import io.github.emassey0135.lumenna.app.ActionKind
-import io.github.emassey0135.lumenna.app.Answer
 import io.github.emassey0135.lumenna.app.BlockEvent
 import io.github.emassey0135.lumenna.app.BlockFields
 import io.github.emassey0135.lumenna.app.DayKind
@@ -83,8 +82,8 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
     val view by app.view.collectAsState()
     LaunchedEffect(screen) {
         app.send(ShellEvent.Open(Place.Today))
-        // A day asked for by date: a reminder's block on another day.
-        screen.date?.let { date -> app.send(ShellEvent.Day(DayMove.ASK)); app.send(ShellEvent.Answer(Answer.Text(date))) }
+        // A reminder's block: its day, with it in hand.
+        screen.block?.let { app.send(ShellEvent.ShowBlock(it.series, it.date)) }
     }
     val day = view?.takeIf { it.place == Place.Today }?.day
     val worded by app.lines.collectAsState()

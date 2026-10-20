@@ -42,6 +42,13 @@ pub enum ShellEvent {
     Cancel,
     /// Move through the days.
     Day(DayMove),
+    /// A block's day, the block in hand: where a reminder of it opens.
+    ShowBlock {
+        /// Its series: a reminder's `target`.
+        series: String,
+        /// Its day, `YYYY-MM-DD`: a reminder's `occurrence`.
+        date: String,
+    },
     /// Something done in the details of the task in hand.
     Details(DetailsEvent),
     /// Something done in quick add.
@@ -87,6 +94,7 @@ impl From<ShellEvent> for Event {
             ShellEvent::Cancel => Event::Cancel,
             ShellEvent::PickFrom(day) => Event::PickFrom(day),
             ShellEvent::Day(step) => Event::Day(step),
+            ShellEvent::ShowBlock { series, date } => Event::ShowBlock { series, date },
             ShellEvent::Details(event) => Event::Details(event),
             ShellEvent::Typing(event) => Event::Typing(event),
             ShellEvent::Block(event) => Event::Block(event),
@@ -122,6 +130,7 @@ impl TryFrom<Event> for ShellEvent {
             Event::Cancel => ShellEvent::Cancel,
             Event::PickFrom(day) => ShellEvent::PickFrom(day),
             Event::Day(step) => ShellEvent::Day(step),
+            Event::ShowBlock { series, date } => ShellEvent::ShowBlock { series, date },
             Event::Details(event) => ShellEvent::Details(event),
             Event::Typing(event) => ShellEvent::Typing(event),
             Event::Block(event) => ShellEvent::Block(event),

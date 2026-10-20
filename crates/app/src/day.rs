@@ -5,6 +5,7 @@
 use std::collections::BTreeSet;
 
 use crux_core::Command;
+use jiff::civil::Date;
 use crux_core::render::render;
 use lumenna_records::places::Place;
 use lumenna_records::types::{CancelledBlock, Plan, PlanAssignment, PlanBlock, PlanItem};
@@ -218,6 +219,14 @@ pub fn opening(view: &DayView) -> Option<String> {
 }
 
 impl Lumenna {
+    pub(crate) fn show_block(&self, series: &str, date: &str, model: &mut Model) -> Command<Effect, Event> {
+        let (Some(store), Ok(day)) = (&model.store, date.parse::<Date>()) else { return Command::done() };
+        let today = store.now.date();
+        let shown = model.show_day((day != today).then_some(day));
+        model.hold(&format!("block:{series}@{date}"));
+        shown
+    }
+
     pub(crate) fn day_move(&self, step: DayMove, model: &mut Model) -> Command<Effect, Event> {
         let Some(store) = &model.store else { return Command::done() };
         let today = store.now.date();

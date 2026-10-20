@@ -855,6 +855,21 @@ class LumennaTest {
     }
 
     @Test
+    fun aBlocksReminderOpensItsDayWithTheBlockInHand() {
+        // A day of its own, fixed: today's would hold now, which the day opens on.
+        val date = "2030-06-12"
+        seed {
+            it.addBlock(newBlock(title = "Deep work", at = "9:00", minutes = 60u, date = date, kind = "work", repeat = null))
+            it.addBlock(newBlock(title = "Admin", at = "14:00", minutes = 60u, date = date, kind = "work", repeat = null))
+        }
+        val series = core.device.plan(date).blocks.first { it.title == "Admin" }.series
+        tab("Tasks")
+        rule.runOnIdle { opened.value = 1L to ReminderOpened("block", series, date) }
+        rule.waitUntil(5_000) { core.app.view.value?.focus == "block:$series@$date" }
+        says("Admin", "work block")
+    }
+
+    @Test
     fun anOverrunsReplanButtonOpensReplanFromNow() {
         replannedDay()
         tab("Tasks")

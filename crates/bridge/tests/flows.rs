@@ -450,6 +450,28 @@ fn go_to_day_asks_for_a_day_and_keeps_one_it_cannot_read_in_the_question() {
 }
 
 #[test]
+fn a_blocks_day_opens_from_anywhere_with_that_block_in_hand_and_lands_there() {
+    let mut app = App::new();
+    let date = jiff::Zoned::now().date().checked_add(jiff::Span::new().days(3)).unwrap().to_string();
+    block(&mut app, "Deep work", "09:00", &date, None);
+    block(&mut app, "Admin", "14:00", &date, None);
+    app.send(Event::Day(DayMove::Ask));
+    app.send(Event::Answer(Answer::Text { text: date.clone() }));
+    let admin = app.view().day.unwrap().items.into_iter().find(|i| i.block.as_ref().is_some_and(|b| b.title == "Admin")).unwrap();
+    let (key, series) = (admin.key, admin.block.unwrap().series);
+    app.send(Event::Open(Place::Tasks));
+    let landing = app.view().landing;
+    // As a reminder names it: the series and the occurrence's day.
+    let shell = app.send(Event::ShowBlock { series, date });
+    let view = app.view();
+    assert_eq!(view.place, Some(Place::Today));
+    assert!(!view.day.unwrap().today);
+    assert_eq!(view.focus, Some(key));
+    assert!(view.landing > landing);
+    assert!(shell.iter().any(|s| matches!(s, Shell::Heading(summary) if summary.starts_with("2 blocks"))), "{shell:?}");
+}
+
+#[test]
 fn a_block_with_a_sitting_folds_it_away() {
     let mut app = App::new();
     block(&mut app, "Deep work", "09:00", "tomorrow", None);
