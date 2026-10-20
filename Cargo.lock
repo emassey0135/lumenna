@@ -2986,7 +2986,6 @@ dependencies = [
  "lumenna-bridge",
  "lumenna-host",
  "lumenna-records",
- "serde",
  "serde_json",
 ]
 

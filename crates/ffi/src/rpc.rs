@@ -15,7 +15,6 @@ use lumenna_host::Lumenna;
 use lumenna_host::rpc::{AppSession, Notify};
 use lumenna_records::{LumennaError, Syntax};
 use lumenna_records::proposals::TimeStyle;
-use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use crate::{App, Device, Locale, Shell, ShellEvent, Turn};
@@ -102,32 +101,9 @@ impl AppSession for Session {
                 let completions = self.app.complete(text, cursor, syntax).map_err(|e: LumennaError| e.message().to_owned())?;
                 serde_json::to_value(completions).map_err(|e| e.to_string())?
             }
-            // What a client asks itself, in the core's words: Go to Day's question, for a pick's
-            // "Another day" (`PickFrom`), and pairing's words.
-            "question" => match params.get("name").and_then(Value::as_str) {
-                Some("go_to_day") => serde_json::to_value(lumenna_records::go_to_day_question()).map_err(|e| e.to_string())?,
-                // Why a key does nothing, for one the client offers itself: a reminder's.
-                Some("not_offered") => {
-                    let kind: lumenna_records::ActionKind = read(params, "kind")?;
-                    let subject: lumenna_records::Subject = read(params, "subject")?;
-                    Value::String(lumenna_records::not_offered(kind, subject, false))
-                }
-                // Pairing's sentences, for what the client asks itself: the words' question.
-                Some("pairing") => {
-                    let name = params.get("device").and_then(Value::as_str).unwrap_or("this device").to_owned();
-                    serde_json::to_value(lumenna_records::pairing_words(name, true)).map_err(|e| e.to_string())?
-                }
-                other => return Err(format!("no question called {other:?}")),
-            },
             other => return Err(format!("no app method called '{other}'")),
         })
     }
-}
-
-/// The param `key`, read as a `T`.
-fn read<T: DeserializeOwned>(params: &Value, key: &str) -> Result<T, String> {
-    let value = params.get(key).cloned().ok_or_else(|| format!("no {key}"))?;
-    serde_json::from_value(value).map_err(|e| format!("{key}: {e}"))
 }
 
 /// Each turn, as the client's notification.

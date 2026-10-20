@@ -218,9 +218,9 @@ A summary of what was missed is dismissed one by one."
   (lumenna--tick)
   (lumenna-reminders--redraw))
 
-(defun lumenna-reminders--not-offered (kind)
-  "Why a reminder does not offer KIND, in the core's words."
-  (jsonrpc-request (lumenna--connection) 'app.question (list :name "not_offered" :kind kind :subject "reminder")))
+(defun lumenna-reminders--not-offered (_kind)
+  "Why a reminder does not offer an action: it has no button for it."
+  "Nothing to do here")
 
 (defun lumenna-reminders--carry-p (reminder)
   "Whether REMINDER offers to carry its block's short work forward."

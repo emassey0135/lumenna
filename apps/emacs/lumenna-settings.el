@@ -156,8 +156,8 @@ core reads and checks it, asking again with why when it refuses."
 ;;;; Pairing
 
 (defun lumenna--pairing-words ()
-  "Pairing's sentences and buttons, the core's."
-  (jsonrpc-request (lumenna--connection) 'app.question (list :name "pairing" :device (system-name))))
+  "Pairing's sentences and buttons, the core's, as the Devices page has them."
+  (lumenna--on-devices (plist-get (plist-get lumenna--view :devices) :words)))
 
 (defun lumenna--pairing ()
   "The pairing this buffer's screen shows, if one is open."
@@ -218,26 +218,27 @@ Only when asked: the clipboard is the person's own."
 (defun lumenna--pairing-turned (turn)
   "Say this device's code once it shows one, and ask whether the words match once
 they come: a pairing's steps arrive by themselves, in TURN."
-  (let* ((pairing (plist-get (plist-get (plist-get turn :view) :devices) :pairing))
+  (let* ((devices (plist-get (plist-get turn :view) :devices))
+         (pairing (plist-get devices :pairing))
          (screen (plist-get turn :screen)))
     (when-let* ((code (plist-get pairing :mine)))
       (unless (equal code lumenna--code-shown)
         (setq lumenna--code-shown code)
-        (let ((words (lumenna--pairing-words)))
+        (let ((words (plist-get devices :words)))
           (message "%s %s: %s" (plist-get words :waiting) (plist-get words :my_code) code))))
     (let ((shown (append (plist-get pairing :words) nil)))
       (when (and shown (not (equal shown lumenna--words-asked)))
         (setq lumenna--words-asked shown)
         ;; Asked after the process filter has returned: a question from inside it
         ;; would hold up every other message.
-        (run-at-time 0 nil #'lumenna--ask-words screen shown)))))
+        (run-at-time 0 nil #'lumenna--ask-words screen shown (plist-get devices :words))))))
 
 (add-hook 'lumenna-turned-functions #'lumenna--pairing-turned)
 
-(defun lumenna--ask-words (screen shown)
-  "Ask whether SHOWN, the three words, match the other device's; tell SCREEN."
-  (let* ((words (lumenna--pairing-words))
-         (matched (yes-or-no-p
+(defun lumenna--ask-words (screen shown words)
+  "Ask whether SHOWN, the three words, match the other device's; tell SCREEN.
+WORDS are pairing's, the core's."
+  (let* ((matched (yes-or-no-p
                    (lumenna--prompt (format "%s %s" (plist-get words :match_message) (string-join shown ", "))
                                     (plist-get words :match_title)))))
     (lumenna-send (list :Devices (list :Pair (list :Confirm (if matched t :json-false)))) screen)))

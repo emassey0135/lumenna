@@ -1017,10 +1017,11 @@ until the app has taken it in."
     (lumenna-test--deliver)
     (lumenna-reminders-due)
     (lumenna-test--goto "Deep work starts")
+    ;; Its own list, not the app's: a reminder without the button refuses its key plainly.
     (should (equal (cadr (should-error (lumenna-reminders-carry) :type 'user-error))
-                   "That does not apply here."))
+                   "Nothing to do here"))
     (should (equal (cadr (should-error (lumenna-reminders-replan) :type 'user-error))
-                   "That does not apply here."))))
+                   "Nothing to do here"))))
 
 (ert-deftest lumenna-replan-offers-other-options-each-proposed-in-place-when-taken ()
   (lumenna-test--planning "2030-01-15T10:40"

@@ -168,6 +168,8 @@ The daemon's socket if it answers, else a `lum rpc' of its own."
       (clrhash lumenna--screens)
       (setq lumenna--clock nil)
       (lumenna--follow-clock)
+      ;; What pairing's sentences call this device, which finds others on its network.
+      (jsonrpc-notify connection 'app.send (list :screen 0 :event (list :PairingAs (list :called "this computer" :nearby t))))
       (lumenna--start-ticking)
       (run-hooks 'lumenna-connected-hook)))
   lumenna--connection)
@@ -316,6 +318,9 @@ EVENT is the app's in its JSON shape: \"Undo\", (:Focus ID),
 (defvar lumenna--acting nil
   "The action whose sentence is still to come, as `SUBJECT/KIND'.")
 
+(defvar lumenna--heard nil
+  "While bound to a list, what turns say is kept there instead of said: a refusal.")
+
 (defun lumenna--turned (turn)
   "Draw TURN in every buffer drawing its screen, then say what it says."
   (let ((screen (plist-get turn :screen)))
@@ -328,6 +333,9 @@ EVENT is the app's in its JSON shape: \"Undo\", (:Focus ID),
       ;; Where to keep it is asked after the process filter has returned.
       (run-at-time 0 nil #'lumenna--save-file file))
     (let ((said (append (plist-get turn :said) nil)))
+      (when (and said lumenna--heard)
+        (setcdr (last lumenna--heard) said)
+        (setq said nil))
       (when said
         (when lumenna--acting
           (run-hook-with-args 'lumenna-changed-functions lumenna--acting nil)
@@ -603,38 +611,25 @@ Asked again after REFUSAL, the core's reason, with what was typed."
                  (read-from-minibuffer prompt initial))
                 (t (read-string prompt initial))))))
 
-(defun lumenna-ask-day ()
-  "A day, as Go to Day asks for one in the core's words."
-  (let ((question (jsonrpc-request (lumenna--connection) 'app.question (list :name "go_to_day"))))
-    (read-from-minibuffer (lumenna--prompt (lumenna--question-title question) (plist-get question :hint)
-                                           (plist-get question :label))
-                          (plist-get question :initial))))
-
 (defun lumenna--ask-pick (asking)
-  "Pick one of what ASKING offers.
-`:again' when another day's blocks were asked for instead."
+  "Pick one of what ASKING offers: Put in a Block's ends in Another Day, the app's."
   (let* ((question (plist-get asking :question))
          (choices (append (plist-get (plist-get asking :choices) :choices) nil))
          (lines (append (plist-get lumenna--lines :choices) nil))
          (named (lumenna--unique (cl-mapcar (lambda (choice line) (cons (plist-get line :text) choice))
                                             choices lines)))
-         (another (plist-get asking :another_day))
-         (named (if another (append named (list (cons another :another))) named))
          ;; Why a choice is offered ("Suggested because ...") is its description:
          ;; beside it as completion shows it, never in the name typed.
          (completion-extra-properties
           (list :annotation-function
                 (lambda (line)
                   (let* ((choice (cdr (assoc line named)))
-                         (reason (and (listp choice) (plist-get choice :reason))))
+                         (reason (plist-get choice :reason)))
                     (if (and reason (not (string-empty-p reason))) (concat "  " reason) "")))))
          (picked (cdr (assoc (completing-read (lumenna--prompt (plist-get asking :refusal) (plist-get question :title))
                                               named nil t)
                              named))))
-    (cond ((eq picked :another)
-           (lumenna-send (list :PickFrom (lumenna-ask-day)))
-           :again)
-          (picked (list :answer "picked" :id (plist-get picked :id))))))
+    (when picked (list :answer "picked" :id (plist-get picked :id)))))
 
 (defun lumenna--ask-choose (question)
   "One of QUESTION's answers, by its title."
@@ -765,9 +760,15 @@ where it offers none, the core's sentence says why."
     (cond ((cdr matching) (lumenna-act (lumenna--choose-action "Which one: " matching) row))
           (matching (lumenna-act (car matching) row))
           ((null actions) (user-error "Nothing to do here"))
-          (t (user-error "%s" (jsonrpc-request (lumenna--connection) 'app.question
-                                               (list :name "not_offered" :kind (car kinds)
-                                                     :subject (plist-get (car actions) :subject))))))))
+          (t (lumenna--refuse row kinds)))))
+
+(defun lumenna--refuse (row kinds)
+  "Run KINDS on ROW, which offers none of them, and refuse with why: the app's words."
+  (lumenna--hold row)
+  (let ((lumenna--heard (list 'heard)))
+    (lumenna-send (list :Run (vconcat kinds)))
+    (lumenna--settle)
+    (user-error "%s" (string-join (or (cdr lumenna--heard) '("Nothing to do here")) " "))))
 
 (defun lumenna-act-at-point ()
   "Choose one of the actions offered on this line, by name, and do it."

@@ -299,10 +299,9 @@ endpoint (`Endpoint::serve`, `Lumenna::serve_commands`).
   shape; every turn comes back as a `lumenna/turn` notification (`screen`, `seq`, `view`,
   `lines`, `said`, `files` with base64 `data`, `notices`), worded in English in the clock
   `app.clock {twenty_four}` gave. `app.view`, `app.close`, `app.still`, `app.tick` and
-  `app.complete` (at keystroke rate, straight from the store) answer the rest, and
-  `app.question` the words a client asks itself: Go to Day's question, pairing's words, why a
-  key does nothing. A client keeps no copy of any rule: there are no form helpers over RPC,
-  since the app's own forms and questions are what a client draws. In a `lum rpc` of the client's own (nothing else held the
+  `app.complete` (at keystroke rate, straight from the store) answer the rest. A client keeps
+  no copy of any rule and asks for no words: there are no form helpers over RPC, since the
+  app's own forms, questions and words are what a client draws. In a `lum rpc` of the client's own (nothing else held the
   endpoint, or it would have relayed) the app keeps the device in sync once paired, as every
   app does, and serves the profile's address while it holds the endpoint (`keeps_in_sync`);
   in the daemon or a desktop app, whose own service syncs, it never does.
@@ -722,7 +721,7 @@ against a real `lum rpc`, answering the minibuffer by rebinding the reading func
 - **A list's keys are defined once** (`lumenna-define-keys`), which binds them, builds the
   menu, and lists them for `?` in an ordinary buffer. A row's key runs the row's action of
   that kind (`lumenna-define-action`, `lumenna-act-kind`); `.` offers them all by title, and a
-  key the row does not offer refuses with the core's sentence (`app.question`). Sounds key on
+  key the row does not offer refuses with the app's sentence (`Run`, `lumenna--refuse`). Sounds key on
   the action's `subject/kind`. Not transient: Emacsvox reads a transient by asking whether its
   command was called interactively, and Emacs 31's transient wraps each command, so moving
   through one was silent.

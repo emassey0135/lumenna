@@ -46,7 +46,6 @@ pub const METHODS: &[&str] = &[
     "app.in_front",
     "app.clock",
     "app.complete",
-    "app.question",
     "shutdown",
     "task.add",
     "task.list",

@@ -16,7 +16,7 @@ default = ["network"]
 # phone over the link alone: watchOS allows no sockets.
 network = ["lumenna-bridge/network", "lumenna-host/sync"]
 # The command surface over JSON-RPC, served while this device's endpoint is held: the Mac's.
-rpc = ["network", "lumenna-bridge/rpc", "lumenna-host/rpc", "dep:base64", "dep:jiff", "dep:serde", "dep:serde_json"]
+rpc = ["network", "lumenna-bridge/rpc", "lumenna-host/rpc", "dep:base64", "dep:jiff", "dep:serde_json"]
 
 [dependencies]
 base64 = { version = "0.22", optional = true }
@@ -28,7 +28,6 @@ lumenna-bridge = { path = "../bridge" }
 lumenna-host = { workspace = true, features = ["link"] }
 lumenna-records.workspace = true
 jiff = { workspace = true, optional = true }
-serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 
 [lints]

@@ -120,8 +120,7 @@ A day that does not offer it says the app's sentence."
          (action (seq-find (lambda (a) (equal (plist-get a :kind) kind)) (append (plist-get heading :actions) nil))))
     (if action
         (lumenna-act action heading)
-      (user-error "%s" (jsonrpc-request (lumenna--connection) 'app.question
-                                        (list :name "not_offered" :kind kind :subject "day"))))))
+      (lumenna--refuse heading (list kind)))))
 
 (defun lumenna-day-plan ()
   "Plan the day shown: each work block still to come given its most urgent tasks."
