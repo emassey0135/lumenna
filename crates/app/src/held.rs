@@ -87,6 +87,13 @@ impl Screen {
         }
     }
 
+    /// Whether the devices' row in hand is this device's own, which cannot unpair itself.
+    pub(crate) fn holds_this_device(&self) -> bool {
+        let view = crate::view::view(self);
+        let Some(id) = view.devices_held.focus else { return false };
+        view.devices.and_then(|d| d.list).is_some_and(|list| list.devices.iter().any(|d| d.node_id == id && d.this_device))
+    }
+
     pub(crate) fn held_mut(&mut self, side: Side) -> &mut Held {
         match side {
             Side::Sidebar => &mut self.sidebar_held,

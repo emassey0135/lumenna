@@ -12,7 +12,7 @@ use lumenna_app::Side;
 use lumenna_app::lines::Lines;
 use lumenna_ffi::ShellEvent;
 use lumenna_records::reminders::{ReminderList, ReminderView};
-use lumenna_records::{Action, ActionKind, Subject, not_offered};
+use lumenna_records::{Action, ActionKind};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::Input::KeyboardAndMouse::VK_DELETE;
@@ -129,16 +129,11 @@ impl Reminders {
     /// The chosen reminder's action of `kind`, as the app's, or why it has none.
     fn act(&self, hwnd: HWND, kind: ActionKind) {
         let Some(reminder) = self.chosen(hwnd) else { return };
+        app::send(ShellEvent::Hold(Side::Reminders, reminder.id.clone()));
         match actions::of_kind(&reminder.actions, &[kind]) {
-            Some(action) => {
-                app::send(ShellEvent::Hold(Side::Reminders, reminder.id));
-                app::send(ShellEvent::Perform(action));
-            }
-            None => {
-                let status = self.status.get();
-                controls::set_text(status, &speech::sentence(&not_offered(kind, Subject::Reminder, false)));
-                a11y::changed(status);
-            }
+            Some(action) => app::send(ShellEvent::Perform(action)),
+            // Said by the app, on this dialog's status line.
+            None => app::send(ShellEvent::Run(vec![kind])),
         }
     }
 }

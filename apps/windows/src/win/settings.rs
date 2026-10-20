@@ -17,7 +17,7 @@ use lumenna_app::lines::Lines;
 use lumenna_app::settings::SettingsEvent;
 use lumenna_app::{DevicesEvent, Side, ViewModel};
 use lumenna_ffi::ShellEvent;
-use lumenna_records::{ActionKind, ExportFormat, Setting, Subject, not_offered};
+use lumenna_records::{ActionKind, ExportFormat, Setting};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::Controls::{
@@ -739,14 +739,14 @@ impl Devices {
     }
 
     /// The chosen device's action of `kind`, as the app's: a device cannot unpair itself, so
-    /// its own row has no Unpair.
+    /// its own row has no Unpair, and the app says why on this page's status line.
     fn act(&self, page: HWND, kind: ActionKind) {
         let Some(device) = self.chosen(page) else { return };
-        let Some(action) = actions::of_kind(&device.actions, &[kind]) else {
-            return say(page, &not_offered(kind, Subject::Device, device.this_device));
-        };
         app::send(ShellEvent::Hold(Side::Devices, device.node_id));
-        app::send(ShellEvent::Perform(action));
+        match actions::of_kind(&device.actions, &[kind]) {
+            Some(action) => app::send(ShellEvent::Perform(action)),
+            None => app::send(ShellEvent::Run(vec![kind])),
+        }
     }
 
     /// Rename and Unpair as the chosen device offers them. The button with focus stays as it

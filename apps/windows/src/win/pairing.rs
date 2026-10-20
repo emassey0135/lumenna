@@ -14,7 +14,7 @@ use std::rc::Rc;
 use lumenna_app::network::PairingView;
 use lumenna_app::{DevicesEvent, PairEvent};
 use lumenna_ffi::ShellEvent;
-use lumenna_records::{PairingWords, pairing_words};
+use lumenna_records::PairingWords;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::WindowsAndMessaging::{BS_PUSHBUTTON, EN_CHANGE, ES_AUTOHSCROLL, ES_READONLY, EndDialog, IDCANCEL, WS_BORDER, WS_TABSTOP};
@@ -37,7 +37,8 @@ const STATUS: u16 = 199;
 pub struct Pairing {
     hwnd: Cell<HWND>,
     status: Cell<HWND>,
-    /// Every sentence and button, the core's; the access keys are this dialog's.
+    /// Every sentence and button, the app's, as it calls this PC; the access keys are this
+    /// dialog's.
     words: PairingWords,
     /// The words last asked about, so each set is asked once.
     asked: RefCell<Option<Vec<String>>>,
@@ -167,11 +168,16 @@ impl Dialog for Pairing {
 /// Runs the pairing dialog over `owner` until the app has paired or the person gives up.
 pub fn run(app: &App, owner: HWND) {
     let name = system::computer_name();
+    // Opened from the Devices page, which has shown the app's devices already.
+    if app.crux.view().devices.is_none() {
+        app.crux.send(ShellEvent::Devices(DevicesEvent::Show));
+    }
     app.crux.send(ShellEvent::Devices(DevicesEvent::Pair(PairEvent::Open(name))));
+    let Some(words) = app.crux.view().devices.map(|devices| devices.words) else { return };
     let pairing = Rc::new(Pairing {
         hwnd: Cell::new(HWND::default()),
         status: Cell::new(HWND::default()),
-        words: pairing_words("this PC".to_owned(), true),
+        words,
         asked: RefCell::new(None),
         closed: Cell::new(false),
     });

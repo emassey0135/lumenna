@@ -132,7 +132,7 @@ impl Sidebar {
             TVN_KEYDOWN => {
                 // Delete and F2 do what they do in Explorer: the row's own Delete, asking first
                 // as the context menu's does, and its Rename. Where there is none, as for the
-                // Inbox, the core says why.
+                // Inbox, the app says why.
                 let key = unsafe { &*(lparam.0 as *const NMTVKEYDOWN) }.wVKey;
                 let kind = match key {
                     k if k == VK_DELETE.0 => ActionKind::Delete,
@@ -142,7 +142,12 @@ impl Sidebar {
                 if let Some(entry) = self.selected() {
                     match actions::of_kind(&entry.actions, &[kind]) {
                         Some(action) => self.act(app, &entry, action),
-                        None => actions::say_not_offered(app, &entry.actions, kind),
+                        // A heading has no actions, and stays quiet.
+                        None if !entry.actions.is_empty() => {
+                            app.crux.send(ShellEvent::Hold(Side::Sidebar, entry.key()));
+                            app.crux.send(ShellEvent::Run(vec![kind]));
+                        }
+                        None => {}
                     }
                 }
                 Some(1)

@@ -1150,8 +1150,8 @@ store of their own). Everything Win32 is in `src/win/` behind
   the question is still open while the write is under way, and asking then asked it twice. Only
   a question counts as asking, since a dialog of the app's asks questions of its own. Each dialog
   draws from the app's current view and closes when the app's screen does; a refusal is said
-  once and what was typed kept. A pick's list ends in the app's `another_day` ("Another
-  Day..."), which asks for a day in the core's words and sends `PickFrom`.
+  once and what was typed kept. Put in a Block's pick ends in the app's own Another Day, which
+  the app follows with Go to Day's question and that day's blocks.
 - **What the app says goes to the status line of the dialog in front** (`App::open_live`), a
   dialog hiding the window's: a proposal's screen, a settings page, pairing, a reminder list.
   What it says as the app closes that dialog is said where it goes next, once it has gone.

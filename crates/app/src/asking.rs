@@ -414,7 +414,8 @@ impl Lumenna {
             (Some(action), _) => self.perform(action.clone(), model),
             (None, Some(kind)) => {
                 let subject = actions.first().map_or(Subject::Task, |a| a.subject);
-                say(not_offered(*kind, subject, false))
+                let this_device = model.acting == Some(crate::Side::Devices) && model.holds_this_device();
+                say(not_offered(*kind, subject, this_device))
             }
             (None, None) => Command::done(),
         }

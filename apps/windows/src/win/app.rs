@@ -336,6 +336,8 @@ impl App {
         crux.send(ShellEvent::Clock(proposal::style()));
         // Title Case, as Windows writes its buttons and menus.
         crux.send(ShellEvent::Capitals(Capitals::Title));
+        // How pairing's sentences call this device; it finds devices on its own network.
+        crux.send(ShellEvent::PairingAs { called: "this PC".to_owned(), nearby: true });
         // Resident, so in front for as long as it runs: the device's sync process once another
         // device is paired, which then answers the command surface at the profile's pipe, as
         // the daemon would, so Emacs and the BTSpeak app reach it.
@@ -1029,6 +1031,11 @@ impl App {
             return self.say("No task is selected");
         };
         let Some(action) = actions::of_kind(&offered, kinds) else {
+            // The details show the list's row in hand, so the app says why it has no such
+            // action; beside the day they show a sitting's task, which the app's row is not.
+            if self.task_list().is_some() {
+                return self.crux.send(ShellEvent::Run(kinds.to_vec()));
+            }
             return actions::say_not_offered(self, &offered, kinds[0]);
         };
         self.detail.act(self, action);

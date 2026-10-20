@@ -1129,6 +1129,32 @@ fn a_key_a_side_lists_row_does_not_offer_is_refused_there_in_the_cores_words() {
 }
 
 #[test]
+fn unpair_on_this_devices_own_row_says_it_is_the_device_in_use() {
+    use lumenna_records::{DeviceList, DeviceView};
+    let mut app = App::new();
+    app.send(Event::Devices(lumenna_app::DevicesEvent::Show));
+    // Paired, as the host would list it: a device is listed only once paired.
+    let this = DeviceView {
+        name: "This PC".to_owned(),
+        platform: "windows".to_owned(),
+        node_id: "ab12".to_owned(),
+        this_device: true,
+        paired_at: "2026-10-20T00:00:00Z".to_owned(),
+        last_attempt: None,
+        last_success: None,
+        last_error: None,
+        schema_version: 1,
+        status: Vec::new(),
+        actions: lumenna_records::actions::device("This PC", "ab12", true),
+    };
+    let list = DeviceList { announcement: String::new(), notices: Vec::new(), devices: vec![this], empty: String::new() };
+    app.send(Event::Answered(lumenna_app::HostAnswer::Devices(Ok(list))));
+    app.send(Event::Hold(lumenna_app::Side::Devices, "ab12".to_owned()));
+    let shell = app.send(Event::Run(vec![ActionKind::Unpair]));
+    assert!(said(&shell).iter().any(|s| s.starts_with("This is the device you are using")), "{shell:?}");
+}
+
+#[test]
 fn pairings_words_come_with_the_devices_as_the_shell_is_called_in_them() {
     let mut app = App::new();
     app.send(Event::PairingAs { called: "this watch".to_owned(), nearby: true });

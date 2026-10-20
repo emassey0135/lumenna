@@ -407,7 +407,7 @@ fn a_task_is_put_in_a_block_from_this_weeks_work_blocks_or_another_days() {
     let choices: Vec<&String> = picker.iter().filter(|l| l.trim_start().starts_with("ListItem")).collect();
     assert_eq!(choices.len(), 8, "a work block a day for a week, no breaks, then another day: {choices:#?}");
     assert!(choices[0].contains("Today") && choices[0].contains("Deep work"), "{}", choices[0]);
-    assert!(choices[7].contains("Another Day..."), "{}", choices[7]);
+    assert!(choices[7].contains("Another Day"), "{}", choices[7]);
     app.post(&["enter", "text:30", "enter"]);
     assert!(app.says(|s| s.starts_with("Scheduled Write report into Deep work")), "{}", app.status());
 
