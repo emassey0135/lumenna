@@ -1138,3 +1138,17 @@ fn pairings_words_come_with_the_devices_as_the_shell_is_called_in_them() {
     app.send(Event::PairingAs { called: "this browser".to_owned(), nearby: false });
     assert!(!app.view().devices.unwrap().words.waiting.contains("On this network"), "by code alone");
 }
+
+#[test]
+fn a_reminder_without_carry_forward_refuses_it_in_the_cores_words() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    let since = jiff::Timestamp::now().to_string();
+    let tz = jiff::tz::TimeZone::system();
+    let now = jiff::Zoned::now().date().tomorrow().unwrap().at(8, 56, 0, 0).to_zoned(tz).unwrap().timestamp().to_string();
+    app.send(Event::Due(lumenna_app::DueEvent::Look { since, now: Some(now) }));
+    let id = app.view().due[0].id.clone();
+    let shell = app.send(Event::Due(lumenna_app::DueEvent::Carry(id.clone())));
+    assert!(said(&shell).iter().any(|s| s.contains("does not apply")), "{shell:?}");
+    assert_eq!(app.view().due.len(), 1, "and it stays due");
+}

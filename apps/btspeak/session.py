@@ -68,6 +68,8 @@ class Session:
             ),
             # Every capital costs a braille cell, and the device's own menus are in sentence case.
             self.lumenna.ShellEventCapitals(self.lumenna.Capitals.SENTENCE),
+            # What pairing's sentences call this device, which finds others on its network.
+            self.lumenna.ShellEventPairingAs("this device", True),
         )
 
     # -- turns ------------------------------------------------------------------------

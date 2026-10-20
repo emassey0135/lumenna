@@ -138,8 +138,9 @@ def due(session: Session) -> str:
         session.send(L.ShellEventDue(L.DueEventReplan(row.key)))
         return actions.follow(session)
 
-    def no(kind):
-        return lambda row: actions.not_offered(kind, row, L.Subject.REMINDER)
+    def no(event):
+        # The app refuses a button the reminder lacks, in the core's words.
+        return lambda row: session.send(L.ShellEventDue(event(row.key)))
 
     with screen("lumenna-reminders"):
         live_menu(
@@ -150,10 +151,10 @@ def due(session: Session) -> str:
                         applies=lambda row: bool(row.record.snooze)),
                 # A block's end that left work short: its text ends in the question this answers.
                 Command(lambda row: session.sentence(row.record.carry or ""), deal(L.DueEventCarry), key="f",
-                        applies=lambda row: bool(row.record.carry), refuse=no(K.CARRY_REST)),
+                        applies=lambda row: bool(row.record.carry), refuse=no(L.DueEventCarry)),
                 # A block's work outrunning its time: Replan from now.
                 Command(lambda row: session.sentence(row.record.replan or ""), replan, key="p",
-                        applies=lambda row: bool(row.record.replan), refuse=no(K.REPLAN)),
+                        applies=lambda row: bool(row.record.replan), refuse=no(L.DueEventReplan)),
             ],
             app=undo_commands(session),
             empty="Nothing has come due.",

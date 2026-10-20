@@ -190,29 +190,16 @@ def ask(session: Session, asking, row=None) -> str:
     return f"This app cannot ask that question yet; update it to {named(action)}" if action else ""
 
 
-#: The choice that asks for another day's work blocks, beside the week's.
-ANOTHER_DAY = "\0another day"
-
-
 def ask_pick(session: Session, asking, question, wrong: str) -> str:
-    """One of what the app offers, each said as its line, why it is offered its hint; or, where
-    the pick can offer another day's blocks, a day named for the app to offer instead."""
+    """One of what the app offers, each said as its line, why it is offered its hint. Put in a
+    Block's ends in Another Day, the app's own: picked, the app asks which day."""
     offered = asking.choices.choices if asking.choices is not None else []
     lines = session.lines().choices
     options = {choice.id: (lines[i].text if i < len(lines) else choice.title) for i, choice in enumerate(offered)}
-    if asking.another_day:
-        options[ANOTHER_DAY] = asking.another_day
     picked = choose(options, prompt(wrong, question.title or named(asking.action)),
                     hints={choice.id: choice.reason for choice in offered})
     if picked is None:
         return session.send(L.ShellEventCancel())
-    if picked == ANOTHER_DAY:
-        day = L.go_to_day_question()
-        when = dialogs.request_input(prompt(day.title, day.hint), default_text=day.initial)
-        if not when or not when.strip():
-            return session.send(L.ShellEventCancel())
-        # The pick stays open, offering that day's blocks; `follow` asks it again.
-        return session.send(L.ShellEventPickFrom(when.strip()))
     return session.send(L.ShellEventAnswer(L.AnswerPicked(picked, None)))
 
 
@@ -239,16 +226,11 @@ def fold(session: Session, row, open_: bool) -> str:
     return run_kind(session, row, K.EXPAND if open_ else K.COLLAPSE)
 
 
-def not_offered(kind, row, subject=None) -> str:
-    """Why `row` does not offer `kind`, in the core's words."""
-    own = getattr(row, "actions", None) or []
-    subject = own[0].subject if own else subject
-    if subject is None:
-        return "Nothing to do here"
-    try:
-        return L.not_offered(kind, subject, bool(getattr(getattr(row, "record", None), "this_device", False)))
-    except Exception as error:  # noqa: BLE001 - the core's refusal
-        return refused(error)
+def not_offered(session: Session, kind, row) -> str:
+    """A key `row` does not offer: the app runs it there and says why, in the core's words."""
+    said = [session.send(held(row))] if row is not None and getattr(row, "key", None) else []
+    said.append(session.send(L.ShellEventRun([kind])))
+    return joined(*said)
 
 
 def _slots(rows) -> list:
@@ -282,11 +264,6 @@ def commands(session: Session, rows, before=(), after=()) -> list[Command]:
     """The rows' actions as context commands, between this screen's own `before` (Show its
     tasks) and `after`: each offered on the rows that have it, under the row's own title."""
     made = []
-    # What each kind is done to on this screen, for a row with no actions of its own.
-    subjects = {}
-    for row in rows:
-        for action in row.actions:
-            subjects.setdefault(action.kind, action.subject)
     for kind, nth in _slots(rows):
         key = KEYS.get(kind, "") if nth == 0 else ""
         made.append(Command(
@@ -297,7 +274,7 @@ def commands(session: Session, rows, before=(), after=()) -> list[Command]:
             deletes=kind in DELETES and nth == 0,
             # A letter with several of its kind on the row asks which.
             by_key=(lambda row, kind=kind: run_kind(session, row, kind)) if key else None,
-            refuse=(lambda row, kind=kind: not_offered(kind, row, subjects.get(kind))) if key else None,
+            refuse=(lambda row, kind=kind: not_offered(session, kind, row)) if key else None,
         ))
     return [*before, *made, *after]
 

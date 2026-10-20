@@ -7,7 +7,7 @@
 
 use crux_core::Command;
 use crux_core::render::render;
-use lumenna_records::LumennaError;
+use lumenna_records::{ActionKind, LumennaError};
 use lumenna_records::reminders::{DueReminder, DueReminders};
 use serde::{Deserialize, Serialize};
 
@@ -118,6 +118,16 @@ pub fn arrived(found: &DueReminders) -> Vec<Due> {
 }
 
 
+/// Whether the reminder `id` due offers what `has` asks of it.
+fn offers(model: &Screen, id: &str, has: impl Fn(&Due) -> bool) -> bool {
+    model.due.iter().any(|d| d.id == id && has(d))
+}
+
+/// Why a reminder does not offer `kind`.
+fn not_offered(kind: ActionKind) -> String {
+    lumenna_records::not_offered(kind, lumenna_records::Subject::Reminder, false)
+}
+
 /// What a reminder's button does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Deal {
@@ -165,6 +175,9 @@ impl Lumenna {
             }
             DueEvent::Dismiss(id) => self.deal(&id, Deal::Dismiss, model),
             DueEvent::Snooze(id) => self.deal(&id, Deal::Snooze, model),
+            // A reminder without the button refuses it, in the core's words.
+            DueEvent::Carry(id) if !offers(model, &id, |d| d.carry.is_some()) => say(not_offered(ActionKind::CarryRest)),
+            DueEvent::Replan(id) if !offers(model, &id, |d| d.replan.is_some()) => say(not_offered(ActionKind::Replan)),
             DueEvent::Carry(id) => self.deal(&id, Deal::Carry, model),
             // Cancelled, the warning stays; something replanned, it is dismissed.
             DueEvent::Replan(id) => {

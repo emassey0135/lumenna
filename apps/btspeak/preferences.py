@@ -221,10 +221,13 @@ def sync_now(session: Session) -> str:
         return session.wait_said(SYNC_FOR)
 
 
-def pairing_words(session: Session, name: str = "this device"):
+def pairing_words(session: Session):
     """Pairing's sentences and buttons, the core's: on this network the device finds the
     other by itself, through Avahi."""
-    return L.pairing_words(name, True, L.Capitals.SENTENCE)
+    if session.view().devices is None:
+        # Pairing's words come with the Devices page, wherever pairing is asked for.
+        session.send(L.ShellEventDevices(L.DevicesEventShow()))
+    return session.view().devices.words
 
 
 def ask_code(session: Session) -> str | None:
