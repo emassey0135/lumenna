@@ -43,7 +43,8 @@ crates/ffi/     the app for the Apple apps, Android and BTSpeak through BoltFFI:
 crates/sync/    Iroh endpoints, the document sync session, and pairing.
 apps/cli/       `lum`, and `lum rpc` for clients that cannot link Rust.
 apps/btspeak/   the BTSpeak app, in Python, over the app in-process (crates/ffi).
-apps/emacs/     the Emacs client, in Elisp, over `lum rpc` or the profile's socket.
+apps/emacs/     the Emacs client, in Elisp, drawing the Crux app over `lum rpc` or the profile's
+                socket, a screen per buffer.
 apps/android/   Jetpack Compose over the Crux app's Kotlin bindings: the phone (app/), Wear OS
                 (wear/), and what they share (shared/).
 apps/apple/     the iOS, macOS and watchOS apps over the Crux app's Swift bindings, Shared/
@@ -92,8 +93,8 @@ without the screens over BoltFFI. No JSON crosses the FFI.
 - **The forms' and the pairing screen's words are the core's** (`fields.rs`): `task_form()`
   and `block_form()` give each field's label, hint, example, control and options;
   `pairing_words(this_device, local)` every sentence and button of pairing;
-  `proposal_words(kind)` (RPC `form.proposal`) the Replan from Now and Plan the Day screens';
-`go_to_day_question`, `new_filter_questions` and `length_question` (RPC `form.go_to_day`, `form.new_filter`, `form.length`) what the apps' own
+  `proposal_words(kind)` the Replan from Now and Plan the Day screens';
+`go_to_day_question`, `new_filter_questions` and `length_question` what the apps' own
   commands ask. A field marked `one_day` is what one day of a repeating block can change. A new block starts at `new_block_start(date)`: the next whole hour today, when
   the day starts on any other day.
   A pick and a text question name their button (`yes`); "OK" is never the answer. A mnemonic or
@@ -128,7 +129,7 @@ without the screens over BoltFFI. No JSON crosses the FFI.
 
 `crates/app` is the screens as a Crux 0.20 app; `crates/bridge` runs it beside a store. The
 web, the Android phone, Wear OS, BTSpeak, the iPhone, iPad, Mac and Apple Watch, Windows and
-GTK are drawn from it entirely; the CLI and Emacs still call the host directly until their turn
+GTK are drawn from it entirely, and Emacs over RPC; only the CLI still calls the host directly
 (the `legacy` tag is the last commit before the move).
 
 - **The app never depends on the host.** It holds the snapshot the host last sent (`Watch`, a
@@ -284,10 +285,6 @@ endpoint (`Endpoint::serve`, `Lumenna::serve_commands`).
 - **`pair` replies when the pairing ends**, talking in between through `lumenna/pairing`
   notifications (`{code, name}`, then `{words}`); the client answers `pair.confirm {match}`
   or `pair.cancel`, and the server keeps answering everything else. One pairing at a time.
-- **`act`, `choices`, `places` and `form.*`** (the form functions: `task_fields`,
-  `task_edit`, `block_fields`, `day_block_fields`, `block_edit`, `new_block`,
-  `block_defaults`, `priorities`, `not_offered`, `project_reference`, `label_reference`; `choices` with `from` is Put in a Block on another day) are here so a client over the pipe keeps no copy of any rule. A form
-  function's answer is a `value` result: computed from what the client sent, nothing read.
 - **The app, for a client that cannot link it** (`app.*`, `Apps`, `AppSession`): at a client's
   first `app.*` call the server opens an `App` over the client's own connection
   (`lumenna_ffi::rpc`, given by whoever serves: `lum rpc`, the daemon, a desktop app), each of
@@ -295,12 +292,13 @@ endpoint (`Endpoint::serve`, `Lumenna::serve_commands`).
   shape; every turn comes back as a `lumenna/turn` notification (`screen`, `seq`, `view`,
   `lines`, `said`, `files` with base64 `data`, `notices`), worded in English in the clock
   `app.clock {twenty_four}` gave. `app.view`, `app.close`, `app.still`, `app.tick` and
-  `app.complete` answer the rest. In a `lum rpc` of the client's own (nothing else held the
+  `app.complete` (at keystroke rate, straight from the store) answer the rest, and
+  `app.question` the words a client asks itself: Go to Day's question, pairing's words, why a
+  key does nothing. A client keeps no copy of any rule: there are no form helpers over RPC,
+  since the app's own forms and questions are what a client draws. In a `lum rpc` of the client's own (nothing else held the
   endpoint, or it would have relayed) the app keeps the device in sync once paired, as every
   app does, and serves the profile's address while it holds the endpoint (`keeps_in_sync`);
   in the daemon or a desktop app, whose own service syncs, it never does.
-- **`complete` and `preview` have no command line**: completion is a keystroke-rate question
-  and a process per keystroke is not an answer.
 - **`lum rpc` takes backups at start and hourly** (`Host::backups`), as the CLI takes them
   before a command; a daemon or app serving the address takes its own.
 
@@ -692,40 +690,56 @@ tests run on `tests/btspeak_stub.py`, with the core built and `target/debug` on 
 
 ## The Emacs client
 
-`apps/emacs/`: Elisp over `jsonrpc.el`, built-in libraries only. Tests are ERT against a
-real `lum rpc`, answering the minibuffer by rebinding the reading functions:
+`apps/emacs/`: Elisp over `jsonrpc.el`, built-in libraries only, drawing the Crux app, which
+runs in the process serving RPC (`app.*`). Each Lumenna buffer is one of its screens; a buffer
+opened from another — a proposal from a day, a reminder list from a list — draws the same
+screen (`lumenna--attach`), and the places' buffer `*Lumenna*` is screen 0. Tests are ERT
+against a real `lum rpc`, answering the minibuffer by rebinding the reading functions:
 `emacs --batch -Q -L apps/emacs -l apps/emacs/test/lumenna-test.el -f ert-run-tests-batch-and-exit`.
 
 - **The socket, else a child.** `lumenna-profile-directory` repeats `lum`'s rule for the
   default profile, because the socket is found by path before there is anything to ask.
-- **Depth is an outline level**: `outline-level` reads the `lumenna-level` text property,
-  so folding and Emacspeak's level announcements come from outline mode.
+- **A buffer draws its screen's turns** (`lumenna/turn`, `lumenna--turned`): its view and the
+  lines the app words, point kept on its row, and moved to the row in hand only when the
+  view's `landing` went up (`lumenna--redraw`). What a turn says goes to
+  `lumenna-announce-function`, `lumenna-changed-functions` first with the action that led to it.
+- **A command waits for the app and answers what it opens** (`lumenna--follow`): it sends its
+  events (`lumenna-send`), waits until the app is still (`app.still`), then asks each question
+  the screen has open in the minibuffer, a refusal asking again with why, fills in the block
+  form, and opens what the app opened as a screen of its own (a proposal, a reminder list,
+  `lumenna-followed-hook`). The row is put in hand only as it is acted on (`Focus`, or `Hold`
+  for a side list), never as point moves. A form a question names (`lumenna-define-form`) is
+  the client's: a task's details, a screen of its own holding the task (`Details(Show)`).
+- **Depth is an outline level**: `outline-level` reads the `lumenna-level` text property, for
+  Emacspeak's level announcements; the folding is the app's (TAB runs Collapse or Expand).
 - **A list's keys are defined once** (`lumenna-define-keys`), which binds them, builds the
   menu, and lists them for `?` in an ordinary buffer. A row's key runs the row's action of
-  that kind (`lumenna-define-action`, `lumenna-act-kind`), its question asked in the
-  minibuffer and answered through `act`; `.` offers them all by title, and a key the row
-  does not offer refuses with `form.not_offered`'s sentence. Sounds key on the
-  action's `subject/kind`. Not transient: Emacsvox reads a
-  transient by asking whether its command was called interactively, and Emacs 31's
-  transient wraps each command, so moving through one was silent.
+  that kind (`lumenna-define-action`, `lumenna-act-kind`); `.` offers them all by title, and a
+  key the row does not offer refuses with the core's sentence (`app.question`). Sounds key on
+  the action's `subject/kind`. Not transient: Emacsvox reads a transient by asking whether its
+  command was called interactively, and Emacs 31's transient wraps each command, so moving
+  through one was silent.
 - **Booleans come back as `:json-false`**, which is non-nil: test them with `lumenna--true`.
-- **Writes go through `lumenna-write`**, which refreshes every Lumenna buffer, runs
-  `lumenna-changed-functions` and hands the announcement to `lumenna-announce-function`.
-  No advice anywhere.
+- **The clock is Emacs's**: `display-time-24hr-format`, told the app as it changes
+  (`app.clock`), which words every time in it.
 - **Three speech layers, each skipped where it would double up**: echo-area text; faces
   through `voice-setup-add-map` plus Emacspeak auditory icons; and under Emacsvox, facts on
   each line and events on the notification lane, whose rules are one per role and event (a
   rule per method played the sound twice). The Emacsvox layer is tested against Emacsvox
   itself (`test/lumenna-emacsvox-test.el`, skipped without it).
-- **The day's own actions are its heading's**: on the first line, which has no row, `.`
-  offers the plan's `actions`; `P`, `r`, `w`, `E` and `C` run them from anywhere in the day.
-- **A proposal is a buffer of checkable lines** (`lumenna-proposal.el`). Its source draws
-  the proposal it holds and never asks again, since `lumenna-refresh-all` redraws it after
-  every write and asking would lose the checks; `g` asks again, keeping the pins.
-  `lumenna-proposal--now` fixes the moment for tests. Other options take the place of the
-  proposal as a partial apply's `next` does. A reminder's `replan` button, and `r` in the
-  due list, open Replan from Now.
+- **The day's own actions are its heading's**: the heading is the day's summary row, so `.`
+  on it offers the plan's `actions`; `P`, `r`, `w`, `E` and `C` run them from anywhere in the
+  day.
+- **A proposal is the app's screen, drawn as checkable lines** (`lumenna-proposal.el`): SPC
+  checks one (`Proposal(Check)`), C-c C-c applies, and the app's next proposal takes its place
+  until it closes. `lumenna-proposal--now` fixes the moment for tests (`PlanFrom`). A
+  reminder's `replan` button, and `r` in the due list, open Replan from Now.
+- **Reminders are given through `reminder.deliver`**, which takes this device's reminder lock,
+  and dealt with through the store's own methods; a task's or block's reminder list is the
+  app's.
 - **A choice's reason is its completion annotation**, never part of the line chosen.
+- **Tests seed the store through its own methods** (`lumenna-test--seed`), then tick the app
+  and wait for it, as another client's write would reach it.
 
 ## The iOS app
 

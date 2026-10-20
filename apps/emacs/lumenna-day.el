@@ -5,64 +5,46 @@
 
 ;;; Commentary:
 
-;; The day as it is lived: blocks in time order with their sittings
-;; under them, free time and now as lines of their own, and the blocks
-;; cancelled for the day so they can be put back.  Opening on today puts point
-;; on now.  Also the list of every block series, and the block form.
+;; The day as it is lived, a screen of the app's: blocks in time order with
+;; their sittings under them, free time and now as lines of their own, and the
+;; blocks cancelled for the day so they can be put back.  Today opens on now
+;; the first time.  Also the list of every block series, and the app's block
+;; form, asked in the minibuffer.
 
 ;;; Code:
 
 (require 'lumenna)
 
-(declare-function lumenna-task-show "lumenna-tasks" (id))
+(declare-function lumenna-open-place "lumenna-tasks" (place))
+(declare-function lumenna--list-rows "lumenna-tasks" ())
 
-(defun lumenna--day-rows (plan)
-  "PLAN's timeline as rows, each said as the phone says it."
-  (let ((blocks (append (plist-get plan :blocks) nil)) rows)
-    (dolist (item (append (plist-get plan :timeline) nil))
-      (pcase (plist-get item :item)
-        ("block"
-         (when-let* ((block (seq-find (lambda (b) (equal (plist-get b :row) (plist-get item :row))) blocks)))
-           ;; The core words the details for every app.
-           (let ((state (append (plist-get block :details) nil)))
-             (push (list :id (plist-get block :id) :role "block" :block block :when (plist-get block :when)
-                         :actions (plist-get block :actions)
-                         :title (format "%s to %s, %s" (lumenna-time (plist-get block :start))
-                                        (lumenna-time (plist-get block :end)) (plist-get block :title))
-                         :state (vconcat state))
-                   rows)
-             (dolist (sitting (append (plist-get block :assignments) nil))
-               (let ((state (append (plist-get sitting :details) nil)))
-                 (push (list :id (plist-get sitting :id) :role "assignment" :depth 1 :sitting sitting
-                             :actions (plist-get sitting :actions)
-                             :task (plist-get sitting :task) :block block :title (plist-get sitting :title)
-                             :state (vconcat state)
-                             :face (and (lumenna--true (plist-get sitting :running)) 'lumenna-running))
-                       rows))))))
-        ;; Free time and now in the core's words and every app's order:
-        ;; "<title>, <details>, <start> to <end>" and "<title>, <time>".
-        ("free"
-         (push (list :id (format "free@%s" (plist-get item :start)) :role "free" :free item :face 'lumenna-quiet
-                     :actions (plist-get item :actions)
-                     :title (string-join (cons (plist-get item :title) (append (plist-get item :details) nil)) ", ")
-                     :value (format "%s to %s" (lumenna-time (plist-get item :start)) (lumenna-time (plist-get item :end))))
-               rows))
-        ("now"
-         (push (list :id "now" :role "now" :face 'lumenna-now
-                     :title (format "%s, %s" (plist-get item :title) (lumenna-time (plist-get item :time))))
-               rows))))
-    (dolist (cancelled (append (plist-get plan :cancelled) nil))
-      (push (list :id (format "cancelled@%s" (plist-get cancelled :series)) :role "cancelled" :cancelled cancelled
-                  :actions (plist-get cancelled :actions)
-                  :face 'lumenna-quiet :title (format "%s, %s" (lumenna-time (plist-get cancelled :start)) (plist-get cancelled :title))
-                  :state (plist-get cancelled :details))
-            rows))
-    (nreverse rows)))
-
-(defvar-local lumenna--day nil "The day shown, as a date phrase; nil follows today.")
-(defvar-local lumenna--date nil "The ISO date the day buffer last showed.")
-(defvar-local lumenna--day-actions nil
-  "What can be done to the day shown itself: the plan's `actions', in order.")
+(defun lumenna--day-rows ()
+  "The day this buffer's screen shows: its heading, which carries the day's own
+actions, then each row in the app's words and order."
+  (let* ((day (plist-get lumenna--view :day))
+         (items (append (plist-get day :items) nil))
+         (lines (append (plist-get lumenna--lines :day) nil))
+         (rows (delq nil
+                     (cl-mapcar
+                      (lambda (item line)
+                        (unless (lumenna--true (plist-get item :hidden))
+                          (let ((kind (plist-get item :kind))
+                                (sitting (plist-get item :sitting)))
+                            (list :key (plist-get item :key) :text (plist-get line :text) :title (plist-get line :title)
+                                  :depth (plist-get item :depth) :actions (plist-get item :actions)
+                                  :role (pcase kind ("sitting" "assignment") (_ kind))
+                                  :when (plist-get (plist-get item :block) :when)
+                                  :block (plist-get item :block) :sitting sitting
+                                  :state (or (plist-get (plist-get item :block) :details)
+                                             (plist-get sitting :details))
+                                  :face (pcase kind
+                                          ("free" 'lumenna-quiet) ("cancelled" 'lumenna-quiet) ("now" 'lumenna-now)
+                                          ("sitting" (and (lumenna--true (plist-get sitting :running)) 'lumenna-running)))))))
+                      items lines))))
+    (setq-local lumenna--empty nil)
+    (if (null day)
+        (list "No day")
+      (cons (append (car rows) (list :heading t)) (cdr rows)))))
 
 (define-derived-mode lumenna-day-mode lumenna-list-mode "Lumenna Day"
   "A day: blocks with their sittings under them, free time, and now.
@@ -71,80 +53,39 @@ a cancelled day back.  [ and ] move between days.  On the first line, . offers
 the day's own actions: Plan the Day, Replan from Now and the rest.
 
 \\{lumenna-day-mode-map}"
-  (setq-local lumenna--activate #'lumenna--day-activate)
-  (setq-local lumenna--actions-function #'lumenna--day-here-actions))
-
-(defun lumenna--day-here-actions ()
-  "The actions on the line at point: a row's own, or on the heading the day's."
-  (if-let* ((row (lumenna--row-here)))
-      (plist-get row :actions)
-    lumenna--day-actions))
+  (setq-local lumenna--draw #'lumenna--day-rows)
+  (setq-local lumenna--activate #'lumenna--day-activate))
 
 ;;;###autoload
 (defun lumenna-today ()
-  "Show today, with point on now."
+  "Show today, opening on now."
   (interactive)
-  (lumenna--show-list "*Lumenna: Day*" #'lumenna-day-mode #'lumenna--day-listing 'lumenna--day nil)
-  (lumenna--go-to-now))
+  (lumenna--show-screen "*Lumenna: Day*" #'lumenna-day-mode (list (list :Open "Today"))))
 
-(defun lumenna--day-listing ()
-  "The heading and rows of the day this buffer shows."
-  (let ((plan (if lumenna--day (lumenna-call "plan" :date lumenna--day) (lumenna-call "plan"))))
-    (setq lumenna--date (plist-get plan :date)
-          lumenna--day-actions (append (plist-get plan :actions) nil))
-    ;; "<day>. <summary>", each its own sentence.
-    (cons (format "%s. %s" (lumenna--spoken-day lumenna--date)
-                  (let ((summary (plist-get plan :summary)))
-                    (if (string-empty-p summary) (plist-get plan :announcement) summary)))
-          (lumenna--day-rows plan))))
-
-(defun lumenna--go-to-now ()
-  "Point on now, or on the block happening now; else the first line of the day."
-  (goto-char (point-min))
-  (let (found)
-    (while (and (not found) (zerop (forward-line 1)) (not (eobp)))
-      (let ((row (get-text-property (point) 'lumenna-row)))
-        (when (or (equal (plist-get row :role) "now") (equal (plist-get row :when) "now"))
-          (setq found t))))
-    (unless found
-      (goto-char (point-min))
-      (forward-line 1))))
-
-(defun lumenna--day-turn (day)
-  "Show DAY, a date phrase, or today for nil; and say it."
-  (setq lumenna--day day)
-  (lumenna-refresh)
-  (goto-char (point-min))
-  (forward-line 1)
-  (message "%s" (buffer-substring-no-properties (point-min) (line-end-position 0))))
-
-(defun lumenna--day-shift (days)
-  "The date DAYS after the one this buffer shows, as YYYY-MM-DD."
-  (let ((time (encode-time (append '(0 0 12) (reverse (mapcar #'string-to-number (split-string lumenna--date "-")))))))
-    (format-time-string "%Y-%m-%d" (time-add time (* days 86400)))))
+(defun lumenna--day-move (step)
+  "Move through the days by STEP, as the app names it: Previous, Next, Now, Ask."
+  (lumenna-send (list :Day step))
+  (lumenna--follow))
 
 (defun lumenna-day-previous ()
   "Show the day before."
   (interactive)
-  (lumenna--day-turn (lumenna--day-shift -1)))
+  (lumenna--day-move "Previous"))
 
 (defun lumenna-day-next ()
   "Show the day after."
   (interactive)
-  (lumenna--day-turn (lumenna--day-shift 1)))
+  (lumenna--day-move "Next"))
 
 (defun lumenna-day-today ()
-  "Show today, with point on now."
+  "Show today, with now in hand."
   (interactive)
-  (setq lumenna--day nil)
-  (lumenna-refresh)
-  (lumenna--go-to-now))
+  (lumenna--day-move "Now"))
 
-(defun lumenna-day-go-to (day)
-  "Show DAY: any date phrase, such as \"next friday\" or \"2026-12-01\"."
-  (interactive (list (lumenna-ask-line "form.go_to_day")))
-  (when (string-blank-p day) (user-error "No day given"))
-  (lumenna--day-turn (string-trim day)))
+(defun lumenna-day-go-to ()
+  "Show a day: any date phrase, such as \"next friday\" or \"2026-12-01\"."
+  (interactive)
+  (lumenna--day-move "Ask"))
 
 ;; Every action on a block, a sitting, free time or a cancelled day is the
 ;; row's own; these are the keys for them.
@@ -168,16 +109,19 @@ the day's own actions: Plan the Day, Replan from Now and the rest.
 (lumenna-define-action lumenna-act-carry ("carry_forward" "carry_rest")
   "Carry what a sitting, or a block, left short forward to a block that takes it.")
 
+(defun lumenna--day-heading ()
+  "The day's heading, as its row: the day's own actions are its."
+  (save-excursion (goto-char (point-min)) (get-text-property (point) 'lumenna-row)))
+
 (defun lumenna--day-act (kind)
   "Do the day's own action of KIND, wherever point is.
-A day that does not offer it says the core's sentence, and what it does offer."
-  (if-let* ((action (seq-find (lambda (a) (equal (plist-get a :kind) kind)) lumenna--day-actions)))
-      (lumenna-act action nil)
-    (user-error "%s" (string-join
-                      (delq nil (list (lumenna--value "form.not_offered" :kind kind :subject "day")
-                                      (and lumenna--day-actions
-                                           (format "This offers %s" (lumenna--titles lumenna--day-actions)))))
-                      " "))))
+A day that does not offer it says the app's sentence."
+  (let* ((heading (lumenna--day-heading))
+         (action (seq-find (lambda (a) (equal (plist-get a :kind) kind)) (append (plist-get heading :actions) nil))))
+    (if action
+        (lumenna-act action heading)
+      (user-error "%s" (jsonrpc-request (lumenna--connection) 'app.question
+                                        (list :name "not_offered" :kind kind :subject "day"))))))
 
 (defun lumenna-day-plan ()
   "Plan the day shown: each work block still to come given its most urgent tasks."
@@ -212,133 +156,99 @@ put a cancelled day back."
     ("assignment" (lumenna-act-edit))
     ("free" (lumenna-act-kind '("add_block")))
     ("cancelled" (lumenna-act-restore))
-    (_ (message "%s" (lumenna-describe row)))))
+    (_ (message "%s" (plist-get row :text)))))
+
+(defun lumenna-day-show (date)
+  "Show DATE, any date phrase, in this day buffer: as Go to Day would."
+  (lumenna-send (list :Day "Ask"))
+  (lumenna--settle)
+  (lumenna-send (list :Answer (list :answer "text" :text date)))
+  (lumenna--follow))
+
+;;;###autoload
+(defun lumenna-add-block ()
+  "Add a block, once or repeating, on the day shown or today."
+  (interactive)
+  (unless (derived-mode-p 'lumenna-day-mode) (lumenna-today))
+  (lumenna-send (list :Block (list :New (list :start nil :minutes nil))))
+  (lumenna--follow))
 
 (defun lumenna-day-add-block ()
   "Add a block on the day shown; in free time, starting there."
   (interactive)
   (if (equal (plist-get (lumenna--row-here) :role) "free")
       (lumenna-act-kind '("add_block"))
-    (lumenna-add-block lumenna--date)))
+    (lumenna-send (list :Block (list :New (list :start nil :minutes nil))))
+    (lumenna--follow)))
 
 ;;;; The block form
 
-;; A form the core leaves to the client, on the core's rules: the fields it
-;; starts from (`form.block_fields', `form.day_block_fields'), a kind's own
-;; settings (`form.block_defaults'), and what saving sends (`form.block_edit',
-;; `form.new_block').
+;; The app's own form: which fields it shows, what a kind's settings are, and
+;; what saving sends are its.  Here each field is asked in the minibuffer, in
+;; the form's words: a new block's essentials one after another, a block
+;; changed a field at a time.
 
-(defun lumenna--block-fields ()
-  "The block form's fields, (LABEL . KEY) as the core names them, in its order.
-An edit has no day of its own; one day's is the plan's, and a series' its
-start."
-  (delq nil (mapcar (lambda (field)
-                      (unless (equal (plist-get field :key) "date")
-                        (cons (plist-get field :label) (intern (plist-get field :key)))))
-                    (lumenna-form "block"))))
+(defconst lumenna--new-block-fields '("title" "date" "start" "minutes" "kind" "repeat")
+  "What a new block is asked, in order; the rest keep the form's values.")
 
-(defun lumenna--one-day-field-p (key)
-  "Whether one day of a repeating block can change field KEY, as the form marks it."
-  (lumenna--true (plist-get (lumenna-form-field "block" key) :one_day)))
+(defun lumenna--block-value (form key)
+  "What FORM, the app's block form, holds for field KEY, as text."
+  (if (equal key "date")
+      (plist-get form :date)
+    (let ((value (plist-get (plist-get form :values) (intern (concat ":" key)))))
+      (cond ((eq value t) "true") ((eq value :json-false) "false") ((null value) "") (t (format "%s" value))))))
 
-(defun lumenna--read-kind (&optional current)
-  "A block's kind, chosen by the core's name for it, starting from CURRENT."
-  (let* ((field (lumenna-form-field "block" 'kind))
-         (kinds (lumenna-field-options field)))
-    (cdr (assoc (completing-read (lumenna--with-default (lumenna-field-prompt field) (car (rassoc (or current "work") kinds)))
-                                 kinds nil t nil nil (car (rassoc (or current "work") kinds)))
-                kinds))))
+(defun lumenna--read-block-field (form field)
+  "Read FIELD of FORM, the app's block form, in its words: its hint, then its name."
+  (let* ((key (plist-get field :key))
+         (now (lumenna--block-value form key))
+         (prompt (lumenna--prompt (plist-get field :hint) (plist-get field :label)))
+         (example (plist-get field :example)))
+    (pcase (plist-get field :kind)
+      ("toggle" (if (y-or-n-p (format "%s (now %s)? " (plist-get field :label) (if (equal now "true") "yes" "no")))
+                    "true" "false"))
+      ("choice"
+       (let* ((choices (mapcar (lambda (o) (cons (plist-get o :title) (plist-get o :id)))
+                               (append (plist-get field :options) nil)))
+              (default (car (rassoc now choices))))
+         (cdr (assoc (completing-read (lumenna--with-default prompt default) choices nil t nil nil default) choices))))
+      (_ (if (equal key "task_filter")
+             (lumenna-read-line prompt "filter" now nil example)
+           (read-from-minibuffer prompt now nil nil nil (and example (not (string-empty-p example)) example)))))))
 
-(defun lumenna--with-kind (fields kind)
-  "FIELDS of kind KIND, with its own settings.
-As a form's check boxes go back to them when the kind changes."
-  (let ((fields (plist-put (copy-sequence fields) :kind kind))
-        (defaults (lumenna--value "form.block_defaults" :kind kind)))
-    (dolist (flag '(:accepts_tasks :counts_capacity :anchored) fields)
-      (setq fields (plist-put fields flag (plist-get defaults flag))))))
+(defun lumenna--block-field (key value)
+  "Set the block form's field KEY to VALUE, the app's way."
+  (lumenna-send (list :Block (list :Field (list :key key :value value))))
+  (lumenna--settle))
 
-(defvar lumenna--repeat-note nil
-  "What Repeats says instead of its hint, for a rule its words cannot say.
-Bound while a series' form is asked (`form.unsayable_repeat_note').")
+(defun lumenna--fill-block-form ()
+  "Fill in the app's block form, then save it; C-g closes it.
+A new block asks its essentials in turn; a block changed asks which field.
+Refused, the core's reason is said and a field asked for again."
+  (let* ((form (plist-get lumenna--view :block_form))
+         (fields (append (plist-get form :fields) nil))
+         (new (and (equal (plist-get form :yes) "Add") (not (plist-get form :refusal)))))
+    (condition-case nil
+        (progn
+          (if new
+              (dolist (key lumenna--new-block-fields)
+                (when-let* ((field (seq-find (lambda (f) (equal (plist-get f :key) key))
+                                             (append (plist-get (plist-get lumenna--view :block_form) :fields) nil))))
+                  (lumenna--block-field key (lumenna--read-block-field (plist-get lumenna--view :block_form) field))))
+            (let* ((choices (mapcar (lambda (f) (cons (plist-get f :label) f)) fields))
+                   (field (cdr (assoc (completing-read (lumenna--prompt (plist-get form :refusal) (plist-get form :heading) "Change")
+                                                       choices nil t)
+                                      choices))))
+              (lumenna--block-field (plist-get field :key) (lumenna--read-block-field form field))))
+          (lumenna-send (list :Block "Save"))
+          (lumenna--settle)
+          (when-let* ((refused (plist-get (plist-get lumenna--view :block_form) :refusal)))
+            (message "%s" refused)))
+      (quit (lumenna-send (list :Block "Cancel"))
+            (lumenna--settle)
+            (signal 'quit nil)))))
 
-(defun lumenna--read-block-text (field &optional now)
-  "Read FIELD, a symbol, of the block form, starting from NOW, in its words.
-Its hint, then its name; the filter a block takes its tasks from completes."
-  (let* ((form (lumenna-form-field "block" field))
-         (prompt (if (and (eq field 'repeat) (stringp lumenna--repeat-note))
-                     (lumenna--prompt lumenna--repeat-note (plist-get form :label))
-                   (lumenna-field-prompt form))))
-    (if (eq field 'task_filter)
-        (lumenna-read-line prompt "filter" now nil (plist-get form :example))
-      (lumenna-read-field form prompt now))))
-
-(defun lumenna--read-block-field (field fields)
-  "FIELDS with FIELD changed, read in the minibuffer."
-  (let* ((key (intern (format ":%s" field)))
-         (now (plist-get fields key))
-         (form (lumenna-form-field "block" field)))
-    (cond ((eq field 'kind) (lumenna--with-kind fields (lumenna--read-kind now)))
-          ((equal (plist-get form :kind) "toggle")
-           (plist-put (copy-sequence fields) key
-                      (if (y-or-n-p (format "%s (now %s)? " (plist-get form :label) (if (lumenna--true now) "yes" "no")))
-                          t :json-false)))
-          (t (plist-put (copy-sequence fields) key (lumenna--read-block-text field now))))))
-
-(defun lumenna--edit-block (id before choices scope)
-  "Change one of CHOICES of block ID, whose form starts from BEFORE.
-Only what changed is sent; SCOPE is the plist saying which occurrences."
-  (let* ((field (cdr (assoc (completing-read "Change: " choices nil t) choices)))
-         (after (lumenna--read-block-field field before))
-         (edit (lumenna--value "form.block_edit" :before before :after after)))
-    (if edit
-        (apply #'lumenna-write "block.edit" :id id (append edit scope))
-      (message "Nothing changed"))))
-
-(defun lumenna-edit-series (series)
-  "Change every occurrence of block SERIES, a field at a time."
-  (let* ((shown (lumenna-call "block.show" :id series))
-         (repeats (lumenna--true (plist-get shown :repeats)))
-         (choices (seq-remove (lambda (f)
-                                (and (not repeats)
-                                     (lumenna--true (plist-get (lumenna-form-field "block" (cdr f)) :repeating_only))))
-                              (lumenna--block-fields))))
-    ;; A rule the words cannot say leaves Repeats empty; the core's note says why.
-    (let ((lumenna--repeat-note (lumenna--value "form.unsayable_repeat_note" :block shown)))
-      (lumenna--edit-block series (lumenna--value "form.block_fields" :block shown) choices '(:all t)))))
-
-(defun lumenna--edit-day-block (block date)
-  "Change BLOCK, from the plan for DATE.
-A repeating one asks: this day only, or every one."
-  (if (and (lumenna--true (plist-get block :repeats))
-           (equal (completing-read "Change which days: " '("This day only" "Every occurrence") nil t)
-                  "This day only"))
-      (lumenna--edit-block (plist-get block :series) (lumenna--value "form.day_block_fields" :block block)
-                           (seq-filter (lambda (f) (lumenna--one-day-field-p (cdr f))) (lumenna--block-fields))
-                           (list :date date))
-    (lumenna-edit-series (plist-get block :series))))
-
-(defun lumenna-add-block (&optional date start)
-  "Add a block, once or repeating, starting on DATE at START.
-Without START it is the core's for the day typed (`form.new_block_start'):
-today the next whole hour, another day when the day starts."
-  (interactive)
-  (let* ((title (lumenna--read-block-text 'title))
-         (date (lumenna--read-block-text 'date (or date "today")))
-         (start (lumenna--read-block-text
-                 'start (or start (lumenna--value "form.new_block_start" :date date))))
-         (minutes (lumenna--read-block-text 'minutes "60"))
-         (fields (lumenna--with-kind (list :title title :start start :minutes minutes) (lumenna--read-kind)))
-         (fields (plist-put fields :repeat (lumenna--read-block-text 'repeat))))
-    (dolist (key '(:until :min_minutes :task_filter :colour :notes))
-      (setq fields (plist-put fields key "")))
-    (apply #'lumenna-write "block.add" (lumenna--value "form.new_block" :fields fields :date date))))
-
-(lumenna-define-form "block" "edit"
-                     (lambda (_action row)
-                       (lumenna--edit-day-block (plist-get row :block) lumenna--date)))
-(lumenna-define-form "series" "edit" (lambda (action _row) (lumenna-edit-series (plist-get action :target))))
-(lumenna-define-form "free_time" "add_block"
-                     (lambda (action _row) (lumenna-add-block (plist-get action :target) (plist-get action :other))))
+(setq lumenna--block-form-function #'lumenna--fill-block-form)
 
 ;;;; Every series
 
@@ -346,16 +256,14 @@ today the next whole hour, another day when the day starts."
   "Every block series.  RET or e changes every occurrence; d deletes one.
 
 \\{lumenna-blocks-mode-map}"
+  (setq-local lumenna--draw #'lumenna--list-rows)
   (setq-local lumenna--activate (lambda (_row) (lumenna-act-edit))))
 
 ;;;###autoload
 (defun lumenna-blocks ()
   "Show every block series, including ones on no day near today."
   (interactive)
-  (lumenna--show-list "*Lumenna: Blocks*" #'lumenna-blocks-mode
-                      (lambda ()
-                        (let ((listing (lumenna-call "block.list")))
-                          (lumenna-listing "Blocks" listing)))))
+  (lumenna-open-place "Blocks"))
 
 ;;;; Menus
 

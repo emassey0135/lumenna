@@ -69,7 +69,7 @@ fn initialize_names_the_contract_and_every_method() {
     assert!(out.contains(r#""contract":1"#), "{out}");
     assert!(out.contains(r#""name":"lumenna""#), "{out}");
     assert!(out.contains(r#""task.add""#), "{out}");
-    assert!(out.contains(r#""complete""#), "{out}");
+    assert!(out.contains(r#""app.send""#), "{out}");
 }
 
 #[test]
@@ -225,53 +225,6 @@ fn content_length_framing_is_answered_in_kind() {
 
     assert!(out.starts_with("Content-Length: "), "{out}");
     assert!(out.contains(r#""result":"rows""#), "{out}");
-}
-
-#[test]
-fn completion_is_reachable_here_and_nowhere_else() {
-    // A process per keystroke is not an answer, which is why the BTSpeak app speaks a protocol.
-    let rpc = Rpc::new();
-    rpc.cli(&["label", "add", "deep"]);
-    let out = rpc.talk(&[
-        r#"{"jsonrpc":"2.0","id":1,"method":"complete","params":{"text":"review @de","syntax":"quick-add"}}"#,
-    ]);
-    assert!(out.contains(r#""result":"completions""#), "{out}");
-    assert!(out.contains(r#""text":"@deep""#), "{out}");
-    assert!(out.contains(r#""kind":"label""#), "{out}");
-    assert!(out.contains(r#""label":"label deep""#), "the announcement is a component: {out}");
-}
-
-#[test]
-fn a_preview_says_what_would_happen_without_making_it_happen() {
-    let rpc = Rpc::new();
-    let out = rpc.talk(&[
-        r#"{"jsonrpc":"2.0","id":1,"method":"preview","params":{"text":"review PR tomorrow p1 @new"}}"#,
-        r#"{"jsonrpc":"2.0","id":2,"method":"task.list"}"#,
-    ]);
-    assert!(out.contains(r#""result":"preview""#), "{out}");
-    assert!(out.contains(r#""title":"review PR""#), "{out}");
-    assert!(out.contains(r#""new_labels":["new"]"#), "{out}");
-    assert!(out.contains(r#""has_errors":false"#), "{out}");
-    assert!(out.contains(r#""count":0"#), "nothing was written: {out}");
-}
-
-#[test]
-fn the_block_choices_are_a_weeks_work_blocks_unless_asked_for_more() {
-    let rpc = Rpc::new();
-    rpc.cli(&["block", "add", "Focus", "--at", "9am", "--minutes", "90", "--date", "tomorrow"]);
-    rpc.cli(&["block", "add", "Lunch", "--at", "noon", "--minutes", "30", "--kind", "break", "--date", "tomorrow"]);
-    rpc.cli(&["block", "add", "Review", "--at", "4pm", "--minutes", "60", "--date", "in 10 days"]);
-    let out = rpc.talk(&[
-        r#"{"jsonrpc":"2.0","id":1,"method":"block.choices"}"#,
-        r#"{"jsonrpc":"2.0","id":2,"method":"block.choices","params":{"days":14}}"#,
-    ]);
-    let (week, fortnight) = out.split_once('\n').expect("two replies");
-    assert!(week.contains(r#""result":"work_blocks""#), "{week}");
-    assert!(week.contains(r#""announcement":"1 work block over 7 days""#), "{week}");
-    assert!(week.contains(r#""title":"Focus""#) && week.contains(r#""start":"09:00""#), "{week}");
-    assert!(!week.contains("Lunch"), "a break takes no tasks: {week}");
-    assert!(!week.contains("Review"), "ten days off is past the week: {week}");
-    assert!(fortnight.contains(r#""title":"Review""#), "{fortnight}");
 }
 
 #[test]
@@ -448,46 +401,6 @@ fn hints_that_name_a_lum_command_stay_at_the_terminal() {
     assert!(!out.contains("`lum"), "{out}");
     let status = rpc.talk(&[r#"{"jsonrpc":"2.0","id":4,"method":"sync.status"}"#]);
     assert!(!status.contains("`lum"), "{status}");
-}
-
-#[test]
-fn a_rows_action_is_sent_back_as_it_came_and_does_what_it_names() {
-    // A client offers what the core listed and returns it with the answer; it decides
-    // nothing about which actions a row has.
-    let rpc = Rpc::new();
-    rpc.cli(&["task", "add", "water plants"]);
-    let out = rpc.talk(&[r#"{"jsonrpc":"2.0","id":1,"method":"task.list","params":{}}"#]);
-    let reply: serde_json::Value = serde_json::from_str(out.lines().next().unwrap()).unwrap();
-    let action = reply["result"]["rows"][0]["actions"][0].clone();
-    assert_eq!(action["title"], "Mark Done", "{out}");
-    let request = serde_json::json!({"jsonrpc": "2.0", "id": 2, "method": "act", "params": {"action": action, "answer": {"answer": "yes"}}});
-    let out = rpc.talk(&[&request.to_string()]);
-    assert!(out.contains(r#""changed":true"#), "{out}");
-    let out = rpc.talk(&[r#"{"jsonrpc":"2.0","id":3,"method":"task.list","params":{}}"#]);
-    assert!(out.contains(r#""count":0"#), "{out}");
-}
-
-#[test]
-fn what_saving_a_form_sends_is_the_cores_to_work_out_for_a_client_over_the_pipe() {
-    let rpc = Rpc::new();
-    rpc.cli(&["task", "add", "water plants"]);
-    let out = rpc.talk(&[r#"{"jsonrpc":"2.0","id":1,"method":"task.list","params":{}}"#]);
-    let reply: serde_json::Value = serde_json::from_str(out.lines().next().unwrap()).unwrap();
-    let id = reply["result"]["rows"][0]["id"].as_str().unwrap().to_owned();
-    let out = rpc.talk(&[&format!(r#"{{"jsonrpc":"2.0","id":2,"method":"task.show","params":{{"id":"{id}"}}}}"#)]);
-    let reply: serde_json::Value = serde_json::from_str(out.lines().next().unwrap()).unwrap();
-    let task = reply["result"].clone();
-    let request = serde_json::json!({"jsonrpc": "2.0", "id": 3, "method": "form.task_fields", "params": {"task": task}});
-    let out = rpc.talk(&[&request.to_string()]);
-    let reply: serde_json::Value = serde_json::from_str(out.lines().next().unwrap()).unwrap();
-    let mut fields = reply["result"]["value"].clone();
-    assert_eq!(fields["title"], "water plants", "{out}");
-    fields["priority"] = serde_json::json!(1);
-    let request = serde_json::json!({"jsonrpc": "2.0", "id": 4, "method": "form.task_edit", "params": {"task": task, "fields": fields}});
-    let out = rpc.talk(&[&request.to_string()]);
-    let reply: serde_json::Value = serde_json::from_str(out.lines().next().unwrap()).unwrap();
-    assert_eq!(reply["result"]["value"]["priority"], 1, "{out}");
-    assert!(reply["result"]["value"]["title"].is_null(), "only what changed: {out}");
 }
 
 #[test]

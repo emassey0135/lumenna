@@ -10,9 +10,9 @@
 //! records, is a breaking change, and [`VERSION`] says which shape a reader is looking at.
 
 use crate::{
-    Announced, BackupDone, Choices, BlockShown, Change, Completions, DeviceList, Exported, Filters, ImportDone,
-    Imported, PairedWith, Plan, Preview, RestoreDone, Rows, SettingList, SyncReport, SyncStatus,
-    TaskShown, Timer, WorkBlocks, announced,
+    Announced, BackupDone, Choices, BlockShown, Change, DeviceList, Exported, Filters, ImportDone,
+    Imported, PairedWith, Plan, RestoreDone, Rows, SettingList, SyncReport, SyncStatus,
+    TaskShown, Timer, announced,
 };
 use serde::Serialize;
 
@@ -97,13 +97,6 @@ pub enum Outcome {
     Settings(SettingList),
     /// A timer stopped, or minutes logged.
     Timer(Timer),
-    /// What could be typed next. Reachable over `lum rpc` only: completion is a
-    /// keystroke-rate question, and a process per keystroke is not an answer.
-    Completions(Completions),
-    /// What a quick-add line would produce, without producing it.
-    Preview(Preview),
-    /// The work blocks a task could go in. Reachable over `lum rpc` only.
-    WorkBlocks(WorkBlocks),
     /// What this server is, for a client checking it can talk to it.
     Server(ServerInfo),
     /// A backup was written.
@@ -124,10 +117,6 @@ pub enum Outcome {
     Devices(DeviceList),
     /// What a picker offers.
     Choices(Choices),
-    /// The sidebar's places.
-    Places(crate::places::Places),
-    /// What a form function worked out.
-    Value(Derived),
     /// Reminders to give.
     DueReminders(crate::DueReminders),
     /// A task's or block's reminders.
@@ -180,9 +169,6 @@ outcomes!(
     Filters(Filters),
     Settings(SettingList),
     Timer(Timer),
-    Completions(Completions),
-    Preview(Preview),
-    WorkBlocks(WorkBlocks),
     Server(ServerInfo),
     Backup(BackupDone),
     Restore(RestoreDone),
@@ -193,8 +179,6 @@ outcomes!(
     SyncStatus(SyncStatus),
     Devices(DeviceList),
     Choices(Choices),
-    Places(crate::places::Places),
-    Value(Derived),
     DueReminders(crate::DueReminders),
     Reminders(crate::ReminderList),
     History(crate::TaskHistory),
@@ -241,25 +225,3 @@ pub struct ServerInfo {
 
 announced!(ServerInfo);
 
-/// What one of the surface's free functions worked out from records a client already holds
-/// — a form's fields, what saving them sends — for a client that cannot call it in-process.
-/// Nothing was read or written, so there is nothing to announce.
-#[derive(Debug, Serialize)]
-pub struct Derived {
-    /// Empty: nothing happened.
-    pub announcement: String,
-    /// Anything worth saying.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub notices: Vec<String>,
-    /// What the function returned; `null` for nothing.
-    pub value: serde_json::Value,
-}
-
-announced!(Derived);
-
-impl Derived {
-    /// What `value` serialises to.
-    pub fn of(value: impl Serialize) -> Self {
-        Self { announcement: String::new(), notices: Vec::new(), value: serde_json::to_value(value).unwrap_or_default() }
-    }
-}

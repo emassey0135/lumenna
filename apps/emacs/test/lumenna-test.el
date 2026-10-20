@@ -63,6 +63,13 @@
        ,@body
        (should (null queue)))))
 
+(defun lumenna-test--seed (method &rest params)
+  "Change the store with METHOD and PARAMS, as another client would, and wait
+until the app has taken it in."
+  (prog1 (apply #'lumenna-call method params)
+    (lumenna--tick)
+    (lumenna--settle)))
+
 (defun lumenna-test--goto (text)
   "Point on the line containing TEXT."
   (goto-char (point-min))
@@ -106,7 +113,7 @@
 
 (ert-deftest lumenna-a-reminder-is-said-once-shown-with-the-cores-buttons-and-dismissed ()
   (lumenna-test--reminding
-    (lumenna-write "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "2030-01-15")
+    (lumenna-test--seed "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "2030-01-15")
     (setq said nil)
     (lumenna-test--deliver)
     (should-not said)
@@ -154,7 +161,7 @@
 
 (ert-deftest lumenna-what-came-while-nothing-ran-is-one-summary-dismissed-from-the-due-list ()
   (lumenna-test--reminding
-    (lumenna-write "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "2030-01-15")
+    (lumenna-test--seed "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "2030-01-15")
     (lumenna-test--deliver)
     (setq now "2030-01-15T09:30:00Z" said nil)
     (lumenna-test--deliver)
@@ -170,7 +177,7 @@
 
 (ert-deftest lumenna-a-blocks-reminders-are-listed-added-by-a-phrase-and-removed ()
   (lumenna-test--with-store
-    (lumenna-write "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "tomorrow")
+    (lumenna-test--seed "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "tomorrow")
     (lumenna-blocks)
     (lumenna-test--goto "Deep work")
     (lumenna-act-reminders)
@@ -193,8 +200,8 @@
 
 (ert-deftest lumenna-a-task-offers-reminders-once-it-is-due ()
   (lumenna-test--with-store
-    (lumenna-write "task.add" :text "someday")
-    (lumenna-write "task.add" :text "call the bank tomorrow at 3pm")
+    (lumenna-test--seed "task.add" :text "someday")
+    (lumenna-test--seed "task.add" :text "call the bank tomorrow at 3pm")
     (lumenna-tasks)
     (lumenna-test--goto "someday")
     (should-error (lumenna-act-reminders) :type 'user-error)
@@ -219,13 +226,15 @@
 
 (ert-deftest lumenna-a-weight-is-read-by-the-core-which-refuses-a-typo ()
   (lumenna-test--with-store
-    (lumenna-write "project.add" :name "Work")
+    (lumenna-test--seed "project.add" :name "Work")
     (lumenna-projects)
     (lumenna-test--goto "Work")
-    (lumenna-test--answering ("1,5")
-      (should-error (lumenna-act-weight) :type 'user-error))
-    (lumenna-test--answering ("1.5")
-      (lumenna-act-weight))
+    ;; Refused, the question is asked again with why, and what was typed.
+    (let (prompts (answers (list "1,5" "1.5")))
+      (cl-letf (((symbol-function 'read-string) (lambda (prompt &rest _) (push prompt prompts) (pop answers))))
+        (lumenna-act-weight))
+      (should (= (length prompts) 2))
+      (should (string-match-p "1,5" (car prompts))))
     (lumenna-test--goto "Work")
     (should (string-match-p "1.5" (lumenna-test--line)))))
 
@@ -236,7 +245,7 @@
     ;; The Inbox keeps its name: the core offers no Rename, so the key refuses.
     (let ((refusal (should-error (lumenna-act-rename) :type 'user-error)))
       (should (equal (cadr refusal)
-                     "The Inbox keeps its name and its place; only its order and weight change. This offers Weight")))
+                     "The Inbox keeps its name and its place; only its order and weight change.")))
     (let (offered)
       (cl-letf (((symbol-function 'completing-read)
                  (lambda (_prompt choices &rest _) (setq offered (mapcar #'car choices)) (car offered)))
@@ -246,19 +255,19 @@
 
 (ert-deftest lumenna-a-project-with-a-space-is-quoted-by-the-core-in-its-list ()
   (lumenna-test--with-store
-    (lumenna-write "project.add" :name "Home Office")
-    (lumenna-write "task.add" :text "file the receipts #\"Home Office\"")
+    (lumenna-test--seed "project.add" :name "Home Office")
+    (lumenna-test--seed "task.add" :text "file the receipts #\"Home Office\"")
     (lumenna-projects)
     (lumenna-test--goto "Home Office")
     (lumenna-activate)
-    (should (equal lumenna--prefix "#\"Home Office\" "))
+    (should (equal (plist-get lumenna--view :quick_add) "#\"Home Office\" "))
     (should (equal (lumenna-test--titles "#\"Home Office\"") '("file the receipts")))
     (goto-char (point-min))
     (should (search-forward "file the receipts" nil t))))
 
 (ert-deftest lumenna-a-pick-with-nothing-to-offer-says-the-cores-sentence ()
   (lumenna-test--with-store
-    (lumenna-write "task.add" :text "only one")
+    (lumenna-test--seed "task.add" :text "only one")
     (lumenna-tasks)
     (lumenna-test--goto "only one")
     (let (said)
@@ -267,15 +276,9 @@
           (lumenna-act-wait-for)))
       (should (equal said "There is no task it could wait for.")))))
 
-(ert-deftest lumenna-a-time-is-said-in-the-clock-the-mode-line-uses ()
-  (let ((display-time-24hr-format nil))
-    (should (equal (mapcar #'lumenna-time '("00:05" "09:00" "12:30" "15:00")) '("12:05 AM" "9:00 AM" "12:30 PM" "3:00 PM"))))
-  (let ((display-time-24hr-format t))
-    (should (equal (lumenna-time "15:00") "15:00"))))
-
 (ert-deftest lumenna-a-task-due-at-a-time-says-it-in-emacss-clock-before-its-priority ()
   (lumenna-test--with-store
-    (lumenna-write "task.add" :text "call the bank tomorrow at 3pm p1")
+    (lumenna-test--seed "task.add" :text "call the bank tomorrow at 3pm p1")
     (let ((display-time-24hr-format t))
       (lumenna-tasks)
       (lumenna-test--goto "call the bank")
@@ -283,7 +286,7 @@
 
 (ert-deftest lumenna-a-task-is-listed-in-words-completed-and-brought-back-with-undo ()
   (lumenna-test--with-store
-    (lumenna-write "task.add" :text "buy milk tomorrow")
+    (lumenna-test--seed "task.add" :text "buy milk tomorrow")
     (lumenna-tasks)
     (lumenna-test--goto "buy milk")
     (should (string-match-p "\\`buy milk, due " (lumenna-test--line)))
@@ -304,8 +307,8 @@
 
 (ert-deftest lumenna-a-subtask-sits-under-its-task-a-level-deeper ()
   (lumenna-test--with-store
-    (lumenna-write "task.add" :text "paint the room")
-    (lumenna-write "task.add" :text "buy paint")
+    (lumenna-test--seed "task.add" :text "paint the room")
+    (lumenna-test--seed "task.add" :text "buy paint")
     (lumenna-tasks)
     (lumenna-test--goto "buy paint")
     (lumenna-test--answering ("paint the room, Inbox")
@@ -317,7 +320,7 @@
 
 (ert-deftest lumenna-the-detail-buffer-changes-a-field-and-keeps-a-repetition ()
   (lumenna-test--with-store
-    (lumenna-write "task.add" :text "water plants every monday")
+    (lumenna-test--seed "task.add" :text "water plants every monday")
     (lumenna-tasks)
     (lumenna-test--goto "water plants")
     (lumenna-activate)
@@ -335,8 +338,8 @@
 
 (ert-deftest lumenna-the-trash-restores-and-erases-asking-first ()
   (lumenna-test--with-store
-    (lumenna-write "task.add" :text "keep me")
-    (lumenna-write "task.add" :text "lose me")
+    (lumenna-test--seed "task.add" :text "keep me")
+    (lumenna-test--seed "task.add" :text "lose me")
     (lumenna-tasks)
     (lumenna-test--goto "keep me")
     (lumenna-act-delete)
@@ -355,8 +358,8 @@
 
 (ert-deftest lumenna-the-day-opens-on-now-and-plans-a-sitting ()
   (lumenna-test--with-store
-    (lumenna-write "task.add" :text "write the chapter")
-    (lumenna-write "block.add" :title "Focus" :at "00:00" :minutes 1440 :date "today")
+    (lumenna-test--seed "task.add" :text "write the chapter")
+    (lumenna-test--seed "block.add" :title "Focus" :at "00:00" :minutes 1440 :date "today")
     (lumenna-today)
     (should (string-match-p "Focus" (lumenna-test--line)))
     (lumenna-test--answering ("write the chapter, Inbox" "45m")
@@ -373,9 +376,9 @@
 
 (ert-deftest lumenna-a-task-goes-in-a-work-block-the-core-offers-from-the-task ()
   (lumenna-test--with-store
-    (lumenna-write "task.add" :text "write the chapter")
-    (lumenna-write "block.add" :title "Focus" :at "9am" :minutes 90 :date "tomorrow")
-    (lumenna-write "block.add" :title "Lunch" :at "noon" :minutes 30 :kind "break" :date "tomorrow")
+    (lumenna-test--seed "task.add" :text "write the chapter")
+    (lumenna-test--seed "block.add" :title "Focus" :at "9am" :minutes 90 :date "tomorrow")
+    (lumenna-test--seed "block.add" :title "Lunch" :at "noon" :minutes 30 :kind "break" :date "tomorrow")
     (lumenna-tasks)
     (lumenna-test--goto "write the chapter")
     (let (offered)
@@ -385,16 +388,18 @@
                    (car offered)))
                 ((symbol-function 'read-from-minibuffer) (lambda (&rest _) "30")))
         (lumenna-act-put-in-block))
-      (should (equal (length offered) 1))
-      (should (string-match-p ", 9:00 AM to 10:30 AM, Focus\\'" (car offered))))
+      ;; Focus alone takes tasks; Another Day asks for a block further off.
+      (should (equal (length offered) 2))
+      (should (string-match-p ", 9:00 AM to 10:30 AM, Focus\\'" (car offered)))
+      (should (equal (cadr offered) "Another Day")))
     (let ((plan (lumenna-call "plan" :date "tomorrow")))
       (should (equal (plist-get (aref (plist-get (aref (plist-get plan :blocks) 0) :assignments) 0) :planned_mins)
                      30)))))
 
 (ert-deftest lumenna-a-sitting-pauses-resumes-and-stops ()
   (lumenna-test--with-store
-    (lumenna-write "task.add" :text "write the chapter")
-    (lumenna-write "block.add" :title "Focus" :at "00:00" :minutes 1440 :date "today")
+    (lumenna-test--seed "task.add" :text "write the chapter")
+    (lumenna-test--seed "block.add" :title "Focus" :at "00:00" :minutes 1440 :date "today")
     (lumenna-today)
     (lumenna-test--answering ("write the chapter, Inbox" "")
       (lumenna-act-assign))
@@ -416,7 +421,7 @@
 
 (ert-deftest lumenna-a-block-is-changed-a-field-at-a-time-and-a-break-can-take-tasks ()
   (lumenna-test--with-store
-    (lumenna-write "block.add" :title "Train" :at "00:00" :minutes 1440 :date "today" :kind "break")
+    (lumenna-test--seed "block.add" :title "Train" :at "00:00" :minutes 1440 :date "today" :kind "break")
     (lumenna-today)
     (lumenna-test--goto "Train")
     (should-not (string-match-p "assigned" (lumenna-test--line)))
@@ -431,7 +436,7 @@
 
 (ert-deftest lumenna-a-cancelled-day-is-listed-and-put-back ()
   (lumenna-test--with-store
-    (lumenna-write "block.add" :title "Run" :at "7am" :minutes 30 :date "today" :repeat "every day")
+    (lumenna-test--seed "block.add" :title "Run" :at "7am" :minutes 30 :date "today" :repeat "every day")
     (lumenna-today)
     (lumenna-test--goto "Run")
     (lumenna-act-cancel-day)
@@ -443,7 +448,7 @@
 
 (ert-deftest lumenna-the-day-moves-between-days ()
   (lumenna-test--with-store
-    (lumenna-write "block.add" :title "Dentist" :at "2pm" :minutes 60 :kind "event" :date "tomorrow")
+    (lumenna-test--seed "block.add" :title "Dentist" :at "2pm" :minutes 60 :kind "event" :date "tomorrow")
     (lumenna-today)
     (should-not (lumenna--find "Dentist"))
     (lumenna-day-next)
@@ -460,17 +465,16 @@
     ;; From tomorrow: today, whose "now" is checked below, holds no block that now could fall
     ;; inside, whenever the test runs (at 07:08 UTC it fell inside today's Run, and the day said
     ;; the block under way instead).
-    (lumenna-write "block.add" :title "Run" :at "7am" :minutes 30 :date "tomorrow" :repeat "every day")
-    (let* ((display-time-24hr-format t)
-           (series (car (split-string (plist-get (aref (plist-get (lumenna-call "block.list") :rows) 0) :id) "@")))
-           (_ (lumenna-call "block.cancel" :id series :date "tomorrow"))
-           (rows (lumenna--day-rows (lumenna-call "plan" :date "tomorrow")))
-           (line (lambda (role) (lumenna-describe (seq-find (lambda (r) (equal (plist-get r :role) role)) rows)))))
-      (should (equal (funcall line "cancelled") "07:00, Run, cancelled for this day"))
-      (should (string-match-p "\\`Free, [0-9]+ hours?\\( [0-9]+ minutes?\\)?, [0-9:]+ to [0-9:]+\\'" (funcall line "free")))
-      (should (string-match-p "\\`Now, [0-9][0-9]:[0-9][0-9]\\'"
-                              (funcall (lambda () (lumenna-describe (seq-find (lambda (r) (equal (plist-get r :role) "now"))
-                                                                             (lumenna--day-rows (lumenna-call "plan")))))))))))
+    (lumenna-test--seed "block.add" :title "Run" :at "7am" :minutes 30 :date "tomorrow" :repeat "every day")
+    (let ((display-time-24hr-format t))
+      (lumenna-today)
+      (should (seq-find (lambda (l) (string-match-p "\\`Now, [0-9][0-9]:[0-9][0-9]\\'" l)) (lumenna-test--lines)))
+      (lumenna-day-next)
+      (lumenna-test--goto "Run")
+      (lumenna-act-cancel-day)
+      (should (member "07:00, Run, cancelled for this day" (lumenna-test--lines)))
+      (should (seq-find (lambda (l) (string-match-p "\\`Free, [0-9]+ hours?\\( [0-9]+ minutes?\\)?, [0-9:]+ to [0-9:]+\\'" l))
+                        (lumenna-test--lines))))))
 
 (ert-deftest lumenna-an-empty-list-says-the-cores-words-under-a-heading-without-its-count ()
   (lumenna-test--with-store
@@ -480,25 +484,25 @@
     (forward-line 1)
     (should (equal (lumenna-test--line) "No blocks."))
     (should-error (lumenna-row) :type 'user-error)
+    ;; The saved filters are a heading of the places, as every app's sidebar has them.
     (lumenna-filters)
-    (should (equal (buffer-string) "Saved filters\nNo saved filters. A filter's query is kept here under a name.\n"))
+    (should (equal (buffer-string) "Saved Filters\n"))
     (lumenna-devices)
     (should (equal (buffer-string) "Devices and sync\nNo devices are paired yet. Pair one to sync with it.\n"))
-    (lumenna-write "label.add" :name "calls")
+    (lumenna-test--seed "label.add" :name "calls")
     (lumenna-labels)
-    (goto-char (point-min))
-    (should (equal (lumenna-test--line) "Labels, 1 label"))))
+    (should (equal (lumenna-test--lines) '("Labels" "  calls, no open tasks")))))
 
 (ert-deftest lumenna-going-to-a-day-and-a-new-filter-ask-the-cores-questions ()
   (lumenna-test--with-store
-    (lumenna-write "block.add" :title "Dentist" :at "2pm" :minutes 60 :kind "event" :date "tomorrow")
+    (lumenna-test--seed "block.add" :title "Dentist" :at "2pm" :minutes 60 :kind "event" :date "tomorrow")
     (lumenna-today)
     (let (asked (answers (list "tomorrow" "Urgent" "p1")))
       (cl-letf (((symbol-function 'read-from-minibuffer) (lambda (prompt &rest _) (push prompt asked) (pop answers)))
                 ((symbol-function 'read-string) (lambda (prompt &rest _) (push prompt asked) (pop answers))))
         (call-interactively #'lumenna-day-go-to)
         (goto-char (point-min))
-        (should (string-match-p "\\`[A-Z][a-z]+ [0-9]+ [A-Z][a-z]+ [0-9]+\\. 1 block" (lumenna-test--line)))
+        (should (string-match-p "\\`Tomorrow\\. 1 block" (lumenna-test--line)))
         (should (search-forward "Dentist" nil t))
         (lumenna-filters)
         (lumenna-filter-add))
@@ -527,7 +531,7 @@
 
 (ert-deftest lumenna-a-new-block-starts-when-the-core-says-for-the-day-typed ()
   (lumenna-test--with-store
-    (lumenna-write "config.set" :key "day-start" :value "07:30")
+    (lumenna-test--seed "config.set" :key "day-start" :value "07:30")
     (let (initials (answers (list "Run" "tomorrow" nil "30" "Work" "")))
       (cl-letf (((symbol-function 'read-from-minibuffer)
                  (lambda (_prompt initial &rest _)
@@ -539,27 +543,9 @@
       (should (equal (nth 2 (reverse initials)) "07:30")))
     (should (equal (plist-get (aref (plist-get (lumenna-call "block.list") :rows) 0) :due_time) "07:30"))))
 
-(ert-deftest lumenna-a-rule-the-words-cannot-say-is-noted-at-repeats ()
-  (lumenna-test--with-store
-    (lumenna-write "block.add" :title "Board" :at "6pm" :minutes 60 :date "today" :repeat "every day")
-    (lumenna-blocks)
-    (lumenna-test--goto "Board")
-    (let ((real (symbol-function 'lumenna-call)) asked)
-      (cl-letf (((symbol-function 'lumenna-call)
-                 (lambda (method &rest params)
-                   (let ((result (apply real method params)))
-                     ;; As a rule from an import or another app arrives: no words for it.
-                     (if (equal method "block.show")
-                         (plist-put (plist-put (copy-sequence result) :rrule "FREQ=MONTHLY;BYDAY=2TU") :repetition nil)
-                       result))))
-                ((symbol-function 'completing-read) (lambda (&rest _) "Repeats"))
-                ((symbol-function 'read-from-minibuffer) (lambda (prompt &rest _) (setq asked prompt) "")))
-        (lumenna-act-edit))
-      (should (equal asked "It repeats by the rule FREQ=MONTHLY;BYDAY=2TU, which the repetition words cannot say. Leave Repeats empty to keep it. Repeats: ")))))
-
 (ert-deftest lumenna-a-destructive-question-says-what-it-does-then-asks-it ()
   (lumenna-test--with-store
-    (lumenna-write "label.add" :name "calls")
+    (lumenna-test--seed "label.add" :name "calls")
     (lumenna-labels)
     (lumenna-test--goto "calls")
     (let (asked)
@@ -600,8 +586,8 @@
 
 (ert-deftest lumenna-labels-merge-and-filters-are-saved-and-requeried ()
   (lumenna-test--with-store
-    (lumenna-write "task.add" :text "ring the bank @calls")
-    (lumenna-write "label.add" :name "cals")
+    (lumenna-test--seed "task.add" :text "ring the bank @calls")
+    (lumenna-test--seed "label.add" :name "cals")
     (lumenna-labels)
     (lumenna-test--goto "cals")
     (lumenna-test--answering ("calls")
@@ -621,7 +607,7 @@
 
 (ert-deftest lumenna-completion-offers-projects-and-counts-in-bytes ()
   (lumenna-test--with-store
-    (lumenna-write "project.add" :name "Work")
+    (lumenna-test--seed "project.add" :name "Work")
     (with-temp-buffer
       (insert "café #Wo")
       (let ((found (funcall (lumenna--completion "quick-add"))))
@@ -664,7 +650,7 @@
 
 (ert-deftest lumenna-help-lists-a-lists-keys-once-and-runs-one-there ()
   (lumenna-test--with-store
-    (lumenna-write "task.add" :text "buy milk")
+    (lumenna-test--seed "task.add" :text "buy milk")
     (lumenna-tasks)
     (lumenna-test--goto "buy milk")
     (let ((list (current-buffer)))
@@ -686,7 +672,7 @@
 
 (ert-deftest lumenna-the-minibuffer-reads-a-line-back-before-it-is-entered ()
   (lumenna-test--with-store
-    (lumenna-write "task.add" :text "ring the bank p1")
+    (lumenna-test--seed "task.add" :text "ring the bank p1")
     (let (said)
       (cl-letf (((symbol-function 'minibuffer-contents-no-properties) (lambda () "call mum tomorrow p2 @calls"))
                 (lumenna-announce-function (lambda (text _) (setq said text))))
@@ -701,8 +687,8 @@
 
 (ert-deftest lumenna-a-list-takes-emacs-undo-as-the-stores-and-goes-to-items-by-imenu ()
   (lumenna-test--with-store
-    (lumenna-write "task.add" :text "buy milk")
-    (lumenna-write "task.add" :text "post the letter")
+    (lumenna-test--seed "task.add" :text "buy milk")
+    (lumenna-test--seed "task.add" :text "post the letter")
     (lumenna-tasks)
     (should (eq (key-binding (kbd "C-/")) 'lumenna-undo))
     (should (eq (command-remapping 'undo-redo) 'lumenna-redo))
@@ -744,7 +730,7 @@
 
 (ert-deftest lumenna-a-tasks-priority-is-chosen-by-the-cores-words ()
   (lumenna-test--with-store
-    (lumenna-write "task.add" :text "file taxes")
+    (lumenna-test--seed "task.add" :text "file taxes")
     (lumenna-tasks)
     (lumenna-test--goto "file taxes")
     (lumenna-activate)
@@ -784,9 +770,9 @@
 
 (ert-deftest lumenna-a-tasks-project-is-chosen-from-the-projects-with-their-level ()
   (lumenna-test--with-store
-    (lumenna-write "project.add" :name "Work")
-    (lumenna-write "project.add" :name "Reports" :parent "Work")
-    (lumenna-write "task.add" :text "file the summary")
+    (lumenna-test--seed "project.add" :name "Work")
+    (lumenna-test--seed "project.add" :name "Reports" :parent "Work")
+    (lumenna-test--seed "task.add" :text "file the summary")
     (lumenna-tasks)
     (lumenna-test--goto "file the summary")
     (lumenna-activate)
@@ -807,23 +793,31 @@
 
 (ert-deftest lumenna-a-task-in-an-archived-project-keeps-it-on-the-project-list ()
   (lumenna-test--with-store
-    (lumenna-write "project.add" :name "Old")
-    (lumenna-write "task.add" :text "dusty #Old")
-    (lumenna-write "project.archive" :name "Old")
+    (lumenna-test--seed "project.add" :name "Old")
+    (lumenna-test--seed "task.add" :text "dusty #Old")
+    (lumenna-test--seed "project.archive" :name "Old")
+    (lumenna-tasks)
+    (lumenna-test--goto "dusty")
+    (lumenna-activate)
+    (lumenna-test--goto "Project:")
     (let (offered)
       (cl-letf (((symbol-function 'completing-read)
                  (lambda (_prompt collection &rest _) (setq offered (mapcar #'car collection)) "Old")))
-        (should (equal (lumenna--read-project "Project: " "Old") "Old")))
+        (lumenna-activate))
       (should (equal offered '("Inbox" "Old"))))))
 
 (ert-deftest lumenna-the-pairing-code-is-copied-only-when-asked ()
-  (let ((kill-ring nil) (kill-ring-yank-pointer nil) (interprogram-cut-function nil)
-        (lumenna--pairing 'waiting) (lumenna--shown-code nil)
-        (lumenna--words (make-hash-table :test #'equal)))
-    (cl-letf (((symbol-function 'lumenna--pairing-words)
-               (lambda (&optional _) '(:waiting "Waiting." :my_code "This device's code"
-                                       :copied "The code is copied."))))
-      (lumenna-pairing-notified '(:code "abc123" :name "here"))
+  (lumenna-test--with-store
+    (let ((kill-ring nil) (kill-ring-yank-pointer nil) (interprogram-cut-function nil)
+          (lumenna--code-shown nil))
+      (lumenna-devices)
+      (let ((turn (list :screen lumenna--screen
+                        :view (plist-put (copy-sequence lumenna--view) :devices
+                                         (list :status "" :syncing :json-false
+                                               :pairing (list :name "here" :theirs "" :mine "abc123"
+                                                              :running t :waiting t))))))
+        (setq lumenna--view (plist-get turn :view))
+        (lumenna--pairing-turned turn))
       (should (null kill-ring))
       (lumenna-pair-copy-code)
       (should (equal (car kill-ring) "abc123")))))
@@ -837,7 +831,7 @@
           (progn
             (with-timeout (20 (ert-fail "the daemon made no socket"))
               (while (not (lumenna--socket)) (sleep-for 0.1)))
-            (lumenna-write "task.add" :text "through the daemon")
+            (lumenna-test--seed "task.add" :text "through the daemon")
             (should (eq (process-type (jsonrpc--process lumenna--connection)) 'network))
             (should (equal (lumenna-test--titles) '("through the daemon"))))
         (lumenna-disconnect)
@@ -846,7 +840,7 @@
 ;;;; The planner
 
 (defun lumenna-test--block-at (title kind at minutes date)
-  (lumenna-write "block.add" :title title :kind kind :at at :minutes minutes :date date))
+  (lumenna-test--seed "block.add" :title title :kind kind :at at :minutes minutes :date date))
 
 (defmacro lumenna-test--planning (now &rest body)
   "Run BODY against a fresh store, proposals asked as at NOW, times in 24 hours.
@@ -865,8 +859,8 @@
 
 (ert-deftest lumenna-the-days-heading-offers-the-days-own-actions-and-what-to-work-on-says-why ()
   (lumenna-test--with-store
-    (lumenna-write "task.add" :text "write the chapter p1 30m")
-    (lumenna-write "block.add" :title "Focus" :at "00:00" :minutes 1440 :date "today")
+    (lumenna-test--seed "task.add" :text "write the chapter p1 30m")
+    (lumenna-test--seed "block.add" :title "Focus" :at "00:00" :minutes 1440 :date "today")
     (lumenna-today)
     (goto-char (point-min))
     (let ((kinds (mapcar (lambda (a) (plist-get a :kind)) (lumenna-actions))))
@@ -932,23 +926,23 @@
     (lumenna-test--block-at "Lunch" "break" "10:30" 30 "2030-01-15")
     (lumenna-replan)
     ;; Meanwhile the day moves: the same proposal is made elsewhere.
-    (lumenna-call "replan.apply" :proposal lumenna-proposal--proposal
-                  :accepted (vconcat (lumenna-proposal--items)) :now "2030-01-15T10:40")
+    (let ((elsewhere (lumenna-call "replan" :clock "24-hour" :now "2030-01-15T10:40")))
+      (lumenna-test--seed "replan.apply" :proposal elsewhere
+                          :accepted (vconcat (plist-get elsewhere :changes)) :now "2030-01-15T10:40"))
     (setq said nil)
     (lumenna-proposal-apply)
     (let ((lines (lumenna-test--lines)))
-      (should (string-prefix-p "the day has changed since this was proposed" (nth 1 lines)))
+      (should (string-match-p "the day has changed since this was proposed" (nth 1 lines)))
       (should (equal (nth 2 lines) "Nothing needs to change: the rest of the day still fits."))
       (should-not (seq-find (lambda (l) (string-prefix-p "Make the Changes" l)) lines))
-      (should (equal (car (last lines)) "Cancel")))
-    (should (equal (cdar said) '("Nothing needs to change: the rest of the day still fits.")))))
+      (should (equal (car (last lines)) "Cancel")))))
 
 (ert-deftest lumenna-plan-the-day-gives-each-sitting-its-reason-and-plans-again-around-what-was-turned-down ()
   (lumenna-test--planning "2030-01-15T08:00"
     (lumenna-test--block-at "Deep work" "work" "09:00" 60 "2030-01-15")
     (lumenna-test--block-at "Admin" "work" "14:00" 60 "2030-01-15")
-    (lumenna-write "task.add" :text "write report p1 15m")
-    (lumenna-write "task.add" :text "email bob 30m")
+    (lumenna-test--seed "task.add" :text "write report p1 15m")
+    (lumenna-test--seed "task.add" :text "email bob 30m")
     (lumenna-plan-the-day "2030-01-15")
     (should (equal (caar said) "Plans 2 tasks: write report and email bob in Deep work."))
     (should (member "write report goes in Deep work at 09:00, for 15 minutes, checked, Suggested because priority 1 and its estimate of 15 minutes fits the 1 hour left."
@@ -966,8 +960,8 @@
 
 (ert-deftest lumenna-plan-the-day-is-the-days-form-and-cancel-makes-nothing ()
   (lumenna-test--with-store
-    (lumenna-write "task.add" :text "write report 15m")
-    (lumenna-write "block.add" :title "Deep" :at "9:00" :minutes 60 :date "tomorrow")
+    (lumenna-test--seed "task.add" :text "write report 15m")
+    (lumenna-test--seed "block.add" :title "Deep" :at "9:00" :minutes 60 :date "tomorrow")
     (lumenna-today)
     (lumenna-day-next)
     (lumenna-day-plan)
@@ -978,7 +972,7 @@
 
 (ert-deftest lumenna-a-tasks-history-is-on-its-own-screen-under-a-heading-and-never-in-a-list ()
   (lumenna-test--with-store
-    (lumenna-write "task.add" :text "write the chapter")
+    (lumenna-test--seed "task.add" :text "write the chapter")
     (lumenna-tasks)
     (should-not (seq-find (lambda (l) (string-match-p "made today" l)) (lumenna-test--lines)))
     (lumenna-test--goto "write the chapter")
@@ -989,9 +983,9 @@
 (ert-deftest lumenna-a-blocks-end-offers-to-carry-its-short-work-forward-from-the-notification ()
   (lumenna-test--reminding
     (lumenna-call "config.set" :key "default-block-reminders" :value "")
-    (lumenna-write "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "2030-01-15")
-    (lumenna-write "block.add" :title "Admin" :at "9:00" :minutes 60 :date "2030-01-16")
-    (lumenna-write "task.add" :text "Essay")
+    (lumenna-test--seed "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "2030-01-15")
+    (lumenna-test--seed "block.add" :title "Admin" :at "9:00" :minutes 60 :date "2030-01-16")
+    (lumenna-test--seed "task.add" :text "Essay")
     (let* ((plan (lumenna-call "plan" :date "2030-01-15"))
            (block (plist-get (aref (plist-get plan :blocks) 0) :id))
            (task (plist-get (aref (plist-get (lumenna-call "task.list") :rows) 0) :id)))
@@ -1017,7 +1011,7 @@
 
 (ert-deftest lumenna-the-due-list-carries-forward-only-where-a-reminder-offers-to ()
   (lumenna-test--reminding
-    (lumenna-write "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "2030-01-15")
+    (lumenna-test--seed "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "2030-01-15")
     (lumenna-test--deliver)
     (setq now "2030-01-15T08:55:30Z")
     (lumenna-test--deliver)
@@ -1050,8 +1044,8 @@
 (ert-deftest lumenna-a-blocks-work-outrunning-it-offers-replan-from-the-notification ()
   (lumenna-test--reminding
     (lumenna-call "config.set" :key "default-block-reminders" :value "")
-    (lumenna-write "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "2030-01-15")
-    (lumenna-write "block.add" :title "Meeting" :at "10:00" :minutes 60 :date "2030-01-15")
+    (lumenna-test--seed "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "2030-01-15")
+    (lumenna-test--seed "block.add" :title "Meeting" :at "10:00" :minutes 60 :date "2030-01-15")
     (let ((block (plist-get (aref (plist-get (lumenna-call "plan" :date "2030-01-15") :blocks) 0) :id)))
       (dolist (task '(("Essay" . 40) ("Email" . 30)))
         (let ((id (plist-get (plist-get (lumenna-call "task.add" :text (car task)) :task) :id)))

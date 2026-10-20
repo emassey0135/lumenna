@@ -170,7 +170,7 @@ class Menus(unittest.TestCase):
 
     def test_a_new_block_starts_when_the_core_says_and_again_for_a_day_changed_to(self):
         self.call("config.set", key="day-start", value="07:30")
-        offered = self.call("form.new_block_start", date="today")["value"]
+        offered = self.session.device.new_block_start("today")
         script = self.run_script(
             [("app", "Add a block"), ("form", {"title": "Run", "date": "tomorrow"}), ("back",)],
             lambda: day.day_plan(self.session),

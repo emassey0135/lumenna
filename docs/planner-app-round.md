@@ -29,7 +29,7 @@ run any action generically needs nothing for these; check that they appear and r
 - `replan(style, ReplanPins::default(), None)` → `Replan { announcement, changes, unplaceable, pins, style }`.
   `style` is the platform's clock (`TimeStyle::TwelveHour`/`TwentyFourHour`, over RPC
   `"clock": "12-hour"|"24-hour"`).
-- Words: `proposal_words(ActionKind::Replan)` (RPC `form.proposal {kind: "replan"}`):
+- Words: `proposal_words(ActionKind::Replan)`:
   `title`, `item` (each change's check box name), `apply`, `cancel`, `hint`, `nothing`, `unfit`.
 - The screen: say `announcement` when it opens (it is the whole proposal in one sentence).
   Then each change as a checkable row, its text `change.sentence`, all checked to begin with;

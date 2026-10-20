@@ -117,11 +117,6 @@ fn text(response: &Response, clock: Clock) {
         // branch that cannot be reached.
         Outcome::Change(_)
         | Outcome::Timer(_)
-        | Outcome::Completions(_)
-        | Outcome::Preview(_)
-        | Outcome::WorkBlocks(_)
-        | Outcome::Places(_)
-        | Outcome::Value(_)
 
         | Outcome::Server(_)
         | Outcome::Backup(_)

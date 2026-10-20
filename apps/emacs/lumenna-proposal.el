@@ -7,37 +7,23 @@
 
 ;; The core proposes, and the person checks what to take: Replan from Now
 ;; (the rest of today worked out again) and Plan the Day (each work block
-;; given its most urgent tasks).  A buffer of checkable lines, each the core's
+;; given its most urgent tasks).  The app's proposal screen, drawn in a buffer
+;; of checkable lines beside the day it was asked from, each the core's
 ;; sentence, all checked to begin with; SPC turns one off or on, C-c C-c makes
 ;; what is checked.  Nothing changes until then.
 ;;
-;; A change taken alone can leave the day crowded, so applying hands back the
-;; core's next proposal, worked out around what was left unchecked, and the
-;; buffer shows it in place of the last; it closes when nothing more is
-;; proposed.  Every word on the screen is the core's (`form.proposal').
+;; A change taken alone can leave the day crowded, so applying shows the
+;; core's next proposal, worked out around what was left unchecked, in place of
+;; the last; the buffer closes when nothing more is proposed.  Every word on
+;; the screen is the core's.
 
 ;;; Code:
 
 (require 'lumenna)
 
 (defvar lumenna-proposal--now nil
-  "For tests: a function of no arguments giving now, a local date and time.
-Nil asks the core for now.")
-
-(defvar-local lumenna-proposal--kind nil
-  "Which proposal this buffer shows: \"replan\" or \"plan_day\".")
-
-(defvar-local lumenna-proposal--date nil
-  "The day Plan the Day plans, ISO; nil for today.")
-
-(defvar-local lumenna-proposal--proposal nil
-  "The core's proposal shown: a `Replan' or a `DayPlan'.")
-
-(defvar-local lumenna-proposal--checked nil
-  "Whether each of the proposal's items is checked, in its order.")
-
-(defvar-local lumenna-proposal--refused nil
-  "The core's sentence when the last apply was refused, shown over the list.")
+  "For tests: a function of no arguments giving the moment to propose against,
+YYYY-MM-DDTHH:MM local, in place of now.")
 
 (define-derived-mode lumenna-proposal-mode lumenna-list-mode "Lumenna Proposal"
   "A proposal of the core's, a change per line, each checked to begin with.
@@ -45,113 +31,122 @@ SPC or RET turns one off or on;
 \\<lumenna-proposal-mode-map>\\[lumenna-proposal-apply] makes the ones checked; \\[lumenna-proposal-cancel] closes, making nothing.
 
 \\{lumenna-proposal-mode-map}"
-  (setq-local lumenna--describe #'lumenna-proposal--describe)
+  (setq-local lumenna--draw #'lumenna-proposal--rows)
   (setq-local lumenna--activate #'lumenna-proposal--activate))
 
-(defun lumenna-proposal--replan-p ()
-  "Whether this buffer is Replan from Now's."
-  (equal lumenna-proposal--kind "replan"))
-
-(defun lumenna-proposal--words (&optional kind)
-  "The words of KIND's screen, or this buffer's: title, item, apply, cancel, hint."
-  (lumenna-words "form.proposal" :kind (or kind lumenna-proposal--kind)))
-
-(defun lumenna-proposal--items (&optional proposal)
-  "PROPOSAL's items, or the shown one's: a replan's changes, a day plan's sittings."
-  (let ((proposal (or proposal lumenna-proposal--proposal)))
-    (append (or (plist-get proposal :changes) (plist-get proposal :sittings)) nil)))
-
-(defun lumenna-proposal--clock ()
-  "The clock the core is to say times in: Emacs's own, as `lumenna-time' says them."
-  (if display-time-24hr-format "24-hour" "12-hour"))
-
-(defun lumenna-proposal--ask (kind date &optional pins)
-  "What the core proposes for KIND, on DATE for a day plan, keeping to PINS."
-  (let ((now (and lumenna-proposal--now (funcall lumenna-proposal--now))))
-    (if (equal kind "replan")
-        (lumenna-call "replan" :clock (lumenna-proposal--clock) :pins pins :now now)
-      (lumenna-call "day_plan" :date date :clock (lumenna-proposal--clock) :pins pins :now now))))
-
-(defun lumenna-proposal--open (kind date)
-  "Show what the core proposes for KIND, on DATE for a day plan, and say it."
-  (let* ((proposal (lumenna-proposal--ask kind date))
-         (title (plist-get (lumenna-proposal--words kind) :title)))
-    (lumenna--show-list (format "*Lumenna: %s*" title) #'lumenna-proposal-mode #'lumenna-proposal--rows
-                        'lumenna-proposal--kind kind
-                        'lumenna-proposal--date date
-                        'lumenna-proposal--proposal proposal
-                        'lumenna-proposal--checked (make-list (length (lumenna-proposal--items proposal)) t)
-                        'lumenna-proposal--refused nil)
-    (lumenna-proposal--first-line)
-    ;; The whole proposal in one sentence: for someone who cannot glance at a
-    ;; timeline, that is the check.
-    (lumenna-say proposal)))
-
-;;;###autoload
-(defun lumenna-replan ()
-  "Replan the rest of today: the core's proposal, to check and make."
-  (interactive)
-  (lumenna-proposal--open "replan" nil))
-
-;;;###autoload
-(defun lumenna-plan-the-day (&optional date)
-  "Plan DATE, ISO or a date phrase, else today: each work block given its tasks."
-  (interactive)
-  (lumenna-proposal--open "plan_day" date))
-
-(lumenna-define-form "day" "replan" (lambda (_action _row) (lumenna-replan)))
-(lumenna-define-form "day" "plan_day" (lambda (action _row) (lumenna-plan-the-day (plist-get action :target))))
+(defun lumenna-proposal--view ()
+  "The proposal this buffer's screen shows."
+  (plist-get lumenna--view :proposal))
 
 (defun lumenna-proposal--rows ()
   "The heading and lines of the proposal shown."
-  (let* ((words (lumenna-proposal--words))
-         (proposal lumenna-proposal--proposal)
-         (items (lumenna-proposal--items))
-         (unfit (append (or (plist-get proposal :unplaceable) (plist-get proposal :unfit)) nil)))
-    (cons (format "%s. %s" (plist-get words :title) (plist-get proposal :announcement))
-          (append
-           (when lumenna-proposal--refused
-             (list (list :key "refused" :role "error" :title lumenna-proposal--refused :face 'lumenna-overdue)))
-           (if items
-               (seq-map-indexed
-                (lambda (item index)
-                  (let ((checked (nth index lumenna-proposal--checked)))
-                    (list :key (format "item %d" index) :role "change" :index index :item item
-                          :title (plist-get item :sentence) :on checked :reason (plist-get item :reason)
-                          :face (unless checked 'lumenna-quiet))))
-                items)
-             (list (list :key "nothing" :role "nothing" :title (plist-get words :nothing) :face 'lumenna-quiet)))
-           (when unfit
-             (cons (list :key "unfit" :role "heading" :title (plist-get words :unfit) :face 'lumenna-heading)
-                   (mapcar (lambda (line) (list :key (concat "unfit: " line) :role "unfit" :depth 1 :title line))
-                           unfit)))
-           ;; What becomes of a change left unchecked, beside the button that makes the rest.
-           (when items
-             (list (list :key "apply" :role "button" :button 'apply
-                         :title (format "%s. %s" (plist-get words :apply) (plist-get words :hint)))))
-           ;; Other options, each asking again with its own pins; none, no heading.
-           (when-let* ((others (append (plist-get proposal :alternatives) nil)))
-             (cons (list :key "others" :role "heading" :title (plist-get words :others) :face 'lumenna-heading)
-                   (seq-map-indexed (lambda (other index)
-                                      (list :key (format "other %d" index) :role "button" :button 'other
-                                            :depth 1 :other other :title (plist-get other :sentence)))
-                                    others)))
-           (list (list :key "cancel" :role "button" :button 'cancel :title (plist-get words :cancel)))))))
+  (let* ((proposal (lumenna-proposal--view))
+         (words (plist-get proposal :words))
+         (changes (append (plist-get proposal :changes) nil))
+         (unfit (append (plist-get proposal :unfit) nil))
+         (others (append (plist-get proposal :others) nil)))
+    (setq-local lumenna--empty nil)
+    (if (null proposal)
+        (list "Nothing proposed")
+      (cons (lumenna--heading (plist-get words :title) (plist-get proposal :announcement))
+            (append
+             (when-let* ((refused (plist-get proposal :refusal)))
+               (list (list :key "refused" :role "error" :text refused :face 'lumenna-overdue)))
+             (if changes
+                 (seq-map-indexed
+                  (lambda (change index)
+                    (let ((checked (lumenna--true (plist-get change :checked))))
+                      ;; The reason is the change's description, so it follows its name and state.
+                      (list :key (format "item %d" index) :role "change" :index index :on checked
+                            :text (string-join (delq nil (list (plist-get change :sentence)
+                                                               (if checked "checked" "not checked")
+                                                               (plist-get change :reason)))
+                                               ", ")
+                            :face (unless checked 'lumenna-quiet))))
+                  changes)
+               (list (list :key "nothing" :role "nothing" :text (plist-get words :nothing) :face 'lumenna-quiet)))
+             (when unfit
+               (cons (list :key "unfit" :role "heading" :text (plist-get words :unfit) :face 'lumenna-heading)
+                     (mapcar (lambda (line) (list :key (concat "unfit: " line) :role "unfit" :depth 1 :text line))
+                             unfit)))
+             ;; What becomes of a change left unchecked, beside the button that makes the rest.
+             (when changes
+               (list (list :key "apply" :role "button" :button 'apply
+                           :text (format "%s. %s" (plist-get words :apply) (plist-get words :hint)))))
+             ;; Other options, each proposing again in place; none, no heading.
+             (when others
+               (cons (list :key "others" :role "heading" :text (plist-get words :others) :face 'lumenna-heading)
+                     (seq-map-indexed (lambda (other index)
+                                        (list :key (format "other %d" index) :role "button" :button 'other
+                                              :index index :depth 1 :text other))
+                                      others)))
+             (list (list :key "cancel" :role "button" :button 'cancel :text (plist-get words :cancel))))))))
 
-(defun lumenna-proposal--describe (row)
-  "ROW as its line: a change's sentence, whether it is checked, then why.
-The reason is the change's description, so it follows its name and state."
-  (if (equal (plist-get row :role) "change")
-      (string-join (delq nil (list (plist-get row :title)
-                                   (if (plist-get row :on) "checked" "not checked")
-                                   (plist-get row :reason)))
-                   ", ")
-    (plist-get row :title)))
+(defun lumenna-proposal--open ()
+  "Show the proposal the app opened on this buffer's screen, beside it.
+Run after what the person asked of the app; a proposal already shown stays."
+  (when-let* ((proposal (lumenna-proposal--view)))
+    (when-let* ((shown (and (not (derived-mode-p 'lumenna-proposal-mode))
+                            (seq-find (lambda (b) (with-current-buffer b (derived-mode-p 'lumenna-proposal-mode)))
+                                      (lumenna--buffers-of lumenna--screen)))))
+      ;; Asked for again while it is open: the buffer that shows it comes back.
+      (pop-to-buffer-same-window shown))
+    (unless (derived-mode-p 'lumenna-proposal-mode)
+      (let ((screen lumenna--screen)
+            (view lumenna--view)
+            (lines lumenna--lines)
+            (buffer (get-buffer-create (format "*Lumenna: %s*" (plist-get (plist-get proposal :words) :title)))))
+        (with-current-buffer buffer
+          (lumenna-proposal-mode)
+          (lumenna--attach screen)
+          (setq lumenna--view view lumenna--lines lines)
+          (lumenna--redraw)
+          (goto-char (point-min))
+          (forward-line 1))
+        (pop-to-buffer-same-window buffer)))))
 
-(defun lumenna-proposal--first-line ()
-  "Point on the first line under the heading."
-  (goto-char (point-min))
-  (forward-line 1))
+(add-hook 'lumenna-followed-hook #'lumenna-proposal--open)
+
+(defun lumenna-proposal--send (event)
+  "Send EVENT, one of the proposal screen's, and follow what it does.
+Once the app closes the screen, this buffer goes."
+  (lumenna-send (list :Proposal event))
+  (lumenna--follow)
+  (unless (lumenna-proposal--view)
+    (let ((buffer (current-buffer)))
+      (quit-window nil (get-buffer-window buffer))
+      (kill-buffer buffer))))
+
+(defun lumenna--propose (kind)
+  "Do the day's own action of KIND, a proposal: from the moment pinned for tests."
+  (when lumenna-proposal--now
+    (lumenna-send (list :PlanFrom (funcall lumenna-proposal--now))))
+  (lumenna--day-act kind))
+
+(declare-function lumenna--day-act "lumenna-day" (kind))
+(declare-function lumenna-today "lumenna-day" ())
+
+;;;###autoload
+(defun lumenna-replan ()
+  "Replan the rest of today: the core's proposal, to check and make.
+From anywhere, as an overrun warning's button opens it."
+  (interactive)
+  (unless (derived-mode-p 'lumenna-day-mode) (lumenna-today))
+  (when lumenna-proposal--now
+    (lumenna-send (list :PlanFrom (funcall lumenna-proposal--now))))
+  (lumenna-send (list :Proposal "Replan"))
+  (lumenna--follow))
+
+;;;###autoload
+(defun lumenna-plan-the-day (&optional date)
+  "Plan DATE, a date phrase, else the day shown or today.
+Each work block is given its most urgent tasks."
+  (interactive)
+  (unless (derived-mode-p 'lumenna-day-mode) (lumenna-today))
+  (when date (lumenna-day-show date))
+  (lumenna--propose "plan_day"))
+
+(declare-function lumenna-day-show "lumenna-day" (date))
 
 (defun lumenna-proposal--activate (row)
   "RET on ROW: turn a change off or on, or press the button it is."
@@ -160,37 +155,29 @@ The reason is the change's description, so it follows its name and state."
     ('cancel (lumenna-proposal-cancel))
     ('other (lumenna-proposal-take-other))
     ((guard (equal (plist-get row :role) "change")) (lumenna-proposal-toggle))
-    (_ (message "%s" (plist-get row :title)))))
+    (_ (message "%s" (plist-get row :text)))))
 
 (defun lumenna-proposal-take-other ()
-  "Take the other option at point: the core's proposal for it, shown and said."
+  "Take the other option at point: the core's proposal for it, in place."
   (interactive)
-  (let ((other (or (plist-get (lumenna-row) :other) (user-error "No other option on this line"))))
-    (let ((again (lumenna-proposal--ask lumenna-proposal--kind lumenna-proposal--date (plist-get other :pins))))
-      (lumenna-proposal--show again)
-      (lumenna-say again))))
+  (let ((row (lumenna-row)))
+    (unless (eq (plist-get row :button) 'other) (user-error "No other option on this line"))
+    (lumenna-proposal--send (list :Take (plist-get row :index)))
+    (goto-char (point-min))
+    (forward-line 1)))
 
 (defun lumenna-proposal-toggle ()
   "Turn the change at point off, or back on, and say which it is now."
   (interactive)
   (let ((row (lumenna-row)))
     (unless (equal (plist-get row :role) "change")
-      (user-error "%s" (plist-get row :title)))
-    (let ((index (plist-get row :index)))
-      (setf (nth index lumenna-proposal--checked) (not (nth index lumenna-proposal--checked)))
-      (lumenna-refresh)
+      (user-error "%s" (plist-get row :text)))
+    (let ((on (not (plist-get row :on))))
+      (lumenna-proposal--send (list :Check (list :index (plist-get row :index) :on (if on t :json-false))))
       (funcall lumenna-announce-function
-               (format "%s, %s" (plist-get (lumenna-proposal--words) :item)
-                       (if (nth index lumenna-proposal--checked) "checked" "not checked"))
+               (format "%s, %s" (plist-get (plist-get (lumenna-proposal--view) :words) :item)
+                       (if on "checked" "not checked"))
                nil))))
-
-(defun lumenna-proposal--show (proposal &optional refused)
-  "Show PROPOSAL in place of the last, every item checked; REFUSED over it."
-  (setq lumenna-proposal--proposal proposal
-        lumenna-proposal--checked (make-list (length (lumenna-proposal--items proposal)) t)
-        lumenna-proposal--refused refused)
-  (lumenna-refresh)
-  (lumenna-proposal--first-line))
 
 (defun lumenna-proposal-apply ()
   "Make the changes checked.
@@ -198,44 +185,18 @@ The core proposes again around what was left unchecked; that is shown next,
 and the buffer closes once nothing more is proposed.  A proposal the day has
 moved past is refused: the core's sentence is shown, over a new proposal."
   (interactive)
-  (unless (lumenna-proposal--items)
-    (user-error "%s" (plist-get (lumenna-proposal--words) :nothing)))
-  (let* ((proposal lumenna-proposal--proposal)
-         (accepted (vconcat (seq-filter #'identity
-                                        (seq-mapn (lambda (item on) (and on item))
-                                                  (lumenna-proposal--items) lumenna-proposal--checked))))
-         (now (and lumenna-proposal--now (funcall lumenna-proposal--now)))
-         (buffer (current-buffer))
-         (result (condition-case err
-                     (if (lumenna-proposal--replan-p)
-                         (lumenna-call "replan.apply" :proposal proposal :accepted accepted :now now)
-                       (lumenna-call "day_plan.apply" :plan proposal :accepted accepted :now now))
-                   (user-error
-                    (let ((again (lumenna-proposal--ask lumenna-proposal--kind lumenna-proposal--date
-                                                        (plist-get proposal :pins))))
-                      (lumenna-proposal--show again (cadr err))
-                      (funcall lumenna-announce-function (cadr err) (list (plist-get again :announcement)))
-                      nil)))))
-    (when result
-      (let ((next (plist-get result :next)))
-        (if (lumenna-proposal--items next)
-            (lumenna-proposal--show next)
-          (quit-window t (get-buffer-window buffer))
-          (when (buffer-live-p buffer) (kill-buffer buffer))))
-      (lumenna--wrote (format "day/%s" (if (lumenna-proposal--replan-p) "replan" "plan_day")) result))))
+  (unless (plist-get (lumenna-proposal--view) :changes)
+    (user-error "%s" (plist-get (plist-get (lumenna-proposal--view) :words) :nothing)))
+  (setq lumenna--acting (if (equal (plist-get (lumenna-proposal--view) :kind) "replan") "day/replan" "day/plan_day"))
+  (lumenna-proposal--send "Apply")
+  (when (derived-mode-p 'lumenna-proposal-mode)
+    (goto-char (point-min))
+    (forward-line 1)))
 
 (defun lumenna-proposal-cancel ()
   "Close the proposal, making nothing."
   (interactive)
-  (quit-window t))
-
-(defun lumenna-proposal-again ()
-  "Ask the core again, keeping to what was decided, every item checked."
-  (interactive)
-  (let ((again (lumenna-proposal--ask lumenna-proposal--kind lumenna-proposal--date
-                                      (plist-get lumenna-proposal--proposal :pins))))
-    (lumenna-proposal--show again)
-    (lumenna-say again)))
+  (lumenna-proposal--send "Close"))
 
 (lumenna-define-keys lumenna-proposal-mode
   ("The proposal"
@@ -245,8 +206,7 @@ moved past is refused: the core's sentence is shown, over a new proposal."
    ("o" "Take the other option at point" lumenna-proposal-take-other)
    ("C-c C-c" "Make the changes checked" lumenna-proposal-apply)
    ("C-c C-k" "Cancel, making nothing" lumenna-proposal-cancel)
-   ("q" "Cancel, making nothing" lumenna-proposal-cancel)
-   ("g" "Propose again" lumenna-proposal-again)))
+   ("q" "Cancel, making nothing" lumenna-proposal-cancel)))
 
 (provide 'lumenna-proposal)
 

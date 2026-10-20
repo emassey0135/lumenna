@@ -1,10 +1,11 @@
 # Lumenna in Emacs
 
 A client of `lum rpc` in Emacs Lisp, using only what ships with Emacs 29 and later:
-`jsonrpc.el` for the connection, `outline-minor-mode` for the subtask tree,
-and `completing-read` for choosing a project or label. Like the
-BTSpeak app it decides almost nothing itself; every rule, date and announcement is the
-core's.
+`jsonrpc.el` for the connection, and `completing-read` for choosing a project or label. It
+draws Lumenna's app, as every other client does: the app runs in `lum rpc` (or the daemon or a
+desktop app it reaches), each Lumenna buffer one of its screens. Like the BTSpeak app it
+decides nothing itself; which row is in hand, what an action asks, every rule, date and
+announcement is the app's.
 
 ## Running it
 
@@ -19,8 +20,9 @@ Then `C-c l t` is Today, `C-c l a` adds a task, and `C-c l ?` lists the rest.
 straight there. `lum` is found on `exec-path`, or set `lumenna-lum-program`.
 
 The client connects to the daemon's socket (`<profile>/lumenna.sock`) when one answers, and
-otherwise starts `lum rpc` itself, which stops when Emacs does. Either way changes made
-elsewhere arrive as a push and every open Lumenna buffer refreshes. `lumenna-profile`, or
+otherwise starts `lum rpc` itself, which stops when Emacs does, and which keeps this device in
+sync while Emacs runs once it is paired. Either way changes made elsewhere reach the app,
+whose screens every open Lumenna buffer redraws. `lumenna-profile`, or
 `LUMENNA_PROFILE` in Emacs's environment, picks a store, as it does for the CLI.
 
 ## Using it

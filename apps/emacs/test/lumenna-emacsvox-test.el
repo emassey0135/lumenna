@@ -64,8 +64,8 @@
 
 (ert-deftest lumenna-emacsvox-a-row-carries-its-role-and-states ()
   (lumenna-emacsvox-test--with-store
-    (let ((task (plist-get (lumenna-write "task.add" :text "pay the rent every month") :task)))
-      (lumenna-write "task.edit" :id (plist-get task :id) :due "2026-10-01"))
+    (let ((task (plist-get (lumenna-test--seed "task.add" :text "pay the rent every month") :task)))
+      (lumenna-test--seed "task.edit" :id (plist-get task :id) :due "2026-10-01"))
     (lumenna-tasks)
     (lumenna-test--goto "pay the rent")
     (let ((facts (get-text-property (point) emacsvox-aural-facts-property)))
@@ -86,7 +86,7 @@
 
 (ert-deftest lumenna-emacsvox-completing-a-task-is-one-notification-with-its-event ()
   (lumenna-emacsvox-test--with-store
-    (lumenna-write "task.add" :text "buy milk")
+    (lumenna-test--seed "task.add" :text "buy milk")
     (lumenna-tasks)
     (lumenna-test--goto "buy milk")
     (let ((lumenna-announce-function #'lumenna-emacsvox-announce)

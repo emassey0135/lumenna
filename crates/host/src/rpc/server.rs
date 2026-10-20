@@ -6,13 +6,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::{
-    BlockEdit, BlockScope, Lumenna, LumennaError, MoveTarget, NewBlock, Reach, SyncReport, Syntax,
+    BlockEdit, BlockScope, Lumenna, LumennaError, MoveTarget, NewBlock, Reach, SyncReport,
     TaskEdit,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use super::api::{self, Derived, Response};
+use super::api::{self, Response};
 
 /// How often to look for changes another process wrote.
 ///
@@ -37,6 +37,16 @@ const CONFIRM_WAIT: Duration = Duration::from_secs(10 * 60);
 /// Every method this server answers.
 pub const METHODS: &[&str] = &[
     "initialize",
+    // The app's, where whoever serves gives one (`Apps`).
+    "app.send",
+    "app.view",
+    "app.close",
+    "app.still",
+    "app.tick",
+    "app.in_front",
+    "app.clock",
+    "app.complete",
+    "app.question",
     "shutdown",
     "task.add",
     "task.list",
@@ -76,7 +86,6 @@ pub const METHODS: &[&str] = &[
     "block.add",
     "block.list",
     "block.show",
-    "block.choices",
     "block.edit",
     "block.cancel",
     "block.restore",
@@ -103,32 +112,6 @@ pub const METHODS: &[&str] = &[
     "restore",
     "export",
     "import",
-    "complete",
-    "preview",
-    "act",
-    "choices",
-    "places",
-    "form.task_fields",
-    "form.task_edit",
-    "form.block_fields",
-    "form.day_block_fields",
-    "form.block_edit",
-    "form.new_block",
-    "form.block_defaults",
-    "form.priorities",
-    "form.not_offered",
-    "form.project_reference",
-    "form.label_reference",
-    "form.task_form",
-    "form.block_form",
-    "form.pairing_words",
-    "form.sentence_case",
-    "form.go_to_day",
-    "form.new_filter",
-    "form.length",
-    "form.unsayable_repeat_note",
-    "form.project_options",
-    "form.new_block_start",
     "reminder.deliver",
     "reminder.due",
     "reminder.upcoming",
@@ -589,10 +572,6 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         }
         "block.list" => Response::new(l.list_blocks()?),
         "block.show" => Response::new(l.show_block(&id()?)?),
-        "block.choices" => {
-            // The work blocks a task could go in, from the task: a chooser's question.
-            Response::new(l.work_blocks(maybe_text(params, "from"), maybe_number(params, "days")?)?)
-        }
         "block.edit" => {
             let block = id()?;
             let scope = match maybe_text(params, "date") {
@@ -686,28 +665,6 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         }
         "import" => Response::new(l.import(&text_of(params, "file")?)?),
 
-        "complete" => {
-            let text = text_of(params, "text")?;
-            let cursor = maybe_number(params, "cursor")?.unwrap_or_else(|| u32::try_from(text.len()).unwrap_or(u32::MAX));
-            let syntax = match maybe_text(params, "syntax").as_deref() {
-                None | Some("quick-add") => Syntax::QuickAdd,
-                Some("filter") => Syntax::Filter,
-                Some(other) => return Err(invalid(format!("'{other}' is not a syntax; use quick-add or filter"))),
-            };
-            // The count is said before the list, and the announcement is core's sentence, so
-            // it travels as one — the candidates travel as components.
-            Response::new(l.complete_text(&text, cursor, syntax)?)
-        }
-        "preview" => Response::new(l.preview_task(&text_of(params, "text")?)?),
-
-        // What a row's actions ask and do, as every client offers them.
-        "act" => Response::new(l.act(record(params, "action")?, maybe_record(params, "answer")?.unwrap_or(crate::Answer::Yes))?),
-        // Put in a Block from another day: `from` and `days`, as `block.choices` takes them.
-        "choices" if params.get("from").is_some_and(|f| !f.is_null()) => {
-            Response::new(l.work_block_choices(maybe_text(params, "from"), maybe_number(params, "days")?)?)
-        }
-        "choices" => Response::new(l.choices(record(params, "action")?)?),
-        "places" => Response::new(l.places()),
         // What a block's end offers: its short work carried to the next blocks that take it.
         "carry_rest" => Response::new(l.carry_rest_forward(&text_of(params, "block")?)?),
         // What to work on now, and starting on it.
@@ -737,28 +694,6 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
             maybe_text(params, "now"),
         )?),
 
-        // The forms' rules, for a client that cannot call them in-process.
-        "form.task_fields" => Response::new(Derived::of(crate::task_fields(record(params, "task")?))),
-        "form.task_edit" => Response::new(Derived::of(crate::task_edit(record(params, "task")?, record(params, "fields")?))),
-        "form.block_fields" => Response::new(Derived::of(crate::block_fields(record(params, "block")?))),
-        "form.day_block_fields" => Response::new(Derived::of(crate::day_block_fields(record(params, "block")?))),
-        "form.block_edit" => {
-            Response::new(Derived::of(crate::block_edit(record(params, "before")?, record(params, "after")?)?))
-        }
-        "form.new_block" => {
-            Response::new(Derived::of(crate::new_block(record(params, "fields")?, maybe_text(params, "date"))?))
-        }
-        "form.block_defaults" => Response::new(Derived::of(crate::block_defaults(text_of(params, "kind")?))),
-        "form.priorities" => Response::new(Derived::of(crate::priorities())),
-        "form.task_form" => Response::new(Derived::of(crate::task_form())),
-        "form.block_form" => Response::new(Derived::of(crate::block_form())),
-        "form.pairing_words" => Response::new(Derived::of(crate::pairing_words(
-            maybe_text(params, "this_device").unwrap_or_else(|| "this device".to_owned()),
-            maybe_bool(params, "local")?.unwrap_or(true),
-        ))),
-        "form.go_to_day" => Response::new(Derived::of(crate::go_to_day_question())),
-        "form.proposal" => Response::new(Derived::of(crate::proposal_words(record(params, "kind")?))),
-        "form.new_filter" => Response::new(Derived::of(crate::new_filter_questions())),
         // Reminders: what to give, a target's own, and dealing with one firing.
         // What to give now, for a client that gives this device's reminders (BTSpeak's service,
         // Emacs): only while no other process does, so a running app and a client never both
@@ -793,18 +728,6 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
             text_of(params, "occurrence")?,
             maybe_number(params, "minutes")?,
         )?),
-        "form.new_block_start" => Response::new(Derived::of(l.new_block_start(maybe_text(params, "date"))?)),
-        "form.project_options" => Response::new(Derived::of(l.project_options()?)),
-        "form.unsayable_repeat_note" => Response::new(Derived::of(crate::unsayable_repeat_note(record(params, "block")?))),
-        "form.length" => Response::new(Derived::of(crate::length_question())),
-        "form.sentence_case" => Response::new(Derived::of(crate::sentence_case(text_of(params, "text")?))),
-        "form.project_reference" => Response::new(Derived::of(crate::project_reference(name()?))),
-        "form.label_reference" => Response::new(Derived::of(crate::label_reference(name()?))),
-        "form.not_offered" => Response::new(Derived::of(crate::not_offered(
-            record(params, "kind")?,
-            record(params, "subject")?,
-            flag(params, "this_device"),
-        ))),
 
         other => {
             let hint = lumenna_core::suggest::nearest(other, METHODS.iter().copied())

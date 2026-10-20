@@ -31,7 +31,7 @@
 (declare-function notifications-notify "notifications" (&rest params))
 (declare-function lumenna-task-show "lumenna-tasks" (id))
 (declare-function lumenna-today "lumenna-day" ())
-(declare-function lumenna--day-turn "lumenna-day" (day))
+(declare-function lumenna-today "lumenna-day" ())
 (declare-function lumenna--task "lumenna-tasks" (&optional id))
 (declare-function dbus-ping "dbus" (bus service &optional timeout))
 (declare-function lumenna-replan "lumenna-proposal" ())
@@ -209,7 +209,18 @@ A summary of what was missed is dismissed one by one."
     (setq lumenna-reminders--waiting
           (seq-remove (lambda (r) (equal (lumenna-reminders--key r) (lumenna-reminders--key reminder)))
                       lumenna-reminders--waiting))
-    (lumenna--wrote method result)))
+    (lumenna-reminders--wrote method result)))
+
+(defun lumenna-reminders--wrote (event result)
+  "Say RESULT, what EVENT, a store method, did; the app's screens take it in."
+  (run-hook-with-args 'lumenna-changed-functions event result)
+  (lumenna-say result)
+  (lumenna--tick)
+  (lumenna-reminders--redraw))
+
+(defun lumenna-reminders--not-offered (kind)
+  "Why a reminder does not offer KIND, in the core's words."
+  (jsonrpc-request (lumenna--connection) 'app.question (list :name "not_offered" :kind kind :subject "reminder")))
 
 (defun lumenna-reminders--carry-p (reminder)
   "Whether REMINDER offers to carry its block's short work forward."
@@ -225,7 +236,7 @@ A summary of what was missed is dismissed one by one."
   "Open Replan from Now, as the reminder at point offers to."
   (interactive)
   (unless (lumenna-reminders--replan-p (lumenna-reminders--at-point))
-    (user-error "%s" (lumenna--value "form.not_offered" :kind "replan" :subject "reminder")))
+    (user-error "%s" (lumenna-reminders--not-offered "replan")))
   (lumenna-replan))
 
 (defun lumenna-reminders--carry (reminder)
@@ -236,15 +247,16 @@ That answers the reminder, so it leaves what came due."
     (setq lumenna-reminders--waiting
           (seq-remove (lambda (r) (equal (lumenna-reminders--key r) (lumenna-reminders--key reminder)))
                       lumenna-reminders--waiting))
-    (lumenna--wrote "block/carry_rest" result)))
+    (lumenna-reminders--wrote "block/carry_rest" result)))
 
 (defun lumenna-reminders--open (reminder)
   "Open what REMINDER is about: its task, or its block's day."
   (let ((first (if (plist-get reminder :summary) (car (plist-get reminder :missed)) reminder)))
     (pcase (plist-get first :kind)
       ("task" (lumenna-task-show (plist-get first :target)))
-      (_ (lumenna-today)
-         (lumenna--day-turn (plist-get first :occurrence))))))
+      (_ (with-current-buffer (lumenna-today)
+           (lumenna-send (list :ShowBlock (list :series (plist-get first :target) :date (plist-get first :occurrence))))
+           (lumenna--follow))))))
 
 ;;;; What came due
 
@@ -297,69 +309,73 @@ That answers the reminder, so it leaves what came due."
   (interactive)
   (let ((reminder (lumenna-reminders--at-point)))
     (unless (lumenna-reminders--carry-p reminder)
-      (user-error "%s" (lumenna--value "form.not_offered" :kind "carry_rest" :subject "reminder")))
+      (user-error "%s" (lumenna-reminders--not-offered "carry_rest")))
     (lumenna-reminders--carry reminder)))
 
 ;;;; A task's or block's own
+
+;; The app's reminder list, opened by a task's or block's Reminders action, in
+;; a buffer of its own beside the list it was asked from.
 
 (define-derived-mode lumenna-reminder-list-mode lumenna-list-mode "Lumenna Reminders"
   "A task's or block's reminders: its own, or the defaults it takes.
 a adds one, by a phrase such as \"5m before start\"; d removes one of its own.
 
-\\{lumenna-reminder-list-mode-map}")
+\\{lumenna-reminder-list-mode-map}"
+  (setq-local lumenna--held :reminders_held)
+  (setq-local lumenna--draw #'lumenna-reminders--rows)
+  (add-hook 'kill-buffer-hook #'lumenna-reminders--close nil t))
 
-(defvar-local lumenna-reminders--target nil
-  "The task or block series whose reminders this buffer lists.")
+(defun lumenna-reminders--list ()
+  "The reminder list this buffer's screen shows."
+  (plist-get lumenna--view :reminders))
 
-(defvar-local lumenna-reminders--list nil
-  "The core's `ReminderList' this buffer last showed.")
+(defun lumenna-reminders--rows ()
+  "The reminders of the list shown, in the core's words."
+  (let* ((list (lumenna-reminders--list))
+         (lines (append (plist-get lumenna--lines :reminders) nil)))
+    (setq-local lumenna--empty nil)
+    (if (null list)
+        (list "No reminders shown")
+      (cons (plist-get list :announcement)
+            (cl-mapcar (lambda (reminder line)
+                         (list :key (plist-get reminder :id) :id (plist-get reminder :id) :role "reminder"
+                               :text (plist-get line :text) :actions (plist-get reminder :actions)))
+                       (append (plist-get list :reminders) nil) lines)))))
 
-(defun lumenna-reminders-of (target &optional name)
-  "List TARGET's reminders: a task's or a block series' identifier.
-NAME is what the buffer is called after."
-  (lumenna--show-list
-   (format "*Lumenna reminders: %s*" (or name target))
-   #'lumenna-reminder-list-mode
-   (lambda ()
-     (let ((list (lumenna-call "reminder.list" :target target)))
-       (setq-local lumenna-reminders--list list)
-       (cons (plist-get list :announcement)
-             (mapcar (lambda (reminder)
-                       (list :id (plist-get reminder :id) :role "reminder" :title (plist-get reminder :words)
-                             :state (unless (lumenna--true (plist-get reminder :own)) ["a default"])
-                             :actions (plist-get reminder :actions)))
-                     (append (plist-get list :reminders) nil)))))
-   'lumenna-reminders--target target))
+(defun lumenna-reminders--open-list ()
+  "Show the reminder list the app opened on this buffer's screen, beside it."
+  (when-let* ((list (lumenna-reminders--list)))
+    (unless (or (derived-mode-p 'lumenna-reminder-list-mode)
+                (seq-find (lambda (b) (with-current-buffer b (derived-mode-p 'lumenna-reminder-list-mode)))
+                          (lumenna--buffers-of lumenna--screen)))
+      (let ((screen lumenna--screen) (view lumenna--view) (lines lumenna--lines)
+            (buffer (get-buffer-create
+                     (format "*Lumenna reminders: %s*"
+                             (or (plist-get (plist-get lumenna--acted-on :block) :title)
+                                 (plist-get lumenna--acted-on :title)
+                                 (plist-get (plist-get (plist-get lumenna--view :details) :task) :title)
+                                 "Reminders")))))
+        (with-current-buffer buffer
+          (lumenna-reminder-list-mode)
+          (lumenna--attach screen)
+          (setq lumenna--view view lumenna--lines lines)
+          (lumenna--redraw))
+        (pop-to-buffer-same-window buffer)))))
+
+(add-hook 'lumenna-followed-hook #'lumenna-reminders--open-list)
+
+(defun lumenna-reminders--close ()
+  "The reminder list is closed with its buffer."
+  (when (and lumenna--screen lumenna--connection (jsonrpc-running-p lumenna--connection))
+    (ignore-errors (lumenna-send "CloseReminders"))))
 
 (defun lumenna-reminders-add ()
   "Add a reminder of this task's or block's own, by a phrase the core reads.
 One the core cannot read is asked again, with the core's sentence first."
   (interactive)
-  (let* ((action (or (car (append (plist-get lumenna-reminders--list :actions) nil))
-                     (user-error "Nothing adds a reminder here")))
-         (question (plist-get action :question))
-         (typed (plist-get question :initial))
-         (wrong nil)
-         (done nil))
-    (while (not done)
-      (let ((text (read-string (lumenna--prompt wrong (lumenna--question-title question) (plist-get question :hint)
-                                                (plist-get question :label))
-                               typed)))
-        (condition-case err
-            (progn
-              (lumenna--wrote "reminder/new" (lumenna-call "act" :action action :answer (list :answer "text" :text text)))
-              (setq done t))
-          (user-error (setq wrong (cadr err) typed text)))))))
-
-(defun lumenna-reminders--form (action row)
-  "Open ACTION's list of reminders, offered on ROW."
-  (lumenna-reminders-of (plist-get action :target)
-                        (cond ((plist-get row :block) (plist-get (plist-get row :block) :title))
-                              ((member (plist-get row :role) '("task" "block")) (plist-get row :title))
-                              ((derived-mode-p 'lumenna-task-mode) (plist-get (lumenna--task) :title)))))
-
-(lumenna-define-form "task" "reminders" #'lumenna-reminders--form)
-(lumenna-define-form "series" "reminders" #'lumenna-reminders--form)
+  (lumenna-act (or (car (append (plist-get (lumenna-reminders--list) :actions) nil))
+                   (user-error "Nothing adds a reminder here"))))
 
 ;;;; Menus
 
