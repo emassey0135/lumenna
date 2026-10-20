@@ -34,7 +34,14 @@ use windows::Win32::UI::Controls::{EM_SETSEL, EM_UNDO};
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{HSTRING, w};
 
+use lumenna_app::Capitals;
+use lumenna_ffi::ShellEvent;
+
+use super::asking;
 use super::blocks::BlockList;
+use super::clock::Formats;
+use super::proposal;
+use super::shell::{Relay, WM_TURN};
 use super::controls::{self, rect};
 use super::core::{Core, Poster, WM_SAY, WM_STORE_CHANGED, said, taken};
 use super::toast::{Answered, Toasts, WM_REMINDER};
@@ -63,6 +70,8 @@ use crate::{profile, speech};
 const WM_DEFERRED: u32 = WM_APP + 3;
 
 const TIMER_REFRESH: usize = 1;
+/// Looks every 50 milliseconds whether the app is still, to ask the question it has open.
+const TIMER_ASK: usize = 2;
 
 /// Something to do once the notification being handled has returned.
 type Deferred = Box<dyn FnOnce(&App)>;
@@ -90,6 +99,20 @@ impl Content {
 
 pub struct App {
     pub core: Core,
+    /// The Crux app, over this profile's store: what the screens drawn from it show, and where
+    /// they send what the person does. The screens not yet drawn from it still call `core`.
+    pub crux: lumenna_ffi::App,
+    /// The store as the app's own connection holds it.
+    device: lumenna_ffi::Device,
+    /// The last turn's sequence and its landing count: focus moves only when the count does.
+    seq: Cell<u32>,
+    landing: Cell<u32>,
+    /// The store's heads when the screens not drawn from the app last read it.
+    heads: RefCell<String>,
+    /// Whether the app's open question is being asked now.
+    asking: Cell<bool>,
+    /// The last line typed into a question, asked again with it when refused.
+    pub typed: RefCell<String>,
     pub main: HWND,
     accelerators: HACCEL,
     font: Cell<HFONT>,
@@ -153,7 +176,14 @@ pub fn run() {
             return;
         }
     };
-    let Some(app) = App::create(core, &tray::class_name(&directory)) else { return };
+    let device = match lumenna_ffi::Device::new(directory.display().to_string()) {
+        Ok(device) => device,
+        Err(error) => {
+            prompts::fail(HWND::default(), &format!("Lumenna could not open its data. {}", sentence(&error)));
+            return;
+        }
+    };
+    let Some(app) = App::create(core, device, &tray::class_name(&directory)) else { return };
     APP.with(|slot| *slot.borrow_mut() = Some(Rc::clone(&app)));
     if arguments.no_shortcuts {
         shortcuts::leave_to_another_copy();
@@ -183,7 +213,7 @@ fn message_loop(app: &App) {
 }
 
 impl App {
-    fn create(core: Core, class: &str) -> Option<Rc<Self>> {
+    fn create(core: Core, device: lumenna_ffi::Device, class: &str) -> Option<Rc<Self>> {
         // Before any window, so menus are made in the mode.
         dark::refresh();
         let instance = controls::instance();
@@ -260,8 +290,28 @@ impl App {
         let detail = Detail::create(panes[2]);
         // Where the store is now, so the first tick does not reload for nothing.
         let outside = core.lumenna.outside_version().unwrap_or(0);
+        let relay = Arc::new(Relay(Poster::new(main)));
+        let crux = match lumenna_ffi::App::new(&device, "windows".to_owned(), Arc::new(Formats), relay) {
+            Ok(crux) => crux,
+            Err(error) => {
+                prompts::fail(main, &format!("Lumenna could not start. {}", sentence(&error)));
+                return None;
+            }
+        };
+        crux.send(ShellEvent::Clock(proposal::style()));
+        // Title Case, as Windows writes its buttons and menus.
+        crux.send(ShellEvent::Capitals(Capitals::Title));
+        // The app's network waits while this window's own service keeps the device in sync.
+        crux.in_front(false);
         let app = Rc::new(Self {
             core,
+            crux,
+            device,
+            seq: Cell::new(0),
+            landing: Cell::new(0),
+            heads: RefCell::new(String::new()),
+            asking: Cell::new(false),
+            typed: RefCell::new(String::new()),
             main,
             accelerators: menu::accelerators(),
             font: Cell::new(HFONT::default()),
@@ -349,16 +399,66 @@ impl App {
     }
 
     /// The store changed — here, in another process, or from another device. Everything
-    /// showing it reads it again, keeping its selection.
+    /// showing it reads it again, keeping its selection, and the app takes it in.
     pub fn store_changed(&self) {
         if let Some(page) = self.devices_page.get() {
             settings::devices_changed(page);
         }
+        self.follow_store();
+        self.crux.tick();
+    }
+
+    /// The screens not yet drawn from the app read the store again, if it moved since they
+    /// last did: what the app wrote, too.
+    fn follow_store(&self) {
+        let heads = self.device.heads().unwrap_or_default();
+        if !heads.is_empty() && *self.heads.borrow() == heads {
+            return;
+        }
+        *self.heads.borrow_mut() = heads;
         self.sidebar.reload(self);
         if let Some(content) = self.content() {
             content.view().reload(self);
         }
         self.detail.reload(self);
+    }
+
+    /// A turn the app left: drawn, the screens not drawn from it brought up to date, its
+    /// question asked once the app is still, then what it says said.
+    fn take_turn(&self, turn: lumenna_ffi::Turn) {
+        if turn.seq <= self.seq.replace(turn.seq) {
+            return;
+        }
+        let landed = turn.view.landing != self.landing.replace(turn.view.landing);
+        let list = self.task_list().filter(|list| turn.view.place.as_ref() == Some(&list.place));
+        if let Some(list) = &list {
+            list.draw(self, &turn.view, &turn.lines, landed);
+        }
+        self.follow_store();
+        if turn.view.asking.is_some() && !self.asking.get() {
+            unsafe {
+                let _ = SetTimer(Some(self.main), TIMER_ASK, 50, None);
+            }
+        }
+        // The tree says a row it folded itself is expanded or collapsed.
+        let folded = list.is_some_and(|list| list.folded_by_tree.replace(false));
+        let said: Vec<String> =
+            turn.said.into_iter().filter(|said| !(folded && (said == "Expanded" || said == "Collapsed"))).collect();
+        self.say(&said.join(" "));
+    }
+
+    /// Asks the app's open question once the app is still: not from a turn made before the
+    /// last answer reached it.
+    fn ask_when_still(&self) {
+        if !self.crux.is_still() || self.asking.get() {
+            return;
+        }
+        unsafe {
+            let _ = KillTimer(Some(self.main), TIMER_ASK);
+        }
+        self.asking.set(true);
+        asking::ask(self);
+        self.asking.set(false);
     }
 
     /// Runs `action` once the notification being handled has returned.
@@ -439,6 +539,8 @@ impl App {
             }
         }
         self.detail.show(self, None);
+        // The app's place follows the window's, until the sidebar is drawn from it.
+        self.crux.send(ShellEvent::Open(place.clone()));
         let pane = self.panes[1];
         let content = match &place {
             Place::Today => Content::Day(DayView::create(self, pane)),
@@ -688,6 +790,15 @@ impl App {
     /// A Task-menu command: the task in hand's action of that kind, as the core offers it, so
     /// Mark Done marks a done task not done, and in the trash Restore restores.
     fn act_on_task_in_hand(&self, kinds: &[ActionKind]) {
+        // The list's row in hand is the app's, and so is saying when it has no such action.
+        if !controls::within(self.panes[2], controls::focused())
+            && let Some(list) = self.task_list()
+        {
+            if list.selected().is_none() {
+                return self.say("No task is selected");
+            }
+            return self.crux.send(ShellEvent::Run(kinds.to_vec()));
+        }
         let Some(offered) = self.task_actions_in_hand() else {
             return self.say("No task is selected");
         };
@@ -941,6 +1052,8 @@ impl App {
     /// moves only for another process: this app's own edits redraw as they are made, and a
     /// sync's arrivals come from its `SyncService`, so neither is reloaded twice.
     fn on_timer(&self) {
+        // The app looks whether the store or the minute moved.
+        self.crux.tick();
         if let Ok(version) = self.core.lumenna.outside_version()
             && self.version.replace(version) != version
         {
@@ -1126,7 +1239,9 @@ unsafe extern "system" fn main_procedure(hwnd: HWND, message: u32, wparam: WPARA
                 app.hide_window();
                 return LRESULT(0);
             }
+            WM_TIMER if wparam.0 == TIMER_ASK => app.ask_when_still(),
             WM_TIMER => app.on_timer(),
+            WM_TURN => app.take_turn(taken(lparam)),
             WM_STORE_CHANGED => app.store_changed(),
             WM_SAY => app.say(&said(lparam)),
             WM_REMINDER => app.reminder_answered(taken(lparam)),

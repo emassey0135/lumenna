@@ -107,6 +107,22 @@ pub fn focused() -> HWND {
     unsafe { GetFocus() }
 }
 
+/// Whether focus is lost in `main` while it is in front: on nothing, on the window or a pane
+/// itself, where a screen reader finds nothing, or on a control no longer shown.
+pub fn lost(main: HWND) -> bool {
+    let focus = focused();
+    if focus.is_invalid() {
+        return unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow() } == main;
+    }
+    if !within(main, focus) {
+        return false;
+    }
+    let mut class = [0u16; 16];
+    let length = unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassNameW(focus, &mut class) };
+    let pane = String::from_utf16_lossy(&class[..length.max(0) as usize]) == "LumennaPane";
+    focus == main || pane || !is_visible(focus)
+}
+
 /// Whether `hwnd` is `ancestor` or inside it.
 pub fn within(ancestor: HWND, hwnd: HWND) -> bool {
     !hwnd.is_invalid() && (hwnd == ancestor || unsafe { IsChild(ancestor, hwnd).as_bool() })

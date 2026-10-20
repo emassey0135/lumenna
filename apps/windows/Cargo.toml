@@ -15,6 +15,11 @@ path = "src/main.rs"
 [dependencies]
 jiff.workspace = true
 lumenna-desktop = { path = "../../crates/desktop" }
+# The Crux app, as the Mac and Android run it: an rlib here, with the network and the command
+# surface a resident app serves.
+lumenna-ffi = { path = "../../crates/ffi", features = ["network", "rpc"] }
+# What the app's view model and lines are, and how every line reads.
+lumenna-app = { path = "../../crates/app" }
 lumenna-host = { path = "../../crates/host", features = ["sync", "rpc"] }
 
 # Everything that touches Win32 is behind `cfg(windows)`, so the workspace still builds and

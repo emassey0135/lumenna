@@ -181,6 +181,7 @@ impl DayView {
                 text: row.text(),
                 depth: u32::from(matches!(row, Row::Sitting(_))),
                 checked: None,
+                expanded: None,
             })
             .collect();
         *self.rows.borrow_mut() = rows;

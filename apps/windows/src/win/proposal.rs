@@ -176,7 +176,7 @@ impl Screen<'_> {
             let items = rows
                 .iter()
                 .enumerate()
-                .map(|(index, (text, _))| Item { key: format!("{generation}:{index}"), text: text.clone(), depth: 0, checked: Some(true) })
+                .map(|(index, (text, _))| Item { key: format!("{generation}:{index}"), text: text.clone(), depth: 0, checked: Some(true), expanded: None })
                 .collect();
             tree.set(items);
             for (index, (_, reason)) in rows.iter().enumerate().filter(|(_, (_, reason))| !reason.is_empty()) {
@@ -346,7 +346,7 @@ impl Dialog for Screen<'_> {
 }
 
 /// The clock the person's Windows says times in, for the core to say the proposal in.
-fn style() -> TimeStyle {
+pub fn style() -> TimeStyle {
     if Locale.time("13:00").contains("13") { TimeStyle::TwentyFourHour } else { TimeStyle::TwelveHour }
 }
 

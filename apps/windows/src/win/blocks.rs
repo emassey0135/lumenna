@@ -96,7 +96,7 @@ impl View for BlockList {
                 let items = listing
                     .rows
                     .iter()
-                    .map(|row| Item { key: row.id.clone(), text: speech::row(row, false, &Locale), depth: 0, checked: None })
+                    .map(|row| Item { key: row.id.clone(), text: speech::row(row, false, &Locale), depth: 0, checked: None, expanded: None })
                     .collect();
                 *self.rows.borrow_mut() = listing.rows;
                 if self.tree.set(items) {

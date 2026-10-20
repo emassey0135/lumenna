@@ -51,7 +51,7 @@ apps/android/   Jetpack Compose over the Crux app's Kotlin bindings: the phone (
                 (wear/), and what they share (shared/).
 apps/apple/     the iOS, macOS and watchOS apps over the Crux app's Swift bindings, Shared/
                 between them.
-apps/windows/   the Win32 app, linking the surface directly.
+apps/windows/   the Win32 app, moving onto the Crux app screen by screen.
 apps/gtk/       the Linux app, GTK 4, linking the surface directly.
 apps/web/       the web client: the core in WASM (core/), TypeScript and React Aria over it.
 ```
@@ -1082,8 +1082,30 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 
 ## The Windows app
 
-`apps/windows/`: Rust over `windows-rs`, linking `lumenna-host` directly, binary
-`lumenna.exe`. Everything Win32 is in `src/win/` behind `cfg(windows)`.
+`apps/windows/`: Rust over `windows-rs`, binary `lumenna.exe`, moving onto the Crux app one
+screen at a time: `lumenna-ffi` as an rlib (`App`, `Device`), as the Mac and Android run it.
+The screens not yet moved still call `lumenna-host` directly (`Core`), on a connection of their
+own. Everything Win32 is in `src/win/` behind `cfg(windows)`.
+
+- **The app's turns are posted to the window** (`shell.rs`, `WM_TURN`) and taken in order
+  (`App::take_turn`): the screens drawn from the app draw, the others read the store again if
+  its heads moved (`follow_store`), then what the turn says goes to the status line. Drawn from
+  it so far: the task list (`tasks.rs`). Its rows, readback, filter (put back on returning to a
+  place), row in hand and folding are the app's; Space, Delete, the Task menu and its context
+  menu run the row's action as the app's (`Run`, `Perform`), only `Question::Form` staying the
+  window's (the details, reminders). The selection moves only when `view.landing` goes up or
+  the rows were rebuilt; focus goes into the tree on landing only when it is lost.
+- **The app's open question is asked once the app is still** (`asking.rs`, polled every 50 ms
+  from a turn that has one): straight after an answer the question is still open while the
+  write is under way, and asking then would ask it twice. A refusal is said, then a line is
+  asked again with what was typed.
+- **The tree's own folding is the app's** Expand and Collapse (`TVN_ITEMEXPANDED`, a tree
+  item's `expanded` set from the row's); the app's "Expanded" or "Collapsed" is not said after
+  one the tree made, since the tree reports the state itself.
+- **Times and dates are Windows' own** (`clock.rs`: `GetTimeFormatEx`, and the locale's long
+  date with its year taken out where the app leaves it out), handed to the app as its `Locale`.
+- **The app's network waits** (`in_front(false)`) while `Core`'s sync service keeps the device
+  in sync and serves the pipe, until Settings and the Devices page move.
 
 - **Building on ARM64 Windows needs clang on `PATH`** for `ring`: Visual Studio's
   `VC\Tools\Llvm\ARM64\bin`. The manifest is embedded by the MSVC linker from `build.rs`.
@@ -1099,10 +1121,10 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   make the screen reader re-read the focused row.
 - **Nothing that rebuilds a tree runs inside one of its notifications.** Space, Delete and
   double-click go through `App::defer`; `Tree::busy` marks notifications a refill sends.
-- **A row's actions are offered and asked in one place** (`win/actions.rs`): the context
-  menus, the Task menu, the details buttons and Delete, Space and Enter all take the row's
-  core actions by kind. Only the forms are the app's: the details pane, the block form, a
-  new saved filter.
+- **A row's actions are offered and asked in one place** (`win/actions.rs`) on the screens
+  not yet drawn from the app: the context menus, the Task menu, the details buttons and
+  Delete, Space and Enter all take the row's core actions by kind. Only the forms are the
+  window's: the details pane, the block form, a new saved filter.
 - **IsDialogMessage runs over the whole main window**, with the panes
   `WS_EX_CONTROLPARENT`, so menu command ids are never 1 or 2 (`IDOK`, `IDCANCEL`). Field
   mnemonics avoid the menu bar's letters (F E V T D H): the dialog manager gives

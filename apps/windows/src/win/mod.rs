@@ -3,6 +3,7 @@
 mod a11y;
 mod actions;
 mod app;
+mod asking;
 mod block_form;
 mod blocks;
 mod clock;
@@ -22,6 +23,7 @@ mod pairing;
 mod proposal;
 mod reminders;
 mod settings;
+mod shell;
 mod shortcuts;
 mod sidebar;
 mod system;

@@ -47,7 +47,7 @@ impl Sidebar {
         let entries = lumenna_host::sidebar(&app.core.lumenna);
         let items = entries
             .iter()
-            .map(|entry| Item { key: entry.key(), text: entry.text.clone(), depth: entry.depth, checked: None })
+            .map(|entry| Item { key: entry.key(), text: entry.text.clone(), depth: entry.depth, checked: None, expanded: None })
             .collect();
         *self.entries.borrow_mut() = entries;
         if self.tree.set(items) {

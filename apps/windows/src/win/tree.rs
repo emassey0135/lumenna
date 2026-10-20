@@ -38,6 +38,9 @@ pub struct Item {
     pub depth: u32,
     /// Whether its checkbox is checked; `None` for a row with no checkbox.
     pub checked: Option<bool>,
+    /// Whether what is under it is shown, where the app folds the list; `None` for a tree
+    /// that folds by itself, remembering what the person collapsed.
+    pub expanded: Option<bool>,
 }
 
 /// A tree view, and the rows it was last given.
@@ -116,6 +119,11 @@ impl Tree {
                     ..Default::default()
                 };
                 controls::send(self.hwnd, TVM_SETITEMW, 0, &raw mut tv as isize);
+                // Folded or unfolded by the app: a no-op where the tree did it itself.
+                if let Some(expanded) = item.expanded {
+                    let action = if expanded { TVE_EXPAND } else { TVE_COLLAPSE };
+                    controls::send(self.hwnd, TVM_EXPAND, action.0 as usize, handles[index].0);
+                }
             }
         } else {
             controls::send(self.hwnd, WM_SETREDRAW, 0, 0);
@@ -142,12 +150,14 @@ impl Tree {
                 let handle = controls::send(self.hwnd, TVM_INSERTITEMW, 0, &raw const insert as isize);
                 handles.push(HTREEITEM(handle));
             }
-            // Expanded unless the person collapsed it, which is remembered by key across
-            // reloads; only once its children are in, since an item without any cannot open.
+            // As the app folds it, or else expanded unless the person collapsed it, which is
+            // remembered by key across reloads; only once its children are in, since an item
+            // without any cannot open.
             let collapsed = self.collapsed.borrow().clone();
             for (index, has_children) in outline::has_children(&parents).into_iter().enumerate() {
                 if has_children {
-                    let action = if collapsed.contains(&items[index].key) { TVE_COLLAPSE } else { TVE_EXPAND };
+                    let expanded = items[index].expanded.unwrap_or_else(|| !collapsed.contains(&items[index].key));
+                    let action = if expanded { TVE_EXPAND } else { TVE_COLLAPSE };
                     controls::send(self.hwnd, TVM_EXPAND, action.0 as usize, handles[index].0);
                 }
             }

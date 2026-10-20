@@ -165,6 +165,36 @@ fn space_checks_a_task_off_and_focus_moves_to_the_one_that_took_its_place() {
 
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn a_list_gone_back_to_opens_on_its_row_and_folding_and_another_processs_write_leaves_focus_alone() {
+    let app = App::launch(|lumenna| {
+        add(lumenna, "Write report");
+        add(lumenna, "Outline");
+        add(lumenna, "Call Sam");
+        let rows = lumenna.list_tasks("").unwrap().rows;
+        let report = rows.iter().find(|r| r.title == "Write report").unwrap().id.clone();
+        let outline = rows.iter().find(|r| r.title == "Outline").unwrap().id.clone();
+        lumenna.move_task(&outline, lumenna_host::MoveTarget::Parent { id: report }).unwrap();
+    });
+    let outline_listed = || app.automation.dump(app.window, 10).iter().any(|l| l.contains("TreeItem 'Outline"));
+    app.post(&[GO_TASKS]);
+    assert!(outline_listed(), "Outline is listed under Write report");
+    // The tree's own Left folds the row, as the app's Collapse.
+    app.post(&["select:Write report", "left"]);
+    assert!(!outline_listed(), "Outline is folded away under Write report");
+    app.post(&["select:Call Sam", "cmd:140", GO_TASKS]);
+    assert!(app.focus().contains("TreeItem 'Call Sam'"), "back on the row left in hand: {}", app.focus());
+    assert!(!outline_listed(), "still folded on coming back");
+    // A write from elsewhere redraws the list and moves nothing.
+    app.store().add_task("Water plants").unwrap();
+    let listed = automation::wait(Duration::from_secs(5), || {
+        app.automation.dump(app.window, 10).iter().any(|l| l.contains("TreeItem 'Water plants'")).then_some(())
+    });
+    assert!(listed.is_some(), "Water plants never appeared");
+    assert!(app.focus().contains("TreeItem 'Call Sam'"), "focus stays where it was: {}", app.focus());
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn f6_goes_round_the_panes() {
     let app = App::launch(|lumenna| add(lumenna, "Buy milk"));
     app.post(&[GO_TASKS, "f6"]);
@@ -840,8 +870,8 @@ fn a_rows_menu_is_the_cores_and_never_offers_a_task_as_its_own_parent() {
     app.post(&["esc"]);
     assert_eq!(
         menu,
-        ["Mark Done", "Edit Details", "Put in a Block...", "Move to Project...", "Make Subtask Of...", "Wait For...", "Move to Trash"],
-        "the task's actions, as the core gives them"
+        ["Mark Done", "Edit Details", "Put in a Block...", "Move to Project...", "Make Subtask Of...", "Wait For...", "Move to Trash", "Collapse"],
+        "the task's actions, as the core gives them, and the app's folding of what is under it"
     );
     // Its own subtask is not somewhere it can go.
     app.post(&["cmd:164"]);
