@@ -93,9 +93,9 @@ extension WatchAsker: QuestionAsking {
     }
 
     // A watch's pick is a list of buttons, each answering by itself: no button names the answer.
-    func pick(title: String, offered: [Offered], anotherDay: String?, yes: String, answered: @escaping (Picked) -> Void) {
+    func pick(title: String, offered: [Offered], yes: String, answered: @escaping (Picked) -> Void) {
         let reply = Once(answered)
-        ask(OfferedPrompt(title: title, offered: offered, anotherDay: anotherDay, picked: { reply($0) }), gone: { reply(.cancelled) })
+        ask(OfferedPrompt(title: title, offered: offered, picked: { reply($0) }), gone: { reply(.cancelled) })
     }
 
     func choose(title: String, message: String, answers: [(id: String, title: String)], destructive: Bool, answered: @escaping (String?) -> Void) {
@@ -119,13 +119,12 @@ private final class Once<Answer> {
     }
 }
 
-/// One of what the app offers, as it words it, each a button, then another day's where it
-/// offers that. A tree's depth is said where it changes, never by indentation.
+/// One of what the app offers, as it words it, each a button. A tree's depth is said where it
+/// changes, never by indentation.
 private struct OfferedPrompt: View {
     @Environment(\.dismiss) private var dismiss
     let title: String
     let offered: [Offered]
-    let anotherDay: String?
     let picked: (Picked) -> Void
 
     var body: some View {
@@ -148,12 +147,6 @@ private struct OfferedPrompt: View {
                 .accessibilityLabel(choice.title)
                 .accessibilityValue([choice.detail, level].compactMap { $0 }.joined(separator: ", "))
                 .accessibilityHint(choice.reason ?? "")
-            }
-            if let anotherDay {
-                Button(anotherDay) {
-                    picked(.anotherDay)
-                    dismiss()
-                }
             }
         }
         .navigationTitle(title)

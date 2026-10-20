@@ -90,17 +90,12 @@ extension NSWindow: QuestionAsking {
         }
     }
 
-    func pick(title: String, offered: [Offered], anotherDay: String?, yes: String, answered: @escaping (Picked) -> Void) {
-        var items = offered.map { PickerItem(key: $0.id, title: $0.title, detail: $0.detail, depth: Int($0.depth), reason: $0.reason) }
-        // Another day's blocks, after the week's; asking, so it ends in "…" as the Mac's menus say.
-        if let anotherDay { items.append(PickerItem(key: Self.anotherDay, title: anotherDay + "…")) }
+    func pick(title: String, offered: [Offered], yes: String, answered: @escaping (Picked) -> Void) {
+        let items = offered.map { PickerItem(key: $0.id, title: $0.title, detail: $0.detail, depth: Int($0.depth), reason: $0.reason) }
         PickerSheet.present(on: front, title: title, items: items, yes: yes, chosen: { item in
-            answered(item.key == Self.anotherDay ? .anotherDay : .chose(item.key))
+            answered(.chose(item.key))
         }, cancelled: { answered(.cancelled) })
     }
-
-    /// The key of the picker's row that asks for another day's blocks.
-    private static let anotherDay = "\u{0}another-day"
 
     func choose(title: String, message: String, answers: [(id: String, title: String)], destructive: Bool, answered: @escaping (String?) -> Void) {
         let alert = NSAlert()

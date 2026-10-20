@@ -14,8 +14,6 @@ struct Offered {
 /// What came of a pick.
 enum Picked {
     case chose(String)
-    /// The pick's own "another day" (Put in a Block), for the app to offer that day's blocks.
-    case anotherDay
     case cancelled
 }
 
@@ -28,8 +26,8 @@ protocol QuestionAsking: AnyObject {
     /// A line of text, starting from `initial`; `problem` is the app's sentence when it refused
     /// the last answer. Nil is cancelled.
     func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, answered: @escaping (String?) -> Void)
-    /// One of `offered`, and, where `anotherDay` names it, a choice that asks for another day.
-    func pick(title: String, offered: [Offered], anotherDay: String?, yes: String, answered: @escaping (Picked) -> Void)
+    /// One of `offered`: Put in a Block's ends in the app's Another Day, which asks the day next.
+    func pick(title: String, offered: [Offered], yes: String, answered: @escaping (Picked) -> Void)
     /// One of a few answers, each its own button. Nil is cancelled.
     func choose(title: String, message: String, answers: [(id: String, title: String)], destructive: Bool, answered: @escaping (String?) -> Void)
     /// Says something the person should hear and see before going on: why a pick offers nothing.
@@ -109,12 +107,12 @@ final class AppQuestions {
         case let .pick(title, _, yes):
             // What a pick offers comes with the question once the app has worked it out.
             guard let offered = open.choices else { return }
-            guard !offered.choices.isEmpty || open.anotherDay != nil else {
+            guard !offered.choices.isEmpty else {
                 asker.tell(title: title, offered.announcement)
                 cancel()
                 return
             }
-            // A day for another day's blocks that did not read, said before the pick again.
+            // An answer the app refused, said before the pick again.
             if let refusal = open.refusal { asker.tell(title: title, refusal) }
             asking = true
             let worded = lines.choices
@@ -125,16 +123,11 @@ final class AppQuestions {
                     depth: choice.depth, reason: choice.reason
                 )
             }
-            asker.pick(title: title, offered: rows, anotherDay: open.anotherDay, yes: yes) { [weak self] picked in
+            asker.pick(title: title, offered: rows, yes: yes) { picked in
+                done()
                 switch picked {
-                case let .chose(id):
-                    done()
-                    answer(.picked(id: id, length: nil))
-                case .cancelled:
-                    done()
-                    cancel()
-                case .anotherDay:
-                    self?.askDay(asker)
+                case let .chose(id): answer(.picked(id: id, length: nil))
+                case .cancelled: cancel()
                 }
             }
         case let .choose(title, message, answers):
@@ -144,20 +137,6 @@ final class AppQuestions {
                 guard let id else { return cancel() }
                 answer(.picked(id: id, length: nil))
             }
-        }
-    }
-
-    /// Which day's blocks a pick should offer instead, in the core's words for asking a day.
-    private func askDay(_ asker: QuestionAsking) {
-        guard case let .text(title, label, initial, hint, _, yes, _) = LumennaApp.goToDayQuestion() else {
-            asking = false
-            return
-        }
-        asker.text(title: title, label: label, initial: initial, hint: hint, problem: nil, yes: yes) { [weak self, app] day in
-            self?.asking = false
-            guard let day, !day.trimmingCharacters(in: .whitespaces).isEmpty else { return app.send(.cancel) }
-            // The pick stays open, offering that day's blocks; it is asked again as it comes.
-            app.send(.pickFrom(day.trimmingCharacters(in: .whitespaces)))
         }
     }
 }

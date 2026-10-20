@@ -13,8 +13,7 @@ final class ChoicePicker: AppListViewController {
     /// Whether the sheet was closed by a choice, not by Cancel or a swipe down.
     private var answered = false
 
-    /// What the app offers, as it words it, and the app's "another day" as a row of its own at
-    /// the foot, keyed `ChoicePicker.anotherDay`.
+    /// What the app offers, as it words it.
     init(core: Core, title: String, items: [AppItem], chosen: @escaping (String) -> Void, cancelled: @escaping () -> Void) {
         var previous: UInt32 = 0
         offered = items.map { item in
@@ -24,15 +23,11 @@ final class ChoicePicker: AppListViewController {
             item.spoken = AppModel.spoken(detail: item.detail, expanded: nil, level: level)
             return item
         }
-        let choices = items.filter { $0.key != Self.anotherDay }.count
-        count = choices == 1 ? "1 choice" : "\(choices) choices"
+        count = items.count == 1 ? "1 choice" : "\(items.count) choices"
         self.chosen = chosen
         self.cancelled = cancelled
         super.init(core: core, title: title)
     }
-
-    /// The key of the row that asks for another day's blocks.
-    static let anotherDay = "\u{0}another-day"
 
     override var offersUndo: Bool { false }
     /// A pick's rows are its own: the app moves nothing in it.

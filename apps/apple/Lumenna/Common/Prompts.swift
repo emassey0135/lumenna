@@ -91,13 +91,11 @@ extension PhoneAsker: QuestionAsking {
         present(alert) { answered(nil) }
     }
 
-    func pick(title: String, offered: [Offered], anotherDay: String?, yes: String, answered: @escaping (Picked) -> Void) {
+    func pick(title: String, offered: [Offered], yes: String, answered: @escaping (Picked) -> Void) {
         guard let front else { return answered(.cancelled) }
-        var items = offered.map { AppItem(key: $0.id, title: $0.title, detail: $0.detail, depth: $0.depth, reason: $0.reason) }
-        // Another day's blocks, after the week's.
-        if let anotherDay { items.append(AppItem(key: ChoicePicker.anotherDay, title: anotherDay)) }
+        let items = offered.map { AppItem(key: $0.id, title: $0.title, detail: $0.detail, depth: $0.depth, reason: $0.reason) }
         let picker = ChoicePicker(core: core, title: title, items: items, chosen: { id in
-            answered(id == ChoicePicker.anotherDay ? .anotherDay : .chose(id))
+            answered(.chose(id))
         }, cancelled: { answered(.cancelled) })
         front.present(UINavigationController(rootViewController: picker), animated: true)
     }
