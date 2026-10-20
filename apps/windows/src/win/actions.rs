@@ -4,12 +4,10 @@
 //! running one is the app's (`ShellEvent::Perform`), and the question it asks is asked as a
 //! Windows dialog (`asking.rs`).
 
-use lumenna_records::{Action, ActionKind, Question, Subject, not_offered};
+use lumenna_records::{Action, ActionKind, Question, Subject};
 use windows::Win32::Foundation::HWND;
 
-use super::app::App;
 use super::prompts;
-use crate::speech;
 
 /// A context menu's commands are this plus the action's position, clear of the menu bar's.
 const FIRST: u16 = 1000;
@@ -45,15 +43,6 @@ pub fn chosen(actions: &[Action], command: u16) -> Option<Action> {
 /// this row.
 pub fn of_kind(actions: &[Action], kinds: &[ActionKind]) -> Option<Action> {
     actions.iter().find(|action| kinds.contains(&action.kind)).cloned()
-}
-
-/// Says why a row has no action of `kind`, as the core words it: for a key or a menu-bar
-/// command that means nothing on this row. A row with no actions at all, such as a heading,
-/// stays quiet.
-pub fn say_not_offered(app: &App, offered: &[Action], kind: ActionKind) {
-    if let Some(subject) = offered.first().map(|action| action.subject) {
-        app.say(&speech::sentence(&not_offered(kind, subject, false)));
-    }
 }
 
 /// Asks a line of text as `question` words it, starting from `typed`: its title, its field's

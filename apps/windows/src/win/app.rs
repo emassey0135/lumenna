@@ -34,7 +34,7 @@ use windows::Win32::UI::Controls::{EM_SETSEL, EM_UNDO};
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{HSTRING, w};
 
-use lumenna_app::{Capitals, DayMove};
+use lumenna_app::{Capitals, DayMove, DetailsEvent};
 use lumenna_ffi::ShellEvent;
 
 use super::asking;
@@ -1031,12 +1031,9 @@ impl App {
             return self.say("No task is selected");
         };
         let Some(action) = actions::of_kind(&offered, kinds) else {
-            // The details show the list's row in hand, so the app says why it has no such
-            // action; beside the day they show a sitting's task, which the app's row is not.
-            if self.task_list().is_some() {
-                return self.crux.send(ShellEvent::Run(kinds.to_vec()));
-            }
-            return actions::say_not_offered(self, &offered, kinds[0]);
+            // Why the task the details show has none, as the app says it: beside the day that
+            // is a sitting's task, not the row in hand.
+            return self.crux.send(ShellEvent::Details(DetailsEvent::Run(kinds.to_vec())));
         };
         self.detail.act(self, action);
     }

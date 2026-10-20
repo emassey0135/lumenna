@@ -17,7 +17,7 @@ use std::rc::Rc;
 use lumenna_app::lines::Lines;
 use lumenna_app::{BlockEvent, DayItem, DayKind, DayMove, ViewModel};
 use lumenna_ffi::ShellEvent;
-use lumenna_records::{Action, ActionKind, Question, Subject, not_offered};
+use lumenna_records::{Action, ActionKind, Question};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{
     NM_DBLCLK, NMHDR, NMTREEVIEWW, NMTVKEYDOWN, TVIS_EXPANDED, TVN_ITEMEXPANDEDW, TVN_KEYDOWN, TVN_SELCHANGEDW, WC_BUTTONW,
@@ -30,13 +30,15 @@ use super::controls::{self, rect};
 use super::tree::{Item, Tree};
 use super::view::{Metrics, View};
 use super::actions;
-use crate::speech;
 
 const PREVIOUS: u16 = 500;
 const TODAY: u16 = 501;
 const NEXT: u16 = 502;
 const ADD: u16 = 503;
 const TREE: u16 = 504;
+
+/// The day heading's key in the app: the row whose actions are the day's own.
+const SUMMARY: &str = "summary";
 
 pub struct DayView {
     buttons: [HWND; 4],
@@ -126,10 +128,19 @@ impl DayView {
     /// why the day shown has none.
     pub fn act_on_day(&self, app: &App, kind: ActionKind) {
         // As the app holds it now: the day may have been opened just before.
-        let offered = app.crux.view().day.map(|day| day.actions).unwrap_or_else(|| self.actions.borrow().clone());
+        let view = app.crux.view();
+        let offered = view.day.map(|day| day.actions).unwrap_or_else(|| self.actions.borrow().clone());
         match actions::of_kind(&offered, &[kind]) {
             Some(action) => app.crux.send(ShellEvent::Perform(action)),
-            None => app.say(&speech::sentence(&not_offered(kind, Subject::Day, false))),
+            // The day's own actions are its heading's, so the app says why it lacks one there;
+            // then the row in hand goes back to the one selected, which the menu leaves alone.
+            None => {
+                app.crux.send(ShellEvent::Focus(SUMMARY.to_owned()));
+                app.crux.send(ShellEvent::Run(vec![kind]));
+                if let Some(focus) = view.focus.filter(|focus| focus != SUMMARY) {
+                    app.crux.send(ShellEvent::Focus(focus));
+                }
+            }
         }
     }
 

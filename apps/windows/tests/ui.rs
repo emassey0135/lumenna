@@ -1082,7 +1082,7 @@ fn the_days_own_actions_are_its_summary_rows_and_the_day_menus() {
     app.post(&["esc"]);
     // A day with nothing to do to it says so, rather than nothing.
     app.post(&[NEXT_DAY, END_DAY]);
-    assert_eq!(app.status(), "That does not apply here.");
+    assert!(app.says(|s| s == "That does not apply here."), "{}", app.status());
 }
 
 #[test]
