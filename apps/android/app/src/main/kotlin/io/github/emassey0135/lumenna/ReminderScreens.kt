@@ -44,9 +44,7 @@ fun RemindersScreen(core: Core, navigator: Navigator) {
     val app = core.app
     val view by app.view.collectAsState()
     val list = view?.reminders
-    var shown by remember { mutableStateOf(false) }
-    LaunchedEffect(list == null) { if (list != null) shown = true else if (shown) navigator.back() }
-    DisposableEffect(Unit) { onDispose { if (app.view.value?.reminders != null) app.send(ShellEvent.CloseReminders) } }
+    ShowingReminders(app, navigator::back)
     val ask = rememberNotificationAsk()
     // Adding the first reminder is when notifications are asked for.
     val add = list?.actions.orEmpty().firstOrNull()
@@ -96,23 +94,4 @@ fun FollowReminders(core: Core, navigator: Navigator) {
     val view by core.app.view.collectAsState()
     val open = view?.reminders != null
     LaunchedEffect(open) { if (open && navigator.current != Screen.Reminders) navigator.push(Screen.Reminders) }
-}
-
-/**
- * Asks for notifications, from Android 13, the first time it is called: when the person first
- * adds a reminder or turns reminders on. Afterwards the Reminders settings page says they are
- * off and opens the system's page.
- */
-@Composable
-fun rememberNotificationAsk(): () -> Unit {
-    val context = LocalContext.current
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
-    return remember(launcher) {
-        {
-            if (Reminders.shouldAsk(context)) {
-                Reminders.asked(context)
-                launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
-    }
 }

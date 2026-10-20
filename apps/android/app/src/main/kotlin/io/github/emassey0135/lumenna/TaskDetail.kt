@@ -99,18 +99,18 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
             // The app's fields, in the core's order: the priority a choice among the core's
             // options, the project one of the projects, the rest text.
             details.form.forEach { field ->
-                val text = AppTaskField.of(field)
+                val text = form.text(field.key)
                 if (field.key == "project") {
                     ProjectField(field.label, form.project, details.projects.map(::option)) { set("project", it, form.copy(project = it)) }
                     return@forEach
                 }
                 if (text != null) {
                     // Prose is corrected as it is typed; a date, a duration or a name is not.
-                    val prose = text == AppTaskField.TITLE || text == AppTaskField.NOTES
+                    val prose = isProse(field.key)
                     // A field of one line saves on Enter, as a form's line does.
                     val line = field.kind != FieldKind.LINES
-                    Field(field.label, text.get(form), field.example, field.hint.ifEmpty { null }, prose, lines = if (line) 1 else 3, onEnter = if (line) save else null) {
-                        set(field.key, it, text.set(form, it))
+                    Field(field.label, text, field.example, field.hint.ifEmpty { null }, prose, lines = if (line) 1 else 3, onEnter = if (line) save else null) {
+                        set(field.key, it, form.with(field.key, it))
                     }
                     return@forEach
                 }
@@ -159,21 +159,6 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
                 }
             }
         }
-    }
-}
-
-/** A text field of the task form, by the core's key: where its value lives in the app's [TaskFields]. */
-private enum class AppTaskField(val key: String, val get: (TaskFields) -> String, val set: (TaskFields, String) -> TaskFields) {
-    TITLE("title", { it.title }, { f, v -> f.copy(title = v) }),
-    DUE("due", { it.due }, { f, v -> f.copy(due = v) }),
-    REPEATS("repeat", { it.repeat }, { f, v -> f.copy(repeat = v) }),
-    ESTIMATE("estimate", { it.estimate }, { f, v -> f.copy(estimate = v) }),
-    PROJECT("project", { it.project }, { f, v -> f.copy(project = v) }),
-    LABELS("labels", { it.labels }, { f, v -> f.copy(labels = v) }),
-    NOTES("notes", { it.notes }, { f, v -> f.copy(notes = v) });
-
-    companion object {
-        fun of(field: FormField): AppTaskField? = entries.firstOrNull { it.key == field.key }
     }
 }
 

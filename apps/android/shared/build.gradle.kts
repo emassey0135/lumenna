@@ -73,6 +73,10 @@ dependencies {
     val bom = platform(libs.compose.bom)
     implementation(bom)
     implementation(libs.compose.runtime.saveable)
+    // What both apps' screens share beyond the rules: landing on a row (focus and TalkBack's),
+    // showing what the app has open, asking for notifications.
+    implementation(libs.compose.ui)
+    implementation(libs.activity.compose)
     implementation(libs.work.runtime)
     // Reminders' notifications, with the bridge tag the watch app turns bridging off for.
     implementation(libs.androidx.core)

@@ -1,5 +1,10 @@
 package io.github.emassey0135.lumenna.wear
 
+import io.github.emassey0135.lumenna.rememberSideLanding
+import io.github.emassey0135.lumenna.app.Side
+import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
+import io.github.emassey0135.lumenna.ShowingReminders
+import io.github.emassey0135.lumenna.rememberNotificationAsk
 import io.github.emassey0135.lumenna.rowActions
 import io.github.emassey0135.lumenna.app.ShellEvent
 import io.github.emassey0135.lumenna.app.SettingsEvent
@@ -36,11 +41,13 @@ fun RemindersScreen(core: Core, navigator: Navigator) {
     val view by app.view.collectAsState()
     val list = view?.reminders
     val lines by app.lines.collectAsState()
-    var shown by remember { mutableStateOf(false) }
-    LaunchedEffect(list == null) { if (list != null) shown = true else if (shown) navigator.back() }
-    DisposableEffect(Unit) { onDispose { if (app.view.value?.reminders != null) app.send(ShellEvent.CloseReminders) } }
+    ShowingReminders(app, navigator::back)
     val ask = rememberNotificationAsk()
-    WearList {
+    val keys = listOf("\u0000heading") + list?.reminders.orEmpty().map { it.id }
+    val state = rememberScalingLazyListState()
+    // In the reminder list's own hand: a reminder added or removed here lands here.
+    val focus = rememberSideLanding(core, Side.REMINDERS, keys) { state.scrollToItem(it) }
+    WearList(state) {
         item { Heading(list?.announcement?.replaceFirstChar { it.uppercase() } ?: "Reminders") }
         list?.reminders.orEmpty().forEachIndexed { index, reminder ->
             item {
@@ -48,7 +55,7 @@ fun RemindersScreen(core: Core, navigator: Navigator) {
                 val words = line?.title ?: reminder.words
                 if (reminder.own) {
                     val actions = app.rowActions(reminder.id, reminder.actions)
-                    RowButton(words, actions = actions, onLongClick = { navigator.actions(words, actions) }) {
+                    RowButton(words, actions = actions, onLongClick = { navigator.actions(words, actions) }, key = reminder.id, focus = focus) {
                         navigator.actions(words, actions)
                     }
                 } else {
@@ -119,20 +126,5 @@ fun ReminderSettingsScreen(core: Core, changes: Long) {
             }
         }
         item { Text("When reminders come is set in Planning, and on a task or block in its Reminders.") }
-    }
-}
-
-/** Asks for notifications, from Wear OS 4, the first time: as the phone does. */
-@Composable
-fun rememberNotificationAsk(): () -> Unit {
-    val context = LocalContext.current
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
-    return remember(launcher) {
-        {
-            if (Reminders.shouldAsk(context)) {
-                Reminders.asked(context)
-                launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
     }
 }

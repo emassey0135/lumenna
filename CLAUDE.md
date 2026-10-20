@@ -1282,7 +1282,11 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   thread in order, speech held while a list lands, the turn's `lines`), `Words.kt` (the
   locale's time and date, handed to the core as `Clock.locale`), `AppWords.kt` (only what a
   tree control would say by itself and a Compose list does not: folding and the level),
-  `RowAction`, reminders' alarms, the watch's link and `SyncWorker` (through
+  `RowAction`, landing on a row (`Landing.kt`: `rememberLanding`, `RowFocus`, `RowKey`, given the
+  list's own scroll), a screen on what the app has open (`Showing.kt`: a proposal, a reminder
+  list, the block form, gone when the app lets it go and given up when left), the forms'
+  fields by the core's keys (`FormFields.kt`), asking for notifications, reminders' alarms,
+  the watch's link and `SyncWorker` (through
   `CoreHolder`, which each app's Application is). What is in hand, what is folded, which
   question is open, the forms, settings, pairing and proposals are the app's; each app draws
   them, the questions once at its root (`AppQuestions`, `WearQuestions`).
@@ -1314,7 +1318,8 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   something under it has the app's Collapse or Expand among its actions and says which it
   is. The level is the app's, said against the row shown before, after folding. The iPhone
   does the same, as a swipe action.
-- **TalkBack does not follow input focus under touch.** `RowFocus` gives the row input focus,
+- **TalkBack does not follow input focus under touch**, on the phone or the watch. `RowFocus`
+  gives the row input focus,
   then performs the accessibility-focus action through the view's
   `AccessibilityNodeProvider`, found by the `RowKey` property; the announcement is held
   (`Core.hold`/`release`) until then. The test of it is skipped unless TalkBack is on.

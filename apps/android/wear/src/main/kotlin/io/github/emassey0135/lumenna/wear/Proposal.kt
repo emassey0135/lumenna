@@ -1,5 +1,6 @@
 package io.github.emassey0135.lumenna.wear
 
+import io.github.emassey0135.lumenna.ShowingProposal
 import io.github.emassey0135.lumenna.app.ShellEvent
 import io.github.emassey0135.lumenna.app.ProposalEvent
 import androidx.compose.runtime.DisposableEffect
@@ -31,9 +32,7 @@ fun ProposalScreen(core: Core, navigator: Navigator) {
     val app = core.app
     val view by app.view.collectAsState()
     val proposal = view?.proposal
-    var shown by remember { mutableStateOf(false) }
-    LaunchedEffect(proposal == null) { if (proposal != null) shown = true else if (shown) navigator.back() }
-    DisposableEffect(Unit) { onDispose { if (app.view.value?.proposal != null) app.send(ShellEvent.Proposal(ProposalEvent.Close)) } }
+    ShowingProposal(app, navigator::back)
     val send = { event: ProposalEvent -> app.send(ShellEvent.Proposal(event)) }
     WearList {
         if (proposal == null) return@WearList

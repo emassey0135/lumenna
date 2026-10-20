@@ -1,5 +1,7 @@
 package io.github.emassey0135.lumenna.wear
 
+import io.github.emassey0135.lumenna.rememberLanding
+import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import io.github.emassey0135.lumenna.name
 import io.github.emassey0135.lumenna.rowActions
 import io.github.emassey0135.lumenna.LocalPlannerNow
@@ -47,7 +49,11 @@ fun DayScreen(core: Core, navigator: Navigator) {
     // The day's own actions, the app's: on its heading, and as buttons after its rows.
     val dayActions = day?.let { app.rowActions("summary", it.actions) }.orEmpty()
     val move = { step: DayMove -> app.send(ShellEvent.Day(step)) }
-    WearList {
+    val keys = listOf("\u0000heading") + shown.map { it.first.key }
+    val state = rememberScalingLazyListState()
+    // TalkBack goes to the row the app moved — now, when today opens — as on the phone.
+    val focus = rememberLanding(core, keys) { state.scrollToItem(it) }
+    WearList(state) {
         // The day's heading, as every app says it: "<day>. <summary>".
         item {
             Heading(
@@ -65,6 +71,8 @@ fun DayScreen(core: Core, navigator: Navigator) {
                     state = listOfNotNull(item.expanded?.let { if (it) "expanded" else "collapsed" }, item.level).joinToString(", ").ifEmpty { null },
                     actions = actions,
                     onLongClick = { navigator.actions(title, actions) },
+                    key = item.key,
+                    focus = focus,
                     onClick = { if (actions.isNotEmpty()) navigator.actions(title, actions) },
                 )
             }

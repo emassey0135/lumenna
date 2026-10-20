@@ -1,5 +1,8 @@
 package io.github.emassey0135.lumenna.wear
 
+import io.github.emassey0135.lumenna.ShowingBlockForm
+import io.github.emassey0135.lumenna.text
+import io.github.emassey0135.lumenna.flag
 import io.github.emassey0135.lumenna.option
 import io.github.emassey0135.lumenna.TextOffsets
 import io.github.emassey0135.lumenna.app.Typing
@@ -182,18 +185,6 @@ fun TaskScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
     }
 }
 
-/** A task field's text, by the core's key; null for the priority, whose value is a number. */
-private fun TaskFields.text(key: String): String? = when (key) {
-    "title" -> title
-    "due" -> due
-    "repeat" -> repeat
-    "estimate" -> estimate
-    "project" -> project
-    "labels" -> labels
-    "notes" -> notes
-    else -> null
-}
-
 /** A length in minutes, from the lengths a sitting usually takes, or, given [without], none. */
 fun chooseLength(navigator: Navigator, title: String, without: String?, cancelled: () -> Unit = {}, chosen: (UInt?) -> Unit) {
     val lengths = listOf(15, 25, 30, 45, 60, 90, 120).map { Option(it.toString(), Clock.length(it.toUInt())) }
@@ -206,9 +197,7 @@ fun BlockFormScreen(core: Core, navigator: Navigator) {
     val app = core.app
     val view by app.view.collectAsState()
     val form = view?.blockForm
-    var shown by remember { mutableStateOf(false) }
-    LaunchedEffect(form == null) { if (form != null) shown = true else if (shown) navigator.back() }
-    DisposableEffect(Unit) { onDispose { if (app.view.value?.blockForm != null) app.send(ShellEvent.Block(BlockEvent.Cancel)) } }
+    ShowingBlockForm(app, navigator::back)
     val set = { key: String, value: String -> app.send(ShellEvent.Block(BlockEvent.Field(key, value))) }
     WearList {
         if (form == null) return@WearList
@@ -249,28 +238,6 @@ fun BlockFormScreen(core: Core, navigator: Navigator) {
         }
         item { Button(onClick = { app.send(ShellEvent.Block(BlockEvent.Save)) }, modifier = Modifier.fillMaxWidth(), label = { Text(form.yes) }) }
     }
-}
-
-/** A block form field's text, by the core's key; a toggle or the kind reads empty here. */
-private fun BlockFields.text(key: String): String = when (key) {
-    "title" -> title
-    "start" -> start
-    "minutes" -> minutes
-    "repeat" -> repeat
-    "until" -> until
-    "min_minutes" -> minMinutes
-    "task_filter" -> taskFilter
-    "colour" -> colour
-    "notes" -> notes
-    else -> ""
-}
-
-/** A block form toggle, by the core's key. */
-private fun BlockFields.flag(key: String): Boolean = when (key) {
-    "accepts_tasks" -> acceptsTasks
-    "counts_capacity" -> countsCapacity
-    "anchored" -> anchored
-    else -> false
 }
 
 /** A flag of the block, as a switch: one TalkBack stop that says it and whether it is on. */

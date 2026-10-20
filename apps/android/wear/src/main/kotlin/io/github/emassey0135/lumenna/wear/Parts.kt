@@ -1,5 +1,8 @@
 package io.github.emassey0135.lumenna.wear
 
+import io.github.emassey0135.lumenna.RowFocus
+import io.github.emassey0135.lumenna.rowKey
+import androidx.compose.ui.focus.focusRequester
 import android.app.RemoteInput
 import android.content.Intent
 import android.view.inputmethod.EditorInfo
@@ -71,15 +74,21 @@ fun RowButton(
     state: String? = null,
     actions: List<RowAction> = emptyList(),
     onLongClick: (() -> Unit)? = null,
+    /** The row's key, and its list's landing (`rememberLanding`), for focus put back on it. */
+    key: String? = null,
+    focus: RowFocus? = null,
     onClick: () -> Unit,
 ) {
     Button(
         onClick = onClick,
         onLongClick = onLongClick,
-        modifier = Modifier.fillMaxWidth().semantics {
-            if (state != null) stateDescription = state
-            if (actions.isNotEmpty()) customActions = actions.map { action -> CustomAccessibilityAction(action.name) { action.run(); true } }
-        },
+        modifier = Modifier.fillMaxWidth()
+            .then(if (key != null && focus != null) Modifier.focusRequester(focus.requester(key)) else Modifier)
+            .semantics {
+                if (key != null) rowKey = key
+                if (state != null) stateDescription = state
+                if (actions.isNotEmpty()) customActions = actions.map { action -> CustomAccessibilityAction(action.name) { action.run(); true } }
+            },
         label = { Text(title) },
         secondaryLabel = detail?.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
     )

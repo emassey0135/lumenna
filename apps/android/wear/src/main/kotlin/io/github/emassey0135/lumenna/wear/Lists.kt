@@ -1,5 +1,9 @@
 package io.github.emassey0135.lumenna.wear
 
+import io.github.emassey0135.lumenna.rememberLanding
+import io.github.emassey0135.lumenna.rememberSideLanding
+import io.github.emassey0135.lumenna.app.Side
+import androidx.wear.compose.foundation.lazy.ScalingLazyListState
 import io.github.emassey0135.lumenna.rowActions
 import io.github.emassey0135.lumenna.placeRows
 import io.github.emassey0135.lumenna.shownRows
@@ -44,8 +48,7 @@ import io.github.emassey0135.lumenna.name
  * target needs.
  */
 @Composable
-fun WearList(content: ScalingLazyListScope.() -> Unit) {
-    val state = rememberScalingLazyListState()
+fun WearList(state: ScalingLazyListState = rememberScalingLazyListState(), content: ScalingLazyListScope.() -> Unit) {
     ScreenScaffold(scrollState = state) { padding ->
         ScalingLazyColumn(
             state = state,
@@ -67,7 +70,19 @@ fun PlacesScreen(core: Core, navigator: Navigator) {
     val app = core.app
     val view by app.view.collectAsState()
     val rows = placeRows(view?.sidebar.orEmpty().filter { !it.archived }).filter { !it.hidden }
-    WearList {
+    // Every item in the list's order, a row by its key, so a row's place is where to scroll.
+    val keys = buildList {
+        add("\u0000new")
+        rows.forEach { row ->
+            add(row.key)
+            if (row.entry.kind is SidebarKind.Group && row.expanded != false) {
+                row.entry.actions.filter { it.kind == ActionKind.NEW }.forEach { add("\u0000${it.name}") }
+            }
+        }
+    }
+    val state = rememberScalingLazyListState()
+    val focus = rememberSideLanding(core, Side.SIDEBAR, keys) { state.scrollToItem(it) }
+    WearList(state) {
         item { Button(onClick = { navigator.open(Screen.AddTask) }, modifier = Modifier.fillMaxWidth(), label = { Text("New task") }) }
         rows.forEachIndexed { index, row ->
             item {
@@ -80,6 +95,8 @@ fun PlacesScreen(core: Core, navigator: Navigator) {
                         row.entry.text,
                         state = state,
                         actions = listOfNotNull(fold).let { app.rowActions(row.key, it) },
+                        key = row.key,
+                        focus = focus,
                         onClick = { navigator.open(placeScreen(kind.field0)) },
                     )
                     // A heading folds what is under it when pressed.
@@ -129,7 +146,16 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
     val worded by app.lines.collectAsState()
     val lines = worded?.takeIf { here != null }
     val items = shownRows(list?.items.orEmpty(), lines?.list.orEmpty())
-    WearList {
+    val keys = buildList {
+        add("\u0000heading")
+        if (!trash) add("\u0000new")
+        if (list != null && items.isEmpty()) add("\u0000empty")
+        items.forEach { (shown, _) -> add(shown.row.id) }
+    }
+    val state = rememberScalingLazyListState()
+    // TalkBack goes to the row the app moved, as on the phone.
+    val focus = rememberLanding(core, keys) { state.scrollToItem(it) }
+    WearList(state) {
         item { Heading(placeTitle(place)) }
         if (!trash) {
             item { Button(onClick = { navigator.open(Screen.AddTask) }, modifier = Modifier.fillMaxWidth(), label = { Text("New task") }) }
@@ -145,6 +171,8 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
                     state = spoken(shown, line).ifEmpty { null },
                     actions = actions,
                     onLongClick = { navigator.actions(task.title, actions) },
+                    key = task.id,
+                    focus = focus,
                     onClick = {
                         app.send(ShellEvent.Focus(task.id))
                         navigator.open(Screen.Task(task.id))
@@ -187,7 +215,14 @@ fun BlocksScreen(core: Core, navigator: Navigator) {
     val list = here?.list
     val worded by app.lines.collectAsState()
     val lines = worded?.takeIf { here != null }
-    WearList {
+    val keys = buildList {
+        add("\u0000heading")
+        if (list != null && list.items.isEmpty()) add("\u0000empty")
+        list?.items.orEmpty().forEach { add(it.row.id) }
+    }
+    val state = rememberScalingLazyListState()
+    val focus = rememberLanding(core, keys) { state.scrollToItem(it) }
+    WearList(state) {
         item { Heading("Blocks") }
         if (list != null && list.items.isEmpty()) item { Text(list.empty) }
         list?.items.orEmpty().forEachIndexed { index, shown ->
@@ -197,7 +232,7 @@ fun BlocksScreen(core: Core, navigator: Navigator) {
                 val actions = app.rowActions(row.id, row.actions)
                 val edit = row.actions.firstOrNull { it.kind == ActionKind.EDIT }
                 // Said as a task row is: when, in this watch's clock, then how long.
-                RowButton(row.title, detail = line?.detail?.ifEmpty { null }, actions = actions, onLongClick = { navigator.actions(row.title, actions) }) {
+                RowButton(row.title, detail = line?.detail?.ifEmpty { null }, actions = actions, onLongClick = { navigator.actions(row.title, actions) }, key = row.id, focus = focus) {
                     edit?.let {
                         app.send(ShellEvent.Focus(row.id))
                         app.send(ShellEvent.Perform(it))

@@ -205,10 +205,8 @@ fun BlockFormScreen(core: Core, navigator: Navigator) {
     val app = core.app
     val view by app.view.collectAsState()
     val form = view?.blockForm
-    var shown by remember { mutableStateOf(false) }
-    LaunchedEffect(form == null) { if (form != null) shown = true else if (shown) navigator.back() }
     // Leaving the form gives it up.
-    DisposableEffect(Unit) { onDispose { if (app.view.value?.blockForm != null) app.send(ShellEvent.Block(BlockEvent.Cancel)) } }
+    ShowingBlockForm(app, navigator::back)
     // Each line keeps its own text while typing is on its way.
     val typed = remember { mutableStateMapOf<String, String>() }
     val set = { key: String, value: String -> app.send(ShellEvent.Block(BlockEvent.Field(key, value))) }
@@ -269,28 +267,6 @@ fun BlockFormScreen(core: Core, navigator: Navigator) {
             }
         }
     }
-}
-
-/** A block form field's text, by the core's key; a toggle or the kind reads empty here. */
-private fun BlockFields.text(key: String): String = when (key) {
-    "title" -> title
-    "start" -> start
-    "minutes" -> minutes
-    "repeat" -> repeat
-    "until" -> until
-    "min_minutes" -> minMinutes
-    "task_filter" -> taskFilter
-    "colour" -> colour
-    "notes" -> notes
-    else -> ""
-}
-
-/** A block form toggle, by the core's key. */
-private fun BlockFields.flag(key: String): Boolean = when (key) {
-    "accepts_tasks" -> acceptsTasks
-    "counts_capacity" -> countsCapacity
-    "anchored" -> anchored
-    else -> false
 }
 
 /** A flag of the block, as a switch row: one TalkBack stop that says it and whether it is on. */
