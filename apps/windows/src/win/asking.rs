@@ -7,7 +7,7 @@
 //! asked again from a turn made before its answer arrived.
 
 use lumenna_ffi::ShellEvent;
-use lumenna_host::{Answer, Question};
+use lumenna_host::{Answer, Question, go_to_day_question};
 
 use super::app::App;
 use super::{actions, prompts};
@@ -44,16 +44,31 @@ pub fn ask(app: &App) {
             let Some(offered) = &asking.choices else { return };
             let lines = app.crux.lines();
             // The core's words, then the level, which a list box has no other way to say.
-            let texts: Vec<String> = offered
+            let mut texts: Vec<String> = offered
                 .choices
                 .iter()
                 .zip(&lines.choices)
                 .map(|(choice, line)| if choice.depth > 0 { format!("{}, level {}", line.text, choice.depth + 1) } else { line.text.clone() })
                 .collect();
-            let reasons: Vec<String> = offered.choices.iter().map(|choice| choice.reason.clone().unwrap_or_default()).collect();
+            let mut reasons: Vec<String> = offered.choices.iter().map(|choice| choice.reason.clone().unwrap_or_default()).collect();
+            // Last, where the app offers it: another day's blocks instead of the week's.
+            if let Some(another) = &asking.another_day {
+                texts.push(format!("{another}..."));
+                reasons.push(String::new());
+            }
             let named = asking.action.as_ref().map_or(title.as_str(), |action| action.title.as_str());
-            prompts::pick(owner, named, &format!("{title}:"), &texts, &reasons, yes)
-                .map(|index| Answer::Picked { id: offered.choices[index].id.clone(), length: None })
+            match prompts::pick(owner, named, &format!("{title}:"), &texts, &reasons, yes) {
+                Some(index) if index == offered.choices.len() => {
+                    // Which day, in the core's words for asking one; the pick stays open, and is
+                    // asked again with that day's blocks.
+                    match actions::ask(owner, &go_to_day_question(), "").filter(|day| !day.is_empty()) {
+                        Some(day) => return app.crux.send(ShellEvent::PickFrom(day)),
+                        None => None,
+                    }
+                }
+                Some(index) => Some(Answer::Picked { id: offered.choices[index].id.clone(), length: None }),
+                None => None,
+            }
         }
     };
     app.crux.send(answer.map_or(ShellEvent::Cancel, ShellEvent::Answer));

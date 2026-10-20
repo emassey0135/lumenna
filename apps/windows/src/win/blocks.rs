@@ -1,24 +1,24 @@
-//! Every block series: Enter changes one, Delete runs its Delete, and the context menu offers
-//! what the core gives each row.
+//! Every block series, drawn from the app's view of Blocks (`view.list`): Enter changes one,
+//! Delete runs its Delete, and the context menu offers what the core gives each row, run as
+//! the app's, its form the app's block form.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lumenna_host::{Action, ActionKind, RowView, block_fields, unsayable_repeat_note};
+use lumenna_app::ViewModel;
+use lumenna_app::lines::Lines;
+use lumenna_ffi::ShellEvent;
+use lumenna_host::{Action, ActionKind, Question, RowView};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{NM_DBLCLK, NMHDR, NMTVKEYDOWN, TVN_KEYDOWN, TVN_SELCHANGEDW, WC_STATICW};
 use windows::Win32::UI::Input::KeyboardAndMouse::VK_DELETE;
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 
 use super::app::App;
-use super::block_form::{self, Purpose};
-use super::clock::Locale;
 use super::controls::{self, rect};
-use super::core::sentence;
 use super::tree::{Item, Tree};
 use super::view::{Metrics, View};
-use super::{actions, prompts};
-use crate::speech;
+use super::{actions, reminders};
 
 const TREE: u16 = 600;
 
@@ -40,25 +40,33 @@ impl BlockList {
         self.rows.borrow().get(index).cloned()
     }
 
-    fn edit(&self, app: &App, row: &RowView) {
-        let shown = match app.core.lumenna.show_block(&row.id) {
-            Ok(shown) => shown,
-            Err(error) => return prompts::fail(app.main, &sentence(&error)),
-        };
-        let note = unsayable_repeat_note(shown.clone());
-        let purpose = Purpose::Series { id: shown.id.clone() };
-        if let Some(change) = block_form::run(app.main, &app.core.lumenna, purpose, block_fields(shown), note) {
-            app.store_changed();
-            self.tree.select_key_or_near(Some(&row.id), self.tree.selected());
-            app.say_change(&change);
+    /// Draws the app's Blocks: `landed` when the app moved the row in hand itself.
+    pub fn draw(&self, app: &App, view: &ViewModel, lines: &Lines, landed: bool) {
+        let Some(list) = &view.list else { return };
+        controls::set_text(self.count, &lines.readback);
+        let items = list
+            .items
+            .iter()
+            .zip(&lines.list)
+            .map(|(item, line)| Item { key: item.row.id.clone(), text: line.text.clone(), depth: item.row.depth, checked: None, expanded: item.row.expanded })
+            .collect();
+        *self.rows.borrow_mut() = list.items.iter().map(|item| item.row.clone()).collect();
+        let rebuilt = self.tree.set(items);
+        if (landed || rebuilt)
+            && let Some(index) = view.focus.as_deref().and_then(|key| self.tree.index_of(key))
+        {
+            self.tree.select_quietly(index);
+        }
+        if landed && controls::lost(app.main) {
+            controls::focus(self.tree.hwnd);
         }
     }
 
-    /// Runs one of the selected row's actions; Edit Block is the block form.
+    /// Runs one of the selected row's actions as the app's; Reminders is the window's list.
     fn act(&self, app: &App, action: &Action) {
-        let Some(row) = self.selected() else { return };
-        if let Some((change, _)) = actions::run(app, app.main, action, || self.edit(app, &row)) {
-            app.say_change(&change);
+        match (&action.question, action.kind) {
+            (Question::Form, ActionKind::Reminders) => reminders::show(app, app.main, action),
+            _ => app.crux.send(ShellEvent::Perform(action.clone())),
         }
     }
 
@@ -86,35 +94,22 @@ impl View for BlockList {
         controls::place(self.tree.hwnd, rect(gap, y, width - 2 * gap, (height - y - gap).max(m.line)));
     }
 
-    fn reload(&self, app: &App) {
-        let key = self.tree.selected().and_then(|index| self.tree.key(index));
-        let near = self.tree.selected().or(Some(0));
-        match app.core.lumenna.list_blocks() {
-            Ok(listing) => {
-                let said = if listing.rows.is_empty() && !listing.empty.is_empty() { &listing.empty } else { &listing.announcement };
-                controls::set_text(self.count, &speech::sentence(said));
-                let items = listing
-                    .rows
-                    .iter()
-                    .map(|row| Item { key: row.id.clone(), text: speech::row(row, false, &Locale), depth: 0, checked: None, expanded: None })
-                    .collect();
-                *self.rows.borrow_mut() = listing.rows;
-                if self.tree.set(items) {
-                    self.tree.select_key_or_near(key.as_deref(), near);
-                }
-            }
-            Err(error) => controls::set_text(self.count, &sentence(&error)),
-        }
-    }
+    /// The app redraws Blocks itself, for every change.
+    fn reload(&self, _app: &App) {}
 
     fn notify(&self, app: &App, header: &NMHDR, lparam: LPARAM) -> Option<isize> {
         if header.hwndFrom != self.tree.hwnd {
             return None;
         }
         match header.code {
-            TVN_SELCHANGEDW => Some(0),
+            TVN_SELCHANGEDW if !self.tree.busy() => {
+                if let Some(row) = self.selected() {
+                    app.crux.send(ShellEvent::Focus(row.id));
+                }
+                Some(0)
+            }
             TVN_KEYDOWN if unsafe { &*(lparam.0 as *const NMTVKEYDOWN) }.wVKey == VK_DELETE.0 => {
-                Self::act_later(app, &[ActionKind::Delete]);
+                app.crux.send(ShellEvent::Run(vec![ActionKind::Delete]));
                 Some(1)
             }
             NM_DBLCLK => {

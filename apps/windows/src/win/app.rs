@@ -38,6 +38,7 @@ use lumenna_app::{Capitals, DayMove};
 use lumenna_ffi::ShellEvent;
 
 use super::asking;
+use super::block_form;
 use super::blocks::BlockList;
 use super::clock::Formats;
 use super::proposal;
@@ -113,6 +114,8 @@ pub struct App {
     asking: Cell<bool>,
     /// The last line typed into a question, asked again with it when refused.
     pub typed: RefCell<String>,
+    /// The app's block form, while its dialog is open.
+    block_form: RefCell<Option<Rc<block_form::Form>>>,
     pub main: HWND,
     accelerators: HACCEL,
     font: Cell<HFONT>,
@@ -191,6 +194,13 @@ pub fn run() {
     app.start(arguments.background);
     message_loop(&app);
     APP.with(|slot| slot.borrow_mut().take());
+}
+
+/// Sends what the person did to the app, from a dialog that holds no reference to the window.
+pub fn send(event: ShellEvent) {
+    if let Some(app) = app() {
+        app.crux.send(event);
+    }
 }
 
 fn message_loop(app: &App) {
@@ -312,6 +322,7 @@ impl App {
             heads: RefCell::new(String::new()),
             asking: Cell::new(false),
             typed: RefCell::new(String::new()),
+            block_form: RefCell::new(None),
             main,
             accelerators: menu::accelerators(),
             font: Cell::new(HFONT::default()),
@@ -434,12 +445,19 @@ impl App {
         if let Some(list) = &list {
             list.draw(self, &turn.view, &turn.lines, landed);
         }
+        if let Some(blocks) = self.blocks().filter(|_| turn.view.place == Some(Place::Blocks)) {
+            blocks.draw(self, &turn.view, &turn.lines, landed);
+        }
         let day = self.day().filter(|_| turn.view.place == Some(Place::Today));
         if let Some(day) = &day {
             day.draw(self, &turn.view, &turn.lines, landed);
         }
         self.follow_store();
-        if turn.view.asking.is_some() && !self.asking.get() {
+        let form = self.block_form.borrow().clone();
+        if let Some(form) = &form {
+            form.draw(self, self.crux.view().block_form.as_ref());
+        }
+        if (turn.view.asking.is_some() || (turn.view.block_form.is_some() && form.is_none())) && !self.asking.get() {
             unsafe {
                 let _ = SetTimer(Some(self.main), TIMER_ASK, 50, None);
             }
@@ -474,8 +492,22 @@ impl App {
             let _ = KillTimer(Some(self.main), TIMER_ASK);
         }
         self.asking.set(true);
-        asking::ask(self);
+        if self.crux.view().asking.is_some() {
+            asking::ask(self);
+        } else if let Some(form) = self.crux.view().block_form.filter(|_| self.block_form.borrow().is_none()) {
+            block_form::run(self, form);
+        }
         self.asking.set(false);
+    }
+
+    /// The block form's dialog opens, or closes.
+    pub fn open_block_form(&self, form: Option<Rc<block_form::Form>>) {
+        *self.block_form.borrow_mut() = form;
+    }
+
+    /// The block form's dialog, while it is open: what a refusal is said over.
+    pub fn block_form_window(&self) -> Option<HWND> {
+        self.block_form.borrow().as_ref().and_then(|form| form.window())
     }
 
     /// Runs `action` once the notification being handled has returned.
@@ -853,12 +885,11 @@ impl App {
             2 => self.escape(),
             menu::NEW_TASK => self.quick_add(false),
             menu::NEW_BLOCK => {
+                // On the day shown, which is today from anywhere else.
                 if self.day().is_none() {
                     self.go(Place::Today, true);
                 }
-                if let Some(day) = self.day() {
-                    day.add_block(self, None, None);
-                }
+                self.crux.send(ShellEvent::Block(lumenna_app::BlockEvent::New { start: None, minutes: None }));
             }
             menu::NEW_PROJECT => self.sidebar.add(self, SidebarGroup::Projects),
             menu::NEW_LABEL => self.sidebar.add(self, SidebarGroup::Labels),

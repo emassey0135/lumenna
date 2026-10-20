@@ -170,10 +170,6 @@ impl Tree {
         self.items.borrow().len()
     }
 
-    pub fn key(&self, index: usize) -> Option<String> {
-        self.items.borrow().get(index).map(|item| item.key.clone())
-    }
-
     pub fn index_of(&self, key: &str) -> Option<usize> {
         self.items.borrow().iter().position(|item| item.key == key)
     }
@@ -207,18 +203,6 @@ impl Tree {
         self.busy.set(true);
         self.select(index);
         self.busy.set(false);
-    }
-
-    /// Selects the row with this key, or else the one now at `near` — the same row if it is
-    /// still listed, else whatever holds its place.
-    pub fn select_key_or_near(&self, key: Option<&str>, near: Option<usize>) {
-        let target = key.and_then(|key| self.index_of(key)).or_else(|| {
-            let count = self.len();
-            near.filter(|_| count > 0).map(|index| index.min(count - 1))
-        });
-        if let Some(index) = target {
-            self.select(index);
-        }
     }
 
     /// Whether a row's checkbox is checked now: the tree checks one itself, on Space or a

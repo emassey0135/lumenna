@@ -357,7 +357,7 @@ fn completion_offers_only_what_fits_name_first_with_the_first_highlighted() {
 
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
-fn a_task_is_put_in_a_block_from_this_weeks_work_blocks() {
+fn a_task_is_put_in_a_block_from_this_weeks_work_blocks_or_another_days() {
     let app = App::launch(|lumenna| {
         add(lumenna, "Write report");
         // Ending at midnight, so today's is never over yet, whenever the test runs: a block
@@ -378,10 +378,26 @@ fn a_task_is_put_in_a_block_from_this_weeks_work_blocks() {
     app.post(&[GO_TASKS, "home", PUT_IN_BLOCK]);
     let picker = app.front();
     let choices: Vec<&String> = picker.iter().filter(|l| l.trim_start().starts_with("ListItem")).collect();
-    assert_eq!(choices.len(), 7, "a work block a day for a week, and no breaks: {choices:#?}");
+    assert_eq!(choices.len(), 8, "a work block a day for a week, no breaks, then another day: {choices:#?}");
     assert!(choices[0].contains("Today") && choices[0].contains("Deep work"), "{}", choices[0]);
+    assert!(choices[7].contains("Another Day..."), "{}", choices[7]);
     app.post(&["enter", "text:30", "enter"]);
     assert!(app.status().starts_with("Scheduled Write report into Deep work"), "{}", app.status());
+
+    // A block further off: Another Day asks which, then offers that day's.
+    let later = jiff::Zoned::now().date().checked_add(jiff::Span::new().days(10)).unwrap();
+    app.post(&[PUT_IN_BLOCK, "end", "enter"]);
+    let asked = automation::wait(Duration::from_secs(5), || app.focus().starts_with("Edit").then_some(()));
+    assert!(asked.is_some(), "Another Day asks which day: {}", app.focus());
+    app.post(&[&format!("text:{later}"), "enter"]);
+    let offered = automation::wait(Duration::from_secs(5), || {
+        let picker = app.front();
+        let choices: Vec<String> = picker.into_iter().filter(|l| l.trim_start().starts_with("ListItem")).collect();
+        (choices.len() == 2).then_some(choices)
+    });
+    let offered = offered.unwrap_or_else(|| panic!("that day's one work block, then another day: {:#?}", app.front()));
+    assert!(offered[0].contains("Deep work") && !offered[0].contains("Today"), "{}", offered[0]);
+    app.post(&["esc"]);
 }
 
 #[test]
@@ -457,6 +473,30 @@ fn the_block_form_has_every_setting_and_its_flags_follow_the_kind() {
     assert_eq!(shown.task_filter.as_deref(), Some("#Inbox"));
     assert_eq!(shown.colour.as_deref(), Some("teal"));
     assert!(shown.repeats, "{shown:?}");
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn a_block_form_refused_stays_open_as_typed_with_why() {
+    let app = App::launch(|lumenna| {
+        let block = NewBlock { title: "Deep work".to_owned(), at: "11pm".to_owned(), minutes: 60, kind: "work".to_owned(), ..NewBlock::default() };
+        lumenna.add_block(block).unwrap();
+    });
+    app.post(&["cmd:142", "home", "enter"]);
+    let opened = automation::wait(Duration::from_secs(5), || app.front().iter().any(|l| l.contains("Change Deep work")).then_some(()));
+    assert!(opened.is_some(), "Enter changes the block: {:#?}", app.front());
+    app.post(&["focus:Starts at:", "text:blorp", "enter"]);
+    let refused = automation::wait(Duration::from_secs(5), || app.front().iter().any(|l| l.contains("Window 'Lumenna'")).then_some(()));
+    assert!(refused.is_some(), "why is said: {:#?}", app.front());
+    app.post(&["enter"]);
+    let kept = automation::wait(Duration::from_secs(5), || {
+        app.front().iter().any(|l| l.contains("Change Deep work")).then_some(()).filter(|_| app.focus().contains("blorp"))
+    });
+    assert!(kept.is_some(), "the form stays, as typed: {} {:#?}", app.focus(), app.front());
+    app.post(&["esc"]);
+    let store = app.store();
+    let id = store.list_blocks().unwrap().rows[0].id.clone();
+    assert_eq!(store.show_block(&id).unwrap().start, "23:00", "nothing was saved");
 }
 
 #[test]

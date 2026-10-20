@@ -1091,8 +1091,11 @@ own. Everything Win32 is in `src/win/` behind `cfg(windows)`.
 - **The app's turns are posted to the window** (`shell.rs`, `WM_TURN`) and taken in order
   (`App::take_turn`): the screens drawn from the app draw, the others read the store again if
   its heads moved (`follow_store`), then what the turn says goes to the status line. Drawn from
-  it so far: the sidebar, the task list, the day (`day.rs`: which day, Go to Day, its rows and
-  folding; its forms stay the window's until their turn) and the details (`detail.rs`: the
+  it so far: the sidebar, the task list, Blocks, the day (`day.rs`: which day, Go to Day, its
+  rows and folding), the block form (`block_form.rs`: a dialog over `view.block_form`, every
+  field typed sent as `BlockEvent::Field`, the fields that show only while a block repeats
+  shown and hidden as the app says, closed when the app's form is, judged by `crux.view()`
+  since a turn queued before it opened has none) and the details (`detail.rs`: the
   task in hand's, a sitting's on the day; typing goes to the app as it happens, and a field is
   written only when the app's value differs from what it shows, so the caret stays put).
   **The middle pane shows the app's place**: opening one sends `Open`, and where the app goes
@@ -1107,7 +1110,8 @@ own. Everything Win32 is in `src/win/` behind `cfg(windows)`.
 - **The app's open question is asked once the app is still** (`asking.rs`, polled every 50 ms
   from a turn that has one): straight after an answer the question is still open while the
   write is under way, and asking then would ask it twice. A refusal is said, then a line is
-  asked again with what was typed.
+  asked again with what was typed. A pick's list ends in the app's `another_day` ("Another
+  Day..."), which asks for a day in the core's words and sends `PickFrom`.
 - **The tree's own folding is the app's** Expand and Collapse (`TVN_ITEMEXPANDED`, a tree
   item's `expanded` set from the row's); the app's "Expanded" or "Collapsed" is not said after
   one the tree made, since the tree reports the state itself.

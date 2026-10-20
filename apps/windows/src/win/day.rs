@@ -15,9 +15,9 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use lumenna_app::lines::Lines;
-use lumenna_app::{DayItem, DayKind, DayMove, ViewModel};
+use lumenna_app::{BlockEvent, DayItem, DayKind, DayMove, ViewModel};
 use lumenna_ffi::ShellEvent;
-use lumenna_host::{Action, ActionKind, PlanBlock, Question, Subject, block_fields, day_block_fields, not_offered, unsayable_repeat_note};
+use lumenna_host::{Action, ActionKind, Question, Subject, not_offered};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{
     NM_DBLCLK, NMHDR, NMTREEVIEWW, NMTVKEYDOWN, TVIS_EXPANDED, TVN_ITEMEXPANDEDW, TVN_KEYDOWN, TVN_SELCHANGEDW, WC_BUTTONW,
@@ -26,14 +26,11 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{VK_DELETE, VK_SPACE};
 use windows::Win32::UI::WindowsAndMessaging::{BN_CLICKED, BS_PUSHBUTTON, WS_TABSTOP};
 
 use super::app::App;
-use super::block_form::{self, Purpose};
-use super::clock::Locale;
 use super::controls::{self, rect};
-use super::core::sentence;
 use super::tree::{Item, Tree};
 use super::view::{Metrics, View};
-use super::{actions, prompts, proposal, reminders};
-use crate::speech::{self, Clock};
+use super::{actions, proposal, reminders};
+use crate::speech;
 
 const PREVIOUS: u16 = 500;
 const TODAY: u16 = 501;
@@ -134,85 +131,16 @@ impl DayView {
         self.pending.replace(Some(series.to_owned()));
     }
 
-    /// A new block on the day shown: at `start` when it fills free time, which keeps its own
-    /// start, else when the core says a new block on that day starts.
-    pub fn add_block(&self, app: &App, start: Option<&str>, minutes: Option<u32>) {
-        let date = self.date.borrow().clone().unwrap_or_else(|| "today".to_owned());
-        let follow = start.is_none();
-        let start = match start {
-            Some(start) => start.to_owned(),
-            None => app.core.lumenna.new_block_start(Some(date.clone())).unwrap_or_default(),
-        };
-        let fields = block_form::fresh(&start, minutes.unwrap_or(60).min(720));
-        if let Some(change) = block_form::run(app.main, &app.core.lumenna, Purpose::Add { date, follow }, fields, None) {
-            if let Some(series) = change.affected.blocks.first() {
-                self.pending.replace(Some(series.clone()));
-            }
-            app.store_changed();
-            app.say_change(&change);
-        }
-    }
-
-    /// Changes a block — asking "this day, or every day?" of a repeating one, never guessing.
-    fn edit(&self, app: &App, block: &PlanBlock) {
-        let Some(date) = self.date.borrow().clone() else { return };
-        // One day alone: its time, length, title, kind and flags, as this day has them.
-        let mut fields = day_block_fields(block.clone());
-        let mut note = None;
-        let purpose = if block.repeats {
-            let day = Locale.day(&date);
-            let choice = prompts::choose(
-                app.main,
-                &format!("Change {}", block.title),
-                "Which occurrences?",
-                &[&format!("{day} Only"), "Every Occurrence"],
-                false,
-            );
-            match choice {
-                Some(0) => Purpose::Occurrence { series: block.series.clone(), date },
-                Some(_) => Purpose::Series { id: block.series.clone() },
-                None => return,
-            }
-        } else {
-            Purpose::Series { id: block.series.clone() }
-        };
-        if let Purpose::Series { id } = &purpose {
-            // The series as it is, not as this day shows it.
-            match app.core.lumenna.show_block(id) {
-                Ok(shown) => {
-                    note = unsayable_repeat_note(shown.clone());
-                    fields = block_fields(shown);
-                }
-                Err(error) => return prompts::fail(app.main, &sentence(&error)),
-            }
-        }
-        if let Some(change) = block_form::run(app.main, &app.core.lumenna, purpose, fields, note) {
-            app.store_changed();
-            app.say_change(&change);
-        }
-    }
-
-    /// Runs one of a row's actions as the app's. The forms are still the window's own: a
-    /// block's Edit, a sitting's task, a free span's new block, the day's two proposals, and
-    /// a row's reminders.
+    /// Runs one of a row's actions as the app's: a block's form and a new block in free time
+    /// too, the app asking first which occurrences of a repeating one. The forms still the
+    /// window's own are a sitting's task (the details), the day's two proposals, and a row's
+    /// reminders.
     fn act(&self, app: &App, row: &DayItem, action: &Action) {
-        if action.question != Question::Form {
-            return app.crux.send(ShellEvent::Perform(action.clone()));
-        }
-        match (row.kind, action.kind) {
-            (DayKind::Block, ActionKind::Edit) => {
-                if let Some(block) = &row.block {
-                    self.edit(app, block);
-                }
-            }
-            (DayKind::Sitting, ActionKind::EditTask) => app.open_detail(),
-            (DayKind::Free, ActionKind::AddBlock) => {
-                if let Some(free) = &row.free {
-                    self.add_block(app, Some(&free.start), Some(free.minutes));
-                }
-            }
-            (_, ActionKind::Reminders) => reminders::show(app, app.main, action),
-            _ => self.day_form(app, action),
+        match (&action.question, row.kind, action.kind) {
+            (Question::Form, DayKind::Sitting, ActionKind::EditTask) => app.open_detail(),
+            (Question::Form, _, ActionKind::Reminders) => reminders::show(app, app.main, action),
+            (Question::Form, _, ActionKind::PlanDay | ActionKind::Replan) => self.day_form(app, action),
+            _ => app.crux.send(ShellEvent::Perform(action.clone())),
         }
     }
 
@@ -283,7 +211,7 @@ impl View for DayView {
             Some(0) => app.crux.send(ShellEvent::Day(DayMove::Previous)),
             Some(1) => app.crux.send(ShellEvent::Day(DayMove::Now)),
             Some(2) => app.crux.send(ShellEvent::Day(DayMove::Next)),
-            Some(3) => self.add_block(app, None, None),
+            Some(3) => app.crux.send(ShellEvent::Block(BlockEvent::New { start: None, minutes: None })),
             _ => return false,
         }
         true
