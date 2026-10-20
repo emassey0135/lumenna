@@ -109,6 +109,8 @@ pub struct SaveFile {
     pub bytes: Vec<u8>,
     /// Its media type.
     pub kind: String,
+    /// The screen that asked for it.
+    pub screen: u32,
 }
 
 impl crux_core::capability::Operation for SaveFile {

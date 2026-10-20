@@ -108,13 +108,13 @@ pub fn answer(lumenna: &Lumenna, request: HostRequest) -> HostAnswer {
         HostRequest::SetSetting { key, value } => wrote(lumenna.set_setting(&key, &value)),
         HostRequest::Backup => HostAnswer::Saved(Box::new(lumenna.backup_file().map(|file| {
             let said = spoken(&file.announcement, &file.notices);
-            (lumenna_app::SaveFile { name: file.name, bytes: file.bytes, kind: "application/octet-stream".to_owned() }, said)
+            (lumenna_app::SaveFile { name: file.name, bytes: file.bytes, kind: "application/octet-stream".to_owned(), screen: 0 }, said)
         }))),
         HostRequest::Export(format) => HostAnswer::Saved(Box::new(lumenna.export(format, None, false).map(|exported| {
             let name = lumenna_records::exports::export_name(format, Zoned::now().date());
             let said = format!("Exported as {name}");
             let bytes = exported.content.unwrap_or_default().into_bytes();
-            (lumenna_app::SaveFile { name, bytes, kind: "text/plain;charset=utf-8".to_owned() }, said)
+            (lumenna_app::SaveFile { name, bytes, kind: "text/plain;charset=utf-8".to_owned(), screen: 0 }, said)
         }))),
         HostRequest::Import { name, bytes } => {
             let done = lumenna.import_bytes(&name, bytes).map(|imported| match imported {

@@ -170,6 +170,7 @@ pub(crate) fn daemon(profile: &Profile, local_only: bool) -> Result<()> {
         }),
         // The daemon takes them itself, below.
         backups: false,
+        apps: Some(Arc::new(lumenna_ffi::rpc::Apps { platform: platform().to_owned() })),
     };
     let holding = Arc::clone(&service);
     let endpoint = lumenna_host::rpc::Endpoint::serve(profile.directory().to_path_buf(), host, move || holding.is_running());
@@ -220,6 +221,7 @@ pub(crate) fn serve_rpc(profile: &Profile) -> Result<()> {
         sync: None,
         // Something that stays running, so it takes the backup when one is due.
         backups: true,
+        apps: Some(Arc::new(lumenna_ffi::rpc::Apps { platform: platform().to_owned() })),
     };
     lumenna_host::rpc::serve_streams(
         profile.shared(),

@@ -15,7 +15,7 @@ use lumenna_records::{Action, ActionKind, Answer};
 /// Something the person did, or the shell says of itself: as [`Event`], less what the app's
 /// own effects answer.
 #[data]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 // Sent once each, by value, across the boundary: boxing the large ones would only add an
 // allocation to every event.
 #[allow(clippy::large_enum_variant)]

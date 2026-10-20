@@ -143,6 +143,34 @@ pub const METHODS: &[&str] = &[
 /// a request to it rather than a second endpoint.
 pub type SyncHook = Arc<dyn Fn() -> crate::Result<SyncReport> + Send + Sync>;
 
+/// The notification a client of the app listens for: a screen's turn.
+pub const TURN: &str = "lumenna/turn";
+
+/// Where an app sends what it leaves a client: each turn's params, pushed as [`TURN`].
+pub type Notify = Arc<dyn Fn(Value) + Send + Sync>;
+
+/// What runs the Crux app for a client that cannot link it (Emacs): the app's screens over the
+/// client's own store connection, opened at its first `app.*` call. The host knows nothing of
+/// the app; whoever serves gives it this (`lumenna-ffi`'s).
+pub trait Apps: Send + Sync {
+    /// The app for one client, over `lumenna`, sending its turns through `notify`.
+    ///
+    /// # Errors
+    ///
+    /// If the app cannot be started.
+    fn open(&self, lumenna: Arc<Lumenna>, notify: Notify) -> crate::Result<Box<dyn AppSession>>;
+}
+
+/// One client's app: answers its `app.*` methods.
+pub trait AppSession: Send + Sync {
+    /// Answers `method` with `params`, or why not.
+    ///
+    /// # Errors
+    ///
+    /// If the params do not read, or the app refuses.
+    fn call(&self, method: &str, params: &Value) -> std::result::Result<Value, String>;
+}
+
 /// Who is serving, which the client is told and pairing says of this device.
 #[derive(Clone)]
 pub struct Host {
@@ -157,6 +185,8 @@ pub struct Host {
     /// Whether this server takes the automatic backup, at start and hourly. A server of a
     /// client's own does; one inside a process that already takes them does not.
     pub backups: bool,
+    /// The app, for a client that asks for it (`app.*`); none where nobody gave one.
+    pub apps: Option<Arc<dyn Apps>>,
 }
 
 /// How a message is delimited on the wire.
@@ -180,6 +210,8 @@ struct Server {
     /// The right to give this device's reminders, once this client asked to and no other
     /// process had it; let go with the connection.
     reminders: Mutex<Option<Arc<crate::ReminderLock>>>,
+    /// This client's app, once it asked for it; gone with the connection.
+    app: Mutex<Option<Box<dyn AppSession>>>,
 }
 
 /// Where replies go, and the framing to write with.
@@ -213,6 +245,7 @@ pub fn serve_streams(
         running: AtomicBool::new(true),
         pairing: Mutex::new(None),
         reminders: Mutex::new(None),
+        app: Mutex::new(None),
     });
 
     let watcher = Arc::clone(&server);
@@ -236,6 +269,8 @@ pub fn serve_streams(
     if let Some(pairing) = server.pairing.lock().ok().and_then(|p| p.clone()) {
         pairing.cancel();
     }
+    // The app's threads stop with it.
+    server.app.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
     result
 }
 
@@ -362,6 +397,15 @@ fn handle(server: &Arc<Server>, text: &str) -> Option<Value> {
         });
     }
 
+    if let Some(app) = method.strip_prefix("app.") {
+        let outcome = call_app(server, app, &params);
+        request.get("id")?;
+        return Some(match outcome {
+            Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
+            Err(RpcError { code, message }) => failure(&id, code, &message),
+        });
+    }
+
     let outcome = answer(server, method, &params);
     // A request without an id is a notification: it wants the work done and no reply.
     request.get("id")?;
@@ -369,6 +413,25 @@ fn handle(server: &Arc<Server>, text: &str) -> Option<Value> {
         Ok(response) => json!({ "jsonrpc": "2.0", "id": id, "result": response }),
         Err(RpcError { code, message }) => failure(&id, code, &message),
     })
+}
+
+/// An `app.*` method, on this client's app, opened at the first.
+fn call_app(server: &Arc<Server>, method: &str, params: &Value) -> std::result::Result<Value, RpcError> {
+    let Some(apps) = server.host.apps.clone() else {
+        return Err(RpcError { code: METHOD_NOT_FOUND, message: "no app is served here".to_owned() });
+    };
+    let mut app = server.app.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if app.is_none() {
+        let weak = Arc::downgrade(server);
+        let notify: Notify = Arc::new(move |params| {
+            if let Some(server) = weak.upgrade() {
+                server.send(&json!({ "jsonrpc": "2.0", "method": TURN, "params": params }));
+            }
+        });
+        *app = Some(apps.open(Arc::clone(&server.lumenna), notify)?);
+    }
+    let session = app.as_ref().expect("just opened");
+    session.call(method, params).map_err(invalid)
 }
 
 fn failure(id: &Value, code: i32, message: &str) -> Value {

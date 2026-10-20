@@ -13,8 +13,11 @@
 mod device;
 #[cfg(not(feature = "network"))]
 mod offline;
+#[cfg(feature = "rpc")]
+pub mod rpc;
 pub mod words;
 
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -28,7 +31,7 @@ use lumenna_app::{Effect, Notice, SaveFile, ViewModel};
 use lumenna_bridge::network::{Network, NetworkHandle};
 #[cfg(not(feature = "network"))]
 use offline::{Network, NetworkHandle};
-use lumenna_bridge::{Shell as Left, Stack, Store, shell, stack};
+use lumenna_bridge::{Stack, Store, stack};
 use lumenna_host::{Lumenna, Reach};
 use lumenna_app::lines::{Lines, lines};
 use lumenna_app::speech::{self, Clock, Spoken};
@@ -65,11 +68,13 @@ impl speech::Formats for Formatted {
     }
 }
 
-/// What the app left for the shell: what to draw, and what to say once focus is where the view
-/// puts it.
+/// What the app left for one screen: what to draw, and what to say once focus is where the
+/// view puts it.
 #[data]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Turn {
+    /// The screen it is for: 0, a shell's first, unless it opened others (`App::send_on`).
+    pub screen: u32,
     /// What to draw.
     pub view: ViewModel,
     /// The view's lines, in this device's clock.
@@ -103,6 +108,9 @@ pub struct App {
     unsent: Arc<AtomicUsize>,
     /// How this device says times and days.
     clock: Arc<Spoken<Formatted>>,
+    /// What this device says it runs, in pairing.
+    #[cfg_attr(not(feature = "rpc"), allow(dead_code))]
+    platform: String,
 }
 
 #[export]
@@ -117,7 +125,7 @@ impl App {
         let lumenna = Arc::clone(&device.lumenna);
         let (store, worker) = Store::new(Arc::clone(&lumenna));
         spawn("lumenna-store", move || futures::executor::block_on(worker.run()))?;
-        let network = Network::new(Arc::clone(&lumenna), store.clone(), Reach::Internet, platform);
+        let network = Network::new(Arc::clone(&lumenna), store.clone(), Reach::Internet, platform.clone());
         let handle = network.handle();
         let stack = Arc::new(stack(&store, network));
         let (outbox, delivering) = mpsc::channel();
@@ -127,20 +135,57 @@ impl App {
         let clock = Arc::new(Spoken(Formatted(locale)));
         let saying = Arc::clone(&clock);
         spawn("lumenna-shell", move || deliver(&delivering, &drawing, &*shell, &handed, &*saying))?;
-        let app = App { lumenna, stack, store, network: handle, outbox: Mutex::new(outbox), unsent, clock };
+        let app = App { lumenna, stack, store, network: handle, outbox: Mutex::new(outbox), unsent, clock, platform };
         app.send(ShellEvent::Start);
         Ok(app)
     }
 
-    /// Runs what the person did. Its turns reach the shell as every turn does.
+    /// Runs what the person did, on screen 0. Its turns reach the shell as every turn does.
     pub fn send(&self, event: ShellEvent) {
+        self.update(event.into());
+    }
+
+    /// Runs what the person did on screen `screen`: a window, an Emacs buffer. A screen opens
+    /// with the first event on it, over the store as the others have it.
+    pub fn send_on(&self, screen: u32, event: ShellEvent) {
+        self.update(lumenna_app::Event::On(screen, Box::new(event.into())));
+    }
+
+    /// Closes screen `screen`: what it asked for that comes back afterwards goes nowhere.
+    pub fn close_screen(&self, screen: u32) {
+        self.update(lumenna_app::Event::CloseScreen(screen));
+    }
+
+    /// What to draw now.
+    pub fn view(&self) -> ViewModel {
+        self.view_on(0)
+    }
+
+    /// What screen `screen` shows now.
+    pub fn view_on(&self, screen: u32) -> ViewModel {
+        self.stack.view().screen(screen)
+    }
+
+    /// The lines of what to draw now, in this device's clock.
+    pub fn lines(&self) -> Lines {
+        self.lines_on(0)
+    }
+
+    /// The lines of what screen `screen` shows now, in this device's clock.
+    pub fn lines_on(&self, screen: u32) -> Lines {
+        lines(&self.view_on(screen), &*self.clock)
+    }
+}
+
+impl App {
+    fn update(&self, event: lumenna_app::Event) {
         let outbox = self.outbox.lock().unwrap_or_else(PoisonError::into_inner).clone();
         let later = outbox.clone();
         let counting = Arc::clone(&self.unsent);
         // Counted before the app runs, so the app is never still between its answer and the
         // batch it leaves reaching the outbox.
         self.unsent.fetch_add(1, Ordering::SeqCst);
-        let now = self.stack.update(event.into(), move |effects| {
+        let now = self.stack.update(event, move |effects| {
             counting.fetch_add(1, Ordering::SeqCst);
             if later.send(effects).is_err() {
                 counting.fetch_sub(1, Ordering::SeqCst);
@@ -150,22 +195,15 @@ impl App {
             self.unsent.fetch_sub(1, Ordering::SeqCst);
         }
     }
+}
 
+#[export]
+impl App {
     /// Whether the app is still: nothing with the store, and every turn handed to the shell.
     /// A shell's tests wait on it, as a person waits for the screen to settle; a pairing or a
     /// sync under way does not count, since those wait on other devices.
     pub fn is_still(&self) -> bool {
         self.store.busy().is_still() && self.unsent.load(Ordering::SeqCst) == 0
-    }
-
-    /// What to draw now.
-    pub fn view(&self) -> ViewModel {
-        self.stack.view().screen(0)
-    }
-
-    /// The lines of what to draw now, in this device's clock.
-    pub fn lines(&self) -> Lines {
-        lines(&self.stack.view().screen(0), &*self.clock)
     }
 
     /// Takes in what changed elsewhere — another process, a sync — or a new minute. The shell
@@ -198,7 +236,8 @@ impl App {
     /// what a client is told is answering ("Lumenna for Mac"), `device_name` what a pairing
     /// asked for over it calls this device.
     pub fn serve_commands(&self, app: String, device_name: String) {
-        self.network.serve(lumenna_bridge::network::Serving { app, device_name });
+        let apps = Arc::new(rpc::Apps { platform: self.platform.clone() });
+        self.network.serve(lumenna_bridge::network::Serving { app, device_name, apps: Some(apps) });
     }
 }
 
@@ -218,10 +257,16 @@ fn spawn(name: &str, run: impl FnOnce() + Send + 'static) -> Result<(), LumennaE
         .map_err(|error| LumennaError::new(error.to_string()))
 }
 
-/// Hands the shell a turn for whatever the app has left, until the app is gone. What arrived
-/// together goes as one turn, so a burst of answers draws the view once.
+/// What a batch left one screen: what it heard (a heading, or a sentence), files and notices.
+type Left = (Vec<(bool, String)>, Vec<SaveFile>, Vec<Notice>);
+
+/// Hands the shell a turn for whatever the app has left, until the app is gone: one per screen
+/// that has something new, a view it has not drawn or something to say or save. What arrived
+/// together goes as one turn, so a burst of answers draws each screen once.
 fn deliver(outbox: &mpsc::Receiver<Vec<Effect>>, stack: &Stack<Network>, shell: &dyn Shell, unsent: &AtomicUsize, clock: &dyn Clock) {
     let mut seq = 0;
+    // What each screen was last handed, so one a batch left as it was is not drawn again.
+    let mut drawn: BTreeMap<u32, ViewModel> = BTreeMap::new();
     while let Ok(first) = outbox.recv() {
         let mut effects = first;
         let mut batches = 1;
@@ -229,28 +274,47 @@ fn deliver(outbox: &mpsc::Receiver<Vec<Effect>>, stack: &Stack<Network>, shell: 
             effects.extend(more);
             batches += 1;
         }
-        let left = self::shell(effects);
-        if left.is_empty() {
-            unsent.fetch_sub(batches, Ordering::SeqCst);
-            continue;
-        }
-        seq += 1;
-        let view = stack.view().screen(0);
-        let mut turn = Turn { lines: lines(&view, clock), view, said: Vec::new(), files: Vec::new(), notices: Vec::new(), seq };
-        for one in left {
-            match one {
-                Left::Announce(text) => turn.said.push(text),
-                // "<day>. <summary>", for a day newly shown.
-                Left::Heading(text) => turn.said.push(match &turn.view.day {
-                    Some(day) => speech::summary(&day.date, &text, clock),
-                    None => text,
-                }),
-                Left::Save(file) => turn.files.push(file),
-                Left::Notify(notice) => turn.notices.push(notice),
-                Left::Render => {}
+        let mut views = stack.view().0;
+        drawn.retain(|screen, _| views.contains_key(screen));
+        let mut left: BTreeMap<u32, Left> = BTreeMap::new();
+        let mut draw = false;
+        for effect in effects {
+            match effect {
+                Effect::Render(_) => draw = true,
+                Effect::Announce(request) => {
+                    let said = request.operation;
+                    left.entry(said.screen).or_default().0.push((said.heading, said.text));
+                }
+                Effect::Save(request) => left.entry(request.operation.screen).or_default().1.push(request.operation),
+                // The device's, shown once: with the first screen's turn.
+                Effect::Notify(request) => {
+                    let first = views.keys().next().copied().unwrap_or(0);
+                    left.entry(first).or_default().2.push(request.operation);
+                }
+                Effect::Watch(_) | Effect::Host(_) | Effect::Network(_) => {}
             }
         }
-        shell.turn(turn);
+        if draw {
+            for (screen, view) in &views {
+                if drawn.get(screen) != Some(view) {
+                    left.entry(*screen).or_default();
+                }
+            }
+        }
+        for (screen, (heard, files, notices)) in left {
+            let view = views.remove(&screen).unwrap_or_default();
+            // "<day>. <summary>", for a day newly shown.
+            let said = heard
+                .into_iter()
+                .map(|(heading, text)| match (&view.day, heading) {
+                    (Some(day), true) => speech::summary(&day.date, &text, clock),
+                    _ => text,
+                })
+                .collect();
+            seq += 1;
+            drawn.insert(screen, view.clone());
+            shell.turn(Turn { screen, lines: lines(&view, clock), view, said, files, notices, seq });
+        }
         // Handed on: the shell counts it from here until it is drawn.
         unsent.fetch_sub(batches, Ordering::SeqCst);
     }

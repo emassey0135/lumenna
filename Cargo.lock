@@ -2949,6 +2949,7 @@ dependencies = [
  "iroh",
  "jiff",
  "lumenna-core",
+ "lumenna-ffi",
  "lumenna-host",
  "lumenna-parse",
  "lumenna-store",
@@ -2976,13 +2977,16 @@ dependencies = [
 name = "lumenna-ffi"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "boltffi",
  "crux_core",
  "futures",
+ "jiff",
  "lumenna-app",
  "lumenna-bridge",
  "lumenna-host",
  "lumenna-records",
+ "serde_json",
 ]
 
 [[package]]

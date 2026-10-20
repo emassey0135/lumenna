@@ -117,12 +117,16 @@ mod effects {
 }
 
 impl Effect {
-    /// The same effect, anything it says said on `screen`.
+    /// The same effect, anything it says said on `screen`, and any file it saves saved from it.
     fn said_on(self, screen: ScreenId) -> Self {
         match self {
             Effect::Announce(mut request) => {
                 request.operation.screen = screen;
                 Effect::Announce(request)
+            }
+            Effect::Save(mut request) => {
+                request.operation.screen = screen;
+                Effect::Save(request)
             }
             effect => effect,
         }

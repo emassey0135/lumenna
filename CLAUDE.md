@@ -165,7 +165,10 @@ GTK are drawn from it entirely; the CLI and Emacs still call the host directly u
   and the capitals arriving are taken in by every screen. A screen opens with the person's first
   event on it, over the store as another holds it, and `CloseScreen` closes it: an answer that
   comes back for it afterwards goes nowhere. The view is every screen's (`Views`); a shell draws
-  its own (`Views::screen`). A shell cannot open another yet: `ShellEvent` has no screen.
+  its own (`Views::screen`). Through `lumenna-ffi` a shell addresses a screen with
+  `App::send_on`, `view_on`, `lines_on` and `close_screen`, and each `Turn` names its screen:
+  one per screen with a view it has not drawn or something to say or save, so a batch that
+  left a screen as it was draws nothing there. Every native shell uses screen 0 alone for now.
 - **The person can move on before a write is answered**: a write's answer that comes after an
   `Event::Focus` the person made since they last acted leaves the row they moved to in hand
   (`Screen::moves`, `acted_at`), rather than pulling them to the row the write would have put
@@ -285,6 +288,15 @@ endpoint (`Endpoint::serve`, `Lumenna::serve_commands`).
   `task_edit`, `block_fields`, `day_block_fields`, `block_edit`, `new_block`,
   `block_defaults`, `priorities`, `not_offered`, `project_reference`, `label_reference`; `choices` with `from` is Put in a Block on another day) are here so a client over the pipe keeps no copy of any rule. A form
   function's answer is a `value` result: computed from what the client sent, nothing read.
+- **The app, for a client that cannot link it** (`app.*`, `Apps`, `AppSession`): at a client's
+  first `app.*` call the server opens an `App` over the client's own connection
+  (`lumenna_ffi::rpc`, given by whoever serves: `lum rpc`, the daemon, a desktop app), each of
+  the client's buffers a screen. `app.send {screen, event}` takes a `ShellEvent` in its serde
+  shape; every turn comes back as a `lumenna/turn` notification (`screen`, `seq`, `view`,
+  `lines`, `said`, `files` with base64 `data`, `notices`), worded in English in the clock
+  `app.clock {twenty_four}` gave. `app.view`, `app.close`, `app.still`, `app.tick` and
+  `app.complete` answer the rest. A client's app never holds the endpoint: syncing stays the
+  holder's, and Sync Now without one runs a round of its own, as `sync` does.
 - **`complete` and `preview` have no command line**: completion is a keystroke-rate question
   and a process per keystroke is not an answer.
 - **`lum rpc` takes backups at start and hourly** (`Host::backups`), as the CLI takes them

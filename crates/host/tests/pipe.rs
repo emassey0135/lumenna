@@ -19,6 +19,7 @@ fn serve(directory: &Path) -> Endpoint {
         platform: "windows".to_owned(),
         sync: None,
         backups: false,
+        apps: None,
     };
     Endpoint::serve(directory.to_path_buf(), host, || true)
 }

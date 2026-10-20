@@ -526,3 +526,26 @@ fn only_one_client_gives_reminders_and_the_next_waits_its_turn() {
     let after = rpc.talk(&[deliver]);
     assert!(!after.contains("Another app"), "free once the first let go: {after}");
 }
+
+#[test]
+fn the_app_over_rpc_keeps_a_screen_per_buffer_and_pushes_each_screens_turn() {
+    // The Crux app for a client that cannot link it: what the person does goes in as the app's
+    // events, on the screen of the buffer they did it in, and each screen's turn comes back.
+    let rpc = Rpc::new();
+    let mut live = Live::start(&rpc);
+    live.send(r#"{"jsonrpc":"2.0","id":1,"method":"app.clock","params":{"twenty_four":true}}"#);
+    live.wait_for(r#""id":1"#);
+    live.send(r#"{"jsonrpc":"2.0","id":2,"method":"app.send","params":{"screen":1,"event":{"Open":"Tasks"}}}"#);
+    live.send(r#"{"jsonrpc":"2.0","id":3,"method":"app.send","params":{"screen":1,"event":{"QuickAdd":"Buy milk"}}}"#);
+    let turn = live.wait_for(r#""said":["Buy milk"]"#);
+    assert!(turn.contains(r#""method":"lumenna/turn""#), "{turn}");
+    assert!(turn.contains(r#""screen":1"#), "said on the screen it was added on: {turn}");
+    assert!(turn.contains(r#""title":"Buy milk""#), "{turn}");
+    live.send(r#"{"jsonrpc":"2.0","id":4,"method":"app.send","params":{"screen":2,"event":{"Open":"Trash"}}}"#);
+    live.send(r#"{"jsonrpc":"2.0","id":5,"method":"app.view","params":{"screen":1}}"#);
+    let view = live.wait_for(r#""id":5"#);
+    assert!(view.contains(r#""place":"Tasks""#), "the other screen's place is its own: {view}");
+    live.send(r#"{"jsonrpc":"2.0","id":6,"method":"app.send","params":{"event":"Bogus"}}"#);
+    let refused = live.wait_for(r#""id":6"#);
+    assert!(refused.contains(r#""error""#) && refused.contains("not an event"), "{refused}");
+}

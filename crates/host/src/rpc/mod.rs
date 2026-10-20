@@ -25,7 +25,7 @@ mod server;
 pub use endpoint::{Endpoint, relay};
 #[cfg(windows)]
 pub use endpoint::pipe_user;
-pub use server::{Host, METHODS, SyncHook, serve_streams};
+pub use server::{AppSession, Apps, Host, METHODS, Notify, SyncHook, TURN, serve_streams};
 
 use std::sync::{Arc, Mutex};
 
@@ -52,7 +52,8 @@ impl Lumenna {
     /// Serves the command surface at this profile's address while `service` holds the
     /// device's endpoint, answering a `sync` with a round on it. `app` is what a client is
     /// told is answering, such as "Lumenna for Mac"; `device_name` and `platform` are what a
-    /// pairing asked for over it says of this device.
+    /// pairing asked for over it says of this device; `apps` runs the app for a client that asks
+    /// for it.
     ///
     /// A client gets a store connection of its own, so what it writes reaches the app as
     /// another process's write, which the app redraws for already.
@@ -63,6 +64,7 @@ impl Lumenna {
         app: String,
         device_name: String,
         platform: String,
+        apps: Option<Arc<dyn server::Apps>>,
     ) -> Arc<CommandServer> {
         let host = Host {
             process: app,
@@ -74,6 +76,7 @@ impl Lumenna {
             }),
             // The app takes them itself.
             backups: false,
+            apps,
         };
         let endpoint = Endpoint::serve(self.directory.clone(), host, move || service.is_running());
         Arc::new(CommandServer { endpoint: Mutex::new(Some(endpoint)) })

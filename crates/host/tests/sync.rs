@@ -155,7 +155,7 @@ fn another_store_on_the_same_profile_asks_the_holder_for_its_round() {
     let service = a.start_sync(Reach::LocalOnly, Arc::new(Count::default())).unwrap();
     // The holder answers the command surface, as the daemon and the desktop apps do.
     #[cfg(feature = "rpc")]
-    let served = a.serve_commands(Arc::clone(&service), "test".to_owned(), "laptop".to_owned(), "linux".to_owned());
+    let served = a.serve_commands(Arc::clone(&service), "test".to_owned(), "laptop".to_owned(), "linux".to_owned(), None);
     let asked = || elsewhere.sync_now(Reach::LocalOnly);
     if cfg!(all(unix, feature = "rpc")) {
         assert!(eventually(Duration::from_secs(10), || asked().is_ok()), "the holder ran the round: {:?}", asked());

@@ -75,12 +75,14 @@ impl Network {
 
 /// What a process serving the command surface says of itself to its clients.
 #[cfg(feature = "rpc")]
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Serving {
     /// What a client is told is answering, such as "Lumenna for Mac".
     pub app: String,
     /// What a pairing asked for over it says this device is called.
     pub device_name: String,
+    /// The app, for a client that cannot link it and asks for it (Emacs).
+    pub apps: Option<Arc<dyn lumenna_host::rpc::Apps>>,
 }
 
 /// What the shell tells the network itself: the platform's lifecycle, which the app does not know.
@@ -194,7 +196,7 @@ impl Inner {
         let Some(service) = self.lock_service().clone() else { return };
         let mut commands = self.commands.lock().unwrap_or_else(PoisonError::into_inner);
         if commands.is_none() {
-            *commands = Some(self.lumenna.serve_commands(service, serving.app, serving.device_name, self.platform.clone()));
+            *commands = Some(self.lumenna.serve_commands(service, serving.app, serving.device_name, self.platform.clone(), serving.apps));
         }
     }
 

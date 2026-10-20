@@ -64,6 +64,14 @@ pub struct Device {
     link: Arc<PhoneLink>,
 }
 
+impl Device {
+    /// The device over a store already open: a client's own connection, served over RPC.
+    #[cfg(feature = "rpc")]
+    pub(crate) fn over(lumenna: Arc<Lumenna>) -> Device {
+        Device { link: PhoneLink::new(Arc::clone(&lumenna)), lumenna, reminders: Mutex::new(None) }
+    }
+}
+
 #[export]
 impl Device {
     /// Opens the profile in `directory`, creating it on the first run.
