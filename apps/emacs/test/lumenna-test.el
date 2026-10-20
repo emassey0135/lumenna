@@ -431,10 +431,7 @@
 
 (ert-deftest lumenna-a-cancelled-day-is-listed-and-put-back ()
   (lumenna-test--with-store
-    ;; From tomorrow: today, whose "now" is checked below, holds no block that now could fall
-    ;; inside, whenever the test runs (at 07:08 UTC it fell inside today's Run, and the day said
-    ;; the block under way instead).
-    (lumenna-write "block.add" :title "Run" :at "7am" :minutes 30 :date "tomorrow" :repeat "every day")
+    (lumenna-write "block.add" :title "Run" :at "7am" :minutes 30 :date "today" :repeat "every day")
     (lumenna-today)
     (lumenna-test--goto "Run")
     (lumenna-act-cancel-day)
