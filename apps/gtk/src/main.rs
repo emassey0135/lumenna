@@ -12,6 +12,7 @@
 //! and starting it again activates the running one, which shows its window.
 
 mod actions;
+mod asking;
 mod block_form;
 mod blocks;
 mod clock;
@@ -20,6 +21,7 @@ mod core;
 mod day;
 mod detail;
 mod help;
+mod model;
 mod pairing;
 mod prompts;
 mod proposal;

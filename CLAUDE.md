@@ -52,7 +52,7 @@ apps/android/   Jetpack Compose over the Crux app's Kotlin bindings: the phone (
 apps/apple/     the iOS, macOS and watchOS apps over the Crux app's Swift bindings, Shared/
                 between them.
 apps/windows/   the Win32 app, moving onto the Crux app screen by screen.
-apps/gtk/       the Linux app, GTK 4, linking the surface directly.
+apps/gtk/       the Linux app, GTK 4, moving onto the Crux app screen by screen.
 apps/web/       the web client: the core in WASM (core/), TypeScript and React Aria over it.
 ```
 
@@ -1193,8 +1193,30 @@ own. Everything Win32 is in `src/win/` behind `cfg(windows)`.
 
 ## The GTK app
 
-`apps/gtk/`: Rust over `gtk4-rs`, linking `lumenna-host` directly, binary
-`lumenna-gtk`.
+`apps/gtk/`: Rust over `gtk4-rs`, binary `lumenna-gtk`, moving onto the Crux app one screen
+at a time: `lumenna-ffi` as an rlib (`App`, `Device`), as the Mac runs it. The screens not yet
+moved still call `lumenna-host` directly (`Core`), on a connection of their own.
+
+- **The app's turns go to GTK's main thread** (`model.rs`, `glib::MainContext::invoke`) and
+  are taken in order (`window::take`): the screens drawn from the app draw, then what the turn
+  says is said. Drawn from it so far: the task list (`tasks.rs`). Its rows, readback, filter
+  (put back on returning to a place), row in hand and folding are the app's: a move sends
+  `Focus`; Space, Delete, Enter and the Task menu send `Run`; its menu and Left and Right (the
+  row's Collapse and Expand, `Tree::connect_fold`, `Item::expanded`) run the row's action. The
+  app's "Expanded" or "Collapsed" after a fold the tree asked for is not said: the tree item
+  reports its state. Only `Question::Form` stays the window's (the details, reminders).
+- **Focus moves only when `view.landing` goes up** (or the place was gone to from a key), and
+  only if focus is in the list or nowhere; a rebuild for a sync or a minute puts the selection
+  back without moving focus.
+- **The app's open question is asked once the app is still** (`asking.rs`, polled every 50 ms
+  from a turn that has one): straight after an answer it is still open while the write is
+  under way. A refusal is said, then a line is asked again with what was typed. A pick says how
+  many it offers as it opens: that is the app's.
+- **The clock setting reaches the app's thread as a number** (`clock::Locale::twelve`, kept
+  from GSettings' change signal): the app's `Locale` is called off the main thread, where a
+  `gio::Settings` cannot go.
+- **The app's network waits** (`in_front(false)`) while `Core`'s sync service keeps the device
+  in sync and serves the socket, until Settings and the Devices page move.
 
 - **Every list is a `GtkListView` that says it is a tree** (`tree.rs`). `GtkTreeView`
   exposes no rows to AT-SPI in GTK 4, and a list view with `TreeExpander` reports a flat
@@ -1208,8 +1230,8 @@ own. Everything Win32 is in `src/win/` behind `cfg(windows)`.
   level changes against the row shown before, as the other apps word it; position is left
   to the platform. Decided at run time; `LUMENNA_LEVEL_IN_TEXT=1` forces it for tests. CI
   runs the UI tests on Arch, so the native path is what it covers by default.
-- **A row's actions are the core's**, run by `actions.rs`: it asks each `Question` in GTK's
-  dialogs and answers only `Question::Form` itself. Space, Delete and Enter run a row's
+- **A row's actions are the core's**, on the screens not yet drawn from the app run by
+  `actions.rs`: it asks each `Question` in GTK's dialogs and answers only `Question::Form` itself. Space, Delete and Enter run a row's
   action of a fixed set of kinds (`actions::SPACE`, `DELETE`, `ENTER`); the Task menu's
   commands run the in-hand task's action of their kind, so Mark Done toggles. A settings
   page runs them through `run_from`, over its own window and status line.

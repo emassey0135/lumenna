@@ -50,6 +50,22 @@ pub fn menu(actions: &[Action], after: Option<After>) -> (gio::Menu, gio::Simple
 
 /// A menu of `actions` asked over another window than the main one, when `from` says which.
 pub fn menu_from(actions: &[Action], after: Option<After>, from: Option<Asking>) -> (gio::Menu, gio::SimpleActionGroup) {
+    menu_running(
+        actions,
+        Rc::new(move |action| {
+            if let Some(app) = crate::window::app() {
+                match &from {
+                    Some(from) => run_from(&app, action, after.clone(), from.clone()),
+                    None => run(&app, action, after.clone()),
+                }
+            }
+        }),
+    )
+}
+
+/// A menu of `actions`, each handed to `run` when chosen: the app's rows hand theirs to the
+/// app. Those that remove something come last, apart.
+pub fn menu_running(actions: &[Action], run: Rc<dyn Fn(Action)>) -> (gio::Menu, gio::SimpleActionGroup) {
     let menu = gio::Menu::new();
     let (keeping, removing) = (gio::Menu::new(), gio::Menu::new());
     let group = gio::SimpleActionGroup::new();
@@ -61,15 +77,8 @@ pub fn menu_from(actions: &[Action], after: Option<After>, from: Option<Asking>)
         let section = if action.destructive { &removing } else { &keeping };
         section.append(Some(&title), Some(&format!("row.{name}")));
         let simple = gio::SimpleAction::new(&name, None);
-        let (action, after, from) = (action.clone(), after.clone(), from.clone());
-        simple.connect_activate(move |_, _| {
-            if let Some(app) = crate::window::app() {
-                match &from {
-                    Some(from) => run_from(&app, action.clone(), after.clone(), from.clone()),
-                    None => run(&app, action.clone(), after.clone()),
-                }
-            }
-        });
+        let (action, run) = (action.clone(), Rc::clone(&run));
+        simple.connect_activate(move |_, _| run(action.clone()));
         group.add_action(&simple);
     }
     menu.append_section(None, &keeping);
@@ -196,6 +205,13 @@ pub async fn ask_text(window: &gtk::Window, question: &Question, typed: Option<&
 // ---------------------------------------------------------------------------------------
 // The forms: the questions the app answers itself
 // ---------------------------------------------------------------------------------------
+
+/// Opens what a form action asks with, the app's own forms aside: a task's details, the
+/// block form and the rest not yet drawn from the app.
+pub fn open_form(app: &Rc<App>, action: Action) {
+    let app = Rc::clone(app);
+    spawn(async move { form(&app, action).await });
+}
 
 async fn form(app: &Rc<App>, action: Action) {
     match (action.subject, action.kind) {

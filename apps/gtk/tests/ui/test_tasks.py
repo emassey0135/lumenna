@@ -124,7 +124,8 @@ class TaskListTest(unittest.TestCase):
         self.session.press("Tab")
         self.assertEqual(self.session.focus(), "[button] 'Cancel'")
         self.session.press("Shift+Tab", "Return", wait=1)
-        self.assertEqual(self.session.said(), ["Moved Buy milk"])
+        # How many the pick offers, said as it opens, then what it did.
+        self.assertEqual(self.session.said(), ["2 projects", "Moved Buy milk"])
         self.assertIn("Buy milk", self.session.lum("task", "list", '#Reports'))
 
     def test_f6_goes_through_the_places_the_list_and_the_details(self):

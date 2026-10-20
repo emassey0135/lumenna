@@ -290,6 +290,7 @@ pub async fn pick(parent: &impl IsA<gtk::Window>, title: &str, label: &str, opti
             text: text.clone(),
             depth: *depth,
             description: description.clone(),
+            ..Default::default()
         })
         .collect();
     if list.set(items) {

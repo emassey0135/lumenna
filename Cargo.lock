@@ -3010,8 +3010,11 @@ dependencies = [
  "jiff",
  "ksni",
  "libadwaita",
+ "lumenna-app",
  "lumenna-desktop",
+ "lumenna-ffi",
  "lumenna-host",
+ "lumenna-records",
  "tempfile",
 ]
 

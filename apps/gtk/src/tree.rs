@@ -39,6 +39,9 @@ pub struct Item {
     pub depth: u32,
     /// Said after it, never in its name: a choice's reason, say. Empty for none.
     pub description: String,
+    /// Whether what is under it shows, where the app decides it (`Some`); `None` leaves it to
+    /// the tree, which starts it expanded and keeps what the person did.
+    pub expanded: Option<bool>,
 }
 
 mod imp {
@@ -196,6 +199,7 @@ pub struct Tree {
     on_activate: Callback<dyn Fn(usize)>,
     on_key: Callback<KeyHandler>,
     on_menu: Callback<MenuHandler>,
+    on_fold: Callback<dyn Fn(usize, bool)>,
 }
 
 impl Tree {
@@ -284,6 +288,7 @@ impl Tree {
             on_activate: RefCell::new(None),
             on_key: RefCell::new(None),
             on_menu: RefCell::new(None),
+            on_fold: RefCell::new(None),
         });
         tree.connect_signals();
         let weak = Rc::downgrade(&tree);
@@ -359,7 +364,9 @@ impl Tree {
         match key {
             gdk::Key::Right | gdk::Key::KP_Right if plain => {
                 if list_row.is_expandable() && !list_row.is_expanded() {
-                    list_row.set_expanded(true);
+                    if !self.fold(position, true) {
+                        list_row.set_expanded(true);
+                    }
                 } else if list_row.is_expanded() {
                     self.move_to(position + 1);
                 }
@@ -367,7 +374,9 @@ impl Tree {
             }
             gdk::Key::Left | gdk::Key::KP_Left if plain => {
                 if list_row.is_expanded() {
-                    list_row.set_expanded(false);
+                    if !self.fold(position, false) {
+                        list_row.set_expanded(false);
+                    }
                 } else if let Some(parent) = list_row.parent() {
                     self.move_to(parent.position());
                 }
@@ -381,6 +390,19 @@ impl Tree {
         match self.on_key.borrow().as_ref() {
             Some(callback) => callback(key, modifiers, index),
             None => glib::Propagation::Proceed,
+        }
+    }
+
+    /// Hands expanding or collapsing the row at a visible position to whoever folds it, if
+    /// anyone does: whether someone did.
+    fn fold(&self, position: u32, expand: bool) -> bool {
+        let Some(index) = self.index_at(position) else { return false };
+        match self.on_fold.borrow().as_ref() {
+            Some(callback) => {
+                callback(index, expand);
+                true
+            }
+            None => false,
         }
     }
 
@@ -504,6 +526,13 @@ impl Tree {
         *self.on_key.borrow_mut() = Some(Box::new(callback));
     }
 
+    /// Calls `callback` with a row's flat index when Right or Left would expand or collapse
+    /// it, in place of the tree doing it: for rows whose folding is the app's, which come back
+    /// with `Item::expanded` saying how they now are.
+    pub fn connect_fold(&self, callback: impl Fn(usize, bool) + 'static) {
+        *self.on_fold.borrow_mut() = Some(Box::new(callback));
+    }
+
     /// Calls `callback` when a row's context menu is asked for: Shift+F10 or the Menu key,
     /// with no point, or a right-click, at a point in the view.
     pub fn connect_menu(&self, callback: impl Fn(usize, Option<(f64, f64)>) + 'static) {
@@ -526,6 +555,11 @@ impl Tree {
                 }
             }
             *self.items.borrow_mut() = items;
+            // A row the app folded or unfolded since; what the person folded stays folded.
+            self.remember_expansion();
+            self.busy.set(true);
+            self.expand();
+            self.busy.set(false);
             self.word_levels();
             return false;
         }
@@ -608,16 +642,20 @@ impl Tree {
         }
     }
 
-    /// Expands every row but those collapsed, top to bottom, so children are reached too.
+    /// Expands every row but those collapsed, top to bottom, so children are reached too; a
+    /// row whose expansion is the app's is as the app says.
     fn expand(&self) {
         let items = self.items.borrow();
         let collapsed = self.collapsed.borrow();
         let mut position = 0;
         while position < self.model.n_items() {
             if let Some(list_row) = self.model.item(position).and_downcast::<gtk::TreeListRow>() {
-                let key = list_row.item().and_downcast::<Row>().and_then(|row| items.get(row.index()).map(|i| &i.key));
-                if list_row.is_expandable() && key.is_some_and(|key| !collapsed.contains(key)) {
-                    list_row.set_expanded(true);
+                let item = list_row.item().and_downcast::<Row>().and_then(|row| items.get(row.index()));
+                if list_row.is_expandable() && let Some(item) = item {
+                    let expanded = item.expanded.unwrap_or_else(|| !collapsed.contains(&item.key));
+                    if list_row.is_expanded() != expanded {
+                        list_row.set_expanded(expanded);
+                    }
                 }
             }
             position += 1;
@@ -642,7 +680,7 @@ impl Tree {
 
     /// Whether focus is on the tree.
     pub fn has_focus(&self) -> bool {
-        self.view.root().and_then(|root| root.focus()).is_some_and(|focus| focus.is_ancestor(&self.view))
+        self.view.root().and_then(|root| root.focus()).is_some_and(|focus| focus == self.view || focus.is_ancestor(&self.view))
     }
 
     /// Selects the row at a flat index, moving focus to it if focus is on the tree, and

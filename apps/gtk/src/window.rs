@@ -63,7 +63,7 @@ impl Content {
 
     fn reload(&self, app: &App) {
         match self {
-            Self::Tasks(list) => list.list(app),
+            Self::Tasks(list) => list.draw(app),
             Self::Day(day) => day.reload(app),
             Self::Blocks(blocks) => blocks.reload(app),
         }
@@ -77,6 +77,8 @@ impl Content {
 
 pub struct App {
     pub core: Core,
+    /// The app the screens draw, as they move onto it one by one.
+    pub model: crate::model::Model,
     pub application: gtk::Application,
     pub window: gtk::ApplicationWindow,
     pub clock: Locale,
@@ -134,6 +136,27 @@ pub fn announce(widget: &impl IsA<gtk::Widget>, text: &str) {
     }
 }
 
+thread_local! {
+    /// Whether a fold the tree asked for is on its way: the tree reports the row's state, so the
+    /// app's "Expanded" or "Collapsed" for it is not said as well.
+    pub static QUIET_FOLD: Cell<bool> = const { Cell::new(false) };
+}
+
+/// A turn the app left, now on the main thread: drawn, then said.
+pub fn take(turn: lumenna_ffi::Turn) {
+    let Some(app) = app() else { return };
+    if !app.model.take(&turn) {
+        return;
+    }
+    app.draw();
+    for said in &turn.said {
+        if matches!(said.as_str(), "Expanded" | "Collapsed") && QUIET_FOLD.replace(false) {
+            continue;
+        }
+        app.say(said);
+    }
+}
+
 /// An event from another thread, now on the main one.
 pub fn receive(event: Event) {
     let Some(app) = app() else { return };
@@ -174,13 +197,30 @@ pub fn activate(application: &gtk::Application, directory: &Path, background: bo
             return;
         }
     };
-    let app = App::build(application, core);
+    let clock = Locale::new();
+    let model = match crate::model::Model::open(directory, &clock) {
+        Ok(model) => model,
+        Err(error) => {
+            let message = format!("Lumenna could not open its data. {}", lumenna_desktop::speech::sentence(error.message()));
+            let dialog = gtk::AlertDialog::builder().message(message).build();
+            let application = application.clone();
+            let hold = application.hold();
+            dialog.choose(None::<&gtk::Window>, None::<&gio::Cancellable>, move |_| {
+                drop(hold);
+                application.quit();
+            });
+            return;
+        }
+    };
+    // Syncing stays the window's own until the Devices page is drawn from the app.
+    model.in_front(false);
+    let app = App::build(application, core, model, clock);
     APP.with(|slot| *slot.borrow_mut() = Some(Rc::clone(&app)));
     app.start(background, shortcuts);
 }
 
 impl App {
-    fn build(application: &gtk::Application, core: Core) -> Rc<Self> {
+    fn build(application: &gtk::Application, core: Core, model: crate::model::Model, clock: Locale) -> Rc<Self> {
         let window = gtk::ApplicationWindow::builder()
             .application(application)
             .title("Lumenna")
@@ -235,9 +275,10 @@ impl App {
 
         let app = Rc::new(Self {
             core,
+            model,
             application: application.clone(),
             window,
-            clock: Locale::new(),
+            clock,
             status,
             sidebar,
             content_slot,
@@ -315,6 +356,8 @@ impl App {
     /// Once a second: what another process wrote — `lum` shares this store — and once a
     /// minute, the clock.
     fn tick(&self) {
+        // The app looks for itself whether the store or the minute moved.
+        self.model.tick();
         // By `outside_version`, as every client does: it moves only for another process's
         // writes, which nothing else here notices — the app's own edits redraw as they are
         // made, and a sync's arrivals come through the listener.
@@ -378,6 +421,7 @@ impl App {
     /// The store changed — here, in another process, or from another device. Everything
     /// showing it reads it again, keeping its selection.
     pub fn store_changed(&self) {
+        self.model.tick();
         self.sidebar.reload(self);
         if let Some(content) = self.content() {
             content.reload(self);
@@ -422,6 +466,14 @@ impl App {
         });
         MENU_OPEN.with(|open| open.set(true));
         popover.popup();
+    }
+
+    /// Draws what the app last left on every screen drawn from it, and asks what it has open.
+    fn draw(self: &Rc<Self>) {
+        if let Some(list) = self.task_list() {
+            list.draw(self);
+        }
+        crate::asking::update(self);
     }
 
     // -------------------------------------------------------------------------------------
@@ -470,6 +522,7 @@ impl App {
 
     /// Shows a place in the middle pane, and clears the details until something is chosen.
     pub fn show_place(&self, place: Place) {
+        self.model.send(lumenna_ffi::ShellEvent::Open(place.clone()));
         let content = match &place {
             Place::Today => Content::Day(DayView::new()),
             Place::Blocks => Content::Blocks(BlockList::new()),
@@ -487,8 +540,10 @@ impl App {
 
     /// Moves focus into the middle pane.
     pub fn focus_content(&self) {
-        if let Some(content) = self.content() {
-            content.tree().focus();
+        match self.content() {
+            Some(Content::Tasks(list)) => list.focus(),
+            Some(content) => content.tree().focus(),
+            None => {}
         }
     }
 
@@ -720,6 +775,10 @@ impl App {
         // is Mark Not Done on a done task. A command the task does not offer does nothing.
         let task_command = |name: &str, kinds: &'static [ActionKind]| {
             simple_with(self, name, move |app| {
+                // A task list's row in hand is the app's, which runs its action of the kind.
+                if !app.detail.has_focus() && app.task_list().is_some() {
+                    return app.model.send(lumenna_ffi::ShellEvent::Run(kinds.to_vec()));
+                }
                 let actions = app.task_actions_in_hand();
                 match crate::actions::find(&actions, kinds) {
                     Some(action) => crate::actions::run(app, action.clone(), None),
@@ -733,6 +792,9 @@ impl App {
         };
         // The selected row's details or form: a task's details, a block's form.
         simple("open-selected", |app| {
+            if app.task_list().is_some() {
+                return app.model.send(lumenna_ffi::ShellEvent::Run(vec![ActionKind::Edit, ActionKind::EditTask]));
+            }
             let actions = match app.content() {
                 Some(Content::Tasks(list)) => list.selected().map(|row| row.actions).unwrap_or_default(),
                 Some(Content::Day(day)) => day.selected_actions(),

@@ -5,6 +5,9 @@
 //! does too. Without GNOME's schema it is the locale's own `%X` with the seconds left off.
 //! Day and month names are the locale's, through GLib.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
+
 use gtk::{gio, glib};
 use gtk::gio::prelude::*;
 use lumenna_desktop::speech::Clock;
@@ -12,6 +15,9 @@ use lumenna_desktop::speech::Clock;
 /// This desktop's way of saying times and dates.
 pub struct Locale {
     interface: Option<gio::Settings>,
+    /// The desktop's clock setting, kept current from its settings for the app's own thread,
+    /// which cannot hold them: 0 for none, 1 for twelve-hour, 2 for twenty-four (`twelve_from`).
+    pub twelve: Arc<AtomicU8>,
 }
 
 impl Locale {
@@ -20,7 +26,16 @@ impl Locale {
             .and_then(|source| source.lookup("org.gnome.desktop.interface", true))
             .filter(|schema| schema.has_key("clock-format"))
             .map(|_| gio::Settings::new("org.gnome.desktop.interface"));
-        Self { interface }
+        let twelve = Arc::new(AtomicU8::new(0));
+        if let Some(settings) = &interface {
+            let held = Arc::clone(&twelve);
+            let keep = move |settings: &gio::Settings| {
+                held.store(if settings.string("clock-format") == "12h" { 1 } else { 2 }, Ordering::Relaxed);
+            };
+            keep(settings);
+            settings.connect_changed(Some("clock-format"), move |settings, _| keep(settings));
+        }
+        Self { interface, twelve }
     }
 
     fn twelve_hour(&self) -> Option<bool> {
@@ -45,24 +60,7 @@ impl Clock for Locale {
         let (Ok(hour), Ok(minute)) = (hours.parse::<i32>(), minutes.parse::<i32>()) else {
             return clock.to_owned();
         };
-        // Fifty-nine seconds, so the locale's own format's seconds can be found and cut.
-        let Ok(time) = glib::DateTime::from_local(2000, 1, 1, hour, minute, 59.0) else {
-            return clock.to_owned();
-        };
-        let format = match self.twelve_hour() {
-            Some(true) => "%-l:%M %p",
-            Some(false) => "%H:%M",
-            None => "%X",
-        };
-        let Ok(text) = time.format(format) else { return clock.to_owned() };
-        let mut text = text.trim().to_owned();
-        if self.twelve_hour().is_none() {
-            // The locale's own time has seconds, which a block never has.
-            if let Some(at) = text.rfind(":59") {
-                text.replace_range(at..at + 3, "");
-            }
-        }
-        text
+        time(hour, minute, self.twelve_hour())
     }
 
     fn day(&self, iso: &str) -> String {
@@ -102,4 +100,37 @@ pub fn pinned_now() -> Option<String> {
 pub fn pinned_instant() -> Option<String> {
     let civil: jiff::civil::DateTime = pinned_now()?.parse().ok()?;
     Some(civil.to_zoned(jiff::tz::TimeZone::system()).ok()?.timestamp().to_string())
+}
+
+/// The clock setting as `Locale::twelve` holds it.
+pub fn twelve_from(held: u8) -> Option<bool> {
+    match held {
+        1 => Some(true),
+        2 => Some(false),
+        _ => None,
+    }
+}
+
+/// A time of day as this desktop writes it: twelve- or twenty-four-hour as `twelve` says, else
+/// the locale's own `%X` with the seconds left off.
+pub fn time(hour: i32, minute: i32, twelve: Option<bool>) -> String {
+    let plain = format!("{hour:02}:{minute:02}");
+    // Fifty-nine seconds, so the locale's own format's seconds can be found and cut.
+    let Ok(time) = glib::DateTime::from_local(2000, 1, 1, hour, minute, 59.0) else {
+        return plain;
+    };
+    let format = match twelve {
+        Some(true) => "%-l:%M %p",
+        Some(false) => "%H:%M",
+        None => "%X",
+    };
+    let Ok(text) = time.format(format) else { return plain };
+    let mut text = text.trim().to_owned();
+    if twelve.is_none() {
+        // The locale's own time has seconds, which a block never has.
+        if let Some(at) = text.rfind(":59") {
+            text.replace_range(at..at + 3, "");
+        }
+    }
+    text
 }

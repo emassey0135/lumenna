@@ -1,22 +1,22 @@
-//! Tasks, with the filter above them.
+//! Tasks, with the filter above them: the app's list (`ViewModel::list`), drawn.
 //!
 //! A tree, so a subtask's level and every row's position are the tree's to report. A row's
-//! actions are the core's (`actions`): Space checks a task off (in the trash, restores it),
-//! Delete trashes it (in the trash, deletes it from there), Enter opens its details, and the
-//! Menu key or Shift+F10 offers the rest. After a change the selection, which is the screen
-//! reader's focus, lands on the same task if it is still listed and otherwise on whatever now
-//! holds its place.
+//! actions are the app's, offered as the core gives them: Space checks a task off (in the
+//! trash, restores it), Delete trashes it (in the trash, deletes it from there), Enter opens its
+//! details, and the Menu key or Shift+F10 offers the rest; Left and Right fold through the
+//! row's Collapse and Expand. Which row is in hand after a change is the app's too: focus
+//! moves to it only when the app says it moved (`ViewModel::landing`), never for a redraw.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gdk, glib};
+use lumenna_app::Item as Row;
+use lumenna_ffi::ShellEvent;
 use lumenna_host::places::Place;
-use lumenna_desktop::speech;
-use lumenna_host::RowView;
+use lumenna_records::{ActionKind, RowView};
 
-use crate::core::sentence;
 use crate::actions;
 use crate::tree::{Item, Tree};
 use crate::window::App;
@@ -28,7 +28,16 @@ pub struct TaskList {
     filter: gtk::Entry,
     readback: gtk::Label,
     pub tree: Rc<Tree>,
-    rows: RefCell<Vec<RowView>>,
+    /// The rows as last drawn.
+    rows: RefCell<Vec<Row>>,
+    /// The app's landing count last drawn: focus moves when it goes up.
+    landed: Cell<Option<u32>>,
+    /// Whether focus goes into the list once it is drawn: the place was gone to from a key.
+    focus_wanted: Cell<bool>,
+    /// Whether the filter's text is being put back from the app, not typed.
+    setting: Cell<bool>,
+    /// A task added here, to land on once the list shows it.
+    landing_on: RefCell<Option<String>>,
 }
 
 impl TaskList {
@@ -58,17 +67,31 @@ impl TaskList {
         }
         widget.append(&readback);
         widget.append(&tree.widget);
-        let list = Rc::new(Self { place, trash, widget, filter, readback, tree, rows: RefCell::new(Vec::new()) });
+        let list = Rc::new(Self {
+            place,
+            trash,
+            widget,
+            filter,
+            readback,
+            tree,
+            rows: RefCell::new(Vec::new()),
+            landed: Cell::new(None),
+            focus_wanted: Cell::new(false),
+            setting: Cell::new(false),
+            landing_on: RefCell::new(None),
+        });
         list.connect();
         list
     }
 
     fn connect(self: &Rc<Self>) {
         let weak = Rc::downgrade(self);
-        self.filter.connect_changed(move |_| {
+        self.filter.connect_changed(move |filter| {
             // Typing is silent; the rows follow it, and Enter says what was found.
-            if let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) {
-                list.list(&app);
+            if let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app())
+                && !list.setting.get()
+            {
+                app.model.send(ShellEvent::Filter(filter.text().to_string()));
             }
         });
         let weak = Rc::downgrade(self);
@@ -91,93 +114,124 @@ impl TaskList {
         });
         self.filter.add_controller(escape);
 
+        // The person's moves are the app's to know, so the row in hand follows them.
         let weak = Rc::downgrade(self);
-        self.tree.connect_selected(move |_| {
-            if let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) {
-                let id = list.selected().filter(|_| !list.trash).map(|row| row.id);
-                app.detail.follow(&app, id.as_deref());
-            }
-        });
-        let weak = Rc::downgrade(self);
-        self.tree.connect_activate(move |index| {
+        self.tree.connect_selected(move |index| {
             let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
-            let row = list.rows.borrow().get(index).cloned();
-            if let Some(action) = row.as_ref().and_then(|row| actions::find(&row.actions, actions::ENTER)) {
-                actions::run(&app, action.clone(), None);
+            let Some(key) = index.and_then(|index| list.tree.key(index)) else { return };
+            if app.model.view().focus.as_deref() != Some(key.as_str()) {
+                app.model.send(ShellEvent::Focus(key));
             }
         });
-        let weak = Rc::downgrade(self);
-        self.tree.connect_key(move |key, modifiers, index| {
-            let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) else {
-                return glib::Propagation::Proceed;
-            };
+        self.tree.connect_activate(move |_| {
+            if let Some(app) = crate::window::app() {
+                app.model.send(ShellEvent::Run(actions::ENTER.to_vec()));
+            }
+        });
+        self.tree.connect_key(move |key, modifiers, _| {
+            let Some(app) = crate::window::app() else { return glib::Propagation::Proceed };
             if modifiers.intersects(gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::ALT_MASK) {
                 return glib::Propagation::Proceed;
             }
-            let Some(row) = list.rows.borrow().get(index).cloned() else { return glib::Propagation::Proceed };
             let kinds = match key {
                 gdk::Key::space | gdk::Key::KP_Space => actions::SPACE,
                 gdk::Key::Delete | gdk::Key::KP_Delete => actions::DELETE,
                 _ => return glib::Propagation::Proceed,
             };
-            if let Some(action) = actions::find(&row.actions, kinds) {
-                actions::run(&app, action.clone(), None);
-            }
+            app.model.send(ShellEvent::Run(kinds.to_vec()));
             glib::Propagation::Stop
         });
         let weak = Rc::downgrade(self);
         self.tree.connect_menu(move |index, point| {
             let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
-            let Some(row) = list.rows.borrow().get(index).cloned() else { return };
-            let (menu, group) = actions::menu(&row.actions, None);
+            let Some(row) = list.rows.borrow().get(index).map(|row| row.row.clone()) else { return };
+            let key = row.id.clone();
+            let (menu, group) = actions::menu_running(
+                &row.actions,
+                Rc::new(move |action| {
+                    if let Some(app) = crate::window::app() {
+                        crate::asking::run(&app, action, &key);
+                    }
+                }),
+            );
             app.popup(&menu, list.tree.view.upcast_ref(), point, Some(&group));
+        });
+        // Folding is the app's: Left and Right run the row's Collapse or Expand.
+        let weak = Rc::downgrade(self);
+        self.tree.connect_fold(move |index, expand| {
+            let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
+            let Some(row) = list.rows.borrow().get(index).map(|row| row.row.clone()) else { return };
+            let kind = if expand { ActionKind::Expand } else { ActionKind::Collapse };
+            if let Some(action) = row.actions.iter().find(|action| action.kind == kind) {
+                // The tree reports the row's new state itself, so the app's word for it would
+                // say it twice.
+                crate::window::QUIET_FOLD.set(true);
+                app.model.run(action.clone(), &row.id);
+            }
         });
     }
 
     /// The row selected, if any.
     pub fn selected(&self) -> Option<RowView> {
         let index = self.tree.selected()?;
-        self.rows.borrow().get(index).cloned()
+        self.rows.borrow().get(index).map(|row| row.row.clone())
     }
 
-    /// Lists again, keeping the selection. A filter still being typed may not read yet; then
-    /// the old rows stay and the readback says what is wrong with it.
-    pub fn list(&self, app: &App) {
-        let key = self.tree.selected().and_then(|index| self.tree.key(index));
-        let near = self.tree.selected().or(Some(0));
-        let query = if self.trash { self.place.query() } else { self.filter.text().to_string() };
-        match app.core.lumenna.list_tasks(&query) {
-            Ok(listing) => {
-                let mut said = Vec::new();
-                if !self.trash {
-                    said.extend(listing.query.as_ref().map(|q| q.description.clone()));
-                }
-                // An empty list says what is empty, in place of a count of nothing.
-                said.push(if listing.rows.is_empty() && !listing.empty.is_empty() {
-                    listing.empty.clone()
-                } else {
-                    listing.announcement.clone()
-                });
-                said.extend(listing.notices.iter().cloned());
-                self.readback.set_label(&speech::sentence(&said.join(". ")));
-                let items = listing
-                    .rows
-                    .iter()
-                    .map(|row| Item {
-                        key: row.id.clone(),
-                        // Orca does not read a tree item's checked state, so "completed" is
-                        // said in words (`tree`).
-                        text: if self.trash { speech::trashed(row, &app.clock) } else { speech::row(row, false, &app.clock) },
-                        depth: row.depth,
-                        ..Default::default()
-                    })
-                    .collect();
-                *self.rows.borrow_mut() = listing.rows;
-                if self.tree.set(items) {
-                    self.tree.select_key_or_near(key.as_deref(), near);
-                }
+    /// Draws what the app last left, if it is this place's list. Focus goes to the row in hand
+    /// when the app moved it — if focus is in the list, or nowhere — and stays put for a redraw.
+    pub fn draw(&self, app: &App) {
+        let view = app.model.view();
+        if !view.ready || view.place.as_ref() != Some(&self.place) {
+            return;
+        }
+        let Some(list) = &view.list else { return };
+        let lines = app.model.lines();
+        self.readback.set_label(&lines.readback);
+        if !self.trash && self.filter.text() != view.query && !has_focus(&self.filter) {
+            self.setting.set(true);
+            self.filter.set_text(&view.query);
+            self.setting.set(false);
+        }
+        let items = list
+            .items
+            .iter()
+            .enumerate()
+            .map(|(at, row)| Item {
+                key: row.row.id.clone(),
+                // Orca does not read a tree item's checked state, so "completed" is said in
+                // words; the level is the tree's to report.
+                text: lines.list.get(at).map_or_else(|| row.row.title.clone(), |line| line.text.clone()),
+                depth: row.row.depth,
+                expanded: row.row.expanded,
+                ..Default::default()
+            })
+            .collect();
+        *self.rows.borrow_mut() = list.items.clone();
+        let rebuilt = self.tree.set(items);
+        let moved = self.landed.replace(Some(view.landing)).is_some_and(|landed| landed != view.landing);
+        // Wanted until a row takes it: the list may be drawn empty before the store's rows come.
+        let wanted = self.focus_wanted.get();
+        let landing_on = self.landing_on.borrow().clone();
+        if let Some(id) = landing_on
+            && let Some(index) = self.tree.index_of(&id)
+        {
+            self.landing_on.take();
+            self.tree.select(index);
+            self.tree.focus();
+        } else if let Some(index) = view.focus.as_deref().and_then(|focus| self.tree.index_of(focus)) {
+            let here = self.tree.has_focus() || gtk::prelude::GtkWindowExt::focus(&app.window).is_none();
+            if (wanted || moved) && here {
+                self.focus_wanted.set(false);
+                self.tree.select_quietly(index);
+                self.tree.focus();
+            } else if rebuilt || self.tree.selected().is_none() {
+                self.tree.select_quietly(index);
             }
-            Err(error) => self.readback.set_label(&sentence(&error)),
+        } else if wanted {
+            self.tree.focus();
+        }
+        if !self.trash {
+            app.detail.follow(app, view.focus.as_deref());
         }
     }
 
@@ -191,9 +245,21 @@ impl TaskList {
         self.place.quick_add_prefix()
     }
 
-    /// Selects a task just made, if this list shows it.
+    /// Lands on a task just made, once this list shows it.
     pub fn land_on(&self, id: &str) {
-        self.tree.select_key_or_near(Some(id), None);
+        *self.landing_on.borrow_mut() = Some(id.to_owned());
+        if let Some(app) = crate::window::app() {
+            app.model.tick();
+            self.draw(&app);
+        }
+    }
+
+    /// Moves focus into the list once it is drawn, or now if it is.
+    pub fn focus(&self) {
+        self.tree.focus();
+        if self.landed.get().is_none() || self.tree.len() == 0 {
+            self.focus_wanted.set(true);
+        }
     }
 
     /// Puts focus in the filter, all of it selected so typing replaces it.
@@ -202,4 +268,9 @@ impl TaskList {
             self.filter.grab_focus();
         }
     }
+}
+
+/// Whether focus is in `widget`, or in what it holds: an entry's text.
+fn has_focus(widget: &impl IsA<gtk::Widget>) -> bool {
+    widget.root().and_then(|root| root.focus()).is_some_and(|focus| &focus == widget.as_ref() || focus.is_ancestor(widget))
 }
