@@ -99,6 +99,17 @@ impl App {
         self.automation.status(self.window).unwrap_or_default()
     }
 
+    /// Whether the status line comes to say what `holds` looks for: what follows a write is
+    /// said with its answer, which a slow machine takes a while to give.
+    fn says(&self, holds: impl Fn(&str) -> bool) -> bool {
+        automation::wait(Duration::from_secs(5), || holds(&self.status()).then_some(())).is_some()
+    }
+
+    /// Whether focus comes to where `holds` looks for it: the app lands it with a write's answer.
+    fn lands(&self, holds: impl Fn(&str) -> bool) -> bool {
+        automation::wait(Duration::from_secs(5), || holds(&self.focus()).then_some(())).is_some()
+    }
+
     /// The window in front — a dialog or sheet when one is open — one element a line.
     fn front(&self) -> Vec<String> {
         self.automation.dump(self.automation.front(self.window), 10)
@@ -159,8 +170,8 @@ fn space_checks_a_task_off_and_focus_moves_to_the_one_that_took_its_place() {
         add(lumenna, "Call Sam");
     });
     app.post(&[GO_TASKS, "home", "space"]);
-    assert!(app.focus().contains("TreeItem 'Call Sam'"), "{}", app.focus());
-    assert!(app.status().starts_with("Completed Buy milk"), "{}", app.status());
+    assert!(app.lands(|f| f.contains("TreeItem 'Call Sam'")), "{}", app.focus());
+    assert!(app.says(|s| s.starts_with("Completed Buy milk")), "{}", app.status());
 }
 
 #[test]
@@ -285,8 +296,11 @@ fn every_settings_page_names_its_controls() {
 fn a_setting_changed_in_settings_is_said_and_kept() {
     let app = App::launch(|_| {});
     app.post(&[SETTINGS, "select:Planning", "focus:Day ends:", "text:7:30", "tab"]);
-    let page = app.front();
-    assert!(page.iter().any(|l| l.contains("Day ends: 7:30") && l.contains("live=polite")), "{page:#?}");
+    // Said once the store has taken it, which is a write's answer away.
+    let said = automation::wait(Duration::from_secs(5), || {
+        app.front().iter().any(|l| l.contains("Day ends: 7:30") && l.contains("live=polite")).then_some(())
+    });
+    assert!(said.is_some(), "{:#?}", app.front());
     app.post(&["esc"]);
     assert_eq!(app.store().settings(Some("day-end".to_owned())).unwrap().announcement, "07:30");
 }
@@ -341,10 +355,10 @@ fn the_keyboard_opens_a_rows_context_menu() {
 fn quick_add_reads_back_what_it_will_add_before_adding_it() {
     let app = App::launch(|_| {});
     app.post(&[NEW_TASK, "text:Call Sam tomorrow p1", "tab"]);
-    let focus = app.focus();
-    assert!(focus.starts_with("Edit 'Will add:'") && focus.contains("Call Sam") && focus.contains("priority 1"), "{focus}");
+    let read_back = |focus: &str| focus.starts_with("Edit 'Will add:'") && focus.contains("Call Sam") && focus.contains("priority 1");
+    assert!(app.lands(read_back), "{}", app.focus());
     app.post(&["enter"]);
-    assert!(app.status().contains("Call Sam"), "{}", app.status());
+    assert!(app.says(|s| s.contains("Call Sam")), "{}", app.status());
     let tasks = app.store().list_tasks("").unwrap();
     assert!(tasks.rows.iter().any(|t| t.title == "Call Sam"));
 }
@@ -395,7 +409,7 @@ fn a_task_is_put_in_a_block_from_this_weeks_work_blocks_or_another_days() {
     assert!(choices[0].contains("Today") && choices[0].contains("Deep work"), "{}", choices[0]);
     assert!(choices[7].contains("Another Day..."), "{}", choices[7]);
     app.post(&["enter", "text:30", "enter"]);
-    assert!(app.status().starts_with("Scheduled Write report into Deep work"), "{}", app.status());
+    assert!(app.says(|s| s.starts_with("Scheduled Write report into Deep work")), "{}", app.status());
 
     // A block further off: Another Day asks which, then offers that day's.
     let later = jiff::Zoned::now().date().checked_add(jiff::Span::new().days(10)).unwrap();
@@ -436,9 +450,9 @@ fn space_starts_and_pauses_a_sittings_timer_and_the_menu_offers_resume_and_stop(
         lumenna_app::speech::sitting(&plan.blocks[0].assignments[0])
     };
     app.post(&[&format!("select:{}", row(&app.store())), "space"]);
-    assert!(app.status().starts_with("Started timer"), "{}", app.status());
+    assert!(app.says(|s| s.starts_with("Started timer")), "{}", app.status());
     app.post(&["space"]);
-    assert!(app.status().to_lowercase().contains("paused"), "{}", app.status());
+    assert!(app.says(|s| s.to_lowercase().contains("paused")), "{}", app.status());
     assert!(app.focus().contains("paused"), "the row says so: {}", app.focus());
     app.post(&["context"]);
     let items = app.automation.menu_items();
@@ -478,7 +492,7 @@ fn the_block_form_has_every_setting_and_its_flags_follow_the_kind() {
         "text:teal",
         "enter",
     ]);
-    assert!(app.status().starts_with("Added"), "{}", app.status());
+    assert!(app.says(|s| s.starts_with("Added")), "{}", app.status());
     let store = app.store();
     let id = store.list_blocks().unwrap().rows[0].id.clone();
     let shown = store.show_block(&id).unwrap();
@@ -944,7 +958,7 @@ fn a_rows_menu_is_the_cores_and_never_offers_a_task_as_its_own_parent() {
     app.post(&["cmd:164"]);
     let offered: Vec<String> = app.front().into_iter().filter(|l| l.contains("ListItem")).collect();
     assert!(offered.is_empty(), "Write report was offered as going under {offered:#?}");
-    assert!(app.status().contains("no task it could go under"), "{}", app.status());
+    assert!(app.says(|s| s.contains("no task it could go under")), "{}", app.status());
 
     // The Inbox keeps its name and place: only reordered and weighed.
     app.post(&["cmd:145", "select:Inbox, 2 open tasks", "context"]);
@@ -1120,7 +1134,7 @@ fn replan_from_now_says_its_proposal_and_makes_only_the_changes_left_checked() {
     app.post(&["space"]);
     assert!(tree_items(&app)[0].contains(" unchecked"), "{:#?}", tree_items(&app));
     app.post(&["enter"]);
-    assert!(app.status().starts_with("Replanned"), "{}", app.status());
+    assert!(app.says(|s| s.starts_with("Replanned")), "{}", app.status());
     let plan = app.store().plan(None).unwrap();
     let left: Vec<&str> = plan.blocks[0].assignments.iter().map(|a| a.title.as_str()).collect();
     assert_eq!(left, [kept]);

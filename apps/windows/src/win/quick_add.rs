@@ -53,10 +53,7 @@ impl QuickAdd {
             }
             return;
         };
-        let readback = dialog::item(hwnd, READBACK);
-        if controls::text(readback) != line.readback {
-            controls::set_text(readback, &line.readback);
-        }
+        Self::read_back(hwnd, line);
         if refused.is_some() && self.refused.borrow().as_ref() != refused {
             *self.refused.borrow_mut() = refused.cloned();
             if let Some(why) = refused.cloned() {
@@ -76,7 +73,22 @@ impl QuickAdd {
         controls::send(line, EM_GETSEL, (&raw mut start) as usize, (&raw mut end) as isize);
         let cursor = controls::bytes_at(&text, end as usize) as u32;
         controls::enable(dialog::item(hwnd, IDOK.0 as u16), !text.trim().is_empty());
-        app::send(ShellEvent::Typing(Typing::Text { text, cursor }));
+        app::with(|app| {
+            app.crux.send(ShellEvent::Typing(Typing::Text { text, cursor }));
+            // The app reads the line back as it takes it, so the readback is written now: left
+            // to the turn, which reaches the window later, a Tab straight after typing found
+            // the readback of the line before the last keystroke.
+            if let Some(line) = app.crux.view().line {
+                Self::read_back(hwnd, &line);
+            }
+        });
+    }
+
+    fn read_back(hwnd: HWND, line: &LineView) {
+        let readback = dialog::item(hwnd, READBACK);
+        if controls::text(readback) != line.readback {
+            controls::set_text(readback, &line.readback);
+        }
     }
 }
 
