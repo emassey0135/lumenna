@@ -17,7 +17,7 @@ use std::rc::Rc;
 use lumenna_app::ViewModel;
 use lumenna_app::lines::Lines;
 use lumenna_ffi::ShellEvent;
-use lumenna_host::{Action, ActionKind, Question, RowView, Syntax};
+use lumenna_records::{Action, ActionKind, Question, RowView, Syntax};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{
     NM_DBLCLK, NM_TVSTATEIMAGECHANGING, NMHDR, NMTREEVIEWW, NMTVKEYDOWN, NMTVSTATEIMAGECHANGING, TVIS_EXPANDED,
@@ -33,7 +33,7 @@ use super::clock::Locale;
 use super::tree::{Item, Tree};
 use super::view::{Metrics, View};
 use super::{actions, completion};
-use lumenna_host::places::Place;
+use lumenna_records::places::Place;
 use crate::speech;
 
 const FILTER: u16 = 400;
@@ -186,8 +186,6 @@ impl View for TaskList {
         controls::place(self.tree.hwnd, rect(gap, y, inner, (height - y - gap).max(m.line)));
     }
 
-    /// The app redraws the list itself, for every change.
-    fn reload(&self, _app: &App) {}
 
     fn command(&self, app: &App, control: HWND, _id: u16, code: u16) -> bool {
         if control == self.filter && u32::from(code) == EN_CHANGE {

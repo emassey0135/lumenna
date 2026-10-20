@@ -7,7 +7,7 @@
 //! asked again from a turn made before its answer arrived.
 
 use lumenna_ffi::ShellEvent;
-use lumenna_host::{Answer, Question, go_to_day_question};
+use lumenna_records::{Answer, Question, go_to_day_question};
 
 use super::app::App;
 use super::{actions, prompts};

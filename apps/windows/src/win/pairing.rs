@@ -14,7 +14,7 @@ use std::rc::Rc;
 use lumenna_app::network::PairingView;
 use lumenna_app::{DevicesEvent, PairEvent};
 use lumenna_ffi::ShellEvent;
-use lumenna_host::{PairingWords, pairing_words};
+use lumenna_records::{PairingWords, pairing_words};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::WindowsAndMessaging::{BS_PUSHBUTTON, EN_CHANGE, ES_AUTOHSCROLL, ES_READONLY, EndDialog, IDCANCEL, WS_BORDER, WS_TABSTOP};

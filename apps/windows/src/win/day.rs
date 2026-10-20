@@ -17,7 +17,7 @@ use std::rc::Rc;
 use lumenna_app::lines::Lines;
 use lumenna_app::{BlockEvent, DayItem, DayKind, DayMove, ViewModel};
 use lumenna_ffi::ShellEvent;
-use lumenna_host::{Action, ActionKind, Question, Subject, not_offered};
+use lumenna_records::{Action, ActionKind, Question, Subject, not_offered};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{
     NM_DBLCLK, NMHDR, NMTREEVIEWW, NMTVKEYDOWN, TVIS_EXPANDED, TVN_ITEMEXPANDEDW, TVN_KEYDOWN, TVN_SELCHANGEDW, WC_BUTTONW,
@@ -165,8 +165,6 @@ impl View for DayView {
         controls::place(self.tree.hwnd, rect(gap, y, width - 2 * gap, (height - y - gap).max(m.line)));
     }
 
-    /// The app redraws the day itself, for every change and every minute.
-    fn reload(&self, _app: &App) {}
 
     fn command(&self, app: &App, control: HWND, _id: u16, code: u16) -> bool {
         if u32::from(code) != BN_CLICKED {

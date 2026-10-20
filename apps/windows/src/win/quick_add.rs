@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 use lumenna_app::{LineView, Typing};
 use lumenna_ffi::ShellEvent;
-use lumenna_host::Syntax;
+use lumenna_records::Syntax;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::Controls::{EM_GETSEL, EM_SETSEL};

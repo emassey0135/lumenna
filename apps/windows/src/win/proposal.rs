@@ -18,7 +18,8 @@ use std::rc::Rc;
 
 use lumenna_app::{ProposalEvent, ProposalView};
 use lumenna_ffi::ShellEvent;
-use lumenna_host::{ProposalWords, TimeStyle};
+use lumenna_records::ProposalWords;
+use lumenna_records::proposals::TimeStyle;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::Controls::{

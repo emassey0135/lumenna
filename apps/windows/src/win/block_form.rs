@@ -17,7 +17,7 @@ use std::rc::Rc;
 
 use lumenna_app::{BlockEvent, BlockFormView};
 use lumenna_ffi::ShellEvent;
-use lumenna_host::{BlockFields, Choice, FieldKind, FormField, block_form};
+use lumenna_records::{BlockFields, Choice, FieldKind, FormField, block_form};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{
     BN_CLICKED, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL, CB_SETCURSEL, CBN_SELCHANGE,

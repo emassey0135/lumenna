@@ -12,7 +12,7 @@
 
 use std::cell::Cell;
 
-use lumenna_host::Syntax;
+use lumenna_records::Syntax;
 use windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::UI::Controls::{EM_GETSEL, EM_POSFROMCHAR, EM_REPLACESEL, EM_SETSEL};

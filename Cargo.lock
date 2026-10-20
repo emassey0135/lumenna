@@ -3130,9 +3130,9 @@ version = "0.1.0"
 dependencies = [
  "jiff",
  "lumenna-app",
- "lumenna-desktop",
  "lumenna-ffi",
  "lumenna-host",
+ "lumenna-records",
  "tempfile",
  "windows",
 ]

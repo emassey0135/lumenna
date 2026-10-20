@@ -38,6 +38,9 @@ pub use device::Device;
 #[cfg(feature = "network")]
 pub use device::LinkStream;
 pub use lumenna_app::ShellEvent;
+/// Where this device's store lives, by the same rule lum follows, for a shell that finds it
+/// before opening it: the Windows app's.
+pub use lumenna_host::profile;
 
 /// What the shell's locale writes: a time of day and a date. Saying a day — "Today",
 /// "Tomorrow" — and joining a line are the core's.

@@ -16,7 +16,7 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use lumenna_host::{Action, ActionKind, Change, Lumenna, Result};
+use lumenna_records::{Action, ActionKind, Change, Result};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     COLOR_BTNFACE, CreateFontIndirectW, DeleteObject, GetDC, GetTextMetricsW, HBRUSH, HFONT, LOGFONTW,
@@ -44,7 +44,7 @@ use super::clock::Formats;
 use super::{pairing, proposal, reminders, system};
 use super::shell::{Relay, WM_TURN};
 use super::controls::{self, rect};
-use super::core::{Core, Poster, WM_SAY, said, taken};
+use super::core::{Poster, WM_SAY, said, taken};
 use super::toast::{Answered, Toasts, WM_REMINDER};
 use super::dark;
 use super::day::DayView;
@@ -63,7 +63,7 @@ use crate::shortcut::{self, Kind};
 use super::tray::{self, WM_SHOW_RUNNING, WM_TRAY};
 use super::view::{Metrics, View};
 use super::{a11y, core::sentence};
-use lumenna_host::places::{Place, SidebarGroup};
+use lumenna_records::places::{Place, SidebarGroup};
 use crate::{profile, speech};
 
 /// Runs a deferred action: something a notification asked for that changes the window it
@@ -110,17 +110,17 @@ impl Content {
 }
 
 pub struct App {
-    pub core: Core,
-    /// The Crux app, over this profile's store: what the screens drawn from it show, and where
-    /// they send what the person does. The screens not yet drawn from it still call `core`.
+    /// The Crux app, over this profile's store: what every screen shows, and where it sends
+    /// what the person does.
     pub crux: lumenna_ffi::App,
-    /// The store as the app's own connection holds it.
-    device: lumenna_ffi::Device,
+    /// The store as the app's own connection holds it, for what runs without the screens:
+    /// reminders, backups.
+    device: Arc<lumenna_ffi::Device>,
+    /// Where the profile is.
+    pub directory: std::path::PathBuf,
     /// The last turn's sequence and its landing count: focus moves only when the count does.
     seq: Cell<u32>,
     landing: Cell<u32>,
-    /// The store's heads when the screens not drawn from the app last read it.
-    heads: RefCell<String>,
     /// Whether the app's open question is being asked now.
     asking: Cell<bool>,
     /// The last line typed into a question, asked again with it when refused.
@@ -147,9 +147,6 @@ pub struct App {
     deferred: RefCell<VecDeque<Deferred>>,
     /// Where focus was when the window was last active, to put it back on return.
     last_focus: Cell<HWND>,
-    minute: Cell<i64>,
-    /// What another process had written by the last tick (`Lumenna::outside_version`).
-    version: Cell<i64>,
     /// The Settings sheet, while it is open.
     settings: RefCell<Option<Rc<settings::Sheet>>>,
     /// The pairing dialog, while it is open.
@@ -193,13 +190,6 @@ pub fn run() {
         return;
     };
     let Some(_instance) = tray::claim(&directory) else { return };
-    let core = match Core::open(&directory) {
-        Ok(core) => core,
-        Err(error) => {
-            prompts::fail(HWND::default(), &format!("Lumenna could not open its data. {}", sentence(&error)));
-            return;
-        }
-    };
     let device = match lumenna_ffi::Device::new(directory.display().to_string()) {
         Ok(device) => device,
         Err(error) => {
@@ -207,7 +197,7 @@ pub fn run() {
             return;
         }
     };
-    let Some(app) = App::create(core, device, &tray::class_name(&directory)) else { return };
+    let Some(app) = App::create(device, directory.clone(), &tray::class_name(&directory)) else { return };
     APP.with(|slot| *slot.borrow_mut() = Some(Rc::clone(&app)));
     if arguments.no_shortcuts {
         shortcuts::leave_to_another_copy();
@@ -219,7 +209,7 @@ pub fn run() {
 
 /// Every setting as the app holds it this moment, with what its field shows: empty until the
 /// app has them.
-pub fn current_settings() -> Vec<(lumenna_host::Setting, String)> {
+pub fn current_settings() -> Vec<(lumenna_records::Setting, String)> {
     app()
         .and_then(|app| app.crux.view().settings)
         .map(|settings| settings.settings.into_iter().map(|shown| (shown.setting, shown.typed)).collect())
@@ -260,7 +250,7 @@ fn message_loop(app: &App) {
 }
 
 impl App {
-    fn create(core: Core, device: lumenna_ffi::Device, class: &str) -> Option<Rc<Self>> {
+    fn create(device: lumenna_ffi::Device, directory: std::path::PathBuf, class: &str) -> Option<Rc<Self>> {
         // Before any window, so menus are made in the mode.
         dark::refresh();
         let instance = controls::instance();
@@ -335,8 +325,6 @@ impl App {
         a11y::make_live(status);
         let sidebar = Sidebar::create(panes[0]);
         let detail = Detail::create(panes[2]);
-        // Where the store is now, so the first tick does not reload for nothing.
-        let outside = core.lumenna.outside_version().unwrap_or(0);
         let relay = Arc::new(Relay(Poster::new(main)));
         let crux = match lumenna_ffi::App::new(&device, "windows".to_owned(), Arc::new(Formats), relay) {
             Ok(crux) => crux,
@@ -353,12 +341,11 @@ impl App {
         // the daemon would, so Emacs and the BTSpeak app reach it.
         crux.serve_commands("Lumenna for Windows".to_owned(), system::computer_name());
         let app = Rc::new(Self {
-            core,
             crux,
-            device,
+            device: Arc::new(device),
+            directory,
             seq: Cell::new(0),
             landing: Cell::new(0),
-            heads: RefCell::new(String::new()),
             asking: Cell::new(false),
             typed: RefCell::new(String::new()),
             block_form: RefCell::new(None),
@@ -376,8 +363,6 @@ impl App {
             detail,
             deferred: RefCell::new(VecDeque::new()),
             last_focus: Cell::new(HWND::default()),
-            minute: Cell::new(0),
-            version: Cell::new(outside),
             settings: RefCell::new(None),
             pairing: RefCell::new(None),
             icon,
@@ -405,7 +390,7 @@ impl App {
         }
         tray::add_icon(self.main, self.icon);
         let taken = shortcuts::register_all(self.main);
-        self.core.back_up_if_due(Poster::new(self.main));
+        self.back_up_if_due();
         self.give_reminders();
         if !taken.is_empty() {
             self.say(&shortcut::taken(&taken, shortcuts::another_copy_open(self.main)));
@@ -475,44 +460,14 @@ impl App {
         prompts::fail(self.main, message);
     }
 
-    /// Runs a change and has every view read the store again. The caller then puts the
-    /// selection where it belongs and says what happened, in that order, so the
-    /// announcement follows the row focus lands on rather than being cut off by it.
-    pub fn perform(&self, operation: impl FnOnce(&Lumenna) -> Result<Change>) -> Option<Change> {
-        match operation(&self.core.lumenna) {
-            Ok(change) => {
-                self.store_changed();
-                Some(change)
-            }
-            Err(error) => {
-                self.fail(&sentence(&error));
-                None
-            }
-        }
-    }
-
-    /// The store changed — here, in another process, or from another device. Everything
-    /// showing it reads it again, keeping its selection, and the app takes it in.
+    /// The store changed outside the app — a reminder's button, written through the device:
+    /// the app takes it in.
     pub fn store_changed(&self) {
-        self.follow_store();
         self.crux.tick();
     }
 
-    /// The screens not yet drawn from the app read the store again, if it moved since they
-    /// last did: what the app wrote, too.
-    fn follow_store(&self) {
-        let heads = self.device.heads().unwrap_or_default();
-        if !heads.is_empty() && *self.heads.borrow() == heads {
-            return;
-        }
-        *self.heads.borrow_mut() = heads;
-        if let Some(content) = self.content() {
-            content.view().reload(self);
-        }
-    }
-
-    /// A turn the app left: drawn, the screens not drawn from it brought up to date, its
-    /// question asked once the app is still, then what it says said.
+    /// A turn the app left: drawn, its question asked once the app is still, then what it
+    /// says said.
     fn take_turn(&self, turn: lumenna_ffi::Turn) {
         if turn.seq <= self.seq.replace(turn.seq) {
             return;
@@ -536,7 +491,6 @@ impl App {
         if let Some(day) = &day {
             day.draw(self, &turn.view, &turn.lines, landed);
         }
-        self.follow_store();
         let form = self.block_form.borrow().clone();
         if let Some(form) = &form {
             typing |= form.draw(self, now.block_form.as_ref(), still);
@@ -684,11 +638,23 @@ impl App {
 
     /// Every setting as the core describes it — its name, what it takes, what it can be — for
     /// a settings page to lay itself out by before the app's own arrive.
-    pub fn described_settings(&self) -> Vec<lumenna_host::Setting> {
+    pub fn described_settings(&self) -> Vec<lumenna_records::Setting> {
         self.device.settings(None).map(|list| list.settings).unwrap_or_default()
     }
 
     /// Takes a backup now, into this device's backups, as the automatic ones are; says where.
+    /// Takes the automatic backup if one is due, off the window's thread, saying so only if it
+    /// failed.
+    fn back_up_if_due(&self) {
+        let device = Arc::clone(&self.device);
+        let window = Poster::new(self.main);
+        std::thread::spawn(move || {
+            if let Err(error) = device.back_up_if_due() {
+                window.say(format!("The automatic backup failed. {}", sentence(&error)));
+            }
+        });
+    }
+
     pub fn back_up(&self) -> Result<String> {
         let done = self.device.backup()?;
         Ok(speech::sentence(&speech::announcement(&done.announcement, &done.notices)))
@@ -817,7 +783,6 @@ impl App {
         self.apply_font(pane);
         dark::controls_in(pane);
         self.layout();
-        content.view().reload(self);
     }
 
     /// The panes F6 goes through, by what takes focus in each: the details only when they
@@ -1111,11 +1076,7 @@ impl App {
                     controls::send(field, EM_UNDO, 0, 0);
                     return;
                 }
-                let lumenna = &self.core.lumenna;
-                let undo = id == menu::UNDO;
-                if let Some(change) = self.perform(|_| if undo { lumenna.undo() } else { lumenna.redo() }) {
-                    self.say_change(&change);
-                }
+                self.crux.send(if id == menu::UNDO { ShellEvent::Undo } else { ShellEvent::Redo });
             }
             menu::CUT | menu::COPY | menu::PASTE | menu::SELECT_ALL => {
                 if let Some(field) = self.editing() {
@@ -1187,7 +1148,7 @@ impl App {
                 let text = format!(
                     "Lumenna {}\n\nA task manager and day planner.\nData folder: {}",
                     env!("CARGO_PKG_VERSION"),
-                    self.core.lumenna.directory()
+                    self.directory.display()
                 );
                 unsafe {
                     MessageBoxW(Some(self.main), &HSTRING::from(text), w!("About Lumenna"), MB_OK | MB_ICONINFORMATION);
@@ -1294,27 +1255,10 @@ impl App {
         }
     }
 
-    /// Once a second: what another process wrote, and once a minute, the clock.
-    ///
-    /// By `outside_version`, not `refresh`: `refresh` says whether that one call took
-    /// anything in, and this app's own sync loop refreshes every tick on the same
-    /// connection, as every operation does first — so whichever got there first after `lum`
-    /// wrote was told, and this was not. `outside_version` is the same whoever reads it, and
-    /// moves only for another process: this app's own edits redraw as they are made, and a
-    /// sync's arrivals come from its `SyncService`, so neither is reloaded twice.
+    /// Once a second: the app looks whether another process wrote or the minute moved, and
+    /// redraws for either.
     fn on_timer(&self) {
-        // The app looks whether the store or the minute moved.
         self.crux.tick();
-        if let Ok(version) = self.core.lumenna.outside_version()
-            && self.version.replace(version) != version
-        {
-            self.store_changed();
-        }
-        let minute = jiff::Timestamp::now().as_second() / 60;
-        if self.minute.replace(minute) != minute
-            && let Some(content) = self.content() {
-                content.view().minute(self);
-            }
         let ticks = self.ticks.get().wrapping_add(1);
         self.ticks.set(ticks);
         // Every few seconds, while another process gives them, whether it has stopped; and

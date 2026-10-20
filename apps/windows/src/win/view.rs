@@ -41,8 +41,6 @@ pub trait View {
     /// Lays the view out in its pane.
     fn layout(&self, width: i32, height: i32, metrics: Metrics);
 
-    /// Reads the store again, keeping the selection where it was.
-    fn reload(&self, app: &App);
 
     /// A command from one of its controls. Returns whether it was the view's.
     fn command(&self, _app: &App, _control: HWND, _id: u16, _code: u16) -> bool {
@@ -77,7 +75,4 @@ pub trait View {
 
     /// Its windows, to destroy when another view takes the pane.
     fn windows(&self) -> Vec<HWND>;
-
-    /// Called once a minute, for a view whose content follows the clock.
-    fn minute(&self, _app: &App) {}
 }

@@ -11,7 +11,8 @@ use std::rc::Rc;
 use lumenna_app::Side;
 use lumenna_app::lines::Lines;
 use lumenna_ffi::ShellEvent;
-use lumenna_host::{Action, ActionKind, ReminderList, Subject, not_offered};
+use lumenna_records::reminders::{ReminderList, ReminderView};
+use lumenna_records::{Action, ActionKind, Subject, not_offered};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::Input::KeyboardAndMouse::VK_DELETE;
@@ -48,7 +49,7 @@ pub struct Reminders {
 }
 
 impl Reminders {
-    fn chosen(&self, hwnd: HWND) -> Option<lumenna_host::ReminderView> {
+    fn chosen(&self, hwnd: HWND) -> Option<ReminderView> {
         let index = usize::try_from(controls::send(dialog::item(hwnd, LIST), LB_GETCURSEL, 0, 0)).ok()?;
         self.shown.borrow().reminders.get(index).cloned()
     }

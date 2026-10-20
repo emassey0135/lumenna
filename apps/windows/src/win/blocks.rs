@@ -8,7 +8,7 @@ use std::rc::Rc;
 use lumenna_app::ViewModel;
 use lumenna_app::lines::Lines;
 use lumenna_ffi::ShellEvent;
-use lumenna_host::{Action, ActionKind, Question, RowView};
+use lumenna_records::{Action, ActionKind, Question, RowView};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{NM_DBLCLK, NMHDR, NMTVKEYDOWN, TVN_KEYDOWN, TVN_SELCHANGEDW, WC_STATICW};
 use windows::Win32::UI::Input::KeyboardAndMouse::VK_DELETE;
@@ -94,8 +94,6 @@ impl View for BlockList {
         controls::place(self.tree.hwnd, rect(gap, y, width - 2 * gap, (height - y - gap).max(m.line)));
     }
 
-    /// The app redraws Blocks itself, for every change.
-    fn reload(&self, _app: &App) {}
 
     fn notify(&self, app: &App, header: &NMHDR, lparam: LPARAM) -> Option<isize> {
         if header.hwndFrom != self.tree.hwnd {

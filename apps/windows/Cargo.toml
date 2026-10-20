@@ -14,13 +14,13 @@ path = "src/main.rs"
 
 [dependencies]
 jiff.workspace = true
-lumenna-desktop = { path = "../../crates/desktop" }
 # The Crux app, as the Mac and Android run it: an rlib here, with the network and the command
 # surface a resident app serves.
 lumenna-ffi = { path = "../../crates/ffi", features = ["network", "rpc"] }
 # What the app's view model and lines are, and how every line reads.
 lumenna-app = { path = "../../crates/app" }
-lumenna-host = { path = "../../crates/host", features = ["sync", "rpc"] }
+# The records the app's view is made of: rows, actions, questions, settings.
+lumenna-records.workspace = true
 
 # Everything that touches Win32 is behind `cfg(windows)`, so the workspace still builds and
 # tests on every other platform: the wording, the form and the places are tested there too.
@@ -61,4 +61,6 @@ features = [
 workspace = true
 
 [dev-dependencies]
+# The UI tests seed and check a store of their own, as another process would.
+lumenna-host = { path = "../../crates/host", features = ["sync", "rpc"] }
 tempfile.workspace = true

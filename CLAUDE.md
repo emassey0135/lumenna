@@ -41,9 +41,9 @@ crates/ffi/     the app for the Apple apps, Android and BTSpeak through BoltFFI:
                 apps/web/core, through BoltFFI too; the shell's events (`ShellEvent`) are the
                 app crate's.
 crates/sync/    Iroh endpoints, the document sync session, and pairing.
-crates/desktop/ what the Windows and GTK apps still take while they move onto the Crux app:
-                the app's and the host's modules under their old names, and `choices`. It goes
-                once they have moved.
+crates/desktop/ what the GTK app still takes while it moves onto the Crux app: the app's and
+                the host's modules under their old names, and `choices`. It goes once GTK has
+                moved.
 apps/cli/       `lum`, and `lum rpc` for clients that cannot link Rust.
 apps/btspeak/   the BTSpeak app, in Python, over the app in-process (crates/ffi).
 apps/emacs/     the Emacs client, in Elisp, over `lum rpc` or the profile's socket.
@@ -51,7 +51,7 @@ apps/android/   Jetpack Compose over the Crux app's Kotlin bindings: the phone (
                 (wear/), and what they share (shared/).
 apps/apple/     the iOS, macOS and watchOS apps over the Crux app's Swift bindings, Shared/
                 between them.
-apps/windows/   the Win32 app, moving onto the Crux app screen by screen.
+apps/windows/   the Win32 app, over the Crux app (crates/ffi, linked as Rust).
 apps/gtk/       the Linux app, GTK 4, moving onto the Crux app screen by screen.
 apps/web/       the web client: the core in WASM (core/), TypeScript and React Aria over it.
 ```
@@ -60,7 +60,7 @@ apps/web/       the web client: the core in WASM (core/), TypeScript and React A
 
 `crates/host` is every operation, once, typed. `Lumenna` holds the open store; its
 methods take text identifiers and plain records and return records (`types.rs`). The CLI
-calls it, `lum rpc` serialises what it returns, the Windows and GTK apps link it, and the
+calls it, `lum rpc` serialises what it returns, the GTK app links it, and the
 bridge answers the Crux app's writes with it; `Device` (`crates/ffi`) exports what runs
 without the screens over BoltFFI. No JSON crosses the FFI.
 
@@ -130,9 +130,9 @@ without the screens over BoltFFI. No JSON crosses the FFI.
 ## The app
 
 `crates/app` is the screens as a Crux 0.20 app; `crates/bridge` runs it beside a store. The
-web, the Android phone, Wear OS, BTSpeak and the iPhone, iPad, Mac and Apple Watch are drawn
-from it entirely; the Windows and GTK apps, the CLI and Emacs still call the host directly
-until their turn (the `legacy` tag is the last commit before the move).
+web, the Android phone, Wear OS, BTSpeak, the iPhone, iPad, Mac and Apple Watch, and Windows
+are drawn from it entirely; the GTK app, the CLI and Emacs still call the host directly until
+their turn (the `legacy` tag is the last commit before the move).
 
 - **The app never depends on the host.** It holds the snapshot the host last sent (`Watch`, a
   stream answered at once and on every change) and works out from it, with `lumenna-records`,
@@ -1083,42 +1083,41 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 
 ## The Windows app
 
-`apps/windows/`: Rust over `windows-rs`, binary `lumenna.exe`, moving onto the Crux app one
-screen at a time: `lumenna-ffi` as an rlib (`App`, `Device`), as the Mac and Android run it.
-The screens not yet moved still call `lumenna-host` directly (`Core`), on a connection of their
-own. Everything Win32 is in `src/win/` behind `cfg(windows)`.
+`apps/windows/`: Rust over `windows-rs`, binary `lumenna.exe`, drawn from the Crux app:
+`lumenna-ffi` as an rlib (`App` and `Device`, as the Mac and Android run them), with
+`lumenna-app` for the view model's types and how every line reads and `lumenna-records` for
+the records it is made of. It names neither `lumenna-host` (bar the UI tests, which seed a
+store of their own) nor `lumenna-desktop`. Everything Win32 is in `src/win/` behind
+`cfg(windows)`.
 
 - **The app's turns are posted to the window** (`shell.rs`, `WM_TURN`) and taken in order
-  (`App::take_turn`): the screens drawn from the app draw, the others read the store again if
-  its heads moved (`follow_store`), then what the turn says goes to the status line. Drawn from
-  it so far: the sidebar, the task list, Blocks, the day (`day.rs`: which day, Go to Day, its
-  rows and folding), the block form (`block_form.rs`: a dialog over `view.block_form`, every
-  field typed sent as `BlockEvent::Field`, the fields that show only while a block repeats
-  shown and hidden as the app says, closed when the app's form is, judged by `crux.view()`
-  since a turn queued before it opened has none), the proposals (`proposal.rs`: Replan from
-  Now and Plan the Day, a dialog over `view.proposal`, its checks, Apply and other options the
-  app's) and the details (`detail.rs`: the
-  task in hand's, a sitting's on the day; typing goes to the app as it happens, and a field is
-  written only when the app's value differs from what it shows, so the caret stays put).
-  **The middle pane shows the app's place**: opening one sends `Open`, and where the app goes
-  by itself (a place renamed, merged or deleted) the window goes too, judged by the app's current view (`crux.view()`), since a turn made before
-  an `Open` still names the place left. The sidebar's selection is its held row when the app
-  lands it there (an action from the sidebar holds its row first, `Hold`), else the place shown;
-  moving through it opens each place. The task list's rows, readback, filter (put back on returning to a
-  place), row in hand and folding are the app's; Space, Delete, the Task menu and its context
-  menu run the row's action as the app's (`Run`, `Perform`), only `Question::Form` staying the
-  window's (the details, reminders). The selection moves only when `view.landing` goes up or
-  the rows were rebuilt; focus goes into the tree on landing only when it is lost.
-- **A field being typed in is never written from a turn** (the details, the block form):
-  a turn can come from typing a moment old, and writing it back undid what was typed since.
-- **What the app says goes to the status line of the dialog in front** (`App::open_live`), a
-  dialog hiding the window's: a proposal's screen, a settings page, pairing. What it says as
-  the app closes that dialog is said where it goes next, once the dialog has gone.
-- **The app's open question is asked once the app is still** (`asking.rs`, polled every 50 ms
-  from a turn that has one): straight after an answer the question is still open while the
-  write is under way, and asking then would ask it twice. A refusal is said, then a line is
-  asked again with what was typed. A pick's list ends in the app's `another_day` ("Another
+  (`App::take_turn`): every screen draws, then what the turn says goes to the status line, in
+  the core's own words and casing. A screen draws `view` with `lines` and sends what the person
+  did; the window follows the app's place, judged by its current view (`crux.view()`), since a
+  turn made before an `Open` still names the place left. The app also takes in, once a second
+  (`App::tick`), what another process wrote and a new minute.
+- **A list's selection moves only when the app lands it** (`view.landing`, a side list's
+  `*_held.landing`) or the rows were rebuilt, never for a sync or a minute; focus goes into the
+  tree on landing only when it is lost. Selecting a row sends `Focus` (a side list's `Hold`), and
+  Space, Delete, the Task menu and context menus run its action as the app's (`Run`, `Perform`),
+  only `Question::Form` the window's (the details pane). The sidebar's selection is its held row
+  when the app lands it there, else the place shown; moving through it opens each place.
+- **The app's dialogs are opened once the app is still** (polled every 50 ms from a turn that
+  has one, `ask_when_still`): its open question (`asking.rs`), the block form (`block_form.rs`),
+  a proposal's screen (`proposal.rs`), a reminder list (`reminders.rs`). Straight after an answer
+  the question is still open while the write is under way, and asking then asked it twice. Only
+  a question counts as asking, since a dialog of the app's asks questions of its own. Each dialog
+  draws from the app's current view and closes when the app's screen does; a refusal is said
+  once and what was typed kept. A pick's list ends in the app's `another_day` ("Another
   Day..."), which asks for a day in the core's words and sends `PickFrom`.
+- **What the app says goes to the status line of the dialog in front** (`App::open_live`), a
+  dialog hiding the window's: a proposal's screen, a settings page, pairing, a reminder list.
+  What it says as the app closes that dialog is said where it goes next, once it has gone.
+- **A field being typed in takes the app's value only once the app is still**
+  (`controls::write_typed`, then a 50 ms poll): a turn can come from typing a moment old, and
+  writing it back undid what was typed since; once still, a change from elsewhere or the app's
+  correction is taken. A turn with no task must not make the details forget the one being
+  typed in, or the next rewrites every field.
 - **The tree's own folding is the app's** Expand and Collapse (`TVN_ITEMEXPANDED`, a tree
   item's `expanded` set from the row's); the app's "Expanded" or "Collapsed" is not said after
   one the tree made, since the tree reports the state itself.
@@ -1131,13 +1130,14 @@ own. Everything Win32 is in `src/win/` behind `cfg(windows)`.
 - **Settings is a property sheet over the app's Settings and Devices** (`settings.rs`): each
   page draws `view.settings` and `view.devices` once it exists (a sheet makes a page the first
   time it is shown), a page coming to the front taking the app's sayings to its status line.
-  A line is sent as typed (`SettingsEvent::Type`) and applied when left; a refusal is said
-  once, the line kept as typed. Rename and Unpair hold the device first (`Hold`). Back Up Now
-  is the device's own backup (`Device::backup`); an export the app makes is saved where the
-  person chooses, and an import is read and handed to the app. Pairing (`pairing.rs`) is a
-  dialog over `view.devices.pairing`, on the app's network. What is this PC's alone, opening at
-  sign-in and the shortcuts from anywhere, stays the window's.
-
+  A line is sent as typed (`SettingsEvent::Type`) and applied when left. Rename and Unpair hold
+  the device first. Back Up Now is the device's own backup (`Device::backup`); an export the
+  app makes is saved where the person chooses, and an import is read and handed to the app.
+  Pairing (`pairing.rs`) is a dialog over `view.devices.pairing`, on the app's network. What is
+  this PC's alone, opening at sign-in and the shortcuts from anywhere, stays the window's.
+- **Quick add sends its line as it is typed** (`Typing::Text`); its readback and adding are the
+  app's (`QuickAdd`), which holds what it added. Completion asks the store at keystroke rate
+  (`App::complete`): the view's offer can lag the typing.
 - **Building on ARM64 Windows needs clang on `PATH`** for `ring`: Visual Studio's
   `VC\Tools\Llvm\ARM64\bin`. The manifest is embedded by the MSVC linker from `build.rs`.
 - **Stock controls only.** Every list is a `SysTreeView32`, so level, position, set size,
@@ -1152,10 +1152,9 @@ own. Everything Win32 is in `src/win/` behind `cfg(windows)`.
   make the screen reader re-read the focused row.
 - **Nothing that rebuilds a tree runs inside one of its notifications.** Space, Delete and
   double-click go through `App::defer`; `Tree::busy` marks notifications a refill sends.
-- **A row's actions are offered and asked in one place** (`win/actions.rs`) on the screens
-  not yet drawn from the app: the context menus, the Task menu, the details buttons and
-  Delete, Space and Enter all take the row's core actions by kind. Only the forms are the
-  window's: the details pane, the block form, a new saved filter.
+- **A row's actions are offered in one place** (`win/actions.rs`): the context menus, the
+  Task menu, the details buttons and Delete, Space and Enter all take the row's core actions
+  by kind, and run them as the app's.
 - **IsDialogMessage runs over the whole main window**, with the panes
   `WS_EX_CONTROLPARENT`, so menu command ids are never 1 or 2 (`IDOK`, `IDCANCEL`). Field
   mnemonics avoid the menu bar's letters (F E V T D H): the dialog manager gives
@@ -1183,8 +1182,9 @@ own. Everything Win32 is in `src/win/` behind `cfg(windows)`.
   as MSAA's `PROPID_ACC_DESCRIPTION`, which NVDA and JAWS read, and as UI Automation's
   `HelpText`, which Narrator reads. UIA's proxy does not carry the MSAA one over. A pick's
   `Choice::reason` and a proposal's sitting reasons go this way.
-- **Reminders are toasts** (`toast.rs`), under an app identity of their own
-  (`LUMENNA_APP_ID` for tests), their buttons the core's: Carry Forward and Replan where a
+- **Reminders are toasts** (`toast.rs`), given by the device's own delivery as the Mac's are
+  (`Device::deliver_reminders`, their buttons writing through the device), under an app
+  identity of their own (`LUMENNA_APP_ID` for tests), their buttons the core's: Carry Forward and Replan where a
   firing has them, then Dismiss and Snooze. Tests can read a shown toast's XML from the
   notification history but cannot press its buttons, so what each button does is checked by
   hand.

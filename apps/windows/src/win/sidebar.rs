@@ -12,7 +12,7 @@ use std::cell::{Cell, RefCell};
 
 use lumenna_app::{Side, ViewModel};
 use lumenna_ffi::ShellEvent;
-use lumenna_host::{Action, ActionKind};
+use lumenna_records::{Action, ActionKind};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{
     NMHDR, NMTREEVIEWW, NMTVKEYDOWN, TVIS_EXPANDED, TVN_ITEMEXPANDEDW, TVN_KEYDOWN, TVN_SELCHANGEDW,
@@ -24,7 +24,7 @@ use super::controls::{self, rect};
 use super::tree::{Item, Tree};
 use super::view::Metrics;
 use super::actions;
-use lumenna_host::places::{Place, SidebarEntry, SidebarGroup, SidebarKind};
+use lumenna_records::places::{Place, SidebarEntry, SidebarGroup, SidebarKind};
 
 const TREE: u16 = 200;
 pub struct Sidebar {

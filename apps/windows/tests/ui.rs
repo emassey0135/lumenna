@@ -433,7 +433,7 @@ fn space_starts_and_pauses_a_sittings_timer_and_the_menu_offers_resume_and_stop(
     // The sitting's row, by the name the app gives it.
     let row = |lumenna: &Lumenna| {
         let plan = lumenna.plan(None).unwrap();
-        lumenna_desktop::speech::sitting(&plan.blocks[0].assignments[0])
+        lumenna_app::speech::sitting(&plan.blocks[0].assignments[0])
     };
     app.post(&[&format!("select:{}", row(&app.store())), "space"]);
     assert!(app.status().starts_with("Started timer"), "{}", app.status());
@@ -954,11 +954,11 @@ fn a_rows_menu_is_the_cores_and_never_offers_a_task_as_its_own_parent() {
     // Delete there says why not, in the core's words.
     app.post(&["delete"]);
     let why = lumenna_host::not_offered(lumenna_host::ActionKind::Delete, lumenna_host::Subject::Project, false);
-    assert_eq!(app.status(), lumenna_desktop::speech::sentence(&why));
+    assert_eq!(app.status(), lumenna_app::speech::sentence(&why));
     // F2 is Rename, as in Explorer; the Inbox keeps its name.
     app.post(&["f2"]);
     let why = lumenna_host::not_offered(lumenna_host::ActionKind::Rename, lumenna_host::Subject::Project, false);
-    assert_eq!(app.status(), lumenna_desktop::speech::sentence(&why));
+    assert_eq!(app.status(), lumenna_app::speech::sentence(&why));
 }
 
 

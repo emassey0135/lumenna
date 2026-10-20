@@ -17,7 +17,7 @@ use lumenna_app::lines::Lines;
 use lumenna_app::settings::SettingsEvent;
 use lumenna_app::{DevicesEvent, Side, ViewModel};
 use lumenna_ffi::ShellEvent;
-use lumenna_host::{ActionKind, ExportFormat, Setting, Subject, not_offered};
+use lumenna_records::{ActionKind, ExportFormat, Setting, Subject, not_offered};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::Controls::{
@@ -426,7 +426,7 @@ impl Dialog for General {
         app::with(|app| match id {
             AT_SIGN_IN => {
                 let on = controls::checked(dialog::item(page, AT_SIGN_IN));
-                if sign_in::set(on, app.core.lumenna.path()) {
+                if sign_in::set(on, &app.directory) {
                     say(page, if on { "Lumenna opens when you sign in" } else { "Lumenna no longer opens when you sign in" });
                 } else {
                     prompts::fail(sheet(page), "Windows would not change what starts when you sign in.");
@@ -689,7 +689,7 @@ const UNPAIR: u16 = 305;
 
 struct Devices {
     hwnd: Cell<HWND>,
-    list: RefCell<Vec<lumenna_host::DeviceView>>,
+    list: RefCell<Vec<lumenna_records::DeviceView>>,
     /// The landing count of the list's row in hand when last drawn.
     landing: Cell<u32>,
 }
@@ -733,7 +733,7 @@ impl Devices {
         self.offer(page);
     }
 
-    fn chosen(&self, page: HWND) -> Option<lumenna_host::DeviceView> {
+    fn chosen(&self, page: HWND) -> Option<lumenna_records::DeviceView> {
         let index = usize::try_from(controls::send(dialog::item(page, DEVICES), LB_GETCURSEL, 0, 0)).ok()?;
         self.list.borrow().get(index).cloned()
     }

@@ -4,7 +4,7 @@
 //! running one is the app's (`ShellEvent::Perform`), and the question it asks is asked as a
 //! Windows dialog (`asking.rs`).
 
-use lumenna_host::{Action, ActionKind, Question, Subject, not_offered};
+use lumenna_records::{Action, ActionKind, Question, Subject, not_offered};
 use windows::Win32::Foundation::HWND;
 
 use super::app::App;

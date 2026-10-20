@@ -16,7 +16,7 @@ use lumenna_app::details::DetailsEvent;
 use lumenna_app::lines::Lines;
 use lumenna_app::{DetailsView, ViewModel};
 use lumenna_ffi::ShellEvent;
-use lumenna_host::{Action as CoreAction, ActionKind, Choice, Question, TaskDetail, priorities, task_form};
+use lumenna_records::{Action as CoreAction, ActionKind, Choice, Question, TaskDetail, priorities, task_form};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::SystemServices::{SS_CENTER, SS_NOPREFIX};
 use windows::Win32::UI::Controls::{WC_BUTTONW, WC_COMBOBOXW, WC_EDITW, WC_LISTBOXW, WC_STATICW};
