@@ -1,5 +1,5 @@
 // The keyboard commands: each one a name from the desktop apps' shared table
-// (`lumenna_desktop::keys`), run by whichever screen on the page can answer it.
+// (`lumenna_app::keys`), run by whichever screen on the page can answer it.
 //
 // A screen offers a command while it is shown (`useCommand`); the highest priority answers
 // first, the newest among equals, and a handler that cannot act this time returns false, so the

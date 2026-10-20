@@ -25,7 +25,7 @@ use std::rc::{Rc, Weak};
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gdk, gio, glib};
-use lumenna_desktop::outline;
+use lumenna_app::outline;
 
 /// One row as the tree shows it.
 #[derive(Debug, Clone, PartialEq, Eq)]

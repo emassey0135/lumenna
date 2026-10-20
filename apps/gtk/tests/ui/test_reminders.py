@@ -103,7 +103,8 @@ class ListTest(unittest.TestCase):
         self.session.type("at due")
         self.session.press("Return", wait=1)
         self.session.wait_for_window("Reminders for Call the bank")
-        self.assertEqual(self.session.focus(), "[tree item] 'when it is due' level 1 1 of 1", "on the one added")
+        # The app's line for it, a sentence.
+        self.assertEqual(self.session.focus(), "[tree item] 'When it is due' level 1 1 of 1", "on the one added")
         self.session.said()
         self.session.press("Delete", wait=1)
         self.assertEqual(len(self.session.said()), 1)

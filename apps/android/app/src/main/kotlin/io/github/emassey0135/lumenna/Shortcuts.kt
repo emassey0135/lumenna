@@ -23,7 +23,7 @@ data class Keys(val code: Int, val ctrl: Boolean = false, val shift: Boolean = f
 }
 
 /**
- * The keyboard commands every desktop app shares (`lumenna_desktop::keys`, through the core), by
+ * The keyboard commands every desktop app shares (`lumenna_app::keys`, through the core), by
  * their identifiers: the keys Windows, GTK and the web bind, and their names, so a keyboard on
  * Android does what it does there, and the system's shortcuts helper says so.
  */

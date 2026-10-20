@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Lumenna for Linux: GTK 4, linking the command surface directly."
+description = "Lumenna for Linux: GTK 4, drawing the Crux app."
 
 [[bin]]
 name = "lumenna-gtk"
@@ -13,13 +13,11 @@ path = "src/main.rs"
 
 [dependencies]
 jiff.workspace = true
-lumenna-desktop = { path = "../../crates/desktop" }
 # The app the screens draw (`model.rs`): its view models and events, and the device's store
 # with syncing and the command surface served while this device's endpoint is held.
 lumenna-app = { path = "../../crates/app" }
 lumenna-ffi = { path = "../../crates/ffi", features = ["network", "rpc"] }
 lumenna-records.workspace = true
-lumenna-host = { path = "../../crates/host", features = ["rpc", "sync"] }
 # 4.14 for `gtk_accessible_announce`, which is how a change is said. GTK tells AT-SPI a tree
 # item's level only from 4.16, so below that a row says its level in its text (`tree.rs`).
 gtk = { package = "gtk4", version = "0.11", features = ["v4_14"] }

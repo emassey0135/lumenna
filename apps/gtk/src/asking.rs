@@ -52,7 +52,9 @@ pub fn update(app: &Rc<App>) {
 fn ask(app: &Rc<App>, open: Asking, worded: Vec<String>) {
     let action = open.action.clone();
     // Asked over the window the question came from: Settings, when it is in front.
-    let window: gtk::Window = crate::settings::in_front().unwrap_or_else(|| app.window.clone().upcast());
+    let window: gtk::Window = crate::reminders::in_front()
+        .or_else(crate::settings::in_front)
+        .unwrap_or_else(|| app.window.clone().upcast());
     match open.question.clone() {
         Question::Immediate => {}
         Question::Form => {
@@ -159,21 +161,12 @@ async fn another_day(app: &App, window: &gtk::Window) {
     }
 }
 
-/// Runs one of a row's actions through the app: the row in hand, then the action. A form the
-/// app draws on a screen not yet drawn from it here is still the GTK app's own (a reminder
-/// list); a task's details are opened from the app's question.
+/// Runs one of a row's actions through the app: the row in hand, then the action. A task's
+/// details are opened from the app's question; a reminder list is named first, after what it
+/// is for.
 pub fn run(app: &Rc<App>, action: Action, on: &str) {
-    if action.question == Question::Form && action.kind == lumenna_records::ActionKind::Reminders {
-        return crate::actions::run(app, action, None);
+    if action.kind == lumenna_records::ActionKind::Reminders {
+        return crate::reminders::show(app, &action, on);
     }
     app.model.run(action, on);
-}
-
-/// Runs the first of `kinds` the row `on` offers among `actions`, as a key that means one thing
-/// on every row does; one it offers none of goes to the app, which says why.
-pub fn run_kind(app: &Rc<App>, actions: &[Action], kinds: &[lumenna_records::ActionKind], on: &str) {
-    match crate::actions::find(actions, kinds) {
-        Some(action) => run(app, action.clone(), on),
-        None => app.model.send(ShellEvent::Run(kinds.to_vec())),
-    }
 }

@@ -9,7 +9,7 @@ export interface Node<T> {
 /**
  * Nests rows under the nearest shallower row above them. A row whose parent was filtered out
  * has no shallower row above it in its branch, and sits at the top rather than under whatever
- * happens to precede it — the rule the desktop apps' outlines use (`crates/desktop` outline).
+ * happens to precede it — the rule the desktop apps' outlines use (`lumenna_app::outline`).
  */
 export function nest<T>(rows: T[], id: (row: T) => string, depth: (row: T) => number): Node<T>[] {
   const top: Node<T>[] = [];

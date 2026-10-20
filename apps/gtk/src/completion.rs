@@ -9,15 +9,22 @@
 //! with its position and count, its first item focused as it opens, and focus back in the
 //! field after it. Each item leads with its name.
 
-use std::sync::Arc;
-
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
-use lumenna_desktop::speech;
-use lumenna_host::{Lumenna, Syntax};
+use lumenna_ffi::ShellEvent;
+use lumenna_records::Syntax;
+
+/// Where an entry's completions come from.
+#[derive(Clone, Copy)]
+pub enum Source {
+    /// The filter above a list: asked of the store at keystroke rate (`App::complete`).
+    Filter,
+    /// The app's quick-add line, whose offer is the app's and whose choice it splices in.
+    QuickAdd,
+}
 
 /// Makes an entry offer completions.
-pub fn attach(entry: &gtk::Entry, lumenna: Arc<Lumenna>, syntax: Syntax) {
+pub fn attach(entry: &gtk::Entry, source: Source) {
     let keys = gtk::EventControllerKey::new();
     // Before the entry's own keys: Down would otherwise be the window's, to move focus.
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -36,7 +43,7 @@ pub fn attach(entry: &gtk::Entry, lumenna: Arc<Lumenna>, syntax: Syntax) {
         if !asked {
             return glib::Propagation::Proceed;
         }
-        offer(&entry, &lumenna, syntax);
+        offer(&entry, source);
         glib::Propagation::Stop
     });
     entry.add_controller(keys);
@@ -53,10 +60,24 @@ fn char_at(text: &str, bytes: usize) -> i32 {
 }
 
 /// Asks what fits at the cursor and offers it.
-fn offer(entry: &gtk::Entry, lumenna: &Lumenna, syntax: Syntax) {
+fn offer(entry: &gtk::Entry, source: Source) {
+    let Some(app) = crate::window::app() else { return };
     let text = entry.text().to_string();
-    let cursor = byte_at(&text, usize::try_from(entry.position()).unwrap_or(0));
-    let Ok(found) = lumenna.complete_text(&text, u32::try_from(cursor).unwrap_or(u32::MAX), syntax) else { return };
+    let cursor = u32::try_from(byte_at(&text, usize::try_from(entry.position()).unwrap_or(0))).unwrap_or(u32::MAX);
+    let found = match source {
+        Source::Filter => match app.model.complete(text, cursor, Syntax::Filter) {
+            Ok(found) => found,
+            Err(_) => return,
+        },
+        // The line where the cursor is now, then what the app offers there.
+        Source::QuickAdd => {
+            app.model.send(ShellEvent::Typing(lumenna_app::Typing::Text { text, cursor }));
+            match app.model.current().0.line {
+                Some(line) => line.offer,
+                None => return,
+            }
+        }
+    };
 
     let menu = gio::Menu::new();
     let actions = gio::SimpleActionGroup::new();
@@ -66,7 +87,7 @@ fn offer(entry: &gtk::Entry, lumenna: &Lumenna, syntax: Syntax) {
         menu.append(Some(&found.announcement.replace('_', "__")), Some("row.nothing"));
     }
     for (index, candidate) in found.candidates.iter().enumerate() {
-        let item = gio::MenuItem::new(Some(&speech::candidate(candidate).replace('_', "__")), None);
+        let item = gio::MenuItem::new(Some(&lumenna_app::speech::candidate(candidate).replace('_', "__")), None);
         item.set_action_and_target_value(Some("row.complete"), Some(&(index as u32).to_variant()));
         menu.append_item(&item);
     }
@@ -76,6 +97,13 @@ fn offer(entry: &gtk::Entry, lumenna: &Lumenna, syntax: Syntax) {
     let candidates: Vec<String> = found.candidates.iter().map(|c| c.text.clone()).collect();
     complete.connect_activate(move |_, parameter| {
         let (Some(entry), Some(index)) = (weak.upgrade(), parameter.and_then(|p| p.get::<u32>())) else { return };
+        // The app's line: the app puts the choice in, and the line is drawn as it says.
+        if let Source::QuickAdd = source {
+            if let Some(app) = crate::window::app() {
+                app.model.send(ShellEvent::Typing(lumenna_app::Typing::Choose(index)));
+            }
+            return;
+        }
         let Some(inserted) = candidates.get(index as usize) else { return };
         let text = entry.text().to_string();
         let (from, to) = (char_at(&text, start), char_at(&text, end));
@@ -95,15 +123,7 @@ fn offer(entry: &gtk::Entry, lumenna: &Lumenna, syntax: Syntax) {
         .map(|text| text.compute_cursor_extents(entry.position() as usize).0)
         .map_or(0.0, |strong| f64::from(strong.x()));
     let y = f64::from(entry.height());
-    match crate::window::app() {
-        Some(app) => app.popup(&menu, entry.upcast_ref(), Some((x, y)), Some(&actions)),
-        None => {
-            let popover = gtk::PopoverMenu::from_model(Some(&menu));
-            popover.insert_action_group("row", Some(&actions));
-            popover.set_parent(entry);
-            popover.popup();
-        }
-    }
+    app.popup(&menu, entry.upcast_ref(), Some((x, y)), Some(&actions));
 }
 
 #[cfg(test)]

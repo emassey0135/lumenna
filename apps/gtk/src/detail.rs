@@ -100,7 +100,7 @@ fn describe(widget: &impl IsA<gtk::Accessible>, description: &str) {
 fn field(form: &[FormField], key: &str, mnemonic: char) -> (String, String) {
     let field = form.iter().find(|f| f.key == key);
     let label = field.map_or(key, |f| f.label.as_str());
-    (lumenna_desktop::devices::marked(label, mnemonic, '_'), field.map(|f| f.hint.clone()).unwrap_or_default())
+    (lumenna_app::devices::marked(label, mnemonic, '_'), field.map(|f| f.hint.clone()).unwrap_or_default())
 }
 
 impl Detail {

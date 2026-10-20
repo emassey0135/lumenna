@@ -99,6 +99,12 @@ impl Model {
         self.app.tick();
     }
 
+    /// What could go at `cursor` (UTF-8 bytes) in a line of `syntax` outside the app's own
+    /// quick add: the filter. At keystroke rate, so straight from the store.
+    pub fn complete(&self, text: String, cursor: u32, syntax: lumenna_records::Syntax) -> Result<lumenna_records::Completions, LumennaError> {
+        self.app.complete(text, cursor, syntax)
+    }
+
     /// Takes a turn, unless a later one is already in: whether to draw it.
     pub fn take(&self, turn: &Turn) -> bool {
         if turn.seq <= self.seq.get() {

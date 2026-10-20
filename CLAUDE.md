@@ -41,9 +41,6 @@ crates/ffi/     the app for the Apple apps, Android and BTSpeak through BoltFFI:
                 apps/web/core, through BoltFFI too; the shell's events (`ShellEvent`) are the
                 app crate's.
 crates/sync/    Iroh endpoints, the document sync session, and pairing.
-crates/desktop/ what the GTK app still takes while it moves onto the Crux app: the app's and
-                the host's modules under their old names, and `choices`. It goes once GTK has
-                moved.
 apps/cli/       `lum`, and `lum rpc` for clients that cannot link Rust.
 apps/btspeak/   the BTSpeak app, in Python, over the app in-process (crates/ffi).
 apps/emacs/     the Emacs client, in Elisp, over `lum rpc` or the profile's socket.
@@ -52,7 +49,7 @@ apps/android/   Jetpack Compose over the Crux app's Kotlin bindings: the phone (
 apps/apple/     the iOS, macOS and watchOS apps over the Crux app's Swift bindings, Shared/
                 between them.
 apps/windows/   the Win32 app, over the Crux app (crates/ffi, linked as Rust).
-apps/gtk/       the Linux app, GTK 4, moving onto the Crux app screen by screen.
+apps/gtk/       the Linux app, GTK 4, drawn from the Crux app.
 apps/web/       the web client: the core in WASM (core/), TypeScript and React Aria over it.
 ```
 
@@ -1087,7 +1084,7 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 `lumenna-ffi` as an rlib (`App` and `Device`, as the Mac and Android run them), with
 `lumenna-app` for the view model's types and how every line reads and `lumenna-records` for
 the records it is made of. It names neither `lumenna-host` (bar the UI tests, which seed a
-store of their own) nor `lumenna-desktop`. Everything Win32 is in `src/win/` behind
+store of their own). Everything Win32 is in `src/win/` behind
 `cfg(windows)`.
 
 - **The app's turns are posted to the window** (`shell.rs`, `WM_TURN`) and taken in order
@@ -1205,21 +1202,24 @@ store of their own) nor `lumenna-desktop`. Everything Win32 is in `src/win/` beh
 
 ## The GTK app
 
-`apps/gtk/`: Rust over `gtk4-rs`, binary `lumenna-gtk`, moving onto the Crux app one screen
-at a time: `lumenna-ffi` as an rlib (`App`, `Device`), as the Mac runs it. The screens not yet
-moved still call `lumenna-host` directly (`Core`), on a connection of their own.
+`apps/gtk/`: Rust over `gtk4-rs`, binary `lumenna-gtk`, drawn from the Crux app:
+`lumenna-ffi` as an rlib (`App` and `Device`, as the Mac runs them), with `lumenna-app` for
+the view model's types and how every line reads and `lumenna-records` for the records it is
+made of. It names neither `lumenna-host` nor a connection of its own to the store.
 
 - **The app's turns go to GTK's main thread** (`model.rs`, `glib::MainContext::invoke`) and
   are taken in order (`window::take`): the screens drawn from the app draw, then what the turn
-  says is said. Drawn from it so far: the task list and the Blocks list (`tasks.rs`, one
-  list for every listing the app gives), the sidebar (`sidebar.rs`), the day (`day.rs`), the
-  details (`detail.rs`), the block form (`block_form.rs`), the proposals (`proposal.rs`), and
-  Settings with the Devices page and pairing (`settings.rs`, `pairing.rs`). The task list's rows, readback, filter
+  says is said, on the status line of whichever of its windows is in front. Every screen is
+  drawn from it: the task list and the Blocks list (`tasks.rs`, one list for every listing the
+  app gives), the sidebar (`sidebar.rs`), the day (`day.rs`), the details (`detail.rs`), the
+  block form (`block_form.rs`), the proposals (`proposal.rs`), Settings with the Devices page
+  and pairing (`settings.rs`, `pairing.rs`), a reminder list (`reminders.rs`) and quick add
+  (`quick_add.rs`). The task list's rows, readback, filter
   (put back on returning to a place), row in hand and folding are the app's: a move sends
   `Focus`; Space, Delete, Enter and the Task menu send `Run`; its menu and Left and Right (the
   row's Collapse and Expand, `Tree::connect_fold`, `Item::expanded`) run the row's action. The
   app's "Expanded" or "Collapsed" after a fold the tree asked for is not said: the tree item
-  reports its state. Only `Question::Form` stays the window's (the details, reminders).
+  reports its state. The one form the app hands back is a task's details, opened beside.
 - **The sidebar is the app's places** (`view.sidebar`, `sidebar_held`): a move holds the row
   (`Hold(Side::Sidebar, …)`) and opens a place; a row's actions are held there and performed,
   so a change made there lands there; Left and Right are its Collapse and Expand. Where an
@@ -1246,8 +1246,14 @@ moved still call `lumenna-host` directly (`Core`), on a connection of their own.
   takes focus; each sends its state, and Apply and the other options go to the app. What the app
   says while it is open is said from it, on its own status line (`proposal::say`), the first
   held until the window is in front. An overrun's Replan button sends `Proposal(Replan)`.
-- **A reminder list is still the window's form** until it moves (`asking::run` sends every
-  other form to the app).
+- **A reminder list is a dialog the app opens and closes** (`view.reminders`), named after
+  what it is for from the row it was opened on; its rows' actions are held there
+  (`Hold(Side::Reminders, …)`), and focus goes to a reminder just added, or to Add Reminder
+  once the last is removed.
+- **Quick add is a window the app opens and closes** (`view.line`): each keystroke is
+  `Typing(Text)`, a completion chosen `Typing(Choose)`, Add `QuickAdd`; the readback and
+  what fits at the cursor are the app's, and a refused line stays, told once. The filter's
+  completion asks `App::complete` at keystroke rate.
 - **Focus moves only when `view.landing` goes up** (`tree::Landing`, shared by every list drawn
   from the app; or once a list gone to from a key has rows), and
   only if focus is in the list or nowhere; a rebuild for a sync or a minute puts the selection
@@ -1287,11 +1293,10 @@ moved still call `lumenna-host` directly (`Core`), on a connection of their own.
   level changes against the row shown before, as the other apps word it; position is left
   to the platform. Decided at run time; `LUMENNA_LEVEL_IN_TEXT=1` forces it for tests. CI
   runs the UI tests on Arch, so the native path is what it covers by default.
-- **A row's actions are the core's**, on the screens not yet drawn from the app run by
-  `actions.rs`: it asks each `Question` in GTK's dialogs and answers only `Question::Form` itself. Space, Delete and Enter run a row's
-  action of a fixed set of kinds (`actions::SPACE`, `DELETE`, `ENTER`); the Task menu's
-  commands run the in-hand task's action of their kind, so Mark Done toggles. A settings
-  page runs them through `run_from`, over its own window and status line.
+- **A row's actions are the core's, run by the app**: Space, Delete and Enter send a fixed
+  set of kinds (`actions::SPACE`, `DELETE`, `ENTER`) as `Run`, so the row in hand runs its
+  own; the Task menu's commands do the same, so Mark Done toggles; a menu's item is the row's
+  action, sent with `Perform`. The question it asks is asked over the window it came from.
 - **A dialog's buttons are GNOME's order**: Cancel first and the default, the answer last
   and a verb (`Question::Text.yes`, a pick's action title, a form's Save), never OK. A
   yes-or-no question puts the safe answer where Cancel would be (`prompts::yes_or_no`).
@@ -1342,8 +1347,10 @@ moved still call `lumenna-host` directly (`Core`), on a connection of their own.
   Shift+F10's press is closed by the releases.
 - **Reminders are `GNotification`s** (`reminders.rs`), so GNOME Shell shows them and Orca
   reads them as it reads any other; their buttons and opening are application actions
-  (`app.reminder-dismiss`, `-snooze`, `-open`), which reach the app with its window closed.
-  It asks for `take_reminders` every five seconds until it has them, then delivers every 20.
+  (`app.reminder-dismiss`, `-snooze`, `-carry`, `-replan`, `-open`), which reach the app with
+  its window closed, and answer through the device (`Device::dismiss_reminder` and the rest).
+  It asks `Device::deliver_reminders` every five seconds until no other process gives them
+  (`elsewhere`), then every 20.
   The UI tests stand in for the shell with a notification server on the private bus
   (`harness.Notifications`), started before the app, which picks its backend at the first
   notification.

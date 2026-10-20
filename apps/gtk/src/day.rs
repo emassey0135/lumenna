@@ -77,11 +77,10 @@ impl DayView {
                 app.model.send(ShellEvent::Focus(key));
             }
         });
-        let weak = Rc::downgrade(self);
-        self.tree.connect_activate(move |index| {
-            let (Some(day), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
-            let Some(row) = day.rows.borrow().get(index).cloned() else { return };
-            crate::asking::run_kind(&app, &row.actions, actions::ENTER, &row.key);
+        self.tree.connect_activate(move |_| {
+            if let Some(app) = crate::window::app() {
+                app.model.send(ShellEvent::Run(actions::ENTER.to_vec()));
+            }
         });
         self.tree.connect_key(move |key, modifiers, _| {
             let Some(app) = crate::window::app() else { return glib::Propagation::Proceed };
@@ -156,11 +155,6 @@ impl DayView {
     fn selected(&self) -> Option<DayItem> {
         let index = self.tree.selected()?;
         self.rows.borrow().get(index).cloned()
-    }
-
-    /// What can be done to the selected row.
-    pub fn selected_actions(&self) -> Vec<Action> {
-        self.selected().map(|row| row.actions).unwrap_or_default()
     }
 
     /// The task a selected sitting is for: what the Task menu acts on from the day.

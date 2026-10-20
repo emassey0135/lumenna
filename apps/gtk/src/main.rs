@@ -38,7 +38,7 @@ use std::path::Path;
 
 use gtk::glib;
 use gtk::prelude::*;
-use lumenna_desktop::profile;
+use lumenna_ffi::profile;
 
 /// The application identifier, which is also the name it owns on the session bus.
 pub const ID: &str = "io.github.emassey0135.Lumenna";

@@ -182,7 +182,7 @@ fn fill(open: &Rc<Open>, view: &BlockFormView, app: &App) {
 fn build(app: &App, view: &BlockFormView) -> Rc<Open> {
     let adding = view.fields.iter().any(|field| field.key == "date");
     let form = lumenna_records::block_form();
-    let marked = |key: &str, label: &str| lumenna_desktop::devices::marked(label, mnemonic(key), '_');
+    let marked = |key: &str, label: &str| lumenna_app::devices::marked(label, mnemonic(key), '_');
     let body = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(4)

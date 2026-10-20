@@ -1,7 +1,7 @@
 // The keyboard shortcuts: every key the web binds, in one table, which both the bindings and
 // the dialog listing them read, so the help cannot miss one.
 //
-// The commands and their names are the desktop apps' shared table (`lumenna_desktop::keys`),
+// The commands and their names are the desktop apps' shared table (`lumenna_app::keys`),
 // so a command is called what it is called everywhere, and the web has every one of them. A
 // browser keeps many of the shared keys for itself, and a page cannot have them: Ctrl+N, Ctrl+W,
 // Ctrl+T, Ctrl+1 to 4, Ctrl+Page Up and Down, F5, F6, Ctrl+F, Ctrl+K, Ctrl+B, Ctrl+S. Those

@@ -21,18 +21,16 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gio, glib};
-use lumenna_host::places::Place;
-use lumenna_desktop::speech;
-use lumenna_host::{Change, Lumenna, Result};
+use lumenna_records::places::Place;
 
 use crate::clock::Locale;
-use crate::core::{Core, Event, sentence};
+use crate::core::Event;
 use crate::detail::Detail;
 use crate::sidebar::Sidebar;
-use lumenna_host::actions::{Action, ActionKind, Subject};
+use lumenna_records::{Action, ActionKind, Subject};
 use crate::day::DayView;
 use crate::tasks::TaskList;
-use crate::{prompts, quick_add};
+use crate::prompts;
 
 /// The view in the middle pane.
 #[derive(Clone)]
@@ -63,7 +61,6 @@ impl Content {
 }
 
 pub struct App {
-    pub core: Core,
     /// The app the screens draw, as they move onto it one by one.
     pub model: crate::model::Model,
     pub application: gtk::Application,
@@ -78,8 +75,6 @@ pub struct App {
     focus_on_show: Cell<bool>,
     /// The profile's folder.
     pub directory: std::path::PathBuf,
-    /// What another process had written by the last tick (`Lumenna::outside_version`).
-    outside: Cell<i64>,
 }
 
 thread_local! {
@@ -145,7 +140,7 @@ pub fn take(turn: lumenna_ffi::Turn) {
             continue;
         }
         // A screen in front says it on its own status line: the main window's is behind it.
-        if !(crate::pairing::say(said) || crate::proposal::say(said) || crate::settings::say(said)) {
+        if !(crate::quick_add::say(said) || crate::pairing::say(said) || crate::reminders::say(said) || crate::proposal::say(said) || crate::settings::say(said)) {
             app.say(said);
         }
     }
@@ -169,25 +164,11 @@ pub fn activate(application: &gtk::Application, directory: &Path, background: bo
         app.show_window();
         return;
     }
-    let core = match Core::open(directory) {
-        Ok(core) => core,
-        Err(error) => {
-            let message = format!("Lumenna could not open its data. {}", sentence(&error));
-            let dialog = gtk::AlertDialog::builder().message(message).build();
-            let application = application.clone();
-            let hold = application.hold();
-            dialog.choose(None::<&gtk::Window>, None::<&gio::Cancellable>, move |_| {
-                drop(hold);
-                application.quit();
-            });
-            return;
-        }
-    };
     let clock = Locale::new();
     let model = match crate::model::Model::open(directory, &clock) {
         Ok(model) => model,
         Err(error) => {
-            let message = format!("Lumenna could not open its data. {}", lumenna_desktop::speech::sentence(error.message()));
+            let message = format!("Lumenna could not open its data. {}", error.message());
             let dialog = gtk::AlertDialog::builder().message(message).build();
             let application = application.clone();
             let hold = application.hold();
@@ -198,13 +179,13 @@ pub fn activate(application: &gtk::Application, directory: &Path, background: bo
             return;
         }
     };
-    let app = App::build(application, directory, core, model, clock);
+    let app = App::build(application, directory, model, clock);
     APP.with(|slot| *slot.borrow_mut() = Some(Rc::clone(&app)));
     app.start(background, shortcuts);
 }
 
 impl App {
-    fn build(application: &gtk::Application, directory: &Path, core: Core, model: crate::model::Model, clock: Locale) -> Rc<Self> {
+    fn build(application: &gtk::Application, directory: &Path, model: crate::model::Model, clock: Locale) -> Rc<Self> {
         let window = gtk::ApplicationWindow::builder()
             .application(application)
             .title("Lumenna")
@@ -258,7 +239,6 @@ impl App {
         window.set_child(Some(&body));
 
         let app = Rc::new(Self {
-            core,
             model,
             application: application.clone(),
             window,
@@ -269,7 +249,6 @@ impl App {
             content: RefCell::new(None),
             detail,
             focus_on_show: Cell::new(false),
-            outside: Cell::new(0),
             directory: directory.to_path_buf(),
         });
         app.add_actions();
@@ -295,7 +274,6 @@ impl App {
         if !background {
             self.show_window();
         }
-        self.outside.set(self.core.lumenna.outside_version().unwrap_or(0));
         glib::timeout_add_seconds_local(1, || {
             if let Some(app) = app() {
                 app.tick();
@@ -341,16 +319,9 @@ impl App {
     /// Once a second: what another process wrote — `lum` shares this store — and once a
     /// minute, the clock.
     fn tick(&self) {
-        // The app looks for itself whether the store or the minute moved.
+        // The app looks for itself whether the store or the minute moved: another process's
+        // writes, a sync's arrivals, the clock.
         self.model.tick();
-        // By `outside_version`, as every client does: it moves only for another process's
-        // writes, which nothing else here notices — the app's own edits redraw as they are
-        // made, and a sync's arrivals come through the listener.
-        if let Ok(outside) = self.core.lumenna.outside_version()
-            && outside != self.outside.replace(outside)
-        {
-            self.store_changed();
-        }
     }
 
     // -------------------------------------------------------------------------------------
@@ -371,38 +342,8 @@ impl App {
         });
     }
 
-    /// Says what a change did, and anything else worth saying.
-    pub fn say_change(&self, change: &Change) {
-        self.say(&speech::sentence(&speech::announcement(&change.announcement, &change.notices)));
-    }
-
     pub fn fail(&self, message: &str) {
         prompts::fail(&self.window, message);
-    }
-
-    /// Runs a change and has every view read the store again. The caller then puts the
-    /// selection where it belongs and says what happened, in that order, so the
-    /// announcement follows the row focus lands on rather than being cut off by it.
-    pub fn perform(&self, operation: impl FnOnce(&Lumenna) -> Result<Change>) -> Option<Change> {
-        match operation(&self.core.lumenna) {
-            Ok(change) => {
-                self.store_changed();
-                Some(change)
-            }
-            Err(error) => {
-                self.fail(&sentence(&error));
-                None
-            }
-        }
-    }
-
-    /// The store changed — here, in another process, or from another device. Everything
-    /// showing it reads it again, keeping its selection.
-    pub fn store_changed(&self) {
-        self.model.tick();
-        if let Some(content) = self.content() {
-            content.reload(self);
-        }
     }
 
     /// Opens a menu over `parent`: at a point in it after a right-click, else beside the
@@ -458,6 +399,8 @@ impl App {
         crate::block_form::draw(self);
         crate::proposal::draw(self);
         crate::settings::draw(self);
+        crate::reminders::draw(self);
+        crate::quick_add::draw(self);
         crate::asking::update(self);
     }
 
@@ -549,7 +492,7 @@ impl App {
     fn set_content(&self, place: Place) {
         let content = match &place {
             Place::Today => Content::Day(DayView::new()),
-            _ => Content::Tasks(TaskList::new(place.clone(), self.core.lumenna.clone())),
+            _ => Content::Tasks(TaskList::new(place.clone())),
         };
         if let Some(old) = self.content.borrow_mut().take() {
             self.content_slot.remove(&old.widget());
@@ -612,23 +555,9 @@ impl App {
         self.application.quit();
     }
 
-    /// Quick add, from the menu or from anywhere: from the menu it starts with the place
-    /// shown, so a task added while looking at a project lands in it; from anywhere it starts
-    /// empty, and stands on its own unless the window is up.
-    fn quick_add(self: &Rc<Self>, from_anywhere: bool) {
-        let prefix =
-            if from_anywhere { String::new() } else { self.task_list().map(|l| l.quick_add_prefix()).unwrap_or_default() };
-        let app = Rc::clone(self);
-        spawn(async move {
-            let parent = app.window.is_visible().then(|| app.window.clone().upcast::<gtk::Window>());
-            let lumenna = app.core.lumenna.clone();
-            let Some(change) = quick_add::run(parent.as_ref(), &app.application, lumenna, &prefix).await else { return };
-            app.store_changed();
-            if let (Some(list), Some(task)) = (app.task_list(), change.task.as_ref()) {
-                list.land_on(&task.id);
-            }
-            app.say_change(&change);
-        });
+    /// Quick add, from the menu or from anywhere (`quick_add`).
+    fn quick_add(&self, from_anywhere: bool) {
+        crate::quick_add::open(self, from_anywhere);
     }
 
     // -------------------------------------------------------------------------------------
@@ -685,24 +614,24 @@ impl App {
             let window = app.window.clone().upcast::<gtk::Window>();
             spawn(async move { crate::settings::import(&window, "Restore from a Backup", &[("Lumenna backups", "*.lumbak")]).await });
         });
-        simple("new-project", |app| crate::sidebar::new_in(app, lumenna_host::places::SidebarGroup::Projects));
-        simple("new-label", |app| crate::sidebar::new_in(app, lumenna_host::places::SidebarGroup::Labels));
-        simple("new-filter", |app| crate::sidebar::new_in(app, lumenna_host::places::SidebarGroup::Filters));
+        simple("new-project", |app| crate::sidebar::new_in(app, lumenna_records::places::SidebarGroup::Projects));
+        simple("new-label", |app| crate::sidebar::new_in(app, lumenna_records::places::SidebarGroup::Labels));
+        simple("new-filter", |app| crate::sidebar::new_in(app, lumenna_records::places::SidebarGroup::Filters));
         simple("close-window", |app| app.window.set_visible(false));
         simple("quit", |app| app.quit());
         simple("undo", |app| {
             // In a field, its own typing; elsewhere, the store.
             if let Some(field) = app.editing() {
                 let _ = field.activate_action("text.undo", None);
-            } else if let Some(change) = app.perform(Lumenna::undo) {
-                app.say_change(&change);
+            } else {
+                app.model.send(lumenna_ffi::ShellEvent::Undo);
             }
         });
         simple("redo", |app| {
             if let Some(field) = app.editing() {
                 let _ = field.activate_action("text.redo", None);
-            } else if let Some(change) = app.perform(Lumenna::redo) {
-                app.say_change(&change);
+            } else {
+                app.model.send(lumenna_ffi::ShellEvent::Redo);
             }
         });
         simple("filter", |app| {
@@ -769,22 +698,14 @@ impl App {
                     Some(action) => app.model.send(lumenna_ffi::ShellEvent::Perform(action.clone())),
                     // A task in hand that does not offer it says why; with none, nothing to say.
                     None if !actions.is_empty() => {
-                        app.say(&lumenna_host::actions::not_offered(kinds[0], Subject::Task, false));
+                        app.say(&lumenna_records::not_offered(kinds[0], Subject::Task, false));
                     }
                     None => {}
                 }
             });
         };
         // The selected row's details or form: a task's details, a block's form.
-        simple("open-selected", |app| {
-            if app.task_list().is_some() {
-                return app.model.send(lumenna_ffi::ShellEvent::Run(vec![ActionKind::Edit, ActionKind::EditTask]));
-            }
-            if let Some(day) = app.day() {
-                let key = app.model.view().focus.clone().unwrap_or_default();
-                crate::asking::run_kind(app, &day.selected_actions(), &[ActionKind::Edit, ActionKind::EditTask], &key);
-            }
-        });
+        simple("open-selected", |app| app.model.send(lumenna_ffi::ShellEvent::Run(vec![ActionKind::Edit, ActionKind::EditTask])));
         task_command("mark-done", &[ActionKind::MarkDone, ActionKind::MarkNotDone]);
         task_command("put-in-block", &[ActionKind::PutInBlock]);
         task_command("move-to-project", &[ActionKind::MoveToProject]);

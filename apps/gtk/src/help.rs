@@ -1,5 +1,5 @@
 //! Keyboard help, on F1 and Ctrl+?: every key, from the table the desktop apps share
-//! (`lumenna_desktop::keys`) with this app's own added and worded as GNOME words them.
+//! (`lumenna_app::keys`) with this app's own added and worded as GNOME words them.
 //!
 //! A dialog of ours, a tree of the groups and their keys, on every libadwaita. Not
 //! libadwaita 1.8's `AdwShortcutsDialog`: under Orca its items were nameless list items read
@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 use gtk::glib;
 use gtk::prelude::*;
-use lumenna_desktop::keys::{self, Group};
+use lumenna_app::keys::{self, Group};
 
 use crate::tree::{Item, Tree};
 use crate::window::App;

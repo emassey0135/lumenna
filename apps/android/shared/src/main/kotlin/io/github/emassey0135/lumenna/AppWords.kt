@@ -12,7 +12,7 @@ import io.github.emassey0135.lumenna.app.SidebarKind
 import io.github.emassey0135.lumenna.app.Side
 import io.github.emassey0135.lumenna.app.sidebarKey
 
-// What Android adds to the lines the core words (crates/desktop, through the turn's `lines`):
+// What Android adds to the lines the core words (crates/app, through the turn's `lines`):
 // what a tree control would report by itself, which a Compose list does not.
 
 /** An action's name in this platform's capitals: sentence case, as Material and Wear OS write. */

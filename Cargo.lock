@@ -2973,20 +2973,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lumenna-desktop"
-version = "0.1.0"
-dependencies = [
- "boltffi",
- "directories",
- "jiff",
- "lumenna-app",
- "lumenna-host",
- "lumenna-records",
- "serde",
- "tempfile",
-]
-
-[[package]]
 name = "lumenna-ffi"
 version = "0.1.0"
 dependencies = [
@@ -3011,9 +2997,7 @@ dependencies = [
  "ksni",
  "libadwaita",
  "lumenna-app",
- "lumenna-desktop",
  "lumenna-ffi",
- "lumenna-host",
  "lumenna-records",
  "tempfile",
 ]

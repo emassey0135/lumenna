@@ -1,61 +1,52 @@
 //! Reminders: giving this device's while the app runs, and a task's or block's list of them.
 //!
-//! When each fires and what it says are the core's (`deliver_reminders`); this shows each as
-//! a desktop notification, so GNOME shows it, Orca reads it as it reads every other one, and
-//! the notification's own buttons dismiss or snooze it. One process per device gives them
-//! (`take_reminders`): while `lum notify` or another copy holds them, this asks again now and
-//! then, as the sync service waits its turn.
+//! When each fires and what it says are the core's (`Device::deliver_reminders`); this shows
+//! each as a desktop notification, so GNOME shows it, Orca reads it as it reads every other one,
+//! and the notification's own buttons dismiss, snooze, carry forward or replan. One process per
+//! device gives them: while `lum notify` or another copy has the right, the device says so
+//! (`elsewhere`), and this asks again every few seconds, as the sync service waits its turn.
+//!
+//! A task's or block's list of reminders is the app's (`ViewModel::reminders`), drawn as a
+//! dialog while the app has it open.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::Arc;
 
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
-use lumenna_desktop::speech;
-use lumenna_host::actions::{Action, ActionKind, Subject};
-use lumenna_host::{DueReminder, ReminderLock, ReminderView};
+use lumenna_app::Side;
+use lumenna_ffi::ShellEvent;
+use lumenna_records::reminders::{DueReminder, ReminderList};
+use lumenna_records::{Action, ActionKind, Change, LumennaError, Subject};
 
-use crate::actions::{self, Asking};
-use crate::core::sentence;
-use crate::tree::{Item, Tree};
-
+use crate::actions;
+use crate::tree::{Item, Landing, Tree};
 use crate::window::App;
 
 /// How often a waiting copy asks for the reminders, and how often the holder gives them.
 const ASK_EVERY: u32 = 5;
 const DELIVER_EVERY: u32 = 20;
 
-thread_local! {
-    static LOCK: RefCell<Option<Arc<ReminderLock>>> = const { RefCell::new(None) };
-}
-
 /// Starts giving reminders, now if no other process gives them, else when it stops.
 pub fn start(app: &Rc<App>) {
     add_actions(app);
-    let since = Rc::new(Cell::new(0));
+    // Seconds since the last look, and whether this process gives them: until it does, it
+    // looks every few seconds for its turn.
+    let since = Rc::new(Cell::new(DELIVER_EVERY));
+    let giving = Rc::new(Cell::new(false));
     let tick = move || {
         let Some(app) = crate::window::app() else { return };
-        let held = LOCK.with(|lock| lock.borrow().clone());
-        let lock = match held {
-            Some(lock) => lock,
-            None => match app.core.lumenna.take_reminders() {
-                Ok(Some(lock)) => {
-                    LOCK.with(|slot| *slot.borrow_mut() = Some(lock.clone()));
-                    since.set(DELIVER_EVERY);
-                    lock
-                }
-                Ok(None) => return,
-                Err(error) => {
-                    eprintln!("Reminders: {}", sentence(&error));
-                    return;
-                }
-            },
-        };
         since.set(since.get() + ASK_EVERY);
-        if since.get() >= DELIVER_EVERY {
-            since.set(0);
-            deliver(&app, lock);
+        if giving.get() && since.get() < DELIVER_EVERY {
+            return;
+        }
+        since.set(0);
+        match app.model.device.deliver_reminders(crate::clock::pinned_instant()) {
+            Ok(found) => {
+                giving.set(!found.elsewhere);
+                deliver(&app, &found);
+            }
+            Err(error) => eprintln!("Reminders: {}", error.message()),
         }
     };
     tick();
@@ -65,11 +56,7 @@ pub fn start(app: &Rc<App>) {
     });
 }
 
-fn deliver(app: &App, lock: Arc<ReminderLock>) {
-    let found = match app.core.lumenna.deliver_reminders(lock, crate::clock::pinned_instant()) {
-        Ok(found) => found,
-        Err(error) => return eprintln!("Reminders: {}", sentence(&error)),
-    };
+fn deliver(app: &App, found: &lumenna_records::reminders::DueReminders) {
     for due in &found.due {
         notify(app, due);
     }
@@ -113,7 +100,7 @@ fn id(key: &str, occurrence: &str) -> String {
 /// notification reaches the app by name, whether its window is up or not.
 fn add_actions(app: &App) {
     let pair = glib::VariantTy::new("(ss)").expect("a valid type");
-    let answer = |name: &str, run: fn(&App, String, String) -> lumenna_host::Result<lumenna_host::Change>| {
+    let answer = |name: &str, run: fn(&App, String, String) -> Result<Change, LumennaError>| {
         let action = gio::SimpleAction::new(name, Some(pair));
         action.connect_activate(move |_, parameter| {
             let (Some(app), Some((key, occurrence))) = (crate::window::app(), parameter.and_then(|p| p.get::<(String, String)>())) else {
@@ -121,17 +108,17 @@ fn add_actions(app: &App) {
             };
             app.application.withdraw_notification(&id(&key, &occurrence));
             match run(&app, key, occurrence) {
-                Ok(_) => app.store_changed(),
-                Err(error) => eprintln!("Reminders: {}", sentence(&error)),
+                Ok(_) => app.model.tick(),
+                Err(error) => eprintln!("Reminders: {}", error.message()),
             }
         });
         action
     };
     app.application.add_action(&answer("reminder-dismiss", |app, key, occurrence| {
-        app.core.lumenna.dismiss_reminder(key, occurrence)
+        app.model.device.dismiss_reminder(key, occurrence)
     }));
     app.application.add_action(&answer("reminder-snooze", |app, key, occurrence| {
-        app.core.lumenna.snooze_reminder(key, occurrence, None)
+        app.model.device.snooze_reminder(key, occurrence, None)
     }));
     let carry = gio::SimpleAction::new("reminder-carry", Some(glib::VariantTy::new("(sss)").expect("a valid type")));
     carry.connect_activate(|_, parameter| {
@@ -141,12 +128,12 @@ fn add_actions(app: &App) {
             return;
         };
         app.application.withdraw_notification(&id(&key, &occurrence));
-        match app.core.lumenna.carry_rest_forward(&format!("{target}@{occurrence}")) {
+        match app.model.device.carry_rest_forward(format!("{target}@{occurrence}")) {
             Ok(change) => {
-                app.store_changed();
-                app.say_change(&change);
+                app.model.tick();
+                app.say(&lumenna_records::words::spoken(&change.announcement, &change.notices));
             }
-            Err(error) => app.fail(&sentence(&error)),
+            Err(error) => app.fail(error.message()),
         }
     });
     app.application.add_action(&carry);
@@ -196,102 +183,172 @@ fn open_target(app: &Rc<App>, kind: &str, target: &str, occurrence: &str) {
 // ---------------------------------------------------------------------------------------
 
 /// The Reminders dialog: the target's reminders, each with its own actions (Remove Reminder),
-/// and the list's (Add Reminder), all asked over this window and said on its status line.
+/// and the list's (Add Reminder). Their questions are asked over it, and what the app says
+/// while it is in front is said on its status line.
 struct List {
-    target: String,
     window: gtk::Window,
     status: gtk::Label,
     tree: Rc<Tree>,
     add: gtk::Button,
-    reminders: RefCell<Vec<ReminderView>>,
-    actions: RefCell<Vec<Action>>,
+    shown: RefCell<Option<ReminderList>>,
+    landing: Landing,
+    /// What to say once the window is in front, until it is.
+    waiting: RefCell<Option<Vec<String>>>,
+}
+
+thread_local! {
+    static OPEN: RefCell<Option<Rc<List>>> = const { RefCell::new(None) };
+    /// What the next list opened is called: "Reminders for Call the bank".
+    static TITLE: RefCell<String> = const { RefCell::new(String::new()) };
+}
+
+fn send(event: ShellEvent) {
+    if let Some(app) = crate::window::app() {
+        app.model.send(event);
+    }
+}
+
+/// Opens the Reminders list of a task or block series, from its Reminders action: the app's,
+/// named after what it is for.
+pub fn show(app: &App, action: &Action, on: &str) {
+    let name = name_of(app, &action.target);
+    TITLE.set(name.map_or_else(|| action.title.clone(), |name| format!("{} for {name}", action.title)));
+    app.model.run(action.clone(), on);
+}
+
+/// What a task or block series is called, from what the app shows of it.
+fn name_of(app: &App, target: &str) -> Option<String> {
+    let view = app.model.view();
+    // A row is the task or block series its actions act on.
+    let listed = view
+        .list
+        .as_ref()
+        .and_then(|list| list.items.iter().find(|item| item.row.id == target || item.row.actions.iter().any(|a| a.target == target)))
+        .map(|item| item.row.title.clone());
+    let planned = view.day.as_ref().and_then(|day| {
+        day.items
+            .iter()
+            .find_map(|item| item.block.as_ref().filter(|block| block.series == target || block.id == target).map(|block| block.title.clone()))
+    });
+    let detailed = view.details.as_ref().filter(|details| details.task.id == target).map(|details| details.task.title.clone());
+    listed.or(planned).or(detailed)
+}
+
+/// The list's window, when it is in front: where its questions are asked from.
+pub fn in_front() -> Option<gtk::Window> {
+    OPEN.with_borrow(Clone::clone).map(|list| list.window.clone()).filter(GtkWindowExt::is_active)
+}
+
+/// Says `text` on the list, if it is open: whether it was.
+pub fn say(text: &str) -> bool {
+    let Some(list) = OPEN.with_borrow(Clone::clone) else { return false };
+    if let Some(waiting) = list.waiting.borrow_mut().as_mut() {
+        waiting.push(text.to_owned());
+        return true;
+    }
+    list.status.set_label(text);
+    crate::window::announce(&list.status, text);
+    true
+}
+
+/// Draws the list the app has open: opens its window when it opens, closes it when the app
+/// closes it.
+pub fn draw(app: &App) {
+    let view = app.model.view();
+    let open = OPEN.with_borrow(Clone::clone);
+    match (view.reminders.clone(), open) {
+        (None, None) => {}
+        (None, Some(list)) => {
+            OPEN.set(None);
+            list.window.destroy();
+        }
+        (Some(reminders), open) => {
+            let list = open.unwrap_or_else(|| {
+                let list = build(app);
+                OPEN.set(Some(Rc::clone(&list)));
+                list
+            });
+            list.show(app, reminders, &view.reminders_held);
+        }
+    }
 }
 
 impl List {
-    fn asking(self: &Rc<Self>) -> Asking {
-        let weak = Rc::downgrade(self);
-        let say: actions::Say = Rc::new(move |text: &str| {
-            if let Some(list) = weak.upgrade() {
-                list.say(text);
-            }
-        });
-        Asking { window: self.window.clone(), say: Some(say) }
-    }
-
-    fn say(&self, text: &str) {
-        self.status.set_label(text);
-        crate::window::announce(&self.status, text);
-    }
-
-    /// Runs one of the list's or a reminder's actions, then shows the list as it now is.
-    fn run(self: &Rc<Self>, app: &Rc<App>, action: Action) {
-        actions::run_from(app, action, Some(self.after()), self.asking());
-    }
-
-    /// Shows the list as an action left it: on the reminder just added, or, with the last
-    /// one removed and the list hidden, on Add Reminder, so focus never goes nowhere.
-    fn after(self: &Rc<Self>) -> actions::After {
-        let weak = Rc::downgrade(self);
-        Rc::new(move |app, _, _| {
-            let Some(list) = weak.upgrade() else { return };
-            let before: Vec<String> = list.reminders.borrow().iter().map(|r| r.id.clone()).collect();
-            list.reload(app);
-            let added = list.reminders.borrow().iter().map(|r| r.id.clone()).find(|id| !before.contains(id));
-            if let Some(added) = added {
-                list.tree.focus();
-                list.tree.select_key_or_near(Some(&added), None);
-            } else if list.tree.len() == 0 {
-                list.add.grab_focus();
-            }
-        })
-    }
-
-    /// The selected reminder's action of `kinds`, or why it has none.
-    fn act_on_selected(self: &Rc<Self>, app: &Rc<App>, kinds: &[ActionKind]) {
-        let reminder = self.tree.selected().and_then(|index| self.reminders.borrow().get(index).cloned());
-        match reminder.as_ref().and_then(|r| actions::find(&r.actions, kinds)) {
-            Some(action) => self.run(app, action.clone()),
-            None => self.say(&lumenna_host::not_offered(kinds[0], Subject::Reminder, false)),
+    fn show(&self, app: &App, reminders: ReminderList, held: &lumenna_app::HeldView) {
+        let first = self.shown.borrow().is_none();
+        let lines = app.model.lines();
+        let items = reminders
+            .reminders
+            .iter()
+            .enumerate()
+            .map(|(at, reminder)| Item {
+                key: reminder.id.clone(),
+                text: lines.reminders.get(at).map_or_else(|| reminder.words.clone(), |line| line.text.clone()),
+                ..Default::default()
+            })
+            .collect();
+        if let Some(add) = actions::find(&reminders.actions, &[ActionKind::New]) {
+            self.add.set_label(&format!("{}…", add.title.replace('_', "__")));
         }
+        let had_focus = self.tree.has_focus();
+        let before: Vec<String> =
+            self.shown.borrow().as_ref().map(|list| list.reminders.iter().map(|r| r.id.clone()).collect()).unwrap_or_default();
+        let added = (!first).then(|| reminders.reminders.iter().map(|r| r.id.clone()).find(|id| !before.contains(id))).flatten();
+        let rebuilt = self.tree.set(items);
+        self.tree.fit(8);
+        let empty = reminders.reminders.is_empty();
+        if first {
+            let said = lumenna_records::words::spoken(&reminders.announcement, &reminders.notices);
+            self.status.set_label(&said);
+            if let Some(waiting) = self.waiting.borrow_mut().as_mut() {
+                waiting.push(said);
+            }
+            self.window.present();
+            if empty {
+                crate::prompts::focus_on(&self.add);
+            } else {
+                self.tree.focus();
+            }
+        }
+        *self.shown.borrow_mut() = Some(reminders);
+        // The last one removed: focus goes to Add Reminder, never nowhere.
+        if empty && had_focus {
+            self.add.grab_focus();
+            return;
+        }
+        // A reminder just added: focus goes to it, where the person can hear what it says.
+        if let Some(index) = added.and_then(|id| self.tree.index_of(&id)) {
+            self.tree.focus();
+            self.tree.select(index);
+            return;
+        }
+        self.landing.land(&self.tree, &self.window, held.focus.as_deref(), held.landing, rebuilt);
     }
 
-    /// Fills the list from the core; the first time, focus goes to it, or to Add Reminder
-    /// when there is nothing in it.
-    fn reload(&self, app: &App) -> bool {
-        let key = self.tree.selected().and_then(|index| self.tree.key(index));
-        let near = self.tree.selected().or(Some(0));
-        match app.core.lumenna.reminders_of(self.target.clone()) {
-            Ok(list) => {
-                self.status.set_label(&speech::sentence(&speech::announcement(&list.announcement, &list.notices)));
-                let items = list.reminders.iter().map(|r| Item { key: r.id.clone(), text: r.words.clone(), depth: 0, ..Default::default() }).collect();
-                *self.reminders.borrow_mut() = list.reminders;
-                *self.actions.borrow_mut() = list.actions;
-                if let Some(add) = actions::find(&self.actions.borrow(), &[ActionKind::New]) {
-                    self.add.set_label(&format!("{}…", add.title.replace('_', "__")));
-                }
-                if self.tree.set(items) {
-                    self.tree.select_key_or_near(key.as_deref(), near);
-                }
-                self.tree.fit(8);
-                true
-            }
-            Err(error) => {
-                self.status.set_label(&sentence(&error));
-                false
+    /// Runs one of a reminder's actions, held there so what it changes lands there.
+    fn act_on_selected(&self, kinds: &[ActionKind]) {
+        let shown = self.shown.borrow().clone();
+        let reminder = self.tree.selected().and_then(|index| shown.as_ref().and_then(|list| list.reminders.get(index).cloned()));
+        match reminder.as_ref().and_then(|r| actions::find(&r.actions, kinds).map(|action| (r.id.clone(), action.clone()))) {
+            Some((key, action)) => run(&key, action),
+            None => {
+                say(&lumenna_records::not_offered(kinds[0], Subject::Reminder, false));
             }
         }
     }
 }
 
-/// Opens the Reminders list of a task or block series, from its Reminders action.
-pub fn show(app: &Rc<App>, action: &Action) {
-    let name = match action.subject {
-        Subject::Task => app.core.lumenna.show_task(&action.target).map(|shown| shown.task.title).ok(),
-        _ => app.core.lumenna.show_block(&action.target).map(|shown| shown.title).ok(),
-    };
-    let title = name.map_or_else(|| action.title.clone(), |name| format!("{} for {name}", action.title));
+/// A reminder's action, held in the list first.
+fn run(key: &str, action: Action) {
+    send(ShellEvent::Hold(Side::Reminders, key.to_owned()));
+    send(ShellEvent::Perform(action));
+}
+
+fn build(app: &App) -> Rc<List> {
+    let title = TITLE.take();
+    let title = if title.is_empty() { "Reminders".to_owned() } else { title };
     let status = gtk::Label::builder().xalign(0.0).wrap(true).build();
-    let tree = Tree::new(&action.title);
+    let tree = Tree::new("Reminders");
     let add = gtk::Button::with_label("Add Reminder…");
     let remove = gtk::Button::with_label("Remove Reminder");
     let close = gtk::Button::with_label("Close");
@@ -322,41 +379,51 @@ pub fn show(app: &Rc<App>, action: &Action) {
         .build();
     window.set_default_widget(Some(&close));
     let list = Rc::new(List {
-        target: action.target.clone(),
         window: window.clone(),
         status,
         tree,
         add: add.clone(),
-        reminders: RefCell::new(Vec::new()),
-        actions: RefCell::new(Vec::new()),
+        shown: RefCell::new(None),
+        landing: Landing::default(),
+        waiting: RefCell::new(Some(Vec::new())),
     });
-    if !list.reload(app) {
-        return app.fail(&list.status.label());
-    }
     {
         let weak = Rc::downgrade(&list);
         add.connect_clicked(move |_| {
-            let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
-            let action = actions::find(&list.actions.borrow(), &[ActionKind::New]).cloned();
+            let Some(list) = weak.upgrade() else { return };
+            let action = list.shown.borrow().as_ref().and_then(|shown| actions::find(&shown.actions, &[ActionKind::New]).cloned());
             match action {
-                Some(action) => list.run(&app, action),
-                None => list.say(&lumenna_host::not_offered(ActionKind::New, Subject::Reminder, false)),
+                Some(action) => send(ShellEvent::Perform(action)),
+                None => {
+                    say(&lumenna_records::not_offered(ActionKind::New, Subject::Reminder, false));
+                }
             }
         });
     }
     {
         let weak = Rc::downgrade(&list);
         remove.connect_clicked(move |_| {
-            let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
-            list.act_on_selected(&app, actions::DELETE);
+            if let Some(list) = weak.upgrade() {
+                list.act_on_selected(actions::DELETE);
+            }
+        });
+    }
+    {
+        // The person's moves are the app's to know, so a change lands back on the row.
+        let weak = Rc::downgrade(&list);
+        list.tree.connect_selected(move |index| {
+            let Some(list) = weak.upgrade() else { return };
+            if let Some(key) = index.and_then(|index| list.tree.key(index)) {
+                send(ShellEvent::Hold(Side::Reminders, key));
+            }
         });
     }
     {
         let weak = Rc::downgrade(&list);
         list.tree.connect_key(move |key, modifiers, _| {
-            let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) else { return glib::Propagation::Proceed };
+            let Some(list) = weak.upgrade() else { return glib::Propagation::Proceed };
             if matches!(key, gdk::Key::Delete | gdk::Key::KP_Delete) && modifiers.is_empty() {
-                list.act_on_selected(&app, actions::DELETE);
+                list.act_on_selected(actions::DELETE);
                 return glib::Propagation::Stop;
             }
             glib::Propagation::Proceed
@@ -366,59 +433,43 @@ pub fn show(app: &Rc<App>, action: &Action) {
         let weak = Rc::downgrade(&list);
         list.tree.connect_menu(move |index, point| {
             let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
-            let Some(reminder) = list.reminders.borrow().get(index).cloned() else { return };
-            let actions = if reminder.actions.is_empty() { list.actions.borrow().clone() } else { reminder.actions };
-            let (menu, group) = actions::menu_from(&actions, Some(list.after()), Some(list.asking()));
+            let Some(shown) = list.shown.borrow().clone() else { return };
+            let Some(reminder) = shown.reminders.get(index).cloned() else { return };
+            let offered = if reminder.actions.is_empty() { shown.actions.clone() } else { reminder.actions.clone() };
+            let key = reminder.id.clone();
+            let (menu, group) = actions::menu_running(&offered, Rc::new(move |action| run(&key, action)));
             app.popup(&menu, list.tree.view.upcast_ref(), point, Some(&group));
         });
     }
-    {
-        let window = window.downgrade();
-        close.connect_clicked(move |_| {
-            if let Some(window) = window.upgrade() {
-                window.close();
-            }
-        });
-    }
+    close.connect_clicked(|_| send(ShellEvent::CloseReminders));
+    window.connect_close_request(|_| {
+        send(ShellEvent::CloseReminders);
+        glib::Propagation::Stop
+    });
     let escape = gtk::EventControllerKey::new();
-    {
-        let window = window.downgrade();
-        escape.connect_key_pressed(move |_, key, _, _| {
-            if key == gdk::Key::Escape
-                && let Some(window) = window.upgrade()
-            {
-                window.close();
-                return glib::Propagation::Stop;
-            }
-            glib::Propagation::Proceed
-        });
-    }
+    escape.connect_key_pressed(|_, key, _, _| {
+        if key == gdk::Key::Escape {
+            send(ShellEvent::CloseReminders);
+            return glib::Propagation::Stop;
+        }
+        glib::Propagation::Proceed
+    });
     window.add_controller(escape);
     // What the list holds, and whether they are its own or the defaults, said once the
     // window is in front and Orca has read its title and focus, which would cut it off.
-    {
-        let weak = Rc::downgrade(&list);
-        let said = Cell::new(false);
-        window.connect_is_active_notify(move |window| {
-            if !window.is_active() || said.replace(true) {
-                return;
+    let weak = Rc::downgrade(&list);
+    let said = Cell::new(false);
+    window.connect_is_active_notify(move |window| {
+        if !window.is_active() || said.replace(true) {
+            return;
+        }
+        let weak = weak.clone();
+        glib::timeout_add_local_once(std::time::Duration::from_millis(1000), move || {
+            let Some(list) = weak.upgrade() else { return };
+            for text in list.waiting.take().unwrap_or_default() {
+                say(&text);
             }
-            let weak = weak.clone();
-            glib::timeout_add_local_once(std::time::Duration::from_millis(1000), move || {
-                if let Some(list) = weak.upgrade() {
-                    list.say(&list.status.label());
-                }
-            });
         });
-    }
-    window.present();
-    if list.tree.len() > 0 {
-        list.tree.focus();
-    } else {
-        add.grab_focus();
-    }
-    // The list lives as long as its window.
-    window.connect_destroy(move |_| {
-        let _ = &list;
     });
+    list
 }

@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 
 use gtk::{gio, glib};
 use gtk::gio::prelude::*;
-use lumenna_desktop::speech::Clock;
+use lumenna_app::speech::Clock;
 
 /// This desktop's way of saying times and dates.
 pub struct Locale {
@@ -44,13 +44,13 @@ impl Locale {
 
     /// The clock the core is to say times in, for what it words whole: a replan's changes.
     /// The desktop's setting, else whether the locale's own time says 13:00 as 13.
-    pub fn style(&self) -> lumenna_host::TimeStyle {
+    pub fn style(&self) -> lumenna_records::proposals::TimeStyle {
         let twelve = self.twelve_hour().unwrap_or_else(|| {
             glib::DateTime::from_local(2000, 1, 1, 13, 0, 0.0)
                 .and_then(|time| time.format("%X"))
                 .is_ok_and(|text| !text.contains("13"))
         });
-        if twelve { lumenna_host::TimeStyle::TwelveHour } else { lumenna_host::TimeStyle::TwentyFourHour }
+        if twelve { lumenna_records::proposals::TimeStyle::TwelveHour } else { lumenna_records::proposals::TimeStyle::TwentyFourHour }
     }
 }
 

@@ -14,7 +14,7 @@ use gtk::prelude::*;
 use gtk::{gdk, glib};
 use lumenna_app::Item as Row;
 use lumenna_ffi::ShellEvent;
-use lumenna_host::places::Place;
+use lumenna_records::places::Place;
 use lumenna_records::{ActionKind, RowView};
 
 use crate::actions;
@@ -34,12 +34,10 @@ pub struct TaskList {
     landing: Landing,
     /// Whether the filter's text is being put back from the app, not typed.
     setting: Cell<bool>,
-    /// A task added here, to land on once the list shows it.
-    landing_on: RefCell<Option<String>>,
 }
 
 impl TaskList {
-    pub fn new(place: Place, lumenna: std::sync::Arc<lumenna_host::Lumenna>) -> Rc<Self> {
+    pub fn new(place: Place) -> Rc<Self> {
         let trash = place == Place::Trash;
         // The block series have no filter either, and a button to add one.
         let blocks = place == Place::Blocks;
@@ -57,7 +55,7 @@ impl TaskList {
         filter.update_property(&[gtk::accessible::Property::Description(
             "Such as p1 & due before: friday, or #Work. Down arrow offers what could come next. Enter goes to what it finds.",
         )]);
-        crate::completion::attach(&filter, lumenna, lumenna_host::Syntax::Filter);
+        crate::completion::attach(&filter, crate::completion::Source::Filter);
         let readback = gtk::Label::builder().xalign(0.0).wrap(true).build();
         let tree = Tree::new(&place.title());
         // The trash is everything deleted, and nothing else: there is no filter to change.
@@ -81,7 +79,6 @@ impl TaskList {
             rows: RefCell::new(Vec::new()),
             landing: Landing::default(),
             setting: Cell::new(false),
-            landing_on: RefCell::new(None),
         });
         list.connect();
         list
@@ -211,35 +208,12 @@ impl TaskList {
             .collect();
         *self.rows.borrow_mut() = list.items.clone();
         let rebuilt = self.tree.set(items);
-        let landing_on = self.landing_on.borrow().clone();
-        if let Some(id) = landing_on
-            && let Some(index) = self.tree.index_of(&id)
-        {
-            self.landing_on.take();
-            self.tree.select(index);
-            self.tree.focus();
-        } else {
-            self.landing.land(&self.tree, app.window.upcast_ref(), view.focus.as_deref(), view.landing, rebuilt);
-        }
+        self.landing.land(&self.tree, app.window.upcast_ref(), view.focus.as_deref(), view.landing, rebuilt);
     }
 
     /// Whether this is the trash, where only restoring and erasing apply.
     pub fn is_trash(&self) -> bool {
         self.trash
-    }
-
-    /// What a new task typed here starts with.
-    pub fn quick_add_prefix(&self) -> String {
-        self.place.quick_add_prefix()
-    }
-
-    /// Lands on a task just made, once this list shows it.
-    pub fn land_on(&self, id: &str) {
-        *self.landing_on.borrow_mut() = Some(id.to_owned());
-        if let Some(app) = crate::window::app() {
-            app.model.tick();
-            self.draw(&app);
-        }
     }
 
     /// Moves focus into the list once it is drawn, or now if it is.
