@@ -286,7 +286,7 @@ fn a_setting_changed_in_settings_is_said_and_kept() {
     let app = App::launch(|_| {});
     app.post(&[SETTINGS, "select:Planning", "focus:Day ends:", "text:7:30", "tab"]);
     let page = app.front();
-    assert!(page.iter().any(|l| l.contains("Day-end is now 7:30") && l.contains("live=polite")), "{page:#?}");
+    assert!(page.iter().any(|l| l.contains("Day ends: 7:30") && l.contains("live=polite")), "{page:#?}");
     app.post(&["esc"]);
     assert_eq!(app.store().settings(Some("day-end".to_owned())).unwrap().announcement, "07:30");
 }

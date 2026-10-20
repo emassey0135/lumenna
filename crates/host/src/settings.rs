@@ -124,7 +124,7 @@ impl Lumenna {
                 return Ok(Change::unchanged("nothing changed"));
             }
             store.apply_recorded(&change)?;
-            Ok(Change::announced(format!("{key} is now {value}"), &change))
+            Ok(Change::announced(changed_to(key, value), &change))
         })
     }
 
@@ -332,7 +332,7 @@ impl Lumenna {
             .into_iter()
             .find(|setting| setting.key == key)
             .map_or_else(|| value.to_owned(), |setting| setting.value);
-        let mut change = Change::local(format!("{key} is now {effective}, on this device only"));
+        let mut change = Change::local(format!("{}, on this device only", changed_to(key, &effective)));
         change.notices = notices;
         Ok(change)
     }
@@ -376,6 +376,15 @@ pub fn parse_every(text: &str) -> Result<Option<jiff::SignedDuration>> {
                 "'{text}' is not an interval; say something like 24h, 7d, or off"
             ))
         })
+}
+
+/// What a change of a setting says: its name as a settings screen gives it, then the value,
+/// an option's by its own words ("Completing a task completes its subtasks: Off").
+fn changed_to(key: &str, value: &str) -> String {
+    let setting = described(key, value.to_owned());
+    let value = setting.options.iter().find(|o| o.id.eq_ignore_ascii_case(value.trim())).map_or(value, |o| o.title.as_str());
+    let title = if setting.title.is_empty() { key } else { setting.title.as_str() };
+    format!("{title}: {value}")
 }
 
 /// A setting with what every settings screen says of it: its name, its control, what it

@@ -282,6 +282,17 @@ fn every_setting_says_its_name_its_control_and_whether_it_syncs() {
 }
 
 #[test]
+fn a_changed_setting_is_said_by_its_name_and_an_options_own_words() {
+    let (_directory, lumenna) = open();
+    assert_eq!(lumenna.set_setting("day-end", "19:30").unwrap().announcement, "Day ends: 19:30");
+    assert_eq!(
+        lumenna.set_setting("cascade-complete-subtasks", "false").unwrap().announcement,
+        "Completing a task completes its subtasks: Off"
+    );
+    assert_eq!(lumenna.set_setting("backup-every", "7d").unwrap().announcement, "Automatic backups: Every week, on this device only");
+}
+
+#[test]
 fn a_device_cannot_unpair_itself_and_says_so_when_asked() {
     assert!(lumenna_host::not_offered(ActionKind::Unpair, Subject::Device, true).starts_with("This is the device you are using"));
     let actions = lumenna_host::actions::device("Phone", "ab12", true);

@@ -44,7 +44,7 @@ class SettingsTest(unittest.TestCase):
     def test_a_check_box_applies_at_once_and_says_so(self):
         self.page(1)
         self.session.press("Tab", "space")
-        self.assertEqual(self.session.said(), ["Cascade-complete-subtasks is now false"])
+        self.assertEqual(self.session.said(), ["Completing a task completes its subtasks: Off"])
         self.assertEqual(self.session.lum("config", "get", "cascade-complete-subtasks").strip(), "false")
 
     def test_a_text_setting_applies_when_it_is_left(self):
@@ -54,7 +54,7 @@ class SettingsTest(unittest.TestCase):
         self.session.type("7:30")
         self.assertEqual(self.session.said(), [])
         self.session.press("Tab")
-        self.assertEqual(self.session.said(), ["Day-start is now 7:30"])
+        self.assertEqual(self.session.said(), ["Day starts: 7:30"])
         self.assertEqual(self.session.lum("config", "get", "day-start").strip(), "07:30")
 
     def test_a_setting_that_does_not_read_is_put_back(self):
