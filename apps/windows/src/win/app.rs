@@ -1178,12 +1178,10 @@ impl App {
             Answered::Open(reminder) => {
                 self.show_window();
                 if reminder.kind == "block" {
-                    // Its day, as Go to Day would go there, then its block once shown.
-                    self.crux.send(ShellEvent::Day(DayMove::Ask));
-                    self.crux.send(ShellEvent::Answer(lumenna_host::Answer::Text { text: reminder.occurrence.clone() }));
+                    // Its day, the block in hand, which the app lands on.
+                    self.crux.send(ShellEvent::ShowBlock { series: reminder.target.clone(), date: reminder.occurrence.clone() });
                     self.follow_place();
                     if let Some(day) = self.day() {
-                        day.land_on_block(&reminder.target);
                         controls::focus(day.tree.hwnd);
                     }
                 } else {

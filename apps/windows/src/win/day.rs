@@ -47,8 +47,6 @@ pub struct DayView {
     date: RefCell<Option<String>>,
     /// The day's own actions.
     actions: RefCell<Vec<Action>>,
-    /// A block to land on once the app shows it, by series: one the block form just made.
-    pending: RefCell<Option<String>>,
     /// A row the tree itself just folded or unfolded, which the tree has already said.
     pub folded_by_tree: Cell<bool>,
 }
@@ -69,7 +67,6 @@ impl DayView {
             rows: RefCell::new(Vec::new()),
             date: RefCell::new(None),
             actions: RefCell::new(Vec::new()),
-            pending: RefCell::new(None),
             folded_by_tree: Cell::new(false),
         })
     }
@@ -98,19 +95,6 @@ impl DayView {
         *self.date.borrow_mut() = Some(day.date.clone());
         *self.actions.borrow_mut() = day.actions.clone();
         let rebuilt = self.tree.set(items);
-        let pending = self.pending.borrow().clone();
-        let made = pending.and_then(|series| {
-            day.items
-                .iter()
-                .find(|item| item.kind == DayKind::Block && item.block.as_ref().is_some_and(|block| block.series == series))
-                .map(|item| item.key.clone())
-        });
-        if let Some(key) = made {
-            self.pending.replace(None);
-            app.crux.send(ShellEvent::Focus(key.clone()));
-            self.show(Some(&key));
-            return;
-        }
         if landed || rebuilt {
             self.show(view.focus.as_deref());
         }
@@ -119,16 +103,11 @@ impl DayView {
         }
     }
 
-    /// Selects a row, without its being taken for the person's move, and shows a sitting's task.
+    /// Selects a row, without its being taken for the person's move.
     fn show(&self, key: Option<&str>) {
         if let Some(index) = key.and_then(|key| self.tree.index_of(key)) {
             self.tree.select_quietly(index);
         }
-    }
-
-    /// Lands on the block of `series` once the app shows it: what a reminder of it opens.
-    pub fn land_on_block(&self, series: &str) {
-        self.pending.replace(Some(series.to_owned()));
     }
 
     /// Runs one of a row's actions as the app's: a block's form and a new block in free time
