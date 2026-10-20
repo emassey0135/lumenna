@@ -7,8 +7,8 @@
 //! is expanded, and whether a checkbox is checked. Saying those in the text as well would say
 //! them twice.
 
-use lumenna_host::words::duration;
-use lumenna_host::{Candidate, CancelledBlock, PlanAssignment, PlanBlock, RowView, TaskDetail};
+use lumenna_records::words::duration;
+use lumenna_records::{Candidate, CancelledBlock, PlanAssignment, PlanBlock, RowView, TaskDetail};
 
 /// How this device says times and days. The core sends `HH:MM` and ISO dates, which are
 /// components; whether that is "2:30 PM" or "14:30" is the person's locale, so it is decided
@@ -87,12 +87,12 @@ impl Line {
 /// One thing a picker offers: a block as "Tomorrow, 9:00 AM to 11:00 AM, Deep work", in
 /// this device's clock; anything else as its title, then what tells it apart (a task's
 /// project). Depth is left to the list, which says a level as its platform does.
-pub fn choice(choice: &lumenna_host::Choice, clock: &dyn Clock) -> String {
+pub fn choice(choice: &lumenna_records::Choice, clock: &dyn Clock) -> String {
     choice_line(choice, clock).text()
 }
 
 /// [`choice`], as its first part and the rest: a block's whole line is its first.
-pub fn choice_line(choice: &lumenna_host::Choice, clock: &dyn Clock) -> Line {
+pub fn choice_line(choice: &lumenna_records::Choice, clock: &dyn Clock) -> Line {
     match (&choice.date, &choice.start, &choice.end) {
         (Some(date), Some(start), Some(end)) => Line::of(
             format!("{}, {} to {}, {}", clock.day(date), clock.time(start), clock.time(end), choice.title),
@@ -161,7 +161,7 @@ pub fn task_state(task: &TaskDetail) -> String {
 
 /// A place in the sidebar, with what is in it: "Work, 3 tasks".
 pub fn place(title: &str, detail: &str) -> String {
-    lumenna_host::places::line(title, detail)
+    lumenna_records::places::line(title, detail)
 }
 
 /// A block on the day: "9:00 AM to 11:00 AM, Deep work, 2 hours, work block, now, 3 tasks
@@ -320,7 +320,7 @@ mod tests {
             details: Vec::new(),
             actions: Vec::new(),
         };
-        PlanAssignment { details: lumenna_host::words::sitting_details(&sitting), ..sitting }
+        PlanAssignment { details: lumenna_records::words::sitting_details(&sitting), ..sitting }
     }
 
     #[test]
@@ -380,7 +380,7 @@ mod tests {
             details: Vec::new(),
             actions: Vec::new(),
         };
-        let block = PlanBlock { details: lumenna_host::words::block_details(&block), ..block };
+        let block = PlanBlock { details: lumenna_records::words::block_details(&block), ..block };
         assert_eq!(
             super::block(&block, &TwelveHour),
             "9:00 AM to 11:00 AM, Deep work, 2 hours, work block, now, 1 task assigned"
@@ -446,7 +446,7 @@ mod tests {
             details: Vec::new(),
             actions: Vec::new(),
         };
-        let block = PlanBlock { details: lumenna_host::words::block_details(&block), ..block };
+        let block = PlanBlock { details: lumenna_records::words::block_details(&block), ..block };
         assert_eq!(super::block(&block, &TwelveHour), "12:30 PM to 1:15 PM, Lunch, 45 minutes, break block");
     }
 

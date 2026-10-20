@@ -12,7 +12,7 @@
 
 use std::path::Path;
 // Imported, not named by its path: BoltFFI finds another crate's type only so.
-use lumenna_desktop::keys::KeyGroup;
+use lumenna_app::keys::KeyGroup;
 
 use boltffi::export;
 use lumenna_host::Lumenna;
@@ -56,10 +56,10 @@ pub fn sentence_case(text: String) -> String {
     lumenna_host::sentence_case(text)
 }
 
-/// The keyboard commands every desktop app shares (`lumenna_desktop::keys`), grouped as their
+/// The keyboard commands every desktop app shares (`lumenna_app::keys`), grouped as their
 /// menus are, in the web's sentence case, so the web's help names a command as theirs do. The
 /// web lists only those it binds, and adds its own.
 #[export]
 pub fn keyboard_shortcuts() -> Vec<KeyGroup> {
-    lumenna_desktop::keys::grouped(true)
+    lumenna_app::keys::grouped(true)
 }

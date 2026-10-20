@@ -32,16 +32,18 @@ crates/records/ what a person is told, as records built from a snapshot alone: r
 crates/host/    the command surface: the `Lumenna` object, one method per operation, over the
                 store; re-exports records under the paths it always had.
 crates/app/     the Crux app: the screens' state (place, row in hand, folding, the question
-                open) as events in and view models out; every write an effect. No host.
+                open) as events in and view models out; every write an effect. No host. Also
+                how every line reads (`speech`, `lines`), the shared keyboard table (`keys`),
+                flat rows as a tree (`outline`) and device wording (`devices`), for every app.
 crates/bridge/  the app beside its store: Crux middleware answering the app's store effects.
 crates/ffi/     the app for the Apple apps, Android and BTSpeak through BoltFFI: `App`, its
                 turns, and `Device`, the store for what runs without the screens. The web's is
                 apps/web/core, through BoltFFI too; the shell's events (`ShellEvent`) are the
                 app crate's.
 crates/sync/    Iroh endpoints, the document sync session, and pairing.
-crates/desktop/ what the Windows, GTK and web apps decide alike: row wording, flat rows as a
-                tree, work-block choices, device wording, the profile; with `app`, the app's
-                view worded line by line (`lines`) for the web and Android.
+crates/desktop/ what the Windows and GTK apps still take while they move onto the Crux app:
+                the app's and the host's modules under their old names, and `choices`. It goes
+                once they have moved.
 apps/cli/       `lum`, and `lum rpc` for clients that cannot link Rust.
 apps/btspeak/   the BTSpeak app, in Python, over the app in-process (crates/ffi).
 apps/emacs/     the Emacs client, in Elisp, over `lum rpc` or the profile's socket.
@@ -84,7 +86,7 @@ without the screens over BoltFFI. No JSON crosses the FFI.
   `Delete`), with `Subject` saying what it is done to. Only `Question::Form` is the
   client's: the task and block forms. Never decide in a client which actions a row has.
   A key pressed on a row without that action says `not_offered(kind, subject, …)`.
-  What a picker's row says is `desktop::speech::choice` for Windows, GTK and the web.
+  What a picker's row says is `lumenna_app::speech::choice` for Windows, GTK and the web.
 - **What every client's forms share is here too**, as free functions in `form.rs`:
   `task_fields`/`task_edit`, the block form's `block_fields`/`block_edit`/`new_block`,
   `parse_weight`, the `#"Home Office"` references. `task_edit` and `block_edit` hold only
@@ -200,7 +202,7 @@ until their turn (the `legacy` tag is the last commit before the move).
   answers, a question's title where it is its action's own name (else the core's, which keeps
   names), a proposal's words, a reminder's buttons, the export labels, the block form's button.
   An action carries both its `title` and `sentence`; a shell picks one by its platform.
-- **A view's lines are worded once** (`lumenna_desktop::lines`, over the `speech` functions):
+- **A view's lines are worded once** (`lumenna_app::lines`, over the `speech` functions):
   each list row, the list's readback, the day's title and rows, a pick's choices, the devices,
   the quick-add offer, the details' state. A `Line` is its first part, the rest, and the two
   joined (`text`), for a list that shows two lines and one that reads one. The platform gives
@@ -1179,7 +1181,7 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 - **libadwaita 1.5 is the floor** (Ubuntu 24.04; Debian 13 has 1.7), for `AdwAlertDialog` and
   `AdwAboutDialog`. Tried and not adopted, by what Orca said: `AdwShortcutsDialog` (1.8) read
   its items by title alone, never their keys, so the keyboard help (`help.rs`, from
-  `lumenna_desktop::keys`) is a tree of ours; `AdwPreferencesDialog` dropped each entry row's
+  `lumenna_app::keys`) is a tree of ours; `AdwPreferencesDialog` dropped each entry row's
   hint, opened a page only on Space, and did not say which page opened; a toast is announced
   as "A toast appeared: …" beside the status line. `AdwApplicationWindow` does not show a menu
   bar, which is how commands are found here.
@@ -1327,7 +1329,7 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   (`Core.hold`/`release`) until then. The test of it is skipped unless TalkBack is on.
   Compose sends accessibility events only while a screen reader runs.
 - **Keyboard commands are the Windows and GTK apps' keys**, taken from the core's shared table
-  (`keyboard_shortcuts()`, `lumenna_desktop::keys`) by each command's id, keys and name both;
+  (`keyboard_shortcuts()`, `lumenna_app::keys`) by each command's id, keys and name both;
   only the folding arrows are Android's own (`Shortcuts.kt`). On Ctrl:
   TalkBack's are on Alt or Search. A screen offers a command while shown (`Offer`), the
   newest winning, and the system's shortcuts helper (Meta+/) lists what is offered now. A

@@ -2995,7 +2995,6 @@ dependencies = [
  "futures",
  "lumenna-app",
  "lumenna-bridge",
- "lumenna-desktop",
  "lumenna-host",
  "lumenna-records",
 ]
@@ -3020,6 +3019,7 @@ dependencies = [
 name = "lumenna-host"
 version = "0.1.0"
 dependencies = [
+ "directories",
  "iroh",
  "jiff",
  "lumenna-core",
@@ -3111,7 +3111,6 @@ dependencies = [
  "js-sys",
  "lumenna-app",
  "lumenna-bridge",
- "lumenna-desktop",
  "lumenna-host",
  "lumenna-records",
  "n0-future",

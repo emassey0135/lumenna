@@ -32,7 +32,7 @@ use lumenna_records::LumennaError;
 use lumenna_records::words::spoken;
 use wasm_bindgen_futures::spawn_local;
 
-use lumenna_desktop::lines::{Lines, lines};
+use lumenna_app::lines::{Lines, lines};
 
 use crate::clock::CLOCK;
 /// What only a browser holds, said to be `Send` and `Sync` for BoltFFI.
@@ -184,7 +184,7 @@ impl Inner {
                 Shell::Announce(text) => turn.said.push(text.clone()),
                 // "<day>. <summary>", for a day newly shown.
                 Shell::Heading(text) => turn.said.push(match &turn.view.day {
-                    Some(day) => lumenna_desktop::speech::summary(&day.date, text, &CLOCK),
+                    Some(day) => lumenna_app::speech::summary(&day.date, text, &CLOCK),
                     None => text.clone(),
                 }),
                 Shell::Save(file) => turn.files.push(file.clone()),

@@ -23,7 +23,6 @@ lumenna-records.workspace = true
 # Timers on the browser's event loop, for noticing a pairing given up.
 n0-future = "0.3"
 # The places and wording the desktop apps share, so the web says what they say.
-lumenna-desktop = { path = "../../../crates/desktop", features = ["app"] }
 serde.workspace = true
 jiff.workspace = true
 wasm-bindgen = "0.2"

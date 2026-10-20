@@ -24,7 +24,6 @@ crux_core = "=0.20.0"
 futures = { version = "0.3", default-features = false, features = ["std", "executor"] }
 lumenna-app = { path = "../app" }
 lumenna-bridge = { path = "../bridge" }
-lumenna-desktop = { path = "../desktop", features = ["app"] }
 lumenna-host = { workspace = true, features = ["link"] }
 lumenna-records.workspace = true
 

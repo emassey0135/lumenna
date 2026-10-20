@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use boltffi::{data, export};
 // Imported, not named by its path: BoltFFI finds another crate's type only so.
-use lumenna_desktop::keys::KeyGroup;
+use lumenna_app::keys::KeyGroup;
 use crux_core::middleware::Layer;
 use lumenna_app::{Effect, Notice, SaveFile, ViewModel};
 #[cfg(feature = "network")]
@@ -30,8 +30,8 @@ use lumenna_bridge::network::{Network, NetworkHandle};
 use offline::{Network, NetworkHandle};
 use lumenna_bridge::{Shell as Left, Stack, Store, shell, stack};
 use lumenna_host::{Lumenna, Reach};
-use lumenna_desktop::lines::{Lines, lines};
-use lumenna_desktop::speech::{self, Clock, Spoken};
+use lumenna_app::lines::{Lines, lines};
+use lumenna_app::speech::{self, Clock, Spoken};
 use lumenna_records::{Completions, LumennaError, Syntax};
 
 pub use device::Device;
@@ -199,12 +199,12 @@ impl App {
     }
 }
 
-/// The keyboard commands every desktop app shares (`lumenna_desktop::keys`), grouped as their
+/// The keyboard commands every desktop app shares (`lumenna_app::keys`), grouped as their
 /// menus are, for a keyboard on Android: each command's keys and its name, in sentence case,
 /// so Android binds and lists the keys Windows, GTK and the web do.
 #[export]
 pub fn keyboard_shortcuts() -> Vec<KeyGroup> {
-    lumenna_desktop::keys::grouped(true)
+    lumenna_app::keys::grouped(true)
 }
 
 fn spawn(name: &str, run: impl FnOnce() + Send + 'static) -> Result<(), LumennaError> {

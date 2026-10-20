@@ -1,6 +1,6 @@
 //! How paired devices and exports are named and described.
 
-use lumenna_host::DeviceView;
+use lumenna_records::DeviceView;
 
 /// A paired device, as its line in the list reads: "Kitchen Mac, macos, last synced 5
 /// minutes ago" — its name and platform, then the status the core words for every app.
@@ -18,7 +18,7 @@ pub fn parts(device: &DeviceView) -> crate::speech::Line {
 
 /// How long ago a timestamp was, as a person says it — the core's wording.
 pub fn ago(timestamp: &str, now: jiff::Timestamp) -> String {
-    lumenna_host::words::ago(timestamp, now)
+    lumenna_records::words::ago(timestamp, now)
 }
 
 pub use lumenna_records::exports::{EXPORTS, Export};
@@ -46,7 +46,7 @@ pub use lumenna_records::exports::export_name;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lumenna_host::ExportFormat;
+    use lumenna_records::ExportFormat;
 
     fn device(this: bool, success: Option<&str>, error: Option<&str>) -> DeviceView {
         let mut view = DeviceView {
@@ -62,7 +62,7 @@ mod tests {
             status: Vec::new(),
             actions: Vec::new(),
         };
-        view.status = lumenna_host::words::device_status(&view, now(), true);
+        view.status = lumenna_records::words::device_status(&view, now(), true);
         view
     }
 

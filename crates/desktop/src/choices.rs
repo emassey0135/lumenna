@@ -45,7 +45,23 @@ mod tests {
     use lumenna_host::NewBlock;
 
     use super::*;
-    use crate::speech::testing::TwelveHour;
+
+    /// Says 14:30 as "2:30 PM", and one fixed day as Today: the app's test clock, which a
+    /// test-only module does not lend another crate.
+    struct TwelveHour;
+
+    impl Clock for TwelveHour {
+        fn time(&self, clock: &str) -> String {
+            let (hours, minutes) = clock.split_once(':').unwrap();
+            let hours: u32 = hours.parse().unwrap();
+            let half = if hours < 12 { "AM" } else { "PM" };
+            format!("{}:{minutes} {half}", (hours + 11) % 12 + 1)
+        }
+
+        fn day(&self, iso: &str) -> String {
+            if iso == "2026-10-04" { "Today".to_owned() } else { iso.to_owned() }
+        }
+    }
 
     fn block(title: &str, at: &str, kind: &str, date: &str, repeat: Option<&str>) -> NewBlock {
         NewBlock {

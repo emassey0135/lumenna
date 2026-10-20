@@ -38,17 +38,7 @@ impl Deref for Profile {
     }
 }
 
-/// The profile directory when nothing names another one.
-#[must_use]
-pub fn default_directory() -> Option<PathBuf> {
-    directories::ProjectDirs::from("", "", "lumenna").map(|dirs| {
-        // The *local* data directory. On Linux and macOS it is the same place as `data_dir`;
-        // on Windows `data_dir` is Roaming AppData, which a domain with roaming profiles
-        // copies to a server at every logon and logoff — carrying the store, and its backups
-        // beside it, off the machine.
-        dirs.data_local_dir().to_path_buf()
-    })
-}
+pub use lumenna_host::profile::default_directory;
 
 impl Profile {
     /// Opens the profile, creating it if this is the first run.

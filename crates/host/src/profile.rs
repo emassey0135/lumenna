@@ -1,4 +1,5 @@
-//! Where the store lives, and how the app was started.
+//! Where the store lives, for `lum` and the resident apps alike, and how a resident app was
+//! started.
 
 use std::path::PathBuf;
 
@@ -43,13 +44,11 @@ pub fn directory(explicit: Option<PathBuf>) -> Option<PathBuf> {
         .or_else(default_directory)
 }
 
-/// Where the store lives when nothing names another.
-///
-/// The same place as the command line's, as on the Mac, so the app and `lum` on one computer
-/// are one device with one store rather than two that would have to pair with each other. This
-/// must agree with `default_directory` in `apps/cli/src/profile.rs`: the *local* data
-/// directory, because Roaming AppData is copied to a server at every logon on a domain with
-/// roaming profiles.
+/// Where the store lives when nothing names another: one place for `lum` and the apps, so the
+/// app and `lum` on one computer are one device with one store rather than two that would have
+/// to pair with each other. The *local* data directory: on Windows the other, Roaming AppData,
+/// is copied to a server at every logon on a domain with roaming profiles, carrying the store
+/// and its backups off the machine.
 pub fn default_directory() -> Option<PathBuf> {
     directories::ProjectDirs::from("", "", "lumenna").map(|dirs| dirs.data_local_dir().to_path_buf())
 }

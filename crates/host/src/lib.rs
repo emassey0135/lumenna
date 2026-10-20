@@ -41,6 +41,7 @@ mod history_ops;
 mod link;
 mod organise;
 mod places_ops;
+pub mod profile;
 mod planning;
 pub mod dayplan;
 mod carry;

@@ -1,18 +1,13 @@
-//! What the desktop apps that link the surface directly — Windows and GTK — decide alike,
-//! and would otherwise each keep a copy of.
+//! What the Windows and GTK apps still take from here while they move onto the Crux app, and
+//! then this crate goes.
 //!
-//! None of it is business logic: that is the surface's. This is presentation that does not
-//! depend on the toolkit — how a row is worded for a tree item's one name, how the core's flat
-//! depth-first rows become a tree, how a device's sync state is said. Each toolkit's tree
-//! reports level, position, set size and expansion itself, so the wording leaves those out
-//! for both (`speech`). The sidebar's places are the surface's (`lumenna_host::places`),
-//! since the iPad and Android list them too.
+//! How every line is worded (`speech`, `lines`), the shared keyboard table (`keys`), flat rows as
+//! a tree (`outline`) and device wording (`devices`) are the app's now (`lumenna_app`); where the
+//! store lives (`profile`) is the host's. They are re-exported under their old names here so the
+//! two apps build unchanged meanwhile. Only `choices` is still this crate's own, the picks Windows
+//! and GTK put together themselves outside the app.
 
 pub mod choices;
-pub mod devices;
-pub mod keys;
-#[cfg(feature = "app")]
-pub mod lines;
-pub mod outline;
-pub mod profile;
-pub mod speech;
+
+pub use lumenna_app::{devices, keys, lines, outline, speech};
+pub use lumenna_host::profile;

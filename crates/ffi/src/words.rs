@@ -15,7 +15,7 @@ pub fn sentence_case(text: String) -> String {
 /// A completion as offered, name first: "Work, project", not the core's "project Work".
 #[export]
 pub fn candidate_line(candidate: Candidate) -> String {
-    lumenna_desktop::speech::candidate(&candidate)
+    lumenna_app::speech::candidate(&candidate)
 }
 
 /// What identifies a sidebar row of this kind, as the app names its row in hand.

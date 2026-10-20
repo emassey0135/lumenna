@@ -1,4 +1,4 @@
-//! The keyboard commands the desktop apps share — Windows, GTK, the web, and Android with a
+//! The keyboard commands the apps with a PC keyboard share — Windows, GTK, the web, and Android with a
 //! keyboard — for each app to bind and its keyboard help to list, so neither the keys nor the
 //! help can drift apart between them. Android and the web take them across the FFI
 //! ([`grouped`]).

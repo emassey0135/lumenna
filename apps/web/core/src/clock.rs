@@ -4,7 +4,7 @@
 //! days and months are called, is the person's locale, which in a browser is `Intl`'s
 //! default — the browser's language settings. Twelve- or twenty-four-hour comes with it.
 
-use lumenna_desktop::speech::{Formats, Spoken};
+use lumenna_app::speech::{Formats, Spoken};
 
 /// The browser's own way of saying times and dates.
 pub struct Browser;

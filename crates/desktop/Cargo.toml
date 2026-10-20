@@ -5,15 +5,15 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "What the apps that link the surface directly decide alike: how rows are worded, flat rows as a tree, the sidebar's places."
+description = "What the Windows and GTK apps take from here while they move onto the Crux app."
 
 [features]
-# The app's view worded line by line (`lines`), for the shells that draw the Crux app.
-app = ["dep:lumenna-app"]
+# Kept while the apps that ask for it still do; the app is always here now.
+app = []
 
 [dependencies]
 boltffi = "=0.31.1"
-lumenna-app = { path = "../app", optional = true }
+lumenna-app = { path = "../app" }
 lumenna-records.workspace = true
 directories.workspace = true
 jiff.workspace = true

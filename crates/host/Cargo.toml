@@ -18,6 +18,7 @@ sync = ["link", "lumenna-sync/network", "dep:iroh", "dep:tokio", "dep:n0-future"
 rpc = ["sync"]
 
 [dependencies]
+directories.workspace = true
 jiff.workspace = true
 lumenna-core.workspace = true
 lumenna-parse.workspace = true

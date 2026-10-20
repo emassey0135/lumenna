@@ -2,8 +2,8 @@
 //! devices, the quick-add offer. The app sends components; a shell that shows lines asks here
 //! rather than joining them itself, so the web and Android read every line alike.
 
-use lumenna_app::{DayKind, ViewModel};
-use lumenna_host::places::Place;
+use crate::{DayKind, ViewModel};
+use lumenna_records::places::Place;
 
 use crate::speech::{self, Clock, Line};
 
@@ -34,7 +34,7 @@ pub struct Lines {
 /// How a list's query was understood and what it found, or why it is not one yet: the
 /// refusal, the query described, the count (or, with nothing listed, the listing's own words
 /// for that), each name the query could not find, then the notices.
-fn readback(list: &lumenna_app::ListView, trash: bool) -> String {
+fn readback(list: &crate::ListView, trash: bool) -> String {
     let query = list.query.as_ref();
     let found = if list.items.is_empty() && !list.empty.is_empty() { &list.empty } else { &list.announcement };
     let unresolved = query.into_iter().flat_map(|query| &query.unresolved).map(|name| match &name.suggestion {
