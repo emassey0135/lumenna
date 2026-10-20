@@ -2,7 +2,6 @@ package io.github.emassey0135.lumenna.wear
 
 import io.github.emassey0135.lumenna.deviceName
 import io.github.emassey0135.lumenna.rowActions
-import io.github.emassey0135.lumenna.app.pairingWords
 import io.github.emassey0135.lumenna.app.ShellEvent
 import io.github.emassey0135.lumenna.app.SettingsEvent
 import io.github.emassey0135.lumenna.app.SettingView
@@ -120,8 +119,14 @@ private fun PairingButtons(core: Core) {
     val pairing = view?.devices?.pairing
     val pair = { event: PairEvent -> app.send(ShellEvent.Devices(DevicesEvent.Pair(event))) }
     val context = LocalContext.current
-    val words = remember { pairingWords("this watch", true, io.github.emassey0135.lumenna.app.Capitals.SENTENCE) }
-    LaunchedEffect(Unit) { pair(PairEvent.Open(deviceName(context))) }
+    LaunchedEffect(Unit) {
+        // What pairing's sentences call this watch, which finds others on its network.
+        app.send(ShellEvent.PairingAs("this watch", true))
+        app.send(ShellEvent.Devices(DevicesEvent.Show))
+        pair(PairEvent.Open(deviceName(context)))
+    }
+    // Pairing's words come with the Devices page, in the watch's capitals.
+    val words = view?.devices?.words ?: return
     DisposableEffect(Unit) { onDispose { pair(PairEvent.Cancel) } }
     androidx.compose.foundation.layout.Column {
         Heading(words.title)

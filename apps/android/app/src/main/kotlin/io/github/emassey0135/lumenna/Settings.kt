@@ -23,7 +23,6 @@ import io.github.emassey0135.lumenna.app.SettingKind
 import io.github.emassey0135.lumenna.app.SettingView
 import io.github.emassey0135.lumenna.app.SettingsEvent
 import io.github.emassey0135.lumenna.app.ShellEvent
-import io.github.emassey0135.lumenna.app.pairingWords
 import android.content.Context
 import android.net.Uri
 import android.net.wifi.WifiManager
@@ -426,12 +425,12 @@ fun DevicesScreen(core: Core, navigator: Navigator) {
                     index = index,
                     // The core's: Rename, and Unpair on every row but this device's own.
                     actions = app.rowActions(device.nodeId, device.actions, side = Side.DEVICES),
+                    refuse = app.refusal(device.nodeId, Side.DEVICES),
                     open = null,
                     openLabel = "Open",
                     focus = focus.requester(device.nodeId),
                     key = device.nodeId,
                     say = core::say,
-                    thisDevice = device.thisDevice,
                 )
                 HorizontalDivider()
             }
@@ -452,6 +451,8 @@ fun PairingScreen(core: Core, navigator: Navigator) {
     val view by app.view.collectAsState()
     val name = remember { deviceName(context) }
     LaunchedEffect(Unit) {
+        // What pairing's sentences call this phone, which finds others on its network.
+        app.send(ShellEvent.PairingAs(name, true))
         app.send(ShellEvent.Devices(DevicesEvent.Show))
         app.send(ShellEvent.Devices(DevicesEvent.Pair(PairEvent.Open(name))))
     }
@@ -462,7 +463,8 @@ fun PairingScreen(core: Core, navigator: Navigator) {
     // Leaving the screen gives up, which ends the wait for the other device.
     DisposableEffect(Unit) { onDispose { app.send(ShellEvent.Devices(DevicesEvent.Pair(PairEvent.Cancel))) } }
     val pair = { event: PairEvent -> app.send(ShellEvent.Devices(DevicesEvent.Pair(event))) }
-    val words = remember(name) { pairingWords(name, true, io.github.emassey0135.lumenna.app.Capitals.SENTENCE) }
+    // Pairing's words come with the Devices page, in this phone's capitals.
+    val words = view?.devices?.words ?: return
     var entered by remember { mutableStateOf("") }
 
     ScreenFrame(words.title, core, navigator) {

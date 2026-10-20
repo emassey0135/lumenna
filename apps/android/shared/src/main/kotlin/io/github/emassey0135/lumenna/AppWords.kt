@@ -43,6 +43,15 @@ fun AppModel.rowActions(row: String, actions: List<Action>, local: (Action) -> B
 }
 
 /**
+ * A key [row] does not offer: the row put in hand (or held in [side]), then the app runs the
+ * key's kind there and says why it has none, in the core's words.
+ */
+fun AppModel.refusal(row: String, side: Side? = null): (io.github.emassey0135.lumenna.app.ActionKind) -> Unit = { kind ->
+    send(if (side != null) ShellEvent.Hold(side, row) else ShellEvent.Focus(row))
+    send(ShellEvent.Run(listOf(kind)))
+}
+
+/**
  * Everything a row says after its title: the core's line, then whether what is under it is
  * folded away, and the level where it changes from the row shown before (the app's word for
  * it, which folding keeps right). A tree control would say those two itself.

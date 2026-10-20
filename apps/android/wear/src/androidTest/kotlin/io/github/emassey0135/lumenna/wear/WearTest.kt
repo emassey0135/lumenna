@@ -257,7 +257,7 @@ class WearTest {
         }
         press("Settings")
         press("Devices and sync")
-        val words = io.github.emassey0135.lumenna.app.pairingWords("this watch", true, io.github.emassey0135.lumenna.app.Capitals.SENTENCE)
+        val words = core.app.view.value!!.devices!!.words
         answers += ""
         press(words.theirCode)
         assertEquals(listOf(words.theirCode), asked)

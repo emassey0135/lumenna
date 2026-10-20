@@ -80,7 +80,6 @@ import io.github.emassey0135.lumenna.app.Place
 import io.github.emassey0135.lumenna.app.RowView
 import io.github.emassey0135.lumenna.app.ShellEvent
 import io.github.emassey0135.lumenna.app.ActionKind
-import io.github.emassey0135.lumenna.app.notOffered
 import io.github.emassey0135.lumenna.app.Syntax
 
 
@@ -204,6 +203,7 @@ fun AppTaskRows(
                 depth = row.depth.toInt(),
                 index = index,
                 actions = core.app.rowActions(row.id, row.actions, local),
+                refuse = core.app.refusal(row.id),
                 open = open?.let { { it(row) } },
                 openLabel = openLabel,
                 focus = focus.requester(row.id),
@@ -237,7 +237,7 @@ fun ListRow(
     heading: Boolean = false,
     selected: Boolean = false,
     say: (String) -> Unit = {},
-    thisDevice: Boolean = false,
+    refuse: ((ActionKind) -> Unit)? = null,
 ) {
     var menu by remember { mutableStateOf(false) }
     val pane = LocalPane.current
@@ -268,13 +268,13 @@ fun ListRow(
                         action.run()
                         return@onKeyEvent true
                     }
-                    // A row key with nothing to do here says why, in the core's words, rather
-                    // than nothing. What the row is comes from its own actions, which share it;
-                    // a heading's add one more of what is under it, so say nothing of it.
+                    // A row key with nothing to do here: the app says why, in the core's words,
+                    // rather than nothing. A heading's actions add one more of what is under it,
+                    // so it says nothing of the rest.
                     val kind = command.kind ?: return@onKeyEvent false
-                    val subject = actions.firstNotNullOfOrNull { it.subject.takeIf { _ -> it.kind != ActionKind.NEW } }
-                        ?: return@onKeyEvent false
-                    say(notOffered(kind, subject, thisDevice))
+                    if (actions.none { it.kind != ActionKind.NEW }) return@onKeyEvent false
+                    val refusing = refuse ?: return@onKeyEvent false
+                    refusing(kind)
                     true
                 }
                 .then(
