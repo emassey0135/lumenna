@@ -16,7 +16,7 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use lumenna_host::{Action, ActionKind, Change, Lumenna, ReminderLock, Result};
+use lumenna_host::{Action, ActionKind, Change, Lumenna, Result};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     COLOR_BTNFACE, CreateFontIndirectW, DeleteObject, GetDC, GetTextMetricsW, HBRUSH, HFONT, LOGFONTW,
@@ -41,7 +41,7 @@ use super::asking;
 use super::block_form;
 use super::blocks::BlockList;
 use super::clock::Formats;
-use super::{pairing, proposal, system};
+use super::{pairing, proposal, reminders, system};
 use super::shell::{Relay, WM_TURN};
 use super::controls::{self, rect};
 use super::core::{Core, Poster, WM_SAY, said, taken};
@@ -158,8 +158,12 @@ pub struct App {
     taskbar_created: u32,
     /// Windows' notifications, for reminders; `None` where it has none to give.
     toasts: Option<Toasts>,
-    /// The right to give this device's reminders, while this process holds it.
-    reminders: RefCell<Option<Arc<ReminderLock>>>,
+    /// Whether this process gives this device's reminders: another may.
+    reminders: Cell<bool>,
+    /// A task's or block's reminder list, while its dialog is open.
+    reminder_list: RefCell<Option<Rc<reminders::Reminders>>>,
+    /// Quick add, while its dialog is open.
+    quick_add: RefCell<Option<Rc<quick_add::QuickAdd>>>,
     /// Seconds since the app started, for what is done every few of them.
     ticks: Cell<u32>,
 }
@@ -379,7 +383,9 @@ impl App {
             icon,
             taskbar_created: tray::taskbar_created(),
             toasts: Toasts::new(),
-            reminders: RefCell::new(None),
+            reminders: Cell::new(false),
+            reminder_list: RefCell::new(None),
+            quick_add: RefCell::new(None),
             ticks: Cell::new(0),
         });
         app.update_font();
@@ -546,6 +552,17 @@ impl App {
         if let Some(pairing) = pairing {
             pairing.draw(self, now.devices.as_ref().and_then(|devices| devices.pairing.as_ref()));
         }
+        // Quick add closed by the app, its task added: what it says waits for the dialog to go,
+        // which hides nothing of the window's but takes focus with it.
+        let adding = self.quick_add.borrow().clone();
+        let added = adding.as_ref().is_some_and(|open| {
+            open.draw(self, now.line.as_ref(), now.add_refused.as_ref());
+            now.line.is_none()
+        });
+        let open_list = self.reminder_list.borrow().clone();
+        if let Some(open_list) = &open_list {
+            open_list.draw(self, now.reminders.as_ref(), &self.crux.lines(), &now.reminders_held);
+        }
         if typing {
             unsafe {
                 let _ = SetTimer(Some(self.main), TIMER_SETTLE, 50, None);
@@ -555,7 +572,9 @@ impl App {
         for file in turn.files {
             self.defer(move |app| settings::save(app.owner(), &file));
         }
-        let opens = (turn.view.block_form.is_some() && form.is_none()) || (turn.view.proposal.is_some() && screen.is_none());
+        let opens = (turn.view.block_form.is_some() && form.is_none())
+            || (turn.view.proposal.is_some() && screen.is_none())
+            || (turn.view.reminders.is_some() && open_list.is_none());
         if (turn.view.asking.is_some() || opens) && !self.asking.get() {
             unsafe {
                 let _ = SetTimer(Some(self.main), TIMER_ASK, 50, None);
@@ -572,10 +591,13 @@ impl App {
             .into_iter()
             .filter(|said| !(folded && (said == "Expanded" || said == "Collapsed")))
             .filter(|said| opening.as_ref() != Some(said))
-            // Each a sentence, as the window has always said them.
-            .map(|said| speech::sentence(&said))
             .collect();
-        self.say(&said.join(" "));
+        let said = said.join(" ");
+        if added {
+            self.defer(move |app| app.say(&said));
+        } else {
+            self.say(&said);
+        }
     }
 
     /// Where the app went by itself — a place renamed, merged or deleted, the day — the window
@@ -602,16 +624,20 @@ impl App {
         unsafe {
             let _ = KillTimer(Some(self.main), TIMER_ASK);
         }
-        self.asking.set(true);
+        // Only a question counts as asking: a dialog of the app's — a reminder list — asks
+        // questions of its own while it is open.
         let now = self.crux.view();
         if now.asking.is_some() {
+            self.asking.set(true);
             asking::ask(self);
+            self.asking.set(false);
         } else if let Some(form) = now.block_form.filter(|_| self.block_form.borrow().is_none()) {
             block_form::run(self, form);
         } else if let Some(screen) = now.proposal.filter(|_| self.proposal.borrow().is_none()) {
             proposal::run(self, screen);
+        } else if let Some(list) = now.reminders.filter(|_| self.reminder_list.borrow().is_none()) {
+            reminders::run(self, list);
         }
-        self.asking.set(false);
     }
 
     /// Once the app is still, the field being typed in takes the app's value where it differs:
@@ -629,6 +655,16 @@ impl App {
         if let Some(form) = form {
             form.draw(self, now.block_form.as_ref(), true);
         }
+    }
+
+    /// Quick add opens, or closes.
+    pub fn open_quick_add(&self, open: Option<Rc<quick_add::QuickAdd>>) {
+        *self.quick_add.borrow_mut() = open;
+    }
+
+    /// A reminder list's dialog opens, or closes.
+    pub fn open_reminders(&self, list: Option<Rc<reminders::Reminders>>) {
+        *self.reminder_list.borrow_mut() = list;
     }
 
     /// The pairing dialog opens, or closes.
@@ -942,12 +978,8 @@ impl App {
     fn quick_add(&self, from_anywhere: bool) {
         let prefix = if from_anywhere { String::new() } else { self.task_list().map(|l| l.quick_add_prefix()).unwrap_or_default() };
         let owner = (!from_anywhere || controls::is_visible(self.main)).then_some(self.main);
-        let Some(change) = quick_add::run(owner, self.core.lumenna.clone(), &prefix) else { return };
-        self.store_changed();
-        if let (Some(list), Some(task)) = (self.task_list(), change.task.as_ref()) {
-            list.land_on(&task.id);
-        }
-        self.say_change(&change);
+        // The app adds it, holds what it made, and says so.
+        quick_add::run(self, owner, &prefix);
     }
 
     // -------------------------------------------------------------------------------------
@@ -1287,7 +1319,7 @@ impl App {
         self.ticks.set(ticks);
         // Every few seconds, while another process gives them, whether it has stopped; and
         // what has come due, every twenty.
-        if (self.reminders.borrow().is_none() && ticks.is_multiple_of(5)) || ticks.is_multiple_of(20) {
+        if (!self.reminders.get() && ticks.is_multiple_of(5)) || ticks.is_multiple_of(20) {
             self.give_reminders();
         }
     }
@@ -1301,12 +1333,10 @@ impl App {
     /// it when that one stops.
     fn give_reminders(&self) {
         let Some(toasts) = &self.toasts else { return };
-        if self.reminders.borrow().is_none() {
-            let taken = self.core.lumenna.take_reminders().ok().flatten();
-            *self.reminders.borrow_mut() = taken;
-        }
-        let Some(lock) = self.reminders.borrow().clone() else { return };
-        let Ok(due) = self.core.lumenna.deliver_reminders(lock, None) else { return };
+        // The device's own, as the Mac gives them: it takes the right to give them while no
+        // other process has it, and keeps it.
+        let Ok(due) = self.device.deliver_reminders(None) else { return };
+        self.reminders.set(!due.elsewhere);
         let window = Poster::new(self.main);
         for reminder in &due.due {
             toasts.remind(reminder, window);
@@ -1318,24 +1348,25 @@ impl App {
 
     /// A toast answered: its button's dismissal or snooze, or what it is about opened.
     fn reminder_answered(&self, answered: Answered) {
-        let lumenna = &self.core.lumenna;
+        let done = match answered {
+            Answered::Dismiss(reminder) => self.device.dismiss_reminder(reminder.key, reminder.occurrence),
+            Answered::Snooze(reminder) => self.device.snooze_reminder(reminder.key, reminder.occurrence, None),
+            Answered::Carry(reminder) => self.device.carry_rest_forward(format!("{}@{}", reminder.target, reminder.occurrence)),
+            other => return self.reminder_opened(other),
+        };
+        match done {
+            Ok(change) => {
+                self.store_changed();
+                self.say_change(&change);
+            }
+            Err(error) => self.fail(&sentence(&error)),
+        }
+    }
+
+    /// A toast's body, or its Replan: the window, at what it is about.
+    fn reminder_opened(&self, answered: Answered) {
         match answered {
-            Answered::Dismiss(reminder) => {
-                if let Some(change) = self.perform(|_| lumenna.dismiss_reminder(reminder.key, reminder.occurrence)) {
-                    self.say_change(&change);
-                }
-            }
-            Answered::Snooze(reminder) => {
-                if let Some(change) = self.perform(|_| lumenna.snooze_reminder(reminder.key, reminder.occurrence, None)) {
-                    self.say_change(&change);
-                }
-            }
-            Answered::Carry(reminder) => {
-                let block = format!("{}@{}", reminder.target, reminder.occurrence);
-                if let Some(change) = self.perform(|_| lumenna.carry_rest_forward(&block)) {
-                    self.say_change(&change);
-                }
-            }
+            Answered::Dismiss(_) | Answered::Snooze(_) | Answered::Carry(_) => {}
             Answered::Open(reminder) => {
                 self.show_window();
                 if reminder.kind == "block" {

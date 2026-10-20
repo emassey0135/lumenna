@@ -18,7 +18,7 @@ use super::app::App;
 use super::controls::{self, rect};
 use super::tree::{Item, Tree};
 use super::view::{Metrics, View};
-use super::{actions, reminders};
+use super::actions;
 
 const TREE: u16 = 600;
 
@@ -65,7 +65,7 @@ impl BlockList {
     /// Runs one of the selected row's actions as the app's; Reminders is the window's list.
     fn act(&self, app: &App, action: &Action) {
         match (&action.question, action.kind) {
-            (Question::Form, ActionKind::Reminders) => reminders::show(app, app.main, action),
+            (Question::Form, ActionKind::Reminders) => app.crux.send(ShellEvent::Perform(action.clone())),
             _ => app.crux.send(ShellEvent::Perform(action.clone())),
         }
     }

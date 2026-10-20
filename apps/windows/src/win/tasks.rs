@@ -32,7 +32,7 @@ use super::controls::{self, rect};
 use super::clock::Locale;
 use super::tree::{Item, Tree};
 use super::view::{Metrics, View};
-use super::{actions, completion, reminders};
+use super::{actions, completion};
 use lumenna_host::places::Place;
 use crate::speech;
 
@@ -60,11 +60,11 @@ pub struct TaskList {
 }
 
 impl TaskList {
-    pub fn create(app: &App, pane: HWND, place: Place) -> Rc<Self> {
+    pub fn create(_app: &App, pane: HWND, place: Place) -> Rc<Self> {
         let trash = place == Place::Trash;
         let label = controls::create(pane, WC_STATICW, "Filte&r:", 0, 0, 0);
         let filter = controls::create(pane, WC_EDITW, "", ES_AUTOHSCROLL as u32 | WS_TABSTOP.0, WS_EX_CLIENTEDGE.0, FILTER);
-        completion::attach(filter, app.core.lumenna.clone(), Syntax::Filter);
+        completion::attach(filter, Syntax::Filter);
         let readback = controls::create(pane, WC_STATICW, "", SS_NOPREFIX.0, 0, 0);
         let tree = Tree::create(pane, TREE, &place.title(), !trash);
         // The trash is everything deleted, and nothing else: there is no filter to change.
@@ -142,7 +142,7 @@ impl TaskList {
     /// its reminders a dialog of the window's.
     pub fn act(&self, app: &App, action: &Action) {
         match (&action.question, action.kind) {
-            (Question::Form, ActionKind::Reminders) => reminders::show(app, app.main, action),
+            (Question::Form, ActionKind::Reminders) => app.crux.send(ShellEvent::Perform(action.clone())),
             (Question::Form, _) => app.open_detail(),
             _ => app.crux.send(ShellEvent::Perform(action.clone())),
         }

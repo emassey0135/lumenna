@@ -11,9 +11,8 @@
 //! first is highlighted as the menu opens, so it is read at once.
 
 use std::cell::Cell;
-use std::sync::Arc;
 
-use lumenna_host::{Lumenna, Syntax};
+use lumenna_host::Syntax;
 use windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::UI::Controls::{EM_GETSEL, EM_POSFROMCHAR, EM_REPLACESEL, EM_SETSEL};
@@ -37,7 +36,6 @@ use crate::speech;
 const QUEUED: isize = 1 << 25;
 
 struct Completer {
-    lumenna: Arc<Lumenna>,
     syntax: Syntax,
     /// Ctrl+Space also sends a space as a character, which must not be typed.
     swallow_space: Cell<bool>,
@@ -46,8 +44,8 @@ struct Completer {
 const SUBCLASS: usize = 0x4C75_6D31;
 
 /// Makes an edit control offer completions.
-pub fn attach(edit: HWND, lumenna: Arc<Lumenna>, syntax: Syntax) {
-    let completer = Box::new(Completer { lumenna, syntax, swallow_space: Cell::new(false) });
+pub fn attach(edit: HWND, syntax: Syntax) {
+    let completer = Box::new(Completer { syntax, swallow_space: Cell::new(false) });
     unsafe {
         let _ = SetWindowSubclass(edit, Some(procedure), SUBCLASS, Box::into_raw(completer) as usize);
     }
@@ -99,9 +97,10 @@ fn offer(edit: HWND, completer: &Completer) {
     let mut end = 0u32;
     controls::send(edit, EM_GETSEL, (&raw mut start) as usize, (&raw mut end) as isize);
     let cursor = controls::bytes_at(&text, end as usize);
-    let Ok(found) = completer.lumenna.complete_text(&text, cursor as u32, completer.syntax) else {
-        return;
-    };
+    // Straight from the store, at keystroke rate: the app's own offer can lag the typing.
+    let mut found = None;
+    super::app::with(|app| found = app.crux.complete(text.clone(), cursor as u32, completer.syntax).ok());
+    let Some(found) = found else { return };
 
     let chosen = unsafe {
         let Ok(menu) = CreatePopupMenu() else { return };

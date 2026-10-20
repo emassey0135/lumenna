@@ -1,55 +1,82 @@
-//! Adding a task the way it would be said: one line, read back as it is typed.
+//! Adding a task the way it would be said: one line, read back as it is typed, drawn from the
+//! app's quick-add line (`view.line`): what it will add, and adding it, are the app's.
 //!
 //! The readback is what a sighted user gets from inline highlighting: what will be saved,
 //! with the date resolved. It is a read-only field after the line, not spoken as it changes —
 //! speech on every keystroke buries the typing — but Tab reaches it, and it is what is
-//! announced when the task is added.
+//! announced when the task is added. A line refused stays as typed, why said once.
 
-use std::cell::RefCell;
-use std::sync::Arc;
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 
-use lumenna_host::{Change, Lumenna, Syntax};
+use lumenna_app::{LineView, Typing};
+use lumenna_ffi::ShellEvent;
+use lumenna_host::Syntax;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
-use windows::Win32::UI::Controls::EM_SETSEL;
+use windows::Win32::UI::Controls::{EM_GETSEL, EM_SETSEL};
 use windows::Win32::UI::WindowsAndMessaging::{
-    BS_DEFPUSHBUTTON, BS_PUSHBUTTON, EN_CHANGE, ES_AUTOHSCROLL, ES_AUTOVSCROLL,
-    ES_MULTILINE, ES_READONLY, IDCANCEL, IDOK, SetForegroundWindow, WS_BORDER,
-    WS_TABSTOP, WS_VSCROLL,
+    BS_DEFPUSHBUTTON, BS_PUSHBUTTON, EN_CHANGE, ES_AUTOHSCROLL, ES_AUTOVSCROLL, ES_MULTILINE, ES_READONLY, EndDialog,
+    IDCANCEL, IDOK, SetForegroundWindow, WS_BORDER, WS_TABSTOP, WS_VSCROLL,
 };
 
-use super::controls;
-use super::core::sentence;
+use super::app::{self, App};
 use super::dialog::{self, Class, Dialog, Template};
-use super::{completion, prompts};
+use super::{completion, controls, prompts};
+use crate::speech;
 
 const LINE: u16 = 100;
 const READBACK: u16 = 101;
 
-struct QuickAdd {
-    lumenna: Arc<Lumenna>,
+/// Quick add open, while it is.
+pub struct QuickAdd {
+    hwnd: Cell<HWND>,
+    /// What the line starts with: the place's own (`#Work `), or nothing from anywhere.
     initial: String,
-    added: RefCell<Option<Change>>,
+    /// The refusal last said, so it is said once.
+    refused: RefCell<Option<String>>,
+    closed: Cell<bool>,
 }
 
 impl QuickAdd {
-    fn preview(&self, hwnd: HWND) {
-        let text = controls::text(dialog::item(hwnd, LINE));
-        let readback = if text.trim().is_empty() {
-            String::new()
-        } else {
-            match self.lumenna.preview_task(&text) {
-                // Everything worth saying before confirming, errors included: there is no
-                // squiggle under the text, so this is the only channel.
-                Ok(preview) => std::iter::once(preview.announcement)
-                    .chain(preview.diagnostics.into_iter().map(|d| d.message))
-                    .collect::<Vec<_>>()
-                    .join(". "),
-                Err(error) => sentence(&error),
+    /// Draws the app's line as it now is: its readback, and whether it is refused. The app
+    /// closing it — the task added — closes the dialog.
+    pub fn draw(&self, app: &App, line: Option<&LineView>, refused: Option<&String>) {
+        let hwnd = self.hwnd.get();
+        if hwnd.is_invalid() || self.closed.get() {
+            return;
+        }
+        let Some(line) = line else {
+            self.closed.set(true);
+            unsafe {
+                let _ = EndDialog(hwnd, 1);
             }
+            return;
         };
-        controls::set_text(dialog::item(hwnd, READBACK), &readback);
+        let readback = dialog::item(hwnd, READBACK);
+        if controls::text(readback) != line.readback {
+            controls::set_text(readback, &line.readback);
+        }
+        if refused.is_some() && self.refused.borrow().as_ref() != refused {
+            *self.refused.borrow_mut() = refused.cloned();
+            if let Some(why) = refused.cloned() {
+                app.defer(move |_| prompts::fail(hwnd, &speech::sentence(&why)));
+            }
+        } else if refused.is_none() {
+            self.refused.replace(None);
+        }
+    }
+
+    /// The line and the cursor in it, for the app.
+    fn typed(hwnd: HWND) {
+        let line = dialog::item(hwnd, LINE);
+        let text = controls::text(line);
+        let mut start = 0u32;
+        let mut end = 0u32;
+        controls::send(line, EM_GETSEL, (&raw mut start) as usize, (&raw mut end) as isize);
+        let cursor = controls::bytes_at(&text, end as usize) as u32;
         controls::enable(dialog::item(hwnd, IDOK.0 as u16), !text.trim().is_empty());
+        app::send(ShellEvent::Typing(Typing::Text { text, cursor }));
     }
 }
 
@@ -76,13 +103,14 @@ impl Dialog for QuickAdd {
     }
 
     fn init(&self, hwnd: HWND) -> bool {
+        self.hwnd.set(hwnd);
         let line = dialog::item(hwnd, LINE);
-        completion::attach(line, Arc::clone(&self.lumenna), Syntax::QuickAdd);
+        completion::attach(line, Syntax::QuickAdd);
         controls::set_text(line, &self.initial);
         // The cursor after the prefix, so typing carries on from `#Work `.
         let end = self.initial.encode_utf16().count();
         controls::send(line, EM_SETSEL, end, end as isize);
-        self.preview(hwnd);
+        Self::typed(hwnd);
         controls::focus(line);
         unsafe {
             // Opened by the global shortcut, the dialog has to come in front of whatever was.
@@ -94,34 +122,37 @@ impl Dialog for QuickAdd {
     fn command(&self, hwnd: HWND, id: u16, code: u16) -> Option<isize> {
         match i32::from(id) {
             id if id == i32::from(LINE) && u32::from(code) == EN_CHANGE => {
-                self.preview(hwnd);
+                Self::typed(hwnd);
                 None
             }
+            // Adding is the app's: the dialog closes once the task is added.
             id if id == IDOK.0 => {
                 let text = controls::text(dialog::item(hwnd, LINE));
-                if text.trim().is_empty() {
-                    return None;
+                if !text.trim().is_empty() {
+                    app::send(ShellEvent::QuickAdd(text));
                 }
-                match self.lumenna.add_task(&text) {
-                    Ok(change) => {
-                        *self.added.borrow_mut() = Some(change);
-                        Some(1)
-                    }
-                    Err(error) => {
-                        prompts::fail(hwnd, &sentence(&error));
-                        None
-                    }
-                }
+                None
             }
-            id if id == IDCANCEL.0 => Some(0),
+            id if id == IDCANCEL.0 => {
+                self.closed.set(true);
+                app::send(ShellEvent::Typing(Typing::Close));
+                Some(0)
+            }
             _ => None,
         }
     }
 }
 
-/// Asks for a task in quick-add words, starting from `initial`, and adds it.
-pub fn run(owner: Option<HWND>, lumenna: Arc<Lumenna>, initial: &str) -> Option<Change> {
-    let dialog = QuickAdd { lumenna, initial: initial.to_owned(), added: RefCell::new(None) };
-    dialog::run(owner, &dialog);
-    dialog.added.into_inner()
+/// Asks for a task in quick-add words, starting from `initial`, and has the app add it.
+pub fn run(app: &App, owner: Option<HWND>, initial: &str) {
+    app.crux.send(ShellEvent::Typing(Typing::Open));
+    let open = Rc::new(QuickAdd {
+        hwnd: Cell::new(HWND::default()),
+        initial: initial.to_owned(),
+        refused: RefCell::new(None),
+        closed: Cell::new(false),
+    });
+    app.open_quick_add(Some(Rc::clone(&open)));
+    dialog::run(owner, &*open);
+    app.open_quick_add(None);
 }

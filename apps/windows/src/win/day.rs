@@ -29,7 +29,7 @@ use super::app::App;
 use super::controls::{self, rect};
 use super::tree::{Item, Tree};
 use super::view::{Metrics, View};
-use super::{actions, reminders};
+use super::actions;
 use crate::speech;
 
 const PREVIOUS: u16 = 500;
@@ -117,7 +117,7 @@ impl DayView {
     fn act(&self, app: &App, row: &DayItem, action: &Action) {
         match (&action.question, row.kind, action.kind) {
             (Question::Form, DayKind::Sitting, ActionKind::EditTask) => app.open_detail(),
-            (Question::Form, _, ActionKind::Reminders) => reminders::show(app, app.main, action),
+            (Question::Form, _, ActionKind::Reminders) => app.crux.send(ShellEvent::Perform(action.clone())),
             _ => app.crux.send(ShellEvent::Perform(action.clone())),
         }
     }
