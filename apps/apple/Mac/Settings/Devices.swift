@@ -58,13 +58,13 @@ final class DevicesModel: ObservableObject {
         held.flatMap { held in devices.first { $0.device.nodeId == held }?.device }
     }
 
-    /// The device in hand's own action of `kind`, or why it has none, in the core's words.
-    func run(_ kind: LumennaApp.ActionKind, failed: (String) -> Void) {
+    /// The device in hand's own action of `kind`, or the app says why it has none.
+    func run(_ kind: LumennaApp.ActionKind) {
         guard let device = inHand else { return }
         if let action = device.actions.first(where: { $0.kind == kind }) {
             core.app.run(action, on: device.nodeId, side: .devices)
         } else {
-            failed(LumennaApp.notOffered(kind: kind, subject: .device, thisDevice: device.thisDevice))
+            core.app.refuse([kind], on: device.nodeId, side: .devices)
         }
     }
 }
@@ -76,7 +76,6 @@ final class DevicesModel: ObservableObject {
 struct DevicesScreen: View {
     @ObservedObject var model: DevicesModel
     let pair: () -> Void
-    let failed: (String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -103,8 +102,8 @@ struct DevicesScreen: View {
                 Button("Sync Now") { model.core.app.send(.devices(.syncNow)) }
                 Button("Pair a Device…") { pair() }
                 Spacer()
-                Button("Rename…") { model.run(.rename, failed: failed) }
-                Button("Unpair…") { model.run(.unpair, failed: failed) }
+                Button("Rename…") { model.run(.rename) }
+                Button("Unpair…") { model.run(.unpair) }
             }
         }
         .padding(16)
@@ -115,8 +114,8 @@ struct DevicesScreen: View {
     func key(_ key: ListKey) -> Bool {
         guard model.inHand != nil else { return false }
         switch key {
-        case .returnKey: model.run(.rename, failed: failed)
-        case .delete: model.run(.unpair, failed: failed)
+        case .returnKey: model.run(.rename)
+        case .delete: model.run(.unpair)
         case .space: return false
         }
         return true
@@ -156,8 +155,7 @@ final class DevicesViewController: NSViewController {
             pair: { [weak self] in
                 guard let window = self?.view.window else { return }
                 PairingSheet.present(on: window, core: core)
-            },
-            failed: { [weak self] message in self?.view.window?.showFailure(message) }
+            }
         )
     }
 

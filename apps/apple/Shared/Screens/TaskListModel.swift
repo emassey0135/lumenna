@@ -122,7 +122,7 @@ final class TaskListModel: ObservableObject {
         if let action = row.actions.first(where: { kinds.contains($0.kind) }) {
             run(action, on: row)
         } else {
-            Announcer.say(LumennaApp.notOffered(kind: kind, subject: subject, thisDevice: false))
+            core.app.refuse([kind], on: row.id)
         }
     }
 

@@ -1,5 +1,8 @@
 import Foundation
 import LumennaApp
+#if os(iOS)
+import UIKit
+#endif
 
 /// The app itself (crates/app, through crates/ffi and BoltFFI), over this device's store:
 /// what the screens draw, and where they send what the person does.
@@ -39,6 +42,8 @@ final class AppModel {
         app.send(event: .clock(Clock.style == .twelveHour ? .twelveHour : .twentyFourHour))
         // Title Case, as Apple's platforms write buttons and menus.
         app.send(event: .capitals(.title))
+        // What pairing's sentences call this device, which finds others on its network.
+        app.send(event: .pairingAs(called: AppModel.thisDevice, nearby: true))
         #if os(macOS)
         if ProcessInfo.processInfo.environment["LUMENNA_NO_SYNC"] != nil {
             // The UI tests' copy: syncing would listen on the network, and on a fresh machine
@@ -182,6 +187,28 @@ extension AppModel {
             send(.focus(key))
         }
         send(.perform(action))
+    }
+
+    /// A key a row does not offer: the row in hand (or held in `side`), then the app runs the
+    /// first of `kinds` there and says why it has none, in the core's words.
+    func refuse(_ kinds: [LumennaApp.ActionKind], on key: String, side: LumennaApp.Side? = nil) {
+        if let side {
+            send(.hold(field0: side, field1: key))
+        } else {
+            send(.focus(key))
+        }
+        send(.run(kinds))
+    }
+
+    /// How pairing's sentences name this device: "this iPhone", "this Mac".
+    static var thisDevice: String {
+        #if os(iOS)
+        "this \(UIDevice.current.model)"
+        #elseif os(macOS)
+        "this Mac"
+        #else
+        "this watch"
+        #endif
     }
 
     /// A row's speech after its title: its line's detail, whether what is under it is folded

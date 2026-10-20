@@ -130,8 +130,7 @@ struct MacDayScreen: View {
         case .space, .delete:
             let kinds: [LumennaApp.ActionKind] = key == .space ? [.startTimer, .resumeTimer, .pauseTimer] : [.delete, .unassign]
             if !model.run(kinds, on: item) {
-                let subject: LumennaApp.Subject = item.kind == .sitting ? .sitting : .block
-                Announcer.say(LumennaApp.notOffered(kind: key == .space ? .startTimer : .delete, subject: subject, thisDevice: false))
+                model.core.app.refuse(kinds, on: item.key)
             }
         }
         return true

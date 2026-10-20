@@ -306,7 +306,7 @@ final class DayViewController: UIHostingController<DayScreen> {
         if let action = core.app.current.view.day?.actions.first(where: { $0.kind == kind }) {
             core.app.send(.perform(action))
         } else {
-            Announcer.say(LumennaApp.notOffered(kind: kind, subject: .day, thisDevice: false))
+            core.app.refuse([kind], on: "summary")
         }
     }
 }
