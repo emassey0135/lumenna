@@ -94,6 +94,8 @@ pub struct Screen {
     pub style: Option<lumenna_records::proposals::TimeStyle>,
     /// How the shell writes its buttons, headings and questions.
     pub capitals: crate::capitals::Capitals,
+    /// What the shell is called in pairing's sentences, and whether it finds devices nearby.
+    pub pairing_as: Option<(String, bool)>,
     /// Whether the proposal's screen last closed had made anything.
     pub proposal_made: bool,
     /// The task or block whose reminders are listed, while the list is open.
@@ -154,12 +156,19 @@ impl Screen {
         self.store.clone_from(&from.store);
         self.style = from.style;
         self.capitals = from.capitals;
+        self.pairing_as.clone_from(&from.pairing_as);
         self.plan_from.clone_from(&from.plan_from);
         self.due.clone_from(&from.due);
         self.looking = from.looking;
         self.look_next.clone_from(&from.look_next);
         self.syncing = from.syncing;
         self.sync_asked = from.sync_asked;
+    }
+
+    /// Pairing's words, as this shell is called in them.
+    pub(crate) fn pairing_words(&self) -> lumenna_records::PairingWords {
+        let (called, nearby) = self.pairing_as.clone().unwrap_or_else(|| ("this device".to_owned(), true));
+        lumenna_records::pairing_words(called, nearby)
     }
 
     pub(crate) fn place(&self) -> Place {

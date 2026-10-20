@@ -69,6 +69,14 @@ pub enum ShellEvent {
     Clock(TimeStyle),
     /// How this shell writes its buttons, headings and questions.
     Capitals(Capitals),
+    /// What this shell is called in pairing's sentences ("this computer", "this watch"), and
+    /// whether it finds devices on its own network or pairs only by code: for pairing's words.
+    PairingAs {
+        /// What it is called.
+        called: String,
+        /// Whether it finds devices nearby by itself.
+        nearby: bool,
+    },
     /// The moment proposals are made against, `YYYY-MM-DDTHH:MM` local, when the shell's clock
     /// is pinned for tests; none for now.
     PlanFrom(Option<String>),
@@ -105,6 +113,7 @@ impl From<ShellEvent> for Event {
             ShellEvent::Due(event) => Event::Due(event),
             ShellEvent::Clock(style) => Event::Clock(style),
             ShellEvent::Capitals(capitals) => Event::Capitals(capitals),
+            ShellEvent::PairingAs { called, nearby } => Event::PairingAs { called, nearby },
             ShellEvent::PlanFrom(moment) => Event::PlanFrom(moment),
             ShellEvent::QuickAdd(line) => Event::QuickAdd(line),
             ShellEvent::Undo => Event::Undo,
@@ -141,6 +150,7 @@ impl TryFrom<Event> for ShellEvent {
             Event::Due(event) => ShellEvent::Due(event),
             Event::Clock(style) => ShellEvent::Clock(style),
             Event::Capitals(capitals) => ShellEvent::Capitals(capitals),
+            Event::PairingAs { called, nearby } => ShellEvent::PairingAs { called, nearby },
             Event::PlanFrom(moment) => ShellEvent::PlanFrom(moment),
             Event::QuickAdd(line) => ShellEvent::QuickAdd(line),
             Event::Undo => ShellEvent::Undo,

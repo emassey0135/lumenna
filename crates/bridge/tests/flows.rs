@@ -1094,3 +1094,47 @@ fn a_reminder_found_on_one_screen_is_due_on_every_screen_and_dismissed_from_any(
     app.send(Event::Due(lumenna_app::DueEvent::Dismiss(due[0].id.clone())));
     assert!(app.view_on(1).due.is_empty(), "dealt with on one screen, gone from the other");
 }
+
+// MARK: - What the app asks itself
+
+#[test]
+fn put_in_a_block_ends_in_another_day_which_asks_the_day_and_offers_its_blocks() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    let far = jiff::Zoned::now().date().checked_add(jiff::Span::new().days(20)).unwrap().to_string();
+    block(&mut app, "Far off", "10:00", &far, None);
+    app.add("Write the report");
+    app.send(Event::Run(vec![ActionKind::PutInBlock]));
+    let choices = app.view().asking.unwrap().choices.unwrap().choices;
+    let last = choices.last().unwrap();
+    assert_eq!((last.id.as_str(), last.title.as_str()), (lumenna_app::ANOTHER_DAY, "Another Day"));
+    app.send(Event::Answer(Answer::Picked { id: lumenna_app::ANOTHER_DAY.to_owned(), length: None }));
+    let asking = app.view().asking.unwrap();
+    assert!(matches!(asking.question, Question::Text { .. }), "which day: {:?}", asking.question);
+    app.send(Event::Answer(Answer::Text { text: "the twelfth of never".to_owned() }));
+    assert!(app.view().asking.unwrap().refusal.is_some(), "a day it cannot read stays asked, with why");
+    app.send(Event::Answer(Answer::Text { text: far }));
+    let asking = app.view().asking.unwrap();
+    assert!(matches!(asking.question, Question::Pick { .. }), "back to the pick");
+    let titles: Vec<String> = asking.choices.unwrap().choices.into_iter().map(|c| c.title).collect();
+    assert!(titles.iter().any(|t| t == "Far off"), "{titles:?}");
+}
+
+#[test]
+fn a_key_a_side_lists_row_does_not_offer_is_refused_there_in_the_cores_words() {
+    let mut app = App::new();
+    app.send(Event::Hold(lumenna_app::Side::Sidebar, "place:Project(\"Inbox\")".to_owned()));
+    let shell = app.send(Event::Run(vec![ActionKind::Rename]));
+    assert!(said(&shell).iter().any(|s| s.starts_with("The Inbox keeps its name")), "{shell:?}");
+}
+
+#[test]
+fn pairings_words_come_with_the_devices_as_the_shell_is_called_in_them() {
+    let mut app = App::new();
+    app.send(Event::PairingAs { called: "this watch".to_owned(), nearby: true });
+    app.send(Event::Devices(lumenna_app::DevicesEvent::Show));
+    let words = app.view().devices.unwrap().words;
+    assert!(words.waiting.contains("this watch"), "{}", words.waiting);
+    app.send(Event::PairingAs { called: "this browser".to_owned(), nearby: false });
+    assert!(!app.view().devices.unwrap().words.waiting.contains("On this network"), "by code alone");
+}

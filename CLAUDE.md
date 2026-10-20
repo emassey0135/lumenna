@@ -189,6 +189,13 @@ GTK are drawn from it entirely, and Emacs over RPC; only the CLI still calls the
   refused line kept beside why; pairing's code, words and a code typed while waiting; when to
   start syncing; reminders due and their buttons, an overrun's Replan dismissing it once
   something is replanned; and what to say.
+- **What a shell used to ask the core for itself is the app's too.** Put in a Block's pick ends
+  in Another Day, a choice of the app's (`ANOTHER_DAY`): picked, the app asks Go to Day's
+  question, and its answer offers that day's blocks in the same pick. Pairing's words come with
+  the Devices view (`DevicesView::words`), worded as the shell says it is called in them and
+  whether it finds devices nearby (`Event::PairingAs`, sent once like the clock). And `Run`
+  works on a side list's row while the person acts from it, so a key a row does not offer is
+  refused in the core's words by the app on every list.
 - **A list's first row is in hand as soon as it opens**, as in the desktop apps' trees, so the
   details show it.
 - **The view says when focus is the app's to move** (`ViewModel::landing`, a count): it moves

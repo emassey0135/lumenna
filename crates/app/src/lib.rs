@@ -65,7 +65,7 @@ pub use settings::{SaveFile, SettingsEvent, SettingsView};
 pub use due::{Due, DueEvent, Notice};
 pub use network::{DevicesEvent, DevicesView, NetworkAnswer, NetworkRequest, PairEvent};
 pub use view::{Asking, ListView, ViewModel};
-pub use asking::{Open, Purpose};
+pub use asking::{ANOTHER_DAY, Open, Purpose};
 pub use model::{Model, Screen, ScreenId};
 
 /// Something to say, once the shell has moved focus where the view model puts it: said
@@ -225,6 +225,14 @@ pub enum Event {
     Clock(lumenna_records::proposals::TimeStyle),
     /// How this shell writes its buttons, headings and questions.
     Capitals(capitals::Capitals),
+    /// What this shell is called in pairing's sentences ("this computer", "this watch"), and
+    /// whether it finds devices on its own network or pairs only by code: for pairing's words.
+    PairingAs {
+        /// What it is called.
+        called: String,
+        /// Whether it finds devices nearby by itself.
+        nearby: bool,
+    },
     /// The moment the day's proposals are made against, `YYYY-MM-DDTHH:MM` in local time: a
     /// shell whose clock is pinned, for tests. None for now.
     PlanFrom(Option<String>),
@@ -287,7 +295,7 @@ impl Event {
     /// What every screen takes in alike: the store, the clock and the capitals the shell says
     /// things in, the moment proposals are made against.
     fn is_everyones(&self) -> bool {
-        matches!(self, Event::Arrived(_) | Event::Clock(_) | Event::Capitals(_) | Event::PlanFrom(_))
+        matches!(self, Event::Arrived(_) | Event::Clock(_) | Event::Capitals(_) | Event::PairingAs { .. } | Event::PlanFrom(_))
     }
 
     /// Whether the person did it, rather than the store, the network or the shell's own clock.
@@ -303,6 +311,7 @@ impl Event {
                 | Event::Pairing(_)
                 | Event::Clock(_)
                 | Event::Capitals(_)
+                | Event::PairingAs { .. }
                 | Event::PlanFrom(_)
                 | Event::Due(DueEvent::Look { .. })
         )
@@ -397,6 +406,7 @@ impl Lumenna {
             | Event::Pairing(_)
             | Event::Clock(_)
             | Event::Capitals(_)
+            | Event::PairingAs { .. }
             | Event::PlanFrom(_) => {}
             _ => model.acted_at = model.moves,
         }
@@ -476,6 +486,10 @@ impl Lumenna {
             }
             Event::Capitals(capitals) => {
                 model.capitals = capitals;
+                render()
+            }
+            Event::PairingAs { called, nearby } => {
+                model.pairing_as = Some((called, nearby));
                 render()
             }
             Event::QuickAdd(text) => {

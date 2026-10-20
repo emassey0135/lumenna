@@ -34,6 +34,17 @@ pub(crate) fn in_sentence_case(view: &mut ViewModel) {
         if let Some(day) = &mut asking.another_day {
             *day = sentence_case(std::mem::take(day));
         }
+        for choice in asking.choices.iter_mut().flat_map(|c| c.choices.iter_mut()) {
+            if choice.id == crate::asking::ANOTHER_DAY {
+                choice.title = sentence_case(std::mem::take(&mut choice.title));
+            }
+        }
+    }
+    if let Some(devices) = &mut view.devices {
+        let words = &mut devices.words;
+        for word in [&mut words.title, &mut words.wait, &mut words.join, &mut words.match_title, &mut words.match_yes, &mut words.match_no, &mut words.copy_code] {
+            *word = sentence_case(std::mem::take(word));
+        }
     }
     if let Some(proposal) = &mut view.proposal {
         let words = &mut proposal.words;

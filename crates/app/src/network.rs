@@ -8,7 +8,7 @@
 use crux_core::capability::Operation;
 use crux_core::Command;
 use crux_core::render::render;
-use lumenna_records::LumennaError;
+use lumenna_records::{LumennaError, PairingWords};
 use lumenna_records::types::DeviceList;
 use serde::{Deserialize, Serialize};
 
@@ -146,6 +146,8 @@ pub struct PairingView {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DevicesView {
+    /// Every sentence and button of pairing, in the shell's capitals.
+    pub words: PairingWords,
     /// The paired devices.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub list: Option<DeviceList>,
@@ -204,8 +206,8 @@ impl Lumenna {
             model.pairing = Some(Pairing { name, ..Pairing::default() });
             return render();
         }
+        let words = model.pairing_words();
         let Some(pairing) = &mut model.pairing else { return Command::done() };
-        let words = lumenna_records::pairing_words(pairing.name.clone(), false);
         match event {
             PairEvent::Open(_) => Command::done(),
             PairEvent::Name(name) => {
@@ -246,8 +248,8 @@ impl Lumenna {
     }
 
     pub(crate) fn pairing(&self, answer: NetworkAnswer, model: &mut Screen) -> Command<Effect, Event> {
+        let words = model.pairing_words();
         let Some(pairing) = &mut model.pairing else { return Command::done() };
-        let words = lumenna_records::pairing_words(pairing.name.clone(), false);
         match answer {
             NetworkAnswer::Done | NetworkAnswer::Said(_) => Command::done(),
             NetworkAnswer::Code(code) => {

@@ -204,6 +204,7 @@ fn shown(model: &Screen) -> ViewModel {
         proposal_made: model.proposal_made,
         settings: model.settings.as_ref().map(|s| crate::settings::view(s, store.now.date())),
         devices: model.devices.as_ref().map(|d| crate::DevicesView {
+            words: model.pairing_words(),
             list: d.list.clone(),
             status: d.status.clone().unwrap_or_default(),
             syncing: model.syncing,
@@ -236,15 +237,26 @@ fn shown(model: &Screen) -> ViewModel {
         reminders_held: model.reminders_held.view(),
         devices_held: model.devices_held.view(),
         landing: model.landing,
-        asking: model.open.as_ref().map(|open| Asking {
-            action: open.action().cloned(),
-            question: open.question(),
-            choices: open.choices.clone(),
-            refusal: open.refusal.clone(),
-            another_day: (open.picked.is_none() && open.action().is_some_and(|action| action.kind == lumenna_records::ActionKind::PutInBlock))
-                .then(|| "Another Day".to_owned()),
-        }),
+        asking: model.open.as_ref().map(asking),
     }
+}
+
+/// The question open, as shown. Put in a Block's pick ends in Another Day, the app's own choice:
+/// picked, it asks which day, and offers that day's blocks.
+fn asking(open: &crate::Open) -> Asking {
+    let mut choices = open.choices.clone();
+    let picking = matches!(open.purpose, crate::Purpose::Action(_)) && open.picked.is_none();
+    if picking
+        && open.action().is_some_and(|action| action.kind == lumenna_records::ActionKind::PutInBlock)
+        && let Some(choices) = &mut choices
+    {
+        choices.choices.push(lumenna_records::Choice {
+            id: crate::asking::ANOTHER_DAY.to_owned(),
+            title: "Another Day".to_owned(),
+            ..lumenna_records::Choice::default()
+        });
+    }
+    Asking { action: open.action().cloned(), question: open.question(), choices, refusal: open.refusal.clone(), another_day: None }
 }
 
 /// The projects a task's Project field offers: every one not archived, in tree order, and the

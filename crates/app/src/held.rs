@@ -67,6 +67,26 @@ impl Held {
 }
 
 impl Screen {
+    /// The actions of a side list's row in hand, as the view offers them: what a key pressed
+    /// there runs (`Event::Run`).
+    pub(crate) fn side_actions(&self, side: Side) -> Option<Vec<lumenna_records::Action>> {
+        let view = crate::view::view(self);
+        match side {
+            Side::Sidebar => {
+                let key = view.sidebar_held.focus?;
+                view.sidebar.into_iter().find(|entry| entry.key == key).map(|entry| entry.actions)
+            }
+            Side::Reminders => {
+                let id = view.reminders_held.focus?;
+                view.reminders?.reminders.into_iter().find(|reminder| reminder.id == id).map(|reminder| reminder.actions)
+            }
+            Side::Devices => {
+                let id = view.devices_held.focus?;
+                view.devices?.list?.devices.into_iter().find(|device| device.node_id == id).map(|device| device.actions)
+            }
+        }
+    }
+
     pub(crate) fn held_mut(&mut self, side: Side) -> &mut Held {
         match side {
             Side::Sidebar => &mut self.sidebar_held,

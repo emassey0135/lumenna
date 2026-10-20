@@ -25,7 +25,12 @@ pub enum Purpose {
     /// Which occurrences of a repeating block a change is for, before its form opens: the
     /// block, and its day as it is said ("Tomorrow").
     EditWhich(lumenna_records::types::PlanBlock, String),
+    /// Which day's blocks a pick is to offer, its Another Day chosen: the action picking.
+    PickDay(Action),
 }
+
+/// What a pick's Another Day is picked by: Put in a Block's, offering a further day's blocks.
+pub const ANOTHER_DAY: &str = "another-day";
 
 
 /// A question open.
@@ -54,7 +59,7 @@ impl Open {
     /// The action asking, if it is one.
     pub(crate) fn action(&self) -> Option<&Action> {
         match &self.purpose {
-            Purpose::Action(action) => Some(action),
+            Purpose::Action(action) | Purpose::PickDay(action) => Some(action),
             Purpose::GoToDay | Purpose::EditWhich(..) | Purpose::NewFilter(_) => None,
         }
     }
@@ -64,7 +69,7 @@ impl Open {
         match &self.purpose {
             Purpose::Action(_) if self.picked.is_some() => lumenna_records::length_question(),
             Purpose::Action(action) => action.question.clone(),
-            Purpose::GoToDay => lumenna_records::go_to_day_question(),
+            Purpose::GoToDay | Purpose::PickDay(_) => lumenna_records::go_to_day_question(),
             Purpose::NewFilter(name) => {
                 let mut steps = lumenna_records::new_filter_questions();
                 if name.is_some() { steps.swap_remove(1) } else { steps.swap_remove(0) }
@@ -198,6 +203,10 @@ impl Lumenna {
                 let said = choices.announcement.clone();
                 open.refusal = None;
                 open.choices = Some(choices);
+                // Back to the pick, which now offers that day's blocks.
+                if let Purpose::PickDay(action) = &open.purpose {
+                    open.purpose = Purpose::Action(action.clone());
+                }
                 render().and(say(said))
             }
             // A day that does not read stays a question, with why.
@@ -254,6 +263,16 @@ impl Lumenna {
                 } else {
                     self.series_form(&block.series, model)
                 }
+            }
+            // Another day, as a phrase: the pick offers that day's blocks.
+            Purpose::PickDay(_) => {
+                let Answer::Text { text } = answer else { return Command::done() };
+                self.pick_from(&text, model)
+            }
+            Purpose::Action(_) if matches!(&answer, Answer::Picked { id, .. } if id == ANOTHER_DAY) => {
+                open.purpose = Purpose::PickDay(open.action().cloned().expect("an action's pick"));
+                open.refusal = None;
+                render()
             }
             Purpose::Action(action) => {
                 // A pick that asks how long: the length is asked once one is picked, and both
@@ -387,7 +406,9 @@ impl Lumenna {
     }
 
     pub(crate) fn run(&self, kinds: Vec<ActionKind>, model: &mut Screen) -> Command<Effect, Event> {
-        let Some(actions) = model.actions_in_hand() else { return Command::done() };
+        // A side list's row while the person acts from it, else the row in hand.
+        let held = model.acting.and_then(|side| model.side_actions(side));
+        let Some(actions) = held.or_else(|| model.actions_in_hand()) else { return Command::done() };
         let found = kinds.iter().find_map(|kind| actions.iter().find(|a| a.kind == *kind));
         match (found, kinds.first()) {
             (Some(action), _) => self.perform(action.clone(), model),
