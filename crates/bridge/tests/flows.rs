@@ -1178,3 +1178,26 @@ fn a_reminder_without_carry_forward_refuses_it_in_the_cores_words() {
     assert!(said(&shell).iter().any(|s| s.contains("does not apply")), "{shell:?}");
     assert_eq!(app.view().due.len(), 1, "and it stays due");
 }
+
+#[test]
+fn a_days_heading_refuses_an_action_the_day_lacks_as_the_days() {
+    let mut app = App::new();
+    app.send(Event::Open(Place::Today));
+    app.send(Event::Day(DayMove::Previous));
+    app.send(Event::Focus("summary".to_owned()));
+    let shell = app.send(Event::Run(vec![ActionKind::Replan]));
+    assert!(said(&shell).iter().any(|s| s.contains("does not apply")), "{shell:?}");
+}
+
+#[test]
+fn the_details_run_the_task_they_show_and_refuse_what_it_lacks() {
+    let mut app = App::new();
+    app.add("Write the report");
+    let task = app.id_of("Write the report");
+    app.send(Event::Open(Place::Today));
+    app.send(Event::Details(DetailsEvent::Show(task.clone())));
+    let refused = app.send(Event::Details(DetailsEvent::Run(vec![ActionKind::Restore])));
+    assert!(said(&refused).iter().any(|s| s.contains("does not apply") || s.contains("not in the trash")), "{refused:?}");
+    app.send(Event::Details(DetailsEvent::Run(vec![ActionKind::MarkDone])));
+    assert!(app.view().details.unwrap().task.state.iter().any(|s| s == "done" || s == "completed"), "the task shown, done");
+}

@@ -7,7 +7,7 @@
 use crux_core::Command;
 use crux_core::render::render;
 use lumenna_records::types::TaskDetail;
-use lumenna_records::{Choice, FormField, TaskFields};
+use lumenna_records::{ActionKind, Choice, FormField, TaskFields};
 use serde::{Deserialize, Serialize};
 
 use crate::host::HostRequest;
@@ -29,6 +29,9 @@ pub enum DetailsEvent {
     },
     /// Save what changed.
     Save,
+    /// Run the first of these kinds the task shown offers, or say why it has none: a key or a
+    /// menu while the details show a sitting's task, whose row in hand is the sitting.
+    Run(Vec<ActionKind>),
 }
 
 /// Typing not yet saved.
@@ -91,6 +94,10 @@ impl Lumenna {
             DetailsEvent::Show(task) => {
                 model.details.shown = Some(task);
                 render()
+            }
+            DetailsEvent::Run(kinds) => {
+                let Some(task) = model.details_shown() else { return Command::done() };
+                self.run_among(&task.actions, &kinds, lumenna_records::Subject::Task, model)
             }
             DetailsEvent::Field { key, value } => {
                 let Some(task) = model.details_shown() else { return Command::done() };

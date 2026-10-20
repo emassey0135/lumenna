@@ -405,6 +405,15 @@ impl Lumenna {
         render()
     }
 
+    /// The first of `kinds` among `actions` run, or why there is none, said of `subject`.
+    pub(crate) fn run_among(&self, actions: &[Action], kinds: &[ActionKind], subject: Subject, model: &mut Screen) -> Command<Effect, Event> {
+        match (kinds.iter().find_map(|kind| actions.iter().find(|a| a.kind == *kind)), kinds.first()) {
+            (Some(action), _) => self.perform(action.clone(), model),
+            (None, Some(kind)) => say(not_offered(*kind, subject, false)),
+            (None, None) => Command::done(),
+        }
+    }
+
     pub(crate) fn run(&self, kinds: Vec<ActionKind>, model: &mut Screen) -> Command<Effect, Event> {
         // A side list's row while the person acts from it, else the row in hand.
         let held = model.acting.and_then(|side| model.side_actions(side));
@@ -413,7 +422,9 @@ impl Lumenna {
         match (found, kinds.first()) {
             (Some(action), _) => self.perform(action.clone(), model),
             (None, Some(kind)) => {
-                let subject = actions.first().map_or(Subject::Task, |a| a.subject);
+                // The day's heading offers the day's own actions, and says the day of one it lacks.
+                let heading = model.place() == Place::Today && model.focus.as_deref() == Some("summary");
+                let subject = actions.first().map_or(if heading { Subject::Day } else { Subject::Task }, |a| a.subject);
                 let this_device = model.acting == Some(crate::Side::Devices) && model.holds_this_device();
                 say(not_offered(*kind, subject, this_device))
             }
