@@ -1,12 +1,11 @@
-//! Lumenna for Linux: GTK 4 through `gtk4-rs`, linking the command surface directly —
-//! no FFI, no JSON, the same `Lumenna` object the command line calls.
+//! Lumenna for Linux: GTK 4 through `gtk4-rs`, drawing the Crux app (`lumenna-ffi`, linked as
+//! Rust: no FFI, no JSON) as the Windows app draws it.
 //!
 //! **Stock widgets, annotated where GTK under-reports.** Every list is a `GtkListView` that
 //! tells Orca it is a tree, with each row's level, position and expansion (`tree`); forms are
 //! entries, drop-downs and buttons named by their labels; dialogs are GTK's own. What is
-//! decided rather than drawn — how a row is worded, how flat rows become a tree — is
-//! `lumenna-desktop`'s, shared with the Windows app, and what every client shares, such as
-//! which places the sidebar holds or what a task form sends back, is the surface's.
+//! decided rather than drawn — what is in hand, what is folded, the question open, how a row is
+//! worded, how flat rows become a tree — is the app's (`lumenna_app`), as on every platform.
 //!
 //! One instance per profile: GApplication registers the app's identifier on the session bus,
 //! and starting it again activates the running one, which shows its window.

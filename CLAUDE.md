@@ -57,7 +57,7 @@ apps/web/       the web client: the core in WASM (core/), TypeScript and React A
 
 `crates/host` is every operation, once, typed. `Lumenna` holds the open store; its
 methods take text identifiers and plain records and return records (`types.rs`). The CLI
-calls it, `lum rpc` serialises what it returns, the GTK app links it, and the
+calls it, `lum rpc` serialises what it returns, and the
 bridge answers the Crux app's writes with it; `Device` (`crates/ffi`) exports what runs
 without the screens over BoltFFI. No JSON crosses the FFI.
 
@@ -127,9 +127,9 @@ without the screens over BoltFFI. No JSON crosses the FFI.
 ## The app
 
 `crates/app` is the screens as a Crux 0.20 app; `crates/bridge` runs it beside a store. The
-web, the Android phone, Wear OS, BTSpeak, the iPhone, iPad, Mac and Apple Watch, and Windows
-are drawn from it entirely; the GTK app, the CLI and Emacs still call the host directly until
-their turn (the `legacy` tag is the last commit before the move).
+web, the Android phone, Wear OS, BTSpeak, the iPhone, iPad, Mac and Apple Watch, Windows and
+GTK are drawn from it entirely; the CLI and Emacs still call the host directly until their turn
+(the `legacy` tag is the last commit before the move).
 
 - **The app never depends on the host.** It holds the snapshot the host last sent (`Watch`, a
   stream answered at once and on every change) and works out from it, with `lumenna-records`,
