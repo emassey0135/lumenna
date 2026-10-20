@@ -62,9 +62,12 @@ final class DayTests: XCTestCase {
         return Offered(trailing: split.trailing.map(\.title), custom: split.others.map(\.title), menu: split.actions.map(\.title))
     }
 
+    /// Today's Deep work, never under way as the test runs: a block under way offers End Now and
+    /// Add 15 Minutes too (at 09:22 the row's actions were those as well).
     private func block(repeating: String?) throws {
+        let hour = Calendar.current.component(.hour, from: Date())
         _ = try core.app.device.addBlock(block: newBlock(
-            title: "Deep work", at: "09:00", minutes: 60, date: nil, kind: "work", repeat: repeating
+            title: "Deep work", at: (8..<11).contains(hour) ? "15:00" : "09:00", minutes: 60, date: nil, kind: "work", repeat: repeating
         ))
     }
 
