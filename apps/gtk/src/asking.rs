@@ -51,7 +51,8 @@ pub fn update(app: &Rc<App>) {
 
 fn ask(app: &Rc<App>, open: Asking, worded: Vec<String>) {
     let action = open.action.clone();
-    let window: gtk::Window = app.window.clone().upcast();
+    // Asked over the window the question came from: Settings, when it is in front.
+    let window: gtk::Window = crate::settings::in_front().unwrap_or_else(|| app.window.clone().upcast());
     match open.question.clone() {
         Question::Immediate => {}
         Question::Form => {

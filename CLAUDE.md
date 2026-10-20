@@ -1213,8 +1213,8 @@ moved still call `lumenna-host` directly (`Core`), on a connection of their own.
   are taken in order (`window::take`): the screens drawn from the app draw, then what the turn
   says is said. Drawn from it so far: the task list and the Blocks list (`tasks.rs`, one
   list for every listing the app gives), the sidebar (`sidebar.rs`), the day (`day.rs`), the
-  details (`detail.rs`), the block form (`block_form.rs`) and the proposals (`proposal.rs`).
-  The task list's rows, readback, filter
+  details (`detail.rs`), the block form (`block_form.rs`), the proposals (`proposal.rs`), and
+  Settings with the Devices page and pairing (`settings.rs`, `pairing.rs`). The task list's rows, readback, filter
   (put back on returning to a place), row in hand and folding are the app's: a move sends
   `Focus`; Space, Delete, Enter and the Task menu send `Run`; its menu and Left and Right (the
   row's Collapse and Expand, `Tree::connect_fold`, `Item::expanded`) run the row's action. The
@@ -1259,8 +1259,21 @@ moved still call `lumenna-host` directly (`Core`), on a connection of their own.
 - **The clock setting reaches the app's thread as a number** (`clock::Locale::twelve`, kept
   from GSettings' change signal): the app's `Locale` is called off the main thread, where a
   `gio::Settings` cannot go.
-- **The app's network waits** (`in_front(false)`) while `Core`'s sync service keeps the device
-  in sync and serves the socket, until Settings and the Devices page move.
+- **Syncing and the command surface are the app's** (`in_front(true)` for as long as it runs,
+  `serve_commands`): it starts syncing once the device list shows another device, and serves
+  the socket only while it syncs, so an unpaired app holds no endpoint and `lum rpc` answers
+  itself (`test_commands`). Quit takes it out of the front first, which stops serving, then
+  syncing. The automatic backup is the device's (`Device::back_up_if_due`), on a thread.
+- **Settings are the app's** (`view.settings`): each page's controls are made from the core's
+  descriptions once they come, in the page's own order with this app's mnemonics; a toggle or
+  choice is `Settings(Set)` as it changes, a line `Settings(Type)` as it is typed and `Set` when
+  left. A refused line stays as typed beside why, told once in an alert. The Devices page asks
+  `Devices(Show)` as it is shown and draws `view.devices`, its rows' actions held there
+  (`Hold(Side::Devices, …)`). Pairing is a dialog the app opens and closes
+  (`view.devices.pairing`): the words are asked once each time they come, and Cancel while a
+  pairing runs gives it up and then closes. An export's file is chosen first, then the app's
+  `SaveFile` written there; Back Up Now is the device's. What the app says while Settings or
+  pairing is in front is said there.
 
 - **Every list is a `GtkListView` that says it is a tree** (`tree.rs`). `GtkTreeView`
   exposes no rows to AT-SPI in GTK 4, and a list view with `TreeExpander` reports a flat
@@ -1341,8 +1354,6 @@ moved still call `lumenna-host` directly (`Core`), on a connection of their own.
   after its name.
 - **The core words a whole sentence in `Locale::style()`**: the desktop's clock setting,
   else whether the locale's own time says 13:00 as 13.
-- **It serves the command surface while it holds the sync endpoint** (`Core::start_syncing`,
-  the surface's `rpc` feature), and stops serving before it stops syncing.
 - **One instance per profile** through GApplication's bus name, tagged per profile.
   `--no-shortcuts` leaves the shortcuts from anywhere to another copy; the UI tests pass it.
 - **First focus on an expandable row says "expanded" twice**: GTK reports the new

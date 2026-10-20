@@ -1,24 +1,28 @@
-//! Settings: a window of tabs, opened with Ctrl+Comma — General, Planning,
-//! Devices, Backups, and Export and Import, as on the Mac and Windows.
+//! Settings: a window of tabs, opened with Ctrl+Comma — General, Planning, Devices, Backups,
+//! and Export and Import, as on the Mac and Windows. The app's settings
+//! (`ViewModel::settings`) and Devices page (`ViewModel::devices`), drawn.
 //!
-//! Every page applies a change as it is made; a text field when it is left or Enter is
-//! pressed in it. Each page has a status line of its own, announced, for what a change did:
-//! the main window's is behind this one.
+//! Every page applies a change as it is made; a text field when it is left or Enter is pressed
+//! in it. What each setting is called, its control and its options are the core's; what a
+//! field holds while typed, and why a line was refused, are the app's: the line stays as typed
+//! beside why. What the app says while the window is in front is said on the page's own status
+//! line: the main window's is behind this one.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
-use lumenna_desktop::{devices, profile, speech};
-use lumenna_host::actions::{ActionKind, Subject};
-use lumenna_host::{DeviceView, ExportFormat, Imported, Setting, SettingKind};
+use lumenna_app::devices::marked;
+use lumenna_app::{DevicesEvent, Side, SettingsEvent, SettingsView};
+use lumenna_ffi::ShellEvent;
+use lumenna_records::{ActionKind, ExportFormat, Setting, SettingKind, Subject};
 
-use crate::core::sentence;
+use crate::prompts;
+use crate::tree::{Item, Landing, Tree};
 use crate::window::{App, spawn};
-use crate::tree::{Item, Tree};
-use crate::{pairing, prompts};
 
 /// The pages opened directly, by their place in the window (Planning is 1, Backups 3).
 #[derive(Clone, Copy)]
@@ -30,10 +34,22 @@ pub enum Page {
 
 const PAGES: [&str; 5] = ["General", "Planning", "Devices", "Backups", "Export and Import"];
 
-thread_local! {
-    /// The settings window, while it is open: opening it again brings it forward.
-    static OPEN: RefCell<Option<(gtk::Window, Rc<Tabs>)>> = const { RefCell::new(None) };
-}
+/// Each page's settings, in order, with the mnemonic each is marked with: the one thing
+/// about a setting that is this app's.
+const GENERAL: [(&str, char); 1] = [("reminders", 'R')];
+const PLANNING: [(&str, char); 10] = [
+    ("cascade-complete-subtasks", 'C'),
+    ("day-start", 's'),
+    ("day-end", 'e'),
+    ("all-day-reminder-hour", 'A'),
+    ("default-task-reminders", 'R'),
+    ("default-block-reminders", 'b'),
+    ("verbosity", 'm'),
+    ("week-start", 'W'),
+    ("urgency-weights", 'u'),
+    ("task-order", 'k'),
+];
+const BACKUPS: [(&str, char); 2] = [("backup-every", 'A'), ("backup-keep", 'k')];
 
 /// The pages and the row of tabs over them.
 ///
@@ -82,27 +98,102 @@ impl Tabs {
     }
 }
 
+/// A setting's control.
+enum Control {
+    Toggle(gtk::CheckButton),
+    Choice(gtk::DropDown, RefCell<Vec<String>>),
+    Line(gtk::Entry, gtk::Label),
+}
+
+/// The window, while it is open.
+struct Window {
+    window: gtk::Window,
+    tabs: Rc<Tabs>,
+    /// Each page's status line, by its place.
+    statuses: Vec<gtk::Label>,
+    /// Where each page's settings go once the app has said what they are.
+    slots: Vec<gtk::Box>,
+    /// Each setting's control, once made.
+    controls: RefCell<HashMap<String, Control>>,
+    /// Whether the controls are being filled from the app, not changed by the person.
+    filling: Rc<Cell<bool>>,
+    /// The refusal last told for each line, so each is told once.
+    told: RefCell<HashMap<String, String>>,
+    folder: gtk::Entry,
+    devices: Rc<DevicesPage>,
+    /// A file chosen to save the next one the app makes into: an export.
+    saving: RefCell<Option<PathBuf>>,
+}
+
+thread_local! {
+    static OPEN: RefCell<Option<Rc<Window>>> = const { RefCell::new(None) };
+}
+
+fn open() -> Option<Rc<Window>> {
+    OPEN.with_borrow(Clone::clone)
+}
+
+fn send(event: ShellEvent) {
+    if let Some(app) = crate::window::app() {
+        app.model.send(event);
+    }
+}
+
+/// The settings window, when it is in front: where the app's questions are asked from.
+pub fn in_front() -> Option<gtk::Window> {
+    open().map(|open| open.window.clone()).filter(GtkWindowExt::is_active)
+}
+
+/// Says `text` on the page shown, if the window is in front: whether it was.
+pub fn say(text: &str) -> bool {
+    let Some(open) = open().filter(|open| open.window.is_active()) else { return false };
+    if let Some(status) = open.statuses.get(open.tabs.current()) {
+        status.set_label(text);
+        crate::window::announce(status, text);
+    }
+    true
+}
+
+/// A file the app made for the person to keep: an export, saved where they chose.
+pub fn save(app: &App, file: &lumenna_app::SaveFile) {
+    let Some(path) = open().and_then(|open| open.saving.take()) else { return };
+    if let Err(error) = std::fs::write(&path, &file.bytes) {
+        prompts::fail(&app.window, &format!("The export could not be saved. {error}"));
+    }
+}
+
 /// Opens Settings on a page.
 pub fn show(app: &Rc<App>, page: Page) {
-    if let Some((window, tabs)) = OPEN.with(|open| open.borrow().clone()) {
-        tabs.go(page as usize, false);
-        window.present();
+    if let Some(open) = open() {
+        open.tabs.go(page as usize, false);
+        open.window.present();
         return;
     }
     let stack = gtk::Stack::new();
-    let pages: [gtk::Widget; 5] = [general(app), planning(app), devices_page(app), backups(app), export(app)];
-    for (title, page) in PAGES.iter().zip(pages) {
-        stack.add_titled(&page, Some(title), title);
+    let mut statuses = Vec::new();
+    let mut slots = Vec::new();
+    let pages = [general(app), planning(), devices_page(), backups(app), export(app)];
+    let mut folder = None;
+    let mut devices = None;
+    for (title, built) in PAGES.iter().zip(pages) {
+        stack.add_titled(&built.widget, Some(title), title);
+        statuses.push(built.status);
+        slots.push(built.slot);
+        folder = folder.or(built.folder);
+        devices = devices.or(built.devices);
     }
     let switcher = gtk::StackSwitcher::builder().stack(&stack).halign(gtk::Align::Center).margin_top(6).build();
     let tabs = Rc::new(Tabs { stack: stack.clone(), switcher: switcher.clone() });
     tabs.go(page as usize, false);
     {
-        // A click on a tab opens its page too.
+        // A click on a tab opens its page too; the Devices page asks the app to list them.
         let tabs = Rc::downgrade(&tabs);
-        stack.connect_visible_child_name_notify(move |_| {
+        stack.connect_visible_child_name_notify(move |stack| {
             if let Some(tabs) = tabs.upgrade() {
                 tabs.settle();
+            }
+            if stack.visible_child_name().as_deref() == Some(PAGES[Page::Devices as usize]) {
+                send(ShellEvent::Devices(DevicesEvent::Show));
             }
         });
     }
@@ -167,10 +258,27 @@ pub fn show(app: &Rc<App>, page: Page) {
     }
     window.add_controller(keys);
     window.connect_close_request(|_| {
-        OPEN.with(|open| open.borrow_mut().take());
+        OPEN.set(None);
+        send(ShellEvent::Settings(SettingsEvent::Close));
         glib::Propagation::Proceed
     });
-    OPEN.with(|open| *open.borrow_mut() = Some((window.clone(), Rc::clone(&tabs))));
+    let open = Rc::new(Window {
+        window: window.clone(),
+        tabs: Rc::clone(&tabs),
+        statuses,
+        slots,
+        controls: RefCell::new(HashMap::new()),
+        filling: Rc::new(Cell::new(false)),
+        told: RefCell::new(HashMap::new()),
+        folder: folder.unwrap_or_default(),
+        devices: devices.unwrap_or_else(|| Rc::new(DevicesPage::empty())),
+        saving: RefCell::new(None),
+    });
+    OPEN.set(Some(open));
+    app.model.send(ShellEvent::Settings(SettingsEvent::Open));
+    if matches!(page, Page::Devices) {
+        app.model.send(ShellEvent::Devices(DevicesEvent::Show));
+    }
     window.present();
     // Opening on the tab says where Settings opened.
     let tabs = Rc::downgrade(&tabs);
@@ -183,118 +291,195 @@ pub fn show(app: &Rc<App>, page: Page) {
     });
 }
 
-// ---------------------------------------------------------------------------------------
-// What every page shares
-// ---------------------------------------------------------------------------------------
-
-/// A page: its controls, then a footer if it has one, and its status line at the bottom.
-struct PageBox {
-    body: gtk::Box,
-    status: gtk::Label,
-}
-
-impl PageBox {
-    fn new() -> Self {
-        let body = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .spacing(6)
-            .margin_top(12)
-            .margin_bottom(12)
-            .margin_start(12)
-            .margin_end(12)
-            .build();
-        let status = gtk::Label::builder().wrap(true).xalign(0.0).vexpand(true).valign(gtk::Align::End).build();
-        Self { body, status }
+/// Draws what the app says of the settings and devices, while the window is open.
+pub fn draw(app: &App) {
+    let Some(open) = open() else { return };
+    let view = app.model.view();
+    if let Some(settings) = view.settings.as_ref().filter(|settings| !settings.settings.is_empty()) {
+        open.fill(app, settings);
     }
-
-    fn add(&self, widget: &impl IsA<gtk::Widget>) {
-        self.body.append(widget);
-    }
-
-    /// A field with its label above it, whose mnemonic names it.
-    fn field(&self, label: &str, widget: &impl IsA<gtk::Widget>) {
-        let label = gtk::Label::builder().label(label).use_underline(true).xalign(0.0).margin_top(6).build();
-        label.set_mnemonic_widget(Some(widget));
-        self.add(&label);
-        self.add(widget);
-    }
-
-    fn footer(&self, text: &str) {
-        self.add(&gtk::Label::builder().label(text).wrap(true).xalign(0.0).margin_top(12).build());
-    }
-
-    fn finish(self) -> (gtk::Widget, Status) {
-        self.body.append(&self.status);
-        let scrolled = gtk::ScrolledWindow::builder().child(&self.body).hscrollbar_policy(gtk::PolicyType::Never).build();
-        (scrolled.upcast(), Status(self.status))
+    if let Some(devices) = &view.devices {
+        open.devices.draw(app, devices, &view.devices_held);
+        crate::pairing::draw(app, devices.pairing.as_ref(), &open.window);
+    } else {
+        crate::pairing::draw(app, None, &open.window);
     }
 }
 
-/// A page's status line.
-#[derive(Clone)]
-struct Status(gtk::Label);
-
-impl Status {
-    fn say(&self, text: &str) {
-        let text = speech::sentence(text);
-        self.0.set_label(&text);
-        crate::window::announce(&self.0, &text);
+impl Window {
+    /// Makes each page's controls the first time the app says what the settings are, then
+    /// shows what each holds — except a line focus is in, which holds the newest.
+    fn fill(&self, app: &App, view: &SettingsView) {
+        let find = |key: &str| view.settings.iter().find(|shown| shown.setting.key == key);
+        if self.controls.borrow().is_empty() {
+            for (page, keys) in [(0, &GENERAL[..]), (1, &PLANNING[..]), (3, &BACKUPS[..])] {
+                for (key, mnemonic) in keys {
+                    if let Some(shown) = find(key) {
+                        let control = make(&self.slots[page], &shown.setting, *mnemonic, &self.filling);
+                        self.controls.borrow_mut().insert((*key).to_owned(), control);
+                    }
+                }
+            }
+        }
+        self.filling.set(true);
+        for (key, control) in self.controls.borrow().iter() {
+            let Some(shown) = find(key) else { continue };
+            match control {
+                Control::Toggle(check) => {
+                    if check.is_active() != (shown.typed == "true") {
+                        check.set_active(shown.typed == "true");
+                    }
+                }
+                Control::Choice(dropdown, values) => {
+                    // A value set elsewhere — `lum config set backup-every 3d` — is shown as it is.
+                    let mut known = values.borrow_mut();
+                    if !shown.typed.is_empty() && !known.contains(&shown.typed) {
+                        known.push(shown.typed.clone());
+                        if let Some(list) = dropdown.model().and_downcast::<gtk::StringList>() {
+                            list.append(&shown.typed);
+                        }
+                    }
+                    if let Some(position) = known.iter().position(|value| *value == shown.typed)
+                        && dropdown.selected() != position as u32
+                    {
+                        dropdown.set_selected(position as u32);
+                    }
+                }
+                Control::Line(entry, problem) => {
+                    // A time is shown in this desktop's clock until it is typed over.
+                    let text = if shown.setting.kind == SettingKind::Time && shown.typed == shown.setting.value && !shown.typed.is_empty() {
+                        lumenna_app::speech::Clock::time(&app.clock, &shown.typed)
+                    } else {
+                        shown.typed.clone()
+                    };
+                    let typing = entry.root().and_then(|root| root.focus()).is_some_and(|focus| focus.is_ancestor(entry));
+                    if entry.text() != text && !typing {
+                        entry.set_text(&text);
+                    }
+                    problem.set_label(shown.problem.as_deref().unwrap_or_default());
+                    problem.set_visible(shown.problem.is_some());
+                    // A line refused is told once, and stays as typed beside why.
+                    let told = self.told.borrow().get(key).cloned();
+                    match &shown.problem {
+                        Some(why) if told.as_ref() != Some(why) => {
+                            self.told.borrow_mut().insert(key.clone(), why.clone());
+                            prompts::fail(&self.window, why);
+                        }
+                        Some(_) => {}
+                        None => {
+                            self.told.borrow_mut().remove(key);
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(folder) = find("backup-dir")
+            && self.folder.text() != folder.typed
+        {
+            self.folder.set_text(&folder.typed);
+        }
+        self.filling.set(false);
     }
 }
 
-/// A setting as the core describes it: its name, its control, what it can be.
-fn setting(app: &App, key: &str) -> Setting {
-    app.core
-        .lumenna
-        .settings(Some(key.to_owned()))
-        .ok()
-        .and_then(|listing| listing.settings.into_iter().find(|s| s.key == key))
-        .unwrap_or_else(|| Setting {
-            key: key.to_owned(),
-            value: String::new(),
-            title: key.to_owned(),
-            kind: SettingKind::default(),
-            options: Vec::new(),
-            syncs: false,
-            hint: String::new(),
-        })
-}
-
-fn value(app: &App, key: &str) -> String {
-    setting(app, key).value
-}
-
-/// A setting's value as its field shows it: a time of day in this desktop's clock.
-fn shown(app: &App, key: &str) -> String {
-    let setting = setting(app, key);
+/// A setting's control, by its kind, with its name above it — `mnemonic` marked in it — and
+/// its hint as its description, put in `slot`.
+fn make(slot: &gtk::Box, setting: &Setting, mnemonic: char, filling: &Rc<Cell<bool>>) -> Control {
+    let label = marked(&setting.title, mnemonic, '_');
+    let key = setting.key.clone();
+    let field = |widget: &gtk::Widget| {
+        let named = gtk::Label::builder().label(&label).use_underline(true).xalign(0.0).margin_top(6).build();
+        named.set_mnemonic_widget(Some(widget));
+        slot.append(&named);
+        slot.append(widget);
+    };
     match setting.kind {
-        SettingKind::Time if !setting.value.is_empty() => speech::Clock::time(&app.clock, &setting.value),
-        _ => setting.value,
-    }
-}
-
-/// A setting's control, by its kind, with its name above it — `mnemonic` marked in it, the
-/// one thing about it that is this app's — and its hint as its description. A folder is
-/// not here: it is a row with a button of its own.
-fn setting_field(app: &Rc<App>, page: &PageBox, status: &Status, key: &'static str, mnemonic: char) {
-    let shown = setting(app, key);
-    let label = devices::marked(&shown.title, mnemonic, '_');
-    match shown.kind {
         SettingKind::Toggle => {
             let check = prompts::check(&label);
-            check.set_active(shown.value == "true");
-            describe(&check, &shown.hint);
-            page.add(&check);
-            let (app, status) = (Rc::downgrade(app), status.clone());
+            describe(&check, &setting.hint);
+            slot.append(&check);
+            let filling = Rc::clone(filling);
             check.connect_toggled(move |check| {
-                if let Some(app) = app.upgrade() {
-                    set(&app, &status, key, if check.is_active() { "true" } else { "false" });
+                if !filling.get() {
+                    send(ShellEvent::Settings(SettingsEvent::Set { key: key.clone(), value: check.is_active().to_string() }));
                 }
             });
+            Control::Toggle(check)
         }
-        SettingKind::Choice => page.field(&label, &setting_choice(app, status, &shown)),
+        SettingKind::Choice => {
+            let titles: Vec<&str> = setting.options.iter().map(|option| option.title.as_str()).collect();
+            let dropdown = gtk::DropDown::from_strings(&titles);
+            describe(&dropdown, &setting.hint);
+            field(dropdown.upcast_ref());
+            let values = RefCell::new(setting.options.iter().map(|option| option.id.clone()).collect::<Vec<_>>());
+            let control = Control::Choice(dropdown.clone(), values);
+            let filling = Rc::clone(filling);
+            dropdown.connect_selected_notify(move |dropdown| {
+                if filling.get() {
+                    return;
+                }
+                let value = dropdown
+                    .model()
+                    .and_downcast::<gtk::StringList>()
+                    .and_then(|_| open())
+                    .and_then(|open| match open.controls.borrow().get(&key) {
+                        Some(Control::Choice(_, values)) => values.borrow().get(dropdown.selected() as usize).cloned(),
+                        _ => None,
+                    });
+                if let Some(value) = value {
+                    send(ShellEvent::Settings(SettingsEvent::Set { key: key.clone(), value }));
+                }
+            });
+            control
+        }
         SettingKind::Time | SettingKind::Number | SettingKind::Folder | SettingKind::Line => {
-            page.field(&label, &setting_entry(app, status, key, &shown.hint));
+            let entry = gtk::Entry::new();
+            describe(&entry, &setting.hint);
+            field(entry.upcast_ref());
+            let problem = gtk::Label::builder().wrap(true).xalign(0.0).visible(false).build();
+            slot.append(&problem);
+            entry.update_relation(&[gtk::accessible::Relation::DescribedBy(&[problem.upcast_ref()])]);
+            {
+                // Typed, the line is the app's to keep until it is applied.
+                let (filling, key) = (Rc::clone(filling), key.clone());
+                entry.connect_changed(move |entry| {
+                    if !filling.get() {
+                        send(ShellEvent::Settings(SettingsEvent::Type { key: key.clone(), value: entry.text().to_string() }));
+                    }
+                });
+            }
+            // Applied when it is left or Enter is pressed in it, if it changed.
+            let commit = {
+                let key = key.clone();
+                move |entry: &gtk::Entry| {
+                    let Some(app) = crate::window::app() else { return };
+                    let typed = entry.text().trim().to_owned();
+                    let now = app
+                        .model
+                        .view()
+                        .settings
+                        .as_ref()
+                        .and_then(|settings| settings.settings.iter().find(|shown| shown.setting.key == key).map(|shown| shown.setting.clone()));
+                    let Some(now) = now else { return };
+                    let shown = if now.kind == SettingKind::Time && !now.value.is_empty() {
+                        lumenna_app::speech::Clock::time(&app.clock, &now.value)
+                    } else {
+                        now.value.clone()
+                    };
+                    if typed != shown && typed != now.value {
+                        app.model.send(ShellEvent::Settings(SettingsEvent::Set { key: key.clone(), value: typed }));
+                    }
+                }
+            };
+            let leave = gtk::EventControllerFocus::new();
+            {
+                let entry = entry.clone();
+                let commit = commit.clone();
+                leave.connect_leave(move |_| commit(&entry));
+            }
+            entry.add_controller(leave);
+            entry.connect_activate(commit);
+            Control::Line(entry, problem)
         }
     }
 }
@@ -310,107 +495,103 @@ fn window_of(widget: &impl IsA<gtk::Widget>, app: &App) -> gtk::Window {
     widget.root().and_downcast::<gtk::Window>().unwrap_or_else(|| app.window.clone().upcast())
 }
 
-/// Changes a setting and says so; on a failure says why and returns false.
-fn set(app: &App, status: &Status, key: &str, to: &str) -> bool {
-    match app.core.lumenna.set_setting(key, to) {
-        Ok(change) => {
-            status.say(&speech::announcement(&change.announcement, &change.notices));
-            app.store_changed();
-            true
-        }
-        Err(error) => {
-            prompts::fail(&window_of(&status.0, app), &sentence(&error));
-            false
-        }
+// ---------------------------------------------------------------------------------------
+// What every page shares
+// ---------------------------------------------------------------------------------------
+
+/// A page: its controls (some in a slot filled once the app says what the settings are), a
+/// footer if it has one, and its status line at the bottom.
+struct Built {
+    widget: gtk::Widget,
+    status: gtk::Label,
+    slot: gtk::Box,
+    folder: Option<gtk::Entry>,
+    devices: Option<Rc<DevicesPage>>,
+}
+
+struct PageBox {
+    body: gtk::Box,
+    slot: gtk::Box,
+    status: gtk::Label,
+}
+
+impl PageBox {
+    fn new() -> Self {
+        let body = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(6)
+            .margin_top(12)
+            .margin_bottom(12)
+            .margin_start(12)
+            .margin_end(12)
+            .build();
+        let slot = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).build();
+        let status = gtk::Label::builder().wrap(true).xalign(0.0).vexpand(true).valign(gtk::Align::End).build();
+        Self { body, slot, status }
+    }
+
+    fn add(&self, widget: &impl IsA<gtk::Widget>) {
+        self.body.append(widget);
+    }
+
+    /// Where the settings go, here among the rest.
+    fn settings(&self) {
+        self.body.append(&self.slot);
+    }
+
+    /// A field with its label above it, whose mnemonic names it.
+    fn field(&self, label: &str, widget: &impl IsA<gtk::Widget>) {
+        let label = gtk::Label::builder().label(label).use_underline(true).xalign(0.0).margin_top(6).build();
+        label.set_mnemonic_widget(Some(widget));
+        self.add(&label);
+        self.add(widget);
+    }
+
+    fn footer(&self, text: &str) {
+        self.add(&gtk::Label::builder().label(text).wrap(true).xalign(0.0).margin_top(12).build());
+    }
+
+    fn finish(self) -> Built {
+        self.body.append(&self.status);
+        let scrolled = gtk::ScrolledWindow::builder().child(&self.body).hscrollbar_policy(gtk::PolicyType::Never).build();
+        Built { widget: scrolled.upcast(), status: self.status, slot: self.slot, folder: None, devices: None }
     }
 }
 
-/// A text field for a setting, written when it is left or Enter is pressed in it — if it
-/// changed, and put back if what was typed does not read.
-fn setting_entry(app: &Rc<App>, status: &Status, key: &'static str, description: &str) -> gtk::Entry {
-    let entry = gtk::Entry::builder().text(shown(app, key)).build();
-    describe(&entry, description);
-    let commit = {
-        let (app, status) = (Rc::downgrade(app), status.clone());
-        move |entry: &gtk::Entry| {
-            let Some(app) = app.upgrade() else { return };
-            let typed = entry.text().trim().to_owned();
-            let was = shown(&app, key);
-            if typed != was {
-                if set(&app, &status, key, &typed) {
-                    // As read: "8am" becomes the clock's "8:00 AM".
-                    entry.set_text(&shown(&app, key));
-                } else {
-                    entry.set_text(&was);
-                }
-            }
-        }
-    };
-    let leave = gtk::EventControllerFocus::new();
-    {
-        let entry = entry.clone();
-        let commit = commit.clone();
-        leave.connect_leave(move |_| commit(&entry));
-    }
-    entry.add_controller(leave);
-    entry.connect_activate(commit);
-    entry
-}
-
-/// A drop-down of a setting's options: their names shown, their values written.
-fn setting_choice(app: &Rc<App>, status: &Status, shown: &Setting) -> gtk::DropDown {
-    let key = shown.key.clone();
-    let current = shown.value.clone();
-    let mut choices: Vec<(String, String)> = shown.options.iter().map(|o| (o.title.clone(), o.id.clone())).collect();
-    // A value set elsewhere — `lum config set backup-every 3d` — is shown as it is.
-    if !current.is_empty() && !choices.iter().any(|(_, v)| *v == current) {
-        choices.push((current.clone(), current.clone()));
-    }
-    let labels: Vec<&str> = choices.iter().map(|(l, _)| l.as_str()).collect();
-    let dropdown = gtk::DropDown::from_strings(&labels);
-    describe(&dropdown, &shown.hint);
-    if let Some(position) = choices.iter().position(|(_, v)| *v == current) {
-        dropdown.set_selected(position as u32);
-    }
-    let (app, status) = (Rc::downgrade(app), status.clone());
-    dropdown.connect_selected_notify(move |dropdown| {
-        let Some(app) = app.upgrade() else { return };
-        if let Some((_, to)) = choices.get(dropdown.selected() as usize)
-            && *to != value(&app, &key)
-        {
-            set(&app, &status, &key, to);
-        }
-    });
-    dropdown
+/// Says something on a page's status line: what the shell does itself, not the app.
+fn tell(status: &gtk::Label, text: &str) {
+    status.set_label(text);
+    crate::window::announce(status, text);
 }
 
 // ---------------------------------------------------------------------------------------
 // General: this computer's own
 // ---------------------------------------------------------------------------------------
 
-fn general(app: &Rc<App>) -> gtk::Widget {
+fn general(app: &Rc<App>) -> Built {
     let page = PageBox::new();
     let at_sign_in = prompts::check("_Open Lumenna when you sign in, in the background");
     at_sign_in.set_active(autostart_file(app).is_some_and(|file| file.exists()));
     page.add(&at_sign_in);
-    setting_field(app, &page, &Status(page.status.clone()), "reminders", 'R');
+    page.settings();
     page.footer(
         "Lumenna keeps running after its window is closed, so it syncs and reminds you. Start it again, from the menu or with lumenna-gtk, to bring the window back. These settings are this computer's alone.",
     );
-    let (widget, status) = page.finish();
+    let built = page.finish();
+    let status = built.status.clone();
     let app = Rc::downgrade(app);
     at_sign_in.connect_toggled(move |check| {
         let Some(app) = app.upgrade() else { return };
         match set_autostart(&app, check.is_active()) {
-            Ok(()) if check.is_active() => status.say("Lumenna opens when you sign in"),
-            Ok(()) => status.say("Lumenna no longer opens when you sign in"),
+            Ok(()) if check.is_active() => tell(&status, "Lumenna opens when you sign in"),
+            Ok(()) => tell(&status, "Lumenna no longer opens when you sign in"),
             Err(error) => {
                 prompts::fail(&window_of(check, &app), &format!("That could not be changed. {error}"));
                 check.set_active(!check.is_active());
             }
         }
     });
-    widget
+    built
 }
 
 /// Where the sign-in entry for this profile goes: the XDG autostart directory, named after
@@ -429,10 +610,9 @@ fn set_autostart(app: &App, on: bool) -> std::io::Result<()> {
         };
     }
     let program = std::env::current_exe()?;
-    let directory = PathBuf::from(app.core.lumenna.directory());
     let mut exec = format!("{} --background", quoted(&program));
-    if profile::default_directory().as_deref() != Some(directory.as_path()) {
-        exec.push_str(&format!(" --profile {}", quoted(&directory)));
+    if lumenna_ffi::profile::default_directory().as_deref() != Some(app.directory.as_path()) {
+        exec.push_str(&format!(" --profile {}", quoted(&app.directory)));
     }
     if let Some(parent) = file.parent() {
         std::fs::create_dir_all(parent)?;
@@ -459,96 +639,90 @@ fn quoted(path: &Path) -> String {
 // Planning: the store's, synced to every device
 // ---------------------------------------------------------------------------------------
 
-fn planning(app: &Rc<App>) -> gtk::Widget {
+fn planning() -> Built {
     let page = PageBox::new();
-    let status = Status(page.status.clone());
-    setting_field(app, &page, &status, "cascade-complete-subtasks", 'C');
-    setting_field(app, &page, &status, "day-start", 's');
-    setting_field(app, &page, &status, "day-end", 'e');
-    setting_field(app, &page, &status, "all-day-reminder-hour", 'A');
-    setting_field(app, &page, &status, "default-task-reminders", 'R');
-    setting_field(app, &page, &status, "default-block-reminders", 'b');
-    setting_field(app, &page, &status, "verbosity", 'm');
-    setting_field(app, &page, &status, "week-start", 'W');
-    setting_field(app, &page, &status, "urgency-weights", 'u');
-    setting_field(app, &page, &status, "task-order", 'k');
+    page.settings();
     page.footer("These sync to all your devices.");
-    page.finish().0
+    page.finish()
 }
 
 // ---------------------------------------------------------------------------------------
 // Devices: sync status, pairing, renaming, unpairing
 // ---------------------------------------------------------------------------------------
 
-pub struct Devices {
+struct DevicesPage {
     sync_status: gtk::Entry,
     label: gtk::Label,
     list: Rc<Tree>,
-    devices: RefCell<Vec<DeviceView>>,
-    status: Status,
+    devices: RefCell<Vec<lumenna_records::DeviceView>>,
+    landing: Landing,
 }
 
-impl Devices {
-    fn load(&self, app: &App) {
-        match app.core.lumenna.sync_status() {
-            Ok(status) => {
-                let text = speech::sentence(&speech::announcement(&status.announcement, &status.notices));
-                self.sync_status.set_text(&text);
-                let key = self.list.selected().and_then(|index| self.list.key(index));
-                let near = self.list.selected().or(Some(0));
-                let now = jiff::Timestamp::now();
-                let items = status
-                    .devices
-                    .iter()
-                    .map(|device| Item { key: device.node_id.clone(), text: devices::line(device, now), depth: 0, ..Default::default() })
-                    .collect();
-                // An empty list is no use to reach: the sync status already says there is
-                // nothing paired.
-                self.label.set_visible(!status.devices.is_empty());
-                self.list.widget.set_visible(!status.devices.is_empty());
-                *self.devices.borrow_mut() = status.devices;
-                if self.list.set(items) {
-                    self.list.select_key_or_near(key.as_deref(), near);
-                }
-            }
-            Err(error) => self.sync_status.set_text(&sentence(&error)),
+impl DevicesPage {
+    fn empty() -> Self {
+        Self {
+            sync_status: prompts::read_only_text(),
+            label: gtk::Label::new(None),
+            list: Tree::new("Paired devices"),
+            devices: RefCell::new(Vec::new()),
+            landing: Landing::default(),
         }
     }
 
-    fn chosen(&self) -> Option<DeviceView> {
-        let index = self.list.selected()?;
-        self.devices.borrow().get(index).cloned()
+    fn draw(&self, app: &App, view: &lumenna_app::DevicesView, held: &lumenna_app::HeldView) {
+        if self.sync_status.text() != view.status {
+            self.sync_status.set_text(&view.status);
+        }
+        let devices = view.list.as_ref().map(|list| list.devices.clone()).unwrap_or_default();
+        let lines = app.model.lines();
+        let items = devices
+            .iter()
+            .enumerate()
+            .map(|(at, device)| Item {
+                key: device.node_id.clone(),
+                text: lines.devices.get(at).map_or_else(|| device.name.clone(), |line| line.text.clone()),
+                ..Default::default()
+            })
+            .collect();
+        // An empty list is no use to reach: the sync status already says nothing is paired.
+        self.label.set_visible(!devices.is_empty());
+        self.list.widget.set_visible(!devices.is_empty());
+        *self.devices.borrow_mut() = devices;
+        let rebuilt = self.list.set(items);
+        if let Some(window) = self.list.view.root().and_downcast::<gtk::Window>() {
+            self.landing.land(&self.list, &window, held.focus.as_deref(), held.landing, rebuilt);
+        }
     }
 
-    /// Runs the chosen device's action of one of `kinds`, asked over this window and said on
-    /// this page. A device the core offers no such action for (Unpair on this one) has none.
-    fn act(&self, app: &Rc<App>, kinds: &[ActionKind]) {
-        let Some(device) = self.chosen() else { return };
-        let Some(action) = crate::actions::find(&device.actions, kinds) else {
-            let why = lumenna_host::actions::not_offered(kinds[0], Subject::Device, device.this_device);
-            return self.status.say(&why);
-        };
-        let status = self.status.clone();
-        let from = crate::actions::Asking {
-            window: window_of(&self.list.view, app),
-            say: Some(Rc::new(move |text: &str| status.say(text))),
-        };
-        let after: crate::actions::After = Rc::new(|app, _, _| devices_heard(app, None));
-        crate::actions::run_from(app, action.clone(), Some(after), from);
+    /// Runs the chosen device's action of `kind`, held there so what it changes lands there. A
+    /// device the core offers no such action for (Unpair on this one) says why.
+    fn act(&self, app: &App, kind: ActionKind) {
+        let Some(device) = self.list.selected().and_then(|index| self.devices.borrow().get(index).cloned()) else { return };
+        match device.actions.iter().find(|action| action.kind == kind) {
+            Some(action) => {
+                app.model.send(ShellEvent::Hold(Side::Devices, device.node_id.clone()));
+                app.model.send(ShellEvent::Perform(action.clone()));
+            }
+            None => {
+                say(&lumenna_records::not_offered(kind, Subject::Device, device.this_device));
+            }
+        }
     }
 }
 
-fn devices_page(app: &Rc<App>) -> gtk::Widget {
+fn devices_page() -> Built {
     let page = PageBox::new();
-    let sync_status = prompts::read_only_text();
-    page.field("S_ync status", &sync_status);
-    let list = Tree::new("Paired devices");
-    list.fit(160);
-    list.view.update_property(&[gtk::accessible::Property::Description("Delete unpairs the selected device.")]);
-    let label = gtk::Label::builder().label("Paired _devices").use_underline(true).xalign(0.0).margin_top(6).build();
-    label.set_mnemonic_widget(Some(&list.view));
-    page.add(&label);
-    page.add(&list.widget);
+    let devices = Rc::new(DevicesPage::empty());
+    page.field("S_ync status", &devices.sync_status);
+    devices.list.fit(160);
+    devices.list.view.update_property(&[gtk::accessible::Property::Description("Delete unpairs the selected device.")]);
+    devices.label.set_label("Paired _devices");
+    devices.label.set_use_underline(true);
+    devices.label.set_xalign(0.0);
+    devices.label.set_margin_top(6);
+    devices.label.set_mnemonic_widget(Some(&devices.list.view));
+    page.add(&devices.label);
+    page.add(&devices.list.widget);
     let buttons = gtk::Box::builder().spacing(6).margin_top(6).build();
     let sync_now = gtk::Button::with_mnemonic("Sync _Now");
     let pair = gtk::Button::with_mnemonic("_Pair a Device…");
@@ -558,92 +732,60 @@ fn devices_page(app: &Rc<App>) -> gtk::Widget {
         buttons.append(button);
     }
     page.add(&buttons);
-    let (widget, status) = page.finish();
-    let devices = Rc::new(Devices {
-        sync_status,
-        label,
-        list: Rc::clone(&list),
-        devices: RefCell::new(Vec::new()),
-        status: status.clone(),
+    sync_now.connect_clicked(|_| send(ShellEvent::Devices(DevicesEvent::SyncNow)));
+    pair.connect_clicked(|_| {
+        let name = glib::host_name().to_string();
+        send(ShellEvent::Devices(DevicesEvent::Pair(lumenna_app::PairEvent::Open(name))));
     });
-    devices.load(app);
-    *app.devices_page.borrow_mut() = Some(Rc::downgrade(&devices));
-
-    {
-        let status = status.clone();
-        let app = Rc::downgrade(app);
-        sync_now.connect_clicked(move |_| {
-            if let Some(app) = app.upgrade() {
-                status.say("Syncing");
-                // The round's result is said by the app, which tells this page too.
-                app.core.sync_now();
-            }
-        });
-    }
-    {
-        let (devices, app) = (Rc::clone(&devices), Rc::downgrade(app));
-        pair.connect_clicked(move |button| {
-            let Some(app) = app.upgrade() else { return };
-            let (devices, window) = (Rc::clone(&devices), window_of(button, &app));
-            spawn(async move {
-                if let Some(said) = pairing::run(&window, app.core.lumenna.clone()).await {
-                    devices.load(&app);
-                    app.store_changed();
-                    devices.status.say(&said);
-                }
-            });
-        });
-    }
     for (button, kind) in [(&rename, ActionKind::Rename), (&unpair, ActionKind::Unpair)] {
-        let (devices, app) = (Rc::downgrade(&devices), Rc::downgrade(app));
+        let devices = Rc::downgrade(&devices);
         button.connect_clicked(move |_| {
-            if let (Some(app), Some(devices)) = (app.upgrade(), devices.upgrade()) {
-                devices.act(&app, &[kind]);
+            if let (Some(app), Some(devices)) = (crate::window::app(), devices.upgrade()) {
+                devices.act(&app, kind);
             }
         });
     }
-    // Delete in the list unpairs, as it removes in every other list.
     {
-        let (devices, app) = (Rc::downgrade(&devices), Rc::downgrade(app));
-        list.connect_key(move |key, modifiers, _| {
+        // The person's moves in the list are the app's to know, so a change lands back here.
+        let weak = Rc::downgrade(&devices);
+        devices.list.connect_selected(move |index| {
+            let Some(devices) = weak.upgrade() else { return };
+            if let Some(key) = index.and_then(|index| devices.list.key(index)) {
+                send(ShellEvent::Hold(Side::Devices, key));
+            }
+        });
+    }
+    {
+        // Delete in the list unpairs, as it removes in every other list.
+        let weak = Rc::downgrade(&devices);
+        devices.list.connect_key(move |key, modifiers, _| {
             if !matches!(key, gdk::Key::Delete | gdk::Key::KP_Delete) || !modifiers.is_empty() {
                 return glib::Propagation::Proceed;
             }
-            if let (Some(app), Some(devices)) = (app.upgrade(), devices.upgrade()) {
-                devices.act(&app, &[ActionKind::Unpair]);
+            if let (Some(app), Some(devices)) = (crate::window::app(), weak.upgrade()) {
+                devices.act(&app, ActionKind::Unpair);
             }
             glib::Propagation::Stop
         });
     }
-    widget
-}
-
-/// The Devices page's answer to a sync round or an arrival, when the page is open.
-pub fn devices_heard(app: &App, said: Option<&str>) {
-    let devices = app.devices_page.borrow().as_ref().and_then(std::rc::Weak::upgrade);
-    if let Some(devices) = devices {
-        devices.load(app);
-        if let Some(said) = said {
-            devices.status.say(said);
-        }
-    }
+    let mut built = page.finish();
+    built.devices = Some(devices);
+    built
 }
 
 // ---------------------------------------------------------------------------------------
 // Backups: this device's alone
 // ---------------------------------------------------------------------------------------
 
-fn backups(app: &Rc<App>) -> gtk::Widget {
+fn backups(app: &Rc<App>) -> Built {
     let page = PageBox::new();
-    let status = Status(page.status.clone());
-    setting_field(app, &page, &status, "backup-every", 'A');
-    setting_field(app, &page, &status, "backup-keep", 'k');
-    let folder = gtk::Entry::builder().text(value(app, "backup-dir")).editable(false).hexpand(true).build();
+    page.settings();
+    let folder = gtk::Entry::builder().editable(false).hexpand(true).build();
     let choose = gtk::Button::with_mnemonic("C_hoose…");
     let row = gtk::Box::builder().spacing(6).build();
     row.append(&folder);
     row.append(&choose);
-    let label = gtk::Label::builder().label(devices::marked(&setting(app, "backup-dir").title, 't', '_')).use_underline(true).xalign(0.0).margin_top(6).build();
+    let label = gtk::Label::builder().label(marked("Back up to", 't', '_')).use_underline(true).xalign(0.0).margin_top(6).build();
     label.set_mnemonic_widget(Some(&folder));
     page.add(&label);
     page.add(&row);
@@ -653,58 +795,57 @@ fn backups(app: &Rc<App>) -> gtk::Widget {
     buttons.append(&back_up);
     buttons.append(&restore);
     page.add(&buttons);
-    page.footer(
-        "These settings are this device's alone, and do not sync.",
-    );
-    let (widget, status) = page.finish();
+    page.footer("These settings are this device's alone, and do not sync.");
+    let mut built = page.finish();
+    built.folder = Some(folder.clone());
     {
-        let (app, status, folder) = (Rc::downgrade(app), status.clone(), folder.clone());
+        let (app, folder) = (Rc::downgrade(app), folder.clone());
         choose.connect_clicked(move |button| {
             let Some(app) = app.upgrade() else { return };
-            let (status, folder, window) = (status.clone(), folder.clone(), window_of(button, &app));
+            let (folder, window) = (folder.clone(), window_of(button, &app));
             spawn(async move {
                 let dialog = gtk::FileDialog::builder().title("Back Up Here").modal(true).build();
-                let current = value(&app, "backup-dir");
+                let current = folder.text().to_string();
                 if !current.is_empty() {
                     dialog.set_initial_folder(Some(&gio::File::for_path(&current)));
                 }
                 let Ok(chosen) = dialog.select_folder_future(Some(&window)).await else { return };
-                if let Some(path) = chosen.path()
-                    && set(&app, &status, "backup-dir", &path.display().to_string())
-                {
-                    folder.set_text(&value(&app, "backup-dir"));
+                if let Some(path) = chosen.path() {
+                    app.model.send(ShellEvent::Settings(SettingsEvent::Set {
+                        key: "backup-dir".to_owned(),
+                        value: path.display().to_string(),
+                    }));
                 }
             });
         });
     }
     {
-        let (app, status) = (Rc::downgrade(app), status.clone());
+        let (app, status) = (Rc::downgrade(app), built.status.clone());
         back_up.connect_clicked(move |button| {
             let Some(app) = app.upgrade() else { return };
-            match app.core.lumenna.backup(None) {
-                Ok(done) => status.say(&speech::announcement(&done.announcement, &done.notices)),
-                Err(error) => prompts::fail(&window_of(button, &app), &sentence(&error)),
+            match app.model.device.backup() {
+                Ok(done) => tell(&status, &lumenna_records::words::spoken(&done.announcement, &done.notices)),
+                Err(error) => prompts::fail(&window_of(button, &app), error.message()),
             }
         });
     }
-    {
-        let (app, status) = (Rc::downgrade(app), status.clone());
-        restore.connect_clicked(move |button| {
-            let Some(app) = app.upgrade() else { return };
-            let (status, window) = (status.clone(), window_of(button, &app));
-            spawn(async move {
-                if let Some(said) = import(&app, &window, "Restore from a Backup", &[("Lumenna backups", "*.lumbak")]).await {
-                    status.say(&said);
-                }
-            });
-        });
+    restore.connect_clicked(|button| {
+        let Some(app) = crate::window::app() else { return };
+        let window = window_of(button, &app);
+        spawn(async move { import(&window, "Restore from a Backup", &[("Lumenna backups", "*.lumbak")]).await });
+    });
+    // The folder's own label is the core's.
+    if let Some(title) = app.model.view().settings.as_ref().and_then(|settings| {
+        settings.settings.iter().find(|shown| shown.setting.key == "backup-dir").map(|shown| shown.setting.title.clone())
+    }) {
+        label.set_label(&marked(&title, 't', '_'));
     }
-    widget
+    built
 }
 
-/// Reads a file in — a JSON export or a backup, the core tells which — and returns what it
-/// did, to say.
-pub async fn import(app: &App, window: &gtk::Window, title: &str, types: &[(&str, &str)]) -> Option<String> {
+/// Reads a file in — a JSON export or a backup, the app tells which by its name — and the app
+/// says what it did.
+pub async fn import(window: &gtk::Window, title: &str, types: &[(&str, &str)]) {
     let filters = gio::ListStore::new::<gtk::FileFilter>();
     for (name, pattern) in types {
         let filter = gtk::FileFilter::new();
@@ -715,19 +856,13 @@ pub async fn import(app: &App, window: &gtk::Window, title: &str, types: &[(&str
         filters.append(&filter);
     }
     let dialog = gtk::FileDialog::builder().title(title).modal(true).filters(&filters).build();
-    let path = dialog.open_future(Some(window)).await.ok()?.path()?;
-    match app.core.lumenna.import(&path.display().to_string()) {
-        Ok(imported) => {
-            app.store_changed();
-            Some(match imported {
-                Imported::Export { done } => speech::announcement(&done.announcement, &done.notices),
-                Imported::Backup { done } => speech::announcement(&done.announcement, &done.notices),
-            })
+    let Some(path) = dialog.open_future(Some(window)).await.ok().and_then(|file| file.path()) else { return };
+    match std::fs::read(&path) {
+        Ok(bytes) => {
+            let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+            send(ShellEvent::Settings(SettingsEvent::Import { name, bytes }));
         }
-        Err(error) => {
-            prompts::tell(window, &sentence(&error)).await;
-            None
-        }
+        Err(error) => prompts::tell(window, &format!("That file could not be read. {error}")).await,
     }
 }
 
@@ -738,11 +873,11 @@ pub const IMPORTABLE: [(&str, &str); 1] = [("Lumenna exports and backups", "*.js
 // Export and import: what you have now, and reading it back
 // ---------------------------------------------------------------------------------------
 
-fn export(app: &Rc<App>) -> gtk::Widget {
+fn export(app: &Rc<App>) -> Built {
     let page = PageBox::new();
     let mut buttons = Vec::new();
-    for export in devices::EXPORTS {
-        let button = gtk::Button::with_mnemonic(&devices::marked(export.label, export.key, '_'));
+    for export in lumenna_records::exports::EXPORTS {
+        let button = gtk::Button::with_mnemonic(&marked(export.label, export.key, '_'));
         button.set_halign(gtk::Align::Start);
         page.add(&button);
         buttons.push((export.format, button));
@@ -753,38 +888,33 @@ fn export(app: &Rc<App>) -> gtk::Widget {
     page.footer(
         "An export is what you have now, with nothing from the trash. Importing a JSON export or restoring a backup adds what this device lacks and removes nothing.",
     );
-    let (widget, status) = page.finish();
+    let built = page.finish();
     for (format, button) in buttons {
-        let (app, status) = (Rc::downgrade(app), status.clone());
+        let app = Rc::downgrade(app);
         button.connect_clicked(move |button| {
             let Some(app) = app.upgrade() else { return };
-            let (status, window) = (status.clone(), window_of(button, &app));
-            spawn(async move { export_to(&app, &window, &status, format).await });
+            let window = window_of(button, &app);
+            spawn(async move { export_to(&window, format).await });
         });
     }
-    {
-        let (app, status) = (Rc::downgrade(app), status.clone());
-        import_button.connect_clicked(move |button| {
-            let Some(app) = app.upgrade() else { return };
-            let (status, window) = (status.clone(), window_of(button, &app));
-            spawn(async move {
-                if let Some(said) = import(&app, &window, "Import or Restore", &IMPORTABLE).await {
-                    status.say(&said);
-                }
-            });
-        });
-    }
-    widget
+    import_button.connect_clicked(|button| {
+        let Some(app) = crate::window::app() else { return };
+        let window = window_of(button, &app);
+        spawn(async move { import(&window, "Import or Restore", &IMPORTABLE).await });
+    });
+    built
 }
 
-async fn export_to(app: &App, window: &gtk::Window, status: &Status, format: ExportFormat) {
+/// Asks where an export goes, then has the app make it: the file it makes is saved there
+/// (`save`), and the app says what it did.
+async fn export_to(window: &gtk::Window, format: ExportFormat) {
     let today = jiff::Zoned::now().date();
-    let name = devices::export_name(format, today);
+    let name = lumenna_records::exports::export_name(format, today);
     let dialog = gtk::FileDialog::builder().title("Export").initial_name(&name).modal(true).build();
-    let Some(path) = dialog.save_future(Some(window)).await.ok().and_then(|file| file.path()) else { return };
     // The dialog already asked about replacing a file that was there.
-    match app.core.lumenna.export(format, Some(path.display().to_string()), true) {
-        Ok(done) => status.say(&speech::announcement(&done.announcement, &done.notices)),
-        Err(error) => prompts::tell(window, &sentence(&error)).await,
+    let Some(path) = dialog.save_future(Some(window)).await.ok().and_then(|file| file.path()) else { return };
+    if let Some(open) = open() {
+        *open.saving.borrow_mut() = Some(path);
     }
+    send(ShellEvent::Settings(SettingsEvent::Export(format)));
 }

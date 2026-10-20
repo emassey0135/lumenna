@@ -76,8 +76,8 @@ pub struct App {
     pub detail: Rc<Detail>,
     /// Whether focus goes into the middle pane once the app has gone to the place it shows.
     focus_on_show: Cell<bool>,
-    /// Settings' Devices page, while it is open, to hear how a sync went.
-    pub devices_page: RefCell<Option<std::rc::Weak<crate::settings::Devices>>>,
+    /// The profile's folder.
+    pub directory: std::path::PathBuf,
     /// What another process had written by the last tick (`Lumenna::outside_version`).
     outside: Cell<i64>,
 }
@@ -137,12 +137,15 @@ pub fn take(turn: lumenna_ffi::Turn) {
         return;
     }
     app.draw();
+    for file in &turn.files {
+        crate::settings::save(&app, file);
+    }
     for said in &turn.said {
         if matches!(said.as_str(), "Expanded" | "Collapsed") && QUIET_FOLD.replace(false) {
             continue;
         }
         // A screen in front says it on its own status line: the main window's is behind it.
-        if !crate::proposal::say(said) {
+        if !(crate::pairing::say(said) || crate::proposal::say(said) || crate::settings::say(said)) {
             app.say(said);
         }
     }
@@ -152,17 +155,9 @@ pub fn take(turn: lumenna_ffi::Turn) {
 pub fn receive(event: Event) {
     let Some(app) = app() else { return };
     match event {
-        Event::Changed => {
-            app.store_changed();
-            crate::settings::devices_heard(&app, None);
-        }
-        Event::Say(text) => {
-            app.say(&text);
-            crate::settings::devices_heard(&app, Some(&text));
-        }
         Event::ShowWindow => app.show_window(),
         Event::QuickAdd => app.quick_add(true),
-        Event::SyncNow => app.core.sync_now(),
+        Event::SyncNow => app.model.send(lumenna_ffi::ShellEvent::Devices(lumenna_app::DevicesEvent::SyncNow)),
         Event::Quit => app.quit(),
     }
 }
@@ -203,15 +198,13 @@ pub fn activate(application: &gtk::Application, directory: &Path, background: bo
             return;
         }
     };
-    // Syncing stays the window's own until the Devices page is drawn from the app.
-    model.in_front(false);
-    let app = App::build(application, core, model, clock);
+    let app = App::build(application, directory, core, model, clock);
     APP.with(|slot| *slot.borrow_mut() = Some(Rc::clone(&app)));
     app.start(background, shortcuts);
 }
 
 impl App {
-    fn build(application: &gtk::Application, core: Core, model: crate::model::Model, clock: Locale) -> Rc<Self> {
+    fn build(application: &gtk::Application, directory: &Path, core: Core, model: crate::model::Model, clock: Locale) -> Rc<Self> {
         let window = gtk::ApplicationWindow::builder()
             .application(application)
             .title("Lumenna")
@@ -277,7 +270,7 @@ impl App {
             detail,
             focus_on_show: Cell::new(false),
             outside: Cell::new(0),
-            devices_page: RefCell::new(None),
+            directory: directory.to_path_buf(),
         });
         app.add_actions();
 
@@ -311,12 +304,15 @@ impl App {
         });
         glib::timeout_add_seconds_local(60 * 60, || {
             if let Some(app) = app() {
-                app.core.back_up_if_due();
+                app.model.back_up_if_due();
             }
             glib::ControlFlow::Continue
         });
-        self.core.start_syncing();
-        self.core.back_up_if_due();
+        // Resident, so in front for as long as it runs: the device's sync process once another
+        // device is paired, when the app starts syncing, serving the command surface meanwhile.
+        self.model.in_front(true);
+        self.model.serve_commands();
+        self.model.back_up_if_due();
         crate::reminders::start(self);
         crate::tray::start();
         if shortcuts {
@@ -461,6 +457,7 @@ impl App {
         self.detail.draw(self);
         crate::block_form::draw(self);
         crate::proposal::draw(self);
+        crate::settings::draw(self);
         crate::asking::update(self);
     }
 
@@ -610,7 +607,8 @@ impl App {
     }
 
     fn quit(&self) {
-        self.core.stop_syncing();
+        // Serving stops before syncing does, and both before the app goes.
+        self.model.in_front(false);
         self.application.quit();
     }
 
@@ -675,23 +673,17 @@ impl App {
             self.window.add_action(&action);
         };
         simple("new-task", |app| app.quick_add(false));
-        simple("sync-now", |app| app.core.sync_now());
+        simple("sync-now", |app| app.model.send(lumenna_ffi::ShellEvent::Devices(lumenna_app::DevicesEvent::SyncNow)));
         simple("settings", |app| crate::settings::show(app, crate::settings::Page::General));
         simple("devices", |app| crate::settings::show(app, crate::settings::Page::Devices));
         simple("export-import", |app| crate::settings::show(app, crate::settings::Page::Export));
-        simple("back-up", |app| match app.core.lumenna.backup(None) {
-            Ok(done) => app.say(&speech::announcement(&done.announcement, &done.notices)),
-            Err(error) => app.fail(&sentence(&error)),
+        simple("back-up", |app| match app.model.device.backup() {
+            Ok(done) => app.say(&lumenna_records::words::spoken(&done.announcement, &done.notices)),
+            Err(error) => app.fail(error.message()),
         });
         simple("restore-backup", |app| {
-            let app = Rc::clone(app);
-            spawn(async move {
-                let window = app.window.clone().upcast::<gtk::Window>();
-                let types = [("Lumenna backups", "*.lumbak")];
-                if let Some(said) = crate::settings::import(&app, &window, "Restore from a Backup", &types).await {
-                    app.say(&said);
-                }
-            });
+            let window = app.window.clone().upcast::<gtk::Window>();
+            spawn(async move { crate::settings::import(&window, "Restore from a Backup", &[("Lumenna backups", "*.lumbak")]).await });
         });
         simple("new-project", |app| crate::sidebar::new_in(app, lumenna_host::places::SidebarGroup::Projects));
         simple("new-label", |app| crate::sidebar::new_in(app, lumenna_host::places::SidebarGroup::Labels));

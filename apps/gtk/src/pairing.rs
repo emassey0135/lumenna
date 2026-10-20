@@ -1,75 +1,33 @@
-//! Pairing this computer with another of the person's devices.
+//! Pairing this computer with another of the person's devices: the app's pairing screen
+//! (`DevicesView::pairing`), drawn as a dialog over Settings while the app has it open.
 //!
 //! On one network the two find each other: both wait, and DNS-SD does the rest. Anywhere
 //! else, one shows a code and the other enters it. Either way both show the same three words,
 //! and only if the person says they match on both does anything get paired — the one
-//! mechanism for every platform. The pairing runs on a thread of its own and asks its
-//! questions back through this dialog, as the Mac's sheet and the Windows dialog do.
+//! mechanism for every platform. Running it, the code shown, the words and how it ended are the
+//! app's; this asks the words and sends what the person does.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{RecvTimeoutError, Sender, channel};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
-use futures_channel::{mpsc, oneshot};
-use futures_util::StreamExt;
 use gtk::prelude::*;
 use gtk::{gdk, glib};
-use lumenna_desktop::speech;
-use lumenna_host::{Lumenna, LumennaError, PairedWith, PairingPrompt, PairingWords, Reach};
+use lumenna_app::devices::marked;
+use lumenna_app::{DevicesEvent, PairEvent};
+use lumenna_ffi::ShellEvent;
+use lumenna_records::PairingWords;
 
-use crate::core::sentence;
 use crate::prompts;
+use crate::window::{App, spawn};
 
 /// The pairing screen's words, the core's: how the device calls itself is the one thing here.
 fn words() -> PairingWords {
-    lumenna_host::pairing_words("this computer".to_owned(), true)
+    lumenna_records::pairing_words("this computer".to_owned(), true)
 }
 
-/// What the pairing thread has to say to the dialog.
-enum Message {
-    Code(String),
-    Words(Vec<String>, Sender<bool>),
-    Done(Result<PairedWith, String>),
-}
-
-/// The pairing's questions, asked through the dialog while the pairing thread waits.
-struct Prompt {
-    messages: Mutex<mpsc::UnboundedSender<Message>>,
-    cancelled: Arc<AtomicBool>,
-}
-
-impl Prompt {
-    fn send(&self, message: Message) -> bool {
-        self.messages.lock().is_ok_and(|messages| messages.unbounded_send(message).is_ok())
-    }
-}
-
-impl PairingPrompt for Prompt {
-    fn show_code(&self, code: String) {
-        self.send(Message::Code(code));
-    }
-
-    fn confirm(&self, words: Vec<String>) -> bool {
-        let (answer, answered) = channel();
-        if !self.send(Message::Words(words, answer)) {
-            return false;
-        }
-        // Waits for the person, but not past their giving up: a dialog closed meanwhile never
-        // answers.
-        loop {
-            match answered.recv_timeout(Duration::from_millis(250)) {
-                Ok(matched) => return matched,
-                Err(RecvTimeoutError::Timeout) if !self.cancelled.load(Ordering::Relaxed) => {}
-                Err(_) => return false,
-            }
-        }
-    }
-
-    fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::Relaxed)
+fn send(event: PairEvent) {
+    if let Some(app) = crate::window::app() {
+        app.model.send(ShellEvent::Devices(DevicesEvent::Pair(event)));
     }
 }
 
@@ -83,151 +41,134 @@ struct Dialog {
     with_code: gtk::Button,
     cancel: gtk::Button,
     status: gtk::Label,
-    lumenna: Arc<Lumenna>,
-    cancelled: RefCell<Option<Arc<AtomicBool>>>,
+    /// Whether the person gave up while a pairing ran: the screen closes once it has stopped.
+    closing: Cell<bool>,
+    /// The words last asked about, so each set is asked once.
+    asked: RefCell<Option<Vec<String>>>,
+    /// The problem last drawn, so the need for a code is told once.
+    problem: RefCell<Option<String>>,
+    /// Whether the code shown was drawn yet, so focus goes to it once.
+    shown_code: Cell<bool>,
+    /// Whether a pairing was running when last drawn.
     running: Cell<bool>,
-    /// Whether the pairing running is the wait to be found, which a code entered gives up.
-    waiting: Cell<bool>,
-    /// A code entered while waiting, to join with once the wait has ended.
-    pending: RefCell<Option<String>>,
-    finished: RefCell<Option<oneshot::Sender<Option<PairedWith>>>>,
+}
+
+thread_local! {
+    static OPEN: RefCell<Option<Rc<Dialog>>> = const { RefCell::new(None) };
+}
+
+/// Says `text` on the dialog's status line, if it is open: whether it was.
+pub fn say(text: &str) -> bool {
+    let Some(dialog) = OPEN.with_borrow(Clone::clone) else { return false };
+    // The need for a code is told in an alert of its own.
+    if text == words().need_code {
+        return true;
+    }
+    dialog.status.set_label(text);
+    crate::window::announce(&dialog.status, text);
+    true
+}
+
+/// Draws the pairing screen the app has open, over `parent`.
+pub fn draw(app: &App, view: Option<&lumenna_app::network::PairingView>, parent: &gtk::Window) {
+    let open = OPEN.with_borrow(Clone::clone);
+    match (view, open) {
+        (None, None) => {}
+        (None, Some(dialog)) => {
+            OPEN.set(None);
+            dialog.window.destroy();
+        }
+        (Some(view), open) => {
+            let dialog = open.unwrap_or_else(|| {
+                let dialog = build(parent);
+                OPEN.set(Some(Rc::clone(&dialog)));
+                dialog.window.present();
+                prompts::focus_on(&dialog.wait);
+                dialog
+            });
+            dialog.show(app, view);
+        }
+    }
 }
 
 impl Dialog {
-    fn say(&self, text: &str) {
-        self.status.set_label(text);
-        crate::window::announce(&self.status, text);
-    }
-
-    fn finish(&self, paired: Option<PairedWith>) {
-        if let Some(cancelled) = self.cancelled.borrow().as_ref() {
-            cancelled.store(true, Ordering::Relaxed);
+    fn show(self: &Rc<Self>, _app: &App, view: &lumenna_app::network::PairingView) {
+        let was_running = self.running.replace(view.running);
+        if view.running && !was_running {
+            // Focus somewhere that stays: a disabled button that had it leaves it nowhere.
+            self.cancel.grab_focus();
         }
-        if let Some(finished) = self.finished.borrow_mut().take() {
-            let _ = finished.send(paired);
-        }
-        self.window.destroy();
-    }
-
-    fn start(self: &Rc<Self>, code: Option<String>) {
-        if self.running.replace(true) {
-            return;
-        }
-        // Focus somewhere that stays: a disabled button that had it leaves it nowhere.
-        self.cancel.grab_focus();
-        self.wait.set_sensitive(false);
+        self.wait.set_sensitive(!view.running);
         // While waiting, a code can still be entered: it gives the wait up and joins instead.
-        self.with_code.set_sensitive(code.is_none());
-        self.waiting.set(code.is_none());
-        let words = words();
-        self.say(if code.is_none() { &words.opening } else { &words.connecting });
-        let cancelled = Arc::new(AtomicBool::new(false));
-        *self.cancelled.borrow_mut() = Some(Arc::clone(&cancelled));
-        let (sender, mut receiver) = mpsc::unbounded();
-        let prompt = Arc::new(Prompt { messages: Mutex::new(sender.clone()), cancelled });
-        let lumenna = Arc::clone(&self.lumenna);
-        let name = glib::host_name().to_string();
-        std::thread::spawn(move || {
-            let result = lumenna
-                .pair(code, Reach::Internet, name, "linux".to_owned(), prompt)
-                .map_err(|error: LumennaError| sentence(&error));
-            let _ = sender.unbounded_send(Message::Done(result));
-        });
-        let dialog = Rc::clone(self);
-        glib::spawn_future_local(async move {
-            while let Some(message) = receiver.next().await {
-                if !dialog.heard(message).await {
-                    break;
-                }
+        self.with_code.set_sensitive(!view.running || view.waiting);
+        let code = view.mine.clone().unwrap_or_default();
+        if self.my_code.text() != code {
+            self.my_code.set_text(&code);
+        }
+        let showing = view.mine.is_some();
+        self.my_code_label.set_visible(showing);
+        self.my_code.set_visible(showing);
+        self.copy_code.set_visible(showing);
+        if showing && !self.shown_code.replace(true) {
+            self.my_code.grab_focus();
+        }
+        if !showing {
+            self.shown_code.set(false);
+        }
+        if !view.running && was_running {
+            if self.closing.take() {
+                send(PairEvent::Cancel);
+                return;
             }
-        });
-    }
-
-    /// Takes one message from the pairing thread. Returns whether more are to come.
-    async fn heard(self: &Rc<Self>, message: Message) -> bool {
-        match message {
-            Message::Code(code) => {
-                self.my_code.set_text(&code);
-                self.my_code_label.set_visible(true);
-                self.my_code.set_visible(true);
-                self.copy_code.set_visible(true);
-                self.my_code.grab_focus();
-                let words = words();
-                self.say(&words.waiting);
-                true
-            }
-            Message::Words(words, answer) => {
-                let said = self::words();
-                let detail = format!("{} {}.", said.match_message, words.join(", "));
-                let matched = prompts::yes_or_no(&self.window, &said.match_title, &detail, &said.match_no, &said.match_yes).await;
-                // What happens meanwhile, while the other device hears the answer.
-                self.say(if matched { &said.finishing } else { &said.refusing });
-                let _ = answer.send(matched);
-                true
-            }
-            Message::Done(Ok(paired)) => {
-                self.running.set(false);
-                self.finish(Some(paired));
-                false
-            }
-            Message::Done(Err(message)) => {
-                self.running.set(false);
-                // The wait was given up for a code entered meanwhile: join with it now. That
-                // the wait was cancelled is not news.
-                if let Some(code) = self.pending.borrow_mut().take() {
-                    self.start(Some(code));
-                    return false;
-                }
-                self.my_code_label.set_visible(false);
-                self.my_code.set_visible(false);
-                self.copy_code.set_visible(false);
-                self.wait.set_sensitive(true);
-                self.with_code.set_sensitive(true);
-                self.wait.grab_focus();
-                self.say(&message);
-                false
-            }
+            self.wait.grab_focus();
+        }
+        // The need for a code is told, then the person is back at the field for it.
+        let need = words().need_code;
+        let told = self.problem.replace(view.problem.clone());
+        if view.problem.as_deref() == Some(need.as_str()) && told.as_deref() != Some(need.as_str()) {
+            let dialog = Rc::clone(self);
+            spawn(async move {
+                prompts::tell(&dialog.window, &need).await;
+                prompts::focus_on(&dialog.their_code);
+            });
+        }
+        // The words, asked once each time they come: whether they match on the other device.
+        let asked = self.asked.replace(view.words.clone());
+        if let Some(three) = &view.words
+            && asked.as_ref() != Some(three)
+        {
+            let dialog = Rc::clone(self);
+            let three = three.clone();
+            spawn(async move {
+                let said = words();
+                let detail = format!("{} {}.", said.match_message, three.join(", "));
+                let matched = prompts::yes_or_no(&dialog.window, &said.match_title, &detail, &said.match_no, &said.match_yes).await;
+                send(PairEvent::Confirm(matched));
+            });
         }
     }
 
-    /// Pairs with the code typed or pasted in. The clipboard is never read unasked: nobody
-    /// could tell it was, and it would send whatever happened to be copied.
-    async fn with_code(self: &Rc<Self>) {
-        let code = self.their_code.text().trim().to_owned();
-        if code.is_empty() {
-            prompts::tell(&self.window, &words().need_code).await;
-            prompts::focus_on(&self.their_code);
-            return;
-        }
+    /// Gives up: the pairing under way, and then the screen.
+    fn give_up(&self) {
         if self.running.get() {
-            if self.waiting.get() {
-                // One pairing at a time: the wait ends, and the pairing with the code follows.
-                *self.pending.borrow_mut() = Some(code);
-                if let Some(cancelled) = self.cancelled.borrow().as_ref() {
-                    cancelled.store(true, Ordering::Relaxed);
-                }
-                self.say(&words().switching);
-            }
-            return;
+            self.closing.set(true);
         }
-        self.start(Some(code));
+        send(PairEvent::Cancel);
     }
 }
 
-/// Runs the pairing dialog, and returns what was said of the device paired, if one was.
-pub async fn run(parent: &gtk::Window, lumenna: Arc<Lumenna>) -> Option<String> {
+fn build(parent: &gtk::Window) -> Rc<Dialog> {
     let words = words();
-    let marked = |text: &str, key: char| lumenna_desktop::devices::marked(text, key, '_');
     let intro = gtk::Label::builder().label(&words.intro).wrap(true).xalign(0.0).build();
-    let wait = gtk::Button::with_mnemonic(&marked(&words.wait, 'W'));
+    let wait = gtk::Button::with_mnemonic(&marked(&words.wait, 'W', '_'));
     let my_code = gtk::Entry::builder().editable(false).visible(false).build();
-    let my_code_label = gtk::Label::builder().label(marked(&words.my_code, 'c')).use_underline(true).xalign(0.0).visible(false).build();
+    let my_code_label = gtk::Label::builder().label(marked(&words.my_code, 'c', '_')).use_underline(true).xalign(0.0).visible(false).build();
     my_code_label.set_mnemonic_widget(Some(&my_code));
     let copy_code = gtk::Button::builder().label(&words.copy_code).visible(false).halign(gtk::Align::Start).build();
     let their_code = gtk::Entry::builder().activates_default(false).build();
-    let their_label = gtk::Label::builder().label(marked(&words.their_code, 'o')).use_underline(true).xalign(0.0).build();
+    let their_label = gtk::Label::builder().label(marked(&words.their_code, 'o', '_')).use_underline(true).xalign(0.0).build();
     their_label.set_mnemonic_widget(Some(&their_code));
-    let with_code = gtk::Button::with_mnemonic(&marked(&words.join, 'P'));
+    let with_code = gtk::Button::with_mnemonic(&marked(&words.join, 'P', '_'));
     let status = gtk::Label::builder().wrap(true).xalign(0.0).build();
     let cancel = gtk::Button::with_mnemonic("_Cancel");
     let body = gtk::Box::builder()
@@ -263,7 +204,6 @@ pub async fn run(parent: &gtk::Window, lumenna: Arc<Lumenna>) -> Option<String> 
         .default_width(480)
         .child(&body)
         .build();
-    let (finished, done) = oneshot::channel();
     let dialog = Rc::new(Dialog {
         window: window.clone(),
         wait: wait.clone(),
@@ -274,58 +214,51 @@ pub async fn run(parent: &gtk::Window, lumenna: Arc<Lumenna>) -> Option<String> 
         with_code: with_code.clone(),
         cancel: cancel.clone(),
         status,
-        lumenna,
-        cancelled: RefCell::new(None),
+        closing: Cell::new(false),
+        asked: RefCell::new(None),
+        problem: RefCell::new(None),
+        shown_code: Cell::new(false),
         running: Cell::new(false),
-        waiting: Cell::new(false),
-        pending: RefCell::new(None),
-        finished: RefCell::new(Some(finished)),
     });
+    wait.connect_clicked(|_| send(PairEvent::Wait));
     {
-        let dialog = Rc::clone(&dialog);
-        wait.connect_clicked(move |_| dialog.start(None));
-    }
-    {
-        let dialog = Rc::clone(&dialog);
+        let weak = Rc::downgrade(&dialog);
         copy_code.connect_clicked(move |_| {
-            dialog.my_code.clipboard().set_text(&dialog.my_code.text());
-            dialog.say(&self::words().copied);
-        });
-    }
-    {
-        let dialog = Rc::clone(&dialog);
-        with_code.connect_clicked(move |_| {
-            let dialog = Rc::clone(&dialog);
-            glib::spawn_future_local(async move { dialog.with_code().await });
-        });
-    }
-    {
-        let dialog = Rc::clone(&dialog);
-        their_code.connect_activate(move |_| {
-            let dialog = Rc::clone(&dialog);
-            glib::spawn_future_local(async move { dialog.with_code().await });
-        });
-    }
-    {
-        let dialog = Rc::clone(&dialog);
-        cancel.connect_clicked(move |_| dialog.finish(None));
-    }
-    {
-        let dialog = Rc::downgrade(&dialog);
-        window.connect_close_request(move |_| {
-            if let Some(dialog) = dialog.upgrade() {
-                dialog.finish(None);
+            if let Some(dialog) = weak.upgrade() {
+                dialog.my_code.clipboard().set_text(&dialog.my_code.text());
+                say(&self::words().copied);
             }
-            glib::Propagation::Proceed
+        });
+    }
+    // The code typed or pasted is the app's to keep; the clipboard is never read unasked:
+    // nobody could tell it was, and it would send whatever happened to be copied.
+    their_code.connect_changed(|entry| send(PairEvent::Code(entry.text().to_string())));
+    with_code.connect_clicked(|_| send(PairEvent::Join));
+    their_code.connect_activate(|_| send(PairEvent::Join));
+    {
+        let weak = Rc::downgrade(&dialog);
+        cancel.connect_clicked(move |_| {
+            if let Some(dialog) = weak.upgrade() {
+                dialog.give_up();
+            }
+        });
+    }
+    {
+        let weak = Rc::downgrade(&dialog);
+        window.connect_close_request(move |_| {
+            if let Some(dialog) = weak.upgrade() {
+                dialog.give_up();
+            }
+            glib::Propagation::Stop
         });
     }
     let escape = gtk::EventControllerKey::new();
     {
-        let dialog = Rc::downgrade(&dialog);
+        let weak = Rc::downgrade(&dialog);
         escape.connect_key_pressed(move |_, key, _, _| {
             if key == gdk::Key::Escape {
-                if let Some(dialog) = dialog.upgrade() {
-                    dialog.finish(None);
+                if let Some(dialog) = weak.upgrade() {
+                    dialog.give_up();
                 }
                 return glib::Propagation::Stop;
             }
@@ -333,8 +266,5 @@ pub async fn run(parent: &gtk::Window, lumenna: Arc<Lumenna>) -> Option<String> 
         });
     }
     window.add_controller(escape);
-    window.present();
-    prompts::focus_on(&wait);
-    let paired = done.await.ok().flatten()?;
-    Some(speech::announcement(&paired.announcement, &paired.notices))
+    dialog
 }

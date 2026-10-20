@@ -18,8 +18,8 @@ use lumenna_records::{Action, LumennaError};
 
 /// The app over this device's store, and what it last left to draw.
 pub struct Model {
-    #[expect(dead_code, reason = "reminders and backups move onto it with their screens")]
-    pub device: Device,
+    /// The store, for what runs without the screens: reminders, backups.
+    pub device: Arc<Device>,
     app: App,
     view: RefCell<ViewModel>,
     lines: RefCell<Lines>,
@@ -29,7 +29,7 @@ pub struct Model {
 impl Model {
     /// Starts the app over the profile in `directory`, saying in pairing that it runs Linux.
     pub fn open(directory: &std::path::Path, clock: &crate::clock::Locale) -> Result<Self, LumennaError> {
-        let device = Device::new(directory.display().to_string())?;
+        let device = Arc::new(Device::new(directory.display().to_string())?);
         let writing = Arc::new(Writing { twelve: Arc::clone(&clock.twelve) });
         let app = App::new(&device, "linux".to_owned(), writing, Arc::new(Relay))?;
         let view = app.view();
@@ -65,6 +65,28 @@ impl Model {
     /// Whether the app is still: nothing with the store, and every turn handed over.
     pub fn is_still(&self) -> bool {
         self.app.is_still()
+    }
+
+    /// Serves the command surface at the profile's address whenever this device's sync runs
+    /// here, as the daemon would, so Emacs and the BTSpeak app reach the resident app.
+    pub fn serve_commands(&self) {
+        self.app.serve_commands("Lumenna for Linux".to_owned(), glib::host_name().to_string());
+    }
+
+    /// Takes the automatic backup if one is due, off the main thread, and says so only if it
+    /// failed.
+    pub fn back_up_if_due(&self) {
+        let device = Arc::clone(&self.device);
+        std::thread::spawn(move || {
+            if let Err(error) = device.back_up_if_due() {
+                let said = format!("The automatic backup failed. {}", error.message());
+                glib::MainContext::default().invoke(move || {
+                    if let Some(app) = crate::window::app() {
+                        app.say(&said);
+                    }
+                });
+            }
+        });
     }
 
     /// Whether the app keeps the device in sync: it does only while in front.
