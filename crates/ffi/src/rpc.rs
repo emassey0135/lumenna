@@ -19,12 +19,15 @@ use serde_json::{Value, json};
 
 use crate::{App, Device, Locale, Shell, ShellEvent, Turn};
 
-/// The app for each client that asks for it. A client's app never keeps the device in sync
-/// itself, as Emacs never did: the daemon or a desktop app does, and serving the profile's
-/// address is the holder's, which a `lum rpc` of the client's own is not.
+/// The app for each client that asks for it.
 pub struct Apps {
     /// What this device says it runs, in pairing.
     pub platform: String,
+    /// What this device is called, when a client's app keeps it in sync: a `lum rpc` of the
+    /// client's own, which then holds the endpoint once paired, as every app does, and serves
+    /// the profile's address while it does, as the holder must. None inside a process whose own
+    /// service syncs, the daemon or a desktop app.
+    pub keeps_in_sync: Option<String>,
 }
 
 impl lumenna_host::rpc::Apps for Apps {
@@ -32,7 +35,10 @@ impl lumenna_host::rpc::Apps for Apps {
         let device = Device::over(lumenna);
         let clock = Arc::new(English::default());
         let app = App::new(&device, self.platform.clone(), Arc::clone(&clock) as Arc<dyn Locale>, Arc::new(Notifying(notify)))?;
-        app.in_front(false);
+        match &self.keeps_in_sync {
+            Some(device_name) => app.serve_commands("lum rpc".to_owned(), device_name.clone()),
+            None => app.in_front(false),
+        }
         Ok(Box::new(Session { app, clock, _device: device }))
     }
 }

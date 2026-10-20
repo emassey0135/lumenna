@@ -236,7 +236,7 @@ impl App {
     /// what a client is told is answering ("Lumenna for Mac"), `device_name` what a pairing
     /// asked for over it calls this device.
     pub fn serve_commands(&self, app: String, device_name: String) {
-        let apps = Arc::new(rpc::Apps { platform: self.platform.clone() });
+        let apps = Arc::new(rpc::Apps { platform: self.platform.clone(), keeps_in_sync: None });
         self.network.serve(lumenna_bridge::network::Serving { app, device_name, apps: Some(apps) });
     }
 }

@@ -295,8 +295,10 @@ endpoint (`Endpoint::serve`, `Lumenna::serve_commands`).
   shape; every turn comes back as a `lumenna/turn` notification (`screen`, `seq`, `view`,
   `lines`, `said`, `files` with base64 `data`, `notices`), worded in English in the clock
   `app.clock {twenty_four}` gave. `app.view`, `app.close`, `app.still`, `app.tick` and
-  `app.complete` answer the rest. A client's app never holds the endpoint: syncing stays the
-  holder's, and Sync Now without one runs a round of its own, as `sync` does.
+  `app.complete` answer the rest. In a `lum rpc` of the client's own (nothing else held the
+  endpoint, or it would have relayed) the app keeps the device in sync once paired, as every
+  app does, and serves the profile's address while it holds the endpoint (`keeps_in_sync`);
+  in the daemon or a desktop app, whose own service syncs, it never does.
 - **`complete` and `preview` have no command line**: completion is a keystroke-rate question
   and a process per keystroke is not an answer.
 - **`lum rpc` takes backups at start and hourly** (`Host::backups`), as the CLI takes them
