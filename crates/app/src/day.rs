@@ -13,7 +13,7 @@ use lumenna_records::{Action, ActionKind, Question, Subject};
 use serde::{Deserialize, Serialize};
 
 use crate::asking::{Open, Purpose};
-use crate::model::Model;
+use crate::model::Screen;
 use crate::{DayMove, Effect, Event, Lumenna};
 
 /// What a row of the day is.
@@ -219,7 +219,7 @@ pub fn opening(view: &DayView) -> Option<String> {
 }
 
 impl Lumenna {
-    pub(crate) fn show_block(&self, series: &str, date: &str, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn show_block(&self, series: &str, date: &str, model: &mut Screen) -> Command<Effect, Event> {
         let (Some(store), Ok(day)) = (&model.store, date.parse::<Date>()) else { return Command::done() };
         let today = store.now.date();
         let shown = model.show_day((day != today).then_some(day));
@@ -227,7 +227,7 @@ impl Lumenna {
         shown
     }
 
-    pub(crate) fn day_move(&self, step: DayMove, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn day_move(&self, step: DayMove, model: &mut Screen) -> Command<Effect, Event> {
         let Some(store) = &model.store else { return Command::done() };
         let today = store.now.date();
         let shown = if model.place() == Place::Today { model.day.unwrap_or(today) } else { today };

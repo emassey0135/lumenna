@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::Model;
+use crate::Screen;
 
 /// A list beside the main one.
 #[boltffi::data]
@@ -66,7 +66,7 @@ impl Held {
     }
 }
 
-impl Model {
+impl Screen {
     pub(crate) fn held_mut(&mut self, side: Side) -> &mut Held {
         match side {
             Side::Sidebar => &mut self.sidebar_held,

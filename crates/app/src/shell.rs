@@ -145,7 +145,10 @@ impl TryFrom<Event> for ShellEvent {
             Event::QuickAdd(line) => ShellEvent::QuickAdd(line),
             Event::Undo => ShellEvent::Undo,
             Event::Redo => ShellEvent::Redo,
-            Event::SyncStarted(_)
+            // A shell's events are screen 0's for now; another screen is the app's own to address.
+            Event::On(..)
+            | Event::CloseScreen(_)
+            | Event::SyncStarted(_)
             | Event::Synced(_)
             | Event::SyncStatus(_)
             | Event::Pairing(_)

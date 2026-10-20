@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use crux_core::middleware::{EffectMiddleware, EffectResolver, Layer};
 use lumenna_app::{
     BlockEvent, DayMove, DetailsEvent, Effect, Event, Item, NetworkAnswer, NetworkRequest, ProposalEvent, SettingsEvent,
-    Typing, ViewModel,
+    ScreenId, Typing, ViewModel,
 };
 use lumenna_bridge::{Shell, Stack, Store, shell, stack};
 use lumenna_host::Lumenna;
@@ -58,6 +58,20 @@ impl<N: EffectMiddleware<Op = NetworkRequest> + 'static> Session<N> {
         self.settled(now)
     }
 
+    /// Runs an event on screen `screen`, and says what it left, once the app is still, for the
+    /// shell showing screen `heard`.
+    fn send_heard(&self, screen: ScreenId, event: Event, heard: ScreenId) -> Vec<Shell> {
+        let mut effects = self.stack.update(Event::On(screen, Box::new(event)), self.later());
+        self.store.busy().wait();
+        effects.append(&mut self.later.lock().unwrap());
+        lumenna_bridge::shell_on(effects, heard)
+    }
+
+    /// What screen `screen` shows.
+    fn view_on(&self, screen: ScreenId) -> ViewModel {
+        self.stack.view().screen(screen)
+    }
+
     /// Looks for a change made elsewhere, or a new minute ([`Store::tick`]).
     fn tick(&self) -> Vec<Shell> {
         self.store.tick();
@@ -72,7 +86,7 @@ impl<N: EffectMiddleware<Op = NetworkRequest> + 'static> Session<N> {
     /// What to draw.
     #[must_use]
     fn view(&self) -> ViewModel {
-        self.stack.view()
+        self.stack.view().screen(0)
     }
 
     fn later(&self) -> impl Fn(Vec<Effect>) + Send + Sync + 'static {
@@ -151,6 +165,15 @@ impl App {
 
     fn add(&mut self, line: &str) -> Vec<Shell> {
         self.send(Event::QuickAdd(line.to_owned()))
+    }
+
+    /// Runs an event on screen `screen`, and says what that screen's shell is left.
+    fn send_on(&mut self, screen: ScreenId, event: Event) -> Vec<Shell> {
+        self.session.send_heard(screen, event, screen)
+    }
+
+    fn view_on(&self, screen: ScreenId) -> ViewModel {
+        self.session.view_on(screen)
     }
 }
 
@@ -960,11 +983,11 @@ fn a_write_answered_after_the_person_moved_leaves_the_row_they_moved_to_in_hand(
     let effects = answer(&mut held);
     run(effects, &mut held);
     run(core.process_event(Event::QuickAdd("Call Sam".to_owned())), &mut held);
-    let milk = core.view().list.unwrap().items.into_iter().find(|i| i.row.title == "Buy milk").unwrap().row.id;
+    let milk = core.view().screen(0).list.unwrap().items.into_iter().find(|i| i.row.title == "Buy milk").unwrap().row.id;
     run(core.process_event(Event::Focus(milk.clone())), &mut held);
     let effects = answer(&mut held);
     run(effects, &mut held);
-    let view = core.view();
+    let view = core.view().screen(0);
     assert_eq!(view.list.unwrap().items.len(), 2, "Call Sam was added");
     assert_eq!(view.focus.as_deref(), Some(milk.as_str()), "the person moved to Buy milk after adding Call Sam");
 }
@@ -1007,4 +1030,67 @@ fn looks_for_reminders_asked_for_while_one_is_with_the_host_go_as_one_after_it()
         [("2030-01-15T08:01:00Z".to_owned(), Some("2030-01-15T08:03:00Z".to_owned()))],
         "the two asked for meanwhile, as one",
     );
+}
+
+// MARK: - Screens
+
+#[test]
+fn two_screens_each_keep_their_own_place_row_in_hand_and_question() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.add("Call Sam");
+    app.send(Event::Open(Place::Tasks));
+    let milk = app.id_of("Buy milk");
+    app.send(Event::Focus(milk.clone()));
+    app.send_on(1, Event::Open(Place::Today));
+    app.send_on(1, Event::Day(DayMove::Ask));
+    let (first, second) = (app.view(), app.view_on(1));
+    assert_eq!(first.place, Some(Place::Tasks));
+    assert_eq!(first.focus, Some(milk));
+    assert_eq!(first.asking, None, "the question is open on the screen that asked it");
+    assert_eq!(second.place, Some(Place::Today));
+    assert!(second.asking.is_some());
+}
+
+#[test]
+fn a_write_on_one_screen_lands_and_is_said_there_and_the_other_shows_it_quietly() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.send(Event::Open(Place::Tasks));
+    app.send_on(1, Event::Open(Place::Tasks));
+    let (first, second) = (app.view().landing, app.view_on(1).landing);
+    let there = app.send_on(1, Event::QuickAdd("Call Sam".to_owned()));
+    assert!(said(&there).iter().any(|s| s.contains("Call Sam")), "{there:?}");
+    assert!(app.view_on(1).landing > second, "it lands where it was made");
+    assert_eq!(app.view().landing, first, "and nowhere else");
+    assert!(app.titles().contains(&"Call Sam".to_owned()), "both screens show the store as it is");
+    let elsewhere = app.session.send_heard(1, Event::QuickAdd("Pay rent".to_owned()), 0);
+    assert!(said(&elsewhere).is_empty(), "{elsewhere:?}");
+}
+
+#[test]
+fn a_new_screen_opens_over_the_store_and_a_closed_one_is_not_opened_again_by_it() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.send_on(1, Event::Open(Place::Tasks));
+    assert!(app.view_on(1).list.unwrap().items.iter().any(|i| i.row.title == "Buy milk"), "it has the store at once");
+    app.send(Event::CloseScreen(1));
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    assert_eq!(app.view_on(1), ViewModel::default(), "the store moving leaves it closed");
+    assert!(app.titles().contains(&"Buy milk".to_owned()), "the first screen goes on");
+}
+
+#[test]
+fn a_reminder_found_on_one_screen_is_due_on_every_screen_and_dismissed_from_any() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    app.send_on(1, Event::Open(Place::Tasks));
+    let since = jiff::Timestamp::now().to_string();
+    let tz = jiff::tz::TimeZone::system();
+    let now = jiff::Zoned::now().date().tomorrow().unwrap().at(8, 56, 0, 0).to_zoned(tz).unwrap().timestamp().to_string();
+    app.send_on(1, Event::Due(lumenna_app::DueEvent::Look { since, now: Some(now) }));
+    let due = app.view().due;
+    assert_eq!(due.len(), 1, "the device's reminders, on the first screen too: {due:?}");
+    app.send(Event::Due(lumenna_app::DueEvent::Dismiss(due[0].id.clone())));
+    assert!(app.view_on(1).due.is_empty(), "dealt with on one screen, gone from the other");
 }

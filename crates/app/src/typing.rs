@@ -5,7 +5,7 @@ use crux_core::render::render;
 use lumenna_records::types::{Completions, Preview};
 use serde::{Deserialize, Serialize};
 
-use crate::model::Model;
+use crate::model::Screen;
 use crate::{Effect, Event, Lumenna};
 
 /// What the person does in quick add.
@@ -75,7 +75,7 @@ pub fn splice(line: &Line, start: u32, end: u32, text: &str) -> Line {
 }
 
 impl Lumenna {
-    pub(crate) fn typing(&self, event: Typing, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn typing(&self, event: Typing, model: &mut Screen) -> Command<Effect, Event> {
         match event {
             Typing::Open => {
                 let text = model.place().quick_add_prefix();

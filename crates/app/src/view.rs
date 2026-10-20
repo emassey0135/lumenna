@@ -8,7 +8,7 @@ use lumenna_records::{Action, Choices, LumennaError, Query, Question, Rows, list
 use serde::{Deserialize, Serialize};
 
 use crate::list::{self, Item};
-use crate::{DayView, DetailsView, LineView, Model};
+use crate::{DayView, DetailsView, LineView, Screen};
 
 /// Everything on screen.
 #[boltffi::data]
@@ -152,7 +152,7 @@ fn folded_sidebar(mut entries: Vec<SidebarEntry>, folded: &std::collections::BTr
     entries
 }
 
-pub fn view(model: &Model) -> ViewModel {
+pub fn view(model: &Screen) -> ViewModel {
     let mut view = shown(model);
     if model.capitals == crate::Capitals::Sentence {
         crate::capitals::in_sentence_case(&mut view);
@@ -160,7 +160,7 @@ pub fn view(model: &Model) -> ViewModel {
     view
 }
 
-fn shown(model: &Model) -> ViewModel {
+fn shown(model: &Screen) -> ViewModel {
     let place = model.place();
     let Some(store) = &model.store else {
         return ViewModel { place: Some(place.clone()), title: place.title(), ..ViewModel::default() };

@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::asking::Open;
 use crate::host::HostRequest;
-use crate::model::Model;
+use crate::model::Screen;
 use crate::{DayKind, Effect, Event, Lumenna, host, say};
 
 /// What the person does in the block form.
@@ -249,7 +249,7 @@ impl Form {
 impl Lumenna {
     /// Edit on a block: every occurrence of a series from the Blocks list; from the day, a
     /// repeating block asks first which occurrences, never guessing.
-    pub(crate) fn edit_block(&self, action: &Action, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn edit_block(&self, action: &Action, model: &mut Screen) -> Command<Effect, Event> {
         let block = model.day_view().and_then(|view| {
             view.items.into_iter().filter(|i| i.kind == DayKind::Block).find_map(|i| i.block.filter(|b| b.id == action.target))
         });
@@ -270,7 +270,7 @@ impl Lumenna {
     }
 
     /// The form for every occurrence of the series `id`, from the series as it is.
-    pub(crate) fn series_form(&self, id: &str, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn series_form(&self, id: &str, model: &mut Screen) -> Command<Effect, Event> {
         let Some(store) = &model.store else { return Command::done() };
         match lumenna_records::plan::block_shown(&store.snapshot, id) {
             Ok(shown) => {
@@ -291,7 +291,7 @@ impl Lumenna {
         }
     }
 
-    pub(crate) fn block(&self, event: BlockEvent, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn block(&self, event: BlockEvent, model: &mut Screen) -> Command<Effect, Event> {
         let Some(store) = model.store.clone() else { return Command::done() };
         match event {
             BlockEvent::New { start, minutes } => {

@@ -13,7 +13,7 @@ use lumenna_records::types::DeviceList;
 use serde::{Deserialize, Serialize};
 
 use crate::host::HostRequest;
-use crate::model::Model;
+use crate::model::Screen;
 use crate::{Effect, Event, Lumenna, host, network_request, network_tell, say};
 
 /// Something asked of the network.
@@ -187,7 +187,7 @@ fn start_pairing(pairing: &mut Pairing, code: Option<String>, words: &lumenna_re
 }
 
 impl Lumenna {
-    pub(crate) fn devices(&self, event: DevicesEvent, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn devices(&self, event: DevicesEvent, model: &mut Screen) -> Command<Effect, Event> {
         match event {
             DevicesEvent::Show => {
                 model.devices = Some(Devices::default());
@@ -199,7 +199,7 @@ impl Lumenna {
         }
     }
 
-    pub(crate) fn pair(&self, event: PairEvent, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn pair(&self, event: PairEvent, model: &mut Screen) -> Command<Effect, Event> {
         if let PairEvent::Open(name) = event {
             model.pairing = Some(Pairing { name, ..Pairing::default() });
             return render();
@@ -245,7 +245,7 @@ impl Lumenna {
         }
     }
 
-    pub(crate) fn pairing(&self, answer: NetworkAnswer, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn pairing(&self, answer: NetworkAnswer, model: &mut Screen) -> Command<Effect, Event> {
         let Some(pairing) = &mut model.pairing else { return Command::done() };
         let words = lumenna_records::pairing_words(pairing.name.clone(), false);
         match answer {
@@ -275,7 +275,7 @@ impl Lumenna {
         }
     }
 
-    pub(crate) fn sync_started(&self, answer: NetworkAnswer, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn sync_started(&self, answer: NetworkAnswer, model: &mut Screen) -> Command<Effect, Event> {
         match answer {
         NetworkAnswer::Said(why) => say(format!("Syncing could not start: {why}")),
         _ => {
@@ -296,14 +296,14 @@ impl Lumenna {
         say(said).and(host(HostRequest::Devices))
     }
 
-    pub(crate) fn sync_status(&self, answer: NetworkAnswer, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn sync_status(&self, answer: NetworkAnswer, model: &mut Screen) -> Command<Effect, Event> {
         if let (NetworkAnswer::Said(status), Some(devices)) = (answer, &mut model.devices) {
             devices.status = Some(status);
         }
         render()
     }
 
-    pub(crate) fn devices_listed(&self, result: Result<lumenna_records::types::DeviceList, LumennaError>, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn devices_listed(&self, result: Result<lumenna_records::types::DeviceList, LumennaError>, model: &mut Screen) -> Command<Effect, Event> {
         let Ok(list) = result else { return Command::done() };
         // Another device paired: keep in sync with it while the app runs.
         let start = !model.sync_asked && list.devices.iter().any(|d| !d.this_device);

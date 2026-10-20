@@ -160,12 +160,12 @@ impl App {
 
     /// What to draw now.
     pub fn view(&self) -> ViewModel {
-        self.stack.view()
+        self.stack.view().screen(0)
     }
 
     /// The lines of what to draw now, in this device's clock.
     pub fn lines(&self) -> Lines {
-        lines(&self.stack.view(), &*self.clock)
+        lines(&self.stack.view().screen(0), &*self.clock)
     }
 
     /// Takes in what changed elsewhere — another process, a sync — or a new minute. The shell
@@ -235,7 +235,7 @@ fn deliver(outbox: &mpsc::Receiver<Vec<Effect>>, stack: &Stack<Network>, shell: 
             continue;
         }
         seq += 1;
-        let view = stack.view();
+        let view = stack.view().screen(0);
         let mut turn = Turn { lines: lines(&view, clock), view, said: Vec::new(), files: Vec::new(), notices: Vec::new(), seq };
         for one in left {
             match one {

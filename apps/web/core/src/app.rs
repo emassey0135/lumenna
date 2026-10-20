@@ -152,7 +152,7 @@ impl Inner {
 
     /// The view as it stands, as a turn with nothing to say: what a reply carries.
     fn current(&self) -> Turn {
-        let view = self.stack.view();
+        let view = self.stack.view().screen(0);
         Turn { lines: lines(&view, &CLOCK), view, said: Vec::new(), files: Vec::new(), notices: Vec::new(), seq: self.seq.get() }
     }
 

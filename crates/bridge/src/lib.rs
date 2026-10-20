@@ -46,14 +46,26 @@ pub enum Shell {
 }
 
 /// What is left of `effects` for the shell, drawing once and first: everything the
-/// middlewares answer is gone by now.
+/// middlewares answer is gone by now. What any screen says is in it.
 #[must_use]
 pub fn shell(effects: Vec<Effect>) -> Vec<Shell> {
+    left(effects, None)
+}
+
+/// What is left of `effects` for the shell showing `screen`: what another screen says is left
+/// out.
+#[must_use]
+pub fn shell_on(effects: Vec<Effect>, screen: lumenna_app::ScreenId) -> Vec<Shell> {
+    left(effects, Some(screen))
+}
+
+fn left(effects: Vec<Effect>, screen: Option<lumenna_app::ScreenId>) -> Vec<Shell> {
     let mut shell = Vec::new();
     let mut draw = false;
     for effect in effects {
         match effect {
             Effect::Render(_) => draw = true,
+            Effect::Announce(request) if screen.is_some_and(|screen| screen != request.operation.screen) => {}
             Effect::Announce(request) => {
                 let said = request.operation;
                 shell.push(if said.heading { Shell::Heading(said.text) } else { Shell::Announce(said.text) });

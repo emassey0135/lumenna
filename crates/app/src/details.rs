@@ -11,7 +11,7 @@ use lumenna_records::{Choice, FormField, TaskFields};
 use serde::{Deserialize, Serialize};
 
 use crate::host::HostRequest;
-use crate::model::Model;
+use crate::model::Screen;
 use crate::{Effect, Event, Lumenna, host, say};
 
 /// What the person does in the details.
@@ -86,7 +86,7 @@ pub fn set(mut fields: TaskFields, key: &str, value: String) -> TaskFields {
 }
 
 impl Lumenna {
-    pub(crate) fn details(&self, event: DetailsEvent, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn details(&self, event: DetailsEvent, model: &mut Screen) -> Command<Effect, Event> {
         match event {
             DetailsEvent::Show(task) => {
                 model.details.shown = Some(task);

@@ -7,7 +7,7 @@ use lumenna_records::places::Place;
 use lumenna_records::{Action, ActionKind, Answer, Change, Choice, Choices, LumennaError, Question, Subject, not_offered};
 
 use crate::host::{Arrival, HostRequest};
-use crate::model::Model;
+use crate::model::Screen;
 use crate::network::NetworkRequest;
 use crate::{BlockEvent, Effect, Event, Lumenna, blockform, host, network_request, proposal, say, spoken};
 
@@ -106,7 +106,7 @@ fn after_place(open: &Open, store: &Arrival) -> Option<Place> {
 }
 
 impl Lumenna {
-    pub(crate) fn perform(&self, action: Action, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn perform(&self, action: Action, model: &mut Screen) -> Command<Effect, Event> {
         match action.kind {
             // A sidebar row folds in the sidebar: its key, not a row of the list.
             ActionKind::Expand | ActionKind::Collapse if action.target.starts_with("place:") || action.target.starts_with("group:") => {
@@ -187,7 +187,7 @@ impl Lumenna {
         }
     }
 
-    pub(crate) fn pick_from(&self, day: &str, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn pick_from(&self, day: &str, model: &mut Screen) -> Command<Effect, Event> {
         let Some(store) = &model.store else { return Command::done() };
         let Some(open) = &mut model.open else { return Command::done() };
         let Some(task) = open.action().filter(|action| action.kind == ActionKind::PutInBlock).map(|action| action.target.clone()) else {
@@ -208,7 +208,7 @@ impl Lumenna {
         }
     }
 
-    pub(crate) fn answer(&self, answer: Answer, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn answer(&self, answer: Answer, model: &mut Screen) -> Command<Effect, Event> {
         let Some(open) = &mut model.open else { return Command::done() };
         match open.purpose.clone() {
             Purpose::GoToDay => {
@@ -279,7 +279,7 @@ impl Lumenna {
         }
     }
 
-    pub(crate) fn wrote(&self, result: Result<Change, LumennaError>, store: Option<Arrival>, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn wrote(&self, result: Result<Change, LumennaError>, store: Option<Arrival>, model: &mut Screen) -> Command<Effect, Event> {
         if let Some(store) = store {
             model.store = Some(store);
         }
@@ -359,7 +359,7 @@ impl Lumenna {
         }
     }
 
-    pub(crate) fn arrived(&self, store: Arrival, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn arrived(&self, store: Arrival, model: &mut Screen) -> Command<Effect, Event> {
         model.store = Some(store);
         model.settle();
         let mut more = render();
@@ -374,7 +374,7 @@ impl Lumenna {
         more
     }
 
-    pub(crate) fn filter(&self, text: String, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn filter(&self, text: String, model: &mut Screen) -> Command<Effect, Event> {
         model.filter = (!text.trim().is_empty()).then_some(text);
         let reads = model.store.as_ref().is_some_and(|store| {
             lumenna_records::resolve::list_query(&store.snapshot, &model.query()).is_ok()
@@ -386,7 +386,7 @@ impl Lumenna {
         render()
     }
 
-    pub(crate) fn run(&self, kinds: Vec<ActionKind>, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn run(&self, kinds: Vec<ActionKind>, model: &mut Screen) -> Command<Effect, Event> {
         let Some(actions) = model.actions_in_hand() else { return Command::done() };
         let found = kinds.iter().find_map(|kind| actions.iter().find(|a| a.kind == *kind));
         match (found, kinds.first()) {

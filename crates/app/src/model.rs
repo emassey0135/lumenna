@@ -1,6 +1,6 @@
 //! Everything the screens hold, and how the rows of whatever is shown are found again.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crux_core::Command;
 use crux_core::render::render;
@@ -12,10 +12,51 @@ use crate::asking::Open;
 use crate::host::Arrival;
 use crate::{Announce, DayView, Effect, Event, Item, blockform, day, details, due, list, network, proposal, settings, typing, view};
 
-/// Everything the screens hold.
-#[derive(Debug, Default)]
+/// A screen's identifier: the window, buffer or tab showing it. Screen 0 is every shell's first.
+pub type ScreenId = u32;
+
+/// Everything the app holds: its screens, each over what the device holds alike.
+#[derive(Debug)]
 pub struct Model {
-    /// The store as last sent, once it has been.
+    /// The screens open, by identifier; screen 0 from the start.
+    pub screens: BTreeMap<ScreenId, Screen>,
+}
+
+impl Default for Model {
+    fn default() -> Self {
+        Self { screens: BTreeMap::from([(0, Screen::default())]) }
+    }
+}
+
+impl Model {
+    /// Screen `id`, opened if it is not open yet, over what the device holds as another screen
+    /// has it.
+    pub(crate) fn screen(&mut self, id: ScreenId) -> &mut Screen {
+        if !self.screens.contains_key(&id) {
+            let mut screen = Screen::default();
+            if let Some(other) = self.screens.values().next() {
+                screen.share(other);
+            }
+            self.screens.insert(id, screen);
+        }
+        self.screens.get_mut(&id).expect("just opened")
+    }
+
+    /// What the device holds alike, as screen `id` left it, given to every other screen.
+    pub(crate) fn share(&mut self, id: ScreenId) {
+        let Some(from) = self.screens.remove(&id) else { return };
+        for screen in self.screens.values_mut() {
+            screen.share(&from);
+        }
+        self.screens.insert(id, from);
+    }
+}
+
+/// Everything one screen holds: where the person is on it, and, alike on every screen, what
+/// the device holds (`Screen::share`).
+#[derive(Debug, Default)]
+pub struct Screen {
+    /// The store as last sent, once it has been. The device's.
     pub store: Option<Arrival>,
     /// Where the person is.
     pub place: Option<Place>,
@@ -35,7 +76,7 @@ pub struct Model {
     pub adding: bool,
     /// Why the last quick-add line was refused: the line stays, to be put right.
     pub add_refused: Option<String>,
-    /// What each place left held, put back when it opens again (`Model::go`).
+    /// What each place left held, put back when it opens again (`Screen::go`).
     pub left: HashMap<Place, Left>,
     /// The day shown, when it is not today; today follows the clock.
     pub day: Option<Date>,
@@ -48,7 +89,7 @@ pub struct Model {
     /// The block form, while it is open.
     pub block_form: Option<blockform::Form>,
     /// A proposal's screen, while it is open.
-    pub proposal: Option<proposal::Screen>,
+    pub proposal: Option<proposal::Sheet>,
     /// The clock the shell says times in.
     pub style: Option<lumenna_records::proposals::TimeStyle>,
     /// How the shell writes its buttons, headings and questions.
@@ -105,7 +146,22 @@ pub(crate) struct Rows {
 }
 
 
-impl Model {
+impl Screen {
+    /// Takes what the device holds alike on every screen as `from` has it: the store, the
+    /// shell's clock and capitals, the moment proposals are made against, reminders due and the
+    /// look for them, and syncing.
+    fn share(&mut self, from: &Screen) {
+        self.store.clone_from(&from.store);
+        self.style = from.style;
+        self.capitals = from.capitals;
+        self.plan_from.clone_from(&from.plan_from);
+        self.due.clone_from(&from.due);
+        self.looking = from.looking;
+        self.look_next.clone_from(&from.look_next);
+        self.syncing = from.syncing;
+        self.sync_asked = from.sync_asked;
+    }
+
     pub(crate) fn place(&self) -> Place {
         self.place.clone().unwrap_or(Place::Tasks)
     }
@@ -252,7 +308,7 @@ impl Model {
         self.position = 0;
         self.settle();
         let summary = self.day_view().map(|view| view.summary).unwrap_or_default();
-        render().and(Command::notify_shell(Announce { text: summary, heading: true }).into())
+        render().and(Command::notify_shell(Announce { text: summary, heading: true, screen: 0 }).into())
     }
 }
 

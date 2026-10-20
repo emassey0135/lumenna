@@ -12,7 +12,7 @@ use lumenna_records::reminders::{DueReminder, DueReminders};
 use serde::{Deserialize, Serialize};
 
 use crate::host::HostRequest;
-use crate::model::Model;
+use crate::model::Screen;
 use crate::{Effect, Event, Lumenna, host, proposal, say};
 
 /// What the person, or the shell's clock, does about reminders due.
@@ -129,7 +129,7 @@ enum Deal {
 impl Lumenna {
     /// An overrun warning's Replan from Now closed: once something was replanned, the warning is
     /// dealt with.
-    pub(crate) fn replanned(&self, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn replanned(&self, model: &mut Screen) -> Command<Effect, Event> {
         let Some(id) = model.replanning.take() else { return Command::done() };
         if !model.proposal_made {
             return Command::done();
@@ -138,7 +138,7 @@ impl Lumenna {
     }
 
     /// Takes the reminder `id` off the list and does what its button asks.
-    fn deal(&self, id: &str, how: Deal, model: &mut Model) -> Command<Effect, Event> {
+    fn deal(&self, id: &str, how: Deal, model: &mut Screen) -> Command<Effect, Event> {
         let Some(at) = model.due.iter().position(|d| d.id == id) else { return Command::done() };
         let item = model.due.remove(at);
         let firings: Vec<(String, String)> = item.firings.iter().map(|f| (f.key.clone(), f.occurrence.clone())).collect();
@@ -150,7 +150,7 @@ impl Lumenna {
         render().and(host(request))
     }
 
-    pub(crate) fn due(&self, event: DueEvent, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn due(&self, event: DueEvent, model: &mut Screen) -> Command<Effect, Event> {
         match event {
             // One look with the host at a time; those asked for meanwhile go as one after it,
             // so a burst of them (a clock moved on, a tab come back) is not a queue of them.
@@ -174,7 +174,7 @@ impl Lumenna {
         }
     }
 
-    pub(crate) fn found(&self, result: Result<lumenna_records::reminders::DueReminders, LumennaError>, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn found(&self, result: Result<lumenna_records::reminders::DueReminders, LumennaError>, model: &mut Screen) -> Command<Effect, Event> {
         model.looking = false;
         let next = match model.look_next.take() {
             Some((since, now)) => {

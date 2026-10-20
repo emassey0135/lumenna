@@ -155,13 +155,24 @@ GTK are drawn from it entirely; the CLI and Emacs still call the host directly u
   through the layer's callback, and a shell draws it as it comes, never waiting on the thread
   it draws on. `Busy` counts the store's work under way, so a test can wait until the app is
   still: the flow tests' own `Session` waits on every call.
+- **The app is screens** (`Model::screens`, each a `Screen`): a window, an Emacs buffer, a tab,
+  each with its own place, row in hand, folding, filter, question open, forms and landing. An
+  event goes to one (`Event::On(screen, event)`; screen 0 without one, which is every shell's
+  for now), and what it asks for comes back to it (`map_event`), as what it says is said there
+  (`Announce::screen`, `bridge::shell_on`). What the device holds alike — the store, the clock
+  and capitals, the moment proposals are made against, reminders due, syncing — every screen
+  holds a copy of, given to the others after each turn (`Screen::share`); the store, the clock
+  and the capitals arriving are taken in by every screen. A screen opens with the person's first
+  event on it, over the store as another holds it, and `CloseScreen` closes it: an answer that
+  comes back for it afterwards goes nowhere. The view is every screen's (`Views`); a shell draws
+  its own (`Views::screen`). A shell cannot open another yet: `ShellEvent` has no screen.
 - **The person can move on before a write is answered**: a write's answer that comes after an
   `Event::Focus` the person made since they last acted leaves the row they moved to in hand
-  (`Model::moves`, `acted_at`), rather than pulling them to the row the write would have put
+  (`Screen::moves`, `acted_at`), rather than pulling them to the row the write would have put
   there.
 - **What every app decided for itself is the app's now**: the row in hand after a change (the
   same row, else whatever holds its place among the rows shown); a place gone back to, which
-  opens on the row in hand and the filter it was left with (`Model::left`), and the place shown
+  opens on the row in hand and the filter it was left with (`Screen::left`), and the place shown
   opened again, which keeps both; folding, the sidebar's too
   (Expand and Collapse are row actions; a folded row comes marked `hidden`, for a tree control
   that folds by itself); the question open, a refusal staying in it, a pick's length asked

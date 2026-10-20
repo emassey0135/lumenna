@@ -15,7 +15,7 @@ use lumenna_records::{ActionKind, ProposalWords, proposal_words};
 use serde::{Deserialize, Serialize};
 
 use crate::host::{Arrival, HostRequest};
-use crate::model::Model;
+use crate::model::Screen;
 use crate::{Effect, Event, Lumenna, host, say};
 
 /// What the person does on a proposal's screen.
@@ -115,7 +115,7 @@ impl Proposal {
 
 /// A proposal's screen, open.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Screen {
+pub struct Sheet {
     /// Which.
     pub kind: Kind,
     /// What is proposed, once the host has said.
@@ -132,7 +132,7 @@ pub struct Screen {
     pub made: bool,
 }
 
-impl Screen {
+impl Sheet {
     /// The screen for `kind`, waiting for its first proposal.
     #[must_use]
     pub fn new(kind: Kind) -> Self {
@@ -190,7 +190,7 @@ pub struct ProposalView {
 
 /// The screen as shown.
 #[must_use]
-pub fn view(screen: &Screen) -> ProposalView {
+pub fn view(screen: &Sheet) -> ProposalView {
     let kind = match screen.kind {
         Kind::Replan => ActionKind::Replan,
         Kind::PlanDay(_) => ActionKind::PlanDay,
@@ -237,15 +237,15 @@ pub const fn default_style() -> TimeStyle {
 
 impl Lumenna {
     /// Opens a proposal's screen and asks for its first proposal.
-    pub(crate) fn propose(&self, kind: Kind, model: &mut Model) -> Command<Effect, Event> {
-        model.proposal = Some(Screen::new(kind));
+    pub(crate) fn propose(&self, kind: Kind, model: &mut Screen) -> Command<Effect, Event> {
+        model.proposal = Some(Sheet::new(kind));
         model.proposal_made = false;
         self.repropose(None, model)
     }
 
     /// Proposes the open screen's day again with `pins`, from the store as it is: shown and
     /// said in place, or why not.
-    pub(crate) fn repropose(&self, pins: Option<Pins>, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn repropose(&self, pins: Option<Pins>, model: &mut Screen) -> Command<Effect, Event> {
         let style = model.style.unwrap_or(default_style());
         let from = planned_from(model);
         let (Some(store), Some(screen)) = (&model.store, &mut model.proposal) else { return Command::done() };
@@ -280,7 +280,7 @@ impl Lumenna {
         }
     }
 
-    pub(crate) fn proposal(&self, event: ProposalEvent, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn proposal(&self, event: ProposalEvent, model: &mut Screen) -> Command<Effect, Event> {
         if event == ProposalEvent::Replan {
             return self.propose(Kind::Replan, model);
         }
@@ -317,7 +317,7 @@ impl Lumenna {
         }
     }
 
-    pub(crate) fn applied(&self, result: Result<Applied, LumennaError>, store: Option<Arrival>, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn applied(&self, result: Result<Applied, LumennaError>, store: Option<Arrival>, model: &mut Screen) -> Command<Effect, Event> {
         if let Some(store) = store {
             model.store = Some(store);
             model.settle();
@@ -349,7 +349,7 @@ impl Lumenna {
 }
 
 /// The moment the shell pinned proposals to (`Event::PlanFrom`), in this device's zone.
-fn planned_from(model: &Model) -> Option<jiff::Zoned> {
+fn planned_from(model: &Screen) -> Option<jiff::Zoned> {
     let moment = model.plan_from.as_deref()?.parse::<jiff::civil::DateTime>().ok()?;
     moment.to_zoned(jiff::tz::TimeZone::system()).ok()
 }

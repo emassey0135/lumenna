@@ -11,7 +11,7 @@ use lumenna_records::types::{ExportFormat, Setting};
 use serde::{Deserialize, Serialize};
 
 use crate::host::{Arrival, HostRequest};
-use crate::model::Model;
+use crate::model::Screen;
 use crate::{Effect, Event, Lumenna, host, say};
 
 /// What the person does in Settings.
@@ -140,7 +140,7 @@ pub fn view(settings: &Settings, today: jiff::civil::Date) -> SettingsView {
 }
 
 impl Lumenna {
-    pub(crate) fn settings(&self, event: SettingsEvent, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn settings(&self, event: SettingsEvent, model: &mut Screen) -> Command<Effect, Event> {
         match event {
             SettingsEvent::Open => {
                 model.settings = Some(Settings::default());
@@ -169,7 +169,7 @@ impl Lumenna {
         }
     }
 
-    pub(crate) fn listed(&self, result: Result<lumenna_records::types::SettingList, LumennaError>, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn listed(&self, result: Result<lumenna_records::types::SettingList, LumennaError>, model: &mut Screen) -> Command<Effect, Event> {
         let Some(settings) = &mut model.settings else { return Command::done() };
         match result {
             Ok(list) => {
@@ -187,7 +187,7 @@ impl Lumenna {
     }
     }
 
-    pub(crate) fn imported(&self, result: Result<String, LumennaError>, store: Option<Arrival>, model: &mut Model) -> Command<Effect, Event> {
+    pub(crate) fn imported(&self, result: Result<String, LumennaError>, store: Option<Arrival>, model: &mut Screen) -> Command<Effect, Event> {
         if let Some(store) = store {
             model.store = Some(store);
             model.settle();

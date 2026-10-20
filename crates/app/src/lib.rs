@@ -6,13 +6,18 @@
 //! changes the [`Model`] and returns effects, and [`view`](crux_core::App::view) reads the
 //! model into a [`ViewModel`] each app draws with its own controls.
 //!
+//! The model is a set of screens ([`Screen`]: a window, an Emacs buffer, a tab), each with its
+//! own place, row in hand, folding and question open, over what the device holds alike: the
+//! store, the clock, reminders due, syncing. An event goes to one screen ([`Event::On`]; screen
+//! 0 without one), and the answers to what it asked come back to that screen.
+//!
 //! The app holds no store. It knows the store as the snapshot the host last sent
 //! ([`host::Watch`]), and every listing is worked out from that snapshot by
 //! `lumenna-records`, the same functions `lum` lists with. Every write is an effect
 //! ([`host::HostRequest`]) whose answer comes back as an event. What a shell does itself is
 //! drawing ([`Effect::Render`]) and saying ([`Effect::Announce`]), each its platform's way.
 //!
-//! [`update`](crux_core::App::update) only dispatches. [`Model`] is `model.rs`; a question and
+//! [`update`](crux_core::App::update) only dispatches. [`Model`] and [`Screen`] are `model.rs`; a question and
 //! running an action are `asking.rs`; each screen's events, state and view are its own module
 //! (`day`, `details`, `typing`, `blockform`, `proposal`, `settings`, `network`, `due`), and the
 //! view model is assembled in `view.rs`.
@@ -61,7 +66,7 @@ pub use due::{Due, DueEvent, Notice};
 pub use network::{DevicesEvent, DevicesView, NetworkAnswer, NetworkRequest, PairEvent};
 pub use view::{Asking, ListView, ViewModel};
 pub use asking::{Open, Purpose};
-pub use model::Model;
+pub use model::{Model, Screen, ScreenId};
 
 /// Something to say, once the shell has moved focus where the view model puts it: said
 /// before, it is cut off by the focus change.
@@ -72,6 +77,8 @@ pub struct Announce {
     /// Say the day's heading instead — "<day>. <summary>", the day in the shell's own words —
     /// `text` being the summary: what a new day shown says.
     pub heading: bool,
+    /// The screen that says it: where focus is about to land.
+    pub screen: ScreenId,
 }
 
 impl crux_core::capability::Operation for Announce {
@@ -109,6 +116,19 @@ mod effects {
     }
 }
 
+impl Effect {
+    /// The same effect, anything it says said on `screen`.
+    fn said_on(self, screen: ScreenId) -> Self {
+        match self {
+            Effect::Announce(mut request) => {
+                request.operation.screen = screen;
+                Effect::Announce(request)
+            }
+            effect => effect,
+        }
+    }
+}
+
 /// Moving through the days.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,6 +148,12 @@ pub enum DayMove {
 /// What happens: what the person does, and what the host answers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Event {
+    /// An event on a screen other than the first, or the answer to what one asked. An event
+    /// without one is screen 0's.
+    On(ScreenId, Box<Event>),
+    /// The screen is closed: a window shut, a buffer killed. What it had asked for that comes
+    /// back afterwards is dropped.
+    CloseScreen(ScreenId),
     /// The app has started: watch the store.
     Start,
     /// Go to a place.
@@ -223,7 +249,7 @@ pub(crate) fn say(text: impl Into<String>) -> Command<Effect, Event> {
     if text.is_empty() {
         return Command::done();
     }
-    Command::notify_shell(Announce { text, heading: false }).into()
+    Command::notify_shell(Announce { text, heading: false, screen: 0 }).into()
 }
 
 pub(crate) fn host(request: HostRequest) -> Command<Effect, Event> {
@@ -246,6 +272,20 @@ pub(crate) fn spoken(change: &Change) -> String {
 }
 
 impl Event {
+    /// The screen it is for, and the event itself.
+    fn addressed(self) -> (ScreenId, Event) {
+        match self {
+            Event::On(screen, event) => (screen, event.addressed().1),
+            event => (0, event),
+        }
+    }
+
+    /// What every screen takes in alike: the store, the clock and the capitals the shell says
+    /// things in, the moment proposals are made against.
+    fn is_everyones(&self) -> bool {
+        matches!(self, Event::Arrived(_) | Event::Clock(_) | Event::Capitals(_) | Event::PlanFrom(_))
+    }
+
     /// Whether the person did it, rather than the store, the network or the shell's own clock.
     fn is_the_persons(&self) -> bool {
         !matches!(
@@ -265,13 +305,60 @@ impl Event {
     }
 }
 
+/// Every screen's view, by screen.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Views(pub std::collections::BTreeMap<ScreenId, ViewModel>);
+
+impl Views {
+    /// What screen `screen` shows; nothing, before it is opened or once it is closed.
+    #[must_use]
+    pub fn screen(mut self, screen: ScreenId) -> ViewModel {
+        self.0.remove(&screen).unwrap_or_default()
+    }
+}
+
 impl App for Lumenna {
     type Event = Event;
     type Model = Model;
-    type ViewModel = ViewModel;
+    type ViewModel = Views;
     type Effect = Effect;
 
     fn update(&self, event: Event, model: &mut Model) -> Command<Effect, Event> {
+        let (screen, event) = event.addressed();
+        if event.is_everyones() {
+            let screens: Vec<ScreenId> = model.screens.keys().copied().collect();
+            return Command::all(screens.into_iter().map(|screen| self.on(screen, event.clone(), model)));
+        }
+        if let Event::CloseScreen(closed) = event {
+            model.screens.remove(&closed);
+            return render();
+        }
+        // A screen opens with the person's first event on it; an answer for one closed since
+        // goes nowhere.
+        if !model.screens.contains_key(&screen) && !event.is_the_persons() {
+            return Command::done();
+        }
+        self.on(screen, event, model)
+    }
+
+    fn view(&self, model: &Model) -> Views {
+        Views(model.screens.iter().map(|(id, screen)| (*id, view::view(screen))).collect())
+    }
+}
+
+impl Lumenna {
+    /// `event` on screen `id`: what it asks for comes back to the same screen, and what it
+    /// says is that screen's to say. What the device holds alike goes to every other screen.
+    fn on(&self, id: ScreenId, event: Event, model: &mut Model) -> Command<Effect, Event> {
+        let command = self.turn(event, model.screen(id));
+        model.share(id);
+        command
+            .map_event(move |event| Event::On(id, Box::new(event)))
+            .map_effect(move |effect| effect.said_on(id))
+    }
+
+    /// `event` on one screen.
+    fn turn(&self, event: Event, model: &mut Screen) -> Command<Effect, Event> {
         // Where focus goes is the app's to say; the shell moves it only when this moves. Not when
         // the person reports moving, or a late answer would pull them back; always after a
         // write, whose rows a shell redraws.
@@ -322,14 +409,10 @@ impl App for Lumenna {
         command
     }
 
-    fn view(&self, model: &Model) -> ViewModel {
-        view::view(model)
-    }
-}
-
-impl Lumenna {
-    fn dispatch(&self, event: Event, model: &mut Model) -> Command<Effect, Event> {
+    fn dispatch(&self, event: Event, model: &mut Screen) -> Command<Effect, Event> {
         match event {
+            // Taken apart before a screen's turn.
+            Event::On(..) | Event::CloseScreen(_) => Command::done(),
             Event::Start => Command::stream_from_shell(Watch).then_send(Event::Arrived).and(host(HostRequest::Devices)),
             Event::Arrived(store) => self.arrived(store, model),
             Event::Open(place) => {
