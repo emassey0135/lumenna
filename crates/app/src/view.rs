@@ -116,11 +116,6 @@ pub struct Asking {
     /// Why the last answer was refused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refusal: Option<String>,
-    /// Where the pick can offer another day's blocks instead of the week's
-    /// ([`crate::Event::PickFrom`]), Put in a Block's: what the choice that asks for the day is
-    /// called, "Another Day".
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub another_day: Option<String>,
 }
 
 /// The rows a place lists under `query`: tasks, or the block series; `None` for the day.
@@ -256,7 +251,7 @@ fn asking(open: &crate::Open) -> Asking {
             ..lumenna_records::Choice::default()
         });
     }
-    Asking { action: open.action().cloned(), question: open.question(), choices, refusal: open.refusal.clone(), another_day: None }
+    Asking { action: open.action().cloned(), question: open.question(), choices, refusal: open.refusal.clone() }
 }
 
 /// The projects a task's Project field offers: every one not archived, in tree order, and the

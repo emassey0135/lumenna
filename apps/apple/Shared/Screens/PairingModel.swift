@@ -49,9 +49,9 @@ final class PairingModel: ObservableObject {
     init(core: Core, thisDevice: String, name: String) {
         self.core = core
         self.name = name
-        // Pairing's words come with the Devices page, which the pairing is opened from.
-        words = core.app.current.view.devices?.words
-            ?? LumennaApp.pairingWords(thisDevice: thisDevice, local: true, capitals: .title)
+        // Pairing's words come with the Devices page, shown here if it is not already.
+        if core.app.current.view.devices == nil { core.app.send(.devices(.show)) }
+        words = core.app.current.view.devices!.words
         status = words.intro
     }
 

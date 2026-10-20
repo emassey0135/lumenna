@@ -83,7 +83,8 @@ without the screens over BoltFFI. No JSON crosses the FFI.
   `ActionKind` is generic across subjects so a key means one thing on every row (Delete is
   `Delete`), with `Subject` saying what it is done to. Only `Question::Form` is the
   client's: the task and block forms. Never decide in a client which actions a row has.
-  A key pressed on a row without that action says `not_offered(kind, subject, …)`.
+  A key pressed on a row without that action is the app's to refuse (`Run`, `RunDay`,
+  `DetailsEvent::Run`), in `not_offered(kind, subject, …)`'s words.
   What a picker's row says is `lumenna_app::speech::choice` for Windows, GTK and the web.
 - **What every client's forms share is here too**, as free functions in `form.rs`:
   `task_fields`/`task_edit`, the block form's `block_fields`/`block_edit`/`new_block`,
@@ -92,7 +93,8 @@ without the screens over BoltFFI. No JSON crosses the FFI.
   never keeps its own copy of any of them.
 - **The forms' and the pairing screen's words are the core's** (`fields.rs`): `task_form()`
   and `block_form()` give each field's label, hint, example, control and options;
-  `pairing_words(this_device, local)` every sentence and button of pairing;
+  `pairing_words(this_device, local)` every sentence and button of pairing (which the app hands
+  a shell in its Devices view);
   `proposal_words(kind)` the Replan from Now and Plan the Day screens';
 `go_to_day_question`, `new_filter_questions` and `length_question` what the apps' own
   commands ask. A field marked `one_day` is what one day of a repeating block can change. A new block starts at `new_block_start(date)`: the next whole hour today, when
@@ -652,7 +654,7 @@ tests run on `tests/btspeak_stub.py`, with the core built and `target/debug` on 
 - **A row's context menu is its `actions`** (`actions.py`): the rows' actions merged into
   one list of commands that keeps each row's order, each offered where its row has it, a
   letter per kind (`KEYS`), the delete keys for `Delete`/`Unassign`/`Unpair`; a letter the
-  row does not offer says the core's `not_offered`. Running one puts the row in hand (`Focus`,
+  row does not offer runs there and the app says why. Running one puts the row in hand (`Focus`,
   or `Hold` for a side list's row) and performs it; `follow` then answers whatever the app
   opens, one after another, with the device's dialogs: a question (a refusal staying in it), the
   block form, a proposal, a reminder list. The task form registers in `actions.FORMS`.
@@ -680,8 +682,7 @@ tests run on `tests/btspeak_stub.py`, with the core built and `target/debug` on 
 - **A choice's reason is its row's hint.** `request_choice` has no description, so a pick
   whose choices carry a `reason` is a `dynamic_menu` instead (`session.choose(hints=…)`),
   the device saying each hint after the row; a pick without reasons stays a choice dialog.
-  Put in a Block adds Another day, which asks the core's Go to Day question and sends
-  `PickFrom`: the app offers that day's blocks in the same pick.
+  Put in a Block's ends in the app's Another day, whose day is asked as the app's own question.
 - **Replan from now and Plan the day are one menu** (`proposals.py`) over the app's proposal:
   rows toggled by Enter with callable titles, so checking rewords a row in place, the title the
   whole proposal (said as it opens, not again after an apply, whose announcement already says
@@ -917,7 +918,7 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   chosen by a command acts a turn later: it is not in the window until then.
 - **The Day menu ends in the day's own actions**, one item per kind (`dayActionItems`), since
   the menu bar is built once: each runs the shown day's action of that kind, read again first,
-  or says `notOffered`. From another place they go to today first.
+  through `RunDay`, which says why a day lacks one. From another place they go to today first.
 - **⌘F never reaches the app in the iPad simulator**: no responder is asked about it, where
   ⌘3 is. Filter Tasks stays on ⌘F in the Edit menu, and its test skips on iPad.
 - **Three layers of iOS tests.** `LumennaTests` (unit tests hosted in the app) asks each
@@ -1098,7 +1099,8 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   hand, or held in a side list, then the action), their questions `AppQuestions`' (alerts and
   a `ChoicePicker` on iOS, sheets on the Mac and, one at a time, a `WatchAsker`'s on the
   watch, each sheet's closing without an answer its own cancel). Keys and menu commands run
-  the row's action of that kind, and say `notOffered` when it has none; on the Mac a menu
+  the row's action of that kind, and a row without one runs it and the app says why
+  (`AppModel.refuse`); on the Mac a menu
   item that asks ends in "…". Settings screens and the priority picker are built from the
   core's descriptions (`Setting.kind`, `priorities()`). Folding is the app's, by each row's
   Expand and Collapse.
@@ -1502,8 +1504,8 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   newest winning, and the system's shortcuts helper (Meta+/) lists what is offered now. A
   row's own commands (Ctrl+K, Delete, Shift+F10) run its action of that `ActionKind`
   (`Command.rowAction`), so a key never does what the row's action list does not; on a row
-  without one it says the core's reason (`notOffered`, the subject from the row's own
-  actions). Compose's root takes the keys while
+  without one the app says the core's reason (`refusal`: the row in hand, then `Run`).
+  Compose's root takes the keys while
   anything has focus; `MainActivity.dispatchKeyEvent` takes them when nothing does.
 - **Buttons take focus only out of touch mode**, which a key press leaves; the keyboard
   tests leave it first (`setInTouchMode(false)`), or no tab could be focused.

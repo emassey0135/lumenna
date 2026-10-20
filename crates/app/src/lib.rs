@@ -178,9 +178,6 @@ pub enum Event {
     Run(Vec<ActionKind>),
     /// The answer to the question open.
     Answer(Answer),
-    /// The open pick offers the work blocks of the day `day` names ("friday", "2026-11-03")
-    /// instead of the week's: Put in a Block, for a block further off.
-    PickFrom(String),
     /// Leave the question open unanswered.
     Cancel,
     /// Move through the days, going to the day if another place is shown.
@@ -451,7 +448,6 @@ impl Lumenna {
             Event::Perform(action) => self.perform(action, model),
             Event::Run(kinds) => self.run(kinds, model),
             Event::Answer(answer) => self.answer(answer, model),
-            Event::PickFrom(day) => self.pick_from(&day, model),
             Event::Cancel => {
                 model.open = None;
                 render()
