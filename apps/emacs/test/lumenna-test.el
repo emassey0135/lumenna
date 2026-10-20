@@ -431,7 +431,10 @@
 
 (ert-deftest lumenna-a-cancelled-day-is-listed-and-put-back ()
   (lumenna-test--with-store
-    (lumenna-write "block.add" :title "Run" :at "7am" :minutes 30 :date "today" :repeat "every day")
+    ;; From tomorrow: today, whose "now" is checked below, holds no block that now could fall
+    ;; inside, whenever the test runs (at 07:08 UTC it fell inside today's Run, and the day said
+    ;; the block under way instead).
+    (lumenna-write "block.add" :title "Run" :at "7am" :minutes 30 :date "tomorrow" :repeat "every day")
     (lumenna-today)
     (lumenna-test--goto "Run")
     (lumenna-act-cancel-day)
@@ -457,7 +460,10 @@
 
 (ert-deftest lumenna-free-time-now-and-a-cancelled-day-are-said-in-the-cores-order ()
   (lumenna-test--with-store
-    (lumenna-write "block.add" :title "Run" :at "7am" :minutes 30 :date "today" :repeat "every day")
+    ;; From tomorrow: today, whose "now" is checked below, holds no block that now could fall
+    ;; inside, whenever the test runs (at 07:08 UTC it fell inside today's Run, and the day said
+    ;; the block under way instead).
+    (lumenna-write "block.add" :title "Run" :at "7am" :minutes 30 :date "tomorrow" :repeat "every day")
     (let* ((display-time-24hr-format t)
            (series (car (split-string (plist-get (aref (plist-get (lumenna-call "block.list") :rows) 0) :id) "@")))
            (_ (lumenna-call "block.cancel" :id series :date "tomorrow"))
