@@ -120,11 +120,11 @@ impl TaskList {
             // Made here, and now listed: the person works on it next.
             self.pending.replace(None);
             app.crux.send(ShellEvent::Focus(id.clone()));
-            self.show(app, Some(&id));
+            self.show(Some(&id));
             return;
         }
         if landed || rebuilt {
-            self.show(app, view.focus.as_deref());
+            self.show(view.focus.as_deref());
         }
         if landed && controls::lost(app.main) {
             controls::focus(self.tree.hwnd);
@@ -132,12 +132,9 @@ impl TaskList {
     }
 
     /// Selects a row, without its being taken for the person's move, and shows its details.
-    fn show(&self, app: &App, key: Option<&str>) {
+    fn show(&self, key: Option<&str>) {
         if let Some(index) = key.and_then(|key| self.tree.index_of(key)) {
             self.tree.select_quietly(index);
-        }
-        if !self.trash {
-            app.detail.show(app, key);
         }
     }
 
@@ -211,9 +208,6 @@ impl View for TaskList {
             TVN_SELCHANGEDW if !self.tree.busy() => {
                 if let Some(row) = self.selected() {
                     app.crux.send(ShellEvent::Focus(row.id.clone()));
-                    if !self.trash {
-                        app.detail.show(app, Some(&row.id));
-                    }
                 }
                 Some(0)
             }

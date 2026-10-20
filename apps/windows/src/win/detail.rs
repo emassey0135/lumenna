@@ -1,28 +1,32 @@
-//! The selected task's details, in the right-hand pane.
+//! The task in hand's details, in the right-hand pane, drawn from the app's view
+//! (`view.details`): which task, its fields as typed or as stored, and saving are the app's.
 //!
 //! Labelled stock fields: a static label before each control is what Windows names the
 //! control by, and its mnemonic is the field's Alt shortcut. What each field takes is its
-//! accessible description. Saving sends only the fields that changed (the surface's
-//! `task_edit`), and the buttons are the Task menu's own actions (`task_actions.rs`).
+//! accessible description. Typing goes to the app as it happens (`DetailsEvent::Field`), which
+//! keeps it through a change elsewhere and saves only what changed; the buttons are the task's
+//! own actions, run as the app's.
 //!
-//! The fields follow the store while nobody is editing them: a change from another device or
-//! another process refills them, unless they hold typing not yet saved, which it would lose.
+//! A field is written only when what the app holds differs from what it shows, so drawing
+//! never moves the caret in a field being typed in.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 
-use lumenna_host::{ActionKind, Choice, TaskDetail, TaskFields, priorities, task_edit, task_fields, task_form};
+use lumenna_app::details::DetailsEvent;
+use lumenna_app::lines::Lines;
+use lumenna_app::{DetailsView, ViewModel};
+use lumenna_ffi::ShellEvent;
+use lumenna_host::{Action as CoreAction, ActionKind, Choice, Question, TaskDetail, priorities, task_form};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::SystemServices::{SS_CENTER, SS_NOPREFIX};
 use windows::Win32::UI::Controls::{WC_BUTTONW, WC_COMBOBOXW, WC_EDITW, WC_LISTBOXW, WC_STATICW};
 use windows::Win32::UI::Input::KeyboardAndMouse::{VK_ESCAPE, VK_TAB};
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    BN_CLICKED, BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL,
-    CB_RESETCONTENT, CB_SETCURSEL, CBS_DROPDOWNLIST, DLGC_WANTALLKEYS,
-    DLGC_WANTMESSAGE, DLGC_WANTTAB, ES_AUTOHSCROLL, ES_AUTOVSCROLL, ES_MULTILINE, ES_READONLY,
-    ES_WANTRETURN, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBS_NOINTEGRALHEIGHT,
-    LBS_NOTIFY, MSG, WM_GETDLGCODE, WM_KEYDOWN, WM_NCDESTROY, WS_EX_CLIENTEDGE, WS_TABSTOP,
-    WS_VSCROLL,
+    BN_CLICKED, BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CBN_SELCHANGE, CBS_DROPDOWNLIST,
+    DLGC_WANTALLKEYS, DLGC_WANTMESSAGE, DLGC_WANTTAB, EN_CHANGE, ES_AUTOHSCROLL, ES_AUTOVSCROLL, ES_MULTILINE, ES_READONLY,
+    ES_WANTRETURN, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, MSG,
+    WM_GETDLGCODE, WM_KEYDOWN, WM_NCDESTROY, WS_EX_CLIENTEDGE, WS_TABSTOP, WS_VSCROLL,
 };
 use windows::core::HSTRING;
 
@@ -92,6 +96,8 @@ pub struct Detail {
     shown: RefCell<Option<TaskDetail>>,
     /// What the Project list offers, as the core gives it.
     projects: RefCell<Vec<Choice>>,
+    /// The fields are being written from the app, not typed.
+    filling: Cell<bool>,
 }
 
 impl Detail {
@@ -188,8 +194,9 @@ impl Detail {
             buttons,
             shown: RefCell::new(None),
             projects: RefCell::new(Vec::new()),
+            filling: Cell::new(false),
         };
-        detail.fill(None);
+        detail.show_fields(false);
         detail
     }
 
@@ -203,29 +210,7 @@ impl Detail {
         self.shown.borrow().is_some().then_some(self.title)
     }
 
-    /// Shows a task, or none. The same task stays as it is, so typing not yet saved is kept
-    /// when the list reloads around a change made here.
-    pub fn show(&self, app: &App, id: Option<&str>) {
-        if self.task_id().as_deref() == id {
-            return;
-        }
-        match id {
-            Some(id) => self.load(app, id),
-            None => self.fill(None),
-        }
-    }
-
-    /// Reads the task again, and refills the fields with it.
-    fn load(&self, app: &App, id: &str) {
-        *self.projects.borrow_mut() = app.core.lumenna.project_options().unwrap_or_default();
-        match app.core.lumenna.show_task(id) {
-            Ok(shown) => self.fill(Some(shown.task)),
-            Err(_) => self.fill(None),
-        }
-    }
-
-    fn fill(&self, task: Option<TaskDetail>) {
-        let visible = task.is_some();
+    fn show_fields(&self, visible: bool) {
         controls::show(self.placeholder, !visible);
         for field in &self.fields {
             controls::show(field.label, visible);
@@ -234,54 +219,85 @@ impl Detail {
         for (button, _) in self.wait_buttons.iter().chain(&self.buttons) {
             controls::show(*button, visible);
         }
-        if let Some(task) = &task {
-            let fields = task_fields(task.clone());
-            controls::set_text(self.title, &fields.title);
-            controls::set_text(self.due, &fields.due);
-            controls::set_text(self.repeat, &fields.repeat);
-            let position = priorities().iter().position(|p| p.id == fields.priority.to_string());
+    }
+
+    /// Draws the app's details of the task in hand, or none.
+    pub fn draw(&self, view: &ViewModel, lines: &Lines) {
+        let Some(details) = &view.details else {
+            if self.shown.replace(None).is_some() {
+                // Never hide the control that has focus: focus would go nowhere.
+                if self.fields.iter().any(|f| f.control == controls::focused()) {
+                    return;
+                }
+                self.show_fields(false);
+            }
+            return;
+        };
+        let other = self.task_id().as_deref() != Some(details.task.id.as_str());
+        if other {
+            self.show_fields(true);
+        }
+        self.filling.set(true);
+        self.fill(details, lines);
+        self.filling.set(false);
+        *self.shown.borrow_mut() = Some(details.task.clone());
+    }
+
+    fn fill(&self, details: &DetailsView, lines: &Lines) {
+        let fields = &details.fields;
+        let task = &details.task;
+        set_if_changed(self.title, &fields.title);
+        set_if_changed(self.due, &fields.due);
+        set_if_changed(self.repeat, &fields.repeat);
+        let position = priorities().iter().position(|p| p.id == fields.priority.to_string());
+        if usize::try_from(controls::send(self.priority, CB_GETCURSEL, 0, 0)).ok() != position {
             controls::send(self.priority, CB_SETCURSEL, position.unwrap_or(usize::MAX), 0);
-            controls::set_text(self.estimate, &fields.estimate);
-            self.fill_projects(&fields.project);
-            controls::set_text(self.labels, &fields.labels);
-            // An edit control's lines end in CR LF.
-            controls::set_text(self.notes, &fields.notes.replace("\r\n", "\n").replace('\n', "\r\n"));
+        }
+        set_if_changed(self.estimate, &fields.estimate);
+        if *self.projects.borrow() != details.projects || self.chosen_project() != fields.project {
+            self.fill_projects(&details.projects, &fields.project);
+        }
+        set_if_changed(self.labels, &fields.labels);
+        // An edit control's lines end in CR LF.
+        set_if_changed(self.notes, &fields.notes.replace("\r\n", "\n").replace('\n', "\r\n"));
+        let waits: Vec<&str> = task.depends.iter().map(|other| other.title.as_str()).collect();
+        let had: Vec<String> = self.shown.borrow().as_ref().map(|t| t.depends.iter().map(|d| d.title.clone()).collect()).unwrap_or_default();
+        if had != waits || self.task_id().as_deref() != Some(task.id.as_str()) {
             controls::send(self.waits, LB_RESETCONTENT, 0, 0);
-            for other in &task.depends {
-                let text = HSTRING::from(other.title.as_str());
+            for title in &waits {
+                let text = HSTRING::from(*title);
                 controls::send(self.waits, LB_ADDSTRING, 0, text.as_ptr() as isize);
             }
             controls::send(self.waits, LB_SETCURSEL, 0, 0);
-            controls::enable(self.wait_buttons[1].0, !task.depends.is_empty());
-            controls::set_text(self.state, &crate::speech::task_state(task));
-            controls::set_text(self.history, &task.history.join("\r\n"));
-            for (button, action) in self.wait_buttons.iter().chain(&self.buttons) {
-                if let Action::Kinds(kinds) = action {
-                    let offered = actions::of_kind(&task.actions, kinds);
-                    // "Add…" beside the list it adds to says enough; the rest are named as offered.
-                    if let Some(offered) = offered.as_ref().filter(|_| !self.wait_buttons.iter().any(|(b, _)| b == button)) {
-                        controls::set_text(*button, &actions::label(offered));
-                    }
-                    // Never the button that has focus: focus would go nowhere.
-                    if offered.is_some() || controls::focused() != *button {
-                        controls::enable(*button, offered.is_some());
-                    }
+        }
+        if task.depends.is_empty() && controls::focused() == self.wait_buttons[1].0 {
+            controls::focus(self.waits);
+        }
+        controls::enable(self.wait_buttons[1].0, !task.depends.is_empty());
+        set_if_changed(self.state, &lines.task_state);
+        set_if_changed(self.history, &task.history.join("\r\n"));
+        for (button, action) in self.wait_buttons.iter().chain(&self.buttons) {
+            if let Action::Kinds(kinds) = action {
+                let offered = actions::of_kind(&task.actions, kinds);
+                // "Add…" beside the list it adds to says enough; the rest are named as offered.
+                if let Some(offered) = offered.as_ref().filter(|_| !self.wait_buttons.iter().any(|(b, _)| b == button)) {
+                    set_if_changed(*button, &actions::label(offered));
+                }
+                // Never the button that has focus: focus would go nowhere.
+                if offered.is_some() || controls::focused() != *button {
+                    controls::enable(*button, offered.is_some());
                 }
             }
         }
-        *self.shown.borrow_mut() = task;
     }
 
     /// The projects to choose from, in tree order, the task's own chosen. A subproject says
     /// its level, which a drop-down list has no other way to; typing its first letters still
-    /// finds it. An archived project the task is in is listed too, so it is not lost.
-    fn fill_projects(&self, current: &str) {
-        let mut projects = self.projects.borrow_mut();
-        if !current.is_empty() && !projects.iter().any(|p| p.id == current) {
-            projects.push(Choice { id: current.to_owned(), title: current.to_owned(), ..Choice::default() });
-        }
+    /// finds it. The app lists an archived project the task is in too, so it is not lost.
+    fn fill_projects(&self, projects: &[Choice], current: &str) {
+        *self.projects.borrow_mut() = projects.to_vec();
         controls::send(self.project, CB_RESETCONTENT, 0, 0);
-        for project in projects.iter() {
+        for project in projects {
             let text = if project.depth > 0 { format!("{}, level {}", project.title, project.depth + 1) } else { project.title.clone() };
             let text = HSTRING::from(text);
             controls::send(self.project, CB_ADDSTRING, 0, text.as_ptr() as isize);
@@ -296,62 +312,54 @@ impl Detail {
         index.and_then(|i| self.projects.borrow().get(i).map(|p| p.id.clone())).unwrap_or_default()
     }
 
-    /// The fields as they are now.
-    fn read(&self) -> TaskFields {
-        // The priority chosen, as the core numbers it; nothing chosen reads as none.
-        let chosen = usize::try_from(controls::send(self.priority, CB_GETCURSEL, 0, 0)).ok();
-        let priority = chosen.and_then(|i| priorities().get(i).and_then(|p| p.id.parse().ok())).unwrap_or(4);
-        TaskFields {
-            title: controls::text(self.title),
-            due: controls::text(self.due),
-            repeat: controls::text(self.repeat),
-            priority,
-            estimate: controls::text(self.estimate),
-            project: self.chosen_project(),
-            labels: controls::text(self.labels),
-            notes: controls::text(self.notes).replace("\r\n", "\n"),
-        }
-    }
-
-    /// Whether the fields hold typing not yet saved.
-    pub fn has_changes(&self) -> bool {
-        self.shown.borrow().as_ref().is_some_and(|task| task_edit(task.clone(), self.read()).is_some())
-    }
-
-    /// The store changed: the fields follow unless someone is part way through editing them.
-    pub fn reload(&self, app: &App) {
-        if let Some(id) = self.task_id()
-            && !self.has_changes()
-        {
-            self.load(app, &id);
-        }
-    }
-
-    /// Saves what changed, and says what that did.
+    /// Saves what changed, as the app does: it says what that did, or that nothing changed.
     pub fn save(&self, app: &App) {
-        let Some(task) = self.shown.borrow().clone() else { return };
-        let Some(edit) = task_edit(task.clone(), self.read()) else {
-            app.say("Nothing changed");
-            return;
-        };
-        if let Some(change) = app.perform(|lumenna| lumenna.edit_task(&task.id, edit)) {
-            self.load(app, &task.id);
-            app.say_change(&change);
+        if self.shown.borrow().is_some() {
+            app.crux.send(ShellEvent::Details(DetailsEvent::Save));
         }
     }
 
     pub fn command(&self, app: &App, control: HWND, _id: u16, code: u16) -> bool {
-        if u32::from(code) != BN_CLICKED {
+        let code = u32::from(code);
+        // Typing and choosing, as it happens: the app keeps it until it is saved.
+        let edits = [
+            (self.title, "title"),
+            (self.due, "due"),
+            (self.repeat, "repeat"),
+            (self.estimate, "estimate"),
+            (self.labels, "labels"),
+            (self.notes, "notes"),
+        ];
+        if let Some((_, key)) = edits.iter().find(|(edit, _)| *edit == control) {
+            if code == EN_CHANGE && !self.filling.get() {
+                let value = controls::text(control).replace("\r\n", "\n");
+                app.crux.send(ShellEvent::Details(DetailsEvent::Field { key: (*key).to_owned(), value }));
+            }
+            return true;
+        }
+        if control == self.priority || control == self.project {
+            if code == CBN_SELCHANGE && !self.filling.get() {
+                let (key, value) = if control == self.priority {
+                    let chosen = usize::try_from(controls::send(self.priority, CB_GETCURSEL, 0, 0)).ok();
+                    ("priority", chosen.and_then(|i| priorities().get(i).map(|p| p.id.clone())).unwrap_or_default())
+                } else {
+                    ("project", self.chosen_project())
+                };
+                app.crux.send(ShellEvent::Details(DetailsEvent::Field { key: key.to_owned(), value }));
+            }
+            return true;
+        }
+        if code != BN_CLICKED {
             return false;
         }
         let action = self.wait_buttons.iter().chain(&self.buttons).find(|(b, _)| *b == control).map(|(_, a)| *a);
         let Some(action) = action else { return false };
         let Some(task) = self.shown.borrow().clone() else { return true };
         let offered = match action {
-            Action::Save => return {
+            Action::Save => {
                 self.save(app);
-                true
-            },
+                return true;
+            }
             Action::Kinds(kinds) => actions::of_kind(&task.actions, kinds),
             Action::StopWaiting => {
                 // The task chosen in the list, whose Stop Waiting names it.
@@ -360,16 +368,23 @@ impl Detail {
                 task.actions.iter().find(|a| a.kind == ActionKind::StopWaiting && a.other == other).cloned()
             }
         };
-        if let Some(offered) = offered
-            && let Some((change, _)) = actions::run(app, app.main, &offered, || app.open_detail())
-        {
-            app.say_change(&change);
+        if let Some(offered) = offered {
+            self.act(app, offered);
         }
         true
     }
 
+    /// Runs one of the task's own actions as the app's; its form is this pane.
+    pub fn act(&self, app: &App, action: CoreAction) {
+        if action.question == Question::Form {
+            app.open_detail();
+        } else {
+            app.crux.send(ShellEvent::Perform(action));
+        }
+    }
+
     /// What can be done to the task shown: for the Task menu, while focus is here.
-    pub fn actions(&self) -> Option<Vec<lumenna_host::Action>> {
+    pub fn actions(&self) -> Option<Vec<CoreAction>> {
         self.shown.borrow().as_ref().map(|task| task.actions.clone())
     }
 
@@ -402,6 +417,13 @@ impl Detail {
         for (row, chunk) in self.buttons.chunks(3).enumerate() {
             row_of_buttons(chunk, gap, y + row as i32 * (m.button + m.px(6)), inner, m);
         }
+    }
+}
+
+/// Writes a control's text only when it differs, so the caret in a field being typed in stays.
+fn set_if_changed(control: HWND, text: &str) {
+    if controls::text(control) != text {
+        controls::set_text(control, text);
     }
 }
 

@@ -111,11 +111,11 @@ impl DayView {
         if let Some(key) = made {
             self.pending.replace(None);
             app.crux.send(ShellEvent::Focus(key.clone()));
-            self.show(app, Some(&key));
+            self.show(Some(&key));
             return;
         }
         if landed || rebuilt {
-            self.show(app, view.focus.as_deref());
+            self.show(view.focus.as_deref());
         }
         if landed && controls::lost(app.main) {
             controls::focus(self.tree.hwnd);
@@ -123,11 +123,10 @@ impl DayView {
     }
 
     /// Selects a row, without its being taken for the person's move, and shows a sitting's task.
-    fn show(&self, app: &App, key: Option<&str>) {
+    fn show(&self, key: Option<&str>) {
         if let Some(index) = key.and_then(|key| self.tree.index_of(key)) {
             self.tree.select_quietly(index);
         }
-        app.detail.show(app, self.selected_task().as_deref());
     }
 
     /// Lands on the block of `series` once the app shows it: what a reminder of it opens.
@@ -299,7 +298,6 @@ impl View for DayView {
                 if let Some(row) = self.selected() {
                     app.crux.send(ShellEvent::Focus(row.key));
                 }
-                app.detail.show(app, self.selected_task().as_deref());
                 Some(0)
             }
             TVN_ITEMEXPANDEDW if !self.tree.busy() => {

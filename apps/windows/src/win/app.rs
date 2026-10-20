@@ -418,7 +418,6 @@ impl App {
         if let Some(content) = self.content() {
             content.view().reload(self);
         }
-        self.detail.reload(self);
     }
 
     /// A turn the app left: drawn, the screens not drawn from it brought up to date, its
@@ -430,6 +429,7 @@ impl App {
         let landed = turn.view.landing != self.landing.replace(turn.view.landing);
         self.follow_place();
         self.sidebar.draw(self, &turn.view);
+        self.detail.draw(&turn.view, &turn.lines);
         let list = self.task_list().filter(|list| turn.view.place.as_ref() == Some(&list.place));
         if let Some(list) = &list {
             list.draw(self, &turn.view, &turn.lines, landed);
@@ -569,7 +569,6 @@ impl App {
                 }
             }
         }
-        self.detail.show(self, None);
         let pane = self.panes[1];
         let content = match &place {
             Place::Today => Content::Day(DayView::create(self, pane)),
@@ -811,7 +810,8 @@ impl App {
         }
         match self.content()? {
             Content::Tasks(list) => list.selected().map(|row| row.actions),
-            Content::Day(day) => self.core.lumenna.show_task(&day.selected_task()?).ok().map(|shown| shown.task.actions),
+            // The details show a sitting's task.
+            Content::Day(day) => day.selected_task().and_then(|_| self.detail.actions()),
             Content::Blocks(_) => None,
         }
     }
@@ -834,9 +834,7 @@ impl App {
         let Some(action) = actions::of_kind(&offered, kinds) else {
             return actions::say_not_offered(self, &offered, kinds[0]);
         };
-        if let Some((change, _)) = actions::run(self, self.main, &action, || self.open_detail()) {
-            self.say_change(&change);
-        }
+        self.detail.act(self, action);
     }
 
     /// Names the Task menu's Mark Done item as the task in hand's own, Mark Not Done when it

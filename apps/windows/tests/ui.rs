@@ -195,6 +195,27 @@ fn a_list_gone_back_to_opens_on_its_row_and_folding_and_another_processs_write_l
 
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn typing_in_the_details_is_kept_through_a_change_elsewhere_and_saving_sends_only_what_changed() {
+    let app = App::launch(|lumenna| add(lumenna, "Buy milk"));
+    app.post(&[GO_TASKS, "home", "f6", "cmd:125", "text:Buy oat milk"]);
+    // Another device moves its due date meanwhile.
+    let store = app.store();
+    let id = store.list_tasks("").unwrap().rows[0].id.clone();
+    store.edit_task(&id, lumenna_host::TaskEdit { priority: Some(1), ..Default::default() }).unwrap();
+    std::thread::sleep(Duration::from_secs(2));
+    assert!(app.focus().contains("Buy oat milk"), "the typing is kept: {}", app.focus());
+    app.post(&["cmd:162"]);
+    let saved = automation::wait(Duration::from_secs(5), || {
+        store.show_task(&id).ok().filter(|shown| shown.task.title == "Buy oat milk")
+    });
+    let saved = saved.unwrap_or_else(|| {
+        panic!("the title was saved: {:?}, said {}, focus {}", store.show_task(&id).map(|s| s.task.title), app.status(), app.focus())
+    });
+    assert_eq!(saved.task.priority, 1, "the priority set elsewhere holds: only the title was sent");
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn f6_goes_round_the_panes() {
     let app = App::launch(|lumenna| add(lumenna, "Buy milk"));
     app.post(&[GO_TASKS, "f6"]);
