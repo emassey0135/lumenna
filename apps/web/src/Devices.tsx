@@ -9,7 +9,6 @@ import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { Button, Input, Label, ListBox, ListBoxItem, Text, TextField } from "react-aria-components";
 import type { Selection } from "react-aria-components";
-import { core } from "./core";
 import type { Action, PairEvent, PairingView, PairingWords, Screen } from "./core";
 import { ActionKind, Side } from "./core";
 import { byKind } from "./actions";
@@ -51,14 +50,14 @@ export function DevicesPage(props: { devices: Screen["devices"]; held: Screen["d
   // The device in hand is the app's (`devicesHeld`): choosing one tells it, and after an unpair
   // it says which is in hand instead.
   const selected = props.held.focus ?? undefined;
-  const [words, setWords] = useState<PairingWords | undefined>();
+  // Pairing's words come with the Devices page, in the web's capitals.
+  const words = props.devices?.words;
   const devices = props.devices?.list?.devices ?? [];
   const pairing = props.devices?.pairing;
 
   // Shown: the app lists the devices and asks how syncing is going, and keeps both current.
   useEffect(() => {
     void send({ tag: "Devices", value0: { tag: "Show" } });
-    void core.pairingWords().then(setWords);
   }, []);
 
   const others = devices.filter((d) => !d.thisDevice).length;
@@ -134,10 +133,7 @@ export function DevicesPage(props: { devices: Screen["devices"]; held: Screen["d
  * left Settings stuck closing, its overlay over the page, once the pairing ended.
  */
 export function PairingQuestion(props: { devices: Screen["devices"] }) {
-  const [words, setWords] = useState<PairingWords | undefined>();
-  useEffect(() => {
-    void core.pairingWords().then(setWords);
-  }, []);
+  const words = props.devices?.words;
   const three = props.devices?.pairing?.words;
   return (
     <ChooseDialog
@@ -173,7 +169,8 @@ function Pairing(props: { words: PairingWords; pairing: PairingView }) {
   return (
     <>
       <h3>{words.title}</h3>
-      <p>{words.intro}</p>
+      {/* The introduction in sentence case, as the web writes. */}
+      <p>{words.introSentence || words.intro}</p>
       <TextField
         className="field"
         value={name}

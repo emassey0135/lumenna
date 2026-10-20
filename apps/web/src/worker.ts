@@ -9,7 +9,7 @@
 // decided here.
 
 import * as Comlink from "comlink";
-import init, { open, pairingWords, sentenceCase, keyboardShortcuts } from "./core/lumenna_web.js";
+import init, { open, sentenceCase, keyboardShortcuts } from "./core/lumenna_web.js";
 import type {
   App,
   Asking,
@@ -30,7 +30,6 @@ import type {
   Turn,
   ViewModel,
   KeyGroup,
-  PairingWords,
 } from "./core/lumenna_web.js";
 import { Capitals, TimeStyle } from "./core/lumenna_web.js";
 
@@ -69,6 +68,9 @@ async function opened(name: string): Promise<void> {
   void app.send({ tag: "Clock", value0: hour12 ? TimeStyle.TwelveHour : TimeStyle.TwentyFourHour });
   // The web's capitals: buttons, headings and questions in sentence case.
   void app.send({ tag: "Capitals", value0: Capitals.Sentence });
+  // Pairing's sentences call a browser "this browser"; with no network of its own to search,
+  // it pairs by code.
+  void app.send({ tag: "PairingAs", called: "this browser", nearby: false });
   // Open once the app has the store.
   await app.settled();
 }
@@ -262,7 +264,6 @@ const api = {
   outsideVersion: (): number => session().outsideVersion(),
 
   /** Every sentence and button of pairing, buttons and questions in the web's sentence case. */
-  pairingWords: (): PairingWords => pairingWords(),
 
   /** Fixed text — a button, a question with no one's name in it — in sentence case. */
   sentence: (text: string): string => sentenceCase(text),

@@ -16,7 +16,7 @@ use lumenna_app::keys::KeyGroup;
 
 use boltffi::export;
 use lumenna_host::Lumenna;
-use lumenna_records::{LumennaError, PairingWords};
+use lumenna_records::LumennaError;
 
 mod app;
 mod clock;
@@ -37,18 +37,6 @@ async fn open_store(name: &str) -> Result<Lumenna, LumennaError> {
     Lumenna::open_at(Path::new(&format!("/{name}")))
 }
 
-/// Every sentence and button of pairing, in the web's capitals: its buttons and headings in
-/// sentence case, its introduction the core's own sentence-case one. A browser calls itself
-/// "this browser", and cannot be found on a network by itself: it pairs by code.
-#[export]
-pub fn pairing_words() -> PairingWords {
-    let mut words = lumenna_host::pairing_words("this browser".to_owned(), false);
-    for word in [&mut words.title, &mut words.wait, &mut words.join, &mut words.match_title, &mut words.match_yes, &mut words.match_no, &mut words.copy_code] {
-        *word = lumenna_host::sentence_case(std::mem::take(word));
-    }
-    words.intro = std::mem::take(&mut words.intro_sentence);
-    words
-}
 
 /// Fixed text — a button, a question — in sentence case, the web's: never a name.
 #[export]
