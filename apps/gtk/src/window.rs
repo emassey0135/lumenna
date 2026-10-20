@@ -782,13 +782,7 @@ impl App {
             }
             if let Some(day) = app.day() {
                 let key = app.model.view().focus.clone().unwrap_or_default();
-                return crate::asking::run_kind(app, &day.selected_actions(), &[ActionKind::Edit, ActionKind::EditTask], &key);
-            }
-            let actions = match app.content() {
-                _ => Vec::new(),
-            };
-            if let Some(action) = crate::actions::find(&actions, &[ActionKind::Edit, ActionKind::EditTask]) {
-                crate::actions::run(app, action.clone(), None);
+                crate::asking::run_kind(app, &day.selected_actions(), &[ActionKind::Edit, ActionKind::EditTask], &key);
             }
         });
         task_command("mark-done", &[ActionKind::MarkDone, ActionKind::MarkNotDone]);
