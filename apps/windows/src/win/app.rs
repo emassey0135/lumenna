@@ -34,7 +34,7 @@ use windows::Win32::UI::Controls::{EM_SETSEL, EM_UNDO};
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{HSTRING, w};
 
-use lumenna_app::Capitals;
+use lumenna_app::{Capitals, DayMove};
 use lumenna_ffi::ShellEvent;
 
 use super::asking;
@@ -428,18 +428,15 @@ impl App {
             return;
         }
         let landed = turn.view.landing != self.landing.replace(turn.view.landing);
-        // Where the app went by itself — a place renamed, merged or deleted — the window goes
-        // too. Judged by where the app is now: a turn made before the person opened a place
-        // still names the one they left.
-        if let Some(now) = self.crux.view().place
-            && self.place_shown().as_ref() != Some(&now)
-        {
-            self.present(now);
-        }
+        self.follow_place();
         self.sidebar.draw(self, &turn.view);
         let list = self.task_list().filter(|list| turn.view.place.as_ref() == Some(&list.place));
         if let Some(list) = &list {
             list.draw(self, &turn.view, &turn.lines, landed);
+        }
+        let day = self.day().filter(|_| turn.view.place == Some(Place::Today));
+        if let Some(day) = &day {
+            day.draw(self, &turn.view, &turn.lines, landed);
         }
         self.follow_store();
         if turn.view.asking.is_some() && !self.asking.get() {
@@ -448,10 +445,23 @@ impl App {
             }
         }
         // The tree says a row it folded itself is expanded or collapsed.
-        let folded = list.is_some_and(|list| list.folded_by_tree.replace(false)) | self.sidebar.folded_by_tree.replace(false);
+        let folded = list.is_some_and(|list| list.folded_by_tree.replace(false))
+            | day.is_some_and(|day| day.folded_by_tree.replace(false))
+            | self.sidebar.folded_by_tree.replace(false);
         let said: Vec<String> =
             turn.said.into_iter().filter(|said| !(folded && (said == "Expanded" || said == "Collapsed"))).collect();
         self.say(&said.join(" "));
+    }
+
+    /// Where the app went by itself — a place renamed, merged or deleted, the day — the window
+    /// goes too. Judged by where the app is now: a turn made before the person opened a place
+    /// still names the one they left.
+    fn follow_place(&self) {
+        if let Some(now) = self.crux.view().place
+            && self.place_shown().as_ref() != Some(&now)
+        {
+            self.present(now);
+        }
     }
 
     /// Asks the app's open question once the app is still: not from a turn made before the
@@ -936,16 +946,16 @@ impl App {
                 }
             }
             menu::PREVIOUS_DAY | menu::NEXT_DAY | menu::GO_TO_NOW | menu::GO_TO_DAY => {
-                if self.day().is_none() {
-                    self.go(Place::Today, true);
-                }
+                let step = match id {
+                    menu::PREVIOUS_DAY => DayMove::Previous,
+                    menu::NEXT_DAY => DayMove::Next,
+                    menu::GO_TO_NOW => DayMove::Now,
+                    _ => DayMove::Ask,
+                };
+                // The app goes to the day from wherever it is, and the window with it.
+                self.crux.send(ShellEvent::Day(step));
+                self.follow_place();
                 if let Some(day) = self.day() {
-                    match id {
-                        menu::PREVIOUS_DAY => day.step(self, -1),
-                        menu::NEXT_DAY => day.step(self, 1),
-                        menu::GO_TO_NOW => day.go_to_now(self, true),
-                        _ => day.ask_for_day(self),
-                    }
                     controls::focus(day.tree.hwnd);
                 }
             }
@@ -1139,9 +1149,13 @@ impl App {
             Answered::Open(reminder) => {
                 self.show_window();
                 if reminder.kind == "block" {
-                    self.go(Place::Today, true);
-                    if let (Some(day), Ok(date)) = (self.day(), reminder.occurrence.parse()) {
-                        day.show_block(self, date, &reminder.target);
+                    // Its day, as Go to Day would go there, then its block once shown.
+                    self.crux.send(ShellEvent::Day(DayMove::Ask));
+                    self.crux.send(ShellEvent::Answer(lumenna_host::Answer::Text { text: reminder.occurrence.clone() }));
+                    self.follow_place();
+                    if let Some(day) = self.day() {
+                        day.land_on_block(&reminder.target);
+                        controls::focus(day.tree.hwnd);
                     }
                 } else {
                     self.go(Place::Tasks, true);
@@ -1155,9 +1169,9 @@ impl App {
             Answered::Replan => {
                 self.show_window();
                 self.go(Place::Today, true);
+                self.crux.send(ShellEvent::Day(DayMove::Now));
                 self.defer(|app| {
                     if let Some(day) = app.day() {
-                        day.go_to_now(app, false);
                         day.act_on_day(app, ActionKind::Replan);
                     }
                 });

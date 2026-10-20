@@ -1,24 +1,27 @@
-//! The planner: a day as it is lived, as a tree.
+//! The planner: a day as it is lived, as a tree, drawn from the app's view (`view.day`): which
+//! day, its rows, the row in hand and what is folded are the app's.
 //!
 //! The first row is the summary — what a glance at a timeline gives a sighted user. Then
 //! blocks in time order with their sittings beneath them, free time as rows of its own, and
-//! now as a position rather than a highlight. Opening the day puts the selection on now, not
-//! on midnight.
+//! now as a position rather than a highlight. Today opens on now, not on midnight.
 //!
 //! On a sitting, Space starts or stops its timer and Delete takes it out of the block; on a
 //! block, Enter changes it and Delete deletes it; on free time, Enter adds a block there.
 //! Everything else is in the row's context menu. What can be done to the day itself is the
-//! summary row's, and the Day menu's.
+//! summary row's, and the Day menu's. Each runs as the app's, but for the forms still the
+//! window's own: the block form, a sitting's task (the details), Plan the Day and Replan.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use lumenna_host::{
-    Action, ActionKind, CancelledBlock, Plan, PlanAssignment, PlanBlock, PlanItem, Subject, block_fields, day_block_fields,
-    go_to_day_question, not_offered, unsayable_repeat_note,
-};
+use lumenna_app::lines::Lines;
+use lumenna_app::{DayItem, DayKind, DayMove, ViewModel};
+use lumenna_ffi::ShellEvent;
+use lumenna_host::{Action, ActionKind, PlanBlock, Question, Subject, block_fields, day_block_fields, not_offered, unsayable_repeat_note};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
-use windows::Win32::UI::Controls::{NM_DBLCLK, NMHDR, NMTVKEYDOWN, TVN_KEYDOWN, TVN_SELCHANGEDW, WC_BUTTONW};
+use windows::Win32::UI::Controls::{
+    NM_DBLCLK, NMHDR, NMTREEVIEWW, NMTVKEYDOWN, TVIS_EXPANDED, TVN_ITEMEXPANDEDW, TVN_KEYDOWN, TVN_SELCHANGEDW, WC_BUTTONW,
+};
 use windows::Win32::UI::Input::KeyboardAndMouse::{VK_DELETE, VK_SPACE};
 use windows::Win32::UI::WindowsAndMessaging::{BN_CLICKED, BS_PUSHBUTTON, WS_TABSTOP};
 
@@ -29,7 +32,7 @@ use super::controls::{self, rect};
 use super::core::sentence;
 use super::tree::{Item, Tree};
 use super::view::{Metrics, View};
-use super::{actions, prompts, proposal};
+use super::{actions, prompts, proposal, reminders};
 use crate::speech::{self, Clock};
 
 const PREVIOUS: u16 = 500;
@@ -38,65 +41,19 @@ const NEXT: u16 = 502;
 const ADD: u16 = 503;
 const TREE: u16 = 504;
 
-/// One row of the day.
-#[derive(Clone)]
-enum Row {
-    /// The day's heading, with what can be done to the day itself.
-    Summary(String, Vec<Action>),
-    Block(PlanBlock),
-    Sitting(PlanAssignment),
-    Free { start: String, minutes: u32, text: String, actions: Vec<Action> },
-    Now(String),
-    Cancelled(CancelledBlock),
-}
-
-impl Row {
-    /// What identifies it across a reload, for keeping the selection.
-    fn key(&self) -> String {
-        match self {
-            Self::Summary(..) => "summary".to_owned(),
-            Self::Block(block) => format!("block:{}", block.id),
-            Self::Sitting(sitting) => format!("sitting:{}", sitting.id),
-            Self::Free { start, .. } => format!("free:{start}"),
-            Self::Now(_) => "now".to_owned(),
-            Self::Cancelled(block) => format!("cancelled:{}", block.series),
-        }
-    }
-
-    fn text(&self) -> String {
-        let clock = Locale;
-        match self {
-            Self::Summary(text, _) => text.clone(),
-            Self::Block(block) => speech::block(block, &clock),
-            Self::Sitting(sitting) => speech::sitting(sitting),
-            Self::Free { text, .. } => text.clone(),
-            Self::Now(text) => text.clone(),
-            Self::Cancelled(block) => speech::cancelled(block, &clock),
-        }
-    }
-
-    /// What the core says can be done to it.
-    fn actions(&self) -> &[Action] {
-        match self {
-            Self::Block(block) => &block.actions,
-            Self::Sitting(sitting) => &sitting.actions,
-            Self::Free { actions, .. } => actions,
-            Self::Cancelled(block) => &block.actions,
-            Self::Summary(_, actions) => actions,
-            Self::Now(_) => &[],
-        }
-    }
-}
-
 pub struct DayView {
-    /// The day shown, as an ISO date; `None` follows today.
-    day: RefCell<Option<String>>,
-    plan: RefCell<Option<Plan>>,
     buttons: [HWND; 4],
     pub tree: Tree,
-    rows: RefCell<Vec<Row>>,
-    /// Whether the day has opened on now yet.
-    landed: Cell<bool>,
+    /// The rows as the app last gave them, those folded away included, in the tree's order.
+    rows: RefCell<Vec<DayItem>>,
+    /// The day shown, ISO.
+    date: RefCell<Option<String>>,
+    /// The day's own actions.
+    actions: RefCell<Vec<Action>>,
+    /// A block to land on once the app shows it, by series: one the block form just made.
+    pending: RefCell<Option<String>>,
+    /// A row the tree itself just folded or unfolded, which the tree has already said.
+    pub folded_by_tree: Cell<bool>,
 }
 
 impl DayView {
@@ -110,153 +67,78 @@ impl DayView {
         ];
         let tree = Tree::create(pane, TREE, "The day", false);
         Rc::new(Self {
-            day: RefCell::new(None),
-            plan: RefCell::new(None),
             buttons,
             tree,
             rows: RefCell::new(Vec::new()),
-            landed: Cell::new(false),
+            date: RefCell::new(None),
+            actions: RefCell::new(Vec::new()),
+            pending: RefCell::new(None),
+            folded_by_tree: Cell::new(false),
         })
     }
 
-    /// The ISO date shown.
-    pub fn date(&self) -> Option<String> {
-        self.plan.borrow().as_ref().map(|plan| plan.date.clone())
-    }
-
-    fn selected(&self) -> Option<Row> {
+    fn selected(&self) -> Option<DayItem> {
         let index = self.tree.selected()?;
         self.rows.borrow().get(index).cloned()
     }
 
     /// The task a selected sitting is for: what the Task menu acts on from the day.
     pub fn selected_task(&self) -> Option<String> {
-        match self.selected()? {
-            Row::Sitting(sitting) => Some(sitting.task),
-            _ => None,
-        }
+        self.selected()?.sitting.map(|sitting| sitting.task)
     }
 
-    fn list(&self, app: &App) {
-        let key = self.tree.selected().and_then(|index| self.tree.key(index));
-        let near = self.tree.selected();
-        let day = self.day.borrow().clone();
-        let plan = match app.core.lumenna.plan(day) {
-            Ok(plan) => plan,
-            Err(error) => {
-                let rows = vec![Row::Summary(sentence(&error), Vec::new())];
-                self.show(rows, key, near);
-                return;
-            }
-        };
-        let mut rows = vec![Row::Summary(speech::summary(&plan.date, &plan.summary, &Locale), plan.actions.clone())];
-        for item in &plan.timeline {
-            match item {
-                PlanItem::Block { row } => {
-                    if let Some(block) = plan.blocks.iter().find(|b| b.row == *row) {
-                        rows.push(Row::Block(block.clone()));
-                        rows.extend(block.assignments.iter().cloned().map(Row::Sitting));
-                    }
-                }
-                PlanItem::Free { start, end, minutes, title, details, actions } => {
-                    let actions = actions.clone();
-                    let text = speech::free_time(title, details, start, end, &Locale);
-                    rows.push(Row::Free { start: start.clone(), minutes: *minutes, text, actions });
-                }
-                // Its title, then the time: the order every app says it in.
-                PlanItem::Now { time, title } => rows.push(Row::Now(format!("{title}, {}", Locale.time(time)))),
-            }
-        }
-        rows.extend(plan.cancelled.iter().cloned().map(Row::Cancelled));
-        app.set_title(&Locale.day(&plan.date));
-        *self.plan.borrow_mut() = Some(plan);
-        self.show(rows, key, near);
-    }
-
-    fn show(&self, rows: Vec<Row>, key: Option<String>, near: Option<usize>) {
-        let items = rows
+    /// Draws the app's day: `landed` when the app moved the row in hand itself.
+    pub fn draw(&self, app: &App, view: &ViewModel, lines: &Lines, landed: bool) {
+        let Some(day) = &view.day else { return };
+        app.set_title(&lines.day_title);
+        let items = day
+            .items
             .iter()
-            .map(|row| Item {
-                key: row.key(),
-                text: row.text(),
-                depth: u32::from(matches!(row, Row::Sitting(_))),
-                checked: None,
-                expanded: None,
-            })
+            .zip(&lines.day)
+            .map(|(item, line)| Item { key: item.key.clone(), text: line.text.clone(), depth: item.depth, checked: None, expanded: item.expanded })
             .collect();
-        *self.rows.borrow_mut() = rows;
-        if self.tree.set(items) {
-            self.tree.select_key_or_near(key.as_deref(), near.or(Some(0)));
-        }
-    }
-
-    /// "Go to now": today, on the now row or the block happening now.
-    pub fn go_to_now(&self, app: &App, announce: bool) {
-        *self.day.borrow_mut() = None;
-        self.list(app);
-        let index = self.rows.borrow().iter().position(|row| match row {
-            Row::Now(_) => true,
-            Row::Block(block) => block.when == "now",
-            _ => false,
+        *self.rows.borrow_mut() = day.items.clone();
+        *self.date.borrow_mut() = Some(day.date.clone());
+        *self.actions.borrow_mut() = day.actions.clone();
+        let rebuilt = self.tree.set(items);
+        let pending = self.pending.borrow().clone();
+        let made = pending.and_then(|series| {
+            day.items
+                .iter()
+                .find(|item| item.kind == DayKind::Block && item.block.as_ref().is_some_and(|block| block.series == series))
+                .map(|item| item.key.clone())
         });
-        self.tree.select(index.unwrap_or(0));
-        if announce {
-            self.say_summary(app);
-        }
-    }
-
-    fn say_summary(&self, app: &App) {
-        let summary = self.rows.borrow().first().map(Row::text);
-        if let Some(summary) = summary {
-            app.say(&summary);
-        }
-    }
-
-    /// Moves by days, and says the new day's summary: a new day is a new screen's worth.
-    pub fn step(&self, app: &App, days: i64) {
-        let Some(shown) = self.date().and_then(|d| d.parse::<jiff::civil::Date>().ok()) else { return };
-        let Ok(next) = shown.checked_add(jiff::Span::new().days(days)) else { return };
-        self.go_to(app, next);
-    }
-
-    fn go_to(&self, app: &App, date: jiff::civil::Date) {
-        let today = jiff::Zoned::now().date();
-        *self.day.borrow_mut() = (date != today).then(|| date.to_string());
-        self.list(app);
-        self.tree.select(0);
-        self.say_summary(app);
-    }
-
-    /// Goes to `date` with the block of `series` selected, as a reminder of it opens it.
-    pub fn show_block(&self, app: &App, date: jiff::civil::Date, series: &str) {
-        self.go_to(app, date);
-        let key = self.rows.borrow().iter().find_map(|row| match row {
-            Row::Block(block) if block.series == series => Some(row.key()),
-            _ => None,
-        });
-        if key.is_some() {
-            self.tree.select_key_or_near(key.as_deref(), None);
-        }
-    }
-
-    pub fn ask_for_day(&self, app: &App) {
-        let Some(phrase) = actions::ask(app.main, &go_to_day_question(), "").filter(|p| !p.is_empty()) else {
+        if let Some(key) = made {
+            self.pending.replace(None);
+            app.crux.send(ShellEvent::Focus(key.clone()));
+            self.show(app, Some(&key));
             return;
-        };
-        match app.core.lumenna.plan(Some(phrase)) {
-            Ok(plan) => {
-                if let Ok(date) = plan.date.parse() {
-                    self.go_to(app, date);
-                }
-            }
-            Err(error) => prompts::fail(app.main, &sentence(&error)),
         }
+        if landed || rebuilt {
+            self.show(app, view.focus.as_deref());
+        }
+        if landed && controls::lost(app.main) {
+            controls::focus(self.tree.hwnd);
+        }
+    }
+
+    /// Selects a row, without its being taken for the person's move, and shows a sitting's task.
+    fn show(&self, app: &App, key: Option<&str>) {
+        if let Some(index) = key.and_then(|key| self.tree.index_of(key)) {
+            self.tree.select_quietly(index);
+        }
+        app.detail.show(app, self.selected_task().as_deref());
+    }
+
+    /// Lands on the block of `series` once the app shows it: what a reminder of it opens.
+    pub fn land_on_block(&self, series: &str) {
+        self.pending.replace(Some(series.to_owned()));
     }
 
     /// A new block on the day shown: at `start` when it fills free time, which keeps its own
     /// start, else when the core says a new block on that day starts.
     pub fn add_block(&self, app: &App, start: Option<&str>, minutes: Option<u32>) {
-        let date = self.date().unwrap_or_else(|| "today".to_owned());
+        let date = self.date.borrow().clone().unwrap_or_else(|| "today".to_owned());
         let follow = start.is_none();
         let start = match start {
             Some(start) => start.to_owned(),
@@ -264,21 +146,17 @@ impl DayView {
         };
         let fields = block_form::fresh(&start, minutes.unwrap_or(60).min(720));
         if let Some(change) = block_form::run(app.main, &app.core.lumenna, Purpose::Add { date, follow }, fields, None) {
-            app.store_changed();
             if let Some(series) = change.affected.blocks.first() {
-                let key = self.rows.borrow().iter().find_map(|row| match row {
-                    Row::Block(block) if &block.series == series => Some(row.key()),
-                    _ => None,
-                });
-                self.tree.select_key_or_near(key.as_deref(), None);
+                self.pending.replace(Some(series.clone()));
             }
+            app.store_changed();
             app.say_change(&change);
         }
     }
 
     /// Changes a block — asking "this day, or every day?" of a repeating one, never guessing.
     fn edit(&self, app: &App, block: &PlanBlock) {
-        let Some(date) = self.date() else { return };
+        let Some(date) = self.date.borrow().clone() else { return };
         // One day alone: its time, length, title, kind and flags, as this day has them.
         let mut fields = day_block_fields(block.clone());
         let mut note = None;
@@ -309,26 +187,33 @@ impl DayView {
                 Err(error) => return prompts::fail(app.main, &sentence(&error)),
             }
         }
-        let key = format!("block:{}", block.id);
         if let Some(change) = block_form::run(app.main, &app.core.lumenna, purpose, fields, note) {
             app.store_changed();
-            self.tree.select_key_or_near(Some(&key), self.tree.selected());
             app.say_change(&change);
         }
     }
 
-    /// Runs one of a row's actions and says what it did. The forms are the app's own: a
-    /// block's Edit, a sitting's task, a free span's new block. Reloading keeps the selection
-    /// on the same row, or near where it was when the row has gone.
-    fn act(&self, app: &App, row: &Row, action: &Action) {
-        let form = || match (row, action.kind) {
-            (Row::Block(block), ActionKind::Edit) => self.edit(app, block),
-            (Row::Sitting(_), ActionKind::EditTask) => app.open_detail(),
-            (Row::Free { start, minutes, .. }, ActionKind::AddBlock) => self.add_block(app, Some(start), Some(*minutes)),
+    /// Runs one of a row's actions as the app's. The forms are still the window's own: a
+    /// block's Edit, a sitting's task, a free span's new block, the day's two proposals, and
+    /// a row's reminders.
+    fn act(&self, app: &App, row: &DayItem, action: &Action) {
+        if action.question != Question::Form {
+            return app.crux.send(ShellEvent::Perform(action.clone()));
+        }
+        match (row.kind, action.kind) {
+            (DayKind::Block, ActionKind::Edit) => {
+                if let Some(block) = &row.block {
+                    self.edit(app, block);
+                }
+            }
+            (DayKind::Sitting, ActionKind::EditTask) => app.open_detail(),
+            (DayKind::Free, ActionKind::AddBlock) => {
+                if let Some(free) = &row.free {
+                    self.add_block(app, Some(&free.start), Some(free.minutes));
+                }
+            }
+            (_, ActionKind::Reminders) => reminders::show(app, app.main, action),
             _ => self.day_form(app, action),
-        };
-        if let Some((change, _)) = actions::run(app, app.main, action, form) {
-            app.say_change(&change);
         }
     }
 
@@ -344,20 +229,22 @@ impl DayView {
     /// The day's own action of `kind`, from the Day menu: run as the summary row runs it, or
     /// why the day shown has none.
     pub fn act_on_day(&self, app: &App, kind: ActionKind) {
-        let offered = self.plan.borrow().as_ref().map(|plan| plan.actions.clone()).unwrap_or_default();
+        // As the app holds it now: the day may have been opened just before.
+        let offered = app.crux.view().day.map(|day| day.actions).unwrap_or_else(|| self.actions.borrow().clone());
         let Some(action) = actions::of_kind(&offered, &[kind]) else {
             return app.say(&speech::sentence(&not_offered(kind, Subject::Day, false)));
         };
-        let form = || self.day_form(app, &action);
-        if let Some((change, _)) = actions::run(app, app.main, &action, form) {
-            app.say_change(&change);
+        if action.question == Question::Form {
+            self.day_form(app, &action);
+        } else {
+            app.crux.send(ShellEvent::Perform(action));
         }
     }
 
     /// The selected row's action of one of `kinds`, if it has one: what a key means here.
     fn act_on_selected(&self, app: &App, kinds: &[ActionKind]) {
         let Some(row) = self.selected() else { return };
-        if let Some(action) = actions::of_kind(row.actions(), kinds) {
+        if let Some(action) = actions::of_kind(&row.actions, kinds) {
             self.act(app, &row, &action);
         }
     }
@@ -367,17 +254,7 @@ impl DayView {
         let kinds = [ActionKind::Edit, ActionKind::EditTask, ActionKind::AddBlock, ActionKind::RestoreDay];
         self.act_on_selected(app, &kinds);
     }
-
-    /// The same, after the notification being handled.
-    fn act_later(app: &App, kinds: &'static [ActionKind]) {
-        app.defer(move |app| {
-            if let Some(day) = app.day() {
-                day.act_on_selected(app, kinds);
-            }
-        });
-    }
 }
-
 
 impl View for DayView {
     fn focus_target(&self) -> HWND {
@@ -396,29 +273,17 @@ impl View for DayView {
         controls::place(self.tree.hwnd, rect(gap, y, width - 2 * gap, (height - y - gap).max(m.line)));
     }
 
-    fn reload(&self, app: &App) {
-        self.list(app);
-        // Opening the day lands on now. Once, so coming back to it later does not move
-        // the selection from where the person left it.
-        if !self.landed.replace(true) {
-            self.go_to_now(app, false);
-        }
-    }
-
-    fn minute(&self, app: &App) {
-        if self.day.borrow().is_none() {
-            self.list(app);
-        }
-    }
+    /// The app redraws the day itself, for every change and every minute.
+    fn reload(&self, _app: &App) {}
 
     fn command(&self, app: &App, control: HWND, _id: u16, code: u16) -> bool {
         if u32::from(code) != BN_CLICKED {
             return false;
         }
         match self.buttons.iter().position(|b| *b == control) {
-            Some(0) => self.step(app, -1),
-            Some(1) => self.go_to_now(app, true),
-            Some(2) => self.step(app, 1),
+            Some(0) => app.crux.send(ShellEvent::Day(DayMove::Previous)),
+            Some(1) => app.crux.send(ShellEvent::Day(DayMove::Now)),
+            Some(2) => app.crux.send(ShellEvent::Day(DayMove::Next)),
             Some(3) => self.add_block(app, None, None),
             _ => return false,
         }
@@ -431,31 +296,42 @@ impl View for DayView {
         }
         match header.code {
             TVN_SELCHANGEDW if !self.tree.busy() => {
+                if let Some(row) = self.selected() {
+                    app.crux.send(ShellEvent::Focus(row.key));
+                }
                 app.detail.show(app, self.selected_task().as_deref());
+                Some(0)
+            }
+            TVN_ITEMEXPANDEDW if !self.tree.busy() => {
+                // Folding is the app's: the tree's own Left, Right or click is a block's Expand
+                // or Collapse.
+                let notice = unsafe { &*(lparam.0 as *const NMTREEVIEWW) };
+                let kind = if notice.itemNew.state.0 & TVIS_EXPANDED.0 != 0 { ActionKind::Expand } else { ActionKind::Collapse };
+                let row = self.tree.index_of_handle(notice.itemNew.hItem).and_then(|i| self.rows.borrow().get(i).cloned());
+                if let Some(action) = row.and_then(|row| actions::of_kind(&row.actions, &[kind])) {
+                    self.folded_by_tree.set(true);
+                    app.crux.send(ShellEvent::Perform(action));
+                }
                 Some(0)
             }
             TVN_KEYDOWN => {
                 let key = unsafe { &*(lparam.0 as *const NMTVKEYDOWN) }.wVKey;
-                // Space is a sitting's timer; Delete removes what the row is.
-                let kinds: &'static [ActionKind] = if key == VK_SPACE.0 {
-                    &[ActionKind::StartTimer, ActionKind::PauseTimer, ActionKind::ResumeTimer]
-                } else if key == VK_DELETE.0 {
-                    &[ActionKind::Delete, ActionKind::Unassign]
-                } else {
-                    return Some(0);
-                };
-                let Some(row) = self.selected() else { return Some(0) };
-                if actions::of_kind(row.actions(), kinds).is_none() {
-                    // Delete on free time or a cancelled day: the core says why not.
-                    if key == VK_DELETE.0 {
-                        actions::say_not_offered(app, row.actions(), ActionKind::Delete);
+                // Space is a sitting's timer, and does nothing elsewhere; Delete removes what
+                // the row is, or the core says why not.
+                if key == VK_SPACE.0 {
+                    let kinds = [ActionKind::StartTimer, ActionKind::PauseTimer, ActionKind::ResumeTimer];
+                    if self.selected().is_some_and(|row| actions::of_kind(&row.actions, &kinds).is_some()) {
+                        app.crux.send(ShellEvent::Run(kinds.to_vec()));
                         return Some(1);
                     }
                     return Some(0);
                 }
-                Self::act_later(app, kinds);
-                // Not part of an incremental search.
-                Some(1)
+                if key == VK_DELETE.0 {
+                    app.crux.send(ShellEvent::Run(vec![ActionKind::Delete, ActionKind::Unassign]));
+                    // Not part of an incremental search.
+                    return Some(1);
+                }
+                Some(0)
             }
             NM_DBLCLK => {
                 app.defer(|app| {
@@ -477,20 +353,21 @@ impl View for DayView {
             self.tree.select(index);
         }
         let (Some(index), Some(row)) = (self.tree.selected(), self.selected()) else { return true };
-        let items = actions::menu(row.actions());
+        let items = actions::menu(&row.actions);
         if items.is_empty() {
             return true;
         }
         let items: Vec<(u16, &str)> = items.iter().map(|(id, text)| (*id, text.as_str())).collect();
         let at = point.unwrap_or_else(|| self.tree.menu_point(index));
-        if let Some(action) = app.popup(&items, at).and_then(|command| actions::chosen(row.actions(), command)) {
+        if let Some(action) = app.popup(&items, at).and_then(|command| actions::chosen(&row.actions, command)) {
             self.act(app, &row, &action);
         }
         true
     }
+
     fn properties(&self, app: &App) -> bool {
         let Some(row) = self.selected() else { return false };
-        let Some(action) = actions::of_kind(row.actions(), &[ActionKind::Edit, ActionKind::EditTask]) else { return false };
+        let Some(action) = actions::of_kind(&row.actions, &[ActionKind::Edit, ActionKind::EditTask]) else { return false };
         self.act(app, &row, &action);
         true
     }

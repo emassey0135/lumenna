@@ -1090,8 +1090,9 @@ own. Everything Win32 is in `src/win/` behind `cfg(windows)`.
 - **The app's turns are posted to the window** (`shell.rs`, `WM_TURN`) and taken in order
   (`App::take_turn`): the screens drawn from the app draw, the others read the store again if
   its heads moved (`follow_store`), then what the turn says goes to the status line. Drawn from
-  it so far: the sidebar and the task list. **The middle pane shows the app's place**: opening
-  one sends `Open`, and where the app goes by itself (a place renamed, merged or deleted) the
+  it so far: the sidebar, the task list and the day (`day.rs`: which day, Go to Day, its rows
+  and folding; its forms stay the window's until their turn). **The middle pane shows the
+  app's place**: opening one sends `Open`, and where the app goes by itself (a place renamed, merged or deleted) the
   window goes too, judged by the app's current view (`crux.view()`), since a turn made before
   an `Open` still names the place left. The sidebar's selection is its held row when the app
   lands it there (an action from the sidebar holds its row first, `Hold`), else the place shown;

@@ -974,6 +974,29 @@ fn tree_items(app: &App) -> Vec<String> {
 
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn the_next_day_says_itself_and_go_to_day_asks_again_with_a_phrase_it_cannot_read() {
+    let app = App::launch(|_| {});
+    app.post(&[NEXT_DAY]);
+    let said = automation::wait(Duration::from_secs(5), || Some(app.status()).filter(|s| s.starts_with("Tomorrow.")));
+    assert!(said.is_some(), "the new day's heading is said: {}", app.status());
+    assert!(app.focus().contains("TreeItem 'Tomorrow."), "on its summary: {}", app.focus());
+    // Go to Day is the app's question; what it cannot read is said, and asked again as typed.
+    app.post(&["cmd:183"]);
+    let asked = automation::wait(Duration::from_secs(5), || app.focus().starts_with("Edit").then_some(()));
+    assert!(asked.is_some(), "Go to Day asks for a day: {}", app.focus());
+    app.post(&["text:blorp", "enter"]);
+    let refused = automation::wait(Duration::from_secs(5), || {
+        app.front().iter().any(|l| l.contains("Window 'Lumenna'")).then_some(())
+    });
+    assert!(refused.is_some(), "the refusal is said: {:#?}", app.front());
+    app.post(&["enter"]);
+    let again = automation::wait(Duration::from_secs(5), || app.focus().contains("blorp").then_some(()));
+    assert!(again.is_some(), "asked again with what was typed: {}", app.focus());
+    app.post(&["esc"]);
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn the_days_own_actions_are_its_summary_rows_and_the_day_menus() {
     let today = today_clear_of_midnight();
     let app = App::launch(|lumenna| {
