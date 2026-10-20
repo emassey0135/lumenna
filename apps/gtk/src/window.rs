@@ -30,10 +30,8 @@ use crate::core::{Core, Event, sentence};
 use crate::detail::Detail;
 use crate::sidebar::Sidebar;
 use lumenna_host::actions::{Action, ActionKind, Subject};
-use crate::blocks::BlockList;
 use crate::day::DayView;
 use crate::tasks::TaskList;
-use crate::tree::Tree;
 use crate::{prompts, quick_add};
 
 /// The view in the middle pane.
@@ -41,7 +39,6 @@ use crate::{prompts, quick_add};
 pub enum Content {
     Tasks(Rc<TaskList>),
     Day(Rc<DayView>),
-    Blocks(Rc<BlockList>),
 }
 
 impl Content {
@@ -49,15 +46,6 @@ impl Content {
         match self {
             Self::Tasks(list) => list.widget.clone().upcast(),
             Self::Day(day) => day.widget.clone().upcast(),
-            Self::Blocks(blocks) => blocks.widget.clone().upcast(),
-        }
-    }
-
-    fn tree(&self) -> &Tree {
-        match self {
-            Self::Tasks(list) => &list.tree,
-            Self::Day(day) => &day.tree,
-            Self::Blocks(blocks) => &blocks.tree,
         }
     }
 
@@ -65,7 +53,6 @@ impl Content {
         match self {
             Self::Tasks(list) => list.draw(app),
             Self::Day(day) => day.draw(app),
-            Self::Blocks(blocks) => blocks.reload(app),
         }
     }
 
@@ -154,7 +141,10 @@ pub fn take(turn: lumenna_ffi::Turn) {
         if matches!(said.as_str(), "Expanded" | "Collapsed") && QUIET_FOLD.replace(false) {
             continue;
         }
-        app.say(said);
+        // A screen in front says it on its own status line: the main window's is behind it.
+        if !crate::proposal::say(said) {
+            app.say(said);
+        }
     }
 }
 
@@ -417,7 +407,6 @@ impl App {
         if let Some(content) = self.content() {
             content.reload(self);
         }
-        self.detail.reload(self);
     }
 
     /// Opens a menu over `parent`: at a point in it after a right-click, else beside the
@@ -469,6 +458,9 @@ impl App {
         if let Some(day) = self.day() {
             day.draw(self);
         }
+        self.detail.draw(self);
+        crate::block_form::draw(self);
+        crate::proposal::draw(self);
         crate::asking::update(self);
     }
 
@@ -490,13 +482,6 @@ impl App {
     pub fn day(&self) -> Option<Rc<DayView>> {
         match self.content()? {
             Content::Day(day) => Some(day),
-            _ => None,
-        }
-    }
-
-    pub fn blocks(&self) -> Option<Rc<BlockList>> {
-        match self.content()? {
-            Content::Blocks(blocks) => Some(blocks),
             _ => None,
         }
     }
@@ -526,7 +511,6 @@ impl App {
         match self.content()? {
             Content::Tasks(list) => Some(list.place.clone()),
             Content::Day(_) => Some(Place::Today),
-            Content::Blocks(_) => Some(Place::Blocks),
         }
     }
 
@@ -568,7 +552,6 @@ impl App {
     fn set_content(&self, place: Place) {
         let content = match &place {
             Place::Today => Content::Day(DayView::new()),
-            Place::Blocks => Content::Blocks(BlockList::new()),
             _ => Content::Tasks(TaskList::new(place.clone(), self.core.lumenna.clone())),
         };
         if let Some(old) = self.content.borrow_mut().take() {
@@ -577,7 +560,6 @@ impl App {
         self.content_slot.append(&content.widget());
         *self.content.borrow_mut() = Some(content.clone());
         self.set_title(&place.title());
-        self.detail.show(self, None);
         content.reload(self);
     }
 
@@ -586,7 +568,6 @@ impl App {
         match self.content() {
             Some(Content::Tasks(list)) => list.focus(),
             Some(Content::Day(day)) => day.focus(),
-            Some(content) => content.tree().focus(),
             None => {}
         }
     }
@@ -676,30 +657,11 @@ impl App {
         }
     }
 
-    /// What can be done to the task in hand — the details', the list's, a sitting's — or to
-    /// the task selected in the trash: what the Task menu's commands look among.
+    /// What can be done to the task the details show — the task in hand, a sitting's task, or
+    /// the one kept while focus is in the details: what the Task menu's commands look among
+    /// away from a task list's row.
     fn task_actions_in_hand(&self) -> Vec<Action> {
-        if self.detail.has_focus() {
-            return self.detail.actions();
-        }
-        match self.content() {
-            Some(Content::Tasks(list)) => list.selected().map(|row| row.actions).unwrap_or_default(),
-            Some(Content::Day(day)) => day
-                .selected_task()
-                .and_then(|id| self.core.lumenna.show_task(&id).ok())
-                .map(|shown| shown.task.actions)
-                .unwrap_or_default(),
-            _ => Vec::new(),
-        }
-    }
-
-    /// Lands on a block of `series` just made, wherever blocks are shown.
-    pub fn land_on_block(&self, series: &str) {
-        match self.content() {
-            Some(Content::Day(day)) => day.land_on_block(series),
-            Some(Content::Blocks(blocks)) => blocks.land_on(series),
-            _ => {}
-        }
+        self.model.view().details.as_ref().map(|details| details.task.actions.clone()).unwrap_or_default()
     }
 
     fn add_actions(self: &Rc<Self>) {
@@ -772,15 +734,12 @@ impl App {
         });
         simple("save-task", |app| app.detail.save(app));
         simple("new-block", |app| {
-            if app.day().is_none() && app.blocks().is_none() {
+            // Added where blocks are shown, to land on: the day, or the Blocks list.
+            let blocks = app.task_list().is_some_and(|list| list.place == Place::Blocks);
+            if app.day().is_none() && !blocks {
                 app.go(Place::Today, false);
             }
-            if let Some(day) = app.day() {
-                day.add_block(app);
-            } else {
-                let app = Rc::clone(app);
-                spawn(async move { crate::actions::add_block(&app, "today", None, 60).await });
-            }
+            crate::block_form::add(app);
         });
         // The day's commands go to Today first, from anywhere: the app's to do.
         simple("previous-day", |app| app.day_move(lumenna_app::DayMove::Previous));
@@ -815,7 +774,7 @@ impl App {
                 }
                 let actions = app.task_actions_in_hand();
                 match crate::actions::find(&actions, kinds) {
-                    Some(action) => crate::actions::run(app, action.clone(), None),
+                    Some(action) => app.model.send(lumenna_ffi::ShellEvent::Perform(action.clone())),
                     // A task in hand that does not offer it says why; with none, nothing to say.
                     None if !actions.is_empty() => {
                         app.say(&lumenna_host::actions::not_offered(kinds[0], Subject::Task, false));
@@ -834,7 +793,6 @@ impl App {
                 return crate::asking::run_kind(app, &day.selected_actions(), &[ActionKind::Edit, ActionKind::EditTask], &key);
             }
             let actions = match app.content() {
-                Some(Content::Blocks(blocks)) => blocks.selected_actions(),
                 _ => Vec::new(),
             };
             if let Some(action) = crate::actions::find(&actions, &[ActionKind::Edit, ActionKind::EditTask]) {

@@ -69,7 +69,8 @@ class DayTest(unittest.TestCase):
 
     def edit_block(self):
         self.session.press("Return")
-        self.session.wait_for_window("Change All day, Every Occurrence")
+        # A block that does not repeat is changed whole, so its form says no more.
+        self.session.wait_for_window("Change All day")
 
     def test_the_block_form_sends_a_flag_set_apart_from_the_kind(self):
         self.edit_block()
@@ -95,9 +96,9 @@ class DayTest(unittest.TestCase):
         self.session.press("Return")
         self.session.wait_for_alert()
         self.assertEqual(self.session.focus(), "[button] 'Cancel'", "Cancel is the default")
-        self.session.tab_to("Today Only")
+        self.session.tab_to("Today only")
         self.session.press("Return")
-        self.session.wait_for_window("Change All day, This Day Only")
+        self.session.wait_for_window("Change All day, this day only")
         self.session.press(*["Tab"] * 6)
         self.assertEqual(self.session.focus(), "[check box] 'Anchored, never moved when the day slips'")
         self.session.press("Tab")

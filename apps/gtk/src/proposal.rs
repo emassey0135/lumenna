@@ -1,59 +1,26 @@
-//! Replan from Now and Plan the Day: a proposal the core makes, each part of it a check box,
-//! made only as far as the person accepts it.
+//! Replan from Now and Plan the Day: the app's proposal screen (`ViewModel::proposal`), drawn
+//! as a window of its own while the app has it open.
 //!
-//! Every word is the core's (`proposal_words`, the proposal's own sentences). The proposal is
-//! said when the screen opens, as one sentence; making the parts checked can leave the day
-//! needing another look, so the core proposes again around what was left unchecked, and the
-//! screen shows that until nothing is left to propose.
+//! Every word is the core's, and what is checked, what applying makes and what is proposed
+//! next are the app's: each check box sends its change's state, Apply and the other options
+//! go to the app, and a new proposal (`shown` moving) is a new list whose first check box takes
+//! focus. What the app says while the screen is open is said from it, on its own status line:
+//! the main window is behind it. The first, the proposal itself, waits until the window is in
+//! front, or Orca reading its title and focus would cut it off.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gdk, glib};
-use lumenna_desktop::speech;
-use lumenna_host::actions::ActionKind;
-use lumenna_host::{DayPlan, ProposalWords, Replan, proposal_words};
+use lumenna_app::{ProposalEvent, ProposalView};
+use lumenna_ffi::ShellEvent;
 
-use crate::core::sentence;
 use crate::prompts;
-use crate::window::{App, spawn};
+use crate::window::App;
 
-/// What is proposed.
-#[derive(Clone)]
-enum Proposal {
-    Replan(Replan),
-    Day(DayPlan),
-}
-
-impl Proposal {
-    fn announcement(&self) -> String {
-        match self {
-            Self::Replan(replan) => speech::announcement(&replan.announcement, &replan.notices),
-            Self::Day(plan) => speech::announcement(&plan.announcement, &plan.notices),
-        }
-    }
-
-    /// Each part, as its check box says it, and why it is proposed, if the core says.
-    fn parts(&self) -> Vec<(String, String)> {
-        match self {
-            Self::Replan(replan) => replan.changes.iter().map(|c| (c.sentence.clone(), String::new())).collect(),
-            Self::Day(plan) => plan.sittings.iter().map(|s| (s.sentence.clone(), s.reason.clone().unwrap_or_default())).collect(),
-        }
-    }
-
-    /// What does not fit anywhere, as lines.
-    fn unfit(&self) -> &[String] {
-        match self {
-            Self::Replan(replan) => &replan.unplaceable,
-            Self::Day(plan) => &plan.unfit,
-        }
-    }
-}
-
-/// The screen.
+/// The screen open.
 struct Screen {
-    words: ProposalWords,
     window: gtk::Window,
     status: gtk::Label,
     parts: gtk::Box,
@@ -61,180 +28,141 @@ struct Screen {
     unfit_heading: gtk::Label,
     unfit: gtk::TextView,
     hint: gtk::Label,
-    /// Replan's other options, each a button named by its sentence, under their heading.
     others_heading: gtk::Label,
     others: gtk::Box,
     apply: gtk::Button,
     cancel: gtk::Button,
-    proposal: RefCell<Proposal>,
+    /// The proposal last drawn, by the app's count.
+    shown: Cell<Option<u32>>,
+    /// The other options last drawn.
+    offered: RefCell<Vec<String>>,
+    /// Whether the check boxes are being set from the app, not toggled.
+    filling: Rc<Cell<bool>>,
+    /// What to say once the window is in front, until it is.
+    waiting: RefCell<Option<Vec<String>>>,
+}
+
+thread_local! {
+    static OPEN: RefCell<Option<Rc<Screen>>> = const { RefCell::new(None) };
+}
+
+fn send(event: ProposalEvent) {
+    if let Some(app) = crate::window::app() {
+        app.model.send(ShellEvent::Proposal(event));
+    }
+}
+
+/// Draws the screen the app has open: opens its window when it opens, shows each proposal
+/// as it comes, closes it when the app closes it.
+pub fn draw(app: &App) {
+    let view = app.model.view().proposal.clone();
+    let open = OPEN.with_borrow(Clone::clone);
+    match (view, open) {
+        (None, None) => {}
+        (None, Some(screen)) => {
+            OPEN.set(None);
+            screen.window.destroy();
+        }
+        (Some(view), Some(screen)) => screen.show(&view),
+        (Some(view), None) => {
+            let screen = build(app, &view);
+            OPEN.set(Some(Rc::clone(&screen)));
+            screen.show(&view);
+            screen.window.present();
+        }
+    }
+}
+
+/// Says `text` on the screen, if it is open: whether it was.
+pub fn say(text: &str) -> bool {
+    let Some(screen) = OPEN.with_borrow(Clone::clone) else { return false };
+    if let Some(waiting) = screen.waiting.borrow_mut().as_mut() {
+        waiting.push(text.to_owned());
+        return true;
+    }
+    screen.status.set_label(text);
+    crate::window::announce(&screen.status, text);
+    true
 }
 
 impl Screen {
-    fn say(&self, text: &str) {
-        let text = speech::sentence(text);
-        self.status.set_label(&text);
-        crate::window::announce(&self.status, &text);
-    }
-
-    /// Shows `proposal`: a check box for each part, all checked, what does not fit, and
-    /// Replan's other options.
-    fn show(self: &Rc<Self>, proposal: Proposal) {
-        while let Some(child) = self.others.first_child() {
-            self.others.remove(&child);
-        }
-        let alternatives = match &proposal {
-            Proposal::Replan(replan) => replan.alternatives.clone(),
-            Proposal::Day(_) => Vec::new(),
-        };
-        for alternative in &alternatives {
-            let label = gtk::Label::builder().label(&alternative.sentence).wrap(true).xalign(0.0).build();
-            let button = gtk::Button::builder().child(&label).build();
-            button.update_property(&[gtk::accessible::Property::Label(&alternative.sentence)]);
-            let (weak, pins) = (Rc::downgrade(self), alternative.pins.clone());
-            button.connect_clicked(move |_| {
-                let (Some(screen), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
-                screen.take(&app, pins.clone());
-            });
-            self.others.append(&button);
-        }
-        self.others_heading.set_visible(!alternatives.is_empty() && !self.words.others.is_empty());
-        while let Some(child) = self.parts.first_child() {
-            self.parts.remove(&child);
-        }
-        let mut checks = Vec::new();
-        for (text, reason) in proposal.parts() {
-            // A label without a mnemonic: the core's sentence is shown as it is.
-            let check = gtk::CheckButton::with_label(&text);
-            check.set_active(true);
-            if !reason.is_empty() {
-                check.update_property(&[gtk::accessible::Property::Description(&reason)]);
-                let line = gtk::Label::builder().label(&reason).wrap(true).xalign(0.0).margin_start(28).build();
-                line.add_css_class("dim-label");
-                self.parts.append(&check);
-                self.parts.append(&line);
-            } else {
-                self.parts.append(&check);
+    /// Shows what the app says: a new list for a new proposal, else the checks as they are.
+    fn show(&self, view: &ProposalView) {
+        let new = self.shown.replace(Some(view.shown)) != Some(view.shown);
+        self.filling.set(true);
+        if new {
+            while let Some(child) = self.parts.first_child() {
+                self.parts.remove(&child);
             }
-            checks.push(check);
-        }
-        let any = !checks.is_empty();
-        *self.checks.borrow_mut() = checks;
-        self.status.set_label(&if any { proposal.announcement() } else { self.words.nothing.clone() });
-        let unfit = proposal.unfit();
-        self.unfit.buffer().set_text(&unfit.join("\n"));
-        self.unfit_heading.set_visible(!unfit.is_empty());
-        self.unfit.set_visible(!unfit.is_empty());
-        self.apply.set_visible(any);
-        self.hint.set_visible(any);
-        *self.proposal.borrow_mut() = proposal;
-    }
-
-    /// Focus on the first part, or on Cancel with nothing to accept.
-    fn land(&self) {
-        match self.checks.borrow().first() {
-            Some(check) => check.grab_focus(),
-            None => self.cancel.grab_focus(),
-        };
-    }
-
-    /// Takes one of the other options: Replan again with its pins, shown in place.
-    fn take(self: &Rc<Self>, app: &App, pins: lumenna_host::ReplanPins) {
-        match app.core.lumenna.replan(app.clock.style(), pins, crate::clock::pinned_now()) {
-            Ok(replan) => {
-                self.show(Proposal::Replan(replan));
-                self.land();
-                self.say(&self.status.label());
-            }
-            Err(error) => prompts::fail(&self.window, &sentence(&error)),
-        }
-    }
-
-    /// Makes the parts checked, then shows what the core proposes next, or closes.
-    fn apply(self: &Rc<Self>, app: &Rc<App>) {
-        let checked: Vec<bool> = self.checks.borrow().iter().map(gtk::CheckButton::is_active).collect();
-        let proposal = self.proposal.borrow().clone();
-        let lumenna = &app.core.lumenna;
-        let made = match &proposal {
-            Proposal::Replan(replan) => {
-                let accepted = replan.changes.iter().zip(&checked).filter(|(_, c)| **c).map(|(p, _)| p.clone()).collect();
-                lumenna.apply_replan(replan.clone(), accepted, crate::clock::pinned_now()).map(|done| {
-                    (speech::announcement(&done.announcement, &done.notices), Proposal::Replan(done.next))
-                })
-            }
-            Proposal::Day(plan) => {
-                let accepted = plan.sittings.iter().zip(&checked).filter(|(_, c)| **c).map(|(p, _)| p.clone()).collect();
-                lumenna.apply_day_plan(plan.clone(), accepted, crate::clock::pinned_now()).map(|done| {
-                    (speech::announcement(&done.announcement, &done.notices), Proposal::Day(done.next))
-                })
-            }
-        };
-        match made {
-            Ok((said, next)) => {
-                app.store_changed();
-                if next.parts().is_empty() {
-                    self.window.close();
-                    app.say(&speech::sentence(&said));
-                } else {
-                    self.show(next);
-                    self.land();
-                    self.say(&said);
-                }
-            }
-            // The day moved since: say so here, and propose again from the day as it is.
-            Err(error) => {
-                let screen = Rc::clone(self);
-                let app = Rc::clone(app);
-                spawn(async move {
-                    prompts::tell(&screen.window, &sentence(&error)).await;
-                    match ask(&app, &proposal) {
-                        Ok(fresh) => {
-                            screen.show(fresh);
-                            screen.land();
-                            screen.say(&screen.status.label());
-                        }
-                        Err(error) => {
-                            screen.window.close();
-                            app.fail(&sentence(&error));
-                        }
+            let mut checks = Vec::new();
+            for (index, change) in view.changes.iter().enumerate() {
+                // A label without a mnemonic: the core's sentence is shown as it is.
+                let check = gtk::CheckButton::with_label(&change.sentence);
+                check.set_active(change.checked);
+                let filling = Rc::clone(&self.filling);
+                let index = u32::try_from(index).unwrap_or(u32::MAX);
+                check.connect_toggled(move |check| {
+                    if !filling.get() {
+                        send(ProposalEvent::Check { index, on: check.is_active() });
                     }
                 });
+                self.parts.append(&check);
+                // Why, for a sitting: said after its name, and shown beneath it.
+                if let Some(reason) = change.reason.as_ref().filter(|reason| !reason.is_empty()) {
+                    check.update_property(&[gtk::accessible::Property::Description(reason)]);
+                    let line = gtk::Label::builder().label(reason).wrap(true).xalign(0.0).margin_start(28).build();
+                    line.add_css_class("dim-label");
+                    self.parts.append(&line);
+                }
+                checks.push(check);
+            }
+            *self.checks.borrow_mut() = checks;
+        } else {
+            for (check, change) in self.checks.borrow().iter().zip(&view.changes) {
+                if check.is_active() != change.checked {
+                    check.set_active(change.checked);
+                }
+            }
+        }
+        self.filling.set(false);
+        if *self.offered.borrow() != view.others {
+            while let Some(child) = self.others.first_child() {
+                self.others.remove(&child);
+            }
+            for (index, sentence) in view.others.iter().enumerate() {
+                let label = gtk::Label::builder().label(sentence).wrap(true).xalign(0.0).build();
+                let button = gtk::Button::builder().child(&label).build();
+                button.update_property(&[gtk::accessible::Property::Label(sentence)]);
+                let index = u32::try_from(index).unwrap_or(u32::MAX);
+                button.connect_clicked(move |_| send(ProposalEvent::Take(index)));
+                self.others.append(&button);
+            }
+            *self.offered.borrow_mut() = view.others.clone();
+        }
+        let any = !view.changes.is_empty();
+        let status = if any || !view.ready { view.announcement.clone() } else { view.words.nothing.clone() };
+        if view.ready && self.status.label() != status.as_str() {
+            self.status.set_label(&status);
+        }
+        self.unfit.buffer().set_text(&view.unfit.join("\n"));
+        self.unfit_heading.set_visible(!view.unfit.is_empty());
+        self.unfit.set_visible(!view.unfit.is_empty());
+        self.others_heading.set_visible(!view.others.is_empty() && !view.words.others.is_empty());
+        self.apply.set_visible(any);
+        self.hint.set_visible(any);
+        self.apply.set_sensitive(!view.busy);
+        self.others.set_sensitive(!view.busy);
+        if new && view.ready {
+            match self.checks.borrow().first() {
+                Some(check) => prompts::focus_on(check),
+                None => prompts::focus_on(&self.cancel),
             }
         }
     }
 }
 
-/// Asks the core again for the same kind of proposal, keeping what was decided.
-fn ask(app: &App, like: &Proposal) -> lumenna_host::Result<Proposal> {
-    let style = app.clock.style();
-    match like {
-        Proposal::Replan(replan) => app.core.lumenna.replan(style, replan.pins.clone(), crate::clock::pinned_now()).map(Proposal::Replan),
-        Proposal::Day(plan) => app
-            .core
-            .lumenna
-            .propose_day_plan(Some(plan.date.clone()), style, plan.pins.clone(), crate::clock::pinned_now())
-            .map(Proposal::Day),
-    }
-}
-
-/// Replan from Now: the rest of today. An overrun warning's Replan button runs it too
-/// (`app.reminder-replan`), bringing the window up first.
-pub fn replan(app: &Rc<App>) {
-    match app.core.lumenna.replan(app.clock.style(), Default::default(), crate::clock::pinned_now()) {
-        Ok(replan) => open(app, ActionKind::Replan, Proposal::Replan(replan)),
-        Err(error) => app.fail(&sentence(&error)),
-    }
-}
-
-/// Plan the Day: `date` (ISO, or a date phrase).
-pub fn plan_day(app: &Rc<App>, date: &str) {
-    match app.core.lumenna.propose_day_plan(Some(date.to_owned()), app.clock.style(), Default::default(), crate::clock::pinned_now()) {
-        Ok(plan) => open(app, ActionKind::PlanDay, Proposal::Day(plan)),
-        Err(error) => app.fail(&sentence(&error)),
-    }
-}
-
-fn open(app: &Rc<App>, kind: ActionKind, proposal: Proposal) {
-    let words = proposal_words(kind);
+fn build(app: &App, view: &ProposalView) -> Rc<Screen> {
+    let words = &view.words;
     let status = gtk::Label::builder().xalign(0.0).wrap(true).build();
     let parts = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).build();
     // Named after the heading over it; a read-only text, so Tab reaches it and the arrows
@@ -274,14 +202,18 @@ fn open(app: &Rc<App>, kind: ActionKind, proposal: Proposal) {
         .margin_start(12)
         .margin_end(12)
         .build();
-    body.append(&status);
-    body.append(&parts);
-    body.append(&unfit_heading);
-    body.append(&unfit);
-    body.append(&others_heading);
-    body.append(&others);
-    body.append(&hint);
-    body.append(&buttons);
+    for widget in [
+        status.upcast_ref::<gtk::Widget>(),
+        parts.upcast_ref(),
+        unfit_heading.upcast_ref(),
+        unfit.upcast_ref(),
+        others_heading.upcast_ref(),
+        others.upcast_ref(),
+        hint.upcast_ref(),
+        buttons.upcast_ref(),
+    ] {
+        body.append(widget);
+    }
     let scrolled = gtk::ScrolledWindow::builder()
         .child(&body)
         .hscrollbar_policy(gtk::PolicyType::Never)
@@ -296,8 +228,22 @@ fn open(app: &Rc<App>, kind: ActionKind, proposal: Proposal) {
         .default_width(520)
         .child(&scrolled)
         .build();
+    apply.connect_clicked(|_| send(ProposalEvent::Apply));
+    cancel.connect_clicked(|_| send(ProposalEvent::Close));
+    window.connect_close_request(|_| {
+        send(ProposalEvent::Close);
+        glib::Propagation::Stop
+    });
+    let escape = gtk::EventControllerKey::new();
+    escape.connect_key_pressed(|_, key, _, _| {
+        if key == gdk::Key::Escape {
+            send(ProposalEvent::Close);
+            return glib::Propagation::Stop;
+        }
+        glib::Propagation::Proceed
+    });
+    window.add_controller(escape);
     let screen = Rc::new(Screen {
-        words,
         window: window.clone(),
         status,
         parts,
@@ -307,62 +253,35 @@ fn open(app: &Rc<App>, kind: ActionKind, proposal: Proposal) {
         hint,
         others_heading,
         others,
-        apply: apply.clone(),
-        cancel: cancel.clone(),
-        proposal: RefCell::new(proposal.clone()),
+        apply,
+        cancel,
+        shown: Cell::new(None),
+        offered: RefCell::new(Vec::new()),
+        filling: Rc::new(Cell::new(false)),
+        waiting: RefCell::new(Some(Vec::new())),
     });
-    screen.show(proposal);
-    {
-        let weak = Rc::downgrade(&screen);
-        apply.connect_clicked(move |_| {
-            if let (Some(screen), Some(app)) = (weak.upgrade(), crate::window::app()) {
-                screen.apply(&app);
+    // What was said as it opened, once the window is in front and Orca has read its title and
+    // focus, which would cut it off.
+    let weak = Rc::downgrade(&screen);
+    let said = Cell::new(false);
+    window.connect_is_active_notify(move |window| {
+        if !window.is_active() || said.replace(true) {
+            return;
+        }
+        let weak = weak.clone();
+        glib::timeout_add_local_once(std::time::Duration::from_millis(1000), move || {
+            let Some(screen) = weak.upgrade() else { return };
+            let waiting = screen.waiting.take().unwrap_or_default();
+            for text in waiting {
+                say(&text);
             }
         });
-    }
-    {
-        let window = window.downgrade();
-        cancel.connect_clicked(move |_| {
-            if let Some(window) = window.upgrade() {
-                window.close();
-            }
-        });
-    }
-    let escape = gtk::EventControllerKey::new();
-    {
-        let window = window.downgrade();
-        escape.connect_key_pressed(move |_, key, _, _| {
-            if key == gdk::Key::Escape
-                && let Some(window) = window.upgrade()
-            {
-                window.close();
-                return glib::Propagation::Stop;
-            }
-            glib::Propagation::Proceed
-        });
-    }
-    window.add_controller(escape);
-    // The proposal, said once the window is in front and Orca has read its title and focus,
-    // which would cut it off.
-    {
-        let weak = Rc::downgrade(&screen);
-        let said = Cell::new(false);
-        window.connect_is_active_notify(move |window| {
-            if !window.is_active() || said.replace(true) {
-                return;
-            }
-            let weak = weak.clone();
-            glib::timeout_add_local_once(std::time::Duration::from_millis(1000), move || {
-                if let Some(screen) = weak.upgrade() {
-                    screen.say(&screen.status.label());
-                }
-            });
-        });
-    }
-    window.present();
-    screen.land();
-    // The screen lives as long as its window.
-    window.connect_destroy(move |_| {
-        let _ = &screen;
     });
+    screen
+}
+
+/// Replan from Now, from wherever it is asked for: an overrun warning's Replan button
+/// (`app.reminder-replan`), which brings the window up first.
+pub fn replan(app: &App) {
+    app.model.send(ShellEvent::Proposal(ProposalEvent::Replan));
 }

@@ -41,6 +41,8 @@ pub struct TaskList {
 impl TaskList {
     pub fn new(place: Place, lumenna: std::sync::Arc<lumenna_host::Lumenna>) -> Rc<Self> {
         let trash = place == Place::Trash;
+        // The block series have no filter either, and a button to add one.
+        let blocks = place == Place::Blocks;
         let widget = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .spacing(6)
@@ -59,11 +61,15 @@ impl TaskList {
         let readback = gtk::Label::builder().xalign(0.0).wrap(true).build();
         let tree = Tree::new(&place.title());
         // The trash is everything deleted, and nothing else: there is no filter to change.
-        if !trash {
+        if !trash && !blocks {
             widget.append(&label);
             widget.append(&filter);
         }
         widget.append(&readback);
+        if blocks {
+            let add = gtk::Button::builder().label("Add Block…").action_name("win.new-block").halign(gtk::Align::Start).build();
+            widget.append(&add);
+        }
         widget.append(&tree.widget);
         let list = Rc::new(Self {
             place,
@@ -184,7 +190,7 @@ impl TaskList {
         let Some(list) = &view.list else { return };
         let lines = app.model.lines();
         self.readback.set_label(&lines.readback);
-        if !self.trash && self.filter.text() != view.query && !has_focus(&self.filter) {
+        if !self.trash && self.place != Place::Blocks && self.filter.text() != view.query && !has_focus(&self.filter) {
             self.setting.set(true);
             self.filter.set_text(&view.query);
             self.setting.set(false);
@@ -215,9 +221,6 @@ impl TaskList {
         } else {
             self.landing.land(&self.tree, app.window.upcast_ref(), view.focus.as_deref(), view.landing, rebuilt);
         }
-        if !self.trash {
-            app.detail.follow(app, view.focus.as_deref());
-        }
     }
 
     /// Whether this is the trash, where only restoring and erasing apply.
@@ -246,7 +249,7 @@ impl TaskList {
 
     /// Puts focus in the filter, all of it selected so typing replaces it.
     pub fn focus_filter(&self) {
-        if !self.trash {
+        if !self.trash && self.place != Place::Blocks {
             self.filter.grab_focus();
         }
     }

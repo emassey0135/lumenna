@@ -159,12 +159,10 @@ async fn another_day(app: &App, window: &gtk::Window) {
 }
 
 /// Runs one of a row's actions through the app: the row in hand, then the action. A form the
-/// app draws on a screen not yet drawn from it here is still the GTK app's own; a task's
-/// details are opened from the app's question.
+/// app draws on a screen not yet drawn from it here is still the GTK app's own (a reminder
+/// list); a task's details are opened from the app's question.
 pub fn run(app: &Rc<App>, action: Action, on: &str) {
-    let details = action.subject == lumenna_records::Subject::Task
-        && matches!(action.kind, lumenna_records::ActionKind::Edit | lumenna_records::ActionKind::EditTask);
-    if action.question == Question::Form && !details {
+    if action.question == Question::Form && action.kind == lumenna_records::ActionKind::Reminders {
         return crate::actions::run(app, action, None);
     }
     app.model.run(action, on);

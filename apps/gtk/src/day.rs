@@ -15,13 +15,13 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gdk, glib};
-use lumenna_app::{DayItem, DayKind};
+use lumenna_app::DayItem;
 use lumenna_ffi::ShellEvent;
 use lumenna_records::{Action, ActionKind};
 
 use crate::actions;
 use crate::tree::{Item, Landing, Tree};
-use crate::window::{App, spawn};
+use crate::window::App;
 
 pub struct DayView {
     pub widget: gtk::Box,
@@ -32,8 +32,6 @@ pub struct DayView {
     date: RefCell<Option<String>>,
     /// When focus goes to the row in hand.
     landing: Landing,
-    /// A block added here, by series, to land on once the day shows it.
-    landing_on: RefCell<Option<String>>,
 }
 
 impl DayView {
@@ -64,7 +62,6 @@ impl DayView {
             rows: RefCell::new(Vec::new()),
             date: RefCell::new(None),
             landing: Landing::default(),
-            landing_on: RefCell::new(None),
         });
         day.connect();
         day
@@ -153,19 +150,7 @@ impl DayView {
         *self.date.borrow_mut() = Some(day.date.clone());
         app.set_title(&lines.day_title);
         let rebuilt = self.tree.set(items);
-        let landing_on = self.landing_on.borrow().clone();
-        let block = landing_on.and_then(|series| {
-            day.items.iter().find(|item| item.kind == DayKind::Block && item.block.as_ref().is_some_and(|b| b.series == series))
-        });
-        match block.and_then(|item| self.tree.index_of(&item.key)) {
-            Some(index) => {
-                self.landing_on.take();
-                self.tree.select(index);
-                self.tree.focus();
-            }
-            None => self.landing.land(&self.tree, app.window.upcast_ref(), view.focus.as_deref(), view.landing, rebuilt),
-        }
-        app.detail.follow(app, self.selected_task().as_deref());
+        self.landing.land(&self.tree, app.window.upcast_ref(), view.focus.as_deref(), view.landing, rebuilt);
     }
 
     fn selected(&self) -> Option<DayItem> {
@@ -186,21 +171,5 @@ impl DayView {
     /// Moves focus into the day, once it is drawn.
     pub fn focus(&self) {
         self.landing.want(&self.tree);
-    }
-
-    /// A new block on the day shown, from the menu or the Add Block button.
-    pub fn add_block(&self, app: &Rc<App>) {
-        let date = self.date.borrow().clone().unwrap_or_else(|| "today".to_owned());
-        let app = Rc::clone(app);
-        spawn(async move { actions::add_block(&app, &date, None, 60).await });
-    }
-
-    /// Lands on a block of `series` shown on the day, as after adding one.
-    pub fn land_on_block(&self, series: &str) {
-        *self.landing_on.borrow_mut() = Some(series.to_owned());
-        if let Some(app) = crate::window::app() {
-            app.model.tick();
-            self.draw(&app);
-        }
     }
 }

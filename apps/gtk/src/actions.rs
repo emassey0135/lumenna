@@ -10,12 +10,9 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::gio;
-use lumenna_desktop::speech::{self, Clock as _};
+use lumenna_desktop::speech::{self};
 use lumenna_host::actions::{Action, ActionKind, Answer, Question, Subject};
-use lumenna_host::places::Place;
-use lumenna_host::{Change, block_fields, day_block_fields};
 
-use crate::block_form::{self, Purpose};
 use crate::core::sentence;
 use crate::prompts;
 use crate::window::{App, spawn};
@@ -41,12 +38,6 @@ pub fn find<'a>(actions: &'a [Action], kinds: &[ActionKind]) -> Option<&'a Actio
 
 /// What runs once an action's change is in: where the view puts the selection, say.
 pub type After = Rc<dyn Fn(&Rc<App>, &Action, &Answer)>;
-
-/// A menu of `actions`, each running its own when chosen. Those that remove something come
-/// last, apart.
-pub fn menu(actions: &[Action], after: Option<After>) -> (gio::Menu, gio::SimpleActionGroup) {
-    menu_from(actions, after, None)
-}
 
 /// A menu of `actions` asked over another window than the main one, when `from` says which.
 pub fn menu_from(actions: &[Action], after: Option<After>, from: Option<Asking>) -> (gio::Menu, gio::SimpleActionGroup) {
@@ -215,109 +206,8 @@ pub fn open_form(app: &Rc<App>, action: Action) {
 
 async fn form(app: &Rc<App>, action: Action) {
     match (action.subject, action.kind) {
-        (Subject::Task, ActionKind::Edit | ActionKind::EditTask) => {
-            app.detail.show(app, Some(&action.target));
-            app.open_detail();
-        }
-        (Subject::Block, ActionKind::Edit) => edit_day_block(app, &action.target).await,
-        (Subject::Series, ActionKind::Edit) => edit_series(app, &action.target).await,
-        (Subject::FreeTime, ActionKind::AddBlock) => {
-            add_block(app, &action.target, action.other.as_deref(), 60).await;
-        }
-        (Subject::Filter, ActionKind::New) => new_filter(app).await,
+        (Subject::Task, ActionKind::Edit | ActionKind::EditTask) => app.detail.open(app, &action.target),
         (_, ActionKind::Reminders) => crate::reminders::show(app, &action),
-        (_, ActionKind::PlanDay) => crate::proposal::plan_day(app, &action.target),
-        (_, ActionKind::Replan) => crate::proposal::replan(app),
         _ => {}
-    }
-}
-
-/// A new block on `date`, `minutes` long: the block form, then the day lands on it. It starts
-/// at `start` (free time's own), else when the core says a new block on that day starts.
-pub async fn add_block(app: &Rc<App>, date: &str, start: Option<&str>, minutes: u32) {
-    let window = app.window.clone().upcast::<gtk::Window>();
-    let start_follows_day = start.is_none();
-    let start = match start {
-        Some(start) => start.to_owned(),
-        None => match app.core.lumenna.new_block_start(Some(date.to_owned())) {
-            Ok(start) => start,
-            Err(error) => return app.fail(&sentence(&error)),
-        },
-    };
-    let fields = block_form::new_fields(&start, minutes);
-    let purpose = Purpose::Add { date: date.to_owned(), start_follows_day };
-    let Some(change) = block_form::run(&window, app.core.lumenna.clone(), purpose, fields, None).await else { return };
-    app.store_changed();
-    if let Some(series) = change.affected.blocks.first() {
-        app.land_on_block(series);
-    }
-    app.say_change(&change);
-}
-
-/// Changes one day's block, asking first, of a repeating one, whether that day alone or every
-/// day: a change's reach is never guessed.
-async fn edit_day_block(app: &Rc<App>, id: &str) {
-    let Some((series, date)) = id.split_once('@') else { return };
-    let block = app.core.lumenna.plan(Some(date.to_owned())).ok().and_then(|plan| plan.blocks.into_iter().find(|b| b.id == id));
-    let Some(block) = block else { return };
-    if !block.repeats {
-        return edit_series(app, series).await;
-    }
-    let on = format!("{} Only", app.clock.day(date));
-    let heading = format!("Change {}", block.title);
-    match prompts::choose(&app.window, &heading, "Which occurrences?", &[&on, "Every Occurrence"], false).await {
-        Some(0) => {
-            let window = app.window.clone().upcast::<gtk::Window>();
-            let purpose = Purpose::Occurrence { series: series.to_owned(), date: date.to_owned() };
-            let fields = day_block_fields(block);
-            if let Some(change) = block_form::run(&window, app.core.lumenna.clone(), purpose, fields, None).await {
-                finish(app, &change);
-            }
-        }
-        Some(_) => edit_series(app, series).await,
-        None => {}
-    }
-}
-
-/// Changes every occurrence of a series.
-async fn edit_series(app: &Rc<App>, series: &str) {
-    let shown = match app.core.lumenna.show_block(series) {
-        Ok(shown) => shown,
-        Err(error) => return app.fail(&sentence(&error)),
-    };
-    let unsayable = lumenna_host::unsayable_repeat_note(shown.clone());
-    let purpose = Purpose::Series { id: shown.id.clone() };
-    let fields = block_fields(shown);
-    let window = app.window.clone().upcast::<gtk::Window>();
-    if let Some(change) = block_form::run(&window, app.core.lumenna.clone(), purpose, fields, unsayable).await {
-        finish(app, &change);
-    }
-}
-
-fn finish(app: &App, change: &Change) {
-    app.store_changed();
-    app.say_change(change);
-}
-
-/// A new saved filter: its name, then its query, as the core asks them.
-async fn new_filter(app: &Rc<App>) {
-    let window: gtk::Window = app.window.clone().upcast();
-    let questions = lumenna_host::new_filter_questions();
-    let [name_question, query_question] = questions.as_slice() else { return };
-    let Some(name) = ask_text(&window, name_question, None).await else { return };
-    let mut query = String::new();
-    loop {
-        let Some(typed) = ask_text(&window, query_question, Some(&query)).await else { return };
-        match app.core.lumenna.add_filter(&name, &typed) {
-            Ok(change) => {
-                app.store_changed();
-                app.go(Place::Filter { name: name.clone(), query: typed }, false);
-                return app.say_change(&change);
-            }
-            Err(error) => {
-                prompts::tell(&app.window, &sentence(&error)).await;
-                query = typed;
-            }
-        }
     }
 }

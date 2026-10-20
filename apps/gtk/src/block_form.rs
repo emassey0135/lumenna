@@ -1,26 +1,26 @@
-//! Adding or changing a block, in a form.
+//! Adding or changing a block, in a form: the app's block form (`ViewModel::block_form`),
+//! drawn as a window of its own while the app has it open.
 //!
-//! What a form starts from and what saving it sends are the surface's (`block_fields`,
-//! `day_block_fields`, `block_edit`, `new_block`), as a task's are, so every client changes a
-//! block by the same rules. A new block or every occurrence takes every setting; one day of a
-//! repeating block takes only what a day can differ in — its time, length, title, kind and
-//! three flags.
-//!
-//! The three flags start from the kind, and go back to the new kind's when it is changed.
+//! What the form holds, which fields it shows, what a kind brings with it and what saving
+//! sends are the app's: each field typed or chosen goes to it (`BlockEvent::Field`), and the
+//! fields are refilled from what it says — the three flags when the kind changes, Starts at when
+//! a new block's day does — except the one being typed in, which holds the newest already. A
+//! field the form does not show now (Until while nothing repeats) is hidden, not removed.
 
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::Arc;
 
-use futures_channel::oneshot;
 use gtk::prelude::*;
 use gtk::{gdk, glib};
-use lumenna_host::{BlockFields, BlockScope, Change, Lumenna, block_defaults, block_edit, new_block};
+use lumenna_app::{BlockEvent, BlockFormView};
+use lumenna_ffi::ShellEvent;
+use lumenna_records::BlockFields;
 
-use crate::core::sentence;
 use crate::prompts;
+use crate::window::App;
 
-/// Each field's mnemonic, none used twice in the form nor by its buttons (Save, Add Block).
+/// Each field's mnemonic, none used twice in the form nor by its Save button.
 fn mnemonic(key: &str) -> char {
     match key {
         "title" => 'm',
@@ -41,219 +41,148 @@ fn mnemonic(key: &str) -> char {
     }
 }
 
-/// The kinds of block, value and name, as the core's form offers them.
-fn kinds() -> Vec<(String, String)> {
-    lumenna_host::block_form()
-        .into_iter()
-        .find(|f| f.key == "kind")
-        .map(|f| f.options.into_iter().map(|o| (o.id, o.title)).collect())
-        .unwrap_or_default()
+/// A field's control.
+enum Control {
+    Line(gtk::Entry),
+    Kind(gtk::DropDown, Vec<String>),
+    Flag(gtk::CheckButton),
+    Notes(gtk::TextView),
 }
 
-/// What the form is for.
-pub enum Purpose {
-    /// A new block, starting on this date phrase. `start_follows_day`: Starts at was the
-    /// core's for the day (`new_block_start`), so it is asked again when the day changes,
-    /// until the person changes it themselves; free time's own start does not follow.
-    Add { date: String, start_follows_day: bool },
-    /// Every occurrence of a series.
-    Series { id: String },
-    /// One day of a repeating series alone.
-    Occurrence { series: String, date: String },
-}
-
-/// A new block's fields: a work block from `start`, `minutes` long, with a work block's flags.
-pub fn new_fields(start: &str, minutes: u32) -> BlockFields {
-    let mut fields = BlockFields {
-        start: start.to_owned(),
-        minutes: minutes.to_string(),
-        kind: "work".to_owned(),
-        ..BlockFields::default()
-    };
-    if let Some(defaults) = block_defaults(fields.kind.clone()) {
-        fields.accepts_tasks = defaults.accepts_tasks;
-        fields.counts_capacity = defaults.counts_capacity;
-        fields.anchored = defaults.anchored;
-    }
-    fields
-}
-
-struct Form {
-    title: gtk::Entry,
-    start: gtk::Entry,
-    minutes: gtk::Entry,
-    kind: gtk::DropDown,
-    accepts_tasks: gtk::CheckButton,
-    counts_capacity: gtk::CheckButton,
-    anchored: gtk::CheckButton,
-    repeat: gtk::Entry,
-    until: gtk::Entry,
-    min_minutes: gtk::Entry,
-    task_filter: gtk::Entry,
-    colour: gtk::Entry,
-    notes: gtk::TextView,
-    date: gtk::Entry,
-}
-
-impl Form {
-    fn read(&self, initial: &BlockFields, once: bool) -> BlockFields {
-        let text = |entry: &gtk::Entry| entry.text().trim().to_owned();
-        let buffer = self.notes.buffer();
-        let fields = BlockFields {
-            title: text(&self.title),
-            start: text(&self.start),
-            minutes: text(&self.minutes),
-            kind: kinds().get(self.kind.selected() as usize).map_or("work", |k| k.0.as_str()).to_owned(),
-            accepts_tasks: self.accepts_tasks.is_active(),
-            counts_capacity: self.counts_capacity.is_active(),
-            anchored: self.anchored.is_active(),
-            repeat: text(&self.repeat),
-            until: text(&self.until),
-            min_minutes: text(&self.min_minutes),
-            task_filter: text(&self.task_filter),
-            colour: text(&self.colour),
-            notes: buffer.text(&buffer.start_iter(), &buffer.end_iter(), false).to_string(),
-        };
-        if once {
-            // A day holds none of the rest: they stay as they were, so are not sent.
-            BlockFields {
-                repeat: initial.repeat.clone(),
-                until: initial.until.clone(),
-                min_minutes: initial.min_minutes.clone(),
-                task_filter: initial.task_filter.clone(),
-                colour: initial.colour.clone(),
-                notes: initial.notes.clone(),
-                ..fields
-            }
-        } else {
-            fields
+impl Control {
+    fn widget(&self) -> gtk::Widget {
+        match self {
+            Self::Line(entry) => entry.clone().upcast(),
+            Self::Kind(kind, _) => kind.clone().upcast(),
+            Self::Flag(check) => check.clone().upcast(),
+            Self::Notes(notes) => notes.clone().upcast(),
         }
     }
 
-    /// Saves the form. `Ok(None)` is nothing changed.
-    fn save(&self, lumenna: &Lumenna, purpose: &Purpose, initial: &BlockFields) -> Result<Option<Change>, String> {
-        let once = matches!(purpose, Purpose::Occurrence { .. });
-        let fields = self.read(initial, once);
-        let result = match purpose {
-            Purpose::Add { .. } => {
-                let date = Some(self.date.text().trim().to_owned());
-                new_block(fields, date).and_then(|block| lumenna.add_block(block)).map(Some)
+    /// What it holds, as the app takes a field: a flag as `true` or `false`.
+    fn value(&self) -> String {
+        match self {
+            Self::Line(entry) => entry.text().to_string(),
+            Self::Kind(kind, ids) => ids.get(kind.selected() as usize).cloned().unwrap_or_default(),
+            Self::Flag(check) => check.is_active().to_string(),
+            Self::Notes(notes) => {
+                let buffer = notes.buffer();
+                buffer.text(&buffer.start_iter(), &buffer.end_iter(), false).to_string()
             }
-            Purpose::Series { id } => match block_edit(initial.clone(), fields) {
-                Ok(Some(edit)) => lumenna.edit_block(id, edit, BlockScope::Series).map(Some),
-                Ok(None) => Ok(None),
-                Err(error) => Err(error),
-            },
-            Purpose::Occurrence { series, date } => match block_edit(initial.clone(), fields) {
-                Ok(Some(edit)) => {
-                    lumenna.edit_block(series, edit, BlockScope::Occurrence { date: date.clone() }).map(Some)
-                }
-                Ok(None) => Ok(None),
-                Err(error) => Err(error),
-            },
-        };
-        result.map_err(|error| sentence(&error))
+        }
     }
-}
 
-/// Asks the core again when a new block starts each time its day changes, until the person
-/// changes Starts at: a day still being typed, or one that does not read, leaves it alone.
-fn follow_day(form: &Rc<Form>, lumenna: Arc<Lumenna>) {
-    let touched = Rc::new(Cell::new(false));
-    let setting = Rc::new(Cell::new(false));
-    {
-        let (touched, setting) = (touched.clone(), setting.clone());
-        form.start.connect_changed(move |_| {
-            if !setting.get() {
-                touched.set(true);
-            }
-        });
-    }
-    let weak = Rc::downgrade(form);
-    form.date.connect_changed(move |date| {
-        let Some(form) = weak.upgrade() else { return };
-        if touched.get() {
+    /// Shows `value`, unless focus is in it: what is typed there is the newest.
+    fn fill(&self, value: &str) {
+        let widget = self.widget();
+        let typing = widget.root().and_then(|root| root.focus()).is_some_and(|focus| focus == widget || focus.is_ancestor(&widget));
+        if self.value() == value || (typing && !matches!(self, Self::Flag(_))) {
             return;
         }
-        let phrase = date.text().trim().to_owned();
-        let Ok(start) = lumenna.new_block_start((!phrase.is_empty()).then_some(phrase)) else { return };
-        if form.start.text() != start {
-            setting.set(true);
-            form.start.set_text(&start);
-            setting.set(false);
+        match self {
+            Self::Line(entry) => entry.set_text(value),
+            Self::Kind(kind, ids) => kind.set_selected(ids.iter().position(|id| id == value).unwrap_or(0) as u32),
+            Self::Flag(check) => check.set_active(value == "true"),
+            Self::Notes(notes) => notes.buffer().set_text(value),
         }
-    });
+    }
 }
 
-/// Runs the form, and returns what saving it did. `unsayable` is the core's note for a block
-/// repeating by a rule the repetition words cannot say (`unsayable_repeat_note`), shown
-/// beside an empty Repeats.
-pub async fn run(
-    parent: &gtk::Window,
-    lumenna: Arc<Lumenna>,
-    purpose: Purpose,
-    initial: BlockFields,
-    unsayable: Option<String>,
-) -> Option<Change> {
-    let heading = match &purpose {
-        Purpose::Add { .. } => "New Block".to_owned(),
-        Purpose::Series { .. } => format!("Change {}, Every Occurrence", initial.title),
-        Purpose::Occurrence { .. } => format!("Change {}, This Day Only", initial.title),
-    };
-    let adding = matches!(purpose, Purpose::Add { .. });
-    let once = matches!(purpose, Purpose::Occurrence { .. });
-    let entry = |text: &str| gtk::Entry::builder().text(text).activates_default(true).build();
-    let kinds = kinds();
-    // The core's words for every field; the mnemonics are this app's, none used twice.
-    let fields = lumenna_host::block_form();
-    let words = |key: &str| fields.iter().find(|f| f.key == key);
-    let marked = |key: &str| {
-        let label = words(key).map_or(key, |f| f.label.as_str());
-        lumenna_desktop::devices::marked(label, mnemonic(key), '_')
-    };
-    let form = Rc::new(Form {
-        title: entry(&initial.title),
-        start: entry(&initial.start),
-        minutes: entry(&initial.minutes),
-        kind: gtk::DropDown::from_strings(&kinds.iter().map(|(_, title)| title.as_str()).collect::<Vec<_>>()),
-        accepts_tasks: prompts::check(&marked("accepts_tasks")),
-        counts_capacity: prompts::check(&marked("counts_capacity")),
-        anchored: prompts::check(&marked("anchored")),
-        repeat: entry(&initial.repeat),
-        until: entry(&initial.until),
-        min_minutes: entry(&initial.min_minutes),
-        task_filter: entry(&initial.task_filter),
-        colour: entry(&initial.colour),
-        notes: gtk::TextView::builder().accepts_tab(false).wrap_mode(gtk::WrapMode::WordChar).build(),
-        date: entry(""),
-    });
-    form.kind.set_selected(kinds.iter().position(|(k, _)| *k == initial.kind).unwrap_or(0) as u32);
-    form.accepts_tasks.set_active(initial.accepts_tasks);
-    form.counts_capacity.set_active(initial.counts_capacity);
-    form.anchored.set_active(initial.anchored);
-    form.notes.buffer().set_text(&initial.notes);
-    prompts::leaves_on_tab(&form.notes);
-    if let Purpose::Add { date, start_follows_day } = &purpose {
-        form.date.set_text(date);
-        if *start_follows_day {
-            follow_day(&form, lumenna.clone());
+/// What a field holds in the app's values, by its key.
+fn value_of(values: &BlockFields, date: &str, key: &str) -> String {
+    match key {
+        "title" => values.title.clone(),
+        "date" => date.to_owned(),
+        "start" => values.start.clone(),
+        "minutes" => values.minutes.clone(),
+        "kind" => values.kind.clone(),
+        "accepts_tasks" => values.accepts_tasks.to_string(),
+        "counts_capacity" => values.counts_capacity.to_string(),
+        "anchored" => values.anchored.to_string(),
+        "repeat" => values.repeat.clone(),
+        "until" => values.until.clone(),
+        "min_minutes" => values.min_minutes.clone(),
+        "task_filter" => values.task_filter.clone(),
+        "colour" => values.colour.clone(),
+        "notes" => values.notes.clone(),
+        _ => String::new(),
+    }
+}
+
+/// The form open.
+struct Open {
+    window: gtk::Window,
+    heading: String,
+    /// Each field's control, and what shows or hides with it (its label, its scroller).
+    fields: HashMap<String, (Control, Vec<gtk::Widget>)>,
+    /// Whether the controls are being filled from the app, not typed.
+    filling: Rc<Cell<bool>>,
+    /// The refusal last told, so one is told once.
+    refusal: RefCell<Option<String>>,
+}
+
+thread_local! {
+    static OPEN: RefCell<Option<Rc<Open>>> = const { RefCell::new(None) };
+}
+
+/// Draws the form the app has open: opens its window when it opens, refills it as the app
+/// changes it, closes it when the app closes it.
+pub fn draw(app: &App) {
+    let view = app.model.view().block_form.clone();
+    let open = OPEN.with_borrow(Clone::clone);
+    match (view, open) {
+        (None, None) => {}
+        (None, Some(open)) => {
+            OPEN.set(None);
+            open.window.destroy();
+        }
+        (Some(view), Some(open)) if open.heading == view.heading => fill(&open, &view, app),
+        (Some(view), open) => {
+            if let Some(open) = open {
+                open.window.destroy();
+            }
+            let open = build(app, &view);
+            OPEN.set(Some(Rc::clone(&open)));
+            fill(&open, &view, app);
+            open.window.present();
+            if let Some((control, _)) = open.fields.get("title") {
+                prompts::focus_on(&control.widget());
+            }
         }
     }
-    // A new kind brings its own flags, as saving will.
-    {
-        let weak = Rc::downgrade(&form);
-        let kinds = kinds.clone();
-        form.kind.connect_selected_notify(move |dropdown| {
-            let Some(form) = weak.upgrade() else { return };
-            let word = kinds.get(dropdown.selected() as usize).map_or("work", |k| k.0.as_str());
-            if let Some(defaults) = block_defaults(word.to_owned()) {
-                form.accepts_tasks.set_active(defaults.accepts_tasks);
-                form.counts_capacity.set_active(defaults.counts_capacity);
-                form.anchored.set_active(defaults.anchored);
-            }
-        });
-    }
+}
 
+fn fill(open: &Rc<Open>, view: &BlockFormView, app: &App) {
+    open.filling.set(true);
+    for (key, (control, with)) in &open.fields {
+        let shown = view.fields.iter().any(|field| &field.key == key);
+        control.widget().set_visible(shown);
+        for widget in with {
+            widget.set_visible(shown);
+        }
+        // A hint the app changed: the repetition kept by a rule the words cannot say.
+        if let Some(field) = view.fields.iter().find(|field| &field.key == key)
+            && !field.hint.is_empty()
+        {
+            control.widget().update_property(&[gtk::accessible::Property::Description(&field.hint)]);
+        }
+        control.fill(&value_of(&view.values, &view.date, key));
+    }
+    open.filling.set(false);
+    // A refusal is told once, and the form stays with what was typed so it can be put right.
+    let told = open.refusal.replace(view.refusal.clone());
+    if let Some(refusal) = &view.refusal
+        && told.as_ref() != Some(refusal)
+    {
+        prompts::fail(&open.window, refusal);
+    }
+    let _ = app;
+}
+
+fn build(app: &App, view: &BlockFormView) -> Rc<Open> {
+    let adding = view.fields.iter().any(|field| field.key == "date");
+    let form = lumenna_records::block_form();
+    let marked = |key: &str, label: &str| lumenna_desktop::devices::marked(label, mnemonic(key), '_');
     let body = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(4)
@@ -262,87 +191,87 @@ pub async fn run(
         .margin_start(12)
         .margin_end(12)
         .build();
-    let field = |key: &str, widget: &gtk::Widget| {
-        let label = gtk::Label::builder().label(marked(key)).use_underline(true).xalign(0.0).margin_top(6).build();
-        label.set_mnemonic_widget(Some(widget));
-        if let Some(hint) = words(key).map(|f| f.hint.as_str()).filter(|hint| !hint.is_empty()) {
-            widget.update_property(&[gtk::accessible::Property::Description(hint)]);
-        }
-        body.append(&label);
-        body.append(widget);
-        label
-    };
-    let notes = gtk::ScrolledWindow::builder()
-        .child(&form.notes)
-        .min_content_height(64)
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .has_frame(true)
-        .build();
-    // In the core's order. One day's change holds only what one day can change (`one_day`);
-    // only a new block asks its day.
-    let mut until = None;
-    for described in &fields {
-        let key = described.key.as_str();
-        if once && !described.one_day {
-            continue;
-        }
-        let widget: gtk::Widget = match key {
-            "title" => form.title.clone().upcast(),
-            "date" if adding => form.date.clone().upcast(),
-            "start" => form.start.clone().upcast(),
-            "minutes" => form.minutes.clone().upcast(),
-            "kind" => form.kind.clone().upcast(),
+    let filling = Rc::new(Cell::new(false));
+    let mut fields = HashMap::new();
+    // Every field the core's form has, in its order, the ones this form never shows left out:
+    // a new block's day only when adding, and one day's change only what one day can change.
+    let once = !view.fields.iter().any(|field| field.key == "notes");
+    for described in form.iter().filter(|field| (field.key != "date" || adding) && (!once || field.one_day)) {
+        let key = described.key.clone();
+        let mut with: Vec<gtk::Widget> = Vec::new();
+        let control = match key.as_str() {
+            "kind" => {
+                let ids: Vec<String> = described.options.iter().map(|option| option.id.clone()).collect();
+                let titles: Vec<&str> = described.options.iter().map(|option| option.title.as_str()).collect();
+                Control::Kind(gtk::DropDown::from_strings(&titles), ids)
+            }
             "accepts_tasks" | "counts_capacity" | "anchored" => {
-                let check = match key {
-                    "accepts_tasks" => &form.accepts_tasks,
-                    "counts_capacity" => &form.counts_capacity,
-                    _ => &form.anchored,
-                };
+                let check = prompts::check(&marked(&key, &described.label));
                 check.set_margin_top(4);
-                body.append(check);
-                continue;
+                Control::Flag(check)
             }
-            "repeat" => form.repeat.clone().upcast(),
-            "until" => form.until.clone().upcast(),
-            "min_minutes" => form.min_minutes.clone().upcast(),
-            "task_filter" => form.task_filter.clone().upcast(),
-            "colour" => form.colour.clone().upcast(),
-            "notes" => {
-                let label = gtk::Label::builder().label(marked("notes")).use_underline(true).xalign(0.0).margin_top(6).build();
-                label.set_mnemonic_widget(Some(&form.notes));
-                body.append(&label);
-                body.append(&notes);
-                continue;
+            "notes" => Control::Notes(gtk::TextView::builder().accepts_tab(false).wrap_mode(gtk::WrapMode::WordChar).build()),
+            _ => Control::Line(gtk::Entry::builder().activates_default(true).build()),
+        };
+        let widget = control.widget();
+        if !matches!(control, Control::Flag(_)) {
+            let label = gtk::Label::builder().label(marked(&key, &described.label)).use_underline(true).xalign(0.0).margin_top(6).build();
+            label.set_mnemonic_widget(Some(&widget));
+            body.append(&label);
+            with.push(label.upcast());
+        }
+        if !described.hint.is_empty() {
+            widget.update_property(&[gtk::accessible::Property::Description(&described.hint)]);
+        }
+        match &control {
+            Control::Notes(notes) => {
+                prompts::leaves_on_tab(notes);
+                let scroller = gtk::ScrolledWindow::builder()
+                    .child(notes)
+                    .min_content_height(64)
+                    .hscrollbar_policy(gtk::PolicyType::Never)
+                    .has_frame(true)
+                    .build();
+                body.append(&scroller);
+                with.push(scroller.upcast());
             }
-            _ => continue,
-        };
-        let label = field(key, &widget);
-        if key == "until" {
-            until = Some((label, widget));
+            _ => body.append(&widget),
         }
-        if key == "repeat"
-            && let Some(note) = &unsayable
-        {
-            // Shown, and read with the field: AT-SPI is not given a described-by relation, so
-            // it joins the hint in the description.
-            let hint = words(key).map(|f| f.hint.clone()).unwrap_or_default();
-            let description = if hint.is_empty() { note.clone() } else { format!("{note} {hint}") };
-            form.repeat.update_property(&[gtk::accessible::Property::Description(&description)]);
-            body.append(&gtk::Label::builder().label(note).wrap(true).xalign(0.0).build());
-        }
-    }
-    // Until is there only while it repeats: by words typed, or by a rule they cannot say.
-    if let Some((label, widget)) = until {
-        let by_rule = unsayable.is_some();
-        let show = move |repeat: &gtk::Entry| {
-            let repeats = by_rule || !repeat.text().trim().is_empty();
-            label.set_visible(repeats);
-            widget.set_visible(repeats);
+        // Each field typed or chosen goes to the app.
+        let send = {
+            let filling = Rc::clone(&filling);
+            let key = key.clone();
+            move |value: String| {
+                if filling.get() {
+                    return;
+                }
+                if let Some(app) = crate::window::app() {
+                    app.model.send(ShellEvent::Block(BlockEvent::Field { key: key.clone(), value }));
+                }
+            }
         };
-        show(&form.repeat);
-        form.repeat.connect_changed(show);
+        match &control {
+            Control::Line(entry) => {
+                entry.connect_changed(move |entry| send(entry.text().to_string()));
+            }
+            Control::Kind(kind, ids) => {
+                let ids = ids.clone();
+                kind.connect_selected_notify(move |kind| send(ids.get(kind.selected() as usize).cloned().unwrap_or_default()));
+            }
+            Control::Flag(check) => {
+                check.connect_toggled(move |check| send(check.is_active().to_string()));
+            }
+            Control::Notes(notes) => {
+                notes.buffer().connect_changed(move |buffer| {
+                    send(buffer.text(&buffer.start_iter(), &buffer.end_iter(), false).to_string());
+                });
+            }
+        }
+        fields.insert(key, (control, with));
     }
-    let ok = gtk::Button::with_mnemonic(if adding { "Add _Block" } else { "Sa_ve" });
+    // The app's word for the button; its mnemonic this app's, clear of every field's.
+    let yes = if view.yes == "Save" { "Sa_ve".to_owned() } else { view.yes.replace('_', "__") };
+    let ok = gtk::Button::with_mnemonic(&yes);
     ok.add_css_class("suggested-action");
     let cancel = gtk::Button::with_label("Cancel");
     let buttons = gtk::Box::builder().spacing(8).halign(gtk::Align::End).margin_top(12).build();
@@ -355,62 +284,39 @@ pub async fn run(
         .propagate_natural_height(true)
         .max_content_height(640)
         .build();
-
     let window = gtk::Window::builder()
-        .title(&heading)
+        .title(&view.heading)
         .modal(true)
-        .transient_for(parent)
+        .transient_for(&app.window)
         .destroy_with_parent(true)
         .default_width(440)
         .child(&scrolled)
         .build();
     window.set_default_widget(Some(&ok));
-
-    let (sender, receiver) = oneshot::channel::<Option<Change>>();
-    let sender = Rc::new(RefCell::new(Some(sender)));
-    let finish = {
-        let sender = Rc::clone(&sender);
-        let window = window.clone();
-        Rc::new(move |change: Option<Change>| {
-            if let Some(sender) = sender.borrow_mut().take() {
-                let _ = sender.send(change);
-            }
-            window.destroy();
-        })
+    let send = |event: BlockEvent| {
+        if let Some(app) = crate::window::app() {
+            app.model.send(ShellEvent::Block(event));
+        }
     };
-    {
-        let finish = Rc::clone(&finish);
-        let form = Rc::clone(&form);
-        let window = window.clone();
-        ok.connect_clicked(move |_| match form.save(&lumenna, &purpose, &initial) {
-            Ok(change) => finish(change),
-            // The form stays, with what was typed, so it can be put right.
-            Err(message) => prompts::fail(&window, &message),
-        });
-    }
-    {
-        let finish = Rc::clone(&finish);
-        cancel.connect_clicked(move |_| finish(None));
-    }
-    {
-        let sender = Rc::clone(&sender);
-        window.connect_close_request(move |_| {
-            if let Some(sender) = sender.borrow_mut().take() {
-                let _ = sender.send(None);
-            }
-            glib::Propagation::Proceed
-        });
-    }
+    ok.connect_clicked(move |_| send(BlockEvent::Save));
+    cancel.connect_clicked(move |_| send(BlockEvent::Cancel));
+    window.connect_close_request(move |_| {
+        send(BlockEvent::Cancel);
+        glib::Propagation::Stop
+    });
     let escape = gtk::EventControllerKey::new();
     escape.connect_key_pressed(move |_, key, _, _| {
         if key == gdk::Key::Escape {
-            finish(None);
+            send(BlockEvent::Cancel);
             return glib::Propagation::Stop;
         }
         glib::Propagation::Proceed
     });
     window.add_controller(escape);
-    window.present();
-    prompts::focus_on(&form.title);
-    receiver.await.ok().flatten()
+    Rc::new(Open { window, heading: view.heading.clone(), fields, filling, refusal: RefCell::new(None) })
+}
+
+/// A new block, on the day shown or today, from the menu or the Add Block button.
+pub fn add(app: &App) {
+    app.model.send(ShellEvent::Block(BlockEvent::New { start: None, minutes: None }));
 }

@@ -14,7 +14,6 @@
 mod actions;
 mod asking;
 mod block_form;
-mod blocks;
 mod clock;
 mod completion;
 mod core;

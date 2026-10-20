@@ -1211,8 +1211,10 @@ moved still call `lumenna-host` directly (`Core`), on a connection of their own.
 
 - **The app's turns go to GTK's main thread** (`model.rs`, `glib::MainContext::invoke`) and
   are taken in order (`window::take`): the screens drawn from the app draw, then what the turn
-  says is said. Drawn from it so far: the task list (`tasks.rs`), the sidebar
-  (`sidebar.rs`) and the day (`day.rs`). The task list's rows, readback, filter
+  says is said. Drawn from it so far: the task list and the Blocks list (`tasks.rs`, one
+  list for every listing the app gives), the sidebar (`sidebar.rs`), the day (`day.rs`), the
+  details (`detail.rs`), the block form (`block_form.rs`) and the proposals (`proposal.rs`).
+  The task list's rows, readback, filter
   (put back on returning to a place), row in hand and folding are the app's: a move sends
   `Focus`; Space, Delete, Enter and the Task menu send `Run`; its menu and Left and Right (the
   row's Collapse and Expand, `Tree::connect_fold`, `Item::expanded`) run the row's action. The
@@ -1228,10 +1230,24 @@ moved still call `lumenna-host` directly (`Core`), on a connection of their own.
 - **The day is the app's** (`view.day`, `lines.day`, `lines.day_title` as the window's
   title): which day is shown, today opening on now, and the day's moves (`Day`: Previous,
   Next, Now, Ask for Go to Day, its question asked as any other) and a reminder's block
-  (`ShowBlock`). Enter runs the row's Enter kind (`asking::run_kind`), so free time's Add Block
-  and a block's Edit still open the window's block form until it moves; the day's own actions
-  run from the Day menu over `view.day.actions`, Replan and Plan the Day still the window's
-  screens.
+  (`ShowBlock`). The day's own actions run from the Day menu over `view.day.actions`.
+- **The details are the app's** (`view.details`): which task they show, the typing not yet
+  saved (each field sent as `Details(Field)`, refilled from the app except where focus is) and
+  what Save sends. Focus coming into them sends `Details(Show)`, so they keep their task while
+  the person works there. The Task menu runs the details' task's actions with `Perform` away
+  from a task list's row.
+- **The block form is a window the app opens and closes** (`view.block_form`): every field
+  the core's form has for its purpose is made once, and shown or hidden as the app lists them
+  (Until while it repeats); the kind's flags and a new block's start follow what the app
+  says. A refusal is told once. Which occurrences a repeating block's change is for is the
+  app's question, asked as any other.
+- **Replan from Now and Plan the Day are a window the app opens and closes**
+  (`view.proposal`): a new proposal (`shown` moving) is a new list of check boxes whose first
+  takes focus; each sends its state, and Apply and the other options go to the app. What the app
+  says while it is open is said from it, on its own status line (`proposal::say`), the first
+  held until the window is in front. An overrun's Replan button sends `Proposal(Replan)`.
+- **A reminder list is still the window's form** until it moves (`asking::run` sends every
+  other form to the app).
 - **Focus moves only when `view.landing` goes up** (`tree::Landing`, shared by every list drawn
   from the app; or once a list gone to from a key has rows), and
   only if focus is in the list or nowhere; a rebuild for a sync or a minute puts the selection
@@ -1318,17 +1334,11 @@ moved still call `lumenna-host` directly (`Core`), on a connection of their own.
   The UI tests stand in for the shell with a notification server on the private bus
   (`harness.Notifications`), started before the app, which picks its backend at the first
   notification.
-- **The day's own actions are its heading row's** (the summary, `Plan::actions`) and the Day
-  menu's. Replan from Now and Plan the Day are one screen (`proposal.rs`): a check box per
-  change, the core's sentence as its label and a sitting's reason as its description, what
-  fits nowhere as read-only lines under a heading, the proposal said once the window is in
-  front. Applying shows the core's `next` until it proposes nothing. `LUMENNA_NOW` (a local date and
-  time, `clock::pinned_now`) pins the now they and reminder delivery pass the core, for
-  tests of the rest of a day at any hour.
-  Replan's other options are buttons named by their sentences, under their heading; one
-  proposes again with its pins, in place. An overrun warning's Replan button
-  (`app.reminder-replan`) brings the window up on Replan from Now. A tree row's
-  `description` (`Item::description`) is how a choice's reason reaches Orca, after its name.
+- **The day's own actions are its heading row's** (the summary) and the Day menu's.
+  `LUMENNA_NOW` (a local date and time, `clock::pinned_now`) pins the now proposals
+  (`PlanFrom`) and reminder delivery pass the core, for tests of the rest of a day at any hour.
+  A tree row's `description` (`Item::description`) is how a choice's reason reaches Orca,
+  after its name.
 - **The core words a whole sentence in `Locale::style()`**: the desktop's clock setting,
   else whether the locale's own time says 13:00 as 13.
 - **It serves the command surface while it holds the sync endpoint** (`Core::start_syncing`,

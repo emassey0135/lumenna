@@ -1,23 +1,25 @@
-//! The selected task's details, to read and edit, in the right-hand pane.
+//! The task in hand's details, to read and edit, in the right-hand pane: the app's details
+//! (`ViewModel::details`), drawn.
 //!
 //! Stock fields, each named by the label above it through the label's mnemonic, which is also
 //! the field's Alt shortcut. The mnemonics avoid the menu bar's letters (F E V T D H). What a
-//! field takes is its accessible description. Saving sends only the fields that changed (the
-//! surface's `task_edit`), and the buttons run the task's own actions (`TaskDetail::actions`), as the Task menu
-//! does: each is there only while the task offers it.
+//! field takes is its accessible description. Which task is shown, the typing not yet saved and
+//! what saving sends are the app's: each field typed goes to it (`DetailsEvent::Field`), and it
+//! keeps the draft through a change elsewhere and saves only what changed. The buttons run the
+//! task's own actions, as the Task menu does: each is there only while the task offers it.
 //!
-//! The fields follow the store while nobody is editing them: a change from another device or
-//! another process refills them, unless they hold typing not yet saved, which it would lose.
+//! While focus is here the details keep their task (`DetailsEvent::Show`), whatever the list
+//! does: a change made here can move the list's row in hand off a task that leaves it (Mark
+//! Done), and a second Ctrl+K must not complete a task nobody chose.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gdk, glib};
-use lumenna_desktop::speech;
-use lumenna_host::{FormField, TaskDetail, TaskFields, task_edit, task_fields};
-
-use lumenna_host::actions::{Action, ActionKind};
+use lumenna_app::DetailsEvent;
+use lumenna_ffi::ShellEvent;
+use lumenna_records::{ActionKind, FormField, TaskDetail, TaskFields};
 
 use crate::actions;
 use crate::tree::{Item, Tree};
@@ -48,6 +50,10 @@ pub struct Detail {
     /// Each button and the kinds of action it runs.
     buttons: Vec<(gtk::Button, &'static [ActionKind])>,
     shown: RefCell<Option<TaskDetail>>,
+    /// Whether the fields are being filled from the app, not typed.
+    filling: Cell<bool>,
+    /// A task whose details are to take focus once they show it.
+    focus_wanted: RefCell<Option<String>>,
 }
 
 /// The open project list's rows: each name, indented as deep as it sits in the tree. Indent
@@ -99,12 +105,12 @@ fn field(form: &[FormField], key: &str, mnemonic: char) -> (String, String) {
 
 impl Detail {
     pub fn new() -> Rc<Self> {
-        let form = lumenna_host::task_form();
+        let form = lumenna_records::task_form();
         let words = |key: &str, mnemonic: char| field(&form, key, mnemonic);
         let title = gtk::Entry::new();
         let due = gtk::Entry::new();
         let repeat = gtk::Entry::new();
-        let titles: Vec<String> = lumenna_host::priorities().into_iter().map(|p| p.title).collect();
+        let titles: Vec<String> = lumenna_records::priorities().into_iter().map(|p| p.title).collect();
         let priority = gtk::DropDown::from_strings(&titles.iter().map(String::as_str).collect::<Vec<_>>());
         let estimate = gtk::Entry::new();
         let projects = gtk::StringList::new(&[]);
@@ -252,6 +258,8 @@ impl Detail {
                 (trash.clone(), &[ActionKind::Delete]),
             ],
             shown: RefCell::new(None),
+            filling: Cell::new(false),
+            focus_wanted: RefCell::new(None),
         });
         detail.connect(&form);
         detail
@@ -271,9 +279,51 @@ impl Detail {
             let Some(other) = detail.waits.selected().and_then(|i| task.depends.get(i)) else { return };
             let stop = task.actions.iter().find(|a| a.kind == ActionKind::StopWaiting && a.other.as_deref() == Some(&other.id));
             if let Some(action) = stop {
-                actions::run(&app, action.clone(), None);
+                app.model.send(ShellEvent::Perform(action.clone()));
             }
         });
+        // Each field typed or chosen goes to the app, which keeps it until saved.
+        let typed = |detail: &Rc<Self>, key: &'static str| {
+            let weak = Rc::downgrade(detail);
+            move || {
+                let (Some(detail), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
+                if detail.filling.get() || detail.shown.borrow().is_none() {
+                    return;
+                }
+                let fields = detail.read();
+                let value = match key {
+                    "title" => fields.title,
+                    "due" => fields.due,
+                    "repeat" => fields.repeat,
+                    "priority" => fields.priority.to_string(),
+                    "estimate" => fields.estimate,
+                    "project" => fields.project,
+                    "labels" => fields.labels,
+                    _ => fields.notes,
+                };
+                app.model.send(ShellEvent::Details(DetailsEvent::Field { key: key.to_owned(), value }));
+            }
+        };
+        for (entry, key) in [(&self.title, "title"), (&self.due, "due"), (&self.repeat, "repeat"), (&self.estimate, "estimate"), (&self.labels, "labels")] {
+            let send = typed(self, key);
+            entry.connect_changed(move |_| send());
+        }
+        let send = typed(self, "priority");
+        self.priority.connect_selected_notify(move |_| send());
+        let send = typed(self, "project");
+        self.project.connect_selected_notify(move |_| send());
+        let send = typed(self, "notes");
+        self.notes.buffer().connect_changed(move |_| send());
+        // Focus coming in keeps this task shown, whatever the list does meanwhile.
+        let entering = gtk::EventControllerFocus::new();
+        let weak = Rc::downgrade(self);
+        entering.connect_enter(move |_| {
+            let (Some(detail), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
+            if let Some(id) = detail.task_id() {
+                app.model.send(ShellEvent::Details(DetailsEvent::Show(id)));
+            }
+        });
+        form.add_controller(entering);
         // Escape goes back to the list, from anywhere in the form.
         let escape = gtk::EventControllerKey::new();
         escape.connect_key_pressed(|_, key, _, _| {
@@ -292,11 +342,6 @@ impl Detail {
         self.shown.borrow().as_ref().map(|task| task.id.clone())
     }
 
-    /// What can be done to the task shown: what the Task menu runs while focus is here.
-    pub fn actions(&self) -> Vec<Action> {
-        self.shown.borrow().as_ref().map(|task| task.actions.clone()).unwrap_or_default()
-    }
-
     /// Whether focus is somewhere in the details.
     pub fn has_focus(&self) -> bool {
         self.widget.root().and_then(|root| root.focus()).is_some_and(|focus| focus.is_ancestor(&self.widget))
@@ -307,78 +352,100 @@ impl Detail {
         self.shown.borrow().is_some() && self.title.grab_focus()
     }
 
-    /// Follows the selection in the list beside it — unless focus is here, where the person
-    /// is working on the task shown: a change made here moves the list's selection off a
-    /// task that leaves it (Mark Done), and the details must not follow, or a second Ctrl+K
-    /// would complete a task nobody chose.
-    pub fn follow(&self, app: &App, id: Option<&str>) {
-        if !self.has_focus() {
-            self.show(app, id);
-        }
-    }
-
-    /// Shows a task, or none. The same task stays as it is, so typing not yet saved is kept
-    /// when the list reloads around a change made here.
-    pub fn show(&self, app: &App, id: Option<&str>) {
-        if self.task_id().as_deref() == id {
+    /// Shows a task's details, whatever is in hand, and puts focus in them once they do: a
+    /// task opened from a row, a reminder.
+    pub fn open(&self, app: &App, id: &str) {
+        if self.task_id().as_deref() == Some(id) {
+            self.focus();
             return;
         }
-        match id {
-            Some(id) => self.load(app, id),
-            None => self.fill(None),
-        }
+        *self.focus_wanted.borrow_mut() = Some(id.to_owned());
+        app.model.send(ShellEvent::Details(DetailsEvent::Show(id.to_owned())));
     }
 
-    /// Reads the task again, and refills the fields with it.
-    fn load(&self, app: &App, id: &str) {
-        let options = app.core.lumenna.project_options().unwrap_or_default();
-        let names: Vec<&str> = options.iter().map(|o| o.id.as_str()).collect();
-        self.projects.splice(0, self.projects.n_items(), &names);
-        *self.depths.borrow_mut() = options.iter().map(|o| (o.id.clone(), o.depth)).collect();
-        match app.core.lumenna.show_task(id) {
-            Ok(shown) => self.fill(Some(shown.task)),
-            Err(_) => self.fill(None),
+    /// Draws the details the app last left. A field is refilled only where it differs from
+    /// what it shows and focus is not in it: the one being typed in already holds the newest.
+    pub fn draw(&self, app: &App) {
+        let view = app.model.view();
+        let details = view.details.as_ref().filter(|_| view.ready);
+        self.widget.set_visible_child_name(if details.is_some() { "task" } else { "none" });
+        let Some(details) = details else {
+            *self.shown.borrow_mut() = None;
+            return;
+        };
+        let task = &details.task;
+        let fields = &details.fields;
+        self.filling.set(true);
+        let names: Vec<&str> = details.projects.iter().map(|o| o.id.as_str()).collect();
+        let listed: Vec<String> = (0..self.projects.n_items()).filter_map(|i| self.projects.string(i).map(|s| s.to_string())).collect();
+        if listed != names {
+            self.projects.splice(0, self.projects.n_items(), &names);
+            *self.depths.borrow_mut() = details.projects.iter().map(|o| (o.id.clone(), o.depth)).collect();
         }
-    }
-
-    fn fill(&self, task: Option<TaskDetail>) {
-        self.widget.set_visible_child_name(if task.is_some() { "task" } else { "none" });
-        if let Some(task) = &task {
-            let fields = task_fields(task.clone());
-            self.title.set_text(&fields.title);
-            self.due.set_text(&fields.due);
-            self.repeat.set_text(&fields.repeat);
-            let position = lumenna_host::priorities().iter().position(|p| p.id == fields.priority.to_string());
-            self.priority.set_selected(position.unwrap_or(0) as u32);
-            self.estimate.set_text(&fields.estimate);
+        let refill = |entry: &gtk::Entry, text: &str| {
+            if entry.text() != text && !within(entry) {
+                entry.set_text(text);
+            }
+        };
+        refill(&self.title, &fields.title);
+        refill(&self.due, &fields.due);
+        refill(&self.repeat, &fields.repeat);
+        refill(&self.estimate, &fields.estimate);
+        refill(&self.labels, &fields.labels);
+        let position = lumenna_records::priorities().iter().position(|p| p.id == fields.priority.to_string()).unwrap_or(0) as u32;
+        if self.priority.selected() != position && !within(&self.priority) {
+            self.priority.set_selected(position);
+        }
+        if self.projects.string(self.project.selected()).is_none_or(|s| s != fields.project.as_str()) && !within(&self.project) {
             self.select_project(&fields.project);
-            self.labels.set_text(&fields.labels);
-            self.notes.buffer().set_text(&fields.notes);
+        }
+        let buffer = self.notes.buffer();
+        if buffer.text(&buffer.start_iter(), &buffer.end_iter(), false) != fields.notes.as_str() && !within(&self.notes) {
+            buffer.set_text(&fields.notes);
+        }
+        self.filling.set(false);
+        let same = self.shown.borrow().as_ref().is_some_and(|shown| shown.depends == task.depends);
+        if !same {
             let items =
                 task.depends.iter().map(|other| Item { key: other.id.clone(), text: other.title.clone(), depth: 0, ..Default::default() }).collect();
             if self.waits.set(items) {
                 self.waits.select_key_or_near(None, Some(0));
             }
-            // An empty list is not worth a stop: Wait for Another Task says what to do.
-            self.waits_label.set_visible(!task.depends.is_empty());
-            self.waits.widget.set_visible(!task.depends.is_empty());
-            self.stop_waiting.set_sensitive(!task.depends.is_empty());
-            self.state.set_text(&speech::task_state(task));
-            self.history.buffer().set_text(&task.history.join("\n"));
-            self.history_heading.set_visible(!task.history.is_empty());
-            self.history.set_visible(!task.history.is_empty());
-            // A button is there while the task offers its action, and says it as the core
-            // titles it: Mark Done is Mark Not Done on a done task.
-            for (button, kinds) in &self.buttons {
-                let action = actions::find(&task.actions, kinds);
-                button.set_sensitive(action.is_some());
-                if let Some(action) = action {
-                    let asks = !matches!(action.question, lumenna_host::Question::Immediate);
-                    button.set_label(&if asks { format!("{}…", action.title) } else { action.title.clone() });
+        }
+        // An empty list is not worth a stop: Wait for Another Task says what to do.
+        self.waits_label.set_visible(!task.depends.is_empty());
+        self.waits.widget.set_visible(!task.depends.is_empty());
+        self.stop_waiting.set_sensitive(!task.depends.is_empty());
+        let state = app.model.lines().task_state.clone();
+        if self.state.text() != state {
+            self.state.set_text(&state);
+        }
+        let history = task.history.join("\n");
+        let buffer = self.history.buffer();
+        if buffer.text(&buffer.start_iter(), &buffer.end_iter(), false) != history.as_str() {
+            buffer.set_text(&history);
+        }
+        self.history_heading.set_visible(!task.history.is_empty());
+        self.history.set_visible(!task.history.is_empty());
+        // A button is there while the task offers its action, and says it as the core titles
+        // it: Mark Done is Mark Not Done on a done task.
+        for (button, kinds) in &self.buttons {
+            let action = actions::find(&task.actions, kinds);
+            button.set_sensitive(action.is_some());
+            if let Some(action) = action {
+                let asks = !matches!(action.question, lumenna_records::Question::Immediate);
+                let label = if asks { format!("{}…", action.title) } else { action.title.clone() };
+                if button.label().is_none_or(|shown| shown != label.as_str()) {
+                    button.set_label(&label);
                 }
             }
         }
-        *self.shown.borrow_mut() = task;
+        *self.shown.borrow_mut() = Some(task.clone());
+        let wanted = self.focus_wanted.borrow().clone();
+        if wanted.as_deref() == Some(task.id.as_str()) {
+            self.focus_wanted.take();
+            self.focus();
+        }
     }
 
     /// Selects a project by name, adding it to the list if missing.
@@ -398,7 +465,7 @@ impl Detail {
             title: self.title.text().to_string(),
             due: self.due.text().to_string(),
             repeat: self.repeat.text().to_string(),
-            priority: lumenna_host::priorities()
+            priority: lumenna_records::priorities()
                 .get(self.priority.selected() as usize)
                 .and_then(|p| p.id.parse().ok())
                 .unwrap_or(4),
@@ -409,30 +476,15 @@ impl Detail {
         }
     }
 
-    /// Whether the fields hold typing not yet saved.
-    pub fn has_changes(&self) -> bool {
-        self.shown.borrow().as_ref().is_some_and(|task| task_edit(task.clone(), self.read()).is_some())
-    }
-
-    /// The store changed: the fields follow unless someone is part way through editing them.
-    pub fn reload(&self, app: &App) {
-        if let Some(id) = self.task_id()
-            && !self.has_changes()
-        {
-            self.load(app, &id);
-        }
-    }
-
-    /// Saves what changed, and says what that did.
+    /// Saves what changed: the app's to work out, and to say.
     pub fn save(&self, app: &App) {
-        let Some(task) = self.shown.borrow().clone() else { return };
-        let Some(edit) = task_edit(task.clone(), self.read()) else {
-            app.say("Nothing changed");
-            return;
-        };
-        if let Some(change) = app.perform(|lumenna| lumenna.edit_task(&task.id, edit)) {
-            self.load(app, &task.id);
-            app.say_change(&change);
+        if self.shown.borrow().is_some() {
+            app.model.send(ShellEvent::Details(DetailsEvent::Save));
         }
     }
+}
+
+/// Whether focus is in `widget`, or in what it holds.
+fn within(widget: &impl IsA<gtk::Widget>) -> bool {
+    widget.root().and_then(|root| root.focus()).is_some_and(|focus| &focus == widget.as_ref() || focus.is_ancestor(widget))
 }

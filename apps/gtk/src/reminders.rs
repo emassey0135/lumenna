@@ -187,8 +187,7 @@ fn open_target(app: &Rc<App>, kind: &str, target: &str, occurrence: &str) {
     if kind == "block" {
         app.show_block(target, occurrence.get(..10).unwrap_or(occurrence));
     } else {
-        app.detail.show(app, Some(target));
-        app.open_detail();
+        app.detail.open(app, target);
     }
 }
 
