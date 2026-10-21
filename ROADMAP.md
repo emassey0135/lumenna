@@ -162,7 +162,12 @@ names from the store. Still to come:
 
 ### Each app
 
-- **iOS**: custom rotors (overdue, running, next block).
+- **iOS**: custom rotors (overdue, running, next block). Tried (2026-10-20) as SwiftUI's
+  `accessibilityRotor` on the task list and the day: VoiceOver lists the rotor, but VO-Command-Down
+  steps to none of its entries, with a namespace, the list's own ids or an explicit `.id` alike,
+  where the actions rotor steps fine. A SwiftUI `List`'s rows are made lazily; try a UIKit
+  `UIAccessibilityCustomRotor` on the hosting view, or a `LazyVStack`, and test it with VoiceOver
+  (`VoiceOverUITests` steps a rotor by keyboard).
 - **iPad**, found by its UI tests, each skipped there until fixed:
   - ⌘Z right after quick add closes does not reach the list (it does from the list itself).
   - A block's Delete swipe action does not appear to the test in Browse's Blocks list.
