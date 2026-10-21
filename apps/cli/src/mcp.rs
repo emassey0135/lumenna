@@ -14,7 +14,7 @@
 //! as a bearer. No TLS: a person serving it beyond the machine puts Tailscale or a reverse
 //! proxy in front, as they would for anything else they host.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::convert::Infallible;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -227,8 +227,9 @@ struct Server {
     tool_router: ToolRouter<Self>,
     changes: watch::Receiver<u64>,
     /// What this client asked `resources/subscribe` to follow, in protocol versions before
-    /// 2026-07-28; a client on that one listens instead (`subscriptions/listen`).
-    subscribed: Arc<Mutex<BTreeSet<String>>>,
+    /// 2026-07-28 (a client on that one listens instead, `subscriptions/listen`), each with what
+    /// it last read as.
+    subscribed: Arc<Mutex<BTreeMap<String, Option<String>>>>,
     /// Whether this client's old-style subscriptions are being followed yet.
     following: Arc<Mutex<bool>>,
 }
@@ -272,20 +273,29 @@ impl Server {
     }
 
     /// Follows the old-style subscriptions for as long as the client is there, telling it of
-    /// each resource that changed.
-    async fn follow(self, peer: Peer<RoleServer>) {
-        let mut changes = self.changes.clone();
-        let subscribed = || self.subscribed.lock().unwrap().clone();
-        let mut read = self.reading_of(subscribed()).await;
+    /// each resource that changed since it last read as it did. `changes` was taken before the
+    /// first subscription was read, so no write after it goes untold.
+    async fn follow(self, peer: Peer<RoleServer>, mut changes: watch::Receiver<u64>) {
         loop {
-            // A resource subscribed since the last change is read as it was then, so its first
-            // change is told; one unsubscribed is no longer looked at.
-            let now = subscribed();
-            read.retain(|uri, _| now.contains(uri));
-            let new: Vec<String> = now.into_iter().filter(|uri| !read.contains_key(uri)).collect();
-            read.extend(self.reading_of(new).await);
-            let Some(moved) = self.changed(&mut changes, &mut read).await else { return };
-            for uri in moved.into_iter().filter(|uri| self.subscribed.lock().unwrap().contains(uri)) {
+            if changes.changed().await.is_err() {
+                return;
+            }
+            let uris: Vec<String> = self.subscribed.lock().unwrap().keys().cloned().collect();
+            let now = self.reading_of(uris).await;
+            let moved: Vec<String> = {
+                let mut subscribed = self.subscribed.lock().unwrap();
+                now.into_iter()
+                    .filter_map(|(uri, text)| {
+                        // Gone when unsubscribed meanwhile.
+                        let kept = subscribed.get_mut(&uri)?;
+                        (*kept != text).then(|| {
+                            *kept = text;
+                            uri
+                        })
+                    })
+                    .collect()
+            };
+            for uri in moved {
                 if peer.notify_resource_updated(ResourceUpdatedNotificationParam::new(uri)).await.is_err() {
                     return;
                 }
@@ -801,10 +811,15 @@ impl ServerHandler for Server {
         if !readable(&request.uri) {
             return Err(ErrorData::resource_not_found(format!("there is nothing at {}", request.uri), None));
         }
-        self.subscribed.lock().unwrap().insert(request.uri);
+        // The changes to follow are taken first, then the resource read as it stands, both before
+        // the subscription is answered: a write after that is always told, and one before it
+        // never is. Taken in the task instead, a write just after was its starting point.
         let start = !std::mem::replace(&mut *self.following.lock().unwrap(), true);
+        let changes = self.changes.clone();
+        let reading = self.reading_of([request.uri.clone()]).await;
+        self.subscribed.lock().unwrap().extend(reading);
         if start {
-            tokio::spawn(self.clone().follow(context.peer));
+            tokio::spawn(self.clone().follow(context.peer, changes));
         }
         Ok(())
     }
