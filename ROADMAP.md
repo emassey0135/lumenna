@@ -129,8 +129,6 @@ optional.
 
 ### Smaller planning gaps
 
-- **Planning against a dependency** is allowed without a word: task B can go in a block
-  before the one holding the task it waits for.
 
 ## 4. Smaller gaps
 

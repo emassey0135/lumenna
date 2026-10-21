@@ -239,14 +239,14 @@ pub fn offered(snapshot: &Snapshot, action: &Action, now: &Zoned) -> Result<Choi
 pub fn blocks_for(snapshot: &Snapshot, task: Option<&str>, from: Option<&str>, days: Option<u32>, now: &Zoned) -> Result<Choices> {
     let first = resolve::date(from, now)?;
     let blocks = crate::plan::work_blocks(snapshot, first, days.unwrap_or(crate::plan::WORK_BLOCK_DAYS), now)?;
-    let admitted: Option<BTreeSet<String>> = match task {
+    let task = task
+        .map(|task| -> Result<Task> {
+            snapshot.tasks.get(&resolve::task_id(snapshot, task)?).cloned().ok_or_else(|| LumennaError::new("that task is not here"))
+        })
+        .transpose()?;
+    let admitted: Option<BTreeSet<String>> = match &task {
         None => None,
         Some(task) => Some({
-            let task = snapshot
-                .tasks
-                .get(&resolve::task_id(snapshot, task)?)
-                .cloned()
-                .ok_or_else(|| LumennaError::new("that task is not here"))?;
             let cx = Context::new(snapshot, now);
             snapshot
                 .series
@@ -255,7 +255,7 @@ pub fn blocks_for(snapshot: &Snapshot, task: Option<&str>, from: Option<&str>, d
                     None | Some("") => true,
                     // A filter that no longer reads (a label renamed away) admits nothing
                     // rather than everything.
-                    Some(text) => resolve::query(snapshot, text).is_ok_and(|expr| expr.matches(&task, &cx)),
+                    Some(text) => resolve::query(snapshot, text).is_ok_and(|expr| expr.matches(task, &cx)),
                 })
                 .map(|series| series.id.to_string())
                 .collect()
@@ -266,13 +266,23 @@ pub fn blocks_for(snapshot: &Snapshot, task: Option<&str>, from: Option<&str>, d
         .into_iter()
         .filter(|b| b.when != "past")
         .filter(|b| admitted.as_ref().is_none_or(|ids| ids.contains(b.id.split('@').next().unwrap_or(&b.id))))
-        .map(|b| Choice {
-            id: b.id,
-            title: b.title,
-            date: Some(b.date),
-            start: Some(b.start),
-            end: Some(b.end),
-            ..Choice::default()
+        .map(|b| {
+            // A block before the one holding what the task waits for says so, as its reason.
+            let reason = task.as_ref().and_then(|task| {
+                let (series, date) = b.id.split_once('@')?;
+                let series = snapshot.series.get(&series.parse().ok()?)?;
+                let block = if series.is_recurring() {
+                    lumenna_core::model::BlockRef::Occurrence(series.id, date.parse().ok()?)
+                } else {
+                    lumenna_core::model::BlockRef::OneOff(series.id)
+                };
+                let said: Vec<String> = crate::waits::said(snapshot, task, block, now.date())
+                    .into_iter()
+                    .filter(|sentence| sentence.ends_with("after this block."))
+                    .collect();
+                (!said.is_empty()).then(|| said.join(" "))
+            });
+            Choice { id: b.id, title: b.title, date: Some(b.date), start: Some(b.start), end: Some(b.end), reason, ..Choice::default() }
         })
         .collect();
     let none = match (blocks.days, blocks.from == now.date().to_string()) {

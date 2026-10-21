@@ -574,7 +574,11 @@ sittings and time, how often a task was put in a block and left, its age, its co
 urgency, a task whose estimate fits the time left raised, nothing excluded for not fitting.
 Assign a Task offers them in that order, each `Choice::reason` the sentence a person hears
 ("Suggested because overdue by 1 day, priority 1, and its estimate of 30 minutes fits the 35
-minutes left"); Put in a Block offers only the blocks whose filter admits the task.
+minutes left"); Put in a Block offers only the blocks whose filter admits the task. **Planning against a
+dependency is allowed, and said** (`records::waits`): a task put in a block before the block
+holding a task it waits for, or while that task is in no block and not done, is told so in the
+assignment's notices, and Put in a Block gives each block before it that reason; one in an
+earlier or the same block says nothing.
 The day's own commands are `day.rs`, each the person's decision and one undoable change:
 End Now and Add 15 Minutes on the block under way (a modified day of a repeating block, the
 block itself for a one-off), End the Day and Clear the Rest of the Day (`Plan::actions`, on

@@ -26,6 +26,7 @@ pub mod resolve;
 pub mod text;
 pub mod tree;
 pub mod types;
+pub mod waits;
 pub mod words;
 
 pub use actions::{QUERY, go_to_day_question, length_question, new_filter_questions, not_offered, Action, ActionKind, Answer, Choice, Choices, Question, Subject};

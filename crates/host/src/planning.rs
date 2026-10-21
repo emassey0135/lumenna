@@ -369,8 +369,12 @@ impl Lumenna {
                 assignment.planned_mins = Some(minutes);
             }
             let announcement = format!("{} into {} on {day}", change.description, series.title);
+            // Before what it waits for: allowed, and said.
+            let waits = snapshot.tasks.get(&task_id).map(|task| lumenna_records::waits::said(&snapshot, task, block_ref, now.date())).unwrap_or_default();
             store.apply_recorded(&change)?;
-            Ok(Change::announced(announcement, &change))
+            let mut said = Change::announced(announcement, &change);
+            said.notices.extend(waits);
+            Ok(said)
         })
     }
 
