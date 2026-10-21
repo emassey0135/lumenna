@@ -126,6 +126,10 @@ pub enum ActionKind {
     Expand,
     /// Fold away what is under a row.
     Collapse,
+    /// Skip a sitting not yet started: it will not happen in this block.
+    Skip,
+    /// Plan a skipped sitting again.
+    Unskip,
 }
 
 /// What an action is done to: with [`ActionKind`], what runs.
@@ -521,7 +525,7 @@ fn deleting_block(title: &str, repeats: bool) -> Question {
 /// A sitting's: start, pause or resume, and stop — a paused sitting is still in progress,
 /// and stopping a running or a paused one ends it — then its length, its time, its task.
 #[must_use]
-pub fn sitting(sitting: &PlanAssignment) -> Vec<Action> {
+pub fn sitting(sitting: &PlanAssignment, position: usize, count: usize) -> Vec<Action> {
     use ActionKind as K;
     let a = |kind, title: &str| action(kind, Subject::Sitting, title, sitting.id.clone());
     let paused = sitting.status == "paused";
@@ -549,6 +553,13 @@ pub fn sitting(sitting: &PlanAssignment) -> Vec<Action> {
         LOGGING,
         false,
     )));
+    // Not yet started, it can be skipped; skipped, planned again.
+    match sitting.status.as_str() {
+        "planned" if !sitting.running && sitting.minutes == 0 => actions.push(a(K::Skip, "Skip")),
+        "skipped" => actions.push(a(K::Unskip, "Plan Again")),
+        _ => {}
+    }
+    reorder(&mut actions, Subject::Sitting, &sitting.id, position, count);
     actions.push(action(K::EditTask, Subject::Task, "Edit Task Details", sitting.task.clone()));
     actions.push(a(K::Unassign, "Unassign"));
     actions
@@ -817,8 +828,10 @@ pub fn not_offered(kind: ActionKind, subject: Subject, this_device: bool) -> Str
         (Subject::Project, ActionKind::Rename | ActionKind::Delete | ActionKind::Archive | ActionKind::MoveUnder) => {
             "The Inbox keeps its name and its place; only its order and weight change.".to_owned()
         }
-        (Subject::Project | Subject::Label | Subject::Filter, ActionKind::MoveUp) => "It is already first.".to_owned(),
-        (Subject::Project | Subject::Label | Subject::Filter, ActionKind::MoveDown) => "It is already last.".to_owned(),
+        (Subject::Project | Subject::Label | Subject::Filter | Subject::Sitting, ActionKind::MoveUp) => "It is already first.".to_owned(),
+        (Subject::Project | Subject::Label | Subject::Filter | Subject::Sitting, ActionKind::MoveDown) => "It is already last.".to_owned(),
+        (Subject::Sitting, ActionKind::Skip) => "Only a sitting not yet started can be skipped.".to_owned(),
+        (Subject::Sitting, ActionKind::Unskip) => "It is not skipped.".to_owned(),
         (Subject::Block, ActionKind::AssignTask) => "This block does not take tasks.".to_owned(),
         (Subject::Block, ActionKind::CancelDay) => {
             "It happens only once; to remove it, delete it.".to_owned()
@@ -866,8 +879,9 @@ fn rows_ids(rows: &Rows) -> Vec<Option<RowId>> {
 /// Gives a day's blocks, sittings, free time and cancelled days their actions.
 pub fn fill_plan(plan: &mut crate::types::Plan, carries: &BTreeSet<String>, what_now: bool) {
     for block in &mut plan.blocks {
-        for sitting in &mut block.assignments {
-            sitting.actions = self::sitting(sitting);
+        let count = block.assignments.len();
+        for (position, sitting) in block.assignments.iter_mut().enumerate() {
+            sitting.actions = self::sitting(sitting, position, count);
             // Ended short of its planned time with the task still open: the rest can go on.
             if carries.contains(&sitting.id) {
                 let left = sitting.planned_mins.unwrap_or(0).saturating_sub(sitting.minutes);

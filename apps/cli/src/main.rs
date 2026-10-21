@@ -119,6 +119,26 @@ pub(crate) enum Command {
         assignment: String,
     },
 
+    /// Skip a sitting not yet started, or plan a skipped one again with `--again`.
+    ///
+    /// Skipped, it stays on the record, so the task's history says it was put here and left.
+    Skip {
+        /// The assignment identifier.
+        assignment: String,
+        /// Plan it again instead.
+        #[arg(long)]
+        again: bool,
+    },
+
+    /// Move a sitting one place up or down among its block's.
+    Reorder {
+        /// The assignment identifier.
+        assignment: String,
+        /// Which way: `up` or `down`.
+        #[arg(value_parser = ["up", "down"])]
+        direction: String,
+    },
+
     /// Set how long a sitting is meant to take, or clear it with `none`.
     ///
     /// The plan, not the record: what was logged stays as it is. `lum stop --minutes` is how
@@ -1070,6 +1090,13 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         )?),
         Command::Unassign { assignment } => {
             Response::new(profile.unassign(&profile.row(assignment, "assignment")?)?)
+        }
+        Command::Skip { assignment, again } => {
+            Response::new(profile.skip_sitting(&profile.row(assignment, "assignment")?, !*again)?)
+        }
+        Command::Reorder { assignment, direction } => {
+            let direction = if direction == "up" { lumenna_host::Direction::Up } else { lumenna_host::Direction::Down };
+            Response::new(profile.reorder_sitting(&profile.row(assignment, "assignment")?, direction)?)
         }
         Command::Length { assignment, minutes } => {
             let minutes = if minutes.eq_ignore_ascii_case("none") {

@@ -702,6 +702,52 @@ fn plan_the_day_proposes_each_task_checked_and_a_partial_apply_proposes_again() 
 }
 
 #[test]
+fn a_sitting_moves_up_and_down_its_block_and_one_not_started_is_skipped_and_planned_again() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    app.add("Write report");
+    app.add("Buy milk");
+    {
+        let host = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+        let block = host.list_blocks().unwrap().rows[0].id.clone();
+        let tasks = host.list_tasks("").unwrap();
+        for title in ["Write report", "Buy milk"] {
+            let task = tasks.rows.iter().find(|r| r.title == title).unwrap().id.clone();
+            host.assign(&task, &block, Some("tomorrow".to_owned()), None).unwrap();
+        }
+    }
+    app.session.tick();
+    app.send(Event::Open(Place::Today));
+    app.send(Event::Day(DayMove::Next));
+    let sittings = |app: &App| -> Vec<lumenna_records::PlanAssignment> {
+        app.view().day.unwrap().items.into_iter().filter_map(|i| i.sitting).collect()
+    };
+    let kinds = |s: &lumenna_records::PlanAssignment| s.actions.iter().map(|a| a.kind).collect::<Vec<_>>();
+    let [first, second] = <[_; 2]>::try_from(sittings(&app)).unwrap();
+    assert_eq!((first.title.as_str(), second.title.as_str()), ("Write report", "Buy milk"));
+    assert!(kinds(&first).contains(&ActionKind::MoveDown) && !kinds(&first).contains(&ActionKind::MoveUp));
+    assert!(kinds(&second).contains(&ActionKind::MoveUp) && !kinds(&second).contains(&ActionKind::MoveDown));
+
+    let up = second.actions.iter().find(|a| a.kind == ActionKind::MoveUp).unwrap().clone();
+    let shell = app.send(Event::Perform(up));
+    assert!(said(&shell).contains(&"Moved Buy milk up"), "{shell:?}");
+    let titles: Vec<_> = sittings(&app).into_iter().map(|s| s.title).collect();
+    assert_eq!(titles, ["Buy milk", "Write report"]);
+
+    let milk = sittings(&app).remove(0);
+    let skip = milk.actions.iter().find(|a| a.kind == ActionKind::Skip).expect("Skip, not yet started").clone();
+    let shell = app.send(Event::Perform(skip));
+    assert!(said(&shell).contains(&"Skipped Buy milk"), "{shell:?}");
+    let milk = sittings(&app).remove(0);
+    assert_eq!(milk.status, "skipped");
+    assert!(!kinds(&milk).contains(&ActionKind::Skip));
+    let again = milk.actions.iter().find(|a| a.kind == ActionKind::Unskip).expect("Plan Again").clone();
+    assert_eq!(again.title, "Plan Again");
+    app.send(Event::Perform(again));
+    assert_eq!(sittings(&app).remove(0).status, "planned");
+}
+
+#[test]
 fn closing_a_proposal_makes_nothing() {
     let mut app = App::new();
     block(&mut app, "Deep work", "09:00", "tomorrow", None);

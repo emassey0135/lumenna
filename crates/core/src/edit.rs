@@ -99,6 +99,14 @@ pub enum EditError {
     #[error("that task is in the trash")]
     Trashed,
 
+    /// Only a sitting not yet started can be skipped: one worked on happened.
+    #[error("only a sitting not yet started can be skipped")]
+    NotSkippable,
+
+    /// Planning a sitting again is for one that was skipped.
+    #[error("that sitting is not skipped")]
+    NotSkipped,
+
     /// A stored recurrence rule could not be used.
     #[error(transparent)]
     Recurrence(#[from] recur::RecurError),
@@ -1358,6 +1366,58 @@ pub fn defer_sitting(snapshot: &Snapshot, assignment_id: AssignmentId, year: i16
     Ok(Edit {
         description: "Moved the rest on".to_owned(),
         changes: vec![Change::Assignment { year, transition: Box::new(Transition::updated(assignment.clone(), deferred)) }],
+    })
+}
+
+/// Skips a planned sitting, or plans a skipped one again: the person's decision that it will
+/// not happen in this block, kept on the record rather than unassigned, so its history says
+/// it was put here and left.
+///
+/// # Errors
+///
+/// [`EditError::NotFound`] if there is no such sitting; [`EditError::Invalid`] if it is
+/// neither planned (to skip) nor skipped (to plan again).
+pub fn skip_sitting(snapshot: &Snapshot, assignment_id: AssignmentId, year: i16, skip: bool) -> Result<Edit, EditError> {
+    use crate::model::AssignmentStatus as S;
+    let assignment = snapshot
+        .assignments
+        .get(&assignment_id)
+        .ok_or(EditError::NotFound { kind: "assignment" })?;
+    let (from, to) = if skip { (S::Planned, S::Skipped) } else { (S::Skipped, S::Planned) };
+    if assignment.status == to {
+        return Ok(Edit::nothing());
+    }
+    if assignment.status != from {
+        return Err(if skip { EditError::NotSkippable } else { EditError::NotSkipped });
+    }
+    let title = snapshot.tasks.get(&assignment.task_id).map_or("the sitting", |t| t.title.as_str());
+    let mut after = assignment.clone();
+    after.status = to;
+    Ok(Edit {
+        description: if skip { format!("Skipped {title}") } else { format!("Planned {title} again") },
+        changes: vec![Change::Assignment { year, transition: Box::new(Transition::updated(assignment.clone(), after)) }],
+    })
+}
+
+/// Puts a sitting at `order` among its block's sittings: moved up or down by the person.
+///
+/// # Errors
+///
+/// [`EditError::NotFound`] if there is no such sitting.
+pub fn reorder_sitting(snapshot: &Snapshot, assignment_id: AssignmentId, year: i16, order: OrderKey, up: bool) -> Result<Edit, EditError> {
+    let assignment = snapshot
+        .assignments
+        .get(&assignment_id)
+        .ok_or(EditError::NotFound { kind: "assignment" })?;
+    if assignment.order == order {
+        return Ok(Edit::nothing());
+    }
+    let title = snapshot.tasks.get(&assignment.task_id).map_or("the sitting", |t| t.title.as_str());
+    let mut after = assignment.clone();
+    after.order = order;
+    Ok(Edit {
+        description: format!("Moved {title} {}", if up { "up" } else { "down" }),
+        changes: vec![Change::Assignment { year, transition: Box::new(Transition::updated(assignment.clone(), after)) }],
     })
 }
 

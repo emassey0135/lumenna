@@ -133,9 +133,6 @@ optional.
 
 - **Planning against a dependency** is allowed without a word: task B can go in a block
   before the one holding the task it waits for.
-- **Sittings cannot be reordered** within a block once assigned.
-- **Skipped sittings** exist in the model and nothing sets them. (Deferred is set by Carry
-  Forward.)
 
 ## 4. Smaller gaps
 

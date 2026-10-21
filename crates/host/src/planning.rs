@@ -10,7 +10,7 @@ use crate::error::{LumennaError, Result};
 use crate::resolve::{self, block_kind};
 use crate::tasks::{record, record_or};
 use crate::types::{
-    Announced, BlockEdit, BlockScope, BlockShown, Change, NewBlock, Plan, Rows, Timer, WorkBlocks,
+    Announced, BlockEdit, BlockScope, BlockShown, Change, Direction, NewBlock, Plan, Rows, Timer, WorkBlocks,
 };
 use crate::words::{count_line, duration, time_text};
 use crate::{Lumenna, repaired};
@@ -385,6 +385,46 @@ impl Lumenna {
             let snapshot = repaired(store);
             let id = resolve::assignment_id(&snapshot, assignment)?;
             let change = edit::unassign(&snapshot, id, assignment_year(&snapshot, id)?)?;
+            record(store, &change)
+        })
+    }
+
+    /// Skips a sitting not yet started, or plans a skipped one again with `skip` false.
+    ///
+    /// # Errors
+    ///
+    /// If no assignment matches `assignment`, or it has been worked on.
+    pub fn skip_sitting(&self, assignment: &str, skip: bool) -> Result<Change> {
+        self.told(|store| {
+            store.load_all_years()?;
+            let snapshot = repaired(store);
+            let id = resolve::assignment_id(&snapshot, assignment)?;
+            let change = edit::skip_sitting(&snapshot, id, assignment_year(&snapshot, id)?, skip)?;
+            record_or(store, &change, if skip { "it is already skipped" } else { "it is already planned" })
+        })
+    }
+
+    /// Moves a sitting one place up or down among its block's.
+    ///
+    /// # Errors
+    ///
+    /// If no assignment matches `assignment`.
+    pub fn reorder_sitting(&self, assignment: &str, direction: Direction) -> Result<Change> {
+        self.told(|store| {
+            store.load_all_years()?;
+            let snapshot = repaired(store);
+            let id = resolve::assignment_id(&snapshot, assignment)?;
+            let block = snapshot.assignments[&id].block_ref;
+            let siblings: Vec<(AssignmentId, lumenna_core::order::OrderKey)> = snapshot
+                .assignments
+                .values()
+                .filter(|a| a.block_ref == block)
+                .map(|a| (a.id, a.order.clone()))
+                .collect();
+            let Some(order) = crate::organise::moved(&siblings, id, direction)? else {
+                return Ok(Change::unchanged(crate::organise::edge(direction)));
+            };
+            let change = edit::reorder_sitting(&snapshot, id, assignment_year(&snapshot, id)?, order, direction == Direction::Up)?;
             record(store, &change)
         })
     }

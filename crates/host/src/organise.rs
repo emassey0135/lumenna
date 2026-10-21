@@ -491,7 +491,7 @@ fn live_filter<'a>(snapshot: &'a Snapshot, name: &str) -> Result<&'a SavedFilter
         .ok_or_else(|| LumennaError::new(format!("no filter called '{name}'")))
 }
 
-const fn edge(direction: Direction) -> &'static str {
+pub(crate) const fn edge(direction: Direction) -> &'static str {
     match direction {
         Direction::Up => "it is already first",
         Direction::Down => "it is already last",
@@ -501,7 +501,7 @@ const fn edge(direction: Direction) -> &'static str {
 /// The order key that puts `id` one place up or down among `siblings`, or `None` at the end
 /// of the list. Only the moved record gets a new key — a single last-writer-wins string, so a
 /// concurrent reorder elsewhere merges rather than fighting over a list.
-fn moved<I: Ord + Copy>(
+pub(crate) fn moved<I: Ord + Copy>(
     siblings: &[(I, OrderKey)],
     id: I,
     direction: Direction,
