@@ -52,6 +52,16 @@ incremental = false
 [profile.test]
 debug = "line-tables-only"
 
+# Every app's core and `lum` as shipped: whole-program (one codegen unit, fat LTO) and without
+# symbols. Measured on `lum` and the Apple core's dylib: 40.4 MB and 31.8 MB became 21.9 MB and
+# 20.3 MB, and commands ran a quarter faster. Optimizing for size instead was a quarter smaller
+# again but half again as slow, which a Raspberry Pi and a watch feel more than the disk does.
+# Unwinding stays: the bindings turn a panic into an error rather than ending the app.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+
 # The web client's module, which every visit downloads: built for size rather than
 # speed, whole-program, without symbols. `npm run core` in apps/web builds with it.
 [profile.web]

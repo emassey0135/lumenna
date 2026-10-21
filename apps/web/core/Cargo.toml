@@ -8,8 +8,9 @@ repository.workspace = true
 description = "Lumenna's core for the web client: the surface, exported to JavaScript."
 
 [lib]
-# The module the browser loads, and an ordinary library so the workspace checks it natively.
-crate-type = ["cdylib", "rlib"]
+# The module the browser loads, alone: the workspace checks and lints it natively as it is, and
+# rustc leaves an artifact built beside an rlib without whole-program optimization.
+crate-type = ["cdylib"]
 
 [dependencies]
 boltffi = "=0.31.1"

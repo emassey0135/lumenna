@@ -528,22 +528,139 @@ impl Doc {
             } else {
                 reader.map(&key)
             };
-            let record = R::parse_key(&key)
-                .zip(fields)
-                .and_then(|(parsed, fields)| R::hydrate(&fields, parsed));
-            match record {
-                Some(record) => {
-                    out.insert(record.key(), record);
-                }
-                None => skipped.push(Skipped {
-                    doc: self.id,
-                    collection: R::COLLECTION,
-                    key: key.clone(),
-                }),
-            }
+            self.read_one::<R>(&key, fields, &mut out, skipped);
         }
         out
     }
+
+    /// Reads one record from its fields into `out`, or notes it skipped.
+    fn read_one<R: Record>(
+        &self,
+        key: &str,
+        fields: Option<Reader<'_, AutoCommit>>,
+        out: &mut BTreeMap<R::Key, R>,
+        skipped: &mut Vec<Skipped>,
+    ) {
+        let record = R::parse_key(key).zip(fields).and_then(|(parsed, fields)| R::hydrate(&fields, parsed));
+        match record {
+            Some(record) => {
+                out.insert(record.key(), record);
+            }
+            None => skipped.push(Skipped { doc: self.id, collection: R::COLLECTION, key: key.to_owned() }),
+        }
+    }
+
+    /// Reads again the records of one kind that `touched` names, into `out` as it was read
+    /// before: each removed, then read as it now stands, if it still exists.
+    fn rehydrate<R: Record>(&self, touched: &Touched, out: &mut BTreeMap<R::Key, R>, skipped: &mut Vec<Skipped>) {
+        let Some(keys) = touched.get(R::COLLECTION) else { return };
+        let Some(keys) = keys else {
+            skipped.retain(|s| s.collection != R::COLLECTION);
+            *out = self.hydrate::<R>(skipped);
+            return;
+        };
+        let records: std::collections::BTreeSet<&str> = keys
+            .iter()
+            .map(|key| if R::INLINE { key.split_once('/').map_or(key.as_str(), |(record, _)| record) } else { key })
+            .collect();
+        let collection = self.collection_for_read(R::COLLECTION);
+        let reader = collection.clone().map(|obj| Reader::new(&self.doc, obj));
+        for key in records {
+            skipped.retain(|s| !(s.collection == R::COLLECTION && s.key == key));
+            if let Some(parsed) = R::parse_key(key) {
+                out.remove(&parsed);
+            }
+            let (Some(collection), Some(reader)) = (&collection, &reader) else { continue };
+            let prefix = format!("{key}/");
+            let fields = if R::INLINE && self.doc.keys(collection).any(|k| k.starts_with(&prefix)) {
+                Some(Reader::inline(&self.doc, collection.clone(), prefix))
+            } else {
+                match reader.map(key) {
+                    Some(fields) => Some(fields),
+                    // Gone: purged, or never more than a key this build does not read.
+                    None if self.doc.get(collection, key).ok().flatten().is_none() => continue,
+                    None => None,
+                }
+            };
+            self.read_one::<R>(key, fields, out, skipped);
+        }
+    }
+
+    /// Brings a part read at `before` (see [`Doc::part`]) up to `after`, reading again only
+    /// the records the changes between touched. False when the changes cannot be followed
+    /// record by record, and the caller reads the whole document instead.
+    pub(crate) fn refresh_part(
+        &mut self,
+        before: &[ChangeHash],
+        after: &[ChangeHash],
+        part: &mut Snapshot,
+        skipped: &mut Vec<Skipped>,
+    ) -> bool {
+        let Some(touched) = touched(&self.doc.diff(before, after)) else { return false };
+        let s = skipped;
+        match self.id.domain() {
+            Domain::Core => {
+                self.rehydrate::<Task>(&touched, &mut part.tasks, s);
+                self.rehydrate::<TaskCompletion>(&touched, &mut part.completions, s);
+                self.rehydrate::<Project>(&touched, &mut part.projects, s);
+                self.rehydrate::<Label>(&touched, &mut part.labels, s);
+                self.rehydrate::<SavedFilter>(&touched, &mut part.saved_filters, s);
+                self.rehydrate::<Reminder>(&touched, &mut part.reminders, s);
+                self.rehydrate::<ReminderAck>(&touched, &mut part.acks, s);
+                if touched.contains_key("settings") {
+                    part.settings = self.settings();
+                }
+            }
+            Domain::Devices => self.rehydrate::<Device>(&touched, &mut part.devices, s),
+            Domain::Blocks => {
+                self.rehydrate::<BlockSeries>(&touched, &mut part.series, s);
+                self.rehydrate::<BlockException>(&touched, &mut part.exceptions, s);
+                self.rehydrate::<BlockAssignment>(&touched, &mut part.assignments, s);
+            }
+        }
+        true
+    }
+}
+
+/// What a set of changes touched: by root collection, the keys within it, or `None` for the
+/// collection as a whole.
+type Touched = BTreeMap<String, Option<std::collections::BTreeSet<String>>>;
+
+/// More patches than this and reading the document whole is the cheaper way.
+const PATCHES_FOLLOWED: usize = 20_000;
+
+/// Which collections and records `patches` touched: each patch's path, with the key it puts
+/// or deletes, starts at a root collection, then the record's key within it. `None` when a
+/// patch is not that shape.
+fn touched(patches: &[automerge::Patch]) -> Option<Touched> {
+    use automerge::{PatchAction, Prop};
+    if patches.len() > PATCHES_FOLLOWED {
+        return None;
+    }
+    let mut touched = Touched::new();
+    for patch in patches {
+        let mut props = patch.path.iter().map(|(_, prop)| prop);
+        let own = match &patch.action {
+            PatchAction::PutMap { key, .. } | PatchAction::DeleteMap { key } => Some(Prop::Map(key.clone())),
+            PatchAction::Increment { prop, .. } | PatchAction::Conflict { prop } => Some(prop.clone()),
+            _ => None,
+        };
+        let first = props.next().cloned().or_else(|| own.clone());
+        let second = props.next().cloned().or(if patch.path.len() == 1 { own } else { None });
+        let Some(Prop::Map(collection)) = first else { return None };
+        match second {
+            None => {
+                touched.insert(collection, None);
+            }
+            Some(Prop::Map(key)) => {
+                if let Some(keys) = touched.entry(collection).or_insert_with(|| Some(Default::default())) {
+                    keys.insert(key);
+                }
+            }
+            Some(Prop::Seq(_)) => return None,
+        }
+    }
+    Some(touched)
 }
 
 /// A record that could not be read, and was left out rather than failing the load.
@@ -697,27 +814,62 @@ impl Documents {
     #[must_use]
     pub fn snapshot(&self) -> (Snapshot, HydrationReport) {
         let mut report = HydrationReport::default();
-        let s = &mut report.skipped;
-
-        let mut snapshot = Snapshot {
-            tasks: self.core.hydrate::<Task>(s),
-            completions: self.core.hydrate::<TaskCompletion>(s),
-            projects: self.core.hydrate::<Project>(s),
-            labels: self.core.hydrate::<Label>(s),
-            saved_filters: self.core.hydrate::<SavedFilter>(s),
-            reminders: self.core.hydrate::<Reminder>(s),
-            acks: self.core.hydrate::<ReminderAck>(s),
-            devices: self.devices.hydrate::<Device>(s),
-            settings: self.core.settings(),
-            ..Snapshot::default()
-        };
-
-        for doc in self.blocks.values() {
-            snapshot.series.extend(doc.hydrate::<BlockSeries>(s));
-            snapshot.exceptions.extend(doc.hydrate::<BlockException>(s));
-            snapshot.assignments.extend(doc.hydrate::<BlockAssignment>(s));
+        let mut snapshot = Snapshot::default();
+        let docs = std::iter::once(&self.core).chain(std::iter::once(&self.devices)).chain(self.blocks.values());
+        for doc in docs {
+            absorb(&mut snapshot, doc.id(), &doc.part(&mut report.skipped));
         }
         (snapshot, report)
+    }
+}
+
+impl Doc {
+    /// What this document holds, materialized: its part of a snapshot, every other field
+    /// empty. The parts never overlap, so a snapshot is each document's part put together
+    /// ([`absorb`]), and a part read once serves until its own document moves.
+    pub(crate) fn part(&self, s: &mut Vec<Skipped>) -> Snapshot {
+        match self.id.domain() {
+            Domain::Core => Snapshot {
+                tasks: self.hydrate::<Task>(s),
+                completions: self.hydrate::<TaskCompletion>(s),
+                projects: self.hydrate::<Project>(s),
+                labels: self.hydrate::<Label>(s),
+                saved_filters: self.hydrate::<SavedFilter>(s),
+                reminders: self.hydrate::<Reminder>(s),
+                acks: self.hydrate::<ReminderAck>(s),
+                settings: self.settings(),
+                ..Snapshot::default()
+            },
+            Domain::Devices => Snapshot { devices: self.hydrate::<Device>(s), ..Snapshot::default() },
+            Domain::Blocks => Snapshot {
+                series: self.hydrate::<BlockSeries>(s),
+                exceptions: self.hydrate::<BlockException>(s),
+                assignments: self.hydrate::<BlockAssignment>(s),
+                ..Snapshot::default()
+            },
+        }
+    }
+}
+
+/// Puts document `id`'s part (see [`Doc::part`]) into `snapshot`.
+pub(crate) fn absorb(snapshot: &mut Snapshot, id: DocId, part: &Snapshot) {
+    match id.domain() {
+        Domain::Core => {
+            snapshot.tasks.clone_from(&part.tasks);
+            snapshot.completions.clone_from(&part.completions);
+            snapshot.projects.clone_from(&part.projects);
+            snapshot.labels.clone_from(&part.labels);
+            snapshot.saved_filters.clone_from(&part.saved_filters);
+            snapshot.reminders.clone_from(&part.reminders);
+            snapshot.acks.clone_from(&part.acks);
+            snapshot.settings.clone_from(&part.settings);
+        }
+        Domain::Devices => snapshot.devices.clone_from(&part.devices),
+        Domain::Blocks => {
+            snapshot.series.extend(part.series.iter().map(|(k, v)| (*k, v.clone())));
+            snapshot.exceptions.extend(part.exceptions.iter().map(|(k, v)| (*k, v.clone())));
+            snapshot.assignments.extend(part.assignments.iter().map(|(k, v)| (*k, v.clone())));
+        }
     }
 }
 

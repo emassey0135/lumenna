@@ -456,6 +456,16 @@ make running processes skip changes. `Db::compact` folds everything on disk into
 document under `BEGIN IMMEDIATE` before deleting anything, and `refresh` reads in one
 transaction and loads a snapshot whose heads it lacks.
 
+**The snapshot is kept, per document, and followed record by record** (`Store::snapshot`,
+`Hydrated`, `Doc::part`, `Doc::refresh_part`). Materializing was most of what every answer cost
+(100 ms for 2,000 tasks, four times a command), so each loaded document's part is kept with its
+heads; when they move, Automerge's diff from the kept heads names the collections and records
+touched (`touched`: a patch's path begins at the collection, then the record's key, an inline
+record's cut at its `/`), and only those are read again, else the whole document. Keyed by
+heads, so no write can forget to invalidate it; `Snapshot` is still built by the store alone,
+`Documents::snapshot` the uncached reading, which `tests/hydration.rs` compares it with after
+every step of random histories (edits, purges, two years' blocks, exceptions, settings, merges).
+
 **The change cursor only advances in `refresh`.** `PRAGMA data_version` does not move for
 your own connection's writes, and other processes' rows can interleave with yours. A cursor
 that lags re-reads a change already held (a no-op); one that skips loses an edit.
@@ -741,7 +751,8 @@ Kept apart in code, commands and wording, because confusing them is how someone 
 
 `apps/btspeak/`: Python, on the device's own `dialogs` library, drawing the Crux app, which runs
 in the same process beside the store: `crates/ffi` built by BoltFFI's Python target
-(`build-core.sh`, `boltffi pack python`, needing Python 3.10 or later with pip) into `native/`,
+(`build-core.sh`, `boltffi pack python`, the core a `cdylib` alone through `--cargo-arg`, 17.7 MB
+where built beside the `rlib` it was 20.0, needing Python 3.10 or later with pip) into `native/`,
 not committed. The library is only on a BTSpeak (`/BTSpeak/Python/BTSpeak/`); elsewhere the
 tests run on `tests/btspeak_stub.py`, with the core built and `target/debug` on `PATH` for
 `lum`. On the Mac the system's Python is 3.9: build and test with a newer one (`PYTHON=…`).
@@ -892,8 +903,10 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   framework share one core in the process. As a module of its own, its names (`Locale`,
   `Action`) do not shadow Foundation's; code names them `LumennaApp.Action`.
 - **Xcode builds the core itself**: `build-core.sh` builds `lumenna-ffi` in a clean
-  environment (Xcode's SDK variables break Cargo's host build scripts), the Mac's and the
-  phone's with the `rpc` feature, then has BoltFFI generate the Swift (`Generated/App`, the
+  environment (Xcode's SDK variables break Cargo's host build scripts), as a static library
+  alone (`cargo rustc --crate-type staticlib`: built beside the `rlib` the Rust apps link, rustc
+  leaves it without whole-program optimization, 186 MB an architecture where alone it is 34.5
+  MB), the Mac's and the phone's with the `rpc` feature, then has BoltFFI generate the Swift (`Generated/App`, the
   watch's `Generated/Watch/App`). What it makes is named as the build phase's output, or a
   fresh checkout looks for the Swift before the phase has run. It must pass
   `IPHONEOS_DEPLOYMENT_TARGET` through, or C objects target the SDK's own version; heed that
@@ -1664,9 +1677,20 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   compile to one `…Kt` class, and the dex keeps only one (a shared `Settings.kt` hid the
   phone's `SettingsScreen`).
 
-- **Gradle builds the core itself**: `buildCore<Variant>` runs `build-core.sh`, whose
-  `boltffi pack android` builds one library per ABI with its JNI glue compiled in; only the
-  Kotlin beside it is copied. The phone takes Arm64 and x86_64 (Googlebooks have both, and
+- **Gradle builds the core itself**: `buildCore<Variant>` runs `build-core.sh`, which builds each
+  ABI's static library alone (`cargo rustc --crate-type staticlib`, for the Apple apps' reason, the
+  NDK's clang at API 28 compiling the C its dependencies bring), then has `boltffi pack android
+  --no-build` link it with its JNI glue into one library per ABI; only the Kotlin beside it is
+  copied. A release library is stripped there, with that NDK's `llvm-strip`: BoltFFI's link is
+  past Cargo's `strip`, and the Gradle plugin strips only with the NDK version it expects,
+  copying the library whole (35 MB for arm64, 19 MB stripped) when another is installed.
+- **Release builds are shrunk by R8** (`isMinifyEnabled`, `isShrinkResources`), the dex from
+  26.5 MB to 3.4 MB. The core reaches its Kotlin by name through JNI both ways, the `Native`
+  object's externals and the callback objects it calls back (`ShellCallbacks.turn`), so
+  `:shared`'s `consumer-rules.pro` keeps the bindings' package whole. The instrumented tests run
+  on debug builds: against a shrunk app the test APK finds missing whatever the app does not use
+  itself (the tracing library, then Kotlin's), so a release build is checked by hand, installed
+  signed with the debug key, opened, and a task added; CI builds it, so R8's refusals show. The phone takes Arm64 and x86_64 (Googlebooks have both, and
   CI's emulator is x86_64), the watch 32-bit ARM too (`abiFilters`); minSdk 28. Every library
   is 16 KB aligned, which CI checks. `LUMENNA_ANDROID_ABIS` narrows the build.
 - **Espresso is pinned to 3.7**: Compose's test library brings 3.5, which calls an
@@ -1846,11 +1870,14 @@ phone does.
 `apps/web/`: TypeScript, React and React Aria Components over the core compiled to
 `wasm32-unknown-unknown` (`apps/web/core`, crate `lumenna-web`), exported through BoltFFI as
 Android's is. `npm run core:dev` (`scripts/build-core.mjs`) has BoltFFI build it, with the
-web's own Cargo profile through `cargo_args`, and pack it into `src/core/` (not committed): the
+web's own Cargo profile through `cargo_args`, a `cdylib` alone (beside an `rlib` it was not
+whole-program optimized: 10.6 MB became 9.2 MB; built by `cargo rustc` outside BoltFFI, the
+crate's own exports were left out), and pack it into `src/core/` (not committed): the
 module, its loader, the wasm-bindgen half its dependencies need (BoltFFI runs a wasm-bindgen CLI
 matching `Cargo.lock`'s, building one if none is on `PATH`), and the TypeScript types, which
-need `@boltffi/runtime` at the crates' version. wasm-opt is off: the `web` profile already
-builds for size. Tests are Playwright over the accessibility tree with axe:
+need `@boltffi/runtime` at the crates' version. The `web` profile is `opt-level = "s"`: `"z"` was
+8% less to download and half again as slow, and wasm-opt is off, since its smaller module was
+larger once compressed, which is what a visit fetches. Tests are Playwright over the accessibility tree with axe:
 `npm test`; `LUMENNA_NETWORK=1` adds pairing over n0's relays, `LUMENNA_LUM=<lum>` pairing
 with `lum`.
 
@@ -2037,6 +2064,14 @@ as a diff, rewritten with `UPDATE_SNAPSHOTS=1` once it is meant.
 `crates/store/tests/convergence.rs` checks replicas reaching the same state from the same
 changes in different orders. It is the slowest suite and the one worth running before
 believing anything about merge.
+
+**Release builds are whole-program** (`[profile.release]`: fat LTO, one codegen unit, symbols
+stripped), for every app's core and `lum`: 40.4 MB became 22.1 MB and commands a quarter faster;
+`opt-level = "s"` was smaller again and half again as slow. **An artifact built beside an `rlib`
+gets none of it**, so a crate the Rust apps link and another platform loads (`lumenna-ffi`) is
+built with `cargo rustc --crate-type …` where it ships (the Apple and Android scripts; BTSpeak's
+through BoltFFI's `--cargo-arg`), and the web's crate is a `cdylib` alone. Iroh is built without
+its metrics, which nothing reads.
 
 `[profile.dev]` sets `debug = "line-tables-only"` and `incremental = false` for the small
 disk of the BTSpeak machine: full debug info across `automerge`, `rrule` and a

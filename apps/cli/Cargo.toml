@@ -24,7 +24,7 @@ lumenna-store.workspace = true
 lumenna-host = { path = "../../crates/host", features = ["sync", "rpc"] }
 lumenna-ffi = { path = "../../crates/ffi", features = ["rpc"] }
 lumenna-sync = { path = "../../crates/sync" }
-iroh = "1.3"
+iroh = { version = "1.3", default-features = false, features = ["fast-apple-datapath", "portmapper", "tls-ring"] }
 gethostname = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "signal"] }
 serde.workspace = true

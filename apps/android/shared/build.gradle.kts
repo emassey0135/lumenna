@@ -47,6 +47,8 @@ android {
 
     defaultConfig {
         minSdk = 28
+        // What R8 must leave alone in either app that shrinks this (consumer-rules.pro).
+        consumerProguardFiles("consumer-rules.pro")
     }
 
     buildFeatures {

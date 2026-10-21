@@ -257,7 +257,7 @@ impl Node {
 
     fn require_trusted(&self, peer: EndpointId) -> Result<()> {
         let peer = node_id(peer);
-        let store = lock(&self.store)?;
+        let mut store = lock(&self.store)?;
         if peer != self.id() && store.snapshot().0.devices.contains_key(&peer) {
             Ok(())
         } else {

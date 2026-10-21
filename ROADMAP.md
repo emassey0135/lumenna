@@ -282,7 +282,6 @@ What the web client gains from it:
   occurrences for a window), recording the Automerge heads it reflects, filled in the same
   transaction as the changes, producing the same core structs. Filters would then compile
   partly to SQL, with the rest evaluated in memory over what remains.
-- **The web's WASM** is 8.7 MB (3 MB compressed), mostly Iroh; worth trimming.
 
 - **An Outlook add-in** for turning an email into a task, only if email import is wanted.
   Office add-ins are web pages Office loads from a URL and cannot reach the local socket, so

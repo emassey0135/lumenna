@@ -90,7 +90,7 @@ fn decide(store: &SharedStore, me: &Identity, peer: &Identity) -> std::result::R
     if peer.node_id == me.node_id {
         return Err("that is this device, so there is nothing to sync".to_owned());
     }
-    let held = lock(store).map_err(|e| e.to_string())?;
+    let mut held = lock(store).map_err(|e| e.to_string())?;
     let devices = held.snapshot().0.devices;
     let listed = |id: &str| devices.keys().any(|k| k.to_string() == id);
     let introduced = held.local_flag(&local_key(&peer.node_id)).unwrap_or(false);

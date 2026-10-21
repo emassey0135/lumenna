@@ -203,7 +203,7 @@ impl Lumenna {
         // Every store has exactly one Inbox, and the store creates it under the same
         // identifier everywhere. A store from before that minted its own, which is
         // folded into the shared one here, once.
-        let adopt = edit::adopt_inbox(&repaired(&store));
+        let adopt = edit::adopt_inbox(&repaired(&mut store));
         if !adopt.is_empty() {
             store.apply(&adopt)?;
         }
@@ -315,7 +315,7 @@ impl Lumenna {
 
 /// The repaired snapshot every query runs against.
 #[must_use]
-pub fn repaired(store: &Store) -> Snapshot {
+pub fn repaired(store: &mut Store) -> Snapshot {
     let (mut snapshot, _) = store.snapshot();
     // Merge can produce cycles and dangling references that no single device ever
     // wrote. Repairing on read means every query can assume a tree.

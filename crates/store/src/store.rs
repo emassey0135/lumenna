@@ -49,6 +49,22 @@ pub struct Store {
     postponed: crate::postponed::Postponed,
     /// Those counts, by task, as the snapshot carries them.
     postponements: BTreeMap<lumenna_core::id::TaskId, u32>,
+    /// Each loaded document's part of the snapshot, as last materialized.
+    hydrated: BTreeMap<DocId, Hydrated>,
+}
+
+/// A document's part of the snapshot, kept as of `heads`.
+///
+/// Materializing is most of what answering costs (2,000 tasks took 100 ms, and one command
+/// asked for it four times: opening, repairs, settings, the query), and a resident app asks
+/// on every turn, though nothing changed since the last. Kept per document, so loading a year
+/// reads that year alone; when a document moves, Automerge's diff from `heads` says which
+/// records changed, and only those are read again. Keyed by heads, not by a count of writes,
+/// so nothing that changes a document can forget to say so.
+struct Hydrated {
+    heads: Vec<ChangeHash>,
+    part: Snapshot,
+    skipped: Vec<crate::doc::Skipped>,
 }
 
 impl Store {
@@ -81,6 +97,7 @@ impl Store {
             linked: BTreeMap::new(),
             postponed: crate::postponed::Postponed::default(),
             postponements: BTreeMap::new(),
+            hydrated: BTreeMap::new(),
         };
         // `core` and `devices` are small and needed on every device; years are not loaded
         // until asked for.
@@ -141,10 +158,38 @@ impl Store {
         &self.docs
     }
 
-    /// Materializes everything loaded.
+    /// Materializes everything loaded, reading again only the documents that have moved
+    /// since the last time (see [`Hydrated`]).
     #[must_use]
-    pub fn snapshot(&self) -> (Snapshot, HydrationReport) {
-        let (mut snapshot, report) = self.docs.snapshot();
+    pub fn snapshot(&mut self) -> (Snapshot, HydrationReport) {
+        let mut loaded = Vec::new();
+        for doc in self.docs.iter_mut() {
+            let (id, heads) = (doc.id(), doc.heads());
+            let followed = match self.hydrated.get_mut(&id) {
+                Some(kept) if kept.heads == heads => true,
+                // Moved since: only what the changes touched is read again.
+                Some(kept) => {
+                    let followed = doc.refresh_part(&kept.heads, &heads, &mut kept.part, &mut kept.skipped);
+                    kept.heads.clone_from(&heads);
+                    followed
+                }
+                None => false,
+            };
+            if !followed {
+                let mut skipped = Vec::new();
+                let part = doc.part(&mut skipped);
+                self.hydrated.insert(id, Hydrated { heads, part, skipped });
+            }
+            loaded.push(id);
+        }
+        self.hydrated.retain(|id, _| loaded.contains(id));
+        let mut snapshot = Snapshot::default();
+        let mut report = HydrationReport::default();
+        for id in loaded {
+            let kept = &self.hydrated[&id];
+            crate::doc::absorb(&mut snapshot, id, &kept.part);
+            report.skipped.extend(kept.skipped.iter().cloned());
+        }
         snapshot.postponed.clone_from(&self.postponements);
         (snapshot, report)
     }

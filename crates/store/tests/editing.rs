@@ -158,7 +158,7 @@ fn completing_a_recurring_task_survives_a_reload() {
         store.apply(&edit).unwrap();
     }
 
-    let store = Store::open(&path).unwrap();
+    let mut store = Store::open(&path).unwrap();
     let (snapshot, report) = store.snapshot();
     assert!(report.is_clean(), "{report:?}");
     assert_eq!(snapshot.tasks[&id].due.as_ref().unwrap().date, date(2026, 5, 9));

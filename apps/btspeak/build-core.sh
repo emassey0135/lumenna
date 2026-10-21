@@ -30,7 +30,9 @@ module_name = "lumenna_app"
 output = "$BOLT/wheels"
 interpreters = ["$PYTHON"]
 TOML
-(cd "$ROOT/crates/ffi" && boltffi pack python $RELEASE --overlay "$BOLT/overlay.toml")
+# The core as a cdylib alone: crates/ffi is an rlib too, for the Rust apps, and rustc builds an
+# artifact made beside an rlib without whole-program optimization (20.0 MB, where alone 17.7).
+(cd "$ROOT/crates/ffi" && boltffi pack python $RELEASE --cargo-arg=--crate-type=cdylib --overlay "$BOLT/overlay.toml")
 
 # The wheel's package, unpacked where the app finds it (core.py), in place of the last.
 rm -rf "$APP/native"

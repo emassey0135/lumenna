@@ -66,8 +66,11 @@ cargo() {
 }
 
 cd "$ROOT"
+# The static library alone: crates/ffi is an rlib too, for the Rust apps, and rustc builds an
+# artifact made beside an rlib without whole-program optimization. Built alone, the Mac's core
+# was 34.5 MB an architecture rather than 186 MB, and the framework a third smaller.
 for target in $TARGETS; do
-  cargo build -p lumenna-ffi --lib $PROFILE_FLAG "${FEATURES[@]}" --target "$target"
+  cargo rustc -p lumenna-ffi --lib --crate-type staticlib $PROFILE_FLAG "${FEATURES[@]}" --target "$target"
 done
 if [ "$PLATFORM" = macosx ]; then
   # One library for every architecture asked for, where the Mac target links it from.

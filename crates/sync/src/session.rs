@@ -217,7 +217,7 @@ mod tests {
         let task = add(&a, "arrived by sync");
         sync(&a, &b).await;
 
-        let other_process = Store::open(&path).unwrap();
+        let mut other_process = Store::open(&path).unwrap();
         assert!(other_process.snapshot().0.tasks.contains_key(&task.id));
     }
 }

@@ -437,7 +437,9 @@ jobs:
         # APK badly.
         env:
           LUMENNA_CORE_PROFILE: release
-        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest :wear:assembleDebug :wear:assembleDebugAndroidTest
+        # The release builds too, shrunk by R8, which only they run: a rule it refuses or a
+        # class it cannot find would otherwise be found at release. The core is the same build.
+        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest :wear:assembleDebug :wear:assembleDebugAndroidTest :app:assembleRelease :wear:assembleRelease
       - name: Ready for 16 KB pages
         # Every native library must load at 16 KB boundaries, and sit 16 KB aligned in the
         # APK, or a 16 KB-page device refuses it. An x86_64 emulator emulates 16 KB pages,

@@ -243,8 +243,11 @@ impl Snapshot {
                 let score = |task: &crate::model::Task| {
                     crate::urgency::urgency(self, cx.facts(), task, cx.now, &self.settings.urgency).score
                 };
+                // Scored once each, not once per comparison: urgency is most of a sort's cost.
                 // Stable, so the person's order breaks ties.
-                group.sort_by(|a, b| score(b).total_cmp(&score(a)));
+                let mut scored: Vec<(f32, &crate::model::Task)> = group.iter().map(|task| (score(task), *task)).collect();
+                scored.sort_by(|a, b| b.0.total_cmp(&a.0));
+                *group = scored.into_iter().map(|(_, task)| task).collect();
             }
         }
 

@@ -21,6 +21,9 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
+    # The Mac's targets had it off, Xcode's default for them; the force-loaded core is most of
+    # what it removes.
+    DEAD_CODE_STRIPPING: YES
     # Signing for a device needs the team; the simulator needs none.
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: 3QAJ2S64Z7

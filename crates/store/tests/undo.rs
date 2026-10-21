@@ -40,16 +40,19 @@ fn undo_reverses_and_redo_reapplies() {
     let task = add(&mut store, "Review PR");
     let edit = complete_task(&store.snapshot().0, task.id, &now()).unwrap();
     store.apply_recorded(&edit).unwrap();
-    let completed = |s: &Store| s.snapshot().0.is_completed(&s.snapshot().0.tasks[&task.id]);
-    assert!(completed(&store));
+    let completed = |s: &mut Store| {
+        let snapshot = s.snapshot().0;
+        snapshot.is_completed(&snapshot.tasks[&task.id])
+    };
+    assert!(completed(&mut store));
 
     let undone = done(store.undo().unwrap());
     assert_eq!(undone.description, "Completed Review PR");
     assert!(undone.kept.is_empty());
-    assert!(!completed(&store));
+    assert!(!completed(&mut store));
 
     done(store.redo().unwrap());
-    assert!(completed(&store));
+    assert!(completed(&mut store));
     assert_eq!(store.undo_depths().unwrap(), (2, 0));
 }
 

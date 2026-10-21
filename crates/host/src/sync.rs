@@ -139,7 +139,7 @@ impl Lumenna {
     /// Records this build's stored-format version in this device's entry in the device
     /// list, if it is listed and says another.
     pub(crate) fn note_own_version(&self) -> Result<()> {
-        let snapshot = repaired(&self.store());
+        let snapshot = repaired(&mut self.store());
         if snapshot.devices.is_empty() {
             return Ok(());
         }
@@ -372,7 +372,7 @@ impl Lumenna {
             .transpose()?;
         let store = self.shared();
         let me = this_node(&store)?;
-        let known = repaired(&self.store()).devices.get(&me).map(|d| d.name.clone());
+        let known = repaired(&mut self.store()).devices.get(&me).map(|d| d.name.clone());
         let me = identity(&store, &known.unwrap_or(name), &platform)?;
 
         let paired = async {

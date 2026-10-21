@@ -30,7 +30,7 @@ fn a_written_task_survives_reopening() {
             .unwrap();
     }
 
-    let store = Store::open(&path).unwrap();
+    let mut store = Store::open(&path).unwrap();
     let (snapshot, report) = store.snapshot();
     assert!(report.is_clean(), "{report:?}");
     assert_eq!(snapshot.tasks[&task.id], task);
@@ -117,7 +117,7 @@ fn concurrent_edits_from_two_processes_both_survive() {
     first.refresh().unwrap();
     second.refresh().unwrap();
 
-    for store in [&first, &second] {
+    for store in [&mut first, &mut second] {
         let merged = &store.snapshot().0.tasks[&task.id];
         assert_eq!(merged.title, "renamed");
         assert_eq!(merged.estimate_mins, Some(30));
@@ -163,7 +163,7 @@ fn compaction_replaces_the_representation_without_losing_anything() {
         "the changes it subsumes are gone"
     );
 
-    let reopened = Store::open(&path).unwrap();
+    let mut reopened = Store::open(&path).unwrap();
     assert_eq!(reopened.snapshot().0, before, "and nothing else changed");
 }
 
@@ -171,7 +171,7 @@ fn compaction_replaces_the_representation_without_losing_anything() {
 fn an_empty_profile_is_usable_immediately() {
     let dir = scratch();
     let path = dir.path().join("profile.sqlite");
-    let store = Store::open(&path).unwrap();
+    let mut store = Store::open(&path).unwrap();
     let (snapshot, report) = store.snapshot();
     assert!(report.is_clean());
     assert!(snapshot.tasks.is_empty());
@@ -213,7 +213,7 @@ fn compacting_keeps_what_another_process_wrote_since_its_last_look() {
     first.compact_document(DocId::Core).unwrap();
     assert!(first.refresh().unwrap(), "what compaction took in is still reported");
 
-    let reopened = Store::open(&path).unwrap();
+    let mut reopened = Store::open(&path).unwrap();
     let tasks = reopened.snapshot().0.tasks;
     assert!(tasks.contains_key(&mine.id));
     assert!(tasks.contains_key(&theirs.id), "the other process's task was compacted away");
@@ -280,7 +280,7 @@ fn a_changes_table_from_before_autoincrement_is_migrated_intact() {
         .unwrap();
     }
 
-    let store = Store::open(&path).unwrap();
+    let mut store = Store::open(&path).unwrap();
     assert!(store.snapshot().0.tasks.contains_key(&task.id));
     let conn = rusqlite::Connection::open(&path).unwrap();
     let sql: String = conn

@@ -20,7 +20,11 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 shrinks and optimizes the Kotlin and Compose code and drops unused resources;
+            // what the core reaches by name is kept by :shared's consumer rules.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
         }
     }
 
