@@ -125,7 +125,7 @@ impl Lumenna {
             store.load_all_years()?;
             let snapshot = repaired(store);
             Ok(match format {
-                ExportFormat::Json => export::export_json(&snapshot, now.timestamp()),
+                ExportFormat::Json => export::export_json_keeping(&snapshot, now.timestamp(), store.documents()),
                 ExportFormat::Markdown => export::markdown(&snapshot, &now),
                 ExportFormat::Org => export::org(&snapshot, &now),
                 ExportFormat::Ics => export::ics(&snapshot, now.timestamp()),

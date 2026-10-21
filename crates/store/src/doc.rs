@@ -157,6 +157,9 @@ pub enum Domain {
 pub struct Doc {
     id: DocId,
     doc: AutoCommit,
+    /// Records as they stood, to write back first when they are created again (an undo of an
+    /// erase, an import): fields this build cannot name survive that way. By collection and key.
+    revive: BTreeMap<(String, String), Raw>,
 }
 
 impl Doc {
@@ -192,7 +195,7 @@ impl Doc {
         }
         doc.commit_with(CommitOptions::default().with_time(0).with_message("genesis"));
         doc.set_actor(ActorId::random());
-        Self { id, doc }
+        Self { id, doc, revive: BTreeMap::new() }
     }
 
     /// Brings in `core`'s second deterministic change, if it is not already here.
@@ -285,7 +288,7 @@ impl Doc {
     ///
     /// If the bytes are not a valid Automerge document.
     pub fn load(id: DocId, bytes: &[u8]) -> Result<Self> {
-        Ok(Self { id, doc: AutoCommit::load(bytes)? })
+        Ok(Self { id, doc: AutoCommit::load(bytes)?, revive: BTreeMap::new() })
     }
 
     /// Which document this is.
@@ -353,7 +356,7 @@ impl Doc {
     pub fn fork(&mut self) -> Self {
         let mut doc = self.doc.fork();
         doc.set_actor(automerge::ActorId::random());
-        Self { id: self.id, doc }
+        Self { id: self.id, doc, revive: BTreeMap::new() }
     }
 
     fn check_domain(&self, domain: Domain) -> Result<()> {
@@ -413,12 +416,35 @@ impl Doc {
             let mut writer = Writer::inline(&mut self.doc, collection, format!("{key}/"));
             return record.write(&mut writer, before);
         }
+        // A record created again as it once stood: its old fields first, then the model's.
+        if let Some(raw) = self.revive.remove(&(R::COLLECTION.to_owned(), key.clone()))
+            && !matches!(self.doc.get(&collection, key.as_str())?, Some((Value::Object(ObjType::Map), _)))
+        {
+            raw.write_at(&mut self.doc, &collection, &key)?;
+        }
         let obj = match self.doc.get(&collection, key.as_str())? {
             Some((Value::Object(ObjType::Map), id)) => id,
             _ => self.doc.put_object(&collection, key.as_str(), ObjType::Map)?,
         };
         let mut writer = Writer::new(&mut self.doc, obj);
         record.write(&mut writer, before)
+    }
+
+    /// Keeps `raw` to write back first when the record at `collection` and `key` is next created
+    /// here, once only.
+    pub(crate) fn revive(&mut self, collection: String, key: String, raw: Raw) {
+        self.revive.insert((collection, key), raw);
+    }
+
+    /// Forgets what [`revive`](Self::revive) kept that was not created after all.
+    pub(crate) fn forget_revived(&mut self) {
+        self.revive.clear();
+    }
+
+    /// The fields of `record` as they stand here that this build does not name, if any: what
+    /// an export carries beside the known ones, so an import can write them back.
+    pub(crate) fn unknown_of<R: Record>(&self, record: &R) -> Option<Raw> {
+        self.raw::<R>(&record.key())?.without(&known_keys(record))
     }
 
     /// A record's fields as they stand, known or not, or `None` if it is not here or is
@@ -1051,10 +1077,119 @@ pub fn assignment_year(a: &BlockAssignment, series: Option<&BlockSeries>) -> Opt
         .or_else(|| series.map(|s| s.start_date.year()))
 }
 
+#[cfg(test)]
+impl Doc {
+    /// Writes `field` into the record at `collection` and `key`, as a newer build would.
+    pub(crate) fn plant(&mut self, collection: &str, key: &str, field: &str, value: &str) {
+        let collection = self.collection_for_read(collection).unwrap();
+        let Some((Value::Object(ObjType::Map), obj)) = self.doc.get(&collection, key).unwrap() else { panic!("no record {key}") };
+        self.doc.put(&obj, field, value).unwrap();
+    }
+
+    /// The text at `field` of the record at `collection` and `key`, if it is there.
+    pub(crate) fn field(&self, collection: &str, key: &str, field: &str) -> Option<String> {
+        let collection = self.collection_for_read(collection)?;
+        let Some((Value::Object(ObjType::Map), obj)) = self.doc.get(&collection, key).ok()? else { return None };
+        match self.doc.get(&obj, field).ok()?? {
+            (Value::Scalar(value), _) => value.to_str().map(str::to_owned),
+            _ => None,
+        }
+    }
+}
+
+/// A record an edit removed, as it stood, for the edit's undo to write back: what the model
+/// holds is put back by the undo itself, and this keeps what it does not (fields a newer build
+/// wrote).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Removed {
+    doc: DocId,
+    collection: String,
+    key: String,
+    raw: Raw,
+}
+
+impl Removed {
+    /// As JSON, for the undo history.
+    #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({ "doc": self.doc.name(), "collection": self.collection, "key": self.key, "raw": self.raw.to_json() })
+    }
+
+    /// Read back from [`to_json`](Self::to_json); `None` for what does not read.
+    #[must_use]
+    pub fn from_json(value: &serde_json::Value) -> Option<Self> {
+        Some(Self {
+            doc: DocId::parse(value.get("doc")?.as_str()?)?,
+            collection: value.get("collection")?.as_str()?.to_owned(),
+            key: value.get("key")?.as_str()?.to_owned(),
+            raw: Raw::from_json(value.get("raw")?)?,
+        })
+    }
+}
+
+impl Documents {
+    /// Every record `edit` removes outright, as it stands now: read before the edit is applied.
+    /// A record kept a key per field (an exception, an acknowledgement) has no one copy to take,
+    /// and is put back from the model alone.
+    #[must_use]
+    pub fn removed_by(&self, edit: &Edit) -> Vec<Removed> {
+        fn taken<R: Record>(doc: &Doc, key: &R::Key) -> Option<Removed> {
+            Some(Removed { doc: doc.id, collection: R::COLLECTION.to_owned(), key: R::key_string(key), raw: doc.raw::<R>(key)? })
+        }
+        let core = &self.core;
+        let year = |y: i16| self.blocks.get(&y);
+        edit.changes
+            .iter()
+            .filter_map(|change| match change {
+                Change::Task(t) if t.after.is_none() => taken::<Task>(core, &t.before.as_ref()?.id),
+                Change::Completion(t) if t.after.is_none() => taken::<TaskCompletion>(core, &t.before.as_ref()?.id),
+                Change::Project(t) if t.after.is_none() => taken::<Project>(core, &t.before.as_ref()?.id),
+                Change::Label(t) if t.after.is_none() => taken::<Label>(core, &t.before.as_ref()?.id),
+                Change::Filter(t) if t.after.is_none() => taken::<SavedFilter>(core, &t.before.as_ref()?.id),
+                Change::Reminder(t) if t.after.is_none() => taken::<Reminder>(core, &t.before.as_ref()?.id),
+                Change::Series(t) if t.after.is_none() => {
+                    let before = t.before.as_ref()?;
+                    taken::<BlockSeries>(year(before.start_date.year())?, &before.id)
+                }
+                Change::Assignment { year: y, transition } if transition.after.is_none() => {
+                    taken::<BlockAssignment>(year(*y)?, &transition.before.as_ref()?.id)
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Keeps each of `removed` to write back first should its record be created again: by the
+    /// undo about to be applied. [`forget_revived`](Self::forget_revived) after it.
+    pub fn revive(&mut self, removed: Vec<Removed>) {
+        for removed in removed {
+            self.get_mut(removed.doc).revive(removed.collection, removed.key, removed.raw);
+        }
+    }
+
+    /// The fields of `record`, in document `doc`, that this build does not name, as an export
+    /// carries them so an import can write them back.
+    pub(crate) fn unknown_in<R: Record>(&self, doc: DocId, record: &R) -> Option<Removed> {
+        let held = match doc {
+            DocId::Core => &self.core,
+            DocId::Devices => &self.devices,
+            DocId::Blocks(year) => self.blocks.get(&year)?,
+        };
+        Some(Removed { doc, collection: R::COLLECTION.to_owned(), key: R::key_string(&record.key()), raw: held.unknown_of(record)? })
+    }
+
+    /// Forgets whatever [`revive`](Self::revive) kept that was not created after all.
+    pub fn forget_revived(&mut self) {
+        for doc in self.iter_mut() {
+            doc.forget_revived();
+        }
+    }
+}
+
 /// A value as it stands in a document, known to this build or not, to be copied somewhere
 /// else whole. Builds of different versions sync for good, so a field one does not know is
 /// still another's data, and moving a record must not drop it.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Raw {
     Scalar(automerge::ScalarValue),
     Map(Vec<(String, Raw)>),
@@ -1062,7 +1197,88 @@ pub(crate) enum Raw {
     Text(String),
 }
 
+/// The keys `record` writes, by writing it into a document of its own: what this build names.
+fn known_keys<R: Record>(record: &R) -> std::collections::BTreeSet<String> {
+    let mut scratch = AutoCommit::new();
+    let Ok(obj) = scratch.put_object(ROOT, "record", ObjType::Map) else { return Default::default() };
+    let mut writer = Writer::new(&mut scratch, obj.clone());
+    if record.write(&mut writer, None).is_err() {
+        return Default::default();
+    }
+    scratch.keys(&obj).collect()
+}
+
 impl Raw {
+    /// A map without the keys `known`, or `None` when nothing is left: the fields this build
+    /// cannot name.
+    pub(crate) fn without(self, known: &std::collections::BTreeSet<String>) -> Option<Self> {
+        match self {
+            Self::Map(fields) => {
+                let left: Vec<(String, Self)> = fields.into_iter().filter(|(key, _)| !known.contains(key)).collect();
+                (!left.is_empty()).then_some(Self::Map(left))
+            }
+            _ => None,
+        }
+    }
+
+    /// As JSON, each value tagged with its kind so it reads back exactly as it was.
+    pub(crate) fn to_json(&self) -> serde_json::Value {
+        use automerge::ScalarValue as S;
+        use serde_json::json;
+        match self {
+            Self::Scalar(scalar) => match scalar {
+                S::Str(text) => json!({ "str": text.as_str() }),
+                S::Int(n) => json!({ "int": n }),
+                S::Uint(n) => json!({ "uint": n }),
+                S::F64(n) => json!({ "f64": n }),
+                S::Counter(c) => json!({ "counter": i64::from(c) }),
+                S::Timestamp(n) => json!({ "timestamp": n }),
+                S::Boolean(b) => json!({ "bool": b }),
+                S::Bytes(bytes) => json!({ "bytes": bytes }),
+                S::Unknown { type_code, bytes } => json!({ "unknown": type_code, "bytes": bytes }),
+                S::Null => json!({ "null": true }),
+            },
+            Self::Text(text) => json!({ "text": text }),
+            Self::List(items) => json!({ "list": items.iter().map(Self::to_json).collect::<Vec<_>>() }),
+            Self::Map(fields) => {
+                let map: serde_json::Map<String, serde_json::Value> =
+                    fields.iter().map(|(key, value)| (key.clone(), value.to_json())).collect();
+                json!({ "map": map })
+            }
+        }
+    }
+
+    /// Read back from [`to_json`](Self::to_json); `None` for anything else.
+    pub(crate) fn from_json(value: &serde_json::Value) -> Option<Self> {
+        use automerge::ScalarValue as S;
+        let object = value.as_object()?;
+        let bytes = |v: &serde_json::Value| -> Option<Vec<u8>> {
+            v.as_array()?.iter().map(|b| b.as_u64().and_then(|b| u8::try_from(b).ok())).collect()
+        };
+        let (tag, inner) = object.iter().find(|(tag, _)| tag.as_str() != "bytes" || object.len() == 1)?;
+        Some(match tag.as_str() {
+            "str" => Self::Scalar(S::Str(inner.as_str()?.into())),
+            "int" => Self::Scalar(S::Int(inner.as_i64()?)),
+            "uint" => Self::Scalar(S::Uint(inner.as_u64()?)),
+            "f64" => Self::Scalar(S::F64(inner.as_f64()?)),
+            "counter" => Self::Scalar(S::counter(inner.as_i64()?)),
+            "timestamp" => Self::Scalar(S::Timestamp(inner.as_i64()?)),
+            "bool" => Self::Scalar(S::Boolean(inner.as_bool()?)),
+            "bytes" => Self::Scalar(S::Bytes(bytes(inner)?)),
+            "unknown" => Self::Scalar(S::Unknown {
+                type_code: u8::try_from(inner.as_u64()?).ok()?,
+                bytes: bytes(object.get("bytes")?)?,
+            }),
+            "null" => Self::Scalar(S::Null),
+            "text" => Self::Text(inner.as_str()?.to_owned()),
+            "list" => Self::List(inner.as_array()?.iter().map(Self::from_json).collect::<Option<_>>()?),
+            "map" => Self::Map(
+                inner.as_object()?.iter().map(|(key, v)| Some((key.clone(), Self::from_json(v)?))).collect::<Option<_>>()?,
+            ),
+            _ => return None,
+        })
+    }
+
     fn read_map(doc: &AutoCommit, obj: &ObjId) -> Self {
         Self::Map(
             doc.keys(obj)

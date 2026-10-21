@@ -147,10 +147,6 @@ Each is a thin adapter over the command surface.
 - **Packaging**: a `lumenna` alias for `lum`, a Homebrew formula (`brew services start
   lum`), a winget manifest, Flatpak and AppStream for GTK. A command-line user has no app to
   prompt for updates, so packages matter most there.
-- **Fields this build does not know, everywhere**: kept by edits and by the store's own
-  rewrites, but not yet by a record restored by undoing a delete from the trash, nor by JSON
-  export and import, which carry only what the model holds. Keeping them means the model
-  carrying what it cannot read.
 - **Real erasure.** Erasing a task removes it from the current state only: its content stays
   in the history and in backups, and undo brings it back. Truly erasing means rebuilding the
   document without it, losing all history, every device syncing afresh, and clearing the

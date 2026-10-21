@@ -455,8 +455,12 @@ update. So:
   another year's document, a record becoming inline — copy the old record as it stands
   (`Raw`) and write only the changes over it, so an unknown field, or a value read as a
   default (an unknown block kind reads as work), survives those too. A new rewrite must do
-  the same. Not yet kept: a record restored by undoing a delete from the trash, and JSON
-  export, which carry only what the model holds.
+  the same. So do the two places that build a record from the model alone: an undo that creates
+  again what its edit removed writes the record back as it stood first (`Documents::removed_by`,
+  kept in the undo entry, format 2), and the JSON export carries what each record holds beyond
+  the model (`export_json_keeping`, its `unknown` list), which an import writes back into each
+  record it creates (`Documents::revive`). Not kept: a record stored a key per field (an
+  exception, an acknowledgement, a device), and a block's sittings in an export.
 
 ### Mutations and undo
 

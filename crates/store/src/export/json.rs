@@ -61,6 +61,11 @@ struct File {
     assignments: Vec<AssignmentOut>,
     #[serde(default)]
     reminders: Vec<ReminderOut>,
+    /// Fields of the records above that a newer build wrote and this one cannot name, as they
+    /// stood, so an import writes them back: builds of different versions sync for good, and a
+    /// field one does not know is still another's data.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    unknown: Vec<serde_json::Value>,
 }
 
 /// The records an export holds, as model values, ready to be written into a store.
@@ -86,6 +91,9 @@ pub struct Imported {
     pub assignments: Vec<BlockAssignment>,
     /// Reminders.
     pub reminders: Vec<Reminder>,
+    /// What the records above held that this build cannot name, for writing back as they are
+    /// created.
+    pub(crate) unknown: Vec<crate::doc::Removed>,
 }
 
 impl Imported {
@@ -110,14 +118,38 @@ impl Imported {
     }
 }
 
-/// The present state as JSON.
+/// The present state as JSON, from the snapshot alone: what the model holds.
 #[must_use]
 pub fn export_json(snapshot: &Snapshot, now: Timestamp) -> String {
+    serde_json::to_string_pretty(&file_of(snapshot, now)).unwrap_or_default()
+}
+
+/// The present state as JSON, with what each record holds beyond the model: the fields a
+/// newer build wrote, from `docs`, so an import here or elsewhere keeps them.
+#[must_use]
+pub fn export_json_keeping(snapshot: &Snapshot, now: Timestamp, docs: &crate::Documents) -> String {
+    use crate::doc::DocId;
+    let mut file = file_of(snapshot, now);
+    let live_task = |id: &TaskId| snapshot.tasks.get(id).is_some_and(|t| !t.is_deleted());
+    let mut unknown = Vec::new();
+    unknown.extend(snapshot.tasks.values().filter(|t| !t.is_deleted()).filter_map(|t| docs.unknown_in(DocId::Core, t)));
+    unknown.extend(snapshot.projects.values().filter(|p| p.deleted_at.is_none()).filter_map(|p| docs.unknown_in(DocId::Core, p)));
+    unknown.extend(snapshot.labels.values().filter(|l| l.deleted_at.is_none()).filter_map(|l| docs.unknown_in(DocId::Core, l)));
+    unknown.extend(snapshot.saved_filters.values().filter(|f| f.deleted_at.is_none()).filter_map(|f| docs.unknown_in(DocId::Core, f)));
+    unknown.extend(snapshot.completions.values().filter(|c| live_task(&c.task_id)).filter_map(|c| docs.unknown_in(DocId::Core, c)));
+    unknown.extend(
+        snapshot.series.values().filter(|s| s.deleted_at.is_none()).filter_map(|s| docs.unknown_in(DocId::Blocks(s.start_date.year()), s)),
+    );
+    file.unknown = unknown.iter().map(crate::doc::Removed::to_json).collect();
+    serde_json::to_string_pretty(&file).unwrap_or_default()
+}
+
+fn file_of(snapshot: &Snapshot, now: Timestamp) -> File {
     let live_task = |id: &TaskId| snapshot.tasks.get(id).is_some_and(|t| !t.is_deleted());
     let live_series =
         |id: &SeriesId| snapshot.series.get(id).is_some_and(|s| s.deleted_at.is_none());
 
-    let file = File {
+    File {
         format: FORMAT.to_owned(),
         version: VERSION,
         exported_at: Some(now.to_string()),
@@ -188,8 +220,8 @@ pub fn export_json(snapshot: &Snapshot, now: Timestamp) -> String {
             })
             .map(ReminderOut::from)
             .collect(),
-    };
-    serde_json::to_string_pretty(&file).unwrap_or_default()
+        unknown: Vec::new(),
+    }
 }
 
 /// Reads an export back into model records.
@@ -225,6 +257,8 @@ pub fn parse_json(text: &str) -> Result<Imported> {
         exceptions: collect(file.exceptions, ExceptionOut::into_model)?,
         assignments: collect(file.assignments, AssignmentOut::into_model)?,
         reminders: collect(file.reminders, ReminderOut::into_model)?,
+        // An entry that does not read is left out, as a field this build cannot read is.
+        unknown: file.unknown.iter().filter_map(crate::doc::Removed::from_json).collect(),
     })
 }
 

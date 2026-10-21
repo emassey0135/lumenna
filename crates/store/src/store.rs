@@ -485,7 +485,9 @@ impl Store {
             }
         }
 
-        self.write(|docs| {
+        // What the export held beyond the model goes back into each record it creates.
+        self.docs.revive(imported.unknown.clone());
+        let written = self.write(|docs| {
             if let Some(settings) = &imported.settings
                 && settings != &current.settings
             {
@@ -558,7 +560,9 @@ impl Store {
                 }
             }
             Ok(())
-        })?;
+        });
+        self.docs.forget_revived();
+        written?;
         Ok(report)
     }
 
@@ -675,9 +679,11 @@ impl Store {
     ///
     /// If the edit cannot be applied, or the history cannot be written.
     pub fn apply_recorded(&mut self, edit: &lumenna_core::edit::Edit) -> Result<()> {
+        // What it removes outright, as it stands, before it goes: its undo writes it back.
+        let removed = self.docs.removed_by(edit);
         self.apply(edit)?;
         if !edit.is_empty() {
-            let text = serde_json::to_string(edit)
+            let text = crate::undo::save(edit, &removed)
                 .map_err(|e| StoreError::Io(format!("could not save the undo history: {e}")))?;
             let at = jiff::Timestamp::now().as_millisecond();
             self.db.record_undo(crate::undo::FORMAT, &text, at, crate::undo::DEPTH)?;
@@ -722,17 +728,20 @@ impl Store {
         let Some((seq, format, text)) = self.db.claim_undo(redo)? else {
             return Ok(Step::Nothing);
         };
-        let edit = (format == crate::undo::FORMAT)
-            .then(|| serde_json::from_str::<lumenna_core::edit::Edit>(&text).ok())
-            .flatten();
-        let Some(edit) = edit else {
+        let Some((edit, removed)) = crate::undo::read(format, &text) else {
             self.db.drop_undo(seq)?;
             return Ok(Step::Unreadable);
         };
 
         let (snapshot, _) = self.docs.snapshot();
         let reverted = crate::undo::rebase(&edit, direction, &snapshot);
-        if let Err(error) = self.apply(&reverted.applied) {
+        // An undo that creates again what the edit removed writes it back as it stood first.
+        if !redo {
+            self.docs.revive(removed);
+        }
+        let applied = self.apply(&reverted.applied);
+        self.docs.forget_revived();
+        if let Err(error) = applied {
             self.db.unclaim_undo(seq, redo)?;
             return Err(error);
         }
@@ -901,4 +910,59 @@ pub struct Imports {
     pub unchanged: usize,
     /// Assignments left out because their block is in neither the file nor the store.
     pub skipped: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use lumenna_core::ProjectId;
+    use lumenna_core::edit::{create_task, purge_task};
+    use lumenna_core::model::Task;
+    use lumenna_core::order::OrderKey;
+
+    use super::*;
+
+    #[test]
+    fn undoing_an_erase_brings_back_what_a_newer_build_wrote_on_the_task() {
+        let mut store = Store::open_in_memory().unwrap();
+        let task = Task::new(ProjectId::INBOX, "essay", OrderKey::middle());
+        store.apply_recorded(&create_task(task.clone())).unwrap();
+        let key = task.id.to_string();
+        store.docs.core().plant("tasks", &key, "written_by_a_newer_build", "keep me");
+
+        let (snapshot, _) = store.snapshot();
+        store.apply_recorded(&purge_task(&snapshot, task.id).unwrap()).unwrap();
+        assert!(store.snapshot().0.tasks.is_empty(), "erased");
+        assert!(matches!(store.undo().unwrap(), crate::undo::Step::Done(_)));
+
+        assert_eq!(store.snapshot().0.tasks.get(&task.id).map(|t| t.title.as_str()), Some("essay"));
+        assert_eq!(store.docs.core().field("tasks", &key, "written_by_a_newer_build").as_deref(), Some("keep me"));
+    }
+
+    #[test]
+    fn a_json_export_carries_what_a_newer_build_wrote_into_the_store_it_is_imported_into() {
+        let mut store = Store::open_in_memory().unwrap();
+        let task = Task::new(ProjectId::INBOX, "essay", OrderKey::middle());
+        store.apply_recorded(&create_task(task.clone())).unwrap();
+        let key = task.id.to_string();
+        store.docs.core().plant("tasks", &key, "written_by_a_newer_build", "keep me");
+
+        let (snapshot, _) = store.snapshot();
+        let json = crate::export::export_json_keeping(&snapshot, jiff::Timestamp::now(), store.documents());
+        assert!(json.contains("written_by_a_newer_build"), "{json}");
+        let mut elsewhere = Store::open_in_memory().unwrap();
+        elsewhere.import(&crate::export::parse_json(&json).unwrap()).unwrap();
+        assert_eq!(elsewhere.snapshot().0.tasks.get(&task.id).map(|t| t.title.as_str()), Some("essay"));
+        assert_eq!(elsewhere.docs.core().field("tasks", &key, "written_by_a_newer_build").as_deref(), Some("keep me"));
+        // What the model holds is written over it, as it is anywhere else.
+        assert_eq!(elsewhere.docs.core().field("tasks", &key, "title").as_deref(), Some("essay"));
+    }
+
+    #[test]
+    fn an_undo_entry_of_the_format_before_still_reads() {
+        let task = Task::new(ProjectId::INBOX, "essay", OrderKey::middle());
+        let old = serde_json::to_string(&create_task(task)).unwrap();
+        let (edit, removed) = crate::undo::read(1, &old).unwrap();
+        assert_eq!(edit.description, "Added essay");
+        assert!(removed.is_empty());
+    }
 }

@@ -28,5 +28,5 @@ mod json;
 mod text;
 
 pub use ics::ics;
-pub use json::{FORMAT, VERSION, Imported, export_json, parse_json};
+pub use json::{FORMAT, VERSION, Imported, export_json, export_json_keeping, parse_json};
 pub use text::{markdown, org};

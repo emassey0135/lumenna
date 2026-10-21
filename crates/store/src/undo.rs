@@ -31,9 +31,33 @@ use serde_json::{Map, Value};
 use lumenna_core::edit::{Change, Edit, Transition};
 use lumenna_core::snapshot::Snapshot;
 
-/// The format of a saved entry. An entry in an older format that no longer reads is dropped
-/// with a notice rather than guessed at.
-pub(crate) const FORMAT: i64 = 1;
+/// The format of a saved entry: 2 is the edit and, beside it, each record it removed as it
+/// stood (`Removed`), so undoing an erase keeps fields a newer build wrote; 1, the edit alone,
+/// still reads. An entry in a format that no longer reads is dropped with a notice rather than
+/// guessed at.
+pub(crate) const FORMAT: i64 = 2;
+
+/// An entry as saved: the edit, and what it removed as it stood.
+pub(crate) fn save(edit: &Edit, removed: &[crate::doc::Removed]) -> serde_json::Result<String> {
+    serde_json::to_string(&serde_json::json!({
+        "edit": edit,
+        "removed": removed.iter().map(crate::doc::Removed::to_json).collect::<Vec<_>>(),
+    }))
+}
+
+/// An entry read back, in either format; `None` for one that does not read.
+pub(crate) fn read(format: i64, text: &str) -> Option<(Edit, Vec<crate::doc::Removed>)> {
+    match format {
+        1 => Some((serde_json::from_str(text).ok()?, Vec::new())),
+        2 => {
+            let entry: serde_json::Value = serde_json::from_str(text).ok()?;
+            let edit = serde_json::from_value(entry.get("edit")?.clone()).ok()?;
+            let removed = entry.get("removed")?.as_array()?.iter().filter_map(crate::doc::Removed::from_json).collect();
+            Some((edit, removed))
+        }
+        _ => None,
+    }
+}
 
 /// How many edits are kept. A long session must not grow without limit.
 pub const DEPTH: usize = 100;
