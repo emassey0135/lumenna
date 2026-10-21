@@ -232,11 +232,48 @@ def request_choice(choices, prompt="", default=None, **_ignored):
     raise ScriptError(f"no choice says {text!r} for {prompt!r}: {list(options.values())}")
 
 
-def request_input(prompt, default_text="", **_ignored):
-    """`("input", text)` types `text`; None cancels; `...` accepts what was offered."""
+class _InputField:
+    """What a hotkey is handed in place of the device's `InputDialog`: its field, in computer
+    braille, its cursor within it, and its grade."""
+
+    input_grade = 0
+
+    def __init__(self, field):
+        self.field = field
+        self._cursor = len(field)
+        self.selected = False
+
+    def field_as_text(self, candidate=None):
+        return self.field if candidate is None else candidate
+
+    def cursor(self, offset=None, absolute=None):
+        if offset:
+            self._cursor += offset
+        elif absolute is not None:
+            self._cursor = absolute
+        return self._cursor
+
+    def update_content(self):
+        pass
+
+
+def request_input(prompt, default_text="", hotkeys=None, **_ignored):
+    """`("input", text)` types `text`; None cancels; `...` accepts what was offered.
+    `("key", key, typed)` types `typed`, then presses `key`, which a hotkey answers, and the
+    dialog stays open with what it left there; `...` in the next `input` accepts that."""
     script.prompts.append(prompt)
+    field = default_text
+    while script.steps and script.steps[0][0] == "key":
+        _, key, typed = script.steps.pop(0)
+        dialog = _InputField(typed)
+        function = (hotkeys or {}).get(key)
+        if function is None:
+            raise ScriptError(f"nothing answers {key!r} in {prompt!r}; it binds {list(hotkeys or {})}")
+        # What it says the device speaks; the stub has no speech to hand it to.
+        function(dialog)
+        field = dialog.field
     (text,) = script.take("input", prompt)
-    return default_text if text is Ellipsis else text
+    return field if text is Ellipsis else text
 
 
 def request_form(fields, **_ignored):

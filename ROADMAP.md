@@ -154,10 +154,9 @@ have both the strip and a list behind a Show Completions action. `lum`'s shell c
 names from the store. Still to come:
 
 - **GTK**: the query questions and Tasks from (the Linux session has it).
-- **BTSpeak**: a key inside the input dialog (Ctrl-L, dots 7-8 plus L, once checked against
-  global BRLTTY chords) completing at the cursor, never opening on `#` or `@` by itself.
-  Needs an `InputDialog` subclass; today choices come after Enter, for the last word only,
-  now in every line the app marks too.
+- **BTSpeak**: Control-L (dots 7-8 with L) inside the input dialog completes at the cursor,
+  through the dialog's own `hotkeys` (no subclass needed); no dialog or device key claims it.
+  Tested against the stub only: try it on the device, in computer and in literary braille.
 - **Emacs** completes in the minibuffer already; nothing to add.
 
 ### Each app

@@ -284,16 +284,51 @@ def char_offset(text: str, byte_offset: int) -> int:
     return len(prefix.decode("utf-8", errors="ignore"))
 
 
+# Control-L, typed on the braille keyboard as dots 7-8 with L: free in every dialog and in the
+# device's own keys, and L for list.
+COMPLETE_KEY = "\x0c"
+
+
+def completing_key(session: Session, syntax) -> dict:
+    """The input dialog's hotkey that completes at the cursor, inside the dialog, as every app
+    completes on Down: what fits there, chosen from a menu, put in the span the core says it
+    replaces. Never by itself, on `#` or `@` or anywhere."""
+
+    def complete(dialog):
+        try:
+            text = dialog.field_as_text()
+            # In literary braille the field holds braille, whose cells are not the text's
+            # characters: there it completes the line's end.
+            cursor = dialog.cursor() if dialog.input_grade == 0 else len(text)
+            found = session.app.complete(text, len(text[:cursor].encode("utf-8")), syntax)
+        except Exception:  # noqa: BLE001 - a line that cannot be completed is still a line
+            return "Nothing to complete here."
+        if not found.candidates:
+            return found.announcement or "Nothing to complete here."
+        start, end = char_offset(text, found.start), char_offset(text, found.end)
+        choice = choose({c.text: L.candidate_line(c) for c in found.candidates}, found.announcement or "Completions")
+        if choice is None:
+            return None
+        line = text[:start] + choice + text[end:]
+        braille = getattr(dialogs, "braille", None)
+        dialog.field = line if dialog.input_grade == 0 or braille is None else braille.translateText(line)
+        dialog.selected = False
+        dialog.update_content()
+        dialog.cursor(absolute=start + len(choice) if dialog.input_grade == 0 else len(dialog.field))
+        return None
+
+    return {COMPLETE_KEY: complete, ord(COMPLETE_KEY): complete}
+
+
 def assisted_input(session: Session, prompt: str, syntax, history_key: str | None = None,
                    default: str = "") -> str | None:
-    """Text entry, with a completion pass afterwards.
-
-    `InputDialog` has no hook for completing as you type — Tab is form navigation — so this
-    offers candidates once the line is entered instead, whenever the last word looks like a
-    name that was started and not finished: worth having for `#wo` when you cannot remember
-    whether the project is Work or Workshop, and not pretending to be inline.
+    """Text entry that completes: Control-L (dots 7-8 with L) inside the dialog offers what fits
+    at the cursor (`completing_key`), and once the line is entered a last pass offers what would
+    finish its last word when it looks like a name begun and not finished: worth having for `#wo`
+    when you cannot remember whether the project is Work or Workshop.
     """
-    text = dialogs.request_input(prompt, default_text=default, history_key=history_key)
+    text = dialogs.request_input(prompt, default_text=default, history_key=history_key,
+                                 hotkeys=completing_key(session, syntax))
     if not text:
         return text
     try:

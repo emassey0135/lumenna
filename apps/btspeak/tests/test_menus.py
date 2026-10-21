@@ -684,6 +684,20 @@ class Menus(unittest.TestCase):
             self.assertIn("Redo, y", labels, script.titles[-1])
             self.assertTrue({"u", "y"} <= set(menu["keys"]), script.titles[-1])
 
+    def test_control_l_in_the_dialog_completes_at_the_cursor_from_a_menu(self):
+        self.call("label.add", name="calls")
+        got = []
+        self.run_script(
+            [
+                # Typed "@ca", then dots 7-8 with L: the menu offers what fits, chosen, it is put in.
+                ("key", tasks.COMPLETE_KEY, "@ca"),
+                ("choose", "calls"),
+                ("input", ...),
+            ],
+            lambda: got.append(tasks.assisted_input(self.session, "Filter", L.Syntax.FILTER)),
+        )
+        self.assertEqual(got[0].strip(), "@calls")
+
     def test_a_tasks_context_menu_says_each_entrys_key(self):
         self.call("task.add", text="labelled")
         script = self.run_script([("back",)], lambda: tasks.task_list(self.session))

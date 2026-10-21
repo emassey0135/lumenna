@@ -711,8 +711,11 @@ tests run on `tests/btspeak_stub.py`, with the core built and `target/debug` on 
 - **A menu reopens on the app's row in hand** (`live_menu`'s `focus`), and is drawn after it is
   built, the arrival flag cleared then: building sends (a place opened), and a flag left set
   drew every screen twice.
-- **Completion is offered after the line is entered.** `InputDialog` has no hook and Tab is
-  form navigation; inline needs a subclass.
+- **Completion is Control-L inside the line** (dots 7-8 with L, `tasks.completing_key`): the
+  device's `InputDialog` takes `hotkeys`, and a hotkey is handed the dialog, so it completes at
+  the cursor from a menu and puts the choice in the field; no dialog or device key claims it. In
+  literary braille the field holds braille, so it completes the line's end. A last pass after
+  Enter still offers what would finish the last word.
 - **`main()` pushes an app context** (`host.push_app_context("lumenna", self_voice=True)`,
   popped in a `finally`). The device takes its braille table from the app it believes is in
   front; without the push, BT Code's `.py` table made every menu computer braille. The push
