@@ -181,6 +181,27 @@ impl Device {
         self.link.answer(message)
     }
 
+    /// What the other side of the watch's link may lack, on either side: every change since the
+    /// last exchange settled, for the system to deliver when the two are next in reach
+    /// (`transferUserInfo`), with no reply. Nothing when there is nothing new.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn link_parcel(&self) -> Result<Option<Vec<u8>>, LumennaError> {
+        self.link.parcel()
+    }
+
+    /// Takes in a parcel the other side of the watch's link handed on. Returns whether anything
+    /// here changed.
+    ///
+    /// # Errors
+    ///
+    /// If the parcel does not read, or the store refuses what it brought.
+    pub fn link_unparcel(&self, parcel: Vec<u8>) -> Result<bool, LumennaError> {
+        self.link.unparcel(parcel)
+    }
+
     /// Whether anything came in over the watch's link since this was last asked: it arrived on
     /// this device's own connection, which `outside_version` does not count, and the app ticks
     /// to take it in.

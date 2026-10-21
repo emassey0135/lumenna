@@ -198,6 +198,115 @@ impl<'a> Reader<'a> {
     }
 }
 
+// ---------------------------------------------------------------------------------------
+// Parcels: changes handed on when the other side cannot answer
+// ---------------------------------------------------------------------------------------
+
+/// What marks a parcel, after the protocol: never a message's fresh mark, 0 or 1.
+const PARCEL: u8 = 2;
+
+/// Where this device keeps the heads the two sides last agreed on.
+const AGREED: &str = "link-agreed";
+
+/// Records that the two sides agree, as an exchange settling says: every document's heads as
+/// this device has them now, which the other side has too. A parcel sends what came after.
+///
+/// # Errors
+///
+/// If the store cannot be read or written.
+pub fn note_agreed(store: &mut Store) -> Result<()> {
+    let mut text = String::new();
+    for (id, heads) in store.sync_heads()? {
+        text.push_str(&id.name());
+        for head in heads {
+            text.push(' ');
+            text.push_str(&head.to_string());
+        }
+        text.push('\n');
+    }
+    store.set_local_value(AGREED, text.as_bytes())?;
+    Ok(())
+}
+
+/// The heads last agreed on, by document; none for a document never agreed on, or for any
+/// when nothing ever settled.
+fn agreed(store: &Store) -> Result<BTreeMap<DocId, Vec<lumenna_store::ChangeHash>>> {
+    let text = store.local_value(AGREED)?.map(|bytes| String::from_utf8_lossy(&bytes).into_owned()).unwrap_or_default();
+    Ok(text
+        .lines()
+        .filter_map(|line| {
+            let mut words = line.split(' ');
+            let id = DocId::parse(words.next()?)?;
+            Some((id, words.filter_map(|head| head.parse().ok()).collect()))
+        })
+        .collect())
+}
+
+/// Every change the other side may lack, by document: all that came after the heads the two
+/// last agreed on (`note_agreed`), for a link that queues it to be delivered when the two are
+/// next in reach, with no reply (WatchConnectivity's `transferUserInfo`). Nothing when there is
+/// nothing new. Sent again until the next exchange settles: a change the other side already
+/// has is taken in as nothing.
+///
+/// # Errors
+///
+/// If the store cannot be read.
+pub fn parcel(store: &mut Store) -> Result<Option<Vec<u8>>> {
+    let agreed = agreed(store)?;
+    let mut documents = Vec::new();
+    for (id, _) in store.sync_heads()? {
+        let since = agreed.get(&id).cloned().unwrap_or_default();
+        let changes = store.changes_since(id, &since)?;
+        if !changes.is_empty() {
+            documents.push((id.name(), changes));
+        }
+    }
+    if documents.is_empty() {
+        return Ok(None);
+    }
+    let mut out = Vec::new();
+    out.extend_from_slice(&PROTOCOL.to_be_bytes());
+    out.push(PARCEL);
+    put_len(&mut out, documents.len());
+    for (name, changes) in &documents {
+        put_bytes(&mut out, name.as_bytes());
+        put_len(&mut out, changes.len());
+        for change in changes {
+            put_bytes(&mut out, change);
+        }
+    }
+    Ok(Some(out))
+}
+
+/// Takes in a parcel from the other side. Returns the documents that changed here.
+///
+/// # Errors
+///
+/// If the parcel does not read, comes from another format, or the store refuses a change.
+pub fn unparcel(store: &mut Store, bytes: &[u8]) -> Result<Vec<DocId>> {
+    let mut reader = Reader { bytes, at: 0 };
+    let protocol = reader.u32()?;
+    if protocol != PROTOCOL || reader.take(1)?[0] != PARCEL {
+        return Err(SyncError::Protocol(format!(
+            "it hands on changes in link protocol {protocol}, and this device speaks {PROTOCOL}; update the older one"
+        )));
+    }
+    let mut changed = Vec::new();
+    for _ in 0..reader.u32()? {
+        let name = reader.text()?;
+        let changes = (0..reader.u32()?).map(|_| Ok(reader.chunk()?.to_vec())).collect::<Result<Vec<_>>>()?;
+        // A kind of document this version does not know is left alone, as in an exchange.
+        let Some(id) = DocId::parse(&name) else { continue };
+        if store.take_changes(id, &changes)? {
+            changed.push(id);
+        }
+    }
+    if reader.at != bytes.len() {
+        return Err(SyncError::Protocol("a parcel with something after its end".to_owned()));
+    }
+    Ok(changed)
+}
+
 #[cfg(test)]
 mod tests {
     use lumenna_core::ProjectId;
@@ -273,5 +382,31 @@ mod tests {
         message[3] = 9;
         let error = Exchange::new().incoming(&mut store, &message).unwrap_err();
         assert!(error.to_string().contains("update the older one"), "{error}");
+    }
+
+    #[test]
+    fn a_parcel_carries_what_came_after_the_last_agreement_and_takes_no_reply() {
+        let (mut watch, mut phone) = (Store::open_in_memory().unwrap(), Store::open_in_memory().unwrap());
+        add(&mut watch, "water the plants");
+        exchange(&mut watch, &mut phone);
+        note_agreed(&mut watch).unwrap();
+        note_agreed(&mut phone).unwrap();
+        assert!(parcel(&mut watch).unwrap().is_none(), "nothing new since they agreed");
+
+        // Away from the phone: the change goes into a parcel the system delivers later.
+        add(&mut watch, "call the bank");
+        let parcel = parcel(&mut watch).unwrap().expect("what came after");
+        assert_eq!(unparcel(&mut phone, &parcel).unwrap(), [DocId::Core]);
+        assert_eq!(titles(&mut phone), ["call the bank", "water the plants"]);
+        assert!(unparcel(&mut phone, &parcel).unwrap().is_empty(), "delivered twice, taken once");
+    }
+
+    #[test]
+    fn a_parcel_before_anything_was_agreed_carries_everything() {
+        let (mut watch, mut phone) = (Store::open_in_memory().unwrap(), Store::open_in_memory().unwrap());
+        add(&mut watch, "water the plants");
+        let parcel = parcel(&mut watch).unwrap().expect("everything");
+        unparcel(&mut phone, &parcel).unwrap();
+        assert_eq!(titles(&mut phone), ["water the plants"]);
     }
 }

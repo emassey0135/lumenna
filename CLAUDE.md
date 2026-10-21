@@ -1174,6 +1174,14 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   changes. Each answers on its app's own connection, so the phone's sync carries what the
   watch wrote to every other device. The watch is not in the device list: trust is the
   system's pairing of watch and phone.
+- **Out of reach, what changed is handed on** (`lumenna-sync`'s `parcel`, `Device.linkParcel` and
+  `linkUnparcel`, `Shared/LinkParcel.swift`): every change since the two last agreed, which each
+  side records when an exchange settles (`note_agreed`, in `local_state`), queued with
+  `transferUserInfo` (a file past 48 KB), which the system delivers when the two are next in
+  reach, the other app closed or not. Both directions: the watch when the phone is out of reach,
+  the phone when the watch app cannot answer. A newer parcel holds all an older one did, so one
+  still waiting is cancelled, and a change taken twice is taken once. The watch holds the
+  background task the system wakes it with until nothing more is pending.
 - **The watch schedules its own reminders**, from its own store, as the iPhone does
   (`ReminderSchedule`, re-armed at launch, on becoming active, after each change and on a
   background refresh every six hours). A phone's notification goes to the watch when the phone

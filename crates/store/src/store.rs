@@ -779,6 +779,67 @@ impl Store {
         Ok(())
     }
 
+    /// A value of this device's own, never synced, if set.
+    ///
+    /// # Errors
+    ///
+    /// If the read fails.
+    pub fn local_value(&self, key: &str) -> Result<Option<Vec<u8>>> {
+        self.db.local_value(key)
+    }
+
+    /// Sets a value of this device's own, replacing what was there.
+    ///
+    /// # Errors
+    ///
+    /// If the write fails.
+    pub fn set_local_value(&mut self, key: &str, value: &[u8]) -> Result<()> {
+        self.db.set_local_value(key, value)
+    }
+
+    /// Each document synced and its heads, as this device has them.
+    ///
+    /// # Errors
+    ///
+    /// If a document cannot be read.
+    pub fn sync_heads(&mut self) -> Result<Vec<(DocId, Vec<automerge::ChangeHash>)>> {
+        let mut heads = Vec::new();
+        for id in self.sync_documents()? {
+            self.open_for_sync(id)?;
+            heads.push((id, self.docs.get_mut(id).heads()));
+        }
+        Ok(heads)
+    }
+
+    /// Document `id`'s changes that are not among `heads` or before them, each as its bytes:
+    /// what a device that has `heads` lacks.
+    ///
+    /// # Errors
+    ///
+    /// If the document cannot be read.
+    pub fn changes_since(&mut self, id: DocId, heads: &[automerge::ChangeHash]) -> Result<Vec<Vec<u8>>> {
+        self.open_for_sync(id)?;
+        Ok(self.docs.get_mut(id).changes_since(heads).into_iter().map(|(_, bytes)| bytes).collect())
+    }
+
+    /// Takes in changes to document `id` that came from another device, whatever this device
+    /// already has. Returns whether the document changed.
+    ///
+    /// # Errors
+    ///
+    /// If a change does not read, or the document cannot be read or written.
+    pub fn take_changes(&mut self, id: DocId, changes: &[Vec<u8>]) -> Result<bool> {
+        self.open_for_sync(id)?;
+        self.write(|docs| {
+            let doc = docs.get_mut(id);
+            let before = doc.heads();
+            for change in changes {
+                doc.load_incremental(change)?;
+            }
+            Ok(doc.heads() != before)
+        })
+    }
+
     /// Notes that `node_id` was just synced over a direct link, at the heads the store has now.
     pub fn note_linked(&mut self, node_id: &str) {
         let heads = self.version();

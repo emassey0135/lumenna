@@ -189,13 +189,6 @@ Both have every view and work with the phone away, each with a whole store of it
   iPhone over WatchConnectivity, which the phone passes on. Still to come, in this order:
   - **On a real watch**: TN3135 is not enforced in the simulator, nor is memory, and
     Automerge loads whole documents.
-  - **Changes made away from the phone, handed on later**: with no Iroh the watch syncs only
-    through its phone, so away from it nothing syncs; but today an exchange needs both apps
-    answering at once, so a change made then waits until the watch app is next open near the
-    phone. `transferUserInfo` queues it with the system, which delivers it when the two are
-    next in reach, the watch app closed or not (the exchange must then carry changes without
-    a reply), and background refresh (`WKApplicationRefreshBackgroundTask`) brings the
-    phone's back.
   - **Later, if it matters**: syncing far from the phone through a relay of our own that the
     watch polls over plain HTTPS, the one networking watchOS allows.
 - **Wear OS** is built (`apps/android/wear`): a standalone full peer over the phone's shared

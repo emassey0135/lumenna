@@ -11,7 +11,7 @@
 
 use std::sync::{Arc, Mutex, PoisonError};
 
-use lumenna_sync::exchange::Exchange;
+use lumenna_sync::exchange::{self, Exchange};
 
 use crate::{Lumenna, Result};
 
@@ -58,7 +58,12 @@ impl PhoneLink {
         let mut exchange = self.exchange();
         self.lumenna.with(|store| {
             self.note(&exchange.incoming(store, &reply)?);
-            if exchange.settled() { Ok(None) } else { Ok(Some(exchange.outgoing(store)?)) }
+            if exchange.settled() {
+                exchange::note_agreed(store)?;
+                Ok(None)
+            } else {
+                Ok(Some(exchange.outgoing(store)?))
+            }
         })
     }
 
@@ -72,7 +77,35 @@ impl PhoneLink {
         let mut exchange = self.exchange();
         self.lumenna.with(|store| {
             self.note(&exchange.incoming(store, &message)?);
-            Ok(exchange.outgoing(store)?)
+            let reply = exchange.outgoing(store)?;
+            if exchange.settled() {
+                exchange::note_agreed(store)?;
+            }
+            Ok(reply)
+        })
+    }
+
+    /// What the other side may lack, for the system to deliver when the two are next in reach,
+    /// with no reply (`transferUserInfo`): every change since the last exchange settled.
+    /// Nothing when there is nothing new.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn parcel(&self) -> Result<Option<Vec<u8>>> {
+        self.lumenna.with(|store| Ok(exchange::parcel(store)?))
+    }
+
+    /// Takes in a parcel the other side handed on. Returns whether anything here changed.
+    ///
+    /// # Errors
+    ///
+    /// If the parcel does not read, or the store refuses what it brought.
+    pub fn unparcel(&self, parcel: Vec<u8>) -> Result<bool> {
+        self.lumenna.with(|store| {
+            let changed = exchange::unparcel(store, &parcel)?;
+            self.note(&changed);
+            Ok(!changed.is_empty())
         })
     }
 
@@ -130,5 +163,22 @@ mod tests {
         assert_eq!(titles(&phone), ["call the bank", "water the plants"]);
         assert!(on_watch.took_in() && on_phone.took_in(), "each side is told to redraw");
         assert!(!on_watch.took_in(), "and told once");
+    }
+
+    #[test]
+    fn away_from_the_phone_a_change_is_handed_on_and_taken_in_without_a_reply() {
+        let ((_w, watch), (_p, phone)) = (open(), open());
+        let (on_watch, on_phone) = (PhoneLink::new(Arc::clone(&watch)), PhoneLink::new(Arc::clone(&phone)));
+        let mut message = on_watch.start().unwrap();
+        while let Some(next) = on_watch.take(on_phone.answer(message).unwrap()).unwrap() {
+            message = next;
+        }
+        assert!(on_watch.parcel().unwrap().is_none(), "nothing since they agreed");
+
+        watch.add_task("water the plants").unwrap();
+        let parcel = on_watch.parcel().unwrap().expect("what changed on the watch");
+        assert!(on_phone.unparcel(parcel).unwrap());
+        assert_eq!(phone.list_tasks("").unwrap().rows.iter().map(|row| row.title.as_str()).collect::<Vec<_>>(), ["water the plants"]);
+        assert!(on_phone.took_in(), "the phone is told to redraw");
     }
 }

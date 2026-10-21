@@ -9,7 +9,8 @@ import WatchConnectivity
 /// connection, so it sees the watch's changes as local edits. A message from the watch wakes
 /// this app in the background, which is why the session is activated at launch. The phone
 /// cannot start an exchange with a watch app that is not open, so when its store changes it
-/// only nudges an open one to start.
+/// nudges an open one to start, and hands on what changed (`LinkParcel`) to one it cannot reach,
+/// for the system to deliver when the two are next in reach.
 final class WatchLink: NSObject, WCSessionDelegate {
     private let core: Core
     private var observer: NSObjectProtocol?
@@ -29,9 +30,28 @@ final class WatchLink: NSObject, WCSessionDelegate {
     /// that brought nothing in posts no change, so this does not go back and forth.
     private func nudge() {
         let session = WCSession.default
-        guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled,
-              session.isReachable else { return }
+        guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else { return }
+        guard session.isReachable else {
+            LinkParcel.handOn(core.app.device, over: session)
+            return
+        }
         session.sendMessage(["changed": true], replyHandler: nil, errorHandler: nil)
+    }
+
+    /// What the watch handed on while it was out of reach, delivered now.
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
+        guard let parcel = LinkParcel.from(userInfo) else { return }
+        DispatchQueue.main.async { self.take(parcel: parcel) }
+    }
+
+    func session(_ session: WCSession, didReceive file: WCSessionFile) {
+        guard let parcel = LinkParcel.from(file) else { return }
+        DispatchQueue.main.async { self.take(parcel: parcel) }
+    }
+
+    private func take(parcel: Data) {
+        guard (try? core.app.device.linkUnparcel(parcel: parcel)) == true else { return }
+        NotificationCenter.default.post(name: Core.changed, object: nil, userInfo: ["arrived": true])
     }
 
     func session(_ session: WCSession, didReceiveMessageData message: Data, replyHandler: @escaping (Data) -> Void) {

@@ -1,5 +1,6 @@
 import Foundation
 import WatchConnectivity
+import WatchKit
 
 /// Syncing with the iPhone over WatchConnectivity: the watch's only way to its other devices.
 ///
@@ -9,12 +10,18 @@ import WatchConnectivity
 /// the watch, while its app is open, to start one. It runs when the app opens, after each
 /// change made here (the store's heads moving), when the phone comes into reach, when the
 /// phone says it changed, and when asked.
+///
+/// Out of the phone's reach, what changed here is handed on (`LinkParcel`): queued with the
+/// system, which delivers it when the two are next in reach, this app closed or not. The phone
+/// hands on its own the same way while this app cannot answer.
 final class PhoneSync: NSObject, ObservableObject {
     /// How the last attempt went, said in the settings row.
     @Published private(set) var status = "Not synced with the iPhone yet"
     private weak var core: WatchCore?
     private var running = false
     private var again = false
+    /// Background tasks held while the phone's parcels are delivered.
+    private var waiting: [WKWatchConnectivityRefreshBackgroundTask] = []
 
     init(core: WatchCore) {
         self.core = core
@@ -36,7 +43,8 @@ final class PhoneSync: NSObject, ObservableObject {
         let session = WCSession.default
         guard session.activationState == .activated else { return }
         guard session.isReachable else {
-            status = "The iPhone is not in reach; changes wait here until it is"
+            LinkParcel.handOn(core.app.device, over: session)
+            status = "The iPhone is not in reach; changes go to it when it is"
             return
         }
         do {
@@ -98,5 +106,39 @@ extension PhoneSync: WCSessionDelegate {
     /// The phone's store changed: what it says is only that, and the watch asks for the rest.
     func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         DispatchQueue.main.async { self.syncNow() }
+    }
+
+    /// What the phone handed on while this app could not answer, delivered now.
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
+        guard let parcel = LinkParcel.from(userInfo) else { return }
+        DispatchQueue.main.async { self.take(parcel: parcel, over: session) }
+    }
+
+    func session(_ session: WCSession, didReceive file: WCSessionFile) {
+        guard let parcel = LinkParcel.from(file) else { return }
+        DispatchQueue.main.async { self.take(parcel: parcel, over: session) }
+    }
+
+    private func take(parcel: Data, over session: WCSession) {
+        defer { finishDelivery(session) }
+        guard let core, (try? core.app.device.linkUnparcel(parcel: parcel)) == true else { return }
+        core.synced()
+        NotificationCenter.default.post(name: Core.changed, object: nil, userInfo: [Core.fromPhone: true])
+    }
+
+    /// Holds a background task the system started to deliver what the phone handed on, until
+    /// nothing more is waiting: completed sooner, the app is suspended mid-delivery.
+    func deliver(during task: WKWatchConnectivityRefreshBackgroundTask) {
+        waiting.append(task)
+        finishDelivery(WCSession.default)
+        // Never held for good: the system's budget is short.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { self.finishDelivery(WCSession.default, anyway: true) }
+    }
+
+    private func finishDelivery(_ session: WCSession, anyway: Bool = false) {
+        guard anyway || session.activationState == .activated && !session.hasContentPending else { return }
+        let done = waiting
+        waiting.removeAll()
+        done.forEach { $0.setTaskCompletedWithSnapshot(false) }
     }
 }

@@ -549,6 +549,16 @@ impl Db {
         Ok(stored)
     }
 
+    /// Sets a local value, replacing what was there.
+    ///
+    /// # Errors
+    ///
+    /// If the write fails.
+    pub fn set_local_value(&mut self, key: &str, value: &[u8]) -> Result<()> {
+        self.conn.execute("INSERT OR REPLACE INTO local_state (key, value) VALUES (?1, ?2)", params![key, value])?;
+        Ok(())
+    }
+
     /// Records one attempt to sync with a peer.
     ///
     /// # Errors

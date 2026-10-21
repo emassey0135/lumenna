@@ -83,6 +83,11 @@ final class WatchDelegate: NSObject, WKApplicationDelegate {
 
     func handle(_ backgroundTasks: Set<WKRefreshBackgroundTask>) {
         for task in backgroundTasks {
+            // The phone handed something on while the app was not running: held until it is in.
+            if let delivery = task as? WKWatchConnectivityRefreshBackgroundTask, let core = Opened.shared.core {
+                core.phone.deliver(during: delivery)
+                continue
+            }
             guard let refresh = task as? WKApplicationRefreshBackgroundTask, let reminders = Opened.shared.reminders else {
                 task.setTaskCompletedWithSnapshot(false)
                 continue
