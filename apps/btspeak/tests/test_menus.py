@@ -30,6 +30,7 @@ import day  # noqa: E402
 import menus  # noqa: E402
 import organise  # noqa: E402
 import preferences  # noqa: E402
+import rows  # noqa: E402
 import tasks  # noqa: E402
 
 play = btspeak_stub.play
@@ -66,6 +67,20 @@ class Menus(unittest.TestCase):
         return script
 
     # -- tasks ------------------------------------------------------------------------
+
+    def test_a_rows_states_are_said_whole_and_shown_short_in_braille(self):
+        self.call("task.add", text="pay the rent yesterday")
+        self.call("task.add", text="water the plants")
+        self.store.caught_up()
+        self.session.show(L.PlaceTasks())
+        made = {item.row.title: item for item in rows.items(tasks.list_rows(self.session))}
+        self.assertIn("pay the rent", made, list(made))
+        rent = made["pay the rent"]
+        self.assertIn("overdue", rent.get_title())
+        self.assertIn("ovd", rent.get_braille_title())
+        self.assertNotIn("overdue", rent.get_braille_title())
+        plants = made["water the plants"]
+        self.assertEqual(plants.get_braille_title(), plants.get_title(), "nothing to shorten")
 
     def test_a_task_added_and_completed_comes_back_with_undo(self):
         script = self.run_script(

@@ -45,6 +45,7 @@ def list_rows(session: Session) -> list[Row]:
         rows.append(Row(
             item.row.id, line.text if line else item.row.title, item.row.actions, item.row,
             level=item.level, expanded=item.row.expanded, title=item.row.title,
+            braille=line.braille if line else "",
         ))
     return rows
 

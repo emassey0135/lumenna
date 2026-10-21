@@ -67,6 +67,10 @@ pub struct Line {
     pub detail: String,
     /// The whole line: the title, then the rest.
     pub text: String,
+    /// The line for a braille display, where a device shows one apart from speech (BTSpeak's
+    /// `braille_title`): a list row's states as their short forms ("ovd rec"), as BTSpeak's
+    /// own mail list shows its statuses; else the line as said.
+    pub braille: String,
 }
 
 impl Line {
@@ -74,7 +78,8 @@ impl Line {
     #[must_use]
     pub fn of(title: String, rest: Vec<String>) -> Self {
         let detail = join(rest);
-        Self { text: join(vec![title.clone(), detail.clone()]), title, detail }
+        let text = join(vec![title.clone(), detail.clone()]);
+        Self { braille: text.clone(), text, title, detail }
     }
 
     /// The whole line: the title, then the rest.
@@ -112,15 +117,29 @@ pub fn row(row: &RowView, checkbox: bool, clock: &dyn Clock) -> String {
 
 /// [`row`], as its title and the rest.
 pub fn row_line(row: &RowView, checkbox: bool, clock: &dyn Clock) -> Line {
+    let states: Vec<&str> = row.trailing_states().filter(|state| !(checkbox && *state == "completed")).collect();
+    stated(row, clock, &states)
+}
+
+/// A row's line: the title, when it is due, its value and `states`, said as words and shown in
+/// braille as their short forms.
+fn stated(row: &RowView, clock: &dyn Clock, states: &[&str]) -> Line {
     let mut parts = Vec::new();
     parts.extend(due(row, clock));
     parts.extend(row.value.clone());
-    parts.extend(
-        row.trailing_states()
-            .filter(|state| !(checkbox && *state == "completed"))
-            .map(str::to_owned),
-    );
-    Line::of(row.title.clone(), parts)
+    let brailled = join(vec![row.title.clone(), join(parts.clone()), short_forms(states)]);
+    parts.extend(states.iter().map(|state| (*state).to_owned()));
+    Line { braille: brailled, ..Line::of(row.title.clone(), parts) }
+}
+
+/// States as a braille display shows them, the core's short forms with a space between
+/// ("ovd rec"); a state this build does not know is shown as its word.
+fn short_forms(states: &[&str]) -> String {
+    states
+        .iter()
+        .map(|state| lumenna_core::state::State::from_keyword(state).map_or((*state).to_owned(), |s| s.abbreviation().to_owned()))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// A row in the trash, where every row is `deleted` and saying so on each is noise.
@@ -130,11 +149,8 @@ pub fn trashed(row: &RowView, clock: &dyn Clock) -> String {
 
 /// [`trashed`], as its title and the rest.
 pub fn trashed_line(row: &RowView, clock: &dyn Clock) -> Line {
-    let mut parts = Vec::new();
-    parts.extend(due(row, clock));
-    parts.extend(row.value.clone());
-    parts.extend(row.trailing_states().filter(|state| *state != "deleted").map(str::to_owned));
-    Line::of(row.title.clone(), parts)
+    let states: Vec<&str> = row.trailing_states().filter(|state| *state != "deleted").collect();
+    stated(row, clock, &states)
 }
 
 /// When a row is due, with the time in this device's clock: "due tomorrow at 3:00 PM".
@@ -323,6 +339,16 @@ mod tests {
             actions: Vec::new(),
         };
         PlanAssignment { details: lumenna_records::words::sitting_details(&sitting), ..sitting }
+    }
+
+    #[test]
+    fn a_rows_braille_shows_its_states_short_and_says_them_whole() {
+        let row = RowView { due: Some("due yesterday".to_owned()), ..task("Pay rent", Some("priority 1"), &["overdue", "recurring", "ready"], false) };
+        let line = row_line(&row, true, &TwelveHour);
+        assert_eq!(line.text, "Pay rent, due yesterday, priority 1, overdue, recurring");
+        assert_eq!(line.braille, "Pay rent, due yesterday, priority 1, ovd rec");
+        let plain = row_line(&task("Water the plants", None, &["ready"], false), true, &TwelveHour);
+        assert_eq!(plain.braille, plain.text, "nothing to shorten");
     }
 
     #[test]

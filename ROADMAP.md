@@ -170,14 +170,14 @@ names from the store. Still to come:
 - **iOS UI tests that fail only when the simulator delivers a key out of order**: ⌘K (the K
   arriving before the ⌘, so VoiceOver's focus test sees nothing done) and ⌘F on CI. They
   are in the full suites, which only report.
-- **Braille apart from speech**: rows could show the core's braille short forms ("ovd")
-  while speech says the word. On the web through `aria-braillelabel`, which JAWS and NVDA
-  read; on Windows only through JAWS scripts or an NVDA add-on, since UI Automation gives a
-  control one name, so only if braille users there ask.
+- **Braille apart from speech**: BTSpeak shows a row's states short (`Line::braille`, its menu
+  item's `braille_title`). Elsewhere: the web through `aria-braillelabel`, which JAWS and NVDA
+  read; Windows only through JAWS scripts or an NVDA add-on, since UI Automation gives a control
+  one name, so only if braille users there ask.
 - **Screen readers not yet tried by a person**: JAWS, Narrator, ChromeVox, Emacspeak and
   speechd-el. NVDA (Windows and the web), Orca, VoiceOver on the Mac and iPhone, TalkBack,
-  Emacsvox and the BTSpeak have been. The braille short forms for states and roles are
-  unchecked against BTBraille's tree-view convention (`crates/core/tests/snapshots/`).
+  Emacsvox and the BTSpeak have been. BT Braille's own short forms are its mail list's statuses
+  (`unr`, `flag`, `repl`), which ours follow; it has none for a row's kind.
 
 ## 5. The watches
 

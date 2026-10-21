@@ -4,10 +4,11 @@ The app sends each row's line already worded in this device's clock (`Lines`), t
 it changes against the row shown before, and whether what is under a row is folded away; it
 folds, too, through each row's Expand and Collapse. This file only joins those for the menu.
 
-**One caveat shapes everything here.** `DynamicMenuDialog.draw()` sets `content_text` and
-`content_braille` from the same string, so with the stock library speech and braille cannot
-diverge. So the level is a compact marker in the line, said only where it changes, which is what
-a screen-reader tree view does: depth is never indentation, which says nothing in speech.
+Speech and braille come from one string, but for a row whose line the app shows apart in
+braille (`Line.braille`: its states as short forms, "ovd rec", as the device's own mail list
+shows its statuses), which goes to the menu item's `braille_title`. The level is a compact
+marker in the line, said only where it changes, which is what a screen-reader tree view does:
+depth is never indentation, which says nothing in speech.
 """
 
 from __future__ import annotations
@@ -66,9 +67,11 @@ class Row:
     record it stands for (a task's `RowView`, a day's `DayItem`, a sidebar entry, a device)."""
 
     def __init__(self, key: str, line: str, actions=(), record=None, *, level=None, expanded=None,
-                 title: str = "", hint=None) -> None:
+                 title: str = "", hint=None, braille: str = "") -> None:
         self.key = key
         self.line = line
+        #: The line on the braille display, where it is not the line said.
+        self.braille = braille or line
         self.actions = list(actions)
         self.record = record
         self.level = level
@@ -79,7 +82,14 @@ class Row:
     def said(self) -> str:
         """The line as read: the level where it changes, the line, and whether what is under
         it is folded away — the one thing that cannot be found out without pressing a key."""
-        parts = [self.level or "", self.line]
+        return self._with(self.line)
+
+    def brailled(self) -> str:
+        """The line on the braille display: as said, the states short."""
+        return self._with(self.braille)
+
+    def _with(self, line: str) -> str:
+        parts = [self.level or "", line]
         if self.expanded is not None:
             parts.append("expanded" if self.expanded else "collapsed")
         return ", ".join(part for part in parts if part)
@@ -105,6 +115,7 @@ def items(rows, on_select=None, fold=None) -> list:
             hotkeys={"+": (lambda row=row: fold(row, True)), "-": (lambda row=row: fold(row, False))} if foldable else {},
             hint=row.hint,
             navigation_title=row.title,
+            braille_title=row.brailled() if row.braille != row.line else None,
         )
         item.row = row
         made.append(item)

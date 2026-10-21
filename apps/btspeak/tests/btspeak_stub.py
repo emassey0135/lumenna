@@ -59,9 +59,16 @@ class DynamicMenuItem:
         self.hotkeys = hotkeys or {}
         self.dependency = dependency
         self.hint = hint
+        self.braille_title = braille_title
 
     def get_title(self) -> str:
         return self.title() if callable(self.title) else self.title
+
+    def get_braille_title(self) -> str:
+        """The device's: the braille title where there is one, else the title."""
+        if self.braille_title is None:
+            return self.get_title()
+        return self.braille_title() if callable(self.braille_title) else self.braille_title
 
 
 class InputField:
