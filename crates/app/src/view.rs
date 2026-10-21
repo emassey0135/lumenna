@@ -116,6 +116,11 @@ pub struct Asking {
     /// Why the last answer was refused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refusal: Option<String>,
+    /// When the question asks for a day (Go to Day, Another Day's), the day, ISO, it starts
+    /// from: the day shown, else today. A shell offers its own calendar beside the line, open
+    /// on it, a day picked there answered as its ISO date.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub day: Option<String>,
 }
 
 /// The rows a place lists under `query`: tasks, or the block series; `None` for the day.
@@ -232,13 +237,13 @@ fn shown(model: &Screen) -> ViewModel {
         reminders_held: model.reminders_held.view(),
         devices_held: model.devices_held.view(),
         landing: model.landing,
-        asking: model.open.as_ref().map(asking),
+        asking: model.open.as_ref().map(|open| asking(open, model)),
     }
 }
 
 /// The question open, as shown. Put in a Block's pick ends in Another Day, the app's own choice:
 /// picked, it asks which day, and offers that day's blocks.
-fn asking(open: &crate::Open) -> Asking {
+fn asking(open: &crate::Open, model: &Screen) -> Asking {
     let mut choices = open.choices.clone();
     let picking = matches!(open.purpose, crate::Purpose::Action(_)) && open.picked.is_none();
     if picking
@@ -251,7 +256,11 @@ fn asking(open: &crate::Open) -> Asking {
             ..lumenna_records::Choice::default()
         });
     }
-    Asking { action: open.action().cloned(), question: open.question(), choices, refusal: open.refusal.clone() }
+    let day = matches!(open.purpose, crate::Purpose::GoToDay | crate::Purpose::PickDay(_))
+        .then(|| model.day_shown())
+        .flatten()
+        .map(|day| day.to_string());
+    Asking { action: open.action().cloned(), question: open.question(), choices, refusal: open.refusal.clone(), day }
 }
 
 /// The projects a task's Project field offers: every one not archived, in tree order, and the

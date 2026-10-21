@@ -36,6 +36,15 @@ body {
   min-height: 100vh;
 }
 
+/* A day's or a time's picker, under the line it fills. */
+.picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--gap) / 2);
+  margin: calc(var(--gap) / -2) 0 var(--gap);
+}
+
 /* What was last said, kept in view at the foot of the window however long the page. */
 .status-line {
   grid-column: 1 / -1;

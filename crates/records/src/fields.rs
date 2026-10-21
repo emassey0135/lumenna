@@ -243,6 +243,40 @@ pub fn pairing_words(this_device: String, local: bool) -> PairingWords {
     }
 }
 
+/// What a shell's own day or time picker says, where the platform's control does not say it
+/// itself: the button beside a line that opens a calendar or a clock, the picker's answer and
+/// cancel, and a time chosen as hours and minutes. A picker only fills the line beside it, which
+/// stays the way in, so its words are few. Title Case; `sentence_case` for the others.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PickerWords {
+    /// The button that opens a calendar: "Choose a Day".
+    pub day: String,
+    /// The button that opens a clock: "Choose a Time".
+    pub time: String,
+    /// The picker's answer, which puts what it holds in the line.
+    pub choose: String,
+    /// The picker's cancel, which leaves the line as it was.
+    pub cancel: String,
+    /// A time's hours, where a time is chosen as two numbers.
+    pub hours: String,
+    /// A time's minutes.
+    pub minutes: String,
+}
+
+/// What a shell's own day or time picker says (`PickerWords`).
+#[must_use]
+pub fn picker_words() -> PickerWords {
+    PickerWords {
+        day: "Choose a Day".to_owned(),
+        time: "Choose a Time".to_owned(),
+        choose: "Choose".to_owned(),
+        cancel: "Cancel".to_owned(),
+        hours: "Hours".to_owned(),
+        minutes: "Minutes".to_owned(),
+    }
+}
+
 /// Text with no one's own words in it — a button, a fixed title — in sentence case, for a
 /// platform whose convention it is (Material, the web) and for braille, where every capital
 /// costs a cell. Never for a task's title or a name, whose capitals are their own.

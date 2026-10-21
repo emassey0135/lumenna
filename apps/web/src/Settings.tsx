@@ -34,6 +34,7 @@ import {
 import { DevicesPage } from "./Devices";
 import type { Screen, Setting, SettingView, SettingsView } from "./core";
 import { SettingKind } from "./core";
+import { TimePicker } from "./Pickers";
 import { send } from "./session";
 import { remindersOn, setRemindersOn } from "./Reminders";
 import { say } from "./say";
@@ -162,7 +163,7 @@ function Line(props: { setting: Setting; typed: string; problem?: string | null;
   const [text, setText] = useState(props.typed);
   useEffect(() => setText(props.typed), [props.typed]);
   const changed = () => text !== setting.value;
-  return (
+  const line = (
     <TextField
       className="field"
       value={text}
@@ -188,6 +189,21 @@ function Line(props: { setting: Setting; typed: string; problem?: string | null;
       )}
       <FieldError>{props.problem}</FieldError>
     </TextField>
+  );
+  if (setting.kind !== SettingKind.Time) return line;
+  // A time has the browser's clock beside its line; a time picked there is applied at once. The
+  // two are a group named for the setting, so each clock is told from the others.
+  return (
+    <div role="group" aria-label={setting.title}>
+      {line}
+      <TimePicker
+        line={text}
+        onPick={(time) => {
+          setText(time);
+          void props.apply(setting.key, time);
+        }}
+      />
+    </div>
   );
 }
 

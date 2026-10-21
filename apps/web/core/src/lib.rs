@@ -16,7 +16,7 @@ use lumenna_app::keys::KeyGroup;
 
 use boltffi::export;
 use lumenna_host::Lumenna;
-use lumenna_records::LumennaError;
+use lumenna_records::{LumennaError, PickerWords};
 
 mod app;
 mod clock;
@@ -50,4 +50,19 @@ pub fn sentence_case(text: String) -> String {
 #[export]
 pub fn keyboard_shortcuts() -> Vec<KeyGroup> {
     lumenna_app::keys::grouped(true)
+}
+
+/// What the web's own day and time pickers say, beside the line each fills, in sentence case.
+#[export]
+pub fn picker_words() -> PickerWords {
+    let words = lumenna_records::picker_words();
+    let case = lumenna_records::sentence_case;
+    PickerWords {
+        day: case(words.day),
+        time: case(words.time),
+        choose: case(words.choose),
+        cancel: case(words.cancel),
+        hours: case(words.hours),
+        minutes: case(words.minutes),
+    }
 }

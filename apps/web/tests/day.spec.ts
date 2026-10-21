@@ -226,3 +226,36 @@ test("a new block starts at the next whole hour today, and when the day starts o
   await form.getByRole("textbox", { name: "Day", exact: true }).fill("today");
   await expect(starts).toHaveValue("18:15");
 });
+
+test("a block's day and start have the browser's pickers beside their lines, which fill them", async ({ page }) => {
+  await open(page);
+  await place(page, /^Blocks/);
+  await page.getByRole("button", { name: "Add block" }).click();
+  const form = page.getByRole("dialog", { name: "New Block" });
+  await form.getByLabel("Choose a day").fill("2030-01-15");
+  await expect(form.getByRole("textbox", { name: "Day", exact: true })).toHaveValue("2030-01-15");
+  await form.getByLabel("Choose a time").fill("14:30");
+  await expect(form.getByRole("textbox", { name: "Starts at" })).toHaveValue("14:30");
+  // The line still takes words, and the picker follows it when it holds a time.
+  await form.getByRole("textbox", { name: "Starts at" }).fill("09:15");
+  await expect(form.getByLabel("Choose a time")).toHaveValue("09:15");
+  const audit = await new AxeBuilder({ page }).include("[role=dialog]").analyze();
+  expect(audit.violations).toEqual([]);
+});
+
+test("go to day has a calendar beside its line, open on the day shown, which fills the line", async ({ page }) => {
+  await open(page);
+  await place(page, /^Today/);
+  await page.getByRole("button", { name: "Go to day" }).click();
+  const dialog = page.getByRole("dialog");
+  const calendar = dialog.getByLabel("Choose a day");
+  const today = await page.evaluate(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  });
+  await expect(calendar).toHaveValue(today);
+  await calendar.fill("2030-01-15");
+  await expect(dialog.getByRole("textbox", { name: "Day", exact: true })).toHaveValue("2030-01-15");
+  await dialog.getByRole("button", { name: "Go" }).click();
+  await expect(page.getByRole("main").getByRole("heading", { level: 2 })).toContainText("2030");
+});

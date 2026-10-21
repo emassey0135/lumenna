@@ -473,6 +473,24 @@ fn go_to_day_asks_for_a_day_and_keeps_one_it_cannot_read_in_the_question() {
 }
 
 #[test]
+fn go_to_day_says_it_asks_for_a_day_and_which_a_calendar_opens_on() {
+    let mut app = App::new();
+    app.send(Event::Open(Place::Today));
+    app.send(Event::Day(DayMove::Next));
+    app.send(Event::Day(DayMove::Ask));
+    let tomorrow = jiff::Zoned::now().date().tomorrow().unwrap().to_string();
+    assert_eq!(app.view().asking.unwrap().day, Some(tomorrow.clone()), "the day shown");
+    // Picked from a calendar: its ISO date is the answer.
+    app.send(Event::Answer(Answer::Text { text: tomorrow }));
+    assert_eq!(app.view().asking, None);
+    // Any other question asks for no day.
+    app.send(Event::Open(Place::Tasks));
+    app.send(Event::Perform(sidebar_action(&app, "Projects", ActionKind::New)));
+    let asking = app.view().asking.expect("a new project's name");
+    assert_eq!(asking.day, None);
+}
+
+#[test]
 fn a_blocks_day_opens_from_anywhere_with_that_block_in_hand_and_lands_there() {
     let mut app = App::new();
     let date = jiff::Zoned::now().date().checked_add(jiff::Span::new().days(3)).unwrap().to_string();

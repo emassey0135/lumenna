@@ -122,6 +122,19 @@ test("a planning setting applies when its field is left, and says so", async ({ 
   await expect(page.getByRole("textbox", { name: "Day ends" })).toHaveValue("21:30");
 });
 
+test("a time setting has the browser's clock beside it, in a group named for it, applied when picked", async ({ page }) => {
+  await open(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  const settings = page.getByRole("dialog", { name: "Settings" });
+  const dayEnds = settings.getByRole("group", { name: "Day ends" });
+  await dayEnds.getByLabel("Choose a time").fill("20:45");
+  await expect(dayEnds.getByRole("textbox", { name: "Day ends" })).toHaveValue("20:45");
+  await expect(page.locator('[aria-live="polite"]')).toContainText("20:45");
+  await settings.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByRole("textbox", { name: "Day ends" })).toHaveValue("20:45");
+});
+
 test("a backup downloads, and restores into another browser", async ({ browser }) => {
   const here = await (await browser.newContext()).newPage();
   await open(here);

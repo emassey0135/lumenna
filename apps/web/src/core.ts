@@ -33,6 +33,7 @@ export type {
   ExportChoice,
   FormField,
   PairingWords,
+  PickerWords,
   ProposalWords,
   Question,
   Place,

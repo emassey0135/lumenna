@@ -9,7 +9,7 @@
 // decided here.
 
 import * as Comlink from "comlink";
-import init, { open, sentenceCase, keyboardShortcuts } from "./core/lumenna_web.js";
+import init, { open, pickerWords, sentenceCase, keyboardShortcuts } from "./core/lumenna_web.js";
 import type {
   App,
   Asking,
@@ -30,6 +30,7 @@ import type {
   Turn,
   ViewModel,
   KeyGroup,
+  PickerWords,
 } from "./core/lumenna_web.js";
 import { Capitals, TimeStyle } from "./core/lumenna_web.js";
 
@@ -263,10 +264,11 @@ const api = {
   /** A number that moves when another tab or process has written. */
   outsideVersion: (): number => session().outsideVersion(),
 
-  /** Every sentence and button of pairing, buttons and questions in the web's sentence case. */
-
   /** Fixed text — a button, a question with no one's name in it — in sentence case. */
   sentence: (text: string): string => sentenceCase(text),
+
+  /** What the web's own day and time pickers say, in sentence case. */
+  pickerWords: (): PickerWords => pickerWords(),
 
   /** The keyboard commands the desktop apps share, grouped as their menus are, in sentence case. */
   keyboardShortcuts: (): KeyGroup[] => keyboardShortcuts(),

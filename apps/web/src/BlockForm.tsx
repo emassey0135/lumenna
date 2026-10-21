@@ -26,6 +26,7 @@ import {
 } from "react-aria-components";
 import type { BlockFields, BlockFormView, FormField } from "./core";
 import { FieldKind } from "./core";
+import { DayPicker, TimePicker } from "./Pickers";
 import { send } from "./session";
 
 /** Where the block form is shown: rendered once, in the app, while the app has one open. */
@@ -108,14 +109,34 @@ function Form(props: { form: BlockFormView }) {
             {help}
           </TextField>
         );
-      default:
-        return (
-          <TextField key={field.key} className="field" value={String(values[key])} onChange={(text) => set(field.key, text)} autoFocus={first}>
+      default: {
+        const line = String(values[key]);
+        const typed = (
+          <TextField key={field.key} className="field" value={line} onChange={(text) => set(field.key, text)} autoFocus={first}>
             <Label>{field.label}</Label>
             <Input placeholder={field.example || undefined} />
             {help}
           </TextField>
         );
+        // A day or a time has the browser's picker beside its line, filling it.
+        if (field.kind === FieldKind.Date) {
+          return (
+            <div key={field.key}>
+              {typed}
+              <DayPicker line={line} onPick={(day) => set(field.key, day)} />
+            </div>
+          );
+        }
+        if (field.kind === FieldKind.Time) {
+          return (
+            <div key={field.key}>
+              {typed}
+              <TimePicker line={line} onPick={(time) => set(field.key, time)} />
+            </div>
+          );
+        }
+        return typed;
+      }
     }
   };
 

@@ -3,7 +3,7 @@
 
 use boltffi::export;
 use lumenna_records::places::{Place, SidebarGroup, SidebarKind};
-use lumenna_records::{Candidate, Question};
+use lumenna_records::{Candidate, PickerWords, Question};
 
 /// `text` in sentence case: for a platform whose convention it is, and for braille.
 #[export]
@@ -27,6 +27,12 @@ pub fn sidebar_key(kind: SidebarKind) -> String {
 #[export]
 pub fn go_to_day_question() -> Question {
     lumenna_records::go_to_day_question()
+}
+
+/// What a shell's own day or time picker says, beside the line it fills.
+#[export]
+pub fn picker_words() -> PickerWords {
+    lumenna_records::picker_words()
 }
 
 /// How many places a sidebar group holds, in words: "no projects", "1 label".

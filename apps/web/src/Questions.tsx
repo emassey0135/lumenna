@@ -28,6 +28,7 @@ import {
 } from "react-aria-components";
 import type { Key } from "react-aria-components";
 import type { Action, ShownAsking, ShownChoice } from "./core";
+import { DayPicker } from "./Pickers";
 import { send } from "./session";
 
 /**
@@ -106,6 +107,7 @@ export function Questions(props: { asking: ShownAsking | null; form: (action: Ac
           initial={question.initial}
           yes={question.yes}
           refusal={asking.refusal ?? undefined}
+          day={asking.day}
           cancel={cancel}
         />
       ) : (
@@ -122,6 +124,8 @@ function TextQuestion(props: {
   initial: string;
   yes: string;
   refusal: string | undefined;
+  /** When it asks for a day, the day a calendar beside the line opens on. */
+  day?: string | null;
   cancel: () => void;
 }) {
   const [text, setText] = useState(props.initial);
@@ -150,6 +154,7 @@ function TextQuestion(props: {
           )}
           <FieldError>{props.refusal}</FieldError>
         </TextField>
+        {props.day && <DayPicker line={text} from={props.day} onPick={setText} />}
         <div className="buttons">
           <Button onPress={props.cancel}>Cancel</Button>
           <Button type="submit">{props.yes}</Button>

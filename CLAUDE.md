@@ -99,6 +99,10 @@ without the screens over BoltFFI. No JSON crosses the FFI.
 `go_to_day_question`, `new_filter_questions` and `length_question` what the apps' own
   commands ask. A field marked `one_day` is what one day of a repeating block can change. A new block starts at `new_block_start(date)`: the next whole hour today, when
   the day starts on any other day.
+  A day or a time a client offers its own picker for (`FieldKind::Date`/`Time`, a time setting,
+  a question whose `Asking::day` is set) keeps the line first, the way in, the picker beside it
+  filling it (ISO, `HH:MM`); what the picker says where the platform's control does not is
+  `picker_words()`.
   A pick and a text question name their button (`yes`); "OK" is never the answer. A mnemonic or
   access key is the platform's to add; the words are not.
 - **Each action has a `sentence` and a `primary`.** Capitals follow the platform: Title
@@ -198,6 +202,9 @@ GTK are drawn from it entirely, and Emacs over RPC; only the CLI still calls the
   whether it finds devices nearby (`Event::PairingAs`, sent once like the clock). And `Run`
   works on a side list's row while the person acts from it, so a key a row does not offer is
   refused in the core's words by the app on every list.
+- **A question says when it asks for a day** (`Asking::day`: Go to Day and Another Day's), with
+  the day a calendar opens on, the day shown else today, so a shell offers its own beside the
+  line without comparing questions.
 - **A list's first row is in hand as soon as it opens**, as in the desktop apps' trees, so the
   details show it.
 - **The view says when focus is the app's to move** (`ViewModel::landing`, a count): it moves
@@ -1691,6 +1698,11 @@ with `lum`.
 - **React Aria gives a component its default class only when no `className` is passed**, so
   a class of our own names the default too (`"react-aria-Dialog wide"`): passing `"wide"` alone
   left the Replan and block dialogs without a background, and destructive menu items unpadded.
+- **A day or a time has the browser's own picker beside its line** (`Pickers.tsx`: `<input
+  type="date">` and `type="time"`, named by `picker_words`), in the block form, Go to Day and a
+  time setting, where it is grouped with its line under the setting's name, so each clock is
+  told from the others; a time picked there is applied at once. Chrome makes each a textbox, so
+  a test naming a field "Day" names it exactly.
 - **What the app says is shown too**, on a status line at the foot of the page (`useSaid`,
   `StatusLine`), kept in view however long the page: not a live region, since React Aria's
   announcer has said it already.
