@@ -323,6 +323,18 @@ class WearTest {
     }
 
     @Test
+    fun aLabelTakesAColourFromThePaletteAndItsPlaceSaysIt() {
+        core.device.addLabel("calls")
+        rule.runOnIdle { core.changed() }
+        press("calls", substring = true)
+        // A label's actions are buttons at the foot of its list; Colour picks from the palette.
+        press("Colour")
+        said("its colour now").assertExists()
+        press("teal")
+        rule.waitUntil(5_000) { core.device.listLabels().rows.single().value == "no open tasks, teal" }
+    }
+
+    @Test
     fun aBlocksRemindersAreItsDefaultsUntilOneOfItsOwnIsAddedByAPhrase() {
         // Granted, so adding the first reminder asks nothing over the app.
         val instrumentation = InstrumentationRegistry.getInstrumentation()

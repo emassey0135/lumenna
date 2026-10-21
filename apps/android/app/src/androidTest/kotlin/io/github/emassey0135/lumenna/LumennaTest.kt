@@ -686,6 +686,23 @@ class LumennaTest {
     }
 
     @Test
+    fun aLabelTakesAColourFromThePaletteAndItsRowSaysIt() {
+        seed { it.addLabel("calls") }
+        tab("Browse")
+        row("Labels").performClick()
+        rule.waitForIdle()
+        act("calls", "Colour")
+        // A pick of the palette's colours, No colour first and said to be its colour now.
+        shows("Colour of calls")
+        shows("its colour now")
+        rule.onNode(hasText("teal") and hasClickAction()).performClick()
+        rule.waitForIdle()
+        // The colour is said in words on the row, beside the dot drawn for it.
+        says("calls", "teal")
+        assertEquals("no open tasks, teal", core.device.listLabels().rows.single().value)
+    }
+
+    @Test
     fun everyBlockIsListedUnderBrowseAndAsksBeforeDeleting() {
         seed { it.addBlock(newBlock(title = "Review", at = "16:00", minutes = 60u, date = "in 10 days", kind = "work", repeat = null)) }
         tab("Browse")
