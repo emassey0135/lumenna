@@ -1,6 +1,7 @@
 //! Draws the app's icon, `apps/windows/lumenna.ico`, from its shapes: a near-black rounded
 //! square, an amber disc, and a check cut into it, on a 256 grid. GTK's SVG
-//! (`io.github.emassey0135.Lumenna.svg`) is the same shapes, so change both together.
+//! (`apps/gtk/data/icons/hicolor/scalable/apps/io.github.emassey0135.Lumenna.svg`) is the same
+//! shapes, so change both together.
 //!
 //! `cargo run -p lumenna-windows --example icon`. Each size is drawn at that size, eight samples
 //! a side to a pixel, rather than scaled down from the largest, and stored as a PNG.
