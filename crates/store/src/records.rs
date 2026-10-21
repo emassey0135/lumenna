@@ -928,6 +928,7 @@ pub(crate) fn read_settings<D: ReadDoc>(r: &Reader<'_, D>) -> Settings {
         cascade_complete_subtasks: r
             .bool("cascade_complete_subtasks")
             .unwrap_or(defaults.cascade_complete_subtasks),
+        show_completed_subtasks: r.bool("show_completed_subtasks").unwrap_or(defaults.show_completed_subtasks),
         verbosity: match r.string("verbosity").as_deref() {
             Some("terse") => Verbosity::Terse,
             _ => Verbosity::Full,
@@ -978,6 +979,7 @@ pub(crate) fn write_settings<T: Transactable>(
         before.map(|b| b.cascade_complete_subtasks),
         now.cascade_complete_subtasks,
     )?;
+    w.set_bool("show_completed_subtasks", before.map(|b| b.show_completed_subtasks), now.show_completed_subtasks)?;
     let verbosity = |v: Verbosity| match v {
         Verbosity::Terse => "terse",
         Verbosity::Full => "full",

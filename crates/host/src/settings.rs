@@ -25,6 +25,7 @@ impl Lumenna {
         let settings = self.with(|store| Ok(repaired(store).settings))?;
         let all: Vec<Setting> = [
             ("cascade-complete-subtasks", settings.cascade_complete_subtasks.to_string()),
+            ("show-completed-subtasks", settings.show_completed_subtasks.to_string()),
             (
                 "verbosity",
                 match settings.verbosity {
@@ -88,6 +89,7 @@ impl Lumenna {
             let before = repaired(store).settings;
             let mut after = before.clone();
             match key {
+                "show-completed-subtasks" => after.show_completed_subtasks = resolve::yes_or_no(value)?,
                 "cascade-complete-subtasks" => {
                     after.cascade_complete_subtasks = resolve::yes_or_no(value)?;
                 }
@@ -407,6 +409,12 @@ fn described(key: &str, value: String) -> Setting {
             K::Toggle,
             options(&[("true", "On"), ("false", "Off")]),
             "",
+        ),
+        "show-completed-subtasks" => (
+            "Show completed subtasks",
+            K::Toggle,
+            options(&[("true", "On"), ("false", "Off")]),
+            "Under their task, checked, in lists that leave completed tasks out.",
         ),
         "verbosity" => ("Announcements", K::Choice, options(&[("full", "Full sentences"), ("terse", "Terse")]), ""),
         "all-day-reminder-hour" => ("All-day reminders at", K::Time, Vec::new(), TIME),

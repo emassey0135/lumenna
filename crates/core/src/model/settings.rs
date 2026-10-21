@@ -39,6 +39,10 @@ pub struct Settings {
     /// The order task lists are in, unless a query says otherwise.
     #[cfg_attr(feature = "serde", serde(default))]
     pub task_order: crate::filter::Sort,
+    /// Whether a list shows a task's completed subtasks under it, checked, where a list leaves
+    /// completed tasks out.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub show_completed_subtasks: bool,
 }
 
 impl Default for Settings {
@@ -53,6 +57,7 @@ impl Default for Settings {
             week_start: civil::Weekday::Monday,
             urgency: crate::urgency::Coefficients::default(),
             task_order: crate::filter::Sort::Urgency,
+            show_completed_subtasks: false,
         }
     }
 }

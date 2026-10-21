@@ -133,6 +133,7 @@ fn every_core_record_round_trips() {
             ..lumenna_core::urgency::Coefficients::default()
         },
         task_order: lumenna_core::filter::Sort::Added,
+        show_completed_subtasks: true,
     };
 
     let mut docs = Documents::new();

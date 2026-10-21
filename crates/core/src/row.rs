@@ -196,9 +196,35 @@ impl Snapshot {
     /// the order: urgency ranks within each level, never across it.
     #[must_use]
     pub fn task_rows_sorted(&self, expr: &Expr, cx: &Context<'_>, sort: crate::filter::Sort) -> Vec<Row> {
-        let selected = expr.select(cx);
-        let included: std::collections::BTreeSet<TaskId> =
+        let mut selected = expr.select(cx);
+        let mut included: std::collections::BTreeSet<TaskId> =
             selected.iter().map(|task| task.id).collect();
+
+        // Each task's live subtasks: how many there are and how many are done, said on its
+        // row; and, where the setting asks, the done ones a list left out shown under it.
+        let mut subtasks: std::collections::BTreeMap<TaskId, Vec<&crate::model::Task>> = std::collections::BTreeMap::new();
+        for task in self.tasks.values().filter(|t| !t.is_deleted()) {
+            if let Some(parent) = task.parent_id {
+                subtasks.entry(parent).or_default().push(task);
+            }
+        }
+        if self.settings.show_completed_subtasks {
+            let mut frontier: Vec<TaskId> = included.iter().copied().collect();
+            while let Some(parent) = frontier.pop() {
+                for child in subtasks.get(&parent).into_iter().flatten() {
+                    if cx.facts().is_completed(child) && included.insert(child.id) {
+                        selected.push(child);
+                        frontier.push(child.id);
+                    }
+                }
+            }
+        }
+        let done: std::collections::BTreeMap<TaskId, (usize, usize)> = subtasks
+            .iter()
+            .map(|(parent, children)| {
+                (*parent, (children.iter().filter(|c| cx.facts().is_completed(c)).count(), children.len()))
+            })
+            .collect();
 
         // Group by the nearest ancestor that survived the filter. A task whose parent was
         // filtered out but whose grandparent was not still belongs under the grandparent:
@@ -220,7 +246,7 @@ impl Snapshot {
         }
 
         let mut rows = Vec::with_capacity(selected.len());
-        push_task_rows(cx, &children, None, 0, &mut rows);
+        push_task_rows(cx, &children, &done, None, 0, &mut rows);
         rows
     }
 
@@ -337,6 +363,7 @@ const fn priority_words(priority: crate::model::Priority) -> Option<&'static str
 fn push_task_rows(
     cx: &Context<'_>,
     children: &std::collections::BTreeMap<Option<TaskId>, Vec<&crate::model::Task>>,
+    done: &std::collections::BTreeMap<TaskId, (usize, usize)>,
     parent: Option<TaskId>,
     depth: u32,
     rows: &mut Vec<Row>,
@@ -359,9 +386,19 @@ fn push_task_rows(
             state: cx.facts().notable_states_of(task, cx.now),
             due: task.due.as_ref().map(|due| crate::time::due_words(due.date, cx.now.date())),
             due_time: task.due.as_ref().and_then(|due| due.time),
-            value: priority_words(task.priority).map(str::to_owned),
+            value: {
+                // "2 of 5 subtasks done": what a parent's row holds, whether or not they show.
+                let parts: Vec<String> = priority_words(task.priority)
+                    .map(str::to_owned)
+                    .into_iter()
+                    .chain(done.get(&task.id).map(|(finished, all)| {
+                        format!("{finished} of {all} {} done", if *all == 1 { "subtask" } else { "subtasks" })
+                    }))
+                    .collect();
+                (!parts.is_empty()).then(|| parts.join(", "))
+            },
             hint: None,
         });
-        push_task_rows(cx, children, Some(task.id), depth + 1, rows);
+        push_task_rows(cx, children, done, Some(task.id), depth + 1, rows);
     }
 }

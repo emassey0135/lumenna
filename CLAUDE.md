@@ -638,7 +638,10 @@ never said in a list or a live region. The weights are a synced setting
 said and read as one line, `urgency-weights` ("due 12, priority 6 3.9 1.8 0, …"). **Task
 lists are most urgent first by default** (`Settings::task_order`, the synced `task-order`:
 `urgency` or `added`): siblings by urgency, a subtask kept under its parent, the order added
-breaking ties. Tasks have no order of their own to move up or down, so nothing is lost. A
+breaking ties. Tasks have no order of their own to move up or down, so nothing is lost. A parent's row says how
+many of its subtasks are done ("1 of 2 subtasks done", in its `value`), and the synced
+`show-completed-subtasks` shows the done ones under it, checked, in a list that leaves completed
+tasks out. A
 list's query may end in `sort: urgency` or `sort: added` (`parse_query`, `Sort`) to choose
 for itself. A block's filter selects and never orders, so `parse_filter`
 refuses `sort:` rather than search for it.

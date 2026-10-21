@@ -136,7 +136,6 @@ A day or less each, for between the larger pieces.
 
 ### Tasks, blocks and text entry
 
-- **Completed subtasks**: a setting to show them, and a completion count on the parent row.
 - **Time zones** on tasks and blocks are stored and nothing can set them. Normally absent,
   so times float; set only for something tied to a real place.
 - **Block icons** exist in the model with no way to set them, and nothing shows one: decide

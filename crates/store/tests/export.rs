@@ -169,6 +169,7 @@ fn populated() -> Populated {
             ..lumenna_core::urgency::Coefficients::default()
         },
         task_order: lumenna_core::filter::Sort::Added,
+        show_completed_subtasks: true,
     };
 
     let before = store.snapshot().0.settings;

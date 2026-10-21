@@ -372,6 +372,8 @@ struct SettingsOut {
     urgency: lumenna_core::urgency::Coefficients,
     #[serde(default)]
     task_order: lumenna_core::filter::Sort,
+    #[serde(default)]
+    show_completed_subtasks: bool,
 }
 
 impl From<&Settings> for SettingsOut {
@@ -395,6 +397,7 @@ impl From<&Settings> for SettingsOut {
             week_start: lumenna_core::time::weekday_name(s.week_start).to_lowercase(),
             urgency: s.urgency,
             task_order: s.task_order,
+            show_completed_subtasks: s.show_completed_subtasks,
         }
     }
 }
@@ -420,6 +423,7 @@ impl SettingsOut {
             })?,
             urgency: self.urgency,
             task_order: self.task_order,
+            show_completed_subtasks: self.show_completed_subtasks,
         })
     }
 }
