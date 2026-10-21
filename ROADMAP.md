@@ -63,13 +63,11 @@ each was built to, and say what is still to come.
 
 ### Urgency and history
 
-Built: the score and its terms (`task_history`, `lum task history`), and per-task history
-from the records already kept, on a task's own screen in every app. Still to come:
+Built: the score and its terms (`task_history`, `lum task history`), per-task history from the
+records already kept, on a task's own screen in every app, and History, a place beside Trash in
+every app and `lum history`: what was done over two weeks, newest first. Still to come:
 
-- **A History place in every app**, beside Trash, listing what was done by day (tasks
-  completed, sittings worked, with their times), and `lum history` printing the same
-  (decided 2026-10-20). Field-level history from Automerge (title and due changes over time)
-  later, with its own API.
+- **Field-level history** from Automerge (title and due changes over time), with its own API.
 - If a task becomes permanent furniture at the top, a staleness question ("this has been at
   the top for three weeks; is it real?") rather than a bigger formula.
 
@@ -127,8 +125,6 @@ each, and assign greedily until the estimates fill it. One proposal, naming what
 fit, pinned the same way. Greedy and editable is worth more than optimal packing. Always
 optional.
 
-### Smaller planning gaps
-
 
 ## 4. Smaller gaps
 
@@ -157,7 +153,6 @@ names from the store. Still to come:
 - **BTSpeak**: Control-L (dots 7-8 with L) inside the input dialog completes at the cursor,
   through the dialog's own `hotkeys` (no subclass needed); no dialog or device key claims it.
   Tested against the stub only: try it on the device, in computer and in literary braille.
-- **Emacs** completes in the minibuffer already; nothing to add.
 
 ### Each app
 
@@ -167,7 +162,7 @@ names from the store. Still to come:
   where the actions rotor steps fine. A SwiftUI `List`'s rows are made lazily; try a UIKit
   `UIAccessibilityCustomRotor` on the hosting view, or a `LazyVStack`, and test it with VoiceOver
   (`VoiceOverUITests` steps a rotor by keyboard).
-- **iPad**, found by its UI tests, each skipped there until fixed:
+- **iPad**, found by its UI tests:
   - In the simulator, the first tap on a button of an alert with an untouched text field
     only ends editing (Skip when assigning a task). Try it on a real iPad; VoiceOver, which
     activates rather than taps, is not affected.
