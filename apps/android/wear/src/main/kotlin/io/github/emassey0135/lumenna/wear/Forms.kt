@@ -209,12 +209,15 @@ fun BlockFormScreen(core: Core, navigator: Navigator) {
             when (field.kind) {
                 FieldKind.CHOICE -> {
                     item { Heading(field.label) }
+                    // The kind's options, or the colours, each with its swatch.
+                    val chosen = fields.text(field.key)
                     field.options.forEach { option ->
                         item {
                             RadioButton(
-                                selected = fields.kind == option.id,
+                                selected = chosen == option.id,
                                 onSelect = { set(field.key, option.id) },
                                 modifier = Modifier.fillMaxWidth(),
+                                icon = option.swatch?.let { { SwatchDot(it) } },
                                 label = { Text(option.title) },
                             )
                         }

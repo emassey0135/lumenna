@@ -97,6 +97,7 @@ fun PlacesScreen(core: Core, navigator: Navigator) {
                         actions = listOfNotNull(fold).let { app.rowActions(row.key, it) },
                         key = row.key,
                         focus = focus,
+                        swatch = row.entry.swatch,
                         onClick = { navigator.open(placeScreen(kind.field0)) },
                     )
                     // A heading folds what is under it when pressed.
@@ -173,6 +174,7 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
                     onLongClick = { navigator.actions(task.title, actions) },
                     key = task.id,
                     focus = focus,
+                    swatch = task.swatch,
                     onClick = {
                         app.send(ShellEvent.Focus(task.id))
                         navigator.open(Screen.Task(task.id))
@@ -232,7 +234,7 @@ fun BlocksScreen(core: Core, navigator: Navigator) {
                 val actions = app.rowActions(row.id, row.actions)
                 val edit = row.actions.firstOrNull { it.kind == ActionKind.EDIT }
                 // Said as a task row is: when, in this watch's clock, then how long.
-                RowButton(row.title, detail = line?.detail?.ifEmpty { null }, actions = actions, onLongClick = { navigator.actions(row.title, actions) }, key = row.id, focus = focus) {
+                RowButton(row.title, detail = line?.detail?.ifEmpty { null }, actions = actions, onLongClick = { navigator.actions(row.title, actions) }, key = row.id, focus = focus, swatch = row.swatch) {
                     edit?.let {
                         app.send(ShellEvent.Focus(row.id))
                         app.send(ShellEvent.Perform(it))
@@ -259,6 +261,7 @@ fun ChooseScreen(screen: Screen.Choose) {
                 Button(
                     onClick = { screen.chosen(choice) },
                     modifier = Modifier.fillMaxWidth(),
+                    icon = choice.swatch?.let { { SwatchDot(it) } },
                     label = { Text(choice.title) },
                     secondaryLabel = detail.takeIf { it.isNotEmpty() }?.let { { Text(it, maxLines = Int.MAX_VALUE) } },
                 )

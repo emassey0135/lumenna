@@ -45,6 +45,7 @@ fun BlockFields.text(key: String): String = when (key) {
     "task_filter" -> taskFilter
     "colour" -> colour
     "notes" -> notes
+    "kind" -> kind
     else -> ""
 }
 

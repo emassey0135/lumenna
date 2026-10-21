@@ -180,6 +180,7 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
                         else -> null
                     },
                     openLabel = if (item.kind == DayKind.SITTING) "Show the task" else "Edit",
+                    swatch = item.block?.takeIf { item.kind == DayKind.BLOCK }?.swatch,
                 )
                 HorizontalDivider()
             }
@@ -227,17 +228,20 @@ fun BlockFormScreen(core: Core, navigator: Navigator) {
                 when (field.kind) {
                     FieldKind.CHOICE -> {
                         Heading(field.label)
+                        // The kind's options, or the colours, each with its swatch.
+                        val chosen = fields.text(field.key)
                         Column(Modifier.selectableGroup()) {
                             field.options.forEach { option ->
                                 Row(
                                     Modifier
                                         .fillMaxWidth()
                                         .heightIn(min = 48.dp)
-                                        .selectable(fields.kind == option.id, role = Role.RadioButton) { set(field.key, option.id) }
+                                        .selectable(chosen == option.id, role = Role.RadioButton) { set(field.key, option.id) }
                                         .padding(vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    RadioButton(selected = fields.kind == option.id, onClick = null)
+                                    RadioButton(selected = chosen == option.id, onClick = null)
+                                    option.swatch?.let { SwatchDot(it, Modifier.padding(start = 12.dp)) }
                                     Text(option.title, Modifier.padding(start = 12.dp))
                                 }
                             }

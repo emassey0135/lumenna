@@ -3,8 +3,15 @@ package io.github.emassey0135.lumenna
 // Choosing one of what the app offers, for the phone and the watch alike: how a choice reads.
 // Which actions a row has, what each asks and what a pick offers are the app's.
 
-/** Something offered for choosing, as a chooser shows it. */
-data class Option(val key: String, val title: String, val detail: String = "", val depth: Int = 0, val reason: String = "")
+/** Something offered for choosing, as a chooser shows it; a colour's [swatch] drawn beside it. */
+data class Option(
+    val key: String,
+    val title: String,
+    val detail: String = "",
+    val depth: Int = 0,
+    val reason: String = "",
+    val swatch: io.github.emassey0135.lumenna.app.Swatch? = null,
+)
 
 /**
  * "level 2" where an option's level in a tree changes from the option shown before it, or

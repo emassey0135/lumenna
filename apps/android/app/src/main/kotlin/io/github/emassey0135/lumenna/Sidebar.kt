@@ -87,6 +87,7 @@ fun PlaceRows(
                 heading = group,
                 selected = row.key == selected,
                 say = core::say,
+                swatch = row.entry.swatch,
             )
         }
         itemsIndexed(extra, key = { _, (key, _) -> key }) { index, (key, choose) ->

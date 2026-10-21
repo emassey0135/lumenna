@@ -74,6 +74,7 @@ fun DayScreen(core: Core, navigator: Navigator) {
                     onLongClick = { navigator.actions(title, actions) },
                     key = item.key,
                     focus = focus,
+                    swatch = item.block?.takeIf { item.kind == DayKind.BLOCK }?.swatch,
                     onClick = { if (actions.isNotEmpty()) navigator.actions(title, actions) },
                 )
             }

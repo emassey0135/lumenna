@@ -9,6 +9,14 @@ import android.view.inputmethod.EditorInfo
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
+import io.github.emassey0135.lumenna.app.Swatch
+import io.github.emassey0135.lumenna.colour
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.mutableStateOf
@@ -77,11 +85,14 @@ fun RowButton(
     /** The row's key, and its list's landing (`rememberLanding`), for focus put back on it. */
     key: String? = null,
     focus: RowFocus? = null,
+    /** A project's, label's or block's colour, drawn as the button's icon beside its name. */
+    swatch: Swatch? = null,
     onClick: () -> Unit,
 ) {
     Button(
         onClick = onClick,
         onLongClick = onLongClick,
+        icon = swatch?.let { { SwatchDot(it) } },
         modifier = Modifier.fillMaxWidth()
             .then(if (key != null && focus != null) Modifier.focusRequester(focus.requester(key)) else Modifier)
             .semantics {
@@ -92,6 +103,15 @@ fun RowButton(
         label = { Text(title) },
         secondaryLabel = detail?.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
     )
+}
+
+/**
+ * A colour's mark beside a name ([Swatch]): a dot in the core's value for a dark background,
+ * which a watch always has. Nothing for TalkBack, which the name and its line already tell.
+ */
+@Composable
+fun SwatchDot(swatch: Swatch) {
+    Box(Modifier.size(14.dp).clip(CircleShape).background(swatch.colour(dark = true)))
 }
 
 /**

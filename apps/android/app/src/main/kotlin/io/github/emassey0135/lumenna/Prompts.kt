@@ -21,6 +21,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.semantics.CollectionInfo
@@ -148,7 +150,11 @@ fun Choose(title: String, choices: List<Option>, yes: String, dismiss: () -> Uni
                                 }
                                 .padding(start = (16 * choice.depth).dp, top = 12.dp, bottom = 12.dp),
                         ) {
-                            Text(choice.title, style = MaterialTheme.typography.bodyLarge)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                // A colour's mark beside its name, which says it.
+                                choice.swatch?.let { SwatchDot(it, Modifier.padding(end = 12.dp)) }
+                                Text(choice.title, style = MaterialTheme.typography.bodyLarge)
+                            }
                             // The level where it changes, as a tree's rows say it: the indent says nothing aloud.
                             val detail = detailOf(shown, index)
                             if (detail.isNotEmpty()) {

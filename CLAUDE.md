@@ -1594,6 +1594,12 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
 - **A row is one node** (`ListRow`: `clearAndSetSemantics`, custom actions) with one
   description, the title first. As a separate state description, the rest was said before
   the title. `RowTitle` carries the title alone, for tests to find a row by.
+- **A colour is a dot beside its name** (`SwatchDot`, shared's `Swatch.colour`): a row's, a
+  pick's choice's (`Option.swatch`) and the block form's colour options, the core's light or
+  dark value by `isSystemInDarkTheme()` on the phone and always dark on the watch, whose
+  backgrounds are. It is outside the row's semantics, so TalkBack says the name and the
+  colour's word the line already holds, nothing more. The block form reads each choice's
+  value by its key (`BlockFields.text`), the kind and the colour alike.
 - **Nested lists fold, as the app folds them**: everything starts expanded, and a row with
   something under it has the app's Collapse or Expand among its actions and says which it
   is. The level is the app's, said against the row shown before, after folding. The iPhone

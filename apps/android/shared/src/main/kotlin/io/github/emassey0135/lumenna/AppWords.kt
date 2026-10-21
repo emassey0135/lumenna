@@ -19,10 +19,12 @@ import io.github.emassey0135.lumenna.app.sidebarKey
 val Action.name: String get() = sentence.ifEmpty { title }
 
 /** A choice the app offers, as its [line] reads, with why it is offered. */
-fun option(choice: Choice, line: Line): Option = Option(choice.id, line.title, line.detail, choice.depth.toInt(), choice.reason.orEmpty())
+fun option(choice: Choice, line: Line): Option =
+    Option(choice.id, line.title, line.detail, choice.depth.toInt(), choice.reason.orEmpty(), choice.swatch)
 
 /** A choice that is a name and what tells it apart: a project in the details' picker. */
-fun option(choice: Choice): Option = Option(choice.id, choice.title, choice.detail.orEmpty(), choice.depth.toInt(), choice.reason.orEmpty())
+fun option(choice: Choice): Option =
+    Option(choice.id, choice.title, choice.detail.orEmpty(), choice.depth.toInt(), choice.reason.orEmpty(), choice.swatch)
 
 /**
  * The app's actions as a row's: each puts its row in hand, then runs. A row of a list beside

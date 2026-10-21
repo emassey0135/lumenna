@@ -68,6 +68,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import io.github.emassey0135.lumenna.app.Swatch
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
@@ -209,6 +213,7 @@ fun AppTaskRows(
                 focus = focus.requester(row.id),
                 key = row.id,
                 say = core::say,
+                swatch = row.swatch,
             )
             HorizontalDivider()
         }
@@ -238,6 +243,7 @@ fun ListRow(
     selected: Boolean = false,
     say: (String) -> Unit = {},
     refuse: ((ActionKind) -> Unit)? = null,
+    swatch: Swatch? = null,
 ) {
     var menu by remember { mutableStateOf(false) }
     val pane = LocalPane.current
@@ -316,6 +322,7 @@ fun ListRow(
                     modifier = Modifier.padding(end = 12.dp).size(24.dp),
                 )
             }
+            if (swatch != null) SwatchDot(swatch, Modifier.padding(end = 12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     title,
@@ -338,6 +345,15 @@ fun ListRow(
             }
         }
     }
+}
+
+/**
+ * A colour's mark beside a name ([Swatch]): a dot in the core's value for the theme's
+ * background. It adds nothing to what TalkBack says, which a row clears and sets itself.
+ */
+@Composable
+fun SwatchDot(swatch: Swatch, modifier: Modifier = Modifier) {
+    Box(modifier.size(14.dp).clip(CircleShape).background(swatch.colour(isSystemInDarkTheme())))
 }
 
 /**
