@@ -703,6 +703,7 @@ impl App {
         simple("about", |app| {
             let about = adw::AboutDialog::builder()
                 .application_name("Lumenna")
+                .application_icon(crate::ID)
                 .comments("Tasks, and the time blocks you work through them in.")
                 .version(env!("CARGO_PKG_VERSION"))
                 .license_type(gtk::License::Agpl30)

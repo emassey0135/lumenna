@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds the GTK app and installs it for this user: the program in ~/.local/bin, and its
+# Builds the GTK app and installs it for this user: the program in ~/.local/bin, its icon, and its
 # desktop entry, which is how GNOME lists it and how the portals know it — the shortcuts
 # from anywhere are refused to an app with no entry.
 #
@@ -24,4 +24,9 @@ install -m 755 "$built" "$bin/lumenna-gtk"
 sed "s|^Exec=lumenna-gtk|Exec=$bin/lumenna-gtk|" "$here/data/io.github.emassey0135.Lumenna.desktop" \
     > "$data/applications/io.github.emassey0135.Lumenna.desktop"
 update-desktop-database "$data/applications" 2>/dev/null || true
-echo "Installed $bin/lumenna-gtk and its desktop entry."
+# The app's icon, at every size it is drawn in, in the user's hicolor theme.
+(cd "$here/data/icons" && find hicolor -type f) | while read -r icon; do
+    install -D -m 644 "$here/data/icons/$icon" "$data/icons/$icon"
+done
+gtk-update-icon-cache -q -t "$data/icons/hicolor" 2>/dev/null || true
+echo "Installed $bin/lumenna-gtk, its desktop entry and its icon."

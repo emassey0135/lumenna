@@ -23,7 +23,12 @@ impl ksni::Tray for Tray {
     }
 
     fn icon_name(&self) -> String {
-        "x-office-calendar".to_owned()
+        crate::ID.to_owned()
+    }
+
+    /// The checkout's icons, for a build run without `install.sh`.
+    fn icon_theme_path(&self) -> String {
+        crate::icons_here().unwrap_or_default().to_owned()
     }
 
     fn category(&self) -> ksni::Category {

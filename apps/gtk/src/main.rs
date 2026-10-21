@@ -43,6 +43,13 @@ use lumenna_ffi::profile;
 /// The application identifier, which is also the name it owns on the session bus.
 pub const ID: &str = "io.github.emassey0135.Lumenna";
 
+/// Where the app's own icon is in this checkout, for a build run without `install.sh`, which
+/// puts it in the user's hicolor theme.
+pub fn icons_here() -> Option<&'static str> {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/data/icons");
+    Path::new(path).is_dir().then_some(path)
+}
+
 /// The identifier for a profile: the usual one plain, any other tagged by its path, so each
 /// profile has one instance of its own and none answers for another's.
 fn application_id(directory: &Path) -> String {
@@ -70,6 +77,11 @@ fn main() -> glib::ExitCode {
         if let Err(error) = adw::init() {
             eprintln!("libadwaita did not start: {error}");
         }
+        // The app's own icon, on every window and the About dialog.
+        if let (Some(display), Some(icons)) = (gtk::gdk::Display::default(), icons_here()) {
+            gtk::IconTheme::for_display(&display).add_search_path(icons);
+        }
+        gtk::Window::set_default_icon_name(ID);
     });
     let (background, shortcuts) = (arguments.background, !arguments.no_shortcuts);
     application.connect_activate(move |application| window::activate(application, &directory, background, shortcuts));

@@ -1381,7 +1381,10 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   `TreeExpander` with `AccessibleRole::TreeItem` is, given its level and position in
   `bind`. Left and Right are ours, and `ListTabBehavior::Item` makes Tab leave the tree:
   by default it went through every row. Every list is one, the Devices list and the
-  chooser dialog's included; a `GtkListBox` has no such setting.
+  chooser dialog's included; a `GtkListBox` has no such setting. Type-ahead is ours too
+  (`Tree::type_ahead`), as the Windows and Mac trees have it: letters typed within a second
+  are one prefix, one letter again steps on, and a space only partway through a prefix, so
+  a pause gives Space back to the row's action.
 - **GTK gives AT-SPI a tree item's level from 4.16, and its position and set size from
   4.22.** Below 4.16 (Ubuntu 24.04, Debian 13) a row says "level 2" in its text where the
   level changes against the row shown before, as the other apps word it; position is left
@@ -1473,8 +1476,13 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   accessible object's initial state as a change.
 - **The global shortcuts go through the GlobalShortcuts portal**, which knows an
   unsandboxed app only by an installed desktop entry (`install.sh`), so it is always asked
-  under the app's own identifier. The tray (`ksni`) waits quietly for a host; GNOME has none
-  without an extension.
+  under the app's own identifier. Without the portal, on X11 (Xfce, GNOME before 48), the same
+  keys are grabbed on the root window over an X connection of the app's own (x11rb), Caps Lock
+  and Num Lock either way. The tray (`ksni`) waits quietly for a host; GNOME has none without
+  an extension.
+- **The icon** (`data/icons`, an SVG and PNGs from 16 to 512 drawn from it, shared with
+  Windows' design) goes into the user's hicolor theme with `install.sh`; a build run from the
+  checkout adds `data/icons` to the icon theme's search path (`icons_here`).
 - **UI tests** (`tests/ui/`, Python): `apps/gtk/tests/ui/run` starts a private runtime
   directory, D-Bus session, headless mutter and accessibility bus, presses keys through
   mutter's RemoteDesktop API and reads AT-SPI. **The runtime directory must be private, and
