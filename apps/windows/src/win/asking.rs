@@ -34,7 +34,7 @@ pub fn ask(app: &App) {
         }
         Question::Text { initial, .. } => {
             let start = if asking.refusal.is_some() { app.typed.borrow().clone() } else { initial.clone() };
-            let text = actions::ask(owner, &asking.question, &start, asking.day.as_deref());
+            let text = actions::ask(owner, &asking.question, &start, prompts::Takes { day: asking.day.as_deref(), syntax: asking.syntax });
             if let Some(text) = &text {
                 *app.typed.borrow_mut() = text.clone();
             }

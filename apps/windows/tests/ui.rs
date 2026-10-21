@@ -401,6 +401,38 @@ fn completion_offers_only_what_fits_name_first_with_the_first_highlighted() {
 
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn a_saved_filters_query_and_a_blocks_tasks_from_complete_as_the_filter_does() {
+    let app = App::launch(|lumenna| {
+        lumenna.add_project("Work", None).unwrap();
+        lumenna.add_filter("Urgent", "p1").unwrap();
+    });
+    // Today, Tasks, Projects, Inbox, Work, Labels, Saved Filters, Urgent.
+    app.post(&["f6", "home", "down", "down", "down", "down", "down", "down", "down"]);
+    assert!(app.focus().contains("TreeItem 'Urgent"), "{}", app.focus());
+    app.post(&["context"]);
+    choose_from_menu(&app, "Change Query...");
+    let asked = automation::wait(Duration::from_secs(5), || {
+        app.front().iter().any(|l| l.contains("Edit 'Query:'") && l.contains("FOCUSED")).then_some(())
+    });
+    assert!(asked.is_some(), "Change Query asks for the query: {:#?}", app.front());
+    // Nothing opens by itself; Down offers what fits.
+    app.post(&["end", "text: #Wo"]);
+    assert!(!app.automation.menu_open());
+    app.post(&["down"]);
+    assert_eq!(app.automation.menu_items(), ["MenuItem 'Work, project' [1 of 1, level 0] key=w FOCUSED"]);
+    app.post(&["enter"]);
+    assert!(app.focus().contains("value='p1 #Work'"), "{}", app.focus());
+    app.post(&["esc"]);
+
+    app.post(&["cmd:101", "focus:Tasks from:", "text:#Wo", "down"]);
+    assert_eq!(app.automation.menu_items(), ["MenuItem 'Work, project' [1 of 1, level 0] key=w FOCUSED"]);
+    app.post(&["enter"]);
+    assert!(app.focus().contains("value='#Work'"), "{}", app.focus());
+    app.post(&["esc"]);
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn a_task_is_put_in_a_block_from_this_weeks_work_blocks_or_another_days() {
     let app = App::launch(|lumenna| {
         add(lumenna, "Write report");

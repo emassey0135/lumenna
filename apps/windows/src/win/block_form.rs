@@ -28,7 +28,7 @@ use windows::core::HSTRING;
 
 use super::app::{self, App};
 use super::dialog::{self, Class, Dialog, Template};
-use super::{a11y, controls, picker, prompts};
+use super::{a11y, completion, controls, picker, prompts};
 use crate::devices;
 
 const TITLE: u16 = 100;
@@ -350,6 +350,11 @@ impl Dialog for Form {
             let control = dialog::item(hwnd, *id);
             if !control.is_invalid() && matches!(field.kind, FieldKind::Line | FieldKind::Time | FieldKind::Date | FieldKind::Minutes) {
                 controls::cue(control, &field.example);
+            }
+            // A field in a language the core reads (Tasks from, a filter) completes as the list's
+            // filter does.
+            if let Some(syntax) = field.syntax.filter(|_| !control.is_invalid()) {
+                completion::attach(control, syntax);
             }
         }
         for (key, _, id, kind) in PICKERS {

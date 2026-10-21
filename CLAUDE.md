@@ -1283,7 +1283,9 @@ store of their own). Everything Win32 is in `src/win/` behind
 - **One instance per profile** (a mutex and window class named from the profile path). The
   first pairing triggers the firewall prompt, since the sync endpoint then listens; an
   unpaired app listens on nothing.
-- **Completion is a popup menu** on Down or Ctrl+Space. Items lead with the name so a letter
+- **Completion is a popup menu** on Down or Ctrl+Space (`completion::attach`), in quick add, a
+  list's filter, a question whose `Asking::syntax` is set and a form field with a `syntax`
+  (the block form's Tasks from). Items lead with the name so a letter
   finds them; the first is highlighted by a Down queued before the menu opens, marked with
   a reserved bit of the key data so the field swallows it if the menu does not take it.
 - **A list item's reason is its description, set twice** (`a11y::set_item_description`, on
