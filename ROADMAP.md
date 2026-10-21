@@ -108,7 +108,10 @@ Each is a thin adapter over the command surface.
   (not HTTP+SSE) as a daemon listener, since Home Assistant usually runs elsewhere:
   loopback by default, a bearer token required off loopback, no TLS (a reverse proxy or
   Tailscale). Read-only unless writes are turned on. Say plainly that a cloud-hosted model
-  sends what it reads off the device; the point is a fully local voice pipeline.
+  sends what it reads off the device; a local model works as well, whichever the person wants.
+  Writes are turned on by a flag (`lum mcp --writes`), in the client's own configuration, where
+  the person chooses what an assistant may do. Built on the official Rust SDK (`rmcp`), each
+  tool calling the command surface (`crates/host`), as `lum rpc` does.
 - **Hooks**, `lum hook add|list|test|rm`:
   - **Reactive, never interceptive**: a change can arrive already committed from an
     unreachable device, and convergence cannot be vetoed. Hooks fire after a change is
