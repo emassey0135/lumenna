@@ -105,14 +105,11 @@ Each is a thin adapter over the command surface.
 - **PowerShell module** wrapping `lum --json`; the same language as Windows hooks.
 - **`lum mcp` without a command line.** Built: stdio and Streamable HTTP (`--listen`), tools,
   resources and their subscriptions, `--writes`. Still to come, so a person who never opens a
-  terminal can add it:
-  - **Claude Desktop and other local clients**: a `.mcpb` bundle per platform (`lum` and a
-    manifest running `lum mcp`, its `user_config` an "Allow changes" check box mapped to
-    `--writes`), installed by opening it, and offered from the Mac, Windows and GTK apps' Settings.
-  - **Claude on the web and phone, Meta's Muse**: these reach a server from their own cloud, so it
-    needs a public HTTPS name for an always-on device of the person's (Tailscale Funnel, a
-    Cloudflare tunnel) and OAuth, since a bearer token cannot be typed in there: `lum mcp
-    --listen` as its own authorization server, each client approved on the device. Not decided.
+  terminal can add it: for Claude Desktop, a bundle (under Packaging); and for Claude on the web
+  and phone and Meta's Muse, which reach a server from their own cloud, a public HTTPS name for
+  an always-on device of the person's (Tailscale Funnel, a Cloudflare tunnel) and OAuth, since a
+  bearer token cannot be typed in there: `lum mcp --listen` as its own authorization server,
+  each client approved on the device. Not decided.
 - **Hooks**, `lum hook add|list|test|rm`:
   - **Reactive, never interceptive**: a change can arrive already committed from an
     unreachable device, and convergence cannot be vetoed. Hooks fire after a change is
@@ -150,6 +147,14 @@ Each is a thin adapter over the command surface.
 - **Packaging**: a `lumenna` alias for `lum`, a Homebrew formula (`brew services start
   lum`), a winget manifest, Flatpak and AppStream for GTK. A command-line user has no app to
   prompt for updates, so packages matter most there.
+- **A Claude Desktop extension** (`.mcpb`), so `lum mcp` is added by opening a file. It carries
+  `lum` itself, run by a path inside the bundle, the format's way: a macOS universal binary and
+  a Windows one in one file (its overrides choose by platform, not processor, so Windows on ARM
+  runs the x64 one). It opens the default profile, the apps' own. Its "Allow changes" check box
+  reaches `lum mcp` as an environment variable (`LUMENNA_MCP_WRITES`), since the format passes a
+  setting's value but cannot add a flag only when one is set. The Mac and Windows apps' "Add to
+  Claude Desktop" makes one that runs the `lum` they ship, so it updates with the app; the
+  bundle carrying its own is for someone without the app, and updates only when reinstalled.
 - **Real erasure.** Erasing a task removes it from the current state only: its content stays
   in the history and in backups, and undo brings it back. Truly erasing means rebuilding the
   document without it, losing all history, every device syncing afresh, and clearing the
