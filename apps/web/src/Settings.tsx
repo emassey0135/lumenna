@@ -33,7 +33,8 @@ import {
 } from "react-aria-components";
 import { DevicesPage } from "./Devices";
 import type { Screen, Setting, SettingView, SettingsView } from "./core";
-import { SettingKind } from "./core";
+import { core, SettingKind } from "./core";
+import * as folders from "./backups";
 import { TimePicker } from "./Pickers";
 import { send } from "./session";
 import { remindersOn, setRemindersOn } from "./Reminders";
@@ -235,9 +236,12 @@ function Backups() {
   return (
     <>
       <p>
-        A backup is everything, its whole history and the trash included. This browser takes none by itself:
-        download one now and then, and keep it somewhere safe.
+        A backup is everything, its whole history and the trash included.{" "}
+        {folders.supported
+          ? "Choose a folder below and this browser takes them by itself; or download one now and then, and keep it somewhere safe."
+          : "This browser takes none by itself: download one now and then, and keep it somewhere safe."}
       </p>
+      {folders.supported && <BackupFolder />}
       <div className="buttons">
         <Button
           onPress={() => void send({ tag: "Settings", value0: { tag: "Backup" } })}
@@ -248,6 +252,52 @@ function Backups() {
       </div>
       <p className="quiet">Restoring merges: it adds what this browser lacks, and never takes back a later change.</p>
     </>
+  );
+}
+
+/** Automatic backups into a folder the person chose, where the browser can be given one. */
+function BackupFolder() {
+  const [shown, setShown] = useState<{ name: string; allowed: boolean } | undefined>();
+  const [words, setWords] = useState("");
+  const look = () => void folders.folder().then(setShown, () => setShown(undefined));
+  useEffect(() => {
+    look();
+    void core.folderBackupWords().then(setWords);
+  }, []);
+  const done = (said: string) => {
+    say(said);
+    look();
+  };
+  return (
+    <section aria-label="Automatic backups">
+      <p>{words}</p>
+      {shown ? (
+        <>
+          <p>{shown.allowed ? `Backing up to the folder ${shown.name}.` : `This browser needs asking again before it backs up to ${shown.name}.`}</p>
+          <div className="buttons">
+            {shown.allowed ? (
+              <Button
+                onPress={() =>
+                  void folders.backUp(true).then((name) => done(name ? `Backed up to ${shown.name} as ${name}` : "Could not back up there"), () => done("Could not back up there"))
+                }
+              >
+                Back up to the folder now
+              </Button>
+            ) : (
+              <Button onPress={() => void folders.allow().then((allowed) => done(allowed ? `Backing up to ${shown.name}` : "Still not allowed"))}>
+                Allow backups to {shown.name}
+              </Button>
+            )}
+            <Button onPress={() => void folders.choose().then((name) => name && done(`Backing up to ${name}`))}>Choose another folder</Button>
+            <Button onPress={() => void folders.stop().then(() => done("No longer backing up to a folder"))}>Stop backing up to a folder</Button>
+          </div>
+        </>
+      ) : (
+        <div className="buttons">
+          <Button onPress={() => void folders.choose().then((name) => name && done(`Backing up to ${name}`))}>Choose a folder for backups</Button>
+        </div>
+      )}
+    </section>
   );
 }
 

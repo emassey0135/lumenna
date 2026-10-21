@@ -52,6 +52,12 @@ pub fn keyboard_shortcuts() -> Vec<KeyGroup> {
     lumenna_app::keys::grouped(true)
 }
 
+/// What automatic backups to a folder do, in a sentence (`lumenna_host::folder_backup_words`).
+#[export]
+pub fn folder_backup_words() -> String {
+    lumenna_host::folder_backup_words()
+}
+
 /// What the web's own day and time pickers say, beside the line each fills, in sentence case.
 #[export]
 pub fn picker_words() -> PickerWords {

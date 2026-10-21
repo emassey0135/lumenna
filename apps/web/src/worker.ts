@@ -9,7 +9,7 @@
 // decided here.
 
 import * as Comlink from "comlink";
-import init, { open, pickerWords, sentenceCase, keyboardShortcuts } from "./core/lumenna_web.js";
+import init, { open, pickerWords, sentenceCase, keyboardShortcuts, folderBackupWords } from "./core/lumenna_web.js";
 import type {
   App,
   Asking,
@@ -297,6 +297,23 @@ const api = {
 
   /** The keyboard commands the desktop apps share, grouped as their menus are, in sentence case. */
   keyboardShortcuts: (): KeyGroup[] => keyboardShortcuts(),
+
+  /** A backup taken now, for the folder the person chose: its name there and its bytes. */
+  backupFile: (): { name: string; bytes: Uint8Array } => {
+    const file = session().backupFile();
+    // A copy of its own: the core's bytes may be a view of the WebAssembly memory.
+    const bytes = new Uint8Array(file.bytes);
+    return Comlink.transfer({ name: file.name, bytes }, [bytes.buffer]);
+  },
+
+  /** Whether a backup is due in a folder holding the files `names`: the core's rule. */
+  backupDue: (names: string[], now: number): boolean => session().backupDue(names, now),
+
+  /** Which of the files `names` in the backup folder to remove: the oldest beyond those kept. */
+  backupsToRemove: (names: string[]): string[] => session().backupsToRemove(names),
+
+  /** What automatic backups to a folder do, in a sentence. */
+  folderBackupWords: (): string => folderBackupWords(),
 };
 
 export type Api = typeof api;

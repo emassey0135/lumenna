@@ -274,10 +274,10 @@ Each is a thin adapter over the command surface.
 - **An always-on peer**, documented: `lum daemon` on hardware the person controls. A VPS
   works, but say the provider can read the data, and make no encryption claim: unattended
   boot and provider-proof encryption conflict.
-- **The installed web client**: a PWA now (manifest, offline loading, the badge). Still to come:
-  Background Sync, to send changes made offline as the connection returns, which needs the
-  sync to run in the service worker rather than the page's worker; and File System Access as a
-  backup destination, with automatic backups (below).
+- **Background Sync for the web client**: sending changes made offline once the connection
+  returns, with no tab open, needs the store in the service worker, and a service worker can
+  neither open OPFS's synchronous handles (the store's `sahpool`) nor start a worker that can.
+  It waits on the encrypted store, or a store a service worker can open.
 - **Browsers for the web client**: only Chromium is tested. Safari, Firefox (OPFS sync access
   handles there) and ChromeVox are unchecked; an IndexedDB fallback for browsers without sync
   access handles is optional.
@@ -388,8 +388,6 @@ What the web client gains from it:
   transaction as the changes, producing the same core structs. Filters would then compile
   partly to SQL, with the rest evaluated in memory over what remains.
 - **The web's WASM** is 8.7 MB (3 MB compressed), mostly Iroh; worth trimming.
-- **The web takes no automatic backups**; it asks for downloads. Revisit if a browser path
-  appears; a backup must live outside the live store.
 
 - **An Outlook add-in** for turning an email into a task, only if email import is wanted.
   Office add-ins are web pages Office loads from a URL and cannot reach the local socket, so

@@ -387,3 +387,30 @@ mod tests {
         assert_eq!(cloud_service(Path::new("/home/me/.local/share/lumenna-backups")), None);
     }
 }
+
+/// For a backup folder the person gave a browser, which this process cannot list itself:
+/// whether a backup is due among the files `names` there, by the default policy (a browser has
+/// no device settings of its own).
+#[must_use]
+pub fn folder_backup_due(names: &[String], now: jiff::Timestamp) -> bool {
+    lumenna_store::backup::due_among(names, Some(lumenna_store::backup::Policy::DEFAULT_EVERY), now)
+}
+
+/// For such a folder: which of the files `names` to remove, the oldest backups beyond the
+/// default number kept. Nothing else there is ever named.
+#[must_use]
+pub fn folder_backup_surplus(names: &[String]) -> Vec<String> {
+    lumenna_store::backup::surplus_among(names, lumenna_store::backup::Policy::DEFAULT_KEEP)
+}
+
+/// What a backup folder a browser was given does, in a sentence: when backups are taken there
+/// and how many are kept, by the default policy.
+#[must_use]
+pub fn folder_backup_words() -> String {
+    let hours = backup::Policy::DEFAULT_EVERY.as_hours();
+    let every = if hours == 24 { "once a day".to_owned() } else { format!("every {}", count_line(usize::try_from(hours).unwrap_or(0), "hour")) };
+    format!(
+        "While Lumenna is open, it backs up {every} into the folder you choose, and keeps the newest {}.",
+        backup::Policy::DEFAULT_KEEP
+    )
+}

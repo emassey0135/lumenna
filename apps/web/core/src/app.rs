@@ -70,6 +70,16 @@ pub(crate) struct Syncing {
     pub(crate) cancelled: Cell<bool>,
 }
 
+/// A backup for a folder: what it is called there, and the whole of it.
+#[data]
+#[derive(Debug, Clone, PartialEq)]
+pub struct FolderBackup {
+    /// `lumenna-<when>.lumbak`.
+    pub name: String,
+    /// Every document's history, the trash included.
+    pub bytes: Vec<u8>,
+}
+
 /// What the app left for the page: the view model, and what to say once focus is where it
 /// puts it.
 #[data]
@@ -407,6 +417,31 @@ impl App {
     /// If the store cannot be read.
     pub fn complete(&self, text: String, cursor: u32, syntax: Syntax) -> Result<Completions, LumennaError> {
         self.lumenna.complete_text(&text, cursor, syntax)
+    }
+
+    /// A backup taken now, for a folder the person gave this browser: its name and bytes.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn backup_file(&self) -> Result<FolderBackup, LumennaError> {
+        let file = self.lumenna.backup_file()?;
+        Ok(FolderBackup { name: file.name, bytes: file.bytes })
+    }
+
+    /// Whether a backup is due in a folder holding the files `names`, at `now_ms`: the core's
+    /// naming and the default every day.
+    pub fn backup_due(&self, names: Vec<String>, now_ms: f64) -> bool {
+        // A JavaScript time is milliseconds, exactly.
+        #[allow(clippy::cast_possible_truncation)]
+        let now = jiff::Timestamp::from_millisecond(now_ms as i64).unwrap_or_else(|_| jiff::Timestamp::now());
+        lumenna_host::folder_backup_due(&names, now)
+    }
+
+    /// Which of the files `names` in a backup folder to remove: the oldest backups beyond the
+    /// number kept, never anything else.
+    pub fn backups_to_remove(&self, names: Vec<String>) -> Vec<String> {
+        lumenna_host::folder_backup_surplus(&names)
     }
 
     /// A number that moves whenever another tab or process has written.

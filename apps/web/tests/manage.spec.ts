@@ -207,6 +207,43 @@ test("a backup downloads, and restores into another browser", async ({ browser }
   await expect(there.getByRole("main").getByRole("row", { name: /^Remember this/ })).toBeVisible();
 });
 
+test("backups go into a folder chosen once, the oldest beyond those kept removed", async ({ page }) => {
+  // The folder picker stands in for the system's: a folder in this origin's private storage,
+  // which answers as a folder the person chose does. Ten old backups are there already. (Read
+  // back from IndexedDB, such a folder crashes Playwright's Chromium; a chosen one does not, so
+  // keeping it across a reload is not tested here.)
+  await page.addInitScript(() => {
+    (window as unknown as { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker = async () => {
+      const root = await navigator.storage.getDirectory();
+      const folder = await root.getDirectoryHandle("picked", { create: true });
+      for (let day = 10; day < 20; day++) {
+        await (await (await folder.getFileHandle(`lumenna-202601${day}T090000.000Z.lumbak`, { create: true })).createWritable()).close();
+      }
+      await (await (await folder.getFileHandle("notes.txt", { create: true })).createWritable()).close();
+      return folder;
+    };
+  });
+  await open(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("tab", { name: "Backups" }).click();
+  await expect(page.getByText("once a day into the folder you choose")).toBeVisible();
+  await page.getByRole("button", { name: "Choose a folder for backups" }).click();
+  await expect(page.getByText("Backing up to the folder picked.")).toBeVisible();
+  const names = () =>
+    page.evaluate(async () => {
+      const folder = await (await navigator.storage.getDirectory()).getDirectoryHandle("picked");
+      const found: string[] = [];
+      for await (const name of (folder as unknown as { keys(): AsyncIterable<string> }).keys()) found.push(name);
+      return found.sort();
+    });
+  // One taken at once, the oldest of the ten gone, and what else is there left alone.
+  await expect.poll(names).toHaveLength(11);
+  const now = await names();
+  expect(now).toContain("notes.txt");
+  expect(now).not.toContain("lumenna-20260110T090000.000Z.lumbak");
+  expect(now.filter((name) => name.startsWith("lumenna-2026") && !name.startsWith("lumenna-202601"))).toHaveLength(1);
+});
+
 test("a block's flags follow its kind, and its settings are kept", async ({ page }) => {
   await open(page);
   await places(page).getByRole("row", { name: /^Blocks/ }).click();

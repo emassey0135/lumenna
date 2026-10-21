@@ -1866,6 +1866,14 @@ with `lum`.
   way), a click handed back to the page; what is due is the app icon's badge. `npm run test:pwa`
   builds and tests it (`playwright.pwa.config.ts`, against `vite preview`); CI runs it on its
   release build.
+- **Backups go into a folder chosen once** (`backups.ts`, the File System Access API, Chromium's),
+  in a tab as much as installed: its handle kept in IndexedDB and in memory, a backup taken as the
+  app opens and hourly when the core says one is due among the folder's names
+  (`backup::due_among`, `surplus_among`: the core's naming, a day apart, ten kept), written
+  through a writable stream so an interrupted one never looks whole. A folder the browser asks
+  about again after a restart is written to only once allowed, a button's press. Playwright's
+  Chromium crashes reading an OPFS folder's handle back from IndexedDB, so the test's stand-in
+  folder is the one in memory.
 - **A colour is a mark beside the name** (`Swatch.tsx`): a dot in the sidebar, the lists, the
   day, a pick's choices and the block form's colour, `aria-hidden`, its value
   `light-dark(light, dark)` by the page's scheme, left out under forced colours.

@@ -81,7 +81,7 @@ pub use reminders::{DueReminder, DueReminders, ReminderList, ReminderView};
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub use reminders::ReminderLock;
 pub use lumenna_records::{QUERY, go_to_day_question, length_question, new_filter_questions, not_offered, Action, ActionKind, Answer, Choice, Choices, Question, Subject};
-pub use durability::{DEVICE_KEYS, cloud_warning};
+pub use durability::{DEVICE_KEYS, cloud_warning, folder_backup_due, folder_backup_surplus, folder_backup_words};
 pub use places_ops::sidebar;
 pub use lumenna_records::{LumennaError, Result};
 pub use lumenna_records::{parse_minutes, parse_weight, priorities, BlockDefaults, BlockFields, TaskFields, block_defaults, block_edit, block_fields, day_block_fields, new_block, label_reference, project_reference, sitting_status, task_edit, task_fields};

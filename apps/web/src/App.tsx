@@ -24,6 +24,7 @@ import { PairingQuestion } from "./Devices";
 import { Settings } from "./Settings";
 import { Sidebar } from "./Sidebar";
 import { TaskList } from "./TaskList";
+import { useFolderBackups } from "./backups";
 
 /** The store's name in this browser: one, unless a page asks for another (`?profile=`). */
 const profile = new URLSearchParams(location.search).get("profile") ?? "default";
@@ -40,6 +41,7 @@ export function App() {
   const [opening, setOpening] = useState(false);
   const details = useRef<DetailsHandle>(null);
   useDelivery(ready);
+  useFolderBackups(ready);
 
   useEffect(() => {
     core.open(profile).then(

@@ -200,6 +200,33 @@ fn parse_stamp(stamp: &str) -> Option<Timestamp> {
     base.checked_add(jiff::SignedDuration::from_millis(millis)).ok()
 }
 
+/// When the file called `name` was taken, if it is a backup by its name.
+#[must_use]
+pub fn taken_from_name(name: &str) -> Option<Timestamp> {
+    parse_stamp(name.strip_prefix(PREFIX)?.strip_suffix(SUFFIX)?)
+}
+
+/// For a folder this process cannot list itself (a browser's, given by the person): whether a
+/// backup is due among the files `names`, every `every` (none for never).
+#[must_use]
+pub fn due_among(names: &[String], every: Option<jiff::SignedDuration>, now: Timestamp) -> bool {
+    let Some(every) = every else { return false };
+    match names.iter().filter_map(|name| taken_from_name(name)).max() {
+        None => true,
+        Some(newest) => now.duration_since(newest) >= every,
+    }
+}
+
+/// For a folder this process cannot list itself: which of the files `names` to remove so the
+/// newest `keep` backups are left, oldest first. Anything else kept there is never named.
+#[must_use]
+pub fn surplus_among(names: &[String], keep: usize) -> Vec<String> {
+    let mut found: Vec<(Timestamp, &String)> = names.iter().filter_map(|name| Some((taken_from_name(name)?, name))).collect();
+    found.sort();
+    let surplus = found.len().saturating_sub(keep.max(1));
+    found.into_iter().take(surplus).map(|(_, name)| name.clone()).collect()
+}
+
 /// Writes a backup into the policy's directory and prunes the oldest beyond `keep`.
 ///
 /// Written to a temporary name and renamed into place, so an interrupted backup never leaves
@@ -332,5 +359,18 @@ mod tests {
         assert!(is_due(&policy, start + jiff::SignedDuration::from_hours(24)).unwrap());
         let off = Policy { every: None, ..policy };
         assert!(!is_due(&off, start + jiff::SignedDuration::from_hours(48)).unwrap());
+    }
+
+    #[test]
+    fn a_folder_known_only_by_its_names_is_due_and_pruned_as_a_directory_is() {
+        let at = |ms: i64| Timestamp::from_millisecond(ms).unwrap();
+        let day = 86_400_000;
+        let names: Vec<String> = (0..4).map(|n| file_name(at(1_790_000_000_000 + n * day))).chain(["notes.txt".to_owned()]).collect();
+        let newest = at(1_790_000_000_000 + 3 * day);
+        assert!(!due_among(&names, Some(Policy::DEFAULT_EVERY), newest.checked_add(jiff::SignedDuration::from_hours(23)).unwrap()));
+        assert!(due_among(&names, Some(Policy::DEFAULT_EVERY), newest.checked_add(jiff::SignedDuration::from_hours(24)).unwrap()));
+        assert!(due_among(&["notes.txt".to_owned()], Some(Policy::DEFAULT_EVERY), newest), "no backup there yet");
+        assert!(!due_among(&names, None, newest));
+        assert_eq!(surplus_among(&names, 2), names[..2].to_vec(), "the oldest, never the notes");
     }
 }
