@@ -1878,6 +1878,10 @@ tests and a smoke set of iOS and Android UI tests block; the full iOS and Androi
 report without blocking, since a slow runner fails them where nothing is wrong. A test
 that has only failed for a reason can join the smoke set.
 
+`crates/core/tests/rows.rs` snapshots the row projection, a task list and a day, each row's
+place, folding, checked state, speech and braille, in `tests/snapshots/`: a change to any shows
+as a diff, rewritten with `UPDATE_SNAPSHOTS=1` once it is meant.
+
 `crates/store/tests/convergence.rs` checks replicas reaching the same state from the same
 changes in different orders. It is the slowest suite and the one worth running before
 believing anything about merge.

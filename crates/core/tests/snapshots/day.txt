@@ -1,0 +1,3 @@
+[1/3] | Deep work, block, 09:00 to 11:00, 120 minutes, 1 of 3 | blk Deep work 09:00 to 11:00, 120 minutes 1/3
+[2/3] | Lunch, block, 12:00 to 12:45, 45 minutes, 2 of 3 | blk Lunch 12:00 to 12:45, 45 minutes 2/3
+[3/3] collapsed | Review, block, 15:00 to 16:00, 60 minutes, 1 task assigned, 3 of 3 | blk Review 15:00 to 16:00, 60 minutes, 1 task assigned 3/3

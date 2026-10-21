@@ -204,9 +204,8 @@ names from the store. Still to come:
 - **Screen readers not yet tried by a person**: JAWS, Narrator, ChromeVox, Emacspeak and
   speechd-el. NVDA (Windows and the web), Orca, VoiceOver on the Mac and iPhone, TalkBack,
   Emacsvox and the BTSpeak have been. The braille short forms for states and roles are
-  unchecked against BTBraille's tree-view convention.
-- **Snapshot tests of the row projection** for task lists and the day: index and count,
-  expanded and checked, states, speech and braille.
+  unchecked against BTBraille's tree-view convention, and two collide: `blk` is both a block's
+  role and a task's blocked state (`crates/core/tests/snapshots/`).
 
 ## 5. The watches
 
