@@ -58,6 +58,18 @@ def day_heading(session: Session) -> str:
     )
 
 
+def day_heading_braille(session: Session) -> str:
+    """The day's heading as the display shows it: "<day>. 4 blk, 4:00 wrk, 3 tsk"."""
+    view, lines = session.view(), session.lines()
+    if view.day is None:
+        return ""
+    return next(
+        (lines.day[i].braille for i, item in enumerate(view.day.items)
+         if item.kind == L.DayKind.SUMMARY and i < len(lines.day)),
+        "",
+    )
+
+
 def day_plan(session: Session) -> str:
     """A day as it is lived, opening on now.
 
@@ -79,6 +91,7 @@ def day_plan(session: Session) -> str:
     with screen("lumenna-day"):
         live_menu(
             session, build, lambda: day_heading(session),
+            braille_title=lambda: day_heading_braille(session),
             main=lambda row: plan_main(session, row),
             context=lambda rows: actions.commands(session, rows),
             app=lambda: [

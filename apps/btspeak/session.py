@@ -212,9 +212,31 @@ def row_of(item):
     return getattr(item, "row", None)
 
 
+def _menu(items, braille_title: str = "", **arguments):
+    """The device's menu, its T-Chord showing `braille_title` on the display where it is given:
+    the dialog takes one title, said as the menu opens and drawn at the top of the screen, and
+    T-Chord says it again and pushes it to the display, so the shorter braille needs the key
+    answered here, as the device's file manager answers it."""
+    if not braille_title:
+        return dialogs.dynamic_menu(items, **arguments)
+
+    class BrailledTitle(dialogs.DynamicMenuDialog):
+        def on_TitleRead(self) -> bool:
+            host.say(self.title or "", immediate=True, as_ui=True)
+            try:
+                from BTSpeak import brl
+                brl.push_message(braille_title)
+            except Exception:  # noqa: BLE001 - no display, or a library without the call: said only
+                pass
+            return True
+
+    return BrailledTitle(menu=items, **arguments).run()
+
+
 def live_menu(
     session: Session, build, title, default: int = 0, moved=None, *,
     main=None, context=(), app=(), empty="Nothing here", app_title: str = "", focus=None, until=None,
+    braille_title=None,
 ) -> None:
     """A menu rebuilt whenever the store moves, reopened where the cursor was.
 
@@ -222,7 +244,8 @@ def live_menu(
     `main(row)` is what Enter does on a row; `context` and `app` are `Command`s for the two
     menus, and `context` may be a function of the rows giving them, for commands that are the
     rows' own actions (`actions.commands`); `app` may be a function of nothing, read after
-    `build`, for a screen's own actions that come with what it shows (the day's). `title` is a string or a function of nothing, read on each rebuild, and
+    `build`, for a screen's own actions that come with what it shows (the day's). `title` is a string or a function of nothing, read on each rebuild, and so is
+    `braille_title`, what T-Chord shows on the display where it is shorter than what it says; and
     so is `empty`, what an empty list says: the listing's own `empty` (`Rows::empty`), read
     after `build`. `moved`, when
     given, is another reason to rebuild — the day changing under the planner — and is cleared
@@ -248,8 +271,10 @@ def live_menu(
         offered = app() if callable(app) else app
         wire(items, main, here, offered)
         heading = title() if callable(title) else title
-        choice = dialogs.dynamic_menu(
+        brailled = braille_title() if callable(braille_title) else braille_title
+        choice = _menu(
             items,
+            braille_title=brailled if brailled and brailled != heading else "",
             title=heading,
             exit_condition=lambda: session.restless() or bool(moved and moved()) or bool(until and until()),
             refresh_interval=REFRESH,

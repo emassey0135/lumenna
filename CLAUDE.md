@@ -742,7 +742,11 @@ tests run on `tests/btspeak_stub.py`, with the core built and `target/debug` on 
   `sitting_braille`, `Plan::summary_braille`): a length as hours and minutes ("1:15", "1:00",
   "0:15"), a block's kind as `wrk`, `brk` or `evt`, tasks counted as "3 tsk". A list row's kind
   is never shown: speech never says it, and in a list of one kind it says nothing. Every short
-  form is the core's, and one test keeps states, roles and kinds apart.
+  form is the core's, and one test keeps states, roles and kinds apart. A menu's title has no
+  braille of its own on the device (said as it opens, drawn on the screen's top line, and said
+  and pushed to the display again by T-Chord), so the day's menu answers T-Chord itself
+  (`session._menu`, a subclass of `DynamicMenuDialog`, as the device's file manager does) with
+  the summary short: "Today. 4 blk, 4:00 wrk, 3 tsk".
 - **Depth is never indentation**: it says nothing in speech. The app says the level only where
   it *changes*, against the previous *visible* row, so folding keeps it right.
 - **A menu reopens on the app's row in hand** (`live_menu`'s `focus`), and is drawn after it is

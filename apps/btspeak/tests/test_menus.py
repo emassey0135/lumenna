@@ -79,6 +79,15 @@ class Menus(unittest.TestCase):
         self.assertIn("0:45, wrk", block.get_braille_title())
         self.assertIn("0 tsk", block.get_braille_title())
 
+    def test_the_days_heading_is_said_whole_and_shown_short_on_t_chord(self):
+        self.call("block.add", title="Deep work", at="11pm", minutes=45, date="today")
+        btspeak_stub.given.clear()
+        self.run_script([("title",), ("back",)], lambda: day.day_plan(self.session))
+        said = [what for kind, what in btspeak_stub.given if kind == "say"]
+        shown = [what for kind, what in btspeak_stub.given if kind == "braille"]
+        self.assertTrue(any("1 block, 45 minutes of work" in line for line in said), said)
+        self.assertTrue(any("1 blk, 0:45 wrk, 0 tsk" in line for line in shown), shown)
+
     def test_a_rows_states_are_said_whole_and_shown_short_in_braille(self):
         self.call("task.add", text="pay the rent yesterday")
         self.call("task.add", text="water the plants")

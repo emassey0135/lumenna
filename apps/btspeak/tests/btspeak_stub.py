@@ -139,6 +139,32 @@ class _Menu:
         self.closed = True
 
 
+class DynamicMenuDialog:
+    """The device's menu dialog, as a subclass sees it: built with `dynamic_menu`'s arguments and
+    run, the script playing it as it plays `dynamic_menu`. `("title",)` presses T-Chord."""
+
+    #: The dialog being played, for `("title",)`.
+    current = None
+
+    def __init__(self, menu, title=None, **arguments):
+        self.menu = menu
+        self.title = title
+        self.arguments = arguments
+
+    def on_TitleRead(self) -> bool:
+        host = sys.modules["BTSpeak.host"]
+        host.say(self.title or "", immediate=True, as_ui=True)
+        sys.modules["BTSpeak.brl"].push_message(self.title or "")
+        return True
+
+    def run(self):
+        DynamicMenuDialog.current = self
+        try:
+            return dynamic_menu(self.menu, title=self.title, **self.arguments)
+        finally:
+            DynamicMenuDialog.current = None
+
+
 def dynamic_menu(menu, title=None, exit_condition=None, refresh_interval=0, default=0,
                  context_menu=(), app_menu=(), app_menu_title="", global_keys=None,
                  empty_message=None, **_ignored):
@@ -171,6 +197,10 @@ def dynamic_menu(menu, title=None, exit_condition=None, refresh_interval=0, defa
         if kind == "back":
             script.steps.pop(0)
             return None
+        if kind == "title":
+            script.steps.pop(0)
+            (DynamicMenuDialog.current or DynamicMenuDialog(menu, title)).on_TitleRead()
+            continue
         if kind == "wait":
             script.steps.pop(0)
             deadline = time.monotonic() + 60
@@ -364,7 +394,7 @@ def install() -> None:
     brl.push_message = lambda text, *a, **k: given.append(("braille", text))
     dialogs = types.ModuleType("BTSpeak.dialogs")
     for name, value in list(globals().items()):
-        if name in {"Choice", "DynamicMenuItem", "MenuCommand", "InputField", "dynamic_menu", "request_choice",
+        if name in {"Choice", "DynamicMenuItem", "DynamicMenuDialog", "MenuCommand", "InputField", "dynamic_menu", "request_choice",
                     "request_input", "request_form", "request_confirmation", "show_message",
                     "view_lines", "request_file", "request_directory", "activity"}:
             setattr(dialogs, name, value)
