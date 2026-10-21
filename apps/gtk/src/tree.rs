@@ -17,10 +17,14 @@
 //! GTK binds no keys to expanding and collapsing a row in a list view, so the tree does what
 //! every other tree does: Right expands, or goes to the first child; Left collapses, or goes
 //! to the parent.
+//!
+//! Nor has a list view type-ahead, which the Windows and Mac trees have: typing a row's first
+//! letters goes to it (`type_ahead`).
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::rc::{Rc, Weak};
+use std::time::{Duration, Instant};
 
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
@@ -195,6 +199,8 @@ pub struct Tree {
     had_focus: Cell<bool>,
     /// The visible position focus is on its way to, while its row has no widget yet.
     target: Rc<Cell<Option<u32>>>,
+    /// What has been typed to find a row, and when it was last added to.
+    typed: RefCell<(String, Option<Instant>)>,
     on_selected: Callback<dyn Fn(Option<usize>)>,
     on_activate: Callback<dyn Fn(usize)>,
     on_key: Callback<KeyHandler>,
@@ -284,6 +290,7 @@ impl Tree {
             level_in_text: level_in_text(),
             had_focus: Cell::new(false),
             target: Rc::new(Cell::new(None)),
+            typed: RefCell::new((String::new(), None)),
             on_selected: RefCell::new(None),
             on_activate: RefCell::new(None),
             on_key: RefCell::new(None),
@@ -386,11 +393,61 @@ impl Tree {
             gdk::Key::F10 if modifiers.contains(gdk::ModifierType::SHIFT_MASK) => return self.menu(key),
             _ => {}
         }
+        if self.type_ahead(key, modifiers, position) {
+            return glib::Propagation::Stop;
+        }
         let Some(index) = self.index_at(position) else { return glib::Propagation::Proceed };
         match self.on_key.borrow().as_ref() {
             Some(callback) => callback(key, modifiers, index),
             None => glib::Propagation::Proceed,
         }
+    }
+
+    /// Goes to the next row whose line starts with what has been typed, as the Windows and Mac
+    /// trees do: letters typed within a second of each other build one prefix; one letter typed
+    /// again goes on to the next row starting with it. Whether the key was taken. A space is
+    /// taken only partway through a prefix, so a pause gives Space back to the row's own action.
+    fn type_ahead(&self, key: gdk::Key, modifiers: gdk::ModifierType, position: u32) -> bool {
+        if modifiers.intersects(gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::ALT_MASK | gdk::ModifierType::SUPER_MASK) {
+            return false;
+        }
+        let Some(typed) = key.to_unicode().filter(|c| !c.is_control()) else { return false };
+        let mut buffer = self.typed.borrow_mut();
+        let now = Instant::now();
+        let going_on = buffer.1.is_some_and(|last| now.duration_since(last) < Duration::from_secs(1));
+        if !going_on {
+            buffer.0.clear();
+        }
+        if typed.is_whitespace() && buffer.0.is_empty() {
+            return false;
+        }
+        buffer.0.extend(typed.to_lowercase());
+        buffer.1 = Some(now);
+        let prefix = buffer.0.clone();
+        drop(buffer);
+        let mut letters = prefix.chars();
+        let first = letters.next();
+        // One letter again and again steps through the rows starting with it; a longer prefix
+        // may still be the row in hand.
+        let (wanted, from) = if letters.all(|c| Some(c) == first) && prefix.chars().count() > 1 {
+            (first.map(String::from).unwrap_or_default(), position + 1)
+        } else if prefix.chars().count() == 1 {
+            (prefix, position + 1)
+        } else {
+            (prefix, position)
+        };
+        let items = self.items.borrow();
+        let count = self.model.n_items();
+        let found = (0..count).map(|step| (from + step) % count).find(|&at| {
+            self.index_at(at).and_then(|index| items.get(index)).is_some_and(|item| item.text.to_lowercase().starts_with(&wanted))
+        });
+        drop(items);
+        match found {
+            Some(at) if at != position => self.move_to(at),
+            Some(_) => {}
+            None => self.view.error_bell(),
+        }
+        true
     }
 
     /// Hands expanding or collapsing the row at a visible position to whoever folds it, if

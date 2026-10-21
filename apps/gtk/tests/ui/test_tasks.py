@@ -48,6 +48,21 @@ class TaskListTest(unittest.TestCase):
         self.session.press("Right")
         self.assertEqual(self.session.focus(), "[tree item] 'Outline, subtask' level 2 1 of 2")
 
+    def test_typing_a_rows_first_letters_goes_to_it(self):
+        # One letter goes to the next row starting with it, and again to the one after.
+        self.session.press("o", wait=1.2)
+        self.assertEqual(self.session.focus(), "[tree item] 'Outline, subtask' level 2 1 of 2")
+        self.session.press("w", wait=1.2)
+        self.assertEqual(self.session.focus(), "[tree item] 'Write the report, priority 1' level 1 2 of 2 expanded")
+        # Letters typed together are one prefix, a space in it included: Space there finds,
+        # and never runs the row's Mark Done.
+        self.session.type("buy m", wait=1.2)
+        self.assertEqual(self.session.focus(), "[tree item] 'Buy milk' level 1 1 of 2")
+        self.assertIn("Buy milk", self.session.lum("task", "list"))
+        # Nothing starting so leaves focus where it is.
+        self.session.press("z", wait=1.2)
+        self.assertEqual(self.session.focus(), "[tree item] 'Buy milk' level 1 1 of 2")
+
     def test_left_collapses_then_goes_to_the_parent_and_right_expands(self):
         self.session.press("Down", "Down")
         self.session.press("Left")
