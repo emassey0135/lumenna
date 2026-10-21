@@ -235,8 +235,8 @@ pub fn sidebar(snapshot: &Snapshot, now: &Zoned) -> Vec<SidebarEntry> {
 
     entries.push(group(SidebarGroup::Filters, "Saved Filters"));
     for filter in crate::lists::filters(snapshot).map(|f| f.filters).unwrap_or_default() {
-        let query = filter.query.clone();
-        let mut entry = place(Place::Filter { name: filter.name, query: filter.query }, &query, 1);
+        let detail = filter.colour.as_ref().map_or_else(|| filter.query.clone(), |colour| format!("{}, {colour}", filter.query));
+        let mut entry = place(Place::Filter { name: filter.name, query: filter.query }, &detail, 1);
         entry.actions = filter.actions;
         entries.push(entry);
     }

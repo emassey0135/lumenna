@@ -394,6 +394,39 @@ impl Lumenna {
         })
     }
 
+    /// Gives a project a colour by name — `red`, `teal` — or takes it away. A colour is never
+    /// the only thing that says which is which: the name always shows.
+    ///
+    /// # Errors
+    ///
+    /// If there is no project by that name.
+    pub fn recolour_project(&self, name: &str, colour: Option<String>) -> Result<Change> {
+        self.told(|store| {
+            let snapshot = repaired(store);
+            let before = resolve::project(&snapshot, name)?.clone();
+            let mut after = before.clone();
+            after.color = colour.map(|c| c.trim().to_lowercase()).filter(|c| !c.is_empty());
+            let change = edit::update_project(before, after);
+            record_or(store, &change, "it is already that colour")
+        })
+    }
+
+    /// Gives a saved filter a colour, by name, or clears it with `None`.
+    ///
+    /// # Errors
+    ///
+    /// If there is no filter by that name.
+    pub fn recolour_filter(&self, name: &str, colour: Option<String>) -> Result<Change> {
+        self.told(|store| {
+            let snapshot = repaired(store);
+            let before = live_filter(&snapshot, name)?.clone();
+            let mut after = before.clone();
+            after.color = colour.map(|c| c.trim().to_lowercase()).filter(|c| !c.is_empty());
+            let change = edit::update_filter(before, after);
+            record_or(store, &change, "it is already that colour")
+        })
+    }
+
     /// Gives a label a colour by name — `red`, `teal` — or takes it away. A colour is never
     /// the only thing that says which label is which: the name always shows.
     ///

@@ -139,8 +139,8 @@ A day or less each, for between the larger pieces.
 - **Completed subtasks**: a setting to show them, and a completion count on the parent row.
 - **Time zones** on tasks and blocks are stored and nothing can set them. Normally absent,
   so times float; set only for something tied to a real place.
-- **Colours** for projects and saved filters exist in the model with no way to set them.
-  Block icons likewise. Colour never carries meaning alone.
+- **Block icons** exist in the model with no way to set them, and nothing shows one: decide
+  what an icon is (a symbol's name, an emoji) and where it is said before adding a field.
 - **Verbosity is read by reminders alone** (terse leaves a reminder's detail out). Terse
   ("Review PR, overdue") or full (the whole sentence) should reach every announcement, applied
   by the core so every target behaves alike.

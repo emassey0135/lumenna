@@ -111,6 +111,10 @@ pub fn projects(snapshot: &Snapshot) -> Result<Rows> {
             if (weight - Project::NEUTRAL_WEIGHT).abs() > f32::EPSILON {
                 value.push_str(&format!(", weight {weight}"));
             }
+            // Said in words, never colour alone.
+            if let Some(colour) = &project.color {
+                value.push_str(&format!(", {colour}"));
+            }
             Row {
                 id: RowId::Project(project.id),
                 role: Role::Project,
@@ -209,6 +213,7 @@ pub fn filters(snapshot: &Snapshot) -> Result<Filters> {
                 id: saved.id.to_string(),
                 name: saved.name.clone(),
                 query: saved.query.clone(),
+                colour: saved.color.clone(),
                 actions: crate::actions::filter(snapshot, saved),
             })
             .collect(),

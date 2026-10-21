@@ -643,6 +643,7 @@ pub fn project(snapshot: &Snapshot, project: &Project) -> Vec<Action> {
     }
     reorder(&mut actions, Subject::Project, &name, position_of(&ids, &project.id), ids.len());
     actions.push(weight);
+    actions.push(colour(Subject::Project, &name, project.color.as_deref()));
     actions.push(if project.archived { a(K::Unarchive, "Unarchive") } else { a(K::Archive, "Archive") });
     actions.push(a(K::Delete, "Delete").asking(Question::Choose {
         title: format!("Delete {name}?"),
@@ -653,6 +654,11 @@ pub fn project(snapshot: &Snapshot, project: &Project) -> Vec<Action> {
         ],
     }));
     actions
+}
+
+/// A project's, label's or saved filter's Colour, asking for a colour's name.
+fn colour(subject: Subject, name: &str, colour: Option<&str>) -> Action {
+    action(ActionKind::Colour, subject, "Colour", name).asking(text(format!("Colour of {name}"), "Colour", colour.unwrap_or_default(), COLOUR, true))
 }
 
 /// A label's.
@@ -666,13 +672,7 @@ pub fn label(snapshot: &Snapshot, label: &Label) -> Vec<Action> {
     let mut actions = vec![
         a(K::Rename, "Rename").asking(text(format!("Rename {name}"), "Name", name.clone(), "", false)),
         a(K::MergeInto, "Merge Into").asking(pick(format!("Merge {name} into"), "Merge")),
-        a(K::Colour, "Colour").asking(text(
-            format!("Colour of {name}"),
-            "Colour",
-            label.color.clone().unwrap_or_default(),
-            COLOUR,
-            true,
-        )),
+        colour(Subject::Label, &name, label.color.as_deref()),
     ];
     reorder(&mut actions, Subject::Label, &name, position_of(&ids, &label.id), ids.len());
     actions.push(a(K::Delete, "Delete").asking(confirm(
@@ -702,6 +702,7 @@ pub fn filter(snapshot: &Snapshot, filter: &SavedFilter) -> Vec<Action> {
         )),
     ];
     reorder(&mut actions, Subject::Filter, &name, position_of(&ids, &filter.id), ids.len());
+    actions.push(colour(Subject::Filter, &name, filter.color.as_deref()));
     actions.push(a(K::Delete, "Delete").asking(confirm(
         format!("Delete {name}?"),
         "The tasks it shows are not touched.",

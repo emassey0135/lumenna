@@ -884,6 +884,9 @@ pub struct FilterView {
     pub name: String,
     /// The query, as written.
     pub query: String,
+    /// Its colour's name, if it has one: said in words, never by colour alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<String>,
     /// What can be done to it, in the order offered ([`crate::actions`]).
     #[serde(default, skip_serializing_if = "none")]
     pub actions: Vec<crate::actions::Action>,

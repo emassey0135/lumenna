@@ -151,10 +151,14 @@ impl Lumenna {
             (S::Label, K::Rename) => self.rename_label(target, &answer_text(&answer)?),
             (S::Label, K::New) => self.add_label(&answer_text(&answer)?),
             (S::Label, K::MergeInto) => self.merge_labels(target, &answer_pick(&answer)?.0),
-            (S::Label, K::Colour) => {
+            (S::Label | S::Project | S::Filter, K::Colour) => {
                 let colour = answer_text(&answer)?;
                 let colour = (!colour.is_empty() && !colour.eq_ignore_ascii_case("none")).then_some(colour);
-                self.recolour_label(target, colour)
+                match action.subject {
+                    S::Project => self.recolour_project(target, colour),
+                    S::Filter => self.recolour_filter(target, colour),
+                    _ => self.recolour_label(target, colour),
+                }
             }
             (S::Label, K::MoveUp) => self.reorder_label(target, Direction::Up),
             (S::Label, K::MoveDown) => self.reorder_label(target, Direction::Down),

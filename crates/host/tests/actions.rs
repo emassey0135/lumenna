@@ -523,3 +523,22 @@ fn a_sitting_left_short_carries_its_remaining_time_to_another_block() {
     let again = lumenna.plan(Some(yesterday)).unwrap();
     assert!(!titles(&again.blocks[0].assignments[0].actions).contains(&"Carry Forward"), "moved on, so carried once");
 }
+
+#[test]
+fn a_project_and_a_saved_filter_take_a_colour_as_a_label_does_said_in_words() {
+    let (_directory, lumenna) = open();
+    lumenna.add_project("Home", None).unwrap();
+    lumenna.add_filter("Urgent", "p1").unwrap();
+    let project = lumenna.list_projects().unwrap().rows.into_iter().find(|r| r.title == "Home").unwrap();
+    lumenna.act(find(&project.actions, "Colour"), Answer::Text { text: "Teal".to_owned() }).unwrap();
+    let project = lumenna.list_projects().unwrap().rows.into_iter().find(|r| r.title == "Home").unwrap();
+    assert!(project.value.as_deref().unwrap().ends_with(", teal"), "{:?}", project.value);
+    let filter = lumenna.list_filters().unwrap().filters.remove(0);
+    lumenna.act(find(&filter.actions, "Colour"), Answer::Text { text: "red".to_owned() }).unwrap();
+    let places = lumenna.places();
+    let urgent = places.entries.iter().find(|e| e.title == "Urgent").unwrap();
+    assert_eq!(urgent.detail, "p1, red");
+    let filter = lumenna.list_filters().unwrap().filters.remove(0);
+    lumenna.act(find(&filter.actions, "Colour"), Answer::Text { text: "none".to_owned() }).unwrap();
+    assert_eq!(lumenna.list_filters().unwrap().filters[0].colour, None);
+}
