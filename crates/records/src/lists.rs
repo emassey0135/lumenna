@@ -265,7 +265,7 @@ pub fn history(snapshot: &Snapshot, now: &Zoned) -> Result<Rows> {
         .into_iter()
         .filter_map(|(id, event)| Some((snapshot.tasks.get(&id).filter(|t| !t.is_deleted())?, event)))
         .collect();
-    done.sort_by(|a, b| b.1 .0.cmp(&a.1 .0));
+    done.sort_by_key(|(_, (at, _, _))| std::cmp::Reverse(*at));
     let count = to_u32(done.len());
     let rows: Vec<Row> = done
         .iter()
