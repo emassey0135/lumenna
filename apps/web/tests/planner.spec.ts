@@ -242,6 +242,9 @@ test("a task's history is under its own heading on its screen, and never in its 
 });
 
 test("a block's end with work left short offers Carry Forward, which carries it to the next block", async ({ page }) => {
+  // An hour and more of the app's clock, a tick a second: slower than a minute on an ARM
+  // Windows machine, and under load.
+  test.setTimeout(240_000);
   await record(page);
   await at(page, new Date(2030, 0, 15, 8, 50), true);
   await open(page);
