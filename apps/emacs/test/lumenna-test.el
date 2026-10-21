@@ -1079,6 +1079,19 @@ until the app has taken it in."
       (lumenna-reminders-replan)
       (should (equal (buffer-name) "*Lumenna: Replan from Now*")))))
 
+(ert-deftest lumenna-a-colour-is-a-blank-mark-in-its-colour ()
+  "A colour is spaces in its colour, blank to speech, and nothing without colour."
+  (let ((teal '(:name "teal" :light "#00796B" :dark "#4DB6AC")))
+    (cl-letf (((symbol-function 'display-color-p) (lambda (&rest _) t))
+              ((symbol-function 'frame-parameter)
+               (lambda (_frame parameter) (and (eq parameter 'background-mode) 'dark))))
+      (let ((mark (lumenna--swatch teal)))
+        (should (equal (substring-no-properties mark) "   "))
+        (should (equal (plist-get (get-text-property 0 'face mark) :background) "#4DB6AC"))))
+    (cl-letf (((symbol-function 'display-color-p) (lambda (&rest _) nil)))
+      (should (equal (lumenna--swatch teal) "")))
+    (should (equal (lumenna--swatch nil) ""))))
+
 (provide 'lumenna-test)
 
 ;;; lumenna-test.el ends here

@@ -442,13 +442,27 @@ already draws one.  EVENTS are sent there first."
   "A heading from PARTS that are not empty, as sentences."
   (string-join (seq-remove (lambda (p) (or (null p) (string-empty-p p))) parts) ". "))
 
+(defun lumenna--swatch (swatch)
+  "SWATCH, a colour of the core's palette, as a mark before a name.
+Two spaces in its colour, then one: blank to speech and braille, which say
+the colour's name in the line.  Nothing where the display has no colour."
+  (if (and swatch (display-color-p))
+      (concat (propertize "  " 'face (list :background
+                                           (plist-get swatch (if (eq (frame-parameter nil 'background-mode) 'dark)
+                                                                 :dark :light))))
+              " ")
+    ""))
+
 (defun lumenna--insert-row (row)
   "Insert ROW as one line, indented by its depth, carrying the row."
   (let* ((depth (or (plist-get row :depth) 0))
          (start (point)))
-    (insert (make-string (* 2 depth) ?\s) (or (plist-get row :text) (plist-get row :title)))
-    (let ((face (lumenna--row-face row)))
-      (when face (put-text-property start (point) 'face face)))
+    (insert (make-string (* 2 depth) ?\s)
+            (lumenna--swatch (or (plist-get row :swatch) (plist-get (plist-get row :block) :swatch))))
+    (let ((text (point)))
+      (insert (or (plist-get row :text) (plist-get row :title)))
+      (let ((face (lumenna--row-face row)))
+        (when face (put-text-property text (point) 'face face))))
     (add-text-properties start (point) (list 'lumenna-row row 'lumenna-level (+ depth 2)))
     (run-hook-with-args 'lumenna-row-inserted-functions start (point) row)
     (insert "\n")))
@@ -636,7 +650,8 @@ Asked again after REFUSAL, the core's reason, with what was typed."
                 (lambda (line)
                   (let* ((choice (cdr (assoc line named)))
                          (reason (plist-get choice :reason)))
-                    (if (and reason (not (string-empty-p reason))) (concat "  " reason) "")))))
+                    (concat "  " (lumenna--swatch (plist-get choice :swatch))
+                            (if (and reason (not (string-empty-p reason))) reason ""))))))
          (picked (cdr (assoc (completing-read (lumenna--prompt (plist-get asking :refusal) (plist-get question :title))
                                               named nil t)
                              named))))
@@ -1116,7 +1131,7 @@ left out."
           (push (list :key (plist-get entry :key) :text (plist-get entry :text)
                       :title (plist-get entry :title)
                       :depth depth :place (plist-get entry :kind)
-                      :actions (plist-get entry :actions)
+                      :actions (plist-get entry :actions) :swatch (plist-get entry :swatch)
                       :role (if (plist-get (plist-get entry :kind) :Group) "heading" "place")
                       :state (and (lumenna--true (plist-get entry :archived)) ["archived"]))
                 rows)

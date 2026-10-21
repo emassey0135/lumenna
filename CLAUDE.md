@@ -783,6 +783,9 @@ against a real `lum rpc`, answering the minibuffer by rebinding the reading func
   through one was silent.
 - **A task's priority is its face** (`lumenna-priority-1` to `-3`, from the row's `priority`,
   which every row carries beside the words), read in a voice of its own (`lumenna-voice-map`).
+- **A colour is two spaces in it** (`lumenna--swatch`), before a row's name and in a pick's
+  annotation: blank to speech and braille, which hear the colour's word in the line, its light
+  or dark value by the frame's `background-mode`, and nothing where the display has no colour.
 - **Booleans come back as `:json-false`**, which is non-nil: test them with `lumenna--true`.
 - **The clock is Emacs's**: `display-time-24hr-format`, told the app as it changes
   (`app.clock`), which words every time in it.
