@@ -286,6 +286,9 @@ pub(crate) enum Command {
     #[command(subcommand)]
     Daemon(DaemonCommand),
 
+    /// What was done over the last two weeks, newest first.
+    History,
+
     /// Undo the last change made on this device.
     ///
     /// The history is this device's alone and survives between commands, so `lum undo`
@@ -1247,6 +1250,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
             }
         },
         Command::Notify { speak } => return notify(profile, *speak),
+        Command::History => Response::new(profile.history()?),
         Command::Undo => Response::new(profile.undo()?),
         Command::Redo => Response::new(profile.redo()?),
         Command::Backup { to } => {

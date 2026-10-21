@@ -220,3 +220,88 @@ pub fn filters(snapshot: &Snapshot) -> Result<Filters> {
         empty: crate::places::SidebarGroup::Filters.empty(),
     })
 }
+
+/// How far back History looks.
+pub const HISTORY_DAYS: i64 = 14;
+
+/// What was done, newest first: each task once, at the latest time it was completed or worked
+/// in a block over the last [`HISTORY_DAYS`] days, with how long it was worked in that time.
+/// One row a task, so a list keyed by its rows, and the details beside it, hold it as any task.
+///
+/// # Errors
+///
+/// Never; a `Result` as every listing is.
+pub fn history(snapshot: &Snapshot, now: &Zoned) -> Result<Rows> {
+    use std::collections::BTreeMap;
+    let today = now.date();
+    let since = today.checked_sub(jiff::Span::new().days(HISTORY_DAYS)).unwrap_or(today);
+    let zone = now.time_zone().clone();
+    // The latest event per task: when, whether it was a completion, the block it was in.
+    let mut latest: BTreeMap<lumenna_core::id::TaskId, (jiff::civil::DateTime, bool, Option<String>)> = BTreeMap::new();
+    let mut worked: BTreeMap<lumenna_core::id::TaskId, u32> = BTreeMap::new();
+    let mut note = |task, at: jiff::civil::DateTime, done: bool, block: Option<String>| {
+        let entry = latest.entry(task).or_insert((at, done, block.clone()));
+        if at > entry.0 {
+            *entry = (at, done, block);
+        }
+    };
+    for completion in snapshot.completions.values() {
+        let at = completion.completed_at.to_zoned(zone.clone()).datetime();
+        if at.date() >= since {
+            note(completion.task_id, at, true, None);
+        }
+    }
+    for sitting in snapshot.assignments.values().filter(|a| a.accumulated_mins > 0) {
+        let Some(series) = snapshot.series.get(&sitting.block_ref.series_id()) else { continue };
+        let day = sitting.block_ref.date().unwrap_or(series.start_date);
+        if day < since || day > today {
+            continue;
+        }
+        *worked.entry(sitting.task_id).or_default() += sitting.accumulated_mins;
+        note(sitting.task_id, day.to_datetime(series.start_time), false, Some(series.title.clone()));
+    }
+    let facts = snapshot.facts();
+    let mut done: Vec<_> = latest
+        .into_iter()
+        .filter_map(|(id, event)| Some((snapshot.tasks.get(&id).filter(|t| !t.is_deleted())?, event)))
+        .collect();
+    done.sort_by(|a, b| b.1 .0.cmp(&a.1 .0));
+    let count = to_u32(done.len());
+    let rows: Vec<Row> = done
+        .iter()
+        .enumerate()
+        .map(|(index, (task, (at, completed, block)))| {
+            let minutes = worked.get(&task.id).copied().unwrap_or(0);
+            let value = match (completed, block, minutes) {
+                (false, Some(block), m) => Some(format!("{} in {block}", crate::words::duration(m))),
+                (true, _, 0) => None,
+                (true, _, m) => Some(format!("after {} worked", crate::words::duration(m))),
+                (false, None, _) => None,
+            };
+            Row {
+                id: RowId::Task(task.id),
+                role: Role::Task,
+                depth: 0,
+                index: to_u32(index) + 1,
+                count,
+                expanded: None,
+                checked: Some(facts.is_completed(task)),
+                title: task.title.clone(),
+                state: Vec::new(),
+                // "completed yesterday" or "worked today", said with its time as a due date is.
+                due: Some(format!("{} {}", if *completed { "completed" } else { "worked" }, lumenna_core::time::day_words(at.date(), today))),
+                due_time: Some(at.time()),
+                value,
+                hint: None,
+            }
+        })
+        .collect();
+    let mut listed = Rows::new(&rows, "task");
+    listed.announcement = match rows.len() {
+        0 => "Nothing done".to_owned(),
+        n => format!("{} done in the last two weeks", crate::words::capitalised(&count_line(n, "task"))),
+    };
+    listed.empty = "Nothing done in the last two weeks.".to_owned();
+    crate::actions::fill_rows(&mut listed, snapshot);
+    Ok(listed)
+}

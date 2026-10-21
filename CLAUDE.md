@@ -633,7 +633,11 @@ minutes and said so. What is due by then and fits nowhere is named. Applying it 
 refused where a task was done or put in that block since, and plans again
 (`DayPlanned::next`), each sitting turned down kept out of its block alone.
 The surface words both (`task_history`, `TaskDetail::history`): asked for about one task,
-never said in a list or a live region. The weights are a synced setting
+never said in a list or a live region. **History is a place** (`Place::History`, `lists::history`, `lum history`,
+the shared key `go-history`, Ctrl+5): each task once, at the last time in two weeks it was
+completed or worked on in a block, newest first, its row a task's row ("completed yesterday" as
+its `due`, the time as its `due_time`, time worked as its `value`), so the details, a row's
+actions and focus by identifier work as on any list. The weights are a synced setting
 (`Settings::urgency`, a key per weight so concurrent edits of different weights both hold),
 said and read as one line, `urgency-weights` ("due 12, priority 6 3.9 1.8 0, …"). **Task
 lists are most urgent first by default** (`Settings::task_order`, the synced `task-order`:

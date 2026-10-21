@@ -127,6 +127,17 @@ impl Lumenna {
         self.told(|store| crate::lists::tasks(&repaired(store), query, &now))
     }
 
+    /// What was done over the last two weeks, newest first: each task once, at the last time
+    /// it was completed or worked on.
+    ///
+    /// # Errors
+    ///
+    /// Never, as things stand; a `Result` as every listing is.
+    pub fn history(&self) -> Result<Rows> {
+        let now = Zoned::now();
+        self.told(|store| crate::lists::history(&repaired(store), &now))
+    }
+
     /// Tasks whose title or notes contain `text`.
     ///
     /// # Errors

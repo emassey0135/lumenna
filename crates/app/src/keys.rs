@@ -78,6 +78,7 @@ pub const SHARED: &[Shortcut] = &[
     key(Group::View, "go-tasks", "Tasks", &["Ctrl+2"]),
     key(Group::View, "go-blocks", "Blocks", &["Ctrl+3"]),
     key(Group::View, "go-trash", "Trash", &["Ctrl+4"]),
+    key(Group::View, "go-history", "History", &["Ctrl+5"]),
     key(Group::View, "next-pane", "Next Pane", &["F6"]),
     key(Group::View, "previous-pane", "Previous Pane", &["Shift+F6"]),
     key(Group::Task, "mark-done", "Mark Done or Not Done", &["Ctrl+K"]),

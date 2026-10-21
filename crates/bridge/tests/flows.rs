@@ -748,6 +748,32 @@ fn a_sitting_moves_up_and_down_its_block_and_one_not_started_is_skipped_and_plan
 }
 
 #[test]
+fn history_lists_what_was_done_newest_first_and_its_rows_are_tasks_with_details() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.add("Call the bank");
+    app.send(Event::Open(Place::Tasks));
+    let milk = app.view().list.unwrap().items.into_iter().find(|i| i.row.title == "Buy milk").unwrap().row;
+    let done = milk.actions.iter().find(|a| a.kind == ActionKind::MarkDone).unwrap().clone();
+    app.send(Event::Perform(done));
+    app.send(Event::Open(Place::History));
+    let view = app.view();
+    let list = view.list.unwrap();
+    assert_eq!(list.announcement, "1 task done in the last two weeks");
+    let row = &list.items[0].row;
+    assert_eq!(row.title, "Buy milk");
+    assert_eq!(row.due.as_deref(), Some("completed today"));
+    assert!(row.due_time.is_some());
+    assert_eq!(row.checked, Some(true));
+    assert!(row.actions.iter().any(|a| a.kind == ActionKind::MarkNotDone), "a task's own actions");
+    assert_eq!(view.details.map(|d| d.task.title), Some("Buy milk".to_owned()), "the details show it");
+    let sidebar = app.view().sidebar;
+    let at = |title: &str| sidebar.iter().position(|e| e.title == title).unwrap();
+    assert_eq!(at("History"), at("Blocks") + 1, "beside Trash, after Blocks");
+    assert_eq!(at("Trash"), at("History") + 1);
+}
+
+#[test]
 fn closing_a_proposal_makes_nothing() {
     let mut app = App::new();
     block(&mut app, "Deep work", "09:00", "tomorrow", None);
