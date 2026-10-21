@@ -134,13 +134,14 @@ final class SidebarUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText("Urgent")
         app.alerts.buttons["Next"].tap()
-        field = app.alerts.textFields.firstMatch
-        XCTAssertTrue(field.waitForExistence(timeout: 5))
-        field.typeText("p1")
-        app.alerts.buttons["Add"].tap()
+        // The query is in the filter language, so it is asked in a sheet that completes it.
+        let query = app.textViews["Query"]
+        XCTAssertTrue(query.waitForExistence(timeout: 5), app.debugDescription)
+        query.typeText("p1")
+        app.navigationBars.buttons["Add"].tap()
         XCTAssertTrue(place("Urgent").waitForExistence(timeout: 5))
         // The question gone, its dimming with it, before the audit judges what was under it.
-        XCTAssertTrue(app.alerts.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(query.waitForNonExistence(timeout: 5))
         try audit()
         // A label's own actions are offered on it, as in Browse on the iPhone.
         act(place("calls"), "Rename")

@@ -66,6 +66,15 @@ final class LumennaUITests: XCTestCase {
         app.alerts.buttons[button].tap()
     }
 
+    /// Answers a question in the filter language: a sheet, not an alert, since its line completes.
+    private func answerQuery(_ text: String) {
+        let field = app.textViews["Query"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5), app.debugDescription)
+        field.typeText(text)
+        app.navigationBars.buttons["Add"].tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+    }
+
     private func cell(containing text: String) -> XCUIElement {
         app.cells.containing(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
     }
@@ -627,7 +636,8 @@ final class LumennaUITests: XCTestCase {
         cell(containing: "Saved Filters").tap()
         app.buttons["Add filter"].tap()
         answer("Urgent", with: "Next")
-        answer("p1", with: "Add")
+        // The query is in the filter language, so it is asked in a sheet that completes it.
+        answerQuery("p1")
         XCTAssertTrue(cell(containing: "Urgent").waitForExistence(timeout: 5))
         try audit()
     }
