@@ -1,6 +1,6 @@
 //! What can be done to each row, decided once for every client, and doing it.
 
-use lumenna_host::{Action, ActionKind, Answer, Lumenna, NewBlock, Question, Subject};
+use lumenna_host::{Action, ActionKind, Answer, Lumenna, NewBlock, Question, Subject, TaskEdit};
 
 fn open() -> (tempfile::TempDir, Lumenna) {
     let directory = tempfile::tempdir().unwrap();
@@ -391,6 +391,28 @@ fn a_tasks_history_and_urgency_say_why_it_ranks_where_it_does() {
     let waited_on = lumenna.task_history(&figures).unwrap();
     assert_eq!(waited_on.terms[0].words, "1 task waits on it");
     assert_eq!(lumenna.show_task(&report).unwrap().task.history, ["made today"], "on its own screen too");
+}
+
+#[test]
+fn a_due_date_moved_later_by_hand_is_counted_in_its_history() {
+    let (_directory, lumenna) = open();
+    let task = add(&lumenna, "write report tomorrow");
+    let due = |words: &str| lumenna.edit_task(&task, TaskEdit { due: Some(words.to_owned()), ..TaskEdit::default() }).unwrap();
+    due("in 3 days");
+    due("in 5 days");
+    due("in 4 days");
+    assert_eq!(lumenna.task_history(&task).unwrap().history, ["due date moved later twice", "made today"]);
+    assert_eq!(lumenna.show_task(&task).unwrap().task.history[0], "due date moved later twice", "on its own screen too");
+}
+
+#[test]
+fn completing_a_repeating_task_moves_its_date_on_without_counting_it_put_off() {
+    let (_directory, lumenna) = open();
+    let task = add(&lumenna, "water the plants every day");
+    lumenna.complete_task(&task).unwrap();
+    lumenna.complete_task(&task).unwrap();
+    let history = lumenna.task_history(&task).unwrap().history;
+    assert!(!history.iter().any(|part| part.starts_with("due date moved")), "{history:?}");
 }
 
 #[test]

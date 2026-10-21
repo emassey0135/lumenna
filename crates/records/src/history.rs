@@ -82,6 +82,9 @@ pub fn history_words(found: &History, today: jiff::civil::Date) -> Vec<String> {
     if found.put_off > 0 {
         parts.push(format!("put in a block {} and left", times(found.put_off)));
     }
+    if found.postponed > 0 {
+        parts.push(format!("due date moved later {}", times(found.postponed)));
+    }
     if let Some(day) = found.last_worked {
         parts.push(format!("last worked on {}", lumenna_core::time::day_words(day, today)));
     }
@@ -154,6 +157,7 @@ mod tests {
             worked_mins: 43,
             estimate_mins: Some(60),
             put_off: 2,
+            postponed: 4,
             age_days: 120,
             completions: 0,
             last_worked: None,
@@ -165,6 +169,7 @@ mod tests {
                 "3 sittings, 43 minutes logged against an estimate of 1 hour",
                 "17 minutes left of the estimate",
                 "put in a block twice and left",
+                "due date moved later 4 times",
                 "made 4 months ago",
             ]
         );

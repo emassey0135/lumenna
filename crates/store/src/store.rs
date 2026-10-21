@@ -45,6 +45,10 @@ pub struct Store {
     /// its phone — so the Iroh round can skip it while nothing has changed since. Memory
     /// only: a restart costs one round that finds nothing to send.
     linked: BTreeMap<String, Vec<ChangeHash>>,
+    /// How often each task's due date was moved later, kept as the core document grows.
+    postponed: crate::postponed::Postponed,
+    /// Those counts, by task, as the snapshot carries them.
+    postponements: BTreeMap<lumenna_core::id::TaskId, u32>,
 }
 
 impl Store {
@@ -75,6 +79,8 @@ impl Store {
             docs: Documents::new(),
             unreported: false,
             linked: BTreeMap::new(),
+            postponed: crate::postponed::Postponed::default(),
+            postponements: BTreeMap::new(),
         };
         // `core` and `devices` are small and needed on every device; years are not loaded
         // until asked for.
@@ -138,7 +144,15 @@ impl Store {
     /// Materializes everything loaded.
     #[must_use]
     pub fn snapshot(&self) -> (Snapshot, HydrationReport) {
-        self.docs.snapshot()
+        let (mut snapshot, report) = self.docs.snapshot();
+        snapshot.postponed.clone_from(&self.postponements);
+        (snapshot, report)
+    }
+
+    /// Reads the core document's new changes into how often each task's date was moved later.
+    fn tally(&mut self) {
+        let counts = self.postponed.update(self.docs.core().automerge_mut());
+        self.postponements = counts.into_iter().filter_map(|(task, count)| Some((task.parse().ok()?, count))).collect();
     }
 
     /// Loads what showing a day in `year` needs: that year's blocks, and every earlier year
@@ -235,6 +249,7 @@ impl Store {
         // them. The cursor only ever moves in `refresh`, where the rows it passes have
         // actually been applied; re-reading a change already held is a no-op, so lagging
         // costs nothing and skipping would lose an edit.
+        self.tally();
         Ok(())
     }
 
@@ -335,6 +350,9 @@ impl Store {
             Ok((changed, db.cursor()?))
         })?;
         self.cursor = highest.max(cursor);
+        if changed {
+            self.tally();
+        }
         Ok(changed || unreported)
     }
 

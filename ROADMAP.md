@@ -67,7 +67,8 @@ Built: the score and its terms (`task_history`, `lum task history`), per-task hi
 records already kept, on a task's own screen in every app, and History, a place beside Trash in
 every app and `lum history`: what was done over two weeks, newest first. Still to come:
 
-- **Field-level history** from Automerge (title and due changes over time), with its own API.
+- **Field-level history** beyond due dates moved later (counted, in a task's history): a
+  timeline of every field was judged not worth having (2026-10-21).
 - If a task becomes permanent furniture at the top, a staleness question ("this has been at
   the top for three weeks; is it real?") rather than a bigger formula.
 

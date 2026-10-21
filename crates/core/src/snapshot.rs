@@ -54,6 +54,9 @@ pub struct Snapshot {
     pub devices: BTreeMap<NodeId, Device>,
     /// From `core`.
     pub settings: Settings,
+    /// How often each task's due date was moved later by hand, which only the store's history
+    /// knows (`lumenna_store`'s `postponed`): none when a task is absent.
+    pub postponed: BTreeMap<TaskId, u32>,
 }
 
 impl Snapshot {

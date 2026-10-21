@@ -600,7 +600,10 @@ terms (due, rising and still rising while overdue to a ceiling; priority; age; p
 worked; blocking; blocked, strongly negative; already in a block today, mildly negative),
 the sum **multiplied** by the project's weight, so the order within a project holds and only
 the scale between projects changes. `core::history` counts what the records already hold:
-sittings and time, how often a task was put in a block and left, its age, its completions.
+sittings and time, how often a task was put in a block and left, its age, its completions; and
+one fact only the history holds, how often its due date was moved later by hand
+(`Snapshot::postponed`, kept by the store as the core document grows, `store::postponed`: each
+change read once, a move made by the change that completed a repeating task not counted).
 `core::suggestions` ranks what a block is offered: the open tasks its filter admits, by
 urgency, a task whose estimate fits the time left raised, nothing excluded for not fitting.
 Assign a Task offers them in that order, each `Choice::reason` the sentence a person hears

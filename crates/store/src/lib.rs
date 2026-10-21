@@ -18,6 +18,7 @@ pub mod db;
 pub mod doc;
 pub mod error;
 pub mod export;
+mod postponed;
 mod records;
 pub mod store;
 pub mod undo;

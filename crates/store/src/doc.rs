@@ -325,6 +325,11 @@ impl Doc {
         Ok(())
     }
 
+    /// The document itself, for reading its history (`postponed`).
+    pub(crate) fn automerge_mut(&mut self) -> &mut AutoCommit {
+        &mut self.doc
+    }
+
     /// The individual changes made since `heads`, each with its hash.
     ///
     /// One row per change is what the `changes` table is shaped for, and it is what makes

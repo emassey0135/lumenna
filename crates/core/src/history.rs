@@ -21,6 +21,8 @@ pub struct History {
     /// Sittings on days already gone that it was never worked in: planned and left, skipped
     /// or moved on.
     pub put_off: u32,
+    /// Times its due date was moved later by hand (the store's history, [`Snapshot::postponed`]).
+    pub postponed: u32,
     /// Whole days since it was made.
     pub age_days: i64,
     /// Times it was done (a recurring task's occurrences).
@@ -37,6 +39,7 @@ pub fn history(snapshot: &Snapshot, task: &Task, now: &Zoned) -> History {
         estimate_mins: task.estimate_mins,
         age_days: now.timestamp().duration_since(task.created_at).as_secs() / 86_400,
         completions: snapshot.completion_count(task.id),
+        postponed: snapshot.postponed.get(&task.id).copied().unwrap_or(0),
         ..History::default()
     };
     for sitting in snapshot.assignments.values().filter(|a| a.task_id == task.id) {
