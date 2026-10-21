@@ -13,6 +13,7 @@ import { rowKey } from "./landing";
 import { asksForMenu, RowMenu } from "./RowMenu";
 import { send } from "./session";
 import { SwatchMark } from "./Swatch";
+import { brailleOnRow } from "./braille";
 
 export function Blocks(props: { screen: Screen }) {
   const list = props.screen.list;
@@ -88,7 +89,7 @@ export function Blocks(props: { screen: Screen }) {
           {(node) => (
             <TreeItem id={node.id} textValue={node.item.text}>
               <TreeItemContent>
-                <div className="row">
+                <div className="row" ref={brailleOnRow(node.item.text, node.item.braille)}>
                   <SwatchMark swatch={node.item.row.swatch} />
                   {node.item.text}
                 </div>

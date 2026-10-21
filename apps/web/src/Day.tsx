@@ -24,6 +24,7 @@ import { send } from "./session";
 import { nest } from "./tree";
 import type { Node } from "./tree";
 import { SwatchMark } from "./Swatch";
+import { brailleOnRow } from "./braille";
 
 /** What Space runs on a sitting: its timer. */
 const TIMING: ActionKind[] = [ActionKind.StartTimer, ActionKind.PauseTimer, ActionKind.ResumeTimer];
@@ -142,7 +143,7 @@ export function Day(props: { screen: Screen }) {
               <TreeItem id={node.id} textValue={node.item.text}>
                 <TreeItemContent>
                   {({ hasChildItems }) => (
-                    <div className={`row ${node.item.kind}`}>
+                    <div className={`row ${node.item.kind}`} ref={brailleOnRow(node.item.text, node.item.braille)}>
                       {hasChildItems && (
                         <Button slot="chevron" className="chevron">
                           ›

@@ -86,6 +86,8 @@ function session(): App {
 /** A row of the list shown, with the line a screen reader reads for it. */
 export interface ShownItem extends Item {
   text: string;
+  /** The line on a braille display, its states short (`Line::braille`). */
+  braille: string;
 }
 
 /** The list shown, its rows' lines in the web's words, and what it found as one sentence. */
@@ -97,6 +99,8 @@ export interface Shown extends Omit<ListView, "items"> {
 /** A row of the day, with the line a screen reader reads for it. */
 export interface ShownDayItem extends DayItem {
   text: string;
+  /** The line on a braille display: lengths as hours and minutes, kinds short. */
+  braille: string;
 }
 
 /** The day as the page draws it: its heading in the browser's words, each row's line. */
@@ -175,13 +179,17 @@ export interface Said {
 function screen(view: ViewModel, lines: Lines): Screen {
   const list = view.list && {
     ...view.list,
-    items: view.list.items.map((item, index) => ({ ...item, text: lines.list[index]?.text ?? item.row.title })),
+    items: view.list.items.map((item, index) => ({
+      ...item,
+      text: lines.list[index]?.text ?? item.row.title,
+      braille: lines.list[index]?.braille ?? "",
+    })),
     readback: lines.readback,
   };
   const day = view.day && {
     ...view.day,
     title: lines.dayTitle,
-    items: view.day.items.map((item, index) => ({ ...item, text: lines.day[index]?.text ?? "" })),
+    items: view.day.items.map((item, index) => ({ ...item, text: lines.day[index]?.text ?? "", braille: lines.day[index]?.braille ?? "" })),
   };
   const details = view.details && { ...view.details, state: lines.taskState };
   const asking = view.asking && {

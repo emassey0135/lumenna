@@ -59,9 +59,6 @@ A day or less each, for between the larger pieces.
     showed no work). UI tests now launch with animations off (`LUMENNA_NO_ANIMATIONS`), and the
     first full run after had no stall; what was left animating was never found, and is worth
     finding if anyone sees the sidebar misbehave.
-  - In CI the iPad suite takes over half an hour on the runner and times out where it
-    passes locally, so its job reports without blocking: make it fit the runner (fewer
-    simulator round trips, or splitting it across jobs), then make it block again.
 - **Android**: pairing on the local network untried on a real phone (the emulator's NAT
   passes no multicast); the iPhone's two pairing tests not ported. The keyboard commands
   and the wide layout are tested in the emulator, not yet with TalkBack and a real keyboard.
@@ -70,9 +67,8 @@ A day or less each, for between the larger pieces.
 - **iOS UI tests that fail only when the simulator delivers a key out of order**: ⌘K (the K
   arriving before the ⌘, so VoiceOver's focus test sees nothing done) and ⌘F on CI. They
   are in the full suites, which only report.
-- **Braille apart from speech beyond BTSpeak**, only if braille users there ask: the web through
-  `aria-braillelabel`, which JAWS and NVDA read; Windows only through JAWS scripts or an NVDA
-  add-on, since UI Automation gives a control one name.
+- **Braille apart from speech on Windows**, only if braille users there ask: only through JAWS
+  scripts or an NVDA add-on, since UI Automation gives a control one name.
 - **Screen readers not yet tried by a person**: JAWS, Narrator, ChromeVox, Emacspeak and
   speechd-el. NVDA (Windows and the web), Orca, VoiceOver on the Mac and iPhone, TalkBack,
   Emacsvox and the BTSpeak have been.

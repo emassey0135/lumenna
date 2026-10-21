@@ -1890,6 +1890,10 @@ with `lum`.
   way), a click handed back to the page; what is due is the app icon's badge. `npm run test:pwa`
   builds and tests it (`playwright.pwa.config.ts`, against `vite preview`); CI runs it on its
   release build.
+- **A row's braille is `aria-braillelabel`** (`braille.ts`), which JAWS and NVDA read: the app's
+  `Line::braille` (states short, the day's lengths as hours and minutes and kinds short), set on
+  the row from inside it, since React Aria passes on only the attributes it knows, and left off
+  where braille and speech are the same.
 - **Backups go into a folder chosen once** (`backups.ts`, the File System Access API, Chromium's),
   in a tab as much as installed: its handle kept in IndexedDB and in memory, a backup taken as the
   app opens and hourly when the core says one is due among the folder's names

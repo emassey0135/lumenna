@@ -260,3 +260,19 @@ test("go to day has a calendar beside its line, open on the day shown, which fil
   await dialog.getByRole("button", { name: "Go" }).click();
   await expect(page.getByRole("main").getByRole("heading", { level: 2 })).toContainText("2030");
 });
+
+test("a braille display is given each row short: states, lengths and kinds", async ({ page }) => {
+  await open(page);
+  await add(page, "pay the rent yesterday");
+  await place(page, /^Tasks/);
+  const rent = page.getByRole("main").getByRole("row", { name: /^pay the rent/ });
+  await expect(rent).toHaveAccessibleName(/overdue/);
+  await expect(rent).toHaveAttribute("aria-braillelabel", /ovd/);
+
+  await place(page, /^Today/);
+  await addBlock(page, "Evening", "9pm");
+  const block = page.getByRole("main").getByRole("row", { name: /Evening/ });
+  await expect(block).toHaveAccessibleName(/1 hour, work block/);
+  await expect(block).toHaveAttribute("aria-braillelabel", /Evening, 1:00, wrk/);
+  await axe(page);
+});

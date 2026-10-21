@@ -24,6 +24,7 @@ import { send } from "./session";
 import { nest } from "./tree";
 import type { Node } from "./tree";
 import { SwatchMark } from "./Swatch";
+import { brailleOnRow } from "./braille";
 
 /** What Space runs on a row: whichever of these it has. */
 const CHECKING: ActionKind[] = [ActionKind.MarkDone, ActionKind.MarkNotDone, ActionKind.Restore];
@@ -168,7 +169,7 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
               <TreeItem id={node.id} textValue={node.item.text}>
                 <TreeItemContent>
                   {({ hasChildItems }) => (
-                    <div className="row">
+                    <div className="row" ref={brailleOnRow(node.item.text, node.item.braille)}>
                       {hasChildItems && (
                         <Button slot="chevron" className="chevron">
                           ›
