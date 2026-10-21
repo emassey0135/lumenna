@@ -236,6 +236,23 @@ final class TaskListViewController: UIHostingController<TaskListScreen> {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         takeKeyboardCommands()
+        offerRotors()
+    }
+
+    /// VoiceOver's Overdue rotor, from one overdue task to the next (`RowRotor`), on the list
+    /// and the view holding it: VoiceOver collects a rotor from any container above its row.
+    private func offerRotors() {
+        guard place != .trash, place != .blocks else { return }
+        let model = model
+        let overdue = RowRotor.make(
+            "Overdue", in: self,
+            rows: { model.shown.map(\.id) },
+            wanted: { index in model.shown.indices.contains(index) && model.shown[index].row.state.contains("overdue") },
+            current: { model.focus },
+            landed: { model.moved(to: $0) }
+        )
+        view.accessibilityCustomRotors = [overdue]
+        RowRotor.list(in: view)?.accessibilityCustomRotors = [overdue]
     }
 
     @objc func undoChange() {

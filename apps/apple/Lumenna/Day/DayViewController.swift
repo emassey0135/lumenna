@@ -239,6 +239,28 @@ final class DayViewController: UIHostingController<DayScreen> {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         takeKeyboardCommands()
+        offerRotors()
+    }
+
+    /// VoiceOver's rotors over the day (`RowRotor`): Blocks, from one block to the next, and
+    /// Running, the sitting whose timer runs.
+    private func offerRotors() {
+        let model = model
+        let rotor = { (name: String, wanted: @escaping (LumennaApp.DayItem) -> Bool) in
+            RowRotor.make(
+                name, in: self,
+                rows: { model.shown.map(\.id) },
+                wanted: { index in model.shown.indices.contains(index) && wanted(model.shown[index].item) },
+                current: { model.focus },
+                landed: { model.moved(to: $0) }
+            )
+        }
+        let rotors = [
+            rotor("Blocks") { $0.kind == .block },
+            rotor("Running") { $0.kind == .sitting && $0.sitting?.running == true },
+        ]
+        view.accessibilityCustomRotors = rotors
+        RowRotor.list(in: view)?.accessibilityCustomRotors = rotors
     }
 
     /// The day's actions as offered, for tests.

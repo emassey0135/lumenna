@@ -194,6 +194,45 @@ final class VoiceOverUITests: XCTestCase {
     }
 
     /// Whether `condition` comes true within five seconds, asked four times a second.
+    /// Turns VoiceOver's rotor (VO-Command-Right Arrow) until it says `name`.
+    private func chooseRotor(_ name: String) {
+        var heard: [String] = []
+        for _ in 0..<20 {
+            app.typeKey(.rightArrow, modifierFlags: [.control, .option, .command])
+            let said = waitForSpeech(after: heard.last)
+            heard.append(said)
+            if said.contains(name) { return }
+        }
+        XCTFail("the rotor never offered \(name): \(heard)")
+    }
+
+    /// Steps the rotor chosen (VO-Command-Down or Up Arrow) and returns what VoiceOver says.
+    private func stepRotor(forward: Bool, after previous: String) -> String {
+        app.typeKey(forward ? .downArrow : .upArrow, modifierFlags: [.control, .option, .command])
+        return waitForSpeech(after: previous)
+    }
+
+    func testTheOverdueRotorGoesBackToTheOverdueTaskPastTheOthers() throws {
+        add("pay the rent yesterday", "call the bank tomorrow", "water the plants")
+        try voiceOver.enable()
+        try move(to: "water the plants")
+        chooseRotor("Overdue")
+        let said = stepRotor(forward: false, after: "Overdue")
+        XCTAssertTrue(said.contains("pay the rent"), "the Overdue rotor said \"\(said)\"")
+    }
+
+    func testTheBlocksRotorStepsFromOneBlockToTheNextPastTheFreeTime() throws {
+        // Blocks through quick add's own `block` lines, later today, with time free between.
+        add("block Morning 6am-7am", "block Evening 9pm-10pm")
+        let today = app.tabBars.buttons["Today"]
+        if today.exists { today.tap() } else { app.typeKey("1", modifierFlags: .command) }
+        try voiceOver.enable()
+        try move(to: "Morning")
+        chooseRotor("Blocks")
+        let next = stepRotor(forward: true, after: "Blocks")
+        XCTAssertTrue(next.contains("Evening"), "the Blocks rotor said \"\(next)\"")
+    }
+
     private func waitUntil(_ condition: () -> Bool) -> Bool {
         for _ in 0..<20 {
             if condition() { return true }

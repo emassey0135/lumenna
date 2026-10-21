@@ -872,6 +872,13 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   so focus is given through `@FocusState` (`TaskListModel.filterWanted`), never by finding a
   view. A model takes the person's own move into `focus` at once (`moved(to:)`), so a key
   pressed straight after acts on that row, not the one the app's next turn has yet to replace.
+- **VoiceOver's rotors are UIKit's** (`RowRotor`): Overdue on a task list, Blocks and Running on
+  the day, a `UIAccessibilityCustomRotor` on the hosting view and the list's collection view,
+  whose search finds the next matching row in the model, scrolls the collection view to it and
+  hands back its cell's element. SwiftUI's `accessibilityRotor`, entries on each row, was listed
+  and stepped to nothing: a `List` row exists only while its cell is on the screen. On the day's
+  heading VoiceOver offers no custom rotor (its SwiftUI element stops the search); from any row
+  they work.
 - **Text entry wraps** (`LineEntry`): a one-line field scrolls sideways at large sizes and
   the audit flags it as clipped.
 - **A line in the filter or quick-add language completes two ways** (`Shared/Forms/Completions.swift`,

@@ -145,12 +145,6 @@ names from the store. Still to come:
 
 ### Each app
 
-- **iOS**: custom rotors (overdue, running, next block). Tried (2026-10-20) as SwiftUI's
-  `accessibilityRotor` on the task list and the day: VoiceOver lists the rotor, but VO-Command-Down
-  steps to none of its entries, with a namespace, the list's own ids or an explicit `.id` alike,
-  where the actions rotor steps fine. A SwiftUI `List`'s rows are made lazily; try a UIKit
-  `UIAccessibilityCustomRotor` on the hosting view, or a `LazyVStack`, and test it with VoiceOver
-  (`VoiceOverUITests` steps a rotor by keyboard).
 - **iPad**, found by its UI tests:
   - In the simulator, the first tap on a button of an alert with an untouched text field
     only ends editing (Skip when assigning a task). Try it on a real iPad; VoiceOver, which
