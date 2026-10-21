@@ -593,6 +593,22 @@ surface's `reminders.rs` words them and answers the apps.
 - **Dismissing and snoozing write a `ReminderAck`**, which syncs: best effort, since a sleeping
   device may still show it. "Reminders on this device" is a device setting and never syncs.
 
+### The planner's rules
+
+Urgency, suggestions, re-flow and the whole-day plan all keep these:
+
+- **Pure, deterministic functions over the day's state**, in the core, property-tested.
+- **A proposal, never a mutation**: an accepted one goes through the ordinary operations, so it
+  can be undone and it syncs. A day that reorganises itself unannounced disorients, above all
+  someone who cannot glance at it.
+- **Every proposal can be said in full before it is accepted**: for this audience the
+  description *is* the verification.
+- **Constraints bind the planner, never the person.** A block's minimum, `anchored` and the day
+  window say what may be *proposed*; no operation consults them, and someone can still shorten
+  a break to five minutes or delete it.
+- **No language model**: it cannot explain itself or be property-tested, and it would send the
+  day to a server.
+
 ### Urgency and history
 
 `core::urgency` scores a task, computed and never stored, after Taskwarrior's: additive

@@ -8,13 +8,11 @@ Every client gets every feature. A platform may get it later, never a smaller ve
 
 The order, and why:
 
-1. **Safeguards first**: CI, now built: every app and the core on every push.
-2. **Reminders**: built in every app; what is left is small.
-3. **The planner**: built in every app (urgency and history, suggestions, carrying work
-   forward and day commands, re-flow, the whole-day plan); what is left is small.
+1. **Safeguards**: what CI still lacks, with packaging.
+2. **Reminders**: what waits on hooks and on the encrypted store.
+3. **The planner**: one question kept for if it is needed.
 4. **Smaller gaps**, between the larger pieces.
-5. **The watches**: the watchOS spike early, since it decides the toolchain and whether the
-   watch can be a full peer; then both watch apps.
+5. **The watches**: what only a real watch can show.
 6. **Integrations**, once reminders and the planner exist for them to expose.
 7. **Before others use it**: packaging, real erasure, installing the web client.
 8. **The encrypted store and accounts**, which the web's reminders and syncing alone wait on.
@@ -27,118 +25,20 @@ The order, and why:
 
 ## 2. Reminders and time events
 
-Built: when each reminder fires, across daylight-saving changes; what it says; one process
-per device delivering, and every app delivering or scheduling them (CLAUDE.md, "Who delivers,
-per client"); a task's and a block's own reminders and the defaults, set in every app;
-dismissing, snoozing, Carry Forward and the overrun warning's Replan, synced; `lum reminder`
-and `lum notify`. Still to come:
-
 - **Hooks' time events on the same scheduler**, once hooks exist (Integrations). The
   planner's overrun warning already runs on it.
 - **The web's reminders** wait on the encrypted store (below); today one open tab delivers.
 
 ## 3. Planning
 
-The planner is four capabilities, all built in every app: urgency, suggestions for a block,
-re-flow when the day slips, and a whole-day plan. Per-task history came with urgency, and its
-facts ("rescheduled 7 times") feed suggestions' reasons. The sections below keep the design
-each was built to, and say what is still to come.
-
-### Rules for all of it
-
-- **Pure, deterministic functions over the day's state**, in the core, property-tested.
-- **A proposal, never a mutation.** An accepted proposal is applied through the ordinary
-  operations, so it can be undone and it syncs. A day that reorganises itself unannounced is
-  disorienting, above all to someone who cannot glance at it.
-- **Every proposal can be said in full before it is accepted**: "Deep work moves from 9:00
-  to 9:45; Email shortens from 30 to 15 minutes; Review PR does not fit and moves to
-  tomorrow." For this audience the description *is* the verification.
-- **Constraints bind the planner, never the person.** A block's minimum length, `anchored`
-  and the day window say what may be *proposed*; no operation consults them, and someone can
-  still shorten a break to five minutes or delete it. The minimum is hard in the main
-  proposal, soft in alternatives (which may break it if they say what it costs), and absent
-  for anything the person does directly.
-- **No language model.** It cannot explain itself or be property-tested, and it would send
-  the day to a server.
-
-### Urgency and history
-
-Built: the score and its terms (`task_history`, `lum task history`), per-task history from the
-records already kept, on a task's own screen in every app, and History, a place beside Trash in
-every app and `lum history`: what was done over two weeks, newest first. Still to come:
-
-- **Field-level history** beyond due dates moved later (counted, in a task's history): a
-  timeline of every field was judged not worth having (2026-10-21).
-- If a task becomes permanent furniture at the top, a staleness question ("this has been at
-  the top for three weeks; is it real?") rather than a bigger formula.
-
-### Suggestions for a block
-
-Built: `core::suggestions`, behind Assign a Task and What Should I Work On?, each choice's
-`reason` its description in every app; and Put in a Block offering only the blocks whose
-filter admits the task.
-
-### Carrying unfinished work forward, and day commands
-
-Built (`day.rs`, `lum end`, `extend`, `end-day`, `clear-day`, `carry`): End Now and Add 15
-Minutes on the block under way, End the Day and Clear the Rest of the Day, and Carry Forward
-on a sitting left short of its planned time, each one undoable change; the carry offer at a
-block's end, a button on every app's notification; What Should I Work On? (`lum next`).
-
-### Re-flow when the day slips
-
-Built (`core::reflow`, `replan.rs`, `lum replan [--keep] [--skip] [--apply [1,3]]`, RPC
-`replan` and `replan.apply`): the walk, moving the work first, pins, the proposal said in
-the app's clock, applied whole or in part (the rest pinned and proposed again) against the
-day as it is now, one undo; Replan from Now on the day, a screen in every app. Still to
-come: nothing of the design below; every part is built. As designed:
-
-- **Three situations, kept apart.** Assigned work exceeding the block is a plan that was
-  wrong when made, predictable in advance. A block running past its end, and a block that
-  never happened because the one before ran through it, are slips.
-- **Say it before the clock does**: fire when the remaining assigned work first exceeds the
-  block's remaining time. A sighted person sees that on a timeline; a list must compute and
-  say it. It runs on the reminder scheduler, anchored to block ends.
-- **The walk**: forward from now. Anchored blocks are fixed and routed around. A movable
-  block with slack above its minimum shrinks; one at its minimum moves later. A break's
-  minimum is its whole length by default, so a break moves rather than being squeezed to
-  three minutes; a work block may shrink to about half, never below 15 minutes. Nothing
-  moves before now or past the day window. What does not fit is `unplaceable`, and said: the
-  planner cannot create time.
-- **Move the work before moving the day.** Deferring a task out of an overrunning block
-  touches no commitment; a block is a commitment, an assignment only a plan.
-- **One concrete proposal**, accepted whole, per change, or refused. Alternatives sit behind
-  "other options" and name their cost ("or skip the 3:00 break: your only break today").
-  Never a menu of strategies.
-- **Re-entrant**: the person's decisions ("skip the 3:00 break", "keep this here") come back
-  as pinned constraints and the proposal is recomputed, never applied on stale assumptions.
-  Skipping is a cancelled occurrence and "end at 4" a modified one, both of which exist.
-- **An anchored block already under way** (a class that started ten minutes ago) is a
-  conflict to report (stop now, or miss it), never a re-flow that pretends it moved.
-- **Stay silent** when the overrun fits the gap after it, is under a few minutes, or was
-  dismissed for this block.
-
-### The whole-day plan
-
-Built (`core::dayplan`, `dayplan.rs`, `lum plan-day [date] [--leave] [--apply [1,3]]`, RPC
-`day_plan` and `day_plan.apply`), Plan the Day on the day, a screen in every app. As designed: `propose_day(date, now, pinned)`: walk the day's work blocks in order, run suggestions for
-each, and assign greedily until the estimates fill it. One proposal, naming what did not
-fit, pinned the same way. Greedy and editable is worth more than optimal packing. Always
-optional.
-
+- **A staleness question**, if a task becomes permanent furniture at the top: "this has been at
+  the top for three weeks; is it real?", rather than a bigger formula.
 
 ## 4. Smaller gaps
 
 A day or less each, for between the larger pieces.
 
 ### Completion
-
-The core's `complete` works everywhere, and the app marks the lines in its language
-(`Asking::syntax`, `FormField::syntax`). Done: the web, Windows, GTK, Android and the Apple apps
-complete the list's filter, a saved filter's query and a block's Tasks from, opening only when
-asked (Down, Ctrl+Space; the Mac no longer opens on `#` or `@`), and the phones and the Mac
-have both the strip and a list behind a Show Completions action. `lum`'s shell completion offers
-names from the store. Still to come:
 
 - **BTSpeak**: Control-L (dots 7-8 with L) inside the input dialog completes at the cursor,
   through the dialog's own `hotkeys` (no subclass needed); no dialog or device key claims it.
@@ -165,35 +65,26 @@ names from the store. Still to come:
 - **Android**: pairing on the local network untried on a real phone (the emulator's NAT
   passes no multicast); the iPhone's two pairing tests not ported. The keyboard commands
   and the wide layout are tested in the emulator, not yet with TalkBack and a real keyboard.
-- **GTK**: no tray on GNOME without the AppIndicator extension; "expanded" said twice on first
-  focus of a row with subtasks. (Type-ahead and shortcuts without the portal are done; the X11
-  grab is unchecked with Orca under a real X11 window manager.)
+- **GTK**: "expanded" said twice on first focus of a row with subtasks; the shortcuts' X11 grab
+  unchecked with Orca under a real X11 window manager.
 - **iOS UI tests that fail only when the simulator delivers a key out of order**: ⌘K (the K
   arriving before the ⌘, so VoiceOver's focus test sees nothing done) and ⌘F on CI. They
   are in the full suites, which only report.
-- **Braille apart from speech**: BTSpeak shows a row's states short (`Line::braille`, its menu
-  item's `braille_title`). Elsewhere: the web through `aria-braillelabel`, which JAWS and NVDA
-  read; Windows only through JAWS scripts or an NVDA add-on, since UI Automation gives a control
-  one name, so only if braille users there ask.
+- **Braille apart from speech beyond BTSpeak**, only if braille users there ask: the web through
+  `aria-braillelabel`, which JAWS and NVDA read; Windows only through JAWS scripts or an NVDA
+  add-on, since UI Automation gives a control one name.
 - **Screen readers not yet tried by a person**: JAWS, Narrator, ChromeVox, Emacspeak and
   speechd-el. NVDA (Windows and the web), Orca, VoiceOver on the Mac and iPhone, TalkBack,
-  Emacsvox and the BTSpeak have been. BT Braille's own short forms are its mail list's statuses
-  (`unr`, `flag`, `repl`), which ours follow; it has none for a row's kind.
+  Emacsvox and the BTSpeak have been.
 
 ## 5. The watches
 
-Both have every view and work with the phone away, each with a whole store of its own.
-
-- **watchOS** is built (`apps/apple/Watch`): the whole core without Iroh, since watchOS allows
-  no sockets outside an audio session (TN3135; even a WebSocket counts), syncing with its
-  iPhone over WatchConnectivity, which the phone passes on. Still to come, in this order:
+- **watchOS**, in this order:
   - **On a real watch**: TN3135 is not enforced in the simulator, nor is memory, and
     Automerge loads whole documents.
   - **Later, if it matters**: syncing far from the phone through a relay of our own that the
     watch polls over plain HTTPS, the one networking watchOS allows.
-- **Wear OS** is built (`apps/android/wear`): a standalone full peer over the phone's shared
-  module, pairing and syncing itself. Still to come: on the real watch, rotary scrolling with
-  TalkBack and pairing over the network.
+- **Wear OS**, on a real watch: rotary scrolling with TalkBack, and pairing over the network.
 - **Toolchain**: unpinned.
 
 ## 6. Integrations
@@ -408,6 +299,9 @@ What the web client gains from it:
 
 ## Decided against
 
+- **A timeline of every field's history** (decided 2026-10-21): a task's history counts the one
+  fact the records forget, how often its due date was moved later; the rest says nothing a
+  person acts on.
 - **Reordering tasks among siblings** (decided 2026-10-20): task lists are most urgent
   first, or in the order added (`task-order`, `sort:`), so a task has no place of its own to
   move to. Projects, labels, saved filters and a block's sittings are reordered.
