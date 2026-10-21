@@ -168,10 +168,6 @@ names from the store. Still to come:
   `UIAccessibilityCustomRotor` on the hosting view, or a `LazyVStack`, and test it with VoiceOver
   (`VoiceOverUITests` steps a rotor by keyboard).
 - **iPad**, found by its UI tests, each skipped there until fixed:
-  - ⌘Z right after quick add closes does not reach the list (it does from the list itself).
-  - A block's Delete swipe action does not appear to the test in Browse's Blocks list.
-  - The audit fails contrast on the task form's About heading, which looks like the
-    headings that pass.
   - In the simulator, the first tap on a button of an alert with an untouched text field
     only ends editing (Skip when assigning a task). Try it on a real iPad; VoiceOver, which
     activates rather than taps, is not affected.

@@ -692,7 +692,6 @@ final class LumennaUITests: XCTestCase {
     }
 
     func testTaskDetailLabelsAreSavedByName() throws {
-        try XCTSkipIf(pad, "on iPad the audit fails contrast on the form's About heading, which reads like the others (ROADMAP)")
         add("ring the bank")
         row("ring the bank").tap()
         let labels = app.textFields["Labels"]
@@ -961,7 +960,6 @@ final class LumennaUITests: XCTestCase {
     }
 
     func testEveryBlockIsListedUnderBrowseAndAsksBeforeDeleting() throws {
-        try XCTSkipIf(pad, "on iPad the block's Delete swipe action does not appear to the test yet (ROADMAP)")
         // Every day, so it is on today whatever day the test runs.
         addBlock("Standup", repeating: "every day")
         tab("Browse")
