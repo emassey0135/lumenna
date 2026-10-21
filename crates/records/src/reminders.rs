@@ -1,7 +1,7 @@
 //! Reminders as records: what a notification shows, and a task's or block's list of them.
 
 use lumenna_core::id::ReminderId;
-use lumenna_core::model::{Reminder, ReminderAnchor, ReminderTarget, Trigger};
+use lumenna_core::model::{Delivery, Reminder, ReminderAnchor, ReminderTarget, Trigger};
 use lumenna_core::snapshot::Snapshot;
 use serde::{Deserialize, Serialize};
 
@@ -113,6 +113,9 @@ pub struct ReminderView {
     /// See `day`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub time: Option<String>,
+    /// Where it fires, when that is not every device: "only on Kitchen iPad". Empty for all.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub delivery: String,
     /// How it reads: "5 minutes before it starts".
     pub words: String,
     /// What can be done to it: Remove, for one of its own; nothing for a default.
@@ -168,11 +171,50 @@ pub fn anchor_word(anchor: &ReminderAnchor) -> &'static str {
     }
 }
 
+/// Where a reminder fires, in words; empty for every device.
+pub fn delivery_words(snapshot: &Snapshot, delivery: &Delivery) -> String {
+    let names = |set: &std::collections::BTreeSet<lumenna_core::id::NodeId>| {
+        let names: Vec<String> =
+            set.iter().map(|id| snapshot.devices.get(id).map_or_else(|| "a device not paired now".to_owned(), |d| d.name.clone())).collect();
+        crate::words::listed(&names)
+    };
+    match delivery {
+        Delivery::AllDevices => String::new(),
+        Delivery::OnlyDevices(set) => format!("only on {}", names(set)),
+        Delivery::ExceptDevices(set) => format!("on every device but {}", names(set)),
+    }
+}
+
+/// What a reminder's Deliver On offers: every device, then each paired device alone and each
+/// left out, the way it fires now marked.
+pub fn delivery_choices(snapshot: &Snapshot, delivery: &Delivery) -> Vec<crate::actions::Choice> {
+    let now = |id: &str| {
+        let current = match delivery {
+            Delivery::AllDevices => "all".to_owned(),
+            Delivery::OnlyDevices(set) if set.len() == 1 => format!("only:{}", set.iter().next().map(ToString::to_string).unwrap_or_default()),
+            Delivery::ExceptDevices(set) if set.len() == 1 => format!("except:{}", set.iter().next().map(ToString::to_string).unwrap_or_default()),
+            _ => String::new(),
+        };
+        (current == id).then(|| "as it is now".to_owned())
+    };
+    let mut choices = vec![crate::actions::Choice { id: "all".to_owned(), title: "Every device".to_owned(), detail: now("all"), ..Default::default() }];
+    for (way, words) in [("only", "Only on"), ("except", "Every device but")] {
+        for device in snapshot.devices.values() {
+            let id = format!("{way}:{}", device.node_id);
+            choices.push(crate::actions::Choice { detail: now(&id), id, title: format!("{words} {}", device.name), ..Default::default() });
+        }
+    }
+    choices
+}
+
 /// One reminder as its list shows it.
-pub fn view(id: ReminderId, trigger: &Trigger, own: bool) -> ReminderView {
+pub fn view(snapshot: &Snapshot, id: ReminderId, trigger: &Trigger, delivery: Option<&Delivery>) -> ReminderView {
     let words = trigger_words(trigger);
+    let own = delivery.is_some();
+    let devices = snapshot.devices.len() > 1;
     ReminderView {
-        actions: if own { crate::actions::reminder(&id.to_string(), &words) } else { Vec::new() },
+        actions: if own { crate::actions::reminder(&id.to_string(), &words, devices) } else { Vec::new() },
+        delivery: delivery.map(|d| delivery_words(snapshot, d)).unwrap_or_default(),
         id: id.to_string(),
         own,
         anchor: anchor_word(&trigger.anchor).to_owned(),
@@ -240,10 +282,10 @@ pub fn reminders_of(snapshot: &Snapshot, target: &str) -> Result<ReminderList> {
         };
         defaults
             .iter()
-            .map(|trigger| view(lumenna_core::remind::default_key(&target, trigger), trigger, false))
+            .map(|trigger| view(snapshot, lumenna_core::remind::default_key(&target, trigger), trigger, None))
             .collect()
     } else {
-        own.iter().map(|r| view(r.id, &r.trigger, true)).collect()
+        own.iter().map(|r| view(snapshot, r.id, &r.trigger, Some(&r.delivery))).collect()
     };
     let mine = views.first().is_some_and(|v| v.own);
     let target_id = match target {
@@ -265,4 +307,51 @@ pub fn reminders_of(snapshot: &Snapshot, target: &str) -> Result<ReminderList> {
         reminders: views,
         actions: crate::actions::add_reminder(&target_id, &target_name(snapshot, target), block, due),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lumenna_core::id::NodeId;
+    use lumenna_core::model::{Device, Task};
+
+    fn device(byte: u8, name: &str) -> Device {
+        Device {
+            node_id: NodeId::from_bytes([byte; 32]),
+            name: name.to_owned(),
+            platform: "test".to_owned(),
+            paired_at: jiff::Timestamp::UNIX_EPOCH,
+            last_seen: jiff::Timestamp::UNIX_EPOCH,
+            schema: 0,
+        }
+    }
+
+    #[test]
+    fn a_reminder_of_its_own_chooses_its_devices_once_there_are_two_and_says_where_it_fires() {
+        let mut snapshot = Snapshot::default();
+        let task = Task::new(lumenna_core::id::ProjectId::INBOX, "water the plants", lumenna_core::order::OrderKey::middle());
+        let target = ReminderTarget::Task(task.id);
+        snapshot.tasks.insert(task.id, task.clone());
+        let mut reminder = Reminder::new(target, Trigger::at(ReminderAnchor::Due)).unwrap();
+        snapshot.reminders.insert(reminder.id, reminder.clone());
+        snapshot.devices.insert(NodeId::from_bytes([1; 32]), device(1, "Mac"));
+        let offers = |snapshot: &Snapshot| {
+            reminders_of(snapshot, &task.id.to_string()).unwrap().reminders[0].actions.iter().map(|a| a.title.clone()).collect::<Vec<_>>()
+        };
+        assert_eq!(offers(&snapshot), ["Remove Reminder"], "one device has nowhere else to choose");
+
+        snapshot.devices.insert(NodeId::from_bytes([2; 32]), device(2, "Kitchen iPad"));
+        assert_eq!(offers(&snapshot), ["Deliver On", "Remove Reminder"]);
+        let choices = delivery_choices(&snapshot, &reminder.delivery);
+        let titles: Vec<&str> = choices.iter().map(|c| c.title.as_str()).collect();
+        assert_eq!(titles, ["Every device", "Only on Mac", "Only on Kitchen iPad", "Every device but Mac", "Every device but Kitchen iPad"]);
+        assert_eq!(choices[0].detail.as_deref(), Some("as it is now"));
+
+        reminder.delivery = Delivery::OnlyDevices([NodeId::from_bytes([2; 32])].into());
+        snapshot.reminders.insert(reminder.id, reminder.clone());
+        let list = reminders_of(&snapshot, &task.id.to_string()).unwrap();
+        assert_eq!(list.reminders[0].delivery, "only on Kitchen iPad");
+        let choices = delivery_choices(&snapshot, &reminder.delivery);
+        assert_eq!(choices.iter().find(|c| c.detail.is_some()).unwrap().title, "Only on Kitchen iPad");
+    }
 }

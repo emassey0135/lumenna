@@ -554,6 +554,11 @@ surface's `reminders.rs` words them and answers the apps.
   so ask again soon. The
   web's one tab delivers through `reminders_due` with a "since" of its own, and keeps
   "Reminders on this device" in local storage: a browser has no device-settings file.
+- **A reminder of its own can fire on some devices only** (`Delivery`): its Deliver On, once
+  more than one device is paired, picks every device, only one, or all but one
+  (`delivery_choices`, `deliver_reminder`, `lum reminder deliver`), and its row says where
+  (`ReminderView::delivery`). The delivery is one nested map, replaced whole, so two devices
+  changing it at once leave one whole choice, never a mix.
 - **Dismissing and snoozing write a `ReminderAck`**, which syncs: best effort, since a sleeping
   device may still show it. "Reminders on this device" is a device setting and never syncs.
 

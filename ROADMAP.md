@@ -33,7 +33,6 @@ per client"); a task's and a block's own reminders and the defaults, set in ever
 dismissing, snoozing, Carry Forward and the overrun warning's Replan, synced; `lum reminder`
 and `lum notify`. Still to come:
 
-- **Delivery to some devices only** (`Delivery`) has no way to be set.
 - **Hooks' time events on the same scheduler**, once hooks exist (Integrations). The
   planner's overrun warning already runs on it.
 - **The web's reminders** wait on the encrypted store (below); today one open tab delivers.

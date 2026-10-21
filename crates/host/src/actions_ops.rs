@@ -119,6 +119,7 @@ impl Lumenna {
                 self.stop_timer(target, Some(resolve::minutes(&text)?)).map(timer)
             }
             (S::Sitting, K::Unassign) => self.unassign(target),
+            (S::Reminder, K::DeliverOn) => self.deliver_reminder(target.to_owned(), answer_pick(&answer)?.0),
             (S::Sitting, K::Skip) => self.skip_sitting(target, true),
             (S::Sitting, K::Unskip) => self.skip_sitting(target, false),
             (S::Sitting, K::MoveUp) => self.reorder_sitting(target, Direction::Up),

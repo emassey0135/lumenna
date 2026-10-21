@@ -118,7 +118,8 @@ pub fn lines(view: &ViewModel, clock: &dyn Clock) -> Lines {
                             (Some(day), Some(time)) => format!("{} at {}", clock.day(day), clock.time(time)),
                             _ => speech::sentence(&reminder.words),
                         };
-                        Line::of(words, if reminder.own { Vec::new() } else { vec!["a default".to_owned()] })
+                        let rest = if reminder.own { vec![reminder.delivery.clone()] } else { vec!["a default".to_owned()] };
+                        Line::of(words, rest.into_iter().filter(|part| !part.is_empty()).collect())
                     })
                     .collect()
             })

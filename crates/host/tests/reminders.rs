@@ -254,3 +254,19 @@ fn a_system_whose_restart_clears_its_alarms_misses_what_it_did_not_show() {
     assert_eq!(missed.missed_summary, "1 reminder missed: Review started.");
     assert!(lumenna.missed_at(Vec::new(), false, later(181)).unwrap().missed.is_empty(), "said once");
 }
+
+#[test]
+fn a_reminder_is_delivered_only_to_a_paired_device_and_already_everywhere_changes_nothing() {
+    let (_directory, lumenna) = open();
+    let task = lumenna.add_task("call the bank tomorrow 3pm").unwrap().affected.tasks[0].clone();
+    let add = lumenna.reminders_of(task.clone()).unwrap().actions.remove(0);
+    lumenna.act(add, lumenna_host::Answer::Text { text: "at due".to_owned() }).unwrap();
+    let reminder = lumenna.reminders_of(task).unwrap().reminders.remove(0);
+    assert!(!reminder.actions.iter().any(|a| a.title == "Deliver On"), "an unpaired device has nowhere else to choose");
+    let unchanged = lumenna.deliver_reminder(reminder.id.clone(), "all".to_owned()).unwrap();
+    assert_eq!(unchanged.announcement, "it fires there already");
+    let stranger = "0".repeat(64);
+    let refused = lumenna.deliver_reminder(reminder.id.clone(), format!("only:{stranger}")).unwrap_err().to_string();
+    assert!(refused.contains("not paired"), "{refused}");
+    assert!(lumenna.deliver_reminder(reminder.id, "somewhere".to_owned()).is_err());
+}

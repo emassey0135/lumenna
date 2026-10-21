@@ -576,7 +576,8 @@ pub(crate) enum ReminderCommand {
     Add {
         /// A row number from the last listing, or a task or block identifier.
         target: String,
-        /// What it counts from: due (a task), start or end (a block).
+        /// What it counts from: due (a task), start or end (a block); or a moment of its own,
+        /// such as "tomorrow 9am".
         #[arg(long)]
         at: String,
         /// How long before, such as 5m or 1h.
@@ -590,6 +591,14 @@ pub(crate) enum ReminderCommand {
     Rm {
         /// Its identifier, from `lum reminder list`.
         id: String,
+    },
+    /// Choose which devices one of a task's or block's own reminders fires on.
+    Deliver {
+        /// Its identifier, from `lum reminder list`.
+        id: String,
+        /// `all`, `only:<device>` or `except:<device>`, a device by its identifier from
+        /// `lum device list`.
+        on: String,
     },
     /// What comes up over the next hours.
     Upcoming {
@@ -1215,9 +1224,16 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
                     (_, Some(span)) => i32::try_from(lumenna_host::parse_minutes(span.clone())?).unwrap_or(i32::MAX),
                     (None, None) => 0,
                 };
-                Response::new(profile.add_reminder(reminder_target(profile, target)?, at.clone(), offset)?)
+                let target = reminder_target(profile, target)?;
+                // Not what it counts from: a moment of its own, read as the apps read it.
+                if !matches!(at.trim(), "due" | "start" | "end") && offset == 0 {
+                    Response::new(profile.add_reminder_saying(target, at.clone())?)
+                } else {
+                    Response::new(profile.add_reminder(target, at.clone(), offset)?)
+                }
             }
             ReminderCommand::Rm { id } => Response::new(profile.remove_reminder(id.clone())?),
+            ReminderCommand::Deliver { id, on } => Response::new(profile.deliver_reminder(id.clone(), on.clone())?),
             ReminderCommand::Upcoming { hours } => {
                 let until = jiff::Timestamp::now()
                     .checked_add(jiff::SignedDuration::from_hours(i64::from(*hours)))

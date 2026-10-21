@@ -105,6 +105,13 @@ pub fn offered(snapshot: &Snapshot, action: &Action, now: &Zoned) -> Result<Choi
     if (action.subject, action.kind) == (Subject::Task, K::PutInBlock) {
         return blocks_for(snapshot, Some(&action.target), None, Some(7), now);
     }
+    if (action.subject, action.kind) == (Subject::Reminder, K::DeliverOn) {
+        let id: lumenna_core::id::ReminderId =
+            action.target.parse().map_err(|_| LumennaError::new("that is not a reminder of its own"))?;
+        let reminder = snapshot.reminders.get(&id).ok_or_else(|| LumennaError::new("that reminder is not here"))?;
+        let choices = crate::reminders::delivery_choices(snapshot, &reminder.delivery);
+        return Ok(Choices { announcement: crate::words::count_line(choices.len(), "choice"), notices: Vec::new(), choices });
+    }
     if (action.subject, action.kind) == (Subject::Day, K::WhatNow) {
         return what_now(snapshot, now);
     }

@@ -11,7 +11,7 @@ use jiff::{SignedDuration, Timestamp, Zoned};
 use lumenna_core::edit;
 use lumenna_core::id::{NodeId, ReminderId};
 use lumenna_core::model::{
-    Reminder, ReminderAck, ReminderAction, ReminderAnchor, ReminderTarget, Trigger, Verbosity,
+    Delivery, Reminder, ReminderAck, ReminderAction, ReminderAnchor, ReminderTarget, Trigger, Verbosity,
 };
 use lumenna_core::remind::{Firing, firings};
 use lumenna_core::snapshot::Snapshot;
@@ -357,6 +357,44 @@ impl Lumenna {
         })?;
         let trigger = parse_reminder(&phrase, block, &Zoned::now())?;
         self.add_trigger(&target, trigger)
+    }
+
+    /// Sets which devices one of a task's or block's own reminders fires on: `all`,
+    /// `only:<device>` or `except:<device>`, a device by its identifier.
+    ///
+    /// # Errors
+    ///
+    /// If no reminder of its own matches `id`, or `choice` names no paired device.
+    pub fn deliver_reminder(&self, id: String, choice: String) -> Result<Change> {
+        self.told(|store| {
+            store.load_all_years()?;
+            let snapshot = repaired(store);
+            let id: ReminderId = id.trim().parse().map_err(|_| LumennaError::new(format!("'{id}' is not a reminder of its own")))?;
+            let reminder = snapshot.reminders.get(&id).ok_or_else(|| LumennaError::new("no such reminder"))?;
+            let device = |node: &str| -> Result<std::collections::BTreeSet<NodeId>> {
+                let node: NodeId = node.parse().map_err(|_| LumennaError::new(format!("'{node}' is not a device")))?;
+                if !snapshot.devices.contains_key(&node) {
+                    return Err(LumennaError::new("that device is not paired"));
+                }
+                Ok(std::collections::BTreeSet::from([node]))
+            };
+            let delivery = match choice.split_once(':') {
+                None if choice == "all" => Delivery::AllDevices,
+                Some(("only", node)) => Delivery::OnlyDevices(device(node)?),
+                Some(("except", node)) => Delivery::ExceptDevices(device(node)?),
+                _ => return Err(LumennaError::new(format!("'{choice}' is not all, only:<device> or except:<device>"))),
+            };
+            let name = target_name(&snapshot, reminder.target);
+            let place = lumenna_records::reminders::delivery_words(&snapshot, &delivery);
+            let place = if place.is_empty() { "on every device".to_owned() } else { place };
+            let change = edit::deliver_reminder(
+                &snapshot,
+                id,
+                delivery,
+                format!("Reminding of {name} {} {place}", trigger_words(&reminder.trigger)),
+            )?;
+            crate::tasks::record_or(store, &change, "it fires there already")
+        })
     }
 
     /// Removes one of a task's or block's own reminders.

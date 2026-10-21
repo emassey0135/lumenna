@@ -130,6 +130,8 @@ pub enum ActionKind {
     Skip,
     /// Plan a skipped sitting again.
     Unskip,
+    /// Choose which devices a reminder fires on.
+    DeliverOn,
 }
 
 /// What an action is done to: with [`ActionKind`], what runs.
@@ -767,12 +769,21 @@ pub fn length_question() -> Question {
 
 /// A reminder of a target's own: removing it, which undo brings back.
 #[must_use]
-pub fn reminder(id: &str, words: &str) -> Vec<Action> {
+pub fn reminder(id: &str, words: &str, devices: bool) -> Vec<Action> {
     let mut remove = action(ActionKind::Delete, Subject::Reminder, "Remove", id);
     remove.title = "Remove Reminder".to_owned();
     remove.sentence = crate::fields::sentence_case(remove.title.clone());
-    let _ = words;
-    vec![remove]
+    let mut actions = Vec::new();
+    // Where it fires, once there is more than one device for it to choose between.
+    if devices {
+        actions.push(action(ActionKind::DeliverOn, Subject::Reminder, "Deliver On", id).asking(Question::Pick {
+            title: format!("Where to remind {words}"),
+            length: None,
+            yes: "Deliver Here".to_owned(),
+        }));
+    }
+    actions.push(remove);
+    actions
 }
 
 /// A target's list of reminders: adding one, by a phrase the core reads.

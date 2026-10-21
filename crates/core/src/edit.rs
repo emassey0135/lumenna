@@ -1602,6 +1602,26 @@ pub fn trash_reminder(snapshot: &Snapshot, id: crate::id::ReminderId, descriptio
     Ok(Edit { description, changes: vec![Change::Reminder(Box::new(Transition::updated(reminder.clone(), trashed)))] })
 }
 
+/// Changes which devices a reminder fires on, said as `description`.
+///
+/// # Errors
+///
+/// If the reminder is not loaded.
+pub fn deliver_reminder(
+    snapshot: &Snapshot,
+    id: crate::id::ReminderId,
+    delivery: crate::model::Delivery,
+    description: String,
+) -> Result<Edit, EditError> {
+    let reminder = snapshot.reminders.get(&id).ok_or(EditError::NotFound { kind: "reminder" })?;
+    if reminder.delivery == delivery {
+        return Ok(Edit::nothing());
+    }
+    let mut after = reminder.clone();
+    after.delivery = delivery;
+    Ok(Edit { description, changes: vec![Change::Reminder(Box::new(Transition::updated(reminder.clone(), after)))] })
+}
+
 /// Records what was done with one firing of a reminder, replacing what was done before: a
 /// dismissal after a snooze ends it. It syncs, so every device stops showing that firing.
 #[must_use]
