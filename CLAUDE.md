@@ -127,6 +127,12 @@ without the screens over BoltFFI. No JSON crosses the FFI.
   carries a `Swatch` (`RowView`, `SidebarEntry`, `FilterView`, `PlanBlock`, `Choice`): a client
   draws it beside the name in the platform's light or dark appearance, never in place of it,
   since the name is said and shown too. A stored name the palette lacks is said, not drawn.
+- **Terse announcements** (the synced `verbosity`, `terse` or `full`) leave out what the person
+  knows already, never what the change was: a reminder's detail, the quick-add readback's
+  phrase (the date said once, as itself), a new block's time and day, a reminder sentence's
+  target (its list names it), how long carrying moved, where What Should I Work On? started,
+  and a suggestion reason's "Suggested because" and minutes ("Overdue by 1 day, priority 1,
+  fits the time left"). Rows are components either way.
 - **Wording stays client-neutral.** Nothing in the surface names a `lum` command or flag;
   the CLI adds those.
 - **Identifiers are text**: a whole UUID or a prefix that names one record. A bare number is

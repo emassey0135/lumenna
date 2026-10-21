@@ -131,9 +131,11 @@ pub fn device_status(device: &crate::types::DeviceView, now: jiff::Timestamp, di
 /// Why a task is suggested, as the one sentence that is its description: "Suggested because
 /// overdue by 2 days, priority 1, and its estimate of 30 minutes fits the 35 minutes left";
 /// what counts against it comes after ("…, though it waits on another task"). Nothing when
-/// there is nothing to say.
+/// there is nothing to say. `terse` (the verbosity setting) leaves out "Suggested because" and
+/// the minutes, said in every choice of a list: "Overdue by 2 days, priority 1, fits the time
+/// left."
 #[must_use]
-pub fn suggested_because(reasons: &[lumenna_core::suggestions::Reason]) -> Option<String> {
+pub fn suggested_because(reasons: &[lumenna_core::suggestions::Reason], terse: bool) -> Option<String> {
     use lumenna_core::suggestions::Reason as R;
     let days = |n: i64| count_line(usize::try_from(n).unwrap_or(0), "day");
     let mut for_it = Vec::new();
@@ -149,15 +151,24 @@ pub fn suggested_because(reasons: &[lumenna_core::suggestions::Reason]) -> Optio
             R::Started => for_it.push("partly worked".to_owned()),
             R::Blocking(1) => for_it.push("a task waits on it".to_owned()),
             R::Blocking(n) => for_it.push(format!("{n} tasks wait on it")),
+            R::Fits { .. } if terse => for_it.push("fits the time left".to_owned()),
             R::Fits { estimate, remaining } => {
                 for_it.push(format!("its estimate of {} fits the {} left", duration(*estimate), duration(*remaining)));
             }
+            R::Longer { .. } if terse => against.push("longer than the time left".to_owned()),
             R::Longer { estimate, remaining } => {
                 against.push(format!("its estimate of {} is more than the {} left", duration(*estimate), duration(*remaining)));
             }
             R::Blocked => against.push("it waits on another task".to_owned()),
             R::AssignedToday => against.push("it is in a block already today".to_owned()),
         }
+    }
+    if terse {
+        let mut parts = for_it.join(", ");
+        if !against.is_empty() {
+            parts = if parts.is_empty() { listed(&against) } else { format!("{parts}, though {}", listed(&against)) };
+        }
+        return (!parts.is_empty()).then(|| format!("{}{}.", parts[..1].to_uppercase(), &parts[1..]));
     }
     match (for_it.is_empty(), against.is_empty()) {
         (true, true) => None,
@@ -205,4 +216,25 @@ pub fn spoken(announcement: &str, notices: &[String]) -> String {
 #[must_use]
 pub fn to_u32(n: usize) -> u32 {
     u32::try_from(n).unwrap_or(u32::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_terse_reason_leaves_out_suggested_because_and_the_minutes() {
+        use lumenna_core::suggestions::Reason as R;
+        let reasons = [R::Overdue(1), R::Priority(1), R::Fits { estimate: 30, remaining: 35 }, R::Blocked];
+        assert_eq!(
+            suggested_because(&reasons, false).unwrap(),
+            "Suggested because overdue by 1 day, priority 1, and its estimate of 30 minutes fits the 35 minutes left, though it waits on another task."
+        );
+        assert_eq!(
+            suggested_because(&reasons, true).unwrap(),
+            "Overdue by 1 day, priority 1, fits the time left, though it waits on another task."
+        );
+        assert_eq!(suggested_because(&[R::Blocked], true).unwrap(), "It waits on another task.");
+        assert_eq!(suggested_because(&[], true), None);
+    }
 }

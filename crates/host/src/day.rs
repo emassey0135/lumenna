@@ -193,8 +193,14 @@ impl Lumenna {
                 new.planned_mins = Some(left);
             }
             let title = snapshot.tasks.get(&sitting.task_id).map(|t| t.title.clone()).unwrap_or_default();
+            // Terse leaves out how long is left, which the carry offer said already.
+            let said = if snapshot.settings.verbosity == lumenna_core::model::Verbosity::Terse {
+                format!("Carried {title} to {}", series.title)
+            } else {
+                format!("Carried the remaining {} of {title} to {}", crate::words::duration(left), series.title)
+            };
             let change = merged(
-                format!("Carried the remaining {} of {title} to {}", crate::words::duration(left), series.title),
+                said,
                 vec![assign, edit::defer_sitting(&snapshot, id, year)?],
             );
             store.apply_recorded(&change)?;

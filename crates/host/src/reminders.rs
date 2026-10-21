@@ -338,7 +338,13 @@ impl Lumenna {
                 })
             })?;
             let name = target_name(&snapshot, target);
-            let change = edit::create_reminder(reminder, format!("Reminding of {name} {}", trigger_words(&trigger)));
+            // Terse leaves out the name, which the reminder list it was added from says.
+            let said = if snapshot.settings.verbosity == lumenna_core::model::Verbosity::Terse {
+                format!("Reminding {}", trigger_words(&trigger))
+            } else {
+                format!("Reminding of {name} {}", trigger_words(&trigger))
+            };
+            let change = edit::create_reminder(reminder, said);
             store.apply_recorded(&change)?;
             Ok(Change::of(&change))
         })
@@ -413,7 +419,12 @@ impl Lumenna {
                 .map_err(|_| LumennaError::new(format!("'{id}' is not a reminder of its own; a default is changed in settings")))?;
             let reminder = snapshot.reminders.get(&id).ok_or_else(|| LumennaError::new("no such reminder"))?;
             let name = target_name(&snapshot, reminder.target);
-            let change = edit::trash_reminder(&snapshot, id, format!("No longer reminding of {name} {}", trigger_words(&reminder.trigger)))?;
+            let said = if snapshot.settings.verbosity == lumenna_core::model::Verbosity::Terse {
+                format!("No longer reminding {}", trigger_words(&reminder.trigger))
+            } else {
+                format!("No longer reminding of {name} {}", trigger_words(&reminder.trigger))
+            };
+            let change = edit::trash_reminder(&snapshot, id, said)?;
             store.apply_recorded(&change)?;
             Ok(Change::of(&change))
         })

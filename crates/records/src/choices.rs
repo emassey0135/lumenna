@@ -207,7 +207,7 @@ pub fn offered(snapshot: &Snapshot, action: &Action, now: &Zoned) -> Result<Choi
                             id: task.id.to_string(),
                             title: task.title.clone(),
                             detail: snapshot.projects.get(&task.project_id).map(|p| p.name.clone()),
-                            reason: crate::words::suggested_because(&suggestion.reasons),
+                            reason: crate::words::suggested_because(&suggestion.reasons, snapshot.settings.verbosity == lumenna_core::model::Verbosity::Terse),
                             ..Choice::default()
                         })
                     })
@@ -393,7 +393,7 @@ pub fn what_now(snapshot: &Snapshot, now: &Zoned) -> Result<Choices> {
             id: format!("task:{}", task.id),
             title: task.title.clone(),
             detail: snapshot.projects.get(&task.project_id).map(|p| p.name.clone()),
-            reason: suggested_because(&suggestion.reasons),
+            reason: suggested_because(&suggestion.reasons, snapshot.settings.verbosity == lumenna_core::model::Verbosity::Terse),
             ..Choice::default()
         });
     }

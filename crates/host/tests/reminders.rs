@@ -55,6 +55,17 @@ fn terse_announcements_leave_out_what_a_block_holds() {
 }
 
 #[test]
+fn terse_reminder_sentences_leave_out_the_name_the_list_already_says() {
+    let (_directory, lumenna) = open();
+    lumenna.set_setting("verbosity", "terse").unwrap();
+    let series = block_in(&lumenna, "Deep work", 60, None);
+    let added = lumenna.add_reminder(series.clone(), "end".to_owned(), 0).unwrap();
+    assert_eq!(added.announcement, "Reminding when it ends");
+    let id = lumenna.reminders_of(series).unwrap().reminders[0].id.clone();
+    assert_eq!(lumenna.remove_reminder(id).unwrap().announcement, "No longer reminding when it ends");
+}
+
+#[test]
 fn a_reminder_of_its_own_replaces_the_defaults_and_can_be_removed() {
     let (_directory, lumenna) = open();
     let series = block_in(&lumenna, "Deep work", 60, None);

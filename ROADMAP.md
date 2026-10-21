@@ -130,12 +130,6 @@ optional.
 
 A day or less each, for between the larger pieces.
 
-### Tasks, blocks and text entry
-
-- **Verbosity** shortens a reminder (its detail left out), the quick-add readback (the date
-  once, as itself) and adding or scheduling a block (no time or day). Rows are components
-  either way; find any other announcement that runs long under terse as it is met.
-
 ### Completion
 
 The core's `complete` works everywhere, and the app marks the lines in its language
@@ -200,18 +194,18 @@ Both have every view and work with the phone away, each with a whole store of it
   iPhone over WatchConnectivity, which the phone passes on. Still to come, in this order:
   - **On a real watch**: TN3135 is not enforced in the simulator, nor is memory, and
     Automerge loads whole documents.
-  - **Syncing out of reach**: queued for when the phone is next reachable
-    (`transferUserInfo`, which needs the exchange to carry changes without a reply), and
-    background refresh (`WKApplicationRefreshBackgroundTask`).
-  - **Complications** through WidgetKit, and the running timer on the watch face.
+  - **Changes made away from the phone, handed on later**: with no Iroh the watch syncs only
+    through its phone, so away from it nothing syncs; but today an exchange needs both apps
+    answering at once, so a change made then waits until the watch app is next open near the
+    phone. `transferUserInfo` queues it with the system, which delivers it when the two are
+    next in reach, the watch app closed or not (the exchange must then carry changes without
+    a reply), and background refresh (`WKApplicationRefreshBackgroundTask`) brings the
+    phone's back.
   - **Later, if it matters**: syncing far from the phone through a relay of our own that the
     watch polls over plain HTTPS, the one networking watchOS allows.
-  - **Quick add's UI test** (`testQuickAddReadsBackThenTheTaskIsListedAndOpens`) finds no
-    readback saying "priority 1" after the line is entered, and failed before the lists moved
-    onto the phone's models too: find whether the readback or the test is wrong.
 - **Wear OS** is built (`apps/android/wear`): a standalone full peer over the phone's shared
   module, pairing and syncing itself. Still to come: on the real watch, rotary scrolling with
-  TalkBack and pairing over the network; tiles and complications, with the widgets.
+  TalkBack and pairing over the network.
 - **Toolchain**: unpinned.
 
 ## 6. Integrations
@@ -232,6 +226,8 @@ Each is a thin adapter over the command surface.
   the car and audio glasses alike.
 - **A "Today" shortcut** on the iOS and Android icons, beside New Task.
 - **Widgets**: WidgetKit (iOS, macOS) and Glance (Android): today's blocks and what is due.
+  The watches' are widgets too: complications through WidgetKit on watchOS, with the running
+  timer on the watch face, and tiles and complications on Wear OS.
 - **PowerShell module** wrapping `lum --json`; the same language as Windows hooks.
 - **`lum mcp`**, in the same binary so versions on a machine cannot drift. Tasks and the day
   are resources, operations are tools, plus "undo last action". stdio, and Streamable HTTP

@@ -99,7 +99,9 @@ impl Lumenna {
                 new.start(started);
             }
             edits.push(assign);
-            let description = if block_title == task.title {
+            let description = if snapshot.settings.verbosity == lumenna_core::model::Verbosity::Terse {
+                format!("Started on {}", task.title)
+            } else if block_title == task.title {
                 format!("Started on {} in a block of its own", task.title)
             } else {
                 format!("Started on {} in {block_title}", task.title)

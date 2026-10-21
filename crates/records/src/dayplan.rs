@@ -66,7 +66,7 @@ pub fn propose(snapshot: &Snapshot, date: Option<&str>, style: TimeStyle, pins: 
         };
         sittings.push(ProposedSitting {
             sentence: format!("{task} goes in {block}{at}, {length}"),
-            reason: suggested_because(&planned.reasons),
+            reason: suggested_because(&planned.reasons, snapshot.settings.verbosity == lumenna_core::model::Verbosity::Terse),
             task: planned.task.to_string(),
             block: format!("{series}@{day}"),
             minutes: planned.minutes,

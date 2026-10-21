@@ -28,6 +28,9 @@ final class LumennaWatchUITests: XCTestCase {
     /// input screen, where the text goes, and Done brings it back. `clearing` deletes what
     /// is there first.
     private func type(_ text: String, into field: XCUIElement, clearing: Int = 0) {
+        // The screen it is on given time to come first: on a simulator just booted, quick add
+        // took a while to show, and scrolling for its field before then found nothing.
+        _ = field.waitForExistence(timeout: 10)
         reveal(field)
         field.tap()
         let input = app.textViews.firstMatch
