@@ -106,10 +106,13 @@ struct MacDayScreen: View {
     /// A row: its line, the title then the rest, in the core's words and every app's order.
     private func label(_ row: DayModel.Row) -> some View {
         let detail = row.line?.detail ?? ""
-        return VStack(alignment: .leading, spacing: 2) {
-            Text(row.line?.title ?? "").font(row.item.kind == .now ? .headline : .body)
-            if !detail.isEmpty {
-                Text(detail).font(.subheadline).foregroundStyle(Color.quietLabel)
+        return HStack(alignment: .firstTextBaseline, spacing: 6) {
+            SwatchMark(swatch: row.item.block?.swatch)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.line?.title ?? "").font(row.item.kind == .now ? .headline : .body)
+                if !detail.isEmpty {
+                    Text(detail).font(.subheadline).foregroundStyle(Color.quietLabel)
+                }
             }
         }
         // A group named by its whole line, as the task list's rows: as static text VoiceOver

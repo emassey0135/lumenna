@@ -484,13 +484,18 @@ final class LumennaMacUITests: XCTestCase {
         XCTAssertTrue(sidebarRow("Work").waitForNonExistence(timeout: 5))
     }
 
-    func testALabelIsMadeColouredAndMergedIntoAnother() {
+    func testALabelIsMadeColouredAndMergedIntoAnother() throws {
         menu(sidebarRow("Labels"), "New Label…")
         answer("calls", with: "Add")
         menu(sidebarRow("Labels"), "New Label…")
         answer("cals", with: "Add")
+        // A pick of the palette's colours, the dot beside each a sight's alone.
         menu(sidebarRow("calls"), "Colour…")
-        answer("teal", with: "Save")
+        pick("teal", with: "Set Colour")
+        let coloured = NSPredicate(format: "label CONTAINS 'teal'")
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: coloured, evaluatedWith: sidebarRow("calls"))], timeout: 5), .completed, "the colour is said in words too")
+        // Its mark beside the name adds nothing the audit finds.
+        try audit("a coloured label")
         menu(sidebarRow("cals"), "Merge Into…")
         pick("calls", with: "Merge")
         XCTAssertTrue(sidebarRow("cals").waitForNonExistence(timeout: 5))

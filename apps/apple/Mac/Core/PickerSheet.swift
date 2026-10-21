@@ -1,4 +1,6 @@
 import AppKit
+import LumennaApp
+import SwiftUI
 
 /// One thing to choose: what identifies it to the core, and how it reads.
 struct PickerItem {
@@ -10,6 +12,8 @@ struct PickerItem {
     /// Why it is offered, the core's ("Suggested because …"): a line beneath, and its
     /// description for VoiceOver, never its name.
     var reason: String?
+    /// A colour's, drawn before its name.
+    var swatch: LumennaApp.Swatch?
 }
 
 /// Choosing one of many — a task to wait for, a project to move under, a block to put a task
@@ -163,6 +167,7 @@ final class PickerSheet: NSViewController, NSTableViewDataSource, NSTableViewDel
         let lines = [item.detail, item.reason].compactMap { $0 }.filter { !$0.isEmpty }
         cell.show(title: item.title, detail: lines.isEmpty ? nil : lines.joined(separator: "\n"))
         cell.indent = CGFloat(item.depth) * 16
+        cell.swatch.swatch = item.swatch
         if let reason = item.reason {
             cell.setAccessibilityLabel(item.title)
             cell.setAccessibilityValueDescription(item.detail ?? "")
@@ -195,6 +200,7 @@ final class PickerSheet: NSViewController, NSTableViewDataSource, NSTableViewDel
 final class TwoLineCell: NSTableCellView {
     let title = NSTextField(labelWithString: "")
     let detail = NSTextField(labelWithString: "")
+    let swatch = SwatchDot()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -206,7 +212,13 @@ final class TwoLineCell: NSTableCellView {
         detail.lineBreakMode = .byWordWrapping
         detail.maximumNumberOfLines = 0
         detail.cell?.wraps = true
-        let stack = NSStackView(views: [title, detail])
+        swatch.isHidden = true
+        // The colour beside the title, where there is one; hidden, the stack leaves no gap.
+        let named = NSStackView(views: [swatch, title])
+        named.orientation = .horizontal
+        named.alignment = .centerY
+        named.spacing = 6
+        let stack = NSStackView(views: [named, detail])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 1
@@ -255,5 +267,31 @@ final class TwoLineCell: NSTableCellView {
             title.textColor = .labelColor
             detail.textColor = warning ? .warningLabel : .quietLabel
         }
+    }
+}
+
+/// A colour of the core's palette before a name, for sight: a plain view, which VoiceOver does
+/// not see, the name and the colour's word being what it says. Light or dark as the view's
+/// appearance is.
+final class SwatchDot: NSView {
+    var swatch: LumennaApp.Swatch? {
+        didSet {
+            isHidden = swatch == nil
+            needsDisplay = true
+        }
+    }
+
+    override var intrinsicContentSize: NSSize { NSSize(width: 10, height: 10) }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let swatch else { return }
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        NSColor(Color(hex: dark ? swatch.dark : swatch.light)).setFill()
+        NSBezierPath(ovalIn: bounds).fill()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
     }
 }

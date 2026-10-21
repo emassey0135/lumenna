@@ -78,10 +78,13 @@ struct TaskListView: View {
         return NavigationLink(value: TaskOpened(id: row.id)) {
             // The row owns what VoiceOver says: the title as its name, then the rest of its
             // line, whether it is folded and its level as its value, as on the phone.
-            VStack(alignment: .leading) {
-                Text(row.title)
-                if let detail = shown.line?.detail, !detail.isEmpty {
-                    Text(detail).font(.footnote).foregroundStyle(Color.quietLabel)
+            HStack {
+                SwatchMark(swatch: row.swatch)
+                VStack(alignment: .leading) {
+                    Text(row.title)
+                    if let detail = shown.line?.detail, !detail.isEmpty {
+                        Text(detail).font(.footnote).foregroundStyle(Color.quietLabel)
+                    }
                 }
             }
             .accessibilityElement(children: .ignore)
@@ -166,10 +169,13 @@ struct BlockListView: View {
                 Button {
                     model.run([.edit], on: row, saying: .edit)
                 } label: {
-                    VStack(alignment: .leading) {
-                        Text(row.title)
-                        if !detail.isEmpty {
-                            Text(detail).font(.footnote).foregroundStyle(Color.quietLabel)
+                    HStack {
+                        SwatchMark(swatch: row.swatch)
+                        VStack(alignment: .leading) {
+                            Text(row.title)
+                            if !detail.isEmpty {
+                                Text(detail).font(.footnote).foregroundStyle(Color.quietLabel)
+                            }
                         }
                     }
                     .accessibilityElement(children: .ignore)

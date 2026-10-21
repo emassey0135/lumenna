@@ -167,6 +167,7 @@ struct MacTaskListScreen: View {
                     .toggleStyle(.checkbox)
                     .accessibilityHidden(true)
                 }
+                SwatchMark(swatch: row.row.swatch).padding(.top, 4)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(row.row.title).strikethrough(done)
                     if !detail.isEmpty {

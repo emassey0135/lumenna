@@ -215,7 +215,7 @@ struct AppBlockForm: View {
                         }
                     }
                     #endif
-                    text("colour", $model.fields.colour)
+                    colour
                     text("notes", $model.fields.notes, axis: .vertical)
                 } header: {
                     FormParts.heading("More")
@@ -258,6 +258,22 @@ struct AppBlockForm: View {
     @ViewBuilder private func text(_ key: String, _ value: Binding<String>, axis: Axis = .horizontal) -> some View {
         if let field = model.field(key) {
             namedField(field.label, text: value, example: field.example, axis: axis).modifier(FieldHint(field.hint))
+        }
+    }
+
+    /// The colour, one of the core's palette or none: a menu of names, each beside its colour.
+    @ViewBuilder private var colour: some View {
+        if let field = model.field("colour") {
+            Labelled(field.label) {
+                Picker(field.label, selection: $model.fields.colour) {
+                    ForEach(field.options, id: \.id) { choice in
+                        Label { Text(choice.title) } icon: { SwatchMark(swatch: choice.swatch) }.tag(choice.id)
+                    }
+                }
+                #if !os(watchOS)
+                .pickerStyle(.menu)
+                #endif
+            }
         }
     }
 

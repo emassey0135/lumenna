@@ -119,6 +119,7 @@ struct TaskListScreen: View {
                     Image(systemName: done ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(done ? Color.accentColor : Color.quietLabel)
                 }
+                SwatchMark(swatch: row.row.swatch)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(row.row.title).strikethrough(done)
                     if !detail.isEmpty {

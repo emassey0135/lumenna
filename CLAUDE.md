@@ -875,6 +875,11 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   view was a nameless group the audit found). A question in the filter language
   (`Asking::syntax`) is a sheet on iOS (`CompletingQuestionViewController`), since an alert's field
   can carry no completion, and the Mac's `CompletingField` in its alert.
+- **A colour is a dot beside its name** (`Shared/Swatch.swift`, `SwatchMark`), on every Apple
+  app: task, Blocks and day rows, Browse, the sidebar, a pick's choices and the block form's
+  colour menu, hidden from VoiceOver, which hears the colour's word in the line, light or dark
+  by the appearance and growing with the text. The Mac's AppKit pick sheet draws a `SwatchDot`,
+  a plain view VoiceOver does not see.
 - **A SwiftUI `TextField`'s title is only a placeholder**: with text in it, VoiceOver never
   says the name. See `NamedRow` below.
 - **Focus after a change is chosen**: the same row if still listed, else whatever holds its

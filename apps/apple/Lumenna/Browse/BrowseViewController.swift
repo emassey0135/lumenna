@@ -31,9 +31,9 @@ final class BrowseViewController: AppListViewController {
             switch entry.kind {
             case let .group(group):
                 let count = LumennaApp.groupCount(group: group, count: under(group))
-                items.append(AppItem(key: entry.key, title: entry.title, detail: count))
+                items.append(AppItem(key: entry.key, title: entry.title, detail: count, swatch: entry.swatch))
             case .place(.blocks), .place(.trash):
-                items.append(AppItem(key: entry.key, title: entry.title, detail: entry.detail.isEmpty ? nil : entry.detail))
+                items.append(AppItem(key: entry.key, title: entry.title, detail: entry.detail.isEmpty ? nil : entry.detail, swatch: entry.swatch))
             case .place:
                 // Today and Tasks are tabs of their own.
                 continue

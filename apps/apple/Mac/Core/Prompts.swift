@@ -94,7 +94,7 @@ extension NSWindow: QuestionAsking {
     }
 
     func pick(title: String, offered: [Offered], yes: String, answered: @escaping (Picked) -> Void) {
-        let items = offered.map { PickerItem(key: $0.id, title: $0.title, detail: $0.detail, depth: Int($0.depth), reason: $0.reason) }
+        let items = offered.map { PickerItem(key: $0.id, title: $0.title, detail: $0.detail, depth: Int($0.depth), reason: $0.reason, swatch: $0.swatch) }
         PickerSheet.present(on: front, title: title, items: items, yes: yes, chosen: { item in
             answered(.chose(item.key))
         }, cancelled: { answered(.cancelled) })

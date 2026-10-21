@@ -78,7 +78,12 @@ struct DayView: View {
                 .accessibilityValue(value)
                 .padding(.leading, 8)
         case .block:
-            Button { offer(item, line: line) } label: { Text(text) }
+            Button { offer(item, line: line) } label: {
+                HStack {
+                    SwatchMark(swatch: item.block?.swatch)
+                    Text(text)
+                }
+            }
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityValue(value)
         case .free, .cancelled:

@@ -177,7 +177,10 @@ struct RootView: View {
             // Named with what is in it, "Inbox, no tasks", as the phone's sidebar says it; its
             // value whether it is folded, and its level where that changes.
             NavigationLink(value: place) {
-                Text(item.detail.map { "\(item.title), \($0)" } ?? item.title)
+                HStack {
+                    SwatchMark(swatch: item.swatch)
+                    Text(item.detail.map { "\(item.title), \($0)" } ?? item.title)
+                }
             }
             .accessibilityValue(AppModel.spoken(detail: nil, expanded: item.expanded, level: item.level))
             .swipeActions(edge: .trailing) {

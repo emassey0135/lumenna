@@ -112,6 +112,7 @@ struct DayScreen: View {
                 if let symbol = Self.symbol(for: item) {
                     Image(systemName: symbol.name).foregroundStyle(symbol.colour)
                 }
+                SwatchMark(swatch: item.block?.swatch)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(row.line?.title ?? "")
                         .font(item.kind == .now ? .headline : .body)

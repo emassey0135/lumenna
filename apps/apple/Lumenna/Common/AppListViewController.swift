@@ -235,6 +235,7 @@ struct AppListScreen: View {
         let selected = state.selected == item.key
         return Button { open(item) } label: {
             HStack(spacing: 8) {
+                SwatchMark(swatch: item.swatch)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.title)
                         .font(sidebar && item.heading ? .headline : .body)

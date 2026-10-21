@@ -136,11 +136,14 @@ private struct OfferedPrompt: View {
                     picked(.chose(choice.id))
                     dismiss()
                 } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(choice.title)
-                        // Why it is offered, the core's: a line beneath, and the hint.
-                        if let reason = choice.reason {
-                            Text(reason).font(.footnote).foregroundStyle(Color.quietLabel)
+                    HStack {
+                        SwatchMark(swatch: choice.swatch)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(choice.title)
+                            // Why it is offered, the core's: a line beneath, and the hint.
+                            if let reason = choice.reason {
+                                Text(reason).font(.footnote).foregroundStyle(Color.quietLabel)
+                            }
                         }
                     }
                 }

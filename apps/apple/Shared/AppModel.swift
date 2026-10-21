@@ -263,6 +263,8 @@ struct AppItem: Hashable {
     var actions: [LumennaApp.Action] = []
     /// Why it is offered, a line beneath and VoiceOver's hint, never its name.
     var reason: String?
+    /// A project's, label's, saved filter's or colour's colour, drawn beside its name.
+    var swatch: LumennaApp.Swatch?
 }
 
 extension AppModel {
@@ -295,7 +297,7 @@ extension AppModel {
                 : entry.actions.contains { $0.kind == .expand } ? false : nil
             let level = depth != previous ? "level \(depth + 1)" : nil
             previous = depth
-            var item = AppItem(key: entry.key, title: entry.title, detail: entry.detail.isEmpty ? nil : entry.detail, depth: depth, actions: entry.actions)
+            var item = AppItem(key: entry.key, title: entry.title, detail: entry.detail.isEmpty ? nil : entry.detail, depth: depth, actions: entry.actions, swatch: entry.swatch)
             item.spoken = AppModel.spoken(detail: entry.detail, expanded: expanded, level: level)
             item.expanded = expanded
             item.level = level
