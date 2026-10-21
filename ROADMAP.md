@@ -143,13 +143,12 @@ A day or less each, for between the larger pieces.
 ### Completion
 
 The core's `complete` works everywhere, and the app marks the lines in its language
-(`Asking::syntax`, `FormField::syntax`). Done: the web, Windows, Android and the Apple apps
+(`Asking::syntax`, `FormField::syntax`). Done: the web, Windows, GTK, Android and the Apple apps
 complete the list's filter, a saved filter's query and a block's Tasks from, opening only when
 asked (Down, Ctrl+Space; the Mac no longer opens on `#` or `@`), and the phones and the Mac
 have both the strip and a list behind a Show Completions action. `lum`'s shell completion offers
 names from the store. Still to come:
 
-- **GTK**: the query questions and Tasks from (the Linux session has it).
 - **BTSpeak**: Control-L (dots 7-8 with L) inside the input dialog completes at the cursor,
   through the dialog's own `hotkeys` (no subclass needed); no dialog or device key claims it.
   Tested against the stub only: try it on the device, in computer and in literary braille.
