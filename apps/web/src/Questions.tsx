@@ -27,7 +27,8 @@ import {
   TextField,
 } from "react-aria-components";
 import type { Key } from "react-aria-components";
-import type { Action, ShownAsking, ShownChoice } from "./core";
+import type { Action, ShownAsking, ShownChoice, Syntax } from "./core";
+import { CompletingField } from "./Completing";
 import { DayPicker } from "./Pickers";
 import { send } from "./session";
 
@@ -108,6 +109,7 @@ export function Questions(props: { asking: ShownAsking | null; form: (action: Ac
           yes={question.yes}
           refusal={asking.refusal ?? undefined}
           day={asking.day}
+          syntax={asking.syntax}
           cancel={cancel}
         />
       ) : (
@@ -126,6 +128,8 @@ function TextQuestion(props: {
   refusal: string | undefined;
   /** When it asks for a day, the day a calendar beside the line opens on. */
   day?: string | null;
+  /** When the answer is in the filter language, which completes. */
+  syntax?: Syntax | null;
   cancel: () => void;
 }) {
   const [text, setText] = useState(props.initial);
@@ -137,23 +141,35 @@ function TextQuestion(props: {
     <Dialog>
       <Heading slot="title">{props.heading}</Heading>
       <form onSubmit={submit}>
-        <TextField
-          className="field"
-          value={text}
-          onChange={setText}
-          isInvalid={props.refusal !== undefined}
-          validationBehavior="aria"
-          autoFocus
-        >
-          <Label>{props.label}</Label>
-          <Input />
-          {props.description && (
-            <Text slot="description" className="quiet">
-              {props.description}
-            </Text>
-          )}
-          <FieldError>{props.refusal}</FieldError>
-        </TextField>
+        {props.syntax != null ? (
+          <CompletingField
+            label={props.label}
+            value={text}
+            onChange={setText}
+            syntax={props.syntax}
+            description={props.description}
+            error={props.refusal}
+            autoFocus
+          />
+        ) : (
+          <TextField
+            className="field"
+            value={text}
+            onChange={setText}
+            isInvalid={props.refusal !== undefined}
+            validationBehavior="aria"
+            autoFocus
+          >
+            <Label>{props.label}</Label>
+            <Input />
+            {props.description && (
+              <Text slot="description" className="quiet">
+                {props.description}
+              </Text>
+            )}
+            <FieldError>{props.refusal}</FieldError>
+          </TextField>
+        )}
         {props.day && <DayPicker line={text} from={props.day} onPick={setText} />}
         <div className="buttons">
           <Button onPress={props.cancel}>Cancel</Button>

@@ -26,6 +26,7 @@ import {
 } from "react-aria-components";
 import type { BlockFields, BlockFormView, FormField } from "./core";
 import { FieldKind } from "./core";
+import { CompletingField } from "./Completing";
 import { DayPicker, TimePicker } from "./Pickers";
 import { send } from "./session";
 
@@ -111,6 +112,12 @@ function Form(props: { form: BlockFormView }) {
         );
       default: {
         const line = String(values[key]);
+        // A block's Tasks from is the filter language, which completes.
+        if (field.syntax != null) {
+          return (
+            <CompletingField key={field.key} label={field.label} value={line} onChange={(text) => set(field.key, text)} syntax={field.syntax} description={field.hint} placeholder={field.example || undefined} />
+          );
+        }
         const typed = (
           <TextField key={field.key} className="field" value={line} onChange={(text) => set(field.key, text)} autoFocus={first}>
             <Label>{field.label}</Label>

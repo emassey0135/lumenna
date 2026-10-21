@@ -166,10 +166,11 @@ def ask(session: Session, asking, row=None) -> str:
         return answer(L.AnswerYes())
     if isinstance(question, L.QuestionText):
         said = prompt(wrong, question.title, question.hint, question.label)
-        if action is not None and action.kind == K.CHANGE_QUERY:
+        # A saved filter's query is the filter language, which the app says: completion is offered.
+        if asking.syntax is not None:
             import tasks  # here, since tasks imports this module
 
-            text = tasks.assisted_input(session, said, L.Syntax.FILTER, history_key="lumenna-filter",
+            text = tasks.assisted_input(session, said, asking.syntax, history_key="lumenna-filter",
                                         default=question.initial)
         else:
             text = dialogs.request_input(said, default_text=question.initial)

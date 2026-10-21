@@ -795,6 +795,21 @@ fn history_lists_what_was_done_newest_first_and_its_rows_are_tasks_with_details(
 }
 
 #[test]
+fn a_saved_filters_query_is_asked_in_the_filter_language_and_its_name_is_not() {
+    let mut app = App::new();
+    app.send(Event::Perform(sidebar_action(&app, "Saved Filters", ActionKind::New)));
+    assert_eq!(app.view().asking.unwrap().syntax, None, "its name first");
+    app.send(Event::Answer(Answer::Text { text: "Urgent".to_owned() }));
+    assert_eq!(app.view().asking.unwrap().syntax, Some(lumenna_records::Syntax::Filter), "then its query");
+    app.send(Event::Answer(Answer::Text { text: "p1".to_owned() }));
+    let change = sidebar_action(&app, "Urgent", ActionKind::ChangeQuery);
+    app.send(Event::Perform(change));
+    assert_eq!(app.view().asking.unwrap().syntax, Some(lumenna_records::Syntax::Filter));
+    let task_filter = lumenna_records::block_form().into_iter().find(|f| f.key == "task_filter").unwrap();
+    assert_eq!(task_filter.syntax, Some(lumenna_records::Syntax::Filter), "a block's Tasks from");
+}
+
+#[test]
 fn closing_a_proposal_makes_nothing() {
     let mut app = App::new();
     block(&mut app, "Deep work", "09:00", "tomorrow", None);

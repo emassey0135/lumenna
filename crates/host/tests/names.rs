@@ -42,3 +42,12 @@ fn a_subproject_is_listed_under_its_parent_whatever_order_it_was_made_in() {
     let expected = [("Inbox", 0), ("Work", 0), ("Test", 1), ("Home", 0)];
     assert_eq!(listed, expected.map(|(t, d)| (t.to_owned(), d)));
 }
+
+#[test]
+fn a_label_completes_over_what_was_typed_of_it_in_a_filter() {
+    let directory = tempfile::tempdir().unwrap();
+    let lumenna = lumenna_host::Lumenna::open(directory.path().to_str().unwrap()).unwrap();
+    lumenna.add_label("calls").unwrap();
+    let found = lumenna.complete_text("@ca", 3, lumenna_host::Syntax::Filter).unwrap();
+    assert_eq!((found.start, found.end), (0, 3), "{found:?}");
+}

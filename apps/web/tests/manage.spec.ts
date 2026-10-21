@@ -31,7 +31,8 @@ async function placeMenu(page: Page, row: RegExp, item: string) {
 /** Answers an ask dialog called `title`, by its button that says what answering does. */
 async function answer(page: Page, title: string | RegExp, text: string, button = "Save") {
   const dialog = page.getByRole("dialog", { name: title });
-  await dialog.getByRole("textbox").first().fill(text);
+  // A line, or one written in the filter language, which completes.
+  await dialog.getByRole("textbox").or(dialog.getByRole("combobox")).first().fill(text);
   await dialog.getByRole("button", { name: button, exact: true }).click();
   await expect(dialog).toBeHidden();
 }
@@ -76,12 +77,42 @@ test("a label and a saved filter are made and changed from the sidebar", async (
   const step = page.getByRole("dialog", { name: "New saved filter" });
   await step.getByRole("textbox", { name: "Name" }).fill("Urgent");
   await step.getByRole("button", { name: "Next" }).click();
-  await step.getByRole("textbox", { name: "Query" }).fill("p1");
+  await step.getByRole("combobox", { name: "Query" }).fill("p1");
   await step.getByRole("button", { name: "Add", exact: true }).click();
   await expect(heading(page)).toHaveText("Urgent");
   await placeMenu(page, /^Urgent/, "Change query");
   await answer(page, "Query of Urgent", "p1 | today");
-  await expect(page.getByRole("main").getByRole("textbox", { name: "Filter" })).toHaveValue("p1 | today");
+  await expect(page.getByRole("main").getByRole("combobox", { name: "Filter" })).toHaveValue("p1 | today");
+  await axe(page);
+});
+
+test("the filter, a saved filter's query and a block's tasks complete on Down or Ctrl+Space, never by themselves", async ({ page }) => {
+  await open(page);
+  await placeMenu(page, /^Labels/, "New label");
+  await answer(page, "New label", "calls", "Add");
+  await page.getByRole("navigation", { name: "Places" }).getByRole("row", { name: /^Tasks/ }).click();
+  await expect(heading(page)).toHaveText("Tasks");
+  const filter = page.getByRole("main").getByRole("combobox", { name: "Filter" });
+  await filter.focus();
+  await page.keyboard.type("@ca");
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("option", { name: /calls/ })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(filter).toHaveValue("@calls");
+  await placeMenu(page, /^Saved filters/, "New saved filter");
+  const step = page.getByRole("dialog", { name: "New saved filter" });
+  await step.getByRole("textbox", { name: "Name" }).fill("Calls");
+  await step.getByRole("button", { name: "Next" }).click();
+  const query = step.getByRole("combobox", { name: "Query" });
+  await query.focus();
+  await page.keyboard.type("@c");
+  await page.keyboard.press("Control+Space");
+  await expect(page.getByRole("option", { name: /calls/ })).toBeVisible();
+  // The list closes on Escape and leaves the question open; the audit is of the question.
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+  await expect(step).toBeVisible();
   await axe(page);
 });
 
@@ -174,7 +205,7 @@ test("a block's flags follow its kind, and its settings are kept", async ({ page
   await takes.focus();
   await page.keyboard.press("Space");
   await expect(takes).toBeChecked();
-  await form.getByRole("textbox", { name: "Tasks from" }).fill("#Inbox");
+  await form.getByRole("combobox", { name: "Tasks from" }).fill("#Inbox");
   await form.getByRole("textbox", { name: "Colour" }).fill("teal");
   await axe(page);
   await form.getByRole("button", { name: "Add", exact: true }).click();
@@ -183,7 +214,7 @@ test("a block's flags follow its kind, and its settings are kept", async ({ page
   await page.keyboard.press("Enter");
   const change = page.getByRole("dialog", { name: /^Change Commute/ });
   await expect(change.getByRole("checkbox", { name: "Takes tasks" })).toBeChecked();
-  await expect(change.getByRole("textbox", { name: "Tasks from" })).toHaveValue("#Inbox");
+  await expect(change.getByRole("combobox", { name: "Tasks from" })).toHaveValue("#Inbox");
   await expect(change.getByRole("textbox", { name: "Colour" })).toHaveValue("teal");
 });
 
@@ -365,7 +396,7 @@ test("every shared command works on the web's key", async ({ page }) => {
   // Edit: Filter Tasks, from another place too.
   await page.keyboard.press("Alt+Shift+Digit3");
   await page.keyboard.press("Alt+Shift+KeyF");
-  await expect(main.getByRole("textbox", { name: "Filter" })).toBeFocused();
+  await expect(main.getByRole("combobox", { name: "Filter" })).toBeFocused();
   await page.keyboard.press("Escape");
   await page.keyboard.press("Alt+Shift+Digit2");
 
@@ -424,7 +455,7 @@ test("on a Mac, Option+Shift types its symbol in a field, but Save changes still
       return prevent.call(this);
     };
   });
-  const filter = main.getByRole("textbox", { name: "Filter" });
+  const filter = main.getByRole("combobox", { name: "Filter" });
   await filter.focus();
   await page.keyboard.press("Alt+Shift+KeyQ");
   await page.keyboard.press("Alt+Shift+Digit3");

@@ -30,6 +30,7 @@ import type {
   Turn,
   ViewModel,
   KeyGroup,
+  Syntax,
   PickerWords,
 } from "./core/lumenna_web.js";
 import { Capitals, TimeStyle } from "./core/lumenna_web.js";
@@ -127,6 +128,14 @@ export interface ShownChoice {
   depth?: number;
   /** Why it is offered, when the core says: its description, never its name. */
   reason?: string;
+}
+
+/** What a field written in the filter or quick-add language offers at its cursor. */
+export interface Offered {
+  announcement: string;
+  start: number;
+  end: number;
+  candidates: { id: string; text: string; label: string }[];
 }
 
 /** The question open, a pick's choices as lines. */
@@ -263,6 +272,18 @@ const api = {
 
   /** A number that moves when another tab or process has written. */
   outsideVersion: (): number => session().outsideVersion(),
+
+  /** What could go at `cursor` (UTF-16 units, as an input counts) in `text`, written in
+   * `syntax`: its span in UTF-16 too, and each candidate's line. */
+  complete: (text: string, cursor: number, syntax: Syntax): Offered => {
+    const found = session().complete(text, bytesAt(text, cursor), syntax);
+    return {
+      announcement: found.announcement,
+      start: unitsAt(text, found.start),
+      end: unitsAt(text, found.end),
+      candidates: found.candidates.map((candidate, index) => ({ id: String(index), text: candidate.text, label: candidate.label })),
+    };
+  },
 
   /** Fixed text — a button, a question with no one's name in it — in sentence case. */
   sentence: (text: string): string => sentenceCase(text),

@@ -20,6 +20,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use boltffi::{data, export};
+use lumenna_records::{Completions, Syntax};
 
 use crux_core::middleware::{EffectMiddleware, EffectResolver, Layer};
 use futures::StreamExt;
@@ -396,6 +397,16 @@ impl App {
     /// Gives every turn from now on to `listener`.
     pub fn listen(&self, listener: Arc<dyn Listener>) {
         *self.inner.0.listener.borrow_mut() = Some(listener);
+    }
+
+    /// What could go at `cursor` (UTF-8 bytes) in `text` written in `syntax`: a keystroke-rate
+    /// question of the store, as every app's filter field asks it.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn complete(&self, text: String, cursor: u32, syntax: Syntax) -> Result<Completions, LumennaError> {
+        self.lumenna.complete_text(&text, cursor, syntax)
     }
 
     /// A number that moves whenever another tab or process has written.

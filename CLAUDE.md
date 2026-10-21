@@ -1750,7 +1750,11 @@ with `lum`.
 - **A React Aria tree builds its collection in a pass of its own**, so rows can lag the
   data by a render: focus after a change waits for current rows (`TaskList`).
 - **Quick add is a combobox completing mid-line**, its filter off (the core decides what
-  fits), and Down waits for the offer for where the cursor is *now*.
+  fits), and Down waits for the offer for where the cursor is *now*. Every other line in the filter
+  language completes the same way (`Completing.tsx`): the list's filter, a saved filter's query
+  (`Asking::syntax`) and a block's Tasks from (`FormField::syntax`), on Down or Ctrl+Space, never
+  by itself, asking the core at the keystroke (`App::complete`), the list opened once its
+  candidates have rendered (opened as they were set, it opened on none).
 - **What cannot be undone is an `alertdialog` with Cancel focused first**, never `confirm()`.
   A refused answer stays in its dialog.
 - **A row's action runs after its menu has closed** and focus is back on the row, so a

@@ -8,6 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::actions::Choice;
+use crate::types::Syntax;
 
 /// How a form field's value is shaped, so a client offers the control that fits.
 #[boltffi::data]
@@ -53,6 +54,10 @@ pub struct FormField {
     /// For a block: shown only while it repeats.
     #[serde(default)]
     pub repeating_only: bool,
+    /// When it is written in the filter language (a block's Tasks from), which a client offers
+    /// completion in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub syntax: Option<Syntax>,
     /// For a block: whether one day of a repeating block can be changed apart from the rest
     /// (`day_block_fields`); the others belong to the series.
     #[serde(default)]
@@ -68,6 +73,7 @@ fn field(key: &str, label: &str, kind: FieldKind, hint: &str, example: &str) -> 
         kind,
         options: Vec::new(),
         repeating_only: false,
+        syntax: None,
         one_day: false,
     }
 }
@@ -138,7 +144,10 @@ pub fn block_form() -> Vec<FormField> {
             "How short a slipping day may make it. Empty for the kind's own.",
             "30",
         ),
-        field("task_filter", "Tasks from", K::Line, "Which tasks it is offered, such as #Work. Empty for all.", "#Work"),
+        FormField {
+            syntax: Some(Syntax::Filter),
+            ..field("task_filter", "Tasks from", K::Line, "Which tasks it is offered, such as #Work. Empty for all.", "#Work")
+        },
         field("colour", "Colour", K::Line, crate::actions::COLOUR, "teal"),
         field("notes", "Notes", K::Lines, "", ""),
     ]

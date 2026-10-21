@@ -10,10 +10,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
-import { Button, Collection, Input, Label, TextField, Tree, TreeItem, TreeItemContent } from "react-aria-components";
+import { Button, Collection, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
 import type { Action, Screen, ShellEvent, ShownItem } from "./core";
-import { ActionKind } from "./core";
+import { ActionKind, Syntax } from "./core";
+import { CompletingField } from "./Completing";
 import { byKind, REMOVING } from "./actions";
 import { useCommand } from "./commands";
 import { asksForMenu, RowMenu } from "./RowMenu";
@@ -110,24 +111,23 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
     <>
       <h2>{screen.title}</h2>
       {!trash && (
-        <TextField
-          className="field"
+        <CompletingField
+          label="Filter"
           value={filter}
+          syntax={Syntax.Filter}
+          inputRef={filterField}
+          placeholder="#Work & overdue, or search: words"
           onChange={(text) => {
             setFilter(text);
             void send({ tag: "Filter", value0: text });
           }}
-          onKeyDown={(event) => {
+          onEnter={() => {
             // Finishing the filter says what it found, then goes to it.
-            if (event.key === "Enter" && list) {
-              say(list.refusal ?? list.readback);
-              tree.current?.querySelector<HTMLElement>('[role="row"]')?.focus();
-            }
+            if (!list) return;
+            say(list.refusal ?? list.readback);
+            tree.current?.querySelector<HTMLElement>('[role="row"]')?.focus();
           }}
-        >
-          <Label>Filter</Label>
-          <Input ref={filterField} placeholder="#Work & overdue, or search: words" />
-        </TextField>
+        />
       )}
       {/* An empty list says so once, in its own words below; a filter's problem always shows. */}
       <p className="quiet" id="readback">

@@ -121,7 +121,8 @@ function Line(props: { line: ShownLine | null; close: () => void }) {
               className="contents"
               onKeyDownCapture={(event) => {
                 const state = combo.current;
-                if (event.key !== "ArrowDown" || !state || state.isOpen) return;
+                const asked = event.key === "ArrowDown" || (event.key === " " && event.ctrlKey);
+                if (!asked || !state || state.isOpen) return;
                 const cursor = input.current?.selectionStart ?? text.length;
                 if (line && line.text === text && line.cursor === cursor && pending.current === 0) return;
                 event.preventDefault();

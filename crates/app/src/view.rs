@@ -1,6 +1,7 @@
 //! What each app draws: the model read into records.
 
 use lumenna_records::reminders::ReminderList;
+use lumenna_records::Syntax;
 use jiff::Zoned;
 use lumenna_core::snapshot::Snapshot;
 use lumenna_records::places::{Place, SidebarEntry, sidebar};
@@ -121,6 +122,10 @@ pub struct Asking {
     /// on it, a day picked there answered as its ISO date.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub day: Option<String>,
+    /// When the answer is written in the filter language (a saved filter's query), which a
+    /// shell offers completion in, as it does in the list's filter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub syntax: Option<Syntax>,
 }
 
 /// The rows a place lists under `query`: tasks, or the block series; `None` for the day.
@@ -261,7 +266,13 @@ fn asking(open: &crate::Open, model: &Screen) -> Asking {
         .then(|| model.day_shown())
         .flatten()
         .map(|day| day.to_string());
-    Asking { action: open.action().cloned(), question: open.question(), choices, refusal: open.refusal.clone(), day }
+    // A saved filter's query, new or changed, is the filter language.
+    let query = match &open.purpose {
+        crate::Purpose::NewFilter(Some(_)) => true,
+        _ => open.action().is_some_and(|a| a.kind == lumenna_records::ActionKind::ChangeQuery),
+    };
+    let syntax = query.then_some(Syntax::Filter);
+    Asking { action: open.action().cloned(), question: open.question(), choices, refusal: open.refusal.clone(), day, syntax }
 }
 
 /// The projects a task's Project field offers: every one not archived, in tree order, and the
