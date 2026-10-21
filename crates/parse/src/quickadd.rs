@@ -552,7 +552,7 @@ impl QuickAdd {
         let due = self.due.as_ref().and_then(|spanned| {
             due_phrase = spanned.value.date.as_ref().map(ToString::to_string);
             repetition = spanned.value.recurrence.as_ref().map(RecurrenceSpec::describe);
-            match spanned.value.resolve(now) {
+            match spanned.value.resolve_in(now, snapshot.settings.week_start) {
                 Ok(due) => due,
                 Err(error) => {
                     diagnostics.push(Diagnostic {

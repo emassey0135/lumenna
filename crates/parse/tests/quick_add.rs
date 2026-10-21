@@ -81,7 +81,9 @@ fn dates_of_every_supported_shape_resolve() {
         ("friday", date(2026, 5, 8)),
         ("next friday", date(2026, 5, 15)),
         ("last friday", date(2026, 5, 1)),
-        ("next week", date(2026, 5, 13)),
+        // The first day of next week, which starts on Monday unless the setting says not.
+        ("next week", date(2026, 5, 11)),
+        ("end of the week", date(2026, 5, 10)),
         ("in 3 days", date(2026, 5, 9)),
         ("in 2 weeks", date(2026, 5, 20)),
         ("2026-09-01", date(2026, 9, 1)),
@@ -448,4 +450,22 @@ fn a_hash_or_at_sign_with_no_name_stays_in_the_title_and_is_said() {
     assert_eq!(p.title, "Buy milk @");
     assert!(p.labels.is_empty() && p.new_labels.is_empty(), "no label called nothing: {:?}", p.new_labels);
     assert_eq!(p.diagnostics[0].message, "'@' at position 9 has no label name after it; it stayed in the title");
+}
+
+#[test]
+fn next_week_and_the_end_of_the_week_follow_the_week_start_setting() {
+    let mut snapshot = Snapshot::default();
+    let due = |snapshot: &Snapshot, line: &str| {
+        let known = Known::from_snapshot(snapshot);
+        parse_quick_add(line, &known).resolve(snapshot, &now()).due.map(|d| d.date)
+    };
+    let monday = due(&snapshot, "plan the trip next week").unwrap();
+    assert_eq!(monday.weekday(), jiff::civil::Weekday::Monday);
+    snapshot.settings.week_start = jiff::civil::Weekday::Sunday;
+    let sunday = due(&snapshot, "plan the trip next week").unwrap();
+    assert_eq!(sunday.weekday(), jiff::civil::Weekday::Sunday);
+    let end = due(&snapshot, "file the report by end of the week").unwrap();
+    assert_eq!(end.weekday(), jiff::civil::Weekday::Saturday, "a week from Sunday ends on Saturday");
+    let preview = parse_quick_add("file the report by end of the week", &Known::from_snapshot(&snapshot)).resolve(&snapshot, &now());
+    assert_eq!(preview.title, "file the report by");
 }

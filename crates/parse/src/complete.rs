@@ -229,6 +229,7 @@ const DATE_WORDS: &[&str] = &[
     "tomorrow",
     "next monday",
     "next week",
+    "end of the week",
     "in 3 days",
     "every day",
     "every weekday",

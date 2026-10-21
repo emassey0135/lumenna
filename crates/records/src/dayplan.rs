@@ -21,7 +21,7 @@ use crate::words::{count_line, duration, listed, suggested_because};
 ///
 /// If the date or a pinned task cannot be read.
 pub fn propose(snapshot: &Snapshot, date: Option<&str>, style: TimeStyle, pins: &DayPins, now: &Zoned) -> Result<DayPlan> {
-    let day = resolve::date(date, now)?;
+    let day = resolve::date(date, now, snapshot.settings.week_start)?;
     let mut excluded = BTreeSet::new();
     for task in &pins.exclude {
         excluded.insert(resolve::task_id(snapshot, task)?);

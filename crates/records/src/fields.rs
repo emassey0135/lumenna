@@ -388,7 +388,7 @@ pub fn proposal_words(kind: crate::ActionKind) -> ProposalWords {
 ///
 /// If `date` cannot be read.
 pub fn new_block_start(snapshot: &lumenna_core::snapshot::Snapshot, date: Option<&str>, now: &jiff::Zoned) -> crate::Result<String> {
-    let day = crate::resolve::date(date, now)?;
+    let day = crate::resolve::date(date, now, snapshot.settings.week_start)?;
     let day_start = snapshot.settings.day_window.0;
     let start = if day == now.date() {
         // The hour after this one, or the last hour of the day once there is no next one today.

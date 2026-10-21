@@ -29,7 +29,7 @@ impl Lumenna {
     /// If the date cannot be read, or a block's rule cannot be expanded.
     pub fn work_blocks(&self, from: Option<String>, days: Option<u32>) -> Result<WorkBlocks> {
         let now = Zoned::now();
-        let first = resolve::date(from.as_deref(), &now)?;
+        let first = resolve::date(from.as_deref(), &now, self.with(|store| Ok(repaired(store).settings.week_start))?)?;
         self.told(|store| {
             store.load_all_years()?;
             crate::plan::work_blocks(&repaired(store), first, days.unwrap_or(WORK_BLOCK_DAYS), &now)
@@ -48,7 +48,7 @@ impl Lumenna {
     pub fn plan(&self, date: Option<String>) -> Result<Plan> {
         let now = Zoned::now();
         self.told(|store| {
-            let day = resolve::date(date.as_deref(), &now)?;
+            let day = resolve::date(date.as_deref(), &now, repaired(store).settings.week_start)?;
             // Year documents load only when a year is viewed, which is what keeps the watch
             // viable. This is that moment.
             store.load_year(day.year())?;
@@ -67,7 +67,7 @@ impl Lumenna {
     pub fn add_block(&self, block: NewBlock) -> Result<Change> {
         let now = Zoned::now();
         self.told(|store| {
-            let day = resolve::date(block.date.as_deref(), &now)?;
+            let day = resolve::date(block.date.as_deref(), &now, repaired(store).settings.week_start)?;
             let start = resolve::time(&block.at)?;
             let kind = block_kind(&block.kind)?;
             let mut series = BlockSeries::one_off(&block.title, kind, day, start, block.minutes)
@@ -203,7 +203,7 @@ impl Lumenna {
                              belong to every occurrence; change every occurrence to change them",
                         ));
                     }
-                    let day = resolve::date(Some(&date), &now)?;
+                    let day = resolve::date(Some(&date), &now, repaired(store).settings.week_start)?;
                     // Overrides already written for that day are kept unless replaced here.
                     let earlier = match snapshot.exceptions.get(&(series_id, day)).map(|e| &e.action)
                     {
@@ -256,7 +256,7 @@ impl Lumenna {
             store.load_all_years()?;
             let snapshot = repaired(store);
             let series_id = resolve::series_id(&snapshot, id)?;
-            let day = resolve::date(Some(date), &now)?;
+            let day = resolve::date(Some(date), &now, snapshot.settings.week_start)?;
             let change =
                 edit::except_occurrence(&snapshot, series_id, day, ExceptionAction::Cancelled)?;
             record_or(store, &change, "that day is already cancelled")
@@ -275,7 +275,7 @@ impl Lumenna {
             store.load_all_years()?;
             let snapshot = repaired(store);
             let series_id = resolve::series_id(&snapshot, id)?;
-            let day = resolve::date(Some(date), &now)?;
+            let day = resolve::date(Some(date), &now, snapshot.settings.week_start)?;
             let change = edit::restore_occurrence(&snapshot, series_id, day)?;
             record_or(store, &change, "that day is already as the series has it")
         })
@@ -341,7 +341,7 @@ impl Lumenna {
         // friday` lists — so it is not quietly put into today's instead.
         let date = date.or_else(|| block.split_once('@').map(|(_, day)| day.to_owned()));
         self.told(|store| {
-            let day = resolve::date(date.as_deref(), &now)?;
+            let day = resolve::date(date.as_deref(), &now, repaired(store).settings.week_start)?;
             // Looking a block up by identifier cannot know which year to open, so it opens
             // them all rather than failing to find one that is on disk.
             store.load_all_years()?;
@@ -665,7 +665,7 @@ fn apply_extras(snapshot: &Snapshot, series: &mut BlockSeries, extras: &Extras<'
                     "a block that happens once has no last day; make it repeat first",
                 ));
             }
-            let day = resolve::date(Some(until), now)?;
+            let day = resolve::date(Some(until), now, snapshot.settings.week_start)?;
             if day < series.start_date {
                 return Err(LumennaError::new(format!(
                     "it would end on {day}, before it starts on {}",

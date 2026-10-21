@@ -237,7 +237,7 @@ pub fn offered(snapshot: &Snapshot, action: &Action, now: &Zoned) -> Result<Choi
 ///
 /// If the day cannot be read, or `task` is not here.
 pub fn blocks_for(snapshot: &Snapshot, task: Option<&str>, from: Option<&str>, days: Option<u32>, now: &Zoned) -> Result<Choices> {
-    let first = resolve::date(from, now)?;
+    let first = resolve::date(from, now, snapshot.settings.week_start)?;
     let blocks = crate::plan::work_blocks(snapshot, first, days.unwrap_or(crate::plan::WORK_BLOCK_DAYS), now)?;
     let task = task
         .map(|task| -> Result<Task> {

@@ -169,7 +169,7 @@ impl Lumenna {
             }
             if let Some(due) = &edit.due {
                 let kept = after.due.as_ref().and_then(|d| d.recurrence.clone());
-                after.due = resolve::due(due, &now)?;
+                after.due = resolve::due(due, &now, snapshot.settings.week_start)?;
                 // A new date that names no repetition moves the task; it does not stop it
                 // repeating. `none`, or `repeat: none`, is how that is said.
                 if let Some(due) = after.due.as_mut()

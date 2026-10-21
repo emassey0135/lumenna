@@ -501,6 +501,10 @@ so evaluation, the readback and the accessibility layer never depend on the pars
   `ParseError::expected` carries the valid token kinds, and completion is built on it.
 - **Quick add cuts the title out of the original input**, so punctuation and spacing
   survive.
+- **A week is the person's** (`week-start`): "next week" is the first day of next week, "this
+  week" and "end of the week" its last day (`DateSpec::WeekStart`, `WeekEnd`), so every date a
+  person types resolves through `resolve_in` with the snapshot's week start; `resolve` alone
+  assumes Monday. "In a week" is still seven days.
 - **Nothing is ever silently swallowed.** An unrecognised or repeated token stays in the
   title with a notice. A property test asserts every non-space character is in the title or
   inside a recognised span.

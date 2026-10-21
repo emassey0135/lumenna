@@ -81,6 +81,18 @@ pub enum DateSpec {
         /// Of what.
         unit: RelativeUnit,
     },
+    /// The first day of a week, counted from this one: "next week" is one, "last week" minus
+    /// one. Which day a week starts on is the person's setting.
+    WeekStart {
+        /// Weeks from this one.
+        weeks: i64,
+    },
+    /// The last day of a week, counted from this one: "this week", "the end of the week" is
+    /// zero, "the end of next week" one.
+    WeekEnd {
+        /// Weeks from this one.
+        weeks: i64,
+    },
 }
 
 impl DateSpec {
@@ -90,8 +102,19 @@ impl DateSpec {
     /// with thirty days, or an offset that runs past what a date can represent.
     #[must_use]
     pub fn resolve(&self, now: &Zoned) -> Option<civil::Date> {
+        self.resolve_in(now, Weekday::Monday)
+    }
+
+    /// Pins the date down against an anchor, a week starting on `week_start`.
+    #[must_use]
+    pub fn resolve_in(&self, now: &Zoned, week_start: Weekday) -> Option<civil::Date> {
         let today = now.date();
+        // This week's first day: today, or the last `week_start` before it.
+        let back = i64::from(today.weekday().to_monday_zero_offset()) - i64::from(week_start.to_monday_zero_offset());
+        let this_week = today.checked_sub(Span::new().days(back.rem_euclid(7))).ok();
         match *self {
+            Self::WeekStart { weeks } => this_week?.checked_add(Span::new().weeks(weeks)).ok(),
+            Self::WeekEnd { weeks } => this_week?.checked_add(Span::new().weeks(weeks).days(6)).ok(),
             Self::On(date) => Some(date),
             Self::MonthDay { month, day } => resolve_month_day(today, month, day),
             Self::Today => Some(today),
@@ -176,6 +199,13 @@ impl std::fmt::Display for DateSpec {
                     Which::Last => write!(f, "last {name}"),
                 }
             }
+            Self::WeekStart { weeks: 1 } => f.write_str("next week"),
+            Self::WeekStart { weeks: -1 } => f.write_str("last week"),
+            Self::WeekStart { weeks } if *weeks > 0 => write!(f, "the start of the week in {weeks} weeks"),
+            Self::WeekStart { weeks } => write!(f, "the start of the week {} weeks ago", weeks.abs()),
+            Self::WeekEnd { weeks: 0 } => f.write_str("the end of this week"),
+            Self::WeekEnd { weeks: 1 } => f.write_str("the end of next week"),
+            Self::WeekEnd { weeks } => write!(f, "the end of the week in {weeks} weeks"),
             Self::Offset { amount, unit } => {
                 let unit = match unit {
                     RelativeUnit::Day => "day",
@@ -478,13 +508,22 @@ impl DueSpec {
     ///
     /// If a repetition was named that cannot be expanded.
     pub fn resolve(&self, now: &Zoned) -> Result<Option<crate::model::Due>, crate::recur::RecurError> {
+        self.resolve_in(now, Weekday::Monday)
+    }
+
+    /// As [`DueSpec::resolve`], a week starting on `week_start`.
+    ///
+    /// # Errors
+    ///
+    /// If a repetition was named that cannot be expanded.
+    pub fn resolve_in(&self, now: &Zoned, week_start: Weekday) -> Result<Option<crate::model::Due>, crate::recur::RecurError> {
         let recurrence = self.recurrence.as_ref().map(|spec| crate::model::Recurrence {
             rrule: spec.to_rrule(),
             from_completion: self.from_completion,
         });
 
         let date = match (&self.date, &recurrence) {
-            (Some(spec), _) => spec.resolve(now),
+            (Some(spec), _) => spec.resolve_in(now, week_start),
             (None, Some(rec)) => {
                 crate::recur::Rule::parse(&rec.rrule)?.first_from(now.date())?
             }
@@ -649,5 +688,20 @@ mod tests {
     fn naming_nothing_is_not_a_due_date() {
         assert!(DueSpec::default().is_empty());
         assert_eq!(DueSpec::default().resolve(&now()).unwrap(), None);
+    }
+
+    #[test]
+    fn next_week_is_its_first_day_and_this_week_its_last_by_the_persons_week_start() {
+        // `now()` is Wednesday 6 May 2026.
+        let week = |spec: DateSpec, start| spec.resolve_in(&now(), start);
+        assert_eq!(week(DateSpec::WeekStart { weeks: 1 }, Weekday::Monday), Some(date(2026, 5, 11)));
+        assert_eq!(week(DateSpec::WeekStart { weeks: 1 }, Weekday::Sunday), Some(date(2026, 5, 10)));
+        assert_eq!(week(DateSpec::WeekEnd { weeks: 0 }, Weekday::Monday), Some(date(2026, 5, 10)));
+        assert_eq!(week(DateSpec::WeekEnd { weeks: 0 }, Weekday::Sunday), Some(date(2026, 5, 9)));
+        assert_eq!(week(DateSpec::WeekStart { weeks: -1 }, Weekday::Monday), Some(date(2026, 4, 27)));
+        // A week starting today: today is its first day.
+        assert_eq!(week(DateSpec::WeekStart { weeks: 0 }, Weekday::Wednesday), Some(date(2026, 5, 6)));
+        assert_eq!(DateSpec::WeekStart { weeks: 1 }.to_string(), "next week");
+        assert_eq!(DateSpec::WeekEnd { weeks: 0 }.to_string(), "the end of this week");
     }
 }

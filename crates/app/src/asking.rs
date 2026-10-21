@@ -231,7 +231,7 @@ impl Lumenna {
             Purpose::GoToDay => {
                 let Answer::Text { text } = answer else { return Command::done() };
                 let Some(store) = &model.store else { return Command::done() };
-                match lumenna_records::resolve::date(Some(&text), &store.now) {
+                match lumenna_records::resolve::date(Some(&text), &store.now, store.snapshot.settings.week_start) {
                     Ok(date) => {
                         let today = date == store.now.date();
                         model.show_day((!today).then_some(date))

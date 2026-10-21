@@ -85,9 +85,9 @@ pub fn label<'a>(snapshot: &'a Snapshot, name: &str) -> Result<&'a Label> {
     })
 }
 
-/// A date phrase, resolved against now — `today`, `friday`, `2026-03-01` — or today when
-/// there is none.
-pub fn date(text: Option<&str>, now: &Zoned) -> Result<civil::Date> {
+/// A date phrase, resolved against now — `today`, `friday`, `2026-03-01`, `next week` from
+/// the week starting on `week_start` — or today when there is none.
+pub fn date(text: Option<&str>, now: &Zoned, week_start: civil::Weekday) -> Result<civil::Date> {
     let Some(text) = text.filter(|t| !t.trim().is_empty()) else {
         return Ok(now.date());
     };
@@ -95,7 +95,7 @@ pub fn date(text: Option<&str>, now: &Zoned) -> Result<civil::Date> {
     let (spec, used) = lumenna_parse::date::parse_date(&tokens, 0)
         .ok_or_else(|| LumennaError::new(format!("could not read a date from '{text}'")))?;
     whole(text, &tokens, used, "a date")?;
-    spec.resolve(now)
+    spec.resolve_in(now, week_start)
         .ok_or_else(|| LumennaError::new(format!("could not read a date from '{text}'")))
 }
 
@@ -104,7 +104,7 @@ pub fn date(text: Option<&str>, now: &Zoned) -> Result<civil::Date> {
 /// The whole text has to be the phrase. Reading `friday blah` as Friday would swallow words
 /// silently, which quick add never does: here there is no title for the rest to land in, so
 /// it is refused.
-pub fn due(text: &str, now: &Zoned) -> Result<Option<Due>> {
+pub fn due(text: &str, now: &Zoned, week_start: civil::Weekday) -> Result<Option<Due>> {
     if text.trim().eq_ignore_ascii_case("none") {
         return Ok(None);
     }
@@ -112,7 +112,7 @@ pub fn due(text: &str, now: &Zoned) -> Result<Option<Due>> {
     let when = lumenna_parse::date::parse_when(&tokens, 0)
         .ok_or_else(|| LumennaError::new(format!("could not read a date from '{text}'")))?;
     whole(text, &tokens, when.words, "a date")?;
-    Ok(when.spec.resolve(now)?)
+    Ok(when.spec.resolve_in(now, week_start)?)
 }
 
 /// A repetition phrase — `every monday`, `every! 2 weeks` — as the rule and whether it counts

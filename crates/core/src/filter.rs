@@ -385,9 +385,9 @@ impl DueFilter {
                 Ok(limit) => due <= today && due >= limit,
                 Err(_) => false,
             },
-            Self::On(spec) => spec.resolve(cx.now) == Some(due),
-            Self::Before(spec) => spec.resolve(cx.now).is_some_and(|date| due < date),
-            Self::After(spec) => spec.resolve(cx.now).is_some_and(|date| due > date),
+            Self::On(spec) => spec.resolve_in(cx.now, cx.snapshot.settings.week_start) == Some(due),
+            Self::Before(spec) => spec.resolve_in(cx.now, cx.snapshot.settings.week_start).is_some_and(|date| due < date),
+            Self::After(spec) => spec.resolve_in(cx.now, cx.snapshot.settings.week_start).is_some_and(|date| due > date),
         }
     }
 

@@ -92,7 +92,16 @@ pub fn parse_date(words: &[Word], at: usize) -> Option<(DateSpec, usize)> {
         if let Some(day) = weekday_of(&next.lower) {
             return Some((DateSpec::Weekday { day, which }, 2));
         }
-        // "next week", "last month".
+        // "next week" is the first day of next week, "last week" of last week, and "this week"
+        // its last day, the week starting on the person's day; "next month" is a month away.
+        if next.any_of(&["week", "wk"]) {
+            let spec = match which {
+                Which::Next => DateSpec::WeekStart { weeks: 1 },
+                Which::Last => DateSpec::WeekStart { weeks: -1 },
+                Which::This => DateSpec::WeekEnd { weeks: 0 },
+            };
+            return Some((spec, 2));
+        }
         if let Some(unit) = unit_of(&next.lower) {
             let amount = if which == Which::Last { -1 } else { 1 };
             return Some((DateSpec::Offset { amount, unit }, 2));
@@ -101,6 +110,25 @@ pub fn parse_date(words: &[Word], at: usize) -> Option<(DateSpec, usize)> {
     }
     if let Some(day) = weekday_of(&word.lower) {
         return Some((DateSpec::Weekday { day, which: Which::This }, 1));
+    }
+
+    // "end of week", "end of the week", "end of this week", "end of next week".
+    if word.is("end") && words.get(at + 1).is_some_and(|w| w.is("of")) {
+        let mut index = at + 2;
+        if words.get(index).is_some_and(|w| w.is("the")) {
+            index += 1;
+        }
+        let weeks = match words.get(index).map(|w| w.lower.as_str()) {
+            Some("this") => Some(0),
+            Some("next") => Some(1),
+            _ => None,
+        };
+        if weeks.is_some() {
+            index += 1;
+        }
+        if words.get(index).is_some_and(|w| w.any_of(&["week", "wk"])) {
+            return Some((DateSpec::WeekEnd { weeks: weeks.unwrap_or(0) }, index + 1 - at));
+        }
     }
 
     // "in 3 days"

@@ -144,8 +144,8 @@ A day or less each, for between the larger pieces.
 - **Verbosity is read by reminders alone** (terse leaves a reminder's detail out). Terse
   ("Review PR, overdue") or full (the whole sentence) should reach every announcement, applied
   by the core so every target behaves alike.
-- **Week start is stored and read by nothing**: week-relative phrases, the block chooser's
-  coming week.
+- **The block chooser's coming week** is the seven days from today, not the week from the
+  week-start setting (which week-relative phrases now follow); say which it should be.
 - **Quick add for blocks**, in the same grammar: `block "Deep work" 9-11am weekdays`.
 - **The block editor** should move a start date that does not match the repetition to the
   first real occurrence ("every Monday, starting Tuesday" never occurs on its start date).

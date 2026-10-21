@@ -351,11 +351,12 @@ impl Lumenna {
     ///
     /// If nothing matches `target`, or the phrase does not read.
     pub fn add_reminder_saying(&self, target: String, phrase: String) -> Result<Change> {
-        let block = self.with(|store| {
+        let (block, week_start) = self.with(|store| {
             store.load_all_years()?;
-            Ok(matches!(reminder_target(&repaired(store), &target)?, ReminderTarget::Block(_)))
+            let snapshot = repaired(store);
+            Ok((matches!(reminder_target(&snapshot, &target)?, ReminderTarget::Block(_)), snapshot.settings.week_start))
         })?;
-        let trigger = parse_reminder(&phrase, block, &Zoned::now())?;
+        let trigger = parse_reminder(&phrase, block, &Zoned::now(), week_start)?;
         self.add_trigger(&target, trigger)
     }
 
@@ -550,7 +551,7 @@ pub fn trigger_phrase(trigger: &Trigger) -> String {
 /// # Errors
 ///
 /// If it does not read, names an anchor the target lacks, or a moment past or without a time.
-pub fn parse_reminder(text: &str, block: bool, now: &Zoned) -> Result<Trigger> {
+pub fn parse_reminder(text: &str, block: bool, now: &Zoned, week_start: jiff::civil::Weekday) -> Result<Trigger> {
     let relative = parse_trigger(text, block);
     if relative.is_ok() {
         return relative;
@@ -559,7 +560,7 @@ pub fn parse_reminder(text: &str, block: bool, now: &Zoned) -> Result<Trigger> {
     // "on friday at 15:00". It needs a time; a day alone says nothing of when.
     let phrase = text.trim();
     let phrase = phrase.strip_prefix("on ").unwrap_or(phrase);
-    let Ok(Some(due)) = resolve::due(phrase, now) else { return relative };
+    let Ok(Some(due)) = resolve::due(phrase, now, week_start) else { return relative };
     if due.recurrence.is_some() {
         return Err(LumennaError::new("a reminder at a set moment happens once; give a day and a time, such as tomorrow at 9am"));
     }
