@@ -82,6 +82,7 @@ fn main() -> glib::ExitCode {
             gtk::IconTheme::for_display(&display).add_search_path(icons);
         }
         gtk::Window::set_default_icon_name(ID);
+        tree::swatches();
     });
     let (background, shortcuts) = (arguments.background, !arguments.no_shortcuts);
     application.connect_activate(move |application| window::activate(application, &directory, background, shortcuts));

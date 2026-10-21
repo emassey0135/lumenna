@@ -96,6 +96,24 @@ class SidebarTest(unittest.TestCase):
         self.session.press("Return", wait=1)
         self.assertEqual(self.session.said(), ["Changed filter Urgent tasks priority 1, and in Work"])
 
+    def test_a_labels_colour_is_picked_from_the_palette_and_said_with_it(self):
+        self.go_to("calls")
+        self.session.press("Menu")
+        for _ in range(12):
+            if "Colour" in self.session.focus():
+                break
+            self.session.press("Down", wait=0.2)
+        self.session.press("Return")
+        self.session.wait_for_window("Colour of calls")
+        self.assertEqual(self.session.said(), ["12 choices"])
+        self.assertEqual(self.session.focus(), "[tree item] 'No colour, its colour now' level 1 1 of 12")
+        # Each colour is said by its name; its dot is nothing a screen reader is given.
+        self.session.press("t")
+        self.assertEqual(self.session.focus(), "[tree item] 'teal' level 1 6 of 12")
+        self.session.press("Return", wait=1)
+        self.assertEqual(self.session.said(), ["Coloured label calls teal"])
+        self.assertEqual(self.session.focus(), "[tree item] 'calls, no open tasks, teal' level 2 1 of 2")
+
     def test_delete_on_a_label_asks_first_and_cancel_is_the_default(self):
         self.go_to("calls")
         self.session.press("Delete")

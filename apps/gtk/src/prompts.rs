@@ -12,6 +12,7 @@ use futures_channel::oneshot;
 use adw::prelude::{AdwDialogExt, AlertDialogExt, AlertDialogExtManual};
 use gtk::prelude::*;
 use gtk::{gdk, glib};
+use lumenna_records::types::Swatch;
 
 use crate::tree::{Item, Tree};
 
@@ -303,24 +304,25 @@ pub async fn ask(
     answer.await.ok().flatten()
 }
 
-/// Asks for one of `options`, each a line, how deep it sits and why it is offered (its
-/// description, or empty), from a list. Enter or a double
+/// Asks for one of `options`, each a line, how deep it sits, why it is offered (its
+/// description, or empty) and its colour, from a list. Enter or a double
 /// click on one chooses it.
 ///
 /// The list is the app's tree, as every list is, so it reads and moves as they do: the arrows
 /// move between the options, Tab goes on to the buttons, and a project tree nests.
-pub async fn pick(parent: &impl IsA<gtk::Window>, title: &str, label: &str, options: &[(String, u32, String)], yes: &str) -> Option<usize> {
+pub async fn pick(parent: &impl IsA<gtk::Window>, title: &str, label: &str, options: &[(String, u32, String, Option<Swatch>)], yes: &str) -> Option<usize> {
     let name = label.replace('_', "");
     let list = Tree::new(name.trim_end_matches(':'));
     list.widget.set_min_content_height(240);
     let items = options
         .iter()
         .enumerate()
-        .map(|(index, (text, depth, description))| Item {
+        .map(|(index, (text, depth, description, swatch))| Item {
             key: index.to_string(),
             text: text.clone(),
             depth: *depth,
             description: description.clone(),
+            swatch: swatch.clone(),
             ..Default::default()
         })
         .collect();

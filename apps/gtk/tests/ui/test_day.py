@@ -158,6 +158,14 @@ class DayTest(unittest.TestCase):
         self.assertEqual(self.session.focus(), "[text] 'Tasks from'")
         self.assertEqual(Atspi.Text.get_text(self.session.find("text", "Tasks from"), 0, -1), "#Work")
 
+    def test_a_blocks_colour_is_one_of_the_palettes(self):
+        self.edit_block()
+        # Its mnemonic opens the list: No colour, then red, orange, yellow, green and teal.
+        self.session.press("Alt+c", *["Down"] * 5, "Return", wait=1)
+        self.assertEqual(self.session.focus(), "[toggle button] 'Colour'")
+        self.session.press("Alt+v", wait=1)
+        self.assertIn("colour: teal", self.session.lum("block", "show", self.block))
+
     def test_delete_on_a_sitting_takes_it_out_of_the_block(self):
         self.session.press("Down", "Delete")
         self.assertIn("nothing assigned", self.session.focus())

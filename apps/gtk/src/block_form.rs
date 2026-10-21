@@ -44,7 +44,7 @@ fn mnemonic(key: &str) -> char {
 /// A field's control.
 enum Control {
     Line(gtk::Entry),
-    Kind(gtk::DropDown, Vec<String>),
+    Choice(gtk::DropDown, Vec<String>),
     Flag(gtk::CheckButton),
     Notes(gtk::TextView),
 }
@@ -53,7 +53,7 @@ impl Control {
     fn widget(&self) -> gtk::Widget {
         match self {
             Self::Line(entry) => entry.clone().upcast(),
-            Self::Kind(kind, _) => kind.clone().upcast(),
+            Self::Choice(choice, _) => choice.clone().upcast(),
             Self::Flag(check) => check.clone().upcast(),
             Self::Notes(notes) => notes.clone().upcast(),
         }
@@ -63,7 +63,7 @@ impl Control {
     fn value(&self) -> String {
         match self {
             Self::Line(entry) => entry.text().to_string(),
-            Self::Kind(kind, ids) => ids.get(kind.selected() as usize).cloned().unwrap_or_default(),
+            Self::Choice(choice, ids) => ids.get(choice.selected() as usize).cloned().unwrap_or_default(),
             Self::Flag(check) => check.is_active().to_string(),
             Self::Notes(notes) => {
                 let buffer = notes.buffer();
@@ -81,7 +81,7 @@ impl Control {
         }
         match self {
             Self::Line(entry) => entry.set_text(value),
-            Self::Kind(kind, ids) => kind.set_selected(ids.iter().position(|id| id == value).unwrap_or(0) as u32),
+            Self::Choice(choice, ids) => choice.set_selected(ids.iter().position(|id| id == value).unwrap_or(0) as u32),
             Self::Flag(check) => check.set_active(value == "true"),
             Self::Notes(notes) => notes.buffer().set_text(value),
         }
@@ -209,10 +209,11 @@ fn build(app: &App, view: &BlockFormView) -> Rc<Open> {
         let key = described.key.clone();
         let mut with: Vec<gtk::Widget> = Vec::new();
         let control = match key.as_str() {
-            "kind" => {
+            // The kind and the colour: one of the core's options.
+            _ if described.kind == FieldKind::Choice => {
                 let ids: Vec<String> = described.options.iter().map(|option| option.id.clone()).collect();
                 let titles: Vec<&str> = described.options.iter().map(|option| option.title.as_str()).collect();
-                Control::Kind(gtk::DropDown::from_strings(&titles), ids)
+                Control::Choice(gtk::DropDown::from_strings(&titles), ids)
             }
             "accepts_tasks" | "counts_capacity" | "anchored" => {
                 let check = prompts::check(&marked(&key, &described.label));
@@ -280,9 +281,9 @@ fn build(app: &App, view: &BlockFormView) -> Rc<Open> {
             Control::Line(entry) => {
                 entry.connect_changed(move |entry| send(entry.text().to_string()));
             }
-            Control::Kind(kind, ids) => {
+            Control::Choice(choice, ids) => {
                 let ids = ids.clone();
-                kind.connect_selected_notify(move |kind| send(ids.get(kind.selected() as usize).cloned().unwrap_or_default()));
+                choice.connect_selected_notify(move |choice| send(ids.get(choice.selected() as usize).cloned().unwrap_or_default()));
             }
             Control::Flag(check) => {
                 check.connect_toggled(move |check| send(check.is_active().to_string()));

@@ -20,6 +20,9 @@
 //!
 //! Nor has a list view type-ahead, which the Windows and Mac trees have: typing a row's first
 //! letters goes to it (`type_ahead`).
+//!
+//! A row with a colour (a project, a label, a block) has a dot of it before its text, out of
+//! the accessible tree: the colour's name is in the text already (`swatches`).
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
@@ -46,6 +49,8 @@ pub struct Item {
     /// Whether what is under it shows, where the app decides it (`Some`); `None` leaves it to
     /// the tree, which starts it expanded and keeps what the person did.
     pub expanded: Option<bool>,
+    /// Its colour, drawn before it.
+    pub swatch: Option<lumenna_records::types::Swatch>,
 }
 
 mod imp {
@@ -67,6 +72,9 @@ mod imp {
         /// GTK cannot report the level itself (`Tree::word_levels`).
         #[property(get, set)]
         pub shown: RefCell<String>,
+        /// Its colour's name, drawn before it; empty for none.
+        #[property(get, set)]
+        pub colour: RefCell<String>,
         /// Its accessible description, if any.
         pub description: RefCell<String>,
         /// Where it is in the flat list the tree was given.
@@ -94,8 +102,9 @@ glib::wrapper! {
 }
 
 impl Row {
-    fn new(text: &str, description: &str, index: usize) -> Self {
-        let row: Self = glib::Object::builder().property("text", text).property("shown", text).build();
+    fn new(item: &Item, index: usize) -> Self {
+        let (text, description) = (item.text.as_str(), item.description.as_str());
+        let row: Self = glib::Object::builder().property("text", text).property("shown", text).property("colour", colour_of(item)).build();
         row.imp().index.set(index);
         *row.imp().description.borrow_mut() = description.to_owned();
         row
@@ -104,6 +113,30 @@ impl Row {
     fn index(&self) -> usize {
         self.imp().index.get()
     }
+}
+
+/// The name of the colour an item is drawn with, or empty.
+fn colour_of(item: &Item) -> String {
+    item.swatch.as_ref().map(|swatch| swatch.name.clone()).unwrap_or_default()
+}
+
+/// Draws the palette's colours (`.swatch-<name>`) in the desktop's appearance, light or dark,
+/// and again whenever it changes. Called once, at startup.
+pub fn swatches() {
+    let Some(display) = gdk::Display::default() else { return };
+    let provider = gtk::CssProvider::new();
+    let style = |provider: &gtk::CssProvider, dark: bool| {
+        let mut css = String::from(".swatch { min-width: 10px; min-height: 10px; border-radius: 9999px; }\n");
+        for swatch in lumenna_records::colours::colour_choices(None).into_iter().filter_map(|choice| choice.swatch) {
+            let value = if dark { &swatch.dark } else { &swatch.light };
+            css.push_str(&format!(".swatch-{} {{ background-color: {value}; }}\n", swatch.name));
+        }
+        provider.load_from_string(&css);
+    };
+    let manager = adw::StyleManager::default();
+    style(&provider, manager.is_dark());
+    gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+    manager.connect_dark_notify(move |manager| style(&provider, manager.is_dark()));
 }
 
 /// Whether a row has to say its level in words: GTK reports a tree item's level to AT-SPI
@@ -224,17 +257,31 @@ impl Tree {
             // The row's own widget would be a list item, positioned among every visible row;
             // the tree item inside it takes focus instead.
             item.set_focusable(false);
-            let label = gtk::Label::builder().xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).build();
+            let label = gtk::Label::builder().xalign(0.0).hexpand(true).ellipsize(gtk::pango::EllipsizeMode::End).build();
+            // The row's colour, a mark beside its text and nothing a screen reader is given.
+            let mark = gtk::Box::builder().accessible_role(gtk::AccessibleRole::Presentation).valign(gtk::Align::Center).visible(false).build();
+            let content = gtk::Box::builder().spacing(8).build();
+            content.append(&mark);
+            content.append(&label);
             let expander = gtk::TreeExpander::builder()
                 .accessible_role(gtk::AccessibleRole::TreeItem)
                 .focusable(true)
-                .child(&label)
+                .child(&content)
                 .build();
             item.set_child(Some(&expander));
             item.property_expression("item")
                 .chain_property::<gtk::TreeListRow>("item")
                 .chain_property::<Row>("shown")
                 .bind(&label, "label", gtk::Widget::NONE);
+            let colour = item.property_expression("item").chain_property::<gtk::TreeListRow>("item").chain_property::<Row>("colour");
+            colour
+                .chain_closure::<Vec<String>>(glib::closure!(|_: Option<glib::Object>, colour: &str| {
+                    if colour.is_empty() { Vec::new() } else { vec!["swatch".to_owned(), format!("swatch-{colour}")] }
+                }))
+                .bind(&mark, "css-classes", gtk::Widget::NONE);
+            colour
+                .chain_closure::<bool>(glib::closure!(|_: Option<glib::Object>, colour: &str| !colour.is_empty()))
+                .bind(&mark, "visible", gtk::Widget::NONE);
         });
         factory.connect_bind(|_, item| {
             let Some(item) = item.downcast_ref::<gtk::ListItem>() else { return };
@@ -610,6 +657,9 @@ impl Tree {
                 if row.text() != item.text {
                     row.set_text(item.text.clone());
                 }
+                if row.colour() != colour_of(item) {
+                    row.set_colour(colour_of(item));
+                }
             }
             *self.items.borrow_mut() = items;
             // A row the app folded or unfolded since; what the person folded stays folded.
@@ -625,7 +675,7 @@ impl Tree {
         self.busy.set(true);
         let depths: Vec<u32> = items.iter().map(|item| item.depth).collect();
         let parents = outline::parents(&depths);
-        let rows: Vec<Row> = items.iter().enumerate().map(|(index, item)| Row::new(&item.text, &item.description, index)).collect();
+        let rows: Vec<Row> = items.iter().enumerate().map(|(index, item)| Row::new(item, index)).collect();
         let mut tops = Vec::new();
         let mut children: Vec<Vec<Row>> = vec![Vec::new(); rows.len()];
         for (index, parent) in parents.iter().enumerate() {

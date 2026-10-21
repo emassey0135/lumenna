@@ -1529,6 +1529,11 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   keys are grabbed on the root window over an X connection of the app's own (x11rb), Caps Lock
   and Num Lock either way. The tray (`ksni`) waits quietly for a host; GNOME has none without
   an extension.
+- **A colour is a dot before a row's text** (`Item::swatch`, `tree::swatches`): the sidebar's,
+  the task and Blocks lists', the day's blocks and a pick's choices (the Colour pick). It is a
+  `Presentation` box styled `.swatch-<name>` from the core's palette, the light or dark value
+  by libadwaita's `StyleManager::is_dark`, restyled as that changes; the row's name is still its
+  text alone. The block form's Colour is a drop-down of the core's options, as Kind is.
 - **The icon** (`data/icons`, an SVG and PNGs from 16 to 512 drawn from it, shared with
   Windows' design) goes into the user's hicolor theme with `install.sh`; a build run from the
   checkout adds `data/icons` to the icon theme's search path (`icons_here`).

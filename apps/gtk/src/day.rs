@@ -15,7 +15,7 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gdk, glib};
-use lumenna_app::DayItem;
+use lumenna_app::{DayItem, DayKind};
 use lumenna_ffi::ShellEvent;
 use lumenna_records::{Action, ActionKind};
 
@@ -142,6 +142,8 @@ impl DayView {
                 text: lines.day.get(at).map_or_else(|| item.key.clone(), |line| line.text.clone()),
                 depth: item.depth,
                 expanded: item.expanded,
+                // A block's colour; its sittings are drawn beneath it, without.
+                swatch: item.block.as_ref().filter(|_| item.kind == DayKind::Block).and_then(|block| block.swatch.clone()),
                 ..Default::default()
             })
             .collect();

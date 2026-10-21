@@ -132,6 +132,7 @@ impl Sidebar {
                     ActionKind::Expand => Some(false),
                     _ => None,
                 }),
+                swatch: entry.swatch.clone(),
                 ..Default::default()
             })
             .collect();

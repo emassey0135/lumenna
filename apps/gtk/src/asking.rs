@@ -99,13 +99,13 @@ fn ask(app: &Rc<App>, open: Asking, worded: Vec<String>) {
             // What a pick offers comes with the question once the app has worked it out.
             let Some(offered) = open.choices.clone() else { return };
             // Put in a Block's ends in the app's Another Day, picked like any other.
-            let options: Vec<(String, u32, String)> = offered
+            let options: Vec<(String, u32, String, Option<lumenna_records::types::Swatch>)> = offered
                 .choices
                 .iter()
                 .enumerate()
                 .map(|(at, choice)| {
                     let text = worded.get(at).cloned().unwrap_or_else(|| choice.title.clone());
-                    (text, choice.depth, choice.reason.clone().unwrap_or_default())
+                    (text, choice.depth, choice.reason.clone().unwrap_or_default(), choice.swatch.clone())
                 })
                 .collect();
             if options.is_empty() {

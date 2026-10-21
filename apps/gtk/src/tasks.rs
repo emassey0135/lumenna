@@ -208,6 +208,7 @@ impl TaskList {
                 text: lines.list.get(at).map_or_else(|| row.row.title.clone(), |line| line.text.clone()),
                 depth: row.row.depth,
                 expanded: row.row.expanded,
+                swatch: row.row.swatch.clone(),
                 ..Default::default()
             })
             .collect();
