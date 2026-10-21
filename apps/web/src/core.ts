@@ -10,6 +10,7 @@ export const core: Comlink.Remote<Api> = Comlink.wrap<Api>(worker);
 export type { Offered, Said, Screen, Shown, ShownDay, ShownDayItem, ShownDetails, ShownAsking, ShownChoice, ShownDevice, ShownItem, ShownLine, ShownReminders } from "./worker";
 export type {
   Action,
+  Swatch,
   Answer,
   Asking,
   BlockFormView,

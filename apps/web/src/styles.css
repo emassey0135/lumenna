@@ -426,7 +426,23 @@ h3 {
   color: inherit;
 }
 
+/* A colour of the core's palette beside a name: a mark, never the only way to tell one thing
+   from another, since the name and its colour's word are there too. */
+.swatch {
+  display: inline-block;
+  flex: none;
+  width: 0.75em;
+  height: 0.75em;
+  margin-inline-end: 0.4em;
+  border-radius: 50%;
+  vertical-align: baseline;
+}
+
 @media (forced-colors: active) {
+  /* The system's palette rules: a mark of ours would be painted over or lost. */
+  .swatch {
+    display: none;
+  }
   .destructive {
     color: inherit;
   }

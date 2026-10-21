@@ -31,6 +31,7 @@ import type { Action, ShownAsking, ShownChoice, Syntax } from "./core";
 import { CompletingField } from "./Completing";
 import { DayPicker } from "./Pickers";
 import { send } from "./session";
+import { SwatchMark } from "./Swatch";
 
 /**
  * Which of `options` to go ahead with: an alert dialog, Cancel first and focused. `answer` hears
@@ -225,6 +226,7 @@ function PickQuestion(props: { heading: string; items: ShownChoice[]; yes: strin
             <ListBox>
               {(item: ShownChoice) => (
                 <ListBoxItem textValue={item.text} style={{ paddingInlineStart: `${0.5 + (item.depth ?? 0)}em` }}>
+                  <SwatchMark swatch={item.swatch} />
                   {item.reason ? (
                     <>
                       <Text slot="label">{item.text}</Text>

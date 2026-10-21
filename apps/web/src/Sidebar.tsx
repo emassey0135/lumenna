@@ -17,6 +17,7 @@ import { asksForMenu, RowMenu } from "./RowMenu";
 import { send } from "./session";
 import { nest } from "./tree";
 import type { Node } from "./tree";
+import { SwatchMark } from "./Swatch";
 
 /** What identifies a place's entry across reloads. */
 export function placeKey(entries: SidebarEntry[], place: Place): string | undefined {
@@ -134,6 +135,7 @@ export function Sidebar(props: {
                           ›
                         </Button>
                       )}
+                      <SwatchMark swatch={node.item.swatch} />
                       {node.item.text}
                     </div>
                   )}

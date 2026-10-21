@@ -23,6 +23,7 @@ import { say } from "./say";
 import { send } from "./session";
 import { nest } from "./tree";
 import type { Node } from "./tree";
+import { SwatchMark } from "./Swatch";
 
 /** What Space runs on a row: whichever of these it has. */
 const CHECKING: ActionKind[] = [ActionKind.MarkDone, ActionKind.MarkNotDone, ActionKind.Restore];
@@ -188,6 +189,7 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
                           }}
                         />
                       )}
+                      <SwatchMark swatch={node.item.row.swatch} />
                       {node.item.text}
                     </div>
                   )}

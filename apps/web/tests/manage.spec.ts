@@ -79,6 +79,10 @@ test("a label and a saved filter are made and changed from the sidebar", async (
   // Said in words beside the name; once it is, the change has landed and focus with it.
   await expect(places(page).getByRole("row", { name: /^calls, .*teal/ })).toBeVisible();
   await expect(page.getByRole("contentinfo")).toContainText("Coloured label calls teal");
+  // Drawn beside the name too, out of the accessibility tree: teal's light value.
+  const mark = places(page).getByRole("row", { name: /^calls, / }).locator(".swatch");
+  await expect(mark).toHaveCSS("background-color", "rgb(0, 121, 107)");
+  await expect(mark).toHaveAttribute("aria-hidden", "true");
   await placeMenu(page, /^Saved filters/, "New saved filter");
   // Two steps under one title: its name, then its query.
   const step = page.getByRole("dialog", { name: "New saved filter" });

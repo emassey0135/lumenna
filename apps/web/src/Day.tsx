@@ -23,6 +23,7 @@ import { asksForMenu, RowMenu } from "./RowMenu";
 import { send } from "./session";
 import { nest } from "./tree";
 import type { Node } from "./tree";
+import { SwatchMark } from "./Swatch";
 
 /** What Space runs on a sitting: its timer. */
 const TIMING: ActionKind[] = [ActionKind.StartTimer, ActionKind.PauseTimer, ActionKind.ResumeTimer];
@@ -147,6 +148,7 @@ export function Day(props: { screen: Screen }) {
                           ›
                         </Button>
                       )}
+                      <SwatchMark swatch={node.item.block?.swatch} />
                       {node.item.text}
                     </div>
                   )}

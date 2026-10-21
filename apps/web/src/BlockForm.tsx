@@ -29,6 +29,7 @@ import { FieldKind } from "./core";
 import { CompletingField } from "./Completing";
 import { DayPicker, TimePicker } from "./Pickers";
 import { send } from "./session";
+import { SwatchMark } from "./Swatch";
 
 /** Where the block form is shown: rendered once, in the app, while the app has one open. */
 /**
@@ -98,7 +99,12 @@ function Form(props: { form: BlockFormView }) {
             </Button>
             {help}
             <Popover>
-              <ListBox items={field.options ?? []}>{(item) => <ListBoxItem id={item.id}>{item.title}</ListBoxItem>}</ListBox>
+              <ListBox items={field.options ?? []}>{(item) => (
+                  <ListBoxItem id={item.id} textValue={item.title}>
+                    <SwatchMark swatch={item.swatch} />
+                    {item.title}
+                  </ListBoxItem>
+                )}</ListBox>
             </Popover>
           </Select>
         );

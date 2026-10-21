@@ -36,7 +36,7 @@ async function place(page: Page, name: RegExp) {
   await page.getByRole("navigation", { name: "Places" }).getByRole("row", { name }).click();
 }
 
-async function addBlock(page: Page, title: string, start: string, minutes: number, kind?: "Break") {
+async function addBlock(page: Page, title: string, start: string, minutes: number, kind?: "Break", colour?: string) {
   await page.getByRole("button", { name: "Add block" }).click();
   const form = page.getByRole("dialog", { name: "New Block" });
   await form.getByRole("textbox", { name: "Name", exact: true }).fill(title);
@@ -45,6 +45,10 @@ async function addBlock(page: Page, title: string, start: string, minutes: numbe
   if (kind) {
     await form.getByRole("button", { name: /Kind/ }).click();
     await page.getByRole("option", { name: kind }).click();
+  }
+  if (colour) {
+    await form.getByRole("button", { name: /Colour/ }).click();
+    await page.getByRole("option", { name: colour }).click();
   }
   await form.getByRole("button", { name: "Add", exact: true }).click();
   await expect(form).toBeHidden();
@@ -89,9 +93,9 @@ for (const scheme of ["light", "dark"] as const) {
       await page.keyboard.press("Escape");
 
       await place(page, /^Today/);
-      await addBlock(page, "Deep work", "9:00", 120);
-      await addBlock(page, "Lunch", "10:30", 30, "Break");
-      await addBlock(page, "Review", "11:00", 60);
+      await addBlock(page, "Deep work", "9:00", 120, undefined, "blue");
+      await addBlock(page, "Lunch", "10:30", 30, "Break", "orange");
+      await addBlock(page, "Review", "11:00", 60, undefined, "purple");
       await addBlock(page, "Admin", "12:00", 60);
       await shot(page, tag("06-day"));
 

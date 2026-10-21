@@ -12,6 +12,7 @@ import { useCommand } from "./commands";
 import { rowKey } from "./landing";
 import { asksForMenu, RowMenu } from "./RowMenu";
 import { send } from "./session";
+import { SwatchMark } from "./Swatch";
 
 export function Blocks(props: { screen: Screen }) {
   const list = props.screen.list;
@@ -87,7 +88,10 @@ export function Blocks(props: { screen: Screen }) {
           {(node) => (
             <TreeItem id={node.id} textValue={node.item.text}>
               <TreeItemContent>
-                <div className="row">{node.item.text}</div>
+                <div className="row">
+                  <SwatchMark swatch={node.item.row.swatch} />
+                  {node.item.text}
+                </div>
               </TreeItemContent>
             </TreeItem>
           )}

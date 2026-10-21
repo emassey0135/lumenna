@@ -13,6 +13,7 @@ import init, { open, pickerWords, sentenceCase, keyboardShortcuts } from "./core
 import type {
   App,
   Asking,
+  Swatch,
   DayItem,
   DayView,
   DeviceList,
@@ -128,6 +129,8 @@ export interface ShownChoice {
   depth?: number;
   /** Why it is offered, when the core says: its description, never its name. */
   reason?: string;
+  /** A colour's, drawn beside its name. */
+  swatch?: Swatch;
 }
 
 /** What a field written in the filter or quick-add language offers at its cursor. */
@@ -188,6 +191,7 @@ function screen(view: ViewModel, lines: Lines): Screen {
       text: lines.choices[index]?.text ?? choice.title,
       depth: choice.depth,
       reason: choice.reason ?? undefined,
+      swatch: choice.swatch ?? undefined,
     })),
   };
   const devices = view.devices && {

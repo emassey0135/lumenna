@@ -1807,6 +1807,9 @@ with `lum`.
   time setting, where it is grouped with its line under the setting's name, so each clock is
   told from the others; a time picked there is applied at once. Chrome makes each a textbox, so
   a test naming a field "Day" names it exactly.
+- **A colour is a mark beside the name** (`Swatch.tsx`): a dot in the sidebar, the lists, the
+  day, a pick's choices and the block form's colour, `aria-hidden`, its value
+  `light-dark(light, dark)` by the page's scheme, left out under forced colours.
 - **What the app says is shown too**, on a status line at the foot of the page (`useSaid`,
   `StatusLine`), kept in view however long the page: not a live region, since React Aria's
   announcer has said it already.
