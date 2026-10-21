@@ -9,11 +9,10 @@ Every client gets every feature. A platform may get it later, never a smaller ve
 The order, and why:
 
 1. **Safeguards first**: CI, now built: every app and the core on every push.
-2. **Reminders**, the biggest gap in daily use, and the scheduler the planner's overrun
-   warning and hooks' time events also need.
-3. **The planner**, in dependency order: urgency and history, suggestions, carrying work
-   forward and day commands, re-flow, the whole-day plan.
-4. **Smaller gaps**, threaded through the two above.
+2. **Reminders**: built in every app; what is left is small.
+3. **The planner**: built in every app (urgency and history, suggestions, carrying work
+   forward and day commands, re-flow, the whole-day plan); what is left is small.
+4. **Smaller gaps**, between the larger pieces.
 5. **The watches**: the watchOS spike early, since it decides the toolchain and whether the
    watch can be a full peer; then both watch apps.
 6. **Integrations**, once reminders and the planner exist for them to expose.
@@ -28,47 +27,24 @@ The order, and why:
 
 ## 2. Reminders and time events
 
-The core and the surface are built: when each reminder fires, across daylight-saving
-changes; what it says; one process per device delivering; dismissing and snoozing, synced;
-`lum reminder` and `lum notify`. Still to come:
+Built: when each reminder fires, across daylight-saving changes; what it says; one process
+per device delivering, and every app delivering or scheduling them (CLAUDE.md, "Who delivers,
+per client"); a task's and a block's own reminders and the defaults, set in every app;
+dismissing, snoozing, Carry Forward and the overrun warning's Replan, synced; `lum reminder`
+and `lum notify`. Still to come:
 
-- **Delivery in every app** (below), each over `deliver_reminders` or `upcoming_reminders`.
-- **Setting reminders in every app**: a task's and a block's own, and the defaults in
-  settings (a phrase such as `5m before start` for the defaults' setting).
 - **Reminders at a fixed moment** exist in the model and the scheduler; nothing sets one.
-- **The same scheduler for hooks' time events and the planner's overrun warning.**
 - **Delivery to some devices only** (`Delivery`) has no way to be set.
-
-**Who delivers.** Whatever process owns the output, and never the daemon: on a Linux desktop
-the tray app does it better, without one no notification service is listening, and a system
-unit has no session bus.
-
-- **macOS, Windows, GTK**: the resident app. Windows toasts need an app identity (AUMID);
-  Linux uses the notification portal.
-- **iOS and watchOS**: local notifications, at most 64 pending, so a rolling window of about
-  48 hours, re-armed on foreground, background refresh and sync.
-- **Android**: `SCHEDULE_EXACT_ALARM` (Android 13 and later) for time-critical reminders,
-  degrading if refused. Wear OS mirrors the phone, with duplicates suppressed.
-- **Console Linux**: `lum notify`, a foreground process started from the shell profile,
-  writing to the controlling terminal (which speakup and BRLTTY read), and `spd-say` when
-  speech-dispatcher runs.
-- **BTSpeak**: a small resident Python service, apart from the sync daemon: code in
-  `/BTSpeak/Services/`, its unit in `/BTSpeak/Systemd/` (as `btspeak-calendar-reminders`
-  does), a `Settings/lumenna-reminders.values` toggle. The notification sound, then
-  `host.say()` and `brl.push_message()`; acks so a restart does not re-announce the day. No
-  reminder logic in Python.
-- **Emacs**: announcements while it runs, through `notifications.el` or `message`, as a
-  convenience only.
-- **The web**: see the web client below.
+- **Hooks' time events on the same scheduler**, once hooks exist (Integrations). The
+  planner's overrun warning already runs on it.
+- **The web's reminders** wait on the encrypted store (below); today one open tab delivers.
 
 ## 3. Planning
 
-The planner is four capabilities: urgency, suggestions for a block, re-flow when the day
-slips, and a whole-day plan. None is built. Per-task history comes with urgency: it is
-cheap, and its facts ("rescheduled 7 times") feed suggestions' reasons. What they will read
-already exists: block minimum lengths and compression floors, the `anchored`,
-`accepts_tasks` and `counts_capacity` flags, the day window, block task filters, project
-weights, and the day's timeline with its free time.
+The planner is four capabilities, all built in every app: urgency, suggestions for a block,
+re-flow when the day slips, and a whole-day plan. Per-task history came with urgency, and its
+facts ("rescheduled 7 times") feed suggestions' reasons. The sections below keep the design
+each was built to, and say what is still to come.
 
 ### Rules for all of it
 
@@ -92,9 +68,10 @@ weights, and the day's timeline with its free time.
 Built: the score and its terms (`task_history`, `lum task history`), and per-task history
 from the records already kept, on a task's own screen in every app. Still to come:
 
-- **A history view in every app** beyond the task's own screen, and `lum history`.
-  Field-level history from Automerge (title and due changes over time) later, with its own
-  API.
+- **A History place in every app**, beside Trash, listing what was done by day (tasks
+  completed, sittings worked, with their times), and `lum history` printing the same
+  (decided 2026-10-20). Field-level history from Automerge (title and due changes over time)
+  later, with its own API.
 - If a task becomes permanent furniture at the top, a staleness question ("this has been at
   the top for three weeks; is it real?") rather than a bigger formula.
 
@@ -157,7 +134,8 @@ optional.
 - **Planning against a dependency** is allowed without a word: task B can go in a block
   before the one holding the task it waits for.
 - **Sittings cannot be reordered** within a block once assigned.
-- **Skipped and Deferred sittings** exist in the model and nothing sets them.
+- **Skipped sittings** exist in the model and nothing sets them. (Deferred is set by Carry
+  Forward.)
 
 ## 4. Smaller gaps
 
@@ -165,15 +143,14 @@ A day or less each, for between the larger pieces.
 
 ### Tasks, blocks and text entry
 
-- **Reordering tasks among siblings.** New tasks go last and only "move to top" exists. The
-  fractional `order` key supports any position; ties break by identifier.
 - **Completed subtasks**: a setting to show them, and a completion count on the parent row.
 - **Time zones** on tasks and blocks are stored and nothing can set them. Normally absent,
   so times float; set only for something tied to a real place.
 - **Colours** for projects and saved filters exist in the model with no way to set them.
   Block icons likewise. Colour never carries meaning alone.
-- **Verbosity is stored and read by nothing.** Terse ("Review PR, overdue") or full (the
-  whole sentence), applied by the core so every target behaves alike.
+- **Verbosity is read by reminders alone** (terse leaves a reminder's detail out). Terse
+  ("Review PR, overdue") or full (the whole sentence) should reach every announcement, applied
+  by the core so every target behaves alike.
 - **Week start is stored and read by nothing**: week-relative phrases, the block chooser's
   coming week.
 - **Quick add for blocks**, in the same grammar: `block "Deep work" 9-11am weekdays`.
@@ -187,14 +164,15 @@ The core's `complete` works everywhere; what is missing is how each app offers i
 - **Every field written in the quick-add or filter language completes**, not only quick add
   and the task list's filter: the saved-filter editor and a block's "Tasks from" field have
   it in Emacs only.
-- **Down arrow opens it on every keyboard.** Missing on the Mac (Option-Escape or F5 only,
-  and it opens unasked after `#` and `@`, which GTK chose not to do because a menu
-  interrupts someone typing a name straight through: decide), on iPad and Android hardware
-  keyboards, and Ctrl+Space on the web. The web's filter field has none.
-- **iOS and Android** offer a strip that changes as one types. The design was an
-  accessibility action on the field ("Show completions") opening a modal list, which has
-  clear edges where a strip leaves one unsure whether it is there right now. Decide, then
-  make both alike.
+- **Down arrow opens it on every keyboard.** Missing on the Mac (Option-Escape or F5 only),
+  on iPad and Android hardware keyboards, and Ctrl+Space on the web. The web's filter field
+  has none. **It opens only when asked** (decided 2026-10-20): typing `#` or `@` never opens
+  it, as GTK has it, since a menu interrupts someone typing a name straight through; the Mac,
+  which opens it unasked, changes to match.
+- **iOS and Android have both** (decided 2026-10-20): the strip that changes as one types,
+  quick to check for whether anything completes, and an accessibility action on the field
+  ("Show completions", also a button) opening a modal list with clear edges, for someone who
+  already knows they want one and need not find the strip. Alike on both.
 - **BTSpeak**: a key inside the input dialog (Ctrl-L, dots 7-8 plus L, once checked against
   global BRLTTY chords) completing at the cursor, never opening on `#` or `@` by itself.
   Needs an `InputDialog` subclass; today choices come after Enter, for the last word only.
@@ -482,6 +460,9 @@ What the web client gains from it:
 
 ## Decided against
 
+- **Reordering tasks among siblings** (decided 2026-10-20): task lists are most urgent
+  first, or in the order added (`task-order`, `sort:`), so a task has no place of its own to
+  move to. Projects, labels, saved filters and a block's sittings are reordered.
 - **Alexa, AppleScript, WSH/COM**: a cloud assistant cannot read what the cloud cannot
   decrypt; Shortcuts and `lum --json` cover scripting.
 - **A hosted MCP endpoint**, for the same reason, and TLS inside `lum mcp`.
