@@ -116,7 +116,7 @@ fn the_inbox_is_only_reordered_and_weighed() {
     let work = rows.iter().find(|r| r.title == "Work").unwrap();
     assert_eq!(
         titles(&work.actions),
-        ["Rename", "New Project Inside", "Move Under", "Move Up", "Weight", "Archive", "Delete"]
+        ["Rename", "New Project Inside", "Move Under", "Move Up", "Weight", "Colour", "Archive", "Delete"]
     );
 }
 
@@ -262,7 +262,7 @@ fn the_sidebars_headings_add_and_its_places_carry_their_own_actions() {
     lumenna.act(heading.actions[0].clone(), Answer::Text { text: "Garden".to_owned() }).unwrap();
     assert!(lumenna.places().entries.iter().any(|e| e.text.starts_with("Garden")));
     let urgent = entries.iter().find(|e| e.text.starts_with("Urgent")).unwrap();
-    assert_eq!(titles(&urgent.actions), ["Rename", "Change Query", "Delete"]);
+    assert_eq!(titles(&urgent.actions), ["Rename", "Change Query", "Colour", "Delete"]);
     assert_eq!(urgent.actions[0].subject, Subject::Filter);
 }
 
