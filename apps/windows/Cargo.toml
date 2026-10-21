@@ -64,3 +64,5 @@ workspace = true
 # The UI tests seed and check a store of their own, as another process would.
 lumenna-host = { path = "../../crates/host", features = ["sync", "rpc"] }
 tempfile.workspace = true
+# The icon example compresses its PNGs.
+flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }

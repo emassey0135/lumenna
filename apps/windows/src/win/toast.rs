@@ -22,6 +22,24 @@ pub fn app_id() -> String {
     std::env::var("LUMENNA_APP_ID").ok().filter(|id| !id.is_empty()).unwrap_or_else(|| "io.github.emassey0135.Lumenna".to_owned())
 }
 
+/// The icon a toast shows, as an image of its own on disk: an identity names a file, not a
+/// resource. The largest of the app's icon (`lumenna.ico`, a PNG), written where it is missing or
+/// older than this build's, under `%LOCALAPPDATA%\Lumenna`.
+fn icon_file() -> Option<std::path::PathBuf> {
+    const ICO: &[u8] = include_bytes!("../../lumenna.ico");
+    let word = |at: usize| u16::from_le_bytes([ICO[at], ICO[at + 1]]);
+    let dword = |at: usize| u32::from_le_bytes([ICO[at], ICO[at + 1], ICO[at + 2], ICO[at + 3]]) as usize;
+    // 256 a side is written as 0: one less, wrapping, orders it after 64.
+    let at = (0..usize::from(word(4))).map(|index| 6 + 16 * index).max_by_key(|at| ICO[*at].wrapping_sub(1))?;
+    let image = ICO.get(dword(at + 12)..dword(at + 12) + dword(at + 8))?;
+    let path = std::path::PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("Lumenna").join("Lumenna.png");
+    if std::fs::read(&path).ok().as_deref() != Some(image) {
+        std::fs::create_dir_all(path.parent()?).ok()?;
+        std::fs::write(&path, image).ok()?;
+    }
+    Some(path)
+}
+
 /// What a toast was answered with, posted to the main window.
 pub const WM_REMINDER: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 6;
 
@@ -57,6 +75,12 @@ impl Toasts {
         let key = format!("Software\\Classes\\AppUserModelId\\{id}");
         if system::read_string(&key, "DisplayName").as_deref() != Some("Lumenna") {
             system::write_string(&key, "DisplayName", "Lumenna");
+        }
+        if let Some(icon) = icon_file() {
+            let icon = icon.to_string_lossy();
+            if system::read_string(&key, "IconUri").as_deref() != Some(&*icon) {
+                system::write_string(&key, "IconUri", &icon);
+            }
         }
         unsafe {
             let _ = SetCurrentProcessExplicitAppUserModelID(&HSTRING::from(&id));

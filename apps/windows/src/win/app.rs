@@ -25,14 +25,14 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
 use windows::Win32::UI::Controls::{
     ICC_DATE_CLASSES, ICC_HOTKEY_CLASS, ICC_STANDARD_CLASSES, ICC_TAB_CLASSES, ICC_TREEVIEW_CLASSES, INITCOMMONCONTROLSEX,
-    InitCommonControlsEx, NM_RCLICK, NMHDR,
+    InitCommonControlsEx, LIM_LARGE, LIM_SMALL, LoadIconMetric, NM_RCLICK, NMHDR,
     WC_STATICW,
 };
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::System::SystemServices::{SS_ENDELLIPSIS, SS_NOPREFIX};
 use windows::Win32::UI::Controls::{EM_SETSEL, EM_UNDO};
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::core::{HSTRING, w};
+use windows::core::{HSTRING, PCWSTR, w};
 
 use lumenna_app::{Capitals, DayMove, DetailsEvent};
 use lumenna_ffi::ShellEvent;
@@ -69,6 +69,9 @@ use crate::{profile, speech};
 /// Runs a deferred action: something a notification asked for that changes the window it
 /// came from, so it waits until that window has finished sending it.
 const WM_DEFERRED: u32 = WM_APP + 3;
+
+/// The app's icon, as build.rs embeds it.
+pub const ICON: u16 = 1;
 
 const TIMER_REFRESH: usize = 1;
 /// Looks every 50 milliseconds whether the app is still, to ask the question it has open.
@@ -254,7 +257,14 @@ impl App {
         // Before any window, so menus are made in the mode.
         dark::refresh();
         let instance = controls::instance();
-        let icon = unsafe { LoadIconW(None, IDI_APPLICATION).unwrap_or_default() };
+        // The app's own (build.rs), at the sizes this display wants: the small one for the title
+        // bar and the notification area, the large for Alt+Tab.
+        let load = |size| unsafe {
+            LoadIconMetric(Some(instance), PCWSTR(ICON as usize as _), size)
+                .or_else(|_| LoadIconW(None, IDI_APPLICATION))
+                .unwrap_or_default()
+        };
+        let (icon, large) = (load(LIM_SMALL), load(LIM_LARGE));
         let class = HSTRING::from(class);
         unsafe {
             let cursor = LoadCursorW(None, IDC_ARROW).unwrap_or_default();
@@ -263,7 +273,8 @@ impl App {
                 cbSize: size_of::<WNDCLASSEXW>() as u32,
                 lpfnWndProc: Some(main_procedure),
                 hInstance: instance,
-                hIcon: icon,
+                hIcon: large,
+                hIconSm: icon,
                 hCursor: cursor,
                 hbrBackground: background,
                 lpszClassName: windows::core::PCWSTR(class.as_ptr()),

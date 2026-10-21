@@ -3116,6 +3116,7 @@ dependencies = [
 name = "lumenna-windows"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "jiff",
  "lumenna-app",
  "lumenna-ffi",

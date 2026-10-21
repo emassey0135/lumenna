@@ -164,6 +164,22 @@ fn the_day_opens_with_its_summary_first_and_focus_on_a_row() {
 
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn the_window_and_the_taskbar_show_the_apps_own_icon_not_windows_default() {
+    use windows::Win32::UI::WindowsAndMessaging::{GCLP_HICON, GCLP_HICONSM, GetClassLongPtrW, HICON};
+    let app = App::launch(|_| {});
+    // Its amber disc, above the check: Windows' own application icon has no amber.
+    const AMBER: [u8; 3] = [0xFF, 0xC8, 0x3D];
+    for (which, index) in [("small", GCLP_HICONSM), ("large", GCLP_HICON)] {
+        let icon = HICON(unsafe { GetClassLongPtrW(app.window, index) } as _);
+        assert!(!icon.is_invalid(), "the window has a {which} icon");
+        let colour = colour_in(icon, (0.5, 0.28)).unwrap_or_else(|| panic!("the {which} icon is read"));
+        let near = colour.iter().zip(AMBER).all(|(got, want)| got.abs_diff(want) <= 8);
+        assert!(near, "the {which} icon is the app's: {colour:02X?}");
+    }
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn space_checks_a_task_off_and_focus_moves_to_the_one_that_took_its_place() {
     let app = App::launch(|lumenna| {
         add(lumenna, "Buy milk");
@@ -674,9 +690,14 @@ fn a_reminder_that_comes_due_is_a_windows_notification_with_the_cores_buttons() 
         (0..toasts.Size().ok()?).find_map(|i| toasts.GetAt(i).ok()?.Content().ok()?.GetXml().ok().map(|x| x.to_string()))
     });
     let _ = history.ClearWithId(&HSTRING::from(ID));
+    // It shows the app's icon, which the identity names as a file.
+    let icon = registry_string(&format!("Software\\Classes\\AppUserModelId\\{ID}"), "IconUri");
     windows_registry_forget(ID);
     let xml = shown.expect("a toast was shown");
     assert!(xml.contains("Call the bank"), "{xml}");
+    let icon = icon.expect("the identity names an icon");
+    let image = std::fs::read(&icon).unwrap_or_else(|why| panic!("{icon}: {why}"));
+    assert!(image.starts_with(b"\x89PNG"), "{icon} is a PNG");
     let store = app.store();
     let task = store.list_tasks("").unwrap().rows[0].id.clone();
     // Its buttons are the core's.
@@ -701,6 +722,62 @@ fn choose_from_menu(app: &App, name: &str) -> Vec<String> {
     }
     app.post(&["enter"]);
     names
+}
+
+/// A text value of this user's registry.
+fn registry_string(key: &str, name: &str) -> Option<String> {
+    use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_SZ, RegGetValueW};
+    use windows::core::HSTRING;
+    let mut buffer = [0u16; 1024];
+    let mut size = (buffer.len() * 2) as u32;
+    let (key, name) = (HSTRING::from(key), HSTRING::from(name));
+    unsafe { RegGetValueW(HKEY_CURRENT_USER, &key, &name, RRF_RT_REG_SZ, None, Some(buffer.as_mut_ptr().cast()), Some(&mut size)) }
+        .ok()
+        .ok()?;
+    let length = (size as usize / 2).saturating_sub(1);
+    Some(String::from_utf16_lossy(&buffer[..length]))
+}
+
+/// The colour at a point of an icon, drawn at its own size, `at` its share of the width and
+/// height from the top left.
+fn colour_in(icon: windows::Win32::UI::WindowsAndMessaging::HICON, at: (f64, f64)) -> Option<[u8; 3]> {
+    use windows::Win32::Graphics::Gdi::{
+        BI_RGB, BITMAP, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS, DeleteObject, GetDC, GetDIBits, GetObjectW, ReleaseDC,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{GetIconInfo, ICONINFO};
+    let mut info = ICONINFO::default();
+    unsafe { GetIconInfo(icon, &mut info) }.ok()?;
+    let mut bitmap = BITMAP::default();
+    unsafe { GetObjectW(info.hbmColor.into(), size_of::<BITMAP>() as i32, Some((&raw mut bitmap).cast())) };
+    let (width, height) = (bitmap.bmWidth, bitmap.bmHeight);
+    let mut header = BITMAPINFO {
+        bmiHeader: BITMAPINFOHEADER {
+            biSize: size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: width,
+            biHeight: -height,
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB.0,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let mut pixels = vec![0u8; (width * height * 4).max(0) as usize];
+    let screen = unsafe { GetDC(None) };
+    let rows = unsafe {
+        GetDIBits(screen, info.hbmColor, 0, height as u32, Some(pixels.as_mut_ptr().cast()), &mut header, DIB_RGB_COLORS)
+    };
+    unsafe {
+        ReleaseDC(None, screen);
+        let _ = DeleteObject(info.hbmColor.into());
+        let _ = DeleteObject(info.hbmMask.into());
+    }
+    if rows == 0 {
+        return None;
+    }
+    let (x, y) = ((f64::from(width) * at.0) as usize, (f64::from(height) * at.1) as usize);
+    let pixel = &pixels[(y * width as usize + x) * 4..][..3];
+    Some([pixel[2], pixel[1], pixel[0]])
 }
 
 /// Removes the identity a test gave Windows for its toasts.

@@ -1205,7 +1205,10 @@ store of their own). Everything Win32 is in `src/win/` behind
   app's (`QuickAdd`), which holds what it added. Completion asks the store at keystroke rate
   (`App::complete`): the view's offer can lag the typing.
 - **Building on ARM64 Windows needs clang on `PATH`** for `ring`: Visual Studio's
-  `VC\Tools\Llvm\ARM64\bin`. The manifest is embedded by the MSVC linker from `build.rs`.
+  `VC\Tools\Llvm\ARM64\bin`. The manifest is embedded by the MSVC linker from `build.rs`, and
+  so is the icon (`lumenna.ico`, drawn by `examples/icon.rs` from GTK's SVG's shapes), as a
+  `.res` build.rs writes itself: no `rc.exe`. A toast's icon is a file the identity names
+  (`IconUri`), so its largest image is written under `%LOCALAPPDATA%\Lumenna`.
 - **Stock controls only.** Every list is a `SysTreeView32`, so level, position, set size,
   expansion and checkboxes are the control's to report; an item's text leaves exactly those
   out. Dialogs are in-memory templates run by the dialog manager.
