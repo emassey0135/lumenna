@@ -372,22 +372,6 @@ fn cloud_service(directory: &Path) -> Option<&'static str> {
     None
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_common_sync_folders_are_recognised() {
-        assert_eq!(cloud_service(Path::new("/Users/me/Dropbox/backups")), Some("Dropbox"));
-        assert_eq!(
-            cloud_service(Path::new("/Users/me/Library/Mobile Documents/com~apple~CloudDocs")),
-            Some("iCloud")
-        );
-        assert_eq!(cloud_service(Path::new("C:/Users/me/OneDrive - Work/x")), Some("OneDrive"));
-        assert_eq!(cloud_service(Path::new("/home/me/.local/share/lumenna-backups")), None);
-    }
-}
-
 /// For a backup folder the person gave a browser, which this process cannot list itself:
 /// whether a backup is due among the files `names` there, by the default policy (a browser has
 /// no device settings of its own).
@@ -413,4 +397,20 @@ pub fn folder_backup_words() -> String {
         "While Lumenna is open, it backs up {every} into the folder you choose, and keeps the newest {}.",
         backup::Policy::DEFAULT_KEEP
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_common_sync_folders_are_recognised() {
+        assert_eq!(cloud_service(Path::new("/Users/me/Dropbox/backups")), Some("Dropbox"));
+        assert_eq!(
+            cloud_service(Path::new("/Users/me/Library/Mobile Documents/com~apple~CloudDocs")),
+            Some("iCloud")
+        );
+        assert_eq!(cloud_service(Path::new("C:/Users/me/OneDrive - Work/x")), Some("OneDrive"));
+        assert_eq!(cloud_service(Path::new("/home/me/.local/share/lumenna-backups")), None);
+    }
 }
