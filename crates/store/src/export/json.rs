@@ -140,7 +140,20 @@ pub fn export_json(snapshot: &Snapshot, now: Timestamp) -> String {
             .filter(|f| f.deleted_at.is_none())
             .map(FilterOut::from)
             .collect(),
-        tasks: snapshot.tasks.values().filter(|t| !t.is_deleted()).map(TaskOut::from).collect(),
+        // A task in the trash is not exported, so nothing exported names it: a subtask whose
+        // parent was trashed (one device trashing it while another added the subtask) is
+        // exported at the top, as the Markdown is, and a wait for a trashed task is left out.
+        tasks: snapshot
+            .tasks
+            .values()
+            .filter(|t| !t.is_deleted())
+            .map(|t| {
+                let mut out = TaskOut::from(t);
+                out.parent = t.parent_id.filter(|id| live_task(id)).map(|id| id.to_string());
+                out.depends = t.depends.iter().filter(|id| live_task(id)).map(ToString::to_string).collect();
+                out
+            })
+            .collect(),
         completions: snapshot
             .completions
             .values()

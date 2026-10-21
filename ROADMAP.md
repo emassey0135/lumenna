@@ -156,8 +156,6 @@ Each is a thin adapter over the command surface.
   document without it, losing all history, every device syncing afresh, and clearing the
   undo table's copies. Rare and expensive, so it says so: "Permanently erase — rebuilds your
   database and re-syncs all devices."
-- **Property tests**: back up and restore a randomly generated store; an export never holds
-  a deleted task (a privacy guarantee, not formatting).
 - **An always-on peer**, documented: `lum daemon` on hardware the person controls. A VPS
   works, but say the provider can read the data, and make no encryption claim: unattended
   boot and provider-proof encryption conflict.
