@@ -165,10 +165,16 @@ Each is a thin adapter over the command surface.
 - **An always-on peer**, documented: `lum daemon` on hardware the person controls. A VPS
   works, but say the provider can read the data, and make no encryption claim: unattended
   boot and provider-proof encryption conflict.
-- **Background Sync for the web client**: sending changes made offline once the connection
-  returns, with no tab open, needs the store in the service worker, and a service worker can
-  neither open OPFS's synchronous handles (the store's `sahpool`) nor start a worker that can.
-  It waits on the encrypted store, or a store a service worker can open.
+- **Background Sync for the web client**, once the encrypted store exists. A service worker
+  cannot open the store (OPFS's synchronous handles, which `sahpool` needs, are a dedicated
+  worker's alone, and a service worker can start none), and Iroh needs a peer awake at the same
+  moment. The encrypted store needs neither: syncing with it is plain HTTPS to something always
+  there. So the store's worker writes each change, encrypted as it commits, to an outbox in
+  IndexedDB; on a `sync` event the service worker sends the outbox with `fetch` and fetches what
+  is new into an inbox, which the store takes in the next time a tab opens. The account key is a
+  non-extractable WebCrypto key in IndexedDB, which a service worker can use. Working out a
+  reminder in the service worker (the push wake-up below) further needs the store readable
+  there: OPFS's asynchronous API, which a service worker has, into an in-memory copy.
 - **Browsers for the web client**: only Chromium is tested. Safari, Firefox (OPFS sync access
   handles there) and ChromeVox are unchecked; an IndexedDB fallback for browsers without sync
   access handles is optional.
