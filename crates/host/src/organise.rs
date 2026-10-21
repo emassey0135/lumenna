@@ -238,7 +238,7 @@ impl Lumenna {
     ///
     /// # Errors
     ///
-    /// If there is no label by that name.
+    /// If there is no label by that name, or no colour of the palette's by that one.
     pub fn delete_label(&self, name: &str) -> Result<Change> {
         self.told(|store| {
             let snapshot = repaired(store);
@@ -297,7 +297,7 @@ impl Lumenna {
     ///
     /// # Errors
     ///
-    /// If there is no filter by that name.
+    /// If there is no filter by that name, or no colour of the palette's by that one.
     pub fn delete_filter(&self, name: &str) -> Result<Change> {
         self.told(|store| {
             let snapshot = repaired(store);
@@ -374,7 +374,7 @@ impl Lumenna {
     ///
     /// # Errors
     ///
-    /// If there is no label by that name.
+    /// If there is no label by that name, or no colour of the palette's by that one.
     pub fn reorder_label(&self, name: &str, direction: Direction) -> Result<Change> {
         self.told(|store| {
             let snapshot = repaired(store);
@@ -399,13 +399,13 @@ impl Lumenna {
     ///
     /// # Errors
     ///
-    /// If there is no project by that name.
+    /// If there is no project by that name, or no colour of the palette's by that one.
     pub fn recolour_project(&self, name: &str, colour: Option<String>) -> Result<Change> {
         self.told(|store| {
             let snapshot = repaired(store);
             let before = resolve::project(&snapshot, name)?.clone();
             let mut after = before.clone();
-            after.color = colour.map(|c| c.trim().to_lowercase()).filter(|c| !c.is_empty());
+            after.color = match colour { Some(name) => lumenna_records::colours::colour_named(&name)?, None => None };
             let change = edit::update_project(before, after);
             record_or(store, &change, "it is already that colour")
         })
@@ -415,13 +415,13 @@ impl Lumenna {
     ///
     /// # Errors
     ///
-    /// If there is no filter by that name.
+    /// If there is no filter by that name, or no colour of the palette's by that one.
     pub fn recolour_filter(&self, name: &str, colour: Option<String>) -> Result<Change> {
         self.told(|store| {
             let snapshot = repaired(store);
             let before = live_filter(&snapshot, name)?.clone();
             let mut after = before.clone();
-            after.color = colour.map(|c| c.trim().to_lowercase()).filter(|c| !c.is_empty());
+            after.color = match colour { Some(name) => lumenna_records::colours::colour_named(&name)?, None => None };
             let change = edit::update_filter(before, after);
             record_or(store, &change, "it is already that colour")
         })
@@ -432,13 +432,13 @@ impl Lumenna {
     ///
     /// # Errors
     ///
-    /// If there is no label by that name.
+    /// If there is no label by that name, or no colour of the palette's by that one.
     pub fn recolour_label(&self, name: &str, colour: Option<String>) -> Result<Change> {
         self.told(|store| {
             let snapshot = repaired(store);
             let before = resolve::label(&snapshot, name)?.clone();
             let mut after = before.clone();
-            after.color = colour.map(|c| c.trim().to_lowercase()).filter(|c| !c.is_empty());
+            after.color = match colour { Some(name) => lumenna_records::colours::colour_named(&name)?, None => None };
             let change = edit::update_label(before, after);
             record_or(store, &change, "it is already that colour")
         })
@@ -448,7 +448,7 @@ impl Lumenna {
     ///
     /// # Errors
     ///
-    /// If there is no filter by that name, another already has the new one, or the new query
+    /// If there is no filter by that name, or no colour of the palette's by that one. another already has the new one, or the new query
     /// cannot be read.
     pub fn edit_filter(
         &self,
@@ -495,7 +495,7 @@ impl Lumenna {
     ///
     /// # Errors
     ///
-    /// If there is no filter by that name.
+    /// If there is no filter by that name, or no colour of the palette's by that one.
     pub fn reorder_filter(&self, name: &str, direction: Direction) -> Result<Change> {
         self.told(|store| {
             let snapshot = repaired(store);

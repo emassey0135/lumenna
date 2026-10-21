@@ -295,6 +295,7 @@ impl Rows {
                     value: row.value.clone(),
                     hint: row.hint.clone(),
                     priority: row.priority,
+                    swatch: None,
                     actions: Vec::new(),
                 })
                 .collect(),
@@ -327,6 +328,30 @@ pub struct Unresolved {
     /// The nearest real name, if one is near enough to suggest.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub suggestion: Option<String>,
+}
+
+/// A colour to draw, beside its name and never in place of it
+/// ([`lumenna_core::colour`]): its name, and its value on a light background and on a dark,
+/// `#RRGGBB`, each with 3:1 contrast against it.
+#[boltffi::data]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Swatch {
+    /// The colour's name: "teal".
+    pub name: String,
+    /// Its value on a light background.
+    pub light: String,
+    /// Its value on a dark background.
+    pub dark: String,
+}
+
+impl Swatch {
+    /// The palette's colour a record names, if it is one: a name from before the palette, or a
+    /// newer build's, is said but not drawn.
+    #[must_use]
+    pub fn of(name: Option<&str>) -> Option<Self> {
+        let colour = lumenna_core::colour::Colour::named(name?)?;
+        Some(Self { name: colour.name.to_owned(), light: colour.light.to_owned(), dark: colour.dark.to_owned() })
+    }
 }
 
 /// One row, as its components.
@@ -374,6 +399,9 @@ pub struct RowView {
     /// for a face, a colour or a voice.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub priority: Option<u8>,
+    /// A project's, label's or block's colour, to draw beside its name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub swatch: Option<Swatch>,
     /// What can be done to it, in the order offered ([`crate::actions`]).
     #[serde(default, skip_serializing_if = "none")]
     pub actions: Vec<crate::actions::Action>,
@@ -729,6 +757,9 @@ pub struct PlanBlock {
     /// Its colour, by name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub colour: Option<String>,
+    /// That colour, to draw beside its title.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub swatch: Option<Swatch>,
     /// The time zone it is held to, when it is one place's: its times are that zone's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timezone: Option<String>,
@@ -895,6 +926,9 @@ pub struct FilterView {
     /// Its colour's name, if it has one: said in words, never by colour alone.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub colour: Option<String>,
+    /// That colour, to draw beside its name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub swatch: Option<Swatch>,
     /// What can be done to it, in the order offered ([`crate::actions`]).
     #[serde(default, skip_serializing_if = "none")]
     pub actions: Vec<crate::actions::Action>,

@@ -154,8 +154,12 @@ impl Lumenna {
             (S::Label, K::New) => self.add_label(&answer_text(&answer)?),
             (S::Label, K::MergeInto) => self.merge_labels(target, &answer_pick(&answer)?.0),
             (S::Label | S::Project | S::Filter, K::Colour) => {
-                let colour = answer_text(&answer)?;
-                let colour = (!colour.is_empty() && !colour.eq_ignore_ascii_case("none")).then_some(colour);
+                // A pick of the palette's colours; a line naming one, from a client that asks so.
+                let colour = match &answer {
+                    Answer::Picked { id, .. } => id.clone(),
+                    _ => answer_text(&answer)?,
+                };
+                let colour = lumenna_records::colours::colour_named(&colour)?;
                 match action.subject {
                     S::Project => self.recolour_project(target, colour),
                     S::Filter => self.recolour_filter(target, colour),

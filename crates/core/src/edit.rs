@@ -719,14 +719,28 @@ pub fn create_project(project: Project) -> Edit {
     }
 }
 
+/// What a change of colour alone is said as: "Coloured label calls teal", "Took the colour off
+/// label calls". `None` when anything else changed too, which its own description says.
+fn recoloured(noun: &str, name: &str, before: Option<&str>, after: Option<&str>, rest_same: bool) -> Option<String> {
+    if !rest_same || before == after {
+        return None;
+    }
+    Some(match after {
+        Some(colour) => format!("Coloured {noun} {name} {colour}"),
+        None => format!("Took the colour off {noun} {name}"),
+    })
+}
+
 /// Replaces a project with an edited copy.
 #[must_use]
 pub fn update_project(before: Project, after: Project) -> Edit {
     if before == after {
         return Edit::nothing();
     }
+    let same = Project { color: before.color.clone(), ..after.clone() } == before;
+    let colour = recoloured("project", &after.name, before.color.as_deref(), after.color.as_deref(), same);
     Edit {
-        description: format!("Edited project {}", after.name),
+        description: colour.unwrap_or_else(|| format!("Edited project {}", after.name)),
         changes: vec![Change::Project(Box::new(Transition::updated(before, after)))],
     }
 }
@@ -818,8 +832,10 @@ pub fn update_label(before: Label, after: Label) -> Edit {
     if before == after {
         return Edit::nothing();
     }
+    let same = Label { color: before.color.clone(), ..after.clone() } == before;
+    let colour = recoloured("label", &after.name, before.color.as_deref(), after.color.as_deref(), same);
     Edit {
-        description: format!("Renamed label {} to {}", before.name, after.name),
+        description: colour.unwrap_or_else(|| format!("Renamed label {} to {}", before.name, after.name)),
         changes: vec![Change::Label(Box::new(Transition::updated(before, after)))],
     }
 }
@@ -1028,8 +1044,10 @@ pub fn update_filter(before: SavedFilter, after: SavedFilter) -> Edit {
     if before == after {
         return Edit::nothing();
     }
+    let same = SavedFilter { color: before.color.clone(), ..after.clone() } == before;
+    let colour = recoloured("saved filter", &after.name, before.color.as_deref(), after.color.as_deref(), same);
     Edit {
-        description: format!("Changed filter {}", after.name),
+        description: colour.unwrap_or_else(|| format!("Changed filter {}", after.name)),
         changes: vec![Change::Filter(Box::new(Transition::updated(before, after)))],
     }
 }

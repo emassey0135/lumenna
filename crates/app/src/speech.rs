@@ -303,6 +303,7 @@ mod tests {
             value: value.map(str::to_owned),
             hint: None,
             priority: None,
+            swatch: None,
             actions: Vec::new(),
         }
     }
@@ -377,6 +378,7 @@ mod tests {
             counts_capacity: true,
             anchored: false,
             colour: None,
+            swatch: None,
             timezone: None,
             notes: String::new(),
             details: Vec::new(),
@@ -444,6 +446,7 @@ mod tests {
             counts_capacity: false,
             anchored: false,
             colour: None,
+            swatch: None,
             timezone: None,
             notes: String::new(),
             details: Vec::new(),

@@ -639,7 +639,7 @@ class Menus(unittest.TestCase):
         self.run_script(
             [
                 ("key", "calls", "c"),
-                ("input", "teal"),
+                ("choose", "teal"),
                 ("key", "cals", "m"),
                 ("choose", "calls"),
                 ("back",),

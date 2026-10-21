@@ -283,6 +283,9 @@ pub struct Choice {
     /// 2 days, priority 1, and its estimate of 30 minutes fits the 35 minutes left."
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// A colour's, for a pick of colours to draw beside each name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub swatch: Option<crate::types::Swatch>,
 }
 
 /// What a picker offers.
@@ -336,8 +339,8 @@ pub const UNPAIRING: &str = "It stops syncing with your devices but keeps everyt
 pub const LOGGING: &str = "The whole of this sitting, replacing what is logged.";
 /// How long a sitting is meant to take.
 pub const LENGTH: &str = "How long is it meant to take? Such as 45m or 1h 30m; empty for no planned length.";
-/// What a label's colour takes.
-pub const COLOUR: &str = "A colour name, such as red or teal, or none. The name always shows too.";
+/// What a block's colour is for, under the block form's choice.
+pub const COLOUR: &str = "Drawn beside its name, which is always said too.";
 /// What a project's weight takes.
 pub const WEIGHT: &str =
     "How much this whole area matters now, roughly 0.5 to 2. Type inherit to take the parent's again.";
@@ -651,7 +654,7 @@ pub fn project(snapshot: &Snapshot, project: &Project) -> Vec<Action> {
     }
     reorder(&mut actions, Subject::Project, &name, position_of(&ids, &project.id), ids.len());
     actions.push(weight);
-    actions.push(colour(Subject::Project, &name, project.color.as_deref()));
+    actions.push(colour(Subject::Project, &name));
     actions.push(if project.archived { a(K::Unarchive, "Unarchive") } else { a(K::Archive, "Archive") });
     actions.push(a(K::Delete, "Delete").asking(Question::Choose {
         title: format!("Delete {name}?"),
@@ -673,9 +676,13 @@ fn time_zone(subject: Subject, target: &str, name: &str, zone: Option<&str>) -> 
         .asking(text(format!("Time zone of {name}"), "Time zone", zone.unwrap_or_default(), ZONE, true))
 }
 
-/// A project's, label's or saved filter's Colour, asking for a colour's name.
-fn colour(subject: Subject, name: &str, colour: Option<&str>) -> Action {
-    action(ActionKind::Colour, subject, "Colour", name).asking(text(format!("Colour of {name}"), "Colour", colour.unwrap_or_default(), COLOUR, true))
+/// A project's, label's or saved filter's Colour, a pick of the palette's colours.
+fn colour(subject: Subject, name: &str) -> Action {
+    action(ActionKind::Colour, subject, "Colour", name).asking(Question::Pick {
+        title: format!("Colour of {name}"),
+        length: None,
+        yes: "Set Colour".to_owned(),
+    })
 }
 
 /// A label's.
@@ -689,7 +696,7 @@ pub fn label(snapshot: &Snapshot, label: &Label) -> Vec<Action> {
     let mut actions = vec![
         a(K::Rename, "Rename").asking(text(format!("Rename {name}"), "Name", name.clone(), "", false)),
         a(K::MergeInto, "Merge Into").asking(pick(format!("Merge {name} into"), "Merge")),
-        colour(Subject::Label, &name, label.color.as_deref()),
+        colour(Subject::Label, &name),
     ];
     reorder(&mut actions, Subject::Label, &name, position_of(&ids, &label.id), ids.len());
     actions.push(a(K::Delete, "Delete").asking(confirm(
@@ -719,7 +726,7 @@ pub fn filter(snapshot: &Snapshot, filter: &SavedFilter) -> Vec<Action> {
         )),
     ];
     reorder(&mut actions, Subject::Filter, &name, position_of(&ids, &filter.id), ids.len());
-    actions.push(colour(Subject::Filter, &name, filter.color.as_deref()));
+    actions.push(colour(Subject::Filter, &name));
     actions.push(a(K::Delete, "Delete").asking(confirm(
         format!("Delete {name}?"),
         "The tasks it shows are not touched.",
@@ -876,6 +883,13 @@ pub fn fill_rows(rows: &mut Rows, snapshot: &Snapshot) {
     let facts = snapshot.facts();
     let ids = rows_ids(rows);
     for (row, id) in rows.rows.iter_mut().zip(ids) {
+        let colour = match &id {
+            Some(RowId::Project(id)) => snapshot.projects.get(id).and_then(|p| p.color.as_deref()),
+            Some(RowId::Label(id)) => snapshot.labels.get(id).and_then(|l| l.color.as_deref()),
+            Some(RowId::Occurrence(id, _)) => snapshot.series.get(id).and_then(|s| s.color.as_deref()),
+            _ => None,
+        };
+        row.swatch = crate::types::Swatch::of(colour);
         row.actions = match id {
             Some(RowId::Task(id)) => snapshot
                 .tasks

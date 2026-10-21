@@ -112,6 +112,22 @@ pub fn offered(snapshot: &Snapshot, action: &Action, now: &Zoned) -> Result<Choi
         let choices = crate::reminders::delivery_choices(snapshot, &reminder.delivery);
         return Ok(Choices { announcement: crate::words::count_line(choices.len(), "choice"), notices: Vec::new(), choices });
     }
+    if action.kind == K::Colour {
+        let current = match action.subject {
+            Subject::Project => resolve::project(snapshot, &action.target)?.color.clone(),
+            Subject::Label => resolve::label(snapshot, &action.target)?.color.clone(),
+            Subject::Filter => snapshot
+                .saved_filters
+                .values()
+                .find(|f| f.deleted_at.is_none() && f.name.eq_ignore_ascii_case(&action.target))
+                .ok_or_else(|| LumennaError::new(format!("there is no saved filter called {}", action.target)))?
+                .color
+                .clone(),
+            _ => None,
+        };
+        let choices = crate::colours::colour_choices(current.as_deref());
+        return Ok(Choices { announcement: crate::words::count_line(choices.len(), "choice"), notices: Vec::new(), choices });
+    }
     if (action.subject, action.kind) == (Subject::Day, K::WhatNow) {
         return what_now(snapshot, now);
     }

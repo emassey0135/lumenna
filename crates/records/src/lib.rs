@@ -9,6 +9,7 @@
 
 pub mod actions;
 pub mod choices;
+pub mod colours;
 pub mod day;
 pub mod dayplan;
 pub mod error;

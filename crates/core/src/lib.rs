@@ -9,6 +9,7 @@
 //!
 //! Where a decision looks arbitrary, the reasoning is recorded next to the code.
 
+pub mod colour;
 pub mod edit;
 pub mod filter;
 pub mod history;

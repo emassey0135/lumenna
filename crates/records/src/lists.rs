@@ -216,6 +216,7 @@ pub fn filters(snapshot: &Snapshot) -> Result<Filters> {
                 name: saved.name.clone(),
                 query: saved.query.clone(),
                 colour: saved.color.clone(),
+                swatch: crate::types::Swatch::of(saved.color.as_deref()),
                 actions: crate::actions::filter(snapshot, saved),
             })
             .collect(),

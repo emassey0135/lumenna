@@ -148,7 +148,7 @@ pub fn block_form() -> Vec<FormField> {
             syntax: Some(Syntax::Filter),
             ..field("task_filter", "Tasks from", K::Line, "Which tasks it is offered, such as #Work. Empty for all.", "#Work")
         },
-        field("colour", "Colour", K::Line, crate::actions::COLOUR, "teal"),
+        FormField { options: crate::colours::colour_choices(None), ..field("colour", "Colour", K::Choice, crate::actions::COLOUR, "") },
         field("notes", "Notes", K::Lines, "", ""),
     ]
 }

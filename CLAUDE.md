@@ -120,6 +120,13 @@ without the screens over BoltFFI. No JSON crosses the FFI.
 - **A setting describes itself** (`Setting::title`, `kind`, `options`, `syncs`, `hint`), and
   the priorities are `priorities()`: a settings screen or a priority picker builds its
   controls from them, never from a table of its own.
+- **Colours are the core's palette** (`lumenna_core::colour`, `records::colours`): eleven named
+  colours, each with a value for a light background and one for a dark, both of 3:1 contrast.
+  A project, label or saved filter takes one by its Colour pick (`colour_choices`, "No colour"
+  first), a block by its form's choice; a name outside the palette is refused. What is drawn
+  carries a `Swatch` (`RowView`, `SidebarEntry`, `FilterView`, `PlanBlock`, `Choice`): a client
+  draws it beside the name in the platform's light or dark appearance, never in place of it,
+  since the name is said and shown too. A stored name the palette lacks is said, not drawn.
 - **Wording stays client-neutral.** Nothing in the surface names a `lum` command or flag;
   the CLI adds those.
 - **Identifiers are text**: a whole UUID or a prefix that names one record. A bare number is

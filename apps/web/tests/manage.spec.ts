@@ -71,7 +71,14 @@ test("a label and a saved filter are made and changed from the sidebar", async (
   await answer(page, "New label", "calls", "Add");
   await expect(heading(page)).toHaveText("calls");
   await placeMenu(page, /^calls/, "Colour");
-  await answer(page, "Colour of calls", "teal");
+  // A pick of the palette's colours, each said by its name.
+  const colours = page.getByRole("dialog", { name: "Colour of calls" });
+  await page.getByRole("option", { name: /^teal/ }).click();
+  await colours.getByRole("button", { name: "Set colour" }).click();
+  await expect(colours).toBeHidden();
+  // Said in words beside the name; once it is, the change has landed and focus with it.
+  await expect(places(page).getByRole("row", { name: /^calls, .*teal/ })).toBeVisible();
+  await expect(page.getByRole("contentinfo")).toContainText("Coloured label calls teal");
   await placeMenu(page, /^Saved filters/, "New saved filter");
   // Two steps under one title: its name, then its query.
   const step = page.getByRole("dialog", { name: "New saved filter" });
@@ -206,7 +213,8 @@ test("a block's flags follow its kind, and its settings are kept", async ({ page
   await page.keyboard.press("Space");
   await expect(takes).toBeChecked();
   await form.getByRole("combobox", { name: "Tasks from" }).fill("#Inbox");
-  await form.getByRole("textbox", { name: "Colour" }).fill("teal");
+  await form.getByRole("button", { name: /Colour/ }).click();
+  await page.getByRole("option", { name: /^teal/ }).click();
   await axe(page);
   await form.getByRole("button", { name: "Add", exact: true }).click();
   await expect(form).toBeHidden();
@@ -215,7 +223,7 @@ test("a block's flags follow its kind, and its settings are kept", async ({ page
   const change = page.getByRole("dialog", { name: /^Change Commute/ });
   await expect(change.getByRole("checkbox", { name: "Takes tasks" })).toBeChecked();
   await expect(change.getByRole("combobox", { name: "Tasks from" })).toHaveValue("#Inbox");
-  await expect(change.getByRole("textbox", { name: "Colour" })).toHaveValue("teal");
+  await expect(change.getByRole("button", { name: /Colour/ })).toContainText("teal");
 });
 
 test("space pauses a running timer, and the menu offers resume and stop", async ({ page }) => {

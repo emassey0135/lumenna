@@ -136,6 +136,9 @@ pub struct SidebarEntry {
     pub depth: u32,
     /// For a project: whether it is archived, which decides "Archive" or "Unarchive".
     pub archived: bool,
+    /// A project's, label's or saved filter's colour, to draw beside its name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub swatch: Option<crate::types::Swatch>,
     /// What can be done to it: a project's, label's or saved filter's own, a heading's New.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub actions: Vec<crate::actions::Action>,
@@ -145,7 +148,7 @@ impl SidebarEntry {
     /// A row: its line is its title, then what is in it.
     #[must_use]
     pub fn new(kind: SidebarKind, title: &str, detail: &str, depth: u32, actions: Vec<crate::actions::Action>) -> Self {
-        Self { key: Self::key_of(&kind), text: line(title, detail), title: title.to_owned(), detail: detail.to_owned(), kind, depth, archived: false, actions }
+        Self { key: Self::key_of(&kind), text: line(title, detail), title: title.to_owned(), detail: detail.to_owned(), kind, depth, archived: false, swatch: None, actions }
     }
 
     /// What identifies it across a reload, so the selection stays put.
@@ -225,6 +228,7 @@ pub fn sidebar(snapshot: &Snapshot, now: &Zoned) -> Vec<SidebarEntry> {
     for row in crate::lists::projects(snapshot).map(|r| r.rows).unwrap_or_default() {
         let mut entry = place(Place::Project(row.title.clone()), &detail(&row), row.depth + 1);
         entry.archived = row.state.iter().any(|s| s == "archived");
+        entry.swatch = row.swatch;
         entry.actions = row.actions;
         entries.push(entry);
     }
@@ -232,6 +236,7 @@ pub fn sidebar(snapshot: &Snapshot, now: &Zoned) -> Vec<SidebarEntry> {
     entries.push(group(SidebarGroup::Labels, "Labels"));
     for row in crate::lists::labels(snapshot).map(|r| r.rows).unwrap_or_default() {
         let mut entry = place(Place::Label(row.title.clone()), &detail(&row), 1);
+        entry.swatch = row.swatch;
         entry.actions = row.actions;
         entries.push(entry);
     }
@@ -240,6 +245,7 @@ pub fn sidebar(snapshot: &Snapshot, now: &Zoned) -> Vec<SidebarEntry> {
     for filter in crate::lists::filters(snapshot).map(|f| f.filters).unwrap_or_default() {
         let detail = filter.colour.as_ref().map_or_else(|| filter.query.clone(), |colour| format!("{}, {colour}", filter.query));
         let mut entry = place(Place::Filter { name: filter.name, query: filter.query }, &detail, 1);
+        entry.swatch = filter.swatch;
         entry.actions = filter.actions;
         entries.push(entry);
     }

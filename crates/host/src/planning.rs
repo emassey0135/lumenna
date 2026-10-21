@@ -713,8 +713,8 @@ fn apply_extras(snapshot: &Snapshot, series: &mut BlockSeries, extras: &Extras<'
             series.end_date = Some(day);
         }
     }
-    if let Some(colour) = extras.colour.map(str::trim) {
-        series.color = (!colour.is_empty()).then(|| colour.to_lowercase());
+    if let Some(colour) = extras.colour {
+        series.color = lumenna_records::colours::colour_named(colour)?;
     }
     Ok(())
 }
