@@ -70,6 +70,7 @@ impl Lumenna {
             let day = resolve::date(block.date.as_deref(), &now, repaired(store).settings.week_start)?;
             let start = resolve::time(&block.at)?;
             let kind = block_kind(&block.kind)?;
+            let mut moved = None;
             let mut series = BlockSeries::one_off(&block.title, kind, day, start, block.minutes)
                 .map_err(|e| LumennaError::new(e.to_string()))?;
 
@@ -77,6 +78,9 @@ impl Lumenna {
                 let rrule = repetition(repeat)?;
                 let rule = lumenna_core::recur::Rule::parse(&rrule)?;
                 if let Some(first) = rule.first_from(day)? {
+                    if first != day {
+                        moved = Some(first);
+                    }
                     series.start_date = first;
                 }
                 series.rrule = Some(rrule);
@@ -102,10 +106,9 @@ impl Lumenna {
             let (start, first) = (series.start_time, series.start_date);
             let change = edit::create_series(series);
             store.apply_recorded(&change)?;
-            Ok(Change::announced(
-                format!("Added block {} at {} on {first}", block.title, time_text(start)),
-                &change,
-            ))
+            let mut said = Change::announced(format!("Added block {} at {} on {first}", block.title, time_text(start)), &change);
+            said.notices.extend(moved.map(|first| starts_on(first, now.date())));
+            Ok(said)
         })
     }
 
@@ -127,6 +130,8 @@ impl Lumenna {
             store.load_all_years()?;
             let snapshot = repaired(store);
             let series_id = resolve::series_id(&snapshot, id)?;
+            // A start moved to the first day the repetition falls on, which is said.
+            let mut moved = None;
             let before =
                 snapshot.series.get(&series_id).ok_or(EditError::NotFound { kind: "block" })?.clone();
             let start = edit.at.as_deref().map(resolve::time).transpose()?;
@@ -160,6 +165,9 @@ impl Lumenna {
                             // A series anchored on a day it never occurs is a trap.
                             let rule = lumenna_core::recur::Rule::parse(&rrule)?;
                             if let Some(first) = rule.first_from(after.start_date)? {
+                                if first != after.start_date {
+                                    moved = Some(first);
+                                }
                                 after.start_date = first;
                             }
                             after.rrule = Some(rrule);
@@ -240,7 +248,9 @@ impl Lumenna {
                     edit::except_occurrence(&snapshot, series_id, day, action)?
                 }
             };
-            record_or(store, &change, "nothing changed")
+            let mut said = record_or(store, &change, "nothing changed")?;
+            said.notices.extend(moved.map(|first| starts_on(first, now.date())));
+            Ok(said)
         })
     }
 
@@ -724,4 +734,11 @@ pub(crate) fn assignment_year(snapshot: &Snapshot, id: AssignmentId) -> Result<i
                  year it belongs to",
             )
         })
+}
+
+/// What is said of a repeating block whose first day was not one it repeats on: an anchor
+/// that does not match the rule is not an occurrence (RFC 5545), so it starts on the first that
+/// is.
+fn starts_on(first: jiff::civil::Date, today: jiff::civil::Date) -> String {
+    format!("It starts {}, the first day it repeats on.", lumenna_records::words::on_day(first, today).replace("later today", "today"))
 }

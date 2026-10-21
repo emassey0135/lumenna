@@ -211,3 +211,28 @@ fn a_block_ending_at_midnight_is_never_past_on_its_own_day() {
     let plan = lumenna.plan(None).unwrap();
     assert_ne!(plan.blocks[0].when, "past");
 }
+
+#[test]
+fn a_repeating_block_starting_on_a_day_it_never_falls_on_starts_on_its_first_and_says_so() {
+    let (_directory, lumenna) = open();
+    let added = lumenna
+        .add_block(NewBlock {
+            title: "Standup".to_owned(),
+            at: "09:00".to_owned(),
+            minutes: 15,
+            date: Some("next tuesday".to_owned()),
+            kind: "work".to_owned(),
+            repeat: Some("every monday".to_owned()),
+            ..NewBlock::default()
+        })
+        .unwrap();
+    assert_eq!(added.notices.len(), 1, "{:?}", added.notices);
+    assert!(added.notices[0].starts_with("It starts ") && added.notices[0].ends_with(", the first day it repeats on."), "{:?}", added.notices);
+    let id = lumenna.list_blocks().unwrap().rows[0].id.clone();
+    assert_eq!(lumenna.show_block(&id).unwrap().start_date.parse::<jiff::civil::Date>().unwrap().weekday(), jiff::civil::Weekday::Monday);
+    // A day it falls on says nothing.
+    let plain = lumenna
+        .add_block(NewBlock { repeat: Some("every day".to_owned()), date: Some("tomorrow".to_owned()), title: "Walk".to_owned(), ..block("Walk", "break") })
+        .unwrap();
+    assert!(plain.notices.is_empty(), "{:?}", plain.notices);
+}
