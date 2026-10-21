@@ -282,8 +282,13 @@ real profile.
   core's words. Read-only unless `--writes`, which adds the tools that change the store (their router
   joined to the reading one), set where the person configures the client. Resources: today, every
   open task, the blocks, and templates for a day, a task and a filter (`lumenna://tasks/{query}`,
-  escaped). Identifiers, never row numbers; erasing is not offered (trash and undo are). Tests drive
-  the real server over stdio (`apps/cli/tests/mcp.rs`).
+  escaped). Identifiers, never row numbers; erasing is not offered (trash and undo are). A resource
+  subscribed to is told of when it reads otherwise, whoever wrote: `subscriptions/listen` for a
+  2026-07-28 client (`accepted_subscription_filter` keeps only what is a resource), and the older
+  `resources/subscribe` for the rest. One poller per process looks each second at the heads (this
+  process's writes) and `outside_version` (another's, even into a year's document not loaded here,
+  which the heads alone missed), and only then are the subscribed resources read again and compared.
+  Tests drive the real server over stdio (`apps/cli/tests/mcp.rs`), another `lum` writing beside it.
 - **`--json` is a versioned compatibility contract** for scripts. Reshaping `api.rs` or a
   surface record is a breaking change.
 

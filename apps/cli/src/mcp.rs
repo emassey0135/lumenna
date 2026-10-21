@@ -8,7 +8,9 @@
 //! client's own configuration, where they choose what an assistant may do. Records are
 //! addressed by identifier (a whole UUID or a prefix of one), never by row number.
 
-use std::sync::Arc;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use lumenna_host::rpc::api::{Outcome, Response};
 use lumenna_host::{Lumenna, MoveTarget, TaskEdit};
@@ -17,10 +19,12 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
     CallToolResult, ContentBlock, Implementation, ListResourceTemplatesResult, ListResourcesResult, PaginatedRequestParams,
     ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, Resource, ResourceContents,
-    ResourceTemplate, ServerCapabilities, ServerConfig,
+    ResourceTemplate, ResourceUpdatedNotificationParam, ServerCapabilities, ServerConfig, SubscribeRequestParams,
+    SubscriptionFilter, UnsubscribeRequestParams,
 };
-use rmcp::service::RequestContext;
-use rmcp::{ErrorData, RoleServer, ServerHandler, ServiceExt, tool, tool_handler, tool_router};
+use rmcp::service::{RequestContext, SubscriptionContext};
+use rmcp::{ErrorData, Peer, RoleServer, ServerHandler, ServiceExt, tool, tool_handler, tool_router};
+use tokio::sync::watch;
 use serde::Deserialize;
 
 use crate::error::CliError;
@@ -28,16 +32,48 @@ use crate::profile::Profile;
 
 /// Serves `profile`'s store over stdio until the client goes.
 pub(crate) fn serve(profile: &Profile, writes: bool) -> crate::error::Result<()> {
-    let server = Server::new(profile.shared(), writes);
+    let lumenna = profile.shared();
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .map_err(|e| CliError::Message(e.to_string()))?;
     runtime.block_on(async move {
+        let server = Server::new(Arc::clone(&lumenna), writes, changes(lumenna));
         let running = server.serve(rmcp::transport::stdio()).await.map_err(|e| CliError::Message(e.to_string()))?;
         running.waiting().await.map_err(|e| CliError::Message(e.to_string()))?;
         Ok(())
     })
+}
+
+/// How often the store is looked at for a change another process or device made.
+const LOOK: Duration = Duration::from_secs(1);
+
+/// A count that moves whenever the store does: this process's own writes, which move the heads,
+/// and another process's commits (an app's, `lum`'s, a sync's), which move `outside_version`
+/// even when they write a document this process has not loaded yet, as a year's first block
+/// does. One looks for every client of this process.
+fn changes(lumenna: Arc<Lumenna>) -> watch::Receiver<u64> {
+    let (moved, changes) = watch::channel(0);
+    tokio::spawn(async move {
+        let mut last = None;
+        let mut count = 0;
+        loop {
+            let looking = Arc::clone(&lumenna);
+            let heads = tokio::task::spawn_blocking(move || Some((looking.outside_version().ok()?, looking.heads().ok()?)))
+                .await
+                .ok()
+                .flatten();
+            if heads.is_some() && last.is_some() && heads != last {
+                count += 1;
+                if moved.send(count).is_err() {
+                    return;
+                }
+            }
+            last = heads.or(last);
+            tokio::time::sleep(LOOK).await;
+        }
+    });
+    changes
 }
 
 #[derive(Clone)]
@@ -45,15 +81,67 @@ struct Server {
     lumenna: Arc<Lumenna>,
     writes: bool,
     tool_router: ToolRouter<Self>,
+    changes: watch::Receiver<u64>,
+    /// What this client asked `resources/subscribe` to follow, in protocol versions before
+    /// 2026-07-28; a client on that one listens instead (`subscriptions/listen`).
+    subscribed: Arc<Mutex<BTreeSet<String>>>,
+    /// Whether this client's old-style subscriptions are being followed yet.
+    following: Arc<Mutex<bool>>,
 }
 
 impl Server {
-    fn new(lumenna: Arc<Lumenna>, writes: bool) -> Self {
+    fn new(lumenna: Arc<Lumenna>, writes: bool, changes: watch::Receiver<u64>) -> Self {
         let mut tool_router = Self::reading();
         if writes {
             tool_router += Self::writing();
         }
-        Self { lumenna, writes, tool_router }
+        Self { lumenna, writes, tool_router, changes, subscribed: Arc::default(), following: Arc::default() }
+    }
+
+    /// What each of `uris` reads as now, so a change can be told from a write that left it alone.
+    async fn reading_of(&self, uris: impl IntoIterator<Item = String>) -> BTreeMap<String, Option<String>> {
+        let lumenna = Arc::clone(&self.lumenna);
+        let uris: Vec<String> = uris.into_iter().collect();
+        tokio::task::spawn_blocking(move || {
+            uris.into_iter().map(|uri| {
+                let text = render(&lumenna, &uri).ok().flatten();
+                (uri, text)
+            }).collect()
+        })
+        .await
+        .unwrap_or_default()
+    }
+
+    /// Waits for the store to change, then says which of `read`'s resources now read otherwise,
+    /// keeping their new readings; none when the server is going.
+    async fn changed(&self, changes: &mut watch::Receiver<u64>, read: &mut BTreeMap<String, Option<String>>) -> Option<Vec<String>> {
+        changes.changed().await.ok()?;
+        let now = self.reading_of(read.keys().cloned()).await;
+        let moved = now.iter().filter(|(uri, text)| read.get(*uri) != Some(text)).map(|(uri, _)| uri.clone()).collect();
+        *read = now;
+        Some(moved)
+    }
+
+    /// Follows the old-style subscriptions for as long as the client is there, telling it of
+    /// each resource that changed.
+    async fn follow(self, peer: Peer<RoleServer>) {
+        let mut changes = self.changes.clone();
+        let subscribed = || self.subscribed.lock().unwrap().clone();
+        let mut read = self.reading_of(subscribed()).await;
+        loop {
+            // A resource subscribed since the last change is read as it was then, so its first
+            // change is told; one unsubscribed is no longer looked at.
+            let now = subscribed();
+            read.retain(|uri, _| now.contains(uri));
+            let new: Vec<String> = now.into_iter().filter(|uri| !read.contains_key(uri)).collect();
+            read.extend(self.reading_of(new).await);
+            let Some(moved) = self.changed(&mut changes, &mut read).await else { return };
+            for uri in moved.into_iter().filter(|uri| self.subscribed.lock().unwrap().contains(uri)) {
+                if peer.notify_resource_updated(ResourceUpdatedNotificationParam::new(uri)).await.is_err() {
+                    return;
+                }
+            }
+        }
     }
 
     /// Runs one operation off the protocol's threads, as every operation blocks on the store,
@@ -442,6 +530,30 @@ fn unescaped(part: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+/// What a resource reads as: its record in the envelope, or nothing at a URI that names none.
+fn render(lumenna: &Lumenna, uri: &str) -> Result<Option<String>, String> {
+    let rest = uri.strip_prefix("lumenna://").unwrap_or("");
+    let message = |e: lumenna_host::LumennaError| e.message().to_owned();
+    Ok(Some(match rest.split_once('/') {
+        None if rest == "today" => enveloped(lumenna.plan(None).map_err(message)?),
+        None if rest == "tasks" => enveloped(lumenna.list_tasks("").map_err(message)?),
+        None if rest == "blocks" => enveloped(lumenna.list_blocks().map_err(message)?),
+        Some(("day", date)) => enveloped(lumenna.plan(Some(unescaped(date))).map_err(message)?),
+        Some(("task", id)) => enveloped(lumenna.show_task(&unescaped(id)).map_err(message)?),
+        Some(("tasks", query)) => enveloped(lumenna.list_tasks(&unescaped(query)).map_err(message)?),
+        _ => return Ok(None),
+    }))
+}
+
+/// Whether `uri` names a resource this server reads.
+fn readable(uri: &str) -> bool {
+    match uri.strip_prefix("lumenna://").map(|rest| rest.split_once('/')) {
+        Some(None) => [TODAY, TASKS, BLOCKS].contains(&uri),
+        Some(Some((kind, rest))) => ["day", "task", "tasks"].contains(&kind) && !rest.is_empty(),
+        None => false,
+    }
+}
+
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for Server {
     fn get_info(&self) -> ServerConfig {
@@ -450,13 +562,14 @@ impl ServerHandler for Server {
         } else {
             "Its tools only read: the person has not allowed changes (lum mcp --writes)."
         };
-        ServerConfig::new(ServerCapabilities::builder().enable_tools().enable_resources().build())
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().enable_resources().enable_resources_subscribe().build())
             .with_server_info(Implementation::new("lumenna", env!("CARGO_PKG_VERSION")))
             .with_instructions(format!(
             "Lumenna: a person's tasks (projects, labels, priorities, subtasks, due dates, repetition) and the \
              day's time blocks, which tasks are put in, one sitting at a time, until they are done. Every answer \
              is a record whose `announcement` is the sentence the person would hear; say it, or what it says. \
-             Records are named by identifier: a whole UUID, or a prefix of one. {writes}"
+             Records are named by identifier: a whole UUID, or a prefix of one. A resource subscribed to is \
+             told of whenever it changes, whoever changed it: an app, `lum`, another device. {writes}"
         ))
     }
 
@@ -497,19 +610,7 @@ impl ServerHandler for Server {
     ) -> Result<ReadResourceResponse, ErrorData> {
         let uri = request.uri.clone();
         let lumenna = Arc::clone(&self.lumenna);
-        let read = tokio::task::spawn_blocking(move || -> Result<Option<String>, String> {
-            let rest = uri.strip_prefix("lumenna://").unwrap_or("");
-            let message = |e: lumenna_host::LumennaError| e.message().to_owned();
-            Ok(Some(match rest.split_once('/') {
-                None if rest == "today" => enveloped(lumenna.plan(None).map_err(message)?),
-                None if rest == "tasks" => enveloped(lumenna.list_tasks("").map_err(message)?),
-                None if rest == "blocks" => enveloped(lumenna.list_blocks().map_err(message)?),
-                Some(("day", date)) => enveloped(lumenna.plan(Some(unescaped(date))).map_err(message)?),
-                Some(("task", id)) => enveloped(lumenna.show_task(&unescaped(id)).map_err(message)?),
-                Some(("tasks", query)) => enveloped(lumenna.list_tasks(&unescaped(query)).map_err(message)?),
-                _ => return Ok(None),
-            }))
-        })
+        let read = tokio::task::spawn_blocking(move || render(&lumenna, &uri))
         .await
         .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
         match read {
@@ -517,5 +618,51 @@ impl ServerHandler for Server {
             Ok(None) => Err(ErrorData::resource_not_found(format!("there is nothing at {}", request.uri), None)),
             Err(reason) => Err(ErrorData::invalid_params(reason, None)),
         }
+    }
+
+    fn accepted_subscription_filter(&self, requested: &SubscriptionFilter) -> Option<SubscriptionFilter> {
+        let mut accepted = requested.supported_by(&self.get_info().capabilities);
+        accepted.resource_subscriptions = accepted
+            .resource_subscriptions
+            .map(|uris| uris.into_iter().filter(|uri| readable(uri)).collect::<Vec<_>>())
+            .filter(|uris| !uris.is_empty());
+        Some(accepted)
+    }
+
+    async fn listen(&self, context: SubscriptionContext) -> Result<(), ErrorData> {
+        let uris = context.accepted().resource_subscriptions.clone().unwrap_or_default();
+        let mut changes = self.changes.clone();
+        let mut read = self.reading_of(uris).await;
+        loop {
+            let moved = tokio::select! {
+                () = context.cancelled() => return Ok(()),
+                moved = self.changed(&mut changes, &mut read) => moved,
+            };
+            let Some(moved) = moved else { return Ok(()) };
+            for uri in moved {
+                if context.sink().notify_resource_updated(uri).await.is_err() {
+                    return Ok(());
+                }
+            }
+        }
+    }
+
+    #[allow(deprecated)]
+    async fn subscribe(&self, request: SubscribeRequestParams, context: RequestContext<RoleServer>) -> Result<(), ErrorData> {
+        if !readable(&request.uri) {
+            return Err(ErrorData::resource_not_found(format!("there is nothing at {}", request.uri), None));
+        }
+        self.subscribed.lock().unwrap().insert(request.uri);
+        let start = !std::mem::replace(&mut *self.following.lock().unwrap(), true);
+        if start {
+            tokio::spawn(self.clone().follow(context.peer));
+        }
+        Ok(())
+    }
+
+    #[allow(deprecated)]
+    async fn unsubscribe(&self, request: UnsubscribeRequestParams, _context: RequestContext<RoleServer>) -> Result<(), ErrorData> {
+        self.subscribed.lock().unwrap().remove(&request.uri);
+        Ok(())
     }
 }

@@ -2,7 +2,9 @@
 //! the Model Context Protocol's JSON-RPC, a request at a time.
 
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, ChildStdout, Command, Stdio};
+use std::process::{Child, Command, Stdio};
+use std::sync::mpsc::{Receiver, channel};
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
@@ -10,12 +12,22 @@ use serde_json::{Value, json};
 struct Mcp {
     _profile: tempfile::TempDir,
     child: Child,
-    out: BufReader<ChildStdout>,
+    /// Every message the server writes, read on a thread of its own so a test can wait for a
+    /// notification with a deadline.
+    out: Receiver<Value>,
+    /// Notifications read while waiting for an answer, in the order they came.
+    notifications: Vec<Value>,
     next: u64,
 }
 
 impl Mcp {
     fn start(writes: bool) -> Self {
+        Self::start_on("2025-06-18", writes)
+    }
+
+    /// A server whose client speaks `version`; from 2026-07-28 there is no `initialize`, each
+    /// request carrying who asks in its `_meta`.
+    fn start_on(version: &str, writes: bool) -> Self {
         let profile = tempfile::tempdir().unwrap();
         let mut command = Command::new(env!("CARGO_BIN_EXE_lum"));
         command.arg("mcp");
@@ -29,8 +41,19 @@ impl Mcp {
             .stdout(Stdio::piped())
             .spawn()
             .expect("the server should start");
-        let out = BufReader::new(child.stdout.take().unwrap());
-        let mut mcp = Self { _profile: profile, child, out, next: 1 };
+        let lines = BufReader::new(child.stdout.take().unwrap());
+        let (sent, out) = channel();
+        std::thread::spawn(move || {
+            for line in lines.lines().map_while(Result::ok) {
+                if sent.send(serde_json::from_str::<Value>(&line).unwrap()).is_err() {
+                    return;
+                }
+            }
+        });
+        let mut mcp = Self { _profile: profile, child, out, notifications: Vec::new(), next: 1 };
+        if version >= "2026-07-28" {
+            return mcp;
+        }
         let init = mcp.call(
             "initialize",
             json!({ "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "test", "version": "0" } }),
@@ -53,13 +76,41 @@ impl Mcp {
         let stdin = self.child.stdin.as_mut().unwrap();
         writeln!(stdin, "{}", json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params })).unwrap();
         loop {
-            let mut line = String::new();
-            assert!(self.out.read_line(&mut line).unwrap() > 0, "the server stopped before answering {method}");
-            let message: Value = serde_json::from_str(&line).unwrap();
+            let message = self.out.recv_timeout(Duration::from_secs(30)).unwrap_or_else(|_| panic!("no answer to {method}"));
             if message["id"] == id {
                 return message.get("result").or_else(|| message.get("error")).cloned().unwrap();
             }
+            if message.get("id").is_none() {
+                self.notifications.push(message);
+            }
         }
+    }
+
+    /// Waits for a notification `method`, taking it and those before it; none by the deadline.
+    fn notified(&mut self, method: &str, within: Duration) -> Option<Value> {
+        let deadline = Instant::now() + within;
+        loop {
+            if let Some(at) = self.notifications.iter().position(|n| n["method"] == method) {
+                return Some(self.notifications.drain(..=at).next_back().unwrap());
+            }
+            let left = deadline.checked_duration_since(Instant::now())?;
+            let message = self.out.recv_timeout(left).ok()?;
+            if message.get("id").is_none() {
+                self.notifications.push(message);
+            }
+        }
+    }
+
+    /// Runs `lum` on the same store, as another process writing to it would.
+    fn lum(&self, args: &[&str]) {
+        let status = Command::new(env!("CARGO_BIN_EXE_lum"))
+            .args(args)
+            .env("LUMENNA_PROFILE", self._profile.path())
+            .env("LUMENNA_BACKUP_DIR", self._profile.path().join("backups"))
+            .stdout(Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success(), "lum {args:?}");
     }
 
     /// Calls a tool; its record, parsed out of the text it answers with, and whether it was
@@ -164,4 +215,68 @@ fn a_replan_is_proposed_and_nothing_changes_until_it_is_applied() {
     // Applied with nothing accepted: nothing changes, and the day is proposed again.
     let (applied, error) = mcp.tool("apply_replan", json!({ "proposal": proposal, "accepted": [] }));
     assert!(!error, "{applied}");
+}
+
+const UPDATED: &str = "notifications/resources/updated";
+
+#[test]
+fn a_resource_subscribed_to_is_told_of_when_another_process_changes_it_and_not_otherwise() {
+    let mut mcp = Mcp::start(false);
+    for uri in ["lumenna://tasks", "lumenna://blocks"] {
+        let answer = mcp.call("resources/subscribe", json!({ "uri": uri }));
+        assert!(answer.get("code").is_none(), "{answer}");
+    }
+    mcp.lum(&["task", "add", "call the bank"]);
+    let told = mcp.notified(UPDATED, Duration::from_secs(10)).unwrap_or_else(|| panic!("the tasks were not told of: {:?}", mcp.notifications));
+    assert_eq!(told["params"]["uri"], "lumenna://tasks", "{told}");
+    // A block changes the blocks and leaves the tasks alone, so only the blocks are told of.
+    mcp.lum(&["task", "add", "block Deep work 9-11am"]);
+    let told = mcp.notified(UPDATED, Duration::from_secs(10)).unwrap_or_else(|| panic!("the blocks were not told of: {:?}", mcp.notifications));
+    assert_eq!(told["params"]["uri"], "lumenna://blocks", "{told}");
+    // Unsubscribed, nothing more is said of it.
+    mcp.call("resources/unsubscribe", json!({ "uri": "lumenna://blocks" }));
+    mcp.lum(&["task", "add", "block Admin 2-3pm"]);
+    assert_eq!(mcp.notified(UPDATED, Duration::from_secs(3)), None);
+}
+
+#[test]
+fn subscribing_to_what_is_not_a_resource_is_refused() {
+    let mut mcp = Mcp::start(false);
+    let refused = mcp.call("resources/subscribe", json!({ "uri": "lumenna://elsewhere" }));
+    assert!(refused.get("code").is_some(), "{refused}");
+}
+
+#[test]
+fn a_client_on_the_newest_protocol_listens_and_is_told_of_its_resources_changing() {
+    let mut mcp = Mcp::start_on("2026-07-28", false);
+    let meta = json!({
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientInfo": { "name": "test", "version": "0" },
+        "io.modelcontextprotocol/clientCapabilities": {},
+    });
+    let stdin = mcp.child.stdin.as_mut().unwrap();
+    let listen = json!({
+        "jsonrpc": "2.0", "id": 99, "method": "subscriptions/listen",
+        "params": { "_meta": meta, "notifications": { "resourceSubscriptions": ["lumenna://tasks", "lumenna://elsewhere"] } },
+    });
+    writeln!(stdin, "{listen}").unwrap();
+    let acknowledged = mcp.notified("notifications/subscriptions/acknowledged", Duration::from_secs(10)).expect("the listen was acknowledged");
+    assert_eq!(
+        acknowledged["params"]["notifications"]["resourceSubscriptions"],
+        json!(["lumenna://tasks"]),
+        "only what is a resource is accepted: {acknowledged}"
+    );
+    mcp.lum(&["task", "add", "call the bank"]);
+    let told = mcp.notified(UPDATED, Duration::from_secs(10)).unwrap_or_else(|| panic!("the tasks were not told of: {:?}", mcp.notifications));
+    assert_eq!(told["params"]["uri"], "lumenna://tasks", "{told}");
+    assert_eq!(told["params"]["_meta"]["io.modelcontextprotocol/subscriptionId"], 99, "{told}");
+}
+
+#[test]
+fn a_change_made_through_the_servers_own_tools_is_told_of_too() {
+    let mut mcp = Mcp::start(true);
+    mcp.call("resources/subscribe", json!({ "uri": "lumenna://tasks/%40calls" }));
+    mcp.tool("add_task", json!({ "text": "ring Sam @calls" }));
+    let told = mcp.notified(UPDATED, Duration::from_secs(10)).expect("the filter's tasks were told of");
+    assert_eq!(told["params"]["uri"], "lumenna://tasks/%40calls", "{told}");
 }

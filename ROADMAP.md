@@ -103,10 +103,8 @@ Each is a thin adapter over the command surface.
   The watches' are widgets too: complications through WidgetKit on watchOS, with the running
   timer on the watch face, and tiles and complications on Wear OS.
 - **PowerShell module** wrapping `lum --json`; the same language as Windows hooks.
-- **`lum mcp`**: built over stdio (tools, resources, `--writes`). Still to come: telling a client a
-  resource changed when another device or app writes (`subscriptions/listen` from the 2026-07-28
-  spec, and the older `resources/subscribe` for clients still on it, both from `outside_version`);
-  and Streamable HTTP as a daemon listener, since Home Assistant usually runs elsewhere: loopback by
+- **`lum mcp`**: built over stdio (tools, resources and their subscriptions, `--writes`). Still to
+  come: Streamable HTTP as a daemon listener, since Home Assistant usually runs elsewhere: loopback by
   default, a bearer token required off loopback, no TLS (a reverse proxy or Tailscale).
 - **Hooks**, `lum hook add|list|test|rm`:
   - **Reactive, never interceptive**: a change can arrive already committed from an
