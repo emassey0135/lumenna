@@ -195,12 +195,10 @@ The core's `complete` works everywhere; what is missing is how each app offers i
 - **Android**: pairing on the local network untried on a real phone (the emulator's NAT
   passes no multicast); the iPhone's two pairing tests not ported. The keyboard commands
   and the wide layout are tested in the emulator, not yet with TalkBack and a real keyboard.
-- **GTK**: type-ahead in lists (the Windows and Mac lists jump to a row by its first
-  letters; GTK's list view does not); shortcuts from anywhere without the GlobalShortcuts
-  portal (an X11 key grab for Xfce and older GNOME); no tray on GNOME without the
-  AppIndicator extension; "expanded" said twice on first focus of a row with subtasks.
+- **GTK**: no tray on GNOME without the AppIndicator extension; "expanded" said twice on first
+  focus of a row with subtasks. (Type-ahead and shortcuts without the portal are done; the X11
+  grab is unchecked with Orca under a real X11 window manager.)
 - **Emacs**: priority faces, mapped to voices.
-- **Every app**: icons of their own (GTK has none; Windows has one).
 - **iOS UI tests that fail only when the simulator delivers a key out of order**: ⌘K (the K
   arriving before the ⌘, so VoiceOver's focus test sees nothing done) and ⌘F on CI. They
   are in the full suites, which only report.
