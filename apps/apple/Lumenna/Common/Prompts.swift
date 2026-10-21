@@ -1,3 +1,4 @@
+import LumennaApp
 import UIKit
 
 extension UIViewController {
@@ -71,8 +72,16 @@ extension PhoneAsker: QuestionAsking {
         present(alert) { answered(false) }
     }
 
-    func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, answered: @escaping (String?) -> Void) {
+    func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, syntax: LumennaApp.Syntax?, answered: @escaping (String?) -> Void) {
         let message = [problem, hint.isEmpty ? nil : hint].compactMap { $0 }.joined(separator: "\n\n")
+        // The filter language completes, which an alert's field cannot: a sheet of its own.
+        if let syntax, let front {
+            let question = CompletingQuestionViewController(
+                core: core, title: title, label: label, initial: initial, message: message, yes: yes, syntax: syntax, answered: answered
+            )
+            front.present(UINavigationController(rootViewController: question), animated: true)
+            return
+        }
         let alert = UIAlertController(title: title, message: message.isEmpty ? nil : message, preferredStyle: .alert)
         alert.addTextField { field in
             field.text = initial

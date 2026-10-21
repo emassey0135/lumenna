@@ -304,6 +304,25 @@ final class LumennaMacUITests: XCTestCase {
         try audit("settings, something said", in: settings)
     }
 
+    /// The filter completes on Down, never by itself: the list opens, and choosing from it fills
+    /// the field.
+    func testTheFilterCompletesOnDownFromAListAndNeverByItself() throws {
+        addTask("ring the bank @calls")
+        place("Tasks")
+        let filter = window.textFields["Filter"]
+        XCTAssertTrue(filter.waitForExistence(timeout: 5))
+        enter("@ca", into: filter)
+        XCTAssertFalse(app.sheets.firstMatch.waitForExistence(timeout: 1), "nothing opens by itself")
+        filter.typeKey(.downArrow, modifierFlags: [])
+        // The pick sheet: its search field holds focus, the arrows move through what fits.
+        let calls = app.sheets.descendants(matching: .any).matching(NSPredicate(format: "label == 'calls, label' OR value == 'calls, label'")).firstMatch
+        XCTAssertTrue(calls.waitForExistence(timeout: 5), app.debugDescription)
+        try audit("completions", in: app.sheets.firstMatch)
+        app.typeKey(.return, modifierFlags: [])
+        let filled = NSPredicate(format: "value BEGINSWITH '@calls'")
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: filled, evaluatedWith: filter)], timeout: 5), .completed, "\(filter.value ?? "")")
+    }
+
     // MARK: - Helpers for menus and sheets
 
     /// A row of the sidebar, by its name.

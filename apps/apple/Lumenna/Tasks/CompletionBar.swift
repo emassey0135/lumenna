@@ -1,4 +1,5 @@
 import LumennaApp
+import SwiftUI
 import UIKit
 
 /// Suggestions for what is being typed, above the keyboard.
@@ -53,6 +54,31 @@ final class CompletionBar: UIInputView {
         redraw()
     }
 
+    /// The list of what fits, with clear edges, presented over the field: its Show Completions
+    /// action, the bar's button, or Down on a keyboard. Asks the core afresh, for the cursor now.
+    @objc func showList() {
+        update()
+        var presenter = field?.next
+        while let next = presenter, !(next is UIViewController) { presenter = next.next }
+        guard let presenter = presenter as? UIViewController else { return }
+        let offered = current
+        let list = UIHostingController(rootView: CompletionList(offered: offered) { [weak self, weak presenter] candidate in
+            presenter?.dismiss(animated: true) {
+                if let candidate { self?.insert(candidate) }
+                _ = (self?.field as? UIResponder)?.becomeFirstResponder()
+            }
+        })
+        presenter.present(list, animated: true)
+    }
+
+    /// Gives `field` the Show Completions action, which VoiceOver and Switch Control offer.
+    func offerList(on field: UIView) {
+        field.accessibilityCustomActions = [UIAccessibilityCustomAction(name: CompletionWords.show) { [weak self] _ in
+            self?.showList()
+            return true
+        }]
+    }
+
     private func redraw() {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard let current, !current.candidates.isEmpty else { return }
@@ -75,6 +101,9 @@ final class CompletionBar: UIInputView {
             button.accessibilityLabel = LumennaApp.candidateLine(candidate: candidate)
             stack.addArrangedSubview(button)
         }
+        var show = UIButton.Configuration.plain()
+        show.title = CompletionWords.show
+        stack.addArrangedSubview(UIButton(configuration: show, primaryAction: UIAction { [weak self] _ in self?.showList() }))
     }
 
     /// Puts a candidate in place of the text it replaces, with a space after it so typing

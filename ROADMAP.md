@@ -146,23 +146,19 @@ A day or less each, for between the larger pieces.
 
 ### Completion
 
-The core's `complete` works everywhere; what is missing is how each app offers it.
+The core's `complete` works everywhere, and the app marks the lines in its language
+(`Asking::syntax`, `FormField::syntax`). Done: the web, Windows, Android and the Apple apps
+complete the list's filter, a saved filter's query and a block's Tasks from, opening only when
+asked (Down, Ctrl+Space; the Mac no longer opens on `#` or `@`), and the phones and the Mac
+have both the strip and a list behind a Show Completions action. `lum`'s shell completion offers
+names from the store. Still to come:
 
-- **Every field written in the quick-add or filter language completes**, not only quick add
-  and the task list's filter: the saved-filter editor and a block's "Tasks from" field have
-  it in Emacs only.
-- **Down arrow opens it on every keyboard.** Missing on the Mac (Option-Escape or F5 only),
-  on iPad and Android hardware keyboards, and Ctrl+Space on the web. The web's filter field
-  has none. **It opens only when asked** (decided 2026-10-20): typing `#` or `@` never opens
-  it, as GTK has it, since a menu interrupts someone typing a name straight through; the Mac,
-  which opens it unasked, changes to match.
-- **iOS and Android have both** (decided 2026-10-20): the strip that changes as one types,
-  quick to check for whether anything completes, and an accessibility action on the field
-  ("Show completions", also a button) opening a modal list with clear edges, for someone who
-  already knows they want one and need not find the strip. Alike on both.
+- **GTK**: the query questions and Tasks from (the Linux session has it).
 - **BTSpeak**: a key inside the input dialog (Ctrl-L, dots 7-8 plus L, once checked against
   global BRLTTY chords) completing at the cursor, never opening on `#` or `@` by itself.
-  Needs an `InputDialog` subclass; today choices come after Enter, for the last word only.
+  Needs an `InputDialog` subclass; today choices come after Enter, for the last word only,
+  now in every line the app marks too.
+- **Emacs** completes in the minibuffer already; nothing to add.
 
 ### Each app
 

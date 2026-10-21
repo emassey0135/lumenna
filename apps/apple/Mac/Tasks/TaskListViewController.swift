@@ -35,16 +35,19 @@ struct MacTaskListScreen: View {
                 .padding(.top, 12)
             }
             if model.filters {
-                TextField("Filter", text: $model.filter, prompt: Text("#Work & overdue, or search: words"))
-                    .accessibilityLabel("Filter")
-                    .focused($filterFocused)
-                    .onSubmit {
-                        // Typing is silent; finishing the filter says what it found, then goes to it.
-                        Announcer.say(model.readback)
-                        listFocused = true
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.top, 12)
+                // The filter language, which completes: a strip beneath, and a list on Down.
+                CompletingLine(app: model.core.app, syntax: .filter, text: $model.filter) {
+                    TextField("Filter", text: $model.filter, prompt: Text("#Work & overdue, or search: words"))
+                        .accessibilityLabel("Filter")
+                        .focused($filterFocused)
+                        .onSubmit {
+                            // Typing is silent; finishing the filter says what it found, then goes to it.
+                            Announcer.say(model.readback)
+                            listFocused = true
+                        }
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 12)
             }
             if !model.blocks {
                 Text(model.readback)

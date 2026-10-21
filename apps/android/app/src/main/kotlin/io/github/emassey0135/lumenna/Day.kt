@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -257,7 +258,20 @@ fun BlockFormScreen(core: Core, navigator: Navigator) {
                             typed[field.key] = text
                             set(field.key, text)
                         }
-                        BlockField(
+                        val syntax = field.syntax
+                        if (syntax != null) key(field.key) {
+                            // Tasks from is the filter language, which completes. The field keeps
+                            // its own cursor, taking the app's text only when it differs.
+                            var typing by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(value, androidx.compose.ui.text.TextRange(value.length))) }
+                            if (typing.text != value) typing = androidx.compose.ui.text.input.TextFieldValue(value, androidx.compose.ui.text.TextRange(value.length))
+                            CompletingField(
+                                core = core, syntax = syntax, label = field.label, example = field.example,
+                                value = typing,
+                                onValueChange = { typing = it; change(it.text) },
+                                onSubmit = {},
+                            )
+                            help?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = quiet()) }
+                        } else BlockField(
                             field.label, value, field.example, help,
                             number = minutes,
                             prose = field.key == "title" || field.key == "notes",

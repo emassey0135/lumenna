@@ -2,8 +2,9 @@ import AppKit
 import LumennaApp
 
 /// A text field that offers what could be typed next, through the system's own
-/// completion: Option-Escape or F5 as in any Mac text field, and by itself after a `#` or `@`,
-/// where a name is the only thing that can follow.
+/// completion: Down, or Option-Escape or F5 as in any Mac text field. Never by itself, not even
+/// after a `#` or `@`: a list opening interrupts someone typing a name straight through, so it
+/// opens only when asked, as on every app.
 ///
 /// The app says what goes at the cursor and which span it replaces, in UTF-8 bytes; AppKit
 /// completes the word it thinks is partial, in UTF-16. The two are reconciled here.
@@ -22,7 +23,7 @@ final class CompletingField: NSTextField, NSTextFieldDelegate {
         super.init(frame: .zero)
         delegate = self
         setAccessibilityLabel(name)
-        setAccessibilityHelp("Option-Escape offers what could come next.")
+        setAccessibilityHelp("Down arrow offers what could come next.")
         lineBreakMode = .byWordWrapping
         usesSingleLineMode = false
         cell?.wraps = true
@@ -34,15 +35,6 @@ final class CompletingField: NSTextField, NSTextFieldDelegate {
 
     func controlTextDidChange(_ notification: Notification) {
         changed?()
-        guard !completing, let editor = currentEditor() as? NSTextView else { return }
-        // Straight after a sigil only a name can follow, so offer them unasked.
-        let text = editor.string as NSString
-        let cursor = editor.selectedRange().location
-        if cursor > 0, ["#", "@"].contains(text.substring(with: NSRange(location: cursor - 1, length: 1))) {
-            completing = true
-            editor.complete(nil)
-            completing = false
-        }
     }
 
     func control(
@@ -67,6 +59,13 @@ final class CompletingField: NSTextField, NSTextFieldDelegate {
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
         if selector == #selector(NSResponder.insertNewline(_:)) {
             submitted?()
+            return true
+        }
+        // Down asks, as on every keyboard; the field has no line below to move to.
+        if selector == #selector(NSResponder.moveDown(_:)), !completing {
+            completing = true
+            textView.complete(nil)
+            completing = false
             return true
         }
         return false

@@ -25,7 +25,7 @@ protocol QuestionAsking: AnyObject {
     func confirm(title: String, message: String, yes: String, destructive: Bool, answered: @escaping (Bool) -> Void)
     /// A line of text, starting from `initial`; `problem` is the app's sentence when it refused
     /// the last answer. Nil is cancelled.
-    func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, answered: @escaping (String?) -> Void)
+    func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, syntax: LumennaApp.Syntax?, answered: @escaping (String?) -> Void)
     /// One of `offered`: Put in a Block's ends in the app's Another Day, which asks the day next.
     func pick(title: String, offered: [Offered], yes: String, answered: @escaping (Picked) -> Void)
     /// One of a few answers, each its own button. Nil is cancelled.
@@ -94,7 +94,7 @@ final class AppQuestions {
             let question = "\(action?.kind.rawValue ?? -1) \(action?.target ?? "") \(title)"
             // Asked again after a refusal: with what was typed, and why it was refused.
             let start = open.refusal != nil && typed?.question == question ? typed?.text ?? initial : initial
-            asker.text(title: title, label: label, initial: start, hint: hint, problem: open.refusal, yes: yes) { [weak self] text in
+            asker.text(title: title, label: label, initial: start, hint: hint, problem: open.refusal, yes: yes, syntax: open.syntax) { [weak self] text in
                 done()
                 guard let text else {
                     self?.typed = nil

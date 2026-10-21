@@ -52,6 +52,8 @@ fun AppQuestions(core: Core, form: (Action) -> Unit) {
                 hint = asking.refusal ?: question.hint.ifEmpty { null },
                 // A question that asks for a day has a calendar beside its line.
                 day = asking.day,
+                // One in the filter language completes, as the filter does.
+                completing = asking.syntax?.let { core to it },
                 dismiss = cancel,
             ) { text -> answer(Answer.Text(text)) }
             // What a pick offers comes with the question, once the app has worked it out.

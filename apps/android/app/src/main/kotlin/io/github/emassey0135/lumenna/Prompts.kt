@@ -54,6 +54,8 @@ fun AskText(
     day: String? = null,
     /** Whether it asks for a time of day, so a clock beside the line fills it. */
     time: Boolean = false,
+    /** When the answer is in the filter language, the core that completes it. */
+    completing: Pair<Core, io.github.emassey0135.lumenna.app.Syntax>? = null,
     dismiss: () -> Unit,
     done: (String) -> Unit,
 ) {
@@ -64,7 +66,18 @@ fun AskText(
         title = { Text(title) },
         text = {
           Column {
-            OutlinedTextField(
+            if (completing != null) {
+                CompletingField(
+                    core = completing.first,
+                    syntax = completing.second,
+                    label = label,
+                    example = example,
+                    value = text,
+                    onValueChange = { text = it },
+                    onSubmit = { done(text.text) },
+                    focus = focus,
+                )
+            } else OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },
                 label = { Text(label) },

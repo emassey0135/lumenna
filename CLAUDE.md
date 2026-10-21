@@ -855,6 +855,13 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   pressed straight after acts on that row, not the one the app's next turn has yet to replace.
 - **Text entry wraps** (`LineEntry`): a one-line field scrolls sideways at large sizes and
   the audit flags it as clipped.
+- **A line in the filter or quick-add language completes two ways** (`Shared/Forms/Completions.swift`,
+  `CompletionBar`): a strip of what fits, which changes as one types, and a list with clear
+  edges behind a Show Completions action, its button, or Down on a keyboard, never by itself. The
+  list is SwiftUI's `CompletionList` on iOS and the Mac's `PickerSheet` (a SwiftUI sheet's hosting
+  view was a nameless group the audit found). A question in the filter language
+  (`Asking::syntax`) is a sheet on iOS (`CompletingQuestionViewController`), since an alert's field
+  can carry no completion, and the Mac's `CompletingField` in its alert.
 - **A SwiftUI `TextField`'s title is only a placeholder**: with text in it, VoiceOver never
   says the name. See `NamedRow` below.
 - **Focus after a change is chosen**: the same row if still listed, else whatever holds its

@@ -55,6 +55,7 @@ final class QuickAddViewController: UIViewController {
         field.placeholder = "write the chapter tomorrow p1 #Work"
         field.autocapitalizationType = .sentences
         field.inputAccessoryView = completions
+        completions.offerList(on: field)
         field.changed = { [weak self] in self?.textChanged() }
         field.selectionChanged = { [weak self] in self?.completions.update() }
         field.submitted = { [weak self] in
@@ -136,7 +137,14 @@ final class QuickAddViewController: UIViewController {
     }
 
     override var keyCommands: [UIKeyCommand]? {
-        [UIKeyCommand(title: "Cancel", action: #selector(cancel), input: UIKeyCommand.inputEscape)]
+        // Down offers what fits, as on every keyboard: the line has no line below to move to.
+        let down = UIKeyCommand(title: CompletionWords.show, action: #selector(showCompletions), input: UIKeyCommand.inputDownArrow)
+        down.wantsPriorityOverSystemBehavior = true
+        return [UIKeyCommand(title: "Cancel", action: #selector(cancel), input: UIKeyCommand.inputEscape), down]
+    }
+
+    @objc private func showCompletions() {
+        completions.showList()
     }
 
     @objc private func cancel() {

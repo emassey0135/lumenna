@@ -205,7 +205,16 @@ struct AppBlockForm: View {
                 Section {
                     text("until", $model.fields.until)
                     text("min_minutes", $model.fields.minMinutes)
+                    #if os(watchOS)
                     text("task_filter", $model.fields.taskFilter)
+                    #else
+                    // Tasks from is the filter language, which completes.
+                    if let field = model.field("task_filter") {
+                        CompletingLine(app: model.core.app, syntax: field.syntax ?? .filter, text: $model.fields.taskFilter) {
+                            namedField(field.label, text: $model.fields.taskFilter, example: field.example).modifier(FieldHint(field.hint))
+                        }
+                    }
+                    #endif
                     text("colour", $model.fields.colour)
                     text("notes", $model.fields.notes, axis: .vertical)
                 } header: {

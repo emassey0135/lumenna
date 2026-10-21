@@ -284,7 +284,7 @@ struct FormWords {
 
     /// The field `key`; one the core does not describe reads as its key, so a mistake shows.
     subscript(_ key: String) -> LumennaApp.FormField {
-        fields[key] ?? LumennaApp.FormField(key: key, label: key, hint: "", example: "", kind: .line, options: [], repeatingOnly: false, oneDay: false)
+        fields[key] ?? LumennaApp.FormField(key: key, label: key, hint: "", example: "", kind: .line, options: [], repeatingOnly: false, syntax: nil, oneDay: false)
     }
 }
 

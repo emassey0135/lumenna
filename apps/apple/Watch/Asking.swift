@@ -84,7 +84,7 @@ extension WatchAsker: QuestionAsking {
         ask(ChoicePrompt(title: title, message: message, cancel: true, choices: [(yes, { reply(true) })]), gone: { reply(false) })
     }
 
-    func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, answered: @escaping (String?) -> Void) {
+    func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, syntax: LumennaApp.Syntax?, answered: @escaping (String?) -> Void) {
         let reply = Once(answered)
         let message = [problem, hint.isEmpty ? nil : hint].compactMap { $0 }.joined(separator: " ")
         ask(TextPrompt(title, message: message.isEmpty ? nil : message, initial: initial, placeholder: label, action: yes, allowsEmpty: true) { text in

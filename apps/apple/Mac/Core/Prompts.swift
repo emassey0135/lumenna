@@ -72,11 +72,14 @@ extension NSWindow: QuestionAsking {
         }
     }
 
-    func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, answered: @escaping (String?) -> Void) {
+    func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, syntax: LumennaApp.Syntax?, answered: @escaping (String?) -> Void) {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = [problem, hint.isEmpty ? nil : hint].compactMap { $0 }.joined(separator: "\n\n")
-        let field = NSTextField(string: initial)
+        // A line in the filter language completes, on Down, as the filter and quick add do.
+        let core = AppDelegate.shared?.core
+        let field: NSTextField = syntax.flatMap { syntax in core.map { CompletingField(core: $0, syntax: syntax, name: label) } } ?? NSTextField()
+        field.stringValue = initial
         field.placeholderString = label
         field.setAccessibilityLabel(label)
         field.frame = NSRect(x: 0, y: 0, width: 320, height: 24)

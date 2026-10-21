@@ -9,12 +9,30 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
@@ -27,9 +45,12 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 
 /**
- * A line in the quick-add or filter language, with what could go at the cursor offered as
- * buttons beneath it — one TalkBack swipe past the field, and named as the core names
- * them: "project Work", not "#Work", since the sigil is punctuation speech may skip.
+ * A line in the quick-add or filter language, with what could go at the cursor offered two
+ * ways: as buttons beneath it that change as one types — one TalkBack swipe past the field, quick
+ * to check for whether anything completes, and named as the core names them: "project Work", not
+ * "#Work", since the sigil is punctuation speech may skip — and as a list in a dialog, with clear
+ * edges, for someone who knows they want one: the field's Show completions action, its button,
+ * or Down (or Ctrl+Space) on a keyboard. Nothing opens by itself.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -57,13 +78,28 @@ fun CompletingField(
         }
     }
 
+    var listing by remember { mutableStateOf(false) }
+    val (candidates, span) = offered ?: (emptyList<Candidate>() to IntRange.EMPTY)
+    val choose = { candidate: Candidate ->
+        val text = value.text.replaceRange(span.first, span.last + 1, candidate.text)
+        onValueChange(TextFieldValue(text, TextRange(span.first + candidate.text.length)))
+    }
+
     Column(modifier) {
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
             label = { Text(label) },
             placeholder = { Text(example) },
-            modifier = Modifier.fillMaxWidth().focusRequester(focus),
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(focus)
+                .semantics { customActions = listOf(CustomAccessibilityAction(SHOW_COMPLETIONS) { listing = true; true }) }
+                .onPreviewKeyEvent { event ->
+                    // Down, or Ctrl+Space, opens the list on a keyboard, as on every desktop.
+                    val asked = event.key == Key.DirectionDown || (event.key == Key.Spacebar && event.isCtrlPressed)
+                    if (event.type == KeyEventType.KeyDown && asked) { listing = true; true } else false
+                },
             keyboardOptions = KeyboardOptions(
                 capitalization = KeyboardCapitalization.None,
                 autoCorrectEnabled = false,
@@ -71,15 +107,11 @@ fun CompletingField(
             ),
             keyboardActions = KeyboardActions(onDone = { onSubmit() }, onSearch = { onSubmit() }),
         )
-        val (candidates, span) = offered ?: (emptyList<Candidate>() to IntRange.EMPTY)
         if (candidates.isNotEmpty()) {
             FlowRow(Modifier.padding(top = 4.dp)) {
                 candidates.take(8).forEach { candidate ->
                     SuggestionChip(
-                        onClick = {
-                            val text = value.text.replaceRange(span.first, span.last + 1, candidate.text)
-                            onValueChange(TextFieldValue(text, TextRange(span.first + candidate.text.length)))
-                        },
+                        onClick = { choose(candidate) },
                         label = { Text(candidate.text) },
                         modifier = Modifier
                             .padding(end = 8.dp)
@@ -87,6 +119,35 @@ fun CompletingField(
                     )
                 }
             }
+            OutlinedButton(onClick = { listing = true }, modifier = Target) { Text(SHOW_COMPLETIONS) }
         }
     }
+    if (listing) {
+        AlertDialog(
+            onDismissRequest = { listing = false },
+            title = { Text(COMPLETIONS) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    if (candidates.isEmpty()) Text(NOTHING_COMPLETES)
+                    candidates.forEach { candidate ->
+                        Text(
+                            io.github.emassey0135.lumenna.app.candidateLine(candidate),
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .clickable(role = androidx.compose.ui.semantics.Role.Button) { listing = false; choose(candidate) }
+                                .padding(vertical = 12.dp),
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(modifier = Target, onClick = { listing = false }) { Text("Cancel") } },
+        )
+    }
 }
+
+/** The field's action and button that open the list, and the list's title. */
+const val SHOW_COMPLETIONS = "Show completions"
+private const val COMPLETIONS = "Completions"
+private const val NOTHING_COMPLETES = "Nothing completes here."

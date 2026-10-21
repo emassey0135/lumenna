@@ -13,6 +13,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -331,6 +332,22 @@ class LumennaTest {
         press("Undo")
         row("buy milk").assertExists()
         assertEquals(listOf("buy milk"), titles())
+    }
+
+    @Test
+    fun theFiltersCompletionsAreAStripAndAListItsActionOpens() {
+        seed { it.addLabel("calls") }
+        tab("Tasks")
+        type("Filter", "@ca")
+        // The strip, which changes as one types.
+        rule.onNode(hasContentDescription("Complete with", substring = true)).assertExists()
+        // The list, which the field's action opens, with clear edges.
+        field("Filter").performCustomAccessibilityActionWithLabel(SHOW_COMPLETIONS)
+        rule.waitForIdle()
+        rule.onNode(hasText("Completions")).assertExists()
+        rule.onNode(hasText("calls, label") and hasClickAction()).performClick()
+        rule.waitForIdle()
+        assertEquals("@calls", valueOf("Filter").trim())
     }
 
     @Test

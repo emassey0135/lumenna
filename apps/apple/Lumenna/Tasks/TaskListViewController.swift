@@ -20,6 +20,8 @@ struct TaskListScreen: View {
     @FocusState private var typing: Bool
     /// What could finish the filter's last word, the app's.
     @State private var offered: LumennaApp.Completions?
+    /// The list of what fits, open: the field's Show Completions action, its button, or Down.
+    @State private var listing = false
 
     var body: some View {
         List {
@@ -36,6 +38,11 @@ struct TaskListScreen: View {
                             Announcer.say(model.readback)
                         }
                         .onChange(of: model.filter) { _, text in complete(text) }
+                        .accessibilityAction(named: CompletionWords.show) { showCompletions() }
+                        .onKeyPress(.downArrow) {
+                            showCompletions()
+                            return .handled
+                        }
                 }
                 // The readback: how the query was understood, and how many it found. A
                 // misread filter shows wrong results silently, and wrong results are invisible.
@@ -59,9 +66,16 @@ struct TaskListScreen: View {
                                 Button(candidate.text) { insert(candidate, at: offered) }
                                     .accessibilityLabel(LumennaApp.candidateLine(candidate: candidate))
                             }
+                            Button(CompletionWords.show) { showCompletions() }
                         }
                     }
                 }
+            }
+        }
+        .sheet(isPresented: $listing) {
+            CompletionList(offered: offered) { candidate in
+                listing = false
+                if let candidate, let offered { insert(candidate, at: offered) }
             }
         }
         .onChange(of: model.landed?.count) { _, _ in
@@ -157,6 +171,11 @@ struct TaskListScreen: View {
     /// rest as accessibility actions, every one in the context menu.
     static func actions(of row: LumennaApp.RowView, blocks: Bool = false, run: @escaping (LumennaApp.Action) -> Void) -> AppRowActions {
         AppRowActions(actions: row.actions, doneLeads: !blocks, run: run)
+    }
+
+    private func showCompletions() {
+        complete(model.filter)
+        listing = true
     }
 
     private func complete(_ text: String) {

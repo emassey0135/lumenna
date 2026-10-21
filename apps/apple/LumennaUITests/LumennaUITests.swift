@@ -50,6 +50,11 @@ final class LumennaUITests: XCTestCase {
         // A hidden sidebar's rows still exist, off the screen: only one that can be tapped will do.
         let place = app.row(name)
         if !(place.waitForExistence(timeout: 2) && place.isHittable) { app.buttons["Show Sidebar"].firstMatch.tap() }
+        // At a large text size the sidebar runs past the screen: Settings, its last row, is below.
+        let sidebar = app.coordinate(withNormalizedOffset: CGVector(dx: 0.12, dy: 0.7))
+        for _ in 0..<6 where !place.isHittable {
+            sidebar.press(forDuration: 0.05, thenDragTo: sidebar.withOffset(CGVector(dx: 0, dy: -300)))
+        }
         place.tap()
     }
 
@@ -149,6 +154,23 @@ final class LumennaUITests: XCTestCase {
             (cell.value as? String ?? "").contains("due today"),
             "the row says \(cell.value ?? "nothing")"
         )
+    }
+
+    func testTheFiltersCompletionsAreAStripAndAListItsButtonOpens() throws {
+        add("ring the bank @calls")
+        let filter = app.textFields["Filter"]
+        XCTAssertTrue(filter.waitForExistence(timeout: 5))
+        filter.tap()
+        filter.typeText("@ca")
+        // The strip above the keyboard, then the list its button opens.
+        let show = app.buttons["Show Completions"]
+        XCTAssertTrue(show.waitForExistence(timeout: 5), app.debugDescription)
+        show.tap()
+        let calls = app.buttons["calls, label"]
+        XCTAssertTrue(calls.waitForExistence(timeout: 5), app.debugDescription)
+        calls.tap()
+        let filled = NSPredicate(format: "value BEGINSWITH '@calls'")
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: filled, evaluatedWith: filter)], timeout: 5), .completed, "\(filter.value ?? "")")
     }
 
     func testCompletingRemovesTheTaskAndUndoBringsItBack() {
