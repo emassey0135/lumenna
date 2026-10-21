@@ -103,15 +103,11 @@ Each is a thin adapter over the command surface.
   The watches' are widgets too: complications through WidgetKit on watchOS, with the running
   timer on the watch face, and tiles and complications on Wear OS.
 - **PowerShell module** wrapping `lum --json`; the same language as Windows hooks.
-- **`lum mcp`**, in the same binary so versions on a machine cannot drift. Tasks and the day
-  are resources, operations are tools, plus "undo last action". stdio, and Streamable HTTP
-  (not HTTP+SSE) as a daemon listener, since Home Assistant usually runs elsewhere:
-  loopback by default, a bearer token required off loopback, no TLS (a reverse proxy or
-  Tailscale). Read-only unless writes are turned on. Say plainly that a cloud-hosted model
-  sends what it reads off the device; a local model works as well, whichever the person wants.
-  Writes are turned on by a flag (`lum mcp --writes`), in the client's own configuration, where
-  the person chooses what an assistant may do. Built on the official Rust SDK (`rmcp`), each
-  tool calling the command surface (`crates/host`), as `lum rpc` does.
+- **`lum mcp`**: built over stdio (tools, resources, `--writes`). Still to come: telling a client a
+  resource changed when another device or app writes (`subscriptions/listen` from the 2026-07-28
+  spec, and the older `resources/subscribe` for clients still on it, both from `outside_version`);
+  and Streamable HTTP as a daemon listener, since Home Assistant usually runs elsewhere: loopback by
+  default, a bearer token required off loopback, no TLS (a reverse proxy or Tailscale).
 - **Hooks**, `lum hook add|list|test|rm`:
   - **Reactive, never interceptive**: a change can arrive already committed from an
     unreachable device, and convergence cannot be vetoed. Hooks fire after a change is

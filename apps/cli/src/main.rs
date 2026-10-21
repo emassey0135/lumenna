@@ -23,6 +23,7 @@
 mod complete;
 mod durability;
 mod error;
+mod mcp;
 mod network;
 mod profile;
 mod render;
@@ -351,6 +352,19 @@ pub(crate) enum Command {
     /// it opens the store as any other process does, and pushes a notification when another
     /// process writes to it. No syncing; that is the daemon's job.
     Rpc,
+
+    /// Serve the store to an AI assistant, over the Model Context Protocol on stdin and stdout.
+    ///
+    /// Add it to an assistant's MCP servers as the command `lum mcp`. Its tools read tasks, the
+    /// day and its blocks, and what to work on, and propose replans; with --writes, they also
+    /// add, edit, complete, plan and time tasks, each change one you can undo. Records are
+    /// named by identifier. A model in the cloud sends whatever it reads here off this device;
+    /// a local one keeps it here: choose the assistant with that in mind.
+    Mcp {
+        /// Offer the tools that change the store, as well as those that read it.
+        #[arg(long)]
+        writes: bool,
+    },
 
     /// Print a shell completion script, which completes project, label and filter names from
     /// the store as one types.
@@ -968,6 +982,9 @@ fn run(cli: &Cli, format: Format) -> Result<()> {
     if matches!(cli.command, Command::Rpc) {
         return network::serve_rpc(&profile);
     }
+    if let Command::Mcp { writes } = cli.command {
+        return mcp::serve(&profile, writes);
+    }
     if let Command::SyncDaemon { local_only } = cli.command {
         durability::back_up_if_due(&profile);
         return network::daemon(&profile, local_only);
@@ -1008,7 +1025,7 @@ fn clock(profile: &Profile) -> render::Clock {
 /// the terminal's own affordance — and calls the surface, which does the rest.
 pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response> {
     Ok(match command {
-        Command::Completions { .. } | Command::Rpc | Command::SyncDaemon { .. } => {
+        Command::Completions { .. } | Command::Rpc | Command::Mcp { .. } | Command::SyncDaemon { .. } => {
             unreachable!("handled before dispatch")
         }
         Command::Task(command) => return task(profile, command),

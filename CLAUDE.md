@@ -276,6 +276,14 @@ real profile.
 - **The shell completes names from the store** (`complete.rs`, clap_complete's dynamic mode):
   `lum completions <shell>` prints a registration that asks `lum` itself (`COMPLETE=bash lum`)
   as one types, so a project, label or saved filter argument offers the store's names.
+- **`lum mcp` is the surface for an assistant** (`mcp.rs`, the Model Context Protocol over stdio, on
+  the official SDK, `rmcp`): each tool calls one `Lumenna` method and answers with its record in the
+  envelope `--json` writes, its `announcement` the core's sentence; a refusal is a tool error in the
+  core's words. Read-only unless `--writes`, which adds the tools that change the store (their router
+  joined to the reading one), set where the person configures the client. Resources: today, every
+  open task, the blocks, and templates for a day, a task and a filter (`lumenna://tasks/{query}`,
+  escaped). Identifiers, never row numbers; erasing is not offered (trash and undo are). Tests drive
+  the real server over stdio (`apps/cli/tests/mcp.rs`).
 - **`--json` is a versioned compatibility contract** for scripts. Reshaping `api.rs` or a
   surface record is a breaking change.
 
