@@ -469,3 +469,14 @@ fn next_week_and_the_end_of_the_week_follow_the_week_start_setting() {
     let preview = parse_quick_add("file the report by end of the week", &Known::from_snapshot(&snapshot)).resolve(&snapshot, &now());
     assert_eq!(preview.title, "file the report by");
 }
+
+#[test]
+fn a_terse_readback_says_the_date_once_as_itself() {
+    let mut snapshot = store();
+    let line = "Call Sam tomorrow at 3pm p1";
+    let full = parse_quick_add(line, &Known::from_snapshot(&snapshot)).resolve(&snapshot, &now()).announcement();
+    assert_eq!(full, "Call Sam, due tomorrow, that is Thursday 7 May 2026 at 3:00 PM, priority 1");
+    snapshot.settings.verbosity = lumenna_core::model::Verbosity::Terse;
+    let terse = parse_quick_add(line, &Known::from_snapshot(&snapshot)).resolve(&snapshot, &now()).announcement();
+    assert_eq!(terse, "Call Sam, due Thursday 7 May at 3:00 PM, priority 1");
+}

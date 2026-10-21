@@ -61,6 +61,16 @@ pub fn long_date(date: jiff::civil::Date) -> String {
     format!("{} {} {}", weekday_name(date.weekday()), day_and_month(date), date.year())
 }
 
+/// *"Friday 15 May"*, the year too when it is not `today`'s.
+#[must_use]
+pub fn day_words_long(date: jiff::civil::Date, today: jiff::civil::Date) -> String {
+    if date.year() == today.year() {
+        format!("{} {}", weekday_name(date.weekday()), day_and_month(date))
+    } else {
+        long_date(date)
+    }
+}
+
 /// *"15 May"*.
 fn day_and_month(date: jiff::civil::Date) -> String {
     const MONTHS: [&str; 12] = [

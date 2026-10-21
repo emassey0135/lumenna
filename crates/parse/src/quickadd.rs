@@ -427,6 +427,10 @@ pub struct Preview {
     pub estimate_mins: Option<u32>,
     /// Everything worth saying before confirming.
     pub diagnostics: Vec<Diagnostic>,
+    /// Whether the readback is terse (the `verbosity` setting): the date said once, as itself.
+    pub terse: bool,
+    /// The day it was read on, for saying a date without its year when it is this year's.
+    pub today: jiff::civil::Date,
 }
 
 impl Preview {
@@ -452,9 +456,11 @@ impl Preview {
         });
 
         if let Some(due) = &self.due {
-            let mut phrase = match &self.due_phrase {
-                Some(text) => format!("due {text}, that is {}", long_date(due.date)),
-                None => format!("due {}", long_date(due.date)),
+            let mut phrase = match (&self.due_phrase, self.terse) {
+                // Terse: the date itself, which is the check, and not the phrase that named it.
+                (_, true) => format!("due {}", lumenna_core::time::day_words_long(due.date, self.today)),
+                (Some(text), false) => format!("due {text}, that is {}", long_date(due.date)),
+                (None, false) => format!("due {}", long_date(due.date)),
             };
             if let Some(time) = due.time {
                 phrase.push_str(&format!(" at {}", clock_words(time)));
@@ -617,6 +623,8 @@ impl QuickAdd {
             priority: self.priority.as_ref().map_or(Priority::P4, |p| p.value),
             estimate_mins: self.estimate_mins.as_ref().map(|e| e.value),
             diagnostics,
+            terse: snapshot.settings.verbosity == lumenna_core::model::Verbosity::Terse,
+            today: now.date(),
         }
     }
 }

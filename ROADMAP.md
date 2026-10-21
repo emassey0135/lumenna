@@ -140,9 +140,9 @@ A day or less each, for between the larger pieces.
   so times float; set only for something tied to a real place.
 - **Block icons** exist in the model with no way to set them, and nothing shows one: decide
   what an icon is (a symbol's name, an emoji) and where it is said before adding a field.
-- **Verbosity is read by reminders alone** (terse leaves a reminder's detail out). Terse
-  ("Review PR, overdue") or full (the whole sentence) should reach every announcement, applied
-  by the core so every target behaves alike.
+- **Verbosity** shortens a reminder (its detail left out), the quick-add readback (the date
+  once, as itself) and adding or scheduling a block (no time or day). Rows are components
+  either way; find any other announcement that runs long under terse as it is met.
 - **The block chooser's coming week** is the seven days from today, not the week from the
   week-start setting (which week-relative phrases now follow); say which it should be.
 - **Quick add for blocks**, in the same grammar: `block "Deep work" 9-11am weekdays`.

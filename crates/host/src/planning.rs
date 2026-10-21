@@ -106,7 +106,11 @@ impl Lumenna {
             let (start, first) = (series.start_time, series.start_date);
             let change = edit::create_series(series);
             store.apply_recorded(&change)?;
-            let mut said = Change::announced(format!("Added block {} at {} on {first}", block.title, time_text(start)), &change);
+            let terse = repaired(store).settings.verbosity == lumenna_core::model::Verbosity::Terse;
+            let mut said = Change::announced(
+                if terse { format!("Added block {}", block.title) } else { format!("Added block {} at {} on {first}", block.title, time_text(start)) },
+                &change,
+            );
             said.notices.extend(moved.map(|first| starts_on(first, now.date())));
             Ok(said)
         })
@@ -378,7 +382,11 @@ impl Lumenna {
             {
                 assignment.planned_mins = Some(minutes);
             }
-            let announcement = format!("{} into {} on {day}", change.description, series.title);
+            let announcement = if snapshot.settings.verbosity == lumenna_core::model::Verbosity::Terse {
+                format!("{} into {}", change.description, series.title)
+            } else {
+                format!("{} into {} on {day}", change.description, series.title)
+            };
             // Before what it waits for: allowed, and said.
             let waits = snapshot.tasks.get(&task_id).map(|task| lumenna_records::waits::said(&snapshot, task, block_ref, now.date())).unwrap_or_default();
             store.apply_recorded(&change)?;
