@@ -8,7 +8,9 @@
     "dev": "vite",
     "build": "node scripts/build-core.mjs && tsc --noEmit && vite build",
     "check": "tsc --noEmit",
-    "test": "playwright test",
+    "test": "playwright test --project=chromium",
+    "test:firefox": "playwright test --project=firefox",
+    "test:webkit": "playwright test --project=webkit --workers=1",
     "screens": "playwright test --config playwright.screens.config.ts",
     "test:pwa": "vite build && playwright test --config playwright.pwa.config.ts"
   },

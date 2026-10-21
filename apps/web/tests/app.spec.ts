@@ -1,8 +1,8 @@
 // The web client as a screen reader user drives it, read back through the browser's
 // accessibility tree — Playwright's role queries — as the Windows UI tests read UI Automation.
 
-import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
+import type { Page } from "./fixtures";
 import AxeBuilder from "@axe-core/playwright";
 
 async function open(page: Page) {

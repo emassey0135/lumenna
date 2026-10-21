@@ -2,8 +2,8 @@
 // waiting for other tasks, settings, backups, every block setting, pausing timers, and undo
 // from the keyboard — read back through the accessibility tree, as the other tests are.
 
-import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
+import type { Page } from "./fixtures";
 import AxeBuilder from "@axe-core/playwright";
 
 async function open(page: Page) {
@@ -182,8 +182,8 @@ test("a time setting has the browser's clock beside it, in a group named for it,
   await expect(page.getByRole("textbox", { name: "Day ends" })).toHaveValue("20:45");
 });
 
-test("a backup downloads, and restores into another browser", async ({ browser }) => {
-  const here = await (await browser.newContext()).newPage();
+test("a backup downloads, and restores into another browser", async ({ freshContext }) => {
+  const here = await (await freshContext()).newPage();
   await open(here);
   await add(here, "Remember this");
   await here.getByRole("button", { name: "Settings" }).click();
@@ -194,7 +194,7 @@ test("a backup downloads, and restores into another browser", async ({ browser }
   expect(file.suggestedFilename()).toMatch(/^lumenna-.*\.lumbak$/);
   const path = await file.path();
 
-  const there = await (await browser.newContext()).newPage();
+  const there = await (await freshContext()).newPage();
   await open(there);
   await there.getByRole("button", { name: "Settings" }).click();
   await there.getByRole("tab", { name: "Backups" }).click();
@@ -207,7 +207,9 @@ test("a backup downloads, and restores into another browser", async ({ browser }
   await expect(there.getByRole("main").getByRole("row", { name: /^Remember this/ })).toBeVisible();
 });
 
-test("backups go into a folder chosen once, the oldest beyond those kept removed", async ({ page }) => {
+test("backups go into a folder chosen once, the oldest beyond those kept removed", async ({ page, browserName }) => {
+  // The File System Access API's folder is Chromium's; elsewhere the page offers only downloads.
+  test.skip(browserName !== "chromium", "only Chromium can be given a folder");
   // The folder picker stands in for the system's: a folder in this origin's private storage,
   // which answers as a folder the person chose does. Ten old backups are there already. (Read
   // back from IndexedDB, such a folder crashes Playwright's Chromium; a chosen one does not, so

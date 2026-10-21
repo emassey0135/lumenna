@@ -326,4 +326,18 @@ const api = {
 
 export type Api = typeof api;
 
+// The core's errors carry their sentence in `value.reason`, and Comlink sends only an error's
+// name, message and stack to the page: unhandled, every failure the page heard of said only
+// "LumennaError". The sentence becomes the message on the way.
+const throwing = Comlink.transferHandlers.get("throw") as Comlink.TransferHandler<unknown, unknown>;
+Comlink.transferHandlers.set("throw", {
+  canHandle: (value): value is unknown => throwing.canHandle(value),
+  serialize: (thrown) => {
+    const { value } = thrown as { value: unknown };
+    const reason = (value as { value?: { reason?: unknown } } | null)?.value?.reason;
+    return throwing.serialize(typeof reason === "string" ? { value: Object.assign(new Error(reason), { name: "LumennaError" }) } : thrown);
+  },
+  deserialize: (serialized) => throwing.deserialize(serialized),
+});
+
 Comlink.expose(api);

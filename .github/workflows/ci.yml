@@ -146,12 +146,15 @@ jobs:
       - run: npm ci
       - name: Build
         run: npm run build
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
       # The installed app, against the build just made: opening with no network, the manifest.
       - name: The installed app
         run: npx playwright test --config playwright.pwa.config.ts
       - name: Playwright and axe
         run: npm run core:dev && npm test
+      # Safari's engine, one test at a time: its contexts share one origin's storage.
+      - name: Playwright and axe in WebKit
+        run: npm run test:webkit
       # A failed test's trace (playwright.config.ts keeps it): what the page and the worker did,
       # for a failure that only a runner shows.
       - if: failure()

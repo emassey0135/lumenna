@@ -2,8 +2,8 @@
 // back through the accessibility tree. Delivery runs on the page's clock, set to a fixed morning
 // in 2030 in the zone this machine runs in, so nothing depends on when the tests run.
 
-import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
+import type { Page } from "./fixtures";
 import AxeBuilder from "@axe-core/playwright";
 
 async function open(page: Page) {

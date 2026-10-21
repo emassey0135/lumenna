@@ -165,9 +165,9 @@ Each is a thin adapter over the command surface.
   non-extractable WebCrypto key in IndexedDB, which a service worker can use. Working out a
   reminder in the service worker (the push wake-up below) further needs the store readable
   there: OPFS's asynchronous API, which a service worker has, into an in-memory copy.
-- **Browsers for the web client**: only Chromium is tested. Safari, Firefox (OPFS sync access
-  handles there) and ChromeVox are unchecked; an IndexedDB fallback for browsers without sync
-  access handles is optional.
+- **Firefox for the web client**: Playwright's Firefox does not start on the macOS this was
+  built on; tried on Windows. An IndexedDB fallback for browsers without sync access handles is
+  optional.
 
 ## 8. The encrypted store and accounts
 

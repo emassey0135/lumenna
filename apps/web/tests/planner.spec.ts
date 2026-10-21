@@ -5,8 +5,8 @@
 // clock too: its script is served with a `Date` running from a fixed morning in 2030, in this
 // machine's zone. Nothing depends on when the tests run.
 
-import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
+import type { Page } from "./fixtures";
 import AxeBuilder from "@axe-core/playwright";
 
 /** Runs the worker's clock (and, with `page`, the page's) from `time`. */

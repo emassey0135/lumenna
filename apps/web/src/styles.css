@@ -418,7 +418,7 @@ h3 {
 /* What removes something, set apart as the core marks it (`destructive`). The name says it too:
    "Delete block", "Move to trash". */
 .destructive {
-  color: light-dark(#a40000, #ff8a80);
+  color: light-dark(#930000, #ff8a80);
 }
 
 .destructive[data-focused],

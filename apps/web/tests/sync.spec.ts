@@ -2,8 +2,8 @@
 // pairs two browsers — two contexts, so two stores — over Iroh's public relays, so it needs the
 // internet and runs only when asked: LUMENNA_NETWORK=1 npm test.
 
-import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import { expect, test } from "./fixtures";
+import type { Page } from "./fixtures";
 import AxeBuilder from "@axe-core/playwright";
 
 async function open(page: Page) {
@@ -36,9 +36,10 @@ test("the devices page says this browser is not paired, and refuses a code that 
   await expect(dialog.getByRole("button", { name: "Sync now" })).toBeVisible();
 });
 
-test("an empty code field asks for the code, and never reads the clipboard", async ({ browser }) => {
-  const context = await browser.newContext({ permissions: ["clipboard-read", "clipboard-write"] });
-  const page = await context.newPage();
+test("an empty code field asks for the code, and never reads the clipboard", async ({ page, context, browserName }) => {
+  // Reading it allowed, so a read would succeed and be seen: Chromium names the permission,
+  // and WebKit asks no permission of a page.
+  if (browserName === "chromium") await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await open(page);
   const pairing = await devices(page);
   await pairing.getByRole("button", { name: "Pair a device" }).click();

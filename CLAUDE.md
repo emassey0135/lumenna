@@ -1953,6 +1953,14 @@ with `lum`.
   pressed, each after what the one before it sent (`commands` in `App.tsx`): keys that all waited
   on one settling ran on the screen before the first had changed it. A deferred command keeps
   trying each frame for a moment while its screen cannot act yet (a day still loading).
+- **Three engines**: `npm test` is Chromium, `npm run test:webkit` Safari's engine and
+  `npm run test:firefox` Firefox. A WebKit test gets a persistent context (`tests/fixtures.ts`): an
+  ephemeral one is a private window, which refuses the private file system the store is in. WebKit's
+  persistent contexts share one origin's storage, so each test empties it first and they run one at
+  a time. What WebKit found: Safari's button grey under the destructive red (now #930000), and
+  focus that React Aria did not give back as a dialog closed, which the page does
+  (`session.ts`, once it has stayed lost); and that the core's error lost its reason crossing
+  Comlink (a `throw` handler in the worker gives it back).
 - **Playwright's clock does not reach the worker**, where the core reads the time. Tests that
   need a fixed day serve `worker.ts` with a shifted `Date` in front (`at` in
   `tests/planner.spec.ts`).

@@ -98,12 +98,49 @@ function appDialog(s: Screen): boolean {
 /** Where focus was when the last dialog opened: where React Aria gives it back as it closes. */
 let opener: Element | null = null;
 
+/** The last element focus was on outside every dialog. */
+let outside: Element | null = null;
+
 function noteOpeners() {
   document.addEventListener("focusin", (event) => {
-    const into = (event.target as Element | null)?.closest('[role="dialog"], [role="alertdialog"]');
+    const target = event.target as Element | null;
+    const into = target?.closest('[role="dialog"], [role="alertdialog"]');
+    if (!into) {
+      outside = target;
+      return;
+    }
     const from = event.relatedTarget as Element | null;
-    if (into && from && !from.closest('[role="dialog"], [role="alertdialog"]')) opener = from;
+    if (from) {
+      if (!from.closest('[role="dialog"], [role="alertdialog"]')) opener = from;
+    } else if (outside?.isConnected && !outside.closest('[role="dialog"], [role="alertdialog"]')) {
+      // Safari's engine leaves `relatedTarget` empty as a dialog takes focus: where focus last
+      // was outside every dialog stands for it.
+      opener = outside;
+    }
   });
+  // A dialog closing gives focus back where it was opened from, which React Aria does in
+  // Chromium; in Safari's engine focus fell to the page's body instead. Watched for by the dialog
+  // leaving the page, since there a dialog removed with focus inside it says nothing of focus.
+  let open = false;
+  new MutationObserver(() => {
+    const now = Boolean(document.querySelector('[role="dialog"], [role="alertdialog"]'));
+    if (now === open) return;
+    open = now;
+    if (now) return;
+    const back = opener;
+    // Only once focus has stayed lost for a while: React Aria gives it back, or a turn lands it
+    // on a row the dialog made (`land`), within a few frames, and either comes first.
+    let lostFor = 0;
+    let frames = 0;
+    const look = () => {
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+      const lost = !document.activeElement || document.activeElement === document.body;
+      lostFor = lost ? lostFor + 1 : 0;
+      if (lostFor >= 10 && back instanceof HTMLElement && back.isConnected) return back.focus();
+      if (++frames < 60) requestAnimationFrame(look);
+    };
+    requestAnimationFrame(look);
+  }).observe(document.body, { childList: true, subtree: true });
 }
 
 const mainTree = () => document.querySelector<HTMLElement>(".app > main [role='treegrid']");
