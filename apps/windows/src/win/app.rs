@@ -1116,6 +1116,7 @@ impl App {
             menu::GO_TASKS => self.go(Place::Tasks, true),
             menu::GO_BLOCKS => self.go(Place::Blocks, true),
             menu::GO_TRASH => self.go(Place::Trash, true),
+            menu::GO_HISTORY => self.go(Place::History, true),
             menu::NEXT_PANE => self.move_pane(1),
             menu::PREVIOUS_PANE => self.move_pane(-1),
 

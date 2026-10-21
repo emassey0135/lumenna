@@ -42,6 +42,8 @@ const TREE: u16 = 401;
 pub struct TaskList {
     pub place: Place,
     trash: bool,
+    /// Whether the place lists under a filter: not the trash, nor History, which list what they hold.
+    filtered: bool,
     label: HWND,
     filter: HWND,
     readback: HWND,
@@ -62,17 +64,20 @@ pub struct TaskList {
 impl TaskList {
     pub fn create(_app: &App, pane: HWND, place: Place) -> Rc<Self> {
         let trash = place == Place::Trash;
+        let filtered = !matches!(place, Place::Trash | Place::History);
         let label = controls::create(pane, WC_STATICW, "Filte&r:", 0, 0, 0);
         let filter = controls::create(pane, WC_EDITW, "", ES_AUTOHSCROLL as u32 | WS_TABSTOP.0, WS_EX_CLIENTEDGE.0, FILTER);
         completion::attach(filter, Syntax::Filter);
         let readback = controls::create(pane, WC_STATICW, "", SS_NOPREFIX.0, 0, 0);
         let tree = Tree::create(pane, TREE, &place.title(), !trash);
-        // The trash is everything deleted, and nothing else: there is no filter to change.
-        controls::show(label, !trash);
-        controls::show(filter, !trash);
+        // The trash is everything deleted, and History everything done lately, and nothing else:
+        // there is no filter to change.
+        controls::show(label, filtered);
+        controls::show(filter, filtered);
         Rc::new(Self {
             place,
             trash,
+            filtered,
             label,
             filter,
             readback,
@@ -94,7 +99,7 @@ impl TaskList {
     /// Draws the app's list: `landed` when the app moved the row in hand itself.
     pub fn draw(&self, app: &App, view: &ViewModel, lines: &Lines, landed: bool) {
         let Some(list) = &view.list else { return };
-        if !self.filled.replace(true) && !self.trash {
+        if !self.filled.replace(true) && self.filtered {
             self.filling.set(true);
             controls::set_text(self.filter, &view.query);
             self.filling.set(false);
@@ -159,7 +164,7 @@ impl TaskList {
     }
 
     pub fn focus_filter(&self) {
-        if !self.trash {
+        if self.filtered {
             controls::focus(self.filter);
             controls::send(self.filter, windows::Win32::UI::Controls::EM_SETSEL, 0, -1);
         }
@@ -175,7 +180,7 @@ impl View for TaskList {
         let gap = m.gap();
         let inner = width - 2 * gap;
         let mut y = gap;
-        if !self.trash {
+        if self.filtered {
             controls::place(self.label, rect(gap, y, inner, m.line));
             y += m.line + m.px(2);
             controls::place(self.filter, rect(gap, y, inner, m.field));

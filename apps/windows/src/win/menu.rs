@@ -46,6 +46,7 @@ pub const GO_BLOCKS: u16 = 142;
 pub const GO_TRASH: u16 = 143;
 pub const NEXT_PANE: u16 = 144;
 pub const PREVIOUS_PANE: u16 = 145;
+pub const GO_HISTORY: u16 = 146;
 
 pub const MARK_DONE: u16 = 160;
 pub const OPEN_TASK: u16 = 161;
@@ -110,6 +111,7 @@ pub const MENUS: [(&str, &[(u16, &str)]); 6] = [
         (GO_TASKS, "T&asks\tCtrl+2"),
         (GO_BLOCKS, "&Blocks\tCtrl+3"),
         (GO_TRASH, "T&rash\tCtrl+4"),
+        (GO_HISTORY, "&History\tCtrl+5"),
         (0, ""),
         (NEXT_PANE, "&Next Pane\tF6"),
         (PREVIOUS_PANE, "&Previous Pane\tShift+F6"),
@@ -196,6 +198,7 @@ pub fn accelerators() -> HACCEL {
         key(control, letter('2'), GO_TASKS),
         key(control, letter('3'), GO_BLOCKS),
         key(control, letter('4'), GO_TRASH),
+        key(control, letter('5'), GO_HISTORY),
         key(FVIRTKEY, VK_F6.0, NEXT_PANE),
         key(FVIRTKEY | FSHIFT, VK_F6.0, PREVIOUS_PANE),
         key(control, letter('K'), MARK_DONE),

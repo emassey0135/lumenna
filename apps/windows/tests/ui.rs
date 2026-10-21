@@ -32,6 +32,7 @@ static ONE_WINDOW_AT_A_TIME: Mutex<()> = Mutex::new(());
 const NEW_TASK: &str = "cmd:100";
 const SETTINGS: &str = "cmd:111";
 const GO_TASKS: &str = "cmd:141";
+const GO_HISTORY: &str = "cmd:146";
 const PUT_IN_BLOCK: &str = "cmd:169";
 
 /// A running app on a store of its own.
@@ -206,7 +207,7 @@ fn a_list_gone_back_to_opens_on_its_row_and_folding_and_another_processs_write_l
     app.post(&[GO_TASKS]);
     assert!(outline_listed(), "Outline is listed under Write report");
     // The tree's own Left folds the row, as the app's Collapse.
-    app.post(&["select:Write report", "left"]);
+    app.post(&["select:Write report, 0 of 1 subtask done", "left"]);
     assert!(!outline_listed(), "Outline is folded away under Write report");
     app.post(&["select:Call Sam", "cmd:140", GO_TASKS]);
     assert!(app.focus().contains("TreeItem 'Call Sam'"), "back on the row left in hand: {}", app.focus());
@@ -1070,6 +1071,38 @@ fn text_grows_without_a_restart_when_windows_text_size_is_raised() {
 }
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn history_lists_what_was_done_with_no_filter_and_its_rows_are_tasks() {
+    let app = App::launch(|lumenna| {
+        add(lumenna, "Call the bank");
+        add(lumenna, "Water plants");
+        let rows = lumenna.list_tasks("").unwrap().rows;
+        let bank = rows.iter().find(|r| r.title == "Call the bank").unwrap().id.clone();
+        lumenna.complete_task(&bank).unwrap();
+    });
+    app.post(&[GO_HISTORY]);
+    let lines = automation::wait(Duration::from_secs(5), || {
+        let lines = app.automation.dump(app.window, 10);
+        lines.iter().any(|l| l.trim_start().starts_with("Tree 'History'")).then_some(lines)
+    })
+    .expect("History is shown");
+    let rows: Vec<&String> = lines
+        .iter()
+        .skip_while(|l| !l.trim_start().starts_with("Tree 'History'"))
+        .skip(1)
+        .take_while(|l| l.contains("TreeItem"))
+        .collect();
+    assert_eq!(rows.len(), 1, "only what was done: {rows:#?}");
+    assert!(rows[0].contains("Call the bank") && rows[0].contains("completed today"), "{}", rows[0]);
+    assert!(!lines.iter().any(|l| l.contains("Edit 'Filter")), "History has no filter: {lines:#?}");
+    // Its row is a task's, with a task's actions.
+    app.post(&["focus:History", "home", "context"]);
+    let menu: Vec<String> = app.automation.menu_items().iter().map(|i| i.split('\'').nth(1).unwrap_or_default().to_owned()).collect();
+    app.post(&["esc"]);
+    assert!(menu.iter().any(|item| item == "Mark Not Done"), "{menu:?}");
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn a_rows_menu_is_the_cores_and_never_offers_a_task_as_its_own_parent() {
     let app = App::launch(|lumenna| {
         add(lumenna, "Write report");
@@ -1087,7 +1120,17 @@ fn a_rows_menu_is_the_cores_and_never_offers_a_task_as_its_own_parent() {
     app.post(&["esc"]);
     assert_eq!(
         menu,
-        ["Mark Done", "Edit Details", "Put in a Block...", "Move to Project...", "Make Subtask Of...", "Wait For...", "Move to Trash", "Collapse"],
+        [
+            "Mark Done",
+            "Edit Details",
+            "Put in a Block...",
+            "Move to Project...",
+            "Make Subtask Of...",
+            "Wait For...",
+            "Reminders...",
+            "Move to Trash",
+            "Collapse"
+        ],
         "the task's actions, as the core gives them, and the app's folding of what is under it"
     );
     // Its own subtask is not somewhere it can go.
