@@ -1708,6 +1708,11 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   the wide layout for real. The desktop system images ended at API 34: `desktop_medium`
   on 36 is a large screen without freeform windows. A real Googlebook (Android 17) has
   those, a title bar per window, and no menu bar.
+- **Pairing is tested against a `lum pair`** as on the iPhone: `pairingByCodeBringsTheOtherDevicesTasks`
+  takes its code as `INSTRUMENT_ARGS="PAIR_CODE=…"` (a `lum daemon` on the same profile answering
+  the first sync, which brings a task called "written on the mac"), and
+  `pairingOnTheLocalNetworkNeedsNoCode` runs with `PAIR_LOCAL=1` on a real phone; both skip
+  without them. The emulator paired over the relays.
 - **`run-instrumented-tests.sh`** runs the instrumented tests from APKs already built, with
   `am instrument`, which exits 0 whatever happened, so its summary decides. CI builds once
   and runs it on each emulator. It never uninstalls, unlike `connectedAndroidTest`, but

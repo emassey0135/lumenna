@@ -108,6 +108,9 @@ adb shell rm -rf "$device_output/*" || true
 # instrumentation's `class` argument takes them: Class#method, comma-separated.
 only=()
 [ -n "${TESTS:-}" ] && only=(-e class "$TESTS")
+# $INSTRUMENT_ARGS gives the tests arguments of their own, name=value separated by spaces: a
+# pairing test's PAIR_CODE, from a `lum pair` waiting elsewhere.
+for argument in ${INSTRUMENT_ARGS:-}; do only+=(-e "${argument%%=*}" "${argument#*=}"); done
 echo "Running the tests"
 result=$(adb shell am instrument -w ${only[@]+"${only[@]}"} -e additionalTestOutputDir "$device_output" \
   "$package.test/androidx.test.runner.AndroidJUnitRunner" 2>&1 | tr -d '\r') || true

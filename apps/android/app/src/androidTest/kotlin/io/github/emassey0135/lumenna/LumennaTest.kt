@@ -82,6 +82,7 @@ class LumennaTest {
 
     @After
     fun close() {
+        core.stopSyncing()
         directory.deleteRecursively()
     }
 
@@ -765,6 +766,62 @@ class LumennaTest {
             "what was copied is not taken up",
             rule.onAllNodes(hasText(copied, substring = true)).fetchSemanticsNodes().isEmpty(),
         )
+    }
+
+    /** Finished once the other device is listed with how it syncs, then its task is here. */
+    private fun pairedAndSynced() {
+        rule.waitUntil(60_000) {
+            rule.onAllNodes(hasContentDescription("not synced yet", substring = true) or hasContentDescription("last synced", substring = true))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        tab("Tasks")
+        rule.waitUntil(30_000) { rule.onAllNodes(titled("written on the mac")).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    /** Answers the three words, once they come. */
+    private fun theyMatch() {
+        val yes = core.app.view.value!!.devices!!.words.matchYes
+        rule.waitUntil(90_000) { rule.onAllNodes(hasText(yes)).fetchSemanticsNodes().isNotEmpty() }
+        button(yes)
+    }
+
+    /**
+     * Pairs with a device waiting in `lum pair`, its code given as the `PAIR_CODE` argument
+     * (`-e PAIR_CODE …`), as the iPhone's test does; skipped without one. The other device holds a
+     * task called "written on the mac", which the first sync brings.
+     */
+    @Test
+    fun pairingByCodeBringsTheOtherDevicesTasks() {
+        val code = InstrumentationRegistry.getArguments().getString("PAIR_CODE")
+        assumeTrue("no device is waiting to pair", !code.isNullOrEmpty())
+        core.startSyncing(InstrumentationRegistry.getInstrumentation().targetContext)
+        tab("Settings")
+        row("Devices and sync").performClick()
+        rule.waitForIdle()
+        press("Pair a device")
+        val words = core.app.view.value!!.devices!!.words
+        rule.onNode(hasSetTextAction() and hasText(words.theirCode)).performTextInput(code!!)
+        button(words.join)
+        theyMatch()
+        pairedAndSynced()
+    }
+
+    /**
+     * Pairs with a `lum pair` waiting on this network with no code, found by DNS-SD; skipped
+     * unless the `PAIR_LOCAL` argument is given. The emulator's NAT passes no multicast, so this
+     * is for a real phone on the same network.
+     */
+    @Test
+    fun pairingOnTheLocalNetworkNeedsNoCode() {
+        assumeTrue("no device is waiting on this network", InstrumentationRegistry.getArguments().getString("PAIR_LOCAL") != null)
+        core.startSyncing(InstrumentationRegistry.getInstrumentation().targetContext)
+        tab("Settings")
+        row("Devices and sync").performClick()
+        rule.waitForIdle()
+        press("Pair a device")
+        button(core.app.view.value!!.devices!!.words.wait)
+        theyMatch()
+        pairedAndSynced()
     }
 
     @Test

@@ -60,13 +60,12 @@ A day or less each, for between the larger pieces.
     first full run after had no stall; what was left animating was never found, and is worth
     finding if anyone sees the sidebar misbehave.
 - **Android**: pairing on the local network untried on a real phone (the emulator's NAT
-  passes no multicast); the iPhone's two pairing tests not ported. The keyboard commands
-  and the wide layout are tested in the emulator, not yet with TalkBack and a real keyboard.
+  passes no multicast): `LumennaTest#pairingOnTheLocalNetworkNeedsNoCode` with
+  `INSTRUMENT_ARGS="PAIR_LOCAL=1"` beside a `lum pair` on the same network. The keyboard
+  commands and the wide layout are tested in the emulator, not yet with TalkBack and a real
+  keyboard.
 - **GTK**: "expanded" said twice on first focus of a row with subtasks; the shortcuts' X11 grab
   unchecked with Orca under a real X11 window manager.
-- **iOS UI tests that fail only when the simulator delivers a key out of order**: ⌘K (the K
-  arriving before the ⌘, so VoiceOver's focus test sees nothing done) and ⌘F on CI. They
-  are in the full suites, which only report.
 - **Braille apart from speech on Windows**, only if braille users there ask: only through JAWS
   scripts or an NVDA add-on, since UI Automation gives a control one name.
 - **Screen readers not yet tried by a person**: JAWS, Narrator, ChromeVox, Emacspeak and
