@@ -103,9 +103,16 @@ Each is a thin adapter over the command surface.
   The watches' are widgets too: complications through WidgetKit on watchOS, with the running
   timer on the watch face, and tiles and complications on Wear OS.
 - **PowerShell module** wrapping `lum --json`; the same language as Windows hooks.
-- **`lum mcp`**: built over stdio (tools, resources and their subscriptions, `--writes`). Still to
-  come: Streamable HTTP as a daemon listener, since Home Assistant usually runs elsewhere: loopback by
-  default, a bearer token required off loopback, no TLS (a reverse proxy or Tailscale).
+- **`lum mcp` without a command line.** Built: stdio and Streamable HTTP (`--listen`), tools,
+  resources and their subscriptions, `--writes`. Still to come, so a person who never opens a
+  terminal can add it:
+  - **Claude Desktop and other local clients**: a `.mcpb` bundle per platform (`lum` and a
+    manifest running `lum mcp`, its `user_config` an "Allow changes" check box mapped to
+    `--writes`), installed by opening it, and offered from the Mac, Windows and GTK apps' Settings.
+  - **Claude on the web and phone, Meta's Muse**: these reach a server from their own cloud, so it
+    needs a public HTTPS name for an always-on device of the person's (Tailscale Funnel, a
+    Cloudflare tunnel) and OAuth, since a bearer token cannot be typed in there: `lum mcp
+    --listen` as its own authorization server, each client approved on the device. Not decided.
 - **Hooks**, `lum hook add|list|test|rm`:
   - **Reactive, never interceptive**: a change can arrive already committed from an
     unreachable device, and convergence cannot be vetoed. Hooks fire after a change is

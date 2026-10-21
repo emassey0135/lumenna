@@ -7,10 +7,26 @@
 //! tools that change the store are offered only with `--writes`, which the person sets in the
 //! client's own configuration, where they choose what an assistant may do. Records are
 //! addressed by identifier (a whole UUID or a prefix of one), never by row number.
+//!
+//! With `--listen` it is Streamable HTTP instead, for a client that cannot start `lum` itself:
+//! on loopback by default, where only a loopback `Host` is answered (so neither a page that
+//! rebinds a name nor a tunnel reaches it unasked); anywhere else only with this device's token
+//! as a bearer. No TLS: a person serving it beyond the machine puts Tailscale or a reverse
+//! proxy in front, as they would for anything else they host.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::convert::Infallible;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+use bytes::Bytes;
+use http_body_util::{BodyExt, Full};
+use hyper::body::Incoming;
+use hyper::{Request, StatusCode};
+use hyper_util::rt::{TokioExecutor, TokioIo};
+use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
+use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 
 use lumenna_host::rpc::api::{Outcome, Response};
 use lumenna_host::{Lumenna, MoveTarget, TaskEdit};
@@ -30,8 +46,17 @@ use serde::Deserialize;
 use crate::error::CliError;
 use crate::profile::Profile;
 
-/// Serves `profile`'s store over stdio until the client goes.
-pub(crate) fn serve(profile: &Profile, writes: bool) -> crate::error::Result<()> {
+/// Where to serve over HTTP.
+pub(crate) struct Listen {
+    /// The address to listen on, `host:port`.
+    pub address: String,
+    /// Whether to ask for the token on loopback too.
+    pub require_token: bool,
+}
+
+/// Serves `profile`'s store until the client goes: over stdio, or over HTTP at `listen` until
+/// interrupted.
+pub(crate) fn serve(profile: &Profile, writes: bool, listen: Option<Listen>) -> crate::error::Result<()> {
     let lumenna = profile.shared();
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -39,10 +64,129 @@ pub(crate) fn serve(profile: &Profile, writes: bool) -> crate::error::Result<()>
         .map_err(|e| CliError::Message(e.to_string()))?;
     runtime.block_on(async move {
         let server = Server::new(Arc::clone(&lumenna), writes, changes(lumenna));
+        if let Some(listen) = listen {
+            return http(server, &listen, token_path(profile)).await;
+        }
         let running = server.serve(rmcp::transport::stdio()).await.map_err(|e| CliError::Message(e.to_string()))?;
         running.waiting().await.map_err(|e| CliError::Message(e.to_string()))?;
         Ok(())
     })
+}
+
+/// Where this device's token is kept: in the profile, beside the store, never synced.
+fn token_path(profile: &Profile) -> PathBuf {
+    profile.directory().join("mcp-token")
+}
+
+/// This device's token for HTTP clients, made the first time it is asked for, or afresh with
+/// `new`.
+pub(crate) fn token(profile: &Profile, new: bool) -> crate::error::Result<String> {
+    token_at(token_path(profile), new)
+}
+
+fn token_at(path: PathBuf, new: bool) -> crate::error::Result<String> {
+    let failed = |e: std::io::Error| CliError::Message(format!("the token at {}: {e}", path.display()));
+    if !new && let Ok(kept) = std::fs::read_to_string(&path) && !kept.trim().is_empty() {
+        return Ok(kept.trim().to_owned());
+    }
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes).map_err(|e| CliError::Message(e.to_string()))?;
+    let token: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    // Written whole beside it, readable by this user alone, then put in place.
+    let beside = path.with_extension("new");
+    std::fs::write(&beside, &token).map_err(failed)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&beside, std::fs::Permissions::from_mode(0o600)).map_err(failed)?;
+    }
+    std::fs::rename(&beside, &path).map_err(failed)?;
+    Ok(token)
+}
+
+/// Serves Streamable HTTP at `/mcp` on `listen` until interrupted.
+async fn http(server: Server, listen: &Listen, token: PathBuf) -> crate::error::Result<()> {
+    let failed = |e: std::io::Error| CliError::Message(format!("cannot listen on {}: {e}", listen.address));
+    let listener = tokio::net::TcpListener::bind(&listen.address).await.map_err(failed)?;
+    let local = listener.local_addr().map_err(failed)?;
+    // The token is read again for each request, so a new one (`lum mcp token --new`) turns the
+    // old away at once.
+    let token = if local.ip().is_loopback() && !listen.require_token {
+        None
+    } else {
+        token_at(token.clone(), false)?;
+        Some(Arc::new(token))
+    };
+    // A browser page never gets in, whatever it names (a request with an `Origin` is refused).
+    // Without a token only a loopback `Host` is answered, rmcp's default; with one, any, since
+    // the token is what is checked and a proxy or a tailnet names the machine its own way.
+    let mut config = StreamableHttpServerConfig::default().enforce_origin_validation();
+    let stopping = config.cancellation_token.clone();
+    if token.is_some() {
+        config = config.with_allowed_hosts(Vec::<String>::new());
+    }
+    let service = StreamableHttpService::new(move || Ok(server.fresh()), Arc::new(LocalSessionManager::default()), config);
+    let asks = if token.is_some() { ", which asks for this device's token (lum mcp token)" } else { "" };
+    eprintln!("Lumenna's MCP server is at http://{local}/mcp{asks}. Interrupt to stop.");
+    loop {
+        let (stream, _) = tokio::select! {
+            accepted = listener.accept() => match accepted {
+                Ok(accepted) => accepted,
+                Err(_) => continue,
+            },
+            _ = tokio::signal::ctrl_c() => break,
+        };
+        let service = service.clone();
+        let token = token.clone();
+        tokio::spawn(async move {
+            let answering = hyper::service::service_fn(move |request: Request<Incoming>| {
+                let service = service.clone();
+                let token = token.clone();
+                async move { Ok::<_, Infallible>(answer(&service, token.as_deref().map(PathBuf::as_path), request).await) }
+            });
+            let _ = hyper_util::server::conn::auto::Builder::new(TokioExecutor::new())
+                .serve_connection_with_upgrades(TokioIo::new(stream), answering)
+                .await;
+        });
+    }
+    stopping.cancel();
+    Ok(())
+}
+
+type Answer = hyper::Response<http_body_util::combinators::BoxBody<Bytes, Infallible>>;
+
+/// Answers one request: refused without the token where one is asked for, else rmcp's.
+async fn answer(
+    service: &StreamableHttpService<Server, LocalSessionManager>,
+    token: Option<&std::path::Path>,
+    request: Request<Incoming>,
+) -> Answer {
+    if request.uri().path() != "/mcp" {
+        return plain(StatusCode::NOT_FOUND, "Lumenna's MCP server is at /mcp.");
+    }
+    if let Some(path) = token {
+        // Unreadable, it is no token at all, and nothing is let in.
+        let token = std::fs::read_to_string(path).map(|kept| kept.trim().to_owned()).unwrap_or_default();
+        let sent = request.headers().get(hyper::header::AUTHORIZATION).and_then(|v| v.to_str().ok());
+        let given = sent.and_then(|v| v.strip_prefix("Bearer ")).unwrap_or("");
+        if token.is_empty() || !same(given.trim().as_bytes(), token.as_bytes()) {
+            let mut refused = plain(StatusCode::UNAUTHORIZED, "This needs the device's token, as `Authorization: Bearer <token>`.");
+            refused.headers_mut().insert(hyper::header::WWW_AUTHENTICATE, hyper::header::HeaderValue::from_static("Bearer"));
+            return refused;
+        }
+    }
+    service.handle(request).await
+}
+
+/// Whether two tokens are the same, taking as long whichever byte differs.
+fn same(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).fold(0, |differ, (x, y)| differ | (x ^ y)) == 0
+}
+
+fn plain(status: StatusCode, text: &'static str) -> Answer {
+    let mut response = hyper::Response::new(Full::new(Bytes::from_static(text.as_bytes())).boxed());
+    *response.status_mut() = status;
+    response
 }
 
 /// How often the store is looked at for a change another process or device made.
@@ -96,6 +240,11 @@ impl Server {
             tool_router += Self::writing();
         }
         Self { lumenna, writes, tool_router, changes, subscribed: Arc::default(), following: Arc::default() }
+    }
+
+    /// The same server for another HTTP session, following nothing yet.
+    fn fresh(&self) -> Self {
+        Self { subscribed: Arc::default(), following: Arc::default(), ..self.clone() }
     }
 
     /// What each of `uris` reads as now, so a change can be told from a write that left it alone.

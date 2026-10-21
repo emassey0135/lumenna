@@ -289,6 +289,13 @@ real profile.
   process's writes) and `outside_version` (another's, even into a year's document not loaded here,
   which the heads alone missed), and only then are the subscribed resources read again and compared.
   Tests drive the real server over stdio (`apps/cli/tests/mcp.rs`), another `lum` writing beside it.
+  `--listen [ADDR]` serves Streamable HTTP at `/mcp` instead (127.0.0.1:7341 by default), each
+  session a `Server::fresh`: on loopback with no token, rmcp's check answering only a loopback
+  `Host` (no rebound name, no tunnel); off loopback, or with `--require-token` behind a proxy, only
+  `Authorization: Bearer` with the device's token (`lum mcp token`, `<profile>/mcp-token`, `0600`,
+  never synced), read again per request so `--new` turns the old one away at once. Any request with
+  an `Origin` is refused. No TLS. Its tests use rmcp's own client (`tests/mcp_http.rs`), which needs
+  a rustls provider installed first: reqwest is built without one in this tree.
 - **`--json` is a versioned compatibility contract** for scripts. Reshaping `api.rs` or a
   surface record is a breaking change.
 

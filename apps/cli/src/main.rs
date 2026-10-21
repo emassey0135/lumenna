@@ -361,9 +361,21 @@ pub(crate) enum Command {
     /// named by identifier. A model in the cloud sends whatever it reads here off this device;
     /// a local one keeps it here: choose the assistant with that in mind.
     Mcp {
+        #[command(subcommand)]
+        command: Option<McpCommand>,
         /// Offer the tools that change the store, as well as those that read it.
         #[arg(long)]
         writes: bool,
+        /// Serve over HTTP instead, at http://ADDR/mcp (127.0.0.1:7341 when no address is
+        /// given), for a client that cannot start `lum` itself. Off this machine's loopback, a
+        /// client must send `Authorization: Bearer` with the token `lum mcp token` prints. There
+        /// is no TLS: off the machine, put Tailscale or a reverse proxy in front.
+        #[arg(long, value_name = "ADDR", num_args = 0..=1, default_missing_value = "127.0.0.1:7341")]
+        listen: Option<String>,
+        /// Ask for the token on loopback too: for a tunnel or reverse proxy in front, which
+        /// reaches this from elsewhere through loopback.
+        #[arg(long, requires = "listen")]
+        require_token: bool,
     },
 
     /// Print a shell completion script, which completes project, label and filter names from
@@ -371,6 +383,18 @@ pub(crate) enum Command {
     Completions {
         /// Which shell.
         shell: clap_complete::Shell,
+    },
+}
+
+/// What `lum mcp` does besides serving.
+#[derive(Subcommand, Debug)]
+pub(crate) enum McpCommand {
+    /// Print the token an HTTP client sends (`Authorization: Bearer <token>`), making one the
+    /// first time. It is this device's, in the profile, and never syncs.
+    Token {
+        /// Replace it, so a client given the old one is refused.
+        #[arg(long)]
+        new: bool,
     },
 }
 
@@ -982,8 +1006,17 @@ fn run(cli: &Cli, format: Format) -> Result<()> {
     if matches!(cli.command, Command::Rpc) {
         return network::serve_rpc(&profile);
     }
-    if let Command::Mcp { writes } = cli.command {
-        return mcp::serve(&profile, writes);
+    if let Command::Mcp { command, writes, listen, require_token } = &cli.command {
+        return match command {
+            Some(McpCommand::Token { new }) => {
+                println!("{}", mcp::token(&profile, *new)?);
+                Ok(())
+            }
+            None => {
+                let listen = listen.clone().map(|address| mcp::Listen { address, require_token: *require_token });
+                mcp::serve(&profile, *writes, listen)
+            }
+        };
     }
     if let Command::SyncDaemon { local_only } = cli.command {
         durability::back_up_if_due(&profile);
