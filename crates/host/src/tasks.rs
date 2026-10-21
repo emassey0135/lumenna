@@ -47,6 +47,19 @@ impl Lumenna {
         if text.trim().is_empty() {
             return Err(LumennaError::new("nothing to add"));
         }
+        // A line that starts with `block` makes a block, read as the block form reads one.
+        if let Some(block) = lumenna_parse::block::parse_block_line(text) {
+            let block = block.map_err(LumennaError::new)?;
+            return self.add_block(crate::types::NewBlock {
+                title: block.title,
+                at: crate::words::time_text(block.start),
+                minutes: block.minutes,
+                date: block.date,
+                kind: "work".to_owned(),
+                repeat: block.repeat,
+                ..crate::types::NewBlock::default()
+            });
+        }
         let now = Zoned::now();
         self.told(|store| {
             let snapshot = repaired(store);

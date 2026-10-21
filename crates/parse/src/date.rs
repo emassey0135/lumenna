@@ -192,7 +192,7 @@ pub fn parse_time(words: &[Word], at: usize) -> Option<(civil::Time, usize)> {
 }
 
 /// `3pm`, `3:30pm`, `15:00`, `9:05`.
-fn clock(text: &str) -> Option<civil::Time> {
+pub(crate) fn clock(text: &str) -> Option<civil::Time> {
     let (body, meridiem) = if let Some(rest) = text.strip_suffix("pm") {
         (rest, Some(true))
     } else if let Some(rest) = text.strip_suffix("am") {

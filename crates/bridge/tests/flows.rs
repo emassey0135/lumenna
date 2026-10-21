@@ -597,6 +597,27 @@ fn quick_add_reads_back_the_line_and_puts_a_completion_in_at_the_cursor() {
     assert!(line.text.ends_with("tomorrow"));
 }
 
+#[test]
+fn quick_add_makes_a_block_from_a_line_that_starts_with_block_reading_it_back_first() {
+    let mut app = App::new();
+    app.send(Event::Typing(Typing::Open));
+    let line = "block \"Deep work\" 9-11am tomorrow weekdays";
+    app.send(Event::Typing(Typing::Text { text: line.to_owned(), cursor: u32::try_from(line.len()).unwrap() }));
+    let view = app.view().line.unwrap();
+    assert_eq!(view.readback, "New block Deep work, 9:00 AM to 11:00 AM, tomorrow, every weekday");
+    assert!(!view.has_errors);
+    let shell = app.send(Event::QuickAdd(line.to_owned()));
+    assert!(said(&shell).iter().any(|s| s.starts_with("Added block Deep work")), "{shell:?}");
+    app.send(Event::Open(Place::Blocks));
+    let blocks: Vec<String> = app.view().list.unwrap().items.into_iter().map(|i| i.row.title).collect();
+    assert_eq!(blocks, ["Deep work"]);
+
+    app.send(Event::Typing(Typing::Text { text: "block Deep work".to_owned(), cursor: 15 }));
+    let view = app.view().line.unwrap();
+    assert!(view.has_errors);
+    assert!(view.readback.contains("say when it runs"), "{}", view.readback);
+}
+
 fn field(app: &mut App, key: &str, value: &str) {
     app.send(Event::Block(BlockEvent::Field { key: key.to_owned(), value: value.to_owned() }));
 }

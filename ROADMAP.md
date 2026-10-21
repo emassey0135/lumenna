@@ -145,7 +145,6 @@ A day or less each, for between the larger pieces.
   either way; find any other announcement that runs long under terse as it is met.
 - **The block chooser's coming week** is the seven days from today, not the week from the
   week-start setting (which week-relative phrases now follow); say which it should be.
-- **Quick add for blocks**, in the same grammar: `block "Deep work" 9-11am weekdays`.
 
 ### Completion
 

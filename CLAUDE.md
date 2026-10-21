@@ -505,6 +505,12 @@ so evaluation, the readback and the accessibility layer never depend on the pars
   week" and "end of the week" its last day (`DateSpec::WeekStart`, `WeekEnd`), so every date a
   person types resolves through `resolve_in` with the snapshot's week start; `resolve` alone
   assumes Monday. "In a week" is still seven days.
+- **A quick-add line that starts with `block` makes a block** (`lumenna_parse::block`): a name,
+  quoted or the words before what follows (at least the first word, so "Weekly review" is a
+  name), when it runs (`9-11am`, `9am to 11am`, `9am for 2h`), and in any order a day and a
+  repetition (`weekdays` too). The preview reads it back ("New block Deep work, 9:00 AM to 11:00
+  AM, every weekday"), and adding hands it to `add_block` as the block form would. A word that
+  is none of these is refused, named.
 - **Nothing is ever silently swallowed.** An unrecognised or repeated token stays in the
   title with a notice. A property test asserts every non-space character is in the title or
   inside a recognised span.

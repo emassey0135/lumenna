@@ -17,6 +17,7 @@
 //! must be **in the message text**, because that text is the only channel. Every diagnostic
 //! this crate produces carries a span for exactly that reason.
 
+pub mod block;
 pub mod complete;
 pub mod date;
 pub mod filter;

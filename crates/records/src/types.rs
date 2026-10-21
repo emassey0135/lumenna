@@ -1018,7 +1018,7 @@ pub enum Syntax {
 }
 
 /// What a quick-add line would produce, without producing it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Preview {
     /// The readback: what would be saved, with the resolved date — the sentence that stands in
     /// for a sighted user's inline highlighting.
