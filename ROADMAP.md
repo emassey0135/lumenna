@@ -193,7 +193,6 @@ The core's `complete` works everywhere; what is missing is how each app offers i
 - **GTK**: no tray on GNOME without the AppIndicator extension; "expanded" said twice on first
   focus of a row with subtasks. (Type-ahead and shortcuts without the portal are done; the X11
   grab is unchecked with Orca under a real X11 window manager.)
-- **Emacs**: priority faces, mapped to voices.
 - **iOS UI tests that fail only when the simulator delivers a key out of order**: ⌘K (the K
   arriving before the ⌘, so VoiceOver's focus test sees nothing done) and ⌘F on CI. They
   are in the full suites, which only report.

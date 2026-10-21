@@ -86,7 +86,7 @@ final class TaskListTests: XCTestCase {
     }
 
     /// A task's actions after Mark Done, as the core gives them; Move to Trash is swiped.
-    private let otherTaskActions = ["Edit Details", "Put in a Block", "Move to Project", "Make Subtask Of", "Wait For"]
+    private let otherTaskActions = ["Edit Details", "Put in a Block", "Move to Project", "Make Subtask Of", "Wait For", "Reminders"]
 
     func testATaskSwipesMarkDoneOneWayAndMoveToTrashTheOtherAndOffersTheRestOnceAsActions() throws {
         _ = try core.app.device.addTask(text: "water the plants")

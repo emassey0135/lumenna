@@ -337,6 +337,12 @@ RET or r restores one; d deletes it from the trash, asking first.
   (interactive)
   (lumenna-open-place "Trash"))
 
+;;;###autoload
+(defun lumenna-history ()
+  "Show what was done over the last two weeks, newest first."
+  (interactive)
+  (lumenna-open-place "History"))
+
 ;;;; Menus
 
 (lumenna-define-keys lumenna-tasks-mode

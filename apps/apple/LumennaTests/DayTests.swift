@@ -77,7 +77,7 @@ final class DayTests: XCTestCase {
         let index = try XCTUnwrap(day.shown.firstIndex { $0.item.kind == .block })
         let row = offered(day, index)
         XCTAssertEqual(row.trailing, ["Assign a Task", "Delete Block"])
-        XCTAssertEqual(row.custom, ["Edit Block", "Cancel This Day", "Reminders"])
+        XCTAssertEqual(row.custom, ["Edit Block", "Cancel This Day", "Reminders", "Time Zone"])
         XCTAssertEqual(row.listed.sorted(), shownItems[index].actions.map(\.title).sorted(), "each listed once")
         XCTAssertEqual(row.menu, shownItems[index].actions.map(\.title), "the menu has every action, in the app's order")
         let split = split(day, index)

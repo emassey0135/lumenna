@@ -241,7 +241,7 @@ fun LumennaApp(
                         to == Tab.TODAY -> show(Destination.At(Place.Today), *screens)
                         to == Tab.SETTINGS -> show(Destination.Settings, *screens)
                         first == Screen.Blocks -> show(Destination.At(Place.Blocks))
-                        first is Screen.Tasks && first.place == Place.Trash -> show(Destination.At(Place.Trash))
+                        first is Screen.Tasks && (first.place == Place.Trash || first.place == Place.History) -> show(Destination.At(first.place))
                         else -> show(Destination.At(Place.Tasks), *screens)
                     }
                     return
@@ -294,6 +294,7 @@ fun LumennaApp(
             Offer(Command.GO_TASKS) { go(Tab.TASKS) }
             Offer(Command.GO_BLOCKS) { go(Tab.BROWSE, Screen.Blocks) }
             Offer(Command.GO_TRASH) { go(Tab.BROWSE, Screen.Tasks(Place.Trash)) }
+            Offer(Command.GO_HISTORY) { go(Tab.BROWSE, Screen.Tasks(Place.History)) }
             Offer(Command.SETTINGS) { go(Tab.SETTINGS) }
             Offer(Command.SYNC_NOW) { syncNow(core) }
 

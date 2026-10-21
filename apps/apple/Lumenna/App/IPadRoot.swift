@@ -83,7 +83,7 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
         switch place {
         case .today: return day
         case .tasks: return tasks
-        case .blocks, .trash, .project, .label, .filter:
+        case .blocks, .trash, .history, .project, .label, .filter:
             return TaskListViewController(core: core, place: place)
         }
     }
@@ -124,6 +124,7 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
     @objc func goToTasks() { show(.place(.tasks)) }
     @objc func goToBlocks() { show(.place(.blocks)) }
     @objc func goToTrash() { show(.place(.trash)) }
+    @objc func goToHistory() { show(.place(.history)) }
     @objc func showSettings() { show(.settings) }
     @objc func undoChange() { undoInStore(core) }
     @objc func redoChange() { redoInStore(core) }

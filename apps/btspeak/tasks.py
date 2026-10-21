@@ -105,6 +105,12 @@ def task_commands(session: Session, rows) -> list[Command]:
     return actions.commands(session, rows, after=[Command("Details", lambda row: show(session, row))])
 
 
+def history(session: Session) -> str:
+    """What was done over the last two weeks, newest first, each a task's row: Enter shows its
+    details."""
+    return task_list(session, L.PlaceHistory(), "History")
+
+
 def trash(session: Session) -> str:
     """Deleted tasks: Enter puts one back; deleting one from the trash is its context menu's,
     or the delete keys'."""

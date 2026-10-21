@@ -149,6 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func goToTasks(_ sender: Any?) { go(.tasks) }
     @objc func goToBlocks(_ sender: Any?) { go(.blocks) }
     @objc func goToTrash(_ sender: Any?) { go(.trash) }
+    @objc func goToHistory(_ sender: Any?) { go(.history) }
 
     private func go(_ place: LumennaApp.Place) {
         showMainWindow(nil)

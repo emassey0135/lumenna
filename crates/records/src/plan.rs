@@ -229,6 +229,7 @@ pub fn blocks(snapshot: &Snapshot, today: jiff::civil::Date) -> Result<Rows> {
                 due_time: Some(series.start_time),
                 value: Some(value),
                 hint: None,
+                priority: None,
             }
         })
         .collect();

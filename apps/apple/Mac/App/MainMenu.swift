@@ -90,6 +90,7 @@ enum MainMenu {
         menu.addItem(item("Tasks", #selector(AppDelegate.goToTasks(_:)), "2"))
         menu.addItem(item("Blocks", #selector(AppDelegate.goToBlocks(_:)), "3"))
         menu.addItem(item("Trash", #selector(AppDelegate.goToTrash(_:)), "4"))
+        menu.addItem(item("History", #selector(AppDelegate.goToHistory(_:)), "5"))
         menu.addItem(.separator())
         menu.addItem(item("Toggle Sidebar", #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.command, .control]))
         return menu

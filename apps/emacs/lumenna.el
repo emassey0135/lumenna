@@ -99,6 +99,15 @@ from here, in a buffer of its own.")
 (defface lumenna-running '((t :inherit success))
   "A sitting whose timer is running.")
 
+(defface lumenna-priority-1 '((t :inherit error))
+  "A task of priority 1, the highest.")
+
+(defface lumenna-priority-2 '((t :inherit warning))
+  "A task of priority 2.")
+
+(defface lumenna-priority-3 '((t :inherit font-lock-keyword-face))
+  "A task of priority 3.")
+
 (defconst lumenna-contract 1
   "The JSON shapes this client was written against.")
 
@@ -425,6 +434,8 @@ already draws one.  EVENTS are sent there first."
     (cond ((lumenna--true (plist-get row :checked)) 'lumenna-done)
           ((member "overdue" states) 'lumenna-overdue)
           ((member "archived" states) 'lumenna-quiet)
+          ;; The row says its priority in words too; the face and its voice only add to that.
+          ((plist-get row :priority) (intern (format "lumenna-priority-%d" (plist-get row :priority))))
           (t (plist-get row :face)))))
 
 (defun lumenna--heading (&rest parts)
@@ -1202,6 +1213,7 @@ left out."
    ("l" "Labels" lumenna-labels)
    ("f" "Saved filters" lumenna-filters)
    ("b" "Blocks" lumenna-blocks)
+   ("h" "History" lumenna-history)
    ("x" "Trash" lumenna-trash)
    ("L" "All of Lumenna's places" lumenna))
   ("Do"

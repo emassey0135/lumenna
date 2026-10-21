@@ -26,7 +26,10 @@
     (lumenna-overdue voice-animate)
     (lumenna-quiet voice-smoothen)
     (lumenna-now voice-bolden)
-    (lumenna-running voice-animate))
+    (lumenna-running voice-animate)
+    (lumenna-priority-1 voice-bolden-and-animate)
+    (lumenna-priority-2 voice-bolden)
+    (lumenna-priority-3 voice-brighten))
   "Lumenna's faces, and the voice each is read in.")
 
 (declare-function voice-setup-add-map "voice-setup" (fv-alist &optional origin))

@@ -19,6 +19,7 @@ import UIKit
     @objc optional func goToTasks()
     @objc optional func goToBlocks()
     @objc optional func goToTrash()
+    @objc optional func goToHistory()
     @objc optional func toggleDone()
     @objc optional func moveToTrash()
     @objc optional func saveChanges()
@@ -85,6 +86,7 @@ enum KeyboardCommands {
             command("Tasks", #selector(CommandActions.goToTasks), "2"),
             command("Blocks", #selector(CommandActions.goToBlocks), "3"),
             command("Trash", #selector(CommandActions.goToTrash), "4"),
+            command("History", #selector(CommandActions.goToHistory), "5"),
         ]
     }
 

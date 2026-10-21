@@ -133,6 +133,9 @@ pub struct Row {
     pub value: Option<String>,
     /// A hint about what can be done here, if the platform has somewhere to put one.
     pub hint: Option<String>,
+    /// A task's priority, 1 to 3, when it has one above none: the same as its value says in
+    /// words, for a client that marks it by a face, a colour or a voice.
+    pub priority: Option<u8>,
 }
 
 impl Row {
@@ -316,6 +319,7 @@ impl Snapshot {
                     due_time: None,
                     value: Some(describe_block(&occurrence, assigned, running)),
                     hint: None,
+                    priority: None,
                 }
             })
             .collect())
@@ -400,6 +404,7 @@ fn push_task_rows(
                 (!parts.is_empty()).then(|| parts.join(", "))
             },
             hint: None,
+            priority: (task.priority != crate::model::Priority::P4).then(|| task.priority.as_u8()),
         });
         push_task_rows(cx, children, done, Some(task.id), depth + 1, rows);
     }

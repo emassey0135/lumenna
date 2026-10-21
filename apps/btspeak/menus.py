@@ -74,6 +74,8 @@ def opens(entry):
         return "k", tasks.task_list
     if isinstance(place, L.PlaceBlocks):
         return "b", day.blocks
+    if isinstance(place, L.PlaceHistory):
+        return "h", tasks.history
     if isinstance(place, L.PlaceTrash):
         return "x", tasks.trash
     return None

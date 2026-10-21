@@ -302,6 +302,7 @@ mod tests {
             due_time: None,
             value: value.map(str::to_owned),
             hint: None,
+            priority: None,
             actions: Vec::new(),
         }
     }

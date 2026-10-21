@@ -47,6 +47,18 @@ test("what the app says is shown on the status line, for someone who reads it", 
   expect(audit.violations).toEqual([]);
 });
 
+test("history lists a task done today, said as when it was done, beside the trash", async ({ page }) => {
+  await open(page);
+  await add(page, "Buy milk");
+  await page.getByRole("main").getByRole("row", { name: /^Buy milk/ }).focus();
+  await page.keyboard.press("Space");
+  await page.getByRole("navigation", { name: "Places" }).getByRole("row", { name: /^History, 1 task done/ }).click();
+  await expect(page.getByRole("main", { name: "History" })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("row", { name: /^Buy milk, completed today/ })).toBeVisible();
+  const audit = await new AxeBuilder({ page }).analyze();
+  expect(audit.violations).toEqual([]);
+});
+
 test("a task due at a time says it in the browser's clock, then its priority", async ({ page }) => {
   await open(page);
   await add(page, "Call the bank tomorrow at 3pm p1");

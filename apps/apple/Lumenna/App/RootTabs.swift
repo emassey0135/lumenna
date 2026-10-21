@@ -89,6 +89,7 @@ final class RootTabs: UITabBarController, CommandActions {
     @objc func goToTasks() { select(1) }
     @objc func goToBlocks() { openFromBrowse(.place(.blocks)) }
     @objc func goToTrash() { openFromBrowse(.place(.trash)) }
+    @objc func goToHistory() { openFromBrowse(.place(.history)) }
     @objc func showSettings() { select(3) }
     @objc func undoChange() { undoInStore(core) }
     @objc func redoChange() { redoInStore(core) }

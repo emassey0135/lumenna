@@ -771,6 +771,8 @@ against a real `lum rpc`, answering the minibuffer by rebinding the reading func
   the action's `subject/kind`. Not transient: Emacsvox reads a transient by asking whether its
   command was called interactively, and Emacs 31's transient wraps each command, so moving
   through one was silent.
+- **A task's priority is its face** (`lumenna-priority-1` to `-3`, from the row's `priority`,
+  which every row carries beside the words), read in a voice of its own (`lumenna-voice-map`).
 - **Booleans come back as `:json-false`**, which is non-nil: test them with `lumenna--true`.
 - **The clock is Emacs's**: `display-time-24hr-format`, told the app as it changes
   (`app.clock`), which words every time in it.

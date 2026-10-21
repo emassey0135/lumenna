@@ -198,6 +198,18 @@ until the app has taken it in."
     (goto-char (point-min))
     (should (equal (lumenna-test--line) "1 reminder, the defaults"))))
 
+(ert-deftest lumenna-a-tasks-priority-is-its-face-which-a-voice-reads ()
+  (lumenna-test--with-store
+    (lumenna-test--seed "task.add" :text "file taxes p1")
+    (lumenna-test--seed "task.add" :text "water plants p3")
+    (lumenna-test--seed "task.add" :text "someday")
+    (lumenna-tasks)
+    (dolist (case '(("file taxes" . lumenna-priority-1) ("water plants" . lumenna-priority-3) ("someday" . nil)))
+      (lumenna-test--goto (car case))
+      (should (eq (get-text-property (line-beginning-position) 'face) (cdr case))))
+    (require 'lumenna-voice)
+    (should (assq 'lumenna-priority-1 lumenna-voice-map))))
+
 (ert-deftest lumenna-a-task-with-no-due-date-offers-reminders-at-a-moment ()
   (lumenna-test--with-store
     (lumenna-test--seed "task.add" :text "someday")

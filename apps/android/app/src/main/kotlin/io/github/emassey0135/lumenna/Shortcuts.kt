@@ -75,6 +75,7 @@ enum class Command(val id: String?, val place: Place, private val own: List<Keys
     GO_TASKS("go-tasks", Place.APP),
     GO_BLOCKS("go-blocks", Place.APP),
     GO_TRASH("go-trash", Place.APP),
+    GO_HISTORY("go-history", Place.APP),
     SETTINGS("settings", Place.APP),
     SYNC_NOW("sync-now", Place.APP),
     NEXT_PANE("next-pane", Place.APP),

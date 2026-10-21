@@ -70,11 +70,13 @@ fun BrowseScreen(core: Core, navigator: Navigator) {
     fun count(n: Int, noun: String) = if (n == 1) "1 $noun" else "$n ${noun}s"
     fun under(group: SidebarGroup) = rows.groupUnder(group).count { it.depth == 1 }
     val trash = rows.firstOrNull { (it.entry.kind as? SidebarKind.Place)?.field0 == Place.Trash }
+    val history = rows.firstOrNull { (it.entry.kind as? SidebarKind.Place)?.field0 == Place.History }
     val items = listOf(
         Item("projects", "Projects", count(rows.groupUnder(SidebarGroup.PROJECTS).size, "project")),
         Item("labels", "Labels", count(under(SidebarGroup.LABELS), "label")),
         Item("filters", "Saved filters", count(under(SidebarGroup.FILTERS), "filter")),
         Item("blocks", "Blocks", ""),
+        Item("history", "History", history?.detail.orEmpty()),
         Item("trash", "Trash", trash?.detail.orEmpty()),
     )
     MenuScreen(
@@ -86,6 +88,7 @@ fun BrowseScreen(core: Core, navigator: Navigator) {
                     "labels" -> Screen.Labels
                     "filters" -> Screen.Filters
                     "blocks" -> Screen.Blocks
+                    "history" -> Screen.Tasks(Place.History)
                     else -> Screen.Tasks(Place.Trash)
                 },
             )

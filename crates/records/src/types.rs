@@ -294,6 +294,7 @@ impl Rows {
                     due_time: row.due_time.map(time_text),
                     value: row.value.clone(),
                     hint: row.hint.clone(),
+                    priority: row.priority,
                     actions: Vec::new(),
                 })
                 .collect(),
@@ -369,6 +370,10 @@ pub struct RowView {
     /// What can be done here, for a client with somewhere to put a hint.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
+    /// A task's priority, 1 to 3, when it has one above none: what its value says in words,
+    /// for a face, a colour or a voice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub priority: Option<u8>,
     /// What can be done to it, in the order offered ([`crate::actions`]).
     #[serde(default, skip_serializing_if = "none")]
     pub actions: Vec<crate::actions::Action>,

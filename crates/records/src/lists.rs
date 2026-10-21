@@ -129,6 +129,7 @@ pub fn projects(snapshot: &Snapshot) -> Result<Rows> {
                 due_time: None,
                 value: Some(value),
                 hint: None,
+                priority: None,
             }
         })
         .collect();
@@ -184,6 +185,7 @@ pub fn labels(snapshot: &Snapshot) -> Result<Rows> {
                 due_time: None,
                 value: Some(value),
                 hint: None,
+                priority: None,
             }
         })
         .collect();
@@ -293,6 +295,7 @@ pub fn history(snapshot: &Snapshot, now: &Zoned) -> Result<Rows> {
                 due_time: Some(at.time()),
                 value,
                 hint: None,
+                priority: None,
             }
         })
         .collect();

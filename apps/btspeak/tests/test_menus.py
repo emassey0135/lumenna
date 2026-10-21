@@ -695,7 +695,7 @@ class Menus(unittest.TestCase):
         self.assertEqual(
             labels,
             ["Mark done, c", "Edit details, e", "Put in a block, b", "Move to project, m",
-             "Make subtask of, s", "Wait for, w", "Move to trash", "Details"],
+             "Make subtask of, s", "Wait for, w", "Reminders, r", "Move to trash", "Details"],
         )
         self.assertNotIn("Move to top level, t", labels, "only for a subtask")
 
