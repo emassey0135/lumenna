@@ -137,6 +137,14 @@ impl Automation {
         self.dump_elements(window).into_iter().find(|e| unsafe { e.CurrentName() }.is_ok_and(|n| n == name))
     }
 
+    /// Where on the screen the first element in `window` is whose description ([`describe`])
+    /// starts with `line`, whatever its capitals: "TreeItem 'Garden".
+    pub fn place_of(&self, window: HWND, line: &str) -> Option<RECT> {
+        let line = line.to_lowercase();
+        let found = self.dump_elements(window).into_iter().find(|e| describe(e).to_lowercase().starts_with(&line))?;
+        unsafe { found.CurrentBoundingRectangle() }.ok()
+    }
+
     /// The first element in `window` with this name that can take the keyboard focus: a
     /// field, not the label before it, which a dialog names the same.
     pub fn focusable(&self, window: HWND, name: &str) -> Option<IUIAutomationElement> {

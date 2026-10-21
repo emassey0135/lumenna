@@ -81,9 +81,10 @@ const RIGHT_KEYS: [&str; 6] = ["repeat", "until", "min_minutes", "task_filter", 
 const COLUMN: i16 = 216;
 const RIGHT: i16 = 7 + COLUMN + 14;
 
-/// The kinds a block can be, as the core names them.
-fn kinds() -> Vec<Choice> {
-    block_form().into_iter().find(|f| f.key == "kind").map(|f| f.options).unwrap_or_default()
+/// What a choice of the form offers (the kinds a block can be, its colours), as the core names
+/// them.
+fn options(key: &str) -> Vec<Choice> {
+    block_form().into_iter().find(|f| f.key == key).map(|f| f.options).unwrap_or_default()
 }
 
 /// What a field of the form holds.
@@ -208,8 +209,10 @@ impl Form {
             }
             let held = value(&view.values, &view.date, key);
             match key {
-                "kind" => {
-                    let at = kinds().iter().position(|k| k.id == held);
+                "kind" | "colour" => {
+                    // A colour the palette lacks, stored before it, is said by the app and
+                    // shows here as none chosen.
+                    let at = options(key).iter().position(|k| k.id.eq_ignore_ascii_case(&held));
                     if usize::try_from(controls::send(control, CB_GETCURSEL, 0, 0)).ok() != at {
                         controls::send(control, CB_SETCURSEL, at.unwrap_or(usize::MAX), 0);
                     }
@@ -229,14 +232,15 @@ impl Form {
         typing
     }
 
-    /// What a control now holds, as the app takes it: a flag as `true` or `false`, the kind as
+    /// What a control now holds, as the app takes it: a flag as `true` or `false`, a choice as
     /// its identifier, the notes with plain line ends.
     fn read(&self, hwnd: HWND, key: &str, id: u16) -> String {
         let control = dialog::item(hwnd, id);
         match key {
-            "kind" => {
+            "kind" | "colour" => {
                 let at = usize::try_from(controls::send(control, CB_GETCURSEL, 0, 0)).ok();
-                at.and_then(|i| kinds().get(i).map(|k| k.id.clone())).unwrap_or_else(|| "work".to_owned())
+                let fallback = if key == "kind" { "work" } else { "" };
+                at.and_then(|i| options(key).get(i).map(|k| k.id.clone())).unwrap_or_else(|| fallback.to_owned())
             }
             "accepts_tasks" | "counts_capacity" | "anchored" => controls::checked(control).to_string(),
             _ => controls::text(control).replace("\r\n", "\n"),
@@ -317,11 +321,16 @@ impl Dialog for Form {
                 ("until", UNTIL, line),
                 ("min_minutes", SHORTEST, ES_NUMBER as u32),
                 ("task_filter", FILTER, line),
-                ("colour", COLOUR, line),
             ] {
                 template = field(template, &label(key, true), id, style, RIGHT, y);
                 y += 28;
             }
+            // One of the palette's colours, or none, as Kind is one of the kinds.
+            let list = CBS_DROPDOWNLIST as u32 | WS_VSCROLL.0 | WS_TABSTOP.0;
+            template = template
+                .item(Class::Static, &label("colour", true), u16::MAX, 0, RIGHT, y, COLUMN, 9)
+                .item(Class::ComboBox, "", COLOUR, list, RIGHT, y + 10, COLUMN, 120);
+            y += 30;
             let notes = (ES_MULTILINE | ES_WANTRETURN | ES_AUTOVSCROLL) as u32 | WS_VSCROLL.0;
             template = template
                 .item(Class::Static, &label("notes", true), u16::MAX, 0, RIGHT, y, COLUMN, 9)
@@ -339,10 +348,12 @@ impl Dialog for Form {
 
     fn init(&self, hwnd: HWND) -> bool {
         self.hwnd.set(hwnd);
-        let kind = dialog::item(hwnd, KIND);
-        for choice in kinds() {
-            let text = HSTRING::from(choice.title.as_str());
-            controls::send(kind, CB_ADDSTRING, 0, text.as_ptr() as isize);
+        for (key, id) in [("kind", KIND), ("colour", COLOUR)] {
+            let control = dialog::item(hwnd, id);
+            for choice in options(key) {
+                let text = HSTRING::from(choice.title.as_str());
+                controls::send(control, CB_ADDSTRING, 0, text.as_ptr() as isize);
+            }
         }
         // An example of what each takes, greyed while it is empty.
         for field in block_form() {
@@ -398,7 +409,7 @@ impl Dialog for Form {
             _ => {
                 let (key, _, _) = FIELDS.iter().find(|(_, field, _)| *field == id)?;
                 let changed = match *key {
-                    "kind" => code == CBN_SELCHANGE,
+                    "kind" | "colour" => code == CBN_SELCHANGE,
                     "accepts_tasks" | "counts_capacity" | "anchored" => code == BN_CLICKED,
                     _ => code == EN_CHANGE,
                 };

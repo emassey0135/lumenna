@@ -53,8 +53,10 @@ pub fn ask(app: &App) {
                 .map(|(choice, line)| if choice.depth > 0 { format!("{}, level {}", line.text, choice.depth + 1) } else { line.text.clone() })
                 .collect();
             let reasons: Vec<String> = offered.choices.iter().map(|choice| choice.reason.clone().unwrap_or_default()).collect();
+            // A colour pick's marks, beside each colour's name.
+            let swatches: Vec<_> = offered.choices.iter().map(|choice| choice.swatch.clone()).collect();
             let named = asking.action.as_ref().map_or(title.as_str(), |action| action.title.as_str());
-            prompts::pick(owner, named, &format!("{title}:"), &texts, &reasons, yes)
+            prompts::pick(owner, named, &format!("{title}:"), &texts, &reasons, &swatches, yes)
                 .map(|index| Answer::Picked { id: offered.choices[index].id.clone(), length: None })
         }
     };

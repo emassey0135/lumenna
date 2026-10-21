@@ -2,22 +2,28 @@
 
 use std::cell::RefCell;
 
-use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, WPARAM};
+use windows::Win32::Graphics::Gdi::{
+    COLOR_HIGHLIGHT, COLOR_HIGHLIGHTTEXT, COLOR_WINDOW, COLOR_WINDOWTEXT, CreateSolidBrush, DT_END_ELLIPSIS, DT_NOPREFIX,
+    DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawFocusRect, DrawTextW, FillRect, GetDC, GetSysColor, GetTextMetricsW,
+    HGDIOBJ, ReleaseDC, SelectObject, SetBkMode, SetTextColor, TEXTMETRICW, TRANSPARENT,
+};
 use windows::Win32::UI::Controls::{
     TASKDIALOG_BUTTON, TASKDIALOGCONFIG, TD_WARNING_ICON, TDCBF_CANCEL_BUTTON, TDF_ALLOW_DIALOG_CANCELLATION,
-    TDF_POSITION_RELATIVE_TO_WINDOW, TaskDialogIndirect,
+    DRAWITEMSTRUCT, ODS_FOCUS, ODS_SELECTED, TDF_POSITION_RELATIVE_TO_WINDOW, TaskDialogIndirect,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     BS_DEFPUSHBUTTON, BS_PUSHBUTTON, ES_AUTOHSCROLL, IDCANCEL, IDOK, LB_ADDSTRING, LB_GETCURSEL,
-    LB_SETCURSEL, LBN_DBLCLK, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, MB_ICONWARNING, MB_OK, MessageBoxW,
+    LB_SETCURSEL, LB_SETITEMHEIGHT, LBN_DBLCLK, LBS_HASSTRINGS, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, LBS_OWNERDRAWFIXED,
+    MB_ICONWARNING, MB_OK, MessageBoxW, WM_DRAWITEM, WM_GETFONT,
     WS_BORDER, WS_TABSTOP, WS_VSCROLL,
 };
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::core::{HSTRING, PCWSTR};
 
-use lumenna_records::Syntax;
+use lumenna_records::{Swatch, Syntax};
 
-use super::{a11y, completion, controls, picker};
+use super::{a11y, completion, controls, dark, picker, swatch};
 use super::dialog::{self, Class, Dialog, Template};
 
 const FIELD: u16 = 100;
@@ -124,13 +130,55 @@ struct Pick<'a> {
     items: &'a [String],
     /// Why each is offered, said after it; empty where nothing is.
     reasons: &'a [String],
+    /// Each one's colour, drawn beside its text where any has one: the list then draws its own
+    /// items, keeping their strings for what a screen reader reads.
+    swatches: &'a [Option<Swatch>],
     yes: &'a str,
     chosen: RefCell<Option<usize>>,
 }
 
+impl Pick<'_> {
+    fn coloured(&self) -> bool {
+        self.swatches.iter().any(Option::is_some)
+    }
+
+    /// Draws one choice: its colour's mark, then its text, in the list's colours, the system's
+    /// for the selection.
+    fn draw(&self, item: &DRAWITEMSTRUCT) {
+        let Some(text) = usize::try_from(item.itemID).ok().and_then(|index| self.items.get(index)) else { return };
+        let swatch = self.swatches.get(item.itemID as usize).and_then(Option::as_ref);
+        let selected = item.itemState.0 & ODS_SELECTED.0 != 0;
+        let (back, fore) = if selected {
+            unsafe { (COLORREF(GetSysColor(COLOR_HIGHLIGHT)), COLORREF(GetSysColor(COLOR_HIGHLIGHTTEXT))) }
+        } else {
+            dark::field().unwrap_or_else(|| unsafe { (COLORREF(GetSysColor(COLOR_WINDOW)), COLORREF(GetSysColor(COLOR_WINDOWTEXT))) })
+        };
+        let dc = item.hDC;
+        let mut area = item.rcItem;
+        unsafe {
+            let brush = CreateSolidBrush(back);
+            FillRect(dc, &area, brush);
+            let _ = DeleteObject(brush.into());
+            let side = swatch::side(item.hwndItem);
+            area.left += 2;
+            swatch::draw(dc, &area, swatch, side);
+            // "No colour" lines up with the colours' names.
+            area.left += side + 4;
+            SetTextColor(dc, fore);
+            SetBkMode(dc, TRANSPARENT);
+            let mut wide: Vec<u16> = text.encode_utf16().collect();
+            DrawTextW(dc, &mut wide, &mut area, DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
+            if item.itemState.0 & ODS_FOCUS.0 != 0 {
+                let _ = DrawFocusRect(dc, &item.rcItem);
+            }
+        }
+    }
+}
+
 impl Dialog for Pick<'_> {
     fn template(&self) -> Template {
-        let style = (LBS_NOTIFY | LBS_NOINTEGRALHEIGHT) as u32 | WS_VSCROLL.0 | WS_BORDER.0 | WS_TABSTOP.0;
+        let drawn = if self.coloured() { (LBS_OWNERDRAWFIXED | LBS_HASSTRINGS) as u32 } else { 0 };
+        let style = (LBS_NOTIFY | LBS_NOINTEGRALHEIGHT) as u32 | drawn | WS_VSCROLL.0 | WS_BORDER.0 | WS_TABSTOP.0;
         Template::new(self.title, 260, 196)
             .item(Class::Static, self.label, u16::MAX, 0, 7, 7, 246, 9)
             .item(Class::ListBox, "", LIST, style, 7, 17, 246, 152)
@@ -148,8 +196,31 @@ impl Dialog for Pick<'_> {
             a11y::set_item_description(list, index as u32 + 1, reason);
         }
         controls::send(list, LB_SETCURSEL, 0, 0);
+        if self.coloured() {
+            // As tall as a line of its font, or its mark, with a little room.
+            let side = swatch::side(list);
+            let line = unsafe {
+                let dc = GetDC(Some(list));
+                let font = HGDIOBJ(controls::send(list, WM_GETFONT, 0, 0) as _);
+                let old = SelectObject(dc, font);
+                let mut metrics = TEXTMETRICW::default();
+                let _ = GetTextMetricsW(dc, &mut metrics);
+                SelectObject(dc, old);
+                ReleaseDC(Some(list), dc);
+                metrics.tmHeight
+            };
+            controls::send(list, LB_SETITEMHEIGHT, 0, (line.max(side) + 4) as isize);
+        }
         controls::focus(list);
         true
+    }
+
+    fn message(&self, _hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
+        if message != WM_DRAWITEM || wparam.0 != usize::from(LIST) {
+            return None;
+        }
+        self.draw(unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) });
+        Some(1)
     }
 
     fn command(&self, hwnd: HWND, id: u16, code: u16) -> Option<isize> {
@@ -169,13 +240,13 @@ impl Dialog for Pick<'_> {
 
 /// Offers a list and returns the position of the one chosen. `label` names the list, and
 /// `yes` is the button that takes the one chosen ("Move"). `reasons`, where not empty, say why
-/// each is offered: its description, said after it as a hint is.
-pub fn pick(owner: HWND, title: &str, label: &str, items: &[String], reasons: &[String], yes: &str) -> Option<usize> {
+/// each is offered: its description, said after it as a hint is; `swatches`, each one's colour.
+pub fn pick(owner: HWND, title: &str, label: &str, items: &[String], reasons: &[String], swatches: &[Option<Swatch>], yes: &str) -> Option<usize> {
     if items.is_empty() {
         fail(owner, &format!("{title}: there is nothing to choose from."));
         return None;
     }
-    let pick = Pick { title, label, items, reasons, yes, chosen: RefCell::new(None) };
+    let pick = Pick { title, label, items, reasons, swatches, yes, chosen: RefCell::new(None) };
     if dialog::run(Some(owner), &pick) == 1 { pick.chosen.into_inner().filter(|i| *i < items.len()) } else { None }
 }
 

@@ -27,6 +27,7 @@ mod settings;
 mod shell;
 mod shortcuts;
 mod sidebar;
+mod swatch;
 mod system;
 mod tasks;
 mod toast;

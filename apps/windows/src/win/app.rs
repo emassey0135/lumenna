@@ -41,7 +41,7 @@ use super::asking;
 use super::block_form;
 use super::blocks::BlockList;
 use super::clock::Formats;
-use super::{pairing, proposal, reminders, system};
+use super::{pairing, proposal, reminders, swatch, system};
 use super::shell::{Relay, WM_TURN};
 use super::controls::{self, rect};
 use super::core::{Poster, WM_SAY, said, taken};
@@ -851,6 +851,8 @@ impl App {
         if dark::refresh() {
             dark::window(self.main);
         }
+        // Colours' marks in the appearance now, or none under high contrast.
+        swatch::redraw_all();
         let font = self.message_font();
         if self.font_made_from.get() != (font.lfHeight, font.lfFaceName) {
             self.update_font();
@@ -1421,6 +1423,7 @@ unsafe extern "system" fn main_procedure(hwnd: HWND, message: u32, wparam: WPARA
                 );
                 app.update_font();
                 app.layout();
+                swatch::redraw_all();
             }
             WM_ACTIVATE => {
                 // Put focus back where it was, as a dialog does: otherwise returning with

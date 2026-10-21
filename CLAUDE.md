@@ -1313,6 +1313,13 @@ store of their own). Everything Win32 is in `src/win/` behind
   as MSAA's `PROPID_ACC_DESCRIPTION`, which NVDA and JAWS read, and as UI Automation's
   `HelpText`, which Narrator reads. UIA's proxy does not carry the MSAA one over. A pick's
   `Choice::reason` and a proposal's sitting reasons go this way.
+- **A colour is a mark beside the name** (`swatch.rs`): a filled circle in each tree's image
+  list, the swatch's `light` or `dark` by the app's mode, the list given to a tree only while a
+  row has a colour (so a tree without any has no gap) and taken away under high contrast. An
+  item's image is no part of its name to MSAA or UI Automation. The Colour pick's list box
+  draws its own items then (`LBS_OWNERDRAWFIXED | LBS_HASSTRINGS`, the strings kept for what a
+  screen reader reads); the block form's Colour is a drop-down, as Kind is. A UI test reads the
+  screen with its thread DPI aware, since UI Automation's places are physical pixels.
 - **Reminders are toasts** (`toast.rs`), given by the device's own delivery as the Mac's are
   (`Device::deliver_reminders`, their buttons writing through the device), under an app
   identity of their own (`LUMENNA_APP_ID` for tests), their buttons the core's: Carry Forward and Replan where a

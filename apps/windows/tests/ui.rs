@@ -360,6 +360,95 @@ fn a_project_renamed_from_the_sidebar_is_shown_under_its_new_name_its_row_still_
 
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn a_projects_colour_is_picked_from_the_palette_and_drawn_beside_its_name_never_in_it() {
+    // Places and pixels both in physical pixels, whatever the display's scale.
+    unsafe {
+        windows::Win32::UI::HiDpi::SetThreadDpiAwarenessContext(windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    }
+    // Light, so the mark is the palette's light teal.
+    let app = App::launch_with(&[("LUMENNA_DARK", "0")], |lumenna| {
+        lumenna.add_project("Garden", None).unwrap();
+    });
+    // Today, Tasks, Projects, Inbox, Garden.
+    app.post(&["f6", "home", "down", "down", "down", "down", "context"]);
+    choose_from_menu(&app, "Colour...");
+    let pick = automation::wait(Duration::from_secs(5), || {
+        let front = app.front();
+        front.iter().any(|l| l.contains("ListItem")).then_some(front)
+    })
+    .expect("the Colour pick opens");
+    let choices: Vec<&String> = pick.iter().filter(|l| l.contains("ListItem")).collect();
+    assert_eq!(choices.len(), 12, "No colour and the palette's eleven: {choices:#?}");
+    assert!(choices[0].contains("No colour"), "No colour comes first: {choices:#?}");
+    // Red, orange, yellow, green, teal: each choice's mark beside its name.
+    app.post(&["down", "down", "down", "down", "down"]);
+    let dialog = app.automation.front(app.window);
+    let teal = app.automation.place_of(dialog, "ListItem 'teal").expect("teal is offered");
+    assert!(marked(teal, 0, TEAL), "teal's choice has its mark");
+    let red = app.automation.place_of(dialog, "ListItem 'red").expect("red is offered");
+    assert!(!marked(red, 0, TEAL), "red's choice has no teal mark");
+    app.post(&["enter"]);
+    let coloured = automation::wait(Duration::from_secs(5), || {
+        let projects = app.store().list_projects().unwrap();
+        projects.rows.iter().find(|p| p.title == "Garden").and_then(|p| p.swatch.clone())
+    });
+    assert_eq!(coloured.map(|swatch| swatch.name).as_deref(), Some("teal"));
+    // The mark is before the sidebar's row, and its name is the words alone.
+    let garden = automation::wait(Duration::from_secs(5), || {
+        let lines = app.automation.dump(app.window, 10);
+        lines.iter().find(|l| l.contains("TreeItem 'Garden")).filter(|l| l.contains("teal")).cloned()
+    })
+    .expect("the sidebar says Garden's colour");
+    assert!(garden.contains("TreeItem 'Garden, "), "{garden}");
+    let row = app.automation.place_of(app.window, "TreeItem 'Garden").expect("Garden is in the sidebar");
+    assert!(automation::wait(Duration::from_secs(5), || marked(row, 40, TEAL).then_some(())).is_some(), "Garden's row has its mark");
+    let inbox = app.automation.place_of(app.window, "TreeItem 'Inbox").expect("the Inbox is in the sidebar");
+    assert!(!marked(inbox, 40, TEAL), "the Inbox has no colour, and no mark");
+}
+
+/// The palette's teal on a light background.
+const TEAL: [u8; 3] = [0x00, 0x79, 0x6B];
+
+/// Whether `colour` is on the screen along the middle of `place`, or as far as `before` to its
+/// left, where a tree draws an item's image beside the text it reports.
+fn marked(place: windows::Win32::Foundation::RECT, before: i32, colour: [u8; 3]) -> bool {
+    use windows::Win32::Graphics::Gdi::{
+        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DIB_RGB_COLORS, DeleteDC,
+        DeleteObject, GetDC, GetDIBits, ReleaseDC, SRCCOPY, SelectObject,
+    };
+    // A strip five pixels high, copied off the screen at once.
+    let (left, top) = (place.left - before, (place.top + place.bottom) / 2 - 2);
+    let (width, height) = (place.right - left, 5);
+    let mut pixels = vec![0u8; (width * height * 4).max(0) as usize];
+    unsafe {
+        let screen = GetDC(None);
+        let memory = CreateCompatibleDC(Some(screen));
+        let strip = CreateCompatibleBitmap(screen, width, height);
+        let old = SelectObject(memory, strip.into());
+        let _ = BitBlt(memory, 0, 0, width, height, Some(screen), left, top, SRCCOPY);
+        SelectObject(memory, old);
+        let mut header = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        GetDIBits(memory, strip, 0, height as u32, Some(pixels.as_mut_ptr().cast()), &mut header, DIB_RGB_COLORS);
+        let _ = DeleteObject(strip.into());
+        let _ = DeleteDC(memory);
+        ReleaseDC(None, screen);
+    }
+    pixels.chunks(4).any(|pixel| [pixel[2], pixel[1], pixel[0]].iter().zip(colour).all(|(got, want)| got.abs_diff(want) <= 12))
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn the_keyboard_opens_a_rows_context_menu() {
     let app = App::launch(|lumenna| add(lumenna, "Buy milk"));
     app.post(&[GO_TASKS, "home", "context"]);
@@ -523,9 +612,10 @@ fn the_block_form_has_every_setting_and_its_flags_follow_the_kind() {
     let flag = |name: &str| form.iter().find(|l| l.contains(&format!("CheckBox '{name}'"))).cloned().unwrap_or_default();
     assert!(flag("Takes tasks").contains(" unchecked"), "a break takes no tasks: {form:#?}");
     assert!(flag("Counts toward hours for work").contains(" unchecked"), "{}", flag("Counts toward hours for work"));
+    assert!(form.iter().any(|l| l.contains("ComboBox 'Colour")), "the colour is one of the palette's: {form:#?}");
     // Set apart from its kind — someone who works on the train — then the flags, the first
     // day and its calendar, and the right-hand column: repeats, last day, shortest length,
-    // filter, colour.
+    // filter, and the colour, a drop-down of the palette's names that its letters choose from.
     app.post(&[
         "tab",
         "space",

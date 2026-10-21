@@ -88,7 +88,15 @@ impl DayView {
             .items
             .iter()
             .zip(&lines.day)
-            .map(|(item, line)| Item { key: item.key.clone(), text: line.text.clone(), depth: item.depth, checked: None, expanded: item.expanded })
+            .map(|(item, line)| Item {
+                key: item.key.clone(),
+                text: line.text.clone(),
+                depth: item.depth,
+                checked: None,
+                expanded: item.expanded,
+                // A block's colour beside it; its sittings beneath go without.
+                swatch: item.block.as_ref().filter(|_| item.kind == DayKind::Block).and_then(|block| block.swatch.clone()),
+            })
             .collect();
         *self.rows.borrow_mut() = day.items.clone();
         *self.date.borrow_mut() = Some(day.date.clone());

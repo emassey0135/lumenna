@@ -70,6 +70,7 @@ impl Sidebar {
                 depth: entry.depth,
                 checked: None,
                 expanded: fold(entry).map(|kind| kind == ActionKind::Collapse),
+                swatch: entry.swatch.clone(),
             })
             .collect();
         *self.entries.borrow_mut() = view.sidebar.clone();

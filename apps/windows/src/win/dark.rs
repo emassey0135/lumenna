@@ -71,7 +71,8 @@ pub fn on() -> bool {
     ON.load(Ordering::Relaxed)
 }
 
-fn high_contrast() -> bool {
+/// Whether a high-contrast theme is on, whose system colours rule.
+pub fn high_contrast() -> bool {
     let mut contrast = HIGHCONTRASTW { cbSize: size_of::<HIGHCONTRASTW>() as u32, ..Default::default() };
     unsafe {
         let _ = SystemParametersInfoW(
@@ -218,6 +219,11 @@ fn control(hwnd: HWND) {
 fn brushes() -> &'static (isize, isize) {
     static BRUSHES: OnceLock<(isize, isize)> = OnceLock::new();
     BRUSHES.get_or_init(|| unsafe { (CreateSolidBrush(BACKGROUND).0 as isize, CreateSolidBrush(FIELD).0 as isize) })
+}
+
+/// A field's background and text, while dark: for a list that draws its own items.
+pub fn field() -> Option<(COLORREF, COLORREF)> {
+    on().then_some((FIELD, TEXT))
 }
 
 /// The window background brush, while dark.

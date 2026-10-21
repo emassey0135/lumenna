@@ -6,6 +6,9 @@
 //! `count`, `expanded` and `checked` become the tree's structure rather than words.
 
 use std::cell::{Cell, RefCell};
+use std::rc::Rc;
+
+use lumenna_records::Swatch;
 
 use windows::Win32::Foundation::{HWND, LPARAM, POINT, RECT};
 use windows::Win32::Graphics::Gdi::{ClientToScreen, InvalidateRect, ScreenToClient};
@@ -13,7 +16,7 @@ use windows::Win32::UI::Controls::{
     HTREEITEM, SetWindowTheme, TVE_COLLAPSE, TVE_EXPAND, TVGN_CARET, TVHITTESTINFO,
     TVI_LAST, TVM_HITTEST,
     TVI_ROOT, TVIF_PARAM, TVIF_STATE, TVIF_TEXT, TVINSERTSTRUCTW, TVINSERTSTRUCTW_0,
-    TVIS_STATEIMAGEMASK, TVITEMEXW, TVM_DELETEITEM, TVM_ENSUREVISIBLE, TVM_EXPAND,
+    TVIF_IMAGE, TVIF_SELECTEDIMAGE, TVIS_STATEIMAGEMASK, TVITEMEXW, TVM_DELETEITEM, TVM_ENSUREVISIBLE, TVM_EXPAND,
     TVM_GETITEMRECT, TVM_GETITEMW, TVM_GETNEXTITEM, TVM_INSERTITEMW, TVM_MAPHTREEITEMTOACCID,
     TVM_SELECTITEM, TVM_SETEXTENDEDSTYLE, TVM_SETITEMW, TVS_CHECKBOXES, TVS_DISABLEDRAGDROP,
     TVS_EX_DOUBLEBUFFER, TVS_HASBUTTONS, TVS_HASLINES, TVS_LINESATROOT, TVS_NOHSCROLL, TVS_SHOWSELALWAYS,
@@ -24,6 +27,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::{PWSTR, w};
 
+use super::swatch::Marks;
 use super::{a11y, controls};
 use crate::outline;
 
@@ -40,6 +44,8 @@ pub struct Item {
     /// Whether what is under it is shown, where the app folds the list; `None` for a tree
     /// whose rows all stay open.
     pub expanded: Option<bool>,
+    /// Its colour, drawn as a mark before the text and never part of it (`swatch.rs`).
+    pub swatch: Option<Swatch>,
 }
 
 /// A tree view, and the rows it was last given.
@@ -48,6 +54,7 @@ pub struct Tree {
     items: RefCell<Vec<Item>>,
     handles: RefCell<Vec<HTREEITEM>>,
     busy: Cell<bool>,
+    marks: Rc<Marks>,
 }
 
 impl Tree {
@@ -79,6 +86,7 @@ impl Tree {
             items: RefCell::new(Vec::new()),
             handles: RefCell::new(Vec::new()),
             busy: Cell::new(false),
+            marks: Marks::new(hwnd),
         }
     }
 
@@ -99,6 +107,7 @@ impl Tree {
             old.len() == items.len() && old.iter().zip(&items).all(|(a, b)| a.key == b.key && a.depth == b.depth)
         };
         self.busy.set(true);
+        self.marks.show(items.iter().any(|item| item.swatch.is_some()));
         if same {
             let changed: Vec<(usize, Item)> = {
                 let old = self.items.borrow();
@@ -107,12 +116,15 @@ impl Tree {
             let handles = self.handles.borrow().clone();
             for (index, item) in changed {
                 let mut text = wide(&item.text);
+                let image = self.marks.image(item.swatch.as_ref());
                 let mut tv = TVITEMEXW {
-                    mask: TVIF_TEXT | TVIF_STATE,
+                    mask: TVIF_TEXT | TVIF_STATE | TVIF_IMAGE | TVIF_SELECTEDIMAGE,
                     hItem: handles[index],
                     pszText: PWSTR(text.as_mut_ptr()),
                     state: state_image(item.checked),
                     stateMask: TVIS_STATEIMAGEMASK.0,
+                    iImage: image,
+                    iSelectedImage: image,
                     ..Default::default()
                 };
                 controls::send(self.hwnd, TVM_SETITEMW, 0, &raw mut tv as isize);
@@ -130,16 +142,19 @@ impl Tree {
             let mut handles: Vec<HTREEITEM> = Vec::with_capacity(items.len());
             for (index, item) in items.iter().enumerate() {
                 let mut text = wide(&item.text);
+                let image = self.marks.image(item.swatch.as_ref());
                 let insert = TVINSERTSTRUCTW {
                     hParent: parents[index].map_or(TVI_ROOT, |parent| handles[parent]),
                     hInsertAfter: TVI_LAST,
                     Anonymous: TVINSERTSTRUCTW_0 {
                         itemex: TVITEMEXW {
-                            mask: TVIF_TEXT | TVIF_PARAM | TVIF_STATE,
+                            mask: TVIF_TEXT | TVIF_PARAM | TVIF_STATE | TVIF_IMAGE | TVIF_SELECTEDIMAGE,
                             pszText: PWSTR(text.as_mut_ptr()),
                             lParam: LPARAM(index as isize),
                             state: state_image(item.checked),
                             stateMask: TVIS_STATEIMAGEMASK.0,
+                            iImage: image,
+                            iSelectedImage: image,
                             ..Default::default()
                         },
                     },

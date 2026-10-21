@@ -48,7 +48,7 @@ impl BlockList {
             .items
             .iter()
             .zip(&lines.list)
-            .map(|(item, line)| Item { key: item.row.id.clone(), text: line.text.clone(), depth: item.row.depth, checked: None, expanded: item.row.expanded })
+            .map(|(item, line)| Item { key: item.row.id.clone(), text: line.text.clone(), depth: item.row.depth, checked: None, expanded: item.row.expanded, swatch: item.row.swatch.clone() })
             .collect();
         *self.rows.borrow_mut() = list.items.iter().map(|item| item.row.clone()).collect();
         let rebuilt = self.tree.set(items);

@@ -130,6 +130,7 @@ impl Screen {
                     depth: 0,
                     checked: Some(change.checked),
                     expanded: None,
+                    swatch: None,
                 })
                 .collect();
             tree.set(items);
