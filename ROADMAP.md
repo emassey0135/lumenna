@@ -137,8 +137,6 @@ A day or less each, for between the larger pieces.
 - **Verbosity** shortens a reminder (its detail left out), the quick-add readback (the date
   once, as itself) and adding or scheduling a block (no time or day). Rows are components
   either way; find any other announcement that runs long under terse as it is met.
-- **The block chooser's coming week** is the seven days from today, not the week from the
-  week-start setting (which week-relative phrases now follow); say which it should be.
 
 ### Completion
 
