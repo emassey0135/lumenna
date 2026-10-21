@@ -120,6 +120,8 @@ impl Lumenna {
             }
             (S::Sitting, K::Unassign) => self.unassign(target),
             (S::Reminder, K::DeliverOn) => self.deliver_reminder(target.to_owned(), answer_pick(&answer)?.0),
+            (S::Task, K::TimeZone) => self.set_task_zone(target, Some(answer_text(&answer)?)),
+            (S::Series, K::TimeZone) => self.set_block_zone(target, Some(answer_text(&answer)?)),
             (S::Sitting, K::Skip) => self.skip_sitting(target, true),
             (S::Sitting, K::Unskip) => self.skip_sitting(target, false),
             (S::Sitting, K::MoveUp) => self.reorder_sitting(target, Direction::Up),

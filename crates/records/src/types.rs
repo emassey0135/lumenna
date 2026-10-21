@@ -724,6 +724,9 @@ pub struct PlanBlock {
     /// Its colour, by name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub colour: Option<String>,
+    /// The time zone it is held to, when it is one place's: its times are that zone's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timezone: Option<String>,
     /// Its notes.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub notes: String,

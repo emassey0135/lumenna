@@ -132,6 +132,8 @@ pub enum ActionKind {
     Unskip,
     /// Choose which devices a reminder fires on.
     DeliverOn,
+    /// Hold a task's due time or a block to one place's time zone, or let it float.
+    TimeZone,
 }
 
 /// What an action is done to: with [`ActionKind`], what runs.
@@ -473,6 +475,10 @@ pub fn task(snapshot: &Snapshot, task: &Task, done: bool, shown: bool) -> Vec<Ac
         stop.sentence = format!("Stop waiting for {title}");
         actions.push(stop);
     }
+    // A due time can be held to one place's time zone.
+    if let Some(due) = task.due.as_ref().filter(|due| due.time.is_some()) {
+        actions.push(time_zone(Subject::Task, &task.id.to_string(), &task.title, due.timezone.as_ref().map(lumenna_core::model::TzName::as_str)));
+    }
     // A task still to do can be reminded of at a moment of its own; one with a due date, also
     // counting from it (a repeating one comes round again, done or not).
     if !done || task.due.is_some() {
@@ -509,6 +515,7 @@ pub fn block(block: &PlanBlock) -> Vec<Action> {
         actions.push(a(K::RestoreDay, "Restore This Day"));
     }
     actions.push(action(K::Reminders, Subject::Series, "Reminders", block.series.clone()));
+    actions.push(time_zone(Subject::Series, &block.series, &block.title, block.timezone.as_deref()));
     actions.push(a(K::Delete, "Delete Block").asking(deleting_block(&block.title, block.repeats)));
     actions
 }
@@ -586,6 +593,7 @@ pub fn series(series: &BlockSeries) -> Vec<Action> {
     vec![
         action(ActionKind::Edit, Subject::Series, "Edit Block", id.clone()),
         action(ActionKind::Reminders, Subject::Series, "Reminders", id.clone()),
+        time_zone(Subject::Series, &id, &series.title, series.timezone.as_ref().map(lumenna_core::model::TzName::as_str)),
         action(ActionKind::Delete, Subject::Series, "Delete Block", id)
             .asking(deleting_block(&series.title, series.is_recurring())),
     ]
@@ -654,6 +662,15 @@ pub fn project(snapshot: &Snapshot, project: &Project) -> Vec<Action> {
         ],
     }));
     actions
+}
+
+/// What a time zone takes.
+pub const ZONE: &str = "A place's zone, such as America/New_York or Europe/London, for something tied to that place. Empty to keep to this device's time.";
+
+/// A task's or block's Time Zone, asking for a zone's name.
+fn time_zone(subject: Subject, target: &str, name: &str, zone: Option<&str>) -> Action {
+    action(ActionKind::TimeZone, subject, "Time Zone", target)
+        .asking(text(format!("Time zone of {name}"), "Time zone", zone.unwrap_or_default(), ZONE, true))
 }
 
 /// A project's, label's or saved filter's Colour, asking for a colour's name.

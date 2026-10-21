@@ -258,6 +258,26 @@ impl Lumenna {
         })
     }
 
+    /// Holds a block to one place's time zone, by its name, or lets it float with `None`:
+    /// every occurrence, since a zone is the series'.
+    ///
+    /// # Errors
+    ///
+    /// If no block matches `id`, or this device does not know the zone.
+    pub fn set_block_zone(&self, id: &str, zone: Option<String>) -> Result<Change> {
+        let zone = crate::tasks::zone_named(zone)?;
+        self.told(|store| {
+            store.load_all_years()?;
+            let snapshot = repaired(store);
+            let series_id = resolve::series_id(&snapshot, id)?;
+            let before = snapshot.series.get(&series_id).ok_or(EditError::NotFound { kind: "block" })?.clone();
+            let mut after = before.clone();
+            after.timezone = zone;
+            let change = edit::update_series(before, after);
+            record_or(store, &change, "it is already in that zone")
+        })
+    }
+
     /// Cancels one occurrence of a repeating block, leaving every other day alone.
     ///
     /// # Errors

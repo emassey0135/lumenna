@@ -388,9 +388,11 @@ fn push_task_rows(
             due_time: task.due.as_ref().and_then(|due| due.time),
             value: {
                 // "2 of 5 subtasks done": what a parent's row holds, whether or not they show.
-                let parts: Vec<String> = priority_words(task.priority)
-                    .map(str::to_owned)
+                // A due time held to one place's zone says so: its time is that zone's.
+                let zone = task.due.as_ref().and_then(|due| due.timezone.as_ref()).map(|zone| format!("{zone} time"));
+                let parts: Vec<String> = zone
                     .into_iter()
+                    .chain(priority_words(task.priority).map(str::to_owned))
                     .chain(done.get(&task.id).map(|(finished, all)| {
                         format!("{finished} of {all} {} done", if *all == 1 { "subtask" } else { "subtasks" })
                     }))

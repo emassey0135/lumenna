@@ -521,6 +521,11 @@ so evaluation, the readback and the accessibility layer never depend on the pars
 alone; each device asks of its own store and delivers its own, with no coordinator. The
 surface's `reminders.rs` words them and answers the apps.
 
+- **A due time or a block can be held to one place's time zone** (Time Zone, a row action on a
+  task due at a time and on a block, `set_task_zone`, `set_block_zone`): normally absent, so
+  times float with the device; set for something tied to a real place, stored as the tzdb
+  spells it, said on the row ("Europe/London time"), its reminders at that zone's moment. Its
+  times are shown as that zone's.
 - **A civil time becomes an instant only in `remind::instant`**, by RFC 5545's rule: a time a
   daylight-saving change skips moves forward by the gap (2:30 becomes 3:30 on the spring
   day), a time that happens twice is the first. A block keeps its real length across a

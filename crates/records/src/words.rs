@@ -57,6 +57,9 @@ pub fn block_details(block: &crate::types::PlanBlock) -> Vec<String> {
     if block.changed_for_this_day {
         parts.push("changed for this day".to_owned());
     }
+    if let Some(zone) = &block.timezone {
+        parts.push(format!("{zone} time"));
+    }
     // An unknown kind is taken as an event.
     let kind = crate::form::block_defaults(block.kind.clone())
         .unwrap_or(crate::form::BlockDefaults { accepts_tasks: false, counts_capacity: false, anchored: true });

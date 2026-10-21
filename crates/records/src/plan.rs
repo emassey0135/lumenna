@@ -93,6 +93,7 @@ pub fn plan(snapshot: &Snapshot, day: jiff::civil::Date, now: &Zoned) -> Result<
             counts_capacity: occurrence.flags.counts_capacity,
             anchored: occurrence.flags.anchored,
             colour: series.and_then(|s| s.color.clone()),
+            timezone: series.and_then(|s| s.timezone.as_ref()).map(ToString::to_string),
             notes: series.map(|s| s.notes.clone()).unwrap_or_default(),
             details: Vec::new(),
             actions: Vec::new(),

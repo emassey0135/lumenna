@@ -270,3 +270,26 @@ fn a_reminder_is_delivered_only_to_a_paired_device_and_already_everywhere_change
     assert!(refused.contains("not paired"), "{refused}");
     assert!(lumenna.deliver_reminder(reminder.id, "somewhere".to_owned()).is_err());
 }
+
+#[test]
+fn a_task_held_to_a_time_zone_says_so_and_its_reminder_fires_at_that_zones_time() {
+    let (_directory, lumenna) = open();
+    let task = lumenna.add_task("call London tomorrow at 3pm").unwrap().affected.tasks[0].clone();
+    let add = lumenna.reminders_of(task.clone()).unwrap().actions.remove(0);
+    lumenna.act(add, lumenna_host::Answer::Text { text: "at due".to_owned() }).unwrap();
+    let floating: Timestamp = lumenna.upcoming_reminders(hours(48)).unwrap().due[0].at.parse().unwrap();
+
+    let row = lumenna.list_tasks("").unwrap().rows.remove(0);
+    let zone = row.actions.iter().find(|a| a.title == "Time Zone").expect("a task due at a time offers it").clone();
+    assert!(lumenna.act(zone.clone(), lumenna_host::Answer::Text { text: "Atlantis/Lost".to_owned() }).is_err());
+    lumenna.act(zone, lumenna_host::Answer::Text { text: "europe/london".to_owned() }).unwrap();
+    let row = lumenna.list_tasks("").unwrap().rows.remove(0);
+    assert!(row.value.as_deref().unwrap_or_default().contains("Europe/London time"), "{:?}", row.value);
+
+    let held: Timestamp = lumenna.upcoming_reminders(hours(48)).unwrap().due[0].at.parse().unwrap();
+    let tomorrow = Zoned::now().date().tomorrow().unwrap();
+    let london = tomorrow.at(15, 0, 0, 0).in_tz("Europe/London").unwrap().timestamp();
+    assert_eq!(held, london, "3pm in London, wherever this device is");
+    let here = tomorrow.at(15, 0, 0, 0).to_zoned(jiff::tz::TimeZone::system()).unwrap().timestamp();
+    assert_eq!(floating, here, "a floating time is this device's");
+}

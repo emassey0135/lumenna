@@ -542,6 +542,7 @@ mod tests {
             counts_capacity: false,
             anchored: false,
             colour: Some("teal".to_owned()),
+            timezone: None,
             notes: "Phone off.".to_owned(),
             details: Vec::new(),
             actions: Vec::new(),

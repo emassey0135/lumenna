@@ -140,6 +140,28 @@ impl Lumenna {
         self.told(|store| crate::lists::tasks(&repaired(store), query, &now))
     }
 
+    /// Holds a task's due time to one place's time zone, by its name (`America/New_York`), or
+    /// lets it float with `None`.
+    ///
+    /// # Errors
+    ///
+    /// If no task matches `id`, it has no due time, or this device does not know the zone.
+    pub fn set_task_zone(&self, id: &str, zone: Option<String>) -> Result<Change> {
+        let zone = zone_named(zone)?;
+        self.told(|store| {
+            let snapshot = repaired(store);
+            let id = resolve::task_id(&snapshot, id)?;
+            let before = snapshot.tasks.get(&id).ok_or(EditError::NotFound { kind: "task" })?.clone();
+            let mut after = before.clone();
+            let due = after.due.as_mut().filter(|due| due.time.is_some()).ok_or_else(|| {
+                LumennaError::new("only a task due at a time is held to a time zone")
+            })?;
+            due.timezone = zone;
+            let change = edit::update_task(before, after);
+            record_or(store, &change, "it is already in that zone")
+        })
+    }
+
     /// What was done over the last two weeks, newest first: each task once, at the last time
     /// it was completed or worked on.
     ///
@@ -432,4 +454,19 @@ impl Lumenna {
             record_or(store, &change, "nothing changed")
         })
     }
+}
+
+/// A zone by its name, as this device's time zone database has it, so it is stored as the
+/// database spells it; `None`, or an empty name, floats.
+///
+/// # Errors
+///
+/// If the database does not know it.
+pub(crate) fn zone_named(zone: Option<String>) -> Result<Option<lumenna_core::model::TzName>> {
+    let Some(name) = zone.map(|z| z.trim().to_owned()).filter(|z| !z.is_empty() && !z.eq_ignore_ascii_case("none")) else {
+        return Ok(None);
+    };
+    let found = jiff::tz::TimeZone::get(&name)
+        .map_err(|_| LumennaError::new(format!("'{name}' is not a time zone this device knows; try one such as Europe/London")))?;
+    Ok(Some(lumenna_core::model::TzName::new(found.iana_name().unwrap_or(&name))))
 }
