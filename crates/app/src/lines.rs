@@ -76,13 +76,16 @@ pub fn lines(view: &ViewModel, clock: &dyn Clock) -> Lines {
                 day.items
                     .iter()
                     .map(|item| match item.kind {
-                        DayKind::Summary => Line::of(speech::summary(&day.date, &day.summary, clock), Vec::new()),
+                        DayKind::Summary => Line {
+                            braille: speech::summary(&day.date, &day.summary_braille, clock),
+                            ..Line::of(speech::summary(&day.date, &day.summary, clock), Vec::new())
+                        },
                         DayKind::Block => item.block.as_ref().map(|b| speech::block_line(b, clock)).unwrap_or_default(),
                         DayKind::Sitting => item.sitting.as_ref().map(speech::sitting_line).unwrap_or_default(),
                         DayKind::Free => item
                             .free
                             .as_ref()
-                            .map(|free| speech::free_line(&free.title, &free.details, &free.start, &free.end, clock))
+                            .map(|free| speech::free_line_brailled(free, clock))
                             .unwrap_or_default(),
                         DayKind::Now => item
                             .now

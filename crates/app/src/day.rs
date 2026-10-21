@@ -129,6 +129,8 @@ pub struct DayView {
     pub today: bool,
     /// The core's summary: "2 blocks, 3 hours of work, 1 task assigned".
     pub summary: String,
+    /// The summary as a braille display shows it: "2 blk, 3:00 wrk, 1 tsk".
+    pub summary_braille: String,
     /// The day's own actions: Plan the Day, Replan from Now, What Should I Work On?, …
     pub actions: Vec<Action>,
     /// Its rows, those folded away marked hidden.
@@ -203,6 +205,7 @@ pub fn day(plan: &Plan, today: bool, folded: &BTreeSet<String>) -> DayView {
         date: plan.date.clone(),
         today,
         summary: plan.summary.clone(),
+        summary_braille: plan.summary_braille.clone(),
         actions: plan.actions.clone(),
         items,
     }

@@ -38,8 +38,11 @@ def day_rows(session: Session) -> list[Row]:
     for index, item in enumerate(view.day.items):
         if item.hidden or item.kind == L.DayKind.SUMMARY:
             continue
-        line = lines.day[index].text if index < len(lines.day) else ""
-        rows.append(Row(item.key, line, item.actions, item, level=item.level, expanded=item.expanded))
+        line = lines.day[index] if index < len(lines.day) else None
+        rows.append(Row(
+            item.key, line.text if line else "", item.actions, item, level=item.level, expanded=item.expanded,
+            braille=line.braille if line else "",
+        ))
     return rows
 
 

@@ -27,6 +27,23 @@ pub fn duration(minutes: u32) -> String {
     }
 }
 
+/// A length as a braille display shows it, hours and minutes, shorter than words and never
+/// unclear: "1:15", "1:00", "0:15".
+#[must_use]
+pub fn duration_braille(minutes: u32) -> String {
+    format!("{}:{:02}", minutes / 60, minutes % 60)
+}
+
+/// [`block_details`] as a braille display shows them: the length as [`duration_braille`],
+/// the kind's short form ("wrk"), tasks assigned as "3 tsk"; the rest as said.
+#[must_use]
+pub fn block_braille(block: &crate::types::PlanBlock) -> Vec<String> {
+    let kind = crate::resolve::block_kind(&block.kind)
+        .map_or_else(|_| format!("{} block", block.kind), |kind| kind.abbreviation().to_owned());
+    let tasks = lumenna_core::row::Role::Task.abbreviation();
+    block_parts(block, duration_braille(block.duration_mins), kind, |n| format!("{n} {tasks}"))
+}
+
 /// How long ago a timestamp was, as a person says it: "just now", "5 minutes ago",
 /// "2 hours ago", "3 days ago". An unreadable timestamp is returned as it came.
 #[must_use]
@@ -50,7 +67,16 @@ pub fn ago(timestamp: &str, now: jiff::Timestamp) -> String {
 /// differs from the kind's own, so a work block is not "work block, takes tasks, movable".
 #[must_use]
 pub fn block_details(block: &crate::types::PlanBlock) -> Vec<String> {
-    let mut parts = vec![duration(block.duration_mins), format!("{} block", block.kind)];
+    block_parts(block, duration(block.duration_mins), format!("{} block", block.kind), |n| match n {
+        0 => "nothing assigned".to_owned(),
+        1 => "1 task assigned".to_owned(),
+        n => format!("{n} tasks assigned"),
+    })
+}
+
+/// A block's details from its length and kind as worded, and how its tasks are counted.
+fn block_parts(block: &crate::types::PlanBlock, length: String, kind: String, assigned: impl Fn(usize) -> String) -> Vec<String> {
+    let mut parts = vec![length, kind];
     if !block.when.is_empty() {
         parts.push(block.when.clone());
     }
@@ -70,11 +96,7 @@ pub fn block_details(block: &crate::types::PlanBlock) -> Vec<String> {
         parts.push(if block.anchored { "anchored" } else { "movable" }.to_owned());
     }
     if block.accepts_tasks {
-        parts.push(match block.assignments.len() {
-            0 => "nothing assigned".to_owned(),
-            1 => "1 task assigned".to_owned(),
-            n => format!("{n} tasks assigned"),
-        });
+        parts.push(assigned(block.assignments.len()));
     }
     parts
 }
@@ -91,6 +113,30 @@ pub fn sitting_details(sitting: &crate::types::PlanAssignment) -> Vec<String> {
         parts.push("capped, the timer looks forgotten".to_owned());
     }
     parts
+}
+
+/// [`sitting_details`] as a braille display shows them: lengths as [`duration_braille`],
+/// "plan 0:30" for what it is planned to take.
+#[must_use]
+pub fn sitting_braille(sitting: &crate::types::PlanAssignment) -> Vec<String> {
+    let mut parts = match sitting.planned_mins {
+        None => vec![sitting.status.clone()],
+        Some(planned) if sitting.status == "planned" => vec![format!("plan {}", duration_braille(planned))],
+        Some(planned) => vec![sitting.status.clone(), format!("plan {}", duration_braille(planned))],
+    };
+    if sitting.minutes > 0 {
+        parts.push(format!("{} logged", duration_braille(sitting.minutes)));
+    }
+    if sitting.capped {
+        parts.push("capped".to_owned());
+    }
+    parts
+}
+
+/// A day of a repeating block cancelled, as a braille display shows it.
+#[must_use]
+pub fn cancelled_braille() -> Vec<String> {
+    vec!["cancelled".to_owned()]
 }
 
 /// How syncing with a device is going, in words rather than an icon: "this device";

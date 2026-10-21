@@ -525,7 +525,8 @@ mod tests {
         // since a row shows both: or braille loses information speech has.
         let roles = [Role::Task, Role::Project, Role::Label, Role::Block, Role::Group];
         let mut abbrevs = std::collections::BTreeSet::new();
-        for abbrev in State::ALL.iter().map(|s| s.abbreviation()).chain(roles.iter().map(|r| r.abbreviation())) {
+        let kinds = crate::model::BlockKind::ALL.map(crate::model::BlockKind::abbreviation);
+        for abbrev in State::ALL.iter().map(|s| s.abbreviation()).chain(roles.iter().map(|r| r.abbreviation())).chain(kinds) {
             assert!(abbrevs.insert(abbrev), "two things are {abbrev} in braille");
         }
     }

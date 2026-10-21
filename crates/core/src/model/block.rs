@@ -145,6 +145,19 @@ pub enum BlockKind {
 }
 
 impl BlockKind {
+    /// Every kind.
+    pub const ALL: [Self; 3] = [Self::Work, Self::Break, Self::Event];
+
+    /// The braille short form for a block of this kind, which speech says as "work block".
+    #[must_use]
+    pub const fn abbreviation(self) -> &'static str {
+        match self {
+            Self::Work => "wrk",
+            Self::Break => "brk",
+            Self::Event => "evt",
+        }
+    }
+
     /// The flags this preset expands to. They remain individually overridable: a commute is
     /// a `Break`, but someone who works on the train wants it to accept tasks, and
     /// "protected admin time" is anchored *and* accepts tasks, which no preset covers.

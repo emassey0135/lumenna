@@ -188,7 +188,9 @@ pub fn block(block: &PlanBlock, clock: &dyn Clock) -> String {
 
 /// [`block`], as its times and title, then its details.
 pub fn block_line(block: &PlanBlock, clock: &dyn Clock) -> Line {
-    Line::of(format!("{} to {}, {}", clock.time(&block.start), clock.time(&block.end), block.title), block.details.clone())
+    let first = format!("{} to {}, {}", clock.time(&block.start), clock.time(&block.end), block.title);
+    let braille = join(vec![first.clone(), join(lumenna_records::words::block_braille(block))]);
+    Line { braille, ..Line::of(first, block.details.clone()) }
 }
 
 /// A sitting: a task in a block for one session — its title, then the details the
@@ -199,7 +201,8 @@ pub fn sitting(sitting: &PlanAssignment) -> String {
 
 /// [`sitting`], as its title and its details.
 pub fn sitting_line(sitting: &PlanAssignment) -> Line {
-    Line::of(sitting.title.clone(), sitting.details.clone())
+    let braille = join(vec![sitting.title.clone(), join(lumenna_records::words::sitting_braille(sitting))]);
+    Line { braille, ..Line::of(sitting.title.clone(), sitting.details.clone()) }
 }
 
 /// Free time, which a timeline shows by empty space and a list has to say.
@@ -220,6 +223,13 @@ pub fn free_line(title: &str, details: &[String], start: &str, end: &str, clock:
     Line::of(title.to_owned(), parts)
 }
 
+/// [`free_line`] with its length as a braille display shows it, `minutes` as "1:00".
+pub fn free_line_brailled(free: &crate::day::FreeTime, clock: &dyn Clock) -> Line {
+    let span = format!("{} to {}", clock.time(&free.start), clock.time(&free.end));
+    let braille = join(vec![free.title.clone(), lumenna_records::words::duration_braille(free.minutes), span]);
+    Line { braille, ..free_line(&free.title, &free.details, &free.start, &free.end, clock) }
+}
+
 /// Where the present falls: a position, not a highlight.
 pub fn now(time: &str, clock: &dyn Clock) -> String {
     format!("Now, {}", clock.time(time))
@@ -232,7 +242,9 @@ pub fn cancelled(block: &CancelledBlock, clock: &dyn Clock) -> String {
 
 /// [`cancelled`], as its time and title, then its details.
 pub fn cancelled_line(block: &CancelledBlock, clock: &dyn Clock) -> Line {
-    Line::of(format!("{}, {}", clock.time(&block.start), block.title), block.details.clone())
+    let first = format!("{}, {}", clock.time(&block.start), block.title);
+    let braille = join(vec![first.clone(), join(lumenna_records::words::cancelled_braille())]);
+    Line { braille, ..Line::of(first, block.details.clone()) }
 }
 
 /// The day's first row: what a glance at a timeline gives a sighted user.
@@ -419,6 +431,16 @@ mod tests {
         assert_eq!(line.title, "9:00 AM to 11:00 AM, Deep work");
         assert_eq!(line.detail, "2 hours, work block, now, 1 task assigned");
         assert_eq!(line.text, super::block(&block, &TwelveHour));
+        // Braille: the length in hours and minutes, the kind short, the tasks counted short.
+        assert_eq!(line.braille, "9:00 AM to 11:00 AM, Deep work, 2:00, wrk, now, 1 tsk");
+        let sitting = sitting_line(&sitting_with("done", Some(75), 15));
+        assert_eq!(sitting.braille, "Write report, done, plan 1:15, 0:15 logged");
+    }
+
+    #[test]
+    fn a_length_in_braille_is_hours_and_minutes() {
+        use lumenna_records::words::duration_braille;
+        assert_eq!([duration_braille(75), duration_braille(60), duration_braille(15)], ["1:15", "1:00", "0:15"]);
     }
 
     /// Writes a date as its parts, so a test sees which parts the core asked for.

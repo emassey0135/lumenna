@@ -736,9 +736,13 @@ tests run on `tests/btspeak_stub.py`, with the core built and `target/debug` on 
   opens, one after another, with the device's dialogs: a question (a refusal staying in it), the
   block form, a proposal, a reminder list. The task form registers in `actions.FORMS`.
 - **Speech and braille come from one string**, but where the app shows a line apart in
-  braille (`Line::braille`: a list row's states as the core's short forms, "ovd rec"), which is
-  the menu item's `braille_title`, as the device's own mail list shows its statuses short. A
-  row's kind is never shown: speech never says it, and in a list of tasks it says nothing.
+  braille (`Line::braille`), which is the menu item's `braille_title`, as the device's own mail
+  list shows its statuses short: a list row's states as the core's short forms ("ovd rec"), and
+  the day's rows and heading short where speech says it long (`words::block_braille`,
+  `sitting_braille`, `Plan::summary_braille`): a length as hours and minutes ("1:15", "1:00",
+  "0:15"), a block's kind as `wrk`, `brk` or `evt`, tasks counted as "3 tsk". A list row's kind
+  is never shown: speech never says it, and in a list of one kind it says nothing. Every short
+  form is the core's, and one test keeps states, roles and kinds apart.
 - **Depth is never indentation**: it says nothing in speech. The app says the level only where
   it *changes*, against the previous *visible* row, so folding keeps it right.
 - **A menu reopens on the app's row in hand** (`live_menu`'s `focus`), and is drawn after it is

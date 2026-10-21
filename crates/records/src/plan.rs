@@ -138,6 +138,7 @@ pub fn plan(snapshot: &Snapshot, day: jiff::civil::Date, now: &Zoned) -> Result<
         date: day.to_string(),
         count: to_u32(blocks.len()),
         summary: summary(&blocks, overdue),
+        summary_braille: summary_braille(&blocks, overdue),
         timeline,
         blocks,
         cancelled,
@@ -313,6 +314,26 @@ fn summary(blocks: &[PlanBlock], overdue: Option<usize>) -> String {
     }
     let sentence = parts.join(", ");
     sentence[..1].to_uppercase() + &sentence[1..]
+}
+
+/// [`summary`] as a braille display shows it: each count with its short form, the work in
+/// hours and minutes, no capital to spend a cell on.
+fn summary_braille(blocks: &[PlanBlock], overdue: Option<usize>) -> String {
+    use lumenna_core::row::Role;
+    if blocks.is_empty() {
+        return format!("0 {}", Role::Block.abbreviation());
+    }
+    let work: u32 = blocks.iter().filter(|b| b.counts_capacity).map(|b| b.duration_mins).sum();
+    let assigned: usize = blocks.iter().map(|b| b.assignments.len()).sum();
+    let mut parts = vec![format!("{} {}", blocks.len(), Role::Block.abbreviation())];
+    if work > 0 {
+        parts.push(format!("{} {}", crate::words::duration_braille(work), BlockKind::Work.abbreviation()));
+    }
+    parts.push(format!("{assigned} {}", Role::Task.abbreviation()));
+    if let Some(overdue) = overdue.filter(|n| *n > 0) {
+        parts.push(format!("{overdue} {}", lumenna_core::state::State::Overdue.abbreviation()));
+    }
+    parts.join(", ")
 }
 
 /// A block kind as its word: work, break or event.

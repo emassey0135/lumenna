@@ -68,6 +68,17 @@ class Menus(unittest.TestCase):
 
     # -- tasks ------------------------------------------------------------------------
 
+    def test_a_days_block_is_shown_short_in_braille_its_length_as_hours_and_minutes(self):
+        self.call("block.add", title="Deep work", at="11pm", minutes=45, date="today")
+        self.store.caught_up()
+        self.session.show(L.PlaceToday())
+        made = [item for item in rows.items(day.day_rows(self.session)) if "Deep work" in item.get_title()]
+        self.assertEqual(len(made), 1, [item.get_title() for item in rows.items(day.day_rows(self.session))])
+        block = made[0]
+        self.assertIn("45 minutes, work block", block.get_title())
+        self.assertIn("0:45, wrk", block.get_braille_title())
+        self.assertIn("0 tsk", block.get_braille_title())
+
     def test_a_rows_states_are_said_whole_and_shown_short_in_braille(self):
         self.call("task.add", text="pay the rent yesterday")
         self.call("task.add", text="water the plants")

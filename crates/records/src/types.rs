@@ -601,6 +601,9 @@ pub struct Plan {
     /// *"Six blocks, four hours of work, three tasks assigned, one overdue."*
     #[serde(default)]
     pub summary: String,
+    /// The summary as a braille display shows it: "4 blk, 4:00 wrk, 3 tsk, 1 ovd".
+    #[serde(default)]
+    pub summary_braille: String,
     /// The day as it is lived, in order: blocks, the free time between them, and where now
     /// falls: what a timeline shows by empty space, a list has to say as a row.
     #[serde(default)]
