@@ -1416,9 +1416,14 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   `GtkCalendar` for a block's day and Go to Day's, for a pointer alone (a named group out of the
   focus chain: GTK 4 gives AT-SPI its month and year buttons and none of its days, so arrowing
   through it said nothing), and, since GTK has no time picker, two spin
-  buttons, hours and minutes, for a block's start and a time setting, a group named by the core's
-  `picker_words` after the line's name where a page has several. A setting's clock is applied
-  when it is left, as its line is.
+  buttons, hours and minutes, for a block's start and a time setting, each described by the core's
+  `picker_words` after the line's name where a page has several. Not a named group: Orca said a
+  group's name twice going into a spin button. Orca says "Text unselected" after a spin button's
+  value as it comes in: GTK selects its text on focus and then sets it, and neither a
+  non-editable spin button (its arrows then said nothing) nor clearing the selection on focus
+  stopped it. A setting's clock is applied when it is left, as its line is.
+- **Orca says "opens popup" on every entry** (GTK reports a text field's context menu) and a
+  field's mnemonic letter before its hint ("A A time, such as 9am"): both Orca's and GTK's own.
 - **Dialogs are futures** (GTK 4 has no blocking `run`). While a popover menu is open,
   `window::spawn` waits for it to close, so a dialog is not mapped under a closing menu.
 - **A keyboard context menu opens when its keys are let go**: a popover opened on

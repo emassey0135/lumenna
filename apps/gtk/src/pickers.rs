@@ -76,14 +76,15 @@ pub fn calendar(entry: &gtk::Entry, from: Option<&str>) -> gtk::Calendar {
 /// is one in `HH:MM`, else `from` (`HH:MM`); a time chosen goes into the entry.
 pub fn clock(entry: &gtk::Entry, from: Option<&str>, of: Option<&str>) -> gtk::Box {
     let words = lumenna_records::picker_words();
-    let group = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(6).accessible_role(gtk::AccessibleRole::Group).build();
-    let name = of.map_or_else(|| words.time.clone(), |of| format!("{of}, {}", words.time));
-    group.update_property(&[gtk::accessible::Property::Label(&name)]);
+    // Not a named group: Orca said a group's name twice on the way into a spin button, once for
+    // the spin button and once for the text inside it. Each says what it is a part of instead.
+    let group = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(6).build();
+    let clock = of.map_or_else(|| words.time.clone(), |of| format!("{of}, {}", words.time));
     let spin = |most: f64, name: &str| {
         let spin = gtk::SpinButton::with_range(0.0, most, 1.0);
         spin.set_wrap(true);
         spin.set_numeric(true);
-        spin.update_property(&[gtk::accessible::Property::Label(name)]);
+        spin.update_property(&[gtk::accessible::Property::Label(name), gtk::accessible::Property::Description(&clock)]);
         spin
     };
     let (hours, minutes) = (spin(23.0, &words.hours), spin(59.0, &words.minutes));
