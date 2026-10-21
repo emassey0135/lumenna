@@ -20,6 +20,7 @@
 //! debugging convenience; and `--help` treated as an **accessibility surface**, since it is
 //! the primary discovery mechanism for anyone who cannot skim a GUI.
 
+mod complete;
 mod durability;
 mod error;
 mod network;
@@ -351,7 +352,8 @@ pub(crate) enum Command {
     /// process writes to it. No syncing; that is the daemon's job.
     Rpc,
 
-    /// Print a shell completion script.
+    /// Print a shell completion script, which completes project, label and filter names from
+    /// the store as one types.
     Completions {
         /// Which shell.
         shell: clap_complete::Shell,
@@ -412,7 +414,7 @@ pub(crate) enum TaskCommand {
         #[arg(long)]
         notes: Option<String>,
         /// Move it to a project by name.
-        #[arg(long)]
+        #[arg(long, add = clap_complete::ArgValueCompleter::new(complete::projects))]
         project: Option<String>,
         /// The labels it should wear, comma-separated, replacing its own. An empty string
         /// takes them all off. New names become labels.
@@ -468,7 +470,7 @@ pub(crate) enum TaskCommand {
         #[arg(long)]
         parent: Option<String>,
         /// Put it in this project, by name.
-        #[arg(long)]
+        #[arg(long, add = clap_complete::ArgValueCompleter::new(complete::projects))]
         project: Option<String>,
         /// Take it out from under its parent.
         #[arg(long)]
@@ -513,7 +515,7 @@ pub(crate) enum ProjectCommand {
         /// Its name.
         name: String,
         /// Put it under this project.
-        #[arg(long)]
+        #[arg(long, add = clap_complete::ArgValueCompleter::new(complete::projects))]
         parent: Option<String>,
     },
     /// List projects.
@@ -521,6 +523,7 @@ pub(crate) enum ProjectCommand {
     /// Rename a project.
     Rename {
         /// The project to rename.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::projects))]
         name: String,
         /// Its new name.
         to: String,
@@ -528,11 +531,13 @@ pub(crate) enum ProjectCommand {
     /// Archive a project, keeping its tasks out of active views — or unarchive one that is.
     Archive {
         /// The project to archive or unarchive.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::projects))]
         name: String,
     },
     /// Delete a project.
     Rm {
         /// The project to delete.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::projects))]
         name: String,
         /// Keep its tasks, moved to the Inbox, instead of trashing them.
         #[arg(long)]
@@ -541,6 +546,7 @@ pub(crate) enum ProjectCommand {
     /// Move a project under another, or to the top level.
     Move {
         /// The project to move.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::projects))]
         name: String,
         /// Put it under this project.
         #[arg(long, conflicts_with = "top")]
@@ -552,6 +558,7 @@ pub(crate) enum ProjectCommand {
     /// Move a project one place up or down among its siblings.
     Order {
         /// The project.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::projects))]
         name: String,
         /// up or down.
         direction: Way,
@@ -562,6 +569,7 @@ pub(crate) enum ProjectCommand {
     /// how much a whole area matters right now.
     Weight {
         /// The project.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::projects))]
         name: String,
         /// The multiplier, or `inherit` to take the parent's again.
         value: String,
@@ -640,6 +648,7 @@ pub(crate) enum LabelCommand {
     /// Rename a label. Every task wearing it follows.
     Rename {
         /// The label to rename.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::labels))]
         name: String,
         /// Its new name.
         to: String,
@@ -647,13 +656,16 @@ pub(crate) enum LabelCommand {
     /// Fold one label into another, for when a typo made a near-duplicate.
     Merge {
         /// The label to retire.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::labels))]
         from: String,
         /// The label to keep.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::labels))]
         into: String,
     },
     /// Move a label one place up or down.
     Order {
         /// The label.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::labels))]
         name: String,
         /// up or down.
         direction: Way,
@@ -661,6 +673,7 @@ pub(crate) enum LabelCommand {
     /// Give a label a colour, or `none`. The name always shows too.
     Colour {
         /// The label.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::labels))]
         name: String,
         /// A colour name, such as `red`, or `none`.
         colour: String,
@@ -668,6 +681,7 @@ pub(crate) enum LabelCommand {
     /// Delete a label. Tasks wearing it simply stop showing it.
     Rm {
         /// The label to delete.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::labels))]
         name: String,
         /// Skip the confirmation.
         #[arg(long)]
@@ -689,6 +703,7 @@ pub(crate) enum FilterCommand {
     /// Rename a saved filter or change its query.
     Edit {
         /// Its name.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::filters))]
         name: String,
         /// A new name.
         #[arg(long)]
@@ -700,6 +715,7 @@ pub(crate) enum FilterCommand {
     /// Move a saved filter one place up or down.
     Order {
         /// Its name.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::filters))]
         name: String,
         /// up or down.
         direction: Way,
@@ -707,6 +723,7 @@ pub(crate) enum FilterCommand {
     /// Delete a saved filter.
     Rm {
         /// Its name.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::filters))]
         name: String,
         /// Skip the confirmation.
         #[arg(long)]
@@ -917,6 +934,8 @@ pub(crate) enum ConfigCommand {
     },
 }
 fn main() -> ExitCode {
+    // Completing for the shell (`COMPLETE=bash lum ...`) answers and exits before anything else.
+    clap_complete::CompleteEnv::with_factory(<Cli as clap::CommandFactory>::command).bin("lum").complete();
     let cli = Cli::parse();
     let format = Format::from_flag(cli.json);
     match run(&cli, format) {
@@ -930,8 +949,18 @@ fn main() -> ExitCode {
 
 fn run(cli: &Cli, format: Format) -> Result<()> {
     if let Command::Completions { shell } = &cli.command {
-        let mut command = <Cli as clap::CommandFactory>::command();
-        clap_complete::generate(*shell, &mut command, "lum", &mut std::io::stdout());
+        // The dynamic registration, which asks `lum` itself as one types, so projects, labels and
+        // filters come from the store; a shell without one gets the static script.
+        let name = shell.to_string();
+        match clap_complete::env::Shells::builtins().completer(&name) {
+            Some(completer) => completer
+                .write_registration("COMPLETE", "lum", "lum", "lum", &mut std::io::stdout())
+                .map_err(|e| CliError::Message(e.to_string()))?,
+            None => {
+                let mut command = <Cli as clap::CommandFactory>::command();
+                clap_complete::generate(*shell, &mut command, "lum", &mut std::io::stdout());
+            }
+        }
         return Ok(());
     }
 

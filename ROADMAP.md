@@ -163,8 +163,6 @@ The core's `complete` works everywhere; what is missing is how each app offers i
 - **BTSpeak**: a key inside the input dialog (Ctrl-L, dots 7-8 plus L, once checked against
   global BRLTTY chords) completing at the cursor, never opening on `#` or `@` by itself.
   Needs an `InputDialog` subclass; today choices come after Enter, for the last word only.
-- **The shell**: `lum completions` is static. clap_complete's dynamic mode would complete
-  project, label and filter names from the store.
 
 ### Each app
 

@@ -260,6 +260,9 @@ real profile.
 - **`api.rs` is an envelope, not the surface**: the contract version and an `Outcome`
   wrapping a surface record, rendered as prose or JSON, neither computing anything the other
   lacks. A command reachable only by reading prose off stdout is not on the surface.
+- **The shell completes names from the store** (`complete.rs`, clap_complete's dynamic mode):
+  `lum completions <shell>` prints a registration that asks `lum` itself (`COMPLETE=bash lum`)
+  as one types, so a project, label or saved filter argument offers the store's names.
 - **`--json` is a versioned compatibility contract** for scripts. Reshaping `api.rs` or a
   surface record is a breaking change.
 

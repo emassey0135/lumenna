@@ -1133,3 +1133,31 @@ fn a_block_takes_a_reminder_of_its_own_in_place_of_the_default_and_it_comes_up()
     let upcoming = lum.ok(&["reminder", "upcoming", "--hours", "3"]);
     assert!(upcoming.contains("Deep work ends in 10 minutes"), "{upcoming}");
 }
+
+#[test]
+fn the_shell_completes_project_label_and_filter_names_from_the_store() {
+    let lum = Lum::new();
+    lum.ok(&["project", "add", "Work"]);
+    lum.ok(&["project", "add", "Home"]);
+    lum.ok(&["label", "add", "calls"]);
+    lum.ok(&["filter", "add", "Urgent", "p1"]);
+    let complete = |words: &[&str]| {
+        let output = Command::new(env!("CARGO_BIN_EXE_lum"))
+            .arg("--")
+            .args(words)
+            .env("LUMENNA_PROFILE", lum.profile.path())
+            .env("LUMENNA_BACKUP_DIR", lum.profile.path().join("backups"))
+            .env("COMPLETE", "bash")
+            .env("_CLAP_COMPLETE_INDEX", (words.len() - 1).to_string())
+            .env("_CLAP_COMPLETE_COMP_TYPE", "9")
+            .env("_CLAP_COMPLETE_SPACE", "true")
+            .env("_CLAP_IFS", "\n")
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&output.stdout).lines().map(str::to_owned).collect::<Vec<_>>()
+    };
+    assert_eq!(complete(&["lum", "project", "rename", "W"]), ["Work"]);
+    assert!(complete(&["lum", "label", "rename", ""]).contains(&"calls".to_owned()));
+    assert_eq!(complete(&["lum", "filter", "rm", "u"]), ["Urgent"]);
+    assert!(lum.ok(&["completions", "bash"]).contains("COMPLETE"), "the registration asks lum itself");
+}
