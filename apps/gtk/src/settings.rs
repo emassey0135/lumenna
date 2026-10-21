@@ -476,6 +476,17 @@ fn make(slot: &gtk::Box, setting: &Setting, mnemonic: char, filling: &Rc<Cell<bo
                 leave.connect_leave(move |_| commit(&entry));
             }
             entry.add_controller(leave);
+            // A time has GTK's own clock beneath its line, applied, as the line is, once left.
+            if setting.kind == SettingKind::Time {
+                let clock = crate::pickers::clock(&entry, Some(&setting.value), Some(&setting.title));
+                let leave = gtk::EventControllerFocus::new();
+                {
+                    let (entry, commit) = (entry.clone(), commit.clone());
+                    leave.connect_leave(move |_| commit(&entry));
+                }
+                clock.add_controller(leave);
+                slot.append(&clock);
+            }
             entry.connect_activate(commit);
             Control::Line(entry, problem)
         }

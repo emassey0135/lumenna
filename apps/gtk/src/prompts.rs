@@ -256,7 +256,18 @@ fn label_for(text: &str, field: &impl IsA<gtk::Widget>) -> gtk::Label {
 
 /// Asks for one line of text. `message` says what is wanted, beneath the field.
 /// `yes` is the button that answers, a verb as GNOME has it ("Rename", "Add"), not OK.
-pub async fn ask(parent: &impl IsA<gtk::Window>, title: &str, label: &str, message: &str, initial: &str, yes: &str) -> Option<String> {
+///
+/// When it asks for a day, GTK's calendar is beneath the line, open on `day` (ISO) unless the
+/// line names one, a day chosen there filling the line.
+pub async fn ask(
+    parent: &impl IsA<gtk::Window>,
+    title: &str,
+    label: &str,
+    message: &str,
+    initial: &str,
+    yes: &str,
+    day: Option<&str>,
+) -> Option<String> {
     let entry = gtk::Entry::builder().text(initial).activates_default(true).build();
     let content = gtk::Box::new(gtk::Orientation::Vertical, 6);
     content.append(&label_for(label, &entry));
@@ -265,6 +276,9 @@ pub async fn ask(parent: &impl IsA<gtk::Window>, title: &str, label: &str, messa
         let note = gtk::Label::builder().label(message).wrap(true).xalign(0.0).build();
         entry.update_relation(&[gtk::accessible::Relation::DescribedBy(&[note.upcast_ref()])]);
         content.append(&note);
+    }
+    if let Some(day) = day {
+        content.append(&crate::pickers::calendar(&entry, Some(day)));
     }
     let field = entry.clone();
     let answer = open(parent, title, content.upcast_ref(), move || Some(field.text().to_string()), yes);

@@ -74,7 +74,8 @@ class DayTest(unittest.TestCase):
 
     def test_the_block_form_sends_a_flag_set_apart_from_the_kind(self):
         self.edit_block()
-        self.session.press(*["Tab"] * 6)
+        # Past the start and its clock, hours and minutes.
+        self.session.press(*["Tab"] * 8)
         self.assertEqual(self.session.focus(), "[check box] 'Anchored, never moved when the day slips'")
         self.session.press("space", "Alt+v", wait=1)
         self.assertEqual(self.session.said(), ["Changed block All day"])
@@ -83,7 +84,8 @@ class DayTest(unittest.TestCase):
 
     def test_a_new_kind_brings_its_own_flags(self):
         self.edit_block()
-        self.session.press("Tab", "Tab", "Tab", "space", "Down", "Return", "Tab")
+        # Past the start and its clock, hours and minutes, to the kind.
+        self.session.press(*["Tab"] * 5, "space", "Down", "Return", "Tab")
         self.assertEqual(self.session.focus(), "[check box] 'Takes tasks'", "a break takes no tasks")
         self.session.press("Alt+v", wait=1)
         shown = self.session.lum("block", "show", self.block)
@@ -99,7 +101,8 @@ class DayTest(unittest.TestCase):
         self.session.tab_to("Today only")
         self.session.press("Return")
         self.session.wait_for_window("Change All day, this day only")
-        self.session.press(*["Tab"] * 6)
+        # Past the start and its clock, hours and minutes.
+        self.session.press(*["Tab"] * 8)
         self.assertEqual(self.session.focus(), "[check box] 'Anchored, never moved when the day slips'")
         self.session.press("Tab")
         self.assertEqual(self.session.focus(), "[button] 'Cancel'", "no repetition, filter, colour or notes")
@@ -122,6 +125,24 @@ class DayTest(unittest.TestCase):
         self.session.press("Alt+d", "Control+a")
         self.session.type("in 3 days")
         self.assertEqual(self.starts_at(), "10:15", "a start the person chose stays")
+
+    def test_a_new_blocks_day_and_start_have_gtks_pickers_beneath_their_lines(self):
+        self.session.press("Control+Shift+n")
+        self.session.wait_for_window("New Block")
+        # The calendar is a pointer's: Tab goes from the day's line to the start's.
+        self.assertIsNotNone(self.session.find("grouping", "Choose a Day"))
+        self.session.press("Alt+d", "Tab")
+        self.assertEqual(self.session.focus(), "[text] 'Starts at'")
+        self.session.press("Control+a")
+        self.session.type("09:30")
+        # The clock beneath the line follows it, and fills it as it turns.
+        self.session.press("Tab")
+        self.assertIn("'Hours'", self.session.focus())
+        self.session.press("Up", wait=0.5)
+        self.assertEqual(self.starts_at(), "10:30")
+        self.session.press("Tab", "Down", wait=0.5)
+        self.assertIn("'Minutes'", self.session.focus())
+        self.assertEqual(self.starts_at(), "10:29")
 
     def test_delete_on_a_sitting_takes_it_out_of_the_block(self):
         self.session.press("Down", "Delete")

@@ -1412,6 +1412,13 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
 - **A short list is a tree sized to its rows** (`Tree::fit`), hidden when empty. A list box
   in a scroller made the scroller a nameless Tab stop, and making the scroller
   non-focusable broke Tab for the whole page.
+- **A day or a time has GTK's own picker beneath its line** (`pickers.rs`), filling it: a
+  `GtkCalendar` for a block's day and Go to Day's, for a pointer alone (a named group out of the
+  focus chain: GTK 4 gives AT-SPI its month and year buttons and none of its days, so arrowing
+  through it said nothing), and, since GTK has no time picker, two spin
+  buttons, hours and minutes, for a block's start and a time setting, a group named by the core's
+  `picker_words` after the line's name where a page has several. A setting's clock is applied
+  when it is left, as its line is.
 - **Dialogs are futures** (GTK 4 has no blocking `run`). While a popover menu is open,
   `window::spawn` waits for it to close, so a dialog is not mapped under a closing menu.
 - **A keyboard context menu opens when its keys are let go**: a popover opened on

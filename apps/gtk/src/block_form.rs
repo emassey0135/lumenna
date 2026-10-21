@@ -15,7 +15,7 @@ use gtk::prelude::*;
 use gtk::{gdk, glib};
 use lumenna_app::{BlockEvent, BlockFormView};
 use lumenna_ffi::ShellEvent;
-use lumenna_records::BlockFields;
+use lumenna_records::{BlockFields, FieldKind};
 
 use crate::prompts;
 use crate::window::App;
@@ -234,6 +234,19 @@ fn build(app: &App, view: &BlockFormView) -> Rc<Open> {
                     .build();
                 body.append(&scroller);
                 with.push(scroller.upcast());
+            }
+            Control::Line(entry) => {
+                body.append(&widget);
+                // A day or a time has GTK's own picker beneath its line, filling it.
+                let picker: Option<gtk::Widget> = match described.kind {
+                    FieldKind::Date => Some(crate::pickers::calendar(entry, None).upcast()),
+                    FieldKind::Time => Some(crate::pickers::clock(entry, None, None).upcast()),
+                    _ => None,
+                };
+                if let Some(picker) = picker {
+                    body.append(&picker);
+                    with.push(picker);
+                }
             }
             _ => body.append(&widget),
         }

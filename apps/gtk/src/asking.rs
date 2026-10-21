@@ -78,11 +78,13 @@ fn ask(app: &Rc<App>, open: Asking, worded: Vec<String>) {
             }
             .unwrap_or(initial);
             let refusal = open.refusal.clone();
+            // A question that asks for a day has GTK's calendar beneath its line.
+            let day = open.day.clone();
             asking(app, async move |app: Rc<App>| {
                 if let Some(refusal) = refusal {
                     prompts::tell(&window, &refusal).await;
                 }
-                let text = prompts::ask(&window, &title, &label, &hint, &start, &yes).await;
+                let text = prompts::ask(&window, &title, &label, &hint, &start, &yes, day.as_deref()).await;
                 TYPED.set(text.clone().map(|text| (which, text)));
                 answer(&app, text.map(|text| Answer::Text { text }));
             });

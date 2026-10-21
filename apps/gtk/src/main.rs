@@ -21,6 +21,7 @@ mod detail;
 mod help;
 mod model;
 mod pairing;
+mod pickers;
 mod prompts;
 mod proposal;
 mod quick_add;

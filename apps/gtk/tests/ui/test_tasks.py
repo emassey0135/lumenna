@@ -141,12 +141,18 @@ class TaskListTest(unittest.TestCase):
         # Which day is the app's question, asked as any other.
         self.session.wait_for_window("Go to Day")
         self.assertEqual(self.session.focus(), "[text] 'Day'")
+        # A day, so GTK's calendar is beneath the line.
+        self.assertIsNotNone(self.session.find("grouping", "Choose a Day"))
         self.session.said()
         self.session.type("tomorrow")
         self.session.press("Return")
         # The same pick, offering that day's blocks.
         self.session.wait_for_window("Put Buy milk in a block")
-        self.assertEqual(self.session.focus(), "[tree item] 'Tomorrow, 10:00 AM to 11:00 AM, Errands' level 1 1 of 2")
+        # The time in the desktop's clock: CI's locale says 10:00 as 10:00.
+        self.assertIn(
+            self.session.focus(),
+            ["[tree item] 'Tomorrow, 10:00 AM to 11:00 AM, Errands' level 1 1 of 2", "[tree item] 'Tomorrow, 10:00 to 11:00, Errands' level 1 1 of 2"],
+        )
 
     def test_f6_goes_through_the_places_the_list_and_the_details(self):
         self.session.press("F6")
