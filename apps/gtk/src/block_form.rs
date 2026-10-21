@@ -88,6 +88,15 @@ impl Control {
     }
 }
 
+/// A field's description: the core's hint, and for a line in the filter language how to have
+/// it completed.
+fn described(field: &lumenna_records::FormField) -> String {
+    match field.syntax {
+        Some(lumenna_records::Syntax::Filter) => format!("{} {}", field.hint, crate::completion::HINT).trim().to_owned(),
+        _ => field.hint.clone(),
+    }
+}
+
 /// What a field holds in the app's values, by its key.
 fn value_of(values: &BlockFields, date: &str, key: &str) -> String {
     match key {
@@ -164,7 +173,7 @@ fn fill(open: &Rc<Open>, view: &BlockFormView, app: &App) {
         if let Some(field) = view.fields.iter().find(|field| &field.key == key)
             && !field.hint.is_empty()
         {
-            control.widget().update_property(&[gtk::accessible::Property::Description(&field.hint)]);
+            control.widget().update_property(&[gtk::accessible::Property::Description(&described(field))]);
         }
         control.fill(&value_of(&view.values, &view.date, key));
     }
@@ -221,7 +230,11 @@ fn build(app: &App, view: &BlockFormView) -> Rc<Open> {
             with.push(label.upcast());
         }
         if !described.hint.is_empty() {
-            widget.update_property(&[gtk::accessible::Property::Description(&described.hint)]);
+            widget.update_property(&[gtk::accessible::Property::Description(&self::described(described))]);
+        }
+        // Tasks from is the filter language: it completes as the list's filter does.
+        if let (Control::Line(entry), Some(lumenna_records::Syntax::Filter)) = (&control, &described.syntax) {
+            crate::completion::attach(entry, crate::completion::Source::Filter);
         }
         match &control {
             Control::Notes(notes) => {

@@ -14,6 +14,9 @@ use gtk::{gdk, gio, glib};
 use lumenna_ffi::ShellEvent;
 use lumenna_records::Syntax;
 
+/// What a field that completes adds to its description, so the way in can be found.
+pub const HINT: &str = "Down arrow offers what could come next.";
+
 /// Where an entry's completions come from.
 #[derive(Clone, Copy)]
 pub enum Source {

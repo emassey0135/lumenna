@@ -254,11 +254,20 @@ fn label_for(text: &str, field: &impl IsA<gtk::Widget>) -> gtk::Label {
     label
 }
 
+/// What a line asked for is written in, when it is more than words: a day, which has GTK's
+/// calendar beneath it (from the day given), or the filter language, which completes.
+#[derive(Clone, Copy)]
+pub enum Line<'a> {
+    Words,
+    Day(&'a str),
+    Filter,
+}
+
 /// Asks for one line of text. `message` says what is wanted, beneath the field.
 /// `yes` is the button that answers, a verb as GNOME has it ("Rename", "Add"), not OK.
 ///
-/// When it asks for a day, GTK's calendar is beneath the line, open on `day` (ISO) unless the
-/// line names one, a day chosen there filling the line.
+/// A day asked for has GTK's calendar beneath the line, open on the day given (ISO) unless the
+/// line names one, a day chosen there filling the line; a filter completes as the list's does.
 pub async fn ask(
     parent: &impl IsA<gtk::Window>,
     title: &str,
@@ -266,18 +275,26 @@ pub async fn ask(
     message: &str,
     initial: &str,
     yes: &str,
-    day: Option<&str>,
+    line: Line<'_>,
 ) -> Option<String> {
     let entry = gtk::Entry::builder().text(initial).activates_default(true).build();
+    // A line in the filter language completes as the list's filter does.
+    let message = match line {
+        Line::Filter => {
+            crate::completion::attach(&entry, crate::completion::Source::Filter);
+            format!("{message} {}", crate::completion::HINT).trim().to_owned()
+        }
+        _ => message.to_owned(),
+    };
     let content = gtk::Box::new(gtk::Orientation::Vertical, 6);
     content.append(&label_for(label, &entry));
     content.append(&entry);
     if !message.is_empty() {
-        let note = gtk::Label::builder().label(message).wrap(true).xalign(0.0).build();
+        let note = gtk::Label::builder().label(&message).wrap(true).xalign(0.0).build();
         entry.update_relation(&[gtk::accessible::Relation::DescribedBy(&[note.upcast_ref()])]);
         content.append(&note);
     }
-    if let Some(day) = day {
+    if let Line::Day(day) = line {
         content.append(&crate::pickers::calendar(&entry, Some(day)));
     }
     let field = entry.clone();

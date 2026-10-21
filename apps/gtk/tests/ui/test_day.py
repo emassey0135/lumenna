@@ -144,6 +144,20 @@ class DayTest(unittest.TestCase):
         self.assertIn("'Minutes'", self.session.focus())
         self.assertEqual(self.starts_at(), "10:29")
 
+    def test_a_blocks_tasks_from_completes_as_the_lists_filter_does(self):
+        self.session.lum("project", "add", "Work")
+        self.session.press("Control+Shift+n")
+        self.session.wait_for_window("New Block")
+        self.session.press("Alt+f")
+        self.assertEqual(self.session.focus(), "[text] 'Tasks from'")
+        self.session.type("#W")
+        # Down offers what fits at the cursor, as in the list's filter, and puts it in.
+        self.session.press("Down", wait=1)
+        self.assertEqual(self.session.focus(), "[menu item] ''")
+        self.session.press("Return", wait=1)
+        self.assertEqual(self.session.focus(), "[text] 'Tasks from'")
+        self.assertEqual(Atspi.Text.get_text(self.session.find("text", "Tasks from"), 0, -1), "#Work")
+
     def test_delete_on_a_sitting_takes_it_out_of_the_block(self):
         self.session.press("Down", "Delete")
         self.assertIn("nothing assigned", self.session.focus())

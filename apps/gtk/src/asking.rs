@@ -80,11 +80,17 @@ fn ask(app: &Rc<App>, open: Asking, worded: Vec<String>) {
             let refusal = open.refusal.clone();
             // A question that asks for a day has GTK's calendar beneath its line.
             let day = open.day.clone();
+            let filter = open.syntax == Some(lumenna_records::Syntax::Filter);
             asking(app, async move |app: Rc<App>| {
                 if let Some(refusal) = refusal {
                     prompts::tell(&window, &refusal).await;
                 }
-                let text = prompts::ask(&window, &title, &label, &hint, &start, &yes, day.as_deref()).await;
+                let text = prompts::ask(&window, &title, &label, &hint, &start, &yes, match (&day, filter) {
+                    (Some(day), _) => prompts::Line::Day(day),
+                    (None, true) => prompts::Line::Filter,
+                    (None, false) => prompts::Line::Words,
+                })
+                .await;
                 TYPED.set(text.clone().map(|text| (which, text)));
                 answer(&app, text.map(|text| Answer::Text { text }));
             });

@@ -82,6 +82,20 @@ class SidebarTest(unittest.TestCase):
         self.assertEqual(len(said), 1, said)
         self.assertIn("1.5", said[0])
 
+    def test_a_saved_filters_query_completes_as_the_lists_filter_does(self):
+        self.go_to("Urgent")
+        self.session.press("Menu", "Down", "Return")
+        self.session.wait_for_window("Query of Urgent")
+        self.session.press("End")
+        self.session.type(" & #W")
+        # Down offers what fits at the cursor, as in the list's filter, and puts it in.
+        self.session.press("Down", wait=1)
+        self.assertEqual(self.session.focus(), "[menu item] ''")
+        self.session.press("Return", wait=1)
+        self.assertEqual(self.session.focus(), "[text] 'Query'")
+        self.session.press("Return", wait=1)
+        self.assertEqual(self.session.said(), ["Changed filter Urgent tasks priority 1, and in Work"])
+
     def test_delete_on_a_label_asks_first_and_cancel_is_the_default(self):
         self.go_to("calls")
         self.session.press("Delete")
