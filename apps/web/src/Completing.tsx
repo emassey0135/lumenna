@@ -35,20 +35,33 @@ export function CompletingField(props: {
   const input = props.inputRef ?? own;
   // The line a chosen completion makes, which replaces the item text React Aria puts in.
   const spliced = useRef<string | undefined>(undefined);
+  // Whether the list is open, as React Aria says it changes: the state the combobox hands down
+  // can lag a render, and Enter taken for the line while the list was open lost the choice.
+  const listOpen = useRef(false);
   // Opened once the candidates are in the list: opened as they are set, it opened on none.
   const opening = useRef(false);
   useEffect(() => {
     if (!opening.current) return;
     opening.current = false;
     combo.current?.open("first", "manual");
+    // React Aria puts the first in focus once its collection is built, a render on; Enter can
+    // come first, and chose nothing.
+    const first = offer.candidates[0];
+    if (first) combo.current?.selectionManager.setFocusedKey(first.id);
   }, [offer]);
 
+  // The line the offer was made for. What the input holds, never `props.value`, which can still
+  // be on its way back from the app when Down follows typing at once: offered for "@c" when the
+  // field said "@ca", the choice came out "@callsa".
+  const offeredFor = useRef("");
   /** Asks what fits at the cursor now, and opens the list on it; says so when nothing does. */
   const offerHere = () => {
-    const cursor = input.current?.selectionStart ?? props.value.length;
-    void core.complete(props.value, cursor, props.syntax).then((found) => {
+    const line = input.current?.value ?? props.value;
+    const cursor = input.current?.selectionStart ?? line.length;
+    void core.complete(line, cursor, props.syntax).then((found) => {
       if (found.candidates.length > 0) opening.current = true;
       else say(found.announcement || "Nothing to complete here.");
+      offeredFor.current = line;
       setOffer(found);
     });
   };
@@ -56,7 +69,8 @@ export function CompletingField(props: {
   const choose = (key: Key | null) => {
     const chosen = offer.candidates.find((c) => c.id === key);
     if (!chosen) return;
-    const next = props.value.slice(0, offer.start) + chosen.text + props.value.slice(offer.end);
+    const line = offeredFor.current;
+    const next = line.slice(0, offer.start) + chosen.text + line.slice(offer.end);
     const cursor = offer.start + chosen.text.length;
     spliced.current = next;
     props.onChange(next);
@@ -65,13 +79,18 @@ export function CompletingField(props: {
   };
 
   const keys = (event: KeyboardEvent) => {
-    const open = combo.current?.isOpen ?? false;
-    if (!open && (event.key === "ArrowDown" || (event.key === " " && event.ctrlKey))) {
+    if (!listOpen.current && (event.key === "ArrowDown" || (event.key === " " && event.ctrlKey))) {
       event.preventDefault();
       event.stopPropagation();
       offerHere();
-    } else if (!open && event.key === "Enter") {
+    } else if (event.key === "Enter" && !listOpen.current) {
       props.onEnter?.();
+    } else if (event.key === "Enter" && combo.current?.selectionManager.focusedKey == null && offer.candidates[0]) {
+      // Open with none in focus yet: the first, which is what the list shows in focus.
+      event.preventDefault();
+      event.stopPropagation();
+      choose(offer.candidates[0].id);
+      combo.current?.close();
     }
   };
 
@@ -93,6 +112,7 @@ export function CompletingField(props: {
       }}
       selectedKey={null}
       onSelectionChange={choose}
+      onOpenChange={(open) => void (listOpen.current = open)}
       items={offer.candidates}
       isInvalid={props.error != null}
       validationBehavior="aria"

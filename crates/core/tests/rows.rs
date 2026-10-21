@@ -45,7 +45,10 @@ fn snapshot(name: &str, rows: &[Row]) {
         std::fs::write(&path, &shown).unwrap();
         return;
     }
-    let expected = std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("no snapshot {}; run with UPDATE_SNAPSHOTS=1", path.display()));
+    // A Windows checkout may give the file CRLF line endings; the rows are the same either way.
+    let expected = std::fs::read_to_string(&path)
+        .unwrap_or_else(|_| panic!("no snapshot {}; run with UPDATE_SNAPSHOTS=1", path.display()))
+        .replace("\r\n", "\n");
     assert_eq!(shown, expected, "the {name} rows changed; if that is meant, run with UPDATE_SNAPSHOTS=1 and read the diff");
 }
 
