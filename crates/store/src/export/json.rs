@@ -730,8 +730,6 @@ struct BlockOut {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    icon: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     task_filter: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     external: Option<ExternalOut>,
@@ -753,7 +751,6 @@ impl From<&BlockSeries> for BlockOut {
             repeat: s.rrule.clone(),
             timezone: s.timezone.as_ref().map(ToString::to_string),
             color: s.color.clone(),
-            icon: s.icon.clone(),
             task_filter: s.task_filter.clone(),
             external: s.external.as_ref().map(ExternalOut::from),
         }
@@ -775,7 +772,6 @@ impl BlockOut {
             rrule: self.repeat,
             timezone: self.timezone.map(TzName::new),
             color: self.color,
-            icon: self.icon,
             task_filter: self.task_filter,
             external: self.external.map(|e| e.into_model(&record)).transpose()?,
             title: self.title,

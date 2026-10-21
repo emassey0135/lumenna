@@ -167,7 +167,6 @@ fn every_block_record_round_trips() {
         rrule: Some("FREQ=DAILY".to_owned()),
         task_filter: Some("#work".to_owned()),
         timezone: Some(TzName::new("Europe/London")),
-        icon: Some("brain".to_owned()),
         ..BlockSeries::one_off(
             "Deep work",
             BlockKind::Work,

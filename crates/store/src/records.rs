@@ -548,7 +548,6 @@ impl Record for BlockSeries {
             rrule: r.string("rrule"),
             timezone: r.string("timezone").map(TzName::new),
             color: r.string("color"),
-            icon: r.string("icon"),
             task_filter: r.string("task_filter"),
             external: r.map("external").and_then(|e| read_external(&e)),
             deleted_at: r.timestamp("deleted_at"),
@@ -579,7 +578,6 @@ impl Record for BlockSeries {
         w.set_opt_str("rrule", was.map(|b| b.rrule.as_ref()), self.rrule.as_ref())?;
         w.set_opt_str("timezone", was.map(|b| b.timezone.as_ref()), self.timezone.as_ref())?;
         w.set_opt_str("color", was.map(|b| b.color.as_ref()), self.color.as_ref())?;
-        w.set_opt_str("icon", was.map(|b| b.icon.as_ref()), self.icon.as_ref())?;
         w.set_opt_str(
             "task_filter",
             was.map(|b| b.task_filter.as_ref()),

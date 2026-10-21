@@ -106,7 +106,6 @@ fn populated() -> Populated {
     series.end_date = Some(date(2027, 6, 30));
     series.timezone = Some(TzName::new("Europe/London"));
     series.color = Some("#00ff00".to_owned());
-    series.icon = Some("brain".to_owned());
     series.task_filter = Some("#Work".to_owned());
     series.flags.anchored = true;
 

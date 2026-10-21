@@ -132,8 +132,6 @@ A day or less each, for between the larger pieces.
 
 ### Tasks, blocks and text entry
 
-- **Block icons** exist in the model with no way to set them, and nothing shows one: decide
-  what an icon is (a symbol's name, an emoji) and where it is said before adding a field.
 - **Verbosity** shortens a reminder (its detail left out), the quick-add readback (the date
   once, as itself) and adding or scheduling a block (no time or day). Rows are components
   either way; find any other announcement that runs long under terse as it is met.
