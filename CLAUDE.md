@@ -1182,6 +1182,13 @@ store of their own). Everything Win32 is in `src/win/` behind
   one the tree made, since the tree reports the state itself.
 - **Times and dates are Windows' own** (`clock.rs`: `GetTimeFormatEx`, and the locale's long
   date with its year taken out where the app leaves it out), handed to the app as its `Locale`.
+- **A day or a time has the system's picker beside its line** (`picker.rs`, a
+  `SysDateTimePick32`): Go to Day's (a question with `day` set), the block form's start and
+  day, and the time settings. The line comes first and stays the way in; the picker, after it in
+  tab order, writes `YYYY-MM-DD` or `HH:MM` there as if typed (a setting is applied when the clock
+  is left), and takes the line's value only when it is one. It is named after its line and the
+  core's `picker_words`, and so is a date picker's button (its MSAA child 2). UI Automation reads
+  a picker as a pane with no value of its own: its value is MSAA's, which NVDA and JAWS read.
 - **Syncing is the app's network's**, as on the Mac: resident, so in front for as long as it
   runs, with `serve_commands("Lumenna for Windows", …)`. The app asks to keep in sync once
   another device is paired, and only then holds the endpoint and serves the pipe; unpaired,

@@ -47,8 +47,9 @@ pub fn of_kind(actions: &[Action], kinds: &[ActionKind]) -> Option<Action> {
 
 /// Asks a line of text as `question` words it, starting from `typed`: its title, its field's
 /// name with an access key, what it takes, and its own button. `None` if it is not a line of
-/// text, or was cancelled. An empty answer is returned too: the core says whether it may be.
-pub fn ask(owner: HWND, question: &Question, typed: &str) -> Option<String> {
+/// text, or was cancelled. An empty answer is returned too: the core says whether it may be. A
+/// question asking for a day (`day`, the one it starts from) has a calendar beside its field.
+pub fn ask(owner: HWND, question: &Question, typed: &str, day: Option<&str>) -> Option<String> {
     let Question::Text { title, label, hint, yes, .. } = question else { return None };
-    prompts::ask(owner, title, &format!("&{label}:"), hint, typed, yes)
+    prompts::ask(owner, title, &format!("&{label}:"), hint, typed, yes, day)
 }

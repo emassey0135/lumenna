@@ -2,7 +2,7 @@
 
 use std::cell::RefCell;
 
-use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::Controls::{
     TASKDIALOG_BUTTON, TASKDIALOGCONFIG, TD_WARNING_ICON, TDCBF_CANCEL_BUTTON, TDF_ALLOW_DIALOG_CANCELLATION,
     TDF_POSITION_RELATIVE_TO_WINDOW, TaskDialogIndirect,
@@ -15,11 +15,12 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::core::{HSTRING, PCWSTR};
 
-use super::{a11y, controls};
+use super::{a11y, controls, picker};
 use super::dialog::{self, Class, Dialog, Template};
 
 const FIELD: u16 = 100;
 const LIST: u16 = 101;
+const CALENDAR: u16 = 102;
 
 /// Dialog units for a message of this length, at roughly fifty characters a line.
 fn message_height(message: &str) -> i16 {
@@ -33,6 +34,8 @@ struct AskText<'a> {
     message: &'a str,
     initial: &'a str,
     yes: &'a str,
+    /// The day a calendar beside the field opens on, where the question asks for a day.
+    day: Option<&'a str>,
     answer: RefCell<String>,
 }
 
@@ -44,9 +47,16 @@ impl Dialog for AskText<'_> {
         if message > 0 {
             template = template.item(Class::Static, self.message, u16::MAX, SS_NOPREFIX.0, 7, 7, 246, message - 6);
         }
+        template = template.item(Class::Static, self.label, u16::MAX, 0, 7, top, 246, 9);
+        let field = (ES_AUTOHSCROLL as u32) | WS_BORDER.0 | WS_TABSTOP.0;
+        // A day has the system's calendar beside it, after it in tab order, to fill it.
+        template = match self.day {
+            Some(_) => template
+                .item(Class::Edit, "", FIELD, field, 7, top + 10, 162, 14)
+                .named(picker::CLASS, "", CALENDAR, picker::Kind::Date.style(), 173, top + 10, 80, 14),
+            None => template.item(Class::Edit, "", FIELD, field, 7, top + 10, 246, 14),
+        };
         template
-            .item(Class::Static, self.label, u16::MAX, 0, 7, top, 246, 9)
-            .item(Class::Edit, "", FIELD, (ES_AUTOHSCROLL as u32) | WS_BORDER.0 | WS_TABSTOP.0, 7, top + 10, 246, 14)
             .item(Class::Button, self.yes, IDOK.0 as u16, (BS_DEFPUSHBUTTON as u32) | WS_TABSTOP.0, 149, top + 32, 50, 14)
             .item(Class::Button, "Cancel", IDCANCEL.0 as u16, (BS_PUSHBUTTON as u32) | WS_TABSTOP.0, 203, top + 32, 50, 14)
     }
@@ -56,8 +66,22 @@ impl Dialog for AskText<'_> {
         controls::set_text(field, self.initial);
         // Everything selected, so typing replaces it and an arrow keeps it.
         controls::send(field, windows::Win32::UI::Controls::EM_SETSEL, 0, -1);
+        if let Some(day) = self.day {
+            let calendar = dialog::item(hwnd, CALENDAR);
+            let name = self.label.replace('&', "");
+            picker::ready(calendar, picker::Kind::Date, name.trim_end_matches(':'), &picker::Kind::Date.choose());
+            picker::show(calendar, picker::Kind::Date, day);
+        }
         controls::focus(field);
         true
+    }
+
+    fn message(&self, hwnd: HWND, message: u32, _wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
+        // A day picked is the field's, as the core reads it.
+        let id = picker::changed(message, lparam).filter(|id| *id == CALENDAR)?;
+        let day = picker::read(dialog::item(hwnd, id), picker::Kind::Date)?;
+        controls::set_text(dialog::item(hwnd, FIELD), &day);
+        Some(0)
     }
 
     fn command(&self, hwnd: HWND, id: u16, _code: u16) -> Option<isize> {
@@ -75,9 +99,10 @@ impl Dialog for AskText<'_> {
 /// Asks for a line of text. `label` names the field, with `&` before its mnemonic; `message`,
 /// if any, is read when the dialog opens; `yes` is the button that answers, a verb where
 /// there is one ("Rename"), as Windows' own dialogs name theirs. An empty answer is an
-/// answer, and only Cancel is `None`.
-pub fn ask(owner: HWND, title: &str, label: &str, message: &str, initial: &str, yes: &str) -> Option<String> {
-    let ask = AskText { title, label, message, initial, yes, answer: RefCell::new(String::new()) };
+/// answer, and only Cancel is `None`. Asking for a day (`day`, the ISO day it starts from), the
+/// field has a calendar beside it.
+pub fn ask(owner: HWND, title: &str, label: &str, message: &str, initial: &str, yes: &str, day: Option<&str>) -> Option<String> {
+    let ask = AskText { title, label, message, initial, yes, day, answer: RefCell::new(String::new()) };
     (dialog::run(Some(owner), &ask) == 1).then(|| ask.answer.into_inner().trim().to_owned())
 }
 

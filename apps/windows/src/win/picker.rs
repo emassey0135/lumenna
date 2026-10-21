@@ -31,12 +31,12 @@ pub enum Kind {
 }
 
 impl Kind {
-    /// What choosing one is called, in the app's words.
+    /// What choosing one is called, in the core's words.
     pub fn choose(self) -> String {
-        // PLACEHOLDER until `lumenna_records::picker_words` is pushed.
+        let words = lumenna_records::picker_words();
         match self {
-            Kind::Date => "Choose a Day".to_owned(),
-            Kind::Time => "Choose a Time".to_owned(),
+            Kind::Date => words.day,
+            Kind::Time => words.time,
         }
     }
 

@@ -1121,6 +1121,34 @@ fn the_next_day_says_itself_and_go_to_day_asks_again_with_a_phrase_it_cannot_rea
 
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn go_to_day_has_a_calendar_beside_its_line_open_on_the_day_shown_which_fills_the_line() {
+    let app = App::launch(|_| {});
+    let tomorrow = jiff::Zoned::now().date().tomorrow().unwrap();
+    app.post(&[NEXT_DAY]);
+    let shown = automation::wait(Duration::from_secs(5), || Some(app.status()).filter(|s| s.starts_with("Tomorrow.")));
+    assert!(shown.is_some(), "{}", app.status());
+    app.post(&["cmd:183"]);
+    let asked = automation::wait(Duration::from_secs(5), || app.focus().starts_with("Edit 'Day:'").then_some(()));
+    assert!(asked.is_some(), "the line comes first: {}", app.focus());
+    // The calendar after it, named for the line and what it does, on the day shown.
+    app.post(&["tab"]);
+    let calendar = app.focus();
+    assert!(calendar.starts_with("Pane 'Day, Choose a Day' msaa-value='"), "{calendar}");
+    assert!(app.front().iter().any(|l| l.trim_start().starts_with("Button 'Choose a Day'")), "{:#?}", app.front());
+    // Turned on, it puts its day in the line as the core reads one, and Go goes there.
+    app.post(&["up"]);
+    let line = app.front().into_iter().find(|l| l.contains("Edit 'Day:'")).unwrap_or_default();
+    let day: jiff::civil::Date = value_of(&line).parse().unwrap_or_else(|_| panic!("an ISO day: {line}"));
+    assert!(day > tomorrow, "{day} after {tomorrow}");
+    app.post(&["enter"]);
+    let gone = automation::wait(Duration::from_secs(5), || {
+        (!app.status().starts_with("Tomorrow.") && app.focus().contains("TreeItem")).then_some(())
+    });
+    assert!(gone.is_some(), "{} {}", app.status(), app.focus());
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn the_days_own_actions_are_its_summary_rows_and_the_day_menus() {
     let today = today_clear_of_midnight();
     let app = App::launch(|lumenna| {
