@@ -36,6 +36,17 @@ test("quick add reads back what it will add, and adds it", async ({ page }) => {
   await expect(page.getByRole("main").getByRole("row", { name: /^Call Sam/ })).toBeVisible();
 });
 
+test("what the app says is shown on the status line, for someone who reads it", async ({ page }) => {
+  await open(page);
+  await add(page, "Buy milk");
+  const tasks = page.getByRole("main");
+  await tasks.getByRole("row", { name: /^Buy milk/ }).focus();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("contentinfo")).toContainText("Buy milk");
+  const audit = await new AxeBuilder({ page }).analyze();
+  expect(audit.violations).toEqual([]);
+});
+
 test("a task due at a time says it in the browser's clock, then its priority", async ({ page }) => {
   await open(page);
   await add(page, "Call the bank tomorrow at 3pm p1");

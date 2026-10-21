@@ -49,7 +49,7 @@ struct TaskListView: View {
             TaskView(id: opened.id)
         }
         .sheet(isPresented: $adding) {
-            QuickAddView()
+            QuickAddView().showsWhatIsSaid()
         }
         // Coming back from a task's details keeps the place, its filter and the row in hand;
         // from anywhere else it opens again with them.

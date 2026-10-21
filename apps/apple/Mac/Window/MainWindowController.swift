@@ -48,7 +48,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         detailItem.canCollapse = true
         split.splitViewItems = [sidebarItem, contentItem, detailItem]
         split.splitView.autosaveName = "MainSplit"
-        window.contentViewController = split
+        // The panes, and under them a status line holding what the app last said.
+        window.contentViewController = StatusLineController(content: split)
         // Setting the content shrinks the window to what the panes need at least, which with
         // lists that scroll is almost nothing; and a saved frame from such a window is no use.
         window.minSize = NSSize(width: 820, height: 460)

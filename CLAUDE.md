@@ -813,6 +813,14 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
 - **Focus after a change is chosen**: the same row if still listed, else whatever holds its
   position; the core's announcement is queued behind the focus change so neither cuts the
   other off. This holds on every platform.
+- **What the app says is shown as well as spoken** (`Announcer` posts `Said`): a refusal or
+  what a change did reaches someone without VoiceOver too. On iOS a banner over the window
+  (`SaidBanner`), on the watch the same over each screen and sheet (`showsWhatIsSaid`), both
+  hidden from VoiceOver, which has said it already, taking no touches, and left out under
+  `LUMENNA_TEST_PROFILE`, where the audits would judge text fading out. On the Mac a status
+  line at the foot of the main window and of the Devices page (`StatusLineController`), as
+  Windows and GTK keep one, hidden until something is said: empty, the audit found a nameless
+  text.
 - **A row's primary actions are its swipe actions; the rest are its custom actions**, and
   all of them are in its long-press menu. A trailing swipe never runs its first action by
   itself (`allowsFullSwipe: false`): on the SE a test's swipe did, and the first can be Delete. UIKit offers swipe actions to VoiceOver, Switch
@@ -1683,6 +1691,9 @@ with `lum`.
 - **React Aria gives a component its default class only when no `className` is passed**, so
   a class of our own names the default too (`"react-aria-Dialog wide"`): passing `"wide"` alone
   left the Replan and block dialogs without a background, and destructive menu items unpadded.
+- **What the app says is shown too**, on a status line at the foot of the page (`useSaid`,
+  `StatusLine`), kept in view however long the page: not a live region, since React Aria's
+  announcer has said it already.
 - **A task row's check box is for a pointer alone** (`.done-box`): `aria-hidden`, never focused,
   its pointer events stopped so the row is not selected or opened behind it. It runs the row's
   Mark Done or Mark Not Done, which Space and the row's menu already offer to everyone else.

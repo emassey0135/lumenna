@@ -74,7 +74,9 @@ final class WatchCore: ObservableObject {
 enum Announcer {
     static func say(_ text: String) {
         guard !text.isEmpty else { return }
-        AccessibilityNotification.Announcement(text.prefix(1).uppercased() + text.dropFirst()).post()
+        let sentence = text.prefix(1).uppercased() + text.dropFirst()
+        Said.post(sentence)
+        AccessibilityNotification.Announcement(sentence).post()
     }
 
     /// Says a result's announcement, then each notice.

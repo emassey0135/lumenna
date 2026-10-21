@@ -6,6 +6,7 @@ enum Announcer {
     /// so it follows the element focus has just moved to, instead of being lost under it.
     static func say(_ text: String) {
         guard !text.isEmpty else { return }
+        Said.post(text)
         let queued = NSAttributedString(
             string: text,
             attributes: [.accessibilitySpeechQueueAnnouncement: true]

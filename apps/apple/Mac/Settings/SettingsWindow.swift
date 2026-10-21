@@ -19,7 +19,8 @@ final class SettingsWindowController: NSWindowController {
         tabs.tabViewItems = [
             tab(HostedForm("General", rootView: GeneralSettings(model: model)), "General", "gearshape"),
             tab(HostedForm("Planning", rootView: PlanningSettings(model: model)), "Planning", "calendar"),
-            tab(DevicesViewController(core: core), "Devices", "laptopcomputer.and.iphone"),
+            // With a status line of its own: what the app says of a device, a refusal included.
+            tab(StatusLineController(content: DevicesViewController(core: core)), "Devices", "laptopcomputer.and.iphone"),
             tab(HostedForm("Backups", rootView: BackupSettings(model: model)), "Backups", "externaldrive"),
             tab(HostedForm("Export and Import", rootView: ExportSettings(model: model)), "Export and Import", "square.and.arrow.up"),
         ]

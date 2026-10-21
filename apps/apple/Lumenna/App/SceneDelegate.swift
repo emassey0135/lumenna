@@ -27,6 +27,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         self.window = window
         window.makeKeyAndVisible()
+        // What the app says, shown for a moment, for a person who reads rather than listens.
+        SaidBanner.install(on: window)
         // Launched by the Home Screen's New Task.
         if let shortcut = connectionOptions.shortcutItem {
             DispatchQueue.main.async { [weak self] in _ = self?.perform(shortcut) }

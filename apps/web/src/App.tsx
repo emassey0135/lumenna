@@ -18,7 +18,7 @@ import { Details } from "./Details";
 import type { DetailsHandle } from "./Details";
 import { QuickAdd } from "./QuickAdd";
 import { ReminderLists, RemindersDue, useDelivery } from "./Reminders";
-import { say } from "./say";
+import { say, useSaid } from "./say";
 import { refresh, send, settled, start, useScreen } from "./session";
 import { PairingQuestion } from "./Devices";
 import { Settings } from "./Settings";
@@ -229,6 +229,7 @@ export function App() {
       <aside aria-label="Task details">
         <Details ref={details} screen={screen} />
       </aside>
+      <StatusLine />
       <Settings
         isOpen={settingsOpen}
         onClose={() => {
@@ -254,5 +255,19 @@ export function App() {
       <BlockForms form={screen.blockForm} />
       <QuickAdd line={screen.line} opening={opening} onClose={() => setOpening(false)} />
     </div>
+  );
+}
+
+/**
+ * What the app last said, at the foot of the page, as the desktop apps keep a status line: for
+ * someone who reads rather than hears it. Not a live region, since the announcer has said it
+ * already; a screen reader still reads it there, in the page's footer.
+ */
+function StatusLine() {
+  const said = useSaid();
+  return (
+    <footer className="status-line">
+      <p>{said}</p>
+    </footer>
   );
 }

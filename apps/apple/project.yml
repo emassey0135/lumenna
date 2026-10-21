@@ -217,6 +217,9 @@ targets:
       # Reminders as the system's notifications, scheduled as the phone schedules them.
       - path: Shared/Reminders.swift
         group: Shared
+      # What the app says, shown as well as spoken.
+      - path: Shared/Said.swift
+        group: Shared
       # The task, block and settings forms the iPhone and the Mac use, with the watch's
       # differences beside theirs (FormParts.swift).
       - path: Shared/Forms

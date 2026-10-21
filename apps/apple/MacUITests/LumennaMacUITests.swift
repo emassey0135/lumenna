@@ -287,6 +287,23 @@ final class LumennaMacUITests: XCTestCase {
         sheetButton("Cancel")
     }
 
+    /// What the Devices page says is shown on its status line as well as said: someone
+    /// without VoiceOver reads it there.
+    func testWhatTheDevicesPageSaysIsShownOnItsStatusLine() throws {
+        XCTAssertTrue(window.waitForExistence(timeout: 10))
+        app.typeKey(",", modifierFlags: .command)
+        let settings = app.windows["settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.toolbars.buttons["Devices"].click()
+        let sync = settings.buttons["Sync Now"]
+        XCTAssertTrue(sync.waitForExistence(timeout: 5), settings.debugDescription)
+        sync.click()
+        let status = settings.staticTexts["status"]
+        XCTAssertTrue(status.waitForExistence(timeout: 5), settings.debugDescription)
+        XCTAssertFalse((status.value as? String ?? "").isEmpty, settings.debugDescription)
+        try audit("settings, something said", in: settings)
+    }
+
     // MARK: - Helpers for menus and sheets
 
     /// A row of the sidebar, by its name.

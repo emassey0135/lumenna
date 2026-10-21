@@ -125,10 +125,11 @@ struct RootView: View {
                 }
             }
             .sheet(isPresented: $adding) {
-                QuickAddView(fresh: true)
+                QuickAddView(fresh: true).showsWhatIsSaid()
             }
             .sheet(item: $asker.asked, onDismiss: { asker.dismissed() }) { asked in
                 NavigationStack { asked.view }
+                    .showsWhatIsSaid()
                     .environmentObject(core)
                     .environmentObject(asker)
             }
@@ -151,6 +152,8 @@ struct RootView: View {
                 Text(core.failure ?? "")
             }
         }
+        // What the app says, shown for sighted wearers; the asker's sheets show it over themselves.
+        .showsWhatIsSaid()
         .environmentObject(asker)
     }
 
