@@ -21,7 +21,7 @@ use lumenna_records::{ActionKind, ExportFormat, Setting};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::Controls::{
-    HKM_GETHOTKEY, HKM_SETHOTKEY, HOTKEYF_ALT, HOTKEYF_CONTROL, HOTKEYF_SHIFT, NMHDR, PSN_APPLY, PSN_KILLACTIVE,
+    HKM_GETHOTKEY, HKM_SETHOTKEY, HOTKEYF_ALT, HOTKEYF_CONTROL, HOTKEYF_SHIFT, NM_KILLFOCUS, NMHDR, PSN_APPLY, PSN_KILLACTIVE,
     PSN_RESET, PSN_SETACTIVE,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{VK_DELETE, VK_F2};
@@ -36,7 +36,7 @@ use windows::core::HSTRING;
 use super::app::{self, App};
 use super::core::sentence;
 use super::dialog::{self, Class, Dialog, Template};
-use super::{a11y, actions, controls, pairing, prompts, shortcuts, system};
+use super::{a11y, actions, controls, pairing, picker, prompts, shortcuts, system};
 use crate::devices;
 use crate::shortcut::{Kind, Shortcut};
 use crate::speech;
@@ -564,6 +564,13 @@ const TASK_REMINDERS: u16 = 206;
 const BLOCK_REMINDERS: u16 = 207;
 const URGENCY: u16 = 208;
 const TASK_ORDER: u16 = 209;
+const DAY_START_CLOCK: u16 = 211;
+const DAY_END_CLOCK: u16 = 212;
+const ALL_DAY_CLOCK: u16 = 213;
+
+/// The times, each with the system's clock beside its field: the field, the clock, the setting.
+const CLOCKS: [(u16, u16, &str); 3] =
+    [(DAY_START, DAY_START_CLOCK, "day-start"), (DAY_END, DAY_END_CLOCK, "day-end"), (ALL_DAY, ALL_DAY_CLOCK, "all-day-reminder-hour")];
 
 /// What is typed, and written when the field is left, never as each key is pressed.
 const TYPED: [(u16, &str); 6] = [
@@ -595,6 +602,9 @@ impl Planning {
         for (id, key) in TYPED {
             controls::write_typed(dialog::item(page, id), &typed(known, key), still);
         }
+        for (_, clock, key) in CLOCKS {
+            picker::show(dialog::item(page, clock), picker::Kind::Time, &value(known, key));
+        }
         for (id, key) in CHOICES {
             fill_options(dialog::item(page, id), known, key);
         }
@@ -608,11 +618,14 @@ impl Dialog for Planning {
         page("Planning")
             .item(Class::Button, &name("cascade-complete-subtasks", 'C', false), CASCADE, BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0, 7, 7, 238, 10)
             .item(Class::Static, &name("day-start", 's', true), u16::MAX, 0, 7, 24, 110, 9)
-            .item(Class::Edit, "", DAY_START, FIELD, 7, 34, 110, 14)
+            .item(Class::Edit, "", DAY_START, FIELD, 7, 34, 50, 14)
+            .named(picker::CLASS, "", DAY_START_CLOCK, picker::Kind::Time.style(), 61, 34, 56, 14)
             .item(Class::Static, &name("day-end", 'e', true), u16::MAX, 0, 128, 24, 110, 9)
-            .item(Class::Edit, "", DAY_END, FIELD, 128, 34, 110, 14)
+            .item(Class::Edit, "", DAY_END, FIELD, 128, 34, 50, 14)
+            .named(picker::CLASS, "", DAY_END_CLOCK, picker::Kind::Time.style(), 182, 34, 56, 14)
             .item(Class::Static, &name("all-day-reminder-hour", 'A', true), u16::MAX, 0, 7, 54, 110, 9)
-            .item(Class::Edit, "", ALL_DAY, FIELD, 7, 64, 110, 14)
+            .item(Class::Edit, "", ALL_DAY, FIELD, 7, 64, 50, 14)
+            .named(picker::CLASS, "", ALL_DAY_CLOCK, picker::Kind::Time.style(), 61, 64, 56, 14)
             .item(Class::Static, &name("task-order", 'l', true), u16::MAX, 0, 128, 54, 110, 9)
             .item(Class::ComboBox, "", TASK_ORDER, LIST, 128, 64, 110, 60)
             .item(Class::Static, &name("verbosity", 'm', true), u16::MAX, 0, 7, 84, 110, 9)
@@ -635,6 +648,10 @@ impl Dialog for Planning {
             if let Some(hint) = self.described.iter().find(|s| s.key == *key).map(|s| &s.hint).filter(|h| !h.is_empty()) {
                 a11y::set_description(dialog::item(page, *id), hint);
             }
+        }
+        for (_, clock, key) in CLOCKS {
+            let title = self.described.iter().find(|s| s.key == key).map_or(key, |s| s.title.as_str());
+            picker::ready(dialog::item(page, clock), picker::Kind::Time, title, &picker::Kind::Time.choose());
         }
         // As described, until the app's own settings arrive.
         let known: Vec<(Setting, String)> = self.described.iter().map(|s| (s.clone(), s.value.clone())).collect();
@@ -664,7 +681,24 @@ impl Dialog for Planning {
     }
 
     fn message(&self, page: HWND, message: u32, _wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
+        // A time picked is its field's, typed there as the arrows change it and applied when the
+        // clock is left, as a field is: applied at each arrow, every step would be said.
+        if let Some(id) = picker::changed(message, lparam)
+            && let Some((field, _, key)) = CLOCKS.iter().find(|(_, clock, _)| *clock == id)
+        {
+            if let Some(time) = picker::read(dialog::item(page, id), picker::Kind::Time) {
+                controls::set_text(dialog::item(page, *field), &time);
+                app::send(ShellEvent::Settings(SettingsEvent::Type { key: (*key).to_owned(), value: time }));
+            }
+            return Some(0);
+        }
         let code = notification(message, lparam);
+        if code == Some(NM_KILLFOCUS)
+            && let Some((field, _, key)) =
+                CLOCKS.iter().find(|(_, clock, _)| i32::from(*clock) == unsafe { &*(lparam.0 as *const NMHDR) }.idFrom as i32)
+        {
+            Typed::commit(page, &[(*field, key)]);
+        }
         if code == Some(PSN_SETACTIVE) {
             fronted(page);
         }

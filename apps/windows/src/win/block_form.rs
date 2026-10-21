@@ -18,7 +18,7 @@ use std::rc::Rc;
 use lumenna_app::{BlockEvent, BlockFormView};
 use lumenna_ffi::ShellEvent;
 use lumenna_records::{BlockFields, Choice, FieldKind, FormField, block_form};
-use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
     BN_CLICKED, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL, CB_SETCURSEL, CBN_SELCHANGE,
     CBS_DROPDOWNLIST, EN_CHANGE, ES_AUTOHSCROLL, ES_AUTOVSCROLL, ES_MULTILINE, ES_NUMBER, ES_WANTRETURN, EndDialog, IDCANCEL,
@@ -28,7 +28,7 @@ use windows::core::HSTRING;
 
 use super::app::{self, App};
 use super::dialog::{self, Class, Dialog, Template};
-use super::{a11y, controls, prompts};
+use super::{a11y, controls, picker, prompts};
 use crate::devices;
 
 const TITLE: u16 = 100;
@@ -45,6 +45,15 @@ const SHORTEST: u16 = 110;
 const FILTER: u16 = 111;
 const COLOUR: u16 = 112;
 const NOTES: u16 = 113;
+const START_PICKER: u16 = 120;
+const DATE_PICKER: u16 = 121;
+
+/// The fields a picker fills, beside them: its key, the field, the picker and what it picks.
+const PICKERS: [(&str, u16, u16, picker::Kind); 2] =
+    [("start", START, START_PICKER, picker::Kind::Time), ("date", DATE, DATE_PICKER, picker::Kind::Date)];
+
+/// How wide a picker is, beside its field, in dialog units.
+const PICKER: i16 = 80;
 
 /// Each field's control, by the key the core's `block_form()` names it by, with the letter
 /// that is its access key here: the words are the core's, the keys this dialog's.
@@ -179,9 +188,15 @@ impl Form {
             let shown = view.fields.iter().find(|f| f.key == key);
             // Until and the shortest length come and go as the block repeats or not; never the
             // one with focus, which would leave focus nowhere.
+            let picked = PICKERS.iter().find(|(k, _, _, _)| *k == key).map(|(_, _, picker, kind)| (dialog::item(hwnd, *picker), *kind));
             if control != controls::focused() || shown.is_some() {
                 controls::show(control, shown.is_some());
                 controls::show(label_of(hwnd, control), shown.is_some());
+            }
+            if let Some((picker, _)) = picked
+                && (picker != controls::focused() || shown.is_some())
+            {
+                controls::show(picker, shown.is_some());
             }
             // What it takes, read with it: set again only when the app words it otherwise.
             if let Some(field) = shown
@@ -205,6 +220,9 @@ impl Form {
                     }
                 }
                 _ => typing |= controls::write_typed(control, &held, still),
+            }
+            if let Some((picker, kind)) = picked {
+                picker::show(picker, kind, &controls::text(control));
             }
         }
         self.filling.set(false);
@@ -244,9 +262,14 @@ fn label_of(hwnd: HWND, control: HWND) -> HWND {
 impl Dialog for Form {
     fn template(&self) -> Template {
         let field = |template: Template, label: &str, id: u16, style: u32, x: i16, y: i16| {
-            template
-                .item(Class::Static, label, u16::MAX, 0, x, y, COLUMN, 9)
-                .item(Class::Edit, "", id, style | WS_BORDER.0 | WS_TABSTOP.0, x, y + 10, COLUMN, 14)
+            let template = template.item(Class::Static, label, u16::MAX, 0, x, y, COLUMN, 9);
+            // A day or a time has the system's picker beside it, after it in tab order.
+            match PICKERS.iter().find(|(_, field, _, _)| *field == id) {
+                Some((_, _, picker, kind)) => template
+                    .item(Class::Edit, "", id, style | WS_BORDER.0 | WS_TABSTOP.0, x, y + 10, COLUMN - PICKER - 4, 14)
+                    .named(picker::CLASS, "", *picker, kind.style(), x + COLUMN - PICKER, y + 10, PICKER, 14),
+                None => template.item(Class::Edit, "", id, style | WS_BORDER.0 | WS_TABSTOP.0, x, y + 10, COLUMN, 14),
+            }
         };
         let check = |template: Template, label: &str, id: u16, y: i16| {
             template.item(Class::Button, label, id, BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0, 7, y, COLUMN, 10)
@@ -329,8 +352,29 @@ impl Dialog for Form {
                 controls::cue(control, &field.example);
             }
         }
+        for (key, _, id, kind) in PICKERS {
+            let picker = dialog::item(hwnd, id);
+            if !picker.is_invalid() {
+                let name = self.field(key).map_or_else(|| key.to_owned(), |f| f.label);
+                picker::ready(picker, kind, &name, &kind.choose());
+            }
+        }
         self.fill(hwnd, &self.first, true);
         false
+    }
+
+    fn message(&self, hwnd: HWND, message: u32, _wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
+        // A day or time picked fills its field, which sends it to the app as typing does.
+        // Not while the app's value is shown in it, which is no one's typing: a new block's
+        // start follows its day until the person changes it.
+        let id = picker::changed(message, lparam)?;
+        let (_, field, _, kind) = PICKERS.iter().find(|(_, _, picker, _)| *picker == id)?;
+        let value = picker::read(dialog::item(hwnd, id), *kind)?;
+        let field = dialog::item(hwnd, *field);
+        if !self.filling.get() && controls::text(field) != value {
+            controls::set_text(field, &value);
+        }
+        Some(0)
     }
 
     fn command(&self, hwnd: HWND, id: u16, code: u16) -> Option<isize> {

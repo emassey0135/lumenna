@@ -15,7 +15,7 @@ use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
 use windows::Win32::System::Variant::{VARIANT, VARIANT_0, VARIANT_0_0, VARIANT_0_0_0, VT_I4};
 use windows::Win32::UI::Accessibility::{
-    CLSID_AccPropServices, HelpText_Property_GUID, IAccPropServices, LiveSetting_Property_GUID, NotifyWinEvent,
+    CLSID_AccPropServices, HelpText_Property_GUID, IAccPropServices, LiveSetting_Property_GUID, Name_Property_GUID, NotifyWinEvent,
     PROPID_ACC_DESCRIPTION, PROPID_ACC_NAME,
 };
 use windows::Win32::UI::WindowsAndMessaging::{CHILDID_SELF, EVENT_OBJECT_LIVEREGIONCHANGED, OBJID_CLIENT};
@@ -50,6 +50,17 @@ pub fn set_name(hwnd: HWND, name: &str) {
             PROPID_ACC_NAME,
             &HSTRING::from(name),
         );
+    });
+}
+
+/// Names one part of a stock control (its MSAA child id), such as a date picker's button, which
+/// the control leaves unnamed: as MSAA's name and as UI Automation's, which Windows' proxy for a
+/// part does not carry over.
+pub fn set_item_name(hwnd: HWND, item: u32, name: &str) {
+    with_services(|services| unsafe {
+        let text = HSTRING::from(name);
+        let _ = services.SetHwndPropStr(hwnd, OBJID_CLIENT.0 as u32, item, PROPID_ACC_NAME, &text);
+        let _ = services.SetHwndPropStr(hwnd, OBJID_CLIENT.0 as u32, item, Name_Property_GUID, &text);
     });
 }
 

@@ -467,18 +467,20 @@ fn space_starts_and_pauses_a_sittings_timer_and_the_menu_offers_resume_and_stop(
 fn the_block_form_has_every_setting_and_its_flags_follow_the_kind() {
     let app = App::launch(|_| {});
     // New Block, called Commute, at 8am, then Break as its kind — through the form in its tab
-    // order, as a keyboard reaches it.
-    app.post(&["cmd:101", "text:Commute", "tab", "text:8am", "tab", "tab", "down"]);
+    // order, as a keyboard reaches it, past the clock beside the start.
+    app.post(&["cmd:101", "text:Commute", "tab", "text:8am", "tab", "tab", "tab", "down"]);
     let form = app.front();
     assert!(unnamed(&form).is_empty(), "{:#?}", unnamed(&form));
     let flag = |name: &str| form.iter().find(|l| l.contains(&format!("CheckBox '{name}'"))).cloned().unwrap_or_default();
     assert!(flag("Takes tasks").contains(" unchecked"), "a break takes no tasks: {form:#?}");
     assert!(flag("Counts toward hours for work").contains(" unchecked"), "{}", flag("Counts toward hours for work"));
     // Set apart from its kind — someone who works on the train — then the flags, the first
-    // day, and the right-hand column: repeats, last day, shortest length, filter, colour.
+    // day and its calendar, and the right-hand column: repeats, last day, shortest length,
+    // filter, colour.
     app.post(&[
         "tab",
         "space",
+        "tab",
         "tab",
         "tab",
         "tab",
@@ -549,6 +551,60 @@ fn a_new_blocks_start_is_the_cores_and_follows_its_day_until_the_start_is_change
     assert!(app.focus().contains("value='7pm'"), "{}", app.focus());
     app.post(&["esc"]);
     assert!(store.list_blocks().unwrap().rows.is_empty());
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn a_new_blocks_start_and_day_have_the_systems_pickers_beside_them_which_fill_their_fields() {
+    let app = App::launch(|_| {});
+    app.post(&["cmd:101", "focus:Starts at:"]);
+    let before = value_of(&app.focus());
+    // The clock after the start, named for it and what it does, saying its own time.
+    app.post(&["tab"]);
+    let clock = app.focus();
+    assert!(clock.starts_with("Pane 'Starts at, Choose a Time' msaa-value='"), "{clock}");
+    // The calendar after the day, its button named too.
+    let form = app.front();
+    assert!(form.iter().any(|l| l.trim_start().starts_with("Pane 'Day, Choose a Day' msaa-value='")), "{form:#?}");
+    assert!(form.iter().any(|l| l.trim_start().starts_with("Button 'Choose a Day'")), "{form:#?}");
+    // Its hour turned on by one: the start is that time, as if typed.
+    app.post(&["up"]);
+    let wanted = an_hour_on(&before);
+    let filled = automation::wait(Duration::from_secs(5), || {
+        app.front().iter().any(|l| l.contains("Edit 'Starts at:'") && l.contains(&format!("value='{wanted}'"))).then_some(())
+    });
+    assert!(filled.is_some(), "{before} to {wanted}: {:#?}", app.front());
+    app.post(&["esc"]);
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn a_time_setting_has_a_clock_beside_it_applied_when_it_is_left() {
+    let app = App::launch(|_| {});
+    app.post(&[SETTINGS, "select:Planning", "focus:Day ends:"]);
+    let before = value_of(&app.focus());
+    app.post(&["tab"]);
+    assert!(app.focus().starts_with("Pane 'Day ends, Choose a Time' msaa-value='"), "{}", app.focus());
+    // Typed into the field as the arrows turn it, and applied, and said, once it is left.
+    app.post(&["up", "tab"]);
+    let wanted = an_hour_on(&before);
+    let said = automation::wait(Duration::from_secs(5), || {
+        app.front().iter().any(|l| l.contains("Day ends: ") && l.contains("live=polite")).then_some(())
+    });
+    assert!(said.is_some(), "{before} to {wanted}: {:#?}", app.front());
+    app.post(&["esc"]);
+    assert_eq!(app.store().settings(Some("day-end".to_owned())).unwrap().announcement, wanted);
+}
+
+/// A field's value, as UI Automation reads it.
+fn value_of(element: &str) -> String {
+    element.split("value='").nth(1).and_then(|v| v.split('\'').next()).unwrap_or_default().to_owned()
+}
+
+/// `HH:MM` an hour later, as a clock's arrow turns it.
+fn an_hour_on(time: &str) -> String {
+    let hour: u32 = time.get(..2).and_then(|h| h.parse().ok()).unwrap_or(0);
+    format!("{:02}{}", (hour + 1) % 24, time.get(2..).unwrap_or(":00"))
 }
 
 #[test]
@@ -635,9 +691,12 @@ fn choose_from_menu(app: &App, name: &str) -> Vec<String> {
     let items = app.automation.menu_items();
     let names: Vec<String> = items.iter().map(|i| i.split('\'').nth(1).unwrap_or_default().to_owned()).collect();
     let at = names.iter().position(|n| n == name).unwrap_or_else(|| panic!("no {name} in {names:?}"));
-    // Down skips separators, so it counts the items before it.
-    let before = items[..at].iter().filter(|i| !i.starts_with("Separator")).count();
-    for _ in 0..=before {
+    // Down skips separators, so it counts the items before it: from the one highlighted, which a
+    // menu opened from the keyboard may start on, else from before the first.
+    let from = items.iter().position(|i| i.ends_with(" FOCUSED") || i.contains(" FOCUSED "));
+    let between = |start: usize| items[start..at].iter().filter(|i| !i.starts_with("Separator")).count();
+    let downs = from.map_or_else(|| between(0) + 1, between);
+    for _ in 0..downs {
         app.post(&["down"]);
     }
     app.post(&["enter"]);

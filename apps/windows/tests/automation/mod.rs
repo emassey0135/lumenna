@@ -394,11 +394,19 @@ pub fn describe(element: &IUIAutomationElement) -> String {
         {
             line += &format!(" help='{help}'");
         }
-        if let Ok(legacy) = element.GetCurrentPatternAs::<IUIAutomationLegacyIAccessiblePattern>(UIA_LegacyIAccessiblePatternId)
-            && let Ok(description) = legacy.CurrentDescription()
-            && !description.is_empty()
-        {
-            line += &format!(" msaa-description='{description}'");
+        if let Ok(legacy) = element.GetCurrentPatternAs::<IUIAutomationLegacyIAccessiblePattern>(UIA_LegacyIAccessiblePatternId) {
+            // What NVDA and JAWS read where UI Automation has no value of its own.
+            if !line.contains(" value='")
+                && let Ok(value) = legacy.CurrentValue()
+                && !value.is_empty()
+            {
+                line += &format!(" msaa-value='{value}'");
+            }
+            if let Ok(description) = legacy.CurrentDescription()
+                && !description.is_empty()
+            {
+                line += &format!(" msaa-description='{description}'");
+            }
         }
         if let Ok(key) = element.CurrentAccessKey()
             && !key.is_empty()
