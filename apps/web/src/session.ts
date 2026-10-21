@@ -56,14 +56,30 @@ function download(name: string, data: BlobPart, type: string) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-/** Shows a notification, where the browser allows: the page has the reminder either way. */
+/** The reminder `id` the page shows, its first button in focus: a notification's click. */
+function showReminder(id: string) {
+  window.focus();
+  document.getElementById(`due-${id}`)?.querySelector("button")?.focus();
+}
+
+// A click on a notification the service worker showed comes back here (public/sw.js).
+navigator.serviceWorker?.addEventListener("message", (event: MessageEvent<{ reminder?: string }>) => {
+  if (event.data?.reminder) showReminder(event.data.reminder);
+});
+
+/** Shows a notification, where the browser allows: the page has the reminder either way.
+ * Through the service worker where there is one, since an installed app on Android may
+ * show none any other way. */
 function notify(notice: Notice) {
   try {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
+    if (navigator.serviceWorker?.controller) {
+      void navigator.serviceWorker.ready.then((worker) => worker.showNotification(notice.title, { body: notice.text, tag: notice.id }));
+      return;
+    }
     const shown = new Notification(notice.title, { body: notice.text, tag: notice.id });
     shown.onclick = () => {
-      window.focus();
-      document.getElementById(`due-${notice.id}`)?.querySelector("button")?.focus();
+      showReminder(notice.id);
       shown.close();
     };
   } catch {

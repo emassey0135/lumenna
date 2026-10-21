@@ -58,6 +58,13 @@ export function App() {
   }, []);
 
 
+  // What is due, counted on the installed app's icon, as a phone's apps show it.
+  const dueCount = screen?.due?.length ?? 0;
+  useEffect(() => {
+    if (!("setAppBadge" in navigator)) return;
+    void (dueCount > 0 ? navigator.setAppBadge(dueCount) : navigator.clearAppBadge()).catch(() => undefined);
+  }, [dueCount]);
+
   // The app takes in whatever moved — another tab, `lum`, a sync, a minute — and draws it. One
   // tick with the worker at a time: a clock that jumps (a laptop waking, a test's) fires a burst
   // of these, and queued in front of a slow worker they held up everything sent after them.

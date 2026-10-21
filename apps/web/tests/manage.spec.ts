@@ -103,9 +103,14 @@ test("the filter, a saved filter's query and a block's tasks complete on Down or
   await answer(page, "New label", "calls", "Add");
   await page.getByRole("navigation", { name: "Places" }).getByRole("row", { name: /^Tasks/ }).click();
   await expect(heading(page)).toHaveText("Tasks");
+  // The list of Tasks drawn, and the filter empty, before typing: typed while the place was
+  // still arriving, the field was redrawn between keys and lost one ("@a").
+  await expect(page.getByRole("main").getByRole("treegrid", { name: "Tasks" })).toBeVisible();
   const filter = page.getByRole("main").getByRole("combobox", { name: "Filter" });
+  await expect(filter).toHaveValue("");
   await filter.focus();
   await page.keyboard.type("@ca");
+  await expect(filter).toHaveValue("@ca");
   await expect(page.getByRole("listbox")).toHaveCount(0);
   await page.keyboard.press("ArrowDown");
   await expect(page.getByRole("option", { name: /calls/ })).toBeVisible();

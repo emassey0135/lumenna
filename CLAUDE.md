@@ -1846,6 +1846,14 @@ with `lum`.
   time setting, where it is grouped with its line under the setting's name, so each clock is
   told from the others; a time picked there is applied at once. Chrome makes each a textbox, so
   a test naming a field "Day" names it exactly.
+- **Installed, it is a PWA** (`public/manifest.webmanifest`, `public/sw.js`, registered only in a
+  production build): the page is fetched afresh while online and kept for when there is none, and
+  every other file of the origin kept as first fetched, its name carrying its hash, so the app
+  opens offline with its store; other origins (the relays) are never touched. Notifications go
+  through the service worker where there is one (an installed app on Android shows them no other
+  way), a click handed back to the page; what is due is the app icon's badge. `npm run test:pwa`
+  builds and tests it (`playwright.pwa.config.ts`, against `vite preview`); CI runs it on its
+  release build.
 - **A colour is a mark beside the name** (`Swatch.tsx`): a dot in the sidebar, the lists, the
   day, a pick's choices and the block form's colour, `aria-hidden`, its value
   `light-dark(light, dark)` by the page's scheme, left out under forced colours.

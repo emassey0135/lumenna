@@ -147,6 +147,9 @@ jobs:
       - name: Build
         run: npm run build
       - run: npx playwright install --with-deps chromium
+      # The installed app, against the build just made: opening with no network, the manifest.
+      - name: The installed app
+        run: npx playwright test --config playwright.pwa.config.ts
       - name: Playwright and axe
         run: npm run core:dev && npm test
       # A failed test's trace (playwright.config.ts keeps it): what the page and the worker did,

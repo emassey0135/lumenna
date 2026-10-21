@@ -280,10 +280,10 @@ Each is a thin adapter over the command surface.
 - **An always-on peer**, documented: `lum daemon` on hardware the person controls. A VPS
   works, but say the provider can read the data, and make no encryption claim: unattended
   boot and provider-proof encryption conflict.
-- **Installing the web client as a PWA**: a manifest and service worker;
-  `navigator.storage.persist()`, because OPFS can be evicted and the device key with it;
-  offline loading; a badge for what is due; Background Sync to send pending changes when the
-  connection returns; File System Access as a backup destination.
+- **The installed web client**: a PWA now (manifest, offline loading, the badge). Still to come:
+  Background Sync, to send changes made offline as the connection returns, which needs the
+  sync to run in the service worker rather than the page's worker; and File System Access as a
+  backup destination, with automatic backups (below).
 - **Browsers for the web client**: only Chromium is tested. Safari, Firefox (OPFS sync access
   handles there) and ChromeVox are unchecked; an IndexedDB fallback for browsers without sync
   access handles is optional.

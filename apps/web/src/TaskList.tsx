@@ -38,8 +38,11 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
   const filterField = useRef<HTMLInputElement>(null);
   const [menu, setMenu] = useState(false);
 
-  // A new place starts from its own query.
-  useEffect(() => setFilter(screen.query), [screen.place]);
+  // A new place starts from its own query. Compared by what the place is: every turn brings a
+  // new object, and resetting on each put the field back to the app's answer for earlier typing,
+  // losing a key typed since ("@ca" came out "@a").
+  const placeIs = JSON.stringify(screen.place ?? null);
+  useEffect(() => setFilter(screen.query), [placeIs]);
 
   const nodes = useMemo(() => nest(items, (item) => item.row.id, (item) => item.row.depth), [items]);
   const expanded = useMemo(() => new Set<Key>(items.filter((item) => item.row.expanded).map((item) => item.row.id)), [items]);
