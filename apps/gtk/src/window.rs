@@ -628,7 +628,7 @@ impl App {
             }
         });
         simple("filter", |app| {
-            if app.task_list().is_none_or(|list| list.is_trash()) {
+            if app.task_list().is_none_or(|list| !list.has_filter()) {
                 app.go(Place::Tasks, false);
             }
             if let Some(list) = app.task_list() {
@@ -639,6 +639,7 @@ impl App {
         simple("go-tasks", |app| app.go(Place::Tasks, true));
         simple("go-blocks", |app| app.go(Place::Blocks, true));
         simple("go-trash", |app| app.go(Place::Trash, true));
+        simple("go-history", |app| app.go(Place::History, true));
         simple("next-pane", |app| app.move_pane(1));
         simple("previous-pane", |app| app.move_pane(-1));
         simple("open-task", |app| {
@@ -741,6 +742,7 @@ const ACCELERATORS: &[(&str, &[&str])] = &[
     ("win.go-tasks", &["<Control>2"]),
     ("win.go-blocks", &["<Control>3"]),
     ("win.go-trash", &["<Control>4"]),
+    ("win.go-history", &["<Control>5"]),
     ("win.next-pane", &["F6"]),
     ("win.previous-pane", &["<Shift>F6"]),
     ("win.mark-done", &["<Control>k"]),
@@ -821,6 +823,7 @@ fn menu_bar() -> gio::Menu {
                 item("T_asks", "win.go-tasks"),
                 item("_Blocks", "win.go-blocks"),
                 item("T_rash", "win.go-trash"),
+                item("_History", "win.go-history"),
             ]),
             section(vec![item("_Next Pane", "win.next-pane"), item("_Previous Pane", "win.previous-pane")]),
         ]),

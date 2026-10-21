@@ -24,6 +24,8 @@ use crate::window::App;
 pub struct TaskList {
     pub place: Place,
     trash: bool,
+    /// Whether it has a filter to change: not the trash, History or the block series.
+    filtered: bool,
     pub widget: gtk::Box,
     filter: gtk::Entry,
     readback: gtk::Label,
@@ -41,6 +43,7 @@ impl TaskList {
         let trash = place == Place::Trash;
         // The block series have no filter either, and a button to add one.
         let blocks = place == Place::Blocks;
+        let filtered = !matches!(place, Place::Trash | Place::History | Place::Blocks);
         let widget = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .spacing(6)
@@ -58,8 +61,9 @@ impl TaskList {
         crate::completion::attach(&filter, crate::completion::Source::Filter);
         let readback = gtk::Label::builder().xalign(0.0).wrap(true).build();
         let tree = Tree::new(&place.title());
-        // The trash is everything deleted, and nothing else: there is no filter to change.
-        if !trash && !blocks {
+        // The trash is everything deleted and History everything done lately, nothing else:
+        // there is no filter to change.
+        if filtered {
             widget.append(&label);
             widget.append(&filter);
         }
@@ -72,6 +76,7 @@ impl TaskList {
         let list = Rc::new(Self {
             place,
             trash,
+            filtered,
             widget,
             filter,
             readback,
@@ -187,7 +192,7 @@ impl TaskList {
         let Some(list) = &view.list else { return };
         let lines = app.model.lines();
         self.readback.set_label(&lines.readback);
-        if !self.trash && self.place != Place::Blocks && self.filter.text() != view.query && !has_focus(&self.filter) {
+        if self.filtered && self.filter.text() != view.query && !has_focus(&self.filter) {
             self.setting.set(true);
             self.filter.set_text(&view.query);
             self.setting.set(false);
@@ -216,6 +221,11 @@ impl TaskList {
         self.trash
     }
 
+    /// Whether it has a filter to change.
+    pub fn has_filter(&self) -> bool {
+        self.filtered
+    }
+
     /// Moves focus into the list once it is drawn, or now if it is.
     pub fn focus(&self) {
         self.landing.want(&self.tree);
@@ -223,7 +233,7 @@ impl TaskList {
 
     /// Puts focus in the filter, all of it selected so typing replaces it.
     pub fn focus_filter(&self) {
-        if !self.trash && self.place != Place::Blocks {
+        if self.filtered {
             self.filter.grab_focus();
         }
     }

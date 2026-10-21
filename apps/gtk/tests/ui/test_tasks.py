@@ -173,11 +173,11 @@ class TaskListTest(unittest.TestCase):
         self.session.press("F6")
         self.assertEqual(self.session.focus(), "[text] 'Title'")
         self.session.press("F6")
-        self.assertEqual(self.session.focus(), "[tree item] 'Tasks' level 1 2 of 7")
+        self.assertEqual(self.session.focus(), "[tree item] 'Tasks' level 1 2 of 8")
         self.session.press("F6")
         self.assertEqual(self.session.focus(), "[tree item] 'Buy milk' level 1 1 of 2")
         self.session.press("Shift+F6")
-        self.assertEqual(self.session.focus(), "[tree item] 'Tasks' level 1 2 of 7")
+        self.assertEqual(self.session.focus(), "[tree item] 'Tasks' level 1 2 of 8")
 
     def test_the_filter_narrows_the_list_and_enter_says_what_it_found(self):
         self.session.press("Control+f")
@@ -222,6 +222,17 @@ class TaskListTest(unittest.TestCase):
         self.assertNotIn("Buy milk", self.session.lum("task", "list", "deleted"))
         self.session.press("Control+z", wait=1)
         self.assertIn("Buy milk", self.session.lum("task", "list", "deleted"))
+
+    def test_history_lists_what_was_done_and_its_rows_keep_their_actions(self):
+        self.session.press("space", wait=1)
+        self.session.said()
+        self.session.press("Control+5", wait=1.5)
+        self.assertEqual(self.session.active_window(), "History – Lumenna")
+        # When it was done, in the desktop's clock.
+        self.assertTrue(self.session.focus().startswith("[tree item] 'Buy milk, completed today at "), self.session.focus())
+        # Its row is a task row: Space is still its Mark Not Done.
+        self.session.press("space", wait=1)
+        self.assertEqual(self.session.said(), ["Uncompleted Buy milk"])
 
     def test_delete_moves_a_task_to_the_trash(self):
         self.session.press("Delete")
