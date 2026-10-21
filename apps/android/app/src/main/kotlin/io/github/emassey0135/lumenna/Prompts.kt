@@ -50,6 +50,10 @@ fun AskText(
     example: String = "",
     hint: String? = null,
     number: Boolean = false,
+    /** When it asks for a day, the day a calendar beside the line opens on. */
+    day: String? = null,
+    /** Whether it asks for a time of day, so a clock beside the line fills it. */
+    time: Boolean = false,
     dismiss: () -> Unit,
     done: (String) -> Unit,
 ) {
@@ -59,6 +63,7 @@ fun AskText(
         onDismissRequest = dismiss,
         title = { Text(title) },
         text = {
+          Column {
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },
@@ -72,6 +77,12 @@ fun AskText(
                 keyboardActions = KeyboardActions(onDone = { done(text.text) }),
                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
             )
+            // A question that asks for a day or a time has a calendar or a clock beside its line,
+            // filling it.
+            val fill = { picked: String -> text = TextFieldValue(picked, TextRange(picked.length)) }
+            if (day != null) ChooseDay(text.text, from = day, picked = fill)
+            if (time) ChooseTime(text.text, picked = fill)
+          }
         },
         confirmButton = { TextButton(modifier = Target, onClick = { done(text.text) }) { Text(action) } },
         dismissButton = { TextButton(modifier = Target, onClick = dismiss) { Text("Cancel") } },

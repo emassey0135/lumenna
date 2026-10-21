@@ -178,9 +178,14 @@ private fun ScalingLazyListScope.setting(core: Core, shown: SettingView) {
                 }
             }
         }
-        SettingKind.TIME, SettingKind.NUMBER, SettingKind.FOLDER, SettingKind.LINE -> item {
-            val said = if (setting.kind == SettingKind.TIME) Clock.time(setting.value) else setting.value
-            TextFieldButton(setting.title, said) { set(it.trim()) }
+        SettingKind.TIME, SettingKind.NUMBER, SettingKind.FOLDER, SettingKind.LINE -> {
+            item {
+                val said = if (setting.kind == SettingKind.TIME) Clock.time(setting.value) else setting.value
+                TextFieldButton(setting.title, said) { set(it.trim()) }
+            }
+            // A time has the watch's own clock beside its line, named for the setting beneath, as
+            // there are several.
+            if (setting.kind == SettingKind.TIME) item { ChooseTime(setting.value, of = setting.title) { set(it) } }
         }
     }
     // A refused line, beside why, as the app keeps it.

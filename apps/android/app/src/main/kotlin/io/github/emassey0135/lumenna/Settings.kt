@@ -232,6 +232,7 @@ private fun SettingControl(core: Core, shown: SettingView, turnedOn: () -> Unit 
                     example = if (time) "9am" else "",
                     hint = shown.problem ?: if (time) "Such as 8am or 21:30." else null,
                     number = setting.kind == SettingKind.NUMBER,
+                    time = time,
                     dismiss = {
                         asking = false
                         sent = null

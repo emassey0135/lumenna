@@ -50,6 +50,8 @@ fun AppQuestions(core: Core, form: (Action) -> Unit) {
                 initial = question.initial,
                 // A refused answer stays, with what was typed, and the app's reason beneath it.
                 hint = asking.refusal ?: question.hint.ifEmpty { null },
+                // A question that asks for a day has a calendar beside its line.
+                day = asking.day,
                 dismiss = cancel,
             ) { text -> answer(Answer.Text(text)) }
             // What a pick offers comes with the question, once the app has worked it out.

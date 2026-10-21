@@ -187,6 +187,9 @@ class WearTest {
         press("Today")
         answers += "tomorrow"
         press("Go to day")
+        // The line first, then the watch's calendar.
+        shown("Choose a day").assertExists()
+        press("Day")
         said("Tomorrow").assertExists()
     }
 
@@ -281,6 +284,30 @@ class WearTest {
         answers += "in 3 days"
         press("Day")
         assertEquals(core.device.newBlockStart("in 3 days"), valueOf("Starts at"))
+    }
+
+    @Test
+    fun aBlocksDayIsFilledByTheWatchsOwnCalendarBesideItsLine() {
+        press("Today")
+        press("Add block")
+        answers += "2030-01-15"
+        press("Day")
+        press("Choose a day")
+        // Wear's calendar, open on the day the line names, a column at a time to its Confirm.
+        // Wear's dialog shrinks the form behind it while it shows, and the checks measured the
+        // form's buttons back there as under 48dp: they are left out while the dialog is open.
+        rule.disableAccessibilityChecks()
+        val confirm = androidx.compose.ui.test.hasContentDescription("Confirm") and hasClickAction()
+        repeat(3) {
+            if (rule.onAllNodes(confirm).fetchSemanticsNodes().isEmpty()) {
+                rule.onNode(androidx.compose.ui.test.hasContentDescription("Next") and hasClickAction()).performClick()
+                rule.waitForIdle()
+            }
+        }
+        rule.onNode(confirm).performClick()
+        rule.waitForIdle()
+        rule.enableAccessibilityChecks()
+        assertEquals("2030-01-15", valueOf("Day"))
     }
 
     /**

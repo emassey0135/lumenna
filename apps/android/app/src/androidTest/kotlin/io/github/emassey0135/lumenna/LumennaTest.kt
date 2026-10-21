@@ -534,6 +534,42 @@ class LumennaTest {
     }
 
     @Test
+    fun aBlocksDayAndStartAreFilledByAndroidsOwnPickersBesideTheirLines() {
+        tab("Today")
+        press("Add block")
+        // The calendar opens on the day the line names, words or a date, and gives it back ISO.
+        replace("Day", "today")
+        button("Choose a day")
+        button("Choose")
+        assertEquals(java.time.LocalDate.now().toString(), valueOf("Day"))
+        // The clock opens on the time the line holds and gives it back as HH:MM. On a 24-hour
+        // clock: a 12-hour one's AM and PM are Material's own, 36dp tall, which the checks refuse.
+        val shell = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val clock = shell.executeShellCommand("settings get system time_12_24").use { String(java.io.FileInputStream(it.fileDescriptor).readBytes()).trim() }
+        shell.executeShellCommand("settings put system time_12_24 24").close()
+        try {
+            replace("Starts at", "14:30")
+            button("Choose a time")
+            button("Choose")
+            assertEquals("14:30", valueOf("Starts at"))
+        } finally {
+            shell.executeShellCommand(if (clock == "null" || clock.isEmpty()) "settings delete system time_12_24" else "settings put system time_12_24 $clock").close()
+        }
+    }
+
+    @Test
+    fun goToDayHasACalendarBesideItsLineOpenOnTheDayShown() {
+        tab("Today")
+        button("Next day")
+        button("Go to day")
+        button("Choose a day")
+        button("Choose")
+        assertEquals(java.time.LocalDate.now().plusDays(1).toString(), valueOf("Day"))
+        button("Go")
+        rule.waitUntil(5_000) { core.app.view.value?.asking == null }
+    }
+
+    @Test
     fun aBreakSetApartToTakeTasksIsOfferedForThem() {
         tab("Today")
         press("Add block")

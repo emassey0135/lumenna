@@ -232,6 +232,12 @@ fun BlockFormScreen(core: Core, navigator: Navigator) {
                         }
                         TextFieldButton(field.label, value, field.example) { set(field.key, if (field.key == "minutes") it.trim() else it) }
                     }
+                    // A day or a time has the watch's own picker beside its line, filling it.
+                    when (field.kind) {
+                        FieldKind.DATE -> item { ChooseDay(form.date) { set(field.key, it) } }
+                        FieldKind.TIME -> item { ChooseTime(fields.text(field.key)) { set(field.key, it) } }
+                        else -> {}
+                    }
                     if (field.key == "repeat") field.hint.ifEmpty { null }?.let { item { Text(it) } }
                 }
             }

@@ -4,6 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import io.github.emassey0135.lumenna.Core
 import io.github.emassey0135.lumenna.Option
 import io.github.emassey0135.lumenna.app.ActionKind
@@ -11,6 +14,7 @@ import io.github.emassey0135.lumenna.app.Answer
 import io.github.emassey0135.lumenna.app.Question
 import io.github.emassey0135.lumenna.app.ShellEvent
 import io.github.emassey0135.lumenna.option
+import io.github.emassey0135.lumenna.pickers
 
 /**
  * The question the app has open (`ViewModel.asking`), asked the watch's way: Wear's AlertDialog
@@ -25,6 +29,17 @@ fun WearQuestions(core: Core, navigator: Navigator, entry: TextEntry?) {
     val app = core.app
     val view by app.view.collectAsState()
     val asking = view?.asking
+    // A question that asks for a day, answered from the watch's calendar: the day it opens on.
+    var calendar by remember { mutableStateOf<String?>(null) }
+    calendar?.let { from ->
+        DayDialog(true, dayOf("", from), dismissed = {
+            calendar = null
+            app.send(ShellEvent.Cancel)
+        }) { day ->
+            calendar = null
+            app.send(ShellEvent.Answer(Answer.Text(day)))
+        }
+    }
     LaunchedEffect(asking?.action?.kind, asking?.action?.target, asking?.question, asking?.choices, asking?.refusal) {
         val asked = asking ?: return@LaunchedEffect
         val action = asked.action
@@ -47,6 +62,12 @@ fun WearQuestions(core: Core, navigator: Navigator, entry: TextEntry?) {
                 if (length) {
                     chooseLength(navigator, question.title, if (question.optional) "None" else null, cancel) { minutes ->
                         answer(Answer.Text(minutes?.let { "${it}m" }.orEmpty()))
+                    }
+                } else if (asked.day != null) {
+                    // A day: the line first, said or typed, then the watch's own calendar.
+                    val from = asked.day
+                    navigator.choose(question.title, listOf(Option("line", question.label), Option("calendar", pickers.day)), cancelled = cancel) { way ->
+                        if (way.key == "calendar") calendar = from else entry?.ask(question.title) { answer(Answer.Text(it)) }
                     }
                 } else {
                     entry?.ask(question.title) { answer(Answer.Text(it)) }

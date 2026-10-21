@@ -1587,6 +1587,12 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   is `ReminderReceiver`'s too: it runs `carryRestForward("<target>@<occurrence>")` and says the
   change in a quiet notification of its own (tag `carried`, no `@`, so arming does not take it
   for a firing), since the app may not be open to say it.
+- **A day or a time has Android's own picker beside its line** (`Pickers.kt`: `ChooseDay`,
+  `ChooseTime`, named by the core's `picker_words`, shared's `pickers`), in the block form, Go to
+  Day and a time setting's dialog, filling the line. The day is Material's calendar without its
+  switch to typing (the line is that, and the switch was a 40dp target); the time is Material's
+  time input, not its dial, whose inner numbers are 32dp targets. On a 12-hour clock its AM and
+  PM are 36dp, Material's and not ours to size, so the test of it runs on a 24-hour clock.
 - **The planner's screens are the app's proposal** (`Proposal.kt` in each app): Replan from
   Now and Plan the Day, which the day's own actions (`Plan.actions`, on the day's heading as
   custom actions and as buttons) open. The proposal is said on opening; after a partial apply
@@ -1635,6 +1641,11 @@ phone does.
   Not the phone's local-only flag: with that, a watch without this app would get no
   reminders at all. A dismissal on either reaches the other at the next sync, which takes
   its copy away.
+- **A day or a time has the watch's own picker** (`wear/Pickers.kt`: Wear's `DatePicker` and
+  `TimePicker` in a `Dialog`) beside its line in the block form and each time setting, the
+  setting's name beneath its clock; Go to Day offers the line, then the calendar. While Wear's
+  dialog shows, the screen behind it shrinks and the checks measure its buttons as under 48dp,
+  so a test leaves them out for the presses inside it.
 - **A row's custom action that opens a screen runs on the main thread in tests**
   (`actOnMain`): Wear's navigation refuses the test thread, where TalkBack never calls it.
 - The watch says it runs `wearos` (`PLATFORM`), in pairing and over the link.

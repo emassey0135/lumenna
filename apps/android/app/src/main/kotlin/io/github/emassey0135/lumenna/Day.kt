@@ -253,14 +253,22 @@ fun BlockFormScreen(core: Core, navigator: Navigator) {
                         } else {
                             field.hint.ifEmpty { null }
                         }
+                        val change = { text: String ->
+                            typed[field.key] = text
+                            set(field.key, text)
+                        }
                         BlockField(
                             field.label, value, field.example, help,
                             number = minutes,
                             prose = field.key == "title" || field.key == "notes",
                             lines = if (field.kind == FieldKind.LINES) 3 else 1,
-                        ) {
-                            typed[field.key] = it
-                            set(field.key, it)
+                            changed = change,
+                        )
+                        // A day or a time has Android's own picker beside its line, filling it.
+                        when (field.kind) {
+                            FieldKind.DATE -> ChooseDay(value, picked = change)
+                            FieldKind.TIME -> ChooseTime(value, picked = change)
+                            else -> {}
                         }
                     }
                 }

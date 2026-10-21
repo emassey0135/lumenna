@@ -39,7 +39,8 @@ import java.time.LocalDate
 fun DayScreen(core: Core, navigator: Navigator) {
     val app = core.app
     val view by app.view.collectAsState()
-    LaunchedEffect(Unit) { app.send(ShellEvent.Open(Place.Today)) }
+    // Unless the app shows it already: coming back from a screen above it keeps the day shown.
+    LaunchedEffect(Unit) { if (app.view.value?.place !is Place.Today) app.send(ShellEvent.Open(Place.Today)) }
     val day = view?.takeIf { it.place == Place.Today }?.day
     val worded by app.lines.collectAsState()
     val lines = worded?.takeIf { day != null }
