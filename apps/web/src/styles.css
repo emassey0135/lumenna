@@ -11,6 +11,21 @@
   --edge: color-mix(in srgb, CanvasText 60%, Canvas);
   --quiet: color-mix(in srgb, CanvasText 72%, Canvas);
   --focus: Highlight;
+  /* Text on the system's selection and highlight. Its own pair can fall short: Firefox's
+     stand-in colours, which it shows where it hides the system's (resisting fingerprinting, and
+     under Playwright), are white on #3399ff, 2.94:1. So the text is whichever of black and white
+     contrasts more, where a browser can say; forced colours keep the pair the person chose. */
+  --selected-text: SelectedItemText;
+  --highlight-text: HighlightText;
+}
+
+@supports (color: contrast-color(red)) {
+  @media not (forced-colors: active) {
+    :root {
+      --selected-text: contrast-color(SelectedItem);
+      --highlight-text: contrast-color(Highlight);
+    }
+  }
 }
 
 * {
@@ -165,7 +180,7 @@ h2 {
   font-size: 0.8rem;
   line-height: 1;
   background: Highlight;
-  color: HighlightText;
+  color: var(--highlight-text);
   border-color: Highlight;
 }
 
@@ -187,7 +202,7 @@ h2 {
 
 .react-aria-TreeItem[data-selected] {
   background: SelectedItem;
-  color: SelectedItemText;
+  color: var(--selected-text);
 }
 
 .react-aria-TreeItem .chevron {
@@ -303,7 +318,7 @@ textarea,
 .react-aria-ListBoxItem[data-focused],
 .react-aria-MenuItem[data-focused] {
   background: Highlight;
-  color: HighlightText;
+  color: var(--highlight-text);
 }
 
 .react-aria-ModalOverlay {

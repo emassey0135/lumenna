@@ -159,10 +159,20 @@ export function App() {
     void send({ tag: "Open", value0: to });
   };
 
+  // Asked for, quick add stays open until the screen drawn has its line, or the app's answer has
+  // none: that answer can come before the turn that draws the line, and in Firefox quick add
+  // closed between the two, focus going back to the row and its field left without it.
   const newTask = () => {
     setOpening(true);
-    void send({ tag: "Typing", value0: { tag: "Open" } }).finally(() => setOpening(false));
+    void send({ tag: "Typing", value0: { tag: "Open" } }).then(
+      (turn) => turn.screen.line || setOpening(false),
+      () => setOpening(false),
+    );
   };
+  const lineShown = screen?.line != null;
+  useEffect(() => {
+    if (lineShown) setOpening(false);
+  }, [lineShown]);
   useCommand("new-task", newTask, -1);
   useCommand("new-block", () => thenRun({ tag: "Today" }, "new-block"), -1);
   const openSettings = () => {
