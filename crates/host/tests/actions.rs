@@ -31,7 +31,7 @@ fn a_tasks_actions_come_in_the_order_every_client_offers_them() {
     add(&lumenna, "write report");
     assert_eq!(
         titles(&task_actions(&lumenna, "write report")),
-        ["Mark Done", "Edit Details", "Put in a Block", "Move to Project", "Make Subtask Of", "Wait For", "Move to Trash"]
+        ["Mark Done", "Edit Details", "Put in a Block", "Move to Project", "Make Subtask Of", "Wait For", "Reminders", "Move to Trash"]
     );
 }
 
@@ -229,9 +229,10 @@ fn a_sitting_offers_pause_and_stop_once_its_timer_runs() {
     lumenna.assign(&report, &block.id, None, None).unwrap();
     let sitting = |lumenna: &Lumenna| lumenna.plan(None).unwrap().blocks.remove(0).assignments.remove(0);
     let actions = sitting(&lumenna).actions;
-    assert_eq!(titles(&actions), ["Start Timer", "Planned Length", "Log Minutes", "Edit Task Details", "Unassign"]);
+    assert_eq!(titles(&actions), ["Start Timer", "Planned Length", "Log Minutes", "Skip", "Edit Task Details", "Unassign"]);
     lumenna.act(find(&actions, "Start Timer"), Answer::Yes).unwrap();
     assert_eq!(&titles(&sitting(&lumenna).actions)[..2], ["Pause Timer", "Stop Timer"]);
+    assert!(!titles(&sitting(&lumenna).actions).contains(&"Skip"), "a sitting under way happened");
     lumenna.act(find(&sitting(&lumenna).actions, "Log Minutes"), Answer::Text { text: "25".to_owned() }).unwrap();
     assert_eq!(sitting(&lumenna).minutes, 25);
 }

@@ -471,8 +471,9 @@ pub fn task(snapshot: &Snapshot, task: &Task, done: bool, shown: bool) -> Vec<Ac
         stop.sentence = format!("Stop waiting for {title}");
         actions.push(stop);
     }
-    // Only a task with a due date has something for a reminder to count from.
-    if task.due.is_some() {
+    // A task still to do can be reminded of at a moment of its own; one with a due date, also
+    // counting from it (a repeating one comes round again, done or not).
+    if !done || task.due.is_some() {
         actions.push(a(K::Reminders, "Reminders"));
     }
     actions.push(a(K::Delete, "Move to Trash"));
@@ -776,11 +777,12 @@ pub fn reminder(id: &str, words: &str) -> Vec<Action> {
 
 /// A target's list of reminders: adding one, by a phrase the core reads.
 #[must_use]
-pub fn add_reminder(target: &str, name: &str, block: bool) -> Vec<Action> {
-    let hint = if block {
-        "Such as 5m before start, at end, or 10m after end."
-    } else {
-        "Such as 30m before, at due, or 1h after."
+pub fn add_reminder(target: &str, name: &str, block: bool, due: bool) -> Vec<Action> {
+    let hint = match (block, due) {
+        (true, _) => "Such as 5m before start, at end, 10m after end, or tomorrow at 9am.",
+        (false, true) => "Such as 30m before, at due, 1h after, or tomorrow at 9am.",
+        // Nothing to count from: a moment of its own.
+        (false, false) => "A day and a time, such as tomorrow at 9am.",
     };
     vec![action(ActionKind::New, Subject::Reminder, "Add Reminder", target)
         .asking(text(format!("New reminder for {name}"), "When", "", hint, false))]

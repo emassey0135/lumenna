@@ -198,16 +198,16 @@ until the app has taken it in."
     (goto-char (point-min))
     (should (equal (lumenna-test--line) "1 reminder, the defaults"))))
 
-(ert-deftest lumenna-a-task-offers-reminders-once-it-is-due ()
+(ert-deftest lumenna-a-task-with-no-due-date-offers-reminders-at-a-moment ()
   (lumenna-test--with-store
     (lumenna-test--seed "task.add" :text "someday")
-    (lumenna-test--seed "task.add" :text "call the bank tomorrow at 3pm")
     (lumenna-tasks)
     (lumenna-test--goto "someday")
-    (should-error (lumenna-act-reminders) :type 'user-error)
-    (lumenna-test--goto "call the bank")
-    (lumenna-act-reminders)
-    (should (equal (buffer-name) "*Lumenna reminders: call the bank*"))))
+    (let* ((heard nil)
+           (lumenna-announce-function (lambda (text _) (push text heard))))
+      (lumenna-act-reminders)
+      (should (equal (buffer-name) "*Lumenna reminders: someday*"))
+      (should (seq-some (lambda (said) (string-match-p "a moment of its own" said)) heard)))))
 
 (ert-deftest lumenna-a-default-reminder-the-core-refuses-is-asked-again-with-its-sentence ()
   (lumenna-test--with-store

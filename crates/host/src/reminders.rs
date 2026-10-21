@@ -20,7 +20,7 @@ use crate::error::{LumennaError, Result};
 use crate::types::Change;
 use crate::words::{count_line, duration};
 use crate::{Lumenna, repaired, resolve};
-use lumenna_records::reminders::{anchor_word, gap, reminder_target, target_name, trigger_words};
+use lumenna_records::reminders::{gap, reminder_target, target_name, trigger_words};
 use lumenna_records::words::capitalised;
 pub use lumenna_records::reminders::{DueReminder, DueReminders, ReminderList, ReminderView, SNOOZE_MINS, STALE_MINS};
 
@@ -317,21 +317,24 @@ impl Lumenna {
     ///
     /// If nothing matches `target`, or the anchor means nothing for it.
     pub fn add_reminder(&self, target: String, anchor: String, offset_mins: i32) -> Result<Change> {
+        let anchor = match anchor.trim() {
+            "due" => ReminderAnchor::Due,
+            "start" => ReminderAnchor::BlockStart,
+            "end" => ReminderAnchor::BlockEnd,
+            other => return Err(LumennaError::new(format!("'{other}' is not due, start or end"))),
+        };
+        self.add_trigger(&target, Trigger { anchor, offset_mins })
+    }
+
+    fn add_trigger(&self, target: &str, trigger: Trigger) -> Result<Change> {
         self.told(|store| {
             store.load_all_years()?;
             let snapshot = repaired(store);
-            let target = reminder_target(&snapshot, &target)?;
-            let anchor = match anchor.trim() {
-                "due" => ReminderAnchor::Due,
-                "start" => ReminderAnchor::BlockStart,
-                "end" => ReminderAnchor::BlockEnd,
-                other => return Err(LumennaError::new(format!("'{other}' is not due, start or end"))),
-            };
-            let trigger = Trigger { anchor, offset_mins };
+            let target = reminder_target(&snapshot, target)?;
             let reminder = Reminder::new(target, trigger.clone()).map_err(|_| {
                 LumennaError::new(match target {
-                    ReminderTarget::Task(_) => "a task's reminder counts from when it is due",
-                    ReminderTarget::Block(_) => "a block's reminder counts from when it starts or ends",
+                    ReminderTarget::Task(_) => "a task's reminder counts from when it is due, or is at a set moment",
+                    ReminderTarget::Block(_) => "a block's reminder counts from when it starts or ends, or is at a set moment",
                 })
             })?;
             let name = target_name(&snapshot, target);
@@ -342,7 +345,7 @@ impl Lumenna {
     }
 
     /// Gives a task or block a reminder of its own from a phrase: "5m before start", "at end",
-    /// "30m before" (for a task, its due time).
+    /// "30m before" (for a task, its due time), or a moment, "tomorrow at 9am".
     ///
     /// # Errors
     ///
@@ -352,8 +355,8 @@ impl Lumenna {
             store.load_all_years()?;
             Ok(matches!(reminder_target(&repaired(store), &target)?, ReminderTarget::Block(_)))
         })?;
-        let trigger = parse_trigger(&phrase, block)?;
-        self.add_reminder(target, anchor_word(&trigger.anchor).to_owned(), trigger.offset_mins)
+        let trigger = parse_reminder(&phrase, block, &Zoned::now())?;
+        self.add_trigger(&target, trigger)
     }
 
     /// Removes one of a task's or block's own reminders.
@@ -481,6 +484,9 @@ impl Lumenna {
 /// A trigger as the phrase `parse_trigger` reads back: "5m before start", "at end".
 #[must_use]
 pub fn trigger_phrase(trigger: &Trigger) -> String {
+    if let ReminderAnchor::Absolute(at) = &trigger.anchor {
+        return at.strftime("on %Y-%m-%d at %H:%M").to_string();
+    }
     let anchor = match trigger.anchor {
         ReminderAnchor::BlockStart => "start",
         ReminderAnchor::BlockEnd => "end",
@@ -499,8 +505,42 @@ pub fn trigger_phrase(trigger: &Trigger) -> String {
     }
 }
 
-/// A reminder as a person types it: "5m before start", "at end", "1h after"; for a task the
-/// anchor is its due time, which needs no saying. `block` says which it is for.
+/// A reminder as a person types it: "5m before start", "at end", "1h after" (for a task the
+/// anchor is its due time, which needs no saying), or a moment still to come, "tomorrow at
+/// 9am", in `now`'s zone. `block` says which it is for.
+///
+/// # Errors
+///
+/// If it does not read, names an anchor the target lacks, or a moment past or without a time.
+pub fn parse_reminder(text: &str, block: bool, now: &Zoned) -> Result<Trigger> {
+    let relative = parse_trigger(text, block);
+    if relative.is_ok() {
+        return relative;
+    }
+    // Not counted from the block or the due time: a moment of its own, "tomorrow at 9am",
+    // "on friday at 15:00". It needs a time; a day alone says nothing of when.
+    let phrase = text.trim();
+    let phrase = phrase.strip_prefix("on ").unwrap_or(phrase);
+    let Ok(Some(due)) = resolve::due(phrase, now) else { return relative };
+    if due.recurrence.is_some() {
+        return Err(LumennaError::new("a reminder at a set moment happens once; give a day and a time, such as tomorrow at 9am"));
+    }
+    let Some(time) = due.time else {
+        return Err(LumennaError::new(format!("say a time as well as the day, such as {} at 9am", phrase)));
+    };
+    let at = due
+        .date
+        .to_datetime(time)
+        .to_zoned(now.time_zone().clone())
+        .map_err(|e| LumennaError::new(e.to_string()))?;
+    if at.timestamp() <= now.timestamp() {
+        return Err(LumennaError::new("that moment has passed; give one still to come"));
+    }
+    Ok(Trigger { anchor: ReminderAnchor::Absolute(at), offset_mins: 0 })
+}
+
+/// A reminder counted from what it is about, as [`parse_reminder`] reads it without a moment:
+/// the defaults' phrases are only these.
 ///
 /// # Errors
 ///
@@ -517,7 +557,7 @@ pub fn parse_trigger(text: &str, block: bool) -> Result<Trigger> {
             (Some(other), false) => Err(LumennaError::new(format!("a task's reminder counts from when it is due, not '{other}'"))),
         }
     };
-    let example = if block { "such as 5m before start, or at end" } else { "such as 30m before, or at due" };
+    let example = if block { "such as 5m before start, at end, or tomorrow at 9am" } else { "such as 30m before, at due, or tomorrow at 9am" };
     match words.as_slice() {
         ["at", rest @ ..] if rest.len() <= 1 => Ok(Trigger { anchor: anchor(rest.first())?, offset_mins: 0 }),
         [span, way @ ("before" | "after"), rest @ ..] if rest.len() <= 1 => {

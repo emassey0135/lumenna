@@ -106,6 +106,13 @@ pub struct ReminderView {
     /// For `absolute`, the moment, RFC 3339.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub at: Option<String>,
+    /// For `absolute`, its day, ISO, and its time, `HH:MM`, in the moment's own zone: for the
+    /// app to say in its clock.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub day: Option<String>,
+    /// See `day`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time: Option<String>,
     /// How it reads: "5 minutes before it starts".
     pub words: String,
     /// What can be done to it: Remove, for one of its own; nothing for a default.
@@ -138,11 +145,11 @@ pub fn gap(offset_mins: i32) -> (String, std::cmp::Ordering) {
 /// What a trigger reads as on a target's list.
 pub fn trigger_words(trigger: &Trigger) -> String {
     let (span, when) = gap(trigger.offset_mins);
-    let (verb, at) = match trigger.anchor {
+    let (verb, at) = match &trigger.anchor {
         ReminderAnchor::BlockStart => ("it starts", "when it starts"),
         ReminderAnchor::BlockEnd => ("it ends", "when it ends"),
         ReminderAnchor::Due => ("it is due", "when it is due"),
-        ReminderAnchor::Absolute(_) => return "at a set time".to_owned(),
+        ReminderAnchor::Absolute(at) => return at.strftime("on %A %-d %B at %H:%M").to_string(),
     };
     match when {
         std::cmp::Ordering::Greater => format!("{span} before {verb}"),
@@ -172,6 +179,14 @@ pub fn view(id: ReminderId, trigger: &Trigger, own: bool) -> ReminderView {
         offset_mins: trigger.offset_mins,
         at: match &trigger.anchor {
             ReminderAnchor::Absolute(at) => Some(at.timestamp().to_string()),
+            _ => None,
+        },
+        day: match &trigger.anchor {
+            ReminderAnchor::Absolute(at) => Some(at.date().to_string()),
+            _ => None,
+        },
+        time: match &trigger.anchor {
+            ReminderAnchor::Absolute(at) => Some(at.time().strftime("%H:%M").to_string()),
             _ => None,
         },
         words,
@@ -211,8 +226,15 @@ pub fn reminders_of(snapshot: &Snapshot, target: &str) -> Result<ReminderList> {
         .filter(|r| r.target == target && r.deleted_at.is_none())
         .collect();
     own.sort_by_key(|r| r.trigger.offset_mins);
+    // A task with no due date has nothing for the defaults to count from.
+    let due = match target {
+        ReminderTarget::Task(id) => snapshot.tasks.get(&id).is_some_and(|t| t.due.is_some()),
+        ReminderTarget::Block(_) => true,
+    };
     let views: Vec<ReminderView> = if own.is_empty() {
+        let none = Vec::new();
         let defaults = match target {
+            ReminderTarget::Task(_) if !due => &none,
             ReminderTarget::Task(_) => &snapshot.settings.default_task_reminders,
             ReminderTarget::Block(_) => &snapshot.settings.default_block_reminders,
         };
@@ -235,8 +257,12 @@ pub fn reminders_of(snapshot: &Snapshot, target: &str) -> Result<ReminderList> {
             (n, true) => capitalised(&count_line(n, "reminder")),
             (n, false) => format!("{}, the defaults", capitalised(&count_line(n, "reminder"))),
         },
-        notices: Vec::new(),
+        notices: if due {
+            Vec::new()
+        } else {
+            vec!["It has no due date, so a reminder for it is a moment of its own, such as tomorrow at 9am.".to_owned()]
+        },
         reminders: views,
-        actions: crate::actions::add_reminder(&target_id, &target_name(snapshot, target), block),
+        actions: crate::actions::add_reminder(&target_id, &target_name(snapshot, target), block, due),
     })
 }

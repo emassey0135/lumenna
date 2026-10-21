@@ -159,14 +159,45 @@ fn a_reminder_is_added_and_removed_through_the_actions_every_app_offers() {
 }
 
 #[test]
-fn a_task_offers_reminders_only_once_it_has_something_to_count_from() {
+fn a_task_with_no_due_date_offers_reminders_at_a_moment_and_takes_no_defaults() {
     let (_directory, lumenna) = open();
-    lumenna.add_task("someday").unwrap();
+    let someday = lumenna.add_task("someday").unwrap().affected.tasks[0].clone();
     lumenna.add_task("call the bank tomorrow 3pm").unwrap();
     let rows = lumenna.list_tasks("").unwrap().rows;
     let offers = |title: &str| rows.iter().find(|r| r.title == title).unwrap().actions.iter().any(|a| a.title == "Reminders");
-    assert!(!offers("someday"));
+    assert!(offers("someday"));
     assert!(offers("call the bank"));
+    let list = lumenna.reminders_of(someday.clone()).unwrap();
+    assert_eq!(list.announcement, "No reminders", "the defaults count from a due date it lacks");
+    assert!(list.notices[0].contains("a moment of its own"), "{:?}", list.notices);
+    let lumenna_host::Question::Text { hint, .. } = &list.actions[0].question else { panic!() };
+    assert_eq!(hint, "A day and a time, such as tomorrow at 9am.");
+}
+
+#[test]
+fn a_reminder_at_a_moment_fires_then_and_a_day_alone_or_a_moment_past_is_refused() {
+    let (_directory, lumenna) = open();
+    let task = lumenna.add_task("water the plants").unwrap().affected.tasks[0].clone();
+    let add = lumenna.reminders_of(task.clone()).unwrap().actions.remove(0);
+    let at = Zoned::now().checked_add(SignedDuration::from_mins(90)).unwrap();
+    let phrase = format!("{} at {:02}:{:02}", at.date(), at.hour(), at.minute());
+    lumenna.act(add.clone(), lumenna_host::Answer::Text { text: format!("on {phrase}") }).unwrap();
+    let list = lumenna.reminders_of(task.clone()).unwrap();
+    let reminder = &list.reminders[0];
+    assert_eq!(reminder.anchor, "absolute");
+    assert_eq!(reminder.day.as_deref(), Some(at.date().to_string().as_str()));
+    assert_eq!(reminder.time.as_deref(), Some(format!("{:02}:{:02}", at.hour(), at.minute()).as_str()));
+    let fires = lumenna.upcoming_reminders(hours(3)).unwrap().due;
+    assert_eq!(fires.len(), 1, "{fires:?}");
+    assert!(fires[0].text.contains("water the plants"), "{}", fires[0].text);
+
+    let refused = |text: &str| match lumenna.act(add.clone(), lumenna_host::Answer::Text { text: text.to_owned() }) {
+        Err(error) => error.to_string(),
+        Ok(_) => panic!("{text} was taken"),
+    };
+    assert!(refused("tomorrow").contains("say a time"), "{}", refused("tomorrow"));
+    assert!(refused("yesterday at 9am").contains("passed"), "{}", refused("yesterday at 9am"));
+    assert!(refused("when it feels right").contains("not a reminder"));
 }
 
 #[test]

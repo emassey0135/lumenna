@@ -33,7 +33,6 @@ per client"); a task's and a block's own reminders and the defaults, set in ever
 dismissing, snoozing, Carry Forward and the overrun warning's Replan, synced; `lum reminder`
 and `lum notify`. Still to come:
 
-- **Reminders at a fixed moment** exist in the model and the scheduler; nothing sets one.
 - **Delivery to some devices only** (`Delivery`) has no way to be set.
 - **Hooks' time events on the same scheduler**, once hooks exist (Integrations). The
   planner's overrun warning already runs on it.
@@ -207,7 +206,7 @@ The core's `complete` works everywhere; what is missing is how each app offers i
   portal (an X11 key grab for Xfce and older GNOME); no tray on GNOME without the
   AppIndicator extension; "expanded" said twice on first focus of a row with subtasks.
 - **Emacs**: priority faces, mapped to voices.
-- **Every app**: icons of their own (GTK and Windows have none).
+- **Every app**: icons of their own (GTK has none; Windows has one).
 - **iOS UI tests that fail only when the simulator delivers a key out of order**: ⌘K (the K
   arriving before the ⌘, so VoiceOver's focus test sees nothing done) and ⌘F on CI. They
   are in the full suites, which only report.

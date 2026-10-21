@@ -113,7 +113,12 @@ pub fn lines(view: &ViewModel, clock: &dyn Clock) -> Lines {
                 list.reminders
                     .iter()
                     .map(|reminder| {
-                        Line::of(speech::sentence(&reminder.words), if reminder.own { Vec::new() } else { vec!["a default".to_owned()] })
+                        // A moment of its own is said in this device's clock.
+                        let words = match (&reminder.day, &reminder.time) {
+                            (Some(day), Some(time)) => format!("{} at {}", clock.day(day), clock.time(time)),
+                            _ => speech::sentence(&reminder.words),
+                        };
+                        Line::of(words, if reminder.own { Vec::new() } else { vec!["a default".to_owned()] })
                     })
                     .collect()
             })

@@ -153,7 +153,15 @@ impl Lumenna {
                 (_, ActionKind::Reminders) => {
                     model.reminders = Some(action.target.clone());
                     model.reminders_held = crate::held::Held::default();
-                    return render();
+                    // Its name is the list's own; what else it says (a task with no due date
+                    // takes a moment of its own) is said as it opens.
+                    let notices = model
+                        .store
+                        .as_ref()
+                        .and_then(|store| lumenna_records::reminders::reminders_of(&store.snapshot, &action.target).ok())
+                        .map(|list| list.notices)
+                        .unwrap_or_default();
+                    return if notices.is_empty() { render() } else { render().and(say(notices.join(" "))) };
                 }
                 // The day's two proposals are the app's screens over the host's proposing.
                 (Subject::Day, ActionKind::Replan) => return self.propose(proposal::Kind::Replan, model),

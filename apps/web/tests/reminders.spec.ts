@@ -103,24 +103,18 @@ test("a block's reminders are listed, a phrase the core cannot read stays in its
   await expect(page.getByRole("dialog", { name: "1 reminder, the defaults" }).getByRole("button", { name: "Add reminder" })).toBeFocused();
 });
 
-test("a task offers reminders only once it has a due date", async ({ page }) => {
+test("a task with no due date offers reminders at a moment of its own", async ({ page }) => {
   await open(page);
-  for (const line of ["someday", "call the bank tomorrow at 3pm"]) {
-    await page.getByRole("button", { name: "New task" }).click();
-    await page.getByRole("combobox", { name: "Task" }).fill(line);
-    await page.getByRole("button", { name: "Add", exact: true }).click();
-    await expect(page.getByRole("dialog")).toBeHidden();
-  }
-  const tasks = page.getByRole("main");
-  await tasks.getByRole("row", { name: /^someday/ }).focus();
-  await page.keyboard.press("Shift+F10");
-  await expect(page.getByRole("menuitem", { name: "Mark done" })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "Reminders" })).toHaveCount(0);
-  await page.keyboard.press("Escape");
-  await tasks.getByRole("row", { name: /^call the bank/ }).focus();
+  await page.getByRole("button", { name: "New task" }).click();
+  await page.getByRole("combobox", { name: "Task" }).fill("someday");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await page.getByRole("main").getByRole("row", { name: /^someday/ }).focus();
   await page.keyboard.press("Shift+F10");
   await page.getByRole("menuitem", { name: "Reminders" }).click();
   await expect(page.getByRole("dialog", { name: "No reminders" })).toBeVisible();
+  // Said as it opens, so it reaches a screen reader, and shown on the status line.
+  await expect(page.getByRole("contentinfo")).toContainText("a moment of its own");
 });
 
 test("a reminder due while the tab is open is said, shown as a notification, and dismissed there", async ({ page }) => {

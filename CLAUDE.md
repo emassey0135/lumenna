@@ -530,8 +530,12 @@ surface's `reminders.rs` words them and answers the apps.
   last delivered (`reminders-delivered`, a device setting) and goes back at most a day; over
   RPC, `reminder.deliver` takes it for its connection. A
   system that schedules notifications itself asks `upcoming_reminders(until)` instead.
-- **A reminder is a phrase the core reads** (`parse_trigger`, `trigger_phrase`): "5m before
-  start", "at end", "30m before" (a task's due time needs no saying). Adding one is the
+- **A reminder is a phrase the core reads** (`parse_reminder`, `trigger_phrase`): "5m before
+  start", "at end", "30m before" (a task's due time needs no saying), or a moment of its own,
+  "tomorrow at 9am" (`ReminderAnchor::Absolute`, refused without a time or once past; its row
+  carries `day` and `time` for the app's clock). The defaults are counted phrases only
+  (`parse_trigger`). Every open task offers Reminders; one with no due date takes no defaults,
+  and its list's notice, said as it opens, says a reminder for it is a moment. Adding one is the
   reminder list's Add Reminder action, a Text question; the defaults are settings in the
   same phrases, separated by commas (`SettingKind::Line`). A task with a due date and every
   block offer Reminders (`Question::Form`: the app's list of `reminders_of`), whose own
