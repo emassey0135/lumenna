@@ -244,23 +244,20 @@ pub fn blocks_for(snapshot: &Snapshot, task: Option<&str>, from: Option<&str>, d
             snapshot.tasks.get(&resolve::task_id(snapshot, task)?).cloned().ok_or_else(|| LumennaError::new("that task is not here"))
         })
         .transpose()?;
-    let admitted: Option<BTreeSet<String>> = match &task {
-        None => None,
-        Some(task) => Some({
-            let cx = Context::new(snapshot, now);
-            snapshot
-                .series
-                .values()
-                .filter(|series| match series.task_filter.as_deref().map(str::trim) {
-                    None | Some("") => true,
-                    // A filter that no longer reads (a label renamed away) admits nothing
-                    // rather than everything.
-                    Some(text) => resolve::query(snapshot, text).is_ok_and(|expr| expr.matches(task, &cx)),
-                })
-                .map(|series| series.id.to_string())
-                .collect()
-        }),
-    };
+    let admitted: Option<BTreeSet<String>> = task.as_ref().map(|task| {
+        let cx = Context::new(snapshot, now);
+        snapshot
+            .series
+            .values()
+            .filter(|series| match series.task_filter.as_deref().map(str::trim) {
+                None | Some("") => true,
+                // A filter that no longer reads (a label renamed away) admits nothing
+                // rather than everything.
+                Some(text) => resolve::query(snapshot, text).is_ok_and(|expr| expr.matches(task, &cx)),
+            })
+            .map(|series| series.id.to_string())
+            .collect()
+    });
     let open: Vec<Choice> = blocks
         .blocks
         .into_iter()
