@@ -3,4 +3,4 @@
 [3/5] unchecked | Water the plants, task, recurring, due today at 6:00 PM, 3 of 5 | tsk Water the plants rec due today at 6:00 PM 3/5
 [4/5] expanded unchecked | Plan the trip, task, priority 1, 1 of 2 subtasks done, 4 of 5 | tsk Plan the trip priority 1, 1 of 2 subtasks done 4/5
   [1/1] unchecked | Find a hotel, task, subtask | tsk Find a hotel sub
-[5/5] unchecked | Write the report, task, blocked, 5 of 5 | tsk Write the report blk 5/5
+[5/5] unchecked | Write the report, task, blocked, 5 of 5 | tsk Write the report wait 5/5

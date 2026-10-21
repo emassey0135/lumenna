@@ -4,4 +4,4 @@
 [4/5] expanded unchecked | Plan the trip, task, priority 1, 1 of 2 subtasks done, 4 of 5 | tsk Plan the trip priority 1, 1 of 2 subtasks done 4/5
   [1/2] unchecked | Find a hotel, task, subtask, 1 of 2 | tsk Find a hotel sub 1/2
   [2/2] checked | Book the train, task, completed, subtask, 2 of 2 | tsk Book the train done sub 2/2
-[5/5] unchecked | Write the report, task, blocked, 5 of 5 | tsk Write the report blk 5/5
+[5/5] unchecked | Write the report, task, blocked, 5 of 5 | tsk Write the report wait 5/5

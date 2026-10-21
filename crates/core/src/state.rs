@@ -139,7 +139,8 @@ impl State {
             Self::Overdue => "ovd",
             Self::Recurring => "rec",
             Self::Subtask => "sub",
-            Self::Blocked => "blk",
+            // Not "blk", which is a block's role: blocked is waiting, as its action is Wait For.
+            Self::Blocked => "wait",
             Self::Ready => "rdy",
             Self::Running => "run",
             Self::Started => "strt",
@@ -487,6 +488,7 @@ mod tests {
         AssignmentStatus, BlockAssignment, BlockRef, Due, Project, Recurrence, TaskCompletion,
     };
     use crate::order::OrderKey;
+    use crate::row::Role;
     use crate::{SeriesId, TaskId};
     use jiff::civil::{date, time};
 
@@ -519,10 +521,13 @@ mod tests {
             assert_eq!(State::from_keyword(state.keyword()), Some(*state));
         }
         assert_eq!(seen.len(), State::ALL.len());
-        // Abbreviations must be distinguishable too, or braille loses information speech has.
-        let abbrevs: std::collections::BTreeSet<_> =
-            State::ALL.iter().map(|s| s.abbreviation()).collect();
-        assert_eq!(abbrevs.len(), State::ALL.len());
+        // Abbreviations must be distinguishable too, from each other and from every role's,
+        // since a row shows both: or braille loses information speech has.
+        let roles = [Role::Task, Role::Project, Role::Label, Role::Block, Role::Group];
+        let mut abbrevs = std::collections::BTreeSet::new();
+        for abbrev in State::ALL.iter().map(|s| s.abbreviation()).chain(roles.iter().map(|r| r.abbreviation())) {
+            assert!(abbrevs.insert(abbrev), "two things are {abbrev} in braille");
+        }
     }
 
     #[test]
