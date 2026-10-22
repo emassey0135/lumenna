@@ -2,7 +2,8 @@
 
 use std::collections::BTreeSet;
 
-use lumenna_records::{Action, ActionKind, Question, RowView, Rows, Subject};
+use lumenna_records::{Action, ActionKind, Question, RowView, Rows};
+pub use lumenna_records::{Asks, Offered};
 use serde::{Deserialize, Serialize};
 
 /// One row of a list.
@@ -23,76 +24,6 @@ pub struct Item {
     /// The row's actions, in order, as places in the list's `offered`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub actions: Vec<u32>,
-}
-
-/// One action a list's rows offer, in short: what every row offering it shares, held once in
-/// the list (`ListView::offered`) and named by each row's `actions`. What is a row's own — the
-/// record it acts on, and the question it asks worded with that record's name — the app keeps,
-/// and finds again when a shell hands this back (`Event::Act`) for the row in hand. A list of
-/// 2,000 tasks offered 15,372 actions in full, and eleven in short.
-#[boltffi::data]
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Offered {
-    /// What it does.
-    pub kind: ActionKind,
-    /// What it is done to.
-    pub subject: Subject,
-    /// Its spoken name: "Mark Done".
-    pub title: String,
-    /// The same in sentence case ("Mark done").
-    pub sentence: String,
-    /// Whether it removes something, so is shown as such.
-    #[serde(default)]
-    pub destructive: bool,
-    /// Whether it is one of the two or three a row shows by itself.
-    #[serde(default)]
-    pub primary: bool,
-    /// A second record, where it takes one: the task Stop Waiting is about.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub other: Option<String>,
-    /// What it asks before it runs, in kind: the words are the app's when it asks.
-    pub asks: Asks,
-}
-
-/// What an action asks before it runs, as a shell needs to know it ahead: whether it asks at
-/// all (a menu item that asks ends in "…" on the Mac) and whether its form is the shell's own.
-#[boltffi::data]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-pub enum Asks {
-    /// It runs at once.
-    #[default]
-    Nothing,
-    /// It asks a question first, which the app opens.
-    Something,
-    /// It opens the shell's own form (`Question::Form`): a task's details, a reminder list.
-    Form,
-}
-
-impl Offered {
-    /// `action` in short.
-    #[must_use]
-    pub fn of(action: &Action) -> Self {
-        Self {
-            kind: action.kind,
-            subject: action.subject,
-            title: action.title.clone(),
-            sentence: action.sentence.clone(),
-            destructive: action.destructive,
-            primary: action.primary,
-            other: action.other.clone(),
-            asks: match action.question {
-                Question::Immediate => Asks::Nothing,
-                Question::Form => Asks::Form,
-                _ => Asks::Something,
-            },
-        }
-    }
-
-    /// Whether `action` is this one, for the row it is offered on: a row offers each once.
-    #[must_use]
-    pub fn is(&self, action: &Action) -> bool {
-        action.kind == self.kind && action.subject == self.subject && action.title == self.title && action.other == self.other
-    }
 }
 
 /// The actions `items` offer, each once, and each item's as places among them.

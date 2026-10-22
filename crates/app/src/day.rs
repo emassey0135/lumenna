@@ -9,7 +9,7 @@ use jiff::civil::Date;
 use crux_core::render::render;
 use lumenna_records::places::Place;
 use lumenna_records::types::{CancelledBlock, Plan, PlanAssignment, PlanBlock, PlanItem};
-use lumenna_records::{Action, ActionKind, Question, Subject};
+use lumenna_records::{Action, ActionKind, Offered, Question, Subject};
 use serde::{Deserialize, Serialize};
 
 use crate::asking::{Open, Purpose};
@@ -74,6 +74,9 @@ pub struct DayItem {
     pub depth: u32,
     /// What can be done to it, the core's, with Expand or Collapse for a block with sittings.
     pub actions: Vec<Action>,
+    /// What can be done to it, in short, as the view offers it (see [`Offered`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub offered: Vec<Offered>,
     /// Folded away under a collapsed block.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hidden: bool,
@@ -107,6 +110,7 @@ impl DayItem {
             kind,
             depth,
             actions,
+            offered: Vec::new(),
             hidden: false,
             expanded: None,
             level: None,
@@ -133,6 +137,9 @@ pub struct DayView {
     pub summary_braille: String,
     /// The day's own actions: Plan the Day, Replan from Now, What Should I Work On?, …
     pub actions: Vec<Action>,
+    /// What can be done to the day itself, in short, as the view offers it (see [`Offered`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub offered: Vec<Offered>,
     /// Its rows, those folded away marked hidden.
     pub items: Vec<DayItem>,
 }
@@ -207,6 +214,7 @@ pub fn day(plan: &Plan, today: bool, folded: &BTreeSet<String>) -> DayView {
         summary: plan.summary.clone(),
         summary_braille: plan.summary_braille.clone(),
         actions: plan.actions.clone(),
+        offered: Vec::new(),
         items,
     }
 }

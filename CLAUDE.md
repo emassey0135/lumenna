@@ -86,17 +86,20 @@ without the screens over BoltFFI. No JSON crosses the FFI.
   A key pressed on a row without that action is the app's to refuse (`Run`, `RunDay`,
   `DetailsEvent::Run`), in `not_offered(kind, subject, …)`'s words.
   What a picker's row says is `lumenna_app::speech::choice` for Windows, GTK and the web.
-  **A list's rows name their actions in short** (`ListView::offered`, `lumenna_app::Offered`,
-  each row's `Item::actions` places in it): kind, subject, title, sentence, destructive,
-  primary, `other`, and `asks` (`Nothing`, `Something`, or `Form`, the shell's own); never the
-  record it acts on or the question's words, which name the row's record, so a list of 2,000
-  tasks offers eleven where it carried 15,372 actions whole. A shell hands one back with
-  `Event::Act` after putting the row in hand (`Focus`, or `Hold` in a side list), and the app
-  runs that row's action whole as it has it now, or refuses one the row no longer offers in
-  `not_offered`'s words. A `Form` one is opened by the shell for the row's own record (its
-  `id`). A list item's `row.actions` is empty in a view: the app keeps them, for `Act`. The day,
-  the sidebar, reminders, devices and the details still carry their actions whole, with
-  `Perform`. A list's rows decoded 3.6 times faster in BTSpeak's Python.
+  **A view's rows name their actions in short** (`lumenna_records::Offered`): kind, subject,
+  title, sentence, destructive, primary, `other`, and `asks` (`Nothing`, `Something`, or
+  `Form`, the shell's own); never the record it acts on or the question's words, which name the
+  row's record. A list's rows name theirs by place in `ListView::offered` (each `Item::actions`),
+  so a list of 2,000 tasks offers eleven where it carried 15,372 actions whole; every other row
+  carries its own `offered` (a day's row, the day itself, a sidebar entry, a reminder and the
+  reminder list, a device, the details' task), empty outside a view, where host records keep
+  `actions` whole for `lum --json` and RPC. A shell hands one back with
+  `Event::ActOn(ActingOn, Offered)`, naming its row: `Row(key)` of the place shown (a list or
+  the day), `Held(side, key)` in a side list, `Day` (the day's own), `Details`, `Reminders` (the
+  reminder list's own). The app puts the row in hand as `Focus` or `Hold` would, then runs that
+  row's action whole as it has it now, or refuses one it no longer offers in `not_offered`'s
+  words, and a row gone in `no_longer_here`'s. A `Form` one is opened by the shell for the row's
+  own record (its `id`). A list's rows decoded 3.6 times faster in BTSpeak's Python.
 - **What every client's forms share is here too**, as free functions in `form.rs`:
   `task_fields`/`task_edit`, the block form's `block_fields`/`block_edit`/`new_block`,
   `parse_weight`, the `#"Home Office"` references. `task_edit` and `block_edit` hold only

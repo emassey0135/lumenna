@@ -53,7 +53,7 @@ use serde::{Deserialize, Serialize};
 
 pub use blockform::{BlockEvent, BlockFormView};
 pub use capitals::Capitals;
-pub use held::{HeldView, Side};
+pub use held::{ActingOn, HeldView, Side};
 pub use shell::ShellEvent;
 pub use day::{DayItem, DayKind, DayView};
 pub use details::{DetailsEvent, DetailsView};
@@ -176,6 +176,10 @@ pub enum Event {
     /// on the row in hand (or held in a side list): its target and its question are the app's,
     /// found again from that row's actions. One the row no longer offers says why.
     Act(list::Offered),
+    /// Run an action a row offered, in short as the view gave it, on the row it names: put in
+    /// hand (as `Focus` or `Hold` would) and its action found again there, whole, as the app has
+    /// it now. One the row no longer offers says why, and a row gone says so.
+    ActOn(ActingOn, list::Offered),
     /// Run the first of these kinds the row in hand offers, for a key that means one thing on
     /// every row: Space is Mark Done, Mark Not Done or Restore. One it offers none of says why,
     /// in the words for the first.
@@ -376,6 +380,12 @@ impl Lumenna {
 
     /// `event` on one screen.
     fn turn(&self, event: Event, model: &mut Screen) -> Command<Effect, Event> {
+        // An action on a row puts the row in hand first, as the person moving there would.
+        let first = match &event {
+            Event::ActOn(ActingOn::Row(key), _) => self.turn(Event::Focus(key.clone()), model),
+            Event::ActOn(ActingOn::Held(side, key), _) => self.turn(Event::Hold(*side, key.clone()), model),
+            _ => Command::done(),
+        };
         // Where focus goes is the app's to say; the shell moves it only when this moves. Not when
         // the person reports moving, or a late answer would pull them back; always after a
         // write, whose rows a shell redraws.
@@ -394,7 +404,9 @@ impl Lumenna {
         // action, the question it asks, its answer — and anything else they do hands landing
         // back to the main list.
         match &event {
-            Event::Hold(side, _) => model.acting = Some(*side),
+            Event::Hold(side, _) | Event::ActOn(ActingOn::Held(side, _), _) => model.acting = Some(*side),
+            Event::ActOn(ActingOn::Reminders, _) => model.acting = Some(Side::Reminders),
+            Event::ActOn(ActingOn::Row(_), _) => {}
             Event::Perform(_) | Event::Act(_) | Event::Answer(_) | Event::Cancel | Event::Run(_) => {}
             other if other.is_the_persons() => model.acting = None,
             _ => {}
@@ -414,7 +426,7 @@ impl Lumenna {
             | Event::PlanFrom(_) => {}
             _ => model.acted_at = model.moves,
         }
-        let command = self.dispatch(event, model);
+        let command = first.and(self.dispatch(event, model));
         if moved_since && model.place == place && before.is_some() {
             model.focus = before.clone();
             model.settle();
@@ -452,6 +464,7 @@ impl Lumenna {
             Event::Perform(action) => self.perform(action, model),
             Event::Run(kinds) => self.run(kinds, model),
             Event::Act(offered) => self.act(&offered, model),
+            Event::ActOn(on, offered) => self.act_on(on, &offered, model),
             Event::Answer(answer) => self.answer(answer, model),
             Event::Cancel => {
                 model.open = None;

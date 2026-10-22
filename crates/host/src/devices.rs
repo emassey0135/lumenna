@@ -109,6 +109,7 @@ impl Lumenna {
                     schema_version: device.schema,
                     status: Vec::new(),
                     actions: Vec::new(),
+                    offered: Vec::new(),
                 };
                 view.status = crate::words::device_status(&view, jiff::Timestamp::now(), me.is_some());
                 view.actions = crate::actions::device(&view.name, &view.node_id, view.this_device);

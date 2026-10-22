@@ -4,7 +4,7 @@
 use crux_core::Command;
 use crux_core::render::render;
 use lumenna_records::places::Place;
-use lumenna_records::{Action, ActionKind, Answer, Change, Choice, Choices, LumennaError, Question, Subject, not_offered};
+use lumenna_records::{Action, ActionKind, Answer, Change, Choice, Choices, LumennaError, Offered, Question, Subject, not_offered};
 
 use crate::host::{Arrival, HostRequest};
 use crate::model::Screen;
@@ -425,11 +425,33 @@ impl Lumenna {
     /// Runs the row in hand's action that `offered` names in short (a side list's row while the
     /// person acts from it), whole: its target and question as the app has them now. A row that
     /// no longer offers it is refused as a key it lacks would be.
-    pub(crate) fn act(&self, offered: &crate::list::Offered, model: &mut Screen) -> Command<Effect, Event> {
+    pub(crate) fn act(&self, offered: &Offered, model: &mut Screen) -> Command<Effect, Event> {
         let held = model.acting.and_then(|side| model.side_actions(side));
         let actions = held.or_else(|| model.actions_in_hand()).unwrap_or_default();
         match actions.iter().find(|action| offered.is(action)) {
             Some(action) => self.perform(action.clone(), model),
+            None => refuse(offered.kind, &actions, model),
+        }
+    }
+
+    /// Runs the action `offered` names in short on the row `on` names, which `turn` has put in
+    /// hand: found again there, whole. A row gone since says so; one that no longer offers it is
+    /// refused as a key it lacks would be.
+    pub(crate) fn act_on(&self, on: crate::ActingOn, offered: &Offered, model: &mut Screen) -> Command<Effect, Event> {
+        use crate::ActingOn;
+        let actions = match &on {
+            ActingOn::Row(key) => model.actions_in_hand().filter(|_| model.focus.as_ref() == Some(key)),
+            ActingOn::Held(side, key) => {
+                if model.side_keys(*side).contains(key) { model.side_actions(*side) } else { None }
+            }
+            ActingOn::Day => model.day_view().map(|day| day.actions),
+            ActingOn::Details => model.details_shown().map(|task| task.actions),
+            ActingOn::Reminders => crate::view::whole(model).reminders.map(|list| list.actions),
+        };
+        let Some(actions) = actions else { return say(lumenna_records::no_longer_here()) };
+        match actions.iter().find(|action| offered.is(action)) {
+            Some(action) => self.perform(action.clone(), model),
+            None if actions.is_empty() => say(not_offered(offered.kind, offered.subject, false)),
             None => refuse(offered.kind, &actions, model),
         }
     }

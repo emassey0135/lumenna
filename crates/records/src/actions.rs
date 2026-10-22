@@ -166,6 +166,78 @@ pub enum Subject {
     Day,
 }
 
+/// An action as a view offers it, in short: what it is called and does, and what it asks in
+/// kind, never the record it acts on or the question's words, which name that record. The app
+/// keeps the actions whole and finds one again when a shell hands this back for its row
+/// (`Event::ActOn`). A list's rows name theirs by place in the list (`ListView::offered`), since
+/// a list of 2,000 tasks offered 15,372 actions in full and eleven in short; every other row
+/// carries its own (`offered`). Outside a view, a record's `offered` is empty: its `actions`
+/// are whole.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Offered {
+    /// What it does.
+    pub kind: ActionKind,
+    /// What it is done to.
+    pub subject: Subject,
+    /// Its spoken name: "Mark Done".
+    pub title: String,
+    /// The same in sentence case ("Mark done").
+    pub sentence: String,
+    /// Whether it removes something, so is shown as such.
+    #[serde(default)]
+    pub destructive: bool,
+    /// Whether it is one of the two or three a row shows by itself.
+    #[serde(default)]
+    pub primary: bool,
+    /// A second record, where it takes one: the task Stop Waiting is about.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub other: Option<String>,
+    /// What it asks before it runs, in kind: the words are the app's when it asks.
+    pub asks: Asks,
+}
+
+/// What an action asks before it runs, as a shell needs to know it ahead: whether it asks at
+/// all (a menu item that asks ends in "…" on the Mac) and whether its form is the shell's own.
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub enum Asks {
+    /// It runs at once.
+    #[default]
+    Nothing,
+    /// It asks a question first, which the app opens.
+    Something,
+    /// It opens the shell's own form (`Question::Form`): a task's details, a reminder list.
+    Form,
+}
+
+impl Offered {
+    /// `action` in short.
+    #[must_use]
+    pub fn of(action: &Action) -> Self {
+        Self {
+            kind: action.kind,
+            subject: action.subject,
+            title: action.title.clone(),
+            sentence: action.sentence.clone(),
+            destructive: action.destructive,
+            primary: action.primary,
+            other: action.other.clone(),
+            asks: match action.question {
+                Question::Immediate => Asks::Nothing,
+                Question::Form => Asks::Form,
+                _ => Asks::Something,
+            },
+        }
+    }
+
+    /// Whether `action` is this one, for the row it is offered on: a row offers each once.
+    #[must_use]
+    pub fn is(&self, action: &Action) -> bool {
+        action.kind == self.kind && action.subject == self.subject && action.title == self.title && action.other == self.other
+    }
+}
+
 /// One thing that can be done, and what it asks first.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -876,6 +948,12 @@ pub fn not_offered(kind: ActionKind, subject: Subject, this_device: bool) -> Str
         }
         _ => "That does not apply here.".to_owned(),
     }
+}
+
+/// What an action on a row gone since it was offered says: deleted, done or moved on another
+/// device, or a place left.
+pub fn no_longer_here() -> String {
+    "That is no longer here.".to_owned()
 }
 
 /// Gives every row of a listing its actions, by what it is.

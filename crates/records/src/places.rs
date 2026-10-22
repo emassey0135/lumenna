@@ -142,13 +142,17 @@ pub struct SidebarEntry {
     /// What can be done to it: a project's, label's or saved filter's own, a heading's New.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub actions: Vec<crate::actions::Action>,
+    /// What can be done to it, in short, as a view offers it (see [`crate::actions::Offered`]);
+    /// empty outside a view, where `actions` are whole.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub offered: Vec<crate::actions::Offered>,
 }
 
 impl SidebarEntry {
     /// A row: its line is its title, then what is in it.
     #[must_use]
     pub fn new(kind: SidebarKind, title: &str, detail: &str, depth: u32, actions: Vec<crate::actions::Action>) -> Self {
-        Self { key: Self::key_of(&kind), text: line(title, detail), title: title.to_owned(), detail: detail.to_owned(), kind, depth, archived: false, swatch: None, actions }
+        Self { key: Self::key_of(&kind), text: line(title, detail), title: title.to_owned(), detail: detail.to_owned(), kind, depth, archived: false, swatch: None, actions, offered: Vec::new() }
     }
 
     /// What identifies it across a reload, so the selection stays put.

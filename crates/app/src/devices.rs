@@ -61,6 +61,7 @@ mod tests {
             schema_version: 1,
             status: Vec::new(),
             actions: Vec::new(),
+            offered: Vec::new(),
         };
         view.status = lumenna_records::words::device_status(&view, now(), true);
         view

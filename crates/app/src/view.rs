@@ -2,6 +2,7 @@
 
 use lumenna_records::reminders::ReminderList;
 use lumenna_records::Syntax;
+use lumenna_records::Offered;
 use jiff::Zoned;
 use lumenna_core::snapshot::Snapshot;
 use lumenna_records::places::{Place, SidebarEntry, sidebar};
@@ -89,7 +90,7 @@ pub struct ListView {
     /// The actions the rows offer, each once, in short: each row names its own by place here
     /// (`Item::actions`), and hands one back with `Event::Act`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub offered: Vec<crate::list::Offered>,
+    pub offered: Vec<Offered>,
     /// How many there are, in a sentence: "3 tasks".
     pub announcement: String,
     /// What the list says when it has none.
@@ -163,11 +164,48 @@ fn folded_sidebar(mut entries: Vec<SidebarEntry>, folded: &std::collections::BTr
 }
 
 pub fn view(model: &Screen) -> ViewModel {
+    let mut view = whole(model);
+    offer(&mut view);
+    view
+}
+
+/// The view with every row's actions whole: where the app finds an action handed back in short.
+pub(crate) fn whole(model: &Screen) -> ViewModel {
     let mut view = shown(model);
     if model.capitals == crate::Capitals::Sentence {
         crate::capitals::in_sentence_case(&mut view);
     }
     view
+}
+
+/// Every row's actions as the view offers them, in short (`Offered`): a shell hands one back
+/// with `Event::ActOn`, naming its row, and the app runs that row's action whole as it has it.
+/// A list's rows name theirs by place in the list (`ListView::offered`, made with the list).
+fn offer(view: &mut ViewModel) {
+    let short = |actions: &[lumenna_records::Action]| actions.iter().map(Offered::of).collect::<Vec<_>>();
+    for entry in &mut view.sidebar {
+        entry.offered = short(&entry.actions);
+    }
+    if let Some(day) = &mut view.day {
+        day.offered = short(&day.actions);
+        for item in &mut day.items {
+            item.offered = short(&item.actions);
+        }
+    }
+    if let Some(details) = &mut view.details {
+        details.task.offered = short(&details.task.actions);
+    }
+    if let Some(reminders) = &mut view.reminders {
+        reminders.offered = short(&reminders.actions);
+        for reminder in &mut reminders.reminders {
+            reminder.offered = short(&reminder.actions);
+        }
+    }
+    if let Some(list) = view.devices.as_mut().and_then(|devices| devices.list.as_mut()) {
+        for device in &mut list.devices {
+            device.offered = short(&device.actions);
+        }
+    }
 }
 
 fn shown(model: &Screen) -> ViewModel {

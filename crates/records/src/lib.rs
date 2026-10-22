@@ -30,7 +30,7 @@ pub mod types;
 pub mod waits;
 pub mod words;
 
-pub use actions::{QUERY, go_to_day_question, length_question, new_filter_questions, not_offered, Action, ActionKind, Answer, Choice, Choices, Question, Subject};
+pub use actions::{QUERY, go_to_day_question, length_question, new_filter_questions, no_longer_here, not_offered, Action, ActionKind, Answer, Asks, Choice, Choices, Offered, Question, Subject};
 pub use error::{LumennaError, Result};
 pub use fields::{
     unsayable_repeat_note, FieldKind, FormField, PairingWords, PickerWords, ProposalWords, block_form, pairing_words, picker_words,

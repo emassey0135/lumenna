@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use crux_core::middleware::{EffectMiddleware, EffectResolver, Layer};
 use lumenna_app::{
-    Asks, BlockEvent, DayMove, DetailsEvent, Effect, Event, Item, NetworkAnswer, NetworkRequest, ProposalEvent,
+    ActingOn, Asks, BlockEvent, DayMove, DetailsEvent, Effect, Event, Item, NetworkAnswer, NetworkRequest, ProposalEvent,
     SettingsEvent, ScreenId, Typing, ViewModel,
 };
 use lumenna_bridge::{Shell, Stack, Store, shell, stack};
@@ -1329,6 +1329,7 @@ fn unpair_on_this_devices_own_row_says_it_is_the_device_in_use() {
         schema_version: 1,
         status: Vec::new(),
         actions: lumenna_records::actions::device("This PC", "ab12", true),
+        offered: Vec::new(),
     };
     let list = DeviceList { announcement: String::new(), notices: Vec::new(), devices: vec![this], empty: String::new() };
     app.send(Event::Answered(lumenna_app::HostAnswer::Devices(Ok(list))));
@@ -1399,4 +1400,120 @@ fn a_days_own_action_runs_whatever_row_is_in_hand_and_moves_none() {
     app.send(Event::Proposal(lumenna_app::ProposalEvent::Close));
     let shell = app.send(Event::RunDay(vec![ActionKind::EndDay]));
     assert!(said(&shell).iter().any(|s| s.contains("does not apply")), "a day not today has no End the Day: {shell:?}");
+}
+
+fn short(offered: &[lumenna_records::Offered], kind: ActionKind) -> lumenna_records::Offered {
+    offered.iter().find(|o| o.kind == kind).cloned().unwrap_or_else(|| panic!("{kind:?} among {offered:?}"))
+}
+
+#[test]
+fn an_action_on_a_row_it_names_puts_that_row_in_hand_and_runs_there() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.add("Walk the dog");
+    let list = app.view().list.unwrap();
+    let dog = list.items.iter().find(|i| i.row.title == "Walk the dog").unwrap();
+    let done = list.offered[*dog.actions.iter().find(|at| list.offered[**at as usize].kind == ActionKind::MarkDone).unwrap() as usize].clone();
+    app.send(Event::Focus(app.id_of("Buy milk")));
+
+    app.send(Event::ActOn(ActingOn::Row(dog.row.id.clone()), done));
+    assert_eq!(app.titles(), ["Buy milk"], "the row it named, not the one in hand");
+}
+
+#[test]
+fn an_action_on_a_days_row_runs_on_that_row_and_the_days_own_on_the_day() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    app.add("Write the report");
+    app.send(Event::Open(Place::Today));
+    app.send(Event::Day(DayMove::Next));
+    let day = app.view().day.unwrap();
+    let item = day.items.iter().find(|i| i.key.starts_with("block:")).unwrap();
+    app.send(Event::ActOn(ActingOn::Row(item.key.clone()), short(&item.offered, ActionKind::AssignTask)));
+    assert!(matches!(app.view().asking.map(|a| a.question), Some(Question::Pick { .. })), "Assign a Task's pick");
+    assert_eq!(app.view().focus.as_deref(), Some(item.key.as_str()));
+    app.send(Event::Cancel);
+
+    app.send(Event::ActOn(ActingOn::Day, short(&day.offered, ActionKind::PlanDay)));
+    assert!(app.view().proposal.is_some(), "Plan the Day");
+    assert_eq!(app.view().focus.as_deref(), Some(item.key.as_str()), "the block stays in hand");
+}
+
+#[test]
+fn an_action_on_a_row_gone_since_it_was_offered_says_so_and_changes_nothing() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    let list = app.view().list.unwrap();
+    let shell = app.send(Event::ActOn(ActingOn::Row("0000".to_owned()), list.offered[0].clone()));
+    assert_eq!(said(&shell), ["That is no longer here."]);
+    assert_eq!(app.titles(), ["Buy milk"]);
+}
+
+#[test]
+fn an_action_on_a_sidebar_row_holds_it_there_and_lands_there() {
+    let mut app = App::new();
+    Lumenna::open(app.profile.to_str().unwrap()).unwrap().add_project("Garden", None).unwrap();
+    app.session.tick();
+    let garden = app.view().sidebar.into_iter().find(|e| e.title == "Garden").unwrap();
+    let (main, side) = (app.view().landing, app.view().sidebar_held.landing);
+    app.send(Event::ActOn(ActingOn::Held(lumenna_app::Side::Sidebar, garden.key.clone()), short(&garden.offered, ActionKind::Delete)));
+    app.send(Event::Answer(Answer::Picked { id: "keep".to_owned(), length: None }));
+    let view = app.view();
+    assert!(view.sidebar.iter().all(|e| e.title != "Garden"));
+    assert!(view.sidebar_held.landing > side);
+    assert_eq!(view.landing, main, "the main list's row moved on quietly");
+}
+
+#[test]
+fn an_action_on_a_device_is_refused_in_the_cores_words_for_that_device() {
+    use lumenna_records::{DeviceList, DeviceView};
+    let mut app = App::new();
+    app.send(Event::Devices(lumenna_app::DevicesEvent::Show));
+    let this = DeviceView {
+        name: "This PC".to_owned(),
+        platform: "windows".to_owned(),
+        node_id: "ab12".to_owned(),
+        this_device: true,
+        paired_at: "2026-10-20T00:00:00Z".to_owned(),
+        last_attempt: None,
+        last_success: None,
+        last_error: None,
+        schema_version: 1,
+        status: Vec::new(),
+        actions: lumenna_records::actions::device("This PC", "ab12", true),
+        offered: Vec::new(),
+    };
+    let list = DeviceList { announcement: String::new(), notices: Vec::new(), devices: vec![this], empty: String::new() };
+    app.send(Event::Answered(lumenna_app::HostAnswer::Devices(Ok(list))));
+    let device = app.view().devices.unwrap().list.unwrap().devices.remove(0);
+    let mut unpair = short(&device.offered, ActionKind::Rename);
+    unpair.kind = ActionKind::Unpair;
+    unpair.title = "Unpair".to_owned();
+    let shell = app.send(Event::ActOn(ActingOn::Held(lumenna_app::Side::Devices, "ab12".to_owned()), unpair));
+    assert!(said(&shell).iter().any(|s| s.starts_with("This is the device you are using")), "{shell:?}");
+}
+
+#[test]
+fn an_action_on_the_details_runs_on_the_task_they_show() {
+    let mut app = App::new();
+    app.add("Write the report");
+    app.add("Buy milk");
+    let task = app.id_of("Write the report");
+    app.send(Event::Focus(app.id_of("Buy milk")));
+    app.send(Event::Details(DetailsEvent::Show(task)));
+    let details = app.view().details.unwrap();
+    app.send(Event::ActOn(ActingOn::Details, short(&details.task.offered, ActionKind::MarkDone)));
+    assert_eq!(app.titles(), ["Buy milk"]);
+}
+
+#[test]
+fn an_action_on_the_reminder_list_runs_its_own() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    app.send(Event::Open(Place::Blocks));
+    app.send(Event::Run(vec![ActionKind::Reminders]));
+    let list = app.view().reminders.expect("the list is open");
+    app.send(Event::ActOn(ActingOn::Reminders, list.offered[0].clone()));
+    app.send(Event::Answer(Answer::Text { text: "10m after end".to_owned() }));
+    assert_eq!(app.view().reminders.unwrap().announcement, "1 reminder");
 }

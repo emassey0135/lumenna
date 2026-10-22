@@ -327,6 +327,7 @@ mod tests {
 
     fn task() -> TaskDetail {
         TaskDetail {
+            offered: Vec::new(),
             id: "0199".to_owned(),
             title: "Write report".to_owned(),
             notes: "Two pages.".to_owned(),

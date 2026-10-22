@@ -7,9 +7,10 @@
 //! exhaustive match, so a new event is sorted into one or the other where it is added.
 
 use boltffi::data;
-use crate::{BlockEvent, Capitals, DayMove, DetailsEvent, DevicesEvent, DueEvent, Event, ProposalEvent, SettingsEvent, Side, Typing};
+use crate::{ActingOn, BlockEvent, Capitals, DayMove, DetailsEvent, DevicesEvent, DueEvent, Event, ProposalEvent, SettingsEvent, Side, Typing};
 use lumenna_records::places::Place;
 use lumenna_records::proposals::TimeStyle;
+use lumenna_records::Offered;
 use lumenna_records::{Action, ActionKind, Answer};
 
 /// Something the person did, or the shell says of itself: as [`Event`], less what the app's
@@ -33,7 +34,9 @@ pub enum ShellEvent {
     /// Run an action a row offered.
     Perform(Action),
     /// Run an action a list's row offered, in short (`ListView::offered`), on the row in hand.
-    Act(crate::list::Offered),
+    Act(Offered),
+    /// Run an action a row offered, in short as the view gave it, on the row it names.
+    ActOn(ActingOn, Offered),
     /// Run the first of these kinds the row in hand offers.
     Run(Vec<ActionKind>),
     /// The answer to the question open.
@@ -101,6 +104,7 @@ impl From<ShellEvent> for Event {
             ShellEvent::Filter(text) => Event::Filter(text),
             ShellEvent::Perform(action) => Event::Perform(action),
             ShellEvent::Act(offered) => Event::Act(offered),
+            ShellEvent::ActOn(on, offered) => Event::ActOn(on, offered),
             ShellEvent::Run(kinds) => Event::Run(kinds),
             ShellEvent::Answer(answer) => Event::Answer(answer),
             ShellEvent::Cancel => Event::Cancel,
@@ -139,6 +143,7 @@ impl TryFrom<Event> for ShellEvent {
             Event::Filter(text) => ShellEvent::Filter(text),
             Event::Perform(action) => ShellEvent::Perform(action),
             Event::Act(offered) => ShellEvent::Act(offered),
+            Event::ActOn(on, offered) => ShellEvent::ActOn(on, offered),
             Event::Run(kinds) => ShellEvent::Run(kinds),
             Event::Answer(answer) => ShellEvent::Answer(answer),
             Event::Cancel => ShellEvent::Cancel,

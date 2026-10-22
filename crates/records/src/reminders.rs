@@ -121,6 +121,10 @@ pub struct ReminderView {
     /// What can be done to it: Remove, for one of its own; nothing for a default.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub actions: Vec<crate::actions::Action>,
+    /// What can be done to it, in short, as a view offers it (see [`crate::actions::Offered`]);
+    /// empty outside a view, where `actions` are whole.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub offered: Vec<crate::actions::Offered>,
 }
 
 /// The reminders a task or block has.
@@ -137,6 +141,10 @@ pub struct ReminderList {
     /// What can be done to the list: Add Reminder, which asks for a phrase.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub actions: Vec<crate::actions::Action>,
+    /// What can be done to the list, in short, as a view offers it (see [`crate::actions::Offered`]);
+    /// empty outside a view, where `actions` are whole.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub offered: Vec<crate::actions::Offered>,
 }
 
 /// "in 5 minutes", "now", "5 minutes ago": the gap between a firing and what it is about.
@@ -214,6 +222,7 @@ pub fn view(snapshot: &Snapshot, id: ReminderId, trigger: &Trigger, delivery: Op
     let devices = snapshot.devices.len() > 1;
     ReminderView {
         actions: if own { crate::actions::reminder(&id.to_string(), &words, devices) } else { Vec::new() },
+        offered: Vec::new(),
         delivery: delivery.map(|d| delivery_words(snapshot, d)).unwrap_or_default(),
         id: id.to_string(),
         own,
@@ -294,6 +303,7 @@ pub fn reminders_of(snapshot: &Snapshot, target: &str) -> Result<ReminderList> {
     };
     let block = matches!(target, ReminderTarget::Block(_));
     Ok(ReminderList {
+        offered: Vec::new(),
         announcement: match (views.len(), mine) {
             (0, _) => "No reminders".to_owned(),
             (n, true) => capitalised(&count_line(n, "reminder")),

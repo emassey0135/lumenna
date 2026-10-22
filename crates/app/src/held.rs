@@ -18,6 +18,22 @@ pub enum Side {
     Devices,
 }
 
+/// The row an action handed back in short is for (`Event::ActOn`).
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ActingOn {
+    /// A row of the place shown, by key: a list's row, a row of the day.
+    Row(String),
+    /// A row of a list beside the main one, by its key there.
+    Held(Side, String),
+    /// The day shown, its own actions: Plan the Day, Replan from Now, ….
+    Day,
+    /// The task the details show.
+    Details,
+    /// The reminder list open, its own actions: Add Reminder.
+    Reminders,
+}
+
 /// One side list's row in hand, as the model keeps it.
 #[derive(Debug, Default, Clone)]
 pub struct Held {
@@ -70,7 +86,7 @@ impl Screen {
     /// The actions of a side list's row in hand, as the view offers them: what a key pressed
     /// there runs (`Event::Run`).
     pub(crate) fn side_actions(&self, side: Side) -> Option<Vec<lumenna_records::Action>> {
-        let view = crate::view::view(self);
+        let view = crate::view::whole(self);
         match side {
             Side::Sidebar => {
                 let key = view.sidebar_held.focus?;
@@ -89,7 +105,7 @@ impl Screen {
 
     /// Whether the devices' row in hand is this device's own, which cannot unpair itself.
     pub(crate) fn holds_this_device(&self) -> bool {
-        let view = crate::view::view(self);
+        let view = crate::view::whole(self);
         let Some(id) = view.devices_held.focus else { return false };
         view.devices.and_then(|d| d.list).is_some_and(|list| list.devices.iter().any(|d| d.node_id == id && d.this_device))
     }

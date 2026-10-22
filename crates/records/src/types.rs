@@ -516,6 +516,10 @@ pub struct TaskDetail {
     /// What can be done to it, in the order offered ([`crate::actions`]).
     #[serde(default, skip_serializing_if = "none")]
     pub actions: Vec<crate::actions::Action>,
+    /// What can be done to it, in short, as a view offers it (see [`crate::actions::Offered`]);
+    /// empty outside a view, where `actions` are whole.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub offered: Vec<crate::actions::Offered>,
 }
 
 /// A task another task waits for.
@@ -533,6 +537,7 @@ impl TaskDetail {
     #[must_use]
     pub fn of(task: &Task, snapshot: &Snapshot, now: &jiff::Zoned) -> Self {
         Self {
+            offered: Vec::new(),
             id: task.id.to_string(),
             title: task.title.clone(),
             notes: task.notes.clone(),
@@ -1590,6 +1595,10 @@ pub struct DeviceView {
     /// What can be done to it, in the order offered ([`crate::actions`]).
     #[serde(default, skip_serializing_if = "none")]
     pub actions: Vec<crate::actions::Action>,
+    /// What can be done to it, in short, as a view offers it (see [`crate::actions::Offered`]);
+    /// empty outside a view, where `actions` are whole.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub offered: Vec<crate::actions::Offered>,
 }
 
 /// How syncing is going, as words rather than an icon.
