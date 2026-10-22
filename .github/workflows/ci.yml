@@ -156,9 +156,13 @@ jobs:
         run: npx playwright test --config playwright.pwa.config.ts
       - name: Playwright and axe
         run: npm run core:dev && npm test
-      # Safari's engine, one test at a time: its contexts share one origin's storage.
-      - name: Playwright and axe in WebKit
-        run: npm run test:webkit
+      # The core just built, for WebKit's run on a Mac (web-webkit), which needs no Rust.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-core
+          path: apps/web/src/core
+          retention-days: 1
       - name: Playwright and axe in Firefox
         run: npm run test:firefox
       # A failed test's trace (playwright.config.ts keeps it): what the page and the worker did,
@@ -167,6 +171,40 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: web-test-results
+          path: apps/web/test-results
+          retention-days: 7
+
+  # Safari's engine on a Mac: Linux's WebKit (Playwright's MiniBrowser) aborted at every launch
+  # with a persistent profile ("automation is not allowed in the context"), and WebKit needs one,
+  # since a private window refuses the browser storage the store is in. One test at a time, as
+  # its persistent contexts share one origin's storage; a test that fails once and then passes is
+  # reported flaky rather than failing the run, as WebKit's timing was before as much as now.
+  web-webkit:
+    name: Web client in WebKit
+    needs: web
+    runs-on: xcode-27
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-core
+          path: apps/web/src/core
+      - run: npx playwright install webkit
+      - name: Playwright and axe in WebKit
+        run: npm run test:webkit -- --retries=1
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-webkit-test-results
           path: apps/web/test-results
           retention-days: 7
 

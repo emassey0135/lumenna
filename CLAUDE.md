@@ -2009,7 +2009,10 @@ with `lum`.
   trying each frame for a moment while its screen cannot act yet (a day still loading).
 - **Three engines**, each in CI: `npm test` is Chromium, `npm run test:webkit` Safari's engine and
   `npm run test:firefox` Firefox (whose ephemeral contexts open the store as they are; Playwright's
-  Firefox does not start on the Mac this was built on, so it runs on Windows and CI). A WebKit test gets a persistent context (`tests/fixtures.ts`): an
+  Firefox does not start on the Mac this was built on, so it runs on Windows and CI). CI runs WebKit
+on a Mac (`web-webkit`, given the Linux job's core): Linux's MiniBrowser aborted at every launch
+with a persistent profile; there a test that fails once and then passes is reported flaky, since
+WebKit's timing fails one or two tests a run, as it did before. A WebKit test gets a persistent context (`tests/fixtures.ts`): an
   ephemeral one is a private window, which refuses the private file system the store is in. WebKit's
   persistent contexts share one origin's storage, so each test empties it first and they run one at
   a time. What WebKit found: Safari's button grey under the destructive red (now #930000), and
