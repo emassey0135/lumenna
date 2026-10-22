@@ -14,10 +14,10 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use lumenna_app::ViewModel;
+use lumenna_app::{Asks, Offered, ViewModel};
 use lumenna_app::lines::Lines;
 use lumenna_ffi::ShellEvent;
-use lumenna_records::{Action, ActionKind, Question, RowView, Syntax};
+use lumenna_records::{ActionKind, RowView, Syntax};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{
     NM_DBLCLK, NM_TVSTATEIMAGECHANGING, NMHDR, NMTREEVIEWW, NMTVKEYDOWN, NMTVSTATEIMAGECHANGING, TVIS_EXPANDED,
@@ -50,6 +50,8 @@ pub struct TaskList {
     pub tree: Tree,
     /// The rows as the app last listed them, those folded away included, in the tree's order.
     rows: RefCell<Vec<RowView>>,
+    /// Each row's actions, as the list offers them in short, in the same order.
+    offers: RefCell<Vec<Vec<Offered>>>,
     /// Whether the filter has been filled from the app since the place opened: going back to a
     /// place puts back the filter it was left with.
     filled: Cell<bool>,
@@ -83,6 +85,7 @@ impl TaskList {
             readback,
             tree,
             rows: RefCell::new(Vec::new()),
+            offers: RefCell::new(Vec::new()),
             filled: Cell::new(false),
             filling: Cell::new(false),
             pending: RefCell::new(None),
@@ -94,6 +97,12 @@ impl TaskList {
     pub fn selected(&self) -> Option<RowView> {
         let index = self.tree.selected()?;
         self.rows.borrow().get(index).cloned()
+    }
+
+    /// The selected row's actions.
+    pub fn selected_actions(&self) -> Option<Vec<Offered>> {
+        let index = self.tree.selected()?;
+        self.offers.borrow().get(index).cloned()
     }
 
     /// Draws the app's list: `landed` when the app moved the row in hand itself.
@@ -120,6 +129,7 @@ impl TaskList {
             })
             .collect();
         *self.rows.borrow_mut() = list.items.iter().map(|item| item.row.clone()).collect();
+        *self.offers.borrow_mut() = list.items.iter().map(|item| actions::of_row(&list.offered, &item.actions)).collect();
         let rebuilt = self.tree.set(items);
         let pending = self.pending.borrow().clone();
         if let Some(id) = pending.filter(|id| self.tree.index_of(id).is_some()) {
@@ -144,13 +154,13 @@ impl TaskList {
         }
     }
 
-    /// Runs one of a row's actions, as the app's. A task's own form is the details pane, and
-    /// its reminders a dialog of the window's.
-    pub fn act(&self, app: &App, action: &Action) {
-        match (&action.question, action.kind) {
-            (Question::Form, ActionKind::Reminders) => app.crux.send(ShellEvent::Perform(action.clone())),
-            (Question::Form, _) => app.open_detail(),
-            _ => app.crux.send(ShellEvent::Perform(action.clone())),
+    /// Runs one of the row in hand's actions, as the app's. A task's own form is the details
+    /// pane, and its reminders a dialog of the window's.
+    pub fn act(&self, app: &App, action: &Offered) {
+        match (action.asks, action.kind) {
+            (Asks::Form, ActionKind::Reminders) => app.crux.send(ShellEvent::Act(action.clone())),
+            (Asks::Form, _) => app.open_detail(),
+            _ => app.crux.send(ShellEvent::Act(action.clone())),
         }
     }
 
@@ -247,10 +257,21 @@ impl View for TaskList {
                 let notice = unsafe { &*(lparam.0 as *const NMTREEVIEWW) };
                 let expanded = notice.itemNew.state.0 & TVIS_EXPANDED.0 != 0;
                 let kind = if expanded { ActionKind::Expand } else { ActionKind::Collapse };
-                let row = self.tree.index_of_handle(notice.itemNew.hItem).and_then(|i| self.rows.borrow().get(i).cloned());
-                if let Some(action) = row.and_then(|row| actions::of_kind(&row.actions, &[kind])) {
+                let Some(index) = self.tree.index_of_handle(notice.itemNew.hItem) else { return Some(0) };
+                let row = self.rows.borrow().get(index).cloned();
+                let action = self.offers.borrow().get(index).and_then(|offers| actions::of_kind(offers, &[kind]));
+                if let (Some(row), Some(action)) = (row, action) {
                     self.folded_by_tree.set(true);
-                    app.crux.send(ShellEvent::Perform(action));
+                    // A click can fold a row other than the one in hand: that row is in hand
+                    // while it folds, and the selected one again after.
+                    let selected = self.selected().filter(|selected| selected.id != row.id);
+                    if selected.is_some() {
+                        app.crux.send(ShellEvent::Focus(row.id));
+                    }
+                    app.crux.send(ShellEvent::Act(action));
+                    if let Some(selected) = selected {
+                        app.crux.send(ShellEvent::Focus(selected.id));
+                    }
                 }
                 Some(0)
             }
@@ -272,11 +293,11 @@ impl View for TaskList {
             self.tree.select(index);
         }
         let Some(index) = self.tree.selected() else { return true };
-        let Some(row) = self.selected() else { return true };
+        let Some(offered) = self.selected_actions() else { return true };
         let at = point.unwrap_or_else(|| self.tree.menu_point(index));
-        let items = actions::menu(&row.actions);
+        let items = actions::menu(&offered);
         let items: Vec<(u16, &str)> = items.iter().map(|(id, text)| (*id, text.as_str())).collect();
-        if let Some(action) = app.popup(&items, at).and_then(|command| actions::chosen(&row.actions, command)) {
+        if let Some(action) = app.popup(&items, at).and_then(|command| actions::chosen(&offered, command)) {
             self.act(app, &action);
         }
         true

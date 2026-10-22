@@ -34,7 +34,7 @@ use windows::Win32::UI::Controls::{EM_SETSEL, EM_UNDO};
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{HSTRING, PCWSTR, w};
 
-use lumenna_app::{Capitals, DayMove, DetailsEvent};
+use lumenna_app::{Capitals, DayMove, DetailsEvent, Offered};
 use lumenna_ffi::ShellEvent;
 
 use super::asking;
@@ -1015,16 +1015,26 @@ impl App {
         }
     }
 
-    /// What can be done to the task the Task menu acts on.
-    fn task_actions_in_hand(&self) -> Option<Vec<Action>> {
+    /// What can be done to the task the Task menu acts on, in short: a list's row offers its
+    /// actions so, and the details' task's are put so.
+    fn task_actions_in_hand(&self) -> Option<Vec<Offered>> {
+        if let Some(Content::Tasks(list)) = self.content()
+            && !controls::within(self.panes[2], controls::focused())
+        {
+            return list.selected_actions();
+        }
+        self.detail_actions_in_hand().map(|whole| whole.iter().map(Offered::of).collect())
+    }
+
+    /// What can be done to the task the details show, when the Task menu acts on it: focus is
+    /// there, or the day's sitting shows its task there.
+    fn detail_actions_in_hand(&self) -> Option<Vec<Action>> {
         if controls::within(self.panes[2], controls::focused()) {
             return self.detail.actions();
         }
         match self.content()? {
-            Content::Tasks(list) => list.selected().map(|row| row.actions),
-            // The details show a sitting's task.
             Content::Day(day) => day.selected_task().and_then(|_| self.detail.actions()),
-            Content::Blocks(_) => None,
+            Content::Tasks(_) | Content::Blocks(_) => None,
         }
     }
 
@@ -1040,7 +1050,7 @@ impl App {
             }
             return self.crux.send(ShellEvent::Run(kinds.to_vec()));
         }
-        let Some(offered) = self.task_actions_in_hand() else {
+        let Some(offered) = self.detail_actions_in_hand() else {
             return self.say("No task is selected");
         };
         let Some(action) = actions::of_kind(&offered, kinds) else {

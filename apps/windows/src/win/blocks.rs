@@ -5,10 +5,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lumenna_app::ViewModel;
+use lumenna_app::{Offered, ViewModel};
 use lumenna_app::lines::Lines;
 use lumenna_ffi::ShellEvent;
-use lumenna_records::{Action, ActionKind, Question, RowView};
+use lumenna_records::{ActionKind, RowView};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{NM_DBLCLK, NMHDR, NMTVKEYDOWN, TVN_KEYDOWN, TVN_SELCHANGEDW, WC_STATICW};
 use windows::Win32::UI::Input::KeyboardAndMouse::VK_DELETE;
@@ -26,13 +26,15 @@ pub struct BlockList {
     count: HWND,
     pub tree: Tree,
     rows: RefCell<Vec<RowView>>,
+    /// Each row's actions, as the list offers them in short, in the same order.
+    offers: RefCell<Vec<Vec<Offered>>>,
 }
 
 impl BlockList {
     pub fn create(_app: &App, pane: HWND) -> Rc<Self> {
         let count = controls::create(pane, WC_STATICW, "", SS_NOPREFIX.0, 0, 0);
         let tree = Tree::create(pane, TREE, "Blocks", false);
-        Rc::new(Self { count, tree, rows: RefCell::new(Vec::new()) })
+        Rc::new(Self { count, tree, rows: RefCell::new(Vec::new()), offers: RefCell::new(Vec::new()) })
     }
 
     fn selected(&self) -> Option<RowView> {
@@ -51,6 +53,7 @@ impl BlockList {
             .map(|(item, line)| Item { key: item.row.id.clone(), text: line.text.clone(), depth: item.row.depth, checked: None, expanded: item.row.expanded, swatch: item.row.swatch.clone() })
             .collect();
         *self.rows.borrow_mut() = list.items.iter().map(|item| item.row.clone()).collect();
+        *self.offers.borrow_mut() = list.items.iter().map(|item| actions::of_row(&list.offered, &item.actions)).collect();
         let rebuilt = self.tree.set(items);
         if (landed || rebuilt)
             && let Some(index) = view.focus.as_deref().and_then(|key| self.tree.index_of(key))
@@ -62,19 +65,23 @@ impl BlockList {
         }
     }
 
-    /// Runs one of the selected row's actions as the app's; Reminders is the window's list.
-    fn act(&self, app: &App, action: &Action) {
-        match (&action.question, action.kind) {
-            (Question::Form, ActionKind::Reminders) => app.crux.send(ShellEvent::Perform(action.clone())),
-            _ => app.crux.send(ShellEvent::Perform(action.clone())),
-        }
+    /// The selected row's actions.
+    fn selected_actions(&self) -> Option<Vec<Offered>> {
+        let index = self.tree.selected()?;
+        self.offers.borrow().get(index).cloned()
+    }
+
+    /// Runs one of the row in hand's actions as the app's: its form, the block form or the
+    /// reminder list, is the app's to open.
+    fn act(&self, app: &App, action: &Offered) {
+        app.crux.send(ShellEvent::Act(action.clone()));
     }
 
     /// The selected row's action of one of `kinds`, after the notification being handled.
     fn act_later(app: &App, kinds: &'static [ActionKind]) {
         app.defer(move |app| {
             if let Some(blocks) = app.blocks()
-                && let Some(action) = blocks.selected().and_then(|row| actions::of_kind(&row.actions, kinds))
+                && let Some(action) = blocks.selected_actions().and_then(|offered| actions::of_kind(&offered, kinds))
             {
                 blocks.act(app, &action);
             }
@@ -125,25 +132,25 @@ impl View for BlockList {
         if let Some(index) = point.and_then(|p| self.tree.index_at(p)) {
             self.tree.select(index);
         }
-        let (Some(index), Some(row)) = (self.tree.selected(), self.selected()) else { return true };
+        let (Some(index), Some(offered)) = (self.tree.selected(), self.selected_actions()) else { return true };
         let at = point.unwrap_or_else(|| self.tree.menu_point(index));
-        let items = actions::menu(&row.actions);
+        let items = actions::menu(&offered);
         let items: Vec<(u16, &str)> = items.iter().map(|(id, text)| (*id, text.as_str())).collect();
-        if let Some(action) = app.popup(&items, at).and_then(|command| actions::chosen(&row.actions, command)) {
+        if let Some(action) = app.popup(&items, at).and_then(|command| actions::chosen(&offered, command)) {
             self.act(app, &action);
         }
         true
     }
 
     fn properties(&self, app: &App) -> bool {
-        let Some(action) = self.selected().and_then(|row| actions::of_kind(&row.actions, &[ActionKind::Edit])) else { return false };
+        let Some(action) = self.selected_actions().and_then(|offered| actions::of_kind(&offered, &[ActionKind::Edit])) else { return false };
         self.act(app, &action);
         true
     }
 
     fn enter(&self, app: &App, focus: HWND) -> bool {
         if focus == self.tree.hwnd {
-            if let Some(action) = self.selected().and_then(|row| actions::of_kind(&row.actions, &[ActionKind::Edit])) {
+            if let Some(action) = self.selected_actions().and_then(|offered| actions::of_kind(&offered, &[ActionKind::Edit])) {
                 self.act(app, &action);
             }
             return true;
