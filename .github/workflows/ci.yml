@@ -183,6 +183,9 @@ jobs:
     name: Web client in WebKit
     needs: web
     runs-on: xcode-27
+    # Its 59 tests take three minutes on a Mac; when every one failed and retried, the job ran
+    # 80 minutes with the default six-hour limit still ahead of it.
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: apps/web
@@ -200,8 +203,10 @@ jobs:
           path: apps/web/src/core
       - run: npx playwright install webkit
       - name: Playwright and axe in WebKit
-        run: npm run test:webkit -- --retries=1
-      - if: failure()
+        # Each failure said as it happens and the run stopped after a few: CI's own reporter
+        # is a character per test, its reasons only in a file uploaded at the end.
+        run: npm run test:webkit -- --retries=1 --reporter=line --max-failures=4
+      - if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
           name: web-webkit-test-results
