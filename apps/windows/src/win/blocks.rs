@@ -5,7 +5,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lumenna_app::{Offered, ViewModel};
+use lumenna_app::{ActingOn, Offered, ViewModel};
 use lumenna_app::lines::Lines;
 use lumenna_ffi::ShellEvent;
 use lumenna_records::{ActionKind, RowView};
@@ -71,10 +71,12 @@ impl BlockList {
         self.offers.borrow().get(index).cloned()
     }
 
-    /// Runs one of the row in hand's actions as the app's: its form, the block form or the
+    /// Runs one of the selected row's actions as the app's: its form, the block form or the
     /// reminder list, is the app's to open.
     fn act(&self, app: &App, action: &Offered) {
-        app.crux.send(ShellEvent::Act(action.clone()));
+        if let Some(row) = self.selected() {
+            app.crux.send(ShellEvent::ActOn(ActingOn::Row(row.id), action.clone()));
+        }
     }
 
     /// The selected row's action of one of `kinds`, after the notification being handled.

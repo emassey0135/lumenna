@@ -8,11 +8,11 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use lumenna_app::Side;
+use lumenna_app::{ActingOn, Side};
 use lumenna_app::lines::Lines;
 use lumenna_ffi::ShellEvent;
 use lumenna_records::reminders::{ReminderList, ReminderView};
-use lumenna_records::{Action, ActionKind};
+use lumenna_records::{ActionKind, Offered};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::Input::KeyboardAndMouse::VK_DELETE;
@@ -56,8 +56,8 @@ impl Reminders {
 
     /// The action a chosen reminder's button stands for: the first any of them offers, since
     /// a default offers none.
-    fn its_action(&self) -> Option<Action> {
-        self.shown.borrow().reminders.iter().find_map(|r| r.actions.first().cloned())
+    fn its_action(&self) -> Option<Offered> {
+        self.shown.borrow().reminders.iter().find_map(|r| r.offered.first().cloned())
     }
 
     /// Draws the app's list as it now is, or closes the dialog when the app has closed it.
@@ -120,7 +120,7 @@ impl Reminders {
         };
         controls::set_text(button, &devices::marked(&actions::label(&action), 'm', '&'));
         controls::show(button, true);
-        let has = self.chosen(hwnd).is_some_and(|r| !r.actions.is_empty());
+        let has = self.chosen(hwnd).is_some_and(|r| !r.offered.is_empty());
         if has || controls::focused() != button {
             controls::enable(button, has);
         }
@@ -129,11 +129,13 @@ impl Reminders {
     /// The chosen reminder's action of `kind`, as the app's, or why it has none.
     fn act(&self, hwnd: HWND, kind: ActionKind) {
         let Some(reminder) = self.chosen(hwnd) else { return };
-        app::send(ShellEvent::Hold(Side::Reminders, reminder.id.clone()));
-        match actions::of_kind(&reminder.actions, &[kind]) {
-            Some(action) => app::send(ShellEvent::Perform(action)),
+        match actions::of_kind(&reminder.offered, &[kind]) {
+            Some(action) => app::send(ShellEvent::ActOn(ActingOn::Held(Side::Reminders, reminder.id), action)),
             // Said by the app, on this dialog's status line.
-            None => app::send(ShellEvent::Run(vec![kind])),
+            None => {
+                app::send(ShellEvent::Hold(Side::Reminders, reminder.id));
+                app::send(ShellEvent::Run(vec![kind]));
+            }
         }
     }
 }
@@ -149,7 +151,7 @@ impl Dialog for Reminders {
             .item(Class::Static, "&Reminders:", u16::MAX, 0, 7, 20, 246, 9)
             .item(Class::ListBox, "", LIST, list, 7, 30, 246, 90);
         let mut x = 7;
-        for (index, action) in self.first.actions.iter().enumerate() {
+        for (index, action) in self.first.offered.iter().enumerate() {
             template = template.item(Class::Button, &devices::marked(&actions::label(action), 'A', '&'), LISTS + index as u16, button, x, 126, 80, 14);
             x += 84;
         }
@@ -192,12 +194,9 @@ impl Dialog for Reminders {
             if let Some(kind) = self.its_action().map(|a| a.kind) {
                 self.act(hwnd, kind);
             }
-        } else if let Some(action) = id.checked_sub(LISTS).and_then(|i| self.shown.borrow().actions.get(usize::from(i)).cloned()) {
-            // The list's own: held there, so what it adds lands on the list.
-            if let Some(reminder) = self.chosen(hwnd) {
-                app::send(ShellEvent::Hold(Side::Reminders, reminder.id));
-            }
-            app::send(ShellEvent::Perform(action));
+        } else if let Some(action) = id.checked_sub(LISTS).and_then(|i| self.shown.borrow().offered.get(usize::from(i)).cloned()) {
+            // The list's own, acted on from it, so what it adds lands on the list.
+            app::send(ShellEvent::ActOn(ActingOn::Reminders, action));
         }
         None
     }

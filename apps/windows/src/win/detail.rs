@@ -14,9 +14,9 @@ use std::cell::{Cell, RefCell};
 
 use lumenna_app::details::DetailsEvent;
 use lumenna_app::lines::Lines;
-use lumenna_app::{DetailsView, ViewModel};
+use lumenna_app::{ActingOn, DetailsView, ViewModel};
 use lumenna_ffi::ShellEvent;
-use lumenna_records::{Action as CoreAction, ActionKind, Choice, Question, TaskDetail, priorities, task_form};
+use lumenna_records::{ActionKind, Asks, Choice, Offered, TaskDetail, priorities, task_form};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::SystemServices::{SS_CENTER, SS_NOPREFIX};
 use windows::Win32::UI::Controls::{WC_BUTTONW, WC_COMBOBOXW, WC_EDITW, WC_LISTBOXW, WC_STATICW};
@@ -281,7 +281,7 @@ impl Detail {
         set_if_changed(self.history, &task.history.join("\r\n"));
         for (button, action) in self.wait_buttons.iter().chain(&self.buttons) {
             if let Action::Kinds(kinds) = action {
-                let offered = actions::of_kind(&task.actions, kinds);
+                let offered = actions::of_kind(&task.offered, kinds);
                 // "Add…" beside the list it adds to says enough; the rest are named as offered.
                 if let Some(offered) = offered.as_ref().filter(|_| !self.wait_buttons.iter().any(|(b, _)| b == button)) {
                     set_if_changed(*button, &actions::label(offered));
@@ -364,12 +364,12 @@ impl Detail {
                 self.save(app);
                 return true;
             }
-            Action::Kinds(kinds) => actions::of_kind(&task.actions, kinds),
+            Action::Kinds(kinds) => actions::of_kind(&task.offered, kinds),
             Action::StopWaiting => {
                 // The task chosen in the list, whose Stop Waiting names it.
                 let index = controls::send(self.waits, LB_GETCURSEL, 0, 0);
                 let other = usize::try_from(index).ok().and_then(|i| task.depends.get(i)).map(|d| d.id.clone());
-                task.actions.iter().find(|a| a.kind == ActionKind::StopWaiting && a.other == other).cloned()
+                task.offered.iter().find(|a| a.kind == ActionKind::StopWaiting && a.other == other).cloned()
             }
         };
         if let Some(offered) = offered {
@@ -379,17 +379,17 @@ impl Detail {
     }
 
     /// Runs one of the task's own actions as the app's; its form is this pane.
-    pub fn act(&self, app: &App, action: CoreAction) {
-        if action.question == Question::Form {
+    pub fn act(&self, app: &App, action: Offered) {
+        if action.asks == Asks::Form {
             app.open_detail();
         } else {
-            app.crux.send(ShellEvent::Perform(action));
+            app.crux.send(ShellEvent::ActOn(ActingOn::Details, action));
         }
     }
 
     /// What can be done to the task shown: for the Task menu, while focus is here.
-    pub fn actions(&self) -> Option<Vec<CoreAction>> {
-        self.shown.borrow().as_ref().map(|task| task.actions.clone())
+    pub fn actions(&self) -> Option<Vec<Offered>> {
+        self.shown.borrow().as_ref().map(|task| task.offered.clone())
     }
 
     pub fn layout(&self, width: i32, height: i32, m: Metrics) {

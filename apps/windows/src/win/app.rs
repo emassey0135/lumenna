@@ -16,7 +16,7 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use lumenna_records::{Action, ActionKind, Change, Result};
+use lumenna_records::{ActionKind, Change, Result};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     COLOR_BTNFACE, CreateFontIndirectW, DeleteObject, GetDC, GetTextMetricsW, HBRUSH, HFONT, LOGFONTW,
@@ -1015,20 +1015,19 @@ impl App {
         }
     }
 
-    /// What can be done to the task the Task menu acts on, in short: a list's row offers its
-    /// actions so, and the details' task's are put so.
+    /// What can be done to the task the Task menu acts on.
     fn task_actions_in_hand(&self) -> Option<Vec<Offered>> {
         if let Some(Content::Tasks(list)) = self.content()
             && !controls::within(self.panes[2], controls::focused())
         {
             return list.selected_actions();
         }
-        self.detail_actions_in_hand().map(|whole| whole.iter().map(Offered::of).collect())
+        self.detail_actions_in_hand()
     }
 
     /// What can be done to the task the details show, when the Task menu acts on it: focus is
     /// there, or the day's sitting shows its task there.
-    fn detail_actions_in_hand(&self) -> Option<Vec<Action>> {
+    fn detail_actions_in_hand(&self) -> Option<Vec<Offered>> {
         if controls::within(self.panes[2], controls::focused()) {
             return self.detail.actions();
         }

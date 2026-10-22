@@ -1,76 +1,42 @@
-//! What can be done to a row, as the core decides it: every record the app lists carries its
-//! `actions`, and this offers them — as a context menu, a menu-bar command, a button or a key.
+//! What can be done to a row, as the core decides it: every row the app shows offers its
+//! actions in short (`offered`), and this offers them — as a context menu, a menu-bar command,
+//! a button or a key.
 //! Which actions a row has, what they are called and what they ask are never decided here;
-//! running one is the app's (`ShellEvent::Perform`, or `ShellEvent::Act` for a list's row, whose
-//! actions come in short), and the question it asks is asked as a Windows dialog (`asking.rs`).
+//! running one is the app's (`ShellEvent::ActOn`, naming the row, with the action in short as
+//! the view offers it), and the question it asks is asked as a Windows dialog (`asking.rs`).
 
-use lumenna_app::{Asks, Offered};
-use lumenna_records::{Action, ActionKind, Question, Subject};
+use lumenna_app::{ActingOn, Asks, Offered};
+use lumenna_ffi::ShellEvent;
+use lumenna_records::{ActionKind, Question, Subject};
 use windows::Win32::Foundation::HWND;
 
+use super::app::App;
 use super::prompts;
 
 /// A context menu's commands are this plus the action's position, clear of the menu bar's.
 const FIRST: u16 = 1000;
-
-/// What a menu, a button or a key needs of an action: whole (`Action`), or as a list offers it
-/// in short (`Offered`).
-pub trait Offer: Clone {
-    fn kind(&self) -> ActionKind;
-    fn subject(&self) -> Subject;
-    fn title(&self) -> &str;
-    fn destructive(&self) -> bool;
-    /// Whether it asks something before it runs.
-    fn asks(&self) -> bool;
-}
-
-impl Offer for Action {
-    fn kind(&self) -> ActionKind {
-        self.kind
-    }
-    fn subject(&self) -> Subject {
-        self.subject
-    }
-    fn title(&self) -> &str {
-        &self.title
-    }
-    fn destructive(&self) -> bool {
-        self.destructive
-    }
-    fn asks(&self) -> bool {
-        !matches!(self.question, Question::Immediate)
-    }
-}
-
-impl Offer for Offered {
-    fn kind(&self) -> ActionKind {
-        self.kind
-    }
-    fn subject(&self) -> Subject {
-        self.subject
-    }
-    fn title(&self) -> &str {
-        &self.title
-    }
-    fn destructive(&self) -> bool {
-        self.destructive
-    }
-    fn asks(&self) -> bool {
-        self.asks != Asks::Nothing
-    }
-}
 
 /// A list row's actions, from the places its item names in the list's `offered`.
 pub fn of_row(offered: &[Offered], places: &[u32]) -> Vec<Offered> {
     places.iter().filter_map(|place| offered.get(*place as usize).cloned()).collect()
 }
 
+/// Runs a row's Expand or Collapse when the tree folded it: a click can fold a row other than
+/// the one selected, which the app puts in hand to run it, so the selected one is put back after.
+pub fn fold(app: &App, key: String, action: Offered, selected: Option<String>) {
+    let selected = selected.filter(|selected| *selected != key);
+    app.crux.send(ShellEvent::ActOn(ActingOn::Row(key), action));
+    if let Some(selected) = selected {
+        app.crux.send(ShellEvent::Focus(selected));
+    }
+}
+
 /// A context menu of `actions`: each under its spoken name, with a separator before the
 /// first that removes something.
-pub fn menu(actions: &[impl Offer]) -> Vec<(u16, String)> {
+pub fn menu(actions: &[Offered]) -> Vec<(u16, String)> {
     let mut items = Vec::new();
     for (index, action) in actions.iter().enumerate() {
-        if action.destructive() && index > 0 && !actions[..index].iter().any(Offer::destructive) {
+        if action.destructive && index > 0 && !actions[..index].iter().any(|a| a.destructive) {
             items.push((0, String::new()));
         }
         items.push((FIRST + index as u16, label(action)));
@@ -81,21 +47,21 @@ pub fn menu(actions: &[impl Offer]) -> Vec<(u16, String)> {
 /// An action's name on a menu or a button: an ellipsis says it asks something first, as
 /// Windows' own commands do. A task's form is the details pane, which focus moves to rather
 /// than a dialog opening.
-pub fn label(action: &impl Offer) -> String {
-    let details = action.subject() == Subject::Task && matches!(action.kind(), ActionKind::Edit | ActionKind::EditTask);
-    let asks = action.asks() && !details;
-    format!("{}{}", action.title().replace('&', "&&"), if asks { "..." } else { "" })
+pub fn label(action: &Offered) -> String {
+    let details = action.subject == Subject::Task && matches!(action.kind, ActionKind::Edit | ActionKind::EditTask);
+    let asks = action.asks != Asks::Nothing && !details;
+    format!("{}{}", action.title.replace('&', "&&"), if asks { "..." } else { "" })
 }
 
 /// The action a context menu's command stands for.
-pub fn chosen<T: Offer>(actions: &[T], command: u16) -> Option<T> {
+pub fn chosen(actions: &[Offered], command: u16) -> Option<Offered> {
     command.checked_sub(FIRST).and_then(|index| actions.get(usize::from(index))).cloned()
 }
 
 /// The first of `actions` that is one of `kinds`: what a key or a menu-bar command means on
 /// this row.
-pub fn of_kind<T: Offer>(actions: &[T], kinds: &[ActionKind]) -> Option<T> {
-    actions.iter().find(|action| kinds.contains(&action.kind())).cloned()
+pub fn of_kind(actions: &[Offered], kinds: &[ActionKind]) -> Option<Offered> {
+    actions.iter().find(|action| kinds.contains(&action.kind)).cloned()
 }
 
 /// Asks a line of text as `question` words it, starting from `typed`: its title, its field's

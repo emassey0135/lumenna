@@ -14,7 +14,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use lumenna_app::{Asks, Offered, ViewModel};
+use lumenna_app::{ActingOn, Asks, Offered, ViewModel};
 use lumenna_app::lines::Lines;
 use lumenna_ffi::ShellEvent;
 use lumenna_records::{ActionKind, RowView, Syntax};
@@ -154,13 +154,12 @@ impl TaskList {
         }
     }
 
-    /// Runs one of the row in hand's actions, as the app's. A task's own form is the details
-    /// pane, and its reminders a dialog of the window's.
-    pub fn act(&self, app: &App, action: &Offered) {
+    /// Runs one of row `key`'s actions, as the app's. A task's own form is the details pane, and
+    /// its reminders a dialog of the window's.
+    fn act(&self, app: &App, key: &str, action: &Offered) {
         match (action.asks, action.kind) {
-            (Asks::Form, ActionKind::Reminders) => app.crux.send(ShellEvent::Act(action.clone())),
-            (Asks::Form, _) => app.open_detail(),
-            _ => app.crux.send(ShellEvent::Act(action.clone())),
+            (Asks::Form, kind) if kind != ActionKind::Reminders => app.open_detail(),
+            _ => app.crux.send(ShellEvent::ActOn(ActingOn::Row(key.to_owned()), action.clone())),
         }
     }
 
@@ -262,16 +261,7 @@ impl View for TaskList {
                 let action = self.offers.borrow().get(index).and_then(|offers| actions::of_kind(offers, &[kind]));
                 if let (Some(row), Some(action)) = (row, action) {
                     self.folded_by_tree.set(true);
-                    // A click can fold a row other than the one in hand: that row is in hand
-                    // while it folds, and the selected one again after.
-                    let selected = self.selected().filter(|selected| selected.id != row.id);
-                    if selected.is_some() {
-                        app.crux.send(ShellEvent::Focus(row.id));
-                    }
-                    app.crux.send(ShellEvent::Act(action));
-                    if let Some(selected) = selected {
-                        app.crux.send(ShellEvent::Focus(selected.id));
-                    }
+                    actions::fold(app, row.id, action, self.selected().map(|selected| selected.id));
                 }
                 Some(0)
             }
@@ -293,12 +283,12 @@ impl View for TaskList {
             self.tree.select(index);
         }
         let Some(index) = self.tree.selected() else { return true };
-        let Some(offered) = self.selected_actions() else { return true };
+        let (Some(row), Some(offered)) = (self.selected(), self.selected_actions()) else { return true };
         let at = point.unwrap_or_else(|| self.tree.menu_point(index));
         let items = actions::menu(&offered);
         let items: Vec<(u16, &str)> = items.iter().map(|(id, text)| (*id, text.as_str())).collect();
         if let Some(action) = app.popup(&items, at).and_then(|command| actions::chosen(&offered, command)) {
-            self.act(app, &action);
+            self.act(app, &row.id, &action);
         }
         true
     }

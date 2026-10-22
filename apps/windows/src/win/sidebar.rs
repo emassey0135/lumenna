@@ -10,9 +10,9 @@
 
 use std::cell::{Cell, RefCell};
 
-use lumenna_app::{Side, ViewModel};
+use lumenna_app::{ActingOn, Side, ViewModel};
 use lumenna_ffi::ShellEvent;
-use lumenna_records::{Action, ActionKind};
+use lumenna_records::{ActionKind, Offered};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{
     NMHDR, NMTREEVIEWW, NMTVKEYDOWN, TVIS_EXPANDED, TVN_ITEMEXPANDEDW, TVN_KEYDOWN, TVN_SELCHANGEDW,
@@ -124,9 +124,17 @@ impl Sidebar {
                 let notice = unsafe { &*(lparam.0 as *const NMTREEVIEWW) };
                 let kind = if notice.itemNew.state.0 & TVIS_EXPANDED.0 != 0 { ActionKind::Expand } else { ActionKind::Collapse };
                 let entry = self.tree.index_of_handle(notice.itemNew.hItem).and_then(|i| self.entries.borrow().get(i).cloned());
-                if let Some(action) = entry.and_then(|entry| actions::of_kind(&entry.actions, &[kind])) {
+                if let Some(entry) = entry
+                    && let Some(action) = actions::of_kind(&entry.offered, &[kind])
+                {
                     self.folded_by_tree.set(true);
-                    app.crux.send(ShellEvent::Perform(action));
+                    // A click can fold an entry other than the one selected, which the app
+                    // holds to fold it: the selected one is held again after.
+                    let selected = self.selected().map(|selected| selected.key()).filter(|selected| *selected != entry.key());
+                    self.act(app, &entry, action);
+                    if let Some(selected) = selected {
+                        app.crux.send(ShellEvent::Hold(Side::Sidebar, selected));
+                    }
                 }
                 Some(0)
             }
@@ -141,10 +149,10 @@ impl Sidebar {
                     _ => return Some(0),
                 };
                 if let Some(entry) = self.selected() {
-                    match actions::of_kind(&entry.actions, &[kind]) {
+                    match actions::of_kind(&entry.offered, &[kind]) {
                         Some(action) => self.act(app, &entry, action),
                         // A heading has no actions, and stays quiet.
-                        None if !entry.actions.is_empty() => {
+                        None if !entry.offered.is_empty() => {
                             app.crux.send(ShellEvent::Hold(Side::Sidebar, entry.key()));
                             app.crux.send(ShellEvent::Run(vec![kind]));
                         }
@@ -164,13 +172,13 @@ impl Sidebar {
         let index = point.and_then(|p| self.tree.index_at(p)).or_else(|| self.tree.selected());
         let Some(index) = index else { return true };
         let Some(entry) = self.entries.borrow().get(index).cloned() else { return true };
-        let items = actions::menu(&entry.actions);
+        let items = actions::menu(&entry.offered);
         if items.is_empty() {
             return true;
         }
         let items: Vec<(u16, &str)> = items.iter().map(|(id, text)| (*id, text.as_str())).collect();
         let at = point.unwrap_or_else(|| self.tree.menu_point(index));
-        if let Some(action) = app.popup(&items, at).and_then(|command| actions::chosen(&entry.actions, command)) {
+        if let Some(action) = app.popup(&items, at).and_then(|command| actions::chosen(&entry.offered, command)) {
             self.act(app, &entry, action);
         }
         true
@@ -182,7 +190,7 @@ impl Sidebar {
         let entry = self.entries.borrow().iter().find(|entry| entry.key() == key).cloned();
         // A heading's own action comes first, before its folding.
         if let Some(entry) = entry
-            && let Some(action) = entry.actions.first().cloned()
+            && let Some(action) = entry.offered.first().cloned()
         {
             self.act(app, &entry, action);
         }
@@ -190,15 +198,14 @@ impl Sidebar {
 
     /// Runs one of a row's actions as the app's, the row held first: what it renames, makes or
     /// removes, the app goes to, and the window with it.
-    fn act(&self, app: &App, entry: &SidebarEntry, action: Action) {
-        app.crux.send(ShellEvent::Hold(Side::Sidebar, entry.key()));
-        app.crux.send(ShellEvent::Perform(action));
+    fn act(&self, app: &App, entry: &SidebarEntry, action: Offered) {
+        app.crux.send(ShellEvent::ActOn(ActingOn::Held(Side::Sidebar, entry.key()), action));
     }
 }
 
 /// The Expand or Collapse a row offers, when something is under it.
 fn fold(entry: &SidebarEntry) -> Option<ActionKind> {
-    entry.actions.iter().map(|action| action.kind).find(|kind| matches!(kind, ActionKind::Expand | ActionKind::Collapse))
+    entry.offered.iter().map(|action| action.kind).find(|kind| matches!(kind, ActionKind::Expand | ActionKind::Collapse))
 }
 
 pub fn place_key(place: &Place) -> String {

@@ -15,7 +15,7 @@ use std::rc::Rc;
 
 use lumenna_app::lines::Lines;
 use lumenna_app::settings::SettingsEvent;
-use lumenna_app::{DevicesEvent, Side, ViewModel};
+use lumenna_app::{ActingOn, DevicesEvent, Side, ViewModel};
 use lumenna_ffi::ShellEvent;
 use lumenna_records::{ActionKind, ExportFormat, Setting};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
@@ -776,17 +776,19 @@ impl Devices {
     /// its own row has no Unpair, and the app says why on this page's status line.
     fn act(&self, page: HWND, kind: ActionKind) {
         let Some(device) = self.chosen(page) else { return };
-        app::send(ShellEvent::Hold(Side::Devices, device.node_id));
-        match actions::of_kind(&device.actions, &[kind]) {
-            Some(action) => app::send(ShellEvent::Perform(action)),
-            None => app::send(ShellEvent::Run(vec![kind])),
+        match actions::of_kind(&device.offered, &[kind]) {
+            Some(action) => app::send(ShellEvent::ActOn(ActingOn::Held(Side::Devices, device.node_id), action)),
+            None => {
+                app::send(ShellEvent::Hold(Side::Devices, device.node_id));
+                app::send(ShellEvent::Run(vec![kind]));
+            }
         }
     }
 
     /// Rename and Unpair as the chosen device offers them. The button with focus stays as it
     /// is, since disabling it would send focus nowhere.
     fn offer(&self, page: HWND) {
-        let offered = self.chosen(page).map(|device| device.actions).unwrap_or_default();
+        let offered = self.chosen(page).map(|device| device.offered).unwrap_or_default();
         for (id, kind) in [(RENAME, ActionKind::Rename), (UNPAIR, ActionKind::Unpair)] {
             let button = dialog::item(page, id);
             let has = actions::of_kind(&offered, &[kind]).is_some();

@@ -15,9 +15,9 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use lumenna_app::lines::Lines;
-use lumenna_app::{BlockEvent, DayItem, DayKind, DayMove, ViewModel};
+use lumenna_app::{ActingOn, BlockEvent, DayItem, DayKind, DayMove, ViewModel};
 use lumenna_ffi::ShellEvent;
-use lumenna_records::{Action, ActionKind, Question};
+use lumenna_records::{ActionKind, Asks, Offered};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{
     NM_DBLCLK, NMHDR, NMTREEVIEWW, NMTVKEYDOWN, TVIS_EXPANDED, TVN_ITEMEXPANDEDW, TVN_KEYDOWN, TVN_SELCHANGEDW, WC_BUTTONW,
@@ -44,8 +44,6 @@ pub struct DayView {
     rows: RefCell<Vec<DayItem>>,
     /// The day shown, ISO.
     date: RefCell<Option<String>>,
-    /// The day's own actions.
-    actions: RefCell<Vec<Action>>,
     /// A row the tree itself just folded or unfolded, which the tree has already said.
     pub folded_by_tree: Cell<bool>,
 }
@@ -65,7 +63,6 @@ impl DayView {
             tree,
             rows: RefCell::new(Vec::new()),
             date: RefCell::new(None),
-            actions: RefCell::new(Vec::new()),
             folded_by_tree: Cell::new(false),
         })
     }
@@ -100,7 +97,6 @@ impl DayView {
             .collect();
         *self.rows.borrow_mut() = day.items.clone();
         *self.date.borrow_mut() = Some(day.date.clone());
-        *self.actions.borrow_mut() = day.actions.clone();
         let rebuilt = self.tree.set(items);
         if landed || rebuilt {
             self.show(view.focus.as_deref());
@@ -121,11 +117,10 @@ impl DayView {
     /// the day's two proposals too, the app asking first which occurrences of a repeating
     /// block. The forms still the window's own are a sitting's task (the details) and a row's
     /// reminders.
-    fn act(&self, app: &App, row: &DayItem, action: &Action) {
-        match (&action.question, row.kind, action.kind) {
-            (Question::Form, DayKind::Sitting, ActionKind::EditTask) => app.open_detail(),
-            (Question::Form, _, ActionKind::Reminders) => app.crux.send(ShellEvent::Perform(action.clone())),
-            _ => app.crux.send(ShellEvent::Perform(action.clone())),
+    fn act(&self, app: &App, row: &DayItem, action: &Offered) {
+        match (action.asks, row.kind, action.kind) {
+            (Asks::Form, DayKind::Sitting, ActionKind::EditTask) => app.open_detail(),
+            _ => app.crux.send(ShellEvent::ActOn(ActingOn::Row(row.key.clone()), action.clone())),
         }
     }
 
@@ -138,7 +133,7 @@ impl DayView {
     /// The selected row's action of one of `kinds`, if it has one: what a key means here.
     fn act_on_selected(&self, app: &App, kinds: &[ActionKind]) {
         let Some(row) = self.selected() else { return };
-        if let Some(action) = actions::of_kind(&row.actions, kinds) {
+        if let Some(action) = actions::of_kind(&row.offered, kinds) {
             self.act(app, &row, &action);
         }
     }
@@ -199,9 +194,11 @@ impl View for DayView {
                 let notice = unsafe { &*(lparam.0 as *const NMTREEVIEWW) };
                 let kind = if notice.itemNew.state.0 & TVIS_EXPANDED.0 != 0 { ActionKind::Expand } else { ActionKind::Collapse };
                 let row = self.tree.index_of_handle(notice.itemNew.hItem).and_then(|i| self.rows.borrow().get(i).cloned());
-                if let Some(action) = row.and_then(|row| actions::of_kind(&row.actions, &[kind])) {
+                if let Some(row) = row
+                    && let Some(action) = actions::of_kind(&row.offered, &[kind])
+                {
                     self.folded_by_tree.set(true);
-                    app.crux.send(ShellEvent::Perform(action));
+                    actions::fold(app, row.key, action, self.selected().map(|selected| selected.key));
                 }
                 Some(0)
             }
@@ -211,7 +208,7 @@ impl View for DayView {
                 // the row is, or the core says why not.
                 if key == VK_SPACE.0 {
                     let kinds = [ActionKind::StartTimer, ActionKind::PauseTimer, ActionKind::ResumeTimer];
-                    if self.selected().is_some_and(|row| actions::of_kind(&row.actions, &kinds).is_some()) {
+                    if self.selected().is_some_and(|row| actions::of_kind(&row.offered, &kinds).is_some()) {
                         app.crux.send(ShellEvent::Run(kinds.to_vec()));
                         return Some(1);
                     }
@@ -244,13 +241,13 @@ impl View for DayView {
             self.tree.select(index);
         }
         let (Some(index), Some(row)) = (self.tree.selected(), self.selected()) else { return true };
-        let items = actions::menu(&row.actions);
+        let items = actions::menu(&row.offered);
         if items.is_empty() {
             return true;
         }
         let items: Vec<(u16, &str)> = items.iter().map(|(id, text)| (*id, text.as_str())).collect();
         let at = point.unwrap_or_else(|| self.tree.menu_point(index));
-        if let Some(action) = app.popup(&items, at).and_then(|command| actions::chosen(&row.actions, command)) {
+        if let Some(action) = app.popup(&items, at).and_then(|command| actions::chosen(&row.offered, command)) {
             self.act(app, &row, &action);
         }
         true
@@ -258,7 +255,7 @@ impl View for DayView {
 
     fn properties(&self, app: &App) -> bool {
         let Some(row) = self.selected() else { return false };
-        let Some(action) = actions::of_kind(&row.actions, &[ActionKind::Edit, ActionKind::EditTask]) else { return false };
+        let Some(action) = actions::of_kind(&row.offered, &[ActionKind::Edit, ActionKind::EditTask]) else { return false };
         self.act(app, &row, &action);
         true
     }
