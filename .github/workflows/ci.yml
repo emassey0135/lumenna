@@ -150,19 +150,20 @@ jobs:
       - run: npm ci
       - name: Build
         run: npm run build
+      # The release core just built, for WebKit's run on a Mac (web-webkit), which needs no Rust:
+      # taken before the debug core replaces it for Chromium, since the debug build's deeper
+      # stack overflowed WebKit's worker ("Maximum call stack size exceeded") at every open.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-core
+          path: apps/web/src/core
+          retention-days: 1
       - run: npx playwright install --with-deps chromium webkit firefox
       # The installed app, against the build just made: opening with no network, the manifest.
       - name: The installed app
         run: npx playwright test --config playwright.pwa.config.ts
       - name: Playwright and axe
         run: npm run core:dev && npm test
-      # The core just built, for WebKit's run on a Mac (web-webkit), which needs no Rust.
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: web-core
-          path: apps/web/src/core
-          retention-days: 1
       - name: Playwright and axe in Firefox
         run: npm run test:firefox
       # A failed test's trace (playwright.config.ts keeps it): what the page and the worker did,
