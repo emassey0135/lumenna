@@ -59,7 +59,7 @@ pub use day::{DayItem, DayKind, DayView};
 pub use details::{DetailsEvent, DetailsView};
 pub use typing::{LineView, Typing};
 pub use host::{Arrival, HostAnswer, HostRequest, Watch};
-pub use list::Item;
+pub use list::{Asks, Item, Offered};
 pub use proposal::{ProposalEvent, ProposalView};
 pub use settings::{SaveFile, SettingsEvent, SettingsView};
 pub use due::{Due, DueEvent, Notice};
@@ -172,6 +172,10 @@ pub enum Event {
     Filter(String),
     /// Run an action a row offered: from its menu, a button, a swipe.
     Perform(Action),
+    /// Run an action a list's row offered, as the list gave it in short (`ListView::offered`),
+    /// on the row in hand (or held in a side list): its target and its question are the app's,
+    /// found again from that row's actions. One the row no longer offers says why.
+    Act(list::Offered),
     /// Run the first of these kinds the row in hand offers, for a key that means one thing on
     /// every row: Space is Mark Done, Mark Not Done or Restore. One it offers none of says why,
     /// in the words for the first.
@@ -391,7 +395,7 @@ impl Lumenna {
         // back to the main list.
         match &event {
             Event::Hold(side, _) => model.acting = Some(*side),
-            Event::Perform(_) | Event::Answer(_) | Event::Cancel | Event::Run(_) => {}
+            Event::Perform(_) | Event::Act(_) | Event::Answer(_) | Event::Cancel | Event::Run(_) => {}
             other if other.is_the_persons() => model.acting = None,
             _ => {}
         }
@@ -447,6 +451,7 @@ impl Lumenna {
             Event::Filter(text) => self.filter(text, model),
             Event::Perform(action) => self.perform(action, model),
             Event::Run(kinds) => self.run(kinds, model),
+            Event::Act(offered) => self.act(&offered, model),
             Event::Answer(answer) => self.answer(answer, model),
             Event::Cancel => {
                 model.open = None;

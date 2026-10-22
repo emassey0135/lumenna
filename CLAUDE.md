@@ -86,6 +86,16 @@ without the screens over BoltFFI. No JSON crosses the FFI.
   A key pressed on a row without that action is the app's to refuse (`Run`, `RunDay`,
   `DetailsEvent::Run`), in `not_offered(kind, subject, …)`'s words.
   What a picker's row says is `lumenna_app::speech::choice` for Windows, GTK and the web.
+  **A list's rows name their actions in short** (`ListView::offered`, `lumenna_app::Offered`,
+  each row's `Item::actions` places in it): kind, subject, title, sentence, destructive,
+  primary, `other`, and `asks` (`Nothing`, `Something`, or `Form`, the shell's own); never the
+  record it acts on or the question's words, which name the row's record, so a list of 2,000
+  tasks offers eleven where it carried 15,372 actions whole. A shell hands one back with
+  `Event::Act` after putting the row in hand (`Focus`, or `Hold` in a side list), and the app
+  runs that row's action whole as it has it now, or refuses one the row no longer offers in
+  `not_offered`'s words. A `Form` one is opened by the shell for the row's own record (its
+  `id`). The day, the sidebar, reminders and devices still carry their actions whole, with
+  `Perform`.
 - **What every client's forms share is here too**, as free functions in `form.rs`:
   `task_fields`/`task_edit`, the block form's `block_fields`/`block_edit`/`new_block`,
   `parse_weight`, the `#"Home Office"` references. `task_edit` and `block_edit` hold only

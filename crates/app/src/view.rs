@@ -86,6 +86,10 @@ pub struct ViewModel {
 pub struct ListView {
     /// Every row, those folded away marked hidden.
     pub items: Vec<Item>,
+    /// The actions the rows offer, each once, in short: each row names its own by place here
+    /// (`Item::actions`), and hands one back with `Event::Act`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub offered: Vec<crate::list::Offered>,
     /// How many there are, in a sentence: "3 tasks".
     pub announcement: String,
     /// What the list says when it has none.
@@ -176,14 +180,19 @@ fn shown(model: &Screen) -> ViewModel {
         .then(|| lumenna_records::resolve::list_query(&store.snapshot, &model.query()).err().map(|e| e.message().to_owned()))
         .flatten();
     let list = listing(&store.snapshot, &place, &model.shown_query(), &store.now).map(|found| match found {
-        Ok(rows) => ListView {
-            items: list::items(&rows, &model.folded),
+        Ok(rows) => {
+            let mut items = list::items(&rows, &model.folded);
+            let offered = list::offer(&mut items);
+            ListView {
+            items,
+            offered,
             announcement: rows.announcement.clone(),
             empty: rows.empty.clone(),
             query: rows.query.clone(),
             notices: rows.notices.clone(),
             refusal,
-        },
+        }
+        }
         Err(error) => ListView { refusal: Some(error.message().to_owned()), ..ListView::default() },
     });
     ViewModel {

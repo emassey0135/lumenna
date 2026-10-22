@@ -422,6 +422,18 @@ impl Lumenna {
         }
     }
 
+    /// Runs the row in hand's action that `offered` names in short (a side list's row while the
+    /// person acts from it), whole: its target and question as the app has them now. A row that
+    /// no longer offers it is refused as a key it lacks would be.
+    pub(crate) fn act(&self, offered: &crate::list::Offered, model: &mut Screen) -> Command<Effect, Event> {
+        let held = model.acting.and_then(|side| model.side_actions(side));
+        let actions = held.or_else(|| model.actions_in_hand()).unwrap_or_default();
+        match actions.iter().find(|action| offered.is(action)) {
+            Some(action) => self.perform(action.clone(), model),
+            None => refuse(offered.kind, &actions, model),
+        }
+    }
+
     pub(crate) fn run(&self, kinds: Vec<ActionKind>, model: &mut Screen) -> Command<Effect, Event> {
         // A side list's row while the person acts from it, else the row in hand.
         let held = model.acting.and_then(|side| model.side_actions(side));
@@ -429,14 +441,17 @@ impl Lumenna {
         let found = kinds.iter().find_map(|kind| actions.iter().find(|a| a.kind == *kind));
         match (found, kinds.first()) {
             (Some(action), _) => self.perform(action.clone(), model),
-            (None, Some(kind)) => {
-                // The day's heading offers the day's own actions, and says the day of one it lacks.
-                let heading = model.place() == Place::Today && model.focus.as_deref() == Some("summary");
-                let subject = actions.first().map_or(if heading { Subject::Day } else { Subject::Task }, |a| a.subject);
-                let this_device = model.acting == Some(crate::Side::Devices) && model.holds_this_device();
-                say(not_offered(*kind, subject, this_device))
-            }
+            (None, Some(kind)) => refuse(*kind, &actions, model),
             (None, None) => Command::done(),
         }
     }
+}
+
+/// Why the row in hand, offering `actions`, does not offer `kind`, in the core's words.
+fn refuse(kind: ActionKind, actions: &[Action], model: &Screen) -> Command<Effect, Event> {
+    // The day's heading offers the day's own actions, and says the day of one it lacks.
+    let heading = model.place() == Place::Today && model.focus.as_deref() == Some("summary");
+    let subject = actions.first().map_or(if heading { Subject::Day } else { Subject::Task }, |a| a.subject);
+    let this_device = model.acting == Some(crate::Side::Devices) && model.holds_this_device();
+    say(not_offered(kind, subject, this_device))
 }

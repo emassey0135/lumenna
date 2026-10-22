@@ -32,6 +32,8 @@ pub enum ShellEvent {
     Filter(String),
     /// Run an action a row offered.
     Perform(Action),
+    /// Run an action a list's row offered, in short (`ListView::offered`), on the row in hand.
+    Act(crate::list::Offered),
     /// Run the first of these kinds the row in hand offers.
     Run(Vec<ActionKind>),
     /// The answer to the question open.
@@ -98,6 +100,7 @@ impl From<ShellEvent> for Event {
             ShellEvent::Hold(side, key) => Event::Hold(side, key),
             ShellEvent::Filter(text) => Event::Filter(text),
             ShellEvent::Perform(action) => Event::Perform(action),
+            ShellEvent::Act(offered) => Event::Act(offered),
             ShellEvent::Run(kinds) => Event::Run(kinds),
             ShellEvent::Answer(answer) => Event::Answer(answer),
             ShellEvent::Cancel => Event::Cancel,
@@ -135,6 +138,7 @@ impl TryFrom<Event> for ShellEvent {
             Event::Hold(side, key) => ShellEvent::Hold(side, key),
             Event::Filter(text) => ShellEvent::Filter(text),
             Event::Perform(action) => ShellEvent::Perform(action),
+            Event::Act(offered) => ShellEvent::Act(offered),
             Event::Run(kinds) => ShellEvent::Run(kinds),
             Event::Answer(answer) => ShellEvent::Answer(answer),
             Event::Cancel => ShellEvent::Cancel,

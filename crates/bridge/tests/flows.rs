@@ -4,8 +4,8 @@ use std::sync::{Arc, Mutex};
 
 use crux_core::middleware::{EffectMiddleware, EffectResolver, Layer};
 use lumenna_app::{
-    BlockEvent, DayMove, DetailsEvent, Effect, Event, Item, NetworkAnswer, NetworkRequest, ProposalEvent, SettingsEvent,
-    ScreenId, Typing, ViewModel,
+    Asks, BlockEvent, DayMove, DetailsEvent, Effect, Event, Item, NetworkAnswer, NetworkRequest, ProposalEvent,
+    SettingsEvent, ScreenId, Typing, ViewModel,
 };
 use lumenna_bridge::{Shell, Stack, Store, shell, stack};
 use lumenna_host::Lumenna;
@@ -222,6 +222,56 @@ fn marking_the_task_in_hand_done_puts_the_row_that_took_its_place_in_hand() {
     assert!(!said(&shell).is_empty(), "the change is said");
     assert!(!app.titles().contains(&first.title));
     assert_eq!(app.view().focus, Some(second));
+}
+
+#[test]
+fn a_lists_rows_name_their_actions_in_short_each_offered_once() {
+    let mut app = App::new();
+    app.add("Write the report");
+    app.add("Buy milk");
+    let list = app.view().list.unwrap();
+    for item in &list.items {
+        let named: Vec<&str> = item.actions.iter().map(|at| list.offered[*at as usize].title.as_str()).collect();
+        let whole: Vec<&str> = item.row.actions.iter().map(|action| action.title.as_str()).collect();
+        assert_eq!(named, whole, "each row's own, in its order");
+    }
+    let every = list.items.iter().map(|item| item.actions.len()).sum::<usize>();
+    assert!(list.offered.len() < every, "{} offered for {every} actions", list.offered.len());
+    let put = list.offered.iter().find(|o| o.kind == ActionKind::PutInBlock).expect("Put in a Block is offered");
+    assert_eq!(put.asks, Asks::Something, "it asks, worded with the task's name only when it does");
+}
+
+#[test]
+fn an_action_handed_back_in_short_runs_on_the_row_in_hand_whole() {
+    let mut app = App::new();
+    Lumenna::open(app.profile.to_str().unwrap()).unwrap().add_project("Work", None).unwrap();
+    app.add("Buy milk");
+    let list = app.view().list.unwrap();
+    let row = &list.items[0];
+    let short = |kind| row.actions.iter().map(|at| list.offered[*at as usize].clone()).find(|o| o.kind == kind).unwrap();
+    app.send(Event::Focus(row.row.id.clone()));
+
+    app.send(Event::Act(short(ActionKind::MoveToProject)));
+    let asking = app.view().asking.expect("its question is open");
+    let Question::Pick { title, .. } = asking.question else { panic!("a pick: {:?}", asking.question) };
+    assert!(title.contains("Buy milk"), "worded with the task's name, as the app has it: {title}");
+    app.send(Event::Cancel);
+
+    app.send(Event::Act(short(ActionKind::MarkDone)));
+    assert!(app.titles().is_empty(), "done");
+}
+
+#[test]
+fn an_action_the_row_in_hand_does_not_offer_handed_back_in_short_says_why() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    let list = app.view().list.unwrap();
+    let mut restore = list.offered[0].clone();
+    restore.kind = ActionKind::Restore;
+    restore.title = "Restore".to_owned();
+    let shell = app.send(Event::Act(restore));
+    assert_eq!(said(&shell), ["That does not apply here."]);
+    assert_eq!(app.titles(), ["Buy milk"]);
 }
 
 #[test]
