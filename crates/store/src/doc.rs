@@ -851,6 +851,83 @@ impl Doc {
     }
 }
 
+/// A part of the snapshot as kept between runs (see `Store::snapshot`): its records as lists,
+/// since JSON has no map keyed by a pair (an exception's, an acknowledgement's), each map built
+/// again by its records' own keys.
+#[derive(serde::Serialize)]
+struct KeptRef<'a> {
+    tasks: Vec<&'a Task>,
+    completions: Vec<&'a TaskCompletion>,
+    projects: Vec<&'a Project>,
+    labels: Vec<&'a Label>,
+    saved_filters: Vec<&'a SavedFilter>,
+    reminders: Vec<&'a Reminder>,
+    acks: Vec<&'a ReminderAck>,
+    settings: &'a lumenna_core::model::Settings,
+    devices: Vec<&'a Device>,
+    series: Vec<&'a BlockSeries>,
+    exceptions: Vec<&'a BlockException>,
+    assignments: Vec<&'a BlockAssignment>,
+}
+
+#[derive(serde::Deserialize)]
+struct Kept {
+    tasks: Vec<Task>,
+    completions: Vec<TaskCompletion>,
+    projects: Vec<Project>,
+    labels: Vec<Label>,
+    saved_filters: Vec<SavedFilter>,
+    reminders: Vec<Reminder>,
+    acks: Vec<ReminderAck>,
+    settings: lumenna_core::model::Settings,
+    devices: Vec<Device>,
+    series: Vec<BlockSeries>,
+    exceptions: Vec<BlockException>,
+    assignments: Vec<BlockAssignment>,
+}
+
+/// A part of the snapshot (see [`Doc::part`]) as kept between runs.
+pub(crate) fn encode_part(part: &Snapshot) -> Vec<u8> {
+    let kept = KeptRef {
+        tasks: part.tasks.values().collect(),
+        completions: part.completions.values().collect(),
+        projects: part.projects.values().collect(),
+        labels: part.labels.values().collect(),
+        saved_filters: part.saved_filters.values().collect(),
+        reminders: part.reminders.values().collect(),
+        acks: part.acks.values().collect(),
+        settings: &part.settings,
+        devices: part.devices.values().collect(),
+        series: part.series.values().collect(),
+        exceptions: part.exceptions.values().collect(),
+        assignments: part.assignments.values().collect(),
+    };
+    serde_json::to_vec(&kept).unwrap_or_default()
+}
+
+/// A part kept by [`encode_part`], or nothing where it does not read as one.
+pub(crate) fn decode_part(bytes: &[u8]) -> Option<Snapshot> {
+    fn keyed<R: Record>(records: Vec<R>) -> BTreeMap<R::Key, R> {
+        records.into_iter().map(|record| (record.key(), record)).collect()
+    }
+    let kept: Kept = serde_json::from_slice(bytes).ok()?;
+    Some(Snapshot {
+        tasks: keyed(kept.tasks),
+        completions: keyed(kept.completions),
+        projects: keyed(kept.projects),
+        labels: keyed(kept.labels),
+        saved_filters: keyed(kept.saved_filters),
+        reminders: keyed(kept.reminders),
+        acks: keyed(kept.acks),
+        settings: kept.settings,
+        devices: keyed(kept.devices),
+        series: keyed(kept.series),
+        exceptions: keyed(kept.exceptions),
+        assignments: keyed(kept.assignments),
+        ..Snapshot::default()
+    })
+}
+
 /// Puts document `id`'s part (see [`Doc::part`]) into `snapshot`.
 pub(crate) fn absorb(snapshot: &mut Snapshot, id: DocId, part: &Snapshot) {
     match id.domain() {

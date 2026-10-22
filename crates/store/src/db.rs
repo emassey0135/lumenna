@@ -123,6 +123,17 @@ impl Db {
 
              -- This device's undo history. Local-only: sync and backups carry
              -- Automerge documents, never this table. `undone` marks the redo side.
+             -- Each document's part of the snapshot as one build materialized it, at the heads
+             -- it was read at, so a process opening the store reads only what changed since
+             -- (`Store::snapshot`), and the postponements' tally (`postponed`) likewise. A rebuildable cache, never truth: used only by the build that
+             -- wrote it, and only where the document holds those heads. Local, like the rest.
+             CREATE TABLE IF NOT EXISTS hydrated (
+                 doc_id TEXT PRIMARY KEY,
+                 build  TEXT NOT NULL,
+                 heads  BLOB NOT NULL,
+                 part   BLOB NOT NULL
+             );
+
              CREATE TABLE IF NOT EXISTS undo (
                  seq         INTEGER PRIMARY KEY AUTOINCREMENT,
                  undone      INTEGER NOT NULL DEFAULT 0,
@@ -367,6 +378,9 @@ fn encode_heads(heads: &[ChangeHash]) -> Vec<u8> {
     heads.iter().flat_map(|h| h.0.to_vec()).collect()
 }
 
+/// What is kept in `hydrated`: the build that wrote it, the heads it was read at, and itself.
+pub type Kept = (String, Vec<ChangeHash>, Vec<u8>);
+
 /// Rebuilds a `changes` table from before `AUTOINCREMENT`, keeping every row and its rowid.
 ///
 /// Without it SQLite hands out `max(rowid) + 1`, so once compaction deletes a document's
@@ -524,6 +538,40 @@ impl Db {
             .conn
             .query_row("SELECT value FROM local_state WHERE key = ?1", params![key], |r| r.get(0))
             .optional()?)
+    }
+
+    /// What is kept under `key` (a document's name for its part of the snapshot, or
+    /// `postponed` for the tally), if anything: the build that wrote it, the heads it was read
+    /// at, and what was kept.
+    ///
+    /// # Errors
+    ///
+    /// If the read fails.
+    pub fn hydrated(&self, key: &str) -> Result<Option<Kept>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT build, heads, part FROM hydrated WHERE doc_id = ?1",
+                params![key],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?, r.get::<_, Vec<u8>>(2)?)),
+            )
+            .optional()?
+            .map(|(build, heads, part)| {
+                (build, heads.as_chunks::<32>().0.iter().map(|chunk| ChangeHash(*chunk)).collect(), part)
+            }))
+    }
+
+    /// Keeps `part` under `key`, read at `heads` by `build`, in place of the last.
+    ///
+    /// # Errors
+    ///
+    /// If the write fails.
+    pub fn keep_hydrated(&self, key: &str, build: &str, heads: &[ChangeHash], part: &[u8]) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO hydrated (doc_id, build, heads, part) VALUES (?1, ?2, ?3, ?4)",
+            params![key, build, encode_heads(heads), part],
+        )?;
+        Ok(())
     }
 
     /// Sets a local value unless one is already there, and returns whichever is.

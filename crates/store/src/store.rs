@@ -65,7 +65,20 @@ struct Hydrated {
     heads: Vec<ChangeHash>,
     part: Snapshot,
     skipped: Vec<crate::doc::Skipped>,
+    /// When this part was last kept on disk for the next process (see [`Store::snapshot`]).
+    saved_at: Option<jiff::Timestamp>,
 }
+
+/// Which build materialized a part kept on disk: a hash of every source of the model and of
+/// hydration (`build.rs`), so a part is used only by a build that reads every record alike.
+const HYDRATION_BUILD: &str = env!("LUMENNA_HYDRATION_BUILD");
+
+/// The key the postponements' tally is kept under, beside the documents' parts.
+const POSTPONED: &str = "postponed";
+
+/// How often a part a running process follows is kept on disk again, at most: often enough that
+/// the next process has little to follow, seldom enough that a write costs no more than it did.
+const SAVE_EVERY: jiff::SignedDuration = jiff::SignedDuration::from_secs(60);
 
 impl Store {
     /// Opens the profile at `path`, creating it if it is not there.
@@ -116,6 +129,11 @@ impl Store {
                 store.docs.note_recurring_year(series.start_date.year())?;
             }
         }
+        // The postponements' tally as an earlier process kept it, read on from there rather than
+        // from the start of the history (see `Store::snapshot`).
+        if let Some(kept) = tally_from_disk(&store.db, store.docs.core()) {
+            store.postponed = kept;
+        }
         // A fresh profile records its genesis now rather than letting the first real edit
         // carry it. Cheap, and it means "the file exists" and "the file holds a store" are
         // the same statement.
@@ -137,8 +155,10 @@ impl Store {
             Some(bytes) => Doc::load(id, &bytes)?,
             None => Doc::new(id),
         };
-        for change in changes {
-            doc.load_incremental(&change)?;
+        // Every change in one call: Automerge reads a run of chunks and orders them by their
+        // dependencies itself, where a call per change paid its setup hundreds of times.
+        if !changes.is_empty() {
+            doc.load_incremental(&changes.concat())?;
         }
         Ok((doc, stored))
     }
@@ -160,25 +180,49 @@ impl Store {
 
     /// Materializes everything loaded, reading again only the documents that have moved
     /// since the last time (see [`Hydrated`]).
+    ///
+    /// A document this process has not yet read starts from the part an earlier process kept
+    /// on disk, when this build wrote it and the document holds the heads it was read at, and
+    /// follows the changes since as it would its own. A part is kept on disk after a whole
+    /// reading, after following one from disk, and while followed at most every
+    /// [`SAVE_EVERY`]; never with a record it could not read, which a kept part does not carry.
     #[must_use]
     pub fn snapshot(&mut self) -> (Snapshot, HydrationReport) {
         let mut loaded = Vec::new();
+        let now = lumenna_core::time::now();
         for doc in self.docs.iter_mut() {
             let (id, heads) = (doc.id(), doc.heads());
-            let followed = match self.hydrated.get_mut(&id) {
-                Some(kept) if kept.heads == heads => true,
+            let in_memory = match self.hydrated.get_mut(&id) {
+                Some(kept) if kept.heads == heads => Some(false),
                 // Moved since: only what the changes touched is read again.
-                Some(kept) => {
-                    let followed = doc.refresh_part(&kept.heads, &heads, &mut kept.part, &mut kept.skipped);
+                Some(kept) => doc.refresh_part(&kept.heads, &heads, &mut kept.part, &mut kept.skipped).then(|| {
                     kept.heads.clone_from(&heads);
-                    followed
-                }
-                None => false,
+                    kept.saved_at.is_none_or(|at| now.duration_since(at) >= SAVE_EVERY)
+                }),
+                None => None,
             };
-            if !followed {
-                let mut skipped = Vec::new();
-                let part = doc.part(&mut skipped);
-                self.hydrated.insert(id, Hydrated { heads, part, skipped });
+            let save = in_memory.unwrap_or_else(|| {
+                let (part, skipped, saved) = from_disk(&self.db, doc, id, &heads).unwrap_or_else(|| {
+                    let mut skipped = Vec::new();
+                    (doc.part(&mut skipped), skipped, Vec::new())
+                });
+                self.hydrated.insert(id, Hydrated { heads: heads.clone(), part, skipped, saved_at: None });
+                // Read whole, or brought up to date from disk: kept again, so the next process
+                // has nothing to do. Up to date there already: left as it is.
+                saved != heads
+            });
+            if let Some(kept) = self.hydrated.get_mut(&id)
+                && save
+                && kept.skipped.is_empty()
+                && self.db.keep_hydrated(&id.name(), HYDRATION_BUILD, &heads, &crate::doc::encode_part(&kept.part)).is_ok()
+            {
+                kept.saved_at = Some(now);
+                // The postponements' tally reads the core document's history from its start, so
+                // it is kept with that document's part, and the next process reads on from it.
+                if id == DocId::Core {
+                    let tally = (self.postponed.heads(), self.postponed.encode());
+                    let _ = self.db.keep_hydrated(POSTPONED, HYDRATION_BUILD, tally.0, &tally.1);
+                }
             }
             loaded.push(id);
         }
@@ -955,6 +999,36 @@ pub struct Imports {
     pub unchanged: usize,
     /// Assignments left out because their block is in neither the file nor the store.
     pub skipped: usize,
+}
+
+/// The part of `doc`'s snapshot an earlier process kept on disk, brought up to `heads`: the
+/// part, what it could not read, and the heads it was kept at. Nothing when this build
+/// did not write it, the document lacks the heads it was read at (a store made afresh in its
+/// place), it does not read, or the changes since cannot be followed record by record.
+fn from_disk(
+    db: &Db,
+    doc: &mut Doc,
+    id: DocId,
+    heads: &[ChangeHash],
+) -> Option<(Snapshot, Vec<crate::doc::Skipped>, Vec<ChangeHash>)> {
+    let (build, saved, bytes) = db.hydrated(&id.name()).ok()??;
+    if build != HYDRATION_BUILD || !saved.iter().all(|head| doc.has_change(head)) {
+        return None;
+    }
+    let mut part = crate::doc::decode_part(&bytes)?;
+    let mut skipped = Vec::new();
+    if saved != heads && !doc.refresh_part(&saved, heads, &mut part, &mut skipped) {
+        return None;
+    }
+    Some((part, skipped, saved))
+}
+
+/// The postponements' tally an earlier process kept, when this build wrote it and the core
+/// document holds the heads it read to.
+fn tally_from_disk(db: &Db, core: &mut Doc) -> Option<crate::postponed::Postponed> {
+    let (build, saved, bytes) = db.hydrated(POSTPONED).ok()??;
+    let tally = crate::postponed::Postponed::decode(&bytes)?;
+    (build == HYDRATION_BUILD && tally.heads() == saved && saved.iter().all(|head| core.has_change(head))).then_some(tally)
 }
 
 #[cfg(test)]

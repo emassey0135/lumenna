@@ -86,6 +86,56 @@ impl Postponed {
     }
 }
 
+/// The tally as kept between runs, beside the snapshot's parts (`Store::snapshot`): operations
+/// named by counter and actor, heads as hex, since none of them has a JSON form of its own.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Kept {
+    heads: Vec<String>,
+    tasks: Vec<(u64, String, String)>,
+    dues: Vec<(u64, String, String)>,
+    last: Vec<(String, String)>,
+    counts: Vec<(String, u32)>,
+}
+
+impl Postponed {
+    /// The heads read to, which the document must hold for the tally to go on from them.
+    pub(crate) fn heads(&self) -> &[ChangeHash] {
+        &self.heads
+    }
+
+    /// The tally as kept between runs.
+    pub(crate) fn encode(&self) -> Vec<u8> {
+        let ops = |map: &HashMap<OpId, String>| -> Vec<(u64, String, String)> {
+            map.iter().map(|(OpId(counter, actor), task)| (*counter, actor.to_hex_string(), task.clone())).collect()
+        };
+        let kept = Kept {
+            heads: self.heads.iter().map(ToString::to_string).collect(),
+            tasks: ops(&self.tasks),
+            dues: ops(&self.dues),
+            last: self.last.iter().map(|(task, date)| (task.clone(), date.clone())).collect(),
+            counts: self.counts.iter().map(|(task, count)| (task.clone(), *count)).collect(),
+        };
+        serde_json::to_vec(&kept).unwrap_or_default()
+    }
+
+    /// A tally kept by [`encode`](Self::encode), or nothing where it does not read as one.
+    pub(crate) fn decode(bytes: &[u8]) -> Option<Self> {
+        let kept: Kept = serde_json::from_slice(bytes).ok()?;
+        let ops = |list: Vec<(u64, String, String)>| -> Option<HashMap<OpId, String>> {
+            list.into_iter()
+                .map(|(counter, actor, task)| Some((OpId(counter, actor.parse().ok()?), task)))
+                .collect()
+        };
+        Some(Self {
+            heads: kept.heads.iter().map(|head| head.parse().ok()).collect::<Option<_>>()?,
+            tasks: ops(kept.tasks)?,
+            dues: ops(kept.dues)?,
+            last: kept.last.into_iter().collect(),
+            counts: kept.counts.into_iter().collect(),
+        })
+    }
+}
+
 /// A root collection's object, as a change's operations name it.
 fn collection(doc: &AutoCommit, name: &str) -> Option<ObjectId> {
     match doc.get(ROOT, name).ok()?? {
